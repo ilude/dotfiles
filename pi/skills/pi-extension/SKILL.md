@@ -1,6 +1,6 @@
 ---
 name: pi-extension
-description: "Pi extensions: pi/extensions/*.ts, hooks, registerTool, registerCommand, footer/status UI, tool_result, session hooks, or subprocesses. Not for slash-command placement; use pi-command."
+description: "Pi extensions and tool policy: extensions/*.ts, hooks, registerTool, promptGuidelines, registerCommand, footer/status UI, tool_result, session hooks, or subprocesses. Not for slash-command placement; use pi-command."
 ---
 
 # Pi Extension Engineering
@@ -19,6 +19,18 @@ description: "Pi extensions: pi/extensions/*.ts, hooks, registerTool, registerCo
 Pi extensions run inside the interactive agent process. Treat render paths, status paths, hooks, and tool-result handlers as hot paths. Small subprocess calls can become visible CPU, process churn, or startup latency when repeated.
 
 Pi docs, Pi examples, and local Pi source/types are authoritative for extension behavior. When local Pi source or `.d.ts` files are available, inspect them before hedging about extension API behavior. Use Node docs only for runtime mechanics such as `child_process`, streams, signals, and buffers. Do not import editor-extension rules from other ecosystems unless the user explicitly asks for that comparison.
+
+## Living Tooling Contract
+
+Before designing or changing a Pi extension, registered tool, activation rule, prompt snippet, or prompt guideline, read [references/tooling-contracts.md](references/tooling-contracts.md) completely.
+
+The tooling contract is living guidance. When the user refines or changes accepted tooling behavior:
+
+1. Update the contract in the same coherent change as the implementation.
+2. Record the accepted current behavior, not the discussion history.
+3. Remove superseded or contradictory guidance instead of appending exceptions.
+4. Reconcile descriptions, prompt snippets, prompt guidelines, activation, runtime gates, and operator documentation with the revised contract.
+5. Keep tool-specific policy in the owning extension and this contract, not `AGENTS.md`.
 
 ## Pi Runtime Rules
 

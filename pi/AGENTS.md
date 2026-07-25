@@ -40,7 +40,6 @@ Delegate only when independent workstreams materially improve execution, such as
 ## Repository Files
 
 - **Scratch output** -- send expected large output to gitignored `.tmp/` or OS temp and return only a summary, relevant failure section, or bounded tail. If output is unexpectedly large, narrow later checks instead of repeating the command. If an untracked scratch file is overwritten rather than appended, there is usually no need to delete it; delete only for explicit cleanup or repository hygiene requirements.
-- **Scheduled waits** -- for waits of 60 seconds or longer, schedule a follow-up near half the expected duration, bounded between 60 seconds and 15 minutes; use five minutes when duration is unknown.
 
 ## Durable Handoff
 

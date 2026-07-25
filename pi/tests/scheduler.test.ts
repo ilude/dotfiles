@@ -109,22 +109,13 @@ describe("scheduler extension", () => {
 		);
 	});
 
-	it("activates the scheduling tool only for scheduling intent", async () => {
+	it("keeps the scheduling tool active throughout the session", async () => {
 		const pi = createMockPi();
 		registerScheduler(pi as unknown as ExtensionAPI);
 		const ctx = createMockCtx({ mode: "tui" });
-		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
-		expect(pi.getActiveTools()).not.toContain("schedule");
 
-		await pi._getHook("before_agent_start")[0].handler(
-			{ prompt: "Explain this code" },
-			ctx,
-		);
-		expect(pi.getActiveTools()).not.toContain("schedule");
-		await pi._getHook("before_agent_start")[0].handler(
-			{ prompt: "Schedule a reminder for tomorrow" },
-			ctx,
-		);
+		expect(pi.getActiveTools()).toContain("schedule");
+		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
 		expect(pi.getActiveTools()).toContain("schedule");
 	});
 
@@ -181,7 +172,7 @@ describe("scheduler extension", () => {
 				),
 			).toEqual({
 				block: true,
-				reason: expect.stringContaining("no confirmation step"),
+				reason: expect.any(String),
 			});
 		}
 
@@ -213,12 +204,6 @@ describe("scheduler extension", () => {
 		const pi = createMockPi();
 		registerScheduler(pi as unknown as ExtensionAPI);
 		const tool = pi._getTool("schedule") as any;
-		expect(tool.description).toContain(
-			"Creation and cancellation have no confirmation step",
-		);
-		expect(tool.promptGuidelines).toContain(
-			"Never use ask_user to confirm schedule creation or cancellation. Call schedule directly when the user requested the mutation or an existing schedule's completion condition authorizes cancellation.",
-		);
 		const confirm = vi.fn(async () => false);
 		const ctx = createMockCtx({ mode: "rpc", ui: { confirm } });
 

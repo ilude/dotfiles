@@ -12,7 +12,6 @@ import {
 	type ScheduledPromptSnapshot,
 } from "../lib/process-scheduler.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
-import { activateTools, deactivateTools } from "../lib/tool-activation.js";
 
 const MAX_PROMPT_LENGTH = 4_000;
 const PREVIEW_LENGTH = 80;
@@ -48,7 +47,7 @@ interface AskUserInput {
 const SCHEDULE_CONFIRMATION_PATTERN =
 	/\b(?:cron|schedul(?:e|es|ed|ing)|reminders?|recurring prompts?)\b/i;
 const SCHEDULE_CONFIRMATION_BLOCK_REASON =
-	"Schedule creation and cancellation have no confirmation step. If the user already requested the mutation or an existing schedule's completion condition authorizes it, call schedule directly. If required values are missing, ask a non-confirmation clarification; otherwise do not mutate.";
+	"Schedule creation and cancellation do not require user approval or confirmation. Call schedule directly when its parameters are known. Ask only a non-confirmation clarification when a required value is missing or ambiguous.";
 
 function isScheduleConfirmation(input: unknown): boolean {
 	if (!input || typeof input !== "object") return false;
@@ -262,13 +261,6 @@ export default function registerScheduler(pi: ExtensionAPI) {
 			sendBackgroundPrompt(pi, job.prompt);
 		};
 		getProcessScheduler().bind(activeDelivery);
-		deactivateTools(pi, ["schedule"]);
-	});
-
-	pi.on("before_agent_start", (event) => {
-		if (!SCHEDULE_CONFIRMATION_PATTERN.test(event.prompt)) return undefined;
-		activateTools(pi, ["schedule"]);
-		return undefined;
 	});
 
 	pi.on("session_shutdown", (event) => {
@@ -320,12 +312,16 @@ export default function registerScheduler(pi: ExtensionAPI) {
 		name: "schedule",
 		label: "Schedule",
 		description:
-			"Create, list, or cancel process-local scheduled prompts. Creation and cancellation have no confirmation step. Schedules survive session changes in the current Pi process but stop when that process exits.",
-		promptSnippet: "Create, list, or cancel process-local scheduled prompts",
+			"Create, list, or cancel process-local scheduled prompts for delayed workflow continuation and recurring checks. Scheduling does not require user approval or confirmation. Schedules survive session changes in the current Pi process but stop when that process exits.",
+		promptSnippet:
+			"Schedule delayed workflow continuation or recurring checks instead of shell waits or polling",
 		promptGuidelines: [
-			"Use schedule only after the user explicitly asks to schedule a future or recurring prompt.",
-			"Never use ask_user to confirm schedule creation or cancellation. Call schedule directly when the user requested the mutation or an existing schedule's completion condition authorizes cancellation.",
-			"Ask a non-confirmation clarification only when required schedule values are missing or ambiguous.",
+			"Scheduling is process-local workflow control and does not require user approval or confirmation.",
+			"Use schedule for delayed workflow continuation, status follow-ups, and recurring checks when useful.",
+			"For waits of 60 seconds or longer, use schedule instead of shell sleep loops, polling loops, or background workers used only as timers.",
+			"Never use ask_user to confirm schedule creation or cancellation. Call schedule directly when its parameters are known.",
+			"Ask a non-confirmation clarification only when a required schedule value is missing or ambiguous.",
+			"Cancel schedules directly when they are no longer needed or their completion condition is satisfied.",
 			"Scheduled prompts cannot be slash commands and schedules do not survive Pi process exit.",
 		],
 		parameters: Type.Object({
