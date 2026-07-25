@@ -82,20 +82,128 @@ describe("agents-context discovery", () => {
 		]);
 	});
 
-	it("uses CLAUDE.md only when AGENTS.md is absent in the same directory", () => {
+	it("ignores CLAUDE.md when AGENTS.md is absent in the same directory", () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
-		writeFile(path.join(cwd, "CLAUDE.md"), "root fallback");
-		writeFile(path.join(cwd, "src", "CLAUDE.md"), "src fallback");
+		writeFile(path.join(cwd, "CLAUDE.md"), "root claude");
+		writeFile(path.join(cwd, "src", "CLAUDE.md"), "src claude");
 
 		const files = agentsContextTestApi.discoverForPaths(cwd, ["src/file.ts"]);
-		expect(files.map((file) => path.basename(file.path))).toEqual([
-			"AGENTS.md",
-			"CLAUDE.md",
-		]);
-		expect(formatAgentsContextStatus()).toContain(
-			"CLAUDE.md skipped: AGENTS.md exists",
+		expect(files.map((file) => path.basename(file.path))).toEqual(["AGENTS.md"]);
+		expect(files[0].content).toBe("root agents");
+	});
+
+	it("injects nothing for a CLAUDE.md-only target", async () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "CLAUDE.md"), "root claude");
+		writeFile(path.join(cwd, "src", "CLAUDE.md"), "src claude");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+
+		await completeTool(
+			pi,
+			ctx,
+			{ toolName: "read", input: { path: "src/file.ts" } },
 		);
+		const result = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
+		expect(result.messages).toEqual([]);
+	});
+
+	it("does not inject an explicitly read CLAUDE.md", async () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "src", "CLAUDE.md"), "src claude");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+
+		await completeTool(
+			pi,
+			ctx,
+			{ toolName: "read", input: { path: "src/CLAUDE.md" } },
+		);
+		const result = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
+		expect(result.messages).toEqual([]);
+	});
+
+	it("removes native CLAUDE.md context while preserving AGENTS.md", async () => {
+		const cwd = path.join(tmp, "repo");
+		const agentsPath = path.join(cwd, "AGENTS.md");
+		const claudePath = path.join(cwd, "src", "CLAUDE.md");
+		const contextFiles = [
+			{ path: agentsPath, content: "root agents" },
+			{ path: claudePath, content: "src claude" },
+		];
+		const event = {
+			systemPrompt: [
+				"base",
+				"",
+				"<project_context>",
+				"",
+				"Project-specific instructions and guidelines:",
+				"",
+				`<project_instructions path="${agentsPath}">`,
+				"root agents",
+				"</project_instructions>",
+				"",
+				`<project_instructions path="${claudePath}">`,
+				"src claude",
+				"</project_instructions>",
+				"",
+				"</project_context>",
+				"",
+			].join("\n"),
+			systemPromptOptions: { contextFiles },
+		};
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const result = await pi._getHook("before_agent_start")[0].handler(
+			event,
+			createMockCtx({ cwd }),
+		);
+
+		expect(result?.systemPrompt).toContain("root agents");
+		expect(result?.systemPrompt).not.toContain("src claude");
+		expect(event.systemPromptOptions.contextFiles).toEqual([contextFiles[0]]);
+	});
+
+	it("removes an empty native project context after filtering CLAUDE.md", async () => {
+		const cwd = path.join(tmp, "repo");
+		const claudePath = path.join(cwd, "CLAUDE.md");
+		const event = {
+			systemPrompt: [
+				"base",
+				"",
+				"<project_context>",
+				"",
+				"Project-specific instructions and guidelines:",
+				"",
+				`<project_instructions path="${claudePath}">`,
+				"root claude",
+				"</project_instructions>",
+				"",
+				"</project_context>",
+				"",
+			].join("\n"),
+			systemPromptOptions: {
+				contextFiles: [{ path: claudePath, content: "root claude" }],
+			},
+		};
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const result = await pi._getHook("before_agent_start")[0].handler(
+			event,
+			createMockCtx({ cwd }),
+		);
+
+		expect(result?.systemPrompt).toBe("base");
+		expect(event.systemPromptOptions.contextFiles).toEqual([]);
 	});
 
 	it("enforces per-file byte caps for multibyte instructions", () => {

@@ -2575,9 +2575,7 @@ export async function executeCommitCommand(
 }
 
 export default function (pi: ExtensionAPI) {
-	wrapCommandRegistration(pi, {
-		excludeCommands: ["plan-it", "prd-it", "review-it", "do-it"],
-	});
+	wrapCommandRegistration(pi);
 	pi.on("input", async (event, ctx) => {
 		if (event.source === "extension") {
 			return { action: "continue" };

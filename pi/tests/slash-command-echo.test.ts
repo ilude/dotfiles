@@ -48,7 +48,9 @@ describe("slash command echo registration", () => {
 		const handler = vi.fn(async () => {});
 
 		echoSlashCommands(renderer.api);
-		wrapCommandRegistration(commandOwner.api);
+		wrapCommandRegistration(commandOwner.api, {
+			includeCommands: ["example"],
+		});
 		commandOwner.api.registerCommand("example", { handler });
 		await invoke(commandOwner.commands, "example", "argument");
 
@@ -62,10 +64,12 @@ describe("slash command echo registration", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
-	it("emits one visible raw invocation without triggering a turn", async () => {
+	it("emits one included raw invocation without triggering a turn", async () => {
 		const commandOwner = createExtensionApi();
 		const handler = vi.fn(async () => {});
-		wrapCommandRegistration(commandOwner.api);
+		wrapCommandRegistration(commandOwner.api, {
+			includeCommands: ["example"],
+		});
 		commandOwner.api.registerCommand("example", { handler });
 
 		await invoke(commandOwner.commands, "example", "  alpha  beta  ");
@@ -82,12 +86,10 @@ describe("slash command echo registration", () => {
 		expect(handler).toHaveBeenCalledWith("  alpha  beta  ", expect.any(Object));
 	});
 
-	it("leaves excluded commands unchanged", async () => {
+	it("keeps command invocations out of model context by default", async () => {
 		const commandOwner = createExtensionApi();
 		const handler = vi.fn(async () => {});
-		wrapCommandRegistration(commandOwner.api, {
-			excludeCommands: ["mature-command"],
-		});
+		wrapCommandRegistration(commandOwner.api);
 		commandOwner.api.registerCommand("mature-command", { handler });
 
 		await invoke(commandOwner.commands, "mature-command", "raw args");

@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 export const SLASH_COMMAND_ECHO_TYPE = "slash-echo";
 
 export interface SlashCommandEchoOptions {
-	excludeCommands?: readonly string[];
+	includeCommands?: readonly string[];
 }
 
 export function formatSlashCommandInvocation(
@@ -17,11 +17,11 @@ export function wrapCommandRegistration(
 	pi: ExtensionAPI,
 	options: SlashCommandEchoOptions = {},
 ): void {
-	const excludedCommands = new Set(options.excludeCommands ?? []);
+	const includedCommands = new Set(options.includeCommands ?? []);
 	const registerCommand = pi.registerCommand.bind(pi);
 
 	pi.registerCommand = (name, command) => {
-		if (excludedCommands.has(name)) {
+		if (!includedCommands.has(name)) {
 			registerCommand(name, command);
 			return;
 		}

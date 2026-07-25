@@ -11,7 +11,6 @@ import {
 // system binary -- adding a [pwsh] prefix would be redundant with "pwsh not found" in the text.
 import { Type } from "@sinclair/typebox";
 import { Text } from "@earendil-works/pi-tui";
-import { deactivateTools } from "../lib/tool-activation.js";
 import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { tmpdir, release } from "node:os";
@@ -93,9 +92,6 @@ function isWindows11(): boolean {
 export default function (pi: ExtensionAPI) {
   if (!isWindows11()) return;
   registerPwshTool(pi);
-  pi.on("session_start", () => {
-    deactivateTools(pi, ["pwsh"]);
-  });
 }
 
 function killProc(pid: number | undefined): void {

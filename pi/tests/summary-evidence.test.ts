@@ -194,13 +194,8 @@ describe("summarize command", () => {
 			sessionManager: { getBranch: () => sessionEntries() },
 		});
 
-		expect(sendMessage).toHaveBeenNthCalledWith(
-			1,
-			expect.objectContaining({ content: "/summarize focus on validation" }),
-			{ triggerTurn: false },
-		);
-		expect(sendMessage).toHaveBeenNthCalledWith(
-			2,
+		expect(sendMessage).toHaveBeenCalledOnce();
+		expect(sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow.hiddenPrompt",
 				display: false,
@@ -208,7 +203,7 @@ describe("summarize command", () => {
 			}),
 			{ triggerTurn: true, deliverAs: "followUp" },
 		);
-		expect(sendMessage.mock.calls[1]?.[0].content).toContain(
+		expect(sendMessage.mock.calls[0]?.[0].content).toContain(
 			"Additional focus: focus on validation",
 		);
 	});

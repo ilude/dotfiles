@@ -4,7 +4,9 @@ import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const PRIMARY_INSTRUCTION_NAME = "AGENTS.md";
-const FALLBACK_INSTRUCTION_NAME = "CLAUDE.md";
+const NATIVE_FALLBACK_INSTRUCTION_NAME = "CLAUDE.md";
+const EMPTY_PROJECT_CONTEXT =
+	"\n\n<project_context>\n\nProject-specific instructions and guidelines:\n\n</project_context>\n";
 const MUTATING_TOOLS = new Set([
 	"edit",
 	"write",
@@ -133,24 +135,11 @@ function ancestorsFromRoot(root: string, targetDir: string): string[] {
 }
 
 function instructionFileForDir(dir: string): string | undefined {
-	const primary = existingFile(path.join(dir, PRIMARY_INSTRUCTION_NAME));
-	if (primary) {
-		const fallback = existingFile(path.join(dir, FALLBACK_INSTRUCTION_NAME));
-		if (fallback)
-			noteSkipped(
-				`${fallback} skipped: ${PRIMARY_INSTRUCTION_NAME} exists in ${canonical(dir)}`,
-			);
-		return primary;
-	}
-	return existingFile(path.join(dir, FALLBACK_INSTRUCTION_NAME));
+	return existingFile(path.join(dir, PRIMARY_INSTRUCTION_NAME));
 }
 
 function isInstructionFile(filePath: string): boolean {
-	const name = path.basename(filePath).toLowerCase();
-	return (
-		name === PRIMARY_INSTRUCTION_NAME.toLowerCase() ||
-		name === FALLBACK_INSTRUCTION_NAME.toLowerCase()
-	);
+	return path.basename(filePath).toLowerCase() === PRIMARY_INSTRUCTION_NAME.toLowerCase();
 }
 
 function localInstructionFiles(
@@ -330,6 +319,35 @@ function recordNativeContextFiles(event: unknown): void {
 	}
 }
 
+function stripNativeClaudeContext(event: unknown): string | undefined {
+	if (
+		!isRecord(event) ||
+		typeof event.systemPrompt !== "string" ||
+		!isRecord(event.systemPromptOptions)
+	)
+		return undefined;
+	const contextFiles = event.systemPromptOptions.contextFiles;
+	if (!Array.isArray(contextFiles)) return undefined;
+	const claudeFiles = contextFiles.filter(
+		(item) =>
+			isRecord(item) &&
+			typeof item.path === "string" &&
+			path.basename(item.path).toLowerCase() ===
+				NATIVE_FALLBACK_INSTRUCTION_NAME.toLowerCase(),
+	);
+	if (claudeFiles.length === 0) return undefined;
+	event.systemPromptOptions.contextFiles = contextFiles.filter(
+		(item) => !claudeFiles.includes(item),
+	);
+	let systemPrompt = event.systemPrompt;
+	for (const item of claudeFiles) {
+		if (typeof item.path !== "string" || typeof item.content !== "string") continue;
+		const block = `<project_instructions path="${item.path}">\n${item.content}\n</project_instructions>\n\n`;
+		systemPrompt = systemPrompt.replace(block, "");
+	}
+	return systemPrompt.replace(EMPTY_PROJECT_CONTEXT, "");
+}
+
 function resolveToolPath(cwd: string, targetPath: string): string {
 	return canonical(
 		path.isAbsolute(targetPath) ? targetPath : path.join(cwd, targetPath),
@@ -353,10 +371,8 @@ function collectToolPaths(
 	return paths.length ? paths : [cwd];
 }
 
-function instructionReason(file: string): string {
-	return path.basename(file).toLowerCase() === "claude.md"
-		? "project fallback instruction"
-		: "project primary instruction";
+function instructionReason(): string {
+	return "project primary instruction";
 }
 
 function clearRequestInstructionState(): void {
@@ -418,7 +434,7 @@ function discoverForPaths(
 	];
 	const loaded = files
 		.map((file) =>
-			readInstruction(file, instructionReason(file), excludedFingerprints),
+			readInstruction(file, instructionReason(), excludedFingerprints),
 		)
 		.filter((file): file is LoadedInstruction => Boolean(file));
 	setActiveInstructions(loaded);
@@ -450,6 +466,7 @@ export const agentsContextTestApi = {
 	localInstructionFiles,
 	discoverForPaths,
 	formatAgentsContextStatus,
+	stripNativeClaudeContext,
 };
 
 export default function (pi: ExtensionAPI) {
@@ -461,8 +478,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event, ctx) => {
 		resetForCwd(ctx.cwd);
 		state.projectRoots.clear();
+		const systemPrompt = stripNativeClaudeContext(event);
 		recordNativeContextFiles(event);
-		return undefined;
+		return systemPrompt === undefined ? undefined : { systemPrompt };
 	});
 
 	type ContextHook = (

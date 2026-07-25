@@ -113,6 +113,7 @@ describe("/branch", () => {
 			expect.stringContaining("Opened branched Pi session"),
 			"info",
 		);
+		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
 	it("builds new-terminal argv for Windows Terminal", () => {
@@ -210,6 +211,7 @@ describe("/branch", () => {
 			expect.stringContaining("Opened new Pi instance"),
 			"info",
 		);
+		expect(pi.sendMessage).not.toHaveBeenCalled();
 
 		mockSpawnSync.mockClear();
 		await shortcut.handler({ cwd: "/c/Users/me/project dir", ui: { notify } });
@@ -248,6 +250,7 @@ describe("/branch", () => {
 			expect.stringContaining("Opened new terminal"),
 			"info",
 		);
+		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
 	it("reports launch failures without a manual recovery command", async () => {

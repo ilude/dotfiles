@@ -139,7 +139,7 @@ function buildSystemPromptBuckets(systemPrompt: string, options?: SystemPromptOp
 	addBucket(
 		"Context files",
 		contextFiles.map((file) => `${file.path}\n${file.content}`).join("\n\n"),
-		`${contextFiles.length} loaded AGENTS/CLAUDE/context file(s)`,
+		`${contextFiles.length} loaded AGENTS/context file(s)`,
 	);
 
 	const skills = options.skills ?? [];

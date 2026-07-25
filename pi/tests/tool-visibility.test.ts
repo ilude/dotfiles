@@ -7,7 +7,13 @@ import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 describe("tool visibility", () => {
 	it("removes niche tools from the default session tool set", async () => {
 		const pi = createMockPi();
-		for (const name of ["read", "task", ...DEFERRED_TOOL_NAMES]) {
+		for (const name of [
+			"read",
+			"task",
+			"pwsh",
+			"schedule",
+			...DEFERRED_TOOL_NAMES,
+		]) {
 			pi.registerTool({
 				name,
 				description: name,
@@ -19,6 +25,11 @@ describe("tool visibility", () => {
 
 		await pi._getHook("session_start")[0].handler({}, createMockCtx());
 
-		expect(pi.getActiveTools()).toEqual(["read", "task"]);
+		expect(pi.getActiveTools()).toEqual([
+			"read",
+			"task",
+			"pwsh",
+			"schedule",
+		]);
 	});
 });

@@ -5,7 +5,7 @@
  * that don't require heavy mocking of spawn, os, or platform.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMockPi, createMockCtx, createMockTheme } from "./helpers/mock-pi.js";
+import { createMockPi, createMockTheme } from "./helpers/mock-pi.js";
 
 // Mock os.release to return Windows 11 build so tool registers
 vi.mock("node:os", async (importOriginal) => {
@@ -34,8 +34,6 @@ async function getRegisteredTool() {
   mockPi.exec.mockResolvedValue({ code: 0, stdout: "PowerShell 7.4.1", stderr: "" });
   const mod = await import("../extensions/pwsh.ts");
   mod.default(mockPi as any);
-  const hook = mockPi._getHook("session_start")[0];
-  await hook.handler({}, createMockCtx());
   Object.defineProperty(process, "platform", { value: originalPlatform, writable: true, configurable: true });
   return mockPi._getTool("pwsh")!;
 }
@@ -50,13 +48,13 @@ describe("pwsh extension", () => {
   });
 
   describe("tool metadata", () => {
-    it("does not spawn a PowerShell version probe during session start", async () => {
+    it("registers PowerShell as active without spawning a version probe", async () => {
       Object.defineProperty(process, "platform", { value: "win32", writable: true, configurable: true });
       try {
         const mockPi = createMockPi();
         const mod = await import("../extensions/pwsh.ts");
         mod.default(mockPi as any);
-        await mockPi._getHook("session_start")[0].handler({}, createMockCtx());
+        expect(mockPi.getActiveTools()).toContain("pwsh");
         expect(mockPi.exec).not.toHaveBeenCalled();
       } finally {
         Object.defineProperty(process, "platform", { value: originalPlatform, writable: true, configurable: true });

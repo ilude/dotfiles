@@ -87,10 +87,7 @@ describe("copy-all", () => {
 			expect.stringMatching(/^Copied 2 messages \(\d+ bytes\)\.$/),
 			"info",
 		);
-		expect(sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({ content: "/copy-all", display: true }),
-			{ triggerTurn: false },
-		);
+		expect(sendMessage).not.toHaveBeenCalled();
 	});
 
 	it("writes an explicit new fallback file when clipboard delivery fails", async () => {

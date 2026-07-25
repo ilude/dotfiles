@@ -232,11 +232,7 @@ pi -e ~/.dotfiles/pi/extensions/damage-control.ts
 
 Repository-owned TypeScript extensions live in `~/.dotfiles/pi/extensions/`. See the upstream Pi extension documentation for loading and discovery behavior.
 
-Extension-owned slash commands persist their visible invocation in the transcript
-without starting an extra provider turn. Each command-owning extension wraps its
-local registration API through `pi/lib/slash-command-echo.ts`; workflows that
-already persist a mature invocation format are explicitly excluded from the
-shared echo.
+Extension-owned slash commands are TUI-only by default. `pi/lib/slash-command-echo.ts` adds a model-visible invocation only for commands explicitly included by their owner. Semantic workflows persist their bounded prompt or result through the owning extension instead of relying on a default raw invocation echo. Control-plane commands, diagnostics, configuration commands, and terminal or process launch commands such as `/branch`, `/new-instance`, and `/new-terminal` are not added to model context.
 
 ### `damage-control.ts`
 
@@ -263,7 +259,7 @@ The shadow judge is disabled by default. Enable it with `damageControl.judge.ena
 
 ### `agents-context.ts`
 
-Extends Pi's native startup context with instructions discovered after successful `read`, `grep`, `find`, or `ls` access or when a mutating tool targets a path, including a path in another repository. It loads `AGENTS.md`, falls back to `CLAUDE.md` in directories without `AGENTS.md`, and keeps only the instructions applicable to the current target in one hidden report. Native and nested instructions are deduplicated by content, including hardlinks exposed through different paths. Reading an instruction file does not inject that same file as a second context copy. A mutation is deferred at most once while newly applicable instructions reach the model; automatic continuation preserves that delivery, while changed instruction content, direct user input, or a cwd/session change invalidates it.
+Extends Pi's native startup context with instructions discovered after successful `read`, `grep`, `find`, or `ls` access or when a mutating tool targets a path, including a path in another repository. It loads only `AGENTS.md` and keeps only the instructions applicable to the current target in one hidden report. Native `CLAUDE.md` fallback context is removed before model execution. Native and nested instructions are deduplicated by content, including hardlinks exposed through different paths. Reading an instruction file does not inject that same file as a second context copy. A mutation is deferred at most once while newly applicable instructions reach the model; automatic continuation preserves that delivery, while changed instruction content, direct user input, or a cwd/session change invalidates it.
 
 ### `background-terminal/`
 
@@ -277,9 +273,9 @@ Provides bounded process-local management for long-lived Bash commands through `
 
 ### `tool-visibility.ts` and `tool-search.ts`
 
-Keeps specialized tools out of the default provider schema until they are relevant. Commit, feature-memory, goal completion, improvement capture, Onclave, PowerShell, review-artifact, scheduler, usage-report, and web tools start inactive. Stateful extensions activate their own tools from deterministic command or prompt state. `tool_search` activates matching inactive tools by default for a non-empty capability query, and reports the activated names in its result. Listing all tools without a query remains inspection-only.
+Keeps specialized tools out of the default provider schema until they are relevant. Commit, feature-memory, goal completion, improvement capture, Onclave, review-artifact, usage-report, and web tools start inactive. Stateful extensions activate their own tools from deterministic command or prompt state. `tool_search` activates matching inactive tools by default for a non-empty capability query, and reports the activated names in its result. Listing all tools without a query remains inspection-only.
 
-Core file, shell, background-terminal, task, subagent, and discovery tools remain active. This reduces baseline tool-schema and prompt-guideline overhead without removing capabilities.
+Core file, shell, background-terminal, PowerShell, scheduler, task, subagent, and discovery tools remain active. This reduces baseline tool-schema and prompt-guideline overhead without hiding general execution or workflow-control capabilities.
 
 ### `quality-gates.ts`
 
@@ -391,7 +387,7 @@ Rollback: remove or disable `pi/extensions/feature-memory.ts` and reload Pi to s
 
 Measures each interaction from submission through `agent_settled` and records metadata-only denominator metrics for every interaction. It silently queues selected interactions for a bounded background review: explicit remember requests, corrections after an existing conversation turn, every interaction over 10 minutes, every subagent run lasting at least 2 minutes, high-confidence triggered interactions from 2 through 10 minutes, and a deterministic 15 percent control sample from the remaining 2-to-10-minute interactions. Subagent records include the durable run ID and spawn time for correlation with operator tasks. Review jobs run one at a time from a persistent local queue and never delay the original interaction.
 
-Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content. Reviewed interaction packets remain local in `reviews.jsonl`; applied or skipped learning decisions are append-only records in `learning-decisions.jsonl`. Set `PI_WORKFLOW_FRICTION_DIR` to use a separate local directory. At interaction settlement, the extension also emits a metadata-only `orchestration_interaction` metrics event for direct and delegated interactions.
+Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content. Reviewed interaction packets remain local in `reviews.jsonl`; candidate lifecycle changes and applied or skipped learning decisions are append-only records in `candidate-status.jsonl` and `learning-decisions.jsonl`. The latest candidate status wins. Set `PI_WORKFLOW_FRICTION_DIR` to use a separate local directory. At interaction settlement, the extension also emits a metadata-only `orchestration_interaction` metrics event for direct and delegated interactions.
 
 ```text
 /improve                          # discuss the highest-ranked unresolved candidate
@@ -404,7 +400,9 @@ Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitt
 /improve help                     # show command and decision guidance
 ```
 
-`/improve` is the only public self-improvement workflow. `/improve report` runs the deterministic repository report generator and returns its output path without starting a provider turn. Candidate discussion ranks pending candidates by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Structured skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. `/improve list` writes the ranked workspace-visible candidates to the transcript without starting a discussion and stores that displayed order for the session. `/improve select <number-or-id>` resolves ordinals against the displayed snapshot, accepts unique ID prefixes against current candidates, and records the selected candidate in the transcript before discussion. Bare `/improve` preserves the highest-ranked default.
+`/improve` is the only public self-improvement workflow. `/improve report` runs the deterministic repository report generator and returns its output path without starting a provider turn. Candidate eligibility requires the current workspace, an unresolved active status, and a structured existing-skill, new-skill, command, extension, tool, or project-instruction target. Existing skill names must resolve through local discovery. Efficiency and maintainability proposals require the same normalized target and change from two independent sessions unless an explicit active status records prior validation; a single safety or correctness finding may proceed only when it has a deterministic or project-instruction target. The list keeps one representative per issue and source session.
+
+Eligible candidates are ranked by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Existing skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. `/improve list` writes the ranked workspace-visible candidates, proposed change, evidence, target reason, and validation or usage state to the transcript without starting a discussion, then stores that displayed order for the session. `/improve select <number-or-id>` resolves ordinals against the displayed snapshot, accepts unique ID prefixes against current candidates, and records the selected candidate in the transcript before discussion. Bare `/improve` preserves the highest-ranked default.
 
 Each discussion remains in a deterministic `discussing` state while the user asks questions or raises issues. Ordinary conversation never authorizes a change. Only `/improve decide apply`, `/improve decide edit <change>`, or `/improve decide skip <reason>` captures a decision and resumes execution without another approval request. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison. A recorded applied or skipped decision removes that candidate from later lists.
 
@@ -899,7 +897,7 @@ A fresh span id is generated for each subagent invocation (single, parallel, or 
 | File | Purpose |
 |------|---------|
 | `~/.dotfiles/pi/settings.json` | Default provider/model for session startup |
-| `~/.dotfiles/pi/AGENTS.md` | Canonical shared global instructions linked from `claude/CLAUDE.md` |
+| `~/.dotfiles/pi/AGENTS.md` | Canonical Pi global instructions |
 | `~/.dotfiles/pi/damage-control-rules.yaml` | Pi damage-control safety policy |
 | `~/.dotfiles/pi/quality-gates.json` | Pi lint and complexity validator policy |
 
