@@ -149,9 +149,11 @@ const WorkflowReviewOutputSchema = Type.Object(
 						{
 							kind: Type.Union([
 								Type.Literal("skill"),
+								Type.Literal("new-skill"),
 								Type.Literal("command"),
 								Type.Literal("extension"),
 								Type.Literal("tool"),
+								Type.Literal("project-instruction"),
 							]),
 							name: Type.String({ minLength: 1, maxLength: 120 }),
 							owner: Type.Optional(Type.String({ maxLength: 120 })),
@@ -253,6 +255,32 @@ export interface LearningDecisionRecord {
 	experimentId?: string;
 }
 
+export type ImprovementCandidateStatus =
+	| "active"
+	| "needs_review"
+	| "stale"
+	| "superseded"
+	| "dismissed";
+
+export interface ImprovementCandidateStatusRecord {
+	schemaVersion: 1;
+	eventId: string;
+	candidateId: string;
+	recordedAt: string;
+	status: ImprovementCandidateStatus;
+	reasonCode: string;
+	reason: string;
+	supersededBy?: string;
+}
+
+const IMPROVEMENT_CANDIDATE_STATUSES = new Set<ImprovementCandidateStatus>([
+	"active",
+	"needs_review",
+	"stale",
+	"superseded",
+	"dismissed",
+]);
+
 function storageRoot(): string {
 	return workflowFrictionStorageRoot();
 }
@@ -283,6 +311,10 @@ function experimentsPath(): string {
 
 export function learningDecisionsPath(): string {
 	return path.join(storageRoot(), "learning-decisions.jsonl");
+}
+
+export function candidateStatusesPath(): string {
+	return path.join(storageRoot(), "candidate-status.jsonl");
 }
 
 function learningDecisionLockPath(): string {
@@ -374,7 +406,9 @@ async function appendJsonLine(filePath: string, value: unknown): Promise<void> {
 }
 
 function bounded(value: string, max: number): string {
-	return value.length <= max ? value : `${value.slice(0, max)}\n[truncated]`;
+	if (value.length <= max) return value;
+	const suffix = "\n[truncated]";
+	return `${value.slice(0, max - suffix.length)}${suffix}`;
 }
 
 function parseImprovementDecisionCommand(
@@ -655,6 +689,30 @@ export async function readCurrentLearningDecisions(): Promise<
 	);
 }
 
+export async function readCurrentCandidateStatuses(): Promise<
+	ImprovementCandidateStatusRecord[]
+> {
+	const latest = new Map<string, ImprovementCandidateStatusRecord>();
+	for (const record of await readJsonLines<ImprovementCandidateStatusRecord>(
+		candidateStatusesPath(),
+	))
+		if (
+			record?.schemaVersion === 1 &&
+			typeof record.eventId === "string" &&
+			typeof record.candidateId === "string" &&
+			typeof record.recordedAt === "string" &&
+			IMPROVEMENT_CANDIDATE_STATUSES.has(record.status) &&
+			typeof record.reasonCode === "string" &&
+			typeof record.reason === "string"
+		)
+			latest.set(record.candidateId, record);
+	return [...latest.values()].sort(
+		(a, b) =>
+			a.recordedAt.localeCompare(b.recordedAt) ||
+			a.candidateId.localeCompare(b.candidateId),
+	);
+}
+
 async function withLearningDecisionLock<T>(
 	operation: () => Promise<T>,
 ): Promise<T> {
@@ -733,6 +791,8 @@ export interface ImprovementCandidateUsage {
 	source: "skill-stats" | "extension-stats" | "none";
 	calls30d?: number;
 	manualReadCandidates?: number;
+	validated?: boolean;
+	validationReason?: string;
 	diagnostic?: string;
 }
 
@@ -790,6 +850,84 @@ export function rankImprovementCandidates(
 	});
 }
 
+function improvementTargetKey(target: ImprovementTarget): string {
+	return [target.kind, target.owner ?? "", target.name]
+		.map((value) => value.trim().toLowerCase())
+		.join(":");
+}
+
+function improvementIssueKey(record: StoredReviewRecord): string | undefined {
+	const target = normalizedTarget(record);
+	const change = record.review?.suggestedChange
+		?.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, " ")
+		.trim();
+	if (!target || !change) return undefined;
+	return `${improvementTargetKey(target)}:${change}`;
+}
+
+function permitsSingleSessionCandidate(record: StoredReviewRecord): boolean {
+	if (safetyCorrectnessRank(record) === 0) return false;
+	const kind = normalizedTarget(record)?.kind;
+	return (
+		kind === "command" ||
+		kind === "extension" ||
+		kind === "tool" ||
+		kind === "project-instruction"
+	);
+}
+
+export function gateImprovementCandidates(
+	candidates: readonly StoredReviewRecord[],
+	usage: ReadonlyMap<string, ImprovementCandidateUsage>,
+	explicitlyActive: ReadonlySet<string> = new Set(),
+): StoredReviewRecord[] {
+	const sessionsByIssue = new Map<string, Set<string>>();
+	for (const candidate of candidates) {
+		const issueKey = improvementIssueKey(candidate);
+		if (!issueKey) continue;
+		const sessions = sessionsByIssue.get(issueKey) ?? new Set<string>();
+		sessions.add(candidate.sessionId);
+		sessionsByIssue.set(issueKey, sessions);
+	}
+
+	const ranked = rankImprovementCandidates(candidates, usage).sort(
+		(left, right) =>
+			Number(explicitlyActive.has(right.interactionId)) -
+			Number(explicitlyActive.has(left.interactionId)),
+	);
+	const selected: StoredReviewRecord[] = [];
+	const selectedSessions = new Set<string>();
+	const selectedIssues = new Set<string>();
+	for (const candidate of ranked) {
+		const target = normalizedTarget(candidate);
+		const issueKey = improvementIssueKey(candidate);
+		if (!target || !issueKey || selectedSessions.has(candidate.sessionId))
+			continue;
+		if (selectedIssues.has(issueKey)) continue;
+		const isExplicitlyActive = explicitlyActive.has(candidate.interactionId);
+		const candidateUsage = usage.get(candidate.interactionId);
+		if (
+			!isExplicitlyActive &&
+			target.kind === "skill" &&
+			candidateUsage?.diagnostic === "target not discovered"
+		)
+			continue;
+		const independentSessions = sessionsByIssue.get(issueKey)?.size ?? 0;
+		if (
+			!isExplicitlyActive &&
+			independentSessions < 2 &&
+			!permitsSingleSessionCandidate(candidate)
+		)
+			continue;
+		selected.push(candidate);
+		selectedSessions.add(candidate.sessionId);
+		selectedIssues.add(issueKey);
+	}
+	return selected;
+}
+
 function mapContainsTarget(
 	values: ReadonlyMap<string, number>,
 	name: string,
@@ -832,11 +970,12 @@ function rankingReason(
 	usage: ImprovementCandidateUsage,
 ): string {
 	if (safetyCorrectnessRank(record) > 0)
-		return `${record.review?.impact} impact overrides usage ROI`;
+		return `${record.review?.impact} impact`;
 	if (usage.state === "observed")
-		return `highest observed 30-day usage ROI (${usage.calls30d ?? 0} calls)`;
-	if (usage.state === "zero")
-		return "verified zero 30-day usage; consider simplification or retirement";
+		return `observed 30-day usage (${usage.calls30d ?? 0} calls)`;
+	if (usage.state === "zero") return "verified zero 30-day usage";
+	if (usage.validated)
+		return `validated current state${usage.validationReason ? `: ${bounded(usage.validationReason, 160)}` : ""}`;
 	return `usage unknown${usage.diagnostic ? `: ${usage.diagnostic}` : ""}`;
 }
 
@@ -882,7 +1021,9 @@ function formatImprovementCandidateList(
 		const targetLabel = target
 			? `${target.kind}:${target.owner ? `${target.owner}/` : ""}${target.name}`
 			: "target:unresolved";
-		return `${index + 1}. ${improvementCandidateReference(candidate, candidates)} [${review?.impact ?? "unspecified"}] ${targetLabel}\n   ${bounded(review?.suggestedChange?.trim() ?? "", 160)}\n   ${rankingReason(candidate, usage)}`;
+		const evidence = review?.evidence[0]?.trim();
+		const targetReason = review?.reusableInstruction.reason.trim();
+		return `${index + 1}. ${improvementCandidateReference(candidate, candidates)} [${review?.impact ?? "unspecified"}] ${targetLabel}\n   Change: ${bounded(review?.suggestedChange?.trim() ?? "", 160)}\n   Evidence: ${bounded(evidence || "not recorded", 160)}\n   Why this target: ${bounded(targetReason || "not recorded", 160)}\n   ${rankingReason(candidate, usage)}`;
 	});
 	return `Available improvement candidates (${candidates.length}):\n${rows.join("\n")}\n\nSelect with /improve select <number-or-id>.`;
 }
@@ -963,7 +1104,14 @@ export async function collectCandidateUsage(
 			target,
 			state: "unknown",
 			source: "none",
-			diagnostic: target ? "telemetry unavailable" : "target unresolved",
+			diagnostic:
+				target?.kind === "new-skill"
+					? "new skill target"
+					: target?.kind === "project-instruction"
+						? "project instruction target"
+						: target
+							? "telemetry unavailable"
+							: "target unresolved",
 		});
 
 	if (targets.some(({ target }) => target?.kind === "skill")) {
@@ -1015,7 +1163,14 @@ export async function collectCandidateUsage(
 		}
 	}
 
-	if (targets.some(({ target }) => target && target.kind !== "skill")) {
+	if (
+		targets.some(
+			({ target }) =>
+				target?.kind === "command" ||
+				target?.kind === "extension" ||
+				target?.kind === "tool",
+		)
+	) {
 		try {
 			const { collectExtensionUsageSnapshot } = await import(
 				"./extension-stats.js"
@@ -1026,7 +1181,13 @@ export async function collectCandidateUsage(
 				ctx.sessionManager.getSessionDir(),
 			);
 			for (const { candidate, target } of targets) {
-				if (!target || target.kind === "skill") continue;
+				if (
+					!target ||
+					(target.kind !== "command" &&
+						target.kind !== "extension" &&
+						target.kind !== "tool")
+				)
+					continue;
 				const values =
 					target.kind === "extension"
 						? stats.extensions
@@ -1056,7 +1217,11 @@ export async function collectCandidateUsage(
 				160,
 			);
 			for (const { candidate, target } of targets)
-				if (target && target.kind !== "skill")
+				if (
+					target?.kind === "command" ||
+					target?.kind === "extension" ||
+					target?.kind === "tool"
+				)
 					usage.set(candidate.interactionId, {
 						target,
 						state: "unknown",
@@ -1351,7 +1516,7 @@ export default function workflowFrictionExtension(
 	pi: ExtensionAPI,
 	options: { reviewer?: WorkflowReviewRunner } = {},
 ) {
-	wrapCommandRegistration(pi, { excludeCommands: ["improve"] });
+	wrapCommandRegistration(pi);
 	const reviewer = options.reviewer ?? workflowReviewAgent;
 	let pendingInput: PendingInput | null = null;
 	let active: ActiveInteraction | null = null;
@@ -1654,10 +1819,16 @@ export default function workflowFrictionExtension(
 					(decision) => decision.candidateId,
 				),
 			);
+			const candidateStatusRecords = await readCurrentCandidateStatuses();
+			const candidateStatuses = new Map(
+				candidateStatusRecords.map((status) => [status.candidateId, status]),
+			);
 			const eligibleCandidates = (await learningReviewRecords()).filter(
 				(record) =>
 					isLearningCandidate(record) &&
 					!resolved.has(record.interactionId) &&
+					(candidateStatuses.get(record.interactionId)?.status ?? "active") ===
+						"active" &&
 					learningCandidateVisible(record, ctx.cwd),
 			);
 			const selectionToken = action === "select" ? (parts[1] ?? "") : "";
@@ -1685,18 +1856,6 @@ export default function workflowFrictionExtension(
 					);
 					return;
 				}
-				if (
-					!eligibleCandidates.some(
-						(candidate) => candidate.interactionId === snapshotCandidateId,
-					)
-				) {
-					showImprovementCommandOutput(
-						pi,
-						args,
-						`Improvement candidate ${snapshotCandidateId} from displayed number ${selectionToken} is no longer eligible. Run /improve list to refresh the snapshot.`,
-					);
-					return;
-				}
 			}
 			if (eligibleCandidates.length === 0) {
 				showImprovementCommandOutput(
@@ -1711,10 +1870,46 @@ export default function workflowFrictionExtension(
 				pi,
 				ctx,
 			);
-			const candidates = rankImprovementCandidates(
+			for (const status of candidateStatusRecords) {
+				if (status.status !== "active") continue;
+				const current = usageByCandidate.get(status.candidateId);
+				if (!current || current.state !== "unknown") continue;
+				usageByCandidate.set(status.candidateId, {
+					...current,
+					validated: true,
+					validationReason: status.reason,
+				});
+			}
+			const candidates = gateImprovementCandidates(
 				eligibleCandidates,
 				usageByCandidate,
+				new Set(
+					candidateStatusRecords
+						.filter((status) => status.status === "active")
+						.map((status) => status.candidateId),
+				),
 			);
+			if (candidates.length === 0) {
+				showImprovementCommandOutput(
+					pi,
+					args,
+					"No supported improvement candidates exist for this workspace.",
+				);
+				return;
+			}
+			if (
+				numericSelection &&
+				!candidates.some(
+					(candidate) => candidate.interactionId === snapshotCandidateId,
+				)
+			) {
+				showImprovementCommandOutput(
+					pi,
+					args,
+					`Improvement candidate ${snapshotCandidateId} from displayed number ${selectionToken} is no longer eligible. Run /improve list to refresh the snapshot.`,
+				);
+				return;
+			}
 			if (action === "list") {
 				improvementListSnapshot = candidates.map(
 					(candidate) => candidate.interactionId,

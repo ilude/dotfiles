@@ -3,7 +3,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension, {
+	candidateStatusesPath,
 	collectCandidateUsage,
+	gateImprovementCandidates,
+	type ImprovementCandidateStatusRecord,
 	type ImprovementCandidateUsage,
 	learningDecisionsPath,
 	processPendingReviews,
@@ -78,6 +81,9 @@ function commandLearningReviewRecord(
 				reason: "The package manager is a durable project convention.",
 				scope,
 				targetSkill,
+				target: targetSkill
+					? { kind: "skill", name: targetSkill }
+					: { kind: "command", name: "improve" },
 			},
 			suggestedChange: "Use pnpm for Pi TypeScript work.",
 		},
@@ -295,6 +301,31 @@ async function seedLearningReviews(
 	);
 }
 
+async function seedCandidateStatuses(
+	records: readonly ImprovementCandidateStatusRecord[],
+): Promise<void> {
+	await fs.mkdir(path.dirname(candidateStatusesPath()), { recursive: true });
+	await fs.writeFile(
+		candidateStatusesPath(),
+		`${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+		"utf8",
+	);
+}
+
+function activeCandidateStatuses(
+	records: readonly StoredReviewRecord[],
+): ImprovementCandidateStatusRecord[] {
+	return records.map((record, index) => ({
+		schemaVersion: 1,
+		eventId: `active-${record.interactionId}`,
+		candidateId: record.interactionId,
+		recordedAt: `2026-07-25T00:00:${String(index).padStart(2, "0")}.000Z`,
+		status: "active",
+		reasonCode: "validated_fixture",
+		reason: "The fixture is explicitly active.",
+	}));
+}
+
 async function seedCommandLearningReview(
 	repoRoot: string,
 	scope: "project" | "user" = "project",
@@ -302,16 +333,26 @@ async function seedCommandLearningReview(
 ): Promise<StoredReviewRecord> {
 	const review = commandLearningReviewRecord(repoRoot, scope, targetSkill);
 	await seedLearningReviews([review]);
+	await seedCandidateStatuses(activeCandidateStatuses([review]));
 	return review;
 }
 
 function ordinalCandidateRecords(): StoredReviewRecord[] {
-	return ["11111111", "22222222", "33333333", "da4f5e4b"].map((id, index) =>
-		rankedCandidate(
-			`interaction-${id}`,
-			"efficiency",
-			`2026-07-14T00:00:0${index}.000Z`,
-		),
+	return ["11111111", "22222222", "33333333", "da4f5e4b"].map(
+		(id, index) => {
+			const record = rankedCandidate(
+				`interaction-${id}`,
+				"efficiency",
+				`2026-07-14T00:00:0${index}.000Z`,
+			);
+			record.sessionId = `session-${id}`;
+			if (record.review)
+				record.review.reusableInstruction.target = {
+					kind: "command",
+					name: `command-${id}`,
+				};
+			return record;
+		},
 	);
 }
 
@@ -655,6 +696,83 @@ describe("workflow friction reviewer", () => {
 		expect(prompt).toContain('"subagentRunId":"run-123"');
 		expect(prompt).toContain('"subagentStartedAt":"2026-07-10T00:00:00.000Z"');
 	});
+
+	it("keeps truncated packet fields within reviewer schema limits", async () => {
+		const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "pi-review-bounds-"));
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const ctx = createMockCtx({
+				sessionManager: {
+					getSessionId: () => "session-review-bounds",
+					getEntries: () => [
+						{
+							type: "message",
+							message: { role: "assistant" },
+						},
+					],
+				},
+			});
+			const pi = createMockPi();
+			const reviewer = fakeReviewer();
+			workflowFrictionExtension(pi as never, { reviewer });
+			const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
+			const messageEnd = pi._getHook("message_end")[0]?.handler;
+			const toolStart = pi._getHook("tool_execution_start")[0]?.handler;
+			const toolEnd = pi._getHook("tool_execution_end")[0]?.handler;
+			const settled = pi._getHook("agent_settled")[0]?.handler;
+
+			await beforeAgent({ prompt: `No, ${"u".repeat(17_000)}` }, ctx);
+			await messageEnd({
+				message: {
+					role: "assistant",
+					provider: "provider-one",
+					model: "model-one",
+					usage: { input: 1, output: 1, totalTokens: 2 },
+					content: [{ type: "text", text: "a".repeat(9_000) }],
+				},
+			});
+			await toolStart({
+				toolCallId: "tool-review-bounds",
+				toolName: "bash",
+				args: { command: "x".repeat(2_000) },
+			});
+			await toolEnd({
+				toolCallId: "tool-review-bounds",
+				toolName: "bash",
+				result: {
+					content: [{ type: "text", text: "r".repeat(3_000) }],
+				},
+				isError: true,
+			});
+			await settled({}, ctx);
+
+			await vi.waitFor(() => expect(reviewer.run).toHaveBeenCalledOnce());
+			const input = reviewer.run.mock.calls[0]?.[0] as
+				| { packet: InteractionPacket }
+				| undefined;
+			if (!input) throw new Error("Reviewer input is missing");
+			const packet = input.packet;
+			expect(packet.userText).toHaveLength(16_000);
+			expect(packet.assistantText).toHaveLength(8_000);
+			expect(packet.assistantTurns[0]).toHaveLength(8_000);
+			expect(packet.tools[0]?.argsText).toHaveLength(1_000);
+			expect(packet.tools[0]?.resultText).toHaveLength(2_000);
+			for (const value of [
+				packet.userText,
+				packet.assistantText,
+				packet.assistantTurns[0],
+				packet.tools[0]?.argsText,
+				packet.tools[0]?.resultText,
+			])
+				expect(value).toMatch(/\n\[truncated\]$/);
+			await waitForPathRemoval(path.join(scratch, "worker.lock"));
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("improvement candidate ranking", () => {
@@ -774,6 +892,118 @@ describe("improvement candidate ranking", () => {
 				(candidate) => candidate.interactionId,
 			),
 		).toEqual(["observed", "unknown", "zero"]);
+	});
+
+	it("requires independent support, exact skill targets, and one representative per session and issue", () => {
+		const recurringOne = rankedCandidate(
+			"recurring-one",
+			"efficiency",
+			"2026-07-12T00:00:00.000Z",
+		);
+		recurringOne.sessionId = "session-recurring-one";
+		const recurringTwo = rankedCandidate(
+			"recurring-two",
+			"efficiency",
+			"2026-07-13T00:00:00.000Z",
+		);
+		recurringTwo.sessionId = "session-recurring-two";
+		for (const candidate of [recurringOne, recurringTwo])
+			if (candidate.review)
+				candidate.review.reusableInstruction.target = {
+					kind: "skill",
+					name: "typescript",
+				};
+
+		const singleEfficiency = rankedCandidate(
+			"single-efficiency",
+			"efficiency",
+			"2026-07-14T00:00:00.000Z",
+		);
+		singleEfficiency.sessionId = "session-single";
+		const sameSessionSafety = rankedCandidate(
+			"same-session-safety",
+			"safety",
+			"2026-07-15T00:00:00.000Z",
+		);
+		sameSessionSafety.sessionId = "session-shared";
+		const sameSessionCorrectness = rankedCandidate(
+			"same-session-correctness",
+			"correctness",
+			"2026-07-16T00:00:00.000Z",
+		);
+		sameSessionCorrectness.sessionId = "session-shared";
+		if (sameSessionCorrectness.review)
+			sameSessionCorrectness.review.reusableInstruction.target = {
+				kind: "extension",
+				name: "candidate-extension",
+			};
+
+		const missingSkillOne = rankedCandidate(
+			"missing-skill-one",
+			"correctness",
+			"2026-07-17T00:00:00.000Z",
+		);
+		missingSkillOne.sessionId = "session-missing-one";
+		const missingSkillTwo = rankedCandidate(
+			"missing-skill-two",
+			"correctness",
+			"2026-07-18T00:00:00.000Z",
+		);
+		missingSkillTwo.sessionId = "session-missing-two";
+		for (const candidate of [missingSkillOne, missingSkillTwo])
+			if (candidate.review)
+				candidate.review.reusableInstruction.target = {
+					kind: "skill",
+					name: "free-form-skill-name",
+				};
+
+		const explicitlyActive = rankedCandidate(
+			"explicitly-active",
+			"maintainability",
+			"2026-07-19T00:00:00.000Z",
+		);
+		explicitlyActive.sessionId = "session-explicit";
+		if (explicitlyActive.review)
+			explicitlyActive.review.reusableInstruction.target = {
+				kind: "tool",
+				name: "Biome",
+			};
+
+		const candidates = [
+			recurringOne,
+			recurringTwo,
+			singleEfficiency,
+			sameSessionSafety,
+			sameSessionCorrectness,
+			missingSkillOne,
+			missingSkillTwo,
+			explicitlyActive,
+		];
+		const usage = new Map<string, ImprovementCandidateUsage>();
+		for (const candidate of [recurringOne, recurringTwo])
+			usage.set(candidate.interactionId, {
+				state: "observed",
+				source: "skill-stats",
+				calls30d: 2,
+			});
+		for (const candidate of [missingSkillOne, missingSkillTwo])
+			usage.set(candidate.interactionId, {
+				state: "unknown",
+				source: "skill-stats",
+				diagnostic: "target not discovered",
+			});
+
+		expect(
+			gateImprovementCandidates(
+				candidates,
+				usage,
+				new Set([explicitlyActive.interactionId]),
+			).map((candidate) => candidate.interactionId),
+		).toEqual([
+			"explicitly-active",
+			"same-session-safety",
+			"recurring-one",
+		]);
 	});
 });
 
@@ -1063,6 +1293,62 @@ describe("workflow friction extension", () => {
 		}
 	});
 
+	it("hides migrated non-active candidates from /improve list", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-improve-status-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const active = commandLearningReviewRecord("/test/dir");
+			const stale = {
+				...commandLearningReviewRecord("/test/dir"),
+				interactionId: "interaction-stale",
+			};
+			const needsReview = {
+				...commandLearningReviewRecord("/test/dir"),
+				interactionId: "interaction-needs-review",
+			};
+			await seedLearningReviews([active, stale, needsReview]);
+			await seedCandidateStatuses([
+				...activeCandidateStatuses([active]),
+				{
+					schemaVersion: 1,
+					eventId: "status-stale",
+					candidateId: stale.interactionId,
+					recordedAt: "2026-07-25T00:00:00.000Z",
+					status: "stale",
+					reasonCode: "already_implemented",
+					reason: "The proposed behavior is already implemented.",
+				},
+				{
+					schemaVersion: 1,
+					eventId: "status-needs-review",
+					candidateId: needsReview.interactionId,
+					recordedAt: "2026-07-25T00:00:01.000Z",
+					status: "needs_review",
+					reasonCode: "target_unresolved",
+					reason: "The candidate target requires review.",
+				},
+			]);
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			const ctx = createMockCtx({ cwd: "/test/dir" });
+
+			await invokeImproveCommand(pi, ctx, "list");
+
+			const content = improveMessageContent(pi, 0);
+			expect(content).toContain("Available improvement candidates (1)");
+			expect(content).toContain("interaction-command".slice(-7));
+			expect(content).not.toContain("interaction-stale");
+			expect(content).not.toContain("interaction-needs-review");
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
 	it("selects the fourth ranked candidate by its displayed ordinal", async () => {
 		const scratch = await fs.mkdtemp(
 			path.join(os.tmpdir(), "pi-improve-ordinal-"),
@@ -1070,7 +1356,9 @@ describe("workflow friction extension", () => {
 		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
 		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
 		try {
-			await seedLearningReviews(ordinalCandidateRecords());
+			const records = ordinalCandidateRecords();
+			await seedLearningReviews(records);
+			await seedCandidateStatuses(activeCandidateStatuses(records));
 			const ctx = sessionContextFixture("session-improve-ordinal");
 			const pi = createMockPi();
 			workflowFrictionExtension(pi as never);
@@ -1093,7 +1381,7 @@ describe("workflow friction extension", () => {
 		}
 	});
 
-	it("turns a short correction into a quarantined improvement discussion", async () => {
+	it("keeps a one-off short correction out of the improvement list", async () => {
 		const scratch = await fs.mkdtemp(
 			path.join(os.tmpdir(), "pi-learning-auto-"),
 		);
@@ -1126,16 +1414,8 @@ describe("workflow friction extension", () => {
 			const command = pi._commands.find((item) => item.name === "improve");
 			await command?.handler("", ctx);
 			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-			const prompt = String(pi.sendMessage.mock.calls[0]?.[0]?.content ?? "");
-			expect(prompt).toContain("Use the full 1-3-1 format");
-			expect(prompt).toContain(
-				"Questions and comments continue the discussion",
-			);
-			expect(prompt).toContain(
-				"Proposed change: Use pnpm for Pi TypeScript work.",
-			);
-			expect(prompt).toContain(
-				"Cross-session context from the previous 15 days",
+			expect(improveMessageContent(pi, 0)).toContain(
+				"No supported improvement candidates exist for this workspace.",
 			);
 			expect(await readCurrentLearningDecisions()).toEqual([]);
 		} finally {
@@ -1246,6 +1526,7 @@ describe("workflow friction extension", () => {
 				`${JSON.stringify(low)}\n${JSON.stringify(high)}\n`,
 				"utf8",
 			);
+			await seedCandidateStatuses(activeCandidateStatuses([low, high]));
 			const ctx = createMockCtx({
 				cwd,
 				sessionManager: { getSessionDir: () => sessionDir },
@@ -1258,7 +1539,7 @@ describe("workflow friction extension", () => {
 			const prompt = String(pi.sendMessage.mock.calls[0]?.[0]?.content ?? "");
 			expect(prompt).toContain("Candidate ID: candidate-high");
 			expect(prompt).toContain(
-				"Ranking reason: highest observed 30-day usage ROI (2 calls)",
+				"Ranking reason: observed 30-day usage (2 calls)",
 			);
 		} finally {
 			if (previousFriction === undefined)

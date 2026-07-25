@@ -114,7 +114,13 @@ export type ImprovementImpact =
 	| "efficiency"
 	| "maintainability";
 
-export type ImprovementTargetKind = "skill" | "command" | "extension" | "tool";
+export type ImprovementTargetKind =
+	| "skill"
+	| "new-skill"
+	| "command"
+	| "extension"
+	| "tool"
+	| "project-instruction";
 
 export interface ImprovementTarget {
 	kind: ImprovementTargetKind;
@@ -582,11 +588,12 @@ Rules:
 - Distinguish productive debugging from repeated work that produced no new evidence.
 - Check for premature or repeated validation, failure isolation before retry, delegation overhead, scope drift, unnecessary complexity, and whether the requested outcome was reached.
 - Treat explicit user corrections and remember requests as candidate signals, not automatic policy.
-- Reject one-off task directions, transient environment state, missing dependencies, unverified technical claims, and isolated tool defects as durable lessons.
-- When tools or helper scripts failed repeatedly, decide whether clearer reusable instructions probably would have prevented it. Prefer deterministic-control when a test, hook, validator, or code fix is the enforceable solution.
+- Reject one-off task directions, transient environment state, missing dependencies, unverified technical claims, and isolated project details as durable lessons.
+- Prefer a command, extension, or tool target when deterministic code can prevent the failure. Use project-instruction only for repository-local policy, skill only for an exact existing skill name, and new-skill only for a genuinely reusable missing capability.
+- Set reusableInstruction.likely to yes only with one structured target and one small supported change. Use no or uncertain when the target is ambiguous, the proposal merely restates supplied instructions, or the evidence supports only a one-off reminder.
+- Keep targetSkill only for compatibility when kind is skill; new reviews should use target.
 - Scope user preferences globally only when they are genuinely cross-project. Use project or path scope for repository-specific conventions and skill scope for reusable procedures.
 - Classify impact as safety or correctness only when the evidence shows that risk; otherwise use efficiency or maintainability.
-- Set target only when one existing skill, command, extension, or tool is clearly named. Omit it when ambiguous. Keep targetSkill for compatibility when kind is skill.
 - Do not quote credentials, tokens, private values, or long source content.
 - Use at most five short evidence items.
 - Omit suggestedChange unless the evidence supports one small change.
