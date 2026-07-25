@@ -1145,6 +1145,47 @@ describe("Provider architecture spike: awaited provider seam", () => {
 		expect(firstDecision.prompt_hash).not.toBe(secondDecision.prompt_hash);
 	});
 
+	it("uses distinct IDs for repeated prompts and propagates each to the classifier", async () => {
+		const pi = createMockPi();
+		promptRouter(pi as any);
+		const ctx = routeCtx();
+		(pi.exec as any)
+			.mockResolvedValueOnce({
+				code: 0,
+				stdout: makeV3Json("core", "medium", 0.91),
+				stderr: "",
+			})
+			.mockResolvedValueOnce({
+				code: 0,
+				stdout: makeV3Json("core", "medium", 0.91),
+				stderr: "",
+			});
+
+		const firstPayload = await routeProviderPrompt(pi, ctx, "repeat this prompt");
+		const secondPayload = await routeProviderPrompt(pi, ctx, "repeat this prompt");
+		const firstId = firstPayload.route_decision_id as string;
+		const secondId = secondPayload.route_decision_id as string;
+
+		expect(firstId).toMatch(/^route-[0-9a-f-]{36}$/);
+		expect(secondId).toMatch(/^route-[0-9a-f-]{36}$/);
+		expect(firstId).not.toBe(secondId);
+		for (const [_, args] of (pi.exec as any).mock.calls) {
+			expect(args).toContain("--route-decision-id");
+		}
+		expect((pi.exec as any).mock.calls[0][1]).toContain(firstId);
+		expect((pi.exec as any).mock.calls[1][1]).toContain(secondId);
+
+		const routingCalls = vi
+			.mocked(transcriptEmit)
+			.mock.calls.filter(
+				([envelope]) => envelope.event_type === "routing_decision",
+			);
+		expect(routingCalls.map(([, payload]) => (payload as any).route_decision_id)).toEqual([
+			firstId,
+			secondId,
+		]);
+	});
+
 	it("resolves profile fields from the immutable route decision", async () => {
 		const pi = createMockPi();
 		(pi.exec as any).mockResolvedValueOnce({

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isAbsolute, resolve } from "node:path";
 import type {
 	BashToolCallEvent,
 	EditToolCallEvent,
@@ -336,6 +337,7 @@ function safeRecordDeny(
 		recordEvent({
 			event: "permission_decision",
 			data: {
+				schemaVersion: 1,
 				tool: toolName,
 				outcome: "deny",
 				provenance: DENY_PROVENANCE,
@@ -370,6 +372,7 @@ function safeRecordAllow(
 		recordEvent({
 			event: "permission_decision",
 			data: {
+				schemaVersion: 1,
 				tool: toolName,
 				outcome: "allow",
 				provenance,
@@ -1017,9 +1020,25 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	pi.on("tool_call", async (event, ctx) => {
-		if (event.toolName !== "bash") return undefined;
-		const command = (event as BashToolCallEvent).input.command ?? "";
+	pi.on("tool_call", async (event, baseCtx) => {
+		if (event.toolName !== "bash" && event.toolName !== "bg_start") {
+			return undefined;
+		}
+		const input = (event as BashToolCallEvent).input as {
+			command?: string;
+			working_dir?: string;
+		};
+		const workingDirectory = input.working_dir?.trim();
+		const ctx =
+			event.toolName === "bg_start" && workingDirectory
+				? {
+						...baseCtx,
+						cwd: isAbsolute(workingDirectory)
+							? workingDirectory
+							: resolve(baseCtx.cwd, workingDirectory),
+					}
+				: baseCtx;
+		const command = input.command ?? "";
 		const failed = blockIfRulesFailed(state);
 		if (failed) {
 			recordBlock(

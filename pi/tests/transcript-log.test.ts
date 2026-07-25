@@ -31,6 +31,7 @@ import {
 	sha256Hex,
 	sweepRetention,
 	type RoutingDecisionPayload,
+	type SpillReference,
 	type TranscriptSettings,
 } from "../lib/transcript.ts";
 
@@ -107,6 +108,26 @@ describe("transcript schema + envelope", () => {
 		expect(record.timestamp).toBe("2026-04-25T12:00:00.000Z");
 		expect(typeof record.monotonic_ns).toBe("string");
 		expect(record.monotonic_ns).toBe("1");
+	});
+
+	it("assigns a unique event_id to each newly written envelope", async () => {
+		const writer = makeWriter(tmpDir);
+		for (let i = 0; i < 2; i++) {
+			await writer.write({
+				envelope: {
+					session_id: SESSION_ID,
+					turn_id: "turn-1",
+					trace_id: "trace-1",
+					event_type: "llm_request",
+				},
+				payload: { i },
+			});
+		}
+
+		const records = readJsonl(path.join(tmpDir, `${SESSION_ID}.jsonl`));
+		const eventIds = records.map((record) => record.event_id);
+		expect(eventIds.every((eventId) => typeof eventId === "string")).toBe(true);
+		expect(new Set(eventIds).size).toBe(records.length);
 	});
 
 	it("appends without overwriting existing lines", async () => {
@@ -479,6 +500,30 @@ describe("storage and runtime safety", () => {
 		expect(fs.existsSync(spillFile)).toBe(true);
 		const decompressed = zlib.gunzipSync(fs.readFileSync(spillFile)).toString("utf-8");
 		expect(decompressed).toContain("xxxx");
+	});
+
+	it("uses distinct spill files for events with the same correlation IDs", async () => {
+		const writer = makeWriter(tmpDir, { maxInlineBytes: 64 });
+		for (const content of ["a".repeat(2048), "b".repeat(2048)]) {
+			await writer.write({
+				envelope: {
+					session_id: SESSION_ID,
+					turn_id: "turn-1",
+					message_id: "msg-1",
+					trace_id: "trace-1",
+					event_type: "llm_request",
+				},
+				payload: { huge: content },
+			});
+		}
+
+		const records = readJsonl(path.join(tmpDir, `${SESSION_ID}.jsonl`));
+		const spills = records.map((record) => (record.payload as Record<string, unknown>).huge as SpillReference);
+		expect(spills[0].$spill).not.toBe(spills[1].$spill);
+		for (const spill of spills) {
+			const spillPath = path.join(tmpDir, `${SESSION_ID}.spill`, path.basename(spill.$spill));
+			expect(fs.existsSync(spillPath)).toBe(true);
+		}
 	});
 
 	it("retention sweep is idempotent and removes only old files", async () => {

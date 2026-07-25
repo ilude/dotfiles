@@ -42,6 +42,7 @@
  * when transcript tracing is enabled.
  */
 
+import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -126,8 +127,8 @@ function withTimeout<T>(
 	]);
 }
 
-function makeRouteDecisionId(promptHash: string): string {
-	return `route-${promptHash.slice(0, 16)}`;
+function makeRouteDecisionId(): string {
+	return `route-${crypto.randomUUID()}`;
 }
 
 function hasExplicitModelSelection(payload: unknown, ctx?: unknown): boolean {
@@ -527,6 +528,7 @@ export function resolveRouteProfile(
 
 function fallbackRouteDecision(
 	text: string,
+	routeDecisionId: string,
 	reason: RouteResolutionReason,
 	fallbackReason: string,
 	ctx: any,
@@ -540,7 +542,7 @@ function fallbackRouteDecision(
 		typeof current?.provider === "string" ? current.provider : "unknown";
 	const model = typeof current?.id === "string" ? current.id : "unknown";
 	return {
-		route_decision_id: makeRouteDecisionId(`${promptHash}-${reason}`),
+		route_decision_id: routeDecisionId,
 		prompt_hash: promptHash,
 		classifier_mode: ROUTER_DEFAULTS.classifierMode,
 		raw_route: "core",
@@ -573,15 +575,17 @@ export async function resolveProviderRouteDecision(
 	providerPayload: unknown = { prompt: text },
 ): Promise<RouteDecision> {
 	const startedAt = Date.now();
+	const routeDecisionId = makeRouteDecisionId();
 	const promptHash = sha256Hex(text);
 	const config = loadRouterConfig(EFFORT_ORDER);
 	const classified = await withTimeout(
-		classifyWithV3(pi, text, ctx, config.classifierMode),
+		classifyWithV3(pi, text, ctx, config.classifierMode, routeDecisionId),
 		timeoutMs,
 	);
 	if (classified === "timeout")
 		return fallbackRouteDecision(
 			text,
+			routeDecisionId,
 			"classifier_timeout",
 			"classifier timed out",
 			ctx,
@@ -589,6 +593,7 @@ export async function resolveProviderRouteDecision(
 	if (!classified)
 		return fallbackRouteDecision(
 			text,
+			routeDecisionId,
 			"classifier_failure",
 			"classifier returned no usable route",
 			ctx,
@@ -611,6 +616,7 @@ export async function resolveProviderRouteDecision(
 	if (!model)
 		return fallbackRouteDecision(
 			text,
+			routeDecisionId,
 			"fallback_used",
 			`no ${rawSize} model available`,
 			ctx,
@@ -627,6 +633,7 @@ export async function resolveProviderRouteDecision(
 	) {
 		const denied = fallbackRouteDecision(
 			text,
+			routeDecisionId,
 			"denied_by_policy",
 			"cross-provider fallback denied",
 			ctx,
@@ -655,7 +662,7 @@ export async function resolveProviderRouteDecision(
 	const fallbackReason = routePolicy.fallbackReason;
 	return {
 		classifierRecommendation: classified,
-		route_decision_id: makeRouteDecisionId(promptHash),
+		route_decision_id: routeDecisionId,
 		prompt_hash: promptHash,
 		classifier_mode: config.classifierMode,
 		raw_route: rawRoute,

@@ -1,0 +1,27 @@
+[project]
+name = "pi-log-analytics"
+version = "0.1.0"
+description = "Local DuckDB views over Pi runtime JSONL"
+requires-python = ">=3.9"
+dependencies = [
+  "duckdb>=1.4,<2.0",
+]
+
+[tool.uv]
+package = false
+exclude-newer = "3 days"
+index-strategy = "first-index"
+no-sources = true
+no-build = true
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<9.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"

@@ -37,6 +37,7 @@ import {
 	getFinalOutput,
 	runSingleAgent,
 	type SingleResult,
+	SubagentAbortError,
 	type SubagentDetails,
 } from "../subagent/index.js";
 
@@ -300,11 +301,21 @@ export async function runTaskSubagent(
 		execution.experimentEffort,
 		taskId,
 		execution.runId,
+		undefined,
+		{
+			owner: "task",
+			orchestrationId: execution.orchestrationId,
+			mode: "task-execute",
+		},
 	);
 	const output = getFinalOutput(result.messages) || result.stderr;
+	const failed =
+		result.exitCode !== 0 ||
+		result.stopReason === "error" ||
+		result.stopReason === "aborted";
 	return {
 		output,
-		exitCode: result.exitCode,
+		exitCode: failed ? Math.max(1, result.exitCode) : 0,
 		usage: normalizeTaskUsage({
 			inputTokens: result.usage.input,
 			outputTokens: result.usage.output,
@@ -958,7 +969,7 @@ export class TaskExecutionCoordinator {
 			});
 		} catch (error) {
 			if (this.reconcileLateStoppedExecution(taskId, active)) return;
-			if (active.stopRequested) {
+			if (active.stopRequested || error instanceof SubagentAbortError) {
 				this.settleExecution(taskId, execution, "stopped", active);
 				safeTransitionTask(taskId, "cancelled");
 				this.notifyCompletion({

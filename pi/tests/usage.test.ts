@@ -118,6 +118,53 @@ describe("usage extension", () => {
 		expect(report).toContain("Parsed files: Pi 1, Codex CLI 1.");
 	});
 
+	it("writes structured pricing refresh audit records", async () => {
+		const root = await makeTempDir();
+		const agentDir = path.join(root, "agent");
+		const sessionRoot = path.join(root, "sessions");
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		process.env.PI_USAGE_TEST_HOME = root;
+		await writePricingCache(agentDir);
+		const cachePath = path.join(agentDir, "cache", "models-dev-api.json");
+		const staleDate = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+		await fs.utimes(cachePath, staleDate, staleDate);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				status: 200,
+				statusText: "OK",
+				text: async () => "{}",
+			})),
+		);
+
+		await buildUsageReport(false, sessionRoot, []);
+		const logPath = path.join(agentDir, "logs", "usage.jsonl");
+		await vi.waitFor(async () => {
+			const lines = (await fs.readFile(logPath, "utf8"))
+				.trim()
+				.split("\n");
+			expect(lines).toHaveLength(2);
+		});
+		const records = (await fs.readFile(logPath, "utf8"))
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line) as Record<string, unknown>);
+		expect(records).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ event: "pricing_cache_refresh_start" }),
+				expect.objectContaining({ event: "pricing_cache_refresh_complete" }),
+			]),
+		);
+		for (const record of records) {
+			expect(record.schemaVersion).toBe(1);
+			expect(record.id).toEqual(expect.any(String));
+			expect(record.ts).toEqual(expect.any(String));
+			expect(record.timestamp).toBe(record.ts);
+			expect(Date.parse(String(record.ts))).not.toBeNaN();
+		}
+	});
+
 	it("uses the command session root and displays the report without a provider turn", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-07-14T12:00:00.000Z"));

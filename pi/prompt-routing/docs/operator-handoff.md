@@ -81,9 +81,11 @@ policy or operator override, not by normal classifier output.
 
 ## Telemetry privacy and purge
 
-Runtime telemetry uses prompt hashes by default, not raw prompt text. Classifier
-logs and transcript routing events can be joined by `prompt_hash`. Do not copy
-logs into evidence or tickets unless a secret/sentinel scan passes.
+Runtime telemetry uses prompt hashes by default, not raw prompt text. New
+classifier logs and transcript routing events share a unique
+`route_decision_id`; legacy records without it use ordered `prompt_hash`
+occurrences. Do not copy logs into evidence or tickets unless a secret/sentinel
+scan passes.
 
 For local purge, stop Pi and remove the relevant `~/.pi/agent/traces/*.jsonl`
 files plus `pi/prompt-routing/logs/routing_log.jsonl`. See

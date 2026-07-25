@@ -243,6 +243,13 @@ describe("trust tools and audit redaction", () => {
 		});
 		expect(fs.existsSync(path.join(dir, "audit.jsonl.1"))).toBe(true);
 		const log = fs.readFileSync(path.join(dir, "audit.jsonl"), "utf8");
+		const record = JSON.parse(log) as Record<string, unknown>;
+		expect(record).toMatchObject({
+			schemaVersion: 1,
+			id: expect.any(String),
+			ts: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+			type: "auth_failure",
+		});
 		expect(log).not.toContain("C:/Users/me/.ssh/id_ed25519");
 		expect(log).not.toContain("\nC:/");
 		hub.stop();

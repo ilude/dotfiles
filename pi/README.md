@@ -240,7 +240,7 @@ shared echo.
 
 ### `damage-control.ts`
 
-Pi damage-control is a Pi-native safety extension with its own policy, parser, engine, status text, `/doctor`, and `/permissions` integration. It enforces Bash, PowerShell, file-path, semantic Git, Bash AST, sequence/taint, and post-tool secret-output rules through Pi extension hooks.
+Pi damage-control is a Pi-native safety extension with its own policy, parser, engine, status text, `/doctor`, and `/permissions` integration. It enforces Bash, managed background-terminal, PowerShell, file-path, semantic Git, Bash AST, sequence/taint, and post-tool secret-output rules through Pi extension hooks.
 
 Intercepts tool calls and blocks dangerous operations before they execute.
 
@@ -265,11 +265,21 @@ The shadow judge is disabled by default. Enable it with `damageControl.judge.ena
 
 Extends Pi's native startup context with instructions discovered after successful `read`, `grep`, `find`, or `ls` access or when a mutating tool targets a path, including a path in another repository. It loads `AGENTS.md`, falls back to `CLAUDE.md` in directories without `AGENTS.md`, and keeps only the instructions applicable to the current target in one hidden report. Native and nested instructions are deduplicated by content, including hardlinks exposed through different paths. Reading an instruction file does not inject that same file as a second context copy. A mutation is deferred at most once while newly applicable instructions reach the model; automatic continuation preserves that delivery, while changed instruction content, direct user input, or a cwd/session change invalidates it.
 
+### `background-terminal/`
+
+Provides bounded process-local management for long-lived Bash commands through `bg_start`, `bg_status`, `bg_list`, and `bg_kill`. `bg_start` passes through the same damage-control shell gate as `bash` before spawning. A compact widget and `/ps` dashboard show live state and bounded stdout/stderr; natural completion delivers one follow-up result without polling. Output spills to private capped temporary logs, process-tree termination works on macOS and Windows, and session shutdown kills remaining processes and removes the logs. Use the scheduler rather than a background terminal for timers or polling waits.
+
+### `copy-all.ts` and `summarize/`
+
+`/copy-all [fallback-file]` copies user and assistant message text through Pi's cross-platform clipboard helper, reports message and byte counts, and writes only an explicitly named new fallback file when clipboard delivery fails.
+
+`/summarize [focus]` remains an active-model workflow that produces a normal assistant response. The extension adds a bounded, redacted evidence packet with tool failures, shell exit codes, and head-tail session coverage while omitting thinking, images, previous recaps, and hidden workflow prompts. It does not run automatically or send content to a separate model or provider.
+
 ### `tool-visibility.ts` and `tool-search.ts`
 
 Keeps specialized tools out of the default provider schema until they are relevant. Commit, feature-memory, goal completion, improvement capture, Onclave, PowerShell, review-artifact, scheduler, usage-report, and web tools start inactive. Stateful extensions activate their own tools from deterministic command or prompt state. `tool_search` activates matching inactive tools by default for a non-empty capability query, and reports the activated names in its result. Listing all tools without a query remains inspection-only.
 
-Core file, shell, task, subagent, and discovery tools remain active. This reduces baseline tool-schema and prompt-guideline overhead without removing capabilities.
+Core file, shell, background-terminal, task, subagent, and discovery tools remain active. This reduces baseline tool-schema and prompt-guideline overhead without removing capabilities.
 
 ### `quality-gates.ts`
 
@@ -297,11 +307,9 @@ Registers shared skill-backed slash commands:
 /do-it         # direct task or plan execution with proportional validation
 ```
 
-Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`.
-Prompt-only commands use Pi-native templates under `~/.dotfiles/pi/prompts/`:
+Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`. The extension-backed `/summarize [focus]` workflow adds bounded session evidence before requesting the recap. Prompt-only commands use Pi-native templates under `~/.dotfiles/pi/prompts/`:
 
 ```text
-/summarize [focus]                 # concise session recap and workflow friction
 /gitlab-ticket [feature or change] # structured issue with optional branch and draft MR
 ```
 
@@ -499,18 +507,21 @@ by the shared helper in `scripts/agent_instance_lease.py`.
 ### Operator Layer
 
 Three companion extensions surface durable task and permission state for
-long-running work. They share the registries in `pi/lib/task-registry.ts`
-and `pi/lib/permission-registry.ts`, which are the canonical owners of
-`TaskRecordV1` and `PermissionDecision` for any extension that needs to
-record subagent runs or permission decisions.
+long-running work. The registries in `pi/lib/task-registry.ts` and
+`pi/lib/permission-registry.ts` are the canonical owners of `TaskRecordV1`
+and `PermissionDecision`. Only the `task` surface creates durable task
+records; direct `subagent` calls remain transient.
 
 Storage location: `~/.pi/agent/operator/{tasks,permissions}/`. Override
 with `PI_OPERATOR_DIR` (used by tests).
 
-Producer wiring: `subagent` and `damage-control` write to the
-registries automatically; producers are wrapped in defensive try/catch so
-registry I/O failure (disk full, permission error, etc.) never breaks the
-producer flow.
+All direct and task-backed child Pi processes also register with the bounded
+process-local manager in `pi/extensions/subagent/run-manager.ts`. Task-backed
+runs link their runtime `runId` to the durable `taskId`; direct runs have no
+task ID. `/subagents` presents both kinds of runs and can cancel active child
+processes without treating its TUI state as lifecycle authority. Damage-control
+continues to write permission decisions defensively so registry I/O failure
+never breaks the protected producer flow.
 
 #### `operator-status.ts`
 
@@ -709,6 +720,12 @@ Work directly on one coherent task. Delegate when independent work, specialized 
 
 Repository-owned worker definitions live in `pi/agents/`; loading and precedence are implemented by `pi/extensions/subagent/agents.ts`.
 
+The `subagent` tool preserves foreground single, parallel, chain, and continue
+modes. Set `background=true` for transient detached execution; the tool returns
+immediately and later delivers one bounded follow-up result. Use `/subagents`
+for the unified process-local dashboard and run detail view. Use `task` instead
+when work needs durable dependencies, tracking, or recovery.
+
 ### Agent configuration
 
 The agent parser consumes these frontmatter fields:
@@ -778,7 +795,7 @@ The sidecar trace captures:
 
 ### Storage
 
-Trace files are written to `~/.pi/agent/traces/<session-id>.jsonl` by default -- outside the repo and outside any synced project tree. The directory is created with mode 0700; each trace file is written with mode 0600 on Linux/WSL (Windows relies on user-profile ACL).
+Trace files are written to `~/.pi/agent/traces/<session-id>.jsonl` by default -- outside the repo and outside any synced project tree. The directory is created with mode 0700; each trace file is written with mode 0600 on Linux/WSL (Windows relies on user-profile ACL). New schema 1.1 records include a unique top-level `event_id`; schema 1.0 records without it remain readable.
 
 When a single payload field exceeds the configured `maxInlineBytes` limit, the oversized content is moved to a **spill file** at `~/.pi/agent/traces/<session-id>.spill/<event-id>-<field>.json.gz`. The main trace event records a spill reference with the relative path, SHA-256 hash, and uncompressed byte count so the field can be reconstructed exactly.
 
@@ -846,7 +863,7 @@ Each Pi extension hook emits exactly one event family into the sidecar trace. Th
 | `tool_execution_start` | `tool_execution_start` | Records start time for duration computation |
 | `tool_execution_end` | `tool_execution_end` | Carries `duration_ms` and `is_error` |
 | `tool_result` | `tool_result` | Content, details, error state, truncation metadata |
-| `routing_decision` (in `prompt-router.ts`) | `routing_decision` | `prompt_hash` joins to `routing_log.jsonl` |
+| `routing_decision` (in `prompt-router.ts`) | `routing_decision` | `route_decision_id` joins to `routing_log.jsonl`; legacy records fall back to ordered `prompt_hash` occurrences |
 | `session_shutdown` | `session_shutdown` | Final event before archival |
 
 ### Streaming discipline
@@ -859,9 +876,9 @@ Pi fires `message_update` per token during assistant message streaming. The tran
 
 An optional `assistant_streaming` heartbeat (one record per N seconds during long generations) is documented in the schema but disabled by default.
 
-### Routing decision hash-link
+### Routing decision correlation
 
-`routing_decision` records carry `prompt_hash = sha256(prompt_text)`. The same hash is logged by the Python-side classifier into `~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl`. The two logs are kept independently and can be joined post-hoc by `prompt_hash` -- the TypeScript sidecar trace captures the runtime envelope (turn, session, applied route, policy decision) while the Python log captures classifier internals (TF-IDF features, candidate scores). Neither log is modified by the other.
+New `routing_decision` records and Python-side classifier records share a unique `route_decision_id` for an exact post-hoc join. Both also retain `prompt_hash = sha256(prompt_text)` for privacy-safe grouping and backward compatibility. Existing records without an invocation ID are paired deterministically by ordered `prompt_hash` occurrence. The logs remain independent: the TypeScript sidecar trace captures the runtime envelope (turn, session, applied route, policy decision), while the Python log captures classifier internals (TF-IDF features, candidate scores). Neither log is modified by the other.
 
 ### Subagent correlation (W3C TRACEPARENT)
 

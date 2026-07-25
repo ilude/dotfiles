@@ -87,6 +87,10 @@ You are a test agent.
 		const { getMetricsLogPath } = await import("../lib/metrics.ts");
 		expect(path.relative(tmpDir, getMetricsLogPath())).not.toMatch(/^\.\./);
 		spawnMock.mockReset();
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		subagentRunManager.clear({ abortRunning: true });
 	});
 
 	afterEach(async () => {
@@ -97,6 +101,10 @@ You are a test agent.
 		if (prevRoutingSampleRate === undefined)
 			delete process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
 		else process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = prevRoutingSampleRate;
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		subagentRunManager.clear({ abortRunning: true });
 		await fs.promises.rm(tmpDir, { recursive: true, force: true });
 		vi.clearAllMocks();
 	});
@@ -292,10 +300,15 @@ You are a test agent.
 			const child = result.details.results[0];
 			expect(child.sessionPath).toMatch(/\.jsonl$/);
 			expect(fs.existsSync(child.sessionPath as string)).toBe(true);
-			const { getTask } = await import("../lib/task-registry.ts");
-			expect(getTask(child.taskId as string)?.metadata?.sessionPath).toBe(
-				child.sessionPath,
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
 			);
+			expect(subagentRunManager.get(child.runId as string)).toMatchObject({
+				owner: "direct",
+				status: "completed",
+				sessionPath: child.sessionPath,
+			});
+			expect(child.taskId).toBeUndefined();
 			const args = spawnMock.mock.calls[0][1] as string[];
 			expect(args).not.toContain("--no-session");
 			expect(args).toContain("--session-id");
@@ -337,7 +350,14 @@ You are a test agent.
 				args.slice(args.indexOf("--session"), args.indexOf("--session") + 2),
 			).toEqual(["--session", sessionPath]);
 			expect(args[args.indexOf("--tools") + 1]).toBe("read,grep");
-			expect(result.details.results[0].sessionPath).toBe(sessionPath);
+			const child = result.details.results[0];
+			expect(child.sessionPath).toBe(sessionPath);
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
+			expect(subagentRunManager.get(child.runId as string)?.mode).toBe(
+				"continue",
+			);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -1091,23 +1111,17 @@ You are a test agent.
 	);
 
 	it(
-		"registers the subagent run as a TaskRecordV1 with completed lifecycle",
+		"tracks a direct run in process without creating durable task state",
 		async () => {
 			mockSuccessfulSpawn();
 			const { tool } = await loadTool();
-
 			const { listTasks } = await import("../lib/task-registry.ts");
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
 
-			const before = listTasks();
-			expect(before.length).toBe(0);
-
-			const ctx = createMockCtx({
-				cwd: tmpDir,
-				model: { provider: "anthropic", id: "claude-sonnet-4-6" },
-			});
-
-			await tool.execute(
-				"call-task-record",
+			const result = await tool.execute(
+				"call-process-run",
 				{
 					agent: "tester",
 					task: "Check the thing",
@@ -1116,29 +1130,197 @@ You are a test agent.
 				},
 				undefined,
 				undefined,
-				ctx,
+				createMockCtx({
+					cwd: tmpDir,
+					model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+				}),
 			);
 
-			const after = listTasks();
-			expect(after.length).toBe(1);
-			const record = after[0];
-			expect(record.origin).toBe("subagent");
-			expect(record.agentName).toBe("tester");
-			expect(record.state).toBe("completed");
-			expect(record.startedAt).toBeDefined();
-			expect(record.endedAt).toBeDefined();
-			expect(record.usage?.inputTokens).toBe(10);
-			expect(record.usage?.outputTokens).toBe(5);
-			expect(record.metadata?.model).toBe("anthropic/claude-sonnet-4-6");
-			expect(record.metadata?.effort).toBe("high");
-			expect(record.metadata).not.toHaveProperty("isolation");
-			expect(record.metadata).not.toHaveProperty("memory");
+			expect(listTasks()).toHaveLength(0);
+			const child = result.details.results[0];
+			expect(child.taskId).toBeUndefined();
+			expect(subagentRunManager.get(child.runId as string)).toMatchObject({
+				owner: "direct",
+				status: "completed",
+				agent: "tester",
+				model: "anthropic/claude-sonnet-4-6",
+				usage: { input: 10, output: 5, turns: 1 },
+			});
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
 	it(
-		"persists cumulative normalized usage with a context peak and known zero cost",
+		"runs transient background work and delivers its result later",
+		async () => {
+			const proc = createMockProcess();
+			spawnMock.mockImplementation(() => proc);
+			const { pi, tool } = await loadTool();
+			const { listTasks } = await import("../lib/task-registry.ts");
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
+
+			const started = await tool.execute(
+				"call-background",
+				{
+					agent: "tester",
+					task: "Work independently",
+					agentScope: "project",
+					background: true,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(started.content[0].text).toContain(
+				"Started transient background single",
+			);
+			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			expect(subagentRunManager.list()[0]).toMatchObject({
+				owner: "direct",
+				status: "running",
+			});
+			expect(listTasks()).toHaveLength(0);
+
+			proc.stdout.emit(
+				"data",
+				`${JSON.stringify({
+					type: "message_end",
+					message: {
+						role: "assistant",
+						content: [
+							{
+								type: "text",
+								text: `discarded-${"x".repeat(60 * 1024)}-background done`,
+							},
+						],
+						stopReason: "stop",
+					},
+				})}\n`,
+			);
+			proc.emit("close", 0);
+
+			await vi.waitFor(
+				() =>
+					expect(subagentRunManager.list()[0]?.status).toBe("completed"),
+				{ timeout: 5000 },
+			);
+			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			expect(pi.sendMessage).toHaveBeenCalledWith(
+				expect.objectContaining({
+					customType: "subagent-result",
+					content: expect.stringContaining("background done"),
+				}),
+				{ deliverAs: "followUp", triggerTurn: true },
+			);
+			const delivered = pi.sendMessage.mock.calls[0][0].content as string;
+			expect(delivered).toContain("[Result truncated.");
+			expect(Buffer.byteLength(delivered, "utf8")).toBeLessThan(50 * 1024);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"projects child streaming and tool activity into the shared read model",
+		async () => {
+			const proc = createMockProcess();
+			spawnMock.mockImplementation(() => proc);
+			const { tool } = await loadTool();
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
+			const execution = tool.execute(
+				"call-live-activity",
+				{
+					agent: "tester",
+					task: "Stream activity",
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			proc.stdout.emit(
+				"data",
+				[
+					JSON.stringify({
+						type: "tool_execution_start",
+						toolCallId: "tool-1",
+						toolName: "grep",
+						args: { pattern: "needle" },
+					}),
+					JSON.stringify({
+						type: "tool_execution_update",
+						toolCallId: "tool-1",
+						partialResult: {
+							content: [{ type: "text", text: "one match" }],
+						},
+					}),
+					JSON.stringify({
+						type: "message_update",
+						assistantMessageEvent: {
+							type: "text_delta",
+							delta: "working",
+						},
+					}),
+				].join("\n") + "\n",
+			);
+			await vi.waitFor(
+				() =>
+					expect(subagentRunManager.list()[0]).toMatchObject({
+						liveText: "working",
+						liveTools: [
+							{
+								id: "tool-1",
+								name: "grep",
+								output: "one match",
+							},
+						],
+					}),
+				{ timeout: 5000 },
+			);
+			proc.stdout.emit(
+				"data",
+				[
+					JSON.stringify({
+						type: "tool_execution_end",
+						toolCallId: "tool-1",
+					}),
+					JSON.stringify({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [{ type: "text", text: "finished" }],
+							stopReason: "stop",
+						},
+					}),
+				].join("\n") + "\n",
+			);
+			proc.emit("close", 0);
+			await execution;
+			expect(subagentRunManager.list()[0]).toMatchObject({
+				status: "completed",
+				liveText: "",
+				liveTools: [],
+				transcript: [
+					{ kind: "assistant", text: "finished" },
+				],
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"tracks cumulative run usage with a context peak and known zero cost",
 		async () => {
 			spawnMock.mockImplementation(() => {
 				const proc = createMockProcess();
@@ -1177,9 +1359,11 @@ You are a test agent.
 				return proc;
 			});
 			const { tool } = await loadTool();
-			const { listTasks } = await import("../lib/task-registry.ts");
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
 
-			await tool.execute(
+			const result = await tool.execute(
 				"call-normalized-usage",
 				{
 					agent: "tester",
@@ -1192,24 +1376,22 @@ You are a test agent.
 				createMockCtx({ cwd: tmpDir }),
 			);
 
-			expect(listTasks()[0]?.usage).toEqual({
-				inputTokens: 30,
-				outputTokens: 11,
-				totalTokens: 200,
-				cacheCreationInputTokens: 7,
-				cacheReadInputTokens: 9,
-				processedTokens: 57,
+			const runId = result.details.results[0].runId as string;
+			expect(subagentRunManager.get(runId)?.usage).toEqual({
+				input: 30,
+				output: 11,
+				cacheRead: 9,
+				cacheWrite: 7,
 				contextPeakTokens: 200,
 				turns: 2,
-				costUsd: 0,
-				costSource: "pi-usage",
+				cost: 0,
 			});
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
 	it(
-		"persists unavailable cost and partial usage when cancelled",
+		"retains unavailable cost and partial usage when cancelled",
 		async () => {
 			const proc = createMockProcess();
 			const spawned = new Promise<void>((resolve) => {
@@ -1219,7 +1401,9 @@ You are a test agent.
 				});
 			});
 			const { tool } = await loadTool();
-			const { listTasks } = await import("../lib/task-registry.ts");
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
 			const controller = new AbortController();
 			const execution = tool.execute(
 				"call-cancelled-usage",
@@ -1251,15 +1435,16 @@ You are a test agent.
 			proc.emit("close", 1);
 			await expect(execution).rejects.toThrow("Subagent was aborted");
 
-			const record = listTasks()[0];
-			expect(record?.state).toBe("cancelled");
-			expect(record?.usage).toMatchObject({
-				inputTokens: 4,
-				outputTokens: 2,
-				processedTokens: 6,
-				contextPeakTokens: 12,
-				costUsd: null,
-				costSource: "unavailable",
+			const [snapshot] = subagentRunManager.list();
+			expect(snapshot).toMatchObject({
+				owner: "direct",
+				status: "cancelled",
+				usage: {
+					input: 4,
+					output: 2,
+					contextPeakTokens: 12,
+					cost: null,
+				},
 			});
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
@@ -1733,7 +1918,9 @@ You are a test agent.
 				return proc;
 			});
 			const { tool } = await loadTool();
-			const { listTasks } = await import("../lib/task-registry.ts");
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
 
 			const result = await tool.execute(
 				"call-launch-error",
@@ -1749,7 +1936,10 @@ You are a test agent.
 			);
 
 			expect(result.content[0].text).toContain("spawn node ENOENT");
-			expect(listTasks()[0]?.errorReason).toContain("spawn node ENOENT");
+			expect(subagentRunManager.list()[0]).toMatchObject({
+				status: "failed",
+				errorMessage: expect.stringContaining("spawn node ENOENT"),
+			});
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -1766,7 +1956,9 @@ You are a test agent.
 				return proc;
 			});
 			const { tool } = await loadTool();
-			const { listTasks } = await import("../lib/task-registry.ts");
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
 
 			const result = await tool.execute(
 				"call-startup-output",
@@ -1782,13 +1974,16 @@ You are a test agent.
 			);
 
 			expect(result.content[0].text).toContain("Unable to load child CLI");
-			expect(listTasks()[0]?.errorReason).toContain("Unable to load child CLI");
+			expect(subagentRunManager.list()[0]).toMatchObject({
+				status: "failed",
+				errorMessage: expect.stringContaining("Unable to load child CLI"),
+			});
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
 	it(
-		"registers a subagent failure as state=failed with errorReason",
+		"records a failed subagent run with its error output",
 		async () => {
 			spawnMock.mockImplementation(() => {
 				const proc = createMockProcess();
@@ -1799,7 +1994,9 @@ You are a test agent.
 				return proc;
 			});
 			const { tool } = await loadTool();
-			const { listTasks } = await import("../lib/task-registry.ts");
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
 
 			const ctx = createMockCtx({
 				cwd: tmpDir,
@@ -1819,16 +2016,17 @@ You are a test agent.
 				ctx,
 			);
 
-			const records = listTasks();
-			expect(records.length).toBe(1);
-			expect(records[0].state).toBe("failed");
-			expect(records[0].errorReason).toContain("simulated failure");
-			expect(records[0].usage).toMatchObject({
-				processedTokens: 0,
-				contextPeakTokens: 0,
-				costUsd: null,
-				costSource: "unavailable",
+			const [snapshot] = subagentRunManager.list();
+			expect(snapshot).toMatchObject({
+				status: "failed",
+				usage: {
+					input: 0,
+					output: 0,
+					contextPeakTokens: 0,
+					cost: null,
+				},
 			});
+			expect(snapshot.errorMessage).toContain("simulated failure");
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -1992,7 +2190,9 @@ You are a test agent.
 				return proc;
 			});
 			const { tool } = await loadTool();
-			const { listTasks } = await import("../lib/task-registry.ts");
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
 
 			const ctx = createMockCtx({
 				cwd: tmpDir,
@@ -2019,10 +2219,11 @@ You are a test agent.
 
 			expect(result.content[0].text).toContain("Parallel: 0/1 succeeded");
 			expect(result.content[0].text).toContain("FAILED (model error)");
-			const records = listTasks();
-			expect(records.length).toBe(1);
-			expect(records[0].state).toBe("failed");
-			expect(records[0].errorReason).toContain("not supported");
+			expect(subagentRunManager.list()).toHaveLength(1);
+			expect(subagentRunManager.list()[0]).toMatchObject({
+				status: "failed",
+				errorMessage: expect.stringContaining("not supported"),
+			});
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

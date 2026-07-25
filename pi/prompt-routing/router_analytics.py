@@ -15,6 +15,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +30,8 @@ ROUTER_COLUMNS = [
     "router_ts",
     "router_time",
     "prompt_hash",
+    "route_decision_id",
+    "legacy_occurrence",
     "prompt_excerpt",
     "prompt",
     "classifier_model_size",
@@ -37,12 +40,16 @@ ROUTER_COLUMNS = [
     "elapsed_us",
     "schema_version",
 ]
+LEGACY_ROUTE_DECISION_ID = re.compile(r"^route-[0-9a-f]{16}$")
+
 DECISION_COLUMNS = [
     "session_id",
     "turn_id",
     "trace_id",
     "transcript_time",
     "prompt_hash",
+    "route_decision_id",
+    "legacy_occurrence",
     "transcript_prompt_excerpt",
     "applied_route",
     "selected_model_size",
@@ -98,17 +105,40 @@ def _format_epoch(ts: Any) -> str | None:
         return None
 
 
+def _next_legacy_occurrence(counts: dict[str, int], prompt_hash: Any) -> int | None:
+    if not isinstance(prompt_hash, str):
+        return None
+    occurrence = counts.get(prompt_hash, 0) + 1
+    counts[prompt_hash] = occurrence
+    return occurrence
+
+
+def _current_route_decision_id(value: Any) -> str | None:
+    if not isinstance(value, str) or LEGACY_ROUTE_DECISION_ID.fullmatch(value):
+        return None
+    return value
+
+
 def load_router_rows(routing_log: Path) -> list[tuple[Any, ...]]:
     rows: list[tuple[Any, ...]] = []
+    occurrences: dict[str, int] = {}
     for entry in _iter_jsonl(routing_log) or []:
         primary = entry.get("primary") if isinstance(entry.get("primary"), dict) else {}
         prompt = entry.get("prompt") if isinstance(entry.get("prompt"), str) else None
+        prompt_hash = entry.get("prompt_hash")
+        route_decision_id = _current_route_decision_id(entry.get("route_decision_id"))
         prompt_excerpt = entry.get("prompt_excerpt") or _excerpt(prompt)
         rows.append(
             (
                 entry.get("ts"),
-                _format_epoch(entry.get("ts")),
-                entry.get("prompt_hash"),
+                entry.get("timestamp") or _format_epoch(entry.get("ts")),
+                prompt_hash,
+                route_decision_id,
+                (
+                    _next_legacy_occurrence(occurrences, prompt_hash)
+                    if route_decision_id is None
+                    else None
+                ),
                 prompt_excerpt,
                 prompt,
                 primary.get("model_size") or primary.get("model_tier"),
@@ -123,35 +153,47 @@ def load_router_rows(routing_log: Path) -> list[tuple[Any, ...]]:
 
 def load_decision_rows(trace_glob: Path | str) -> list[tuple[Any, ...]]:
     rows: list[tuple[Any, ...]] = []
+    occurrences: dict[str, int] = {}
+    entries: list[tuple[int, dict[str, Any]]] = []
+    sequence = 0
     for path in _trace_paths(trace_glob):
         for entry in _iter_jsonl(path) or []:
-            if entry.get("event_type") != "routing_decision":
-                continue
-            payload = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
-            actual_model = (
-                payload.get("actual_model")
-                if isinstance(payload.get("actual_model"), dict)
-                else {}
-            )
-            rows.append(
+            if entry.get("event_type") == "routing_decision":
+                entries.append((sequence, entry))
+                sequence += 1
+    entries.sort(key=lambda item: (str(item[1].get("timestamp") or ""), item[0]))
+    for _, entry in entries:
+        payload = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
+        actual_model = (
+            payload.get("actual_model") if isinstance(payload.get("actual_model"), dict) else {}
+        )
+        prompt_hash = payload.get("prompt_hash")
+        route_decision_id = _current_route_decision_id(payload.get("route_decision_id"))
+        rows.append(
+            (
+                entry.get("session_id"),
+                entry.get("turn_id"),
+                entry.get("trace_id"),
+                entry.get("timestamp"),
+                prompt_hash,
+                route_decision_id,
                 (
-                    entry.get("session_id"),
-                    entry.get("turn_id"),
-                    entry.get("trace_id"),
-                    entry.get("timestamp"),
-                    payload.get("prompt_hash"),
-                    payload.get("prompt_excerpt"),
-                    payload.get("applied_route"),
-                    payload.get("selected_model_size"),
-                    actual_model.get("provider"),
-                    actual_model.get("id"),
-                    actual_model.get("name"),
-                    payload.get("model_switch_applied"),
-                    payload.get("confidence"),
-                    payload.get("rule_fired"),
-                    json.dumps(payload.get("fallback_metadata"), ensure_ascii=False),
-                )
+                    _next_legacy_occurrence(occurrences, prompt_hash)
+                    if route_decision_id is None
+                    else None
+                ),
+                payload.get("prompt_excerpt"),
+                payload.get("applied_route"),
+                payload.get("selected_model_size"),
+                actual_model.get("provider"),
+                actual_model.get("id"),
+                actual_model.get("name"),
+                payload.get("model_switch_applied"),
+                payload.get("confidence"),
+                payload.get("rule_fired"),
+                json.dumps(payload.get("fallback_metadata"), ensure_ascii=False),
             )
+        )
     return rows
 
 
@@ -180,6 +222,7 @@ def connect_with_views(routing_log: Path, trace_glob: Path | str) -> duckdb.Duck
           r.router_ts,
           r.router_time,
           r.prompt_hash,
+          r.route_decision_id,
           r.prompt_excerpt,
           r.prompt,
           r.classifier_model_size,
@@ -199,7 +242,18 @@ def connect_with_views(routing_log: Path, trace_glob: Path | str) -> duckdb.Duck
           d.rule_fired,
           d.fallback_metadata
         FROM router_log r
-        LEFT JOIN routing_decisions d USING (prompt_hash);
+        LEFT JOIN routing_decisions d
+          ON (
+            r.route_decision_id IS NOT NULL
+            AND d.route_decision_id IS NOT NULL
+            AND r.route_decision_id = d.route_decision_id
+          )
+          OR (
+            r.route_decision_id IS NULL
+            AND d.route_decision_id IS NULL
+            AND r.prompt_hash = d.prompt_hash
+            AND r.legacy_occurrence = d.legacy_occurrence
+          );
         """
     )
     return con

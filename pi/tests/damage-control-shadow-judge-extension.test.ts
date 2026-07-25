@@ -13,6 +13,7 @@ vi.mock("../lib/damage-control-judge.js", async (importOriginal) => ({
 	judgeDamageControl: testState.judge,
 }));
 vi.mock("../lib/settings-loader.js", () => ({
+	getSetting: <T>(_key: string, fallback: T): T => fallback,
 	readMergedSettings: () => testState.settings,
 }));
 
@@ -161,6 +162,13 @@ describe("damage-control scoped delete and shadow judge extension wiring", () =>
 			),
 		).resolves.toMatchObject({ block: true });
 		expect(confirm).toHaveBeenCalledOnce();
+		const { readRecentEvents } = await import("../lib/metrics.ts");
+		const decision = readRecentEvents().find(
+			(record) =>
+				record.event === "permission_decision" &&
+				record.data?.toolCallId === "outside-delete",
+		);
+		expect(decision?.data?.schemaVersion).toBe(1);
 	});
 
 	it("runs the enabled judge without delaying the prompt and correlates its event", async () => {

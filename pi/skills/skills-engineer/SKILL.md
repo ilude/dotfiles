@@ -35,7 +35,7 @@ description: "Specific trigger scope. Use when ... Not for ..."
 1. Start with `# Title`.
 2. Put boundary guidance before detailed process.
 3. Prefer checklists and tables over long prose.
-4. Keep repeated model-default advice out.
+4. Maintain prompts subtractively: remove or consolidate redundant and conflicting rules before adding instructions; prefer one governing principle to exception lists.
 5. For Pi resources, keep skill-, command-, and tool-specific guidance in the owning skill, prompt, or extension rather than `pi/AGENTS.md`; reserve AGENTS for repository-wide rules that apply regardless of loaded resources.
 6. Include anti-patterns that prevent common routing mistakes.
 7. Keep examples minimal; reference files for long examples.
@@ -47,6 +47,6 @@ Good triggers are exact: file patterns, command names, artifact names, and user 
 ## Anti-Patterns
 
 - Description lists every related keyword and activates everywhere.
-- Skill body duplicates generic coding advice.
+- Skill or prompt body duplicates generic advice or accumulates increasingly specific rules instead of clarifying the governing principle.
 - Multiple skills claim the same primary trigger.
 - Claude/OpenCode-specific assumptions in a Pi skill without boundary notes.

@@ -23,8 +23,10 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import {
 	type ExtensionAPI,
+	type ExtensionContext,
 	getAgentDir,
 	getMarkdownTheme,
+	truncateTail,
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
@@ -42,18 +44,14 @@ import {
 	resolveSampledDynamicModelFromRegistry,
 } from "../../lib/model-routing.js";
 import { TimingSpan } from "../../lib/observability.js";
+import { wrapCommandRegistration } from "../../lib/slash-command-echo.js";
 import {
 	buildOrchestrationRunEvent,
 	type OrchestrationWorker,
 } from "../../lib/orchestration-telemetry.js";
 import {
-	createTask,
-	getTask,
 	type NormalizedTaskUsage,
 	normalizeTaskUsage,
-	resolveTaskWorkspace,
-	transitionTask,
-	updateTask,
 } from "../../lib/task-registry.js";
 import { registerOrchestrationInvocation } from "../../lib/workflow-friction.js";
 import {
@@ -69,105 +67,15 @@ import {
 	discoverAgents,
 	resolveAgentSkillPaths,
 } from "./agents.js";
-
-/**
- * Operator task registry integration -- defensive wrappers.
- *
- * Subagent execution must never crash because the operator-layer registry
- * fails to write (disk full, permission error, etc.). All registry calls go
- * through these helpers; failures are silently dropped.
- */
-function safeCreateSubagentTask(
-	agentName: string,
-	task: string,
-	cwd: string,
-	step: number | undefined,
-	agentConfig?: AgentConfig,
-	model?: string,
-	effort?: AgentEffort,
-): string | undefined {
-	try {
-		const snippet = task.length > 200 ? `${task.slice(0, 200)}...` : task;
-		const summary = step ? `${agentName} step ${step}` : agentName;
-		const metadata: Record<string, unknown> = { cwd };
-		metadata.model = model ?? agentConfig?.model ?? "default";
-		metadata.effort = effort ?? agentConfig?.effort ?? "default";
-		if (agentConfig?.skills) metadata.skills = agentConfig.skills;
-		const record = createTask({
-			origin: "subagent",
-			summary,
-			agentName,
-			prompt: snippet,
-			workspace: resolveTaskWorkspace(cwd),
-			metadata,
-		});
-		// T14: structured metrics event mirrors the registry write so
-		// downstream analytics can stream events without polling registry
-		// state. Recording errors are silently dropped by recordEvent.
-		recordEvent({
-			event: "task_status_change",
-			data: {
-				taskId: record.id,
-				origin: "subagent",
-				agentName,
-				from: null,
-				to: "pending",
-				step,
-			},
-		});
-		return record.id;
-	} catch {
-		return undefined;
-	}
-}
-
-function safeTransitionTask(
-	id: string | undefined,
-	target: "running" | "completed" | "failed" | "cancelled",
-	opts: {
-		errorReason?: string;
-		usage?: NormalizedTaskUsage;
-	} = {},
-): void {
-	if (!id) return;
-	try {
-		const before = transitionTask(id, target, opts);
-		recordEvent({
-			event: "task_status_change",
-			data: {
-				taskId: id,
-				to: target,
-				retryCount: before.retryCount,
-				errorReason: opts.errorReason,
-				usage: opts.usage,
-			},
-		});
-	} catch {
-		// ignore -- registry should never block subagent flow
-	}
-}
-
-function safeUpdateTaskSnippet(id: string | undefined, snippet: string): void {
-	if (!id) return;
-	try {
-		updateTask(id, { ["pre" + "view"]: snippet.slice(0, 200) });
-	} catch {
-		// ignore
-	}
-}
-
-function safeUpdateTaskSession(
-	id: string | undefined,
-	sessionPath: string | undefined,
-): void {
-	if (!id || !sessionPath) return;
-	try {
-		const metadata = getTask(id)?.metadata ?? {};
-		updateTask(id, { metadata: { ...metadata, sessionPath } });
-	} catch {
-		// ignore
-	}
-}
+import {
+	subagentRunManager,
+	type SubagentRunMode,
+	type SubagentRunUsage,
+} from "./run-manager.js";
+import {
+	formatSubagentActivityStatus,
+	openSubagentDashboard,
+} from "./ui.js";
 
 /**
  * Build a W3C `TRACEPARENT` value for a child subagent process. The parent
@@ -185,6 +93,8 @@ const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
 const STRUCTURED_CHAIN_ARTIFACT_BYTES = 8_000;
 const DELEGATED_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const BACKGROUND_RESULT_MAX_BYTES = 48 * 1024;
+const BACKGROUND_RESULT_MAX_LINES = 1000;
 
 function getDelegatedSessionDir(): string {
 	return path.join(getAgentDir(), "sessions", "subagents");
@@ -407,6 +317,18 @@ function taskUsageSnapshot(usage: UsageStats): NormalizedTaskUsage {
 	});
 }
 
+function runUsageSnapshot(usage: UsageStats): SubagentRunUsage {
+	return {
+		input: usage.input,
+		output: usage.output,
+		cacheRead: usage.cacheRead,
+		cacheWrite: usage.cacheWrite,
+		contextPeakTokens: usage.contextPeakTokens,
+		turns: usage.turns,
+		cost: usage.cost,
+	};
+}
+
 type OutputMode = "inline" | "file-only";
 
 interface SavedOutputReference {
@@ -459,6 +381,23 @@ export function getFinalOutput(messages: Message[]): string {
 		}
 	}
 	return "";
+}
+
+function eventResultText(value: unknown): string {
+	if (!value || typeof value !== "object") return "";
+	const content = (value as { content?: unknown }).content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.flatMap((item) =>
+			item &&
+			typeof item === "object" &&
+			(item as { type?: unknown }).type === "text" &&
+			typeof (item as { text?: unknown }).text === "string"
+				? [(item as { text: string }).text]
+				: [],
+		)
+		.join("\n");
 }
 
 function getResultOutput(result: SingleResult, pretty = false): string {
@@ -808,6 +747,19 @@ function inferWorkflow(task: string): string | undefined {
 	return undefined;
 }
 
+interface SubagentRunContext {
+	owner?: "direct" | "task";
+	orchestrationId?: string;
+	mode?: SubagentRunMode;
+}
+
+export class SubagentAbortError extends Error {
+	constructor() {
+		super("Subagent was aborted");
+		this.name = "SubagentAbortError";
+	}
+}
+
 export async function runSingleAgent(
 	defaultCwd: string,
 	agents: AgentConfig[],
@@ -825,6 +777,7 @@ export async function runSingleAgent(
 	existingTaskId?: string,
 	executionAttemptRunId?: string,
 	sessionOptions?: { continuable?: boolean; sessionPath?: string },
+	runContext?: SubagentRunContext,
 ): Promise<SingleResult> {
 	const runStartedAt = Date.now();
 	const agent = agents.find((a) => a.name === agentName);
@@ -866,6 +819,8 @@ export async function runSingleAgent(
 	let tmpPromptDir: string | null = null;
 	let tmpPromptPath: string | null = null;
 
+	const taskId = existingTaskId;
+	const runId = executionAttemptRunId ?? randomUUID();
 	const currentResult: SingleResult = {
 		agent: agentName,
 		agentSource: agent.source,
@@ -885,10 +840,20 @@ export async function runSingleAgent(
 		model: modelOverride || agent.model,
 		effort: effectiveEffort ?? "default",
 		step,
-		runId: executionAttemptRunId,
+		runId,
+		...(taskId ? { taskId } : {}),
 	};
 
 	const emitUpdate = () => {
+		subagentRunManager.update(runId, {
+			model: currentResult.model,
+			exitCode: currentResult.exitCode,
+			stopReason: currentResult.stopReason,
+			errorMessage: currentResult.errorMessage,
+			sessionPath: currentResult.sessionPath,
+			usage: runUsageSnapshot(currentResult.usage),
+			finalText: getFinalOutput(currentResult.messages),
+		});
 		if (onUpdate) {
 			onUpdate({
 				content: [
@@ -901,23 +866,6 @@ export async function runSingleAgent(
 			});
 		}
 	};
-
-	// Operator task registry: track this subagent invocation as durable work.
-	// Lifecycle: pending -> running (before spawn) -> completed/failed/cancelled.
-	const taskId =
-		existingTaskId ??
-		safeCreateSubagentTask(
-			agentName,
-			task,
-			cwd ?? defaultCwd,
-			step,
-			agent,
-			currentResult.model,
-			effectiveEffort,
-		);
-	const runId = executionAttemptRunId ?? taskId ?? randomUUID();
-	currentResult.runId = runId;
-	currentResult.taskId = taskId;
 	const continuable = sessionOptions?.continuable === true;
 	const delegatedSessionDir = getDelegatedSessionDir();
 	let resumedSessionPath: string | undefined;
@@ -937,6 +885,27 @@ export async function runSingleAgent(
 	} else {
 		args.push("--no-session");
 	}
+	const runController = new AbortController();
+	subagentRunManager.begin(
+		{
+			runId,
+			...(taskId ? { taskId } : {}),
+			...(runContext?.orchestrationId
+				? { orchestrationId: runContext.orchestrationId }
+				: {}),
+			owner: runContext?.owner ?? (taskId ? "task" : "direct"),
+			mode: runContext?.mode ?? (taskId ? "task-execute" : "single"),
+			agent: agentName,
+			task,
+			cwd: cwd ?? defaultCwd,
+			model: currentResult.model,
+			effort: currentResult.effort,
+		},
+		runController,
+	);
+	const forwardAbort = () => runController.abort(signal?.reason);
+	if (signal?.aborted) forwardAbort();
+	else signal?.addEventListener("abort", forwardAbort, { once: true });
 	const planPath = extractPlanPath(task);
 	const workflow = inferWorkflow(task);
 	const timingSpan = new TimingSpan({
@@ -956,20 +925,20 @@ export async function runSingleAgent(
 			reviewer: workflow === "review-it" ? agentName : undefined,
 		},
 	});
-	safeTransitionTask(taskId, "running");
-	let taskFinalized = false;
 	let timingFinished = false;
+	let wasAborted = false;
 
 	try {
+		if (runController.signal.aborted) throw new SubagentAbortError();
 		if (agent.systemPrompt.trim()) {
 			const tmp = await writePromptToTempFile(agent.name, agent.systemPrompt);
 			tmpPromptDir = tmp.dir;
 			tmpPromptPath = tmp.filePath;
 			args.push("--append-system-prompt", tmpPromptPath);
 		}
+		if (runController.signal.aborted) throw new SubagentAbortError();
 
 		args.push(`Task: ${task}`);
-		let wasAborted = false;
 		let unparsedStdout = "";
 
 		const subagentStartedAt = new Date().toISOString();
@@ -1008,6 +977,15 @@ export async function runSingleAgent(
 					type?: string;
 					message?: Message;
 					messages?: Message[];
+					toolCallId?: string;
+					toolName?: string;
+					args?: unknown;
+					partialResult?: unknown;
+					result?: unknown;
+					assistantMessageEvent?: {
+						type?: string;
+						delta?: string;
+					};
 				};
 				try {
 					event = JSON.parse(line) as typeof event;
@@ -1016,9 +994,43 @@ export async function runSingleAgent(
 					return;
 				}
 
+				if (
+					event.type === "message_update" &&
+					typeof event.assistantMessageEvent?.delta === "string" &&
+					(event.assistantMessageEvent.type === "text_delta" ||
+						event.assistantMessageEvent.type === "thinking_delta")
+				) {
+					subagentRunManager.appendLiveText(
+						runId,
+						event.assistantMessageEvent.delta,
+					);
+				}
+
+				if (event.type === "tool_execution_start" && event.toolCallId) {
+					subagentRunManager.startTool(runId, {
+						id: event.toolCallId,
+						name: event.toolName ?? "tool",
+						input:
+							event.args === undefined ? undefined : JSON.stringify(event.args),
+					});
+				}
+
+				if (event.type === "tool_execution_update" && event.toolCallId) {
+					subagentRunManager.updateTool(
+						runId,
+						event.toolCallId,
+						eventResultText(event.partialResult),
+					);
+				}
+
+				if (event.type === "tool_execution_end" && event.toolCallId) {
+					subagentRunManager.endTool(runId, event.toolCallId);
+				}
+
 				if (event.type === "message_end" && event.message) {
 					const msg = event.message as Message;
 					currentResult.messages.push(msg);
+					subagentRunManager.appendMessage(runId, msg);
 
 					if (msg.role === "assistant") {
 						currentResult.usage.turns++;
@@ -1046,7 +1058,9 @@ export async function runSingleAgent(
 				}
 
 				if (event.type === "tool_result_end" && event.message) {
-					currentResult.messages.push(event.message as Message);
+					const message = event.message as Message;
+					currentResult.messages.push(message);
+					subagentRunManager.appendMessage(runId, message);
 					emitUpdate();
 				}
 
@@ -1056,6 +1070,8 @@ export async function runSingleAgent(
 						currentResult.messages.length === 0
 					) {
 						currentResult.messages = event.messages as Message[];
+						for (const message of currentResult.messages)
+							subagentRunManager.appendMessage(runId, message);
 						emitUpdate();
 					}
 					finish(0);
@@ -1084,14 +1100,15 @@ export async function runSingleAgent(
 				finish(1);
 			});
 
-			if (signal) {
-				const killProc = () => {
-					wasAborted = true;
-					terminateProcessTree(proc);
-				};
-				if (signal.aborted) killProc();
-				else signal.addEventListener("abort", killProc, { once: true });
-			}
+			const killProc = () => {
+				wasAborted = true;
+				terminateProcessTree(proc);
+			};
+			if (runController.signal.aborted) killProc();
+			else
+				runController.signal.addEventListener("abort", killProc, {
+					once: true,
+				});
 		});
 
 		currentResult.exitCode = exitCode;
@@ -1106,11 +1123,8 @@ export async function runSingleAgent(
 			(continuable
 				? findDelegatedSession(delegatedSessionDir, runId)
 				: undefined);
-		safeUpdateTaskSession(taskId, currentResult.sessionPath);
-		const taskUsage = taskUsageSnapshot(currentResult.usage);
 		if (wasAborted) {
-			safeTransitionTask(taskId, "cancelled", { usage: taskUsage });
-			taskFinalized = true;
+			currentResult.stopReason = "aborted";
 			timingSpan.finish("cancelled", {
 				exitCode,
 				workflow,
@@ -1118,12 +1132,10 @@ export async function runSingleAgent(
 				planPath,
 			});
 			timingFinished = true;
-			throw new Error("Subagent was aborted");
+			throw new SubagentAbortError();
 		}
 		const isModelError = currentResult.stopReason === "error";
 		if (exitCode === 0 && !isModelError) {
-			safeUpdateTaskSnippet(taskId, getFinalOutput(currentResult.messages));
-			safeTransitionTask(taskId, "completed", { usage: taskUsage });
 			timingSpan.finish("ok", { exitCode, workflow, phase: "run", planPath });
 		} else {
 			const errorReason =
@@ -1132,7 +1144,7 @@ export async function runSingleAgent(
 				(isModelError
 					? "model returned stopReason=error"
 					: `exit code ${exitCode}`);
-			safeTransitionTask(taskId, "failed", { errorReason, usage: taskUsage });
+			currentResult.errorMessage ??= errorReason;
 			timingSpan.finish("error", {
 				exitCode,
 				workflow,
@@ -1142,18 +1154,13 @@ export async function runSingleAgent(
 			});
 		}
 		timingFinished = true;
-		taskFinalized = true;
 		return currentResult;
 	} catch (err) {
-		// Aborts already record cancelled above and set taskFinalized; this
-		// catches unexpected runtime errors only.
-		if (!taskFinalized) {
-			const errorReason = err instanceof Error ? err.message : String(err);
-			safeTransitionTask(taskId, "failed", {
-				errorReason,
-				usage: taskUsageSnapshot(currentResult.usage),
-			});
-		}
+		if (!currentResult.errorMessage)
+			currentResult.errorMessage =
+				err instanceof Error ? err.message : String(err);
+		if (err instanceof SubagentAbortError)
+			currentResult.stopReason = "aborted";
 		if (!timingFinished) {
 			const status =
 				err instanceof Error && /abort|cancel/i.test(err.message)
@@ -1172,6 +1179,25 @@ export async function runSingleAgent(
 		throw err;
 	} finally {
 		currentResult.durationMs = Date.now() - runStartedAt;
+		const cancelled =
+			currentResult.stopReason === "aborted" || runController.signal.aborted;
+		const failed =
+			!cancelled &&
+			(currentResult.exitCode !== 0 ||
+				currentResult.stopReason === "error" ||
+				Boolean(currentResult.errorMessage));
+		subagentRunManager.settle(runId, {
+			status: cancelled ? "cancelled" : failed ? "failed" : "completed",
+			model: currentResult.model,
+			exitCode: currentResult.exitCode,
+			stopReason: currentResult.stopReason,
+			errorMessage: currentResult.errorMessage,
+			sessionPath: currentResult.sessionPath,
+			usage: runUsageSnapshot(currentResult.usage),
+			finalText: getFinalOutput(currentResult.messages),
+			durationMs: currentResult.durationMs,
+		});
+		signal?.removeEventListener("abort", forwardAbort);
 		if (tmpPromptPath)
 			try {
 				fs.unlinkSync(tmpPromptPath);
@@ -1341,6 +1367,13 @@ const SubagentParams = Type.Object({
 			default: false,
 		}),
 	),
+	background: Type.Optional(
+		Type.Boolean({
+			description:
+				"Run transiently in the background and return immediately. Completion is delivered as a follow-up message. Direct runs do not create durable task records.",
+			default: false,
+		}),
+	),
 	confirmProjectAgents: Type.Optional(
 		Type.Boolean({
 			description:
@@ -1363,17 +1396,117 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
+	wrapCommandRegistration(pi);
+	let sessionOpen = true;
+	let statusContext: ExtensionContext | undefined;
+	let unsubscribeStatus: (() => void) | undefined;
+	let renderedStatus: string | undefined;
+
+	const updateStatus = () => {
+		if (!statusContext) return;
+		const nextStatus = formatSubagentActivityStatus(subagentRunManager.list());
+		if (nextStatus === renderedStatus) return;
+		renderedStatus = nextStatus;
+		statusContext.ui.setStatus("subagents", nextStatus);
+	};
+
+	const deliverBackgroundResult = (
+		orchestrationId: string,
+		mode: Exclude<SubagentRunMode, "task-execute">,
+		result?: AgentToolResult<SubagentDetails>,
+		error?: unknown,
+	) => {
+		if (!sessionOpen) return;
+		const rawText = result
+			? result.content
+					.filter((item) => item.type === "text")
+					.map((item) => item.text)
+					.join("\n")
+			: error instanceof Error
+				? error.message
+				: String(error ?? "Background subagent failed without an error message.");
+		const bounded = truncateTail(rawText, {
+			maxBytes: BACKGROUND_RESULT_MAX_BYTES,
+			maxLines: BACKGROUND_RESULT_MAX_LINES,
+		});
+		const failed =
+			Boolean(error) ||
+			Boolean(
+				result?.details?.results.some(
+					(worker) =>
+						worker.exitCode !== 0 ||
+						worker.stopReason === "error" ||
+						worker.stopReason === "aborted",
+				),
+			);
+		const truncationNote = bounded.truncated
+			? "\n\n[Result truncated. Inspect the recent run with /subagents.]"
+			: "";
+		pi.sendMessage(
+			{
+				customType: "subagent-result",
+				content: `Background subagent ${mode} ${orchestrationId} ${failed ? "finished with failures" : "finished"}.\n\n${bounded.content}${truncationNote}`,
+				display: true,
+				details: {
+					orchestrationId,
+					mode,
+					failed,
+				},
+			},
+			{ deliverAs: "followUp", triggerTurn: true },
+		);
+	};
+
+	pi.registerCommand("subagents", {
+		description: "Inspect and manage process-local subagent runs",
+		handler: async (_args, ctx) => {
+			if (ctx.mode !== "tui") {
+				ctx.ui.notify("/subagents requires TUI mode.", "warning");
+				return;
+			}
+			await openSubagentDashboard(ctx, subagentRunManager);
+		},
+	});
+
+	pi.on("session_start", (_event, ctx) => {
+		sessionOpen = true;
+		statusContext = ctx;
+		renderedStatus = undefined;
+		unsubscribeStatus?.();
+		unsubscribeStatus = subagentRunManager.subscribe(updateStatus);
+		updateStatus();
+	});
+
+	pi.on("session_shutdown", () => {
+		sessionOpen = false;
+		unsubscribeStatus?.();
+		unsubscribeStatus = undefined;
+		statusContext?.ui.setStatus("subagents", undefined);
+		statusContext = undefined;
+		renderedStatus = undefined;
+		subagentRunManager.clear({ abortRunning: true });
+	});
+
 	pi.registerTool({
 		name: "subagent",
 		label: "Subagent",
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder), continue (saved session follow-up).",
+			"Foreground execution waits for the result. Set background=true for transient detached execution with follow-up result delivery.",
+			"Direct invocations are process-local and do not create durable task records; use the task tool when durable tracking or dependencies are required.",
 			'Default agent scope is "user" (from ~/.pi/agent/agents).',
 			'To enable project-local agents in .pi/agents, set agentScope: "both" (or "project").',
 			"Optional model overrides the agent frontmatter model. Optional modelSize/modelPolicy parameters dynamically map subagents onto the current provider/model ladder.",
 			"Optional outputSchema validates JSON output and permits one continuation correction.",
 		].join(" "),
+		promptSnippet:
+			"Delegate transient foreground or background work to isolated specialist agents",
+		promptGuidelines: [
+			"Use subagent with background=true for independent transient work, continue useful parent work, and consume the delivered follow-up instead of polling.",
+			"Use foreground subagent execution when the current turn cannot continue without the result or when running a dependent chain.",
+			"Use task instead of subagent when work needs durable tracking, dependencies, or cross-session recovery.",
+		],
 		parameters: SubagentParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
@@ -1392,6 +1525,9 @@ export default function (pi: ExtensionAPI) {
 			const outputSchema = params.outputSchema as unknown as
 				| TSchema
 				| undefined;
+			const background = params.background === true;
+			const executionSignal = background ? undefined : signal;
+			const visibleUpdate = background ? undefined : onUpdate;
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
 			const hasSingle = Boolean(params.agent && params.task);
@@ -1444,6 +1580,8 @@ export default function (pi: ExtensionAPI) {
 				: hasTasks
 					? "parallel"
 					: "single";
+			const executionMode: Exclude<SubagentRunMode, "task-execute"> =
+				hasContinue ? "continue" : originalMode;
 			let orchestrationEmitted = false;
 			const complete = <T extends AgentToolResult<SubagentDetails>>(
 				result: T,
@@ -1556,6 +1694,11 @@ export default function (pi: ExtensionAPI) {
 				try {
 					if (routingExperiment && args[12] === undefined)
 						args[12] = routingExperiment.effort;
+					args[16] ??= {
+						owner: "direct",
+						orchestrationId,
+						mode: executionMode,
+					};
 					if (outputSchema) {
 						args[3] = `${args[3]}\n\n${schemaOutputInstruction(outputSchema)}`;
 						args[15] = { ...(args[15] ?? {}), continuable: true };
@@ -1692,6 +1835,9 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 
+			const executeSelectedMode = async (): Promise<
+				AgentToolResult<SubagentDetails>
+			> => {
 			if (params.continue) {
 				const followUp = params.continue as ContinueParams;
 				const result = await run(
@@ -1701,8 +1847,8 @@ export default function (pi: ExtensionAPI) {
 					followUp.task,
 					followUp.cwd,
 					undefined,
-					signal,
-					onUpdate,
+					executionSignal,
+					visibleUpdate,
 					makeDetails("single"),
 					resolvedModelId,
 					modelSize,
@@ -1752,13 +1898,13 @@ export default function (pi: ExtensionAPI) {
 					);
 
 					// Create update callback that includes all previous results
-					const chainUpdate: OnUpdateCallback | undefined = onUpdate
+					const chainUpdate: OnUpdateCallback | undefined = visibleUpdate
 						? (partial) => {
 								// Combine completed results with current streaming result
 								const currentResult = partial.details?.results[0];
 								if (currentResult) {
 									const allResults = [...results, currentResult];
-									onUpdate({
+									visibleUpdate({
 										content: partial.content,
 										details: makeDetails("chain")(allResults),
 									});
@@ -1773,7 +1919,7 @@ export default function (pi: ExtensionAPI) {
 						taskWithContext,
 						step.cwd,
 						i + 1,
-						signal,
+						executionSignal,
 						chainUpdate,
 						makeDetails("chain"),
 						resolvedModelId,
@@ -1866,10 +2012,10 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				const emitParallelUpdate = () => {
-					if (onUpdate) {
+					if (visibleUpdate) {
 						const running = allResults.filter((r) => r.exitCode === -1).length;
 						const done = allResults.filter((r) => r.exitCode !== -1).length;
-						onUpdate({
+						visibleUpdate({
 							content: [
 								{
 									type: "text",
@@ -1894,7 +2040,7 @@ export default function (pi: ExtensionAPI) {
 							t.task,
 							t.cwd,
 							undefined,
-							signal,
+							executionSignal,
 							// Per-task update callback
 							(partial) => {
 								if (partial.details?.results[0]) {
@@ -1950,8 +2096,8 @@ export default function (pi: ExtensionAPI) {
 					params.task,
 					params.cwd,
 					undefined,
-					signal,
-					onUpdate,
+					executionSignal,
+					visibleUpdate,
 					makeDetails("single"),
 					resolvedModelId,
 					modelSize,
@@ -2013,6 +2159,30 @@ export default function (pi: ExtensionAPI) {
 				],
 				details: makeDetails("single")([]),
 			});
+			};
+
+			if (!background) return executeSelectedMode();
+			void executeSelectedMode()
+				.then((result) =>
+					deliverBackgroundResult(orchestrationId, executionMode, result),
+				)
+				.catch((error) =>
+					deliverBackgroundResult(
+						orchestrationId,
+						executionMode,
+						undefined,
+						error,
+					),
+				);
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Started transient background ${executionMode} ${orchestrationId}. Continue parent work; completion will arrive as a follow-up. Use /subagents to inspect or cancel it.`,
+					},
+				],
+				details: makeDetails(originalMode)([]),
+			};
 		},
 
 		renderCall(args, theme, _context) {
@@ -2022,11 +2192,15 @@ export default function (pi: ExtensionAPI) {
 				: args.modelSize
 					? ` ${theme.fg("muted", `(${args.modelSize}${args.modelPolicy ? `, ${args.modelPolicy}` : ""})`)}`
 					: "";
+			const backgroundHint = args.background
+				? ` ${theme.fg("warning", "(background)")}`
+				: "";
 			if (args.continue) {
 				return new Text(
 					theme.fg("toolTitle", theme.bold("subagent ")) +
 						theme.fg("accent", `continue ${args.continue.agent}`) +
 						theme.fg("muted", ` [${scope}]`) +
+						backgroundHint +
 						`\n  ${theme.fg("dim", args.continue.task)}`,
 					0,
 					0,
@@ -2037,7 +2211,8 @@ export default function (pi: ExtensionAPI) {
 					theme.fg("toolTitle", theme.bold("subagent ")) +
 					theme.fg("accent", `chain (${args.chain.length} steps)`) +
 					theme.fg("muted", ` [${scope}]`) +
-					modelHint;
+					modelHint +
+					backgroundHint;
 				for (let i = 0; i < Math.min(args.chain.length, 3); i++) {
 					const step = args.chain[i];
 					// Clean up {previous} placeholder for display
@@ -2060,7 +2235,8 @@ export default function (pi: ExtensionAPI) {
 					theme.fg("toolTitle", theme.bold("subagent ")) +
 					theme.fg("accent", `parallel (${args.tasks.length} tasks)`) +
 					theme.fg("muted", ` [${scope}]`) +
-					modelHint;
+					modelHint +
+					backgroundHint;
 				for (const t of args.tasks.slice(0, 3)) {
 					const snippet =
 						t.task.length > 40 ? `${t.task.slice(0, 40)}...` : t.task;
@@ -2080,7 +2256,8 @@ export default function (pi: ExtensionAPI) {
 				theme.fg("toolTitle", theme.bold("subagent ")) +
 				theme.fg("accent", agentName) +
 				theme.fg("muted", ` [${scope}]`) +
-				modelHint;
+				modelHint +
+				backgroundHint;
 			text += `\n  ${theme.fg("dim", snippet)}`;
 			return new Text(text, 0, 0);
 		},

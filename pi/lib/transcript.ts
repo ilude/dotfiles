@@ -29,7 +29,7 @@ import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 // ---------------------------------------------------------------------------
 
 /** Current schema version. Parsers MUST reject unknown major versions. */
-export const SCHEMA_VERSION = "1.0.0";
+export const SCHEMA_VERSION = "1.1.0";
 
 /** Major version derived from SCHEMA_VERSION; used by `isCompatibleSchemaVersion`. */
 const SCHEMA_MAJOR = SCHEMA_VERSION.split(".")[0];
@@ -74,12 +74,14 @@ const CIRCUIT_BREAKER_THRESHOLD = 3;
 // ---------------------------------------------------------------------------
 
 /**
- * Common envelope. Required: `schema_version` (first), `session_id`, `turn_id`,
- * `trace_id`, `event_type`, `timestamp` (ISO wall-clock), `monotonic_ns` (BigInt
- * stringified for JSON, stable across NTP/VM resume).
+ * Common envelope. Required: `schema_version` (first), `event_id`, `session_id`,
+ * `turn_id`, `trace_id`, `event_type`, `timestamp` (ISO wall-clock), `monotonic_ns`
+ * (BigInt stringified for JSON, stable across NTP/VM resume). Consumers must accept
+ * schema v1 records without `event_id`, which were written before event IDs existed.
  */
 export interface TranscriptEnvelope {
 	schema_version: string;
+	event_id: string;
 	session_id: string;
 	turn_id: string;
 	message_id?: string;
@@ -146,7 +148,7 @@ export interface TranscriptDisabledPayload {
  * assistant_message, tool_call, tool_result, model_select, etc.).
  */
 export interface TranscriptEvent {
-	envelope: Omit<TranscriptEnvelope, "schema_version" | "monotonic_ns" | "timestamp"> & {
+	envelope: Omit<TranscriptEnvelope, "schema_version" | "event_id" | "monotonic_ns" | "timestamp"> & {
 		/** Optional override for the wall-clock timestamp. Writer fills it otherwise. */
 		timestamp?: string;
 		/** Optional override for monotonic_ns. Writer fills it otherwise. */
@@ -576,6 +578,7 @@ export class TranscriptWriter {
 		const monotonic = input.monotonic_ns ?? this.monotonicFn();
 		return {
 			schema_version: SCHEMA_VERSION,
+			event_id: crypto.randomUUID(),
 			session_id: input.session_id ?? this.sessionId,
 			turn_id: input.turn_id,
 			message_id: input.message_id,
@@ -711,9 +714,8 @@ export class TranscriptWriter {
 					// non-fatal
 				}
 			}
-			const eventId = envelope.message_id ?? envelope.tool_call_id ?? envelope.trace_id;
 			const safeField = field.replace(/[^A-Za-z0-9_-]/g, "_");
-			const fileName = `${eventId}-${safeField}.json.gz`;
+			const fileName = `${envelope.event_id}-${safeField}.json.gz`;
 			const fullPath = path.join(this.state.spillDir, fileName);
 			const buffer = Buffer.from(serialized, "utf-8");
 			const sha = crypto.createHash("sha256").update(buffer).digest("hex");

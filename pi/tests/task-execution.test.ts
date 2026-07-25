@@ -71,6 +71,10 @@ Test agent.
 		process.env.PI_OPERATOR_DIR = path.join(tmpDir, "operator");
 		process.env.PI_METRICS_DIR = path.join(tmpDir, "metrics");
 		spawnMock.mockReset();
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		subagentRunManager.clear({ abortRunning: true });
 	});
 
 	afterEach(async () => {
@@ -81,6 +85,10 @@ Test agent.
 		if (previousRoutingSampleRate === undefined)
 			delete process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
 		else process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = previousRoutingSampleRate;
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		subagentRunManager.clear({ abortRunning: true });
 		await fs.promises.rm(tmpDir, { recursive: true, force: true });
 		vi.clearAllMocks();
 	});
@@ -147,6 +155,16 @@ Test agent.
 		);
 		expect(spawnMock).toHaveBeenCalledTimes(1);
 		expect(spawnMock.mock.calls[0][1]).toContain("anthropic/claude-sonnet-4-6");
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		expect(
+			subagentRunManager.list().find((run) => run.taskId === id),
+		).toMatchObject({
+			owner: "task",
+			mode: "task-execute",
+			status: "completed",
+		});
 
 		const result = await task.execute(
 			"task-output",
@@ -161,6 +179,115 @@ Test agent.
 			expect.stringContaining(`task=${id}`),
 			{ deliverAs: "followUp" },
 		);
+	});
+
+	it("cancels a task-backed child through the shared run manager", async () => {
+		const proc = createMockProcess();
+		spawnMock.mockImplementation(() => proc);
+		const pi = createMockPi();
+		const tasks = await import("../extensions/tasks.ts");
+		const registry = await import("../lib/task-registry.ts");
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		tasks.default(pi as Parameters<typeof tasks.default>[0]);
+		const task = pi._getTool("task");
+		if (!task) throw new Error("task tool not registered");
+		const ctx = createMockCtx({ cwd: tmpDir });
+		const created = await task.execute(
+			"create-cancellable-task",
+			{
+				action: "create",
+				summary: "cancellable worker",
+				agent: "tester",
+				task: "Wait until cancelled",
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const id = created.details.record.id as string;
+		await task.execute(
+			"execute-cancellable-task",
+			{ action: "execute", id },
+			undefined,
+			undefined,
+			ctx,
+		);
+		await vi.waitFor(() =>
+			expect(
+				subagentRunManager.list().find((run) => run.taskId === id)?.status,
+			).toBe("running"),
+		);
+		const run = subagentRunManager.list().find((entry) => entry.taskId === id);
+		expect(run).toBeDefined();
+		expect(subagentRunManager.cancel(run!.runId)).toBe(true);
+		proc.emit("close", 1);
+		await vi.waitFor(() => expect(registry.getTask(id)?.state).toBe("cancelled"));
+		expect(subagentRunManager.get(run!.runId)?.status).toBe("cancelled");
+	});
+
+	it("fails durable execution when the child reports a model error", async () => {
+		spawnMock.mockImplementation(() => {
+			const proc = createMockProcess();
+			queueMicrotask(() => {
+				proc.stdout.emit(
+					"data",
+					`${JSON.stringify({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [{ type: "text", text: "model failed" }],
+							stopReason: "error",
+							errorMessage: "provider rejected the request",
+						},
+					})}\n`,
+				);
+				proc.emit("close", 0);
+			});
+			return proc;
+		});
+		const pi = createMockPi();
+		const tasks = await import("../extensions/tasks.ts");
+		const registry = await import("../lib/task-registry.ts");
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		tasks.default(pi as Parameters<typeof tasks.default>[0]);
+		const task = pi._getTool("task");
+		if (!task) throw new Error("task tool not registered");
+		const ctx = createMockCtx({ cwd: tmpDir });
+		const created = await task.execute(
+			"create-model-error-task",
+			{
+				action: "create",
+				summary: "model error worker",
+				agent: "tester",
+				task: "Fail at the provider",
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const id = created.details.record.id as string;
+		await task.execute(
+			"execute-model-error-task",
+			{ action: "execute", id },
+			undefined,
+			undefined,
+			ctx,
+		);
+		await vi.waitFor(() => expect(registry.getTask(id)?.state).toBe("failed"));
+		expect(registry.getTask(id)?.errorReason).toContain("code 1");
+		expect(
+			subagentRunManager.list().find((run) => run.taskId === id),
+		).toMatchObject({
+			status: "failed",
+			stopReason: "error",
+			errorMessage: "provider rejected the request",
+		});
 	});
 
 	it("samples modelSize task execution and records outcome telemetry", async () => {

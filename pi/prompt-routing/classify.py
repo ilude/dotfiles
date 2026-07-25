@@ -37,6 +37,8 @@ import hashlib
 import json
 import os
 import sys
+import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -70,6 +72,10 @@ def _parse_args() -> argparse.Namespace:
         "--prompt-file",
         type=Path,
         help="Read the prompt from a UTF-8 text file instead of argv/stdin",
+    )
+    parser.add_argument(
+        "--route-decision-id",
+        help="Correlation ID supplied by the Pi prompt-router invocation",
     )
     parser.add_argument(
         "--artifact-inventory",
@@ -110,9 +116,7 @@ def _safe_default_result(reason: str) -> dict:
     return {
         "schema_version": "3.0.0",
         "primary": {"model_tier": "core", "effort": "medium"},
-        "candidates": [
-            {"model_tier": "core", "effort": "medium", "confidence": 0.0}
-        ],
+        "candidates": [{"model_tier": "core", "effort": "medium", "confidence": 0.0}],
         "confidence": 0.0,
         "reason": reason,
     }
@@ -125,12 +129,22 @@ def _unclassified_log_path() -> Path:
     return Path(__file__).parent / "logs" / "unclassified_prompts.jsonl"
 
 
-def _log_unclassified_prompt(prompt: str, mode: str, exc: Exception) -> None:
+def _log_unclassified_prompt(
+    prompt: str,
+    mode: str,
+    exc: Exception,
+    route_decision_id: str | None,
+) -> None:
     try:
         log_path = _unclassified_log_path()
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).isoformat()
         event = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "schema_version": 1,
+            "id": str(uuid.uuid4()),
+            "ts": timestamp,
+            "timestamp": timestamp,
+            "route_decision_id": route_decision_id,
             "prompt": prompt,
             "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
             "classifier": mode,
@@ -146,10 +160,13 @@ def _log_unclassified_prompt(prompt: str, mode: str, exc: Exception) -> None:
 
 prompt = ""
 _classifier_mode = "t2"
+_route_decision_id = f"route-{uuid.uuid4()}"
 
 try:
     _args = _parse_args()
     _classifier_mode = _args.classifier
+    _route_decision_id = _args.route_decision_id or _route_decision_id
+    _classification_started_at = time.perf_counter()
 
     if _args.artifact_inventory:
         sys.stdout.write(
@@ -167,7 +184,7 @@ try:
     if _classifier_mode == "t2":
         from router import recommend
 
-        result = recommend(prompt)
+        result = recommend(prompt, route_decision_id=_route_decision_id)
     elif _classifier_mode == "lgbm":
         import hashlib
         from pathlib import Path
@@ -211,11 +228,20 @@ try:
         result.pop("ensemble_rule", None)
 
     result = _apply_primary_floor(prompt, result)
+    if _classifier_mode != "t2":
+        from routing_log import append_routing_log
+
+        append_routing_log(
+            prompt,
+            result,
+            (time.perf_counter() - _classification_started_at) * 1e6,
+            _route_decision_id,
+        )
     sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
     sys.exit(0)
 
 except Exception as exc:
-    _log_unclassified_prompt(prompt, _classifier_mode, exc)
+    _log_unclassified_prompt(prompt, _classifier_mode, exc, _route_decision_id)
     sys.stdout.write(
         json.dumps(_safe_default_result("classifier_exception"), ensure_ascii=False) + "\n"
     )

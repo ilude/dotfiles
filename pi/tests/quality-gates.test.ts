@@ -894,6 +894,22 @@ describe("quality-gates extension", () => {
 				expect(metrics).toContain('"validator":"batch-failure-validator"');
 				expect(metrics).toContain('"outcome":"failed"');
 				expect(metrics).toContain('"event":"quality_gate_notification"');
+				const validationRecord = metrics
+					.split("\n")
+					.filter(Boolean)
+					.map(
+						(line) =>
+							JSON.parse(line) as {
+								event: string;
+								data?: Record<string, unknown>;
+							},
+					)
+					.find(
+						(record) =>
+							record.event === "quality_gate_validator" &&
+							record.data?.validator === "batch-failure-validator",
+					);
+				expect(validationRecord?.data?.schemaVersion).toBe(1);
 			} finally {
 				fs.rmSync(root, { recursive: true, force: true });
 			}

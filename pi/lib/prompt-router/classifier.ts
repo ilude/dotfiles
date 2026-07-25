@@ -54,9 +54,16 @@ async function logClassifierFailure(
 ): Promise<void> {
 	try {
 		await fsp.mkdir(path.dirname(CLASSIFIER_FAILURE_LOG), { recursive: true });
+		const timestamp = new Date().toISOString();
 		await fsp.appendFile(
 			CLASSIFIER_FAILURE_LOG,
-			`${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`,
+			`${JSON.stringify({
+				schema_version: 1,
+				id: crypto.randomUUID(),
+				ts: timestamp,
+				timestamp,
+				...event,
+			})}\n`,
 		);
 	} catch {
 		// Logging must never break routing.
@@ -173,6 +180,7 @@ export async function classifyWithV3(
 	text: string,
 	ctx: ClassifierContext,
 	mode: RouterClassifierMode = loadRouterClassifierMode(),
+	routeDecisionId?: string,
 ): Promise<ClassifierRecommendation | null> {
 	const startedAt = Date.now();
 	let result: { stdout: string; stderr: string; code: number };
@@ -191,6 +199,9 @@ export async function classifyWithV3(
 				CLASSIFY_SCRIPT,
 				"--classifier",
 				mode,
+				...(routeDecisionId
+					? ["--route-decision-id", routeDecisionId]
+					: []),
 				"--prompt-file",
 				promptFile,
 			],
@@ -211,6 +222,7 @@ export async function classifyWithV3(
 			classifier_mode: mode,
 			error: msg,
 			prompt_hash: promptHash(text),
+			route_decision_id: routeDecisionId ?? null,
 			prompt_length: text.length,
 			elapsed_ms: Date.now() - startedAt,
 		});
@@ -250,6 +262,7 @@ export async function classifyWithV3(
 			stdout_preview: previewText(stdout),
 			stderr_preview: previewText(stderr),
 			prompt_hash: promptHash(text),
+			route_decision_id: routeDecisionId ?? null,
 			prompt_length: text.length,
 			elapsed_ms: Date.now() - startedAt,
 		});
@@ -282,6 +295,7 @@ export async function classifyWithV3(
 			stdout_preview: previewText(stdout),
 			stderr_preview: previewText(stderr),
 			prompt_hash: promptHash(text),
+			route_decision_id: routeDecisionId ?? null,
 			prompt_length: text.length,
 			elapsed_ms: Date.now() - startedAt,
 		});

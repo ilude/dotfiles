@@ -93,12 +93,45 @@ describe("damage-control judge", () => {
 			}),
 		);
 		expect(record).toMatchObject({
+			schemaVersion: 1,
+			id: expect.any(String),
+			ts: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
 			eventId: "event-1",
 			verdict: "allow",
 			reason: "contained delete",
 			model: "openai-codex/gpt-5.6-luna",
 		});
+		expect(record.ts).toBe(record.recordedAt);
 		expect(listDamageControlJudgeRecords()).toMatchObject([record]);
+	});
+
+	it("reads legacy records without structured schema fields", () => {
+		const file = path.join(
+			process.env.PI_OPERATOR_DIR ?? "",
+			"damage-control",
+			"judge.jsonl",
+		);
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(
+			file,
+			`${JSON.stringify({
+				eventId: "legacy-event",
+				verdict: "ask",
+				reason: "legacy record",
+				model: "openai-codex/gpt-5.6-luna",
+				latencyMs: 1,
+				recordedAt: "2026-01-01T00:00:00.000Z",
+			})}\n`,
+			"utf-8",
+		);
+
+		expect(listDamageControlJudgeRecords()).toEqual([
+			expect.objectContaining({
+				eventId: "legacy-event",
+				verdict: "ask",
+				recordedAt: "2026-01-01T00:00:00.000Z",
+			}),
+		]);
 	});
 
 	it("accepts only a verdict and one non-empty line of reason", () => {

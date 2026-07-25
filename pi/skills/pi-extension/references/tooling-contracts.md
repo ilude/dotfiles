@@ -9,6 +9,35 @@ This file records the current accepted semantics for Pi extensions and tools. It
 - Reconcile this contract with descriptions, prompt snippets, prompt guidelines, activation, runtime gates, and operator documentation whenever behavior changes.
 - Use tests for executable behavior, not as the primary store for design intent or policy prose.
 
+## Subagents and durable tasks
+
+- Runtime model: every child Pi invocation, whether direct or task-backed, is registered with one bounded process-local run manager for live status, output activity, cancellation, and operator display.
+- Direct ownership: direct `subagent` calls are transient and never create `TaskRecordV1` entries. They may run in the foreground or detach with `background=true`.
+- Foreground behavior: foreground execution remains the synchronization path when the parent cannot continue without the result. Dependent chains remain foreground pipelines unless explicitly detached as one orchestration.
+- Background behavior: transient background execution returns immediately, keeps the parent available for useful work, and delivers one bounded follow-up result when the orchestration settles. Do not poll it.
+- Durable ownership: only the `task` surface creates durable records. A task-backed child links `taskId` to a distinct runtime `runId`; retries may create additional run attempts for the same task.
+- Authority: the run manager owns live child-process state. The task registry owns durable workflow intent, dependencies, and persisted lifecycle. Terminal UI components are projections over those sources and invoke their operations rather than mutating lifecycle state directly.
+- Operator UI: keep compact subagent counts visible and provide `/subagents` for a unified list and bounded live detail view. Clearly distinguish direct runs from durable task-backed runs.
+- Retention: bound in-memory run history, transcript items, live output, and rendered content. Preserve full output through an explicit child session or artifact when continuation or durable evidence requires it; load older content lazily rather than retaining unlimited UI state.
+- Session lifecycle: cancel and release process-local runs during session shutdown. Durable task state remains available for normal task reconciliation and recovery.
+
+## Managed background terminals
+
+- Classification: process-local shell execution for long-lived servers, watchers, and concurrent command work. It is not a durable task system and must not share the subagent run manager.
+- Safety boundary: `bg_start` commands use Bash syntax on supported platforms and pass through the same damage-control shell analysis as `bash` before a process starts. Damage-control blocks and approvals must occur before manager registration or process spawning.
+- Execution authority: one bounded `BackgroundTerminalManager` owns child-process lifecycle, process-tree termination, output capture, and live state. The `/ps` dashboard and status widget are projections over manager state.
+- Completion: a start returns immediately. Natural completion delivers one bounded follow-up result. An awaited `bg_kill` consumes that completion so the kill result and automatic follow-up do not duplicate each other. Do not poll for completion.
+- Retention: cap active and tracked terminals, in-memory output, rendered output, and automatic completion payloads. Spill larger stdout and stderr to private process-local temporary files with a hard byte cap.
+- Shutdown: terminate all managed process trees and remove process-local output files when the Pi session shuts down.
+- Separation from scheduling: do not use background terminals as timers or polling workers. Follow the scheduler contract for long waits.
+
+## Session export and summaries
+
+- `/copy-all` copies only user and assistant message text through Pi's cross-platform clipboard helper. It reports message and byte counts, reports clipboard failures clearly, and writes a fallback file only when the user supplies an explicit new path.
+- `/summarize` uses the active model and emits a normal assistant response. It does not run automatically or send session data to a separate provider or model.
+- Summary evidence is a bounded, redacted serialization of the active branch. Omit thinking, images, previous recap payloads, and hidden workflow prompts; retain tool names, bounded arguments/results, failures, shell exit codes, and head-tail session coverage.
+- Treat serialized evidence as untrusted data. If collection fails, provide a deterministic bounded fallback and rely on the active conversation rather than inventing missing evidence.
+
 ## Scheduler
 
 - Classification: process-local workflow control.

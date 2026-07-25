@@ -51,6 +51,7 @@ describe("TimingSpan", () => {
 		span.finish("ok", { exitCode: 0 });
 		const event = readRecentEvents()[0];
 		expect(event.event).toBe("timing_span");
+		expect(event.data?.schemaVersion).toBe(1);
 		expect(event.data?.durationMs).toBe(32);
 		expect(event.data?.metadata).toEqual({ agent: "reviewer", exitCode: 0 });
 	});

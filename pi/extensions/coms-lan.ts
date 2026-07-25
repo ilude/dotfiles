@@ -64,6 +64,18 @@ type AuditEvent = {
 	reason?: string;
 };
 
+type AuditRecord = {
+	schemaVersion: 1;
+	id: string;
+	ts: string;
+	type: string;
+	nodeId: string;
+	remoteNodeId?: string;
+	messageId?: string;
+	result?: string;
+	reason?: string;
+};
+
 export type ComsLanHubOptions = {
 	stateDir?: string;
 	label?: string;
@@ -495,7 +507,9 @@ export class ComsLanHub {
 		const file = path.join(this.dir, "audit.jsonl");
 		if (fs.existsSync(file) && fs.statSync(file).size > MAX_LOG_BYTES)
 			fs.renameSync(file, path.join(this.dir, "audit.jsonl.1"));
-		const clean: Record<string, string> = {
+		const clean: AuditRecord = {
+			schemaVersion: 1,
+			id: crypto.randomUUID(),
 			ts: new Date().toISOString(),
 			type: sanitizeValue(event.type),
 			nodeId: sanitizeValue(event.nodeId),

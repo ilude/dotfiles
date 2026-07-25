@@ -87,6 +87,7 @@ __pycache__/
 *.egg-info/
 uv.lock
 !pi/prompt-routing/uv.lock
+!pi/analytics/uv.lock
 
 # Prompt-router local Python/runtime artifacts
 pi/prompt-routing/.venv/

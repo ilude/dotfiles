@@ -1,8 +1,3 @@
----
-description: Concise recap of this session and notable workflow friction
-argument-hint: "[focus]"
----
-
 Summarize the work done in this session as a compact handoff note.
 
 Additional focus: $ARGUMENTS

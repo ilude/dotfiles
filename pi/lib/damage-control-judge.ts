@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -37,6 +38,9 @@ export interface JudgeDamageControlInput {
 }
 
 export interface DamageControlJudgeRecord {
+	schemaVersion?: 1;
+	id?: string;
+	ts?: string;
 	eventId: string;
 	verdict: DamageControlJudgeVerdict;
 	reason: string;
@@ -241,13 +245,17 @@ function recordJudgeResult(
 	reason: string,
 	startedAt: number,
 ): DamageControlJudgeRecord {
+	const ts = new Date().toISOString();
 	const record: DamageControlJudgeRecord = {
+		schemaVersion: 1,
+		id: crypto.randomUUID(),
+		ts,
 		eventId,
 		verdict,
 		reason,
 		model: JUDGE_MODEL,
 		latencyMs: Date.now() - startedAt,
-		recordedAt: new Date().toISOString(),
+		recordedAt: ts,
 	};
 	try {
 		const file = getDamageControlJudgeLogPath();
@@ -274,6 +282,10 @@ function isJudgeRecord(value: unknown): value is DamageControlJudgeRecord {
 	if (!value || typeof value !== "object") return false;
 	const record = value as Record<string, unknown>;
 	return (
+		(typeof record.schemaVersion === "undefined" ||
+			record.schemaVersion === 1) &&
+		(typeof record.id === "undefined" || typeof record.id === "string") &&
+		(typeof record.ts === "undefined" || typeof record.ts === "string") &&
 		typeof record.eventId === "string" &&
 		(record.verdict === "allow" ||
 			record.verdict === "ask" ||

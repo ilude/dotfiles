@@ -4,6 +4,7 @@
 // Local changes: this version computes usage with a deterministic TypeScript parser
 // instead of asking the agent to rebuild parsing scripts from prompt text.
 
+import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import { stat } from "node:fs/promises";
 import * as os from "node:os";
@@ -186,10 +187,11 @@ async function refreshPricingCache(cachePath: string): Promise<void> {
 
 async function appendUsageLog(event: Record<string, unknown>): Promise<void> {
 	const logPath = path.join(resolveAgentDir(), "logs", "usage.jsonl");
+	const ts = new Date().toISOString();
 	await fs.mkdir(path.dirname(logPath), { recursive: true });
 	await fs.appendFile(
 		logPath,
-		`${JSON.stringify({ timestamp: new Date().toISOString(), ...event })}\n`,
+		`${JSON.stringify({ ...event, schemaVersion: 1, id: crypto.randomUUID(), ts, timestamp: ts })}\n`,
 	);
 }
 

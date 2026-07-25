@@ -1246,7 +1246,7 @@ describe("damage-control refactor hardening", () => {
 		).resolves.toMatchObject({ block: true });
 	});
 
-	it("real tracked rules block dangerous bash command strings through the registered handler", async () => {
+	it("real tracked rules block dangerous bash and background command strings through the registered handler", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		type Handler = (
 			event: { toolName: string; input: Record<string, string> },
@@ -1272,10 +1272,58 @@ describe("damage-control refactor hardening", () => {
 				ctx,
 			),
 		).resolves.toBeUndefined();
-		for (const command of ["git reset --hard", "git clean -fd"]) {
+		for (const [toolName, command] of [
+			["bash", "git reset --hard"],
+			["bg_start", "git clean -fd"],
+		] as const) {
 			await expect(
-				handlers[1]({ toolName: "bash", input: { command } }, ctx),
+				handlers[1]({ toolName, input: { command } }, ctx),
 			).resolves.toMatchObject({ block: true });
+		}
+	});
+
+	it("evaluates background commands against their effective working directory", async () => {
+		const fs = await import("node:fs");
+		const os = await import("node:os");
+		const path = await import("node:path");
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-dc-bg-cwd-"));
+		const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pi-dc-bg-outside-"));
+		try {
+			fs.mkdirSync(path.join(root, "subdir", "build"), { recursive: true });
+			fs.symlinkSync(
+				outside,
+				path.join(root, "build"),
+				process.platform === "win32" ? "junction" : "dir",
+			);
+			const mod = await import("../extensions/damage-control.ts");
+			type Handler = (
+				event: { toolName: string; input: Record<string, string> },
+				ctx: { cwd: string; ui: Record<string, unknown> },
+			) => unknown;
+			const handlers: Handler[] = [];
+			mod.default({
+				on: vi.fn((name: string, handler: Handler) => {
+					if (name === "tool_call") handlers.push(handler);
+				}),
+				registerCommand: vi.fn(),
+				sendMessage: vi.fn(),
+			} as unknown as Parameters<typeof mod.default>[0]);
+
+			await expect(
+				handlers[1](
+					{
+						toolName: "bg_start",
+						input: { command: "rm -rf build", working_dir: "subdir" },
+					},
+					{
+						cwd: root,
+						ui: { setStatus: vi.fn(), notify: vi.fn(), confirm: vi.fn() },
+					},
+				),
+			).resolves.toBeUndefined();
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+			fs.rmSync(outside, { recursive: true, force: true });
 		}
 	});
 

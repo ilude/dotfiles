@@ -1,64 +1,40 @@
 # Plan an Executable Change
 
-Turn `$ARGUMENTS` and relevant conversation context into a standalone
+Turn `$ARGUMENTS` and relevant conversation context into
 `.specs/{slug}/plan.md`. Do not implement the plan.
 
-## Goal and Scope
+## Method
 
-Use an explicitly provided PRD; otherwise use the user's stated goal and
+Use an explicitly provided PRD; otherwise use the latest stated goal and
 constraints. Never choose a PRD merely because it is newest. If no substantive
-goal exists, ask: "What should this plan accomplish? Describe the goal and any
-constraints."
+goal exists, ask what the plan should accomplish.
 
-Produce the smallest critical path that achieves the outcome:
-
-- Preserve explicit decisions, behavior, interfaces, and scope limits.
-- Prefer existing maintained mechanisms over new frameworks or abstractions.
-- Exclude adjacent defects, generic hardening, future lifecycle concerns, and
-  hypothetical requirements.
-- Resolve decisions that block the first task. Make later unknowns preflight
-  checks with stop conditions.
-- Ask only when ambiguity changes the outcome, destructive scope, or approval.
-- Inspect only enough to confirm ownership, files, entrypoints, dependencies,
+- Treat the latest user intent as authoritative when it changes earlier
+  assumptions.
+- Plan the smallest complete outcome using the existing mechanism.
+- Do not invent architecture for later stages or hypothetical requirements.
+- When uncertainty changes the design, make the first task the cheapest check or
+  implementation attempt that resolves it.
+- Preserve explicit behavior, interfaces, scope limits, and real safety
+  boundaries. Exclude adjacent defects, generic hardening, and future lifecycle
+  work.
+- Inspect only enough to confirm ownership, paths, entrypoints, dependencies,
   validation, and a collision-free slug.
-- Planning is read-only except for the plan. Do not prescribe workers or runtime.
-
-Remove any task whose absence would not break the requested outcome or a real
-safety boundary.
-
-## Proportionality and Safety
-
-Use the lowest level justified by the affected state:
-
-- **Disposable or Git-recoverable local work:** rely on reproducibility and Git.
-  Do not add backups, rollback sections, approvals, evidence files, or archives.
-- **Shared but reversible external state:** name the target, required approval,
-  stop condition, and one concise rollback. Record a prior revision only when
-  recovery needs it.
-- **Durable, destructive, difficult-to-recreate, or production state:** include
-  explicit approval, backup and restore or verified no-prior-state handling,
-  rollback boundaries, and staged validation.
-
-Do not escalate controls merely because work technically mutates state. Ask
-before destroying data of unknown value. Ordinary local work should have 1-3
-tasks; add stages or operational handling only for real dependencies or risk.
+- Planning is read-only except for the plan artifact.
 
 ## Plan Contract
 
-Include:
+Use one checkbox list with 1-3 tasks. Each task names the affected files or
+targets, dependencies only when present, the action, observable acceptance, and
+relevant verification.
 
-- context, objective, boundaries, and relevant assumptions;
-- one checkbox list whose tasks name files or targets, dependencies when present,
-  action, observable acceptance, and relevant verification;
-- direct validation of the changed workflow;
-- current status, blocker if any, and next action.
+Include context, boundaries, assumptions, safety, current status, or blockers
+only when they change execution. For shared or live state, name the target, stop
+condition, and concise rollback required by active instructions.
 
-Never assign overlapping same-file write scopes to parallel tasks; combine them
-or add a dependency. Do not create a separate archive, evidence, safety,
-documentation, or validation task unless it performs substantive required work.
-
-Before writing, verify referenced paths and commands, dependency order,
-workflow-level validation, and decisions blocking the first task.
+Remove any task, section, or implementation decision whose absence would not
+break the requested outcome or a real safety boundary. Before writing, verify
+referenced paths and commands, dependency order, and workflow-level validation.
 
 ## Artifact and Report
 

@@ -59,6 +59,7 @@ def clf():
         f"router_v3.joblib SHA256 mismatch\n  expected: {expected}\n  actual: {actual}"
     )
     import joblib
+
     return joblib.load(MODEL_PATH)
 
 
@@ -112,11 +113,8 @@ class TestSHA256Verification:
         if not MODEL_PATH.exists() or not HASH_PATH.exists():
             pytest.skip("artifacts missing")
 
-
         # Patch _HASH_PATH to point to a sidecar with a wrong hash
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".sha256", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sha256", delete=False) as f:
             f.write("a" * 64)  # valid hex, wrong value
             bad_hash_path = Path(f.name)
 
@@ -252,6 +250,8 @@ class TestClassifyOutput:
                 str(CLASSIFY_PY),
                 "--classifier",
                 "t2",
+                "--route-decision-id",
+                "route-unclassified-test",
                 "--prompt-file",
                 str(prompt_file),
             ],
@@ -274,6 +274,10 @@ class TestClassifyOutput:
         events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
         assert len(events) == 1
         assert events[0]["prompt"] == prompt
+        assert events[0]["schema_version"] == 1
+        assert events[0]["id"]
+        assert events[0]["route_decision_id"] == "route-unclassified-test"
+        assert events[0]["timestamp"]
         assert events[0]["classifier"] == "t2"
         assert events[0]["fallback_route"] == {"model_tier": "core", "effort": "medium"}
         assert "forced classifier import failure" in events[0]["error"]
@@ -290,6 +294,7 @@ class TestRouterContract:
             pytest.skip("model missing")
         sys.path.insert(0, str(PROMPT_ROUTING))
         from router import recommend
+
         result = recommend("What is Python?")
         assert result["schema_version"] == SCHEMA_VERSION
 
@@ -298,6 +303,7 @@ class TestRouterContract:
             pytest.skip("model missing")
         sys.path.insert(0, str(PROMPT_ROUTING))
         from router import recommend
+
         result = recommend("Write a binary search in Python.")
         assert result["primary"]["model_tier"] in VALID_MODEL_TIERS
         assert result["primary"]["effort"] in VALID_EFFORTS
@@ -307,6 +313,7 @@ class TestRouterContract:
             pytest.skip("model missing")
         sys.path.insert(0, str(PROMPT_ROUTING))
         from router import recommend
+
         result = recommend("")
         assert result["primary"]["model_tier"] == "core"
         assert result["schema_version"] == SCHEMA_VERSION
@@ -316,14 +323,12 @@ class TestRouterContract:
             pytest.skip("model missing")
         sys.path.insert(0, str(PROMPT_ROUTING))
         from router import recommend
+
         TIER_ORDER = {"mini": 0, "core": 1, "large": 2}
         EFFORT_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3}
         result = recommend("Design a distributed consensus protocol.")
         candidates = result["candidates"]
-        costs = [
-            (TIER_ORDER[c["model_tier"]], EFFORT_ORDER[c["effort"]])
-            for c in candidates
-        ]
+        costs = [(TIER_ORDER[c["model_tier"]], EFFORT_ORDER[c["effort"]]) for c in candidates]
         assert costs == sorted(costs), "Candidates not ordered by ascending cost"
 
 
@@ -357,23 +362,25 @@ class TestGateMetricsFixture:
 
         rows = [
             self._make_row("core", "medium"),  # gt core
-            self._make_row("large", "high"),       # gt large
+            self._make_row("large", "high"),  # gt large
             # gt mini -- NOT catastrophic even if under-routed
             self._make_row("mini", "low"),
         ]
         preds = [
-            "mini|low",    # catastrophic: gt=core, pred=mini|low (<=medium)
-            "mini|medium", # catastrophic: gt=large, pred=mini|medium (<=medium)
-            "mini|none",   # NOT catastrophic: gt=mini
+            "mini|low",  # catastrophic: gt=core, pred=mini|low (<=medium)
+            "mini|medium",  # catastrophic: gt=large, pred=mini|medium (<=medium)
+            "mini|none",  # NOT catastrophic: gt=mini
         ]
 
         catastrophic = 0
         for r, pred in zip(rows, preds):
             gt = r["cheapest_acceptable_route"]
             pred_tier, pred_effort = pred.split("|")
-            if (gt["model_tier"] in {"core", "large"}
-                    and pred_tier == "mini"
-                    and EFFORT_ORDER[pred_effort] <= EFFORT_ORDER["medium"]):
+            if (
+                gt["model_tier"] in {"core", "large"}
+                and pred_tier == "mini"
+                and EFFORT_ORDER[pred_effort] <= EFFORT_ORDER["medium"]
+            ):
                 catastrophic += 1
 
         assert catastrophic == 2, f"Expected 2 catastrophic, got {catastrophic}"
@@ -399,22 +406,24 @@ class TestGateMetricsFixture:
         from train import EFFORT_ORDER, TIER_ORDER
 
         rows = [
-            self._make_row("mini", "low"),    # gt cheap
-            self._make_row("core", "medium"), # gt mid
-            self._make_row("large", "high"),     # gt expensive
+            self._make_row("mini", "low"),  # gt cheap
+            self._make_row("core", "medium"),  # gt mid
+            self._make_row("large", "high"),  # gt expensive
         ]
         preds = [
             "core|medium",  # over-routing
             "core|medium",  # exact match
-            "mini|low",      # under-routing
+            "mini|low",  # under-routing
         ]
 
         over = 0
         for r, pred in zip(rows, preds):
             gt = r["cheapest_acceptable_route"]
             pt, pe = pred.split("|")
-            if ((TIER_ORDER[pt], EFFORT_ORDER[pe]) >
-                    (TIER_ORDER[gt["model_tier"]], EFFORT_ORDER[gt["effort"]])):
+            if (TIER_ORDER[pt], EFFORT_ORDER[pe]) > (
+                TIER_ORDER[gt["model_tier"]],
+                EFFORT_ORDER[gt["effort"]],
+            ):
                 over += 1
         assert over == 1
 
@@ -427,10 +436,10 @@ class TestGateMetricsFixture:
             self._make_row("large", "high"),
         ]
         preds = [
-            "mini|low",    # correct tier
-            "core|medium", # wrong tier
-            "core|high",   # correct tier
-            "large|medium",   # correct tier
+            "mini|low",  # correct tier
+            "core|medium",  # wrong tier
+            "core|high",  # correct tier
+            "large|medium",  # correct tier
         ]
         tier_tp = {"mini": 0, "core": 0, "large": 0}
         tier_gt = {"mini": 0, "core": 0, "large": 0}

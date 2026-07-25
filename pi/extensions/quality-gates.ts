@@ -628,6 +628,7 @@ function recordValidationOutcome(
 	recordEvent({
 		event: "quality_gate_validator",
 		data: {
+			schemaVersion: 1,
 			validator: outcome.name,
 			outcome: outcome.outcome,
 			durationMs: outcome.durationMs,

@@ -5,8 +5,9 @@ system DuckDB install.
 
 ## Logs
 
-- `logs/routing_log.jsonl`: classifier-side log. Future entries use
-  `prompt_hash` + redacted `prompt_excerpt` by default, not full prompt text.
+- `logs/routing_log.jsonl`: classifier-side log. New entries include a
+  per-invocation `route_decision_id` and use `prompt_hash` + redacted
+  `prompt_excerpt` by default, not full prompt text.
   Set `LOG_ROUTING_PROMPT=1` only for explicit debugging/audit sessions that
   need self-contained prompts.
 - `~/.pi/agent/traces/*.jsonl`: Pi transcript logs. `routing_decision` events
@@ -18,7 +19,8 @@ system DuckDB install.
   optional `PI_ROUTER_EXCERPTS_OPT_IN=1` path records only character-redacted
   excerpts for local debugging.
 
-Join the two with `prompt_hash`.
+Join the two by `route_decision_id`. Existing records without IDs remain
+compatible through a deterministic per-prompt-hash occurrence fallback.
 
 ## Privacy, purge, and rotation
 
@@ -36,4 +38,8 @@ uv run --project pi/prompt-routing python pi/prompt-routing/router_analytics.py 
 ```
 
 The script creates a DuckDB `router_session_view` with classifier output,
-runtime/applied route, actual model identity, and prompt excerpt.
+runtime/applied route, actual model identity, and prompt excerpt. It projects a
+fixed column schema and keeps heterogeneous trace payload fields bounded instead
+of using `read_ndjson_auto` over the trace glob. Other DuckDB readers should do
+the same: declare the trace envelope columns explicitly and load `payload` as
+`JSON` before creating event-specific views.

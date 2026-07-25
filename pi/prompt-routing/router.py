@@ -24,25 +24,20 @@ Logging:
 """
 
 import hashlib
-import json
 import logging
-import os
 import threading
 import time
 from pathlib import Path
 
+from routing_log import append_routing_log
 from safety_floor import apply_runtime_safety_floor
 
 _DIR = Path(__file__).parent
 _MODEL_PATH = _DIR / "models" / "router_v3.joblib"
 _HASH_PATH = _DIR / "models" / "router_v3.sha256"
-_LOG_DIR = _DIR / "logs"
-_LOG_PATH = _LOG_DIR / "routing_log.jsonl"
-
 SCHEMA_VERSION = "3.0.0"
 
 TIER_ORDER = {"mini": 0, "core": 1, "large": 2}
-TIER_TO_SIZE = {"mini": "small", "core": "medium", "large": "large"}
 EFFORT_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3}
 
 logger = logging.getLogger(__name__)
@@ -93,46 +88,17 @@ def _get_model():
 
 
 # ---------------------------------------------------------------------------
-# Log setup -- append-only JSONL, best-effort (never raises)
+# Log compatibility wrapper
 # ---------------------------------------------------------------------------
 
-_log_lock = threading.Lock()
-_logging_enabled = os.environ.get("LOG_ROUTING", "1") != "0"
-_log_full_prompt = os.environ.get("LOG_ROUTING_PROMPT", "0") == "1"
-_log_excerpt = os.environ.get("LOG_ROUTING_EXCERPT", "0") == "1"
 
-
-def _excerpt(prompt: str, max_chars: int = 160) -> str:
-    if len(prompt) <= max_chars:
-        return prompt
-    return f"{prompt[: max_chars - 3]}..."
-
-
-def _log(prompt: str, result: dict, elapsed_us: float) -> None:
-    if not _logging_enabled:
-        return
-    try:
-        _LOG_DIR.mkdir(exist_ok=True)
-        primary = dict(result["primary"])
-        model_tier = primary.pop("model_tier", None)
-        primary["model_size"] = TIER_TO_SIZE.get(model_tier, "medium")
-        entry = {
-            "ts": time.time(),
-            "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-            "primary": primary,
-            "confidence": result["confidence"],
-            "elapsed_us": round(elapsed_us, 1),
-            "schema_version": SCHEMA_VERSION,
-        }
-        if _log_excerpt:
-            entry["prompt_excerpt"] = _excerpt(prompt)
-        if _log_full_prompt:
-            entry["prompt"] = prompt
-        with _log_lock:
-            with open(_LOG_PATH, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception as exc:
-        logger.warning("router: logging failed (non-fatal): %s", exc)
+def _log(
+    prompt: str,
+    result: dict,
+    elapsed_us: float,
+    route_decision_id: str | None = None,
+) -> None:
+    append_routing_log(prompt, result, elapsed_us, route_decision_id)
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +106,7 @@ def _log(prompt: str, result: dict, elapsed_us: float) -> None:
 # ---------------------------------------------------------------------------
 
 
-def recommend(prompt: str) -> dict:
+def recommend(prompt: str, route_decision_id: str | None = None) -> dict:
     """
     Route a prompt to the cheapest acceptable (model_tier, effort) route.
 
@@ -183,8 +149,18 @@ def recommend(prompt: str) -> dict:
         "confidence": round(confidence, 4),
     }
 
-    _log(prompt, result, elapsed_us)
+    _log(prompt, result, elapsed_us, route_decision_id)
     return result
+
+
+def log_recommendation(
+    prompt: str,
+    result: dict,
+    elapsed_us: float,
+    route_decision_id: str | None = None,
+) -> None:
+    """Append a classifier result using the router's privacy-safe log format."""
+    _log(prompt, result, elapsed_us, route_decision_id)
 
 
 def _safe_default() -> dict:

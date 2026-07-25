@@ -15,6 +15,7 @@ export const performanceClock: Clock = {
 export type SpanStatus = "ok" | "error" | "cancelled";
 
 export interface TimingSpanRecord {
+	schemaVersion: 1;
 	name: string;
 	category: "command" | "tool" | "subagent" | "reviewer" | "panel" | "recovery" | "synthesis" | "helper";
 	startWallTime: string;
@@ -99,6 +100,7 @@ export class TimingSpan {
 		const metadata = sanitizeTimingMetadata({ ...this.options.metadata, ...extra });
 		const errorType = err instanceof Error ? err.name : err ? typeof err : undefined;
 		const record: TimingSpanRecord = {
+			schemaVersion: 1,
 			name: this.options.name,
 			category: this.options.category,
 			startWallTime: this.startWall.toISOString(),
