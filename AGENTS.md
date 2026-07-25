@@ -55,6 +55,8 @@ Tooling rules:
 - For one Vitest file, pass the filter directly, for example `cd pi && pnpm test operator-status.test.ts`; never insert `--`, because the script passes it through to Vitest and would run the full suite.
 - `@earendil-works/*` and `@sinclair/*` are intentionally absent from `pi/package.json`; `scripts/pi-deps-link-setup` links them from pnpm-global into `pi/node_modules` so they match the installed Pi binary. See [`pi/README.md#javascript-package-manager-policy`](pi/README.md#javascript-package-manager-policy).
 - Validation must exercise the changed contract or regression. When the request requires preserving a workflow, validate its user entrypoint and sequence. A smoke test is not contract verification; identify it as such. Never claim behavior that was not run and observed.
+- Tests protect executable behavior, parsed schemas, normalized configuration meaning, or external protocols. Do not use assertions as the primary store for policy prose, prompt wording, comments, source spelling, or internal file layout. A test may cover policy through its executable parser or enforcement behavior.
+- Keep durable policy and design intent in the applicable `AGENTS.md` or owning skill/tooling contract so instruction discovery delivers it as context; do not encode it indirectly in tests.
 - Use proportionate checks for the changed contract. Stop testing when additional runs are unlikely to change the implementation decision or confidence.
 - For bug fixes, define the expected successful outcome before editing. When exact workflow validation is required by the requested behavior and is blocked, report the fix as incomplete and name the blocker.
 
