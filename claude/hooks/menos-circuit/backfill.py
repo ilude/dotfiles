@@ -34,9 +34,7 @@ def setup_logging() -> logging.Logger:
     logger = logging.getLogger("menos-backfill")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
-        handler = logging.handlers.RotatingFileHandler(
-            LOG_PATH, maxBytes=1_000_000, backupCount=3
-        )
+        handler = logging.handlers.RotatingFileHandler(LOG_PATH, maxBytes=1_000_000, backupCount=3)
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logger.addHandler(handler)
     return logger
@@ -80,6 +78,26 @@ def acquire_lock(video_dir: Path, logger: logging.Logger) -> Path | None:
         return None
 
 
+def load_metadata(
+    video_dir: Path, complete: dict, logger: logging.Logger
+) -> tuple[dict | None, bool]:
+    metadata_path = video_dir / "metadata.json"
+    if complete.get("metadata"):
+        try:
+            return json.loads(metadata_path.read_text(encoding="utf-8")), True
+        except Exception:
+            logger.warning(
+                "skip %s: metadata marked complete but missing/malformed", video_dir.name
+            )
+            return None, False
+    if metadata_path.exists():
+        try:
+            return json.loads(metadata_path.read_text(encoding="utf-8")), True
+        except Exception:
+            logger.info("%s: ignoring malformed optional metadata", video_dir.name)
+    return None, True
+
+
 def load_local(video_dir: Path, logger: logging.Logger) -> tuple[str, dict | None] | None:
     marker = video_dir / ".complete"
     transcript_path = video_dir / "transcript.txt"
@@ -102,23 +120,10 @@ def load_local(video_dir: Path, logger: logging.Logger) -> tuple[str, dict | Non
     if len(raw) > TRANSCRIPT_LIMIT_BYTES:
         logger.warning("skip %s: transcript over 5 MB", video_dir.name)
         return None
-    transcript = raw.decode("utf-8")
-    metadata_path = video_dir / "metadata.json"
-    metadata = None
-    if complete.get("metadata"):
-        try:
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except Exception:
-            logger.warning(
-                "skip %s: metadata marked complete but missing/malformed", video_dir.name
-            )
-            return None
-    elif metadata_path.exists():
-        try:
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except Exception:
-            logger.info("%s: ignoring malformed optional metadata", video_dir.name)
-    return transcript, metadata
+    metadata, valid = load_metadata(video_dir, complete, logger)
+    if not valid:
+        return None
+    return raw.decode("utf-8"), metadata
 
 
 def signed_json(
@@ -152,6 +157,19 @@ def poll_completed(content_id: str, logger: logging.Logger) -> bool:
     return False
 
 
+def accepted_content_id(
+    video_id: str, status: int, data: dict, logger: logging.Logger
+) -> str | None:
+    if not (200 <= status < 300):
+        logger.warning("%s upload failed: HTTP %s %s", video_id, status, data)
+        return None
+    content_id = data.get("content_id")
+    if not content_id:
+        logger.warning("%s upload response missing content_id: %s", video_id, data)
+        return None
+    return content_id
+
+
 def upload_one(video_dir: Path, logger: logging.Logger) -> None:
     lock = acquire_lock(video_dir, logger)
     if not lock:
@@ -170,14 +188,8 @@ def upload_one(video_dir: Path, logger: logging.Logger) -> None:
             "metadata": metadata,
         }
         status, data = signed_json("POST", f"{base}/ingest", path, payload, timeout=180.0)
-        if not (200 <= status < 300):
-            logger.warning("%s upload failed: HTTP %s %s", video_dir.name, status, data)
-            return
-        content_id = data.get("content_id")
-        if not content_id:
-            logger.warning("%s upload response missing content_id: %s", video_dir.name, data)
-            return
-        if not poll_completed(content_id, logger):
+        content_id = accepted_content_id(video_dir.name, status, data, logger)
+        if not content_id or not poll_completed(content_id, logger):
             return
         logger.info("%s verified; deleting local cache", video_dir.name)
         try:
@@ -192,6 +204,20 @@ def upload_one(video_dir: Path, logger: logging.Logger) -> None:
             pass
 
 
+def process_backfill(logger: logging.Logger) -> None:
+    deadline = time.time() + 5 * 60
+    video_dirs = sorted(YT_ROOT.iterdir()) if YT_ROOT.exists() else []
+    for video_dir in video_dirs:
+        if time.time() > deadline:
+            logger.info("runtime cap reached")
+            break
+        if video_dir.is_dir() and valid_video_id(video_dir.name):
+            try:
+                upload_one(video_dir, logger)
+            except Exception as exc:
+                logger.exception("%s failed: %s", video_dir.name, exc)
+
+
 def run() -> int:
     logger = setup_logging()
     if disabled():
@@ -204,16 +230,7 @@ def run() -> int:
     if status and status.get("available") is False:
         logger.info("skip: status hint unavailable")
         return 0
-    deadline = time.time() + 5 * 60
-    for video_dir in sorted(YT_ROOT.iterdir()) if YT_ROOT.exists() else []:
-        if time.time() > deadline:
-            logger.info("runtime cap reached")
-            break
-        if video_dir.is_dir() and valid_video_id(video_dir.name):
-            try:
-                upload_one(video_dir, logger)
-            except Exception as exc:
-                logger.exception("%s failed: %s", video_dir.name, exc)
+    process_backfill(logger)
     return 0
 
 

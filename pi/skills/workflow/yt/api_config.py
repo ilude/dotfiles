@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
+
 def load_secrets_file() -> None:
     """Load secrets from ~/.dotfiles/.env or ~/.dotfiles/.secrets."""
     secrets_path = Path.home() / ".dotfiles" / ".env"
