@@ -36,6 +36,7 @@
       "Bash(git reset --hard:*)"
     ]
   },
+  "model": "opus",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "PermissionRequest": [
@@ -191,6 +192,5 @@
   "companyAnnouncements": [],
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
-  "releaseChannel": "latest",
-  "model": "claude-fable-5[1m]"
+  "releaseChannel": "latest"
 }
