@@ -116,9 +116,14 @@ Launch a **single** coordinator agent that will manage the entire review process
 
 ```
 subagent_type: runtime-appropriate coordinator
+name: review-coordinator
 model: see Model Selection Policy above
 max_turns: 25
 ```
+
+The `name` is load-bearing. Without it the coordinator is addressable only by its
+generated agent ID, so any reviewer told to report back to "the coordinator" has
+no working address and its findings are stranded.
 
 The coordinator prompt MUST include:
 1. The **complete plan text** (verbatim)
@@ -144,8 +149,16 @@ You are a review coordinator. Your job is to:
    mandatory and domain reviewers. Use the heavier model only for the coordinator,
    unusually complex reviewer roles, or rebuttal/synthesis passes that clearly need it.
    Use max_turns: 5 for each reviewer (except OtB which gets max_turns: 8).
+   All reviewers run concurrently -- that is the point of the single message.
+   Collect their RETURN values: do not background them, and do not ask them to
+   SendMessage their reports. A backgrounded reviewer notifies instead of
+   returning, so its findings are stranded if you have already finished.
 
 2. COLLECT FINDINGS -- all reviewer responses land in your context.
+   If any reviewer returns nothing, record it as a panel gap by name. Do not
+   substitute your own analysis for a missing reviewer and present the result
+   as that reviewer's findings. A panel of N-2 that says so is trustworthy;
+   a panel that silently becomes one analyst is not.
 
 3. CROSS-POLLINATE (rebuttals) -- you now have all findings in context.
    For each domain expert finding, assess proportionality (would OtB call it
@@ -166,7 +179,9 @@ You are a review coordinator. Your job is to:
    - Hardening: plan works but could be more resilient
    Deduplicate across reviewers. Sort bugs by severity.
 
-6. WRITE synthesis.md to {review_dir}/synthesis.md using the Write tool.
+6. WRITE synthesis.md to {review_dir}/synthesis.md using the Write tool, then
+   confirm it exists by reading it back before you report anything. Never claim
+   to have written a file you have not verified on disk.
    Use this structure:
 
    ---
@@ -436,10 +451,16 @@ persona + evaluation focus + output format + severity calibration + plan text +
 
 After the coordinator returns its summary:
 
-1. Present the summary to the user with the review panel table, bugs, hardening, and
-   dismissed findings.
-2. Note where the full synthesis is: `{review_dir}/synthesis.md`
-3. Output the next-step command verbatim so the user can copy it to execute the plan
+1. **Verify the coordinator's report before relaying it.** Confirm
+   `{review_dir}/synthesis.md` exists and that its finding counts match the
+   returned summary. If it is missing, reconstruct it from whatever findings you
+   received and say so. Independently re-check any CRITICAL finding that would
+   change the plan -- coordinators have reported both phantom files and phantom
+   reviewer silence.
+2. Present the summary to the user with the review panel table, bugs, hardening, and
+   dismissed findings. State how many reviewers actually returned.
+3. Note where the full synthesis is: `{review_dir}/synthesis.md`
+4. Output the next-step command verbatim so the user can copy it to execute the plan
    after fixes are applied:
 
    ```
@@ -447,7 +468,7 @@ After the coordinator returns its summary:
    ```
 
    (Substitute the actual plan path that was reviewed.)
-4. Ask the user:
+5. Ask the user:
    - "Apply bug fixes to the plan?" (Recommended -- bugs only)
    - "Apply bug fixes + selected hardening -- I'll choose which"
    - "Apply everything (bugs + all hardening)"
