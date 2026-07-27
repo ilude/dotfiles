@@ -11,24 +11,22 @@ Use this skill for wording quality and `docs` for document structure. Archival w
 
 ## Core Principle
 
-Keep only claims that are specific, supported, and useful. Plain language beats inflated language.
+Keep only language that is specific, supported, and useful. Prefer plain words and direct statements, but preserve the author's meaning, voice, terminology, and level of certainty.
 
 ## Practical Steps
 
-- Cut throat-clearing: "In today's world", "It's important to note", "delve".
-- Replace hype with evidence: say what changed, by how much, or for whom.
-- Prefer concrete verbs over abstract nouns.
-- Remove repeated sentence shapes and summary boilerplate.
-- Delete unsupported superlatives and invented precision.
-- Preserve the author's meaning, terminology, and level of certainty.
-- If a claim needs a source, mark it or remove it.
+- Cut throat-clearing, repeated conclusions, and any word that can be removed without losing meaning.
+- Prefer a familiar, precise word to jargon, stock phrases, stale metaphors, or inflated wording.
+- Use concrete verbs instead of abstract noun phrases.
+- Name the actor when responsibility matters. Use passive voice when the actor is unknown or the action or recipient deserves emphasis.
+- Replace hype and unsupported superlatives with evidence, or delete the claim.
+- Vary sentence shape and length around the content rather than imposing a mechanical style.
+- Keep citations and qualifiers that prevent overclaiming. If a claim needs missing support, mark it or remove it.
+- Break a style preference rather than distort meaning, voice, or audience expectations.
 
-## Edit Rules
+## Conditional Reference
 
-- Do not sanitize personality out of the text.
-- Keep domain terms when they carry meaning.
-- Do not make prose blunter than the audience expects.
-- Keep citations and qualifiers that prevent overclaiming.
+For comments, messages, release notes, procedures, or other code-adjacent technical prose, read [Technical prose](references/technical-prose.md). Do not load it for general prose cleanup.
 
 ## Anti-Patterns
 
@@ -36,5 +34,6 @@ Keep only claims that are specific, supported, and useful. Plain language beats 
 | --- | --- |
 | "Comprehensive, robust, seamless" | Name the actual capability |
 | Vague benefit claims | Add evidence or delete |
-| Repeated intro/body/conclusion rhythm | Vary structure around content |
+| Repeated intro/body/conclusion rhythm | Organize around the content |
+| Automatic active-voice or sentence-length rewrites | Change only what improves meaning for this audience |
 | Overconfident certainty | Match the evidence |

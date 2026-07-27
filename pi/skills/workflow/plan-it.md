@@ -5,21 +5,15 @@ Turn `$ARGUMENTS` and relevant conversation context into
 
 ## Method
 
-Use an explicitly provided PRD; otherwise use the latest stated goal and
-constraints. Never choose a PRD merely because it is newest. If no substantive
-goal exists, ask what the plan should accomplish.
+Load and follow `planning` for requirements, acceptance, and verification language. Use an explicitly provided PRD; otherwise use the latest stated goal and constraints. Never choose a PRD merely because it is newest. If no substantive goal exists, ask what the plan should accomplish.
 
-- Treat the latest user intent as authoritative when it changes earlier
-  assumptions.
+- Treat the latest user intent as authoritative when it changes earlier assumptions.
 - Plan the smallest complete outcome using the existing mechanism.
+- Translate source requirements into executable work without weakening them. Preserve requirement identifiers, defined terms, normative words, actors, conditions, bounds, exceptions, and verification.
 - Do not invent architecture for later stages or hypothetical requirements.
-- When uncertainty changes the design, make the first task the cheapest check or
-  implementation attempt that resolves it.
-- Preserve explicit behavior, interfaces, scope limits, and real safety
-  boundaries. Exclude adjacent defects, generic hardening, and future lifecycle
-  work.
-- Inspect only enough to confirm ownership, paths, entrypoints, dependencies,
-  validation, and a collision-free slug.
+- Expose unresolved ambiguity when competing interpretations would materially change design or acceptance. Make the first task the cheapest read-only check or bounded implementation attempt only when it can resolve that ambiguity without choosing a product decision.
+- Preserve explicit behavior, interfaces, scope limits, and real safety boundaries. Exclude adjacent defects, generic hardening, and future lifecycle work.
+- Inspect only enough to confirm ownership, paths, entrypoints, dependencies, validation, and a collision-free slug.
 - Planning is read-only except for the plan artifact.
 
 ## Plan Contract
@@ -32,9 +26,7 @@ Include context, boundaries, assumptions, safety, current status, or blockers
 only when they change execution. For shared or live state, name the target, stop
 condition, and concise rollback required by active instructions.
 
-Remove any task, section, or implementation decision whose absence would not
-break the requested outcome or a real safety boundary. Before writing, verify
-referenced paths and commands, dependency order, and workflow-level validation.
+Remove any task, section, or implementation decision whose absence would not break the requested outcome or a real safety boundary. Before writing, verify referenced paths and commands, dependency order, source requirement traceability where applicable, and workflow-level validation.
 
 ## Artifact and Report
 

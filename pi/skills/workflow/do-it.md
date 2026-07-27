@@ -20,6 +20,8 @@ Read the complete plan and resume from the first unchecked dependency-ready task
 
 Treat checked work as complete when current repository state and its recorded result do not contradict it. Do not demand separate evidence files, gate IDs, wave narratives, or duplicate checklists.
 
+Treat source requirement identifiers, defined terms, normative words, actors, conditions, bounds, exceptions, and verification as part of the execution contract. Do not silently weaken, strengthen, or reinterpret them. If repository evidence cannot resolve competing material interpretations, stop and ask for the product or design decision.
+
 After a task's relevant check passes, mark its checkbox complete and save the plan. Record a concise result only when it is needed for resume, external mutation, or a required audit.
 
 Execute plan tasks directly. Delegate only when independent workstreams materially improve execution, and create durable tasks only when they add useful cross-turn or dependency tracking. Do not mirror the plan checklist into another tracking system by default.

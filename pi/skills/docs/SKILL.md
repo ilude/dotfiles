@@ -21,15 +21,17 @@ Documentation should help a reader do the next task. Optimize for accurate struc
 1. Identify the reader and task.
 2. Put the answer or summary first.
 3. Use headings that name the content, not the writing process.
-4. Keep commands copy-pasteable and fenced with language labels.
-5. Link related docs instead of duplicating long explanations.
-6. Update navigation/index files when adding docs.
+4. Structure procedures in execution order: prerequisites, numbered actions, direct checks, and recovery or next steps when needed.
+5. Keep one primary action per numbered step and place conditions or expected results next to the step they govern.
+6. Keep commands copy-pasteable and fenced with language labels.
+7. Link related docs instead of duplicating long explanations.
+8. Update navigation/index files when adding docs.
 
 ## Markdown Defaults
 
 - One `#` title per document.
 - Sentence-case headings unless local style differs.
-- Prefer short paragraphs and bullets for procedures.
+- Use numbered lists for ordered procedures and bullets for unordered facts.
 - Use relative links for repo-local docs.
 - Keep code blocks minimal and tested when practical.
 

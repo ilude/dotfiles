@@ -23,20 +23,24 @@ status: draft
 
 ## Requirements
 
+Keep narrative in the earlier sections natural. Use the fields below only for normative requirements, and omit a field when it does not affect meaning.
+
 ### Functional Requirements
 
-- 
+- **REQ-001:** When `<condition>`, `<responsible entity>` shall `<observable outcome>` within `<measure or bound>`.
+  - Exceptions: `<named exceptions, or omit>`
+  - Verification: `<method and direct pass condition>`
 
 ### Non-Functional Requirements
 
-- 
+- **NFR-001:** While `<applicable state>`, `<responsible entity>` shall maintain `<measurable quality or constraint>`.
+  - Verification: `<method and direct pass condition>`
 
 ## Acceptance Criteria
 
-1. [ ] 
-   - Verify:
-   - Pass:
-   - Fail:
+1. [ ] Given `<condition>`, when `<actor or system action>`, then `<observable outcome>`.
+   - Measure or bound: `<value, tolerance, or omit>`
+   - Verification: `<direct check and pass condition>`
 
 ## Optional Sections
 

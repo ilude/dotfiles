@@ -7,20 +7,21 @@ description: "Use for /prd-it or to draft, refine, or review a Product Requireme
 
 ## Boundary
 
-Use `prd` only when the deliverable is a PRD. Use `planning` for lightweight requirements/acceptance criteria and `pi-goal` for executable Pi goal prompts.
+Use `prd` only for an explicit request to draft, refine, or review a PRD, including `/prd-it`. A PRD is optional and is not a prerequisite for planning or implementation. Use `planning` for standalone requirements or acceptance criteria and `pi-goal` for executable Pi goal prompts.
 
 ## Core Principle
 
-A PRD aligns product intent, constraints, and acceptance criteria before execution. Keep it decision-oriented, not a dump of implementation ideas.
+A PRD records the product decisions needed to align problem, outcome, scope, requirements, and acceptance. Keep it decision-oriented and proportionate to the request.
 
-## Practical Steps
+## Artifact Contract
 
-1. Define the problem and desired outcome.
-2. Separate goals and non-goals.
-3. Define requirements and acceptance criteria.
-4. Add users, scenarios, assumptions, risks, dependencies, or open questions only when requested or needed by the product decision.
-5. Add planning or review handoffs only when requested.
-6. Ask one concise clarification question only when a missing fact changes the PRD.
+- For a new PRD artifact, use `pi/skills/workflow/templates/prd-template.md` and write `.specs/{lowercase-kebab-case-slug}/PRD.md` unless the user names another path.
+- Refine an explicitly supplied PRD in place unless the user requests a new artifact.
+- Keep Problem, Goals, Non-Goals, context, and rationale as natural narrative.
+- Treat Requirements and Acceptance Criteria as normative. Load `planning` and preserve identifiers, defined terms, modal strength, conditions, bounds, and exceptions.
+- Add users, scenarios, assumptions, risks, dependencies, alternatives, or open questions only when they affect the product decision.
+- Add `/plan-it` or `/review-it` handoffs only when requested.
+- Ask one concise clarification at a time only when the answer would materially change scope, acceptance, or another product decision. Otherwise draft with explicit assumptions.
 
 ## Minimal PRD Shape
 
@@ -35,9 +36,9 @@ A PRD aligns product intent, constraints, and acceptance criteria before executi
 
 ## Anti-Patterns
 
-- Activating for every mention of "requirements".
+- Activating for an incidental mention of a PRD or for every mention of requirements.
+- Making a PRD mandatory before another workflow.
 - Expanding a small request into a full product process.
-- Mixing implementation plan with product requirements unless requested.
-- Leaving open questions that block acceptance criteria.
-- Defining migration success without parity expectations.
-- Requiring custom implementation when an existing library or platform capability would satisfy the product need.
+- Applying requirement syntax to narrative sections.
+- Mixing implementation tasks into product requirements unless the implementation is an explicit constraint.
+- Leaving competing material interpretations hidden in prose.

@@ -23,6 +23,10 @@ completed:
 
 {Add approach decisions or operational safety only when the work actually requires them.}
 
+## Requirements Contract
+
+{Include only when the source contains normative requirements. Preserve each source identifier, defined term, actor, condition, required outcome, measure or bound, exception, and verification. Do not restate narrative text as formal requirements.}
+
 ## Tasks
 
 - [ ] **T1: {deliverable}**
@@ -36,14 +40,14 @@ completed:
 
 ## Validation
 
-- [ ] Requested workflow: `{user entrypoint or direct inspection}`
+- [ ] Focused check: `{user entrypoint, direct inspection, or check that exercises the changed contract}`
   - Expected: {observable outcome}
-- [ ] Additional required check: `{omit when none}`
+- [ ] Complete repository gate: `{gate required by applicable repository instructions; omit when none}`
   - Expected: {observable outcome}
 
-## Archive Rule
+## Retention
 
-Archive to `.specs/archive/{slug}/plan.md` when every required checkbox is complete and no required action remains.
+Keep the plan at this path after completion. Archive or move it only when the user asks.
 
 ## Execution Status
 
