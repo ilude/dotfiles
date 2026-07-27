@@ -327,7 +327,7 @@ current_step="Pi coding agent install"
 # drift to newer patch versions even when pi-coding-agent itself was pinned.
 # Pi is updated frequently and intentionally uses a shorter release-age window
 # than the global pnpm default. Keep the runtime package family on one version.
-PI_VERSION=0.82.0
+PI_VERSION=0.82.1
 PI_PNPM_MINIMUM_RELEASE_AGE=720
 
 # Ensure PNPM_HOME is set before bootstrap so the installer knows where to put

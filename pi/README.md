@@ -18,7 +18,7 @@ Pi is installed automatically by the dotfiles installer:
 ~/.dotfiles/install.ps1
 ```
 
-On all platforms, this uses `pnpm --config.minimumReleaseAge=720 add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent@0.82.0` plus `pi-agent-core`, `pi-ai`, and `pi-tui` pinned to the same version and `@sinclair/typebox` on every installer run, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS) and `scripts/pi-deps-link-setup` (which links the pnpm-global Pi packages into `pi/node_modules`). Pi uses a 12-hour release-age window while the global pnpm default remains 3 days. Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
+On all platforms, this uses `pnpm --config.minimumReleaseAge=720 add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent@0.82.1` plus `pi-agent-core`, `pi-ai`, and `pi-tui` pinned to the same version and `@sinclair/typebox` on every installer run, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS) and `scripts/pi-deps-link-setup` (which links the pnpm-global Pi packages into `pi/node_modules`). Pi uses a 12-hour release-age window while the global pnpm default remains 3 days. Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
 
 The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls). OpenAI and OpenRouter-hosted OpenAI prompt caching are automatic for eligible long prompts; provider-specific `cache_control` markers are only for models/providers that require Anthropic-style caching semantics.
 
@@ -83,6 +83,47 @@ env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE -u AWS_REGION -u AWS_DEFAULT_REGION \
   -p 'Reply with exactly: bedrock-ok'
 ```
 
+### Bedrock Mantle GPT-5.6
+
+`pi/extensions/bedrock-mantle.ts` registers a separate `bedrock-mantle`
+provider for the OpenAI GPT-5.6 Luna, Terra, and Sol models. These models use
+the Bedrock Mantle OpenAI Responses endpoint rather than Bedrock Converse.
+The extension delegates Responses serialization, streaming, and tool calls to
+Pi's maintained OpenAI Responses implementation.
+
+Authentication reuses `AWS_BEARER_TOKEN_BEDROCK` when present. Otherwise the
+AWS-maintained `@aws/bedrock-token-generator` package creates a one-hour
+short-term bearer token from `BEDROCK_MANTLE_AWS_PROFILE`, `AWS_PROFILE`, or
+the normal AWS credential chain. The token stays in process memory and no
+long-term API key is stored. Region resolution prefers
+`BEDROCK_MANTLE_REGION`, then standard AWS region variables, and defaults to
+`us-east-2`.
+
+The tracked `enabledModels` list exposes these model IDs in scoped `/model`
+selection:
+
+```text
+bedrock-mantle/openai.gpt-5.6-luna
+bedrock-mantle/openai.gpt-5.6-terra
+bedrock-mantle/openai.gpt-5.6-sol
+```
+
+Live validation with an existing AWS profile:
+
+```bash
+AWS_PROFILE=default AWS_REGION=us-east-2 \
+  pi --no-extensions -e ~/.dotfiles/pi/extensions/bedrock-mantle.ts \
+  --provider bedrock-mantle --model openai.gpt-5.6-luna \
+  --thinking low --no-tools --no-skills --no-context-files --no-session \
+  -p 'Reply with exactly: mantle-ok'
+```
+
+AWS protocol references:
+
+- [API compatibility by models](https://docs.aws.amazon.com/bedrock/latest/userguide/models-api-compatibility.html)
+- [Bedrock API keys](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html)
+- [AWS Bedrock token generator](https://github.com/aws/aws-bedrock-token-generator-js)
+
 ### JavaScript package-manager policy
 
 Do not use `npm` in this repository. Do not create or commit `package-lock.json`.
@@ -138,10 +179,10 @@ Current template example:
 ```bash
 # All platforms
 pnpm add -g --allow-build=koffi --allow-build=protobufjs \
-    @earendil-works/pi-coding-agent@0.82.0 \
-    @earendil-works/pi-agent-core@0.82.0 \
-    @earendil-works/pi-ai@0.82.0 \
-    @earendil-works/pi-tui@0.82.0 \
+    @earendil-works/pi-coding-agent@0.82.1 \
+    @earendil-works/pi-agent-core@0.82.1 \
+    @earendil-works/pi-ai@0.82.1 \
+    @earendil-works/pi-tui@0.82.1 \
     @sinclair/typebox
 ~/.dotfiles/scripts/pi-link-setup
 ~/.dotfiles/scripts/pi-deps-link-setup
@@ -311,7 +352,7 @@ Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`. T
 
 Workflow highlights:
 - `/plan-it` writes standalone plans with evidence, dependencies, validation, and durable execution state.
-- `/review-it` reviews artifact readiness directly and edits only when the request explicitly asks for repairs. Delegation remains optional.
+- `/review-it` reviews artifact readiness directly and applies supported must-fix and necessary clarity repairs by default; explicit review-only requests remain non-mutating. Delegation remains optional.
 - `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` in the current session. It does not require plan linting, duplicate task tracking, or automatic archiving.
 - `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. Before the parent commit, each dirty direct submodule must be on an attached branch with an upstream, is updated with a fast-forward-only pull, and runs the same commit workflow; `/commit push` pushes each resulting submodule commit before the parent, while `--no-submodules` leaves dirty submodule worktrees untouched. Nested submodules are not processed automatically. Ignored files are omitted. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
@@ -486,7 +527,7 @@ Applies startup model-list cleanup for noisy provider catalogs.
 
 Behavior:
 - Hides date/version-suffixed and preview snapshot models for `openai-codex`, `github-copilot`, `opencode`, `opencode-go`, and `openrouter`.
-- Limits Amazon Bedrock visibility to the configured `us.anthropic` Claude models used by the Codex plus Bedrock workflow.
+- Limits the built-in Amazon Bedrock provider to the configured `us.anthropic` Claude models; the separate `bedrock-mantle` provider exposes the tracked GPT-5.6 models.
 - Applies provider-specific blocklists (including internal/legacy model IDs) before `/model` selection.
 
 ### Worktree occupancy

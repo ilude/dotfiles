@@ -1894,7 +1894,7 @@ try {
 
         # Install or update Pi on every run. Keep the runtime package family on
         # one version and use a shorter release-age window than the global default.
-        $piVersion = '0.82.0'
+        $piVersion = '0.82.1'
         $piPnpmMinimumReleaseAge = 720
         Write-Host "  Installing/updating pi-coding-agent $piVersion via pnpm (minimumReleaseAge=$piPnpmMinimumReleaseAge minutes)..." -ForegroundColor Cyan
         $previousCi = $env:CI
