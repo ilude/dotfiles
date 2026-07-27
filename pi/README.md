@@ -318,6 +318,10 @@ Keeps only workflow-state-gated tools out of the default provider schema until t
 
 `tool_search` remains active as a fallback and activates all matching inactive tools by default for a non-empty capability query. Listing all tools without a query remains inspection-only. Metadata-only `toolset_exposure`, `tool_search_decision`, and `tool_use` metrics record the visible toolset, hashed searches, activation results, and later use without raw queries, arguments, descriptions, or output. The `tool_discovery_activity` DuckDB view exposes those events for local review.
 
+### `active-turn-compaction.ts`
+
+Compacts a tool-driven request before the active model reaches its hard context reserve, then continues from the saved summary. The extension also supports a provider-independent soft limit through `activeTurnCompaction.softLimitTokens`; the tracked setting uses `255616` tokens to leave 16,384 tokens below the preferred 272,000-token boundary. This is a local usage-conservation policy, not a claim about a provider's hard context window or subscription pricing. When Pi cannot find a valid compaction cut point, the extension leaves the active request running and retries only after later turns make compaction possible.
+
 ### `quality-gates.ts`
 
 Collects files successfully changed by `write`, `edit`, `text_edit`, and `structured_edit`, preserving the cwd from each edit, then runs cheap file-scoped linters and format checks when the agent run ends. Diagnostics are displayed without starting an automatic repair turn. Validator output and aggregate messages are bounded, unchanged content is cached, and stale results are discarded.
@@ -518,7 +522,7 @@ Behavior:
 - Uses existing session credentials and updates in-session model availability immediately.
 - Prints per-provider diffs with model IDs that were added/removed.
 - Caches versioned provider catalog facts rather than complete Pi model definitions.
-- On startup, preserves current Pi metadata for built-in Codex models and restores only cached model discoveries that Pi does not yet know.
+- On startup, preserves current Pi metadata for built-in Codex models, overlays context windows from versioned refresh responses, and restores cached model discoveries that Pi does not yet know. Legacy caches cannot override known model metadata.
 - Newly released Codex models may appear through `/refresh-models openai-codex` before they are added to the tracked startup `enabledModels` list.
 
 ### `model-visibility.ts`
