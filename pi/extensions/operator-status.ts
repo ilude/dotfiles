@@ -255,24 +255,26 @@ export function formatExtensionStatusLine(
 	width: number,
 ): string | null {
 	const statuses = footerData.getExtensionStatuses();
-	const left = sanitizeSingleLine(statuses.get("tps") ?? "");
-	const right = Array.from(statuses.entries())
+	const leftSegments = Array.from(statuses.entries())
 		.filter(
 			([key]) =>
+				key !== "bedrock" &&
 				key !== "codex" &&
 				key !== "tps" &&
 				!FOOTER_STATUS_EXCLUDE_KEYS.has(key),
 		)
 		.sort(([a], [b]) => compareFooterStatusKeys(a, b))
-		.map(([, text]) => sanitizeSingleLine(text))
-		.filter(Boolean)
-		.join(" | ");
+		.map(([, text]) => sanitizeSingleLine(text));
+	const throughput = sanitizeSingleLine(statuses.get("tps") ?? "");
+	if (throughput) leftSegments.push(throughput);
+	const left = leftSegments.filter(Boolean).join(" | ");
+	const right = sanitizeSingleLine(statuses.get("bedrock") ?? "");
 	if (!left && !right) return null;
 	if (!left) return rightAlign(right, width);
 	if (!right)
 		return visibleWidth(left) > width ? truncateToWidth(left, width) : left;
 	const gap = width - visibleWidth(left) - visibleWidth(right);
-	if (gap < 2) return truncateToWidth(`${left} ${right}`, width);
+	if (gap < 2) return truncateToWidth(`${left} | ${right}`, width);
 	return `${left}${" ".repeat(gap)}${right}`;
 }
 
@@ -296,11 +298,12 @@ export function formatPiStatusLine(options: {
 	const contextSegment = formatContextUsageSegment(options.contextUsage);
 	const versionLabel = `${ANSI.dim}π v${options.piVersion ?? "?"}${ANSI.reset}${formatReloadIndicator(Boolean(options.reloadNeeded))}`;
 	const buildLeft = (modelText: string) => {
-		const modelLabel = `${ANSI.orange}${modelText}${ANSI.reset}${thinkingLabel}${contextSegment ? ` ${contextSegment}` : ""}`;
-		return `${ANSI.green}${directory}${ANSI.reset}${branch} | ${modelLabel} | ${versionLabel}`;
+		const modelLabel = `${ANSI.orange}${modelText}${ANSI.reset}${thinkingLabel}`;
+		const contextLabel = contextSegment ? ` | ${contextSegment}` : "";
+		return `${ANSI.green}${directory}${ANSI.reset}${branch} | ${modelLabel}${contextLabel} | ${versionLabel}`;
 	};
 	let left = buildLeft(model);
-	if (contextSegment && visibleWidth(left) > options.width) {
+	if (visibleWidth(left) > options.width) {
 		const nonModelWidth = visibleWidth(buildLeft(""));
 		const availableModelWidth = Math.max(0, options.width - nonModelWidth);
 		left = buildLeft(truncateToWidth(model, availableModelWidth));

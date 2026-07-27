@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -101,7 +102,7 @@ describe("footer extension status placement", () => {
 		} as ReadonlyFooterDataProvider;
 	}
 
-	it("keeps codex right-anchored and excludes noisy health statuses", async () => {
+	it("keeps codex on the primary line and right-aligns Bedrock spend", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const data = footerData({
 			bedrock: "bedrock $17.49",
@@ -130,7 +131,33 @@ describe("footer extension status placement", () => {
 			"loop rationalization-345 T:35/48 | tasks 2 (2 running) | bedrock $71.64";
 
 		expect(mod.formatExtensionStatuses(data)).toBe(expected);
-		expect(mod.formatExtensionStatusLine(data, expected.length)).toBe(expected);
+		expect(mod.formatExtensionStatusLine(data, expected.length)).toBe(
+			"loop rationalization-345 T:35/48 | tasks 2 (2 running)   bedrock $71.64",
+		);
+	});
+
+	it("places token throughput after Onclave and keeps Bedrock spend right-aligned", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const onclave =
+			"onclave v2 connected | dev-wks-mglenn-gcc_automation-main | peers alive: 2";
+		const data = footerData({
+			"onclave-v2": onclave,
+			bedrock: "bedrock $71.64",
+			tps: "done - 42 tok/s",
+		});
+		const line = mod.formatExtensionStatusLine(data, 120);
+
+		const rendered = line ?? "";
+		expect(line).not.toBeNull();
+		expect(rendered).toContain(`${onclave} | done - 42 tok/s`);
+		expect(rendered.endsWith("bedrock $71.64")).toBe(true);
+		expect(visibleWidth(rendered)).toBe(120);
+		expect(rendered.indexOf("done - 42 tok/s")).toBeGreaterThan(
+			rendered.indexOf(onclave),
+		);
+		expect(rendered.indexOf("bedrock $71.64")).toBeGreaterThan(
+			rendered.indexOf("done - 42 tok/s"),
+		);
 	});
 });
 
@@ -187,7 +214,7 @@ describe("formatPiStatusLine", () => {
 		expect(line).toContain("\x1b[37m[\x1b[38;5;205mreload\x1b[37m]\x1b[0m");
 	});
 
-	it("renders colored context usage immediately after model reasoning", async () => {
+	it("renders pipe-delimited context usage after model reasoning", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const pi = Object.assign(createMockPi(), { getThinkingLevel: () => "low" });
 		const line = mod.formatPiStatusLine({
@@ -202,7 +229,8 @@ describe("formatPiStatusLine", () => {
 		});
 
 		expect(line).toContain(
-			"gpt-5.6-sol\x1b[0m\x1b[37m[\x1b[36mlow\x1b[37m]\x1b[0m \x1b[33m84%\x1b[0m \x1b[90m168k/200k\x1b[0m",
+			"gpt-5.6-sol\x1b[0m\x1b[37m[\x1b[36mlow\x1b[37m]\x1b[0m | " +
+				"\x1b[33m84%\x1b[0m \x1b[90m168k/200k\x1b[0m",
 		);
 	});
 

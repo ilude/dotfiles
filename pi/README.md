@@ -267,6 +267,8 @@ pi --no-extensions
 pi -e ~/.dotfiles/pi/extensions/damage-control.ts
 ```
 
+The Onclave adapter keeps its localhost broker default for repository-local development. Interactive zsh and PowerShell sessions load an explicit `ONCLAVE_AMQP_URL` from `private/secrets.env` when configured, allowing the normal Pi launch to use a centralized broker without changing tracked defaults.
+
 ---
 
 ## Extensions
@@ -577,6 +579,13 @@ Slots:
 
 Healthy default keeps the bar quiet (no `OK` token, no zero counters). Slots
 populate at `session_start` and refresh after every `tool_result`.
+
+The custom footer renders directory, branch, model, reasoning level, context
+usage, Pi version, and provider quota on the first line. Context usage is a
+separate pipe-delimited segment after the reasoning level. Onclave and other
+extension statuses render on the left of the second line, followed by token
+throughput. Compact Bedrock spend remains right-aligned as the final second-line
+segment.
 
 Commands:
 - `/doctor` -- compact health summary
