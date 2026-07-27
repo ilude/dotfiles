@@ -43,6 +43,21 @@ afterEach(() => {
 });
 
 describe("commit planning", () => {
+	it("limits a plan to exact requested paths", () => {
+		const dir = repo();
+		writeFileSync(join(dir, "one.txt"), "one\n");
+		writeFileSync(join(dir, "two.txt"), "two\n");
+
+		const plan = buildCommitPlan(dir, ["one.txt"]);
+
+		expect(plan.selectedPaths).toEqual(["one.txt"]);
+		expect(plan.safeStagePaths).toEqual(["one.txt"]);
+		expect(plan.expectedStagedPaths).toEqual(["one.txt"]);
+		expect(() => buildCommitPlan(dir, ["missing.txt"])).toThrow(
+			/Requested paths are not present/,
+		);
+	});
+
 	it("matches synchronous preflight for a normal repository", async () => {
 		const dir = repo();
 		const runner: GitAsyncRunner = async (cwd, args) => {

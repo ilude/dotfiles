@@ -118,6 +118,20 @@ describe("commit tool timing spans", () => {
 		return dir;
 	}
 
+	function useRealGitExec(pi: ReturnType<typeof createMockPi>) {
+		pi.exec.mockImplementation(async (command, args, options) => {
+			const result = spawnSync(command, args, {
+				cwd: options?.cwd,
+				encoding: "utf8",
+			});
+			return {
+				code: result.status ?? 1,
+				stdout: result.stdout ?? "",
+				stderr: result.stderr ?? "",
+			};
+		});
+	}
+
 	afterEach(() => {
 		for (const dir of repos.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 	});
@@ -127,6 +141,7 @@ describe("commit tool timing spans", () => {
 		fs.writeFileSync(path.join(dir, "staged.txt"), "hello\n");
 
 		const pi = createMockPi();
+		useRealGitExec(pi);
 		registerCommitTools(pi as any);
 
 		const planTool = pi._getTool("commit_plan")!;
@@ -134,11 +149,13 @@ describe("commit tool timing spans", () => {
 		const ctx = { cwd: dir };
 
 		const planResult = await planTool.execute("id", {}, undefined, undefined, ctx);
-		const plan = planResult.details as ReturnType<typeof buildCommitPlan>;
+		const plan = planResult.details as ReturnType<typeof buildCommitPlan> & {
+			planId: string;
+		};
 
 		await stageTool.execute(
 			"id",
-			{ paths: plan.safeStagePaths, confirmationToken: plan.stageConfirmationToken },
+			{ planId: plan.planId },
 			undefined,
 			undefined,
 			ctx,
@@ -154,6 +171,7 @@ describe("commit tool timing spans", () => {
 		fs.writeFileSync(path.join(dir, "create.txt"), "hello\n");
 
 		const pi = createMockPi();
+		useRealGitExec(pi);
 		registerCommitTools(pi as any);
 
 		const planTool = pi._getTool("commit_plan")!;
@@ -162,11 +180,13 @@ describe("commit tool timing spans", () => {
 		const ctx = { cwd: dir };
 
 		const planResult = await planTool.execute("id", {}, undefined, undefined, ctx);
-		const plan = planResult.details as ReturnType<typeof buildCommitPlan>;
+		const plan = planResult.details as ReturnType<typeof buildCommitPlan> & {
+			planId: string;
+		};
 
-		await stageTool.execute(
+		const stageResult = await stageTool.execute(
 			"id",
-			{ paths: plan.safeStagePaths, confirmationToken: plan.stageConfirmationToken },
+			{ planId: plan.planId },
 			undefined,
 			undefined,
 			ctx,
@@ -176,8 +196,7 @@ describe("commit tool timing spans", () => {
 			"id",
 			{
 				message: "feat: add create.txt",
-				expectedStagedPaths: plan.expectedStagedPaths,
-				confirmationToken: plan.createConfirmationToken,
+				stageId: stageResult.details.stageId,
 			},
 			undefined,
 			undefined,
@@ -196,7 +215,9 @@ describe("commit tool timing spans", () => {
 		const stageTool = pi._getTool("commit_stage")!;
 		const ctx = { cwd: "/nonexistent-repo-path" };
 
-		await stageTool.execute("id", { paths: ["file.txt"], confirmationToken: "invalid" }, undefined, undefined, ctx);
+		await expect(
+			stageTool.execute("id", { planId: "missing" }, undefined, undefined, ctx),
+		).rejects.toThrow(/Unknown or expired commit planId/);
 
 		const events = readRecentEvents();
 		const spanNames = events.filter((e) => e.event === "timing_span").map((e) => e.data?.name);

@@ -52,34 +52,30 @@ describe("commit extension registration", () => {
 		);
 	});
 
-	it("commit_stage returns formatToolError envelope on failure instead of throwing", async () => {
+	it("commit_stage throws on failure so Pi marks the tool call failed", async () => {
 		const pi = createMockPi();
 		registerCommitTools(pi as any);
 
 		const tool = pi._getTool("commit_stage")!;
 		const ctx = { cwd: "/nonexistent-repo-path" };
-		const params = { paths: ["file.txt"], confirmationToken: "invalid" };
+		const params = { planId: "missing" };
 
-		const result = await tool.execute("id", params, undefined, undefined, ctx);
-
-		expect(result).toHaveProperty("isError", true);
-		expect(result.content).toBeInstanceOf(Array);
-		expect(result.content[0]).toHaveProperty("type", "text");
-		expect(typeof result.content[0].text).toBe("string");
+		await expect(
+			tool.execute("id", params, undefined, undefined, ctx),
+		).rejects.toThrow(/Unknown or expired commit planId/);
 	});
 
-	it("commit_create returns formatToolError envelope on failure instead of throwing", async () => {
+	it("commit_create throws on failure so Pi marks the tool call failed", async () => {
 		const pi = createMockPi();
 		registerCommitTools(pi as any);
 
 		const tool = pi._getTool("commit_create")!;
 		const ctx = { cwd: "/nonexistent-repo-path" };
-		const params = { message: "feat: test", expectedStagedPaths: ["file.txt"], confirmationToken: "invalid" };
+		const params = { message: "feat: test", stageId: "missing" };
 
-		const result = await tool.execute("id", params, undefined, undefined, ctx);
-
-		expect(result).toHaveProperty("isError", true);
-		expect(result.content[0]).toHaveProperty("type", "text");
+		await expect(
+			tool.execute("id", params, undefined, undefined, ctx),
+		).rejects.toThrow(/Unknown or expired commit stageId/);
 	});
 
 	it("commit_stage succeeds with a valid plan and returns staged paths", async () => {
@@ -87,18 +83,36 @@ describe("commit extension registration", () => {
 		writeFileSync(join(dir, "hello.txt"), "hello\n");
 
 		const pi = createMockPi();
+		pi.exec.mockImplementation(async (command, args, options) => {
+			const result = spawnSync(command, args, {
+				cwd: options?.cwd,
+				encoding: "utf8",
+			});
+			return {
+				code: result.status ?? 1,
+				stdout: result.stdout ?? "",
+				stderr: result.stderr ?? "",
+			};
+		});
 		registerCommitTools(pi as any);
 
 		const planTool = pi._getTool("commit_plan")!;
 		const stageTool = pi._getTool("commit_stage")!;
+		const createTool = pi._getTool("commit_create")!;
 		const ctx = { cwd: dir };
 
 		const planResult = await planTool.execute("id", {}, undefined, undefined, ctx);
-		const plan = planResult.details as ReturnType<typeof buildCommitPlan>;
+		const plan = planResult.details as ReturnType<typeof buildCommitPlan> & {
+			planId: string;
+		};
+		const visiblePlan = JSON.parse(planResult.content[0].text);
+		expect(visiblePlan.safeStagePaths).toEqual(["hello.txt"]);
+		expect(visiblePlan.planId).toBe(plan.planId);
+		expect(visiblePlan).not.toHaveProperty("stageConfirmationToken");
 
 		const stageResult = await stageTool.execute(
 			"id",
-			{ paths: plan.safeStagePaths, confirmationToken: plan.stageConfirmationToken },
+			{ planId: visiblePlan.planId },
 			undefined,
 			undefined,
 			ctx,
@@ -106,5 +120,17 @@ describe("commit extension registration", () => {
 
 		expect(stageResult).not.toHaveProperty("isError");
 		expect(stageResult.details.staged).toContain("hello.txt");
+		const visibleStage = JSON.parse(stageResult.content[0].text);
+		expect(visibleStage.stageId).toBe(stageResult.details.stageId);
+		expect(visibleStage).not.toHaveProperty("createConfirmationToken");
+
+		const createResult = await createTool.execute(
+			"id",
+			{ message: "feat: add hello", stageId: visibleStage.stageId },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(JSON.parse(createResult.content[0].text).hash).toMatch(/^[a-f0-9]+$/);
 	});
 });

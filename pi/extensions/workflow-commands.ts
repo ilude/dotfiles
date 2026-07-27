@@ -27,10 +27,11 @@ import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type {
-	ContextUsage,
-	ExtensionAPI,
-	ExtensionCommandContext,
+import {
+	BorderedLoader,
+	type ContextUsage,
+	type ExtensionAPI,
+	type ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { Key, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
@@ -2674,7 +2675,39 @@ export default function (pi: ExtensionAPI) {
 		description: "Smart git commit with submodule handling and flexible grouping",
 		handler: async (args, ctx) => {
 			try {
-				await executeCommitCommand(pi, args, ctx);
+				if (ctx.mode !== "tui") {
+					await executeCommitCommand(pi, args, ctx);
+					return;
+				}
+
+				let commitPromise: Promise<void> | undefined;
+				let cancelled = false;
+				await ctx.ui.custom<void>((tui, theme, _keybindings, done) => {
+					const loader = new BorderedLoader(tui, theme, "Running /commit...");
+					loader.onAbort = () => {
+						cancelled = true;
+					};
+					commitPromise = executeCommitCommand(pi, args, {
+						...ctx,
+						signal: loader.signal,
+					});
+					void commitPromise.then(
+						() => done(undefined),
+						() => done(undefined),
+					);
+					return loader;
+				});
+
+				if (!commitPromise) throw new Error("Commit loader did not start.");
+				if (cancelled) {
+					await commitPromise.then(
+						() => undefined,
+						() => undefined,
+					);
+					ctx.ui.notify("Commit cancelled", "info");
+					return;
+				}
+				await commitPromise;
 			} catch (err) {
 				ctx.ui.notify(
 					`Commit failed: ${err instanceof Error ? err.message : String(err)}`,

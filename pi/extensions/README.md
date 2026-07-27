@@ -232,9 +232,10 @@ Pi owns `/commit` through the existing `pi/extensions/workflow-commands.ts` comm
 
 The extension exposes structured commit tools:
 
-- `commit_plan` and `commit_validate_message` are non-mutating.
-- `commit_stage` and `commit_create` are mutating and require confirmation tokens generated from the exact path set shown by `commit_plan`.
-- `commit_create` re-reads the staged set immediately before `git commit` and reports `pushed: false`; push/grouped-commit mutation is deferred.
+- `commit_plan` and `commit_validate_message` are non-mutating. `commit_plan.paths` limits a plan to an exact selection, and its model-visible content includes an opaque `planId` for the next tool call.
+- `commit_stage` and `commit_create` are abort-aware mutations. `commit_stage` accepts a `planId` and returns an opaque `stageId`; state-binding tokens remain internal to the extension.
+- `commit_create` re-reads the staged set, checks staged whitespace, scans added lines for secrets, and reports `pushed: false`.
+- `commit_push` requires an explicit push request, expected HEAD, configured upstream, and a branch that is not behind its freshly fetched upstream. It never force-pushes.
 
 The older Python `scripts/commit-helper` remains a compatibility/parity reference for non-Pi consumers. Pi behavior is canonical going forward.
 
@@ -244,11 +245,11 @@ The older Python `scripts/commit-helper` remains a compatibility/parity referenc
 
 ### Direct-tool vs. slash-command usage
 
-Structured commit tools and `/commit` may create coherent, in-scope local commits without separate user approval. Neither interface pushes unless the user explicitly requests a push-capable workflow.
+Structured commit tools and `/commit` may create coherent, in-scope local commits without separate user approval. `commit_push` and `/commit push` run only when the user explicitly requests a push-capable workflow.
 
-The structured tools use tokens as state-integrity checks. `commit_stage` accepts only the exact safe path set bound to `commit_plan`, and `commit_create` revalidates the expected staged set before committing. The tokens do not represent user confirmation.
+The structured tools use opaque handles backed by state-integrity tokens. `commit_stage` accepts only the exact safe path set and worktree content bound to `commit_plan`; `commit_create` accepts only the exact staged paths and index tree bound to `commit_stage`. Handles expire after successful use and are cleared at session start. The underlying tokens do not represent user confirmation.
 
-`/commit` owns its deterministic end-to-end workflow in `workflow-commands.ts`. Agents may instead use the structured tools or a normal shell workflow (`git status`, targeted `git add -- <paths>`, repository-required checks, `git diff --cached --check`, `git commit`) while keeping local commits coherent and in scope.
+`/commit` owns its deterministic end-to-end workflow in `workflow-commands.ts`, including logical grouping and dirty direct-submodule handling. It displays an Esc-cancellable loader while running. Agents may instead use the structured tools or a normal shell workflow (`git status`, targeted `git add -- <paths>`, repository-required checks, `git diff --cached --check`, `git commit`) while keeping local commits coherent and in scope.
 
 ## Validation
 

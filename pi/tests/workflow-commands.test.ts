@@ -634,6 +634,51 @@ describe("workflow command dispatch", () => {
 		);
 	});
 
+	it("cancels /commit with Esc through the loader signal", async () => {
+		const { initTheme } = await import("@earendil-works/pi-coding-agent");
+		initTheme("dark");
+		const notify = vi.fn();
+		mockPreflightGitStateAsync.mockImplementationOnce(
+			async (_cwd, _runner, signal: AbortSignal) => {
+				await new Promise<void>((resolve) => {
+					signal.addEventListener("abort", () => resolve(), { once: true });
+				});
+				return { ok: true, blocked: [] };
+			},
+		);
+		const custom = vi.fn(
+			async (
+				factory: (
+					tui: unknown,
+					theme: unknown,
+					keybindings: unknown,
+					done: (value: undefined) => void,
+				) => { handleInput: (input: string) => void },
+			) =>
+				new Promise<void>((resolve) => {
+					const component = factory(
+						{ requestRender: vi.fn() },
+						{
+							fg: (_color: string, text: string) => text,
+							bold: (text: string) => text,
+						},
+						{},
+						() => resolve(),
+					);
+					queueMicrotask(() => component.handleInput("\u001b"));
+				}),
+		);
+
+		await getHandler("commit")("", {
+			cwd: "/repo",
+			mode: "tui",
+			ui: { custom, notify },
+		});
+
+		expect(custom).toHaveBeenCalledOnce();
+		expect(notify).toHaveBeenCalledWith("Commit cancelled", "info");
+	});
+
 	it("keeps every mixed-surface path in one fallback commit", async () => {
 		const { buildDeterministicCommitFallback } = await import(
 			"../extensions/workflow-commands.ts"

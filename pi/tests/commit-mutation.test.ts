@@ -252,18 +252,66 @@ describe("commit mutation safety", () => {
 		expect(result.staged).toEqual([".gitignore", "safe.txt"]);
 	});
 
+	it("commit_stage rejects content drift after planning", () => {
+		const dir = repo();
+		writeFileSync(join(dir, "safe.txt"), "before\n");
+		const plan = buildCommitPlan(dir);
+		writeFileSync(join(dir, "safe.txt"), "after\n");
+		expect(() =>
+			stagePaths(dir, plan.safeStagePaths, plan.stageConfirmationToken),
+		).toThrow(/worktree state/);
+	});
+
+	it("commit_create rejects staged content drift and newly added secrets", () => {
+		const dir = repo();
+		writeFileSync(join(dir, "safe.txt"), "before\n");
+		const plan = buildCommitPlan(dir);
+		const staged = stagePaths(
+			dir,
+			plan.safeStagePaths,
+			plan.stageConfirmationToken,
+		);
+		writeFileSync(
+			join(dir, "safe.txt"),
+			["api", "key=abcdef123456\n"].join("_"),
+		);
+		run(dir, ["add", "--", "safe.txt"]);
+		expect(() =>
+			createCommit(
+				dir,
+				"feat: add safe file",
+				staged.expectedStagedPaths,
+				staged.createConfirmationToken,
+			),
+		).toThrow(/confirmation token/);
+		const refreshed = buildCommitPlan(dir);
+		expect(() =>
+			createCommit(
+				dir,
+				"feat: add safe file",
+				refreshed.expectedStagedPaths,
+				refreshed.createConfirmationToken,
+			),
+		).toThrow(/Secret scan/);
+	});
+
 	it("commit_create revalidates staged set and message immediately before commit", () => {
 		const dir = repo();
 		writeFileSync(join(dir, "safe.txt"), "safe\n");
-		let plan = buildCommitPlan(dir);
-		stagePaths(dir, plan.safeStagePaths, plan.stageConfirmationToken);
-		plan = buildCommitPlan(dir);
+		const plan = buildCommitPlan(dir);
+		let staged = stagePaths(
+			dir,
+			plan.safeStagePaths,
+			plan.stageConfirmationToken,
+		);
 		writeFileSync(join(dir, "drift.txt"), "drift\n");
 		run(dir, ["add", "--", "drift.txt"]);
-		expect(() => createCommit(dir, "feat: add safe file", plan.expectedStagedPaths, plan.createConfirmationToken)).toThrow(/Staged set changed/);
+		expect(() => createCommit(dir, "feat: add safe file", staged.expectedStagedPaths, staged.createConfirmationToken)).toThrow(/confirmation token|Staged set changed/);
 		run(dir, ["reset", "--", "drift.txt"]);
-		expect(() => createCommit(dir, "bad message", plan.expectedStagedPaths, plan.createConfirmationToken)).toThrow(/conventional/);
-		const commit = createCommit(dir, "feat: add safe file", plan.expectedStagedPaths, plan.createConfirmationToken);
+		rmSync(join(dir, "drift.txt"));
+		staged = stagePaths(dir, [], buildCommitPlan(dir).stageConfirmationToken);
+		expect(() => createCommit(dir, "bad message", staged.expectedStagedPaths, staged.createConfirmationToken)).toThrow(/conventional/);
+		const commit = createCommit(dir, "feat: add safe file", staged.expectedStagedPaths, staged.createConfirmationToken);
 		expect(commit.committedPaths).toEqual(["safe.txt"]);
 		expect(commit.pushed).toBe(false);
 	});

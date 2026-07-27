@@ -6,4 +6,10 @@ Entries expose `path`, `index`, `worktree`, `classification`, `ignored`, `safeTo
 
 Preflight blocks mutating operations during merge, rebase, cherry-pick, bisect, detached HEAD, and unmerged paths. By default, `/commit` processes dirty direct submodules before the parent: each submodule requires an upstream branch, receives a fast-forward-only pull, and runs the same commit workflow. `/commit push` pushes child commits before the parent; `--no-submodules` preserves the conservative leave-untouched behavior. Nested submodules are not processed automatically. Worktrees, sparse checkout, and partial index remain states requiring conservative handling before mutation.
 
-Mutating tools (`commit_stage`, `commit_create`, future `commit_push`) require a state-binding token generated for the exact plan. The token prevents stale or mismatched path sets; it is not a user-approval gate. `commit_create` must re-read and verify the staged set immediately before `git commit`.
+Structured tools support exact-path planning through `commit_plan.paths`. The model-visible result contains the selected entries, safe stage paths, expected staged paths, and an opaque `planId`. `commit_stage` accepts that handle and returns an opaque `stageId`; confirmation tokens remain internal to the extension.
+
+Mutating tools (`commit_stage`, `commit_create`, and `commit_push`) use abort-aware Git execution and fail by throwing tool errors. The state behind a plan handle binds the repository, exact paths, and planned worktree content. The state behind a stage handle binds the repository, exact staged paths, and index tree. Handles expire after successful use and are cleared when the session starts. `commit_create` re-reads the staged set, runs `git diff --cached --check`, and scans added lines for secrets immediately before `git commit`.
+
+`commit_push` is available only for an explicit push request. It verifies the expected HEAD, requires an upstream, fetches that upstream remote, rejects a behind or diverged branch, and uses a normal non-force push.
+
+`/commit` remains the higher-level workflow for automatic logical grouping and dirty direct-submodule commits. Structured tools are deterministic primitives: callers choose groups by passing exact paths, and dirty-only submodule state is excluded from parent planning rather than committed automatically.

@@ -1,6 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { type GitAsyncRunner, type GitResult, git } from "./git";
+import {
+	indexStateFingerprint,
+	worktreeStateFingerprint,
+} from "./state";
 import { excludeDirtyOnlySubmodules } from "./submodule";
 import { createConfirmationToken, normalizeCommitPaths } from "./token";
 import type {
@@ -328,7 +332,10 @@ export function preflightGitStateAsync(
 	});
 }
 
-export function buildCommitPlan(cwd: string): CommitPlanResult {
+export function buildCommitPlan(
+	cwd: string,
+	requestedPaths?: string[],
+): CommitPlanResult {
 	const root = repoRoot(cwd);
 	const status = git(root, [
 		"status",
@@ -356,34 +363,75 @@ export function buildCommitPlan(cwd: string): CommitPlanResult {
 	const entries = statusEntries.map((entry) =>
 		classify(entry, ignored.has(entry.path)),
 	);
+	const normalizedRequested = requestedPaths
+		? normalizeCommitPaths(requestedPaths)
+		: undefined;
+	const byPath = new Map(entries.map((entry) => [entry.path, entry]));
+	if (normalizedRequested) {
+		const missing = normalizedRequested.filter((file) => !byPath.has(file));
+		if (missing.length > 0) {
+			throw new Error(
+				`Requested paths are not present in the commit plan: ${missing.join(", ")}`,
+			);
+		}
+		const unselectedStaged = entries
+			.filter(
+				(entry) =>
+					entry.recommendedAction === "keep_staged" &&
+					!normalizedRequested.includes(entry.path),
+			)
+			.map((entry) => entry.path);
+		if (unselectedStaged.length > 0) {
+			throw new Error(
+				`Unselected staged paths would be included in the commit: ${unselectedStaged.join(", ")}`,
+			);
+		}
+	}
+	const selectedEntries = normalizedRequested
+		? entries.filter((entry) => normalizedRequested.includes(entry.path))
+		: entries;
+	const selectedPaths = normalizeCommitPaths(
+		selectedEntries.map((entry) => entry.path),
+	);
 	const safeStagePaths = normalizeCommitPaths(
-		entries
+		selectedEntries
 			.filter(
 				(entry) => entry.recommendedAction === "stage" && entry.safeToGitAdd,
 			)
 			.map((entry) => entry.path),
 	);
-	const alreadyStagedPaths = entries
+	const alreadyStagedPaths = selectedEntries
 		.filter((entry) => entry.recommendedAction === "keep_staged")
 		.map((entry) => entry.path);
 	const expectedStagedPaths = normalizeCommitPaths([
 		...alreadyStagedPaths,
 		...safeStagePaths,
 	]);
+	const stageEntries = selectedEntries.filter((entry) =>
+		safeStagePaths.includes(entry.path),
+	);
+	const stageFingerprint = worktreeStateFingerprint(root, stageEntries);
+	const createFingerprint =
+		safeStagePaths.length === 0 ? indexStateFingerprint(root) : undefined;
 	return {
 		repoRoot: root,
 		preflight,
 		entries,
+		selectedPaths,
 		stageConfirmationToken: createConfirmationToken(
 			root,
 			safeStagePaths,
 			"stage",
+			stageFingerprint,
 		),
-		createConfirmationToken: createConfirmationToken(
-			root,
-			expectedStagedPaths,
-			"create",
-		),
+		createConfirmationToken: createFingerprint
+			? createConfirmationToken(
+					root,
+					expectedStagedPaths,
+					"create",
+					createFingerprint,
+				)
+			: undefined,
 		safeStagePaths,
 		expectedStagedPaths,
 	};
