@@ -150,9 +150,15 @@ Test agent.
 			ctx,
 		);
 		expect(accepted.details.outcome).toBe("accepted");
-		await vi.waitFor(() =>
-			expect(registry.getTask(id)?.state).toBe("completed"),
+		const awaited = await task.execute(
+			"await-task",
+			{ action: "await", ids: [id] },
+			undefined,
+			undefined,
+			ctx,
 		);
+		expect(awaited.details.outcome).toBe("persisted");
+		expect(registry.getTask(id)?.state).toBe("completed");
 		expect(spawnMock).toHaveBeenCalledTimes(1);
 		expect(spawnMock.mock.calls[0][1]).toContain("anthropic/claude-sonnet-4-6");
 		const { subagentRunManager } = await import(
