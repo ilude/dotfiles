@@ -135,13 +135,13 @@ git -C /c/Projects/Personal/onramp-vNext status --short > /tmp/vnext-baseline.tx
     `MENOS_API_BASE`, and raises when empty. Insert the convention path before
     the raise.
   - Resolution order: `MENOS_API_BASE` wins; otherwise
-    `https://menos.{MENOS_DISCOVERY_DOMAIN}/api/v1`; otherwise raise.
+    `https://menos.{HOST_DOMAIN}/api/v1`; otherwise raise.
   - **Append `/api/v1`.** Omitting it produces a signature mismatch that
     presents as an auth failure, not a configuration failure.
   - **Do not include a port.** An explicit `:443` produces a signed
     `@authority` of `host:443` while httpx transmits `Host: host`. Same failure
     class, different cause.
-  - The error must name both `MENOS_API_BASE` and `MENOS_DISCOVERY_DOMAIN`. The
+  - The error must name both `MENOS_API_BASE` and `HOST_DOMAIN`. The
     current message at lines 42-44 names only the first.
   - No new dependency. Do not add `dnspython`; there is no DNS query here.
   - Tests go in the existing `tests/test_api_config.py`.
@@ -153,7 +153,7 @@ git -C /c/Projects/Personal/onramp-vNext status --short > /tmp/vnext-baseline.tx
   2. [ ] The derived URL has the path and no port.
      - Verify: `cd /c/Users/mglenn/.dotfiles/tools/menos-youtube && uv run pytest tests/test_api_config.py -q`
      - Pass: all tests pass, including a new case asserting that with
-       `MENOS_DISCOVERY_DOMAIN=example.internal` and no `MENOS_API_BASE` the
+       `HOST_DOMAIN=example.internal` and no `MENOS_API_BASE` the
        result is exactly `https://menos.example.internal/api/v1`
      - Fail: a trailing `:443` or a missing `/api/v1` both fail here; both are
        silent in production until a signed request is rejected
@@ -367,7 +367,7 @@ Manual: confirm end-to-end discovery (see Validation Contract)
 
 - Required: **yes**
 - Steps:
-  1. Set `MENOS_DISCOVERY_DOMAIN` in `~/.dotfiles/.env`.
+  1. Set `HOST_DOMAIN` in `~/.dotfiles/.env`.
   2. Unset `MENOS_API_BASE` in the environment and confirm it is absent from
      **both** `~/.dotfiles/.env` and `~/.dotfiles/.secrets`.
      `api_config.py:15-21` falls back to `.secrets`, so clearing only `.env`
