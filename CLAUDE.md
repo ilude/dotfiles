@@ -53,26 +53,9 @@ The repo installer pre-installs the Python hook dependencies used by Claude hook
 
 ## menos (Content Vault)
 
-Git submodule at `menos/` is a self-hosted content vault with semantic search. See `menos/.claude/CLAUDE.md` for full project rules.
+The menos server is deployed from `onclave/services/menos`. This repository contains its client tooling under `tools/menos-youtube/`.
 
-**Stack**: Python 3.12+, FastAPI, SurrealDB, MinIO, Ollama
-
-### Key Paths
-
-| Path | Purpose |
-|------|---------|
-| `menos/api/` | FastAPI application, tests, scripts, migrations |
-| `menos/infra/ansible/` | Deployment via Ansible in Docker |
-| `menos/.claude/rules/` | Project rules (architecture, API ref, schema, deployment, gotchas) |
-
-### Deployment
-
-```bash
-cd menos/infra/ansible
-docker compose run --rm ansible ansible-playbook -i inventory/hosts.yml playbooks/deploy.yml
-```
-
-Server: `192.168.16.241` (user: anvil). Post-deploy verifies git SHA via `/health`.
+Set `HOST_DOMAIN` to derive the API base as `https://menos.<domain>/api/v1`. Set `MENOS_API_BASE` only when the client needs an explicit endpoint override.
 
 ### `/yt` Command
 

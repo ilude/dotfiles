@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repository-wide rules for coding agents. This cross-platform dotfiles repository supports Linux, Windows PowerShell, Git Bash/MSYS2, and WSL; uses Dotbot and git submodules including `dotbot/` and `menos/`; and converges terminals on zsh.
+Repository-wide rules for coding agents. This cross-platform dotfiles repository supports Linux, Windows PowerShell, Git Bash/MSYS2, and WSL; uses Dotbot and git submodules including `dotbot/` and `onclave/`; and converges terminals on zsh.
 
 Read this file first. More specific instructions for the active client or directory take precedence without changing this file's repository-wide invariants:
 
@@ -10,7 +10,7 @@ Read this file first. More specific instructions for the active client or direct
 - Pi global instructions: [`pi/AGENTS.md`](pi/AGENTS.md); Claude global instructions: `claude/CLAUDE.md` (independent files, no symlink)
 - Pi runtime: [`pi/README.md`](pi/README.md)
 
-Claude hooks, commands, settings, and runtime workarounds are Claude-only. `menos/` deployment and Claude-only content ingestion are also outside this file's scope. Follow the owning surface rather than blending client, shell, PowerShell, WSL, or platform conventions.
+Claude hooks, commands, settings, runtime workarounds, and content ingestion are Claude-only. Follow the owning surface rather than blending client, shell, PowerShell, WSL, or platform conventions.
 
 ## Command index
 
