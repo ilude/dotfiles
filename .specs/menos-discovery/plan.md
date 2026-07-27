@@ -1,6 +1,6 @@
 ---
 created: 2026-07-27
-status: draft
+status: blocked
 completed:
 ---
 
@@ -146,22 +146,22 @@ git -C /c/Projects/Personal/onramp-vNext status --short > /tmp/vnext-baseline.tx
   - No new dependency. Do not add `dnspython`; there is no DNS query here.
   - Tests go in the existing `tests/test_api_config.py`.
 - Acceptance Criteria:
-  1. [ ] `MENOS_API_BASE` keeps precedence.
+  1. [x] `MENOS_API_BASE` keeps precedence.
      - Verify: `cd /c/Users/mglenn/.dotfiles/tools/menos-youtube && MENOS_API_BASE=https://wrong.example/api/v1 uv run python -c "import api_config; print(api_config.get_api_base())"`
      - Pass: prints `https://wrong.example/api/v1`
      - Fail: any other value means ordering broke in `get_api_base()`
-  2. [ ] The derived URL has the path and no port.
+  2. [x] The derived URL has the path and no port.
      - Verify: `cd /c/Users/mglenn/.dotfiles/tools/menos-youtube && uv run pytest tests/test_api_config.py -q`
      - Pass: all tests pass, including a new case asserting that with
        `HOST_DOMAIN=example.internal` and no `MENOS_API_BASE` the
        result is exactly `https://menos.example.internal/api/v1`
      - Fail: a trailing `:443` or a missing `/api/v1` both fail here; both are
        silent in production until a signed request is rejected
-  3. [ ] With neither variable set, the error names both.
+  3. [x] With neither variable set, the error names both.
      - Verify: new test in `tests/test_api_config.py` asserting the raised
        message contains both variable names
      - Fail: extend the message at lines 42-44
-  4. [ ] Nothing regressed and lint is clean.
+  4. [x] Nothing regressed and lint is clean.
      - Verify: `cd /c/Users/mglenn/.dotfiles/tools/menos-youtube && uv run pytest -q` then `cd /c/Users/mglenn/.dotfiles && make lint-python`
      - Pass: all tests pass (20 passed before this change), ruff exits 0
 
@@ -181,10 +181,10 @@ git -C /c/Projects/Personal/onramp-vNext status --short > /tmp/vnext-baseline.tx
     env contract is authoritative.
   - Do not add a compose cross-check to `service-catalog.py`. Separate change.
 - Acceptance Criteria:
-  1. [ ] No SurrealDB references remain.
+  1. [x] No SurrealDB references remain.
      - Verify: `cd /c/Users/mglenn/.dotfiles/onclave && grep -ric surrealdb infra/services.json scripts/onclave-bws-env.py`
      - Pass: `0` for both
-  2. [ ] The catalog still validates.
+  2. [x] The catalog still validates.
      - Verify: `cd /c/Users/mglenn/.dotfiles/onclave && python ./scripts/service-catalog.py list`
      - Pass: lists onclave and menos without error
      - Fail: `service-catalog.py:49-55` requires a non-empty list of unique
@@ -207,11 +207,11 @@ git -C /c/Projects/Personal/onramp-vNext status --short > /tmp/vnext-baseline.tx
     SurrealDB stack line are stale.
   - T1 also edits `CLAUDE.md`, in a different section. Re-read before writing.
 - Acceptance Criteria:
-  1. [ ] No claim that `menos/` is a submodule remains.
+  1. [x] No claim that `menos/` is a submodule remains.
      - Verify: `cd /c/Users/mglenn/.dotfiles && grep -n menos .gitmodules; grep -n "menos/" AGENTS.md CLAUDE.md`
      - Pass: `.gitmodules` has no menos entry, and any remaining `menos/` match
        refers to `onclave/services/menos` or `tools/menos-youtube`
-  2. [ ] No stale SurrealDB stack description remains.
+  2. [x] No stale SurrealDB stack description remains.
      - Verify: `cd /c/Users/mglenn/.dotfiles && grep -ic surrealdb AGENTS.md CLAUDE.md`
      - Pass: `0`
 
@@ -248,12 +248,12 @@ git -C /c/Projects/Personal/onramp-vNext status --short > /tmp/vnext-baseline.tx
      - Verify: `cd /c/Projects/Personal/onramp-vNext && grep -rn "provision proxmox\|Proxmox/bare-metal\|Proxmox provisioning supported" docs/prd/`
      - Pass: every remaining match is explicitly marked withdrawn or
        out-of-scope
-  2. [ ] Infisical is no longer described as the secret source of truth.
+  2. [x] Infisical is no longer described as the secret source of truth.
      - Verify: `cd /c/Projects/Personal/onramp-vNext && grep -rn -i "source of truth" docs/prd/ | grep -i infisical`
      - Pass: no match, or every match is marked withdrawn
      - Note: this grep scans the whole directory. Every file it can hit is now
        in this task's scope, which was not true in the previous revision
-  3. [ ] Only the five intended files changed.
+  3. [x] Only the five intended files changed.
      - Verify: `cd /c/Projects/Personal/onramp-vNext && git status --short docs/prd/`
      - Pass: exactly the five listed files appear as modified
      - Fail: compare against `/tmp/vnext-baseline.txt` from pre-flight
@@ -284,16 +284,16 @@ git -C /c/Projects/Personal/onramp-vNext status --short > /tmp/vnext-baseline.tx
     separate mechanism.
   - This is a nested private repository. Never commit it from the parent.
 - Acceptance Criteria:
-  1. [ ] Exactly 79 paths were untracked and none remain tracked.
+  1. [x] Exactly 79 paths were untracked and none remain tracked.
      - Verify: `cd /c/Projects/Personal/homelab-infra && git -C values diff --cached --name-only --diff-filter=D | wc -l; git -C values ls-files service-backups hermes-backups backups | wc -l`
      - Pass: `79` then `0`
      - Fail: `0` staged deletions means `git rm` aborted, most likely because an
        untracked path was included
-  2. [ ] Files remain on disk and history is unchanged.
+  2. [x] Files remain on disk and history is unchanged.
      - Verify: `cd /c/Projects/Personal/homelab-infra && ls values/service-backups | head -3; git -C values count-objects -vH | grep size-pack`
      - Pass: files listed, `size-pack` still roughly 2.42 GiB
      - Fail: a smaller packfile means history was rewritten. Stop and restore
-  3. [ ] The backup doc no longer promises git-based off-site storage.
+  3. [x] The backup doc no longer promises git-based off-site storage.
      - Verify: `cd /c/Projects/Personal/homelab-infra && sed -n '75,90p' docs/service-state-backup.md`
      - Pass: the paragraph states these archives are not git-tracked
 
@@ -329,19 +329,19 @@ Manual: confirm end-to-end discovery (see Validation Contract)
 
 ## Success Criteria
 
-1. [ ] A client with no `MENOS_API_BASE` completes a signed API call.
+1. [x] A client with no `MENOS_API_BASE` completes a signed API call.
    - Verify: see Manual validation
-2. [ ] No stale SurrealDB or menos-submodule claims remain.
+2. [x] No stale SurrealDB or menos-submodule claims remain.
    - Verify: `cd /c/Users/mglenn/.dotfiles && grep -ric surrealdb AGENTS.md CLAUDE.md onclave/infra/services.json onclave/scripts/onclave-bws-env.py`
    - Pass: `0` for every file
 3. [ ] onramp-vNext docs no longer claim Proxmox provisioning or Infisical as
    source of truth.
    - Verify: `cd /c/Projects/Personal/onramp-vNext && grep -rn -i "source of truth" docs/prd/ | grep -i infisical`
    - Pass: no unmarked match
-4. [ ] The values repo stopped accumulating archives without losing history.
+4. [x] The values repo stopped accumulating archives without losing history.
    - Verify: `cd /c/Projects/Personal/homelab-infra && git -C values ls-files service-backups hermes-backups backups | wc -l`
    - Pass: `0`, with files still on disk
-5. [ ] No DNS record or DNS tooling was changed.
+5. [x] No DNS record or DNS tooling was changed.
    - Verify: `cd /c/Projects/Personal/homelab-infra && git status --short infra/ansible/scripts/ values/dns-records.local.json`
    - Pass: empty output
 
@@ -349,7 +349,7 @@ Manual: confirm end-to-end discovery (see Validation Contract)
 
 ### Required automated validation
 
-1. [ ] Run repo-wide validation for every repo touched.
+1. [x] Run repo-wide validation for every repo touched.
    - Commands:
      - `cd /c/Users/mglenn/.dotfiles && make check`
      - `cd /c/Users/mglenn/.dotfiles/tools/menos-youtube && uv run pytest -q`
@@ -388,6 +388,17 @@ not archive.
 
 Archive only after all automated validation, task-specific verification, and
 manual validation pass.
+
+## Execution Status
+
+Blocked 2026-07-27. Automated validation and the signed `/yt list` workflow
+passed, but `docs/prd/onramp-vnext-backlog.md` still treats Proxmox provisioning
+as unresolved work. T4 permits edits only to five other PRDs, so satisfying its
+repository-wide acceptance criterion requires a scope decision. The exact next
+ready task is to decide whether to mark the backlog's Proxmox role and workflow
+items withdrawn/out-of-scope. The nested `values/` repository intentionally
+retains 79 staged archive deletions from `git rm --cached`; archive files remain
+on disk and no repository was committed.
 
 ## Handoff Notes
 
