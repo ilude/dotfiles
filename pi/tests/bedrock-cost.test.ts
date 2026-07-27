@@ -71,32 +71,35 @@ describe("bedrock cost status formatting", () => {
 });
 
 describe("bedrock message filtering", () => {
-	it("accepts only completed assistant messages from amazon-bedrock", () => {
-		expect(
-			shouldRecordBedrockMessage({
-				role: "assistant",
-				provider: "amazon-bedrock",
-				model: "anthropic.claude-test",
-				content: [],
-				api: "messages",
-				usage: {
-					input: 1,
-					output: 1,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 2,
-					cost: {
-						input: 0,
-						output: 0,
-						cacheRead: 0,
-						cacheWrite: 0,
-						total: 0.001,
-					},
-				},
-				stopReason: "stop",
-				timestamp: Date.now(),
-			}),
-		).toBe(true);
+	it("accepts completed assistant messages from Bedrock providers", () => {
+		const usage = {
+			input: 1,
+			output: 1,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 2,
+			cost: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				total: 0.001,
+			},
+		};
+		for (const provider of ["amazon-bedrock", "bedrock-mantle"]) {
+			expect(
+				shouldRecordBedrockMessage({
+					role: "assistant",
+					provider,
+					model: "bedrock-test-model",
+					content: [],
+					api: "messages",
+					usage,
+					stopReason: "stop",
+					timestamp: Date.now(),
+				}),
+			).toBe(true);
+		}
 		expect(
 			shouldRecordBedrockMessage({
 				role: "assistant",

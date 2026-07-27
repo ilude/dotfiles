@@ -11,7 +11,15 @@ import {
 } from "../lib/bedrock-cost-ledger.js";
 
 const STATUS_KEY = "bedrock";
-const BEDROCK_PROVIDER = "amazon-bedrock";
+type BedrockProvider = "amazon-bedrock" | "bedrock-mantle";
+const BEDROCK_PROVIDERS = new Set<BedrockProvider>([
+	"amazon-bedrock",
+	"bedrock-mantle",
+]);
+
+function isBedrockProvider(provider: string): provider is BedrockProvider {
+	return BEDROCK_PROVIDERS.has(provider as BedrockProvider);
+}
 
 export function formatBedrockStatus(
 	summary: Pick<BedrockMonthSummary, "costTotal" | "unpricedRequestCount">,
@@ -25,13 +33,13 @@ export function shouldRecordBedrockMessage(
 	message: AgentMessage,
 ): message is AgentMessage & {
 	role: "assistant";
-	provider: "amazon-bedrock";
+	provider: BedrockProvider;
 	model: string;
 	usage: Usage;
 } {
 	return (
 		message.role === "assistant" &&
-		message.provider === BEDROCK_PROVIDER &&
+		isBedrockProvider(message.provider) &&
 		typeof message.model === "string" &&
 		message.model.length > 0 &&
 		isUsage(message.usage)
@@ -41,7 +49,7 @@ export function shouldRecordBedrockMessage(
 function isBedrockAvailable(ctx: ExtensionContext): boolean {
 	return ctx.modelRegistry
 		.getAvailable()
-		.some((model) => model.provider === BEDROCK_PROVIDER);
+		.some((model) => isBedrockProvider(model.provider));
 }
 
 async function refreshStatus(ctx: ExtensionContext): Promise<void> {
