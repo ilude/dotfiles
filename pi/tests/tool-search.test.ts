@@ -3,6 +3,10 @@
  * Mocks pi.getAllTools() and pi.getActiveTools() — lightweight.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const recordEvent = vi.hoisted(() => vi.fn());
+vi.mock("../lib/metrics.ts", () => ({ recordEvent }));
+
 import { createMockPi, createMockTheme } from "./helpers/mock-pi.js";
 
 const MOCK_TOOLS = [
@@ -44,6 +48,7 @@ describe("tool-search extension", () => {
 	let activeNames: string[];
 
 	beforeEach(async () => {
+		recordEvent.mockClear();
 		mockPi = createMockPi();
 		activeNames = ["bash", "pwsh", "web_search", "read", "task"];
 		const searchablePi = Object.assign(mockPi, {
@@ -134,6 +139,44 @@ describe("tool-search extension", () => {
 			);
 			expect(activeNames).not.toContain("pwsh");
 			expect(result.details.activated).toEqual([]);
+		});
+
+		it("activates every match and records metadata without the raw query", async () => {
+			activeNames = ["bash", "read", "task"];
+			const result = await tool.execute(
+				"id",
+				{ query: "PowerShell web" },
+				undefined,
+				undefined,
+				{
+					sessionManager: { getSessionId: () => "session-1" },
+				},
+			);
+
+			expect(result.details.activated).toEqual(["web_search", "pwsh"]);
+			expect(activeNames).toEqual([
+				"bash",
+				"read",
+				"task",
+				"web_search",
+				"pwsh",
+			]);
+			expect(recordEvent).toHaveBeenCalledWith(
+				expect.objectContaining({
+					event: "tool_search_decision",
+					session: "session-1",
+					data: expect.objectContaining({
+						activateRequested: true,
+						activatedTools: ["web_search", "pwsh"],
+						alreadyActiveTools: [],
+						queryLength: 14,
+						termCount: 2,
+					}),
+				}),
+			);
+			expect(JSON.stringify(recordEvent.mock.calls)).not.toContain(
+				"PowerShell web",
+			);
 		});
 
 		it("should return no results for unmatched query", async () => {

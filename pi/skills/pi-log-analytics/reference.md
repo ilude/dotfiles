@@ -71,6 +71,7 @@ Missing sources still produce empty views with stable schemas. Malformed rows fa
 | `session_inventory` | One metadata row per canonical session file |
 | `history_inventory` | One metadata row per archived history file |
 | `metric_event_summary` | Counts and time range by metric event |
+| `tool_discovery_activity` | Metadata-only toolset exposure, hashed searches, activation results, and tool use |
 | `trace_event_summary` | Counts, sessions, and time range by trace event |
 | `trace_routing_decisions` | Routing fields extracted from trace JSON payloads |
 | `routing_decisions_joined` | Classifier-to-trace correlation by unique ID with legacy occurrence fallback |
@@ -125,6 +126,23 @@ WHERE event = 'timing_span'
   AND try_cast(ts AS TIMESTAMPTZ) >= current_timestamp - INTERVAL '7 days'
 ORDER BY occurred_at DESC
 ```
+
+### Tool discovery
+
+```sql
+SELECT
+  event,
+  tool_name,
+  query_hash,
+  activated_tools,
+  toolset_id,
+  occurred_at
+FROM tool_discovery_activity
+WHERE occurred_at >= current_timestamp - INTERVAL '30 days'
+ORDER BY occurred_at DESC
+```
+
+Join searches to later `tool_use` rows only within the same `session_id`. The view contains tool names and structural metadata, not raw search queries, arguments, descriptions, or output.
 
 ### Trace coverage
 

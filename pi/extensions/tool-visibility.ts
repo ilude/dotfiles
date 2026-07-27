@@ -1,32 +1,79 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { deactivateTools } from "../lib/tool-activation.js";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { recordEvent } from "../lib/metrics.js";
+import {
+	deactivateTools,
+	toolsetFingerprint,
+} from "../lib/tool-activation.js";
 
 export const DEFERRED_TOOL_NAMES = [
 	"commit_plan",
 	"commit_validate_message",
 	"commit_stage",
 	"commit_create",
-	"coms_lan_trust_import",
-	"coms_lan_trust_list",
-	"coms_lan_trust_remove",
 	"feature_memory_record",
 	"goal_complete",
 	"learning_candidate_decide",
-	"onclave_agents",
-	"onclave_send",
-	"onclave_delegate",
-	"onclave_inform",
-	"onclave_get",
-	"onclave_await",
 	"review_artifact_write",
-	"usage_report",
-	"web_search",
-	"web_fetch",
 	"workflow_friction_mark_change",
 ] as const;
 
+function sortedUnique(values: readonly string[]): string[] {
+	return [...new Set(values)].sort();
+}
+
+function sessionId(ctx: ExtensionContext): string | undefined {
+	return ctx.sessionManager?.getSessionId?.();
+}
+
 export default function registerToolVisibility(pi: ExtensionAPI): void {
-	pi.on("session_start", () => {
+	let lastToolsetId: string | undefined;
+
+	const recordToolsetExposure = (
+		ctx: ExtensionContext,
+		reason: "session_start" | "toolset_changed",
+	): void => {
+		const activeToolNames = sortedUnique(pi.getActiveTools());
+		const toolsetId = toolsetFingerprint(activeToolNames);
+		if (toolsetId === lastToolsetId) return;
+		const active = new Set(activeToolNames);
+		const inactiveToolNames = sortedUnique(
+			pi
+				.getAllTools()
+				.map((tool) => tool.name)
+				.filter((name) => !active.has(name)),
+		);
+		recordEvent({
+			event: "toolset_exposure",
+			session: sessionId(ctx),
+			data: {
+				schemaVersion: 1,
+				toolsetId,
+				activeToolNames,
+				inactiveToolNames,
+				reason,
+			},
+		});
+		lastToolsetId = toolsetId;
+	};
+
+	pi.on("session_start", (_event, ctx) => {
+		lastToolsetId = undefined;
 		deactivateTools(pi, DEFERRED_TOOL_NAMES);
+		recordToolsetExposure(ctx, "session_start");
+	});
+	pi.on("turn_start", (_event, ctx) => {
+		recordToolsetExposure(ctx, "toolset_changed");
+	});
+	pi.on("tool_call", (event, ctx) => {
+		recordEvent({
+			event: "tool_use",
+			session: sessionId(ctx),
+			data: {
+				schemaVersion: 1,
+				toolName: event.toolName,
+				toolCallId: event.toolCallId,
+				toolsetId: toolsetFingerprint(pi.getActiveTools()),
+			},
+		});
 	});
 }

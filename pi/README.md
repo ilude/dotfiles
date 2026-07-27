@@ -273,9 +273,9 @@ Provides bounded process-local management for long-lived Bash commands through `
 
 ### `tool-visibility.ts` and `tool-search.ts`
 
-Keeps specialized tools out of the default provider schema until they are relevant. Commit, feature-memory, goal completion, improvement capture, Onclave, review-artifact, usage-report, and web tools start inactive. Stateful extensions activate their own tools from deterministic command or prompt state. `tool_search` activates matching inactive tools by default for a non-empty capability query, and reports the activated names in its result. Listing all tools without a query remains inspection-only.
+Keeps only workflow-state-gated tools out of the default provider schema until they are valid: commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review-artifact writing. Their owning extensions activate them from deterministic command or prompt state. General and specialized callable tools, including Onclave, Coms LAN trust, usage-report, web, PowerShell, and scheduler tools, remain active so the model knows they exist.
 
-Core file, shell, background-terminal, PowerShell, scheduler, task, subagent, and discovery tools remain active. This reduces baseline tool-schema and prompt-guideline overhead without hiding general execution or workflow-control capabilities.
+`tool_search` remains active as a fallback and activates all matching inactive tools by default for a non-empty capability query. Listing all tools without a query remains inspection-only. Metadata-only `toolset_exposure`, `tool_search_decision`, and `tool_use` metrics record the visible toolset, hashed searches, activation results, and later use without raw queries, arguments, descriptions, or output. The `tool_discovery_activity` DuckDB view exposes those events for local review.
 
 ### `quality-gates.ts`
 

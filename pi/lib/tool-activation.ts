@@ -1,4 +1,12 @@
+import { createHash } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export function toolsetFingerprint(toolNames: readonly string[]): string {
+	return createHash("sha256")
+		.update([...new Set(toolNames)].sort().join("\n"))
+		.digest("hex")
+		.slice(0, 16);
+}
 
 export function setToolsActive(
 	pi: Pick<ExtensionAPI, "getActiveTools" | "setActiveTools">,

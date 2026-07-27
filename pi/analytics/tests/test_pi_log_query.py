@@ -79,7 +79,52 @@ def layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SourceLayout:
                 "event": "timing_span",
                 "session": "session-1",
                 "data": {"schemaVersion": 1, "durationMs": 12},
-            }
+            },
+            {
+                "schemaVersion": 1,
+                "id": "metric-toolset",
+                "ts": "2026-07-01T00:00:04Z",
+                "event": "toolset_exposure",
+                "session": "session-1",
+                "data": {
+                    "schemaVersion": 1,
+                    "toolsetId": "toolset-1",
+                    "activeToolNames": ["read", "tool_search"],
+                    "inactiveToolNames": ["web_search"],
+                    "reason": "session_start",
+                },
+            },
+            {
+                "schemaVersion": 1,
+                "id": "metric-search",
+                "ts": "2026-07-01T00:00:05Z",
+                "event": "tool_search_decision",
+                "session": "session-1",
+                "data": {
+                    "schemaVersion": 1,
+                    "queryHash": "query-hash",
+                    "queryLength": 10,
+                    "termCount": 1,
+                    "matchedTools": [{"name": "web_search", "score": 7}],
+                    "alreadyActiveTools": [],
+                    "activatedTools": ["web_search"],
+                    "toolsetIdBefore": "toolset-1",
+                    "toolsetIdAfter": "toolset-2",
+                },
+            },
+            {
+                "schemaVersion": 1,
+                "id": "metric-use",
+                "ts": "2026-07-01T00:00:06Z",
+                "event": "tool_use",
+                "session": "session-1",
+                "data": {
+                    "schemaVersion": 1,
+                    "toolName": "web_search",
+                    "toolCallId": "call-1",
+                    "toolsetId": "toolset-2",
+                },
+            },
         ],
     )
     write_jsonl(
@@ -286,7 +331,16 @@ def test_registers_explicit_sources_and_metadata_views(layout: SourceLayout) -> 
     assert connection.sql("SELECT typeof(payload) FROM trace_events LIMIT 1").fetchone() == (
         "JSON",
     )
-    assert connection.sql("SELECT event_count FROM metric_event_summary").fetchone() == (1,)
+    assert connection.sql(
+        "SELECT event_count FROM metric_event_summary WHERE event = 'timing_span'"
+    ).fetchone() == (1,)
+    assert connection.sql(
+        "SELECT event, tool_name, query_hash FROM tool_discovery_activity ORDER BY occurred_at"
+    ).fetchall() == [
+        ("toolset_exposure", None, None),
+        ("tool_search_decision", None, "query-hash"),
+        ("tool_use", "web_search", None),
+    ]
     assert connection.sql("SELECT event_count FROM workflow_episode_summary").fetchone() == (1,)
     assert connection.sql("SELECT count(*) FROM damage_control_judgments").fetchone() == (1,)
     assert connection.sql("SELECT count(*) FROM coms_audit_events").fetchone() == (1,)

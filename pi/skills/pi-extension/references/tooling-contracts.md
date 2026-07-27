@@ -47,6 +47,15 @@ This file records the current accepted semantics for Pi extensions and tools. It
 - Keep control-plane, diagnostic, configuration, terminal, and process launch commands TUI-only. In particular, do not echo `/branch`, `/new-instance`, or `/new-terminal` through a custom message.
 - Do not use a raw invocation echo as a substitute for persisting command output that the model needs. Persist a bounded result or faithful summary instead.
 
+## Tool visibility and discovery
+
+- Availability bias: keep general and specialized callable tools active so the model knows they exist. Defer only tools whose invocation is valid inside an owning workflow state.
+- State gates: commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review-artifact writing remain inactive until their owning workflow activates them deterministically.
+- Search behavior: keep `tool_search` active as a fallback. A non-empty query activates all matching inactive tools by default; list mode never activates tools.
+- Catalog: `tool_search` guidance names the deferred capability categories so hidden schemas do not make those capabilities undiscoverable.
+- Telemetry: record metadata-only toolset exposure, hashed search decisions, activation results, and tool use. Do not record raw queries, arguments, descriptions, or output.
+- Review boundary: telemetry supports later policy review but does not change activation policy automatically.
+
 ## PowerShell
 
 - Availability: on supported Windows systems, keep `pwsh` active throughout the session as a general execution capability.

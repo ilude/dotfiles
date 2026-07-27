@@ -468,6 +468,29 @@ SELECT
 FROM metric_events
 GROUP BY event;
 
+CREATE VIEW tool_discovery_activity AS
+SELECT
+  try_cast(ts AS TIMESTAMPTZ) AS occurred_at,
+  session AS session_id,
+  event,
+  json_extract_string(data, '$.toolsetId') AS toolset_id,
+  json_extract_string(data, '$.toolsetIdBefore') AS toolset_id_before,
+  json_extract_string(data, '$.toolsetIdAfter') AS toolset_id_after,
+  json_extract_string(data, '$.queryHash') AS query_hash,
+  try_cast(json_extract_string(data, '$.queryLength') AS BIGINT) AS query_length,
+  try_cast(json_extract_string(data, '$.termCount') AS BIGINT) AS term_count,
+  json_extract(data, '$.matchedTools') AS matched_tools,
+  json_extract(data, '$.alreadyActiveTools') AS already_active_tools,
+  json_extract(data, '$.activatedTools') AS activated_tools,
+  json_extract(data, '$.activeToolNames') AS active_tool_names,
+  json_extract(data, '$.inactiveToolNames') AS inactive_tool_names,
+  json_extract_string(data, '$.reason') AS exposure_reason,
+  json_extract_string(data, '$.toolName') AS tool_name,
+  json_extract_string(data, '$.toolCallId') AS tool_call_id,
+  filename
+FROM metric_events
+WHERE event IN ('toolset_exposure', 'tool_search_decision', 'tool_use');
+
 CREATE VIEW trace_event_summary AS
 SELECT
   event_type,

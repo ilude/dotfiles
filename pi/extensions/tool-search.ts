@@ -15,10 +15,15 @@
 //   layer. canonicalize and uiNotify are not relevant -- the file does
 //   not handle filesystem paths or UI notifications.
 
+import { createHash } from "node:crypto";
 import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { activateTools } from "../lib/tool-activation.js";
+import { recordEvent } from "../lib/metrics.js";
+import {
+	activateTools,
+	toolsetFingerprint,
+} from "../lib/tool-activation.js";
 
 /** Score a tool against search terms. Higher = better match. */
 export function scoreTool(
@@ -67,7 +72,8 @@ export default function (pi: ExtensionAPI) {
 			"Search available tools by keyword and activate matching inactive capabilities",
 		promptGuidelines: [
 			"Use tool_search when the needed capability is not currently available.",
-			"Search with descriptive capability keywords; matching inactive tools are activated by default.",
+			"Search with descriptive capability keywords; all matching inactive tools are activated by default.",
+			"State-gated tools exist for commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review artifacts; their owning workflows activate them when valid.",
 			"Use list mode without a query only to inspect all tools; it does not activate them.",
 		],
 		parameters: Type.Object({
@@ -89,25 +95,57 @@ export default function (pi: ExtensionAPI) {
 			),
 		}),
 
-		execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const allTools = pi.getAllTools();
-			const activeNames = new Set(pi.getActiveTools());
+			const activeBefore = [...pi.getActiveTools()].sort();
+			const activeNames = new Set(activeBefore);
 			const includeParams = params.include_params ?? false;
+			const normalizedQuery = params.query?.trim();
 
 			let results: Array<ToolInfo & { score: number }>;
 
-			if (!params.query || params.query.trim() === "") {
+			if (!normalizedQuery) {
 				// List all tools
 				results = allTools.map((t) => ({ ...t, score: 0 }));
 			} else {
-				const terms = params.query.toLowerCase().split(/\s+/).filter(Boolean);
+				const terms = normalizedQuery.toLowerCase().split(/\s+/).filter(Boolean);
 				results = allTools
 					.map((t) => ({ ...t, score: scoreTool(t, terms) }))
 					.filter((t) => t.score > 0)
 					.sort((a, b) => b.score - a.score);
 			}
 
+			const recordSearchDecision = (activated: readonly string[]): void => {
+				if (!normalizedQuery) return;
+				const activeAfter = [...activeNames].sort();
+				recordEvent({
+					event: "tool_search_decision",
+					session: ctx.sessionManager?.getSessionId?.(),
+					data: {
+						schemaVersion: 1,
+						queryHash: createHash("sha256")
+							.update(normalizedQuery.toLowerCase())
+							.digest("hex"),
+						queryLength: normalizedQuery.length,
+						termCount: normalizedQuery.split(/\s+/).length,
+						activateRequested: params.activate ?? true,
+						matchedTools: results.map((tool) => ({
+							name: tool.name,
+							score: tool.score,
+							wasActive: activeBefore.includes(tool.name),
+						})),
+						alreadyActiveTools: results
+							.map((tool) => tool.name)
+							.filter((name) => activeBefore.includes(name)),
+						activatedTools: [...activated],
+						toolsetIdBefore: toolsetFingerprint(activeBefore),
+						toolsetIdAfter: toolsetFingerprint(activeAfter),
+					},
+				});
+			};
+
 			if (results.length === 0) {
+				recordSearchDecision([]);
 				return Promise.resolve({
 					content: [
 						{
@@ -119,7 +157,7 @@ export default function (pi: ExtensionAPI) {
 				});
 			}
 
-			const hasQuery = Boolean(params.query?.trim());
+			const hasQuery = Boolean(normalizedQuery);
 			const shouldActivate = hasQuery && (params.activate ?? true);
 			const activated = shouldActivate
 				? results
@@ -130,6 +168,7 @@ export default function (pi: ExtensionAPI) {
 				activateTools(pi, activated);
 				for (const name of activated) activeNames.add(name);
 			}
+			recordSearchDecision(activated);
 
 			const lines: string[] = [];
 
