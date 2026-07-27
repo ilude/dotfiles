@@ -41,5 +41,8 @@
       "us.anthropic.claude-fable-5",
       "us.anthropic.claude-sonnet-4-6"
     ]
+  },
+  "activeTurnCompaction": {
+    "softLimitTokens": 255616
   }
 }

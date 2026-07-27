@@ -1,13 +1,27 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type {
 	CompactOptions,
 	ContextUsage,
 	ExtensionContext,
+	SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import { registerActiveTurnCompaction } from "../extensions/active-turn-compaction.ts";
+import {
+	hasCompactableContent,
+	loadActiveTurnCompactionPolicy,
+	registerActiveTurnCompaction,
+	shouldCompactDuringActiveTurn,
+} from "../extensions/active-turn-compaction.ts";
+import { invalidateSettingsCache } from "../lib/settings-loader.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
-const policy = { enabled: true, reserveTokens: 16_384 };
+const policy = {
+	enabled: true,
+	reserveTokens: 16_384,
+	keepRecentTokens: 20_000,
+};
 
 function usage(tokens: number | null, contextWindow = 372_000): ContextUsage {
 	return {
@@ -20,7 +34,10 @@ function usage(tokens: number | null, contextWindow = 372_000): ContextUsage {
 	};
 }
 
-function setup(initialUsage: ContextUsage = usage(100_000)) {
+function setup(
+	initialUsage: ContextUsage = usage(100_000),
+	canCompact: () => boolean = () => true,
+) {
 	const pi = createMockPi();
 	let currentUsage = initialUsage;
 	let compactOptions: CompactOptions | undefined;
@@ -30,11 +47,13 @@ function setup(initialUsage: ContextUsage = usage(100_000)) {
 	const ctx = createMockCtx({
 		isProjectTrusted: () => true,
 		getContextUsage: vi.fn(() => currentUsage),
+		sessionManager: { getBranch: () => [] },
 		compact,
 	}) as unknown as ExtensionContext;
 
 	registerActiveTurnCompaction(pi as never, {
 		loadPolicy: () => policy,
+		canCompact,
 	});
 	const hook = (name: string) => {
 		const registered = pi._getHook(name)[0];
@@ -69,7 +88,123 @@ function activeTurn(toolResults: unknown[] = [{}]) {
 	};
 }
 
+function messageEntry(
+	id: string,
+	parentId: string | null,
+	message: Record<string, unknown>,
+): SessionEntry {
+	return {
+		type: "message",
+		id,
+		parentId,
+		timestamp: "2026-07-09T00:00:00.000Z",
+		message,
+	} as SessionEntry;
+}
+
 describe("active-turn compaction", () => {
+	it("loads the soft limit independently from native compaction settings", () => {
+		const projectRoot = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-active-turn-compaction-"),
+		);
+		fs.mkdirSync(path.join(projectRoot, ".pi"));
+		fs.writeFileSync(
+			path.join(projectRoot, ".pi", "settings.json"),
+			JSON.stringify({
+				compaction: { reserveTokens: 12_000, keepRecentTokens: 24_000 },
+				activeTurnCompaction: { softLimitTokens: 255_616 },
+			}),
+			"utf-8",
+		);
+		invalidateSettingsCache();
+
+		try {
+			expect(loadActiveTurnCompactionPolicy(projectRoot, true)).toMatchObject({
+				enabled: true,
+				reserveTokens: 12_000,
+				keepRecentTokens: 24_000,
+				softLimitTokens: 255_616,
+			});
+		} finally {
+			invalidateSettingsCache();
+			fs.rmSync(projectRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("uses the lower of the soft limit and hard context reserve", () => {
+		const softPolicy = { ...policy, softLimitTokens: 255_616 };
+		expect(
+			shouldCompactDuringActiveTurn(
+				usage(255_616, 1_050_000),
+				softPolicy,
+			),
+		).toBe(false);
+		expect(
+			shouldCompactDuringActiveTurn(
+				usage(255_617, 1_050_000),
+				softPolicy,
+			),
+		).toBe(true);
+		expect(shouldCompactDuringActiveTurn(usage(355_617), policy)).toBe(true);
+	});
+
+	it("detects the trailing tool-result cut-point failure before compacting", () => {
+		const entries: SessionEntry[] = [
+			messageEntry("old-user", null, {
+				role: "user",
+				content: "old request",
+				timestamp: 1,
+			}),
+			messageEntry("old-assistant", "old-user", {
+				role: "assistant",
+				content: [{ type: "text", text: "x".repeat(100_000) }],
+				timestamp: 2,
+			}),
+			messageEntry("current-user", "old-assistant", {
+				role: "user",
+				content: "continue",
+				timestamp: 3,
+			}),
+			messageEntry("tool-call", "current-user", {
+				role: "assistant",
+				content: [
+					{
+						type: "toolCall",
+						id: "call-1",
+						name: "read",
+						arguments: {},
+					},
+				],
+				timestamp: 4,
+			}),
+			...Array.from({ length: 7 }, (_, index) =>
+				messageEntry(`tool-result-${index}`, "tool-call", {
+					role: "toolResult",
+					toolCallId: "call-1",
+					toolName: "read",
+					content: [{ type: "text", text: "x".repeat(16_000) }],
+					isError: false,
+					timestamp: 5 + index,
+				}),
+			),
+		];
+
+		expect(hasCompactableContent(entries, 20_000)).toBe(false);
+	});
+
+	it("skips compaction when the current branch has no valid cut point", async () => {
+		const runtime = setup(usage(256_158, 272_000), () => false);
+		await runtime.sessionStart(
+			{ type: "session_start", reason: "startup" },
+			runtime.ctx,
+		);
+		await runtime.turnEnd(activeTurn(), runtime.ctx);
+
+		expect(runtime.compact).not.toHaveBeenCalled();
+		expect(runtime.ctx.ui.notify).not.toHaveBeenCalled();
+		expect(runtime.pi.sendMessage).not.toHaveBeenCalled();
+	});
+
 	it("compacts during a tool-driven request and resumes after completion", async () => {
 		const runtime = setup(usage(360_000));
 		await runtime.sessionStart({ type: "session_start", reason: "startup" }, runtime.ctx);
@@ -106,6 +241,10 @@ describe("active-turn compaction", () => {
 		await runtime.sessionStart({ type: "session_start", reason: "startup" }, runtime.ctx);
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
 		runtime.compactOptions?.onError?.(new Error("summarizer unavailable"));
+		expect(runtime.ctx.ui.notify).not.toHaveBeenCalledWith(
+			"[auto-compact] Compaction failed: summarizer unavailable",
+			"error",
+		);
 
 		expect(
 			await runtime.sessionBeforeCompact(
@@ -171,6 +310,7 @@ describe("active-turn compaction", () => {
 		const disabledPi = createMockPi();
 		registerActiveTurnCompaction(disabledPi as never, {
 			loadPolicy: () => ({ ...policy, enabled: false }),
+			canCompact: () => true,
 		});
 		const disabledCtx = createMockCtx({
 			isProjectTrusted: () => true,
