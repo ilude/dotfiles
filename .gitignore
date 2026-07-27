@@ -39,6 +39,7 @@ claude/chrome/chrome-native-host
 # Session and state data
 claude/provider-config.json
 claude/state/menos_status.json
+yt/menos_status.json
 claude/toggle/
 claude/CHECKPOINT
 claude/.checkpoints/
@@ -88,6 +89,7 @@ __pycache__/
 uv.lock
 !pi/prompt-routing/uv.lock
 !pi/analytics/uv.lock
+!tools/menos-youtube/uv.lock
 
 # Prompt-router local Python/runtime artifacts
 pi/prompt-routing/.venv/

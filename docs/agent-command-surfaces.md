@@ -10,6 +10,12 @@ This repository supports multiple coding-agent clients. Keep shared behavior ali
   - Pi is the canonical commit workflow; the Python `scripts/commit-helper` is a compatibility/parity reference for non-Pi consumers.
 - **Claude/OpenCode/Copilot**: continue to use their command/prompt surfaces and shared commit instructions unless explicitly migrated to Pi tooling.
 
+## `/yt` locations
+
+- **Shared executable client**: `tools/menos-youtube/`
+- **Pi**: `pi/prompts/yt.md` owns the Pi workflow and invokes the shared client without depending on Claude-owned paths.
+- **Claude/OpenCode/Copilot**: their prompt surfaces may share workflow instructions, but invoke the same client-neutral executable root.
+
 ## `/do-it` locations
 
 - **Pi**: `pi/skills/workflow/do-it.md`

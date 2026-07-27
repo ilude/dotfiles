@@ -37,24 +37,33 @@ def run(video_id: str) -> None:
     signer = _load_signer()
     api_base = get_api_base()
     host = get_api_host()
-    path = "/api/v1/content?content_type=youtube&limit=100&exclude_tags="
-    url = f"{api_base}/content?content_type=youtube&limit=100&exclude_tags="
-    sig_headers = signer.sign_request("GET", path, host)
+    offset = 0
     try:
         with httpx.Client(timeout=30.0) as client:
-            response = client.get(url, headers=sig_headers)
-            if response.status_code != 200:
-                print(f"Error: API returned {response.status_code}", file=sys.stderr)
-                print(response.text, file=sys.stderr)
-                sys.exit(1)
-            data = response.json()
-            match = _find_match(data.get("items", []), video_id)
-            if not match:
-                print(f"Error: No content found for video ID: {video_id}", file=sys.stderr)
-                sys.exit(1)
-            print(f"Content ID: {match.get('id', 'unknown')}")
-            print(f"Title: {match.get('title', 'Untitled')}")
-            print(f"Status: {match.get('status', 'unknown')}")
+            while True:
+                query = f"content_type=youtube&limit=100&offset={offset}&exclude_tags="
+                path = f"/api/v1/content?{query}"
+                url = f"{api_base}/content?{query}"
+                sig_headers = signer.sign_request("GET", path, host)
+                response = client.get(url, headers=sig_headers)
+                if response.status_code != 200:
+                    print(f"Error: API returned {response.status_code}", file=sys.stderr)
+                    print(response.text, file=sys.stderr)
+                    sys.exit(1)
+                data = response.json()
+                items = data.get("items", [])
+                match = _find_match(items, video_id)
+                if match:
+                    print(f"Content ID: {match.get('id', 'unknown')}")
+                    print(f"Title: {match.get('title', 'Untitled')}")
+                    print(f"Status: {match.get('status', 'unknown')}")
+                    return
+                offset += len(items)
+                total = data.get("total")
+                if not items or len(items) < 100 or (isinstance(total, int) and offset >= total):
+                    break
+        print(f"Error: No content found for video ID: {video_id}", file=sys.stderr)
+        sys.exit(1)
     except httpx.RequestError as e:
         print(f"Error: Request failed: {e}", file=sys.stderr)
         sys.exit(1)

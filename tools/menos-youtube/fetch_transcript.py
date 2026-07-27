@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "youtube-transcript-api>=0.6.3",
+#     "youtube-transcript-api==1.2.4",
 #     "google-api-python-client>=2.0.0",
 # ]
 # ///
@@ -44,13 +44,13 @@ def load_env_file() -> None:
         if not line or line.startswith("#"):
             continue
         # Parse: export VAR=value or VAR=value
-        match = re.match(r'^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
+        match = re.match(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
         if match:
             name, value = match.groups()
             # Remove surrounding quotes if present
-            value = value.strip('\'"')
-            # Only set if not already in environment
-            if name not in os.environ:
+            value = value.strip("'\"")
+            # Blank ambient values must not mask configured local values.
+            if not os.environ.get(name):
                 os.environ[name] = value
 
 
@@ -99,12 +99,12 @@ def update_complete_marker(
 def extract_video_id(url_or_id: str) -> str:
     """Extract video ID from YouTube URL or return as-is if already an ID."""
     # If it's already an 11-character ID, return it
-    if re.match(r'^[0-9A-Za-z_-]{11}$', url_or_id):
+    if re.match(r"^[0-9A-Za-z_-]{11}$", url_or_id):
         return url_or_id
 
     patterns = [
-        r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
-        r'youtu\.be\/([0-9A-Za-z_-]{11})',
+        r"(?:v=|\/)([0-9A-Za-z_-]{11}).*",
+        r"youtu\.be\/([0-9A-Za-z_-]{11})",
     ]
 
     for pattern in patterns:
@@ -137,7 +137,11 @@ class YouTubeTranscriptService:
         self.proxy_config = None
         self._proxy_configured = False
 
-        if self.use_proxy and self.proxy_username and self.proxy_password:
+        if self.use_proxy:
+            if not self.proxy_username or not self.proxy_password:
+                raise ValueError(
+                    "Webshare proxy credentials are required when transcript proxying is enabled"
+                )
             self.proxy_config = WebshareProxyConfig(
                 proxy_username=self.proxy_username,
                 proxy_password=self.proxy_password,
@@ -183,29 +187,14 @@ def main():
     parser = argparse.ArgumentParser(
         description="Fetch YouTube video transcript with proxy support"
     )
+    parser.add_argument("video", help="YouTube URL or video ID")
+    parser.add_argument("--timed", action="store_true", help="Include timestamps in output")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument(
-        "video",
-        help="YouTube URL or video ID"
+        "--languages", default="en", help="Comma-separated language codes (default: en)"
     )
     parser.add_argument(
-        "--timed",
-        action="store_true",
-        help="Include timestamps in output"
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON"
-    )
-    parser.add_argument(
-        "--languages",
-        default="en",
-        help="Comma-separated language codes (default: en)"
-    )
-    parser.add_argument(
-        "--no-proxy",
-        action="store_true",
-        help="Disable proxy even if credentials are set"
+        "--no-proxy", action="store_true", help="Disable proxy even if credentials are set"
     )
 
     args = parser.parse_args()
@@ -214,9 +203,7 @@ def main():
         video_id = extract_video_id(args.video)
         languages = [lang.strip() for lang in args.languages.split(",")]
 
-        service = YouTubeTranscriptService(
-            use_proxy=not args.no_proxy
-        )
+        service = YouTubeTranscriptService(use_proxy=not args.no_proxy)
 
         # Show proxy status on stderr
         if service.is_proxy_configured():

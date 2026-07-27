@@ -64,6 +64,7 @@ export function defaultReloadCandidateRoots(
 		{ path: path.join(piRoot, "extensions"), recursive: true },
 		{ path: path.join(piRoot, "lib"), recursive: true },
 		{ path: path.join(piRoot, "agents"), recursive: true },
+		{ path: path.join(piRoot, "prompts"), recursive: true },
 		{ path: path.join(piRoot, "skills"), recursive: true },
 		{ path: path.join(piRoot, "multi-team", "agents"), recursive: true },
 		{ path: path.join(piRoot, "multi-team", "skills"), recursive: true },

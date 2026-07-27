@@ -66,9 +66,17 @@ class TestMain:
 
         with (
             patch.object(
-                sys, "argv",
-                ["post_annotation.py", "content_123", "My Screenshot", "note.txt",
-                 "--tags", "python", "testing"],
+                sys,
+                "argv",
+                [
+                    "post_annotation.py",
+                    "content_123",
+                    "My Screenshot",
+                    "note.txt",
+                    "--tags",
+                    "python",
+                    "testing",
+                ],
             ),
             patch("post_annotation.RequestSigner") as mock_signer_cls,
             patch("post_annotation.httpx.Client", return_value=mock_client),
@@ -92,7 +100,8 @@ class TestMain:
 
         with (
             patch.object(
-                sys, "argv",
+                sys,
+                "argv",
                 ["post_annotation.py", "content_456", "Test Title", "body.txt", "--tags", "tag1"],
             ),
             patch("post_annotation.RequestSigner") as mock_signer_cls,
@@ -163,7 +172,8 @@ class TestMain:
 
         with (
             patch.object(
-                sys, "argv",
+                sys,
+                "argv",
                 ["post_annotation.py", "content_123", "Title", "missing.txt"],
             ),
             patch("post_annotation.RequestSigner") as mock_signer_cls,

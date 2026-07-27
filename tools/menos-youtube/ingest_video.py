@@ -80,7 +80,11 @@ def run(args) -> None:
         url += "?tags=test"
         path += "?tags=test"
 
-    body_data = _load_local_payload(video_id) if args.from_local else {"url": f"https://youtube.com/watch?v={video_id}"}
+    body_data = (
+        _load_local_payload(video_id)
+        if args.from_local
+        else {"url": f"https://youtube.com/watch?v={video_id}"}
+    )
     body_bytes = json.dumps(body_data).encode()
     sig_headers = signer.sign_request("POST", path, host, body_bytes)
     headers = {"Content-Type": "application/json", **sig_headers}

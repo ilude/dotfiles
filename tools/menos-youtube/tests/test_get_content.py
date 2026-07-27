@@ -47,7 +47,9 @@ class TestMain:
         content_resp = MagicMock()
         content_resp.status_code = 200
         content_resp.json.return_value = {
-            "id": "abc123", "title": "Test Video", "content_type": "youtube"
+            "id": "abc123",
+            "title": "Test Video",
+            "content_type": "youtube",
         }
 
         mock_client = MagicMock()
@@ -81,7 +83,9 @@ class TestMain:
         content_resp = MagicMock()
         content_resp.status_code = 200
         content_resp.json.return_value = {
-            "id": "abc123", "title": "Test Video", "content_type": "youtube"
+            "id": "abc123",
+            "title": "Test Video",
+            "content_type": "youtube",
         }
 
         download_resp = MagicMock()
@@ -118,7 +122,9 @@ class TestMain:
         content_resp = MagicMock()
         content_resp.status_code = 200
         content_resp.json.return_value = {
-            "id": "abc123", "title": "Test Video", "content_type": "youtube"
+            "id": "abc123",
+            "title": "Test Video",
+            "content_type": "youtube",
         }
 
         download_resp = MagicMock()

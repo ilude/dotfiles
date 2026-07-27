@@ -36,10 +36,10 @@ def load_env_file() -> None:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        match = re.match(r'^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
+        match = re.match(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
         if match:
             name, value = match.groups()
-            value = value.strip('\'"')
+            value = value.strip("'\"")
             if name not in os.environ:
                 os.environ[name] = value
 
@@ -83,12 +83,12 @@ def update_complete_marker(
 
 def extract_video_id(url_or_id: str) -> str:
     """Extract video ID from YouTube URL or return as-is if already an ID."""
-    if re.match(r'^[0-9A-Za-z_-]{11}$', url_or_id):
+    if re.match(r"^[0-9A-Za-z_-]{11}$", url_or_id):
         return url_or_id
 
     patterns = [
-        r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
-        r'youtu\.be\/([0-9A-Za-z_-]{11})',
+        r"(?:v=|\/)([0-9A-Za-z_-]{11}).*",
+        r"youtu\.be\/([0-9A-Za-z_-]{11})",
     ]
 
     for pattern in patterns:
@@ -139,7 +139,7 @@ def parse_duration_to_seconds(duration: str) -> int:
     Returns:
         Duration in seconds
     """
-    match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration)
+    match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration)
     if not match:
         return 0
 
@@ -160,7 +160,7 @@ def format_duration(duration: str) -> str:
     Returns:
         Human-readable duration (e.g., "15:33" or "1:02:03")
     """
-    match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration)
+    match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration)
     if not match:
         return duration
 
@@ -191,6 +191,7 @@ class YouTubeMetadataService:
             )
 
         from googleapiclient.discovery import build
+
         self.youtube = build("youtube", "v3", developerKey=self.api_key)
 
     def fetch_metadata(self, video_id: str) -> dict:
@@ -286,27 +287,16 @@ class YouTubeMetadataService:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Fetch YouTube video metadata using Data API v3"
+    parser = argparse.ArgumentParser(description="Fetch YouTube video metadata using Data API v3")
+    parser.add_argument("video", help="YouTube URL or video ID")
+    parser.add_argument(
+        "--json", action="store_true", help="Output as JSON (default: human-readable)"
     )
     parser.add_argument(
-        "video",
-        help="YouTube URL or video ID"
+        "--urls-only", action="store_true", help="Only extract and print URLs from description"
     )
     parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON (default: human-readable)"
-    )
-    parser.add_argument(
-        "--urls-only",
-        action="store_true",
-        help="Only extract and print URLs from description"
-    )
-    parser.add_argument(
-        "--description-only",
-        action="store_true",
-        help="Only print the video description"
+        "--description-only", action="store_true", help="Only print the video description"
     )
 
     args = parser.parse_args()
@@ -347,11 +337,16 @@ def main():
 
         if args.description_only:
             if args.json:
-                print(json.dumps({
-                    "video_id": video_id,
-                    "description": metadata["description"],
-                    "urls": metadata["description_urls"]
-                }, indent=2))
+                print(
+                    json.dumps(
+                        {
+                            "video_id": video_id,
+                            "description": metadata["description"],
+                            "urls": metadata["description_urls"],
+                        },
+                        indent=2,
+                    )
+                )
             else:
                 print(metadata["description"])
             print(f"Saved metadata to {metadata_path}", file=sys.stderr)
@@ -368,17 +363,17 @@ def main():
                 f"Duration: {metadata['duration_formatted']}",
                 f"Views: {metadata['view_count']:,}",
             ]
-            if metadata['like_count']:
+            if metadata["like_count"]:
                 lines.append(f"Likes: {metadata['like_count']:,}")
             lines.append(f"Published: {metadata['published_at']}")
-            if metadata['tags']:
+            if metadata["tags"]:
                 lines.append(f"Tags: {', '.join(metadata['tags'][:10])}")
             lines.append(f"\nDescription:\n{metadata['description'][:500]}...")
-            if metadata['description_urls']:
+            if metadata["description_urls"]:
                 lines.append(f"\nURLs in description ({len(metadata['description_urls'])}):")
-                for url in metadata['description_urls'][:10]:
+                for url in metadata["description_urls"][:10]:
                     lines.append(f"  {url}")
-                if len(metadata['description_urls']) > 10:
+                if len(metadata["description_urls"]) > 10:
                     lines.append(f"  ... and {len(metadata['description_urls']) - 10} more")
             output = "\n".join(lines)
             write_output_file(video_id, "metadata.txt", output + "\n")

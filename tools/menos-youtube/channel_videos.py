@@ -52,12 +52,16 @@ def _resolve_channel_id(youtube, channel: str) -> str:
     else:
         raise ValueError("channel must be an @handle or https://www.youtube.com/@handle")
 
-    response = youtube.search().list(
-        part="snippet",
-        q=handle,
-        type="channel",
-        maxResults=1,
-    ).execute()
+    response = (
+        youtube.search()
+        .list(
+            part="snippet",
+            q=handle,
+            type="channel",
+            maxResults=1,
+        )
+        .execute()
+    )
     if not response.get("items"):
         raise ValueError(f"No channel found for @{handle}")
     return response["items"][0]["snippet"]["channelId"]
@@ -85,10 +89,14 @@ def _local_channel_videos(channel: str, limit: int) -> dict:
 
     youtube = build("youtube", "v3", developerKey=api_key)
     channel_id = _resolve_channel_id(youtube, channel)
-    channels_response = youtube.channels().list(
-        part="contentDetails",
-        id=channel_id,
-    ).execute()
+    channels_response = (
+        youtube.channels()
+        .list(
+            part="contentDetails",
+            id=channel_id,
+        )
+        .execute()
+    )
     if not channels_response.get("items"):
         raise ValueError(f"No channel found with ID: {channel_id}")
     playlist_id = channels_response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
@@ -98,12 +106,16 @@ def _local_channel_videos(channel: str, limit: int) -> dict:
     published = {}
     page_token = None
     while len(video_ids) < limit:
-        response = youtube.playlistItems().list(
-            part="snippet,contentDetails",
-            playlistId=playlist_id,
-            maxResults=min(50, limit - len(video_ids)),
-            pageToken=page_token,
-        ).execute()
+        response = (
+            youtube.playlistItems()
+            .list(
+                part="snippet,contentDetails",
+                playlistId=playlist_id,
+                maxResults=min(50, limit - len(video_ids)),
+                pageToken=page_token,
+            )
+            .execute()
+        )
         for item in response.get("items", []):
             video_id = item["contentDetails"]["videoId"]
             video_ids.append(video_id)
@@ -115,11 +127,15 @@ def _local_channel_videos(channel: str, limit: int) -> dict:
 
     videos = []
     for index in range(0, len(video_ids), 50):
-        batch = video_ids[index:index + 50]
-        details = youtube.videos().list(
-            part="snippet,statistics,contentDetails",
-            id=",".join(batch),
-        ).execute()
+        batch = video_ids[index : index + 50]
+        details = (
+            youtube.videos()
+            .list(
+                part="snippet,statistics,contentDetails",
+                id=",".join(batch),
+            )
+            .execute()
+        )
         by_id = {item["id"]: item for item in details.get("items", [])}
         for video_id in batch:
             item = by_id.get(video_id)
@@ -131,14 +147,16 @@ def _local_channel_videos(channel: str, limit: int) -> dict:
                 duration = _format_duration(item["contentDetails"]["duration"])
                 stats = item.get("statistics", {})
                 view_count = int(stats["viewCount"]) if "viewCount" in stats else None
-            videos.append({
-                "video_id": video_id,
-                "title": title,
-                "url": f"https://www.youtube.com/watch?v={video_id}",
-                "published_at": published[video_id],
-                "duration": duration,
-                "view_count": view_count,
-            })
+            videos.append(
+                {
+                    "video_id": video_id,
+                    "title": title,
+                    "url": f"https://www.youtube.com/watch?v={video_id}",
+                    "published_at": published[video_id],
+                    "duration": duration,
+                    "view_count": view_count,
+                }
+            )
     return {"channel": channel, "count": len(videos), "videos": videos, "source": "local"}
 
 
@@ -157,9 +175,7 @@ def _menos_channel_videos(channel: str, limit: int) -> dict:
                 "API endpoint not found; deployed menos does not support channel listing yet"
             )
         if response.status_code >= 500:
-            raise httpx.RequestError(
-                f"API returned {response.status_code}: {response.text}"
-            )
+            raise httpx.RequestError(f"API returned {response.status_code}: {response.text}")
         if response.status_code != 200:
             print(f"Error: API returned {response.status_code}", file=sys.stderr)
             print(response.text, file=sys.stderr)
@@ -180,8 +196,7 @@ def _print_text(data: dict) -> None:
         views_text = f"  views: {views}" if views is not None else ""
         print(f"  {i:>3}. {video.get('title', 'Untitled')}")
         print(
-            f"       {video.get('url')}  published: {published}  "
-            f"duration: {duration}{views_text}"
+            f"       {video.get('url')}  published: {published}  duration: {duration}{views_text}"
         )
 
 

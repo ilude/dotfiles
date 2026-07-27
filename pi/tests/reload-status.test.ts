@@ -171,6 +171,9 @@ describe("reload status detector", () => {
 		expect(rootPaths).toContain(
 			`${home.replaceAll("\\", "/")}/.dotfiles/pi/settings.json`,
 		);
+		expect(rootPaths).toContain(
+			`${home.replaceAll("\\", "/")}/.dotfiles/pi/prompts`,
+		);
 		expect(rootPaths.some((root) => root.endsWith("/.dotfiles/pi"))).toBe(
 			false,
 		);

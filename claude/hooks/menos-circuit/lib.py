@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-STATUS_PATH = Path.home() / ".claude" / "state" / "menos_status.json"
+STATUS_PATH = Path.home() / ".dotfiles" / "yt" / "menos_status.json"
 YT_ROOT = Path.home() / ".dotfiles" / "yt"
 TRANSCRIPT_LIMIT_BYTES = 5 * 1024 * 1024
 
@@ -101,7 +101,7 @@ def http_request(
 
 
 def load_signer():
-    yt_dir = Path.home() / ".dotfiles" / "claude" / "commands" / "yt"
+    yt_dir = Path.home() / ".dotfiles" / "tools" / "menos-youtube"
     sys.path.insert(0, str(yt_dir))
     from signing import RequestSigner  # type: ignore
 

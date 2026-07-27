@@ -105,11 +105,11 @@ Content items can have annotations linked to a video:
 
 - `POST /api/v1/content/{id}/annotations`
 - `GET /api/v1/content/{id}/annotations`
-- Utility script: `~/.claude/commands/yt/post_annotation.py <content_id> <title> <text_file> [tags...]`
+- Utility script: `~/.dotfiles/tools/menos-youtube/post_annotation.py <content_id> <title> <text_file> [tags...]`
 
 ### Authentication
 
-All API endpoints use RFC 9421 HTTP signatures with ed25519 keys from `~/.ssh/id_ed25519`. Client signing is handled by `~/.claude/commands/yt/signing.py`.
+All API endpoints use RFC 9421 HTTP signatures with ed25519 keys from `~/.ssh/id_ed25519`. Client signing is handled by `~/.dotfiles/tools/menos-youtube/signing.py`.
 
 ## Testing
 

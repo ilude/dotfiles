@@ -27,7 +27,6 @@ def _make_client(response):
     return mock_client
 
 
-
 def _setup_signer_and_path(mock_signer_cls, mock_path_cls):
     """Wire up the mock signer and Path stubs shared by all tests."""
     mock_path_inst = MagicMock()

@@ -17,7 +17,7 @@ If the first argument is `list`, show recently ingested videos. If menos is unre
 
 Run:
 ```bash
-cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run list_videos.py {n}
+cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run list_videos.py {n}
 ```
 
 **IMPORTANT**: The script output is NOT visible to the user -- only you can see it. You MUST read the script output, then format and display it back to the user as a markdown table or formatted list. Do not just run the command and say "here are the results" -- the user cannot see tool output. Reproduce the full list in your response.
@@ -30,7 +30,7 @@ If the first argument is `search`, perform semantic search across all ingested c
 
 Run:
 ```bash
-cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run search.py {query}
+cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run search.py {query}
 ```
 
 **IMPORTANT**: The script output is NOT visible to the user. Format and display the search results back to the user. Include scores, IDs, and snippets.
@@ -45,12 +45,12 @@ This is a two-step pipeline: resolve the video_id to a content_id, then fetch th
 
 **Step 1**: Resolve video_id to content_id:
 ```bash
-cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run find_content.py "{video_id}"
+cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run find_content.py "{video_id}"
 ```
 
 **Step 2**: Fetch the transcript using the content_id from step 1:
 ```bash
-cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run get_content.py {content_id} --transcript-only
+cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run get_content.py {content_id} --transcript-only
 ```
 
 **IMPORTANT**: The script output is NOT visible to the user. Display the transcript text in your response.
@@ -62,7 +62,7 @@ If the video has not been ingested yet, tell the user and suggest running `/yt {
 If the first argument is `content`, fetch full content details by menos content_id. If menos is unreachable, report that this operation has no local fallback and suggest retrying later.
 
 ```bash
-cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run get_content.py {content_id} --json
+cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run get_content.py {content_id} --json
 ```
 
 **IMPORTANT**: The script output is NOT visible to the user. Format and display the content details.
@@ -82,10 +82,10 @@ Extract the 11-character video ID from the URL or use directly if already an ID.
 
 ### 2. Call menos API, then locally fall back only on reachability/server failure
 
-Always attempt menos directly first; do not gate on the status file. The status file at `~/.claude/state/menos_status.json` is only a user-facing hint such as "menos last seen up/down at <checked_at>".
+Always attempt menos directly first; do not gate on the status file. The status file at `~/.dotfiles/yt/menos_status.json` is only a user-facing hint such as "menos last seen up/down at <checked_at>".
 
 ```bash
-cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run ingest_video.py "{url_or_video_id}"
+cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run ingest_video.py "{url_or_video_id}"
 ```
 
 This command calls the unified ingest endpoint: `POST /api/v1/ingest`.
@@ -93,11 +93,11 @@ This command calls the unified ingest endpoint: `POST /api/v1/ingest`.
 On connection errors or 5xx responses only, fall back to local fetch:
 
 ```bash
-cd ~/.claude/commands/yt-local && uv run fetch_transcript.py "{url_or_video_id}"
-cd ~/.claude/commands/yt-local && uv run fetch_metadata.py "{url_or_video_id}"
+cd ~/.dotfiles/tools/menos-youtube && uv run fetch_transcript.py "{url_or_video_id}"
+cd ~/.dotfiles/tools/menos-youtube && uv run fetch_metadata.py "{url_or_video_id}"
 ```
 
-The local fetchers write `~/.dotfiles/yt/<video_id>/` and update `.complete` only after successful writes. Tell the user menos is unreachable and the video was cached locally for future background backfill. Do not use local fallback for 4xx auth/validation errors.
+Run transcript and metadata retrieval independently so metadata still runs if transcript retrieval fails. The local fetchers write `~/.dotfiles/yt/<video_id>/`, and `.complete` records separate `transcript` and `metadata` states after successful writes. Describe the cache as ready for background backfill only when transcript retrieval succeeded; otherwise report that only metadata was cached and include the transcript failure. Do not use local fallback for 4xx auth/validation errors.
 
 The API will:
 - Fetch the transcript via server-side proxy unless `--from-local` is used by backfill/manual upload
@@ -116,19 +116,19 @@ When the user asks detailed questions about a video after ingestion:
 
 1. **For specific questions**, use semantic search:
    ```bash
-   cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run search.py "the user's question"
+   cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run search.py "the user's question"
    ```
 
 2. **For full transcript**, use the find + get pipeline:
    ```bash
-   cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run find_content.py "{video_id}"
+   cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run find_content.py "{video_id}"
    # Then use the content_id from the output:
-   cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run get_content.py {content_id} --transcript-only
+   cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run get_content.py {content_id} --transcript-only
    ```
 
 3. **If ingest just ran**, poll `GET /api/v1/jobs/{job_id}` until terminal before expecting summary/tags/topics/entities:
    ```bash
-   cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run check_job.py {job_id} --wait
+   cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run check_job.py {job_id} --wait
    ```
 
 ## Environment Setup
