@@ -93,15 +93,31 @@ class TestGetApiBase:
     """Tests for get_api_base."""
 
     def test_get_api_base_returns_env_var(self):
-        with patch.dict(os.environ, {"MENOS_API_BASE": "http://custom:9000/api/v1"}):
+        with patch.dict(
+            os.environ,
+            {
+                "MENOS_API_BASE": "http://custom:9000/api/v1",
+                "HOST_DOMAIN": "example.internal",
+            },
+            clear=True,
+        ):
             with patch("api_config.load_secrets_file"):
                 assert get_api_base() == "http://custom:9000/api/v1"
+
+    def test_get_api_base_derives_url_from_host_domain(self):
+        with patch.dict(os.environ, {"HOST_DOMAIN": "example.internal"}, clear=True):
+            with patch("api_config.load_secrets_file"):
+                assert get_api_base() == "https://menos.example.internal/api/v1"
 
     def test_get_api_base_requires_configuration(self):
         with patch.dict(os.environ, {}, clear=True):
             with patch("api_config.load_secrets_file"):
-                with pytest.raises(RuntimeError, match="MENOS_API_BASE is required"):
+                with pytest.raises(RuntimeError) as exc_info:
                     get_api_base()
+
+        message = str(exc_info.value)
+        assert "MENOS_API_BASE" in message
+        assert "HOST_DOMAIN" in message
 
 
 class TestGetApiHost:

@@ -35,14 +35,19 @@ def load_secrets_file() -> None:
 
 
 def get_api_base() -> str:
-    """Get the explicitly configured menos API base URL."""
+    """Get the configured or convention-based menos API base URL."""
     load_secrets_file()
     value = os.getenv("MENOS_API_BASE", "").strip()
-    if not value:
-        raise RuntimeError(
-            "MENOS_API_BASE is required; set it in the environment or ~/.dotfiles/.env"
-        )
-    return value
+    if value:
+        return value
+
+    host_domain = os.getenv("HOST_DOMAIN", "").strip()
+    if host_domain:
+        return f"https://menos.{host_domain}/api/v1"
+
+    raise RuntimeError(
+        "MENOS_API_BASE or HOST_DOMAIN is required; set one in the environment or ~/.dotfiles/.env"
+    )
 
 
 def get_api_host() -> str:
