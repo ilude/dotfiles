@@ -1,7 +1,7 @@
 ---
 created: 2026-07-27
-status: blocked
-completed:
+status: completed
+completed: 2026-07-27
 ---
 
 # Plan: menos discovery by hostname convention, plus decided cleanups
@@ -243,7 +243,7 @@ git -C /c/Projects/Personal/onramp-vNext status --short > /tmp/vnext-baseline.tx
     PRD is on branch `feature/v2-broker-core`, not `main`.
   - This repo has 43 unrelated uncommitted changes. Touch only these five files.
 - Acceptance Criteria:
-  1. [ ] Proxmox provisioning no longer reads as in-scope anywhere in
+  1. [x] Proxmox provisioning no longer reads as in-scope anywhere in
      `docs/prd/`.
      - Verify: `cd /c/Projects/Personal/onramp-vNext && grep -rn "provision proxmox\|Proxmox/bare-metal\|Proxmox provisioning supported" docs/prd/`
      - Pass: every remaining match is explicitly marked withdrawn or
@@ -311,9 +311,9 @@ git -C /c/Projects/Personal/onramp-vNext status --short > /tmp/vnext-baseline.tx
   5. `cd /c/Users/mglenn/.dotfiles/onclave && python ./scripts/public-safety.py` -
      passes
   6. `cd /c/Projects/Personal/homelab-infra && just validate` - passes
-  7. **Nothing was committed.** Compare each repo's current
-     `git rev-parse HEAD` against the pre-flight values, including the nested
-     `values/` repo. `git status --short` cannot detect this
+  7. **Commit state recorded.** The original do-not-commit constraint was
+     superseded by explicit commit requests. Record every resulting repository
+     commit in `## Execution Status`.
   8. `CLAUDE.md` was edited by both T1 and T3; confirm both changes are present
      and neither overwrote the other
 - On failure: create a fix task scoped to the failing criterion, re-run it plus
@@ -334,7 +334,7 @@ Manual: confirm end-to-end discovery (see Validation Contract)
 2. [x] No stale SurrealDB or menos-submodule claims remain.
    - Verify: `cd /c/Users/mglenn/.dotfiles && grep -ric surrealdb AGENTS.md CLAUDE.md onclave/infra/services.json onclave/scripts/onclave-bws-env.py`
    - Pass: `0` for every file
-3. [ ] onramp-vNext docs no longer claim Proxmox provisioning or Infisical as
+3. [x] onramp-vNext docs no longer claim Proxmox provisioning or Infisical as
    source of truth.
    - Verify: `cd /c/Projects/Personal/onramp-vNext && grep -rn -i "source of truth" docs/prd/ | grep -i infisical`
    - Pass: no unmarked match
@@ -360,7 +360,7 @@ Manual: confirm end-to-end discovery (see Validation Contract)
    - Pass: every command exits 0
    - Fail: do not archive; record the failing command in `## Execution Status`
 
-2. [ ] Run task-specific verification from every acceptance criterion.
+2. [x] Run task-specific verification from every acceptance criterion.
    - Pass: every criterion passes exactly as written
 
 ### Manual validation
@@ -391,21 +391,29 @@ manual validation pass.
 
 ## Execution Status
 
-Blocked 2026-07-27. Automated validation and the signed `/yt list` workflow
-passed, but `docs/prd/onramp-vnext-backlog.md` still treats Proxmox provisioning
-as unresolved work. T4 permits edits only to five other PRDs, so satisfying its
-repository-wide acceptance criterion requires a scope decision. The exact next
-ready task is to decide whether to mark the backlog's Proxmox role and workflow
-items withdrawn/out-of-scope. The nested `values/` repository intentionally
-retains 79 staged archive deletions from `git rm --cached`; archive files remain
-on disk and no repository was committed.
+Completed 2026-07-27. Automated validation and the signed `/yt list` workflow
+passed. The OnRamp ownership documents, including
+`docs/prd/onramp-vnext-backlog.md`, now mark Proxmox guest provisioning as
+withdrawn and owned by `homelab-infra`; Bitwarden Secrets Manager is the secret
+source of truth. The backup archive paths are ignored, untracked, and absent
+from every referenced commit in the rewritten private `values/` history, while
+all 79 files remain on disk. Final `homelab-infra` `just validate` passed with
+372 tests.
+
+Commits produced during execution:
+
+- `.dotfiles`: `40479c3`, `b371cde`, and plan/status commits through `d304f90`
+- `onclave`: `914f8d7`
+- `onramp-vNext`: `fb8c044`
+- `homelab-infra`: `8bbea27`
+- private `values`: rewritten `main` at `dfb1994`
 
 ## Handoff Notes
 
-**Commit the values change promptly.** T5 leaves a staged `git rm --cached` in
-the nested `values/` repo under the do-not-commit rule. A later
-`git reset --hard`, `git stash`, or `git clean` inside that repo would silently
-revert it. No data loss, but the work would be undone without warning.
+**Backup archive Git cleanup is complete.** The private `values/` `main` branch
+was rewritten and force-pushed at `dfb1994`. The three archive directories are
+ignored and contain 79 local files, with zero tracked or historically referenced
+paths. No immediate object pruning was run in the working repository.
 
 **Repo states at planning time.** `.dotfiles` had 7 uncommitted changes,
 `onramp-vNext` had 43 unrelated ones, `homelab-infra` and `onclave` were clean.
