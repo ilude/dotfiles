@@ -139,7 +139,7 @@ describe("footer extension status placement", () => {
 	it("places token throughput after Onclave and keeps Bedrock spend right-aligned", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const onclave =
-			"onclave v2 connected | dev-wks-mglenn-gcc_automation-main | peers alive: 2";
+			"Onclave: \x1b[32mdev-wks-mglenn-gcc_automation-main\x1b[0m | Peers: 2";
 		const data = footerData({
 			"onclave-v2": onclave,
 			bedrock: "bedrock $71.64",

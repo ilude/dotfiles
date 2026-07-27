@@ -584,8 +584,9 @@ The custom footer renders directory, branch, model, reasoning level, context
 usage, Pi version, and provider quota on the first line. Context usage is a
 separate pipe-delimited segment after the reasoning level. Onclave and other
 extension statuses render on the left of the second line, followed by token
-throughput. Compact Bedrock spend remains right-aligned as the final second-line
-segment.
+throughput. Onclave renders `Onclave: <client> | Peers: N`, coloring the client
+green only while connected and red otherwise. Compact Bedrock spend remains
+right-aligned as the final second-line segment.
 
 Commands:
 - `/doctor` -- compact health summary
