@@ -22,7 +22,7 @@ vi.mock("@earendil-works/pi-ai/compat", () => ({
 					},
 					input: ["text", "image"],
 					cost: { input: 1, output: 6, cacheRead: 0.1, cacheWrite: 1.25 },
-					contextWindow: 372000,
+					contextWindow: 272000,
 					maxTokens: 128000,
 				},
 				{
@@ -39,7 +39,7 @@ vi.mock("@earendil-works/pi-ai/compat", () => ({
 					},
 					input: ["text", "image"],
 					cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25 },
-					contextWindow: 372000,
+					contextWindow: 272000,
 					maxTokens: 128000,
 				},
 			];
@@ -196,7 +196,50 @@ describe("/refresh-models command", () => {
 		expect(
 			definition.models.find((model) => model.id === "gpt-5.6-sol")
 				?.contextWindow,
+		).toBe(272000);
+	});
+
+	it("applies context windows from a versioned refresh cache", () => {
+		const cacheDir = path.join(
+			tempHome,
+			".pi",
+			"agent",
+			"model-cache",
+			"refresh-models",
+		);
+		fs.mkdirSync(cacheDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(cacheDir, "openai-codex.json"),
+			JSON.stringify({
+				schemaVersion: 2,
+				provider: "openai-codex",
+				fetchedAt: "2026-07-09T00:00:00.000Z",
+				models: [{ id: "gpt-5.6-sol", contextWindow: 372000 }],
+			}),
+			"utf-8",
+		);
+
+		const pi = createMockPi();
+		const registerProvider = vi.fn();
+		Object.assign(pi, { registerProvider });
+		registerRefreshModelsCommand(
+			pi as Parameters<typeof registerRefreshModelsCommand>[0],
+		);
+		const providerCall = registerProvider.mock.calls.find(
+			([provider]: [string]) => provider === "openai-codex",
+		);
+		if (!providerCall) throw new Error("missing cached provider registration");
+		const definition = providerCall[1] as {
+			models: Array<{ id: string; contextWindow: number }>;
+		};
+		expect(
+			definition.models.find((model) => model.id === "gpt-5.6-sol")
+				?.contextWindow,
 		).toBe(372000);
+		expect(
+			definition.models.find((model) => model.id === "gpt-5.6-luna")
+				?.contextWindow,
+		).toBe(272000);
 	});
 
 	it("composes legacy cached discoveries over current Pi model metadata", () => {
@@ -261,6 +304,7 @@ describe("/refresh-models command", () => {
 			models: Array<{
 				id: string;
 				name: string;
+				contextWindow: number;
 				thinkingLevelMap?: Record<string, string | null>;
 			}>;
 		};
@@ -272,6 +316,7 @@ describe("/refresh-models command", () => {
 		]);
 		expect(definition.models[0]).toMatchObject({
 			name: "GPT-5.6 Luna",
+			contextWindow: 272000,
 			thinkingLevelMap: {
 				minimal: "low",
 				xhigh: "xhigh",

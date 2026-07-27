@@ -866,17 +866,23 @@ function buildCachedProviderModelDefinitions(
 	provider: string,
 	existingModels: ModelLike[],
 	remoteModels: RemoteModelInfo[],
+	applyKnownContextWindows: boolean,
 ): ProviderModelDef[] {
 	const existingIds = new Set(existingModels.map((model) => model.id));
+	const remoteById = new Map(remoteModels.map((model) => [model.id, model]));
+	const knownModels = existingModels.map((model) => {
+		const definition = toProviderModelDefinition(model);
+		const remoteContextWindow = remoteById.get(model.id)?.contextWindow;
+		return applyKnownContextWindows && remoteContextWindow !== undefined
+			? { ...definition, contextWindow: remoteContextWindow }
+			: definition;
+	});
 	const discoveredModels = buildProviderModelDefinitions(
 		provider,
 		existingModels,
 		remoteModels,
 	).filter((model) => !existingIds.has(model.id));
-	return [
-		...existingModels.map(toProviderModelDefinition),
-		...discoveredModels,
-	];
+	return [...knownModels, ...discoveredModels];
 }
 
 async function refreshProviderAvailability(
@@ -997,6 +1003,7 @@ function registerCachedProvider(
 		provider,
 		builtInModels,
 		cache.models,
+		cache.fetchedAt !== "legacy",
 	);
 	pi.registerProvider(provider, {
 		baseUrl: builtInModels[0].baseUrl,
