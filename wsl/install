@@ -112,14 +112,15 @@ fi
 # Change to dotfiles directory
 cd "$BASEDIR"
 
-# Check if we have dotbot or need to do manual linking
+# Initialize the submodules needed by Dotbot and the Pi Onclave adapter.
 USE_DOTBOT=false
+if [[ -d ".git" ]]; then
+    echo -e "${YELLOW}Initializing required submodules...${NC}"
+    git submodule sync --quiet --recursive
+    git submodule update --init --recursive "${DOTBOT_DIR}" onclave
+fi
 if [[ -f "${DOTBOT_DIR}/${DOTBOT_BIN}" ]]; then
     USE_DOTBOT=true
-elif [[ -d ".git" ]]; then
-    echo -e "${YELLOW}Initializing dotbot submodule...${NC}"
-    git -C "${DOTBOT_DIR}" submodule sync --quiet --recursive 2>/dev/null || true
-    git submodule update --init --recursive "${DOTBOT_DIR}" 2>/dev/null && USE_DOTBOT=true
 fi
 
 if [[ "$USE_DOTBOT" == "true" ]]; then
@@ -208,6 +209,10 @@ if [[ "$INSTALL_PACKAGES" == "true" ]]; then
         echo -e "${YELLOW}No package installer found, skipping${NC}"
     fi
 fi
+
+echo ""
+echo -e "${CYAN}Installing Bitwarden Secrets Manager CLI...${NC}"
+"${PYTHON:-python3}" "${BASEDIR}/scripts/install-bws.py"
 
 # Install zsh plugins (doesn't require packages)
 # Note: ~/.dotfiles is symlinked to this repo, so zsh-plugins is already accessible

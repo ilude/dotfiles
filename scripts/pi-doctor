@@ -7,6 +7,10 @@
 DOTFILES_DIR="${HOME}/.dotfiles"
 PI_DIR="${DOTFILES_DIR}/pi"
 PI_NODE_MODULES="${PI_DIR}/node_modules"
+ONCLAVE_DIR="${DOTFILES_DIR}/onclave"
+ONCLAVE_ADAPTER_DIR="${ONCLAVE_DIR}/extensions/onclave-pi"
+PRIVATE_SECRETS_FILE="${DOTFILES_DIR}/private/secrets.env"
+PRIVATE_ARCHIVE="${DOTFILES_DIR}/.dolos/artifacts/private.tar.gz.age"
 
 PACKAGES=(
     "@earendil-works/pi-coding-agent"
@@ -27,18 +31,26 @@ fail() { printf '  [fail] %s\n' "$*"; HAS_FAIL=1; }
 if [[ -z "${PNPM_HOME:-}" ]]; then
     if pnpm_path=$(command -v pnpm 2>/dev/null); then
         pnpm_path=$(readlink -f "$pnpm_path" 2>/dev/null || printf '%s\n' "$pnpm_path")
-        PNPM_HOME=$(dirname "$(dirname "$pnpm_path")")
+        pnpm_home_shell=$(dirname "$(dirname "$pnpm_path")")
+        if command -v cygpath >/dev/null 2>&1; then
+            PNPM_HOME=$(cygpath -w "$pnpm_home_shell" 2>/dev/null || printf '%s\n' "$pnpm_home_shell")
+        else
+            PNPM_HOME="$pnpm_home_shell"
+        fi
     elif [[ -n "${LOCALAPPDATA:-}" ]] && command -v cygpath >/dev/null 2>&1; then
-        PNPM_HOME=$(cygpath -u "${LOCALAPPDATA}\\pnpm" 2>/dev/null || printf '%s\n' "${HOME}/.local/share/pnpm")
+        PNPM_HOME="${LOCALAPPDATA}\\pnpm"
     else
         PNPM_HOME="${HOME}/.local/share/pnpm"
     fi
 fi
-if command -v cygpath >/dev/null 2>&1; then
-    PNPM_HOME=$(cygpath -u "$PNPM_HOME" 2>/dev/null || printf '%s\n' "$PNPM_HOME")
-fi
 export PNPM_HOME
-PNPM_BIN="${PNPM_HOME}/bin"
+if command -v cygpath >/dev/null 2>&1; then
+    pnpm_home_shell=$(cygpath -u "$PNPM_HOME" 2>/dev/null || printf '%s\n' "$PNPM_HOME")
+else
+    pnpm_home_shell="$PNPM_HOME"
+fi
+PNPM_BIN="${pnpm_home_shell}/bin"
+unset pnpm_home_shell
 
 # fnm: pick highest version dir if present
 FNM_NODE_BIN=""
@@ -146,6 +158,149 @@ elif [[ -e "$pi_agent" ]]; then
     warn "${pi_agent} exists but is not a symlink"
 else
     fail "${pi_agent} does not exist (run scripts/pi-link-setup)"
+fi
+
+# 7. Onclave adapter source and workspace dependencies
+echo ""
+echo "Onclave adapter"
+if [[ -f "${ONCLAVE_ADAPTER_DIR}/src/onclave-pi.ts" ]]; then
+    ok "v2 adapter source is present"
+else
+    fail "adapter source missing (initialize the onclave submodule)"
+fi
+if [[ -d "${ONCLAVE_DIR}/node_modules" ]]; then
+    if onclave_dep_error=$(cd "$ONCLAVE_ADAPTER_DIR" && node -e '
+        const { createRequire } = require("node:module");
+        const { join } = require("node:path");
+        const requireFromAdapter = createRequire(join(process.cwd(), "package.json"));
+        for (const name of ["amqplib", "@onclave/envelope", "typebox"]) requireFromAdapter.resolve(name);
+    ' 2>&1); then
+        ok "amqplib, @onclave/envelope, and typebox resolve"
+    else
+        fail "adapter dependencies do not resolve"
+        printf '         %s\n' "$onclave_dep_error"
+        echo "         Suggestion: pnpm install --dir ~/.dotfiles/onclave --frozen-lockfile"
+    fi
+else
+    fail "Onclave workspace dependencies are missing"
+    echo "         Suggestion: pnpm install --dir ~/.dotfiles/onclave --frozen-lockfile"
+fi
+
+# 8. Private secret bootstrap state
+echo ""
+echo "Onclave private configuration"
+if [[ -f "$PRIVATE_SECRETS_FILE" ]]; then
+    ok "private/secrets.env is present"
+elif [[ -f "$PRIVATE_ARCHIVE" ]]; then
+    warn "private/secrets.env is missing; restore the private archive with the approved Dolos workflow"
+else
+    warn "private/secrets.env and the encrypted private archive are missing"
+fi
+if command -v bws >/dev/null 2>&1; then
+    ok "Bitwarden Secrets Manager CLI is installed"
+else
+    fail "bws is not installed (run scripts/install-bws.py)"
+fi
+
+# 9. Resolve the broker URL from an explicit override or BWS without printing it.
+echo ""
+echo "Onclave broker configuration"
+onclave_url="${ONCLAVE_AMQP_URL:-}"
+if [[ -z "$onclave_url" && -n "${BITWARDEN_ACCESS_KEY:-}" ]]; then
+    if [[ -z "${ONCLAVE_BWS_PROJECT_ID:-}" || -z "${ONCLAVE_AMQP_ENDPOINT:-}" ]]; then
+        fail "Onclave BWS project or endpoint configuration is missing"
+    elif onclave_url=$(
+        cd "$ONCLAVE_DIR" &&
+            pnpm exec tsx - <<'TS'
+import { loadBrokerUrlFromBws } from "./extensions/onclave-pi/src/lib/bws.ts";
+
+loadBrokerUrlFromBws()
+  .then((url) => {
+    if (!url) process.exit(1);
+    process.stdout.write(url);
+  })
+  .catch(() => process.exit(1));
+TS
+    ); then
+        ok "broker credentials resolved from Bitwarden Secrets Manager"
+    else
+        fail "broker credentials could not be resolved from Bitwarden Secrets Manager"
+    fi
+fi
+
+if [[ -z "$onclave_url" ]]; then
+    warn "no explicit broker URL or BWS bootstrap configuration; the adapter will use its localhost development default"
+else
+    export ONCLAVE_AMQP_URL="$onclave_url"
+    if onclave_metadata=$(node <<'NODE'
+const value = process.env.ONCLAVE_AMQP_URL;
+try {
+    const url = new URL(value);
+    if (url.protocol !== "amqp:" && url.protocol !== "amqps:") process.exit(2);
+    const port = url.port || (url.protocol === "amqps:" ? "5671" : "5672");
+    const fields = [
+        url.protocol.slice(0, -1),
+        url.hostname,
+        port,
+        url.pathname || "/",
+        url.username ? "yes" : "no",
+        url.password ? "yes" : "no",
+    ];
+    process.stdout.write(fields.join("\t"));
+} catch {
+    process.exit(2);
+}
+NODE
+    ); then
+        IFS=$'\t' read -r onclave_scheme onclave_host onclave_port onclave_vhost onclave_user onclave_password <<<"$onclave_metadata"
+        ok "scheme=${onclave_scheme} host=${onclave_host} port=${onclave_port} vhost=${onclave_vhost} username=${onclave_user} password=${onclave_password}"
+
+        if node <<'NODE'
+const net = require("node:net");
+const url = new URL(process.env.ONCLAVE_AMQP_URL);
+const port = Number(url.port || (url.protocol === "amqps:" ? 5671 : 5672));
+const socket = net.createConnection({ host: url.hostname, port });
+let settled = false;
+const finish = (code) => {
+    if (settled) return;
+    settled = true;
+    socket.destroy();
+    process.exitCode = code;
+};
+socket.setTimeout(2000, () => finish(1));
+socket.once("connect", () => finish(0));
+socket.once("error", () => finish(1));
+NODE
+        then
+            ok "broker TCP endpoint is reachable"
+            if (
+                cd "$ONCLAVE_DIR" &&
+                    pnpm exec tsx - <<'TS'
+import { connect } from "amqplib";
+import { CoreRpcClient } from "./extensions/onclave-pi/src/lib/rpc-client.ts";
+
+(async () => {
+    const connection = await connect(process.env.ONCLAVE_AMQP_URL!);
+    const channel = await connection.createChannel();
+    const rpc = new CoreRpcClient(channel, 5000);
+    await rpc.init();
+    const response = await rpc.call({ op: "list_agents" });
+    await channel.close();
+    await connection.close();
+    if (response.ok !== true) process.exit(1);
+})().catch(() => process.exit(1));
+TS
+            ) >/dev/null 2>&1; then
+                ok "broker authentication and Onclave core RPC succeeded"
+            else
+                fail "broker authentication or Onclave core RPC failed"
+            fi
+        else
+            fail "broker TCP endpoint is not reachable"
+        fi
+    else
+        fail "ONCLAVE_AMQP_URL is invalid or does not use amqp/amqps"
+    fi
 fi
 
 echo ""

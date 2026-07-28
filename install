@@ -53,10 +53,13 @@ elif [[ -f "$BASEDIR/.secrets" && -f "$BASEDIR/.env" ]]; then
 fi
 completed_steps+=(".env migration")
 
-current_step="Dotbot symlinks"
+current_step="Required submodules"
 cd "${BASEDIR}"
-git -C "${DOTBOT_DIR}" submodule sync --quiet --recursive
-git submodule update --init --recursive "${DOTBOT_DIR}"
+git submodule sync --quiet --recursive
+git submodule update --init --recursive "${DOTBOT_DIR}" onclave
+completed_steps+=("Required submodules")
+
+current_step="Dotbot symlinks"
 "${BASEDIR}/${DOTBOT_DIR}/${DOTBOT_BIN}" -d "${BASEDIR}" -c "${CONFIG}" "${@}"
 completed_steps+=("Dotbot symlinks")
 
@@ -189,6 +192,10 @@ if command -v uv &>/dev/null; then
     fi
 fi
 completed_steps+=("Python dev tools")
+
+current_step="Bitwarden Secrets Manager CLI"
+python "${BASEDIR}/scripts/install-bws.py"
+completed_steps+=("Bitwarden Secrets Manager CLI")
 
 current_step="Claude Code hook dependencies"
 # Hooks use bare python (not uv) to avoid console window flashing on Windows.
@@ -434,6 +441,20 @@ elif [[ -f "$PI_DIR/package.json" ]]; then
     echo "Warning: pnpm unavailable; skipping pi runtime deps"
 fi
 completed_steps+=("pi runtime deps")
+
+current_step="Onclave adapter dependencies"
+ONCLAVE_DIR="${BASEDIR}/onclave"
+if [[ -f "$ONCLAVE_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
+    echo "Installing Onclave adapter dependencies..."
+    pnpm install --dir "$ONCLAVE_DIR" --frozen-lockfile
+elif [[ -f "$ONCLAVE_DIR/package.json" ]]; then
+    echo "Error: pnpm unavailable; cannot install Onclave adapter dependencies" >&2
+    exit 1
+else
+    echo "Error: Onclave submodule is not initialized at $ONCLAVE_DIR" >&2
+    exit 1
+fi
+completed_steps+=("Onclave adapter dependencies")
 
 current_step="pi extension deps link"
 # Plant @earendil-works/* and @sinclair/* symlinks from pnpm-global into

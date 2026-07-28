@@ -18,7 +18,7 @@ Pi is installed automatically by the dotfiles installer:
 ~/.dotfiles/install.ps1
 ```
 
-On all platforms, this uses `pnpm --config.minimumReleaseAge=720 add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent@0.82.1` plus `pi-agent-core`, `pi-ai`, and `pi-tui` pinned to the same version and `@sinclair/typebox` on every installer run, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS) and `scripts/pi-deps-link-setup` (which links the pnpm-global Pi packages into `pi/node_modules`). Pi uses a 12-hour release-age window while the global pnpm default remains 3 days. Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
+On all platforms, this uses `pnpm --config.minimumReleaseAge=720 add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent@0.82.1` plus `pi-agent-core`, `pi-ai`, and `pi-tui` pinned to the same version and `@sinclair/typebox` on every installer run, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS) and `scripts/pi-deps-link-setup` (which links the pnpm-global Pi packages into `pi/node_modules`). The installers also initialize the pinned `onclave` submodule and run its frozen pnpm workspace install because `pi/extensions/onclave-pi.ts` loads the v2 adapter from that checkout. Pi uses a 12-hour release-age window while the global pnpm default remains 3 days. Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
 
 The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls). OpenAI and OpenRouter-hosted OpenAI prompt caching are automatic for eligible long prompts; provider-specific `cache_control` markers are only for models/providers that require Anthropic-style caching semantics.
 
@@ -267,7 +267,9 @@ pi --no-extensions
 pi -e ~/.dotfiles/pi/extensions/damage-control.ts
 ```
 
-The Onclave adapter keeps its localhost broker default for repository-local development. Interactive zsh and PowerShell sessions load an explicit `ONCLAVE_AMQP_URL` from `private/secrets.env` when configured, allowing the normal Pi launch to use a centralized broker without changing tracked defaults.
+The Onclave adapter keeps its localhost broker default for repository-local development. For normal dotfiles launches, `private/secrets.env` provides the BWS bootstrap access key plus non-secret Onclave BWS project and broker endpoint configuration. The adapter reads the RabbitMQ credentials from Bitwarden Secrets Manager and constructs the broker URL in memory. An explicit `--onclave-url` flag or `ONCLAVE_AMQP_URL` environment variable remains available for development overrides, but the private archive does not store the credential-bearing URL.
+
+The installer installs the pinned cross-platform `bws` CLI. The encrypted private archive is tracked, but restoring it remains an explicit operator action; the installer does not decrypt private data. Restart the shell and Pi after restoring or changing the private configuration. Run `make pi-doctor` to check whether the private file and BWS CLI exist, resolve BWS credentials without printing them, inspect redacted broker metadata, resolve the adapter dependencies, and test broker reachability, authentication, and core RPC.
 
 ---
 

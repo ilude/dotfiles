@@ -1207,6 +1207,17 @@ function Install-Packages {
         Write-Host "  (uv comes from core winget packages; rerun installer)" -ForegroundColor DarkGray
     }
 
+    Write-Host "`n--- Bitwarden Secrets Manager CLI ---" -ForegroundColor Cyan
+    try {
+        & python (Join-Path $BASEDIR 'scripts\install-bws.py')
+        if ($LASTEXITCODE -ne 0) {
+            $script:failed += 'bws'
+        }
+    } catch {
+        Write-Host "  bws installation failed" -ForegroundColor Red
+        $script:failed += 'bws'
+    }
+
     # MSYS2 packages (zsh for Git Bash - requires MSYS2 from core packages)
     Write-Host "`n--- MSYS2 Packages (Git Bash zsh) ---" -ForegroundColor Cyan
     $msys2Pacman = "$Msys2Root\usr\bin\pacman.exe"
@@ -1601,13 +1612,19 @@ try {
         }
     }
 
-    # Update dotbot submodule
-    Write-Host "`nUpdating dotbot submodule..." -ForegroundColor Cyan
+    # Update required submodules
+    Write-Host "`nUpdating required submodules..." -ForegroundColor Cyan
     if (Get-Command git -ErrorAction SilentlyContinue) {
-        git -C $DOTBOT_DIR submodule sync --quiet --recursive
-        git submodule update --init --recursive $DOTBOT_DIR
+        git submodule sync --quiet --recursive
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to synchronize submodule configuration"
+        }
+        git submodule update --init --recursive -- $DOTBOT_DIR 'onclave'
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to initialize required submodules"
+        }
     } else {
-        Write-Host "  git not found - skipping submodule refresh until core packages are repaired" -ForegroundColor Yellow
+        throw "git not found; required submodules cannot be initialized"
     }
 
     # Run dotbot
@@ -1961,6 +1978,28 @@ try {
     } elseif (Test-Path $piPackageJson) {
         Write-Host "  pi runtime deps: pnpm not found, skipping" -ForegroundColor Yellow
     }
+
+    # Install the workspace dependencies required by the Onclave Pi adapter loader.
+    $onclaveDir = Join-Path $BASEDIR "onclave"
+    $onclavePackageJson = Join-Path $onclaveDir "package.json"
+    if (-not (Test-Path $onclavePackageJson)) {
+        throw "Onclave submodule is not initialized at $onclaveDir"
+    }
+    if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+        throw "pnpm not found; cannot install Onclave adapter dependencies"
+    }
+
+    Write-Host "  Installing Onclave adapter dependencies..." -ForegroundColor Cyan
+    Push-Location $onclaveDir
+    try {
+        pnpm install --frozen-lockfile 2>&1 | Out-String | Write-Host
+        if ($LASTEXITCODE -ne 0) {
+            throw "Onclave adapter dependency installation failed"
+        }
+    } finally {
+        Pop-Location
+    }
+    Write-Host "  Onclave adapter deps: installed" -ForegroundColor Green
 
     # Set up Pi directory link and plant pnpm-global symlinks into pi/node_modules.
     # pi-deps-link-setup must run AFTER pnpm install (above) so the symlinks are

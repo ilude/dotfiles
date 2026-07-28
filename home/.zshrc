@@ -28,15 +28,28 @@ if [[ -z "$_DOTFILES_ENV_SOURCED" && -d "$_dotfiles/zsh/env.d" ]]; then
 fi
 
 # Source environment secrets if present (API keys, tokens, etc.)
-# Loaded here (not .zshenv) so secrets are only available in interactive shells
+# Loaded here (not .zshenv) so secrets are only available in interactive shells.
+# Auto-export assignments so child processes receive dotenv-style NAME=value lines.
+_source_exported_env() {
+    local env_file="$1"
+    if [[ -o allexport ]]; then
+        source "$env_file"
+    else
+        set -a
+        source "$env_file"
+        set +a
+    fi
+}
+
 if [[ -f "$_dotfiles/.env" ]]; then
-    source "$_dotfiles/.env"
+    _source_exported_env "$_dotfiles/.env"
 elif [[ -f "$_dotfiles/.secrets" ]]; then
-    source "$_dotfiles/.secrets"
+    _source_exported_env "$_dotfiles/.secrets"
 fi
 if [[ -f "$_dotfiles/private/secrets.env" ]]; then
-    source "$_dotfiles/private/secrets.env"
+    _source_exported_env "$_dotfiles/private/secrets.env"
 fi
+unset -f _source_exported_env
 
 # Source rc.d modules (interactive shell config)
 for f in "$_dotfiles/zsh/rc.d"/*.zsh(N); do

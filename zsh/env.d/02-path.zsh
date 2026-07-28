@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # PATH configuration (sourced by all shells)
 # Use WINHOME on Windows platforms (set in 00-winhome.zsh), fall back to HOME
 export PATH="${WINHOME:-$HOME}/.local/bin:$PATH"
@@ -6,15 +7,21 @@ export PATH="${WINHOME:-$HOME}/.local/bin:$PATH"
 export PATH="${ZDOTDIR:-$HOME}/.bun/bin:$PATH"
 
 # pnpm global binaries
-if [[ "$OSTYPE" == "darwin"* ]]; then
+if [[ -n "$IS_MSYS" && -n "$LOCALAPPDATA" ]]; then
+    export PNPM_HOME="${LOCALAPPDATA}\\pnpm"
+    _pnpm_bin="$(cygpath -u "$PNPM_HOME")/bin"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
     export PNPM_HOME="${ZDOTDIR:-$HOME}/Library/pnpm"
+    _pnpm_bin="$PNPM_HOME/bin"
 else
     export PNPM_HOME="${ZDOTDIR:-$HOME}/.local/share/pnpm"
+    _pnpm_bin="$PNPM_HOME/bin"
 fi
 case ":$PATH:" in
-    *":$PNPM_HOME/bin:"*) ;;
-    *) export PATH="$PNPM_HOME/bin:$PATH" ;;
+    *":$_pnpm_bin:"*) ;;
+    *) export PATH="$_pnpm_bin:$PATH" ;;
 esac
+unset _pnpm_bin
 
 # fnm (Fast Node Manager)
 if [[ -d "${ZDOTDIR:-$HOME}/.local/share/fnm" ]]; then
