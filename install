@@ -436,6 +436,22 @@ if [[ -f "$PI_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
         else
             echo "[warn] Native deps failed to load with Node ${_node_version}. Try re-running: pnpm install --dir pi"
         fi
+        # Every declared runtime dep must resolve. A stale node_modules from an
+        # older package.json resolves the old set fine, and the gap only shows up
+        # later as "Cannot find module" extension load failures at pi startup.
+        _pi_missing_deps="$(cd "$PI_DIR" && node -e '
+const deps = Object.keys(require("./package.json").dependencies ?? {});
+const missing = deps.filter((dep) => {
+  try { require.resolve(dep); return false; } catch { return true; }
+});
+if (missing.length > 0) console.log(missing.join(", "));
+' 2>/dev/null)"
+        if [[ -n "$_pi_missing_deps" ]]; then
+            echo "[warn] pi runtime deps unresolved: ${_pi_missing_deps}"
+            echo "[warn] Try re-running: pnpm install --dir pi"
+        else
+            echo "Pi runtime deps: OK"
+        fi
     fi
 elif [[ -f "$PI_DIR/package.json" ]]; then
     echo "Warning: pnpm unavailable; skipping pi runtime deps"
@@ -447,6 +463,16 @@ ONCLAVE_DIR="${BASEDIR}/onclave"
 if [[ -f "$ONCLAVE_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
     echo "Installing Onclave adapter dependencies..."
     pnpm install --dir "$ONCLAVE_DIR" --frozen-lockfile
+    # The onclave-pi extension is loaded by pi from the workspace package, so its
+    # own dependencies must resolve, not just the ones at the Onclave root.
+    ONCLAVE_PI_DIR="${ONCLAVE_DIR}/extensions/onclave-pi"
+    if [[ -f "$ONCLAVE_PI_DIR/package.json" ]] && command -v node &>/dev/null; then
+        if (cd "$ONCLAVE_PI_DIR" && node -e "require.resolve('amqplib')" 2>/dev/null); then
+            echo "Onclave adapter deps: OK"
+        else
+            echo "[warn] onclave-pi deps unresolved; try: pnpm install --dir onclave"
+        fi
+    fi
 elif [[ -f "$ONCLAVE_DIR/package.json" ]]; then
     echo "Error: pnpm unavailable; cannot install Onclave adapter dependencies" >&2
     exit 1
@@ -466,6 +492,17 @@ completed_steps+=("pi extension deps link")
 current_step="pi agent directory link"
 "${BASEDIR}/scripts/pi-link-setup"
 completed_steps+=("pi agent directory link")
+
+current_step="pi model catalog check"
+# The openai-codex catalog is fetched at runtime and cached outside version
+# control, so a fresh checkout has no record of the gpt-5.6 models named in
+# pi/settings.json. Without it pi warns on every start and falls back off the
+# configured default model.
+if [[ ! -f "${PI_DIR}/model-cache/refresh-models/openai-codex.json" ]]; then
+    echo "[warn] No cached openai-codex model catalog."
+    echo "[warn] Start pi and run: /refresh-models openai-codex"
+fi
+completed_steps+=("pi model catalog check")
 
 current_step="GUI tool setup"
 if [[ -z "$HEADLESS" ]]; then
