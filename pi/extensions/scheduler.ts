@@ -363,7 +363,8 @@ export default function registerScheduler(pi: ExtensionAPI) {
 			"Never use ask_user to confirm schedule creation or cancellation. Call schedule directly when its parameters are known.",
 			"Ask a non-confirmation clarification only when a required schedule value is missing or ambiguous.",
 			"Cancel schedules directly when they are no longer needed or their completion condition is satisfied.",
-			"After calling schedule, end that assistant turn with the exact 'Next scheduled run:' line from the final schedule tool result; that line already uses the schedule's explicit timezone or the local timezone.",
+			"Schedule results report the next active run using the schedule's explicit timezone or the local timezone.",
+			"Schedule actions do not inherently require ending the assistant turn. When a scheduled follow-up is the intended next step and no useful work remains before it runs, end the turn so the follow-up can be delivered when due; otherwise continue useful work.",
 			"Scheduled prompts cannot be slash commands and schedules do not survive Pi process exit.",
 		],
 		parameters: Type.Object({

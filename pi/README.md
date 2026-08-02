@@ -422,9 +422,11 @@ or an existing schedule's completion condition authorizes cancellation. Missing
 required values may still require a non-confirmation clarification. Every
 successful scheduling action reports the next active run in a human-readable
 `Next scheduled run:` line, using an explicit schedule timezone when present
-and the process-local timezone otherwise. Model responses end with that exact
-line so the next run remains visible after creation, listing, or cancellation.
-Schedule lifecycle metrics contain job IDs and timing metadata, not prompt text.
+and the process-local timezone otherwise. Scheduling actions do not inherently
+end the model turn. When a scheduled follow-up is the intended next step and no
+useful work remains before it runs, the model ends the turn so the follow-up can
+be delivered when due; otherwise it continues useful work. Schedule lifecycle
+metrics contain job IDs and timing metadata, not prompt text.
 
 ### `feature-memory.ts`
 
