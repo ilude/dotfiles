@@ -49,7 +49,9 @@ describe("web-tools extension", () => {
     it("should encode query in URL", async () => {
       mockSearchResponse([]);
       await search.execute("id", { query: "hello world" }, undefined, undefined, {});
-      expect(mockFetch.mock.calls[0][0]).toContain("q=hello%20world");
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        "https://searxng.traefikturkey.icu/search?q=hello%20world&format=json&pageno=1",
+      );
     });
 
     it("should format results with query, title, URL, snippet", async () => {

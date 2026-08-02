@@ -28,7 +28,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
-const SEARXNG_URL = "http://192.168.16.241:8888/search";
+const SEARXNG_URL = "https://searxng.traefikturkey.icu/search";
 const WEB_FETCH_SCRIPT = path.join(os.homedir(), ".dotfiles", "pi", "extensions", "web-fetch", "fetch.js");
 const DEFAULT_WEB_FETCH_MAX_CHARS = 8000;
 const MAX_WEB_FETCH_CHARS = 50000;
