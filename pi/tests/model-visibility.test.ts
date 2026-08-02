@@ -25,6 +25,7 @@ describe("applyProviderFilter", () => {
 					{ ...model, id: "gpt-5.5" },
 					{ ...model, id: "codex-auto-review", name: "Codex Auto Review" },
 				],
+				getApiKeyForProvider: async () => "oauth-token",
 				registerProvider,
 			},
 		};
@@ -41,6 +42,37 @@ describe("applyProviderFilter", () => {
 			}),
 		);
 		expect(registerProvider.mock.calls[0]?.[1]).not.toHaveProperty("oauth");
+	});
+
+	it("leaves unauthenticated OAuth providers registered as-is", async () => {
+		const registerProvider = vi.fn();
+		const model = {
+			provider: "github-copilot",
+			name: "GPT-4.1",
+			api: "openai-completions",
+			baseUrl: "https://api.githubcopilot.com",
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 128000,
+			maxTokens: 16000,
+		};
+		const ctx = {
+			modelRegistry: {
+				getAll: () => [
+					{ ...model, id: "gpt-4.1" },
+					{ ...model, id: "gpt-4.1-2025-04-14" },
+				],
+				getApiKeyForProvider: async () => undefined,
+				registerProvider,
+			},
+		};
+
+		await expect(applyProviderFilter(ctx, "github-copilot")).resolves.toEqual({
+			before: 2,
+			after: 2,
+		});
+		expect(registerProvider).not.toHaveBeenCalled();
 	});
 });
 

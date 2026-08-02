@@ -370,6 +370,10 @@ export async function applyProviderFilter(
 	}
 
 	if (provider === "github-copilot" || provider === "openai-codex") {
+		// Re-registering an OAuth provider requires a stored credential. Leave
+		// unauthenticated providers with their original model list.
+		const oauthToken = await ctx.modelRegistry.getApiKeyForProvider(provider);
+		if (!oauthToken) return { before: models.length, after: models.length };
 		ctx.modelRegistry.registerProvider(provider, {
 			baseUrl: models[0].baseUrl,
 			models: filtered.map((model) => toProviderModelDef(model)),

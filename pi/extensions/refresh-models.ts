@@ -15,9 +15,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getModels } from "@earendil-works/pi-ai/compat";
+import {
+	anthropicOAuthProvider,
+	githubCopilotOAuthProvider,
+	openaiCodexOAuthProvider,
+	type OAuthProviderInterface,
+} from "@earendil-works/pi-ai/oauth";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
+	ProviderConfig,
 	ProviderModelConfig,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -93,6 +100,24 @@ type ProviderCatalogCache = {
 
 const MODEL_CACHE_SCHEMA_VERSION = 2;
 const DEFAULT_REFRESH_CONTEXT_WINDOW = 256_000;
+// Dynamic model replacement requires an auth field even when authStorage is
+// the real credential source. Keep API-key providers tied to authStorage by
+// using an intentionally unresolved environment reference as the fallback.
+const AUTH_STORAGE_API_KEY_SENTINEL = "$PI_REFRESH_MODELS_AUTH_STORAGE_ONLY";
+
+const REFRESH_PROVIDER_OAUTH = new Map<string, OAuthProviderInterface>([
+	["anthropic", anthropicOAuthProvider],
+	["github-copilot", githubCopilotOAuthProvider],
+	["openai-codex", openaiCodexOAuthProvider],
+]);
+
+function providerRegistrationAuth(
+	provider: string,
+): Pick<ProviderConfig, "apiKey" | "oauth"> {
+	const oauth = REFRESH_PROVIDER_OAUTH.get(provider);
+	if (oauth) return { oauth };
+	return { apiKey: AUTH_STORAGE_API_KEY_SENTINEL };
+}
 
 export function parseRefreshModelsArgs(raw: string): RefreshScope {
 	const trimmed = raw.trim();
@@ -935,6 +960,7 @@ async function refreshProviderAvailability(
 	ctx.modelRegistry.registerProvider(provider, {
 		baseUrl: allModels[0].baseUrl,
 		api: allModels[0].api,
+		...providerRegistrationAuth(provider),
 		models: refreshedModels,
 	});
 	await writeProviderCache(provider, remoteModels);
@@ -1008,6 +1034,7 @@ function registerCachedProvider(
 	pi.registerProvider(provider, {
 		baseUrl: builtInModels[0].baseUrl,
 		api: builtInModels[0].api as ProviderModelDef["api"],
+		...providerRegistrationAuth(provider),
 		models,
 	});
 }
