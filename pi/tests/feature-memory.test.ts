@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import featureMemoryExtension, {
 	boundFeatureContextInjection,
 	MAX_FEATURE_INJECTION_CHARS,
@@ -11,6 +11,8 @@ import {
 	appendFeatureMemoryEvent,
 	buildFeatureContext,
 	createFeatureMemoryEvent,
+	type FeatureMemoryEvent,
+	featureMemoryEventsPath,
 	type FeatureRegistry,
 	loadFeatureRegistry,
 	matchFeatureIds,
@@ -70,6 +72,7 @@ describe("feature memory", () => {
 	});
 
 	afterEach(() => {
+		vi.unstubAllEnvs();
 		fs.rmSync(root, { recursive: true, force: true });
 	});
 
@@ -228,6 +231,94 @@ describe("feature memory", () => {
 			"evidence 3",
 			"evidence 4",
 		]);
+	});
+
+	it("uses a sanitized stable writer ID in the event shard name", () => {
+		vi.stubEnv("PI_FEATURE_MEMORY_WRITER_ID", "Workstation 01/Primary");
+		expect(
+			featureMemoryEventsPath({ directory: path.join(root, "shared") }),
+		).toBe(path.join(root, "shared/events.workstation-01-primary.jsonl"));
+	});
+
+	it("merges, orders, and deduplicates events across writer shards", async () => {
+		const eventsDirectory = path.join(root, "shared");
+		const event = (
+			eventId: string,
+			recordedAt: string,
+			summary: string,
+		): FeatureMemoryEvent => ({
+			...createFeatureMemoryEvent({
+				featureId: "pi-improve",
+				kind: "evidence",
+				summary,
+				sourcePaths: [],
+			}),
+			eventId,
+			recordedAt,
+		});
+		const first = event("event-1", "2026-08-01T10:00:00.000Z", "first");
+		const second = event("event-2", "2026-08-02T10:00:00.000Z", "second");
+		const third = event("event-3", "2026-08-03T10:00:00.000Z", "third");
+		await appendFeatureMemoryEvent(
+			second,
+			path.join(eventsDirectory, "events.host-b.jsonl"),
+		);
+		await appendFeatureMemoryEvent(
+			first,
+			path.join(eventsDirectory, "events.host-a.jsonl"),
+		);
+		await appendFeatureMemoryEvent(
+			third,
+			path.join(eventsDirectory, "events.jsonl"),
+		);
+		await appendFeatureMemoryEvent(
+			second,
+			path.join(eventsDirectory, "events.host-c.jsonl"),
+		);
+		fs.writeFileSync(path.join(eventsDirectory, "other.jsonl"), "invalid\n");
+
+		const recent = await readRecentFeatureEvents("pi-improve", {
+			eventsDirectory,
+		});
+		expect(recent.map((entry) => entry.summary)).toEqual([
+			"first",
+			"second",
+			"third",
+		]);
+	});
+
+	it("writes to one shard and injects events from the configured directory", async () => {
+		vi.stubEnv("PI_FEATURE_MEMORY_WRITER_ID", "host-a");
+		const eventsDirectory = path.join(root, "shared");
+		await appendFeatureMemoryEvent(
+			createFeatureMemoryEvent({
+				featureId: "pi-improve",
+				kind: "decision",
+				summary: "Decision from host B",
+				sourcePaths: [],
+			}),
+			path.join(eventsDirectory, "events.host-b.jsonl"),
+		);
+		const pi = createMockPi();
+		await featureMemoryExtension(pi as unknown as ExtensionAPI, {
+			repoRoot: fixture.root,
+			registryPath: fixture.registryPath,
+			eventsDirectory,
+		});
+		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
+		const result = await beforeAgentStart({ prompt: "/improve" }, {});
+		expect(result.message.content).toContain("Decision from host B");
+
+		const tool = pi._getTool("feature_memory_record");
+		await tool?.execute("call", {
+			featureId: "pi-improve",
+			kind: "evidence",
+			summary: "Evidence from host A",
+			sourcePaths: [],
+		});
+		expect(
+			fs.existsSync(path.join(eventsDirectory, "events.host-a.jsonl")),
+		).toBe(true);
 	});
 
 	it("rejects unknown or unmatched feature IDs", async () => {

@@ -66,6 +66,14 @@ This file records the current accepted semantics for Pi extensions and tools. It
 - Telemetry: record metadata-only toolset exposure, hashed search decisions, activation results, and tool use. Do not record raw queries, arguments, descriptions, or output.
 - Review boundary: telemetry supports later policy review but does not change activation policy automatically.
 
+## Feature memory
+
+- Registry: `pi/feature-memory.json` is the single tracked registry for curated feature definitions. Host-specific registries are not supported.
+- Event ownership: runtime observations remain untracked. Each writer appends only to `events.<writer-id>.jsonl` in the configured feature-memory directory.
+- Writer identity: `PI_FEATURE_MEMORY_WRITER_ID` supplies a stable writer ID; otherwise use the sanitized hostname.
+- Retrieval: scan the configured directory for writer shards and the legacy `events.jsonl`, merge deterministically by recording time, deduplicate by event ID, and retain the existing bounded read and context limits.
+- Synchronization: private directory synchronization is supported through separate writer shards. Do not store runtime event shards in the tracked dotfiles repository or a public Git worktree.
+
 ## PowerShell
 
 - Availability: on supported Windows systems, keep `pwsh` active throughout the session as a general execution capability.

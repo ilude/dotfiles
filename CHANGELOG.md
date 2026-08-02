@@ -2,6 +2,25 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-08-02: Shard feature-memory events by writer
+
+**Why:** A single synchronized event journal creates cross-machine write and merge
+conflicts, while the feature registry is curated repository configuration that
+must remain tracked.
+
+**Changed:**
+- Restored `pi/feature-memory.json` as the tracked canonical registry.
+- Changed runtime event writes to hostname-tagged writer shards, with an
+  explicit stable writer-ID override.
+- Merged recent events across the configured directory, including the legacy
+  journal, with deterministic ordering and event-ID deduplication.
+
+**Files:** `.gitignore`,
+`pi/{README.md,feature-memory.json,extensions/feature-memory.ts,lib/feature-memory-store.ts,tests/feature-memory.test.ts,skills/pi-extension/references/tooling-contracts.md}`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-21: Close the optional improvement-loop experiment
 
 **Why:** The delivered Pi report and routing telemetry do not require an applied

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
@@ -48,6 +48,7 @@ const FEATURE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_REGISTRY_BYTES = 64 * 1024;
 const MAX_DOSSIER_BYTES = 24 * 1024;
 const MAX_EVENT_FILE_READ_BYTES = 256 * 1024;
+const MAX_EVENT_SHARD_FILES = 32;
 const DEFAULT_EVENT_LIMIT = 8;
 const MAX_EVENT_LIMIT = 20;
 const MAX_SUMMARY_LENGTH = 600;
@@ -314,12 +315,44 @@ export function matchFeatureIds(
 		.sort();
 }
 
-export function featureMemoryEventsPath(): string {
+const EVENT_SHARD_PATTERN = /^events\.[a-z0-9][a-z0-9._-]*\.jsonl$/;
+
+function normalizeWriterId(value: string): string {
+	const normalized = value
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9._-]+/g, "-")
+		.replace(/^[._-]+|[._-]+$/g, "")
+		.slice(0, 80)
+		.replace(/[._-]+$/g, "");
+	if (normalized === "")
+		throw new Error("Feature memory writer ID must not be empty");
+	return normalized;
+}
+
+export function featureMemoryWriterId(): string {
+	return normalizeWriterId(
+		process.env.PI_FEATURE_MEMORY_WRITER_ID?.trim() || hostname(),
+	);
+}
+
+export function featureMemoryEventsDirectory(): string {
 	const root = process.env.PI_FEATURE_MEMORY_DIR?.trim();
 	return path.resolve(
 		root || path.join(homedir(), ".pi/agent/feature-memory"),
-		"events.jsonl",
 	);
+}
+
+export function featureMemoryEventsPath(
+	options: { directory?: string; writerId?: string } = {},
+): string {
+	const directory = path.resolve(
+		options.directory ?? featureMemoryEventsDirectory(),
+	);
+	const writerId = normalizeWriterId(
+		options.writerId ?? featureMemoryWriterId(),
+	);
+	return path.join(directory, `events.${writerId}.jsonl`);
 }
 
 function sanitizeText(value: string, maximum: number, label: string): string {
@@ -407,6 +440,30 @@ export async function appendFeatureMemoryEvent(
 	});
 }
 
+async function listEventShardPaths(eventsDirectory: string): Promise<string[]> {
+	let names: string[];
+	try {
+		const entries = await fs.readdir(eventsDirectory, { withFileTypes: true });
+		names = entries
+			.filter(
+				(entry) =>
+					entry.isFile() &&
+					(entry.name === "events.jsonl" ||
+						EVENT_SHARD_PATTERN.test(entry.name)),
+			)
+			.map((entry) => entry.name)
+			.sort();
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
+	}
+	if (names.length > MAX_EVENT_SHARD_FILES)
+		throw new Error(
+			`Feature memory event directory exceeds ${MAX_EVENT_SHARD_FILES} shard files`,
+		);
+	return names.map((name) => path.join(eventsDirectory, name));
+}
+
 async function readEventTail(eventsPath: string): Promise<string> {
 	let handle: fs.FileHandle | undefined;
 	try {
@@ -427,21 +484,41 @@ async function readEventTail(eventsPath: string): Promise<string> {
 
 export async function readRecentFeatureEvents(
 	featureId: string,
-	options: { eventsPath?: string; limit?: number } = {},
+	options: {
+		eventsPath?: string;
+		eventsDirectory?: string;
+		limit?: number;
+	} = {},
 ): Promise<FeatureMemoryEvent[]> {
+	if (options.eventsPath && options.eventsDirectory)
+		throw new Error("Specify either eventsPath or eventsDirectory, not both");
 	const limit = Math.max(
 		0,
 		Math.min(options.limit ?? DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT),
 	);
 	if (limit === 0) return [];
-	const text = await readEventTail(
-		options.eventsPath ?? featureMemoryEventsPath(),
-	);
-	return text
-		.split(/\r?\n/)
-		.filter(Boolean)
-		.map((line) => validEvent(JSON.parse(line)))
-		.filter((event) => event.featureId === featureId)
+	const eventPaths = options.eventsPath
+		? [path.resolve(options.eventsPath)]
+		: await listEventShardPaths(
+				path.resolve(
+					options.eventsDirectory ?? featureMemoryEventsDirectory(),
+				),
+			);
+	const uniqueEvents = new Map<string, FeatureMemoryEvent>();
+	for (const eventsPath of eventPaths) {
+		const text = await readEventTail(eventsPath);
+		for (const line of text.split(/\r?\n/).filter(Boolean)) {
+			const event = validEvent(JSON.parse(line));
+			if (event.featureId === featureId && !uniqueEvents.has(event.eventId))
+				uniqueEvents.set(event.eventId, event);
+		}
+	}
+	return [...uniqueEvents.values()]
+		.sort(
+			(left, right) =>
+				left.recordedAt.localeCompare(right.recordedAt) ||
+				left.eventId.localeCompare(right.eventId),
+		)
 		.slice(-limit);
 }
 
@@ -458,7 +535,11 @@ function boundedContextSection(
 export async function buildFeatureContext(
 	registry: FeatureRegistry,
 	featureId: string,
-	options: { eventsPath?: string; eventLimit?: number } = {},
+	options: {
+		eventsPath?: string;
+		eventsDirectory?: string;
+		eventLimit?: number;
+	} = {},
 ): Promise<string> {
 	const feature = registry.features[featureId];
 	if (!feature) throw new Error(`Unknown feature ID: ${featureId}`);
@@ -468,6 +549,7 @@ export async function buildFeatureContext(
 	);
 	const events = await readRecentFeatureEvents(featureId, {
 		eventsPath: options.eventsPath,
+		eventsDirectory: options.eventsDirectory,
 		limit: options.eventLimit,
 	});
 	const eventText = events.length

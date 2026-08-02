@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
@@ -7,6 +8,7 @@ import {
 	createFeatureMemoryEvent,
 	FEATURE_EVENT_KINDS,
 	type FeatureEventKind,
+	featureMemoryEventsDirectory,
 	featureMemoryEventsPath,
 	type LoadRegistryOptions,
 	loadFeatureRegistry,
@@ -21,6 +23,7 @@ const FeatureEventKindSchema = StringEnum(
 
 export interface FeatureMemoryExtensionOptions extends LoadRegistryOptions {
 	eventsPath?: string;
+	eventsDirectory?: string;
 }
 
 export const MAX_FEATURE_INJECTION_CHARS = MAX_FEATURE_CONTEXT_CHARS;
@@ -43,8 +46,17 @@ async function registerFeatureMemoryExtension(
 	pi: ExtensionAPI,
 	options: FeatureMemoryExtensionOptions,
 ): Promise<void> {
+	if (options.eventsPath && options.eventsDirectory)
+		throw new Error("Specify either eventsPath or eventsDirectory, not both");
 	const registry = await loadFeatureRegistry(options);
-	const eventsPath = options.eventsPath ?? featureMemoryEventsPath();
+	const eventsDirectory = options.eventsPath
+		? undefined
+		: path.resolve(
+				options.eventsDirectory ?? featureMemoryEventsDirectory(),
+			);
+	const eventsPath =
+		options.eventsPath ??
+		featureMemoryEventsPath({ directory: eventsDirectory });
 	const injectedFeatureIds = new Set<string>();
 	const matchedFeatureIds = new Set<string>();
 
@@ -64,7 +76,10 @@ async function registerFeatureMemoryExtension(
 		if (pending.length === 0) return;
 		const contexts = await Promise.all(
 			pending.map((featureId) =>
-				buildFeatureContext(registry, featureId, { eventsPath }),
+				buildFeatureContext(registry, featureId, {
+					eventsPath: options.eventsPath,
+					eventsDirectory,
+				}),
 			),
 		);
 		for (const featureId of pending) injectedFeatureIds.add(featureId);

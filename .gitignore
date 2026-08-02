@@ -191,5 +191,5 @@ claude/commands/yt/hermes-transcript.tmp.txt
 copilot/config.json
 /pi/models-store.json
 .local/state/gh/device-id
-/pi/feature-memory.json
 menos/
+/pi/feature-memory.json
