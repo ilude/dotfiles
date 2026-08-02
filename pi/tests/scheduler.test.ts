@@ -3,11 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import registerScheduler, { parseAtTime } from "../extensions/scheduler.ts";
+import registerScheduler, {
+	parseAtTime,
+	schedulerTestApi,
+} from "../extensions/scheduler.ts";
 import {
 	ProcessScheduler,
 	getProcessScheduler,
 	resetProcessScheduler,
+	type ScheduledPromptSnapshot,
 } from "../lib/process-scheduler.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -142,13 +146,21 @@ describe("scheduler extension", () => {
 		await scheduleCommand?.handler("list", ctx);
 		expect(pi.sendMessage).toHaveBeenLastCalledWith(
 			expect.objectContaining({
-				content: expect.stringContaining("review open tasks"),
+				content: expect.stringMatching(
+					/review open tasks[\s\S]*Next scheduled run: Thursday, January 1, 2026 at 9:00:00 AM EST \(America\/New_York\)\./,
+				),
 			}),
 			expect.objectContaining({ triggerTurn: false }),
 		);
 
 		await scheduleCommand?.handler(`cancel ${job.id.slice(0, 8)}`, ctx);
 		expect(getProcessScheduler().list()).toHaveLength(0);
+		expect(pi.sendMessage).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining("Next scheduled run: none."),
+			}),
+			expect.objectContaining({ triggerTurn: false }),
+		);
 	});
 
 	it("blocks schedule confirmation dialogs without blocking clarification", () => {
@@ -215,6 +227,7 @@ describe("scheduler extension", () => {
 			ctx,
 		);
 		expect(created.details.outcome).toBe("scheduled");
+		expect(created.content[0].text).toContain("Next scheduled run:");
 		const [job] = getProcessScheduler().list();
 		expect(confirm).not.toHaveBeenCalled();
 
@@ -226,6 +239,7 @@ describe("scheduler extension", () => {
 			ctx,
 		);
 		expect(cancelled.details.outcome).toBe("cancelled");
+		expect(cancelled.content[0].text).toContain("Next scheduled run: none.");
 		expect(getProcessScheduler().list()).toHaveLength(0);
 		expect(confirm).not.toHaveBeenCalled();
 
@@ -237,6 +251,23 @@ describe("scheduler extension", () => {
 			ctx,
 		);
 		expect(rejected.isError).toBe(true);
+	});
+
+	it("formats the next run in the schedule's applicable timezone", () => {
+		const job: ScheduledPromptSnapshot = {
+			id: "schedule-1",
+			kind: "cron",
+			prompt: "check status",
+			createdAt: "2026-01-01T00:00:00.000Z",
+			pattern: "0 9 * * *",
+			timezone: "America/New_York",
+			state: "scheduled",
+			nextRunAt: "2026-07-18T13:00:00.000Z",
+		};
+
+		expect(schedulerTestApi.nextRunMessage([job])).toBe(
+			"Next scheduled run: Saturday, July 18, 2026 at 9:00:00 AM EDT (America/New_York).",
+		);
 	});
 
 	it("parses explicit durations and rejects ambiguous at input", () => {

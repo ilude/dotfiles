@@ -140,21 +140,64 @@ function shortId(id: string): string {
 	return id.slice(0, 8);
 }
 
+function applicableTimeZone(job: ScheduledPromptSnapshot): string {
+	return job.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+function formatScheduledTime(timestamp: string, timeZone: string): string {
+	const formatted = new Intl.DateTimeFormat("en-US", {
+		timeZone,
+		weekday: "long",
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+		second: "2-digit",
+		timeZoneName: "short",
+	}).format(new Date(timestamp));
+	return `${formatted} (${timeZone})`;
+}
+
+function nextScheduledJob(
+	jobs: ScheduledPromptSnapshot[],
+): ScheduledPromptSnapshot | undefined {
+	return jobs
+		.filter((job) => job.nextRunAt !== null)
+		.sort((left, right) =>
+			(left.nextRunAt ?? "").localeCompare(right.nextRunAt ?? ""),
+		)[0];
+}
+
+function nextRunMessage(jobs: ScheduledPromptSnapshot[]): string {
+	const job = nextScheduledJob(jobs);
+	if (!job?.nextRunAt) return "Next scheduled run: none.";
+	return `Next scheduled run: ${formatScheduledTime(job.nextRunAt, applicableTimeZone(job))}.`;
+}
+
 function formatJob(job: ScheduledPromptSnapshot): string {
 	const schedule =
 		job.kind === "at"
 			? `at ${job.runAt}`
 			: `cron ${job.pattern}${job.timezone ? ` tz=${job.timezone}` : ""}`;
-	return `${shortId(job.id)} ${schedule} next=${job.nextRunAt ?? job.state} ${promptPreview(job.prompt)}`;
+	const next = job.nextRunAt
+		? formatScheduledTime(job.nextRunAt, applicableTimeZone(job))
+		: job.state;
+	return `${shortId(job.id)} ${schedule} next=${next} ${promptPreview(job.prompt)}`;
 }
 
 function formatJobs(jobs: ScheduledPromptSnapshot[]): string {
-	if (jobs.length === 0) return "No process-local schedules.";
-	return jobs.map(formatJob).join("\n");
+	if (jobs.length === 0) {
+		return `No process-local schedules.\n${nextRunMessage(jobs)}`;
+	}
+	return `${jobs.map(formatJob).join("\n")}\n${nextRunMessage(jobs)}`;
 }
 
-function creationMessage(job: ScheduledPromptSnapshot): string {
-	return `Scheduled ${formatJob(job)}. Survives session changes in this Pi process; stops when the process exits.`;
+function creationMessage(
+	job: ScheduledPromptSnapshot,
+	jobs: ScheduledPromptSnapshot[],
+): string {
+	return `Scheduled ${formatJob(job)}. Survives session changes in this Pi process; stops when the process exits.\n${nextRunMessage(jobs)}`;
 }
 
 function show(pi: ExtensionAPI, text: string): void {
@@ -196,12 +239,9 @@ async function handleAt(
 	_ctx: ExtensionCommandContext,
 ): Promise<void> {
 	const definition = splitDefinition(args);
-	show(
-		pi,
-		creationMessage(
-			scheduleAt(getProcessScheduler(), definition.header, definition.prompt),
-		),
-	);
+	const scheduler = getProcessScheduler();
+	const job = scheduleAt(scheduler, definition.header, definition.prompt);
+	show(pi, creationMessage(job, scheduler.list()));
 }
 
 async function handleCron(
@@ -211,17 +251,14 @@ async function handleCron(
 ): Promise<void> {
 	const definition = splitDefinition(args);
 	const parsed = parseCronHeader(definition.header);
-	show(
-		pi,
-		creationMessage(
-			scheduleCron(
-				getProcessScheduler(),
-				parsed.pattern,
-				definition.prompt,
-				parsed.timezone,
-			),
-		),
+	const scheduler = getProcessScheduler();
+	const job = scheduleCron(
+		scheduler,
+		parsed.pattern,
+		definition.prompt,
+		parsed.timezone,
 	);
+	show(pi, creationMessage(job, scheduler.list()));
 }
 
 async function handleSchedule(
@@ -238,7 +275,11 @@ async function handleSchedule(
 	}
 	if (action === "cancel") {
 		if (!tokens[1]) throw new Error("Provide a schedule id to cancel");
-		show(pi, `Cancelled ${formatJob(scheduler.cancel(tokens[1]))}.`);
+		const cancelled = scheduler.cancel(tokens[1]);
+		show(
+			pi,
+			`Cancelled ${formatJob(cancelled)}.\n${nextRunMessage(scheduler.list())}`,
+		);
 		return;
 	}
 	if (action === "help") {
@@ -322,6 +363,7 @@ export default function registerScheduler(pi: ExtensionAPI) {
 			"Never use ask_user to confirm schedule creation or cancellation. Call schedule directly when its parameters are known.",
 			"Ask a non-confirmation clarification only when a required schedule value is missing or ambiguous.",
 			"Cancel schedules directly when they are no longer needed or their completion condition is satisfied.",
+			"After calling schedule, end that assistant turn with the exact 'Next scheduled run:' line from the final schedule tool result; that line already uses the schedule's explicit timezone or the local timezone.",
 			"Scheduled prompts cannot be slash commands and schedules do not survive Pi process exit.",
 		],
 		parameters: Type.Object({
@@ -353,14 +395,19 @@ export default function registerScheduler(pi: ExtensionAPI) {
 					);
 				}
 				const cancelled = scheduler.cancel(job.id);
+				const jobs = scheduler.list();
 				return {
 					content: [
 						{
 							type: "text" as const,
-							text: `Cancelled ${formatJob(cancelled)}.`,
+							text: `Cancelled ${formatJob(cancelled)}.\n${nextRunMessage(jobs)}`,
 						},
 					],
-					details: { outcome: "cancelled", job: cancelled },
+					details: {
+						outcome: "cancelled",
+						job: cancelled,
+						nextJob: nextScheduledJob(jobs),
+					},
 				};
 			}
 
@@ -387,9 +434,16 @@ export default function registerScheduler(pi: ExtensionAPI) {
 			}
 			try {
 				const job = create();
+				const jobs = scheduler.list();
 				return {
-					content: [{ type: "text" as const, text: creationMessage(job) }],
-					details: { outcome: "scheduled", job },
+					content: [
+						{ type: "text" as const, text: creationMessage(job, jobs) },
+					],
+					details: {
+						outcome: "scheduled",
+						job,
+						nextJob: nextScheduledJob(jobs),
+					},
 				};
 			} catch (error) {
 				return formatToolError(
@@ -402,6 +456,8 @@ export default function registerScheduler(pi: ExtensionAPI) {
 
 export const schedulerTestApi = {
 	formatJobs,
+	formatScheduledTime,
+	nextRunMessage,
 	parseCronHeader,
 	splitDefinition,
 	validatePrompt,
