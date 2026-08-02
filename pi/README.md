@@ -419,8 +419,12 @@ slash workflows do not run unattended. The model-callable `schedule` tool can
 create, list, and cancel the same jobs. Creation and cancellation do not use a
 confirmation dialog. A direct request authorizes creation; an explicit request
 or an existing schedule's completion condition authorizes cancellation. Missing
-required values may still require a non-confirmation clarification. Schedule
-lifecycle metrics contain job IDs and timing metadata, not prompt text.
+required values may still require a non-confirmation clarification. Every
+successful scheduling action reports the next active run in a human-readable
+`Next scheduled run:` line, using an explicit schedule timezone when present
+and the process-local timezone otherwise. Model responses end with that exact
+line so the next run remains visible after creation, listing, or cancellation.
+Schedule lifecycle metrics contain job IDs and timing metadata, not prompt text.
 
 ### `feature-memory.ts`
 
