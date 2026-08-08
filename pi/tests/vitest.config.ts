@@ -7,15 +7,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const agentDir = path.resolve(__dirname, "..").replace(/\\/g, "/");
 
 // Pi TypeScript dependencies live at pi/node_modules: native deps via
-// pi/package.json + pnpm install, and @earendil-works/@sinclair scopes via
+// pi/package.json + pnpm install, and @earendil-works packages plus typebox via
 // pi-deps-link-setup symlinking pnpm-global into pi/node_modules.
 const piNodeModules = path.resolve(__dirname, "../node_modules");
 const piPackageRoot = path.join(
 	piNodeModules,
 	"@earendil-works/pi-coding-agent",
 );
-const typeboxDir = path.join(piNodeModules, "@sinclair/typebox");
-
 if (!fs.existsSync(piPackageRoot)) {
 	throw new Error(
 		`Could not locate Pi dependencies at ${piNodeModules}. Run: ~/.dotfiles/install`,
@@ -29,10 +27,6 @@ export default defineConfig({
 			"@earendil-works/pi-coding-agent": path.join(
 				piPackageRoot,
 				"dist/index.js",
-			),
-			"@earendil-works/pi-ai/oauth": path.join(
-				piNodeModules,
-				"@earendil-works/pi-ai/dist/oauth.js",
 			),
 			"@earendil-works/pi-ai/compat": path.join(
 				piNodeModules,
@@ -50,7 +44,6 @@ export default defineConfig({
 				piNodeModules,
 				"@earendil-works/pi-agent-core/dist/index.js",
 			),
-			"@sinclair/typebox": typeboxDir,
 		},
 	},
 	test: {

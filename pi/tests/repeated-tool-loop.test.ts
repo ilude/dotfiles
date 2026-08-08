@@ -218,6 +218,7 @@ describe("repeated tool loop guard", () => {
 		await inputHook({ source: "extension", text: "automatic follow-up" }, ctx);
 		expect(toolCall(event, ctx)).toMatchObject({
 			block: true,
+			terminate: true,
 			reason: expect.stringContaining("repeated_tool_loop"),
 		});
 		expect(ctx.abort).toHaveBeenCalledTimes(1);

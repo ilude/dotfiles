@@ -34,7 +34,7 @@ import {
 	type ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { Key, Text } from "@earendil-works/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { commitFailureMessage } from "../lib/commit/failure";
 import { validateCommitMessage } from "../lib/commit/message";
 import { preflightGitStateAsync } from "../lib/commit/plan";

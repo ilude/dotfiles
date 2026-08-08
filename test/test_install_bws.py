@@ -35,3 +35,12 @@ def test_release_asset_supports_dotfiles_platforms(
 def test_release_asset_rejects_unknown_platform() -> None:
     with pytest.raises(RuntimeError, match="unsupported BWS platform"):
         MODULE.release_asset("Plan9", "mips")
+
+
+def test_verify_installed_rejects_an_unusable_binary(tmp_path: Path, monkeypatch) -> None:
+    binary = tmp_path / "bws"
+    binary.touch()
+    monkeypatch.setattr(MODULE, "installed_version", lambda _binary: None)
+
+    with pytest.raises(RuntimeError, match="not executable"):
+        MODULE.verify_installed(binary)

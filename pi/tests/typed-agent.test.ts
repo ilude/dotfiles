@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { createAgentSessionMock, createExtensionRuntimeMock } = vi.hoisted(
@@ -102,6 +102,10 @@ describe("typed agent", () => {
 				noTools: "all",
 			}),
 		);
+		const sessionOptions = createAgentSessionMock.mock.calls[0]?.[0];
+		expect(sessionOptions).toBeDefined();
+		expect(sessionOptions.resourceLoader.getSystemPromptSource()).toBeUndefined();
+		expect(sessionOptions.resourceLoader.getAppendSystemPromptSources()).toEqual([]);
 		expect(dispose).toHaveBeenCalledOnce();
 	});
 

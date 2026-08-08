@@ -114,6 +114,12 @@ properties:
         source: winget
     - resource: Microsoft.WinGet.DSC/WinGetPackage
       directives:
+        description: Install Go
+      settings:
+        id: GoLang.Go  # Go
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
         description: Install git-delta
       settings:
         id: dandavison.delta  # git-delta (diff pager)

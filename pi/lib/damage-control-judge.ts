@@ -2,8 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { complete } from "@earendil-works/pi-ai/compat";
-import type { Api, Model } from "@earendil-works/pi-ai/compat";
+import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { ensureDirectory, getOperatorStateDir } from "./operator-state.ts";
 
 const JUDGE_PROVIDER = "openai-codex";
@@ -16,16 +15,8 @@ const SYSTEM_PROMPT =
 export type DamageControlJudgeVerdict = "allow" | "ask" | "error";
 
 export interface DamageControlJudgeModelRegistry {
-	find(provider: string, modelId: string): Model<Api> | undefined;
-	getApiKeyAndHeaders(model: Model<Api>): Promise<
-		| {
-				ok: true;
-				apiKey?: string;
-				headers?: Record<string, string>;
-				env?: Record<string, string>;
-		  }
-		| { ok: false; error: string }
-	>;
+	find: ModelRegistry["find"];
+	complete: ModelRegistry["complete"];
 }
 
 export interface JudgeDamageControlInput {
@@ -102,22 +93,10 @@ export async function judgeDamageControl(
 		return recordJudgeResult(input.eventId, verdict, reason, startedAt);
 	}
 
-	let auth: Awaited<
-		ReturnType<DamageControlJudgeModelRegistry["getApiKeyAndHeaders"]>
-	>;
-	try {
-		auth = await input.modelRegistry.getApiKeyAndHeaders(model);
-	} catch {
-		return recordJudgeResult(input.eventId, verdict, "auth error", startedAt);
-	}
-	if (!auth.ok) {
-		return recordJudgeResult(input.eventId, verdict, "auth error", startedAt);
-	}
-
 	const controller = new AbortController();
 	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
-		const completion = complete(
+		const completion = input.modelRegistry.complete(
 			model,
 			{
 				systemPrompt: SYSTEM_PROMPT,
@@ -134,9 +113,6 @@ export async function judgeDamageControl(
 				timeoutMs: JUDGE_TIMEOUT_MS,
 				maxRetries: 0,
 				signal: controller.signal,
-				apiKey: auth.apiKey,
-				headers: auth.headers,
-				env: auth.env,
 			},
 		);
 		const result = await Promise.race([

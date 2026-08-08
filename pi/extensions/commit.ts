@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Type } from "@sinclair/typebox";
-import type { Static } from "@sinclair/typebox";
+import { type Static, Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createCommitAsync } from "../lib/commit/create";
 import type { GitAsyncRunner } from "../lib/commit/git";

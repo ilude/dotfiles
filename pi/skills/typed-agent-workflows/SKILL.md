@@ -27,7 +27,7 @@ Keep workflow control in ordinary TypeScript. Do not introduce a workflow DSL fo
 ## Minimal API
 
 ```typescript
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { defineAgent } from "../../lib/typed-agent.js";
 
 const InputSchema = Type.Object({ candidate: Type.String() });

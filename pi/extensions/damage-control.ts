@@ -972,6 +972,7 @@ export default function (pi: ExtensionAPI) {
 		const resultKind = repeated.isError ? "failure" : "result";
 		const decision = {
 			block: true as const,
+			terminate: true as const,
 			reason: `Blocked repeated tool loop (matched "${REPEATED_TOOL_LOOP_RULE}"): the same tool call produced the same ${resultKind} ${repeated.resultCount} times; the current agent run was aborted.`,
 		};
 		recordBlock(

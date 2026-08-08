@@ -1,7 +1,7 @@
 // Onclave v2 adapter loader: the implementation lives in the onclave
 // submodule (~/.dotfiles/onclave), which is the source of truth. Requires
-// pnpm install in the submodule. Broker configuration uses the adapter default
-// unless ONCLAVE_AMQP_URL or --onclave-url provides an explicit override.
+// pnpm install in the submodule. The adapter resolves the central broker
+// credentials through BWS unless ONCLAVE_AMQP_URL or --onclave-url overrides it.
 //
 // The path climbs to $HOME and back down through .dotfiles so it resolves
 // both from the real location (~/.dotfiles/pi/extensions) and through the

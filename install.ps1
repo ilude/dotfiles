@@ -1911,7 +1911,8 @@ try {
 
         # Install or update Pi on every run. Keep the runtime package family on
         # one version and use a shorter release-age window than the global default.
-        $piVersion = '0.82.1'
+        $piVersion = '0.84.1'
+        $piTypeboxVersion = '1.3.7'
         $piPnpmMinimumReleaseAge = 720
         Write-Host "  Installing/updating pi-coding-agent $piVersion via pnpm (minimumReleaseAge=$piPnpmMinimumReleaseAge minutes)..." -ForegroundColor Cyan
         $previousCi = $env:CI
@@ -1924,7 +1925,7 @@ try {
                 "@earendil-works/pi-agent-core@${piVersion}" `
                 "@earendil-works/pi-ai@${piVersion}" `
                 "@earendil-works/pi-tui@${piVersion}" `
-                '@sinclair/typebox'
+                "typebox@${piTypeboxVersion}"
         } finally {
             $env:CI = $previousCi
             $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = $previousPnpmAllowAllBuilds
@@ -1953,7 +1954,7 @@ try {
 
     # Install pi runtime dependencies (web-tree-sitter, tree-sitter-bash, jsdom, etc.)
     # pnpm install must run BEFORE pi-deps-link-setup because pnpm recreates
-    # node_modules and would wipe the @earendil-works/@sinclair symlinks otherwise.
+    # node_modules and would wipe the @earendil-works/typebox symlinks otherwise.
     $piDir = Join-Path $BASEDIR "pi"
     $piPackageJson = Join-Path $piDir "package.json"
     if ((Test-Path $piPackageJson) -and (Get-Command pnpm -ErrorAction SilentlyContinue)) {
@@ -2000,6 +2001,13 @@ try {
         Pop-Location
     }
     Write-Host "  Onclave adapter deps: installed" -ForegroundColor Green
+
+    Write-Host "  Restoring Onclave private configuration..." -ForegroundColor Cyan
+    & python (Join-Path $BASEDIR 'scripts\onclave-bootstrap.py')
+    if ($LASTEXITCODE -ne 0) {
+        throw "Onclave private bootstrap failed"
+    }
+    Write-Host "  Onclave private configuration: ready" -ForegroundColor Green
 
     # Set up Pi directory link and plant pnpm-global symlinks into pi/node_modules.
     # pi-deps-link-setup must run AFTER pnpm install (above) so the symlinks are

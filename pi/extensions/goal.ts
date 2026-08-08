@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { formatToolError } from "../lib/extension-utils.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import { activateTools, deactivateTools } from "../lib/tool-activation.js";

@@ -252,6 +252,22 @@ if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
 fi
 completed_steps+=("Homebrew packages")
 
+current_step="Onclave private bootstrap"
+if [[ ! -f "${BASEDIR}/private/secrets.env" && ! -x "${BASEDIR}/bin/dolos" && ! -x "${BASEDIR}/bin/dolos.exe" ]] &&
+    ! command -v go &>/dev/null && ! command -v docker &>/dev/null; then
+    if is_windows && command -v winget &>/dev/null; then
+        winget install --id GoLang.Go --exact --source winget --accept-package-agreements --accept-source-agreements --disable-interactivity
+    elif command -v apt-get &>/dev/null; then
+        sudo apt-get update
+        sudo apt-get install -y golang-go
+    else
+        echo "Error: Go or Docker is required to restore the Onclave private configuration" >&2
+        exit 1
+    fi
+fi
+python "${BASEDIR}/scripts/onclave-bootstrap.py"
+completed_steps+=("Onclave private bootstrap")
+
 current_step="Bun install"
 # Bun is the JS runtime for pi web-fetch deps and other JS tooling.
 # Windows installs bun via install.ps1; Linux/macOS install it here.
@@ -334,7 +350,8 @@ current_step="Pi coding agent install"
 # drift to newer patch versions even when pi-coding-agent itself was pinned.
 # Pi is updated frequently and intentionally uses a shorter release-age window
 # than the global pnpm default. Keep the runtime package family on one version.
-PI_VERSION=0.82.1
+PI_VERSION=0.84.1
+PI_TYPEBOX_VERSION=1.3.7
 PI_PNPM_MINIMUM_RELEASE_AGE=720
 
 # Ensure PNPM_HOME is set before bootstrap so the installer knows where to put
@@ -403,7 +420,7 @@ if command -v pnpm &>/dev/null; then
         "@earendil-works/pi-agent-core@${PI_VERSION}" \
         "@earendil-works/pi-ai@${PI_VERSION}" \
         "@earendil-works/pi-tui@${PI_VERSION}" \
-        @sinclair/typebox
+        "typebox@${PI_TYPEBOX_VERSION}"
 
     pi_markdown_patch="${BASEDIR}/install.d/50-pi-markdown-code-fence-fix.py"
     if [[ -f "$pi_markdown_patch" ]]; then
@@ -423,7 +440,7 @@ completed_steps+=("Pi coding agent install")
 current_step="pi runtime deps"
 # Install pi's consolidated runtime + dev dependencies declared at pi/package.json.
 # Must run BEFORE pi-deps-link-setup -- pnpm install will recreate pi/node_modules
-# and would wipe @earendil-works/@sinclair symlinks if planted first.
+# and would wipe @earendil-works/typebox symlinks if planted first.
 PI_DIR="${BASEDIR}/pi"
 if [[ -f "$PI_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
     echo "Installing pi runtime dependencies..."
@@ -483,7 +500,7 @@ fi
 completed_steps+=("Onclave adapter dependencies")
 
 current_step="pi extension deps link"
-# Plant @earendil-works/* and @sinclair/* symlinks from pnpm-global into
+# Plant @earendil-works/* and typebox symlinks from pnpm-global into
 # pi/node_modules. Intentionally not listed in pi/package.json -- their version
 # is tied to the pnpm-global pi-coding-agent install.
 "${BASEDIR}/scripts/pi-deps-link-setup"

@@ -19,7 +19,7 @@ PACKAGES=(
     "@earendil-works/pi-agent-core"
     "@earendil-works/pi-ai"
     "@earendil-works/pi-tui"
-    "@sinclair/typebox"
+    "typebox"
 )
 
 is_windows() {
@@ -94,12 +94,9 @@ create_link() {
 
 package_scope() {
     local package="$1"
-    printf '%s\n' "${package%/*}"
-}
-
-package_name() {
-    local package="$1"
-    printf '%s\n' "${package##*/}"
+    if [[ "$package" == */* ]]; then
+        printf '%s\n' "${package%/*}"
+    fi
 }
 
 global_package_paths_from_pnpm() {
@@ -137,9 +134,7 @@ package_path_from_pnpm_list() {
 
 find_package_path() {
     local package="$1"
-    local scope name listed_path direct_path found_path
-    scope=$(package_scope "$package")
-    name=$(package_name "$package")
+    local listed_path direct_path found_path
 
     listed_path=$(package_path_from_pnpm_list "$package" | tail -1)
     if [[ -n "$listed_path" ]]; then
@@ -150,13 +145,13 @@ find_package_path() {
         fi
     fi
 
-    direct_path="${PNPM_GLOBAL_NODE_MODULES}/${scope}/${name}"
+    direct_path="${PNPM_GLOBAL_NODE_MODULES}/${package}"
     if [[ -d "$direct_path" ]]; then
         printf '%s\n' "$direct_path"
         return 0
     fi
 
-    found_path=$(find "$PNPM_GLOBAL_NODE_MODULES" -maxdepth 7 \( -type d -o -type l \) -path "*/node_modules/${scope}/${name}" 2>/dev/null | sort | head -1)
+    found_path=$(find "$PNPM_GLOBAL_NODE_MODULES" -maxdepth 7 \( -type d -o -type l \) -path "*/node_modules/${package}" 2>/dev/null | sort | head -1)
     if [[ -n "$found_path" && -d "$found_path" ]]; then
         printf '%s\n' "$found_path"
         return 0
@@ -167,25 +162,26 @@ find_package_path() {
 
 link_package() {
     local package="$1"
-    local scope name source_path scope_dir target_path current
+    local scope source_path scope_dir target_path current
     scope=$(package_scope "$package")
-    name=$(package_name "$package")
-    scope_dir="${PI_NODE_MODULES}/${scope}"
-    target_path="${scope_dir}/${name}"
+    scope_dir="${PI_NODE_MODULES}${scope:+/${scope}}"
+    target_path="${PI_NODE_MODULES}/${package}"
 
     if ! source_path=$(find_package_path "$package"); then
         echo "  Skipping ${package}: not present in ${PNPM_GLOBAL_NODE_MODULES}"
         return 0
     fi
 
-    if is_link "$scope_dir"; then
-        echo "  ${scope}: replacing stale scope link"
-        remove_link "$scope_dir"
-    elif [[ -e "$scope_dir" && ! -d "$scope_dir" ]]; then
-        echo "  Error: ${scope_dir} exists and is not a directory"
-        exit 1
+    if [[ -n "$scope" ]]; then
+        if is_link "$scope_dir"; then
+            echo "  ${scope}: replacing stale scope link"
+            remove_link "$scope_dir"
+        elif [[ -e "$scope_dir" && ! -d "$scope_dir" ]]; then
+            echo "  Error: ${scope_dir} exists and is not a directory"
+            exit 1
+        fi
+        mkdir -p "$scope_dir"
     fi
-    mkdir -p "$scope_dir"
 
     if is_link "$target_path"; then
         current=$(resolve_link_target "$target_path")

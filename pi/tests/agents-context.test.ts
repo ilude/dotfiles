@@ -226,11 +226,38 @@ describe("agents-context discovery", () => {
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents\n@docs/extra.md");
 		writeFile(path.join(cwd, "docs", "extra.md"), "imported content");
 		writeFile(path.join(cwd, "src", "AGENT.md"), "compat agent");
-		writeFile(path.join(cwd, "src", "AGENTS.override.md"), "override agent");
 
 		const files = agentsContextTestApi.discoverForPaths(cwd, ["src/file.ts"]);
 		expect(files.map((file) => path.basename(file.path))).toEqual(["AGENTS.md"]);
 		expect(files[0].content).toContain("@docs/extra.md");
+	});
+
+	it("uses AGENTS.override.md instead of AGENTS.md in each directory", () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
+		writeFile(path.join(cwd, "src", "AGENTS.override.md"), "src override");
+		writeFile(path.join(cwd, "src", "feature", "AGENTS.md"), "feature agents");
+		writeFile(
+			path.join(cwd, "src", "feature", "AGENTS.override.md"),
+			"feature override",
+		);
+
+		const files = agentsContextTestApi.discoverForPaths(cwd, [
+			"src/feature/file.ts",
+		]);
+		expect(
+			files.map((file) => path.relative(cwd, file.path).replaceAll(path.sep, "/")),
+		).toEqual([
+			"AGENTS.md",
+			"src/AGENTS.override.md",
+			"src/feature/AGENTS.override.md",
+		]);
+		expect(files.map((file) => file.content)).toEqual([
+			"root agents",
+			"src override",
+			"feature override",
+		]);
 	});
 
 	it("deduplicates nested instructions that match native context content", async () => {
@@ -265,11 +292,11 @@ describe("agents-context discovery", () => {
 		);
 	});
 
-	it("does not inject an instruction or hardlink alias merely because it was read", async () => {
+	it("does not inject a selected AGENTS.override.md or hardlink alias merely because it was read", async () => {
 		const cwd = path.join(tmp, "repo");
-		const rootInstruction = path.join(cwd, "AGENTS.md");
-		const nestedInstruction = path.join(cwd, "src", "AGENTS.md");
-		writeFile(rootInstruction, "root agents");
+		const rootInstruction = path.join(cwd, "AGENTS.override.md");
+		const nestedInstruction = path.join(cwd, "src", "AGENTS.override.md");
+		writeFile(rootInstruction, "root override");
 		mkdirp(path.dirname(nestedInstruction));
 		fs.linkSync(rootInstruction, nestedInstruction);
 		const pi = createMockPi();
@@ -278,7 +305,7 @@ describe("agents-context discovery", () => {
 		await completeTool(
 			pi,
 			ctx,
-			{ toolName: "read", input: { path: "src/AGENTS.md" } },
+			{ toolName: "read", input: { path: "src/AGENTS.override.md" } },
 		);
 		const result = await pi._getHook("context")[0].handler(
 			{ messages: [] },

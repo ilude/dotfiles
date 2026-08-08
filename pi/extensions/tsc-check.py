@@ -134,9 +134,8 @@ def main():
                         f"{pi_nm}/@earendil-works/pi-ai",
                         f"{pi_nm}/@earendil-works/pi-ai/dist/index.js",
                     ],
-                    "@earendil-works/pi-ai/oauth": [
-                        f"{pi_nm}/@earendil-works/pi-ai/dist/oauth",
-                        f"{pi_nm}/@earendil-works/pi-ai/dist/oauth.js",
+                    "@earendil-works/pi-ai/compat": [
+                        f"{pi_nm}/@earendil-works/pi-ai/dist/compat.d.ts",
                     ],
                     "@earendil-works/pi-agent-core": [
                         f"{pi_nm}/@earendil-works/pi-agent-core",
@@ -146,12 +145,6 @@ def main():
                         f"{pi_nm}/@earendil-works/pi-tui",
                         f"{pi_nm}/@earendil-works/pi-tui/dist/index.js",
                     ],
-                    "typebox": [f"{pi_nm}/typebox"],
-                    "typebox/compile": [f"{pi_nm}/typebox/compile"],
-                    "typebox/value": [f"{pi_nm}/typebox/value"],
-                    "@sinclair/typebox": [f"{pi_nm}/@sinclair/typebox"],
-                    "@sinclair/typebox/compile": [f"{pi_nm}/@sinclair/typebox/compile"],
-                    "@sinclair/typebox/value": [f"{pi_nm}/@sinclair/typebox/value"],
                     "yaml": [f"{pi_nm}/yaml"],
                 },
             },

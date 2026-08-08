@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import {
 	appendFeatureMemoryEvent,
 	buildFeatureContext,

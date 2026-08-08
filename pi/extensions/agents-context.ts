@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const PRIMARY_INSTRUCTION_NAME = "AGENTS.md";
+const OVERRIDE_INSTRUCTION_NAME = "AGENTS.override.md";
 const NATIVE_FALLBACK_INSTRUCTION_NAME = "CLAUDE.md";
 const EMPTY_PROJECT_CONTEXT =
 	"\n\n<project_context>\n\nProject-specific instructions and guidelines:\n\n</project_context>\n";
@@ -135,11 +136,18 @@ function ancestorsFromRoot(root: string, targetDir: string): string[] {
 }
 
 function instructionFileForDir(dir: string): string | undefined {
-	return existingFile(path.join(dir, PRIMARY_INSTRUCTION_NAME));
+	return (
+		existingFile(path.join(dir, OVERRIDE_INSTRUCTION_NAME)) ??
+		existingFile(path.join(dir, PRIMARY_INSTRUCTION_NAME))
+	);
 }
 
 function isInstructionFile(filePath: string): boolean {
-	return path.basename(filePath).toLowerCase() === PRIMARY_INSTRUCTION_NAME.toLowerCase();
+	const name = path.basename(filePath).toLowerCase();
+	return (
+		name === PRIMARY_INSTRUCTION_NAME.toLowerCase() ||
+		name === OVERRIDE_INSTRUCTION_NAME.toLowerCase()
+	);
 }
 
 function localInstructionFiles(

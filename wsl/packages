@@ -83,6 +83,7 @@ CORE_PACKAGES=(
     "unzip:unzip"
     "build-essential:Build tools"
     "gpg:GPG"
+    "golang-go:Go"
     "ca-certificates:CA certificates"
     "jq:jq (JSON processor)"
     "tmux:tmux (terminal multiplexer)"

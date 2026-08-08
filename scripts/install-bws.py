@@ -74,6 +74,14 @@ def installed_version(binary: str) -> str | None:
     return fields[-1] if fields else None
 
 
+def verify_installed(binary: Path) -> None:
+    version = installed_version(str(binary))
+    if version != VERSION:
+        raise RuntimeError(
+            f"installed bws is not executable or reports version {version or 'unknown'}"
+        )
+
+
 def install(target_dir: Path, force: bool = False) -> Path:
     executable = "bws.exe" if platform.system().lower() == "windows" else "bws"
     target = target_dir / executable
@@ -105,6 +113,7 @@ def install(target_dir: Path, force: bool = False) -> Path:
         extracted.chmod(extracted.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         target_dir.mkdir(parents=True, exist_ok=True)
         os.replace(extracted, target)
+    verify_installed(target)
     print(f"bws {VERSION}: installed to {target}")
     return target
 

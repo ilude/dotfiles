@@ -8,7 +8,7 @@
  *   - multi_select: pick multiple options, then Done
  *   - confirm: yes/no question
  */
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { emitTerminalBell, formatToolError } from "../lib/extension-utils.js";

@@ -9,7 +9,7 @@ import {
 // Risk: if notify signature changes, this call silently breaks without compile-time guidance.
 // Why shared helper is inappropriate: the message is modal-style user feedback about a missing
 // system binary -- adding a [pwsh] prefix would be redundant with "pwsh not found" in the text.
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";

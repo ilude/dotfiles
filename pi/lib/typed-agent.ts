@@ -8,8 +8,8 @@ import {
 	SessionManager,
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { Kind, type Static, type TSchema } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import { type Static, type TSchema } from "typebox";
+import { Assert, Decode } from "typebox/value";
 
 export interface TypedAgentRunContext
 	extends Pick<
@@ -62,7 +62,9 @@ function createResourceLoader(systemPrompt: string): ResourceLoader {
 		getThemes: () => ({ themes: [], diagnostics: [] }),
 		getAgentsFiles: () => ({ agentsFiles: [] }),
 		getSystemPrompt: () => systemPrompt,
+		getSystemPromptSource: () => undefined,
 		getAppendSystemPrompt: () => [],
+		getAppendSystemPromptSources: () => [],
 		extendResources: () => {},
 		reload: async () => {},
 	};
@@ -100,79 +102,15 @@ const extractJsonObject = (text: string): string | undefined => {
 	return undefined;
 };
 
-function hydrateJsonSchema(schema: TSchema): TSchema {
-	if (schema[Kind]) return schema;
-	if ("$ref" in schema || "oneOf" in schema)
-		throw new Error("output schema uses unsupported $ref or oneOf");
-	if (Array.isArray(schema.type)) {
-		return hydrateJsonSchema({
-			...schema,
-			type: undefined,
-			anyOf: schema.type.map((type) => ({ type })),
-		} as TSchema);
-	}
-	if (Array.isArray(schema.enum)) {
-		return hydrateJsonSchema({
-			...schema,
-			enum: undefined,
-			anyOf: schema.enum.map((value) => ({ const: value })),
-		} as TSchema);
-	}
-	const hydrated = { ...schema } as TSchema;
-	if (schema.properties && typeof schema.properties === "object") {
-		hydrated.properties = Object.fromEntries(
-			Object.entries(schema.properties as Record<string, TSchema>).map(
-				([key, value]) => [key, hydrateJsonSchema(value)],
-			),
-		);
-	}
-	if (schema.items && typeof schema.items === "object")
-		hydrated.items = hydrateJsonSchema(schema.items as TSchema);
-	if (Array.isArray(schema.anyOf))
-		hydrated.anyOf = schema.anyOf.map((value) =>
-			hydrateJsonSchema(value as TSchema),
-		);
-	if (Array.isArray(schema.allOf))
-		hydrated.allOf = schema.allOf.map((value) =>
-			hydrateJsonSchema(value as TSchema),
-		);
-	const kind =
-		"const" in schema
-			? "Literal"
-			: Array.isArray(schema.anyOf)
-				? "Union"
-				: Array.isArray(schema.allOf)
-					? "Intersect"
-					: schema.type === "object"
-						? "Object"
-						: schema.type === "array"
-							? "Array"
-							: schema.type === "string"
-								? "String"
-								: schema.type === "integer"
-									? "Integer"
-									: schema.type === "number"
-										? "Number"
-										: schema.type === "boolean"
-											? "Boolean"
-											: schema.type === "null"
-												? "Null"
-												: undefined;
-	if (!kind) throw new Error("output schema has no supported root type");
-	Object.defineProperty(hydrated, Kind, { value: kind, enumerable: false });
-	return hydrated;
-}
-
 export function decodeSchemaOutput<TSchemaType extends TSchema>(
 	schema: TSchemaType,
 	text: string,
 ): Static<TSchemaType> {
 	const json = extractJsonObject(text);
 	if (!json) throw new Error("response did not contain a JSON object");
-	return Value.Decode(
-		hydrateJsonSchema(schema),
-		JSON.parse(json),
-	) as Static<TSchemaType>;
+	const value: unknown = JSON.parse(json);
+	Assert(schema, value);
+	return Decode(schema, value) as Static<TSchemaType>;
 }
 
 export function schemaOutputInstruction(schema: TSchema): string {
@@ -237,7 +175,8 @@ export function defineAgent<
 		id: config.id,
 		async run(input, ctx) {
 			if (ctx.signal?.aborted) throw abortError(config.id);
-			const validatedInput = Value.Decode(
+			Assert(config.inputSchema, input);
+			const validatedInput = Decode(
 				config.inputSchema,
 				input,
 			) as Static<TInputSchema>;

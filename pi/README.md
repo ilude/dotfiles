@@ -18,7 +18,7 @@ Pi is installed automatically by the dotfiles installer:
 ~/.dotfiles/install.ps1
 ```
 
-On all platforms, this uses `pnpm --config.minimumReleaseAge=720 add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent@0.82.1` plus `pi-agent-core`, `pi-ai`, and `pi-tui` pinned to the same version and `@sinclair/typebox` on every installer run, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS) and `scripts/pi-deps-link-setup` (which links the pnpm-global Pi packages into `pi/node_modules`). The installers also initialize the pinned `onclave` submodule and run its frozen pnpm workspace install because `pi/extensions/onclave-pi.ts` loads the v2 adapter from that checkout. Pi uses a 12-hour release-age window while the global pnpm default remains 3 days. Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
+On all platforms, this uses `pnpm --config.minimumReleaseAge=720 add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent@0.84.1` plus `pi-agent-core`, `pi-ai`, and `pi-tui` pinned to the same version and `typebox@1.3.7` on every installer run, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS) and `scripts/pi-deps-link-setup` (which links the pnpm-global Pi packages into `pi/node_modules`). The installers also initialize the pinned `onclave` submodule and run its frozen pnpm workspace install because `pi/extensions/onclave-pi.ts` loads the v2 adapter from that checkout. Pi uses a 12-hour release-age window while the global pnpm default remains 3 days. Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
 
 The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls). OpenAI and OpenRouter-hosted OpenAI prompt caching are automatic for eligible long prompts; provider-specific `cache_control` markers are only for models/providers that require Anthropic-style caching semantics.
 
@@ -137,7 +137,7 @@ Package-manager priority:
 Pi-specific package-manager boundaries:
 
 - `pi/` is pnpm-managed (`package.json` + `pnpm-lock.yaml`) and owns Pi TypeScript typecheck/test dependencies.
-- Pi runtime packages such as `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-tui`, and `@sinclair/typebox` are installed globally by pnpm and linked into `pi/node_modules` by `scripts/pi-deps-link-setup`.
+- Pi runtime packages such as `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-tui`, and `typebox` are installed globally by pnpm and linked into `pi/node_modules` by `scripts/pi-deps-link-setup`.
 - Do **not** run `bun add` for Pi extension/runtime packages and do not recreate `pi/extensions/package.json`, `pi/extensions/pnpm-lock.yaml`, or `pi/tests/package.json`.
 - Type-check extensions with:
   ```bash
@@ -179,11 +179,11 @@ Current template example:
 ```bash
 # All platforms
 pnpm add -g --allow-build=koffi --allow-build=protobufjs \
-    @earendil-works/pi-coding-agent@0.82.1 \
-    @earendil-works/pi-agent-core@0.82.1 \
-    @earendil-works/pi-ai@0.82.1 \
-    @earendil-works/pi-tui@0.82.1 \
-    @sinclair/typebox
+    @earendil-works/pi-coding-agent@0.84.1 \
+    @earendil-works/pi-agent-core@0.84.1 \
+    @earendil-works/pi-ai@0.84.1 \
+    @earendil-works/pi-tui@0.84.1 \
+    typebox@1.3.7
 ~/.dotfiles/scripts/pi-link-setup
 ~/.dotfiles/scripts/pi-deps-link-setup
 ```
@@ -267,9 +267,9 @@ pi --no-extensions
 pi -e ~/.dotfiles/pi/extensions/damage-control.ts
 ```
 
-The Onclave adapter keeps its localhost broker default for repository-local development. For normal dotfiles launches, `private/secrets.env` provides the BWS bootstrap access key plus non-secret Onclave BWS project and broker endpoint configuration. The adapter reads the RabbitMQ credentials from Bitwarden Secrets Manager and constructs the broker URL in memory. An explicit `--onclave-url` flag or `ONCLAVE_AMQP_URL` environment variable remains available for development overrides, but the private archive does not store the credential-bearing URL.
+The Onclave adapter defaults to the central `rabbitmq.ilude.com:5672/onclave` broker and the dotfiles-managed BWS project. `private/secrets.env` supplies the BWS bootstrap access key; the adapter reads RabbitMQ credentials from Bitwarden Secrets Manager and constructs the broker URL in memory. There is no localhost fallback. An explicit `--onclave-url` flag or `ONCLAVE_AMQP_URL` environment variable remains available for controlled overrides.
 
-The installer installs the pinned cross-platform `bws` CLI. The encrypted private archive is tracked, but restoring it remains an explicit operator action; the installer does not decrypt private data. Restart the shell and Pi after restoring or changing the private configuration. Run `make pi-doctor` to check whether the private file and BWS CLI exist, resolve BWS credentials without printing them, inspect redacted broker metadata, resolve the adapter dependencies, and test broker reachability, authentication, and core RPC.
+The installers install and execute-check the pinned cross-platform `bws` CLI, build Dolos when needed, and restore the encrypted private archive when `private/secrets.env` is absent. Restore uses `DOLOS_IDENTITY` when set, then `~/.ssh/id_ed25519-personal`, then `~/.ssh/id_ed25519`. The installer fails instead of leaving Onclave on an unusable fallback when restoration or validation fails. Restart the shell and Pi after changing the private configuration. Run `make pi-doctor` to resolve BWS credentials without printing them, inspect redacted broker metadata, resolve adapter dependencies, and test broker reachability, authentication, and core RPC.
 
 ---
 
@@ -304,7 +304,7 @@ The shadow judge is disabled by default. Enable it with `damageControl.judge.ena
 
 ### `agents-context.ts`
 
-Extends Pi's native startup context with instructions discovered after successful `read`, `grep`, `find`, or `ls` access or when a mutating tool targets a path, including a path in another repository. It loads only `AGENTS.md` and keeps only the instructions applicable to the current target in one hidden report. Native `CLAUDE.md` fallback context is removed before model execution. Native and nested instructions are deduplicated by content, including hardlinks exposed through different paths. Reading an instruction file does not inject that same file as a second context copy. A mutation is deferred at most once while newly applicable instructions reach the model; automatic continuation preserves that delivery, while changed instruction content, direct user input, or a cwd/session change invalidates it.
+Extends Pi's native startup context with instructions discovered after successful `read`, `grep`, `find`, or `ls` access or when a mutating tool targets a path, including a path in another repository. It follows native Pi precedence within each directory, using `AGENTS.override.md` instead of `AGENTS.md` when the override exists, and keeps only the instructions applicable to the current target in one hidden report. Native `CLAUDE.md` fallback context is removed before model execution. Native and nested instructions are deduplicated by content, including hardlinks exposed through different paths. Reading an instruction file does not inject that same file as a second context copy. A mutation is deferred at most once while newly applicable instructions reach the model; automatic continuation preserves that delivery, while changed instruction content, direct user input, or a cwd/session change invalidates it.
 
 ### `background-terminal/`
 

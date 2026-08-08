@@ -3,10 +3,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const complete = vi.hoisted(() => vi.fn());
-
-vi.mock("@earendil-works/pi-ai/compat", () => ({ complete }));
-
 import {
 	judgeDamageControl,
 	listDamageControlJudgeRecords,
@@ -25,12 +21,7 @@ const registry = {
 		id: "gpt-5.6-luna",
 		api: "openai-codex-responses",
 	})),
-	getApiKeyAndHeaders: vi.fn(async () => ({
-		ok: true as const,
-		apiKey: "test-key",
-		headers: { authorization: "Bearer test-key" },
-		env: { TEST_JUDGE: "1" },
-	})),
+	complete: vi.fn(),
 };
 
 let tmpRoot: string;
@@ -40,9 +31,8 @@ beforeEach(() => {
 	tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-damage-control-judge-"));
 	previousOperatorDir = process.env.PI_OPERATOR_DIR;
 	process.env.PI_OPERATOR_DIR = path.join(tmpRoot, "operator");
-	complete.mockReset();
+	registry.complete.mockReset();
 	registry.find.mockClear();
-	registry.getApiKeyAndHeaders.mockClear();
 });
 
 afterEach(() => {
@@ -58,7 +48,7 @@ function response(text: string): AssistantResponse {
 
 describe("damage-control judge", () => {
 	it("uses a fresh, limited context and appends the parsed verdict", async () => {
-		complete.mockResolvedValue(response("allow contained delete"));
+		registry.complete.mockResolvedValue(response("allow contained delete"));
 
 		const record = await judgeDamageControl({
 			eventId: "event-1",
@@ -70,7 +60,7 @@ describe("damage-control judge", () => {
 		});
 
 		expect(registry.find).toHaveBeenCalledWith("openai-codex", "gpt-5.6-luna");
-		expect(complete).toHaveBeenCalledWith(
+		expect(registry.complete).toHaveBeenCalledWith(
 			expect.objectContaining({ provider: "openai-codex", id: "gpt-5.6-luna" }),
 			{
 				systemPrompt: expect.stringContaining("allow or ask"),
@@ -87,11 +77,11 @@ describe("damage-control judge", () => {
 				temperature: 0,
 				timeoutMs: 20_000,
 				maxRetries: 0,
-				apiKey: "test-key",
-				headers: { authorization: "Bearer test-key" },
-				env: { TEST_JUDGE: "1" },
 			}),
 		);
+		expect(registry.complete.mock.calls[0]?.[2]).not.toHaveProperty("apiKey");
+		expect(registry.complete.mock.calls[0]?.[2]).not.toHaveProperty("headers");
+		expect(registry.complete.mock.calls[0]?.[2]).not.toHaveProperty("env");
 		expect(record).toMatchObject({
 			schemaVersion: 1,
 			id: expect.any(String),
@@ -147,7 +137,7 @@ describe("damage-control judge", () => {
 	});
 
 	it("contains judge persistence errors", async () => {
-		complete.mockResolvedValue(response("allow contained delete"));
+		registry.complete.mockResolvedValue(response("allow contained delete"));
 		const operatorFile = path.join(tmpRoot, "operator-file");
 		fs.writeFileSync(operatorFile, "not a directory", "utf-8");
 		process.env.PI_OPERATOR_DIR = operatorFile;
@@ -164,11 +154,8 @@ describe("damage-control judge", () => {
 		).resolves.toMatchObject({ verdict: "allow" });
 	});
 
-	it("records an error row when auth cannot be resolved", async () => {
-		registry.getApiKeyAndHeaders.mockResolvedValueOnce({
-			ok: false,
-			error: "not authenticated",
-		});
+	it("records an error row when model completion cannot resolve auth", async () => {
+		registry.complete.mockRejectedValueOnce(new Error("not authenticated"));
 
 		await expect(
 			judgeDamageControl({
@@ -179,13 +166,13 @@ describe("damage-control judge", () => {
 				reason: "recursive deletion",
 				modelRegistry: registry,
 			}),
-		).resolves.toMatchObject({ verdict: "error", reason: "auth error" });
-		expect(complete).not.toHaveBeenCalled();
+		).resolves.toMatchObject({ verdict: "error", reason: "judge error" });
+		expect(registry.complete).toHaveBeenCalledOnce();
 	});
 
 	it("records error for a timeout", async () => {
 		vi.useFakeTimers();
-		complete.mockImplementation(() => new Promise(() => undefined));
+		registry.complete.mockImplementation(() => new Promise(() => undefined));
 		const pending = judgeDamageControl({
 			eventId: "event-timeout",
 			command: "rm -rf build",

@@ -7,7 +7,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { recordEvent } from "../lib/metrics.js";
 import { buildOrchestrationInteractionEvent } from "../lib/orchestration-telemetry.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";

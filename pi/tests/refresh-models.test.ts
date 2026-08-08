@@ -585,13 +585,7 @@ describe("/refresh-models command", () => {
 			}>;
 		};
 		expect(codexDefinition.apiKey).toBeUndefined();
-		expect(codexDefinition.oauth).toEqual(
-			expect.objectContaining({
-				login: expect.any(Function),
-				refreshToken: expect.any(Function),
-				getApiKey: expect.any(Function),
-			}),
-		);
+		expect(codexDefinition.oauth).toBeUndefined();
 		const codexModels = codexDefinition.models;
 		expect(codexModels.some((model) => model.id === "codex-auto-review")).toBe(
 			false,
@@ -1023,9 +1017,7 @@ describe("/refresh-models command", () => {
 			([provider]) => provider === "openrouter",
 		)?.[1];
 		expect(openrouterDefinition.oauth).toBeUndefined();
-		expect(openrouterDefinition.apiKey).toBe(
-			"$PI_REFRESH_MODELS_AUTH_STORAGE_ONLY",
-		);
+		expect(openrouterDefinition.apiKey).toBeUndefined();
 		expect(openrouterDefinition.api).toBe("openai-completions");
 		expect(
 			openrouterDefinition.models.find(
@@ -1035,9 +1027,7 @@ describe("/refresh-models command", () => {
 		const opencodeDefinition = registerProvider.mock.calls.find(
 			([provider]) => provider === "opencode",
 		)?.[1];
-		expect(opencodeDefinition.apiKey).toBe(
-			"$PI_REFRESH_MODELS_AUTH_STORAGE_ONLY",
-		);
+		expect(opencodeDefinition.apiKey).toBeUndefined();
 		expect(opencodeDefinition.api).toBe("openai-completions");
 		expect(
 			opencodeDefinition.models.find(

@@ -214,6 +214,10 @@ echo ""
 echo -e "${CYAN}Installing Bitwarden Secrets Manager CLI...${NC}"
 "${PYTHON:-python3}" "${BASEDIR}/scripts/install-bws.py"
 
+echo ""
+echo -e "${CYAN}Restoring Onclave private configuration...${NC}"
+"${PYTHON:-python3}" "${BASEDIR}/scripts/onclave-bootstrap.py"
+
 # Install zsh plugins (doesn't require packages)
 # Note: ~/.dotfiles is symlinked to this repo, so zsh-plugins is already accessible
 echo ""

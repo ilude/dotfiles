@@ -1,6 +1,6 @@
 # Pi Extensions
 
-This directory is pnpm-managed. Use `pnpm install --frozen-lockfile` and `pnpm run typecheck` here for Pi TypeScript dependencies. Do not use Bun for Pi TypeScript packages or tests: no `bun add`, `bun install`, `bun run`, or `bun test` in `pi/extensions/` or `pi/tests/`. Tests resolve Pi packages from `pi/extensions/node_modules` and are run with pnpm/Vitest.
+Pi TypeScript dependencies are pnpm-managed from `pi/`. Run `pnpm install --frozen-lockfile` and `pnpm run typecheck` from that directory. Do not use Bun for Pi TypeScript packages or tests: no `bun add`, `bun install`, `bun run`, or `bun test` in `pi/`, `pi/extensions/`, or `pi/tests/`. Tests resolve Pi packages from `pi/node_modules` and are run with pnpm/Vitest.
 
 This directory contains the TypeScript extensions Pi auto-discovers at startup.
 Every top-level `*.ts` file here is loaded by Pi as an extension module via its

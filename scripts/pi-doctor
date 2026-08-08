@@ -17,7 +17,7 @@ PACKAGES=(
     "@earendil-works/pi-agent-core"
     "@earendil-works/pi-ai"
     "@earendil-works/pi-tui"
-    "@sinclair/typebox"
+    "typebox"
 )
 
 HAS_FAIL=0
@@ -192,14 +192,14 @@ echo "Onclave private configuration"
 if [[ -f "$PRIVATE_SECRETS_FILE" ]]; then
     ok "private/secrets.env is present"
 elif [[ -f "$PRIVATE_ARCHIVE" ]]; then
-    warn "private/secrets.env is missing; restore the private archive with the approved Dolos workflow"
+    fail "private/secrets.env is missing; run scripts/onclave-bootstrap.py"
 else
-    warn "private/secrets.env and the encrypted private archive are missing"
+    fail "private/secrets.env and the encrypted private archive are missing"
 fi
-if command -v bws >/dev/null 2>&1; then
-    ok "Bitwarden Secrets Manager CLI is installed"
+if command -v bws >/dev/null 2>&1 && bws --version >/dev/null 2>&1; then
+    ok "Bitwarden Secrets Manager CLI is installed and executable"
 else
-    fail "bws is not installed (run scripts/install-bws.py)"
+    fail "bws is missing or unusable (run scripts/install-bws.py --force)"
 fi
 
 # 9. Resolve the broker URL from an explicit override or BWS without printing it.
@@ -207,9 +207,7 @@ echo ""
 echo "Onclave broker configuration"
 onclave_url="${ONCLAVE_AMQP_URL:-}"
 if [[ -z "$onclave_url" && -n "${BITWARDEN_ACCESS_KEY:-}" ]]; then
-    if [[ -z "${ONCLAVE_BWS_PROJECT_ID:-}" || -z "${ONCLAVE_AMQP_ENDPOINT:-}" ]]; then
-        fail "Onclave BWS project or endpoint configuration is missing"
-    elif onclave_url=$(
+    if onclave_url=$(
         cd "$ONCLAVE_DIR" &&
             pnpm exec tsx - <<'TS'
 import { loadBrokerUrlFromBws } from "./extensions/onclave-pi/src/lib/bws.ts";
@@ -229,7 +227,7 @@ TS
 fi
 
 if [[ -z "$onclave_url" ]]; then
-    warn "no explicit broker URL or BWS bootstrap configuration; the adapter will use its localhost development default"
+    fail "no explicit broker URL or BITWARDEN_ACCESS_KEY; the adapter will not start"
 else
     export ONCLAVE_AMQP_URL="$onclave_url"
     if onclave_metadata=$(node <<'NODE'
@@ -267,17 +265,17 @@ const finish = (code) => {
     socket.destroy();
     process.exitCode = code;
 };
-socket.setTimeout(2000, () => finish(1));
+socket.setTimeout(5000, () => finish(1));
 socket.once("connect", () => finish(0));
 socket.once("error", () => finish(1));
 NODE
         then
             ok "broker TCP endpoint is reachable"
             if (
-                cd "$ONCLAVE_DIR" &&
+                cd "$ONCLAVE_ADAPTER_DIR" &&
                     pnpm exec tsx - <<'TS'
 import { connect } from "amqplib";
-import { CoreRpcClient } from "./extensions/onclave-pi/src/lib/rpc-client.ts";
+import { CoreRpcClient } from "./src/lib/rpc-client.ts";
 
 (async () => {
     const connection = await connect(process.env.ONCLAVE_AMQP_URL!);
