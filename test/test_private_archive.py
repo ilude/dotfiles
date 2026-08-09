@@ -39,13 +39,6 @@ def dolos_cmd() -> list[str]:
     return [str(dolos_exe())]
 
 
-def write_evidence(name: str, text: str) -> None:
-    if not EVIDENCE.parent.exists():
-        return
-    EVIDENCE.mkdir(parents=True, exist_ok=True)
-    (EVIDENCE / name).write_text(text, encoding="utf-8")
-
-
 def make_hook_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     shutil.copytree(ROOT / "scripts", repo / "scripts")
@@ -166,16 +159,9 @@ def test_real_repo_dolos_scan_is_non_mutating():
     scan = run(dolos_cmd() + ["scan", "--staged"], check=False)
     after = run(status_paths, check=False).stdout
 
-    assert status.returncode in {0, 4}
-    assert scan.returncode == 0
+    assert status.returncode in {0, 4}, status.stdout + status.stderr
+    assert scan.returncode == 0, scan.stdout + scan.stderr
     assert before == after
-    evidence = (
-        "$ dolos status\n"
-        f"exit={status.returncode}\n{status.stdout}{status.stderr}\n"
-        "$ dolos scan --staged\n"
-        f"exit={scan.returncode}\n{scan.stdout}{scan.stderr}\n"
-    )
-    write_evidence("real-repo-check.txt", evidence)
 
 
 def test_evidence_hygiene():
@@ -186,11 +172,6 @@ def test_evidence_hygiene():
         r"do-not-print|fixture secret"
     )
     proc = run(["grep", "-R", "-nE", needle_re, str(EVIDENCE)], check=False)
-    write_evidence(
-        "no-secret-check.txt",
-        "evidence hygiene grep completed without private canary/key material\n"
-        f"exit={proc.returncode}\n",
-    )
     assert proc.returncode == 1, proc.stdout + proc.stderr
 
 

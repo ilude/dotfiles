@@ -20,9 +20,8 @@ Pi auto-discovers extensions from `~/.dotfiles/pi/extensions/*.ts` (see
 
 **Do not put helpers, libraries, or scaffolds at the top level of
 `pi/extensions/`.** Put them under `pi/lib/` (this is where
-`extension-utils.ts`, `transcript.ts`, `yaml-helpers.ts`, and friends
-live). Templates intended for copy-paste should use the `.ts.example`
-suffix so auto-discovery skips them.
+`extension-utils.ts`, `transcript.ts`, and friends live). Templates intended for
+copy-paste should use the `.ts.example` suffix so auto-discovery skips them.
 
 Damage-control loads the Pi-owned `pi/damage-control-rules.yaml` through
 `pi/lib/yaml-mini.ts`. `PI_DAMAGE_CONTROL_POLICY_PATH` may select an explicit
@@ -122,7 +121,7 @@ import {
 
 | Helper | Purpose |
 |---|---|
-| `getAgentDir()` | Canonical Pi agent state dir (`~/.pi/agent`). |
+| `getAgentDir()` | Pi agent state dir from `PI_CODING_AGENT_DIR`, defaulting to `~/.pi/agent`. |
 | `getMultiTeamDir()` | Multi-team expertise root with `PI_MULTI_TEAM_DIR` override and dotfiles fallback. |
 | `canonicalize(filePath, cwd?)` | Symlink-resolving path normalization that rejects NUL bytes and expands `~/`. |
 | `formatToolError(message, opts?)` | Standard `{ content, details, isError: true }` shape for tool failures. |
@@ -204,11 +203,9 @@ Safe live smoke tests must use a disposable temp repo, synthetic sentinel `.env`
 ## Config loading
 
 For YAML config files use `pi/lib/yaml-mini.ts` (TS-native, no subprocess) when
-the file is small and structured. Fall back to `pi/lib/yaml-helpers.ts:loadYamlViaPython`
-only when the file requires full YAML 1.2 semantics that the mini loader does
-not cover. Bespoke per-file parsers are acceptable when the file format is
-genuinely Pi-specific (e.g. embedded DSLs); use a Documented Exception in that
-case.
+the file is small and structured. Bespoke per-file parsers are acceptable when
+the file format is genuinely Pi-specific (e.g. embedded DSLs); use a Documented
+Exception in that case.
 
 ## Documented Exception
 

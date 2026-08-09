@@ -6,8 +6,7 @@
  * sequences (including sequences of mappings), bare and quoted string
  * scalars, # line comments, and blank lines.
  *
- * Intentionally NOT supported (use loadYamlViaPython from yaml-helpers.ts
- * for these, or accept a Documented Exception for a bespoke parser):
+ * Intentionally NOT supported:
  *   - block scalars (>, |)
  *   - flow style ([a, b, c], {a: 1, b: 2})
  *   - anchors and aliases (&, *, <<)
