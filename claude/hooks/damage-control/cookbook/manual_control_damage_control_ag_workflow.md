@@ -379,6 +379,7 @@ This shows hook execution details.
 └── hooks/
     └── damage-control/
         ├── bash-tool-damage-control.py
+        ├── file_operation_damage_control.py
         ├── edit-tool-damage-control.py
         ├── write-tool-damage-control.py
         ├── permission-request-damage-control.py
@@ -395,6 +396,7 @@ your-project/
     └── hooks/
         └── damage-control/
             ├── bash-tool-damage-control.py
+            ├── file_operation_damage_control.py
             ├── edit-tool-damage-control.py
             ├── write-tool-damage-control.py
             ├── permission-request-damage-control.py

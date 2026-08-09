@@ -70,12 +70,9 @@ class TestSshUseCommandsSilentAllow:
             "ssh -i ./aws-key.ppk user@host",
             # Within ~/.ssh/ (existing exemption preserved)
             "ssh -i ~/.ssh/id_ed25519 user@host",
-            "ls ~/.ssh/  # already allowed but tested under inspect class for ask",
         ],
     )
     def test_use_command_against_ssh_pattern_not_blocked(self, cfg, command):
-        if command.endswith("# already allowed but tested under inspect class for ask"):
-            pytest.skip("Covered by inspect-ask tests")
         blocked, ask, reason, *_ = check_command(command, cfg)
         assert not blocked, f"USE command should not block: {command!r} got: {reason}"
 

@@ -23,6 +23,7 @@ This hook provides:
 ├── CLAUDE.md                        # This file
 ├── patterns.yaml                    # Shared security patterns (single source of truth)
 ├── bash-tool-damage-control.py      # Bash command hook
+├── file_operation_damage_control.py # Shared Edit/Write protection core
 ├── edit-tool-damage-control.py      # File edit hook
 ├── write-tool-damage-control.py     # File write hook
 ├── test-damage-control.py           # Integration test runner
@@ -57,6 +58,7 @@ The install workflow copies hooks and creates settings based on the chosen level
     └── damage-control/
         ├── patterns.yaml
         ├── bash-tool-damage-control.py
+        ├── file_operation_damage_control.py
         ├── edit-tool-damage-control.py
         └── write-tool-damage-control.py
 ```
@@ -70,6 +72,7 @@ The install workflow copies hooks and creates settings based on the chosen level
         └── damage-control/
             ├── patterns.yaml
             ├── bash-tool-damage-control.py
+            ├── file_operation_damage_control.py
             ├── edit-tool-damage-control.py
             └── write-tool-damage-control.py
 ```
@@ -83,6 +86,7 @@ The install workflow copies hooks and creates settings based on the chosen level
         └── damage-control/
             ├── patterns.yaml
             ├── bash-tool-damage-control.py
+            ├── file_operation_damage_control.py
             ├── edit-tool-damage-control.py
             └── write-tool-damage-control.py
 ```

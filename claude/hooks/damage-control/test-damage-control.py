@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.8"
-# dependencies = ["pyyaml"]
+# dependencies = ["pyyaml", "tree-sitter>=0.23.0", "tree-sitter-bash>=0.23.0"]
 # ///
 """
 Damage Control Test Runner - Python/UV
@@ -44,19 +44,19 @@ Exit codes:
   1 = Test(s) failed (expectation not matched)
 """
 
+from __future__ import annotations
+
 import argparse
-import fnmatch
 
 # Import patterns and utilities from the bash tool script (avoid duplication)
 # Using importlib to import from hyphenated filename
 import importlib.util
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
@@ -66,59 +66,11 @@ spec = importlib.util.spec_from_file_location(
 bash_tool = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bash_tool)
 
-READ_ONLY_BLOCKED = bash_tool.READ_ONLY_BLOCKED
-NO_DELETE_BLOCKED = bash_tool.NO_DELETE_BLOCKED
-
-
-def is_glob_pattern(pattern: str) -> bool:
-    """Check if pattern contains glob wildcards."""
-    return "*" in pattern or "?" in pattern or "[" in pattern
-
-
-def match_path(file_path: str, pattern: str) -> bool:
-    """Match file path against pattern, supporting both prefix and glob matching."""
-    expanded_pattern = os.path.expanduser(pattern)
-    normalized = os.path.normpath(file_path)
-    expanded_normalized = os.path.expanduser(normalized)
-
-    if is_glob_pattern(pattern):
-        # Glob pattern matching (case-insensitive for security)
-        basename = os.path.basename(expanded_normalized)
-        basename_lower = basename.lower()
-        pattern_lower = pattern.lower()
-        expanded_pattern_lower = expanded_pattern.lower()
-
-        # Match against basename for patterns like *.pem, .env*
-        if fnmatch.fnmatch(basename_lower, expanded_pattern_lower):
-            return True
-        if fnmatch.fnmatch(basename_lower, pattern_lower):
-            return True
-        # Also try full path match for patterns like /path/*.pem
-        if fnmatch.fnmatch(expanded_normalized.lower(), expanded_pattern_lower):
-            return True
-        return False
-    else:
-        # Prefix matching (original behavior for directories)
-        if expanded_normalized.startswith(
-            expanded_pattern
-        ) or expanded_normalized == expanded_pattern.rstrip("/"):
-            return True
-        return False
-
-
-def glob_to_regex(glob_pattern: str) -> str:
-    """Convert a glob pattern to a regex pattern for matching in commands."""
-    result = ""
-    for char in glob_pattern:
-        if char == "*":
-            result += r"[^\s/]*"  # Match any chars except whitespace and path sep
-        elif char == "?":
-            result += r"[^\s/]"  # Match single char except whitespace and path sep
-        elif char in r"\.^$+{}[]|()":
-            result += "\\" + char
-        else:
-            result += char
-    return result
+file_core_spec = importlib.util.spec_from_file_location(
+    "file_operation_core", Path(__file__).parent / "file_operation_damage_control.py"
+)
+file_core = importlib.util.module_from_spec(file_core_spec)
+file_core_spec.loader.exec_module(file_core)
 
 
 # ============================================================================
@@ -164,84 +116,20 @@ def load_config() -> dict[str, Any]:
 
 
 # ============================================================================
-# DIRECT CHECKING (for interactive mode - no subprocess needed)
+# PRODUCTION FIREWALL CHECKING
 # ============================================================================
 
 
-def _check_bash_patterns(command: str, config: dict) -> list[str]:
-    """Return reasons matched by bashToolPatterns."""
-    reasons = []
-    for item in config.get("bashToolPatterns", []):
-        pattern = item.get("pattern", "")
-        try:
-            if re.search(pattern, command, re.IGNORECASE):
-                reasons.append(item.get("reason", "Blocked by pattern"))
-        except re.error:
-            continue
-    return reasons
-
-
-def _check_zero_access(command: str, config: dict) -> list[str]:
-    """Return reasons matched by zeroAccessPaths."""
-    reasons = []
-    for zero_path in config.get("zeroAccessPaths", []):
-        if is_glob_pattern(zero_path):
-            try:
-                if re.search(glob_to_regex(zero_path), command, re.IGNORECASE):
-                    reasons.append(f"zero-access pattern: {zero_path}")
-            except re.error:
-                continue
-        else:
-            expanded = os.path.expanduser(zero_path)
-            if re.search(re.escape(expanded), command) or re.search(re.escape(zero_path), command):
-                reasons.append(f"zero-access path: {zero_path}")
-    return reasons
-
-
-def _check_path_list(command: str, paths: list, blocked_patterns: list, label: str) -> list[str]:
-    """Return reasons matched by a path list against blocked_patterns."""
-    reasons = []
-    for path in paths:
-        escaped = re.escape(os.path.expanduser(path))
-        for pattern_template, operation in blocked_patterns:
-            try:
-                if re.search(pattern_template.replace("{path}", escaped), command):
-                    reasons.append(f"{operation} on {label}: {path}")
-            except re.error:
-                continue
-    return reasons
-
-
-def check_bash_command(command: str, config: dict[str, Any]) -> tuple[bool, list[str]]:
-    """Check bash command against patterns. Returns (blocked, list of reasons)."""
-    reasons = (
-        _check_bash_patterns(command, config)
-        + _check_zero_access(command, config)
-        + _check_path_list(
-            command, config.get("readOnlyPaths", []), READ_ONLY_BLOCKED, "read-only path"
-        )
-        + _check_path_list(
-            command, config.get("noDeletePaths", []), NO_DELETE_BLOCKED, "no-delete path"
-        )
-    )
-    return len(reasons) > 0, reasons
+def check_bash_command(command: str, config: dict[str, Any]) -> tuple[bool, bool, list[str]]:
+    """Evaluate a command with the production Bash firewall."""
+    blocked, ask, reason, _, _, _ = bash_tool.check_command(command, config)
+    return blocked, ask, [reason] if reason else []
 
 
 def check_file_path(file_path: str, config: dict[str, Any]) -> tuple[bool, list[str]]:
-    """Check file path for Edit/Write tools. Returns (blocked, list of reasons)."""
-    reasons = []
-
-    # Check zeroAccessPaths - supports glob patterns
-    for zero_path in config.get("zeroAccessPaths", []):
-        if match_path(file_path, zero_path):
-            reasons.append(f"zero-access path: {zero_path}")
-
-    # Check readOnlyPaths - supports glob patterns
-    for readonly in config.get("readOnlyPaths", []):
-        if match_path(file_path, readonly):
-            reasons.append(f"read-only path: {readonly}")
-
-    return len(reasons) > 0, reasons
+    """Evaluate a path with the production file-operation protection core."""
+    blocked, reason = file_core.check_path(file_path, config)
+    return blocked, [reason] if reason else []
 
 
 # ============================================================================
@@ -271,7 +159,7 @@ _TOOL_CHOICE_MAP = {
 }
 
 
-def prompt_tool_selection() -> Optional[str]:
+def prompt_tool_selection() -> str | None:
     """Prompt user to select which tool to test."""
     print("Select tool to test:")
     print("  [1] Bash  - Test shell commands")
@@ -301,15 +189,19 @@ def _run_one_test_cycle(tool: str, config: dict) -> bool:
         print("\nGoodbye!")
         return False
 
-    blocked, reasons = (
-        check_bash_command(user_input, config)
-        if tool == "Bash"
-        else check_file_path(user_input, config)
-    )
+    if tool == "Bash":
+        blocked, ask, reasons = check_bash_command(user_input, config)
+    else:
+        blocked, reasons = check_file_path(user_input, config)
+        ask = False
 
     print()
     if blocked:
         print(f"\033[91mBLOCKED\033[0m - {len(reasons)} pattern(s) matched:")
+        for reason in reasons:
+            print(f"   - {reason}")
+    elif ask:
+        print(f"\033[93mASK\033[0m - {len(reasons)} confirmation reason(s) matched:")
         for reason in reasons:
             print(f"   - {reason}")
     else:
@@ -320,7 +212,7 @@ def _run_one_test_cycle(tool: str, config: dict) -> bool:
 
 def run_interactive_mode():
     """Run interactive testing mode."""
-    config = load_config()
+    config = bash_tool.get_compiled_config()
     print_banner()
 
     # Show loaded config summary
@@ -371,7 +263,7 @@ def build_tool_input(tool_name: str, value: str) -> dict:
         return {"command": value}
 
 
-def _invoke_hook(hook_path: Path, input_json: str, verbose: bool) -> Optional[tuple[int, str, str]]:
+def _invoke_hook(hook_path: Path, input_json: str, verbose: bool) -> tuple[int, str, str] | None:
     """Run hook subprocess. Returns (exit_code, stdout, stderr) or None on error."""
     kwargs: dict = {}
     if sys.platform == "win32":
