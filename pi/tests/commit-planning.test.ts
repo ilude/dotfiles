@@ -13,6 +13,7 @@ import { existsInGitDir, type GitAsyncRunner } from "../lib/commit/git.ts";
 import {
 	buildCommitPlan,
 	GIT_PREFLIGHT_TIMEOUT_MS,
+	inspectGitStateAsync,
 	preflightGitState,
 	preflightGitStateAsync,
 } from "../lib/commit/plan.ts";
@@ -58,9 +59,11 @@ describe("commit planning", () => {
 		);
 	});
 
-	it("matches synchronous preflight for a normal repository", async () => {
+	it("matches synchronous preflight without redundant sparse-checkout discovery", async () => {
 		const dir = repo();
+		const calls: string[][] = [];
 		const runner: GitAsyncRunner = async (cwd, args) => {
+			calls.push(args);
 			const result = run(cwd, args, { allowFailure: true });
 			return {
 				code: result.status ?? 1,
@@ -69,9 +72,14 @@ describe("commit planning", () => {
 			};
 		};
 
-		await expect(preflightGitStateAsync(dir, runner)).resolves.toEqual(
-			preflightGitState(dir),
-		);
+		const inspection = await inspectGitStateAsync(dir, runner);
+		expect(inspection.preflight).toEqual(preflightGitState(dir));
+		expect(inspection.statusOutput).toContain("main");
+		expect(calls).not.toContainEqual([
+			"config",
+			"--bool",
+			"core.sparseCheckout",
+		]);
 	});
 
 	it("cancels while async preflight git is running", async () => {

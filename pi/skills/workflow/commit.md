@@ -1,4 +1,4 @@
-Run `git status --short` to check uncommitted files. If the working tree is clean or merge conflicts exist, exit with an appropriate message.
+Inspect Git state once with a NUL-delimited porcelain status snapshot. Reuse that snapshot for clean-tree detection, conflict checks, submodule detection, and commit candidates instead of running separate status and diff-index inventories.
 
 Do not modify files as part of this workflow, except for adding auto-ignore patterns to `.gitignore` when the rules below require it. `/commit` stages, commits, and optionally pushes existing changes; it does not fix, refactor, format, or update code before committing. Formatting fixes never touch migration files or other declared immutable paths; report those findings without rewriting the artifact.
 
@@ -17,7 +17,7 @@ The only valid reasons to skip a file:
 - It contains secrets and its resolved `commit-secrets` Git attribute is not `allow`
 - It is in `.gitignore`
 
-If `git status --short` shows untracked source code, documentation, or config files after your commit, the workflow is not finished. Stage and commit them.
+If the initial status snapshot includes untracked source code, documentation, or config files, classify and include them before commit planning.
 
 Resolve the `commit-secrets` Git attribute for candidate paths before secret review:
 
@@ -69,15 +69,9 @@ For each group of related files:
 6. Brief summary line with optional detailed body.
 7. Create the commit.
 
-After each commit, run `git status --short` again. If legitimate files remain, categorize and group them, then commit. Repeat until the working tree is clean or only explicitly skipped/ignored files remain.
+Generate the commit plan from the working-tree diff without staging everything first. Stage each planned group once and verify that the exact staged paths match that group before committing. Only unstage paths that were already staged for a later commit group.
 
-Before declaring the workflow done, run a final completion check:
-
-```bash
-git status --short
-```
-
-If it prints anything, do not say the commit workflow is done. Instead, say outstanding changes remain, summarize each remaining path/category, and either continue committing them or ask the user what to do with ambiguous files.
+Before declaring the workflow done, ensure every selected path was committed exactly once and no explicitly skipped or ambiguous path remains unresolved.
 
 If `$ARGUMENTS` contains `push`, run `git push` after all commits are complete. If push fails, report the exact error and do not claim completion.
 

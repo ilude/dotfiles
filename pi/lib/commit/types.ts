@@ -35,7 +35,6 @@ export interface GitPreflight {
 	hasUnmergedPaths: boolean;
 	isSubmodule: boolean;
 	isWorktree: boolean;
-	sparseCheckout: boolean;
 	partialIndex: boolean;
 }
 

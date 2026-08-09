@@ -23,7 +23,6 @@ import {
 	listChangedFiles,
 	postClassificationRequestedFiles,
 	stageFiles,
-	statusHasDirtySubmodule,
 	SECRET_PATTERNS,
 } from "../extensions/workflow-commands.ts";
 import { timingSafeTokenEqual } from "../lib/commit/token.ts";
@@ -56,17 +55,6 @@ afterEach(() => {
 });
 
 describe("commit mutation safety", () => {
-	it.each([
-		[" m module", true],
-		[" ? module", true],
-		["Mm module", true],
-		["M? module", true],
-		[" M source.ts", false],
-		["?? source.ts", false],
-	])("detects dirty submodule status %s", (status, expected) => {
-		expect(statusHasDirtySubmodule(status)).toBe(expected);
-	});
-
 	it("commits dirty submodules before the parent unless opted out", async () => {
 		const child = repo();
 		writeFileSync(join(child, "child.txt"), "base\n");
@@ -395,7 +383,7 @@ describe("chooseFilesToCommit -- large and staged worktrees", () => {
 	});
 });
 
-describe("stageFiles -- ignored paths and broad staging", () => {
+describe("stageFiles -- ignored paths and exact staging", () => {
 	it("refuses ignored untracked paths instead of passing them to git add", () => {
 		const dir = repo();
 		mkdirSync(join(dir, "pi", "inspect", "snapshots"), { recursive: true });
@@ -413,7 +401,7 @@ describe("stageFiles -- ignored paths and broad staging", () => {
 		for (const file of files) {
 			writeFileSync(join(dir, file), "content\n");
 		}
-		stageFiles(dir, files, undefined, files);
+		stageFiles(dir, files);
 		const staged = run(dir, ["diff", "--cached", "--name-only"])
 			.trim()
 			.split(/\r?\n/)

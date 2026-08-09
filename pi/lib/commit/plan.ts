@@ -181,7 +181,6 @@ function decideGitPreflight(
 	root: string,
 	resolvedGitDir: string,
 	statusText: string,
-	sparseCheckoutOutput: string,
 ): GitPreflight {
 	const existsInResolvedGitDir = (rel: string) =>
 		fs.existsSync(path.join(resolvedGitDir, rel));
@@ -192,17 +191,22 @@ function decideGitPreflight(
 		warnings: [] as string[],
 		detachedHead: statusText
 			.split("\0")
-			.some((record) => record === "## HEAD (no branch)"),
+			.some(
+				(record) =>
+					record === "## HEAD (no branch)" ||
+					record === "# branch.head (detached)",
+			),
 		mergeInProgress: existsInResolvedGitDir("MERGE_HEAD"),
 		rebaseInProgress:
 			existsInResolvedGitDir("rebase-merge") ||
 			existsInResolvedGitDir("rebase-apply"),
 		cherryPickInProgress: existsInResolvedGitDir("CHERRY_PICK_HEAD"),
 		bisectInProgress: existsInResolvedGitDir("BISECT_LOG"),
-		hasUnmergedPaths: decodePorcelainStatus(statusText).some(isUnmerged),
+		hasUnmergedPaths:
+			decodePorcelainStatus(statusText).some(isUnmerged) ||
+			statusText.split("\0").some((record) => record.startsWith("u ")),
 		isSubmodule: fs.statSync(path.join(root, ".git")).isFile(),
 		isWorktree: fs.existsSync(path.join(resolvedGitDir, "commondir")),
-		sparseCheckout: sparseCheckoutOutput.trim() === "true",
 		partialIndex: false,
 	};
 	for (const [key, label] of [
@@ -223,10 +227,16 @@ function preflightGitStateForRoot(
 	statusOutput?: string,
 ): GitPreflight {
 	const status =
-		statusOutput ?? git(root, ["status", "--porcelain=v1", "--branch", "-z"]);
+		statusOutput ??
+		git(root, [
+			"status",
+			"--porcelain=v1",
+			"--branch",
+			"-z",
+			"--untracked-files=all",
+		]);
 	const statusText = typeof status === "string" ? status : status.stdout;
-	const sparse = git(root, ["config", "--bool", "core.sparseCheckout"]);
-	return decideGitPreflight(root, gitDir(root), statusText, sparse.stdout);
+	return decideGitPreflight(root, gitDir(root), statusText);
 }
 
 export function preflightGitState(
@@ -255,11 +265,16 @@ async function runRequiredGit(
 	return result;
 }
 
-async function preflightGitStateWithRunner(
+export interface GitPreflightInspection {
+	preflight: GitPreflight;
+	statusOutput: string;
+}
+
+async function inspectGitStateWithRunner(
 	cwd: string,
 	runner: GitAsyncRunner,
 	signal: AbortSignal,
-): Promise<GitPreflight> {
+): Promise<GitPreflightInspection> {
 	const rootResult = await runRequiredGit(
 		runner,
 		cwd,
@@ -280,22 +295,26 @@ async function preflightGitStateWithRunner(
 	const status = await runRequiredGit(
 		runner,
 		root,
-		["status", "--porcelain=v1", "--branch", "-z"],
+		[
+			"status",
+			"--porcelain=v2",
+			"--branch",
+			"-z",
+			"--untracked-files=all",
+		],
 		signal,
 	);
-	const sparse = await runner(
-		root,
-		["config", "--bool", "core.sparseCheckout"],
-		signal,
-	);
-	return decideGitPreflight(root, resolvedGitDir, status.stdout, sparse.stdout);
+	return {
+		preflight: decideGitPreflight(root, resolvedGitDir, status.stdout),
+		statusOutput: status.stdout,
+	};
 }
 
-export function preflightGitStateAsync(
+export function inspectGitStateAsync(
 	cwd: string,
 	runner: GitAsyncRunner,
 	signal?: AbortSignal,
-): Promise<GitPreflight> {
+): Promise<GitPreflightInspection> {
 	const controller = new AbortController();
 	return new Promise((resolve, reject) => {
 		let settled = false;
@@ -325,11 +344,19 @@ export function preflightGitStateAsync(
 			onAbort();
 			return;
 		}
-		preflightGitStateWithRunner(cwd, runner, controller.signal).then(
+		inspectGitStateWithRunner(cwd, runner, controller.signal).then(
 			(value) => finish(() => resolve(value)),
 			(error: unknown) => finish(() => reject(error)),
 		);
 	});
+}
+
+export async function preflightGitStateAsync(
+	cwd: string,
+	runner: GitAsyncRunner,
+	signal?: AbortSignal,
+): Promise<GitPreflight> {
+	return (await inspectGitStateAsync(cwd, runner, signal)).preflight;
 }
 
 export function buildCommitPlan(

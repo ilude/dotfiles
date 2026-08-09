@@ -224,17 +224,9 @@ describe("validateCommitPlan", () => {
 
 describe("confirmCommitMessage", () => {
 	const baseMessage = { subject: "feat(pi): add something" };
-	const files = ["a.ts"];
-	const stat = "a.ts | 5 ++-";
 
 	it("returns the original message without prompting", async () => {
-		const result = await confirmCommitMessage(
-			{},
-			baseMessage,
-			files,
-			stat,
-			stat,
-		);
+		const result = await confirmCommitMessage(baseMessage);
 		expect(result).toEqual(baseMessage);
 	});
 
@@ -243,25 +235,19 @@ describe("confirmCommitMessage", () => {
 			subject: "feat(pi): original",
 			body: "Detailed context.",
 		};
-		const result = await confirmCommitMessage({}, withBody, files, stat, stat);
+		const result = await confirmCommitMessage(withBody);
 		expect(result).toEqual(withBody);
 	});
 
 	it("throws when subject violates conventional commit format", async () => {
 		await expect(
-			confirmCommitMessage(
-				{},
-				{ subject: "This is not conventional" },
-				files,
-				stat,
-				stat,
-			),
+			confirmCommitMessage({ subject: "This is not conventional" }),
 		).rejects.toThrow(/conventional commit format/i);
 	});
 
 	it("accepts wip commit subjects", async () => {
 		const message = { subject: "wip: save tui latency instrumentation" };
-		const result = await confirmCommitMessage({}, message, files, stat, stat);
+		const result = await confirmCommitMessage(message);
 		expect(result).toEqual(message);
 	});
 });
@@ -407,45 +393,27 @@ describe("untracked classifier helpers", () => {
 });
 
 describe("staging strategy helpers", () => {
-	it("omits ignored paths from git add and plans index-only removal", () => {
+	it("omits ignored paths without force-adding them", () => {
 		const plan = buildStagingPlan({
 			files: ["src/app.ts", "pi/inspect/snapshots/session.json"],
-			allCommittableFiles: ["src/app.ts"],
 			ignoredFiles: ["pi/inspect/snapshots/session.json"],
-			trackedIgnoredFiles: ["pi/inspect/snapshots/session.json"],
 		});
 		expect(plan.addArgs).toEqual(["add", "-A", "--", "src/app.ts"]);
-		expect(plan.rmCachedArgs).toEqual([
-			"rm",
-			"--cached",
-			"--ignore-unmatch",
-			"--",
-			"pi/inspect/snapshots/session.json",
-		]);
+		expect(plan.unsafe).toEqual(["pi/inspect/snapshots/session.json"]);
 		expect(plan.addArgs).not.toContain("-f");
 	});
 
-	it("uses broad staging only for the full safe candidate set", () => {
+	it("always stages the exact selected paths", () => {
 		const files = Array.from(
 			{ length: 21 },
 			(_, index) => `src/file-${index}.ts`,
 		);
-		expect(
-			buildStagingPlan({ files, allCommittableFiles: files }).addArgs,
-		).toEqual(["add", "."]);
-		expect(
-			buildStagingPlan({
-				files: [files[0] ?? "src/file-0.ts"],
-				allCommittableFiles: files,
-			}).addArgs,
-		).toEqual(["add", "-A", "--", files[0]]);
-		expect(
-			buildStagingPlan({
-				files: ["src/app.ts", "pi/inspect/snapshots/session.json"],
-				allCommittableFiles: ["src/app.ts"],
-				ignoredFiles: ["pi/inspect/snapshots/session.json"],
-			}).useBroadAdd,
-		).toBe(false);
+		expect(buildStagingPlan({ files }).addArgs).toEqual([
+			"add",
+			"-A",
+			"--",
+			...files.sort(),
+		]);
 	});
 });
 

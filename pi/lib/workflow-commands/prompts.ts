@@ -3,8 +3,7 @@ import { COMMIT_TYPES } from "../commit/message";
 export interface CommitPlanningPromptContext {
 	files: string[];
 	diffStat: string;
-	cachedStat: string;
-	cachedDiff: string;
+	diff: string;
 	hint: string;
 }
 
@@ -24,9 +23,8 @@ export function buildCommitPlanningPrompt(
 	const payload = {
 		files: context.files,
 		diffStat: context.diffStat,
-		cachedStat: context.cachedStat,
 		hint: context.hint,
-		cachedDiff: context.cachedDiff,
+		diff: context.diff,
 	};
 	return `${claudeInstructions}
 

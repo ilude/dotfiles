@@ -37,11 +37,11 @@ import { Key, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { commitFailureMessage } from "../lib/commit/failure";
 import { validateCommitMessage } from "../lib/commit/message";
-import { preflightGitStateAsync } from "../lib/commit/plan";
 import {
-	excludeDirtyOnlySubmodules,
-	parseDirectSubmodulePaths,
-} from "../lib/commit/submodule";
+	inspectGitStateAsync,
+	preflightGitStateAsync,
+} from "../lib/commit/plan";
+import { parseDirectSubmodulePaths } from "../lib/commit/submodule";
 import { emitTerminalBell } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
@@ -228,9 +228,7 @@ export interface UntrackedClassificationPlan {
 
 export interface StagingPlan {
 	addArgs: string[];
-	rmCachedArgs: string[];
 	unsafe: string[];
-	useBroadAdd: boolean;
 }
 
 interface CommitActivity {
@@ -273,8 +271,7 @@ const CommitPlannerInputSchema = Type.Object({
 	instructions: Type.String(),
 	files: Type.Array(Type.String()),
 	diffStat: Type.String(),
-	cachedStat: Type.String(),
-	cachedDiff: Type.String(),
+	diff: Type.String(),
 	hint: Type.String(),
 });
 const CommitPlanSchema = Type.Object({
@@ -800,8 +797,7 @@ export function validateCommitPlan(plan: CommitPlan, changedFiles: string[]) {
 interface CommitFallbackContext {
 	files: string[];
 	diffStat: string;
-	cachedStat: string;
-	cachedDiff: string;
+	diff: string;
 	hint: string;
 }
 
@@ -809,7 +805,7 @@ export function buildDeterministicCommitFallback(
 	context: CommitFallbackContext,
 ): { plan: CommitPlan } {
 	const files = uniqueSorted(context.files.map(normalizeGitPath));
-	const message = proposeCommitMessage(files, context.hint, context.cachedDiff);
+	const message = proposeCommitMessage(files, context.hint, context.diff);
 	return {
 		plan: {
 			groups: [
@@ -829,8 +825,7 @@ async function generateCommitPlanWithLlm(
 	context: {
 		files: string[];
 		diffStat: string;
-		cachedStat: string;
-		cachedDiff: string;
+		diff: string;
 		hint: string;
 	},
 ) {
@@ -1065,33 +1060,116 @@ export function filterCommitSafeFiles(files: string[]) {
 	return { included: uniqueSorted(included), excluded };
 }
 
-export function listChangedFiles(cwd: string, activity?: CommitActivity) {
-	const hasHead = runGit(cwd, ["rev-parse", "--verify", "HEAD"]).code === 0;
-	const rawHeadDiff = hasHead
-		? parseLines(gitOrThrow(cwd, ["diff", "--name-only", "HEAD"], activity))
-		: [];
-	const untracked = parseLines(
-		gitOrThrow(cwd, ["ls-files", "--others", "--exclude-standard"], activity),
+interface PorcelainStatusEntry {
+	x: string;
+	y: string;
+	path: string;
+	submodule?: string;
+}
+
+interface ChangedFilesSnapshot {
+	all: string[];
+	staged: string[];
+	untracked: string[];
+	hasHead: boolean;
+	hasDirtySubmodule: boolean;
+}
+
+function parsePorcelainStatus(output: string): PorcelainStatusEntry[] {
+	const records = output.split("\0").filter(Boolean);
+	const entries: PorcelainStatusEntry[] = [];
+	for (let index = 0; index < records.length; index += 1) {
+		const record = records[index];
+		if (!record || record.startsWith("# ")) continue;
+		const kind = record[0];
+		if (kind === "?" || kind === "!") {
+			entries.push({ x: kind, y: kind, path: normalizeGitPath(record.slice(2)) });
+			continue;
+		}
+		if (kind !== "1" && kind !== "2" && kind !== "u") continue;
+		const fields = record.split(" ");
+		const xy = fields[1] ?? "..";
+		const pathIndex = kind === "1" ? 8 : kind === "2" ? 9 : 10;
+		entries.push({
+			x: xy[0] === "." ? " " : (xy[0] ?? " "),
+			y: xy[1] === "." ? " " : (xy[1] ?? " "),
+			submodule: fields[2],
+			path: normalizeGitPath(fields.slice(pathIndex).join(" ")),
+		});
+		if (kind === "2") index += 1;
+	}
+	return entries;
+}
+
+function isDirtySubmodule(entry: PorcelainStatusEntry) {
+	return (
+		entry.submodule?.startsWith("S") === true &&
+		(entry.submodule[2] === "M" || entry.submodule[3] === "U")
 	);
-	const staged = parseLines(
-		gitOrThrow(cwd, ["diff", "--cached", "--name-only"], activity),
-	);
-	const rawDiffIndex = hasHead
-		? gitOrThrow(cwd, ["diff-index", "--raw", "-z", "HEAD"], activity)
-		: "";
-	const headDiff = excludeDirtyOnlySubmodules(rawHeadDiff, rawDiffIndex);
+}
+
+function isDirtyOnlySubmodule(entry: PorcelainStatusEntry) {
+	return entry.submodule?.[1] !== "C" && isDirtySubmodule(entry);
+}
+
+function changedFilesFromStatus(
+	statusOutput: string,
+	hasHead: boolean,
+): ChangedFilesSnapshot {
+	const entries = parsePorcelainStatus(statusOutput);
+	const committable = entries.filter((entry) => !isDirtyOnlySubmodule(entry));
 	return {
-		all: uniqueSorted([...headDiff, ...untracked, ...staged]),
-		staged: uniqueSorted(staged),
-		untracked: uniqueSorted(untracked),
+		all: uniqueSorted(committable.map((entry) => entry.path)),
+		staged: uniqueSorted(
+			committable
+				.filter(
+					(entry) =>
+						entry.x !== " " && entry.x !== "?" && entry.x !== "!",
+				)
+				.map((entry) => entry.path),
+		),
+		untracked: uniqueSorted(
+			committable
+				.filter((entry) => entry.x === "?" && entry.y === "?")
+				.map((entry) => entry.path),
+		),
+		hasHead,
+		hasDirtySubmodule: entries.some(isDirtySubmodule),
 	};
+}
+
+export function listChangedFiles(cwd: string, activity?: CommitActivity) {
+	const status = gitOrThrow(
+		cwd,
+		["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"],
+		activity,
+	);
+	const hasHead = runGit(cwd, ["rev-parse", "--verify", "HEAD"]).code === 0;
+	const { hasHead: _hasHead, hasDirtySubmodule: _dirty, ...files } =
+		changedFilesFromStatus(status, hasHead);
+	return files;
 }
 
 async function listChangedFilesAsync(
 	cwd: string,
 	activity?: CommitActivity,
 	signal?: AbortSignal,
-) {
+	statusOutput?: string,
+): Promise<ChangedFilesSnapshot> {
+	const status =
+		statusOutput ??
+		(await gitOrThrowAsync(
+			cwd,
+			[
+				"status",
+				"--porcelain=v2",
+				"--branch",
+				"-z",
+				"--untracked-files=all",
+			],
+			activity,
+			signal,
+		));
 	const hasHead =
 		(
 			await runGitAsync(
@@ -1101,47 +1179,7 @@ async function listChangedFilesAsync(
 				signal,
 			)
 		).code === 0;
-	const rawHeadDiff = hasHead
-		? parseLines(
-				await gitOrThrowAsync(
-					cwd,
-					["diff", "--name-only", "HEAD"],
-					activity,
-					signal,
-				),
-			)
-		: [];
-	const untracked = parseLines(
-		await gitOrThrowAsync(
-			cwd,
-			["ls-files", "--others", "--exclude-standard"],
-			activity,
-			signal,
-		),
-	);
-	const staged = parseLines(
-		await gitOrThrowAsync(
-			cwd,
-			["diff", "--cached", "--name-only"],
-			activity,
-			signal,
-		),
-	);
-	const rawDiffIndex = hasHead
-		? await gitOrThrowAsync(
-				cwd,
-				["diff-index", "--raw", "-z", "HEAD"],
-				activity,
-				signal,
-			)
-		: "";
-	const headDiff = excludeDirtyOnlySubmodules(rawHeadDiff, rawDiffIndex);
-	return {
-		all: uniqueSorted([...headDiff, ...untracked, ...staged]),
-		staged: uniqueSorted(staged),
-		untracked: uniqueSorted(untracked),
-		hasHead,
-	};
+	return changedFilesFromStatus(status, hasHead);
 }
 
 export function buildUntrackedClassifierPrompt(untrackedFiles: string[]) {
@@ -1237,34 +1275,18 @@ export function parseUntrackedClassifierResult(
 
 export function buildStagingPlan(input: {
 	files: string[];
-	allCommittableFiles: string[];
 	ignoredFiles?: string[];
-	trackedIgnoredFiles?: string[];
 }): StagingPlan {
 	const files = uniqueSorted(input.files.map(normalizeGitPath));
-	const allCommittable = uniqueSorted(
-		input.allCommittableFiles.map(normalizeGitPath),
-	);
 	const ignored = new Set((input.ignoredFiles ?? []).map(normalizeGitPath));
-	const trackedIgnored = uniqueSorted(
-		(input.trackedIgnoredFiles ?? []).map(normalizeGitPath),
-	);
-	const unsafe = files.filter((file) => ignored.has(file));
-	const useBroadAdd =
-		unsafe.length === 0 &&
-		files.length > 0 &&
-		files.length === allCommittable.length &&
-		files.every((file, index) => file === allCommittable[index]);
 	return {
-		addArgs: useBroadAdd
-			? ["add", "."]
-			: ["add", "-A", "--", ...files.filter((file) => !ignored.has(file))],
-		rmCachedArgs:
-			trackedIgnored.length > 0
-				? ["rm", "--cached", "--ignore-unmatch", "--", ...trackedIgnored]
-				: [],
-		unsafe,
-		useBroadAdd,
+		addArgs: [
+			"add",
+			"-A",
+			"--",
+			...files.filter((file) => !ignored.has(file)),
+		],
+		unsafe: files.filter((file) => ignored.has(file)),
 	};
 }
 
@@ -1281,18 +1303,6 @@ function parseCommitCommandOptions(rawArgs: string): CommitCommandOptions {
 		noSubmodules: tokens.includes("--no-submodules"),
 		push: tokens.includes("push"),
 	};
-}
-
-export function statusHasDirtySubmodule(status: string): boolean {
-	return status.split(/\r?\n/).some((line) => {
-		const indexStatus = line[0] ?? "";
-		const worktreeStatus = line[1] ?? "";
-		return (
-			indexStatus === "m" ||
-			worktreeStatus === "m" ||
-			(worktreeStatus === "?" && indexStatus !== "?")
-		);
-	});
 }
 
 function parseCommitArgs(rawArgs: string, changedFiles: string[]) {
@@ -1712,21 +1722,6 @@ export function postClassificationRequestedFiles(
 	);
 }
 
-const LARGE_COMMIT_FILE_THRESHOLD = 50;
-const MIXED_COMMIT_FILE_THRESHOLD = 10;
-
-function topLevelCommitRoot(file: string) {
-	return normalizeGitPath(file).split("/")[0] || file;
-}
-
-export function isLargeOrMixedCommitSelection(files: string[]) {
-	const roots = uniqueSorted(files.map(topLevelCommitRoot));
-	return (
-		files.length > LARGE_COMMIT_FILE_THRESHOLD ||
-		(files.length > MIXED_COMMIT_FILE_THRESHOLD && roots.length > 1)
-	);
-}
-
 export async function chooseFilesToCommit(
 	_ctx: WorkflowContext,
 	changedFiles: string[],
@@ -1802,7 +1797,6 @@ export function stageFiles(
 	cwd: string,
 	files: string[],
 	activity?: CommitActivity,
-	allCommittableFiles: string[] = files,
 ) {
 	const unsafe = filterCommitSafeFiles(files).excluded;
 	if (unsafe.length > 0) {
@@ -1817,9 +1811,6 @@ export function stageFiles(
 	const ignoredExisting = ignoredPaths(cwd, existingFiles, activity);
 	const stagingPlan = buildStagingPlan({
 		files: existingFiles,
-		allCommittableFiles: isLargeOrMixedCommitSelection(files)
-			? []
-			: allCommittableFiles,
 		ignoredFiles: ignoredExisting,
 	});
 	if (stagingPlan.unsafe.length > 0) {
@@ -1851,7 +1842,6 @@ async function stageFilesAsync(
 	cwd: string,
 	files: string[],
 	activity?: CommitActivity,
-	allCommittableFiles: string[] = files,
 	signal?: AbortSignal,
 ) {
 	const unsafe = filterCommitSafeFiles(files).excluded;
@@ -1872,9 +1862,6 @@ async function stageFilesAsync(
 	);
 	const stagingPlan = buildStagingPlan({
 		files: existingFiles,
-		allCommittableFiles: isLargeOrMixedCommitSelection(files)
-			? []
-			: allCommittableFiles,
 		ignoredFiles: ignoredExisting,
 	});
 	if (stagingPlan.unsafe.length > 0) {
@@ -1932,13 +1919,10 @@ async function unstageFilesAsync(
 		);
 }
 
-export async function confirmCommitMessage(
-	_ctx: WorkflowContext,
-	commitMessage: { subject: string; body?: string },
-	_filesToCommit: string[],
-	_cachedStat: string,
-	_diffStat: string,
-) {
+export async function confirmCommitMessage(commitMessage: {
+	subject: string;
+	body?: string;
+}) {
 	if (!isValidConventionalCommit(commitMessage.subject)) {
 		throw new Error(
 			"Commit message must match conventional commit format: type(scope): description; allowed types include wip",
@@ -2114,14 +2098,12 @@ async function getCommitContext(
 	cwd: string,
 	activity?: CommitActivity,
 	signal?: AbortSignal,
+	initialSnapshot?: ChangedFilesSnapshot,
 ) {
-	const { all, staged, untracked, hasHead } = await listChangedFilesAsync(
-		cwd,
-		activity,
-		signal,
-	);
-	const changed = filterCommitSafeFiles(all);
-	const stagedSafe = filterCommitSafeFiles(staged);
+	const snapshot =
+		initialSnapshot ?? (await listChangedFilesAsync(cwd, activity, signal));
+	const changed = filterCommitSafeFiles(snapshot.all);
+	const stagedSafe = filterCommitSafeFiles(snapshot.staged);
 	if (changed.excluded.length > 0) {
 		activity?.logInfo(
 			`Excluded runtime/generated paths from commit planning:\n${formatExcludedCommitPaths(changed.excluded)}`,
@@ -2136,20 +2118,99 @@ async function getCommitContext(
 		throw new NoCommittableChangesError(
 			"No committable changed files found",
 		);
-	const diffStatArgs = hasHead
-		? ["diff", "--stat", "HEAD", "--", ...changed.included]
-		: ["diff", "--cached", "--stat", "--", ...changed.included];
-	const diffStat = await gitOrThrowAsync(
-		cwd,
-		diffStatArgs,
-		activity,
-		signal,
-	);
 	return {
-		diffStat,
 		changedFiles: changed.included,
 		stagedFiles: stagedSafe.included,
-		untrackedFiles: untracked,
+		untrackedFiles: snapshot.untracked,
+		hasHead: snapshot.hasHead,
+		hasDirtySubmodule: snapshot.hasDirtySubmodule,
+	};
+}
+
+const MAX_UNTRACKED_PLANNING_BYTES = 128 * 1024;
+const MAX_UNTRACKED_FILE_PLANNING_BYTES = 32 * 1024;
+
+function buildUntrackedPlanningPreview(cwd: string, files: string[]) {
+	const stat: string[] = [];
+	const diff: string[] = [];
+	let remaining = MAX_UNTRACKED_PLANNING_BYTES;
+	for (const file of files) {
+		const absolute = path.resolve(cwd, file);
+		let size: number;
+		try {
+			const fileStat = fs.statSync(absolute);
+			if (!fileStat.isFile()) continue;
+			size = fileStat.size;
+		} catch {
+			continue;
+		}
+		stat.push(`${file} | ${size} bytes (new file)`);
+		if (remaining <= 0) continue;
+		const previewSize = Math.min(
+			size,
+			remaining,
+			MAX_UNTRACKED_FILE_PLANNING_BYTES,
+		);
+		const buffer = Buffer.alloc(previewSize);
+		const descriptor = fs.openSync(absolute, "r");
+		try {
+			fs.readSync(descriptor, buffer, 0, previewSize, 0);
+		} finally {
+			fs.closeSync(descriptor);
+		}
+		remaining -= previewSize;
+		if (buffer.includes(0)) {
+			diff.push(`new binary file ${file} (${size} bytes)`);
+			continue;
+		}
+		const suffix = previewSize < size ? "\n[preview truncated]" : "";
+		diff.push(`new file ${file}\n${buffer.toString("utf8")}${suffix}`);
+	}
+	return { stat: stat.join("\n"), diff: diff.join("\n\n") };
+}
+
+async function buildCommitPlanningContext(
+	cwd: string,
+	files: string[],
+	untrackedFiles: string[],
+	hasHead: boolean,
+	activity?: CommitActivity,
+	signal?: AbortSignal,
+) {
+	const untracked = new Set(untrackedFiles);
+	const trackedFiles = hasHead
+		? files.filter((file) => !untracked.has(file))
+		: [];
+	const newFiles = hasHead ? files.filter((file) => untracked.has(file)) : files;
+	const trackedStat =
+		hasHead && trackedFiles.length > 0
+			? await gitOrThrowAsync(
+					cwd,
+					["diff", "--stat", "--no-ext-diff", "HEAD", "--", ...trackedFiles],
+					activity,
+					signal,
+				)
+			: "";
+	const trackedDiff =
+		hasHead && trackedFiles.length > 0
+			? await gitOrThrowAsync(
+					cwd,
+					[
+						"diff",
+						"--no-color",
+						"--no-ext-diff",
+						"HEAD",
+						"--",
+						...trackedFiles,
+					],
+					activity,
+					signal,
+				)
+			: "";
+	const preview = buildUntrackedPlanningPreview(cwd, newFiles);
+	return {
+		diffStat: [trackedStat, preview.stat].filter(Boolean).join("\n"),
+		diff: [trackedDiff, preview.diff].filter(Boolean).join("\n\n"),
 	};
 }
 
@@ -2157,6 +2218,7 @@ async function prepareCommitSelection(
 	args: string,
 	ctx: WorkflowContext,
 	activity?: CommitActivity,
+	initialSnapshot?: ChangedFilesSnapshot,
 ) {
 	const explicitlyIgnored = await ignoredCommitArgumentPaths(
 		ctx.cwd,
@@ -2168,8 +2230,8 @@ async function prepareCommitSelection(
 			`Requested commit paths are ignored:\n${explicitlyIgnored.map((file) => `- ${file}`).join("\n")}`,
 		);
 	}
-	let { diffStat, changedFiles, stagedFiles, untrackedFiles } =
-		await getCommitContext(ctx.cwd, activity, ctx.signal);
+	let { changedFiles, stagedFiles, untrackedFiles, hasHead } =
+		await getCommitContext(ctx.cwd, activity, ctx.signal, initialSnapshot);
 	const parsedArgs = parseCommitArgs(args, changedFiles);
 	let selection = await chooseFilesToCommit(
 		ctx,
@@ -2194,7 +2256,7 @@ async function prepareCommitSelection(
 			[...plan.accepted, ...userDecisions],
 			activity,
 		);
-		({ diffStat, changedFiles, stagedFiles, untrackedFiles } =
+		({ changedFiles, stagedFiles, untrackedFiles, hasHead } =
 			await getCommitContext(ctx.cwd, activity, ctx.signal));
 		selection = await chooseFilesToCommit(
 			ctx,
@@ -2207,6 +2269,15 @@ async function prepareCommitSelection(
 			),
 		);
 		if (selection.cancelled || selection.files.length === 0) return null;
+	}
+
+	const unselectedStaged = stagedFiles.filter(
+		(file) => !selection.files.includes(file),
+	);
+	if (unselectedStaged.length > 0) {
+		throw new Error(
+			`Selected commit paths would include other staged changes:\n${unselectedStaged.map((file) => `- ${file}`).join("\n")}`,
+		);
 	}
 
 	const findings = scanFilesForSecrets(ctx.cwd, selection.files);
@@ -2226,29 +2297,15 @@ async function prepareCommitSelection(
 	}
 	if (!(await confirmSecretScan(ctx, reviewableFindings))) return null;
 
-	if (selection.stageAll)
-		await stageFilesAsync(
-			ctx.cwd,
-			selection.files,
-			activity,
-			changedFiles,
-			ctx.signal,
-		);
-
-	const cachedStat = await gitOrThrowAsync(
+	const planning = await buildCommitPlanningContext(
 		ctx.cwd,
-		["diff", "--cached", "--stat"],
+		selection.files,
+		untrackedFiles,
+		hasHead,
 		activity,
 		ctx.signal,
 	);
-	if (!cachedStat.trim()) throw new Error("Nothing is staged for commit");
-	const cachedDiff = await gitOrThrowAsync(
-		ctx.cwd,
-		["diff", "--cached", "--no-color"],
-		activity,
-		ctx.signal,
-	);
-	return { parsedArgs, selection, diffStat, cachedStat, cachedDiff };
+	return { parsedArgs, selection, stagedFiles, ...planning };
 }
 
 interface DirectSubmodule {
@@ -2429,36 +2486,44 @@ export async function executeCommitCommand(
 	activity.setPhase("preparing");
 	try {
 		if (ctx.signal?.aborted) throw new Error("Operation cancelled");
-		const preflight = await preflightGitStateAsync(
+		const inspection = await inspectGitStateAsync(
 			ctx.cwd,
 			(cwd, gitArgs, signal) => runGitAsync(cwd, gitArgs, activity, signal),
 			ctx.signal,
 		);
-		if (!preflight.ok) {
+		if (!inspection.preflight.ok) {
 			throw new Error(
-				`Git state preflight failed:\n${preflight.blocked.join("\n")}`,
+				`Git state preflight failed:\n${inspection.preflight.blocked.join("\n")}`,
 			);
 		}
-		const status = await gitOrThrowAsync(
+		let initialSnapshot = await listChangedFilesAsync(
 			ctx.cwd,
-			["status", "--short"],
-			activity,
+			undefined,
 			ctx.signal,
+			inspection.statusOutput,
 		);
-		if (!status.trim()) {
+		if (
+			initialSnapshot.all.length === 0 &&
+			!initialSnapshot.hasDirtySubmodule
+		) {
 			activity.finish();
 			return ctx.ui.notify("Working tree is clean", "info");
 		}
 		if (
 			!options.skipSubmoduleDiscovery &&
 			!commandOptions.noSubmodules &&
-			statusHasDirtySubmodule(status)
+			initialSnapshot.hasDirtySubmodule
 		) {
 			await commitDirtyDirectSubmodules(
 				pi,
 				ctx,
 				activity,
 				commandOptions.push,
+			);
+			initialSnapshot = await listChangedFilesAsync(
+				ctx.cwd,
+				activity,
+				ctx.signal,
 			);
 		}
 		let prepared: Awaited<ReturnType<typeof prepareCommitSelection>>;
@@ -2467,6 +2532,7 @@ export async function executeCommitCommand(
 				commandOptions.args,
 				ctx,
 				activity,
+				initialSnapshot,
 			);
 		} catch (error) {
 			if (!(error instanceof NoCommittableChangesError)) throw error;
@@ -2487,8 +2553,7 @@ export async function executeCommitCommand(
 			plan = await generateCommitPlanWithLlm(ctx, {
 				files: prepared.selection.files,
 				diffStat: prepared.diffStat,
-				cachedStat: prepared.cachedStat,
-				cachedDiff: prepared.cachedDiff,
+				diff: prepared.diff,
 				hint: prepared.parsedArgs.hint,
 			});
 		} catch (error) {
@@ -2496,8 +2561,7 @@ export async function executeCommitCommand(
 			const fallback = buildDeterministicCommitFallback({
 				files: prepared.selection.files,
 				diffStat: prepared.diffStat,
-				cachedStat: prepared.cachedStat,
-				cachedDiff: prepared.cachedDiff,
+				diff: prepared.diff,
 				hint: prepared.parsedArgs.hint,
 			});
 			plan = fallback.plan;
@@ -2508,39 +2572,47 @@ export async function executeCommitCommand(
 			activity.logInfo(warning);
 		}
 		const commitSummaries: string[] = [];
-		await unstageFilesAsync(
-			ctx.cwd,
-			prepared.selection.files,
-			activity,
-			ctx.signal,
+		const firstGroupFiles = new Set(plan.groups[0]?.files ?? []);
+		const stagedOutsideFirstGroup = prepared.stagedFiles.filter(
+			(file) => !firstGroupFiles.has(file),
 		);
+		if (stagedOutsideFirstGroup.length > 0) {
+			await unstageFilesAsync(
+				ctx.cwd,
+				stagedOutsideFirstGroup,
+				activity,
+				ctx.signal,
+			);
+		}
 		for (const [index, group] of plan.groups.entries()) {
 			activity.setPhase(`creating commit ${index + 1}/${plan.groups.length}`);
 			await stageFilesAsync(
 				ctx.cwd,
 				group.files,
 				activity,
-				prepared.selection.files,
 				ctx.signal,
 			);
 			let hash: string;
 			try {
-				const stagedStat = await gitOrThrowAsync(
+				const stagedOutput = await gitOrThrowAsync(
 					ctx.cwd,
-					["diff", "--cached", "--stat"],
+					["diff", "--cached", "--name-only", "-z"],
 					activity,
 					ctx.signal,
 				);
-				const commitMessage = await confirmCommitMessage(
-					ctx,
-					{
-						subject: group.subject.trim(),
-						body: group.body?.trim() || undefined,
-					},
-					group.files,
-					stagedStat,
-					prepared.diffStat,
+				const stagedFiles = uniqueSorted(
+					stagedOutput.split("\0").filter(Boolean),
 				);
+				const expectedFiles = uniqueSorted(group.files);
+				if (JSON.stringify(stagedFiles) !== JSON.stringify(expectedFiles)) {
+					throw new Error(
+						`Staged paths do not match commit group. Expected: ${expectedFiles.join(", ") || "none"}; actual: ${stagedFiles.join(", ") || "none"}`,
+					);
+				}
+				const commitMessage = await confirmCommitMessage({
+					subject: group.subject.trim(),
+					body: group.body?.trim() || undefined,
+				});
 				if (!commitMessage) {
 					await unstageFilesAsync(ctx.cwd, group.files, activity, ctx.signal);
 					activity.finish();

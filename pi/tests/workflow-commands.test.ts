@@ -14,10 +14,12 @@ vi.mock("../extensions/codex-status.ts", () => ({
 	formatConfiguredUsageReport: vi.fn(async () => "Codex:\n 5h     7% used"),
 }));
 
+const mockInspectGitStateAsync = vi.hoisted(() => vi.fn());
 const mockPreflightGitStateAsync = vi.hoisted(() => vi.fn());
 const mockScanSecrets = vi.hoisted(() => vi.fn(() => []));
 const mockTypedAgentRun = vi.hoisted(() => vi.fn());
 vi.mock("../lib/commit/plan.ts", () => ({
+	inspectGitStateAsync: mockInspectGitStateAsync,
 	preflightGitStateAsync: mockPreflightGitStateAsync,
 }));
 vi.mock("../lib/secret-scan.ts", () => ({
@@ -74,10 +76,56 @@ describe("workflow command dispatch", () => {
 		return child;
 	}
 
+	function modifiedStatus(files: string[]) {
+		const entries = files
+			.map(
+				(file) =>
+					`1 .M N... 100644 100644 100644 abcdef1 abcdef2 ${file}\0`,
+			)
+			.join("");
+		return `# branch.head main\0${entries}`;
+	}
+
+	function untrackedStatus(file: string) {
+		return `# branch.head main\0? ${file}\0`;
+	}
+
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		mockSpawn.mockImplementation(() => mockGitSpawn());
 		mockSpawnSync.mockReturnValue({ status: 0, stdout: "", stderr: "" });
+		mockInspectGitStateAsync.mockImplementation(
+			async (
+				cwd: string,
+				runner: (
+					cwd: string,
+					args: string[],
+					signal?: AbortSignal,
+				) => Promise<{ code: number; stdout: string; stderr: string }>,
+				signal?: AbortSignal,
+			) => {
+				const status = await runner(
+					cwd,
+					[
+						"status",
+						"--porcelain=v2",
+						"--branch",
+						"-z",
+						"--untracked-files=all",
+					],
+					signal,
+				);
+				if (status.code !== 0) {
+					throw new Error(
+						(status.stderr || status.stdout || "git status failed").trim(),
+					);
+				}
+				return {
+					preflight: { ok: true, blocked: [] },
+					statusOutput: status.stdout,
+				};
+			},
+		);
 		mockPreflightGitStateAsync.mockResolvedValue({ ok: true, blocked: [] });
 		mockScanSecrets.mockReturnValue([]);
 		mockTypedAgentRun.mockImplementation(
@@ -194,7 +242,13 @@ describe("workflow command dispatch", () => {
 
 		expect(mockSpawn).toHaveBeenCalledWith(
 			expect.any(String),
-			["status", "--short"],
+			[
+				"status",
+				"--porcelain=v2",
+				"--branch",
+				"-z",
+				"--untracked-files=all",
+			],
 			expect.objectContaining({ cwd: "/repo" }),
 		);
 		expect(mockPi.sendMessage).not.toHaveBeenCalledWith(
@@ -213,14 +267,14 @@ describe("workflow command dispatch", () => {
 		["unresolved paths", "Blocked during unmerged paths."],
 	])("refuses %s before planning or mutation", async (_state, blocked) => {
 		const notify = vi.fn();
-		mockPreflightGitStateAsync.mockResolvedValueOnce({
-			ok: false,
-			blocked: [blocked],
+		mockInspectGitStateAsync.mockResolvedValueOnce({
+			preflight: { ok: false, blocked: [blocked] },
+			statusOutput: "",
 		});
 
 		await getHandler("commit")("", { cwd: "/repo", ui: { notify } });
 
-		expect(mockPreflightGitStateAsync).toHaveBeenCalledWith(
+		expect(mockInspectGitStateAsync).toHaveBeenCalledWith(
 			"/repo",
 			expect.any(Function),
 			undefined,
@@ -238,28 +292,35 @@ describe("workflow command dispatch", () => {
 		const cwd = path.resolve(process.cwd(), "..");
 		const files = ["pi/lib/extension-utils.ts", "pi/lib/model-routing.ts"];
 		let hashIndex = 0;
+		let stagedFiles: string[] = [];
 		mockSpawn.mockImplementation((_command, args: string[]) => {
 			const signature = args.join(" ");
-			if (signature === "status --short") {
+			if (args[0] === "status") {
 				return mockGitSpawn({
-					stdout: files.map((file) => ` M ${file}`).join("\n"),
+					stdout: modifiedStatus(files),
 				});
-			}
-			if (signature === "diff --name-only HEAD") {
-				return mockGitSpawn({ stdout: `${files.join("\n")}\n` });
 			}
 			if (
 				signature ===
-				"diff --stat HEAD -- pi/lib/extension-utils.ts pi/lib/model-routing.ts"
+				"diff --stat --no-ext-diff HEAD -- pi/lib/extension-utils.ts pi/lib/model-routing.ts"
 			) {
 				return mockGitSpawn({ stdout: "2 files changed\n" });
 			}
-			if (signature === "diff --cached --stat") {
-				return mockGitSpawn({ stdout: "1 file changed\n" });
-			}
-			if (signature === "diff --cached --no-color") {
+			if (
+				signature ===
+				"diff --no-color --no-ext-diff HEAD -- pi/lib/extension-utils.ts pi/lib/model-routing.ts"
+			) {
 				return mockGitSpawn({ stdout: "diff --git synthetic\n" });
 			}
+			if (args[0] === "add") {
+				const separator = args.indexOf("--");
+				stagedFiles = args.slice(separator + 1);
+				return mockGitSpawn();
+			}
+			if (signature === "diff --cached --name-only -z") {
+				return mockGitSpawn({ stdout: `${stagedFiles.join("\0")}\0` });
+			}
+			if (args[0] === "commit") stagedFiles = [];
 			if (signature === "rev-parse --short HEAD") {
 				hashIndex += 1;
 				return mockGitSpawn({ stdout: `abc000${hashIndex}\n` });
@@ -307,6 +368,16 @@ describe("workflow command dispatch", () => {
 			["commit", "-m", "chore(pi): update utilities"],
 			["commit", "-m", "chore(pi): update routing"],
 		]);
+		const gitArgs = mockSpawn.mock.calls.map(([, callArgs]) =>
+			(callArgs as string[]).join(" "),
+		);
+		expect(gitArgs.some((call) => call.startsWith("diff-index "))).toBe(false);
+		expect(
+			gitArgs.some((call) =>
+				call.startsWith("config --bool core.sparseCheckout"),
+			),
+		).toBe(false);
+		expect(gitArgs.some((call) => call.startsWith("reset "))).toBe(false);
 		expect(notify).not.toHaveBeenCalledWith(
 			expect.stringContaining("Commit failed:"),
 			"error",
@@ -317,7 +388,7 @@ describe("workflow command dispatch", () => {
 		const notify = vi.fn();
 		const file = "pi/lib/secret-scan.ts";
 		for (const result of [
-			{ stdout: ` M ${file}\n` },
+			{ stdout: modifiedStatus([file]) },
 			{},
 			{ stdout: `${file}\n` },
 			{},
@@ -350,15 +421,8 @@ describe("workflow command dispatch", () => {
 		const cwd = path.resolve(process.cwd(), "..");
 		const file = "pi/lib/extension-utils.ts";
 		mockSpawn.mockImplementation((_command, args: string[]) => {
-			const signature = args.join(" ");
-			if (signature === "status --short") {
-				return mockGitSpawn({ stdout: ` M ${file}\n` });
-			}
-			if (signature === "diff --name-only HEAD") {
-				return mockGitSpawn({ stdout: `${file}\n` });
-			}
-			if (signature === `diff --stat HEAD -- ${file}`) {
-				return mockGitSpawn({ stdout: `${file} | 1 +\n` });
+			if (args[0] === "status") {
+				return mockGitSpawn({ stdout: modifiedStatus([file]) });
 			}
 			if (args[0] === "check-attr") {
 				return mockGitSpawn({
@@ -407,23 +471,33 @@ describe("workflow command dispatch", () => {
 	it("retries incomplete secret-review coverage with stable candidate IDs", async () => {
 		const notify = vi.fn();
 		const file = "pi/lib/extension-utils.ts";
-		for (const result of [
-			{ stdout: ` M ${file}\n` },
-			{},
-			{ stdout: `${file}\n` },
-			{},
-			{},
-			{},
-			{ stdout: `${file} | 1 +\n` },
-			{},
-			{ code: 1 },
-			{},
-			{ stdout: `${file} | 1 +\n` },
-			{ stdout: `diff --git a/${file} b/${file}\n` },
-			{ code: 1, stderr: "stop after review\n" },
-		]) {
-			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
-		}
+		mockSpawn.mockImplementation((_command, args: string[]) => {
+			const signature = args.join(" ");
+			if (args[0] === "status") {
+				return mockGitSpawn({ stdout: modifiedStatus([file]) });
+			}
+			if (args[0] === "check-attr") {
+				return mockGitSpawn({
+					stdout: `${file}\0commit-secrets\0unspecified\0`,
+				});
+			}
+			if (signature.startsWith("diff --stat --no-ext-diff HEAD")) {
+				return mockGitSpawn({ stdout: `${file} | 1 +\n` });
+			}
+			if (signature.startsWith("diff --no-color --no-ext-diff HEAD")) {
+				return mockGitSpawn({
+					stdout: `diff --git a/${file} b/${file}\n`,
+				});
+			}
+			if (args[0] === "check-ignore") return mockGitSpawn({ code: 1 });
+			if (args[0] === "add") {
+				return mockGitSpawn({
+					code: 1,
+					stderr: "stop after review\n",
+				});
+			}
+			return mockGitSpawn();
+		});
 		mockScanSecrets.mockReturnValueOnce([
 			{
 				kind: "secret-assignment",
@@ -495,7 +569,7 @@ describe("workflow command dispatch", () => {
 		const notify = vi.fn();
 		const file = "pi/lib/extension-utils.ts";
 		for (const result of [
-			{ stdout: ` M ${file}\n` },
+			{ stdout: modifiedStatus([file]) },
 			{},
 			{ stdout: `${file}\n` },
 			{},
@@ -569,7 +643,7 @@ describe("workflow command dispatch", () => {
 			id: "gpt-5.4-mini",
 		};
 		for (const result of [
-			{ stdout: "?? new-file.ts\n" },
+			{ stdout: untrackedStatus("new-file.ts") },
 			{},
 			{},
 			{ stdout: "new-file.ts\n" },
@@ -638,12 +712,15 @@ describe("workflow command dispatch", () => {
 		const { initTheme } = await import("@earendil-works/pi-coding-agent");
 		initTheme("dark");
 		const notify = vi.fn();
-		mockPreflightGitStateAsync.mockImplementationOnce(
+		mockInspectGitStateAsync.mockImplementationOnce(
 			async (_cwd, _runner, signal: AbortSignal) => {
 				await new Promise<void>((resolve) => {
 					signal.addEventListener("abort", () => resolve(), { once: true });
 				});
-				return { ok: true, blocked: [] };
+				return {
+					preflight: { ok: true, blocked: [] },
+					statusOutput: "",
+				};
 			},
 		);
 		const custom = vi.fn(
@@ -692,8 +769,7 @@ describe("workflow command dispatch", () => {
 		const result = buildDeterministicCommitFallback({
 			files,
 			diffStat: "",
-			cachedStat: "",
-			cachedDiff: "",
+			diff: "",
 			hint: "",
 		});
 
