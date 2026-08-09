@@ -371,6 +371,12 @@ describe("workflow command dispatch", () => {
 		const gitArgs = mockSpawn.mock.calls.map(([, callArgs]) =>
 			(callArgs as string[]).join(" "),
 		);
+		expect(
+			gitArgs.filter((call) =>
+				call.startsWith("status --porcelain=v2 --branch -z"),
+			),
+		).toHaveLength(1);
+		expect(gitArgs).not.toContain("rev-parse --verify HEAD");
 		expect(gitArgs.some((call) => call.startsWith("diff-index "))).toBe(false);
 		expect(
 			gitArgs.some((call) =>

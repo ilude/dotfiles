@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getAgentDir as getExtensionUtilsAgentDir } from "../lib/extension-utils.ts";
 import {
 	getAgentDir,
 	getSettingsPath,
@@ -30,6 +31,7 @@ describe("Pi settings path resolution", () => {
 		vi.stubEnv("HOME", path.join(tempDir, "home"));
 		vi.stubEnv("USERPROFILE", path.join(tempDir, "profile"));
 
+		expect(getExtensionUtilsAgentDir()).toBe(explicitDir);
 		expect(getAgentDir()).toBe(explicitDir);
 		expect(getSettingsPath()).toBe(path.join(explicitDir, "settings.json"));
 	});

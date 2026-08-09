@@ -5,7 +5,13 @@ import {
 	indexStateFingerprint,
 	worktreeStateFingerprint,
 } from "./state";
-import { excludeDirtyOnlySubmodules } from "./submodule";
+import {
+	isDirtyOnlySubmodule,
+	parsePorcelainV2Status,
+	PORCELAIN_V2_STATUS_ARGS,
+	statusHasUnmergedPaths,
+	type PorcelainV2StatusEntry,
+} from "./status";
 import { createConfirmationToken, normalizeCommitPaths } from "./token";
 import type {
 	CommitPathEntry,
@@ -14,23 +20,6 @@ import type {
 	GitPreflight,
 	GitWorktreeStatus,
 } from "./types";
-
-function decodePorcelainStatus(
-	output: string,
-): Array<{ x: string; y: string; path: string }> {
-	const records = output.split("\0").filter(Boolean);
-	const entries: Array<{ x: string; y: string; path: string }> = [];
-	for (let i = 0; i < records.length; i++) {
-		const record = records[i];
-		if (!record || record.startsWith("## ")) continue;
-		const x = record[0] ?? " ";
-		const y = record[1] ?? " ";
-		const rawPath = record.slice(3);
-		if (x === "R" || x === "C") i++; // porcelain v1 -z stores the original path in the next record.
-		entries.push({ x, y, path: rawPath });
-	}
-	return entries;
-}
 
 function mapStatus(ch: string): GitIndexStatus | GitWorktreeStatus {
 	if (ch === " ") return "unmodified";
@@ -43,20 +32,6 @@ function mapStatus(ch: string): GitIndexStatus | GitWorktreeStatus {
 	if (ch === "?") return "unknown";
 	if (ch === "!") return "ignored";
 	return "unknown";
-}
-
-const UNMERGED_STATUS_PAIRS = new Set([
-	"DD",
-	"AU",
-	"UD",
-	"UA",
-	"DU",
-	"AA",
-	"UU",
-]);
-
-function isUnmerged(entry: { x: string; y: string }): boolean {
-	return UNMERGED_STATUS_PAIRS.has(`${entry.x}${entry.y}`);
 }
 
 function ignoredPaths(repoRoot: string, files: string[]): Set<string> {
@@ -72,12 +47,12 @@ function ignoredPaths(repoRoot: string, files: string[]): Set<string> {
 }
 
 function classify(
-	entry: { x: string; y: string; path: string },
+	entry: PorcelainV2StatusEntry,
 	ignored: boolean,
 ): CommitPathEntry {
 	const index = mapStatus(entry.x) as GitIndexStatus;
 	const worktree = mapStatus(entry.y) as GitWorktreeStatus;
-	if (isUnmerged(entry))
+	if (entry.kind === "u")
 		return {
 			path: entry.path,
 			index,
@@ -202,9 +177,7 @@ function decideGitPreflight(
 			existsInResolvedGitDir("rebase-apply"),
 		cherryPickInProgress: existsInResolvedGitDir("CHERRY_PICK_HEAD"),
 		bisectInProgress: existsInResolvedGitDir("BISECT_LOG"),
-		hasUnmergedPaths:
-			decodePorcelainStatus(statusText).some(isUnmerged) ||
-			statusText.split("\0").some((record) => record.startsWith("u ")),
+		hasUnmergedPaths: statusHasUnmergedPaths(statusText),
 		isSubmodule: fs.statSync(path.join(root, ".git")).isFile(),
 		isWorktree: fs.existsSync(path.join(resolvedGitDir, "commondir")),
 		partialIndex: false,
@@ -228,13 +201,7 @@ function preflightGitStateForRoot(
 ): GitPreflight {
 	const status =
 		statusOutput ??
-		git(root, [
-			"status",
-			"--porcelain=v1",
-			"--branch",
-			"-z",
-			"--untracked-files=all",
-		]);
+		git(root, [...PORCELAIN_V2_STATUS_ARGS]);
 	const statusText = typeof status === "string" ? status : status.stdout;
 	return decideGitPreflight(root, gitDir(root), statusText);
 }
@@ -295,13 +262,7 @@ async function inspectGitStateWithRunner(
 	const status = await runRequiredGit(
 		runner,
 		root,
-		[
-			"status",
-			"--porcelain=v2",
-			"--branch",
-			"-z",
-			"--untracked-files=all",
-		],
+		[...PORCELAIN_V2_STATUS_ARGS],
 		signal,
 	);
 	return {
@@ -364,24 +325,11 @@ export function buildCommitPlan(
 	requestedPaths?: string[],
 ): CommitPlanResult {
 	const root = repoRoot(cwd);
-	const status = git(root, [
-		"status",
-		"--porcelain=v1",
-		"--branch",
-		"-z",
-		"--untracked-files=all",
-	]);
+	const status = git(root, [...PORCELAIN_V2_STATUS_ARGS]);
 	if (status.code !== 0) throw new Error(status.stderr.trim());
 	const preflight = preflightGitStateForRoot(root, status.stdout);
-	const diffIndex = git(root, ["diff-index", "--raw", "-z", "HEAD"]);
-	const committablePaths = new Set(
-		excludeDirtyOnlySubmodules(
-			decodePorcelainStatus(status.stdout).map((entry) => entry.path),
-			diffIndex.code === 0 ? diffIndex.stdout : "",
-		),
-	);
-	const statusEntries = decodePorcelainStatus(status.stdout).filter((entry) =>
-		committablePaths.has(entry.path),
+	const statusEntries = parsePorcelainV2Status(status.stdout).filter(
+		(entry) => !isDirtyOnlySubmodule(entry),
 	);
 	const ignored = ignoredPaths(
 		root,

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDir as getRuntimeAgentDir } from "@earendil-works/pi-coding-agent";
 import { lock } from "proper-lockfile";
+import { getAgentDir } from "./extension-utils.ts";
 
 export type JsonObject = Record<string, unknown>;
 
@@ -10,9 +10,7 @@ const LOCK_RETRY_MS = 25;
 const LOCK_RETRIES = 400;
 let tempFileSequence = 0;
 
-export function getAgentDir(): string {
-	return getRuntimeAgentDir();
-}
+export { getAgentDir };
 
 export function getSettingsPath(): string {
 	return path.join(getAgentDir(), "settings.json");

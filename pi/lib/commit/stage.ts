@@ -1,4 +1,9 @@
-import { type GitAsyncRunner, git, requireRepoRoot } from "./git";
+import {
+	type GitAsyncRunner,
+	type GitResult,
+	git,
+	requireRepoRoot,
+} from "./git";
 import { buildCommitPlan } from "./plan";
 import {
 	indexStateFingerprint,
@@ -14,6 +19,61 @@ export interface StageResult {
 	staged: string[];
 	expectedStagedPaths: string[];
 	createConfirmationToken: string;
+}
+
+export interface StagingPlan {
+	addArgs: string[];
+	unsafe: string[];
+}
+
+export function buildStagingPlan(input: {
+	files: string[];
+	ignoredFiles?: string[];
+}): StagingPlan {
+	const files = normalizeCommitPaths(input.files);
+	const ignored = new Set(normalizeCommitPaths(input.ignoredFiles ?? []));
+	return {
+		addArgs: [
+			"add",
+			"-A",
+			"--",
+			...files.filter((file) => !ignored.has(file)),
+		],
+		unsafe: files.filter((file) => ignored.has(file)),
+	};
+}
+
+function exactStageFailure(result: GitResult): Error {
+	return new Error(
+		result.stderr.trim() || result.stdout.trim() || "git add failed",
+	);
+}
+
+export function stageExactPathsWithRunner(
+	cwd: string,
+	paths: string[],
+	runner: (cwd: string, args: string[]) => GitResult = git,
+): string[] {
+	const plan = buildStagingPlan({ files: paths });
+	const staged = plan.addArgs.slice(3);
+	if (staged.length === 0) return [];
+	const result = runner(cwd, plan.addArgs);
+	if (result.code !== 0) throw exactStageFailure(result);
+	return staged;
+}
+
+export async function stageExactPathsAsync(
+	cwd: string,
+	paths: string[],
+	runner: GitAsyncRunner,
+	signal?: AbortSignal,
+): Promise<string[]> {
+	const plan = buildStagingPlan({ files: paths });
+	const staged = plan.addArgs.slice(3);
+	if (staged.length === 0) return [];
+	const result = await runner(cwd, plan.addArgs, signal);
+	if (result.code !== 0) throw exactStageFailure(result);
+	return staged;
 }
 
 function validateStageRequest(
@@ -71,9 +131,7 @@ export function stagePaths(cwd: string, paths: string[], confirmationToken?: str
 		paths,
 		confirmationToken,
 	);
-	if (normalized.length === 0) return stagedResult(repoRoot, []);
-	const result = git(repoRoot, ["add", "--", ...normalized]);
-	if (result.code !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "git add failed");
+	stageExactPathsWithRunner(repoRoot, normalized);
 	return stagedResult(repoRoot, normalized);
 }
 
@@ -89,10 +147,6 @@ export async function stagePathsAsync(
 		paths,
 		confirmationToken,
 	);
-	if (normalized.length === 0) return stagedResult(repoRoot, []);
-	const result = await runner(repoRoot, ["add", "--", ...normalized], signal);
-	if (result.code !== 0) {
-		throw new Error(result.stderr.trim() || result.stdout.trim() || "git add failed");
-	}
+	await stageExactPathsAsync(repoRoot, normalized, runner, signal);
 	return stagedResult(repoRoot, normalized);
 }

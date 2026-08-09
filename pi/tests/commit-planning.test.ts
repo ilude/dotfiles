@@ -17,6 +17,7 @@ import {
 	preflightGitState,
 	preflightGitStateAsync,
 } from "../lib/commit/plan.ts";
+import { changedFilesFromStatus } from "../lib/commit/status.ts";
 
 const repos: string[] = [];
 function run(
@@ -44,6 +45,25 @@ afterEach(() => {
 });
 
 describe("commit planning", () => {
+	it("derives planning state from one porcelain-v2 snapshot", () => {
+		const status = [
+			"# branch.oid (initial)",
+			"# branch.head main",
+			"1 M. N... 100644 100644 100644 abcdef1 abcdef2 staged.txt",
+			"1 .M S.M. 160000 160000 160000 abcdef1 abcdef1 module",
+			"? new.txt",
+			"",
+		].join("\0");
+
+		expect(changedFilesFromStatus(status)).toEqual({
+			all: ["new.txt", "staged.txt"],
+			staged: ["staged.txt"],
+			untracked: ["new.txt"],
+			hasHead: false,
+			hasDirtySubmodule: true,
+		});
+	});
+
 	it("limits a plan to exact requested paths", () => {
 		const dir = repo();
 		writeFileSync(join(dir, "one.txt"), "one\n");

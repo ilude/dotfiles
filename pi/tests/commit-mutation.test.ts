@@ -103,6 +103,60 @@ describe("commit mutation safety", () => {
 		);
 	}, REAL_GIT_TEST_TIMEOUT_MS);
 
+	it("commits a staged submodule pointer while leaving its worktree dirty", async () => {
+		const child = repo();
+		writeFileSync(join(child, "child.txt"), "base\n");
+		run(child, ["add", "--", "child.txt"]);
+		run(child, ["commit", "-m", "chore: seed child"]);
+
+		const parent = repo();
+		run(parent, [
+			"-c",
+			"protocol.file.allow=always",
+			"submodule",
+			"add",
+			child,
+			"module",
+		]);
+		run(parent, ["commit", "-m", "chore: add module"]);
+
+		const checkout = join(parent, "module");
+		run(checkout, ["config", "user.email", "pi@example.invalid"]);
+		run(checkout, ["config", "user.name", "Pi Test"]);
+		writeFileSync(join(checkout, "child.txt"), "committed\n");
+		run(checkout, ["add", "--", "child.txt"]);
+		run(checkout, ["commit", "-m", "fix: advance module"]);
+		run(parent, ["add", "--", "module"]);
+		writeFileSync(join(checkout, "child.txt"), "dirty\n");
+
+		expect(buildCommitPlan(parent).entries).toEqual([
+			expect.objectContaining({
+				path: "module",
+				classification: "staged_change",
+				recommendedAction: "keep_staged",
+			}),
+		]);
+		const parentHead = run(parent, ["rev-parse", "HEAD"]).trim();
+
+		const pi = createMockPi();
+		const ctx = createMockCtx({ cwd: parent });
+		await executeCommitCommand(pi as never, "--no-submodules", ctx as never);
+
+		expect(run(parent, ["rev-parse", "HEAD"]).trim()).not.toBe(parentHead);
+		expect(run(parent, ["rev-parse", "HEAD:module"]).trim()).toBe(
+			run(checkout, ["rev-parse", "HEAD"]).trim(),
+		);
+		expect(run(checkout, ["status", "--porcelain"]).trim()).toBe(
+			"M child.txt",
+		);
+		expect(run(parent, ["diff", "--cached", "--name-only"]).trim()).toBe(
+			"",
+		);
+		expect(run(parent, ["status", "--porcelain"]).trim()).toContain(
+			"module",
+		);
+	}, REAL_GIT_TEST_TIMEOUT_MS);
+
 	it("stops before mutation when a dirty submodule has no upstream", async () => {
 		const child = repo();
 		writeFileSync(join(child, "child.txt"), "base\n");
@@ -248,6 +302,24 @@ describe("commit mutation safety", () => {
 		expect(() =>
 			stagePaths(dir, plan.safeStagePaths, plan.stageConfirmationToken),
 		).toThrow(/worktree state/);
+	});
+
+	it("commit_stage stages an exact deletion without staging adjacent changes", () => {
+		const dir = repo();
+		writeFileSync(join(dir, "delete.txt"), "delete\n");
+		writeFileSync(join(dir, "keep.txt"), "before\n");
+		run(dir, ["add", "--", "delete.txt", "keep.txt"]);
+		run(dir, ["commit", "-m", "chore: seed files"]);
+		rmSync(join(dir, "delete.txt"));
+		writeFileSync(join(dir, "keep.txt"), "after\n");
+
+		const plan = buildCommitPlan(dir, ["delete.txt"]);
+		stagePaths(dir, plan.safeStagePaths, plan.stageConfirmationToken);
+
+		expect(run(dir, ["diff", "--cached", "--name-only"]).trim()).toBe(
+			"delete.txt",
+		);
+		expect(run(dir, ["diff", "--name-only"]).trim()).toBe("keep.txt");
 	});
 
 	it("commit_create rejects staged content drift and newly added secrets", () => {
@@ -407,6 +479,23 @@ describe("stageFiles -- ignored paths and exact staging", () => {
 			.split(/\r?\n/)
 			.filter(Boolean);
 		expect(staged).toEqual([...files].sort());
+	});
+
+	it("stages an exact deletion without staging adjacent changes", () => {
+		const dir = repo();
+		writeFileSync(join(dir, "delete.txt"), "delete\n");
+		writeFileSync(join(dir, "keep.txt"), "before\n");
+		run(dir, ["add", "--", "delete.txt", "keep.txt"]);
+		run(dir, ["commit", "-m", "chore: seed files"]);
+		rmSync(join(dir, "delete.txt"));
+		writeFileSync(join(dir, "keep.txt"), "after\n");
+
+		stageFiles(dir, ["delete.txt"]);
+
+		expect(run(dir, ["diff", "--cached", "--name-only"]).trim()).toBe(
+			"delete.txt",
+		);
+		expect(run(dir, ["diff", "--name-only"]).trim()).toBe("keep.txt");
 	});
 });
 
