@@ -38,19 +38,25 @@ import { Type } from "typebox";
 import { commitFailureMessage } from "../lib/commit/failure";
 import { validateCommitMessage } from "../lib/commit/message";
 import {
-	inspectGitStateAsync,
-	preflightGitStateAsync,
-} from "../lib/commit/plan";
-import { parseDirectSubmodulePaths } from "../lib/commit/submodule";
+	buildStagingPlan,
+	stageExactPathsAsync,
+	stageExactPathsWithRunner,
+	type StagingPlan,
+} from "../lib/commit/stage";
+import {
+	changedFilesFromStatus,
+	normalizeGitPath,
+	PORCELAIN_V2_STATUS_ARGS,
+	type ChangedFilesSnapshot,
+	uniqueGitPaths,
+} from "../lib/commit/status";
 import { emitTerminalBell } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
 import { scanSecrets } from "../lib/secret-scan";
-import {
-	SLASH_COMMAND_ECHO_TYPE,
-	wrapCommandRegistration,
-} from "../lib/slash-command-echo.js";
+import { SLASH_COMMAND_ECHO_TYPE } from "../lib/slash-command-echo.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent";
+import { createCommitCommandExecutor } from "../lib/workflow-commands/commit-orchestration";
 import {
 	buildCommitPlanningPrompt,
 	buildSecretReviewPrompt,
@@ -224,11 +230,6 @@ export interface UntrackedClassification {
 export interface UntrackedClassificationPlan {
 	accepted: UntrackedClassification[];
 	needsUserDecision: UntrackedClassification[];
-}
-
-export interface StagingPlan {
-	addArgs: string[];
-	unsafe: string[];
 }
 
 interface CommitActivity {
@@ -1030,15 +1031,7 @@ function parseLines(output: string) {
 		.filter(Boolean);
 }
 
-function normalizeGitPath(file: string) {
-	return file.replace(/\\/g, "/").replace(/^\.\//, "");
-}
-
-function uniqueSorted(values: string[]) {
-	return [...new Set(values.filter(Boolean))].sort((a, b) =>
-		a.localeCompare(b),
-	);
-}
+const uniqueSorted = uniqueGitPaths;
 
 export function getCommitRuntimePathReason(file: string): string | null {
 	const normalized = file.replace(/\\/g, "/");
@@ -1060,93 +1053,10 @@ export function filterCommitSafeFiles(files: string[]) {
 	return { included: uniqueSorted(included), excluded };
 }
 
-interface PorcelainStatusEntry {
-	x: string;
-	y: string;
-	path: string;
-	submodule?: string;
-}
-
-interface ChangedFilesSnapshot {
-	all: string[];
-	staged: string[];
-	untracked: string[];
-	hasHead: boolean;
-	hasDirtySubmodule: boolean;
-}
-
-function parsePorcelainStatus(output: string): PorcelainStatusEntry[] {
-	const records = output.split("\0").filter(Boolean);
-	const entries: PorcelainStatusEntry[] = [];
-	for (let index = 0; index < records.length; index += 1) {
-		const record = records[index];
-		if (!record || record.startsWith("# ")) continue;
-		const kind = record[0];
-		if (kind === "?" || kind === "!") {
-			entries.push({ x: kind, y: kind, path: normalizeGitPath(record.slice(2)) });
-			continue;
-		}
-		if (kind !== "1" && kind !== "2" && kind !== "u") continue;
-		const fields = record.split(" ");
-		const xy = fields[1] ?? "..";
-		const pathIndex = kind === "1" ? 8 : kind === "2" ? 9 : 10;
-		entries.push({
-			x: xy[0] === "." ? " " : (xy[0] ?? " "),
-			y: xy[1] === "." ? " " : (xy[1] ?? " "),
-			submodule: fields[2],
-			path: normalizeGitPath(fields.slice(pathIndex).join(" ")),
-		});
-		if (kind === "2") index += 1;
-	}
-	return entries;
-}
-
-function isDirtySubmodule(entry: PorcelainStatusEntry) {
-	return (
-		entry.submodule?.startsWith("S") === true &&
-		(entry.submodule[2] === "M" || entry.submodule[3] === "U")
-	);
-}
-
-function isDirtyOnlySubmodule(entry: PorcelainStatusEntry) {
-	return entry.submodule?.[1] !== "C" && isDirtySubmodule(entry);
-}
-
-function changedFilesFromStatus(
-	statusOutput: string,
-	hasHead: boolean,
-): ChangedFilesSnapshot {
-	const entries = parsePorcelainStatus(statusOutput);
-	const committable = entries.filter((entry) => !isDirtyOnlySubmodule(entry));
-	return {
-		all: uniqueSorted(committable.map((entry) => entry.path)),
-		staged: uniqueSorted(
-			committable
-				.filter(
-					(entry) =>
-						entry.x !== " " && entry.x !== "?" && entry.x !== "!",
-				)
-				.map((entry) => entry.path),
-		),
-		untracked: uniqueSorted(
-			committable
-				.filter((entry) => entry.x === "?" && entry.y === "?")
-				.map((entry) => entry.path),
-		),
-		hasHead,
-		hasDirtySubmodule: entries.some(isDirtySubmodule),
-	};
-}
-
 export function listChangedFiles(cwd: string, activity?: CommitActivity) {
-	const status = gitOrThrow(
-		cwd,
-		["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"],
-		activity,
-	);
-	const hasHead = runGit(cwd, ["rev-parse", "--verify", "HEAD"]).code === 0;
+	const status = gitOrThrow(cwd, [...PORCELAIN_V2_STATUS_ARGS], activity);
 	const { hasHead: _hasHead, hasDirtySubmodule: _dirty, ...files } =
-		changedFilesFromStatus(status, hasHead);
+		changedFilesFromStatus(status);
 	return files;
 }
 
@@ -1160,26 +1070,11 @@ async function listChangedFilesAsync(
 		statusOutput ??
 		(await gitOrThrowAsync(
 			cwd,
-			[
-				"status",
-				"--porcelain=v2",
-				"--branch",
-				"-z",
-				"--untracked-files=all",
-			],
+			[...PORCELAIN_V2_STATUS_ARGS],
 			activity,
 			signal,
 		));
-	const hasHead =
-		(
-			await runGitAsync(
-				cwd,
-				["rev-parse", "--verify", "HEAD"],
-				undefined,
-				signal,
-			)
-		).code === 0;
-	return changedFilesFromStatus(status, hasHead);
+	return changedFilesFromStatus(status);
 }
 
 export function buildUntrackedClassifierPrompt(untrackedFiles: string[]) {
@@ -1273,37 +1168,8 @@ export function parseUntrackedClassifierResult(
 	};
 }
 
-export function buildStagingPlan(input: {
-	files: string[];
-	ignoredFiles?: string[];
-}): StagingPlan {
-	const files = uniqueSorted(input.files.map(normalizeGitPath));
-	const ignored = new Set((input.ignoredFiles ?? []).map(normalizeGitPath));
-	return {
-		addArgs: [
-			"add",
-			"-A",
-			"--",
-			...files.filter((file) => !ignored.has(file)),
-		],
-		unsafe: files.filter((file) => ignored.has(file)),
-	};
-}
-
-interface CommitCommandOptions {
-	args: string;
-	noSubmodules: boolean;
-	push: boolean;
-}
-
-function parseCommitCommandOptions(rawArgs: string): CommitCommandOptions {
-	const tokens = rawArgs.trim().split(/\s+/).filter(Boolean);
-	return {
-		args: tokens.filter((token) => token !== "--no-submodules").join(" "),
-		noSubmodules: tokens.includes("--no-submodules"),
-		push: tokens.includes("push"),
-	};
-}
+export { buildStagingPlan };
+export type { StagingPlan };
 
 function parseCommitArgs(rawArgs: string, changedFiles: string[]) {
 	const tokens = rawArgs.trim().split(/\s+/).filter(Boolean);
@@ -1804,38 +1670,20 @@ export function stageFiles(
 			`Refusing to stage runtime/generated paths:\n${formatExcludedCommitPaths(unsafe)}`,
 		);
 	}
-	const existingFiles = files.filter((file) =>
-		fs.existsSync(path.resolve(cwd, file)),
+	const ignored = ignoredPaths(
+		cwd,
+		files.filter((file) => fs.existsSync(path.resolve(cwd, file))),
+		activity,
 	);
-	const missingFiles = files.filter((file) => !existingFiles.includes(file));
-	const ignoredExisting = ignoredPaths(cwd, existingFiles, activity);
-	const stagingPlan = buildStagingPlan({
-		files: existingFiles,
-		ignoredFiles: ignoredExisting,
-	});
+	const stagingPlan = buildStagingPlan({ files, ignoredFiles: ignored });
 	if (stagingPlan.unsafe.length > 0) {
 		throw new Error(
 			`Refusing to stage ignored paths:\n${stagingPlan.unsafe.map((file) => `- ${file}`).join("\n")}`,
 		);
 	}
-	if (existingFiles.length > 0) {
-		const addResult = runGit(cwd, stagingPlan.addArgs, activity);
-		if (addResult.code !== 0)
-			throw new Error(
-				(addResult.stderr || addResult.stdout).trim() || "git add failed",
-			);
-	}
-	if (missingFiles.length > 0) {
-		const rmResult = runGit(
-			cwd,
-			["rm", "--ignore-unmatch", "--", ...missingFiles],
-			activity,
-		);
-		if (rmResult.code !== 0)
-			throw new Error(
-				(rmResult.stderr || rmResult.stdout).trim() || "git rm failed",
-			);
-	}
+	stageExactPathsWithRunner(cwd, files, (repoRoot, args) =>
+		runGit(repoRoot, args, activity),
+	);
 }
 
 async function stageFilesAsync(
@@ -1850,49 +1698,25 @@ async function stageFilesAsync(
 			`Refusing to stage runtime/generated paths:\n${formatExcludedCommitPaths(unsafe)}`,
 		);
 	}
-	const existingFiles = files.filter((file) =>
-		fs.existsSync(path.resolve(cwd, file)),
-	);
-	const missingFiles = files.filter((file) => !existingFiles.includes(file));
-	const ignoredExisting = await ignoredPathsAsync(
+	const ignored = await ignoredPathsAsync(
 		cwd,
-		existingFiles,
+		files.filter((file) => fs.existsSync(path.resolve(cwd, file))),
 		activity,
 		signal,
 	);
-	const stagingPlan = buildStagingPlan({
-		files: existingFiles,
-		ignoredFiles: ignoredExisting,
-	});
+	const stagingPlan = buildStagingPlan({ files, ignoredFiles: ignored });
 	if (stagingPlan.unsafe.length > 0) {
 		throw new Error(
 			`Refusing to stage ignored paths:\n${stagingPlan.unsafe.map((file) => `- ${file}`).join("\n")}`,
 		);
 	}
-	if (existingFiles.length > 0) {
-		const addResult = await runGitAsync(
-			cwd,
-			stagingPlan.addArgs,
-			activity,
-			signal,
-		);
-		if (addResult.code !== 0)
-			throw new Error(
-				(addResult.stderr || addResult.stdout).trim() || "git add failed",
-			);
-	}
-	if (missingFiles.length > 0) {
-		const rmResult = await runGitAsync(
-			cwd,
-			["rm", "--ignore-unmatch", "--", ...missingFiles],
-			activity,
-			signal,
-		);
-		if (rmResult.code !== 0)
-			throw new Error(
-				(rmResult.stderr || rmResult.stdout).trim() || "git rm failed",
-			);
-	}
+	await stageExactPathsAsync(
+		cwd,
+		files,
+		(repoRoot, args, runSignal) =>
+			runGitAsync(repoRoot, args, activity, runSignal),
+		signal,
+	);
 }
 
 async function unstageFilesAsync(
@@ -2308,347 +2132,27 @@ async function prepareCommitSelection(
 	return { parsedArgs, selection, stagedFiles, ...planning };
 }
 
-interface DirectSubmodule {
-	cwd: string;
-	path: string;
-}
-
-interface ExecuteCommitCommandOptions {
-	commandText?: string;
-	skipSubmoduleDiscovery?: boolean;
-}
-
-async function listDirtyDirectSubmodules(
-	cwd: string,
-	activity: CommitActivity,
-	signal?: AbortSignal,
-): Promise<DirectSubmodule[]> {
-	const root = await gitOrThrowAsync(
-		cwd,
-		["rev-parse", "--show-toplevel"],
-		activity,
-		signal,
-	);
-	const config = await runGitAsync(
-		root,
-		[
-			"config",
-			"-z",
-			"--file",
-			".gitmodules",
-			"--get-regexp",
-			"^submodule\\..*\\.path$",
-		],
-		activity,
-		signal,
-	);
-	if (config.code === 1 && !config.stdout && !config.stderr) return [];
-	if (config.code !== 0) {
-		throw new Error(
-			(config.stderr || config.stdout).trim() ||
-				"Failed to read direct submodule paths",
-		);
-	}
-
-	const dirty: DirectSubmodule[] = [];
-	for (const submodulePath of parseDirectSubmodulePaths(config.stdout)) {
-		const submoduleCwd = path.resolve(root, submodulePath);
-		const relative = path.relative(root, submoduleCwd);
-		if (
-			!relative ||
-			relative === ".." ||
-			relative.startsWith(`..${path.sep}`) ||
-			path.isAbsolute(relative)
-		) {
-			throw new Error(`Invalid submodule path outside repository: ${submodulePath}`);
-		}
-		if (!fs.existsSync(submoduleCwd)) continue;
-		const worktree = await runGitAsync(
-			submoduleCwd,
-			["rev-parse", "--is-inside-work-tree"],
-			undefined,
-			signal,
-		);
-		if (worktree.code !== 0 || worktree.stdout.trim() !== "true") continue;
-		const status = await gitOrThrowAsync(
-			submoduleCwd,
-			["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-			activity,
-			signal,
-		);
-		if (status) dirty.push({ cwd: submoduleCwd, path: submodulePath });
-	}
-	return dirty;
-}
-
-async function prepareDirtySubmodule(
-	submodule: DirectSubmodule,
-	activity: CommitActivity,
-	signal?: AbortSignal,
-): Promise<boolean> {
-	const preflight = await preflightGitStateAsync(
-		submodule.cwd,
-		(cwd, gitArgs, runSignal) =>
-			runGitAsync(cwd, gitArgs, activity, runSignal),
-		signal,
-	);
-	if (!preflight.ok) {
-		throw new Error(
-			`Submodule ${submodule.path} preflight failed:\n${preflight.blocked.join("\n")}`,
-		);
-	}
-	const upstream = await runGitAsync(
-		submodule.cwd,
-		["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
-		activity,
-		signal,
-	);
-	if (upstream.code !== 0 || !upstream.stdout.trim()) {
-		throw new Error(
-			`Submodule ${submodule.path} must have an upstream branch before /commit can update it`,
-		);
-	}
-	const pull = await runGitAsync(
-		submodule.cwd,
-		["pull", "--ff-only", "--no-rebase", "--no-recurse-submodules"],
-		activity,
-		signal,
-	);
-	if (pull.code !== 0) {
-		throw new Error(
-			`Submodule ${submodule.path} pull failed: ${(pull.stderr || pull.stdout).trim() || "git pull failed"}`,
-		);
-	}
-	const status = await gitOrThrowAsync(
-		submodule.cwd,
-		["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-		activity,
-		signal,
-	);
-	return Boolean(status);
-}
-
-async function commitDirtyDirectSubmodules(
-	pi: ExtensionAPI,
-	ctx: WorkflowContext,
-	activity: CommitActivity,
-	push: boolean,
-) {
-	const submodules = await listDirtyDirectSubmodules(
-		ctx.cwd,
-		activity,
-		ctx.signal,
-	);
-	for (const submodule of submodules) {
-		activity.setPhase(`preparing submodule ${submodule.path}`);
-		activity.logInfo(`Preparing dirty submodule: ${submodule.path}`);
-		if (!(await prepareDirtySubmodule(submodule, activity, ctx.signal))) {
-			activity.logInfo(
-				`Submodule ${submodule.path} became clean after fast-forward pull`,
-			);
-			continue;
-		}
-		await executeCommitCommand(
-			pi,
-			push ? "push --no-submodules" : "--no-submodules",
-			{ ...ctx, cwd: submodule.cwd },
-			{
-				commandText: `/commit (${submodule.path})`,
-				skipSubmoduleDiscovery: true,
-			},
-		);
-		const remaining = await gitOrThrowAsync(
-			submodule.cwd,
-			["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-			activity,
-			ctx.signal,
-		);
-		if (remaining) {
-			throw new Error(
-				`Submodule ${submodule.path} still has uncommitted changes after its commit workflow`,
-			);
-		}
-	}
-	if (submodules.length > 0) activity.setPhase("preparing");
-}
-
-export async function executeCommitCommand(
-	pi: ExtensionAPI,
-	args: string,
-	ctx: WorkflowContext,
-	options: ExecuteCommitCommandOptions = {},
-) {
-	const commandOptions = parseCommitCommandOptions(args);
-	const commandText =
-		options.commandText ?? `/commit${args.trim() ? ` ${args.trim()}` : ""}`;
-	const activity = createCommitActivity(pi, ctx, commandText);
-	ctx.ui.notify(`Starting ${commandText}...`, "info");
-	activity.setPhase("preparing");
-	try {
-		if (ctx.signal?.aborted) throw new Error("Operation cancelled");
-		const inspection = await inspectGitStateAsync(
-			ctx.cwd,
-			(cwd, gitArgs, signal) => runGitAsync(cwd, gitArgs, activity, signal),
-			ctx.signal,
-		);
-		if (!inspection.preflight.ok) {
-			throw new Error(
-				`Git state preflight failed:\n${inspection.preflight.blocked.join("\n")}`,
-			);
-		}
-		let initialSnapshot = await listChangedFilesAsync(
-			ctx.cwd,
-			undefined,
-			ctx.signal,
-			inspection.statusOutput,
-		);
-		if (
-			initialSnapshot.all.length === 0 &&
-			!initialSnapshot.hasDirtySubmodule
-		) {
-			activity.finish();
-			return ctx.ui.notify("Working tree is clean", "info");
-		}
-		if (
-			!options.skipSubmoduleDiscovery &&
-			!commandOptions.noSubmodules &&
-			initialSnapshot.hasDirtySubmodule
-		) {
-			await commitDirtyDirectSubmodules(
-				pi,
-				ctx,
-				activity,
-				commandOptions.push,
-			);
-			initialSnapshot = await listChangedFilesAsync(
-				ctx.cwd,
-				activity,
-				ctx.signal,
-			);
-		}
-		let prepared: Awaited<ReturnType<typeof prepareCommitSelection>>;
-		try {
-			prepared = await prepareCommitSelection(
-				commandOptions.args,
-				ctx,
-				activity,
-				initialSnapshot,
-			);
-		} catch (error) {
-			if (!(error instanceof NoCommittableChangesError)) throw error;
-			activity.finish();
-			return ctx.ui.notify(
-				"No committable parent-repository changes found; dirty submodule worktrees were left untouched.",
-				"info",
-			);
-		}
-		if (!prepared) {
-			activity.finish();
-			return ctx.ui.notify("Commit cancelled", "warning");
-		}
-		activity.setPhase("planning commits");
-
-		let plan: CommitPlan | undefined;
-		try {
-			plan = await generateCommitPlanWithLlm(ctx, {
-				files: prepared.selection.files,
-				diffStat: prepared.diffStat,
-				diff: prepared.diff,
-				hint: prepared.parsedArgs.hint,
-			});
-		} catch (error) {
-			activity.logInfo(formatCommitPlannerFailure(error));
-			const fallback = buildDeterministicCommitFallback({
-				files: prepared.selection.files,
-				diffStat: prepared.diffStat,
-				diff: prepared.diff,
-				hint: prepared.parsedArgs.hint,
-			});
-			plan = fallback.plan;
-		}
-
-		if (!plan) throw new Error("Commit planning produced no plan");
-		for (const warning of formatCommitPlanWarnings(plan.warnings)) {
-			activity.logInfo(warning);
-		}
-		const commitSummaries: string[] = [];
-		const firstGroupFiles = new Set(plan.groups[0]?.files ?? []);
-		const stagedOutsideFirstGroup = prepared.stagedFiles.filter(
-			(file) => !firstGroupFiles.has(file),
-		);
-		if (stagedOutsideFirstGroup.length > 0) {
-			await unstageFilesAsync(
-				ctx.cwd,
-				stagedOutsideFirstGroup,
-				activity,
-				ctx.signal,
-			);
-		}
-		for (const [index, group] of plan.groups.entries()) {
-			activity.setPhase(`creating commit ${index + 1}/${plan.groups.length}`);
-			await stageFilesAsync(
-				ctx.cwd,
-				group.files,
-				activity,
-				ctx.signal,
-			);
-			let hash: string;
-			try {
-				const stagedOutput = await gitOrThrowAsync(
-					ctx.cwd,
-					["diff", "--cached", "--name-only", "-z"],
-					activity,
-					ctx.signal,
-				);
-				const stagedFiles = uniqueSorted(
-					stagedOutput.split("\0").filter(Boolean),
-				);
-				const expectedFiles = uniqueSorted(group.files);
-				if (JSON.stringify(stagedFiles) !== JSON.stringify(expectedFiles)) {
-					throw new Error(
-						`Staged paths do not match commit group. Expected: ${expectedFiles.join(", ") || "none"}; actual: ${stagedFiles.join(", ") || "none"}`,
-					);
-				}
-				const commitMessage = await confirmCommitMessage({
-					subject: group.subject.trim(),
-					body: group.body?.trim() || undefined,
-				});
-				if (!commitMessage) {
-					await unstageFilesAsync(ctx.cwd, group.files, activity, ctx.signal);
-					activity.finish();
-					return ctx.ui.notify("Commit cancelled", "warning");
-				}
-				hash = await commitCurrentChangesAsync(
-					ctx.cwd,
-					commitMessage,
-					activity,
-					ctx.signal,
-				);
-				commitSummaries.push(`${hash} ${commitMessage.subject}`);
-			} catch (groupErr) {
-				await unstageFilesAsync(ctx.cwd, group.files, activity, ctx.signal);
-				throw groupErr;
-			}
-		}
-		if (prepared.parsedArgs.push) {
-			activity.setPhase("pushing");
-			await pushCurrentBranchAsync(ctx.cwd, activity, ctx.signal);
-			activity.logInfo("Pushed to remote");
-		}
-		activity.finish();
-		emitCommitReport(pi, ctx, commitSummaries);
-		return;
-	} catch (err) {
-		activity.logInfo(
-			`Error: Commit failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		activity.finish();
-		throw err;
-	}
-}
+export const executeCommitCommand = createCommitCommandExecutor({
+	runGitAsync,
+	gitOrThrowAsync,
+	listChangedFilesAsync,
+	prepareCommitSelection,
+	isNoCommittableChangesError: (error) =>
+		error instanceof NoCommittableChangesError,
+	generateCommitPlanWithLlm,
+	formatCommitPlannerFailure,
+	buildDeterministicCommitFallback,
+	formatCommitPlanWarnings,
+	unstageFilesAsync,
+	stageFilesAsync,
+	confirmCommitMessage,
+	commitCurrentChangesAsync,
+	pushCurrentBranchAsync,
+	createCommitActivity,
+	emitCommitReport,
+});
 
 export default function (pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	pi.on("input", async (event, ctx) => {
 		if (event.source === "extension") {
 			return { action: "continue" };
@@ -2677,21 +2181,6 @@ export default function (pi: ExtensionAPI) {
 			return new Text(text, 1, 0);
 		});
 
-		pi.registerMessageRenderer(
-			SLASH_COMMAND_ECHO_TYPE,
-			(message, _options, theme) => {
-				const text =
-					typeof message.content === "string"
-						? message.content
-						: String(message.content ?? "");
-				return new Text(
-					theme.bold(theme.fg("success", "> ")) +
-						theme.bold(theme.fg("text", text)),
-					0,
-					0,
-				);
-			},
-		);
 
 		pi.registerMessageRenderer(
 			COMMIT_ACTIVITY_TYPE,

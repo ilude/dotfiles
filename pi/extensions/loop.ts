@@ -9,7 +9,6 @@ import type {
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { createAsyncPoller, type AsyncPoller } from "../lib/async-poller.js";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import {
 	executeCommitCommand,
 	filterCommitSafeFiles,
@@ -489,7 +488,6 @@ export const loopTestApi = {
 
 export default function (pi: ExtensionAPI) {
 	let statusPoller: AsyncPoller | undefined;
-	wrapCommandRegistration(pi);
 	pi.on("session_start", (_event, ctx) => {
 		statusPoller?.dispose();
 		statusPoller = undefined;

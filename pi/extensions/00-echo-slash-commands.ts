@@ -1,8 +1,7 @@
 /**
  * Slash Command Echo Renderer
  *
- * Command-owning extensions wrap their local registration API through the
- * shared helper. This extension owns the visible transcript renderer.
+ * This extension owns the visible transcript renderer for slash echoes.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

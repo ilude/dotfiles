@@ -7,7 +7,6 @@ import {
 	type SessionBudgetFinding,
 } from "../lib/session-budget.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import {
 	getTask,
 	getUnmetBlockers,
@@ -288,7 +287,6 @@ export function registerSessionBudget(
 		configError = error instanceof Error ? error.message : String(error);
 	}
 
-	wrapCommandRegistration(pi);
 	let tracker = config ? new SessionBudgetTracker(config) : undefined;
 	let disabledByError: string | undefined;
 	let epochCounter = 0;

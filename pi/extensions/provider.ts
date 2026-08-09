@@ -16,7 +16,6 @@ import {
 	getAgentDir,
 	updateJsonObjectAtomic,
 } from "../lib/settings-file.js";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 type ProviderAuthType = "api_key" | "oauth";
 
@@ -275,7 +274,6 @@ async function runInteractiveFlow(ctx: any) {
 }
 
 export default function registerProviderCommand(pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	pi.registerCommand("provider", {
 		description: "Manage provider credentials (API keys in ~/.pi/agent/auth.json, OAuth guidance)",
 		handler: async (args, ctx) => {

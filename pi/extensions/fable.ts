@@ -5,7 +5,6 @@ import {
 	resolveDynamicModel,
 	resolveExplicitModelPolicy,
 } from "../lib/model-routing.js";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import { type AgentScope, discoverAgents } from "./subagent/agents.js";
 
 const FABLE_THINKING_LEVEL = "high";
@@ -162,7 +161,6 @@ export function subagentModelFor(
 }
 
 export default function fableCommand(pi: ExtensionAPI): void {
-	wrapCommandRegistration(pi);
 	let foremanMode = false;
 
 	pi.on("before_provider_request", (event, ctx) =>

@@ -29,7 +29,6 @@ import {
 	readJsonlFile,
 	resolveAgentDir,
 } from "../lib/session-jsonl.ts";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 type MetricMode = "calls" | "tokens";
 
@@ -1463,7 +1462,6 @@ function renderMarkdownReport(
 }
 
 export default function extensionStatsExtension(pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	pi.registerCommand("extension-stats", {
 		description:
 			"Dump last 1/7/30 days of ~/.pi session tool/command usage; pass 60, 90, or all to include longer windows",

@@ -5,7 +5,6 @@ import {
 	copyToClipboard,
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 interface MessageLike {
 	role?: unknown;
@@ -55,7 +54,6 @@ function errorMessage(error: unknown): string {
 }
 
 export default function copyAllExtension(pi: ExtensionAPI): void {
-	wrapCommandRegistration(pi);
 
 	pi.registerCommand("copy-all", {
 		description:

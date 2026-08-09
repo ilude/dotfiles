@@ -45,7 +45,6 @@ import {
 	resolveSampledDynamicModelFromRegistry,
 } from "../../lib/model-routing.js";
 import { TimingSpan } from "../../lib/observability.js";
-import { wrapCommandRegistration } from "../../lib/slash-command-echo.js";
 import {
 	assignReadOnlyFanoutExperiment,
 	buildOrchestrationExperimentAssignmentEvent,
@@ -1457,7 +1456,6 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	let sessionOpen = true;
 	let statusContext: ExtensionContext | undefined;
 	let unsubscribeStatus: (() => void) | undefined;

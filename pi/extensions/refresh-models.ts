@@ -26,7 +26,6 @@ import {
 	updateJsonObjectAtomic,
 	writeJsonObjectAtomic,
 } from "../lib/settings-file.ts";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 const CODEX_CLIENT_VERSION_CANDIDATES = ["999.0.0", "1.0.0", "0.99.0"];
 const SUPPORTED_REFRESH_PROVIDERS = new Set([
@@ -1014,7 +1013,6 @@ function registerCachedProvider(
 }
 
 export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	registerCachedProvider(pi, "openai-codex");
 
 	pi.registerCommand("refresh-models", {

@@ -63,6 +63,11 @@ describe("workflow slash command dispatch", () => {
 
 		await getHandler(mockPi, "plan-it")("build the thing", {});
 
+		expect(mockPi.sendMessage).toHaveBeenCalledWith({
+			customType: "slash-echo",
+			content: "/plan-it build the thing",
+			display: true,
+		});
 		const hiddenPromptCall = mockPi.sendMessage.mock.calls.find(
 			([message]) => message.customType === "workflow.hiddenPrompt",
 		);
@@ -83,6 +88,11 @@ describe("workflow slash command dispatch", () => {
 		try {
 			await getHandler(mockPi, "review-it")(fixture.planPath, ctx);
 
+			expect(mockPi.sendMessage).toHaveBeenCalledWith({
+				customType: "slash-echo",
+				content: `/review-it ${fixture.planPath}`,
+				display: true,
+			});
 			expect(mockPi.sendMessage).toHaveBeenCalledWith(
 				expect.objectContaining({
 					content: expect.stringContaining(fixture.planPath),
@@ -108,6 +118,11 @@ describe("workflow slash command dispatch", () => {
 
 		await getHandler(mockPi, "prd-it")("fuzzy idea", {});
 
+		expect(mockPi.sendMessage).toHaveBeenCalledWith({
+			customType: "slash-echo",
+			content: "/prd-it fuzzy idea",
+			display: true,
+		});
 		const hiddenPromptCall = mockPi.sendMessage.mock.calls.find(
 			([message]) => message.customType === "workflow.hiddenPrompt",
 		);
@@ -127,6 +142,11 @@ describe("workflow slash command dispatch", () => {
 
 		await getHandler(mockPi, "do-it")(planPath, ctx);
 
+		expect(mockPi.sendMessage).toHaveBeenCalledWith({
+			customType: "slash-echo",
+			content: `/do-it ${planPath}`,
+			display: true,
+		});
 		expect(ctx.newSession).not.toHaveBeenCalled();
 		const friction = await import("../lib/workflow-friction");
 		const telemetry = await import("../lib/workflow-telemetry");

@@ -10,7 +10,6 @@ import {
 	joinPromptsToNextAssistant,
 	readJsonlFile,
 } from "../lib/session-jsonl.ts";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 const RANGE_DAYS = [1, 7, 30, 60, 90] as const;
 const DEFAULT_REPORT_DAYS = [1, 7, 30] as const;
@@ -350,7 +349,6 @@ async function renderReport(
 }
 
 export default function routerStatsExtension(pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	pi.registerCommand("router-stats", {
 		description:
 			"Show prompt-router model-size, effort, confidence, latency, and token attribution stats",

@@ -27,7 +27,6 @@ import {
 	resetSessionApprovals,
 	type SessionApproval,
 } from "../lib/permission-registry.js";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 const RECENT_LIMIT = 20;
 const ACTION_TRUNCATE = 60;
@@ -117,7 +116,6 @@ function filterDecisionsByOutcome(
 }
 
 export default function (pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	pi.registerCommand("permissions", {
 		description:
 			"Show permission state -- session approvals + recent decisions. " +

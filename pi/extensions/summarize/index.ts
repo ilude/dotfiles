@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { wrapCommandRegistration } from "../../lib/slash-command-echo.js";
 import { sendHiddenWorkflowPrompt } from "../../lib/workflow-prompt.js";
 import {
 	buildSummaryEvidenceFallback,
@@ -13,7 +12,6 @@ const TEMPLATE = readFileSync(
 );
 
 export default function summarizeExtension(pi: ExtensionAPI): void {
-	wrapCommandRegistration(pi);
 
 	pi.registerCommand("summarize", {
 		description: "Create a compact, evidence-backed handoff for this session",

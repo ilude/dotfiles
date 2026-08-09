@@ -17,7 +17,6 @@ import {
 	resolveAgentDir,
 	resolveSessionRoot,
 } from "../lib/session-jsonl.ts";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 const WINDOWS = [1, 7, 30, 90] as const;
 const MODELS_DEV_URL = "https://models.dev/api.json";
@@ -400,7 +399,6 @@ export async function buildUsageReport(
 }
 
 export default function (pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	pi.registerTool({
 		name: "usage_report",
 		label: "Pi Usage Report",

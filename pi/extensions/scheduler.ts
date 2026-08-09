@@ -11,7 +11,6 @@ import {
 	type ProcessScheduler,
 	type ScheduledPromptSnapshot,
 } from "../lib/process-scheduler.js";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 const MAX_PROMPT_LENGTH = 4_000;
 const PREVIEW_LENGTH = 80;
@@ -294,7 +293,6 @@ function toolInput(value: unknown): ScheduleToolInput {
 }
 
 export default function registerScheduler(pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	let activeDelivery: ((job: { prompt: string }) => void) | undefined;
 
 	pi.on("session_start", (_event, _ctx) => {

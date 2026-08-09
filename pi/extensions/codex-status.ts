@@ -23,7 +23,6 @@ import {
 	type BedrockMonthSummary,
 	getCurrentBedrockMonthSummary,
 } from "../lib/bedrock-cost-ledger.js";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 type AuthEntry = {
 	access: string;
@@ -598,7 +597,6 @@ export function resetCodexStatusStateForTests(): void {
 }
 
 export default function registerCodexStatusCommand(pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	pi.on("session_start", async (_event, ctx) => {
 		startCodexFooterRefresh(ctx);
 	});

@@ -82,7 +82,6 @@ import {
 	ROUTER_SIZE_ORDER,
 	type RouterSize,
 } from "../lib/prompt-router/route-vocabulary.js";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import { sha256Hex } from "../lib/transcript.js";
 import { emit, getSessionId } from "./transcript-runtime.js";
 
@@ -894,7 +893,6 @@ function serializeModelForLog(model: unknown): Record<string, string> | null {
 // ---------------------------------------------------------------------------
 
 export default function (pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	const config = loadRouterConfig(EFFORT_ORDER);
 
 	const state: RouterState = {

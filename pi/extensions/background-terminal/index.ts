@@ -2,7 +2,6 @@ import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { wrapCommandRegistration } from "../../lib/slash-command-echo.js";
 import {
 	BackgroundTerminalManager,
 	type BackgroundTerminalSnapshot,
@@ -74,7 +73,6 @@ function textResult(text: string, details?: Record<string, unknown>) {
 }
 
 export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
-	wrapCommandRegistration(pi);
 	const manager = new BackgroundTerminalManager();
 	let sessionOpen = true;
 	let widgetContext:

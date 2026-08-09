@@ -11,7 +11,6 @@ import {
 	isAllowedTransition,
 	TERMINAL_TASK_STATES,
 } from "../lib/operator-state.js";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import {
 	type CreateTaskBatchInput,
 	clearCompletedTasks,
@@ -1278,7 +1277,6 @@ export function registerTasksCommand(
 }
 
 export default function (pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	let completionPromptsEnabled = true;
 	const coordinator = new TaskExecutionCoordinator(
 		undefined,
