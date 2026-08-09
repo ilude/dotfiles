@@ -14,7 +14,6 @@
 set -e
 
 # Configuration
-CONFIG="wsl/install.conf.yaml"
 DOTBOT_DIR="dotbot"
 DOTBOT_BIN="bin/dotbot"
 
@@ -46,34 +45,18 @@ for arg in "$@"; do
     esac
 done
 
-# Detect the dotfiles directory
-# Priority: 1) Current directory, 2) Script directory, 3) /mnt/c/Users/*/.dotfiles
+# The entrypoint owns its repository path. Running it from another directory must
+# not select that directory's configuration.
 find_dotfiles_dir() {
-    # Check current directory first (for temp copy approach)
-    if [[ -f "./wsl/install.conf.yaml" ]]; then
-        pwd
-        return 0
-    fi
-
-    # Check script directory
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [[ -f "$script_dir/../wsl/install.conf.yaml" ]]; then
-        echo "$(cd "$script_dir/.." && pwd)"
+    local repo_dir
+    repo_dir="$(cd "$script_dir/.." && pwd)"
+
+    if [[ -f "$repo_dir/wsl/install.conf.yaml" ]]; then
+        printf '%s\n' "$repo_dir"
         return 0
     fi
-
-    # Try to find in /mnt/c/Users (may fail if mount has issues)
-    for dir in /mnt/c/Users/*/; do
-        local user
-        user=$(basename "$dir" 2>/dev/null)
-        if [[ -n "$user" && "$user" != "Public" && "$user" != "Default" && "$user" != "Default User" && "$user" != "All Users" ]]; then
-            if [[ -d "${dir}.dotfiles" && -f "${dir}.dotfiles/wsl/install.conf.yaml" ]]; then
-                echo "${dir}.dotfiles"
-                return 0
-            fi
-        fi
-    done 2>/dev/null
 
     return 1
 }
@@ -97,99 +80,51 @@ if [[ -z "$WSL_DISTRO_NAME" && ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
     echo ""
 fi
 
-# Handle ~/.claude - backup if directory, remove to allow symlink
-if [[ -d ~/.claude && ! -L ~/.claude ]]; then
-    BACKUP_FILE="$HOME/.claude-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
-    echo -e "${YELLOW}Backing up existing ~/.claude to ${BACKUP_FILE}${NC}"
-    tar -czf "$BACKUP_FILE" -C "$HOME" .claude 2>/dev/null || true
-    rm -rf ~/.claude
-    echo -e "${GREEN}Backup created, removed ~/.claude directory${NC}"
-elif [[ -L ~/.claude ]]; then
-    # Remove old symlink to allow dotbot to recreate
-    rm -f ~/.claude
-fi
-
-# Change to dotfiles directory
+# Change to the repository before resolving its managed dependencies.
 cd "$BASEDIR"
+CONFIG="$BASEDIR/wsl/install.conf.yaml"
+DOTBOT_PATH="$BASEDIR/$DOTBOT_DIR/$DOTBOT_BIN"
 
 # Initialize the submodules needed by Dotbot and the Pi Onclave adapter.
-USE_DOTBOT=false
 if [[ -d ".git" ]]; then
     echo -e "${YELLOW}Initializing required submodules...${NC}"
     git submodule sync --quiet --recursive
     git submodule update --init --recursive "${DOTBOT_DIR}" onclave
 fi
-if [[ -f "${DOTBOT_DIR}/${DOTBOT_BIN}" ]]; then
-    USE_DOTBOT=true
+
+if [[ ! -f "$DOTBOT_PATH" ]]; then
+    echo -e "${RED}Error: Dotbot is unavailable at $DOTBOT_PATH.${NC}"
+    echo "Initialize the dotbot submodule, then rerun wsl/install."
+    exit 1
 fi
 
-if [[ "$USE_DOTBOT" == "true" ]]; then
-    # Find Python
-    PYTHON=""
-    if command -v python3 &>/dev/null; then
-        PYTHON="python3"
-    elif command -v python &>/dev/null; then
-        PYTHON="python"
-    else
-        echo -e "${RED}Error: Python not found. Please install python3.${NC}"
-        exit 1
-    fi
-
-    echo -e "${CYAN}Running dotbot...${NC}"
-    if "$PYTHON" "${BASEDIR}/${DOTBOT_DIR}/${DOTBOT_BIN}" -d "${BASEDIR}" -c "${CONFIG}" "${@}"; then
-        echo -e "${GREEN}Dotbot completed successfully!${NC}"
-    else
-        echo -e "${YELLOW}Dotbot completed with warnings.${NC}"
-    fi
+if command -v python3 &>/dev/null; then
+    PYTHON="python3"
+elif command -v python &>/dev/null; then
+    PYTHON="python"
 else
-    # Manual copy fallback (when dotbot isn't available, e.g., temp directory install)
-    echo -e "${CYAN}Dotbot not available, performing manual setup...${NC}"
+    echo -e "${RED}Error: Python not found. Install python3, then rerun wsl/install.${NC}"
+    exit 1
+fi
 
-    # Copy shell configs (not link, since source may be temporary)
-    for file in .zshrc .zprofile .profile .bash_env .bashrc .bash_profile .dircolors; do
-        if [[ -f "${BASEDIR}/${file}" ]]; then
-            # Remove existing symlink if present
-            [[ -L ~/${file} ]] && rm -f ~/${file}
-            cp -f "${BASEDIR}/${file}" ~/${file}
-            echo "  Copied: ~/${file}"
-        fi
-    done
+# Handle ~/.claude - backup if directory, remove to allow symlink
+if [[ -d "$HOME/.claude" && ! -L "$HOME/.claude" ]]; then
+    BACKUP_FILE="$HOME/.claude-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+    echo -e "${YELLOW}Backing up existing ~/.claude to ${BACKUP_FILE}${NC}"
+    tar -czf "$BACKUP_FILE" -C "$HOME" .claude
+    rm -rf "$HOME/.claude"
+    echo -e "${GREEN}Backup created, removed ~/.claude directory${NC}"
+elif [[ -L "$HOME/.claude" ]]; then
+    # Remove old symlink to allow dotbot to recreate.
+    rm -f "$HOME/.claude"
+fi
 
-    # Git config (XDG-compliant path)
-    if [[ -f "${BASEDIR}/config/git/config" ]]; then
-        mkdir -p ~/.config/git
-        cp -f "${BASEDIR}/config/git/config" ~/.config/git/config
-        echo "  Copied: ~/.config/git/config"
-    fi
-    if [[ -f "${BASEDIR}/config/git/ignore" ]]; then
-        mkdir -p ~/.config/git
-        cp -f "${BASEDIR}/config/git/ignore" ~/.config/git/ignore
-        echo "  Copied: ~/.config/git/ignore"
-    fi
-
-    # Copy Oh My Posh config
-    if [[ -f "${BASEDIR}/config/ohmyposh/prompt.json" ]]; then
-        mkdir -p ~/.config/ohmyposh
-        [[ -L ~/.config/ohmyposh/prompt.json ]] && rm -f ~/.config/ohmyposh/prompt.json
-        cp -f "${BASEDIR}/config/ohmyposh/prompt.json" ~/.config/ohmyposh/prompt.json
-        echo "  Copied: ~/.config/ohmyposh/prompt.json"
-    fi
-
-    # Symlink Claude directory (or copy if source is temporary)
-    if [[ -d "${BASEDIR}/claude" ]]; then
-        rm -rf ~/.claude 2>/dev/null || true
-        if [[ "$BASEDIR" == /mnt/c/* ]]; then
-            # Link to Windows dotfiles
-            ln -sf "${BASEDIR}/claude" ~/.claude
-            echo "  Linked: ~/.claude -> ${BASEDIR}/claude"
-        else
-            # Copy if source is temporary
-            cp -rf "${BASEDIR}/claude" ~/.claude
-            echo "  Copied: ~/.claude"
-        fi
-    fi
-
-    echo -e "${GREEN}Manual setup completed!${NC}"
+echo -e "${CYAN}Running dotbot...${NC}"
+if "$PYTHON" "$DOTBOT_PATH" -d "$BASEDIR" -c "$CONFIG" "${@}"; then
+    echo -e "${GREEN}Dotbot completed successfully!${NC}"
+else
+    echo -e "${RED}Error: Dotbot failed.${NC}"
+    exit 1
 fi
 
 # Install packages if requested
@@ -197,35 +132,21 @@ if [[ "$INSTALL_PACKAGES" == "true" ]]; then
     echo ""
     echo -e "${CYAN}Installing system packages...${NC}"
 
-    # Prefer wsl-packages (modern, idempotent) over zsh-setup
-    if [[ -f "${BASEDIR}/wsl/packages" ]]; then
-        bash "${BASEDIR}/wsl/packages"
-    elif [[ -f "${BASEDIR}/zsh-setup" ]]; then
-        # Fallback to zsh-setup in Linux mode
-        unset WINDIR
-        export OSTYPE="linux-gnu"
-        bash "${BASEDIR}/zsh-setup"
-    else
-        echo -e "${YELLOW}No package installer found, skipping${NC}"
+    PACKAGES_SCRIPT="$BASEDIR/wsl/packages"
+    if [[ ! -f "$PACKAGES_SCRIPT" ]]; then
+        echo -e "${RED}Error: WSL package installer is unavailable at $PACKAGES_SCRIPT.${NC}"
+        exit 1
     fi
+    bash "$PACKAGES_SCRIPT"
 fi
 
 echo ""
 echo -e "${CYAN}Installing Bitwarden Secrets Manager CLI...${NC}"
-"${PYTHON:-python3}" "${BASEDIR}/scripts/install-bws.py"
+"$PYTHON" "$BASEDIR/scripts/install-bws.py"
 
 echo ""
 echo -e "${CYAN}Restoring Onclave private configuration...${NC}"
-"${PYTHON:-python3}" "${BASEDIR}/scripts/onclave-bootstrap.py"
-
-# Install zsh plugins (doesn't require packages)
-# Note: ~/.dotfiles is symlinked to this repo, so zsh-plugins is already accessible
-echo ""
-echo -e "${CYAN}Setting up zsh plugins...${NC}"
-if [[ -f "${BASEDIR}/zsh-plugins" ]]; then
-    source "${BASEDIR}/zsh-plugins"
-    echo -e "${GREEN}Zsh plugins installed!${NC}"
-fi
+"$PYTHON" "$BASEDIR/scripts/onclave-bootstrap.py"
 
 echo ""
 echo -e "${GREEN}=== WSL Setup Complete ===${NC}"
