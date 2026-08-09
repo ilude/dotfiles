@@ -14,10 +14,34 @@ CONFIG="install.conf.yaml"
 DOTBOT_DIR="dotbot"
 DOTBOT_BIN="bin/dotbot"
 BASEDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON_BIN=""
+for candidate in python python3; do
+    if candidate_path="$(command -v "$candidate" 2>/dev/null)" &&
+        "$candidate_path" -c 'import sys; raise SystemExit(sys.version_info.major != 3)' 2>/dev/null; then
+        PYTHON_BIN="$candidate_path"
+        break
+    fi
+done
+unset candidate candidate_path
+if [[ -z "$PYTHON_BIN" ]]; then
+    echo "Error: Python 3 is required to run the installer" >&2
+    exit 1
+fi
 
 # Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
 is_windows() {
   [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
+}
+
+has_supported_go() {
+    local version
+    command -v go >/dev/null 2>&1 || return 1
+    version="$(go version 2>/dev/null)"
+    if [[ "$version" =~ go([0-9]+)\.([0-9]+) ]]; then
+        ((BASH_REMATCH[1] > 1 || (BASH_REMATCH[1] == 1 && BASH_REMATCH[2] >= 23)))
+        return
+    fi
+    return 1
 }
 
 # Windows notice
@@ -194,7 +218,7 @@ fi
 completed_steps+=("Python dev tools")
 
 current_step="Bitwarden Secrets Manager CLI"
-python "${BASEDIR}/scripts/install-bws.py"
+"$PYTHON_BIN" "${BASEDIR}/scripts/install-bws.py"
 completed_steps+=("Bitwarden Secrets Manager CLI")
 
 current_step="Claude Code hook dependencies"
@@ -254,18 +278,28 @@ completed_steps+=("Homebrew packages")
 
 current_step="Onclave private bootstrap"
 if [[ ! -f "${BASEDIR}/private/secrets.env" && ! -x "${BASEDIR}/bin/dolos" && ! -x "${BASEDIR}/bin/dolos.exe" ]] &&
-    ! command -v go &>/dev/null && ! command -v docker &>/dev/null; then
+    ! has_supported_go && ! command -v docker &>/dev/null; then
     if is_windows && command -v winget &>/dev/null; then
         winget install --id GoLang.Go --exact --source winget --accept-package-agreements --accept-source-agreements --disable-interactivity
     elif command -v apt-get &>/dev/null; then
         sudo apt-get update
-        sudo apt-get install -y golang-go
+        if apt-cache show golang-1.23-go >/dev/null 2>&1; then
+            sudo apt-get install -y golang-1.23-go
+            export PATH="/usr/lib/go-1.23/bin:$PATH"
+            if ! has_supported_go; then
+                echo "Error: Go 1.23 installation did not produce a usable compiler" >&2
+                exit 1
+            fi
+        else
+            echo "Error: this apt repository does not provide Go 1.23; install Go 1.23 or Docker" >&2
+            exit 1
+        fi
     else
-        echo "Error: Go or Docker is required to restore the Onclave private configuration" >&2
+        echo "Error: Go 1.23 or Docker is required to restore the Onclave private configuration" >&2
         exit 1
     fi
 fi
-python "${BASEDIR}/scripts/onclave-bootstrap.py"
+"$PYTHON_BIN" "${BASEDIR}/scripts/onclave-bootstrap.py"
 completed_steps+=("Onclave private bootstrap")
 
 current_step="Bun install"

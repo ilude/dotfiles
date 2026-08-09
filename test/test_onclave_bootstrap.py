@@ -2,6 +2,7 @@
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,6 +24,62 @@ def test_parse_exported_env_supports_shell_exports(tmp_path: Path) -> None:
         "BITWARDEN_ACCESS_KEY": "token-value",
         "PLAIN": "value",
     }
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        ("go version go1.23.12 linux/amd64\n", (1, 23)),
+        ("go version go1.24.1 darwin/arm64\n", (1, 24)),
+        ("unexpected output\n", None),
+    ],
+)
+def test_go_version_parses_supported_output(
+    output: str, expected: tuple[int, int] | None, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        MODULE.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout=output),
+    )
+
+    assert MODULE.go_version("go") == expected
+
+
+def test_build_dolos_uses_darwin_docker_target_for_old_go(tmp_path: Path, monkeypatch) -> None:
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    monkeypatch.setattr(MODULE, "find_go", lambda: "/usr/bin/go")
+    monkeypatch.setattr(MODULE, "go_version", lambda _go: (1, 22))
+    monkeypatch.setattr(
+        MODULE.shutil,
+        "which",
+        lambda command: f"/usr/bin/{command}" if command in {"bash", "docker"} else None,
+    )
+    monkeypatch.setattr(MODULE.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(MODULE.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(
+        MODULE.subprocess,
+        "run",
+        lambda command, **kwargs: calls.append((command, kwargs)),
+    )
+
+    MODULE.build_dolos(tmp_path, tmp_path / "bin" / "dolos")
+
+    assert len(calls) == 1
+    command, options = calls[0]
+    assert command == ["/usr/bin/bash", str(tmp_path / "tools" / "dolos" / "build.sh")]
+    assert options["env"]["GOOS"] == "darwin"
+    assert options["env"]["GOARCH"] == "arm64"
+
+
+def test_build_dolos_rejects_old_go_without_docker(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(MODULE, "find_go", lambda: "/usr/bin/go")
+    monkeypatch.setattr(MODULE, "go_version", lambda _go: (1, 22))
+    monkeypatch.setattr(MODULE.shutil, "which", lambda _command: None)
+
+    with pytest.raises(MODULE.BootstrapError, match="Go 1.23 or newer"):
+        MODULE.build_dolos(tmp_path, tmp_path / "bin" / "dolos")
 
 
 def test_restore_private_uses_personal_identity_and_dolos(tmp_path: Path, monkeypatch) -> None:

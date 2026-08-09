@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import re
 import shutil
 import subprocess
 import time
@@ -13,6 +14,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 REQUIRED_SECRET_KEYS = ("BITWARDEN_ACCESS_KEY",)
+MINIMUM_GO_VERSION = (1, 23)
 
 
 class BootstrapError(RuntimeError):
@@ -69,10 +71,23 @@ def dolos_target(repo_root: Path) -> Path:
     return repo_root / "bin" / executable
 
 
+def go_version(executable: str) -> tuple[int, int] | None:
+    result = subprocess.run(
+        [executable, "version"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    match = re.search(r"\bgo(\d+)\.(\d+)", result.stdout)
+    if result.returncode != 0 or match is None:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
 def build_dolos(repo_root: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     go = find_go()
-    if go:
+    if go and (go_version(go) or (0, 0)) >= MINIMUM_GO_VERSION:
         subprocess.run(
             [go, "build", "-o", str(target), "."],
             cwd=repo_root / "tools" / "dolos",
@@ -85,7 +100,9 @@ def build_dolos(repo_root: Path, target: Path) -> None:
     if docker and bash:
         machine = platform.machine().lower()
         arch = "arm64" if machine in {"arm64", "aarch64"} else "amd64"
-        system = "windows" if platform.system().lower() == "windows" else "linux"
+        system = platform.system().lower()
+        if system not in {"darwin", "linux", "windows"}:
+            raise BootstrapError(f"cannot build Dolos for unsupported platform: {system}")
         environment = {
             **os.environ,
             "GOOS": system,
@@ -100,7 +117,7 @@ def build_dolos(repo_root: Path, target: Path) -> None:
         )
         return
 
-    raise BootstrapError("cannot build Dolos: install Go or provide a running Docker CLI")
+    raise BootstrapError("cannot build Dolos: install Go 1.23 or newer or provide Docker")
 
 
 def run_unpack(dolos: Path, repo_root: Path, identity: Path) -> None:
