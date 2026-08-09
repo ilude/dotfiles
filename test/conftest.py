@@ -6,7 +6,6 @@
 Shared pytest fixtures for dotfiles tests.
 """
 
-import shutil
 from pathlib import Path
 
 import pytest
@@ -52,10 +51,3 @@ def tmp_home(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(home))  # Windows
 
     return home
-
-
-@pytest.fixture
-def zsh_available():
-    """Skip test if zsh is not available."""
-    if shutil.which("zsh") is None:
-        pytest.skip("zsh not installed")

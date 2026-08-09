@@ -157,8 +157,9 @@ Automatic identity switching based on directory or remote URL:
 ### Testing
 
 ```bash
-make test          # Run all tests
-make test-docker   # Run in Ubuntu 24.04 container
+make test          # Run portable tests without requiring zsh
+make test-zsh      # Run executable zsh runtime contracts
+make test-docker   # Run portable tests in Ubuntu 24.04
 make test-quick    # Run core tests only
 ```
 

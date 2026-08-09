@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.9"
-# dependencies = ["pyyaml"]
+# dependencies = ["pytest", "pyyaml"]
 # ///
 """Semantic contracts for Dotbot link configuration."""
 
@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 DOTFILES = Path(__file__).parent.parent
@@ -44,6 +45,7 @@ def _unconditional_targets(targets: dict[str, Any]) -> set[str]:
     }
 
 
+@pytest.mark.zsh
 def test_shell_modules_expose_runtime_state() -> None:
     """Zsh modules produce the expected environment, options, and bindings."""
     zsh = os.environ.get("ZSH_EXECUTABLE") or shutil.which("zsh")
@@ -52,7 +54,6 @@ def test_shell_modules_expose_runtime_state() -> None:
     modules = [
         "zsh/rc.d/00-helpers.zsh",
         "zsh/env.d/01-locale.zsh",
-        "zsh/env.d/02-path.zsh",
         "zsh/rc.d/03-history.zsh",
         "zsh/rc.d/04-keybindings.zsh",
     ]
@@ -60,7 +61,8 @@ def test_shell_modules_expose_runtime_state() -> None:
     command = (
         f"ZDOTDIR=/tmp/dotfiles-test; {source_commands}; "
         'printf "%s\\n" "$LC_ALL" "$LANG" "$HISTFILE" "$HISTSIZE" "$SAVEHIST"; '
-        "setopt APPEND_HISTORY EXTENDED_HISTORY HIST_IGNORE_DUPS SHARE_HISTORY; "
+        "for option in APPEND_HISTORY EXTENDED_HISTORY HIST_IGNORE_DUPS SHARE_HISTORY; do "
+        '[[ -o $option ]] && print -r -- "$option=on" || print -r -- "$option=off"; done; '
         "whence -w source_if_exists restore_path is_windows; "
         'bindkey "^[[H"; bindkey "^b"'
     )
@@ -79,6 +81,10 @@ def test_shell_modules_expose_runtime_state() -> None:
         "/tmp/dotfiles-test/.zsh_history",
         "100000",
         "100000",
+        "APPEND_HISTORY=on",
+        "EXTENDED_HISTORY=on",
+        "HIST_IGNORE_DUPS=on",
+        "SHARE_HISTORY=on",
         "source_if_exists: function",
         "restore_path: function",
         "is_windows: function",

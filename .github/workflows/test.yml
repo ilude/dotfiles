@@ -62,10 +62,14 @@ jobs:
         if: runner.os != 'Windows'
         run: make check-ci
 
-      - name: Run tests (Windows)
+      - name: Run portable tests (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: uv run pytest test/ claude/hooks/*/tests/ -v --tb=short
+        run: uv run pytest test/ claude/hooks/*/tests/ -m "not zsh" -v --tb=short
+
+      - name: Run zsh runtime contracts
+        shell: bash
+        run: uv run pytest test/ -m zsh -v --tb=short
 
   pi-vitest:
     runs-on: ubuntu-latest

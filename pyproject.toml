@@ -37,3 +37,6 @@ select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["test", "claude/hooks/*/tests"]
+markers = [
+    "zsh: executable zsh runtime contracts",
+]

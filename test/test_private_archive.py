@@ -32,11 +32,7 @@ def git_init(repo: Path) -> None:
 
 
 def dolos_exe() -> Path:
-    exe = ROOT / "bin" / ("dolos.exe" if os.name == "nt" else "dolos")
-    if not exe.exists():
-        alt = ROOT / "bin" / ("dolos" if os.name == "nt" else "dolos.exe")
-        exe = alt if alt.exists() else exe
-    return exe
+    return ROOT / "bin" / ("dolos.exe" if os.name == "nt" else "dolos")
 
 
 def dolos_cmd() -> list[str]:
@@ -60,9 +56,9 @@ def make_hook_repo(tmp_path: Path) -> Path:
     fake.write_text(
         "#!/bin/sh\n"
         "printf '%s\\n' \"$@\" >> dolos-args.log\n"
-        "if [ \"$1 $2\" = \"scan --staged\" ]; then\n"
+        'if [ "$1 $2" = "scan --staged" ]; then\n'
         "  for path in $(git diff --cached --name-only); do\n"
-        "    case \"$path\" in\n"
+        '    case "$path" in\n'
         "      private|private/*) echo unsafe staged path >&2; exit 3 ;;\n"
         "      .dolos/authorized_keys|.dolos/artifacts/private.tar.gz.age) ;;\n"
         "      .dolos/*) echo unsafe staged path >&2; exit 3 ;;\n"
@@ -71,7 +67,7 @@ def make_hook_repo(tmp_path: Path) -> Path:
         "  echo dolos scan ok\n"
         "  exit 0\n"
         "fi\n"
-        "if [ \"$1\" = \"status\" ]; then\n"
+        'if [ "$1" = "status" ]; then\n'
         "  if [ -d private ] && [ ! -f .dolos/artifacts/private.tar.gz.age ]; then\n"
         "    echo 'archive=private status=diverged plain=true artifact=false'\n"
         "    exit 4\n"
@@ -79,7 +75,7 @@ def make_hook_repo(tmp_path: Path) -> Path:
         "  echo 'archive=private status=clean plain=true artifact=true'\n"
         "  exit 0\n"
         "fi\n"
-        "if [ \"$1 $2\" = \"pack private\" ]; then\n"
+        'if [ "$1 $2" = "pack private" ]; then\n'
         "  mkdir -p .dolos/artifacts\n"
         "  printf 'encrypted private archive\\n' > .dolos/artifacts/private.tar.gz.age\n"
         "  exit 0\n"
@@ -92,9 +88,7 @@ def make_hook_repo(tmp_path: Path) -> Path:
     run(["git", "add", "scripts", ".gitignore", ".gitattributes"], cwd=repo)
     run(["git", "add", "-f", str(fake.relative_to(repo))], cwd=repo)
     run(["git", "commit", "-m", "base"], cwd=repo)
-    hook_path = run(
-        ["git", "rev-parse", "--git-path", "hooks/pre-commit"], cwd=repo
-    ).stdout.strip()
+    hook_path = run(["git", "rev-parse", "--git-path", "hooks/pre-commit"], cwd=repo).stdout.strip()
     hook = repo / hook_path
     hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text("#!/bin/sh\nscripts/git-hooks/pre-commit-x-private\n", encoding="utf-8")

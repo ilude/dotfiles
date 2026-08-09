@@ -1,4 +1,4 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python lint-shell lint-shell-format format format-python check check-changed check-fast check-ci check-pi-ci check-pi-extensions pi-doctor install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-zsh test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python lint-shell lint-shell-format format format-python check check-changed check-fast check-ci check-pi-ci check-pi-extensions pi-doctor install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install zsh/env.d/02-path.zsh scripts/ci-bootstrap scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/pi-doctor scripts/zsh-setup scripts/zsh-plugins wsl/packages
@@ -10,8 +10,9 @@ help:
 	@echo "  make validate      - Validate shell environment (bash)"
 	@echo "  make validate-all  - Validate all shells (bash + PowerShell)"
 	@echo "  make validate-pwsh - Validate PowerShell environment"
-	@echo "  make test          - Run all tests (pytest)"
-	@echo "  make test-ci       - Run CI-safe pytest suite"
+	@echo "  make test          - Run portable tests without requiring zsh"
+	@echo "  make test-zsh      - Run executable zsh runtime contracts"
+	@echo "  make test-ci       - Run CI-safe portable pytest suite"
 	@echo "  make test-ci-contract - Run CI contract checks first"
 	@echo "  make test-local    - Run local pytest suite (may skip missing runtime artifacts)"
 	@echo "  make test-runtime  - Run runtime-dependent local checks"
@@ -70,27 +71,37 @@ preflight:
 ci-bootstrap:
 	@scripts/ci-bootstrap base
 
-# Run all tests (pytest) with bounded parallelism and timing.
+# Run portable tests with bounded parallelism and timing. Executable zsh
+# contracts have their own explicit gate so unrelated work needs no host zsh.
 test: preflight
-	@echo "=== Test Suite ==="
+	@echo "=== Portable Test Suite ==="
 	@start_time=$$(date +%s); \
 	uv run pytest test/ \
 		claude/hooks/damage-control/tests/ \
 		claude/hooks/path-normalization/tests/ \
 		claude/hooks/session-history/tests/ \
-		-v --tb=short --durations=20 -n $(PYTEST_WORKERS) && \
+		-m "not zsh" -v --tb=short --durations=20 -n $(PYTEST_WORKERS) && \
 	echo "" && \
-	echo "=== All tests passed in $$(($$(date +%s) - start_time))s ==="
+	echo "=== All portable tests passed in $$(($$(date +%s) - start_time))s ==="
+
+# Run the small set of contracts that execute tracked zsh configuration.
+test-zsh: preflight
+	@zsh="$${ZSH_EXECUTABLE:-$$(command -v zsh 2>/dev/null || true)}"; \
+	if [ -z "$$zsh" ] || ! "$$zsh" --version >/dev/null 2>&1; then \
+		echo "ERROR: zsh is required for make test-zsh" >&2; \
+		exit 1; \
+	fi; \
+	ZSH_EXECUTABLE="$$zsh" uv run pytest test/ -m zsh -v --tb=short
 
 # Run fast checks for repo invariants that CI depends on.
 test-ci-contract: preflight
 	@echo "Running CI contract checks..."
 	uv run pytest test/test_ci_contract.py -v --tb=short -x
 
-# Run pytest tests that should pass in a fresh CI checkout.
+# Run portable pytest tests that should pass in a fresh CI checkout.
 test-ci: test-ci-contract
-	@echo "Running CI-safe pytest suite..."
-	uv run pytest test/ claude/hooks/*/tests/ -v --tb=short --durations=10 --ignore=test/test_ci_contract.py
+	@echo "Running CI-safe portable pytest suite..."
+	uv run pytest test/ claude/hooks/*/tests/ -m "not zsh" -v --tb=short --durations=10 --ignore=test/test_ci_contract.py
 
 # Run pytest tests (config patterns, idempotency, hooks)
 test-pytest: test-ci
@@ -102,24 +113,25 @@ test-local: test
 # Run runtime-dependent local checks.
 test-runtime: check-pi-extensions
 
-# Run only core tests (faster)
+# Run only portable core tests (faster)
 test-quick: preflight
-	uv run pytest test/test_config_patterns.py -v --tb=short -x
+	uv run pytest test/test_config_patterns.py -m "not zsh" -v --tb=short -x
 
-# Run all pytest-discovered suites with bounded parallelism.
+# Run all portable pytest-discovered suites with bounded parallelism.
 test-parallel: preflight
-	uv run pytest test/ claude/hooks/*/tests/ -v --tb=short -n $(PYTEST_WORKERS)
+	uv run pytest test/ claude/hooks/*/tests/ -m "not zsh" -v --tb=short -n $(PYTEST_WORKERS)
 
-# Run tests in Ubuntu 24.04 Docker container (matches CI environment)
+# Run portable tests in an Ubuntu 24.04 container with read-only source.
 test-docker:
-	@echo "Running tests in Ubuntu 24.04 container..."
+	@echo "Running portable tests in Ubuntu 24.04 container..."
 	docker run --rm -v "$(CURDIR):/dotfiles:ro" -w /dotfiles ubuntu:24.04 bash -c '\
 		apt-get update -qq && \
-		apt-get install -y -qq git python3 python3-pip pipx zsh >/dev/null 2>&1 && \
+		apt-get install -y -qq git nodejs python3 python3-pip pipx >/dev/null 2>&1 && \
 		pipx install uv >/dev/null 2>&1 && \
 		export PATH="$$HOME/.local/bin:$$PATH" && \
-		echo "Running pytest..." && \
-		uv run pytest test/ claude/hooks/*/tests/ -v --tb=short'
+		export UV_PROJECT_ENVIRONMENT=/tmp/dotfiles-venv UV_CACHE_DIR=/tmp/uv-cache && \
+		echo "Running portable pytest..." && \
+		uv run pytest test/ claude/hooks/*/tests/ -m "not zsh" -p no:cacheprovider -v --tb=short'
 
 # Run PowerShell Pester tests (Windows only)
 test-powershell:
