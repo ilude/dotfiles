@@ -45,6 +45,9 @@
 
 # Windows-specific: PowerShell profile
 - link:
+    ~/Documents/PowerShell/lib/completion-cache.ps1:
+      path: powershell/lib/completion-cache.ps1
+      if: '[ "$OSTYPE" = "msys" ] || [ "$OSTYPE" = "cygwin" ] || [ -n "$WINDIR" ]'
     ~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1:
       path: powershell/profile.ps1
       if: '[ "$OSTYPE" = "msys" ] || [ "$OSTYPE" = "cygwin" ] || [ -n "$WINDIR" ]'

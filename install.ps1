@@ -201,6 +201,7 @@ Write-Host ""
 
 # Source path utility functions (extracted for testability)
 . "$PSScriptRoot/powershell/lib/path-utils.ps1"
+. (Join-Path $PSScriptRoot 'powershell\lib\completion-cache.ps1')
 
 function Write-GitBashPath {
     # Generate .path-windows-local with Windows PATH converted for Git Bash
@@ -1036,7 +1037,7 @@ function Install-Packages {
     # DSC `WinGetPackage` `version:` is an install-time target, NOT an upgrade
     # pin (winget-cli#3401, #5244). Pinning stays in a separate loop. The loop
     # is dead code today (no packages carry a version) but preserved for future
-    # use — when a version: key is added to a YAML entry, extend Get-DscYamlPackages
+    # use -- when a version: key is added to a YAML entry, extend Get-DscYamlPackages
     # to surface it and feed this loop.
     # Placeholder: no-op. Fill in Version parsing in Get-DscYamlPackages when needed.
 
@@ -2105,6 +2106,41 @@ try {
         Write-Host "  PowerShell profile source not found, skipping" -ForegroundColor DarkGray
     }
 
+    $completionCacheSource = Join-Path $BASEDIR "powershell\lib\completion-cache.ps1"
+    $completionCacheDir = Join-Path $pwshProfileDir "lib"
+    $completionCacheDest = Join-Path $completionCacheDir "completion-cache.ps1"
+    if (Test-Path $completionCacheSource) {
+        if (-not (Test-Path $completionCacheDir)) {
+            New-Item -ItemType Directory -Path $completionCacheDir -Force | Out-Null
+        }
+
+        $completionCacheInstalled = $false
+        if (Test-Path $completionCacheDest) {
+            $item = Get-Item $completionCacheDest -Force
+            if ($item.LinkType -eq "SymbolicLink" -and $item.Target -eq $completionCacheSource) {
+                Write-Host "  completion-cache.ps1: already linked" -ForegroundColor DarkGray
+                $completionCacheInstalled = $true
+            } elseif ((Get-Content $completionCacheDest -Raw -ErrorAction SilentlyContinue) -eq (Get-Content $completionCacheSource -Raw)) {
+                Write-Host "  completion-cache.ps1: already up to date" -ForegroundColor DarkGray
+                $completionCacheInstalled = $true
+            } else {
+                Remove-Item $completionCacheDest -Force
+            }
+        }
+
+        if (-not $completionCacheInstalled) {
+            try {
+                New-Item -ItemType SymbolicLink -Path $completionCacheDest -Target $completionCacheSource -Force | Out-Null
+                Write-Host "  completion-cache.ps1: linked" -ForegroundColor Green
+            } catch {
+                Write-Host "  completion-cache.ps1: symlink failed, copying instead" -ForegroundColor Yellow
+                Copy-Item $completionCacheSource $completionCacheDest -Force
+            }
+        }
+    } else {
+        Write-Host "  completion-cache.ps1 source not found, skipping" -ForegroundColor DarkGray
+    }
+
     # ========================================================================
     # VS Code Settings Symlinks (admin required for symlinks without Developer Mode)
     # ========================================================================
@@ -2263,44 +2299,8 @@ try {
     # ========================================================================
     Write-Host "`nGenerating PowerShell completion cache..." -ForegroundColor Cyan
 
-    $completionCacheDir = "$env:LOCALAPPDATA\PowerShell\CompletionCache"
-    if (-not (Test-Path $completionCacheDir)) {
-        New-Item -ItemType Directory -Path $completionCacheDir -Force | Out-Null
-    }
-
-    $completionTools = @(
-        @{Name='kubectl'; Cmd='kubectl completion powershell'},
-        @{Name='helm'; Cmd='helm completion powershell'},
-        @{Name='gh'; Cmd='gh completion -s powershell'},
-        @{Name='tailscale'; Cmd='tailscale completion powershell'}
-    )
-
-    foreach ($tool in $completionTools) {
-        if (Get-Command $tool.Name -ErrorAction SilentlyContinue) {
-            Write-Host "  Caching $($tool.Name)..." -ForegroundColor Cyan -NoNewline
-            try {
-                Invoke-Expression $tool.Cmd | Out-File "$completionCacheDir\$($tool.Name).ps1" -Encoding utf8
-                Write-Host " done" -ForegroundColor Green
-            }
-            catch {
-                Write-Host " failed" -ForegroundColor Red
-            }
-        }
-    }
-
-    # zoxide init
-    if (Get-Command zoxide -ErrorAction SilentlyContinue) {
-        Write-Host "  Caching zoxide..." -ForegroundColor Cyan -NoNewline
-        try {
-            zoxide init powershell | Out-File "$completionCacheDir\zoxide.ps1" -Encoding utf8
-            Write-Host " done" -ForegroundColor Green
-        }
-        catch {
-            Write-Host " failed" -ForegroundColor Red
-        }
-    }
-
-    Write-Host "  Completion cache: $completionCacheDir" -ForegroundColor DarkGray
+    Update-CompletionCache -InstallerOutput
+    Write-Host "  Completion cache: $(Get-CompletionCacheDirectory)" -ForegroundColor DarkGray
 
     # Warn about existing repos that may have local core.symlinks=false
     # Git sets core.symlinks=false at clone time when symlinks aren't available.
