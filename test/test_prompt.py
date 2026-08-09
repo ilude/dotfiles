@@ -1,276 +1,245 @@
-#!/usr/bin/env python3
-"""
-/// script
-requires-python = ">=3.9"
-dependencies = [
-    "pytest>=7.0",
-]
-///
-"""
+from __future__ import annotations
 
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-# Derive bashrc path from repo root (works on any machine)
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_BASHRC = _REPO_ROOT / "home" / ".bashrc"
+ROOT = Path(__file__).resolve().parents[1]
+BASHRC = ROOT / "home" / ".bashrc"
+ZSH_PROMPT = ROOT / "zsh" / "rc.d" / "05-prompt.zsh"
+OUTPUT_MARKER = "__PROMPT_TEST__"
+IS_WSL = Path("/proc/sys/fs/binfmt_misc/WSLInterop").is_file()
 
 
-def _git_bash_path() -> str:
-    """Return path to Git Bash executable, or empty string if not found."""
-    candidates = [
-        os.path.join(os.environ.get("PROGRAMFILES", ""), "Git", "bin", "bash.exe"),
-        os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "Git", "bin", "bash.exe"),
-        shutil.which("bash") or "",
+def _find_bash() -> str | None:
+    if os.name == "nt":
+        candidates = [
+            Path(os.environ.get("PROGRAMFILES", "")) / "Git" / "bin" / "bash.exe",
+            Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Git" / "bin" / "bash.exe",
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate)
+        return None
+    return shutil.which("bash")
+
+
+BASH = _find_bash()
+
+
+def _shell_path(path: Path, shell: str) -> str:
+    if os.name != "nt":
+        return path.as_posix()
+    command_flag = "-dfc" if Path(shell).name.lower().startswith("zsh") else "-c"
+    result = subprocess.run(
+        [shell, command_flag, '/usr/bin/cygpath -u "$1"', "shell", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _shell_env(home: Path, shell: str) -> dict[str, str]:
+    env = {
+        **os.environ,
+        "HOME": _shell_path(home, shell),
+        "USERPROFILE": str(home),
+    }
+    env.pop("ZDOTDIR", None)
+    return env
+
+
+def _run_bash_prompt(home: Path, cwd: Path) -> str:
+    assert BASH is not None
+    command = f'source "$1"; cd -- "$2"; __set_prompt; printf "{OUTPUT_MARKER}%s\\n" "$PS1"'
+    result = subprocess.run(
+        [
+            BASH,
+            "--noprofile",
+            "--norc",
+            "-ic",
+            command,
+            "prompt-test",
+            _shell_path(BASHRC, BASH),
+            _shell_path(cwd, BASH),
+        ],
+        cwd=ROOT,
+        env=_shell_env(home, BASH),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    prompts = [
+        line.removeprefix(OUTPUT_MARKER)
+        for line in result.stdout.splitlines()
+        if line.startswith(OUTPUT_MARKER)
     ]
-    for c in candidates:
-        if c and os.path.isfile(c):
-            return c
-    return ""
+    assert len(prompts) == 1, result.stdout + result.stderr
+    return prompts[0]
 
 
-def _to_bash_path(win_path: Path) -> str:
-    """Convert a Windows Path to Git Bash /c/Users/... format."""
-    p = str(win_path).replace("\\", "/")
-    # D:/a/dotfiles/dotfiles -> /d/a/dotfiles/dotfiles
-    if len(p) >= 2 and p[1] == ":":
-        p = "/" + p[0].lower() + p[2:]
-    return p
-
-
-def _bash_tests_available() -> bool:
-    """Check if bash prompt tests can run in this environment."""
-    if sys.platform != "win32":
-        return False
-    if not _BASHRC.exists():
-        return False
-    if not _git_bash_path():
-        return False
-    return True
-
-
-_skip_bash = pytest.mark.skipif(
-    not _bash_tests_available(),
-    reason="Git Bash + dotfiles bashrc required",
-)
-
-
-def normalize_prompt_path(pwd: str, home: str, is_wsl: bool = False, user: str = "testuser") -> str:
-    """
-    Normalize a PWD path for the prompt, mirroring the bash __set_prompt() logic.
-
-    Args:
-        pwd: The current working directory path
-        home: The home directory path
-        is_wsl: Whether running in WSL
-        user: The username (for WSL path construction)
-
-    Returns:
-        The normalized path (with ~ substitution where applicable)
-    """
-    p = pwd
-
-    if is_wsl:
-        # WSL: only Windows home (/mnt/c/Users/$USER) becomes ~
-        # Use case-insensitive comparison
-        p_lower = p.lower()
-        win_home_lower = f"/mnt/c/users/{user.lower()}"
-        if p_lower.startswith(win_home_lower):
-            # Strip Windows home prefix, preserving case of remaining path
-            p = "~" + p[len(win_home_lower) :]
-    else:
-        # Non-WSL: normal $HOME substitution
-        if p.startswith(home):
-            p = "~" + p[len(home) :]
-
-    return p
-
-
-# PATH NORMALIZATION TESTS (Pure Python, always run)
-
-
-def test_home_path_to_tilde_non_wsl():
-    """Non-WSL: home path → ~"""
-    home = "/home/testuser"
-    result = normalize_prompt_path(home, home, is_wsl=False)
-    assert result == "~"
-
-
-def test_home_subdir_to_tilde_subdir_non_wsl():
-    """Non-WSL: home/subdir → ~/subdir"""
-    home = "/home/testuser"
-    result = normalize_prompt_path(f"{home}/projects", home, is_wsl=False)
-    assert result == "~/projects"
-
-
-def test_wsl_windows_home_to_tilde():
-    """WSL: /mnt/c/Users/testuser → ~"""
-    result = normalize_prompt_path(
-        "/mnt/c/Users/testuser", home="/home/testuser", is_wsl=True, user="testuser"
+def _run_bash_prompt_for_pwd(home: Path, pwd: str, user: str) -> str:
+    assert BASH is not None
+    command = (
+        f'source "$1"; PWD="$2"; USER="$3"; __set_prompt; printf "{OUTPUT_MARKER}%s\\n" "$PS1"'
     )
-    assert result == "~"
-
-
-def test_wsl_windows_home_mixed_case_to_tilde():
-    """WSL: /mnt/c/Users/Testuser (mixed case) → ~ (case-insensitive)"""
-    result = normalize_prompt_path(
-        "/mnt/c/Users/Testuser", home="/home/testuser", is_wsl=True, user="testuser"
+    result = subprocess.run(
+        [
+            BASH,
+            "--noprofile",
+            "--norc",
+            "-ic",
+            command,
+            "prompt-test",
+            _shell_path(BASHRC, BASH),
+            pwd,
+            user,
+        ],
+        cwd=home,
+        env=_shell_env(home, BASH),
+        check=True,
+        capture_output=True,
+        text=True,
     )
-    assert result == "~"
+    prompt = result.stdout.split(OUTPUT_MARKER, 1)
+    assert len(prompt) == 2, result.stdout + result.stderr
+    return prompt[1].splitlines()[0]
 
 
-def test_wsl_linux_home_stays_full_path():
-    """WSL: /home/testuser/projects stays as /home/testuser/projects"""
-    result = normalize_prompt_path(
-        "/home/testuser/projects", home="/home/testuser", is_wsl=True, user="testuser"
+def _init_branch(repo: Path, home: Path, branch: str) -> None:
+    env = {**os.environ, "HOME": str(home), "USERPROFILE": str(home)}
+    subprocess.run(["git", "init"], cwd=repo, env=env, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "symbolic-ref", "HEAD", f"refs/heads/{branch}"],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
     )
-    assert result == "/home/testuser/projects"
 
 
-def test_non_home_path_unchanged():
-    """/tmp/somedir stays unchanged in non-WSL"""
-    home = "/home/testuser"
-    result = normalize_prompt_path("/tmp/somedir", home, is_wsl=False)
-    assert result == "/tmp/somedir"
+@pytest.mark.skipif(BASH is None or IS_WSL, reason="non-WSL bash required")
+def test_bash_prompt_normalizes_isolated_home_paths(tmp_path: Path) -> None:
+    home = tmp_path / "Mike Smith"
+    nested = home / "work" / "client projects" / "web app"
+    nested.mkdir(parents=True)
 
-
-def test_home_with_space_to_tilde_non_wsl():
-    """Non-WSL: home path with space "Mike Smith" → ~"""
-    home = "/home/Mike Smith"
-    result = normalize_prompt_path(home, home, is_wsl=False)
-    assert result == "~"
-
-
-def test_subdir_under_home_with_space_non_wsl():
-    """Non-WSL: subdir under home with space → ~/projects"""
-    home = "/home/Mike Smith"
-    result = normalize_prompt_path(f"{home}/projects", home, is_wsl=False)
-    assert result == "~/projects"
-
-
-def test_wsl_windows_home_with_space_to_tilde():
-    """WSL: /mnt/c/Users/Mike Smith/.dotfiles → ~/.dotfiles"""
-    result = normalize_prompt_path(
-        "/mnt/c/Users/Mike Smith/.dotfiles",
-        home="/home/mike",
-        is_wsl=True,
-        user="Mike Smith",
+    assert _run_bash_prompt(home, home) == r"\[\e[32m\]~\[\e[0m\]> "
+    assert _run_bash_prompt(home, nested) == (
+        r"\[\e[32m\]~/work/client projects/web app\[\e[0m\]> "
     )
-    assert result == "~/.dotfiles"
 
 
-def test_wsl_windows_home_with_space_mixed_case_to_tilde():
-    """WSL: /mnt/c/USERS/Mike Smith/projects → ~/projects (case-insensitive)"""
-    result = normalize_prompt_path(
+@pytest.mark.skipif(BASH is None, reason="bash not found")
+def test_bash_prompt_keeps_paths_outside_home(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    outside = tmp_path / "my project"
+    home.mkdir()
+    outside.mkdir()
+
+    prompt = _run_bash_prompt(home, outside)
+
+    assert prompt == rf"\[\e[32m\]{_shell_path(outside, BASH)}\[\e[0m\]> "
+
+
+@pytest.mark.skipif(BASH is None or not IS_WSL, reason="WSL bash required")
+def test_bash_prompt_normalizes_windows_home_case_insensitively_on_wsl(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "isolated-home"
+    home.mkdir()
+
+    windows_prompt = _run_bash_prompt_for_pwd(
+        home,
         "/mnt/c/USERS/Mike Smith/projects",
-        home="/home/mike",
-        is_wsl=True,
-        user="Mike Smith",
+        "Mike Smith",
     )
-    assert result == "~/projects"
-
-
-def test_non_home_path_with_space_unchanged():
-    """/tmp/my project/code stays unchanged"""
-    home = "/home/testuser"
-    result = normalize_prompt_path("/tmp/my project/code", home, is_wsl=False)
-    assert result == "/tmp/my project/code"
-
-
-def test_deeply_nested_path_under_home_with_space():
-    """Non-WSL: deeply nested under home with space → ~/work/client projects/web app"""
-    home = "/home/Mike Smith"
-    result = normalize_prompt_path(f"{home}/work/client projects/web app", home, is_wsl=False)
-    assert result == "~/work/client projects/web app"
-
-
-# GIT BRANCH TESTS (Bash-dependent, skip on Windows)
-
-
-@_skip_bash
-def test_git_branch_appears_in_ps1(tmp_path):
-    """Git branch appears in brackets in PS1"""
-    tmpdir = str(tmp_path)
-    # Initialize a git repo with a branch
-    subprocess.run(["git", "init"], cwd=tmpdir, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=tmpdir,
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Test User"],
-        cwd=tmpdir,
-        check=True,
-        capture_output=True,
-    )
-    # Create a file and commit to create the branch
-    test_file = Path(tmpdir) / "test.txt"
-    test_file.write_text("test")
-    subprocess.run(["git", "add", "test.txt"], cwd=tmpdir, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", "initial"],
-        cwd=tmpdir,
-        check=True,
-        capture_output=True,
+    linux_prompt = _run_bash_prompt_for_pwd(
+        home,
+        "/home/testuser/projects",
+        "Mike Smith",
     )
 
-    # Use Git Bash explicitly to avoid WSL bash on Windows
-    dotfiles_bashrc = _to_bash_path(_BASHRC)
-    bash_script = f"""
-source "{dotfiles_bashrc}"
-cd "{tmpdir}"
-__set_prompt
-echo "$PS1"
-"""
+    assert windows_prompt == r"\[\e[32m\]~/projects\[\e[0m\]> "
+    assert linux_prompt == r"\[\e[32m\]/home/testuser/projects\[\e[0m\]> "
+
+
+@pytest.mark.skipif(BASH is None, reason="bash not found")
+def test_bash_prompt_reports_the_current_git_branch(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    repo = home / "repo"
+    repo.mkdir(parents=True)
+    _init_branch(repo, home, "prompt-test")
+
+    prompt = _run_bash_prompt(home, repo)
+
+    path = _shell_path(repo, BASH) if IS_WSL else "~/repo"
+    assert prompt == (
+        rf"\[\e[32m\]{path}\[\e[0m\]"
+        r"\[\e[33m\][\[\e[36m\]prompt-test\[\e[33m\]]\[\e[0m\]> "
+    )
+
+
+@pytest.mark.zsh
+@pytest.mark.skipif(IS_WSL, reason="ZDOTDIR normalization is a non-WSL contract")
+def test_zsh_prompt_uses_zdotdir_for_path_normalization(tmp_path: Path) -> None:
+    zsh = os.environ.get("ZSH_EXECUTABLE") or shutil.which("zsh")
+    assert zsh, "zsh is required to validate shell configuration"
+    home = tmp_path / "home with space"
+    nested = home / "projects" / "web app"
+    nested.mkdir(parents=True)
+    command = f'cd -- "$1"; source "$2"; printf "{OUTPUT_MARKER}%s\\n" "$(__prompt_path)"'
+    env = _shell_env(home, zsh)
+    env["HOME"] = _shell_path(tmp_path / "different-home", zsh)
+    env["ZDOTDIR"] = _shell_path(home, zsh)
+
     result = subprocess.run(
-        [_git_bash_path(), "-i"],
-        input=bash_script,
+        [
+            zsh,
+            "-dfc",
+            command,
+            "prompt-test",
+            _shell_path(nested, zsh),
+            _shell_path(ZSH_PROMPT, zsh),
+        ],
+        cwd=ROOT,
+        env=env,
+        check=True,
         capture_output=True,
         text=True,
-        cwd=str(tmpdir),
-    )
-    # PS1 should be in the output with the format:
-    # \[\e[32m\]path\[\e[0m\]\[\e[33m\][\[\e[36m\]branch\[\e[33m\]]\[\e[0m\]>
-    # Look for the literal escape sequences that were echoed
-    assert r"\[" in result.stdout, f"Expected PS1 output, got: {result.stdout}"
-    # Check that branch info is present (cyan color code "36m" indicates branch)
-    assert "36m" in result.stdout, f"Expected branch color code in PS1, got: {result.stdout}"
-    assert "[" in result.stdout and "]" in result.stdout, (
-        f"Expected brackets in PS1, got: {result.stdout}"
     )
 
+    assert result.stdout == f"{OUTPUT_MARKER}~/projects/web app\n"
 
-@_skip_bash
-def test_no_git_branch_outside_repo(tmp_path):
-    """No branch brackets in PS1 when not in git repo"""
-    tmpdir = str(tmp_path)
-    # Don't initialize git, just test the prompt
 
-    # Use Git Bash explicitly to avoid WSL bash on Windows
-    dotfiles_bashrc = _to_bash_path(_BASHRC)
-    bash_script = f"""
-source "{dotfiles_bashrc}"
-cd "{tmpdir}"
-__set_prompt
-echo "$PS1"
-"""
+@pytest.mark.zsh
+def test_zsh_prompt_reports_the_current_git_branch(tmp_path: Path) -> None:
+    zsh = os.environ.get("ZSH_EXECUTABLE") or shutil.which("zsh")
+    assert zsh, "zsh is required to validate shell configuration"
+    home = tmp_path / "home"
+    repo = home / "repo"
+    repo.mkdir(parents=True)
+    _init_branch(repo, home, "prompt-test")
+    command = f'cd -- "$1"; source "$2"; printf "{OUTPUT_MARKER}%s\\n" "$(__git_prompt)"'
+
     result = subprocess.run(
-        [_git_bash_path(), "-i"],
-        input=bash_script,
+        [
+            zsh,
+            "-dfc",
+            command,
+            "prompt-test",
+            _shell_path(repo, zsh),
+            _shell_path(ZSH_PROMPT, zsh),
+        ],
+        cwd=ROOT,
+        env=_shell_env(home, zsh),
+        check=True,
         capture_output=True,
         text=True,
-        cwd=str(tmpdir),
     )
-    # PS1 without git branch should be: \[\e[32m\]path\[\e[0m\]>
-    # Should NOT contain the cyan color code "36m" which indicates branch info
-    assert r"\[" in result.stdout, f"Expected PS1 output, got: {result.stdout}"
-    assert "36m" not in result.stdout, (
-        f"Unexpected branch color code in PS1 outside repo, got: {result.stdout}"
-    )
+
+    assert result.stdout == (f"{OUTPUT_MARKER}%F{{yellow}}[%F{{cyan}}prompt-test%F{{yellow}}]%f\n")
