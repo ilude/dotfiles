@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import importlib.util
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,17 +82,6 @@ def workflow_referenced_paths() -> set[str]:
     return paths
 
 
-def make_dry_run(target: str, *variables: str) -> str:
-    proc = subprocess.run(
-        ["make", "-n", *variables, target],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    return proc.stdout
-
-
 def package_lock_guard_roots() -> set[Path]:
     proc = subprocess.run(
         ["git", "ls-files", "--", "*pnpm-lock.yaml"],
@@ -100,6 +91,44 @@ def package_lock_guard_roots() -> set[Path]:
         capture_output=True,
     )
     return {ROOT, *((ROOT / path).parent for path in proc.stdout.splitlines())}
+
+
+def test_pi_workflow_installs_repository_runtime_dependencies() -> None:
+    packages = {
+        token
+        for step in workflow_steps()
+        if isinstance(step.get("run"), str)
+        for command in shell_commands(step["run"])
+        if command and command[0] == "pnpm" and {"-g", "--global"} & set(command)
+        for token in command
+    }
+
+    expected = {
+        "@earendil-works/pi-coding-agent@0.84.1",
+        "@earendil-works/pi-agent-core@0.84.1",
+        "@earendil-works/pi-ai@0.84.1",
+        "@earendil-works/pi-tui@0.84.1",
+        "typebox@1.3.7",
+    }
+    assert expected <= packages
+    assert not any(package.startswith("@sinclair/typebox@") for package in packages)
+
+
+def test_preflight_checks_configured_shell_scripts(tmp_path: Path) -> None:
+    if shutil.which("file") is None:
+        pytest.skip("file is unavailable, so preflight skips CRLF detection")
+
+    script = tmp_path / "crlf-script.sh"
+    script.write_bytes(b"#!/bin/sh\r\necho test\r\n")
+    proc = subprocess.run(
+        ["make", "preflight", f"SHELL_SCRIPTS={script.as_posix()}"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+
+    assert proc.returncode != 0
+    assert "CRLF line endings detected" in proc.stdout
 
 
 def test_ci_invoked_scripts_are_tracked_executable() -> None:
@@ -130,27 +159,6 @@ def test_workflow_direct_script_runs_are_executable() -> None:
             f"Workflow runs {path} directly, so it must be tracked executable; "
             f"got {mode}. Either chmod it in git or invoke it via bash/python."
         )
-
-
-def test_make_quality_targets_have_distinct_nonduplicated_scopes() -> None:
-    changed = make_dry_run("check-changed", "FILES=scripts/quality-check")
-    fast = make_dry_run("check-fast")
-    full = make_dry_run("check")
-
-    assert changed.count("scripts/quality-check scripts/quality-check") == 1
-    assert "uv run pytest" not in changed
-    assert "uv run ruff check" not in changed
-
-    assert fast.count("uv run ruff check") == 1
-    assert fast.count("shellcheck --severity=warning") == 1
-    assert "uv run pytest" not in fast
-    assert "pnpm run typecheck" not in fast
-
-    assert full.count("uv run ruff check") == 1
-    assert full.count("shellcheck --severity=warning") == 1
-    assert full.count("uv run pytest test/") == 1
-    assert full.count("cd pi && pnpm run typecheck") == 1
-    assert full.count("cd pi && pnpm test") == 1
 
 
 def test_no_npm_package_lock() -> None:

@@ -93,11 +93,11 @@ jobs:
       - name: Install pi-coding-agent
         run: >
           pnpm install -g
-          @earendil-works/pi-coding-agent@0.80.3
-          @earendil-works/pi-agent-core@0.80.3
-          @earendil-works/pi-ai@0.80.3
-          @earendil-works/pi-tui@0.80.3
-          @sinclair/typebox@0.34.49
+          @earendil-works/pi-coding-agent@0.84.1
+          @earendil-works/pi-agent-core@0.84.1
+          @earendil-works/pi-ai@0.84.1
+          @earendil-works/pi-tui@0.84.1
+          typebox@1.3.7
 
       - name: Run Pi Vitest suite
         run: make check-pi-ci

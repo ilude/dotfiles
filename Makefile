@@ -61,7 +61,7 @@ preflight:
 	@echo "Running pre-flight checks..."
 	@# Check for CRLF corruption in shell scripts
 	@if command -v file >/dev/null 2>&1; then \
-		if file .bashrc .zshrc install wsl/install git-ssh-setup claude-link-setup copilot-link-setup 2>/dev/null | grep -q CRLF; then \
+		if file -- $(SHELL_SCRIPTS) 2>/dev/null | grep -q CRLF; then \
 			echo "ERROR: CRLF line endings detected. Run: dos2unix <file>"; \
 			exit 1; \
 		fi; \
@@ -124,7 +124,7 @@ test-parallel: preflight
 # Run portable tests in an Ubuntu 24.04 container with read-only source.
 test-docker:
 	@echo "Running portable tests in Ubuntu 24.04 container..."
-	docker run --rm -v "$(CURDIR):/dotfiles:ro" -w /dotfiles ubuntu:24.04 bash -c '\
+	MSYS2_ARG_CONV_EXCL='*' docker run --rm -v "$(CURDIR):/dotfiles:ro" -w /dotfiles ubuntu:24.04 bash -c '\
 		apt-get update -qq && \
 		apt-get install -y -qq git nodejs python3 python3-pip pipx >/dev/null 2>&1 && \
 		pipx install uv >/dev/null 2>&1 && \
