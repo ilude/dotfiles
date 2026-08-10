@@ -15,6 +15,9 @@ export const DEFERRED_TOOL_NAMES = [
 	"learning_candidate_decide",
 	"review_artifact_write",
 	"workflow_friction_mark_change",
+	"subagent_chain",
+	"subagent_continue",
+	"subagent_fanout",
 ] as const;
 
 function sortedUnique(values: readonly string[]): string[] {

@@ -4,12 +4,10 @@
  * Spawns a separate `pi` process for each subagent invocation,
  * giving it an isolated context window.
  *
- * Supports these modes:
- *   - Single: { agent: "name", task: "..." }
- *   - Parallel: { tasks: [{ agent: "name", task: "..." }, ...] }
- *   - Chain: { chain: [{ agent: "name", task: "... {previous} ..." }, ...] }
- *   - Continue: { continue: { agent: "name", session: "...", task: "..." } }
- *   - Read-only fan-out experiment: equivalent single and parallel plans
+ * The active subagent tool supports single and parallel modes. Deferred tools
+ * provide dependent chains, saved-session continuation, and the read-only
+ * fan-out experiment. The shared executor retains legacy advanced arguments
+ * for resumed sessions.
  *
  * Uses JSON mode to capture structured output from subagents.
  */
@@ -21,8 +19,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as zlib from "node:zlib";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { Message } from "@earendil-works/pi-ai";
+import { StringEnum, type Message } from "@earendil-works/pi-ai";
 import {
+	defineTool,
 	type ExtensionAPI,
 	type ExtensionContext,
 	getAgentDir,
@@ -34,6 +33,7 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { type TSchema, Type } from "typebox";
 import { emitTerminalBell } from "../../lib/extension-utils.js";
 import { recordEvent } from "../../lib/metrics.js";
+import { deactivateTools } from "../../lib/tool-activation.js";
 import {
 	decodeSchemaOutput,
 	schemaOutputInstruction,
@@ -66,6 +66,7 @@ import {
 } from "../transcript-runtime.js";
 import {
 	type AgentConfig,
+	type AgentDiscoveryResult,
 	type AgentEffort,
 	type AgentScope,
 	discoverAgents,
@@ -1267,104 +1268,29 @@ type ContinueParams = {
 	effort?: AgentEffort;
 };
 
-const OutputModeSchema = Type.Union(
-	[Type.Literal("inline"), Type.Literal("file-only")],
-	{
-		description:
-			'Output preservation policy. "inline" returns full child output in the parent result. "file-only" saves full output to an artifact and returns an explicit file reference.',
-		default: "inline",
-	},
-);
-
-const EffortSchema = Type.Union([
-	Type.Literal("off"),
-	Type.Literal("minimal"),
-	Type.Literal("low"),
-	Type.Literal("medium"),
-	Type.Literal("high"),
-	Type.Literal("xhigh"),
-	Type.Literal("max"),
-]);
-
-const TaskItem = Type.Object({
-	agent: Type.String({ description: "Name of the agent to invoke" }),
-	task: Type.String({ description: "Task to delegate to the agent" }),
-	effort: Type.Optional(EffortSchema),
-	cwd: Type.Optional(
-		Type.String({ description: "Working directory for the agent process" }),
-	),
-	output: Type.Optional(
-		Type.Union([Type.String(), Type.Boolean()], {
-			description:
-				"Optional artifact path for full output. Set false to disable saved artifacts. Relative paths resolve from the task cwd or current cwd.",
-		}),
-	),
-	outputMode: Type.Optional(OutputModeSchema),
+const OutputModeSchema = StringEnum(["inline", "file-only"] as const, {
+	description:
+		'Output preservation policy. "inline" returns full child output in the parent result. "file-only" saves full output to an artifact and returns an explicit file reference.',
+	default: "inline",
 });
 
-const ReadOnlyFanoutTaskItem = Type.Object(
-	{
-		agent: Type.String({ description: "Name of the agent to invoke" }),
-		task: Type.String({ description: "Read-only task to delegate" }),
-		effort: Type.Optional(EffortSchema),
-		cwd: Type.Optional(
-			Type.String({ description: "Working directory for the agent process" }),
-		),
-	},
-	{ additionalProperties: false },
+const EffortSchema = StringEnum(
+	["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const,
 );
 
-const ReadOnlyFanoutSchema = Type.Object(
-	{
-		single: ReadOnlyFanoutTaskItem,
-		parallel: Type.Array(ReadOnlyFanoutTaskItem, {
-			minItems: 2,
-			maxItems: MAX_CONCURRENCY,
-		}),
-	},
-	{
-		description:
-			"Opt-in read-only experiment with equivalent single-generalist and parallel-specialist plans. One arm is assigned deterministically. Requires outputSchema.",
-	},
-);
-
-const ChainItem = Type.Object({
-	agent: Type.String({ description: "Name of the agent to invoke" }),
-	effort: Type.Optional(EffortSchema),
-	task: Type.String({
-		description: "Task with optional {previous} placeholder for prior output",
-	}),
-	cwd: Type.Optional(
-		Type.String({ description: "Working directory for the agent process" }),
-	),
-	output: Type.Optional(
-		Type.Union([Type.String(), Type.Boolean()], {
-			description:
-				"Optional artifact path for full output. Set false to disable saved artifacts. Relative paths resolve from the step cwd or current cwd.",
-		}),
-	),
-	outputMode: Type.Optional(OutputModeSchema),
+const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
+	description:
+		'Which agent directories to use. Default: "user". Use "both" to include project-local agents.',
+	default: "user",
 });
 
-const AgentScopeSchema = Type.Union(
-	[Type.Literal("user"), Type.Literal("project"), Type.Literal("both")],
-	{
-		description:
-			'Which agent directories to use. Default: "user". Use "both" to include project-local agents.',
-		default: "user",
-	},
-);
+const ModelSizeSchema = StringEnum(["small", "medium", "large"] as const, {
+	description:
+		"Dynamic model size override. Resolves against the current session model/provider and available registry models.",
+});
 
-const ModelSizeSchema = Type.Union(
-	[Type.Literal("small"), Type.Literal("medium"), Type.Literal("large")],
-	{
-		description:
-			"Dynamic model size override. Resolves against the current session model/provider and available registry models.",
-	},
-);
-
-const ModelPolicySchema = Type.Union(
-	[Type.Literal("same-provider"), Type.Literal("same-family")],
+const ModelPolicySchema = StringEnum(
+	["same-provider", "same-family"] as const,
 	{
 		description:
 			"How to resolve dynamic model sizes. same-provider prefers the current provider; same-family prefers the current series first, then the provider.",
@@ -1372,94 +1298,254 @@ const ModelPolicySchema = Type.Union(
 	},
 );
 
-const SubagentParams = Type.Object({
-	readOnlyFanout: Type.Optional(ReadOnlyFanoutSchema),
-	continue: Type.Optional(
-		Type.Object({
-			agent: Type.String({ description: "Agent used to create the session" }),
+const StructuredOutputSchema = Type.Record(Type.String(), Type.Unknown(), {
+	description:
+		"JSON Schema for validated child output. Invalid output receives at most one continuation correction.",
+});
+
+function createSubagentSchemas(agentNames?: readonly string[]) {
+	const agentName = (description: string) =>
+		agentNames && agentNames.length > 0
+			? StringEnum(agentNames, { description })
+			: Type.String({ description });
+	const taskItem = Type.Object({
+		agent: agentName("Name of the agent to invoke"),
+		task: Type.String({ description: "Task to delegate to the agent" }),
+		effort: Type.Optional(EffortSchema),
+		cwd: Type.Optional(
+			Type.String({ description: "Working directory for the agent process" }),
+		),
+		output: Type.Optional(
+			Type.Union([Type.String(), Type.Boolean()], {
+				description:
+					"Optional artifact path for full output. Set false to disable saved artifacts. Relative paths resolve from the task cwd or current cwd.",
+			}),
+		),
+		outputMode: Type.Optional(OutputModeSchema),
+	});
+	const readOnlyFanoutTaskItem = Type.Object(
+		{
+			agent: agentName("Name of the agent to invoke"),
+			task: Type.String({ description: "Read-only task to delegate" }),
+			effort: Type.Optional(EffortSchema),
+			cwd: Type.Optional(
+				Type.String({ description: "Working directory for the agent process" }),
+			),
+		},
+		{ additionalProperties: false },
+	);
+	const readOnlyFanoutSchema = Type.Object(
+		{
+			single: readOnlyFanoutTaskItem,
+			parallel: Type.Array(readOnlyFanoutTaskItem, {
+				minItems: 2,
+				maxItems: MAX_CONCURRENCY,
+			}),
+		},
+		{
+			description:
+				"Opt-in read-only experiment with equivalent single-generalist and parallel-specialist plans. One arm is assigned deterministically. Requires outputSchema.",
+		},
+	);
+	const chainItem = Type.Object({
+		agent: agentName("Name of the agent to invoke"),
+		effort: Type.Optional(EffortSchema),
+		task: Type.String({
+			description: "Task with optional {previous} placeholder for prior output",
+		}),
+		cwd: Type.Optional(
+			Type.String({ description: "Working directory for the agent process" }),
+		),
+		output: Type.Optional(
+			Type.Union([Type.String(), Type.Boolean()], {
+				description:
+					"Optional artifact path for full output. Set false to disable saved artifacts. Relative paths resolve from the step cwd or current cwd.",
+			}),
+		),
+		outputMode: Type.Optional(OutputModeSchema),
+	});
+	const legacy = Type.Object({
+		readOnlyFanout: Type.Optional(readOnlyFanoutSchema),
+		continue: Type.Optional(
+			Type.Object({
+				agent: agentName("Agent used to create the session"),
+				session: Type.String({ description: "Saved child session path" }),
+				task: Type.String({ description: "Follow-up message" }),
+				effort: Type.Optional(EffortSchema),
+				cwd: Type.Optional(Type.String({ description: "Working directory" })),
+				output: Type.Optional(Type.Union([Type.String(), Type.Boolean()])),
+				outputMode: Type.Optional(OutputModeSchema),
+			}),
+		),
+		agent: Type.Optional(
+			agentName("Name of the agent to invoke (for single mode)"),
+		),
+		task: Type.Optional(
+			Type.String({
+				description: "Task to delegate (for single mode)",
+			}),
+		),
+		tasks: Type.Optional(
+			Type.Array(taskItem, {
+				description: "Array of {agent, task} for parallel execution",
+			}),
+		),
+		chain: Type.Optional(
+			Type.Array(chainItem, {
+				description: "Array of {agent, task} for sequential execution",
+			}),
+		),
+		agentScope: Type.Optional(AgentScopeSchema),
+		model: Type.Optional(
+			Type.String({
+				description:
+					"Exact provider/model override for spawned subagents, e.g. openai-codex/gpt-5.6-terra. Takes precedence over modelSize and agent frontmatter.",
+			}),
+		),
+		modelSize: Type.Optional(ModelSizeSchema),
+		modelPolicy: Type.Optional(ModelPolicySchema),
+		effort: Type.Optional(EffortSchema),
+		outputSchema: Type.Optional(StructuredOutputSchema),
+		continuable: Type.Optional(
+			Type.Boolean({
+				description: "Persist child sessions so they can be continued later.",
+				default: false,
+			}),
+		),
+		background: Type.Optional(
+			Type.Boolean({
+				description:
+					"Run transiently in the background and return immediately. Completion is delivered as a follow-up message. Direct runs do not create durable task records.",
+				default: false,
+			}),
+		),
+		confirmProjectAgents: Type.Optional(
+			Type.Boolean({
+				description:
+					"Prompt before running project-local agents. Default: false.",
+				default: false,
+			}),
+		),
+		cwd: Type.Optional(
+			Type.String({
+				description: "Working directory for the agent process (single mode)",
+			}),
+		),
+		output: Type.Optional(
+			Type.Union([Type.String(), Type.Boolean()], {
+				description:
+					"Optional artifact path for full output in single mode. Set false to disable saved artifacts.",
+			}),
+		),
+		outputMode: Type.Optional(OutputModeSchema),
+	});
+	const common = {
+		agentScope: legacy.properties.agentScope,
+		model: legacy.properties.model,
+		modelSize: legacy.properties.modelSize,
+		modelPolicy: legacy.properties.modelPolicy,
+		effort: legacy.properties.effort,
+		outputSchema: legacy.properties.outputSchema,
+		continuable: legacy.properties.continuable,
+		background: legacy.properties.background,
+		confirmProjectAgents: legacy.properties.confirmProjectAgents,
+	};
+	return {
+		legacy,
+		subagent: Type.Object({
+			agent: legacy.properties.agent,
+			task: legacy.properties.task,
+			tasks: legacy.properties.tasks,
+			...common,
+			cwd: legacy.properties.cwd,
+			output: legacy.properties.output,
+			outputMode: legacy.properties.outputMode,
+		}),
+		chain: Type.Object({
+			steps: Type.Array(chainItem, {
+				minItems: 1,
+				description:
+					"Sequential steps; each task may use {previous} from the prior result.",
+			}),
+			...common,
+		}),
+		continue: Type.Object({
+			agent: agentName("Agent used to create the saved session"),
 			session: Type.String({ description: "Saved child session path" }),
 			task: Type.String({ description: "Follow-up message" }),
 			effort: Type.Optional(EffortSchema),
 			cwd: Type.Optional(Type.String({ description: "Working directory" })),
 			output: Type.Optional(Type.Union([Type.String(), Type.Boolean()])),
 			outputMode: Type.Optional(OutputModeSchema),
+			agentScope: legacy.properties.agentScope,
+			model: legacy.properties.model,
+			modelSize: legacy.properties.modelSize,
+			modelPolicy: legacy.properties.modelPolicy,
+			outputSchema: legacy.properties.outputSchema,
+			background: legacy.properties.background,
+			confirmProjectAgents: legacy.properties.confirmProjectAgents,
 		}),
-	),
-	agent: Type.Optional(
-		Type.String({
-			description: "Name of the agent to invoke (for single mode)",
+		fanout: Type.Object({
+			single: readOnlyFanoutTaskItem,
+			parallel: Type.Array(readOnlyFanoutTaskItem, {
+				minItems: 2,
+				maxItems: MAX_CONCURRENCY,
+			}),
+			outputSchema: StructuredOutputSchema,
+			agentScope: legacy.properties.agentScope,
+			model: legacy.properties.model,
+			modelSize: legacy.properties.modelSize,
+			modelPolicy: legacy.properties.modelPolicy,
+			effort: legacy.properties.effort,
+			continuable: legacy.properties.continuable,
+			background: legacy.properties.background,
+			confirmProjectAgents: legacy.properties.confirmProjectAgents,
 		}),
-	),
-	task: Type.Optional(
-		Type.String({
-			description: "Task to delegate (for single mode)",
-		}),
-	),
-	tasks: Type.Optional(
-		Type.Array(TaskItem, {
-			description: "Array of {agent, task} for parallel execution",
-		}),
-	),
-	chain: Type.Optional(
-		Type.Array(ChainItem, {
-			description: "Array of {agent, task} for sequential execution",
-		}),
-	),
-	agentScope: Type.Optional(AgentScopeSchema),
-	model: Type.Optional(
-		Type.String({
-			description:
-				"Exact provider/model override for spawned subagents, e.g. openai-codex/gpt-5.6-terra. Takes precedence over modelSize and agent frontmatter.",
-		}),
-	),
-	modelSize: Type.Optional(ModelSizeSchema),
-	modelPolicy: Type.Optional(ModelPolicySchema),
-	effort: Type.Optional(EffortSchema),
-	outputSchema: Type.Optional(
-		Type.Record(Type.String(), Type.Unknown(), {
-			description:
-				"JSON Schema for validated child output. Invalid output receives at most one continuation correction.",
-		}),
-	),
-	continuable: Type.Optional(
-		Type.Boolean({
-			description: "Persist child sessions so they can be continued later.",
-			default: false,
-		}),
-	),
-	background: Type.Optional(
-		Type.Boolean({
-			description:
-				"Run transiently in the background and return immediately. Completion is delivered as a follow-up message. Direct runs do not create durable task records.",
-			default: false,
-		}),
-	),
-	confirmProjectAgents: Type.Optional(
-		Type.Boolean({
-			description:
-				"Prompt before running project-local agents. Default: false.",
-			default: false,
-		}),
-	),
-	cwd: Type.Optional(
-		Type.String({
-			description: "Working directory for the agent process (single mode)",
-		}),
-	),
-	output: Type.Optional(
-		Type.Union([Type.String(), Type.Boolean()], {
-			description:
-				"Optional artifact path for full output in single mode. Set false to disable saved artifacts.",
-		}),
-	),
-	outputMode: Type.Optional(OutputModeSchema),
-});
+	};
+}
+
+const InitialSubagentSchemas = createSubagentSchemas();
+
+type SessionAgentCatalog = {
+	cwd: string;
+	byScope: Record<AgentScope, AgentDiscoveryResult>;
+	agentNames: string[];
+};
+
+function createSessionAgentCatalog(
+	cwd: string,
+	projectTrusted: boolean,
+): SessionAgentCatalog {
+	const user = discoverAgents(cwd, "user");
+	const project = projectTrusted
+		? discoverAgents(cwd, "project")
+		: { agents: [], projectAgentsDir: user.projectAgentsDir };
+	const both = projectTrusted
+		? discoverAgents(cwd, "both")
+		: { agents: user.agents, projectAgentsDir: user.projectAgentsDir };
+	const agentNames = Array.from(
+		new Set([...user.agents, ...project.agents].map((agent) => agent.name)),
+	).sort();
+	return {
+		cwd,
+		byScope: { user, project, both },
+		agentNames,
+	};
+}
+
+const ADVANCED_SUBAGENT_TOOL_NAMES = [
+	"subagent_chain",
+	"subagent_continue",
+	"subagent_fanout",
+] as const;
 
 export default function (pi: ExtensionAPI) {
 	let sessionOpen = true;
+	let sessionAgentCatalog: SessionAgentCatalog | undefined;
 	let statusContext: ExtensionContext | undefined;
 	let unsubscribeStatus: (() => void) | undefined;
 	let renderedStatus: string | undefined;
+	let refreshAgentTools: (agentNames: readonly string[]) => void = () => {};
 
 	const updateStatus = () => {
 		if (!statusContext) return;
@@ -1528,6 +1614,12 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", (_event, ctx) => {
+		sessionAgentCatalog = createSessionAgentCatalog(
+			ctx.cwd,
+			ctx.isProjectTrusted(),
+		);
+		refreshAgentTools(sessionAgentCatalog.agentNames);
+		deactivateTools(pi, ADVANCED_SUBAGENT_TOOL_NAMES);
 		sessionOpen = true;
 		statusContext = ctx;
 		renderedStatus = undefined;
@@ -1544,31 +1636,26 @@ export default function (pi: ExtensionAPI) {
 		statusContext = undefined;
 		renderedStatus = undefined;
 		subagentRunManager.clear({ abortRunning: true });
+		sessionAgentCatalog = undefined;
 	});
 
-	pi.registerTool({
+	const subagentExecutor = defineTool({
 		name: "subagent",
 		label: "Subagent",
 		description: [
-			"Delegate tasks to specialized subagents with isolated context.",
-			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder), continue (saved session follow-up), readOnlyFanout (equivalent single and parallel plans for the opt-in experiment).",
-			"readOnlyFanout assigns one arm deterministically, requires outputSchema, and restricts direct child tools to read-oriented tools.",
-			"Foreground execution waits for the result. Set background=true for transient detached execution with follow-up result delivery.",
-			"Direct invocations are process-local and do not create durable task records; use the task tool when durable tracking or dependencies are required.",
-			'Default agent scope is "user" (from ~/.pi/agent/agents).',
-			'To enable project-local agents in .pi/agents, set agentScope: "both" (or "project").',
-			"Optional model overrides the agent frontmatter model. Optional modelSize/modelPolicy parameters dynamically map subagents onto the current provider/model ladder.",
-			"Optional outputSchema validates JSON output and permits one continuation correction.",
+			"Delegate transient work to isolated specialist agents.",
+			"Use agent and task for one worker or tasks for parallel workers.",
+			"Foreground execution waits; background=true returns immediately and delivers a follow-up result.",
+			"Use task for durable tracking or dependencies. Advanced chain, continuation, and read-only fanout modes are available through deferred subagent tools.",
 		].join(" "),
 		promptSnippet:
 			"Delegate transient foreground or background work to isolated specialist agents",
 		promptGuidelines: [
-			"Use readOnlyFanout only when one read-only investigation has at least two independent work items and both supplied plans satisfy the same output schema.",
 			"Use subagent with background=true for independent transient work, continue useful parent work, and consume the delivered follow-up instead of polling.",
-			"Use foreground subagent execution when the current turn cannot continue without the result or when running a dependent chain.",
+			"Use foreground subagent execution when the current turn cannot continue without the result; use tool_search for subagent_chain when later work depends on earlier output.",
 			"Use task instead of subagent when work needs durable tracking, dependencies, or cross-session recovery.",
 		],
-		parameters: SubagentParams,
+		parameters: InitialSubagentSchemas.legacy,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			await compressDelegatedSessions().catch(() => []);
@@ -1622,7 +1709,10 @@ export default function (pi: ExtensionAPI) {
 				(resolvedModel
 					? `${resolvedModel.provider}/${resolvedModel.id}`
 					: undefined);
-			const discovery = discoverAgents(ctx.cwd, agentScope);
+			const discovery =
+				sessionAgentCatalog?.cwd === ctx.cwd
+					? sessionAgentCatalog.byScope[agentScope]
+					: discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? false;
 			const modeCount =
@@ -1962,20 +2052,46 @@ export default function (pi: ExtensionAPI) {
 				});
 			}
 
-			if (
-				(agentScope === "project" || agentScope === "both") &&
-				confirmProjectAgents &&
-				ctx.hasUI
-			) {
-				const requestedAgentNames = new Set<string>();
+			const requestedAgentNames = new Set<string>();
+			if (fanoutPlan) {
+				requestedAgentNames.add(fanoutPlan.single.agent);
+				for (const task of fanoutPlan.parallel)
+					requestedAgentNames.add(task.agent);
+			} else {
 				if (params.chain)
-					for (const step of params.chain) requestedAgentNames.add(step.agent);
+					for (const step of params.chain)
+						requestedAgentNames.add(step.agent);
 				if (selectedTasks)
 					for (const task of selectedTasks)
 						requestedAgentNames.add(task.agent);
 				if (selectedSingle) requestedAgentNames.add(selectedSingle.agent);
 				if (params.continue) requestedAgentNames.add(params.continue.agent);
+			}
+			const availableAgentNames = new Set(agents.map((agent) => agent.name));
+			const unknownAgentNames = Array.from(requestedAgentNames).filter(
+				(name) => !availableAgentNames.has(name),
+			);
+			if (unknownAgentNames.length > 0) {
+				complete({
+					content: [],
+					details: makeDetails(originalMode)([]),
+					isError: true,
+				});
+				const unknown = unknownAgentNames
+					.map((name) => `"${name}"`)
+					.join(", ");
+				const available =
+					agents.map((agent) => `"${agent.name}"`).join(", ") || "none";
+				throw new Error(
+					`Unknown agent${unknownAgentNames.length === 1 ? "" : "s"}: ${unknown} for agentScope "${agentScope}". Available agents: ${available}.`,
+				);
+			}
 
+			if (
+				(agentScope === "project" || agentScope === "both") &&
+				confirmProjectAgents &&
+				ctx.hasUI
+			) {
 				const projectAgentsRequested = Array.from(requestedAgentNames)
 					.map((name) => agents.find((a) => a.name === name))
 					.filter((a): a is AgentConfig => a?.source === "project");
@@ -2440,18 +2556,14 @@ export default function (pi: ExtensionAPI) {
 				return new Text(text, 0, 0);
 			}
 			const agentName = args.agent || "...";
-			const snippet = args.task
-				? args.task.length > 60
-					? `${args.task.slice(0, 60)}...`
-					: args.task
-				: "...";
+			const task = args.task || "...";
 			let text =
 				theme.fg("toolTitle", theme.bold("subagent ")) +
 				theme.fg("accent", agentName) +
 				theme.fg("muted", ` [${scope}]`) +
 				modelHint +
 				backgroundHint;
-			text += `\n  ${theme.fg("dim", snippet)}`;
+			text += `\n  ${theme.fg("dim", task)}`;
 			return new Text(text, 0, 0);
 		},
 
@@ -2821,4 +2933,95 @@ export default function (pi: ExtensionAPI) {
 			return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 		},
 	});
+
+	const registerSubagentTools = (
+		schemas: ReturnType<typeof createSubagentSchemas>,
+	) => {
+		pi.registerTool({
+			...subagentExecutor,
+			parameters: schemas.subagent,
+		});
+
+		pi.registerTool({
+			name: "subagent_chain",
+			label: "Subagent Chain",
+			description:
+				"Run dependent subagents sequentially. Each step task may include {previous}, which is replaced with the prior step output. This tool is deferred; use it only when later work depends on earlier output.",
+			parameters: schemas.chain,
+			renderResult: subagentExecutor.renderResult,
+			execute(toolCallId, params, signal, onUpdate, ctx) {
+				const { steps, ...common } = params;
+				return subagentExecutor.execute(
+					toolCallId,
+					{ ...common, chain: steps },
+					signal,
+					onUpdate,
+					ctx,
+				);
+			},
+		});
+
+		pi.registerTool({
+			name: "subagent_continue",
+			label: "Subagent Continue",
+			description:
+				"Continue a saved child-agent session with a follow-up task. This tool is deferred and requires the original agent name and saved session path.",
+			parameters: schemas.continue,
+			renderResult: subagentExecutor.renderResult,
+			execute(toolCallId, params, signal, onUpdate, ctx) {
+				const {
+					agent,
+					session,
+					task,
+					effort,
+					cwd,
+					output,
+					outputMode,
+					...common
+				} = params;
+				return subagentExecutor.execute(
+					toolCallId,
+					{
+						...common,
+						effort,
+						continue: {
+							agent,
+							session,
+							task,
+							effort,
+							cwd,
+							output,
+							outputMode,
+						},
+					},
+					signal,
+					onUpdate,
+					ctx,
+				);
+			},
+		});
+
+		pi.registerTool({
+			name: "subagent_fanout",
+			label: "Subagent Read-only Fanout",
+			description:
+				"Run the opt-in read-only fanout experiment with equivalent single-generalist and parallel-specialist plans. Requires at least two parallel tasks and a shared outputSchema; one arm is assigned deterministically.",
+			parameters: schemas.fanout,
+			renderResult: subagentExecutor.renderResult,
+			execute(toolCallId, params, signal, onUpdate, ctx) {
+				const { single, parallel, ...common } = params;
+				return subagentExecutor.execute(
+					toolCallId,
+					{ ...common, readOnlyFanout: { single, parallel } },
+					signal,
+					onUpdate,
+					ctx,
+				);
+			},
+		});
+	};
+
+	registerSubagentTools(InitialSubagentSchemas);
+	refreshAgentTools = (agentNames) =>
+		registerSubagentTools(createSubagentSchemas(agentNames));
 }

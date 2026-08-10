@@ -157,6 +157,242 @@ You are a test agent.
 		additionalProperties: false,
 	};
 
+	it("enumerates discovered agents while deferring advanced mode tools", async () => {
+		const { pi } = await loadTool();
+		for (const name of [
+			"subagent_chain",
+			"subagent_continue",
+			"subagent_fanout",
+		]) {
+			expect(pi._getTool(name)).toBeDefined();
+			expect(pi.getActiveTools()).toContain(name);
+		}
+
+		await pi
+			._getHook("session_start")[0]
+			.handler({ reason: "startup" }, createMockCtx({ cwd: tmpDir }));
+		const tool = pi._getTool("subagent");
+		if (!tool) throw new Error("subagent tool not registered");
+		const properties = (
+			tool.parameters as { properties: Record<string, unknown> }
+		).properties;
+		expect(JSON.stringify(tool.parameters).length).toBeLessThan(4_000);
+		expect(properties).not.toHaveProperty("chain");
+		expect(properties).not.toHaveProperty("continue");
+		expect(properties).not.toHaveProperty("readOnlyFanout");
+		expect(properties.agent).toMatchObject({
+			type: "string",
+			enum: expect.arrayContaining(["builder", "tester", "typescript-pro"]),
+		});
+		expect(properties.tasks).toMatchObject({
+			items: {
+				properties: {
+					agent: {
+						type: "string",
+						enum: expect.arrayContaining([
+							"builder",
+							"tester",
+							"typescript-pro",
+						]),
+					},
+				},
+			},
+		});
+		expect(properties.effort).toMatchObject({
+			type: "string",
+			enum: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+		});
+		expect(
+			(pi._getTool("subagent_chain")!.parameters as { properties: object })
+				.properties,
+		).toMatchObject({
+			steps: {
+				items: {
+					properties: {
+						agent: {
+							enum: expect.arrayContaining(["builder", "tester"]),
+						},
+					},
+				},
+			},
+		});
+		expect(
+			(pi._getTool("subagent_continue")!.parameters as {
+				properties: object;
+			}).properties,
+		).toMatchObject({
+			agent: { enum: expect.arrayContaining(["builder", "tester"]) },
+			session: expect.any(Object),
+		});
+		const fanoutParameters = pi._getTool("subagent_fanout")!.parameters as {
+			properties: {
+				single: { properties: { agent: { enum: string[] } } };
+				parallel: {
+					items: { properties: { agent: { enum: string[] } } };
+				};
+			};
+			required: string[];
+		};
+		expect(fanoutParameters.required).toContain("outputSchema");
+		expect(fanoutParameters.properties.single.properties.agent.enum).toEqual(
+			expect.arrayContaining(["builder", "tester"]),
+		);
+		expect(
+			fanoutParameters.properties.parallel.items.properties.agent.enum,
+		).toEqual(expect.arrayContaining(["builder", "tester"]));
+		expect(pi.getActiveTools()).not.toContain("subagent_chain");
+		expect(pi.getActiveTools()).not.toContain("subagent_continue");
+		expect(pi.getActiveTools()).not.toContain("subagent_fanout");
+		expect(pi.getActiveTools()).toContain("subagent");
+	});
+
+	it("renders the full single-agent task prompt", async () => {
+		const { tool } = await loadTool();
+		if (!tool.renderCall) throw new Error("subagent renderCall not registered");
+		const task =
+			"Re-review the now-simplified context optimization diff. Verify every affected provider schema and preserve the complete reviewer instructions.\nReport all remaining findings with file and line references.";
+		const component = tool.renderCall(
+			{ agent: "code-reviewer", agentScope: "both", task },
+			createMockTheme(),
+			{},
+		);
+		const renderedLines = component
+			.render(500)
+			.map((line: string) => line.trim());
+		const renderedTask = renderedLines.slice(1).join("\n");
+
+		expect(renderedLines[0]).toContain("subagent code-reviewer [both]");
+		expect(renderedTask).toBe(task);
+		expect(renderedTask).not.toContain(`${task.slice(0, 60)}...`);
+	});
+
+	it("refreshes the agent enum on session reload and omits untrusted project agents", async () => {
+		const { pi } = await loadTool();
+		const sessionStart = pi._getHook("session_start")[0].handler;
+		await sessionStart(
+			{ reason: "startup" },
+			createMockCtx({ cwd: tmpDir, isProjectTrusted: () => false }),
+		);
+		let properties = (
+			pi._getTool("subagent")!.parameters as {
+				properties: { agent: { enum: string[] } };
+			}
+		).properties;
+		expect(properties.agent.enum).toContain("builder");
+		expect(properties.agent.enum).not.toContain("tester");
+
+		await fs.promises.writeFile(
+			path.join(tmpDir, ".pi", "agents", "tester-two.md"),
+			`---
+name: tester-two
+description: Second test agent
+---
+
+You are another test agent.
+`,
+			"utf8",
+		);
+		await sessionStart(
+			{ reason: "reload" },
+			createMockCtx({ cwd: tmpDir, isProjectTrusted: () => true }),
+		);
+		properties = (
+			pi._getTool("subagent")!.parameters as {
+				properties: { agent: { enum: string[] } };
+			}
+		).properties;
+		expect(properties.agent.enum).toEqual(
+			expect.arrayContaining(["builder", "tester", "tester-two"]),
+		);
+	});
+
+	it("rejects unknown and out-of-scope background agents before spawning", async () => {
+		const { pi } = await loadTool();
+		const sessionStart = pi._getHook("session_start")[0].handler;
+		await sessionStart(
+			{ reason: "startup" },
+			createMockCtx({ cwd: tmpDir, isProjectTrusted: () => true }),
+		);
+		const tool = pi._getTool("subagent");
+		if (!tool) throw new Error("subagent tool not registered");
+		const ctx = createMockCtx({ cwd: tmpDir });
+
+		await expect(
+			tool.execute(
+				"call-unknown-background",
+				{
+					agent: "engineer",
+					task: "Do work",
+					agentScope: "user",
+					background: true,
+				},
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow('Unknown agent: "engineer"');
+		await expect(
+			tool.execute(
+				"call-out-of-scope-background",
+				{
+					agent: "tester",
+					task: "Do work",
+					agentScope: "user",
+					background: true,
+				},
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow('for agentScope "user"');
+		expect(spawnMock).not.toHaveBeenCalled();
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("rejects an invalid parallel batch atomically", async () => {
+		const { tool } = await loadTool();
+		await expect(
+			tool.execute(
+				"call-invalid-parallel",
+				{
+					tasks: [
+						{ agent: "tester", task: "Valid" },
+						{ agent: "engineer", task: "Invalid" },
+					],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			),
+		).rejects.toThrow('Unknown agent: "engineer"');
+		expect(spawnMock).not.toHaveBeenCalled();
+	});
+
+	it("maps the deferred chain surface to the legacy executor", async () => {
+		mockSuccessfulSpawn();
+		const { pi } = await loadTool();
+		const chainTool = pi._getTool("subagent_chain");
+		if (!chainTool) throw new Error("subagent_chain tool not registered");
+
+		const result = await chainTool.execute(
+			"call-deferred-chain",
+			{
+				steps: [
+					{ agent: "tester", task: "First" },
+					{ agent: "tester", task: "Use {previous}" },
+				],
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+
+		expect(spawnMock).toHaveBeenCalledTimes(2);
+		expect(result.details.mode).toBe("chain");
+	});
+
 	async function orchestrationRuns() {
 		const { readRecentEvents } = await import("../lib/metrics.ts");
 		return readRecentEvents(100).filter(
@@ -2257,11 +2493,13 @@ You are a test agent.
 				],
 				agentScope: "project",
 			});
-			await execute({
-				agent: "missing",
-				task: "failure",
-				agentScope: "project",
-			});
+			await expect(
+				execute({
+					agent: "missing",
+					task: "failure",
+					agentScope: "project",
+				}),
+			).rejects.toThrow('Unknown agent: "missing"');
 
 			const runs = await orchestrationRuns();
 			expect(runs).toHaveLength(4);
@@ -2296,9 +2534,9 @@ You are a test agent.
 			expect(chain?.workers[0]?.chainTransferBytes).toBeGreaterThan(0);
 			expect(chain?.workers[0]?.parentVisibleBytes).toBe(0);
 			const failure = runs.find(
-				(event) => (event.data as { status: string }).status === "failed",
+				(event) => (event.data as { status: string }).status === "rejected",
 			)?.data as { status: string } | undefined;
-			expect(failure?.status).toBe("failed");
+			expect(failure?.status).toBe("rejected");
 			expect(JSON.stringify(failure)).not.toContain("Unknown agent");
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,

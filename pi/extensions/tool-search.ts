@@ -73,7 +73,7 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use tool_search when the needed capability is not currently available.",
 			"Search with descriptive capability keywords; all matching inactive tools are activated by default.",
-			"State-gated tools exist for commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review artifacts; their owning workflows activate them when valid.",
+			"Deferred tools include advanced subagent chain, saved-session continuation, read-only fanout, commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review artifacts.",
 			"Use list mode without a query only to inspect all tools; it does not activate them.",
 		],
 		parameters: Type.Object({

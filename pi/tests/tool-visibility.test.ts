@@ -41,7 +41,7 @@ function sessionContext() {
 describe("tool visibility", () => {
 	beforeEach(() => recordEvent.mockClear());
 
-	it("defers only workflow-state-gated tools", async () => {
+	it("defers workflow-state-gated and advanced subagent tools", async () => {
 		const pi = createMockPi();
 		for (const name of [
 			"read",
@@ -66,6 +66,9 @@ describe("tool visibility", () => {
 			"learning_candidate_decide",
 			"review_artifact_write",
 			"workflow_friction_mark_change",
+			"subagent_chain",
+			"subagent_continue",
+			"subagent_fanout",
 		]);
 		expect(pi.getActiveTools()).toEqual([
 			"read",

@@ -30,8 +30,14 @@ export function createMockPi() {
 
 	const mockPi = {
 		registerTool: vi.fn((toolDef: any) => {
-			tools.push(toolDef);
-			activeToolNames.push(toolDef.name);
+			const existingIndex = tools.findIndex(
+				(tool) => tool.name === toolDef.name,
+			);
+			if (existingIndex >= 0) tools[existingIndex] = toolDef;
+			else {
+				tools.push(toolDef);
+				activeToolNames.push(toolDef.name);
+			}
 		}),
 		on: vi.fn((event: string, handler: Function) => {
 			hooks.push({ event, handler });
@@ -81,6 +87,7 @@ export function createMockCtx(overrides: Record<string, any> = {}) {
 			select: vi.fn(async () => undefined as string | undefined),
 		},
 		hasUI: true,
+		isProjectTrusted: () => true,
 		...overrides,
 	};
 }
