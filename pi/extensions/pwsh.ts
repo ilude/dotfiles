@@ -107,13 +107,11 @@ function registerPwshTool(pi: ExtensionAPI) {
   pi.registerTool({
     name: "pwsh",
     label: "PowerShell",
-    description: `Execute a PowerShell Core (pwsh) command in the current working directory. Use for: PowerShell cmdlets (Get-*, Set-*, New-*, Remove-*), .ps1 scripts, Windows Registry/WMI/COM access, .NET type operations, $env: environment variables, and tasks requiring PowerShell modules. On non-Windows systems, only use if the user explicitly requests PowerShell. Defaults to a ${DEFAULT_TIMEOUT_SECONDS}s timeout unless a timeout is provided. Returns stdout, stderr, and PowerShell error stream. Output truncated to last ${DEFAULT_MAX_LINES} lines or ${Math.round(DEFAULT_MAX_BYTES / 1024)}KB.`,
+    description: `Execute PowerShell Core in the current working directory. Defaults to ${DEFAULT_TIMEOUT_SECONDS}s and returns stdout, stderr, and the PowerShell error stream, truncated to the last ${DEFAULT_MAX_LINES} lines or ${Math.round(DEFAULT_MAX_BYTES / 1024)}KB.`,
     promptSnippet: "Execute PowerShell Core (pwsh) commands for Windows-native tasks, .NET, and PowerShell modules",
     promptGuidelines: [
-      "Use pwsh for Windows-native commands, PowerShell cmdlets, .NET CLI, registry access, and .ps1 scripts.",
-      "Use bash for POSIX commands, git, npm/node, and Unix-style text pipelines (awk, sed, grep, curl).",
-      "On Windows, prefer pwsh for platform-specific tasks. On Unix, prefer bash unless PowerShell is explicitly needed.",
-      "In pwsh: use cmdlet names (Get-Content, Write-Output) over aliases (cat, echo). Use $env:VAR for environment variables.",
+      "On Windows, use pwsh for Windows-native cmdlets, .NET, registry, modules, and .ps1 scripts; use bash for git, Node, POSIX commands, and Unix-style pipelines. On Unix, use pwsh only when explicitly requested.",
+      "In pwsh, use cmdlet names (Get-Content, Write-Output) over aliases (cat, echo), and use $env:VAR for environment variables.",
     ],
     parameters: Type.Object({
       command: Type.String({ description: "PowerShell command to execute" }),

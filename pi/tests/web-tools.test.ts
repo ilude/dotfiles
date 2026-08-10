@@ -46,6 +46,17 @@ describe("web-tools extension", () => {
       });
     }
 
+    it("advertises only snake_case search refinements", () => {
+      expect(JSON.stringify(search.parameters).length).toBeLessThan(600);
+      expect(Object.keys(search.parameters.properties)).toEqual([
+        "query",
+        "exact_phrases",
+        "exclude_terms",
+        "site",
+        "num_results",
+      ]);
+    });
+
     it("should encode query in URL", async () => {
       mockSearchResponse([]);
       await search.execute("id", { query: "hello world" }, undefined, undefined, {});
@@ -80,6 +91,31 @@ describe("web-tools extension", () => {
       const result = await search.execute("id", { query: "test", num_results: 3 }, undefined, undefined, {});
       expect(result.content[0].text).toContain("Result 3");
       expect(result.content[0].text).not.toContain("Result 4");
+    });
+
+    it("supports unadvertised camelCase and count aliases", async () => {
+      mockSearchResponse([
+        { title: "First", url: "https://first.example" },
+        { title: "Second", url: "https://second.example" },
+      ]);
+      const result = await search.execute(
+        "id",
+        {
+          query: "test",
+          exactPhrases: ["exact phrase"],
+          excludeTerms: ["excluded phrase"],
+          count: 1,
+        },
+        undefined,
+        undefined,
+        {},
+      );
+
+      expect(mockFetch.mock.calls[0][0]).toContain(
+        'q=test%20%22exact%20phrase%22%20-%22excluded%20phrase%22',
+      );
+      expect(result.content[0].text).toContain("Result 1");
+      expect(result.content[0].text).not.toContain("Result 2");
     });
 
     it("should cap at 20 results", async () => {

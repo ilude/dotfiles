@@ -35,6 +35,37 @@ function tool() {
 }
 
 describe("text_edit", () => {
+	it("uses a flat operation schema with enumerated modes", () => {
+		const parameters = tool().parameters as {
+			properties: {
+				operations: {
+					items: {
+						anyOf?: unknown;
+						properties: Record<string, { enum?: string[] }>;
+					};
+				};
+			};
+		};
+		const operation = parameters.properties.operations.items;
+
+		expect(JSON.stringify(tool().parameters).length).toBeLessThan(600);
+		expect(operation.anyOf).toBeUndefined();
+		expect(operation.properties.mode.enum).toEqual([
+			"literal_replace",
+			"regex_replace",
+			"normalize_line_endings",
+			"ensure_final_newline",
+		]);
+		expect(Object.keys(operation.properties)).toEqual([
+			"mode",
+			"search",
+			"pattern",
+			"replace",
+			"flags",
+			"expectedMatches",
+			"allowZero",
+		]);
+	});
 	it("literal_replace, regex_replace, line endings and finalNewline work", () => {
 		const result = applyTextOperations("a\r\nb\n", [
 			{
@@ -48,6 +79,25 @@ describe("text_edit", () => {
 			{ mode: "ensure_final_newline" },
 		] satisfies Operation[]);
 		expect(result.text).toBe("x\ny\n");
+	});
+	it("rejects malformed flattened operations before file mutation", async () => {
+		const cwd = repo();
+		const target = path.join(cwd, "a.txt");
+		writeFileSync(target, "hello\n");
+
+		const result = await tool().execute(
+			"1",
+			{
+				paths: ["a.txt"],
+				operations: [{ mode: "literal_replace", replace: "bye" }],
+			},
+			undefined,
+			undefined,
+			{ cwd },
+		);
+
+		expect(result.isError).toBe(true);
+		expect(readFileSync(target, "utf8")).toBe("hello\n");
 	});
 	it("dryRun returns preview and does not write", async () => {
 		const cwd = repo();

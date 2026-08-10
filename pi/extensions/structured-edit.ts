@@ -1,3 +1,4 @@
+import { StringEnum } from "@earendil-works/pi-ai";
 import {
 	type ExtensionAPI,
 	withFileMutationQueue,
@@ -13,10 +14,45 @@ import {
 } from "../lib/safe-edit.js";
 
 type Segment = string | number;
-export type Operation =
-	| { mode: "set"; path: Segment[]; value: unknown }
-	| { mode: "delete"; path: Segment[] };
+const STRUCTURED_OPERATION_MODES = ["set", "delete"] as const;
+type StructuredOperationMode = (typeof STRUCTURED_OPERATION_MODES)[number];
+
+export interface Operation {
+	mode: StructuredOperationMode;
+	path: Segment[];
+	value?: unknown;
+}
+
+type ValidatedOperation =
+	| (Operation & { mode: "set"; value: unknown })
+	| (Operation & { mode: "delete" });
+
 const DANGEROUS = new Set(["__proto__", "prototype", "constructor"]);
+
+function validateStructuredOperation(operation: Operation): ValidatedOperation {
+	if (!operation || typeof operation !== "object")
+		throw new Error("Structured edit operation must be an object");
+	const input = operation as unknown as Record<string, unknown>;
+	if (!STRUCTURED_OPERATION_MODES.includes(input.mode as StructuredOperationMode))
+		throw new Error(`Unsupported structured edit mode: ${String(input.mode)}`);
+	if (!Array.isArray(input.path))
+		throw new Error(`${input.mode} mode requires a path array`);
+	if (
+		input.path.some(
+			(segment) => typeof segment !== "string" && typeof segment !== "number",
+		)
+	)
+		throw new Error("Path segments must be strings or numbers");
+	if (input.mode === "set" && !("value" in input))
+		throw new Error("set mode requires a value");
+	return operation as ValidatedOperation;
+}
+
+function validateStructuredOperations(
+	operations: Operation[],
+): ValidatedOperation[] {
+	return operations.map(validateStructuredOperation);
+}
 
 function checkPath(segments: Segment[]) {
 	if (segments.length === 0) throw new Error("Path must not be empty");
@@ -53,7 +89,8 @@ export function applyStructuredOperations(
 	root: unknown,
 	operations: Operation[],
 ): unknown {
-	for (const op of operations) {
+	const validatedOperations = validateStructuredOperations(operations);
+	for (const op of validatedOperations) {
 		const { parent, key } = parentFor(root, op.path);
 		if (Array.isArray(parent)) {
 			if (typeof key !== "number" || key < 0 || key >= parent.length)
@@ -86,32 +123,26 @@ export default function (pi: ExtensionAPI) {
 			indent: Type.Optional(Type.Number()),
 			finalNewline: Type.Optional(Type.Boolean()),
 			operations: Type.Array(
-				Type.Union([
-					Type.Object({
-						mode: Type.Literal("set"),
-						path: Type.Array(Type.Union([Type.String(), Type.Number()])),
-						value: Type.Unknown(),
-					}),
-					Type.Object({
-						mode: Type.Literal("delete"),
-						path: Type.Array(Type.Union([Type.String(), Type.Number()])),
-					}),
-				]),
+				Type.Object({
+					mode: StringEnum(STRUCTURED_OPERATION_MODES),
+					path: Type.Array(Type.Union([Type.String(), Type.Number()])),
+					value: Type.Optional(Type.Unknown()),
+				}),
 			),
 		}),
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			try {
 				if (params.format !== "json")
 					throw new Error("Only format=json is supported in v1");
+				const operations = validateStructuredOperations(
+					params.operations as Operation[],
+				);
 				const file = resolveSafePath(params.path, ctx.cwd ?? process.cwd());
 				return await withFileMutationQueue(file.absolute, async () => {
 					if (signal?.aborted) throw new Error("Structured edit aborted");
 					const before = readSafeText(file);
 					const data = JSON.parse(before);
-					const edited = applyStructuredOperations(
-						data,
-						params.operations as Operation[],
-					);
+					const edited = applyStructuredOperations(data, operations);
 					const text = setFinalNewline(
 						JSON.stringify(edited, null, params.indent ?? 2),
 						params.finalNewline ?? true,

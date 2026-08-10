@@ -8,6 +8,7 @@
  *   - multi_select: pick multiple options, then Done
  *   - confirm: yes/no question
  */
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -32,10 +33,10 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       question: Type.String({ description: "The question to ask the user" }),
       mode: Type.Optional(
-        Type.Union(
-          [Type.Literal("text"), Type.Literal("select"), Type.Literal("multi_select"), Type.Literal("confirm")],
-          { description: 'Input mode: "text" (default), "select", "multi_select", or "confirm"', default: "text" }
-        )
+        StringEnum(["text", "select", "multi_select", "confirm"] as const, {
+          description: 'Input mode: "text" (default), "select", "multi_select", or "confirm"',
+          default: "text",
+        })
       ),
       options: Type.Optional(
         Type.Array(Type.String(), { description: 'Options for "select" or "multi_select" mode' })

@@ -167,15 +167,18 @@ export default function (pi: ExtensionAPI) {
 			"Use for finding documentation, current information, or researching any topic.",
 		parameters: Type.Object({
 			query: Type.String({ description: "Base search query" }),
-			exactPhrases: Type.Optional(Type.Array(Type.String(), { description: "Exact phrases to require; each becomes a quoted phrase" })),
-			exact_phrases: Type.Optional(Type.Array(Type.String(), { description: "Alias for exactPhrases" })),
-			excludeTerms: Type.Optional(Type.Array(Type.String(), { description: "Terms or phrases to exclude" })),
-			exclude_terms: Type.Optional(Type.Array(Type.String(), { description: "Alias for excludeTerms" })),
+			exact_phrases: Type.Optional(
+				Type.Array(Type.String(), {
+					description: "Exact phrases to require; each becomes a quoted phrase",
+				}),
+			),
+			exclude_terms: Type.Optional(
+				Type.Array(Type.String(), { description: "Terms or phrases to exclude" }),
+			),
 			site: Type.Optional(Type.String({ description: "Optional site/domain restriction, e.g. example.com" })),
 			num_results: Type.Optional(
 				Type.Number({ description: "Number of results to return (default: 5, max: 20)" }),
 			),
-			count: Type.Optional(Type.Number({ description: "Alias for num_results" })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			const search = params as StructuredSearchParams;

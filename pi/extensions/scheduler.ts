@@ -351,12 +351,12 @@ export default function registerScheduler(pi: ExtensionAPI) {
 		name: "schedule",
 		label: "Schedule",
 		description:
-			"Create, list, or cancel process-local scheduled prompts for delayed workflow continuation and recurring checks. Scheduling does not require user approval or confirmation. Schedules survive session changes in the current Pi process but stop when that process exits.",
+			"Create, list, or cancel process-local prompts that run later or recur. Schedule controls timing, not todo state, dependencies, or process lifecycle.",
 		promptSnippet:
 			"Schedule delayed workflow continuation or recurring checks instead of shell waits or polling",
 		promptGuidelines: [
 			"Scheduling is process-local workflow control and does not require user approval or confirmation.",
-			"Use schedule for delayed workflow continuation, status follow-ups, and recurring checks when useful.",
+			"Use schedule for delayed workflow continuation, status follow-ups, and recurring checks. Scheduled prompts should inspect task, subagent, background-process, or external state rather than own it.",
 			"For waits of 60 seconds or longer, use schedule instead of shell sleep loops, polling loops, or background workers used only as timers.",
 			"Never use ask_user to confirm schedule creation or cancellation. Call schedule directly when its parameters are known.",
 			"Ask a non-confirmation clarification only when a required schedule value is missing or ambiguous.",

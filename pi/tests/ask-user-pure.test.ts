@@ -14,6 +14,17 @@ describe("ask-user extension", () => {
     mod.default(mockPi as any);
   });
 
+  it("uses a string enum for mode", () => {
+    const tool = mockPi._getTool("ask_user")!;
+    const mode = tool.parameters.properties.mode;
+
+    expect(JSON.stringify(tool.parameters).length).toBeLessThan(550);
+    expect(mode.type).toBe("string");
+    expect(mode.enum).toEqual(["text", "select", "multi_select", "confirm"]);
+    expect(mode.default).toBe("text");
+    expect(mode.anyOf).toBeUndefined();
+  });
+
   describe("execute — text mode", () => {
     it("should call ctx.ui.input and return response", async () => {
       const tool = mockPi._getTool("ask_user")!;

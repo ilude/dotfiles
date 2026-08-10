@@ -33,6 +33,24 @@ function tool() {
 }
 
 describe("structured_edit", () => {
+	it("uses a flat operation schema with enumerated modes", () => {
+		const parameters = tool().parameters as {
+			properties: {
+				operations: {
+					items: {
+						anyOf?: unknown;
+						properties: Record<string, { enum?: string[] }>;
+					};
+				};
+			};
+		};
+		const operation = parameters.properties.operations.items;
+
+		expect(JSON.stringify(tool().parameters).length).toBeLessThan(500);
+		expect(operation.anyOf).toBeUndefined();
+		expect(operation.properties.mode.enum).toEqual(["set", "delete"]);
+		expect(Object.keys(operation.properties)).toEqual(["mode", "path", "value"]);
+	});
 	it("applies JSON set and delete using typed array paths", () => {
 		const data = { a: { b: 1 }, list: ["x", "y"] };
 		applyStructuredOperations(data, [
@@ -40,6 +58,26 @@ describe("structured_edit", () => {
 			{ mode: "delete", path: ["list", 0] },
 		] satisfies Operation[]);
 		expect(data).toEqual({ a: { b: 2 }, list: ["y"] });
+	});
+	it("rejects malformed flattened operations before file mutation", async () => {
+		const cwd = repo();
+		const target = path.join(cwd, "a.json");
+		writeFileSync(target, '{"a":1}\n');
+
+		const result = await tool().execute(
+			"1",
+			{
+				path: "a.json",
+				format: "json",
+				operations: [{ mode: "set", path: ["a"] }],
+			},
+			undefined,
+			undefined,
+			{ cwd },
+		);
+
+		expect(result.isError).toBe(true);
+		expect(readFileSync(target, "utf8")).toBe('{"a":1}\n');
 	});
 	it("writes pretty JSON with finalNewline", async () => {
 		const cwd = repo();

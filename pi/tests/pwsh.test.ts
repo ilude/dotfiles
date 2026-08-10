@@ -48,6 +48,16 @@ describe("pwsh extension", () => {
   });
 
   describe("tool metadata", () => {
+    it("keeps provider-visible metadata compact", () => {
+      expect(
+        JSON.stringify({
+          description: tool.description,
+          parameters: tool.parameters,
+          promptGuidelines: tool.promptGuidelines,
+        }).length,
+      ).toBeLessThan(850);
+    });
+
     it("registers PowerShell as active without spawning a version probe", async () => {
       Object.defineProperty(process, "platform", { value: "win32", writable: true, configurable: true });
       try {
