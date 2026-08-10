@@ -19,6 +19,26 @@ function Get-ContentLF {
     (Get-Content $Path -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
 }
 
+function Get-PowerShellProfileDirectory {
+    <#
+    .SYNOPSIS
+        Resolve the PowerShell 7 profile directory.
+    .PARAMETER DocumentsDirectory
+        Windows Documents known folder. Defaults to the current user's resolved location.
+    #>
+    param(
+        [string]$DocumentsDirectory = [Environment]::GetFolderPath(
+            [Environment+SpecialFolder]::MyDocuments
+        )
+    )
+
+    if ([string]::IsNullOrWhiteSpace($DocumentsDirectory)) {
+        throw "Unable to resolve the Windows Documents directory."
+    }
+
+    Join-Path $DocumentsDirectory "PowerShell"
+}
+
 function ConvertTo-GitBashPath {
     <#
     .SYNOPSIS

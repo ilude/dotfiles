@@ -294,15 +294,42 @@ if ($script:AvailableModules['DockerCompletion']) {
 
 #region CLI Tool Completions (cached for speed)
 
-. (Join-Path $PSScriptRoot 'lib\completion-cache.ps1')
-$script:CompletionCacheDir = Get-CompletionCacheDirectory
+# Keep the loaded profile self-contained so startup does not depend on deployed sidecar files.
+$script:CompletionCacheDir = "$env:LOCALAPPDATA\PowerShell\CompletionCache"
 
 function Update-Completions {
   <#
   .SYNOPSIS
   Regenerate cached CLI completions. Run after installing/updating CLI tools.
   #>
-  Update-CompletionCache
+  if (-not (Test-Path $script:CompletionCacheDir)) {
+    New-Item -ItemType Directory -Path $script:CompletionCacheDir -Force | Out-Null
+  }
+
+  $tools = @(
+    @{Name='kubectl'; Cmd='kubectl completion powershell'},
+    @{Name='helm'; Cmd='helm completion powershell'},
+    @{Name='gh'; Cmd='gh completion -s powershell'},
+    @{Name='tailscale'; Cmd='tailscale completion powershell'}
+  )
+
+  foreach ($tool in $tools) {
+    if (Get-Command $tool.Name -ErrorAction SilentlyContinue) {
+      Write-Host "Caching $($tool.Name) completions..." -ForegroundColor Cyan
+      try {
+        Invoke-Expression $tool.Cmd | Out-File "$script:CompletionCacheDir\$($tool.Name).ps1" -Encoding utf8
+      }
+      catch {
+        Write-Host "  Failed: $_" -ForegroundColor Red
+      }
+    }
+  }
+
+  if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+    Write-Host "Caching zoxide init..." -ForegroundColor Cyan
+    zoxide init powershell | Out-File "$script:CompletionCacheDir\zoxide.ps1" -Encoding utf8
+  }
+
   Write-Host "Done. Reload profile to use cached completions." -ForegroundColor Green
 }
 

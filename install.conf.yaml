@@ -43,15 +43,6 @@
 
 # Git Bash prompt (Windows) - copied by install.ps1, symlinks don't work reliably
 
-# Windows-specific: PowerShell profile
-- link:
-    ~/Documents/PowerShell/lib/completion-cache.ps1:
-      path: powershell/lib/completion-cache.ps1
-      if: '[ "$OSTYPE" = "msys" ] || [ "$OSTYPE" = "cygwin" ] || [ -n "$WINDIR" ]'
-    ~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1:
-      path: powershell/profile.ps1
-      if: '[ "$OSTYPE" = "msys" ] || [ "$OSTYPE" = "cygwin" ] || [ -n "$WINDIR" ]'
-
 # VS Code settings - Windows
 - link:
     ~/AppData/Roaming/Code/User/settings.json:

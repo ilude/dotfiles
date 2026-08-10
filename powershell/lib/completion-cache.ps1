@@ -1,6 +1,6 @@
 # PowerShell CLI completion cache helpers
 # =======================================
-# Shared by install.ps1 and the PowerShell profile. Safe to source without side effects.
+# Used by install.ps1. Safe to source without side effects.
 
 function Get-CompletionCacheDirectory {
     Join-Path $env:LOCALAPPDATA 'PowerShell\CompletionCache'

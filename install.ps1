@@ -2072,7 +2072,7 @@ try {
     # ========================================================================
     Write-Host "`nConfiguring PowerShell profile..." -ForegroundColor Cyan
     $pwshProfileSource = Join-Path $BASEDIR "powershell\profile.ps1"
-    $pwshProfileDir = Join-Path $env:USERPROFILE "Documents\PowerShell"
+    $pwshProfileDir = Get-PowerShellProfileDirectory
     $pwshProfileDest = Join-Path $pwshProfileDir "Microsoft.PowerShell_profile.ps1"
     if (Test-Path $pwshProfileSource) {
         if (-not (Test-Path $pwshProfileDir)) {
@@ -2104,41 +2104,6 @@ try {
         }
     } else {
         Write-Host "  PowerShell profile source not found, skipping" -ForegroundColor DarkGray
-    }
-
-    $completionCacheSource = Join-Path $BASEDIR "powershell\lib\completion-cache.ps1"
-    $completionCacheDir = Join-Path $pwshProfileDir "lib"
-    $completionCacheDest = Join-Path $completionCacheDir "completion-cache.ps1"
-    if (Test-Path $completionCacheSource) {
-        if (-not (Test-Path $completionCacheDir)) {
-            New-Item -ItemType Directory -Path $completionCacheDir -Force | Out-Null
-        }
-
-        $completionCacheInstalled = $false
-        if (Test-Path $completionCacheDest) {
-            $item = Get-Item $completionCacheDest -Force
-            if ($item.LinkType -eq "SymbolicLink" -and $item.Target -eq $completionCacheSource) {
-                Write-Host "  completion-cache.ps1: already linked" -ForegroundColor DarkGray
-                $completionCacheInstalled = $true
-            } elseif ((Get-Content $completionCacheDest -Raw -ErrorAction SilentlyContinue) -eq (Get-Content $completionCacheSource -Raw)) {
-                Write-Host "  completion-cache.ps1: already up to date" -ForegroundColor DarkGray
-                $completionCacheInstalled = $true
-            } else {
-                Remove-Item $completionCacheDest -Force
-            }
-        }
-
-        if (-not $completionCacheInstalled) {
-            try {
-                New-Item -ItemType SymbolicLink -Path $completionCacheDest -Target $completionCacheSource -Force | Out-Null
-                Write-Host "  completion-cache.ps1: linked" -ForegroundColor Green
-            } catch {
-                Write-Host "  completion-cache.ps1: symlink failed, copying instead" -ForegroundColor Yellow
-                Copy-Item $completionCacheSource $completionCacheDest -Force
-            }
-        }
-    } else {
-        Write-Host "  completion-cache.ps1 source not found, skipping" -ForegroundColor DarkGray
     }
 
     # ========================================================================

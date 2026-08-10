@@ -122,18 +122,6 @@ def test_git_ignores_generated_shell_state() -> None:
     assert result.stdout.split(b"\0") == [b"example.zwc", b".zshrc.local", b""]
 
 
-def test_windows_powershell_completion_cache_link() -> None:
-    """The profile-local helper link resolves when PowerShell loads a linked profile."""
-    targets = _parse_link_targets_from_yaml(DOTFILES / "install.conf.yaml")
-    helper_target = "~/Documents/PowerShell/lib/completion-cache.ps1"
-    profile_target = "~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
-
-    helper = targets[helper_target]
-    profile = targets[profile_target]
-    assert helper["path"] == "powershell/lib/completion-cache.ps1"
-    assert helper["if"] == profile["if"]
-
-
 def test_install_conf_wsl_sync() -> None:
     """WSL mirrors every unconditional cross-platform Dotbot link."""
     main_targets = _parse_link_targets_from_yaml(DOTFILES / "install.conf.yaml")
