@@ -56,17 +56,15 @@ describe("createTask", () => {
 
 	it("preserves optional fields including workspace and notes", () => {
 		const task = createTask({
-			origin: "subagent",
+			origin: "other",
 			summary: "lint",
 			parentId: "parent-123",
-			agentName: "validator",
 			repoSlug: "gh/owner/repo",
 			workspace: "/work/repo",
 			notes: "run after deploy",
 			metadata: { ticket: "OPS-42" },
 		});
 		expect(task.parentId).toBe("parent-123");
-		expect(task.agentName).toBe("validator");
 		expect(task.repoSlug).toBe("gh/owner/repo");
 		expect(task.workspace).toBe("/work/repo");
 		expect(task.notes).toBe("run after deploy");
@@ -121,17 +119,11 @@ describe("createTaskBatch", () => {
 					blockedBy: [existing.id],
 				},
 				{
-					origin: "subagent" as const,
+					origin: "other" as const,
 					summary: "worker",
 					key: "worker",
 					blockedByKeys: ["manual"],
 					scope: ["src/**"],
-					execution: {
-						kind: "subagent" as const,
-						agent: "validator",
-						task: "validate",
-						status: "pending" as const,
-					},
 				},
 			];
 			const result = createTaskBatch(
@@ -158,7 +150,6 @@ describe("createTaskBatch", () => {
 			expect(worker?.blockedBy).toEqual([manual?.id]);
 			expect(getTask(existing.id)?.blocks).toContain(manual?.id);
 			expect(manual?.blocks).toEqual([worker?.id]);
-			expect(worker?.execution?.kind).toBe("subagent");
 			expect(worker?.scope).toEqual(["src/**"]);
 		}
 	});

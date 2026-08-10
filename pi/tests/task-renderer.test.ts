@@ -117,20 +117,20 @@ describe("formatTaskToolResult", () => {
 			expect(Buffer.byteLength(result.text, "utf8")).toBeLessThanOrEqual(4_096);
 		}
 
-		const records = Array.from({ length: 8 }, (_, index) =>
-			createTask({
-				origin: "subagent",
+		const records = Array.from({ length: 8 }, (_, index) => ({
+			...createTask({
+				origin: "other",
 				summary: `artifact ${index}`,
 				state: "completed",
-				execution: {
-					kind: "subagent",
-					agent: "builder",
-					task: "Run",
-					status: "completed",
-					outputPath: `C:/tmp/${"😀".repeat(1_000)}/${index}.md`,
-				},
 			}),
-		);
+			execution: {
+				kind: "subagent" as const,
+				agent: "builder",
+				task: "Run",
+				status: "completed" as const,
+				outputPath: `C:/tmp/${"😀".repeat(1_000)}/${index}.md`,
+			},
+		}));
 		const details = {
 			outcome: "persisted",
 			results: records.map((record) => ({
@@ -185,7 +185,6 @@ describe("task renderer/settings", () => {
 		const task = createTask({
 			origin: "subagent",
 			summary: "orchestrator",
-			agentName: "orchestrator",
 			state: "running",
 			metadata: { model: "anthropic/claude-sonnet-4-6", effort: "high" },
 		});
@@ -199,18 +198,20 @@ describe("task renderer/settings", () => {
 		);
 	});
 
-	it("shows background execution status and output artifact", () => {
-		const task = createTask({
-			origin: "subagent",
-			summary: "background task",
+	it("shows legacy execution status and output artifact", () => {
+		const task = {
+			...createTask({
+				origin: "other",
+				summary: "legacy task",
+			}),
 			execution: {
-				kind: "subagent",
+				kind: "subagent" as const,
 				agent: "builder",
 				task: "Read one file",
-				status: "completed",
+				status: "completed" as const,
 				outputPath: "C:/tmp/task-output.md",
 			},
-		});
+		};
 
 		const text = formatTaskDetail(task);
 		expect(text).toContain("execution: completed");

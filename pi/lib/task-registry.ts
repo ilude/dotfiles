@@ -155,15 +155,12 @@ export interface CreateTaskInput {
 	summary: string;
 	state?: TaskState;
 	parentId?: string;
-	agentName?: string;
-	prompt?: string;
 	preview?: string;
 	repoSlug?: string;
 	workspace?: string;
 	scope?: string[];
 	notes?: string;
 	metadata?: Record<string, unknown>;
-	execution?: SubagentTaskExecution;
 	blockedBy?: string[];
 	blocks?: string[];
 }
@@ -196,8 +193,6 @@ export interface UpdateTaskPatch {
 	preview?: string;
 	usage?: TaskUsage;
 	metadata?: Record<string, unknown>;
-	execution?: SubagentTaskExecution;
-	agentName?: string;
 	workspace?: string;
 	scope?: string[];
 	notes?: string;
@@ -405,15 +400,12 @@ function createTaskRecord(
 		updatedAt: now,
 		retryCount: 0,
 		parentId: input.parentId,
-		agentName: input.agentName,
-		prompt: input.prompt,
 		preview: input.preview,
 		repoSlug: input.repoSlug,
 		workspace: input.workspace,
 		scope: normalizeTaskScope(input.scope),
 		notes: input.notes,
 		metadata: input.metadata,
-		execution: input.execution,
 		blockedBy,
 		blocks: normalizeIdList(input.blocks),
 	});
@@ -633,8 +625,6 @@ export function updateTask(id: string, patch: UpdateTaskPatch): TaskRecordV1 {
 		...(patch.preview !== undefined ? { preview: patch.preview } : {}),
 		...(patch.usage !== undefined ? { usage: patch.usage } : {}),
 		...(patch.metadata !== undefined ? { metadata: patch.metadata } : {}),
-		...(patch.execution !== undefined ? { execution: patch.execution } : {}),
-		...(patch.agentName !== undefined ? { agentName: patch.agentName } : {}),
 		...(patch.workspace !== undefined ? { workspace: patch.workspace } : {}),
 		...(patch.scope !== undefined
 			? { scope: normalizeTaskScope(patch.scope) }

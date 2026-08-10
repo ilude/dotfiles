@@ -304,6 +304,8 @@ export function formatTaskDetail(
 		lines.push(`  workspace: ${truncateTaskText(task.workspace, 240)}`);
 	if (task.summary)
 		lines.push(`  summary: ${truncateTaskText(task.summary, 200)}`);
+	if (task.scope?.length)
+		lines.push(`  scope: ${task.scope.map((item) => truncateTaskText(item, 120)).join(", ")}`);
 	if (task.prompt)
 		lines.push(`  prompt: ${truncateTaskText(task.prompt, 200)}`);
 	if (task.preview)

@@ -391,16 +391,6 @@ function traceFailed(trace: ToolTrace): boolean {
 	return trace.isError || FAILURE_PATTERN.test(trace.resultText);
 }
 
-function isTaskExecutionTrace(trace: ToolTrace): boolean {
-	if (trace.toolName !== "task") return false;
-	try {
-		const args = JSON.parse(trace.argsText) as Record<string, unknown>;
-		return args.action === "execute" || args.action === "execute_many";
-	} catch {
-		return false;
-	}
-}
-
 export function interactionMetadataFromPacket(
 	packet: InteractionPacket,
 ): InteractionMetadataRecord {
@@ -414,7 +404,7 @@ export function interactionMetadataFromPacket(
 		if (failed) toolFailureCount += 1;
 		const command = normalizedCommand(trace);
 		if (command && VALIDATION_PATTERN.test(command)) validationCount += 1;
-		if (trace.toolName === "subagent" || isTaskExecutionTrace(trace)) {
+		if (trace.toolName === "subagent") {
 			subagentCount += 1;
 			if (failed) failedSubagentCount += 1;
 		}
@@ -524,7 +514,7 @@ export function detectFrictionTriggers(
 				trace.toolName,
 				(failedTools.get(trace.toolName) ?? 0) + 1,
 			);
-			if (trace.toolName === "subagent" || isTaskExecutionTrace(trace))
+			if (trace.toolName === "subagent")
 				failedSubagents += 1;
 		}
 

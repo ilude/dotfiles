@@ -299,48 +299,6 @@ describe("session budget extension", () => {
 		);
 	});
 
-	it("observes durable task executions as subagent spawns", async () => {
-		const runtime = setup(baseConfig, {
-			resolveTaskSpawn: () => ({
-				agentType: "reviewer",
-				prompt: "Review the durable task",
-			}),
-		});
-		runtime.ctx.ui.select.mockResolvedValue("continue as scoped");
-		await startEpoch(runtime);
-		await callTool(runtime, "task-1", "task", {
-			action: "execute",
-			id: "task-1",
-		});
-		await callTool(runtime, "task-2", "task", {
-			action: "execute",
-			id: "task-2",
-		});
-		expect(runtime.ctx.ui.select.mock.calls.flat().join(" ")).toContain(
-			"repeat_spawn",
-		);
-	});
-
-	it("ignores durable task executions that are not eligible to start", async () => {
-		const resolveTaskSpawn = vi.fn(() => undefined);
-		const runtime = setup(baseConfig, { resolveTaskSpawn });
-		await startEpoch(runtime);
-		await callTool(runtime, "blocked", "task", {
-			action: "execute",
-			id: "blocked-task",
-		});
-		await callTool(runtime, "foreign", "task", {
-			action: "execute",
-			id: "foreign-task",
-		});
-		await callTool(runtime, "many", "task", {
-			action: "execute_many",
-			ids: ["dependency-task", "terminal-task"],
-		});
-		expect(resolveTaskSpawn).toHaveBeenCalledTimes(4);
-		expect(runtime.ctx.ui.select).not.toHaveBeenCalled();
-	});
-
 	it("queues a hard command-error trip and gates the next tool call", async () => {
 		const runtime = setup();
 		runtime.ctx.ui.select.mockResolvedValue("continue as scoped");

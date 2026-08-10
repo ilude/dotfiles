@@ -7,13 +7,6 @@ import {
 	type SessionBudgetFinding,
 } from "../lib/session-budget.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
-import {
-	getTask,
-	getUnmetBlockers,
-	listTasks,
-	resolveTaskWorkspace,
-	tasksByIdSnapshot,
-} from "../lib/task-registry.js";
 import { appendWorkflowEvent } from "../lib/workflow-telemetry.js";
 
 const NOTICE_TYPE = "session-budget.notice";
@@ -43,10 +36,6 @@ export interface SessionBudgetDependencies {
 	now: () => number;
 	loadConfig: (cwd: string) => SessionBudgetConfig;
 	recordEvent: typeof appendWorkflowEvent;
-	resolveTaskSpawn: (
-		taskId: string,
-		cwd: string,
-	) => SpawnDescriptor | undefined;
 }
 
 export function loadSessionBudgetConfig(
@@ -66,25 +55,6 @@ const defaultDependencies: SessionBudgetDependencies = {
 	now: () => Date.now(),
 	loadConfig: (cwd) => loadSessionBudgetConfig(cwd),
 	recordEvent: appendWorkflowEvent,
-	resolveTaskSpawn: (taskId, cwd) => {
-		const record = getTask(taskId);
-		const execution = record?.execution;
-		const tasks = tasksByIdSnapshot(listTasks({ includeTombstones: true }));
-		if (
-			!record ||
-			(record.workspace !== undefined &&
-				record.workspace !== resolveTaskWorkspace(cwd)) ||
-			!new Set(["pending", "failed"]).has(record.state) ||
-			getUnmetBlockers(record, tasks).length > 0 ||
-			execution?.kind !== "subagent" ||
-			execution.status === "failed_to_stop" ||
-			typeof execution.agent !== "string" ||
-			typeof execution.task !== "string"
-		) {
-			return undefined;
-		}
-		return { agentType: execution.agent, prompt: execution.task };
-	},
 };
 
 function normalizeText(value: string): string {
@@ -114,11 +84,6 @@ function touchedPaths(
 function spawnDescriptors(
 	toolName: string,
 	input: Record<string, unknown>,
-	resolveTaskSpawn: (
-		taskId: string,
-		cwd: string,
-	) => SpawnDescriptor | undefined,
-	cwd: string,
 ): SpawnDescriptor[] {
 	const descriptors: SpawnDescriptor[] = [];
 	const add = (value: unknown) => {
@@ -131,18 +96,6 @@ function spawnDescriptors(
 		add(input);
 		if (Array.isArray(input.tasks)) input.tasks.forEach(add);
 		if (Array.isArray(input.chain)) input.chain.forEach(add);
-	}
-	if (toolName === "task") {
-		const ids =
-			input.action === "execute" && typeof input.id === "string"
-				? [input.id]
-				: input.action === "execute_many" && Array.isArray(input.ids)
-					? input.ids.filter((id): id is string => typeof id === "string")
-					: [];
-		for (const id of ids) {
-			const descriptor = resolveTaskSpawn(id, cwd);
-			if (descriptor) descriptors.push(descriptor);
-		}
 	}
 	return descriptors;
 }
@@ -508,12 +461,7 @@ export function registerSessionBudget(
 				timestamp: deps.now(),
 				touchedPaths: touchedPaths(event.toolName, input),
 			});
-			for (const spawn of spawnDescriptors(
-				event.toolName,
-				input,
-				deps.resolveTaskSpawn,
-				ctx.cwd,
-			)) {
+			for (const spawn of spawnDescriptors(event.toolName, input)) {
 				findings.push(
 					...tracker.process({
 						type: "spawn",

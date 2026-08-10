@@ -1,12 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-	type ExtensionAPI,
-	truncateTail,
-} from "@earendil-works/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { sendBackgroundPrompt } from "../lib/background-prompt.js";
 import {
 	isAllowedTransition,
 	TERMINAL_TASK_STATES,
@@ -23,7 +20,6 @@ import {
 	partitionReadyTasks,
 	resolveTaskWorkspace,
 	retryTask,
-	type SubagentTaskExecution,
 	safeTransitionTask,
 	startTask,
 	type TaskOperationResult,
@@ -50,33 +46,21 @@ import {
 	isTaskRenderMode,
 	setTaskRenderMode,
 } from "../lib/task-settings.js";
-import {
-	formatTaskCompletionNotification,
-	TaskExecutionCoordinator,
-	type TaskDrainResult,
-	type TaskExecutionResult,
-	type TaskMultiResult,
-} from "./tasks/execution.js";
-
 export { formatTaskDetail, formatTaskList, groupTasksByUrgency };
 
 const TASK_SUMMARY_MAX_LENGTH = 100;
 const TASK_NOTES_MAX_LENGTH = 500;
-const TASK_PROMPT_MAX_LENGTH = 2_000;
-const TASK_PARENT_OUTPUT_MAX_BYTES = 2_000;
-const TASK_PARENT_OUTPUT_MAX_LINES = 100;
 const TASK_LIST_MODEL_MAX_ITEMS = 50;
 const TASK_LIST_BLOCKER_MAX_ITEMS = 5;
 const TASK_BATCH_MAX_ITEMS = 16;
-const TASK_MULTI_MAX_ITEMS = 8;
-const TASK_MULTI_CONTENT_MAX_BYTES = 4_096;
-const TASK_MULTI_ERROR_MAX_CODE_POINTS = 200;
+const TASK_BATCH_RESULT_MAX_BYTES = 4_096;
+const TASK_BATCH_ERROR_MAX_CODE_POINTS = 200;
 const TASK_SCOPE_MAX_ITEMS = 16;
 const TASK_SCOPE_MAX_LENGTH = 256;
 const TASK_BATCH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 
 function validateTaskText(
-	label: "summary" | "notes" | "skipReason" | "task",
+	label: "summary" | "notes" | "skipReason",
 	value: string,
 	maxLength: number,
 	oneLine = false,
@@ -216,8 +200,6 @@ function notifyOutcome(
 }
 
 export class TaskLifecycleService {
-	constructor(private readonly coordinator: TaskExecutionCoordinator) {}
-
 	start(id: string): TaskOperationResult {
 		const task = getTask(id);
 		if (!task) return { outcome: "not_found", error: `task not found: ${id}` };
@@ -250,18 +232,6 @@ export class TaskLifecycleService {
 				record: task,
 				error: `task is already ${task.state}`,
 			};
-		if (task.state === "running") {
-			const stopped = await this.coordinator.stop(id);
-			if (stopped.outcome === "failed_to_stop")
-				return {
-					outcome: "rejected",
-					record: stopped.record ?? task,
-					error: stopped.error ?? "active execution failed to stop",
-				};
-			const current = getTask(id);
-			if (current?.state === "cancelled")
-				return { outcome: "persisted", record: current };
-		}
 		return safeTransitionTask(id, "cancelled");
 	}
 
@@ -316,10 +286,7 @@ function compactTaskCollection(
 	};
 }
 
-function operationToolResult(
-	result: TaskOperationResult | TaskExecutionResult,
-	id?: string,
-) {
+function operationToolResult(result: TaskOperationResult, id?: string) {
 	const resultId = result.record?.id ?? id;
 	const error =
 		result.error ??
@@ -415,49 +382,6 @@ export function importLegacyTodos(
 	return imported.map((record) => getTask(record.id) ?? record);
 }
 
-function originFrom(value: unknown): "subagent" | "shell" | "other" {
-	return value === "subagent" || value === "shell" ? value : "other";
-}
-
-function executionFrom(
-	input: Record<string, unknown>,
-	fallbackCwd: string,
-): SubagentTaskExecution | undefined {
-	const hasExecution = input.agent !== undefined || input.task !== undefined;
-	if (!hasExecution) return undefined;
-	if (typeof input.agent !== "string" || !input.agent.trim())
-		throw new Error("Executable tasks require a non-empty agent.");
-	if (typeof input.task !== "string" || !input.task.trim())
-		throw new Error("Executable tasks require a non-empty task.");
-	const task = validateTaskText("task", input.task, TASK_PROMPT_MAX_LENGTH);
-	const agentScope =
-		input.agentScope === "project" || input.agentScope === "both"
-			? input.agentScope
-			: "user";
-	const modelSize =
-		input.modelSize === "small" ||
-		input.modelSize === "medium" ||
-		input.modelSize === "large"
-			? input.modelSize
-			: undefined;
-	return {
-		kind: "subagent",
-		agent: input.agent,
-		task,
-		cwd:
-			typeof input.cwd === "string" && input.cwd.trim()
-				? input.cwd
-				: fallbackCwd,
-		agentScope,
-		model:
-			typeof input.model === "string" && input.model.trim()
-				? input.model
-				: undefined,
-		modelSize,
-		status: "pending",
-	};
-}
-
 function validatedScope(value: unknown): string[] | undefined {
 	if (value === undefined) return undefined;
 	if (!Array.isArray(value)) throw new Error("scope must be an array");
@@ -478,12 +402,9 @@ function taskInputFrom(
 	cwd: string,
 	batch = false,
 ): CreateTaskBatchInput {
-	const execution = executionFrom(input, cwd);
 	const summary = validateTaskText(
 		"summary",
-		typeof input.summary === "string"
-			? input.summary
-			: (execution?.task ?? "untitled task"),
+		typeof input.summary === "string" ? input.summary : "untitled task",
 		TASK_SUMMARY_MAX_LENGTH,
 		true,
 	);
@@ -517,11 +438,8 @@ function taskInputFrom(
 	)
 		throw new Error("blockedBy must contain at most 16 strings");
 	return {
-		origin: originFrom(input.origin),
+		origin: "other",
 		summary,
-		agentName: execution?.agent,
-		prompt: execution?.task,
-		execution,
 		workspace: resolveTaskWorkspace(cwd),
 		scope: validatedScope(input.scope),
 		notes,
@@ -542,201 +460,44 @@ function createTaskFromInput(
 	return createTask(taskInputFrom(input, cwd));
 }
 
-function validateMultiIds(value: unknown): string[] {
-	if (
-		!Array.isArray(value) ||
-		value.length < 1 ||
-		value.length > TASK_MULTI_MAX_ITEMS
-	)
-		throw new Error("ids must contain between 1 and 8 entries");
-	const ids = value.map((item) => {
-		if (typeof item !== "string" || item.length < 1 || item.length > 64)
-			throw new Error("ids entries must contain between 1 and 64 characters");
-		return item;
-	});
-	if (new Set(ids).size !== ids.length) throw new Error("duplicate task id");
-	return ids;
-}
-
 function codePointPrefix(value: string, maxCodePoints: number): string {
 	return [...value].slice(0, maxCodePoints).join("");
 }
 
-function fitOptionalField(
-	envelope: Record<string, unknown>,
-	entry: Record<string, unknown>,
-	field: "outputPath" | "error",
-	value: string,
-): void {
-	const fits = (candidate: string): boolean => {
-		entry[field] = candidate;
-		return (
-			Buffer.byteLength(JSON.stringify(envelope), "utf8") <=
-			TASK_MULTI_CONTENT_MAX_BYTES
-		);
-	};
-	if (fits(value)) return;
-	const points = [...value];
-	let low = 0;
-	let high = points.length;
-	let best: string | undefined;
-	while (low <= high) {
-		const middle = Math.floor((low + high) / 2);
-		const candidate = `${points.slice(0, middle).join("")}...`;
-		if (fits(candidate)) {
-			best = candidate;
-			low = middle + 1;
-		} else high = middle - 1;
-	}
-	if (best !== undefined) entry[field] = best;
-	else delete entry[field];
-}
+const RETIRED_EXECUTION_ACTIONS = new Set([
+	"execute",
+	"execute_many",
+	"drain",
+	"await",
+	"stop",
+	"output",
+]);
+const RETIRED_EXECUTION_FIELDS = [
+	"agent",
+	"task",
+	"cwd",
+	"agentScope",
+	"model",
+	"modelSize",
+	"maxConcurrent",
+] as const;
 
-function multiToolResult(
-	outcome: "accepted" | "partial" | "rejected" | "persisted" | "aborted",
-	results: TaskMultiResult[],
-) {
-	const visibleResults: Array<Record<string, unknown>> = results.map(
-		(result) => ({
-			id: result.id,
-			classification: result.classification,
-			...(result.state ? { state: result.state } : {}),
-		}),
-	);
-	const envelope: Record<string, unknown> = {
-		outcome,
-		count: results.length,
-		results: visibleResults,
-	};
-	if (
-		Buffer.byteLength(JSON.stringify(envelope), "utf8") >
-		TASK_MULTI_CONTENT_MAX_BYTES
-	)
-		throw new Error("mandatory multi-task result exceeds content budget");
-	for (let index = 0; index < results.length; index++) {
-		const result = results[index];
-		const outputPath =
-			result.classification === "terminal"
-				? result.record?.execution?.outputPath
-				: undefined;
-		if (outputPath)
-			fitOptionalField(
-				envelope,
-				visibleResults[index],
-				"outputPath",
-				outputPath,
-			);
-	}
-	for (let index = 0; index < results.length; index++) {
-		const error = results[index].error;
-		if (error)
-			fitOptionalField(
-				envelope,
-				visibleResults[index],
-				"error",
-				codePointPrefix(error, TASK_MULTI_ERROR_MAX_CODE_POINTS),
-			);
-	}
-	const text = JSON.stringify(envelope);
-	if (Buffer.byteLength(text, "utf8") > TASK_MULTI_CONTENT_MAX_BYTES)
-		throw new Error("multi-task result exceeds content budget");
-	return {
-		content: [{ type: "text" as const, text }],
-		details: { outcome, results },
-	};
-}
-
-function scopedMultiResult(
-	id: string,
-	workspace: string,
-): TaskMultiResult | undefined {
-	const record = getTask(id);
-	if (!record) return { id, classification: "missing" };
-	if (record.workspace && record.workspace !== workspace)
-		return { id, classification: "foreign_workspace" };
+function retiredExecutionField(input: Record<string, unknown>): string | undefined {
+	for (const field of RETIRED_EXECUTION_FIELDS)
+		if (input[field] !== undefined) return field;
+	if (Array.isArray(input.tasks))
+		for (const item of input.tasks)
+			if (item && typeof item === "object" && !Array.isArray(item)) {
+				const field = retiredExecutionField(item as Record<string, unknown>);
+				if (field) return `tasks[].${field}`;
+			}
 	return undefined;
 }
 
-function drainToolResult(result: TaskDrainResult) {
-	const limit = 20;
-	const visible = {
-		outcome: result.outcome,
-		started: result.started.slice(0, limit),
-		completed: result.completed.slice(0, limit),
-		failed: result.failed.slice(0, limit),
-		waiting: result.waiting.slice(0, limit),
-		starvation: result.starvation.slice(0, 10),
-		...(result.started.length > limit ||
-		result.completed.length > limit ||
-		result.failed.length > limit ||
-		result.waiting.length > limit ||
-		result.starvation.length > 10
-			? { truncated: true }
-			: {}),
-	};
-	return {
-		content: [{ type: "text" as const, text: JSON.stringify(visible) }],
-		details: result,
-	};
-}
-
-function taskOutputResult(coordinator: TaskExecutionCoordinator, id: string) {
-	const result = coordinator.output(id);
-	const execution = result.record?.execution;
-	const output = result.output ?? "(no output available)";
-	const parentOutput = truncateTail(output, {
-		maxBytes: TASK_PARENT_OUTPUT_MAX_BYTES,
-		maxLines: TASK_PARENT_OUTPUT_MAX_LINES,
-	});
-	const useArtifact = Boolean(
-		execution?.outputPath && (result.truncated || parentOutput.truncated),
-	);
-	const metadata = {
-		outcome: result.outcome,
-		id: result.record?.id ?? id,
-		state: result.record?.state,
-		...(result.outcome === "not_found"
-			? { error: result.error ?? `task not found: ${id}` }
-			: result.error
-				? { error: result.error }
-				: {}),
-		truncated: result.truncated === true || parentOutput.truncated,
-		...(useArtifact ? { output: "file-only" } : {}),
-		execution: execution
-			? {
-					status: execution.status,
-					outputPath: execution.outputPath,
-					outputError: execution.outputError,
-				}
-			: undefined,
-	};
-	return {
-		content: [
-			{
-				type: "text" as const,
-				text: useArtifact
-					? JSON.stringify(metadata)
-					: `${parentOutput.content}\n\n${JSON.stringify(metadata)}`,
-			},
-		],
-		details: result,
-	};
-}
-
-export function registerTaskTools(
-	pi: ExtensionAPI,
-	coordinator: TaskExecutionCoordinator,
-): void {
-	const lifecycle = new TaskLifecycleService(coordinator);
+export function registerTaskTools(pi: ExtensionAPI): void {
+	const lifecycle = new TaskLifecycleService();
 	const taskItem = Type.Object(
 		{
-			origin: Type.Optional(
-				Type.Union([
-					Type.Literal("subagent"),
-					Type.Literal("shell"),
-					Type.Literal("other"),
-				]),
-			),
 			summary: Type.Optional(
 				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
 			),
@@ -760,51 +521,15 @@ export function registerTaskTools(
 					maxItems: TASK_BATCH_MAX_ITEMS,
 				}),
 			),
-			agent: Type.Optional(Type.String()),
-			task: Type.Optional(Type.String({ maxLength: TASK_PROMPT_MAX_LENGTH })),
-			cwd: Type.Optional(Type.String()),
-			agentScope: Type.Optional(
-				Type.Union([
-					Type.Literal("user"),
-					Type.Literal("project"),
-					Type.Literal("both"),
-				]),
-			),
-			model: Type.Optional(Type.String()),
-			modelSize: Type.Optional(
-				Type.Union([
-					Type.Literal("small"),
-					Type.Literal("medium"),
-					Type.Literal("large"),
-				]),
-			),
 		},
 		{ additionalProperties: true },
 	);
 	const parameters = Type.Object(
 		{
-			action: Type.Union([
-				Type.Literal("create"),
-				Type.Literal("batch"),
-				Type.Literal("update"),
-				Type.Literal("remove"),
-				Type.Literal("list"),
-				Type.Literal("ready"),
-				Type.Literal("get"),
-				Type.Literal("execute"),
-				Type.Literal("execute_many"),
-				Type.Literal("drain"),
-				Type.Literal("await"),
-				Type.Literal("stop"),
-				Type.Literal("output"),
-			]),
-			id: Type.Optional(Type.String()),
-			ids: Type.Optional(
-				Type.Array(Type.String({ minLength: 1, maxLength: 64 }), {
-					minItems: 1,
-					maxItems: TASK_MULTI_MAX_ITEMS,
-				}),
+			action: StringEnum(
+				["create", "batch", "update", "remove", "list", "ready", "get"] as const,
 			),
+			id: Type.Optional(Type.String()),
 			summary: Type.Optional(
 				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
 			),
@@ -821,16 +546,6 @@ export function registerTaskTools(
 						"Include terminal tasks and tasks from other workspaces when listing.",
 				}),
 			),
-			maxConcurrent: Type.Optional(
-				Type.Integer({ minimum: 1, maximum: TASK_MULTI_MAX_ITEMS, default: 4 }),
-			),
-			origin: Type.Optional(taskItem.properties.origin),
-			agent: Type.Optional(Type.String()),
-			task: Type.Optional(Type.String({ maxLength: TASK_PROMPT_MAX_LENGTH })),
-			cwd: Type.Optional(Type.String()),
-			agentScope: Type.Optional(taskItem.properties.agentScope),
-			model: Type.Optional(Type.String()),
-			modelSize: Type.Optional(taskItem.properties.modelSize),
 			tasks: Type.Optional(
 				Type.Array(taskItem, {
 					minItems: 0,
@@ -844,16 +559,14 @@ export function registerTaskTools(
 		name: "task",
 		label: "Task",
 		description:
-			"Unified durable task surface for dependencies and background work. Task entries are index cards, not handoff documents: summary is a one-line deliverable, notes hold only blockers, dependencies, or acceptance checks, and detailed context belongs in a referenced artifact.",
-		promptSnippet:
-			"Manage durable planning tasks and background subagent execution through one task surface",
+			"Durable todo and dependency tracking for long or large workflows that may span context compaction. Task records track work; they do not execute it.",
+		promptSnippet: "Track durable todo items, dependencies, and workflow state",
 		promptGuidelines: [
-			"Durable task records are optional and valid for user-requested lists, main-thread tracking, dependencies, cross-turn work, and background execution; ordinary multi-step work can remain prose.",
-			"Task entries are index cards, not handoff documents: keep summary under 100 characters and notes under 500; put detailed context in an artifact and reference its path.",
+			"Use task for durable todo tracking, dependencies, and work that must survive context compaction; ordinary short workflows can remain prose.",
+			"Keep summary under 100 characters and notes under 500. Put detailed context in an artifact and reference its path.",
 			"Summary contains only the deliverable; notes contain only blockers, dependencies, or acceptance checks. Never copy conversation summaries, plans, diffs, or investigation narratives into task fields.",
-			"Create dependencies with blockedBy; use ready once when selecting runnable work.",
-			"For direct durable work, update state only when it changes; do not repeat lifecycle calls.",
-			"For background work, create executable tasks and start them once with execute or execute_many, or opt into drain for dependency-aware automatic dispatch. Completion wakes the current Pi process with a follow-up prompt; use await only when the current call must join, output only when needed, and stop only to cancel. Do not poll public task actions.",
+			"Use blockedBy for dependencies and ready to select runnable work. Mark selected work running before dispatching it with subagent or bg_start, then record its terminal state explicitly.",
+			"Task never starts, waits for, stops, or captures output from subagents or background processes.",
 		],
 		parameters,
 		renderCall(args, theme) {
@@ -863,11 +576,9 @@ export function registerTaskTools(
 			const hint =
 				typeof input.summary === "string"
 					? input.summary
-					: typeof input.task === "string"
-						? input.task
-						: Array.isArray(input.tasks)
-							? `${input.tasks.length} task(s)`
-							: undefined;
+					: Array.isArray(input.tasks)
+						? `${input.tasks.length} task(s)`
+						: undefined;
 			return new Text(
 				theme.fg("toolTitle", theme.bold("task ")) +
 					theme.fg("muted", String(action)) +
@@ -888,9 +599,22 @@ export function registerTaskTools(
 			const { text, failed } = formatTaskToolResult(result.details, expanded);
 			return new Text(theme.fg(failed ? "warning" : "dim", text), 0, 0);
 		},
-		execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const input = asParams(params);
 			const action = input.action;
+			if (typeof action === "string" && RETIRED_EXECUTION_ACTIONS.has(action))
+				return toolResult({
+					outcome: "rejected",
+					error:
+						`task action ${action} is retired. Mark ready work running, execute it with subagent or bg_start, then update the task terminal state.`,
+				});
+			const retiredField = retiredExecutionField(input);
+			if (retiredField)
+				return toolResult({
+					outcome: "rejected",
+					error:
+						`task field ${retiredField} is retired. Store todo state in task and execute work separately with subagent or bg_start.`,
+				});
 			const workspace = resolveTaskWorkspace(ctx.cwd);
 			if (action === "create")
 				return operationToolResult({
@@ -914,11 +638,11 @@ export function registerTaskTools(
 						...result,
 						error: codePointPrefix(
 							result.error,
-							TASK_MULTI_ERROR_MAX_CODE_POINTS,
+							TASK_BATCH_ERROR_MAX_CODE_POINTS,
 						),
 					};
 					const text = JSON.stringify(visible);
-					if (Buffer.byteLength(text, "utf8") > TASK_MULTI_CONTENT_MAX_BYTES)
+					if (Buffer.byteLength(text, "utf8") > TASK_BATCH_RESULT_MAX_BYTES)
 						throw new Error("batch failure result exceeds content budget");
 					return {
 						content: [{ type: "text" as const, text }],
@@ -935,7 +659,7 @@ export function registerTaskTools(
 					})),
 				};
 				const text = JSON.stringify(visible);
-				if (Buffer.byteLength(text, "utf8") > TASK_MULTI_CONTENT_MAX_BYTES)
+				if (Buffer.byteLength(text, "utf8") > TASK_BATCH_RESULT_MAX_BYTES)
 					throw new Error("batch result exceeds content budget");
 				return {
 					content: [{ type: "text" as const, text }],
@@ -965,61 +689,6 @@ export function registerTaskTools(
 				return toolResult(
 					{ outcome: "persisted", records: selected },
 					compactTaskCollection(selected),
-				);
-			}
-			if (action === "drain") {
-				const maxConcurrent =
-					typeof input.maxConcurrent === "number"
-						? input.maxConcurrent
-						: undefined;
-				return drainToolResult(
-					await coordinator.drain({
-						workspace,
-						fallbackCwd: ctx.cwd,
-						maxConcurrent,
-						signal,
-					}),
-				);
-			}
-			if (action === "execute_many" || action === "await") {
-				const ids = validateMultiIds(input.ids);
-				const fixed = new Map<string, TaskMultiResult>();
-				const authorized: string[] = [];
-				for (const id of ids) {
-					const scoped = scopedMultiResult(id, workspace);
-					if (scoped) fixed.set(id, scoped);
-					else authorized.push(id);
-				}
-				const coordinated =
-					action === "execute_many"
-						? coordinator.startMany(authorized, ctx.cwd)
-						: await coordinator.wait(authorized, signal);
-				const coordinatedById = new Map(
-					coordinated.results.map((result) => [result.id, result]),
-				);
-				const results = ids.map(
-					(id) => fixed.get(id) ?? coordinatedById.get(id),
-				);
-				if (results.some((result) => result === undefined))
-					throw new Error("coordinator omitted a task result");
-				const complete = results as TaskMultiResult[];
-				if (action === "await")
-					return multiToolResult(
-						complete.some((result) => result.classification === "aborted")
-							? "aborted"
-							: "persisted",
-						complete,
-					);
-				const started = complete.filter(
-					(result) => result.classification === "started",
-				).length;
-				return multiToolResult(
-					started === complete.length
-						? "accepted"
-						: started > 0
-							? "partial"
-							: "rejected",
-					complete,
 				);
 			}
 			const id = typeof input.id === "string" ? input.id : undefined;
@@ -1146,21 +815,13 @@ export function registerTaskTools(
 					});
 				}
 			}
-			if (action === "execute")
-				return operationToolResult(coordinator.start(id, ctx.cwd), id);
-			if (action === "stop")
-				return operationToolResult(await lifecycle.cancel(id), id);
-			if (action === "output") return taskOutputResult(coordinator, id);
 			return toolResult({ outcome: "rejected", error: "unknown action" });
 		},
 	});
 }
 
-export function registerTasksCommand(
-	pi: ExtensionAPI,
-	coordinator: TaskExecutionCoordinator,
-): void {
-	const lifecycle = new TaskLifecycleService(coordinator);
+export function registerTasksCommand(pi: ExtensionAPI): void {
+	const lifecycle = new TaskLifecycleService();
 	pi.registerCommand("tasks", {
 		description:
 			"Task control plane. Use /tasks help for lifecycle, settings, and recovery commands.",
@@ -1277,23 +938,9 @@ export function registerTasksCommand(
 }
 
 export default function (pi: ExtensionAPI) {
-	let completionPromptsEnabled = true;
-	const coordinator = new TaskExecutionCoordinator(
-		undefined,
-		undefined,
-		undefined,
-		(notification) => {
-			if (!completionPromptsEnabled) return;
-			sendBackgroundPrompt(
-				pi,
-				formatTaskCompletionNotification(notification),
-			);
-		},
-	);
-	registerTaskTools(pi, coordinator);
-	registerTasksCommand(pi, coordinator);
+	registerTaskTools(pi);
+	registerTasksCommand(pi);
 	pi.on("session_start", (_event, ctx) => {
-		completionPromptsEnabled = true;
 		try {
 			importLegacyTodos(
 				ctx.cwd,
@@ -1305,10 +952,5 @@ export default function (pi: ExtensionAPI) {
 				"warning",
 			);
 		}
-		coordinator.reconcileOrphans();
-	});
-	pi.on("session_shutdown", async () => {
-		completionPromptsEnabled = false;
-		await coordinator.shutdown();
 	});
 }

@@ -510,32 +510,6 @@ describe("workflow friction metadata", () => {
 		expect(JSON.stringify(metadata)).not.toContain("private assistant text");
 	});
 
-	it("counts task execute actions but excludes joins and graph mutations", () => {
-		const metadata = interactionMetadataFromPacket({
-			schemaVersion: 1,
-			interactionId: "interaction-task-execute",
-			sessionId: "session-task-execute",
-			mode: "engineer",
-			startedAt: "2026-07-10T00:00:00.000Z",
-			settledAt: "2026-07-10T00:01:00.000Z",
-			durationMs: 60_000,
-			selectionReasons: [],
-			userText: "",
-			assistantTurns: [],
-			assistantText: "",
-			tools: ["execute", "execute_many", "await", "batch"].map((action) =>
-				trace({
-					toolName: "task",
-					argsText: JSON.stringify({ action }),
-					resultText: "completed",
-					isError: false,
-				}),
-			),
-		});
-		expect(metadata.subagentCount).toBe(2);
-		expect(metadata.failedSubagentCount).toBe(0);
-	});
-
 	it("summarizes selected and unselected interactions with duration buckets", () => {
 		const base = {
 			schemaVersion: 1,

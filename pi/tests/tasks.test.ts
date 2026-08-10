@@ -29,6 +29,34 @@ async function loadTasks() {
 	return { pi, cmd };
 }
 
+describe("task tool schema", () => {
+	it("uses compact enums for action and repeated task fields", async () => {
+		const { pi } = await loadTasks();
+		const tool = pi._getTool("task");
+		expect(tool).toBeDefined();
+		const properties = (
+			tool!.parameters as { properties: Record<string, Record<string, unknown>> }
+		).properties;
+		expect(JSON.stringify(tool!.parameters).length).toBeLessThan(1_500);
+		expect(properties.action).toMatchObject({
+			type: "string",
+			enum: ["create", "batch", "update", "remove", "list", "ready", "get"],
+		});
+		for (const name of [
+			"ids",
+			"maxConcurrent",
+			"origin",
+			"agent",
+			"task",
+			"cwd",
+			"agentScope",
+			"model",
+			"modelSize",
+		])
+			expect(properties).not.toHaveProperty(name);
+	});
+});
+
 describe("parseTasksArgs", () => {
 	it("treats empty as list", async () => {
 		const mod = await import("../extensions/tasks.ts");
@@ -123,9 +151,9 @@ describe("/tasks command", () => {
 	it("show by id-prefix returns the detail view", async () => {
 		const { createTask } = await import("../lib/task-registry.ts");
 		const t = createTask({
-			origin: "subagent",
+			origin: "other",
 			summary: "hello",
-			agentName: "validator",
+			scope: ["src/**"],
 		});
 
 		const { cmd } = await loadTasks();
@@ -134,8 +162,8 @@ describe("/tasks command", () => {
 		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
 			.calls[0][0] as string;
 		expect(text).toContain(t.id);
-		expect(text).toContain("agent: validator");
 		expect(text).toContain("summary: hello");
+		expect(text).toContain("scope: src/**");
 	});
 
 	it("cancel transitions a running task to cancelled", async () => {
