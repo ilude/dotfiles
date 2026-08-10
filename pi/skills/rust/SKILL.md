@@ -9,6 +9,8 @@ Rust guarantees memory safety without garbage collection through its ownership s
 
 ## Quick Reference
 
+These are command references, not a required sequence. Choose only relevant commands, using package or test filters when a narrower check is appropriate.
+
 | Command | Purpose |
 |---------|---------|
 | `cargo build` | Build project |

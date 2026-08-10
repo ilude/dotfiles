@@ -19,11 +19,11 @@ Compact index for Ansible playbooks, roles, inventories, and tests.
 ## Practical steps
 
 1. Identify inventory, role, and variable precedence before editing.
-2. Capture current service state, file metadata, relevant config snippets, and logs before changing runtime-critical files.
+2. For the risky runtime-critical mutations covered above, capture only the current service state, file metadata, config, and logs needed for rollback and comparison.
 3. Prefer modules over shell/command tasks; if shell is required, make `changed_when`/`creates`/`removes` explicit.
 4. Notify handlers only from tasks that actually change state.
-5. Validate syntax/lint and, for role changes, Molecule or a focused dry run/check mode.
-6. Converge one stateful or failed service independently before running broad orchestration; verify its direct endpoint and persisted state, not only playbook exit status.
+5. Choose syntax, lint, Molecule, or a focused dry run/check mode according to the changed contract.
+6. For a live stateful rollout, follow the repository rollout and incident policy. Converge one affected service before broad orchestration and verify its direct endpoint and persisted state, not only playbook exit status.
 
 ## Containerized lint performance
 

@@ -15,17 +15,16 @@ description: "Command UX: command surfaces, task runners, package scripts, Makef
 
 ## Core Principle
 
-A good workflow has one obvious entry point and predictable side effects. When the requested contract requires workflow behavior to be preserved, validate the user path. `pi/AGENTS.md` Development Philosophy owns general implementation and delegation strategy.
+A good workflow has one obvious entry point and predictable side effects. `pi/AGENTS.md` Development Philosophy owns general implementation and delegation strategy, and the repository validation policy owns workflow verification.
 
 ## Practical Steps
 
-1. Inventory current command surfaces and users.
+1. Inspect the affected entrypoints, callers, and users.
 2. Choose the public entry point and hide internal steps.
 3. Make commands composable, idempotent, and safe to rerun.
 4. Centralize configuration and environment resolution.
-5. Document the shortest successful path plus recovery steps.
-6. When preserving workflow behavior, validate through the same entry point and sequence the user will run.
-7. When the requested contract includes platform support, validate on those platforms.
+5. Update the shortest successful path or recovery documentation only when the public workflow contract changes.
+6. When the requested contract includes platform support, validate on those platforms.
 
 ## Design Checks
 

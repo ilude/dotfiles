@@ -75,6 +75,12 @@ describe("BackgroundTerminalManager", () => {
 		expect(snapshot.stderr).toBe("ERR");
 		expect(snapshot.stdoutTruncated).toBe(true);
 		expect(Buffer.byteLength(readFileSync(snapshot.stdoutPath!, "utf8"))).toBe(64);
+		expect(manager.pendingCompletions().map((item) => item.id)).toEqual([
+		snapshot.id,
+	]);
+		expect(manager.hasPendingCompletion(snapshot.id)).toBe(true);
+		manager.consumeCompletion(snapshot.id);
+		expect(manager.pendingCompletions()).toEqual([]);
 
 		const stdoutPath = snapshot.stdoutPath!;
 		await manager.dispose();
@@ -156,12 +162,31 @@ describe("BackgroundTerminalManager", () => {
 		const first = manager.start({ command: "first", cwd: tempRoot });
 		const firstSnapshot = (await settled).snapshot;
 		expect(existsSync(firstSnapshot.stdoutPath ?? "")).toBe(true);
+		manager.consumeCompletion(first.id);
 
 		settled = nextSettlement(manager);
 		manager.start({ command: "second", cwd: tempRoot });
 		await settled;
 		expect(manager.get(first.id)).toBeUndefined();
 		expect(existsSync(firstSnapshot.stdoutPath ?? "")).toBe(false);
+		await manager.dispose();
+	});
+
+	it("retains undelivered completions instead of pruning them", async () => {
+		const tempRoot = root();
+		const manager = new BackgroundTerminalManager({
+			tempRoot,
+			maxTracked: 1,
+			spawnProcess: nodeSpawner('process.stdout.write("done");'),
+		});
+		const settled = nextSettlement(manager);
+		const first = manager.start({ command: "first", cwd: tempRoot });
+		await settled;
+
+		expect(() => manager.start({ command: "second", cwd: tempRoot })).toThrow(
+			BackgroundTerminalCapacityError,
+		);
+		expect(manager.hasPendingCompletion(first.id)).toBe(true);
 		await manager.dispose();
 	});
 

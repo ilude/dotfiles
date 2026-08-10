@@ -26,8 +26,7 @@ Make completion falsifiable. Each normative requirement should state one obligat
 4. Preserve the strength of normative words such as `shall`, `must`, `should`, and `may`; do not silently weaken or strengthen them.
 5. Add concise acceptance criteria with the relevant state or trigger, actor, action, and expected result.
 6. Define a verification method and pass condition that directly exercise the outcome.
-7. When preserving a workflow or behavior, verify its user entry point and sequence before cutover where applicable.
-8. Surface blockers or competing interpretations that would change the design instead of choosing one silently.
+7. Surface blockers or competing interpretations that would change the design instead of choosing one silently.
 
 ## Conditional Reference
 
@@ -47,5 +46,4 @@ For formal requirements, acceptance criteria, or a requirements section in anoth
 - Using `should`, `fast`, `appropriate`, or similar language without its intended force or a checkable meaning.
 - Treating implementation details as requirements unless they are explicit constraints.
 - Claiming validation without a direct check of the requested contract.
-- Treating helper-level tests as sufficient when the requested behavior is in the user workflow.
 - Adding PRD sections when the user only needs acceptance criteria.

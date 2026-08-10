@@ -25,10 +25,13 @@ Compact index for TypeScript and JavaScript work. Load linked files only when th
 
 ## Quick validation
 
-| Context | Commands |
-|---|---|
-| Generic Bun package | `bun install --frozen-lockfile`; `bun run typecheck`; `bun test` |
-| Generic pnpm package | `pnpm install --frozen-lockfile`; `pnpm run typecheck`; `pnpm test` |
+These are available commands, not a required sequence. Install only when dependencies are missing or changed, and choose the smallest checks that exercise the changed contract.
+
+| Need | Bun | pnpm |
+|---|---|---|
+| Install dependencies | `bun install --frozen-lockfile` | `pnpm install --frozen-lockfile` |
+| Typecheck | `bun run typecheck` | `pnpm run typecheck` |
+| Affected tests | `bun test <filter>` | `pnpm test <filter>` |
 
 ## Anti-patterns
 

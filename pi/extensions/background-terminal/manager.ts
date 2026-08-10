@@ -15,6 +15,7 @@ import {
 } from "node:child_process";
 import type { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
+import { signalProcessTree } from "../../lib/process-tree.js";
 
 const DEFAULT_MAX_ACTIVE = 8;
 const DEFAULT_MAX_TRACKED = 32;
@@ -299,43 +300,11 @@ function productionSpawn(
 	});
 }
 
-async function waitForProcess(child: ReturnType<typeof spawn>): Promise<number | null> {
-	return new Promise<number | null>((resolve, reject) => {
-		child.once("close", (code) => resolve(code));
-		child.once("error", reject);
-	});
-}
-
 async function productionTerminate(
 	child: ChildProcessWithoutNullStreams,
 	force: boolean,
 ): Promise<void> {
-	if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
-	if (process.platform === "win32") {
-		const killer = spawn(
-			"taskkill",
-			[...(force ? ["/F"] : []), "/T", "/PID", String(child.pid)],
-			{ stdio: "ignore", windowsHide: true },
-		);
-		const exitCode = await waitForProcess(killer);
-		if (
-			exitCode !== 0 &&
-			child.exitCode === null &&
-			child.signalCode === null
-		) {
-			throw new Error(`taskkill exited with code ${exitCode ?? "unknown"}`);
-		}
-		return;
-	}
-	try {
-		process.kill(-child.pid, force ? "SIGKILL" : "SIGTERM");
-	} catch (groupError) {
-		try {
-			if (!child.kill(force ? "SIGKILL" : "SIGTERM")) throw groupError;
-		} catch (childError) {
-			if (child.exitCode === null && child.signalCode === null) throw childError;
-		}
-	}
+	await signalProcessTree(child, force);
 }
 
 function defaultTitle(command: string): string {
@@ -402,13 +371,34 @@ export class BackgroundTerminalManager {
 		return entry ? this.snapshot(entry) : undefined;
 	}
 
+	pendingCompletions(): BackgroundTerminalSnapshot[] {
+		return [...this.entries.values()]
+			.filter((entry) => entry.settled && !entry.completionConsumed)
+			.map((entry) => this.snapshot(entry));
+	}
+
+	consumeCompletion(id: string): void {
+		const entry = this.entries.get(id);
+		if (entry?.settled) entry.completionConsumed = true;
+	}
+
+	hasPendingCompletion(id: string): boolean {
+		const entry = this.entries.get(id);
+		return Boolean(entry?.settled && !entry.completionConsumed);
+	}
+
 	start(input: BackgroundTerminalStartInput): BackgroundTerminalSnapshot {
 		if (this.disposed) {
 			throw new BackgroundTerminalDisposedError("Background terminal manager is disposed.");
 		}
 		const command = input.command.trim();
 		if (!command) throw new Error("Background terminal command is required.");
-		this.prune();
+		this.prune(Math.max(0, this.maxTracked - 1));
+		if (this.entries.size >= this.maxTracked) {
+			throw new BackgroundTerminalCapacityError(
+				`At most ${this.maxTracked} background terminals may be tracked while completions are pending.`,
+			);
+		}
 		const active = [...this.entries.values()].filter(
 			(entry) => entry.status === "running",
 		).length;
@@ -490,8 +480,8 @@ export class BackgroundTerminalManager {
 				const entry = this.entries.get(id);
 				if (!entry) return { id, found: false, wasRunning: false };
 				const wasRunning = entry.status === "running";
+				entry.completionConsumed ||= consumeCompletion;
 				if (wasRunning) {
-					entry.completionConsumed ||= consumeCompletion;
 					try {
 						await this.terminate(entry);
 					} catch (error) {
@@ -650,12 +640,14 @@ export class BackgroundTerminalManager {
 		return entry.settled;
 	}
 
-	private prune(): void {
-		if (this.entries.size <= this.maxTracked) return;
+	private prune(limit = this.maxTracked): void {
+		if (this.entries.size <= limit) return;
 		const settled = [...this.entries.values()]
-			.filter((entry) => entry.status !== "running")
+			.filter(
+				(entry) => entry.status !== "running" && entry.completionConsumed,
+			)
 			.sort((left, right) => (left.endedAt ?? 0) - (right.endedAt ?? 0));
-		while (this.entries.size > this.maxTracked && settled.length > 0) {
+		while (this.entries.size > limit && settled.length > 0) {
 			const entry = settled.shift();
 			if (!entry) continue;
 			this.entries.delete(entry.id);
@@ -674,4 +666,43 @@ export class BackgroundTerminalManager {
 			}
 		}
 	}
+}
+
+const BACKGROUND_TERMINAL_MANAGER_VERSION = 1;
+const BACKGROUND_TERMINAL_MANAGER_KEY = Symbol.for(
+	"dotfiles.pi.background-terminal-manager",
+);
+
+type BackgroundTerminalManagerGlobal = {
+	version: number;
+	manager: BackgroundTerminalManager;
+};
+
+function managerGlobals(): typeof globalThis & Record<symbol, unknown> {
+	return globalThis as typeof globalThis & Record<symbol, unknown>;
+}
+
+export function getBackgroundTerminalManager(): BackgroundTerminalManager {
+	const globals = managerGlobals();
+	const existing = globals[
+		BACKGROUND_TERMINAL_MANAGER_KEY
+	] as BackgroundTerminalManagerGlobal | undefined;
+	if (existing?.version === BACKGROUND_TERMINAL_MANAGER_VERSION) {
+		return existing.manager;
+	}
+	const manager = new BackgroundTerminalManager();
+	globals[BACKGROUND_TERMINAL_MANAGER_KEY] = {
+		version: BACKGROUND_TERMINAL_MANAGER_VERSION,
+		manager,
+	} satisfies BackgroundTerminalManagerGlobal;
+	return manager;
+}
+
+export async function resetBackgroundTerminalManager(): Promise<void> {
+	const globals = managerGlobals();
+	const existing = globals[
+		BACKGROUND_TERMINAL_MANAGER_KEY
+	] as BackgroundTerminalManagerGlobal | undefined;
+	if (existing) await existing.manager.dispose();
+	delete globals[BACKGROUND_TERMINAL_MANAGER_KEY];
 }

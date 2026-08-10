@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { analyzeCommandAst } from "../extensions/damage-control/ast-analyzer.ts";
+import {
+	analyzeCommandAst,
+	hasUnwaitedBackgroundOperator,
+} from "../extensions/damage-control/ast-analyzer.ts";
 import {
 	evaluateDangerousCommand,
 	parseDamageControlRules,
@@ -47,6 +50,38 @@ const scopedRmAskRule: DangerousCommand = {
 };
 
 describe("damage-control AST analyzer", () => {
+	it("distinguishes detached shell work from explicitly awaited concurrency", async () => {
+		await expect(hasUnwaitedBackgroundOperator("sleep 10 &")).resolves.toBe(
+			true,
+		);
+		await expect(
+			hasUnwaitedBackgroundOperator("worker-a & worker-b & wait"),
+		).resolves.toBe(false);
+		for (const command of [
+			"wait; worker-a &",
+			"worker-a & false && wait",
+			"worker-a & wait 999999",
+			"worker-a & worker-b & wait -n",
+			"worker-a & (wait)",
+			"if true; then worker-a & fi",
+			"while true; do worker-a & break; done",
+			"case x in x) worker-a & ;; esac",
+			"value=$(worker-a &)",
+		]) {
+			await expect(hasUnwaitedBackgroundOperator(command)).resolves.toBe(true);
+		}
+		for (const command of [
+			'printf "&"; printf ok 2>&1',
+			"echo $((flags & mask))",
+			"(worker-a & wait)",
+			"while true; do worker-a & wait; break; done",
+			"case x in x) worker-a & wait ;; esac",
+			"value=$(worker-a & wait)",
+		]) {
+			await expect(hasUnwaitedBackgroundOperator(command)).resolves.toBe(false);
+		}
+	});
+
 	it("parses AST configuration from Pi rules", () => {
 		const rules = parseDamageControlRules(`
 astAnalysis:

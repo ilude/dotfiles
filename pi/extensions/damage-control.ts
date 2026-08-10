@@ -57,6 +57,7 @@ import {
 	extractTruncatingEditWriteTarget,
 	matchesPattern,
 } from "./damage-control-engine.js";
+import { hasUnwaitedBackgroundOperator } from "./damage-control/ast-analyzer.js";
 import { loadRules } from "./damage-control-rules.js";
 import {
 	classifyDamageControlPrompt,
@@ -108,6 +109,7 @@ const MAX_TRACKED_TOOL_OUTCOMES = 128;
 const REPEATED_FAILED_RESULT_LIMIT = 4;
 const REPEATED_SUCCESS_RESULT_LIMIT = 5;
 const REPEATED_TOOL_LOOP_RULE = "repeated_tool_loop";
+const UNMANAGED_BACKGROUND_PROCESS_RULE = "unmanaged_background_process";
 const VOLATILE_ERROR_KEYS = new Set([
 	"duration",
 	"durationms",
@@ -1051,6 +1053,26 @@ export default function (pi: ExtensionAPI) {
 				{ ruleLoadFailure: true },
 			);
 			return failed;
+		}
+		if (await hasUnwaitedBackgroundOperator(command)) {
+			const guidance =
+				event.toolName === "bg_start"
+					? "Remove the shell background operator; bg_start already runs asynchronously."
+					: "Use bg_start so Pi can track output, completion, and process-tree cleanup.";
+			const decision = {
+				block: true as const,
+				reason: `Blocked unmanaged shell backgrounding (matched "${UNMANAGED_BACKGROUND_PROCESS_RULE}"): ${guidance}`,
+			};
+			recordBlock(
+				event.toolName,
+				command,
+				ctx.cwd,
+				decision,
+				ctx.hasUI,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
+			return decision;
 		}
 		debugLog("tool_call_seen", {
 			toolName: event.toolName,

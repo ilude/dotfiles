@@ -2,8 +2,9 @@ import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { activateTools, deactivateTools } from "../../lib/tool-activation.js";
 import {
-	BackgroundTerminalManager,
+	getBackgroundTerminalManager,
 	type BackgroundTerminalSnapshot,
 } from "./manager.js";
 import {
@@ -12,6 +13,11 @@ import {
 } from "./ui.js";
 
 const COMPLETION_MAX_BYTES = 32 * 1024;
+const BACKGROUND_CONTROL_TOOL_NAMES = [
+	"bg_status",
+	"bg_list",
+	"bg_kill",
+] as const;
 
 function truncateUtf8Tail(text: string, maxBytes: number): string {
 	if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
@@ -73,11 +79,13 @@ function textResult(text: string, details?: Record<string, unknown>) {
 }
 
 export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
-	const manager = new BackgroundTerminalManager();
-	let sessionOpen = true;
+	const manager = getBackgroundTerminalManager();
+	let sessionOpen = false;
 	let widgetContext:
 		| Parameters<Parameters<ExtensionAPI["on"]>[1]>[1]
 		| undefined;
+	let unsubscribeManager: (() => void) | undefined;
+	let unsubscribeSettled: (() => void) | undefined;
 	const pending = new Map<string, BackgroundTerminalSnapshot>();
 	let deliveryScheduled = false;
 
@@ -89,11 +97,12 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 
 	const flushPending = () => {
 		deliveryScheduled = false;
-		if (!sessionOpen) {
-			pending.clear();
-			return;
-		}
+		if (!sessionOpen) return;
 		for (const [id, snapshot] of pending) {
+			if (!manager.hasPendingCompletion(id)) {
+				pending.delete(id);
+				continue;
+			}
 			try {
 				pi.sendMessage(
 					{
@@ -108,6 +117,7 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 					},
 					{ deliverAs: "followUp", triggerTurn: true },
 				);
+				manager.consumeCompletion(id);
 				pending.delete(id);
 			} catch {
 				// Keep the result pending and retry after the next settled agent turn.
@@ -121,13 +131,6 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		queueMicrotask(flushPending);
 	};
 
-	manager.subscribe(updateWidget);
-	manager.onSettled((snapshot, consumed) => {
-		if (consumed || !sessionOpen) return;
-		pending.set(snapshot.id, snapshot);
-		scheduleDelivery();
-	});
-
 	pi.registerTool({
 		name: "bg_start",
 		label: "Start Background Terminal",
@@ -135,7 +138,7 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 			"Start a managed Bash command asynchronously. The command passes through damage-control before execution.",
 		promptGuidelines: [
 			"Use bg_start for long-lived servers, watchers, and concurrent shell work, not as a substitute for ordinary awaited bash commands.",
-			"Background terminal commands use Bash syntax on macOS and Windows and are evaluated by damage-control before execution.",
+			"Background terminal commands use Bash syntax on macOS and Windows and are evaluated by damage-control before execution; do not append &, nohup, or disown because bg_start already runs asynchronously.",
 			"Do not poll bg_status in a loop. Completion is delivered automatically; use bg_status or /ps only when current output is needed.",
 		],
 		parameters: Type.Object({
@@ -153,6 +156,7 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 				title: params.title,
 				cwd: resolveWorkingDirectory(ctx.cwd, params.working_dir),
 			});
+			activateTools(pi, BACKGROUND_CONTROL_TOOL_NAMES);
 			return textResult(
 				`Started ${snapshot.id} (pid ${snapshot.pid ?? "unknown"}): ${snapshot.title}\nCompletion will be delivered automatically. Use /ps for live output or bg_kill to stop it.`,
 				{ id: snapshot.id, pid: snapshot.pid, status: snapshot.status },
@@ -241,16 +245,37 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 	pi.on("session_start", (_event, ctx) => {
 		sessionOpen = true;
 		widgetContext = ctx;
+		unsubscribeManager?.();
+		unsubscribeSettled?.();
+		unsubscribeManager = manager.subscribe(updateWidget);
+		unsubscribeSettled = manager.onSettled((snapshot, consumed) => {
+			if (consumed || !sessionOpen) return;
+			pending.set(snapshot.id, snapshot);
+			scheduleDelivery();
+		});
+		for (const snapshot of manager.pendingCompletions()) {
+			pending.set(snapshot.id, snapshot);
+		}
+		if (manager.list().length > 0) {
+			activateTools(pi, BACKGROUND_CONTROL_TOOL_NAMES);
+		} else {
+			deactivateTools(pi, BACKGROUND_CONTROL_TOOL_NAMES);
+		}
 		updateWidget();
+		if (pending.size > 0) scheduleDelivery();
 	});
 	pi.on("agent_settled", () => {
 		if (pending.size > 0) scheduleDelivery();
 	});
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (event) => {
 		sessionOpen = false;
 		pending.clear();
+		unsubscribeManager?.();
+		unsubscribeManager = undefined;
+		unsubscribeSettled?.();
+		unsubscribeSettled = undefined;
 		widgetContext?.ui.setWidget("background-terminals", undefined);
 		widgetContext = undefined;
-		await manager.dispose();
+		if (event.reason === "quit") await manager.dispose();
 	});
 }

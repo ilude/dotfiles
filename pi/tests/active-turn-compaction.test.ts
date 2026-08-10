@@ -75,6 +75,7 @@ function setup(
 		sessionShutdown: hook("session_shutdown"),
 		sessionBeforeCompact: hook("session_before_compact"),
 		sessionCompact: hook("session_compact"),
+		messageEnd: hook("message_end"),
 		turnEnd: hook("turn_end"),
 	};
 }
@@ -224,6 +225,88 @@ describe("active-turn compaction", () => {
 			}),
 			{ triggerTurn: true, deliverAs: "followUp" },
 		);
+	});
+
+	it("attempts compaction only once while the same run remains above threshold", async () => {
+		const runtime = setup(usage(360_000));
+		await runtime.sessionStart(
+			{ type: "session_start", reason: "startup" },
+			runtime.ctx,
+		);
+
+		await runtime.turnEnd(activeTurn(), runtime.ctx);
+		await runtime.turnEnd(activeTurn(), runtime.ctx);
+
+		expect(runtime.compact).toHaveBeenCalledTimes(1);
+	});
+
+	it("hides the provider error caused by the intentional compaction abort", async () => {
+		const runtime = setup(usage(360_000));
+		const abortedAssistant = {
+			role: "assistant",
+			content: [],
+			api: "openai-codex-responses",
+			provider: "openai-codex",
+			model: "gpt-5.6-sol",
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					total: 0,
+				},
+			},
+			stopReason: "error",
+			errorMessage: "This operation was aborted",
+			timestamp: Date.now(),
+		};
+		await runtime.sessionStart(
+			{ type: "session_start", reason: "startup" },
+			runtime.ctx,
+		);
+
+		expect(
+			await runtime.messageEnd(
+				{ type: "message_end", message: abortedAssistant },
+				runtime.ctx,
+			),
+		).toBeUndefined();
+		await runtime.turnEnd(activeTurn(), runtime.ctx);
+
+		const replacement = await runtime.messageEnd(
+			{ type: "message_end", message: abortedAssistant },
+			runtime.ctx,
+		);
+		expect(replacement?.message).toMatchObject({
+			role: "assistant",
+			content: [],
+			stopReason: "stop",
+		});
+		expect(replacement?.message).not.toHaveProperty("errorMessage");
+		expect(
+			await runtime.messageEnd(
+				{ type: "message_end", message: abortedAssistant },
+				runtime.ctx,
+			),
+		).toBeUndefined();
+		expect(
+			await runtime.messageEnd(
+				{
+					type: "message_end",
+					message: {
+						...abortedAssistant,
+						errorMessage: "network unavailable",
+					},
+				},
+				runtime.ctx,
+			),
+		).toBeUndefined();
 	});
 
 	it("does not interrupt a final turn or a turn below the threshold", async () => {

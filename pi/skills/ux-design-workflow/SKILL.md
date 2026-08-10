@@ -28,10 +28,10 @@ Apply these principles when they affect the requested UI contract.
 2. **Consistency over novelty** - Reuse patterns
 3. **Accessibility over convenience** - WCAG 2.1 AA minimum
 4. **Performance over polish** - Fast > pretty
-5. **Feedback over silence** - Always show state
+5. **Feedback over silence** - Show state for affected asynchronous or interactive behavior
 6. **Progressive disclosure** - Show what's needed when needed
 7. **Use existing libraries** - If a UI library (Shadcn, Radix, MUI, etc.) is active in the project, use its primitives. Wrap and style them for the aesthetic vision, but never rebuild what the library already provides
-8. **Justify every element** - Before placing any component, confirm its purpose. If it has no clear function, remove it. If a layout looks like a template, redesign it
+8. **Justify every element** - Before placing any component, confirm its purpose. If it has no clear function, remove it
 
 ---
 

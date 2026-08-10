@@ -9,6 +9,8 @@ Use nullable reference types, asynchronous I/O, dependency injection, and reposi
 
 ## Commands
 
+These are command references, not a required sequence. Choose only relevant commands, using repository-supported project or test filters when a narrower check is appropriate.
+
 | Command | Purpose |
 |---------|---------|
 | `dotnet build` | Build solution |

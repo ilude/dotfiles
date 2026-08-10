@@ -308,7 +308,7 @@ Extends Pi's native startup context with instructions discovered after successfu
 
 ### `background-terminal/`
 
-Provides bounded process-local management for long-lived Bash commands through `bg_start`, `bg_status`, `bg_list`, and `bg_kill`. `bg_start` passes through the same damage-control shell gate as `bash` before spawning. A compact widget and `/ps` dashboard show live state and bounded stdout/stderr; natural completion delivers one follow-up result without polling. Output spills to private capped temporary logs, process-tree termination works on macOS and Windows, and session shutdown kills remaining processes and removes the logs. Use the scheduler rather than a background terminal for timers or polling waits.
+Provides bounded process-local management for long-lived Bash commands through `bg_start`, `bg_status`, `bg_list`, and `bg_kill`. `bg_start` passes through the same damage-control shell gate as `bash`; unmanaged shell background operators are rejected because the manager already runs commands asynchronously. The three control tools remain registered but leave the initial provider schema until the first terminal starts or a process survives a session replacement. A compact widget and `/ps` dashboard show live state and bounded stdout/stderr; natural completion delivers one follow-up result without polling. Managed processes survive `/reload`, `/new`, `/resume`, and `/fork`, and a completion during replacement is delivered to the next active session. Output spills to private capped temporary logs. Pi process exit terminates remaining process trees and removes the logs. Use the scheduler rather than a background terminal for timers or polling waits.
 
 ### `copy-all.ts` and `summarize/`
 

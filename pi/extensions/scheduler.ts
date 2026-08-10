@@ -355,15 +355,10 @@ export default function registerScheduler(pi: ExtensionAPI) {
 		promptSnippet:
 			"Schedule delayed workflow continuation or recurring checks instead of shell waits or polling",
 		promptGuidelines: [
-			"Scheduling is process-local workflow control and does not require user approval or confirmation.",
-			"Use schedule for delayed workflow continuation, status follow-ups, and recurring checks. Scheduled prompts should inspect task, subagent, background-process, or external state rather than own it.",
-			"For waits of 60 seconds or longer, use schedule instead of shell sleep loops, polling loops, or background workers used only as timers.",
-			"Never use ask_user to confirm schedule creation or cancellation. Call schedule directly when its parameters are known.",
-			"Ask a non-confirmation clarification only when a required schedule value is missing or ambiguous.",
-			"Cancel schedules directly when they are no longer needed or their completion condition is satisfied.",
-			"Schedule results report the next active run using the schedule's explicit timezone or the local timezone.",
-			"Schedule actions do not inherently require ending the assistant turn. When a scheduled follow-up is the intended next step and no useful work remains before it runs, end the turn so the follow-up can be delivered when due; otherwise continue useful work.",
-			"Scheduled prompts cannot be slash commands and schedules do not survive Pi process exit.",
+			"Use schedule without confirmation for delayed continuation, recurring checks, and waits of 60 seconds or longer; it controls timing, not todo or process lifecycle.",
+			"Scheduled prompts should inspect current task, background-process, or external state; they cannot be slash commands and stop with the Pi process.",
+			"Ask only when required timing or recurrence values are missing or ambiguous, cancel schedules when no longer needed, and interpret results in the explicit schedule timezone or local timezone otherwise.",
+			"After scheduling, continue useful work; end the turn only when the scheduled follow-up is the intended next step.",
 		],
 		parameters: Type.Object({
 			action: ScheduleToolActionSchema,

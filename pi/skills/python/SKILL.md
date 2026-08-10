@@ -23,6 +23,8 @@ Compact index for Python work. Load linked files only for framework-specific det
 
 ## Quick validation
 
+These are available commands, not a required sequence. Choose path-focused checks where shown; use aggregate targets only when shared impact or repository policy requires them.
+
 | Purpose | Commands |
 |---|---|
 | Dotfiles quick tests | `make test-quick` |

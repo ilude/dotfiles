@@ -33,6 +33,7 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { type TSchema, Type } from "typebox";
 import { emitTerminalBell } from "../../lib/extension-utils.js";
 import { recordEvent } from "../../lib/metrics.js";
+import { terminateProcessTree } from "../../lib/process-tree.js";
 import { deactivateTools } from "../../lib/tool-activation.js";
 import {
 	decodeSchemaOutput,
@@ -691,30 +692,6 @@ async function writePromptToTempFile(
 	return { dir: tmpDir, filePath };
 }
 
-function terminateProcessTree(proc: ReturnType<typeof spawn>): void {
-	const pid = proc.pid;
-	if (!pid) return;
-	if (process.platform === "win32") {
-		spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
-			stdio: "ignore",
-			windowsHide: true,
-		});
-		return;
-	}
-	try {
-		process.kill(-pid, "SIGTERM");
-	} catch {
-		proc.kill("SIGTERM");
-	}
-	setTimeout(() => {
-		try {
-			process.kill(-pid, "SIGKILL");
-		} catch {
-			if (!proc.killed) proc.kill("SIGKILL");
-		}
-	}, 5000);
-}
-
 function getPiInvocation(
 	args: string[],
 	currentScript = process.argv[1],
@@ -1126,7 +1103,9 @@ export async function runSingleAgent(
 
 			const killProc = () => {
 				wasAborted = true;
-				terminateProcessTree(proc);
+				terminateProcessTree(proc, {
+					forceImmediately: process.platform === "win32",
+				});
 			};
 			if (runController.signal.aborted) killProc();
 			else

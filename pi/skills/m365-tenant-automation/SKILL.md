@@ -14,7 +14,7 @@ Use `m365-tenant-automation` for cloud tenant state and service APIs. Use `shell
 - Scripts must be convergent: repeated runs should move the tenant toward the declared target state without duplicate objects or unnecessary churn.
 - Treat live tenant inventory as the source of truth before mutation. Query current state and compare before creating, updating, or removing objects.
 - Keep tenant-specific environments separate: config, exports, credentials, app registrations, domains, and IDs must not bleed across tenants.
-- Prefer Graph, service modules, or supported CLI/API operations over UI-only runbooks. Verify API and CLI support before documenting a UI-only gap.
+- Prefer Graph, service modules, or supported CLI/API operations over UI-only runbooks. Before documenting a UI-only gap, make one bounded check of the relevant authoritative API and CLI sources; report the capability as unresolved when that check is inconclusive.
 
 ## Practical Steps
 

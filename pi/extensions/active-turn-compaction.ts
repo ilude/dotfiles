@@ -148,6 +148,7 @@ export function registerActiveTurnCompaction(
 	};
 	let generation = 0;
 	let compactionPending = false;
+	let compactionAbortArtifactPending = false;
 	let attemptedAboveThreshold = false;
 	let failureCircuitOpen = false;
 
@@ -155,6 +156,7 @@ export function registerActiveTurnCompaction(
 		generation += 1;
 		policy = loadPolicy(ctx.cwd, ctx.isProjectTrusted());
 		compactionPending = false;
+		compactionAbortArtifactPending = false;
 		attemptedAboveThreshold = false;
 		failureCircuitOpen = false;
 	});
@@ -162,6 +164,7 @@ export function registerActiveTurnCompaction(
 	pi.on("session_shutdown", () => {
 		generation += 1;
 		compactionPending = false;
+		compactionAbortArtifactPending = false;
 	});
 
 	pi.on("session_before_compact", (event) => {
@@ -173,6 +176,23 @@ export function registerActiveTurnCompaction(
 	pi.on("session_compact", () => {
 		failureCircuitOpen = false;
 		attemptedAboveThreshold = false;
+	});
+
+	pi.on("message_end", (event) => {
+		const message = event.message;
+		if (
+			!compactionPending ||
+			!compactionAbortArtifactPending ||
+			message.role !== "assistant" ||
+			message.stopReason !== "error" ||
+			message.errorMessage !== "This operation was aborted" ||
+			message.content.length > 0
+		) {
+			return;
+		}
+		compactionAbortArtifactPending = false;
+		const { errorMessage: _errorMessage, ...rest } = message;
+		return { message: { ...rest, stopReason: "stop" as const } };
 	});
 
 	pi.on("turn_end", (event, ctx) => {
@@ -219,10 +239,12 @@ export function registerActiveTurnCompaction(
 			);
 		};
 
+		compactionAbortArtifactPending = true;
 		ctx.compact({
 			onComplete: () => {
 				if (generation !== triggerGeneration) return;
 				compactionPending = false;
+				compactionAbortArtifactPending = false;
 				uiNotify(ctx, "success", "Compaction completed; continuing the request.", {
 					prefix: "auto-compact",
 				});
@@ -231,6 +253,7 @@ export function registerActiveTurnCompaction(
 			onError: (error) => {
 				if (generation !== triggerGeneration) return;
 				compactionPending = false;
+				compactionAbortArtifactPending = false;
 				if (error.name !== "AbortError" && error.message !== "Compaction cancelled") {
 					failureCircuitOpen = true;
 					resumeRequest();

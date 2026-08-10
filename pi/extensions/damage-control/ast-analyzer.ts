@@ -369,6 +369,45 @@ function commandParts(node: TreeSitter.Node): string[] {
 	return node.children.map((child) => nodeText(child).trim()).filter(Boolean);
 }
 
+export async function hasUnwaitedBackgroundOperator(
+	command: string,
+): Promise<boolean> {
+	if (!/(^|[^&>])&(?=[^&]|$)/.test(command)) return false;
+	const parser = await getParser();
+	const root = parse(parser, command);
+	const backgroundOperators: Array<{
+		node: TreeSitter.Node;
+		parent: TreeSitter.Node;
+	}> = [];
+	const visit = (node: TreeSitter.Node): void => {
+		for (const child of node.children) {
+			if (child.type === "&" && node.type !== "binary_expression") {
+				backgroundOperators.push({ node: child, parent: node });
+			}
+			visit(child);
+		}
+	};
+	visit(root);
+	const sequentialContainers = new Set([
+		"program",
+		"subshell",
+		"compound_statement",
+		"command_substitution",
+		"do_group",
+		"case_item",
+	]);
+	return backgroundOperators.some(({ node, parent }) =>
+		!sequentialContainers.has(parent.type) ||
+		!parent.children.some((candidate) => {
+			if (candidate.startIndex <= node.startIndex || candidate.type !== "command") {
+				return false;
+			}
+			const parts = commandParts(candidate);
+			return parts.length === 1 && stripQuotes(parts[0] ?? "") === "wait";
+		}),
+	);
+}
+
 function collectCommandNode(
 	parser: TreeSitter.Parser,
 	node: TreeSitter.Node,

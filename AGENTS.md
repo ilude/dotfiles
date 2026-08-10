@@ -14,26 +14,25 @@ Claude hooks, commands, settings, runtime workarounds, and content ingestion are
 
 ## Command index
 
-Installation entrypoints and options live in [`README.md#installation`](README.md#installation); development and validation commands live in [`README.md#development`](README.md#development). Inspect the applicable entrypoint before changing or running its flow.
+Installation entrypoints and options live in [`README.md#installation`](README.md#installation); development and validation commands live in [`README.md#development`](README.md#development).
 
 Tooling rules:
 
 - Python tooling uses `uv`; tests use `pytest`, Python lint/format uses `ruff`, shell lint uses `shellcheck`, shell format uses `shfmt`, and `pyproject.toml` sets Python 3.9 as the floor.
 - Prefer `bun` for general JavaScript/TypeScript work. Never use `npm` or create/commit `package-lock.json`.
-- Pi TypeScript is pnpm-only, with `pi/package.json` as the dependency, typecheck, and Vitest source of truth. Never use `bun add`, `bun install`, `bun run`, or `bun test` for Pi packages/tests. Run `cd pi && pnpm install --frozen-lockfile && pnpm run typecheck` and `cd pi && pnpm test`.
+- Pi TypeScript is pnpm-only, with `pi/package.json` as the dependency, typecheck, and Vitest source of truth. Never use `bun add`, `bun install`, `bun run`, or `bun test` for Pi packages/tests. Use `cd pi && pnpm install --frozen-lockfile` only when dependencies need installation; available checks include `pnpm run typecheck` and `pnpm test`.
 - For one Vitest file, pass the filter directly, for example `cd pi && pnpm test operator-status.test.ts`; never insert `--`, because the script passes it through to Vitest and would run the full suite.
 - `@earendil-works/*` and `typebox` are intentionally absent from `pi/package.json`; `scripts/pi-deps-link-setup` links them from pnpm-global into `pi/node_modules` so they match the installed Pi binary. See [`pi/README.md#javascript-package-manager-policy`](pi/README.md#javascript-package-manager-policy).
-- Validation must exercise the changed contract or regression. When the request requires preserving a workflow, validate its user entrypoint and sequence. A smoke test is not contract verification; identify it as such. Never claim behavior that was not run and observed.
+- Validation must directly exercise the changed contract or regression. Start with the cheapest focused check. Run broader or aggregate gates only when shared impact, applicable repository policy, or requested release or merge readiness requires them. When the request explicitly requires preserving a user workflow, validate its relevant entrypoint and sequence when available. Identify smoke tests as smoke tests, never claim unobserved behavior, and stop when additional checks are unlikely to change the implementation decision or confidence.
 - Tests protect executable behavior, parsed schemas, normalized configuration meaning, or external protocols. Do not use assertions as the primary store for policy prose, prompt wording, comments, source spelling, or internal file layout. A test may cover policy through its executable parser or enforcement behavior.
 - Keep durable policy and design intent in the applicable `AGENTS.md` or owning skill/tooling contract so instruction discovery delivers it as context; do not encode it indirectly in tests.
-- Use proportionate checks for the changed contract. Stop testing when additional runs are unlikely to change the implementation decision or confidence.
-- For bug fixes, define the expected successful outcome before editing. When exact workflow validation is required by the requested behavior and is blocked, report the fix as incomplete and name the blocker.
+- For bug fixes, define the expected successful outcome before editing. If a contract-required workflow check is unavailable, report what remains unvalidated instead of substituting unrelated checks.
 
 ## Repository invariants
 
 ### Install, links, and shells
 
-The installer entrypoints and supporting paths are indexed in [`README.md#structure`](README.md#structure); inspect the entrypoint before changing its flow.
+The installer entrypoints and supporting paths are indexed in [`README.md#structure`](README.md#structure).
 
 - `wsl/install.conf.yaml` must mirror every relevant cross-platform link from `install.conf.yaml`. Add the WSL equivalent with each cross-platform link; exclude Windows-only targets such as the PowerShell profile and Windows VS Code paths.
 - All terminals converge through `.bash_profile -> .zshenv -> .zshrc`; see the [shell architecture](README.md#shell-architecture).

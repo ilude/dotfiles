@@ -12,7 +12,7 @@ Compact index for Terraform modules, state, plans, and infrastructure workflows.
 - Do not reinterpret service `port` fields as host publishing when working near Onramp/Caddy Compose conventions.
 - Keep reusable source separate from private values: modules, schemas, and examples can be tracked; real secrets, credentials, tenant values, and local overrides cannot.
 - Never commit state files, secrets, credentials, or local override files unless the repo explicitly documents state custody and the state contents have been checked for sensitive data.
-- Prefer IaC, API, or CLI changes over UI-only runbooks. Before claiming a UI-only limitation, verify the provider, API, and CLI do not support the needed operation.
+- Prefer IaC, API, or CLI changes over UI-only runbooks. Before claiming a UI-only limitation, make one bounded check of the relevant provider documentation, API, and CLI; report the capability as unresolved when that check is inconclusive.
 - Do not run `terraform apply`, `destroy`, state surgery, or imports without explicit user approval.
 - Prefer explicit variables/validation over hidden defaults for required infrastructure decisions.
 
@@ -22,19 +22,12 @@ Compact index for Terraform modules, state, plans, and infrastructure workflows.
 2. Run format/validate before evaluating a plan.
 3. Treat plans as review artifacts: summarize creates/updates/destroys and risks.
 4. Classify every replacement or delete as stateful or stateless and name the rollback boundary.
-5. For stateful resources, verify a current backup and restore path, then plan and apply one independent service at a time until the canary is healthy.
+5. For a live stateful apply, follow the repository rollout and incident policy; use the saved Terraform plan to identify exact actions and rollback boundaries.
 6. Keep modules small with clear inputs/outputs; avoid cross-environment condition sprawl.
 
-## Stateful rollout gate
+## Stateful rollout
 
-Before applying a stateful replacement, require all of:
-
-- saved plan reviewed with exact creates, updates, replacements, and deletes
-- current backup evidence and a tested or documented restore command
-- one independent service in the rollout unless a deliberate batch override is explicitly recorded
-- post-apply endpoint and state checks
-
-If apply fails, stop broad planning/apply cycles and enter incident mode. Recover the affected service directly before creating another rollout plan.
+The repository rollout and incident policy owns backup, restore, canary, and failure-recovery requirements. Terraform-specific evidence is the reviewed saved plan with exact creates, updates, replacements, and deletes, plus the affected resource and endpoint state after apply.
 
 ## Quick validation
 

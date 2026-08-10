@@ -22,7 +22,7 @@ Generated Markdown notes should include YAML frontmatter with `title`, `created`
 
 1. Choose a scoped domain path before writing.
 2. Keep reusable source separate from private values: track schemas, templates, and instructions outside `private/`; store real tenant data, credentials, exports, and secrets only in private storage.
-3. Prefer IaC, API, or CLI collection over UI-only notes. Before documenting a UI-only limitation, verify the service API and supported CLI do not expose the data or operation.
+3. Prefer IaC, API, or CLI collection over UI-only notes. Before documenting a UI-only limitation, make one bounded check of the relevant authoritative API and CLI sources; report the capability as unresolved when that check is inconclusive.
 4. Put human-readable notes in the domain folder and raw artifacts under `_attachments/`.
 5. Update the relevant `_indexes/` note with path-level metadata only.
 6. Never stage plaintext `private/...` paths.

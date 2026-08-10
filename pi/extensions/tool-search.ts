@@ -73,7 +73,7 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use tool_search when the needed capability is not currently available.",
 			"Search with descriptive capability keywords; all matching inactive tools are activated by default.",
-			"Deferred tools include advanced subagent chain, saved-session continuation, read-only fanout, commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review artifacts.",
+			"Deferred tools include advanced subagent modes, background-terminal controls before the first start, commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review artifacts.",
 			"Use list mode without a query only to inspect all tools; it does not activate them.",
 		],
 		parameters: Type.Object({

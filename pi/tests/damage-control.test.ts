@@ -1280,6 +1280,30 @@ describe("damage-control refactor hardening", () => {
 				handlers[1]({ toolName, input: { command } }, ctx),
 			).resolves.toMatchObject({ block: true });
 		}
+		await expect(
+			handlers[1](
+				{ toolName: "bash", input: { command: "sleep 60 &" } },
+				ctx,
+			),
+		).resolves.toMatchObject({
+			block: true,
+			reason: expect.stringContaining("Use bg_start"),
+		});
+		await expect(
+			handlers[1](
+				{ toolName: "bg_start", input: { command: "server &" } },
+				ctx,
+			),
+		).resolves.toMatchObject({
+			block: true,
+			reason: expect.stringContaining("already runs asynchronously"),
+		});
+		await expect(
+			handlers[1](
+				{ toolName: "bash", input: { command: "worker & wait" } },
+				ctx,
+			),
+		).resolves.toBeUndefined();
 	});
 
 	it("evaluates background commands against their effective working directory", async () => {

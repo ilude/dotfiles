@@ -15,14 +15,9 @@ Use `kubernetes-helm` for cluster deployment contracts and GitOps validation. Us
 - Treat branch, environment, namespace, and Argo CD application mapping as a contract. Do not change it casually or infer a new mapping from naming alone.
 - Keep reusable chart and manifest source separate from private values, kubeconfigs, sealed secrets source material, and tenant-specific credentials.
 
-## Validation Checklist
+## Validation
 
-1. Run chart or manifest validation in CI or the same local commands CI uses.
-2. Confirm the intended image identity: registry, repository, tag or digest, and build provenance from the deployment source.
-3. Verify Argo CD sync status and health for the application when GitOps is in scope.
-4. Check rollout status for changed workloads.
-5. Inspect events for scheduling, image pull, probe, admission, or policy failures.
-6. Check logs for changed pods or controllers before declaring the deployment healthy.
+For source changes, render or lint the affected chart or manifest and confirm any changed image identity from deployment source. When the request includes a live GitOps sync or rollout, verify the affected application health and workload status; inspect events or logs when needed to explain a failure or support a health claim.
 
 ## Quick Commands
 
@@ -37,7 +32,7 @@ Use `kubernetes-helm` for cluster deployment contracts and GitOps validation. Us
 
 ## Anti-patterns
 
-- Claiming success from CI alone when Argo CD sync, health, rollout, events, or logs were not checked.
+- Claiming a live rollout is healthy from CI alone without checking the affected application and workload.
 - Changing environment or branch mapping without updating the documented deployment contract.
 - Deploying mutable image tags in GitOps flows.
 - Mixing secret values into reusable chart defaults or examples.

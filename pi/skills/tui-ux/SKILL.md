@@ -1,6 +1,6 @@
 ---
 name: tui-ux
-description: "Terminal UI/CLI UX: TUIs, command palettes, pickers, setup wizards, lists, forms, status bars, keyboard navigation, streaming, or workflows."
+description: "Interactive terminal UX: command palettes, pickers, setup wizards, lists, forms, keyboard navigation, or streaming state. Not for passive text formatting, tool-call/result rendering, or status labels unless interaction changes."
 ---
 
 # TUI UX Skill
@@ -58,7 +58,7 @@ Apply the invariants affected by the requested TUI change. Security and preserva
 9. **Explicit recovery paths**
    - Every error/degraded state should explain what happened and what the user can do: retry, cancel, run `/login`, edit config, restart, etc.
 
-10. Apply POLA (see the `least-astonishment` skill) to keybindings, wording, and spacing.
+10. Match existing keybinding, wording, and spacing patterns.
 
 ## Agent Behavior Rules for TUI Work
 
@@ -70,30 +70,9 @@ Before implementing TUI changes:
 4. For typing latency changes, instrument first and validate against measured input/render timing before guessing.
 5. If touching config/profile/secret behavior, preserve existing fields and add migration/preservation tests when the change can affect them.
 
-## Checklist Before Marking a TUI Change Done
+## Validation
 
-For a TUI/list/form/setup change, verify the items affected by the requested contract:
-
-- [ ] Keyboard navigation works and selected item remains visible.
-- [ ] Esc/cancel behavior is clear and safe.
-- [ ] Long lists are windowed or paginated.
-- [ ] Ordering is deterministic and tested.
-- [ ] Partial provider failures do not block successes.
-- [ ] Status text and recovery guidance are visible.
-- [ ] Secrets are not rendered, logged, or dropped from profiles.
-- [ ] Config defaults are created only when missing and do not overwrite edits.
-- [ ] Tests cover UX invariants, not only happy-path function output.
-- [ ] Narrow terminal behavior is acceptable or explicitly bounded.
-
-## Common TUI Tests to Add
-
-- List with more items than visible window; move selection past first page and assert selected item is rendered.
-- List sorting with shuffled inputs.
-- One failing provider plus one successful provider returns successful results and warning.
-- Setup form loads existing config and preserves secret refs when key field is blank.
-- Missing config creates defaults; existing config is not overwritten.
-- Esc/cancel closes modal/form and leaves app in a recoverable state.
-- Rendering does not include secret values.
+Verify only the user-visible invariants affected by the requested contract. Do not add coverage for unrelated checklist items. Relevant checks may include navigation/windowing for changed lists, cancellation for changed forms, provider isolation for changed discovery, and secret or field preservation for changed configuration flows.
 
 ## Model Picker Specific Guidance
 

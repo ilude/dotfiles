@@ -63,11 +63,11 @@ const { output } = await reviewer.run({ candidate }, ctx);
 - Keep correction retries bounded. The MVP permits one output-correction retry.
 - Treat schema validity as necessary but insufficient. Apply domain invariants afterward in deterministic code.
 - Never let model output directly stage, commit, push, delete, deploy, or bypass approval policy.
-- Test the agent boundary with a fake session, then validate the exact command workflow.
+- Test the changed agent boundary with a fake session.
 
 ## Workflow Design Checks
 
-- Before automating an unfamiliar multi-stage workflow, inspect its intended entrypoint and identify deterministic inputs, semantic judgments, validation signals, and operator approval boundaries. Exercise it end to end only through an isolated safe fixture; do not run a stateful or external entrypoint solely for discovery.
+- Before automating an unfamiliar multi-stage workflow, inspect its intended entrypoint and identify deterministic inputs, semantic judgments, validation signals, and operator approval boundaries. When end-to-end validation is required, use an isolated safe fixture; do not run a stateful or external entrypoint solely for discovery.
 - Run linters, type checks, tests, and pass/fail routing in deterministic code. When a typed stage owns remediation, pass only bounded diagnostics back as explicit input; code still owns retry limits and the final validation decision.
 
 ## Deferred Capabilities
@@ -86,7 +86,9 @@ Read [roadmap.md](roadmap.md) only when a concrete workflow cannot be implemente
 
 ## Validation
 
-1. Focused unit tests for input validation, output validation, correction, cancellation, and disposal.
-2. Focused tests for deterministic policy after validated output.
-3. Pi extension typecheck.
-4. The exact user-facing command in an isolated repository or equivalent safe fixture.
+Choose checks that exercise the changed stage or policy; these are available options, not a required sequence:
+
+- Focused unit tests for affected input/output validation, correction, cancellation, or disposal behavior.
+- Focused tests for affected deterministic policy after validated output.
+- Pi extension typecheck when type contracts change.
+- The user-facing command in an isolated safe fixture when its public workflow contract changes.

@@ -9,6 +9,8 @@ Go emphasizes simplicity, explicit error handling, and strong concurrency primit
 
 ## Quick Reference
 
+These are command references, not a required sequence. Choose only relevant commands, replacing `./...` with an affected package when a narrower check is appropriate.
+
 | Command | Purpose |
 |---------|---------|
 | `go build ./...` | Build all packages |

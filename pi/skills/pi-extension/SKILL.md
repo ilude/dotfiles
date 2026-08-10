@@ -11,8 +11,6 @@ description: "Pi extensions and tool policy: extensions/*.ts, hooks, registerToo
 | --- | --- |
 | Pi extension implementation, hooks, runtime behavior, subprocess use | `pi-extension` |
 | Slash-command placement or prompt-vs-extension decisions | `pi-command` |
-| General TypeScript patterns and package commands | `typescript` |
-| Focused existing-code edits | `least-astonishment` |
 
 ## Core Principle
 
@@ -22,15 +20,19 @@ Pi docs, Pi examples, and local Pi source/types are authoritative for extension 
 
 ## Living Tooling Contract
 
-Before designing or changing a Pi extension, registered tool, activation rule, prompt snippet, or prompt guideline, read [references/tooling-contracts.md](references/tooling-contracts.md) completely.
+Before changing public or normative Pi tooling behavior, load only its owning contract:
 
-The tooling contract is living guidance. When the user refines or changes accepted tooling behavior:
+- [Footer and extension status](references/tooling-contracts.md#footer-and-extension-status)
+- [Subagents and durable tasks](references/contracts/subagents-and-tasks.md)
+- [Managed background terminals](references/contracts/background-terminals.md)
+- [Session export and summaries](references/contracts/session-export.md)
+- [Slash command context](references/contracts/slash-command-context.md)
+- [Tool visibility and discovery](references/contracts/tool-discovery.md)
+- [Feature memory](references/contracts/feature-memory.md)
+- [PowerShell](references/contracts/powershell.md)
+- [Scheduler](references/contracts/scheduler.md)
 
-1. Update the contract in the same coherent change as the implementation.
-2. Record the accepted current behavior, not the discussion history.
-3. Remove superseded or contradictory guidance instead of appending exceptions.
-4. Reconcile descriptions, prompt snippets, prompt guidelines, activation, runtime gates, and operator documentation with the revised contract.
-5. Keep tool-specific policy in the owning extension and this contract, not `AGENTS.md`.
+Update an existing contract only when the requested change would otherwise make it inaccurate. Record accepted current behavior, remove superseded guidance, and inspect only affected callable or operator-facing surfaces. Do not update policy or documentation for implementation-only changes. Keep callable policy in the owning extension; reserve these contracts for stable cross-cutting or operator-facing semantics.
 
 ## Pi Runtime Rules
 
@@ -71,7 +73,7 @@ The tooling contract is living guidance. When the user refines or changes accept
 
 ## Validation
 
-For Pi extension changes, prefer targeted validation:
+Choose only the checks affected by the change; these commands are not a required sequence:
 
 ```bash
 cd pi && pnpm test <matching-test-file>.ts
