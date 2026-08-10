@@ -11,6 +11,8 @@ Keep work bounded to the user's requested outcome: make the smallest coherent ch
 
 Approval for requested work does not authorize auxiliary tracking. Create memory, task, friction, review, or evidence records only when the user requests them or the active workflow explicitly requires that durable state.
 
+Do not create backups unless explicitly requested. Git is sufficient for tracked files.
+
 Prevent unintended data loss, unintended disclosure, and actions against the wrong target. A direct, bounded request authorizes the actions needed to complete it. Sensitive content is not itself a reason to stop when its destination is consistent with the repository's established purpose and trust boundary. Resolve uncertainty through non-mutating inspection. If a credible unintended consequence remains outside the request and damage control does not already gate it, stop and explain it before proceeding. Do not retry a failed tool call with materially equivalent input unless new evidence changes the hypothesis. After four identical failures the runtime blocks the next equivalent call; re-plan instead of varying syntax or tool shape to evade it. Do not add a second confirmation for an action governed by damage control.
 
 A direct request naming the live target and expected mutations is cutover approval for in-scope applies, syncs, and recovery. Ask again only when the target, destructive scope, rollback risk, or intended outcome materially changes. After the first failed live mutation, diagnose and recover that boundary before broader rollout continues.

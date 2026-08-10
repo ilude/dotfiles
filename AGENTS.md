@@ -69,7 +69,7 @@ git submodule update --init --recursive
 
 ### Rollout and incident discipline
 
-- For live stateful infrastructure, replace or migrate one independent service per rollout until the canary is healthy. Before mutation, require a current backup, a known restore path, an explicit rollback boundary, and a reviewed plan naming every create, update, replace, and delete.
+- For live stateful infrastructure, replace or migrate one independent service per rollout until the canary is healthy. Before changing existing state, require a current backup, a known restore path, an explicit rollback boundary, and a reviewed plan naming every create, update, replace, and delete. First-time provisioning requires no backup.
 - The first failed live mutation enters incident mode: stop roadmap work, broad applies, parallel recovery, and unrelated refactoring. Diagnose directly, recover one service, preserve healthy services, and exit incident mode only after the original endpoint and state checks pass.
 - Direct command output, saved logs, and endpoint checks outrank summaries. The parent executing or coordinating live work must independently verify critical plan and health claims.
 - Reuse the user's authorization for repeated in-scope, non-destructive recovery steps. Ask again only when the target, destructive scope, rollback risk, or intended outcome materially changes.
