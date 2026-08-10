@@ -21,17 +21,21 @@ This file records the current accepted semantics for Pi extensions and tools. It
 
 ## Subagents and durable tasks
 
-- Runtime model: every child Pi invocation, whether direct or task-backed, is registered with one bounded process-local run manager for live status, output activity, cancellation, and operator display.
-- Direct ownership: direct `subagent` calls are transient and never create `TaskRecordV1` entries. They may run in the foreground or detach with `background=true`.
+- Runtime model: every child Pi invocation is registered with one bounded process-local run manager for live status, output activity, cancellation, and operator display.
+- Direct ownership: `subagent` calls are transient and never create or mutate `TaskRecordV1` entries. They may run in the foreground or detach with `background=true`.
 - Read-only fan-out experiment: `readOnlyFanout` is opt-in only for one read-only investigation with at least two independent work items. The caller supplies equivalent single-generalist and parallel-specialist plans under one required output schema; deterministic assignment selects one arm. Do not use it for dependent work, mutations, or live operations.
 - Experiment boundary: experimental children receive only configured read-oriented direct tools, with `edit` and `write` excluded. Shell commands still pass through damage control. Assignment telemetry is emitted before execution, structural output-schema validation is emitted after settlement, and model-routing outcome sampling is disabled for the invocation.
 - Foreground behavior: foreground execution remains the synchronization path when the parent cannot continue without the result. Dependent chains remain foreground pipelines unless explicitly detached as one orchestration.
 - Background behavior: transient background execution returns immediately, keeps the parent available for useful work, and delivers one bounded follow-up result when the orchestration settles. Do not poll it.
-- Durable ownership: only the `task` surface creates durable records. A task-backed child links `taskId` to a distinct runtime `runId`; retries may create additional run attempts for the same task.
-- Authority: the run manager owns live child-process state. The task registry owns durable workflow intent, dependencies, and persisted lifecycle. Terminal UI components are projections over those sources and invoke their operations rather than mutating lifecycle state directly.
-- Operator UI: keep compact subagent counts visible and provide `/subagents` for a unified list and bounded live detail view. Clearly distinguish direct runs from durable task-backed runs.
-- Retention: bound in-memory run history, transcript items, live output, and rendered content. Preserve full output through an explicit child session or artifact when continuation or durable evidence requires it; load older content lazily rather than retaining unlimited UI state.
-- Session lifecycle: cancel and release process-local runs during session shutdown. Durable task state remains available for normal task reconciliation and recovery.
+- Agent catalog: every advertised subagent agent field enumerates the user agents and trusted project agents discovered for the current session. Refresh the catalog on session start or reload, preserve `agentScope` as the execution boundary, and do not infer aliases for unknown names.
+- Dispatch preflight: validate every requested agent against the selected scope before starting any worker or acknowledging a background orchestration. Reject a parallel invocation atomically when any agent is unavailable.
+- Call rendering: show the complete task text for a single-agent invocation beneath its compact agent, scope, model, and background header. Keep parallel and chain call summaries bounded.
+- Durable ownership: only `task` creates durable todo records. It stores workflow intent, dependencies, scope, and lifecycle state but never starts, waits for, stops, or captures output from child processes.
+- Coordination: use `task ready`, mark selected work `running`, execute it through `subagent` or `bg_start`, and record the terminal task state explicitly. The parent agent owns this sequence.
+- Authority: the run manager owns live child-process state. The task registry owns durable todo and dependency state. Neither surface mutates the other's lifecycle.
+- Operator UI: keep compact subagent counts visible and provide `/subagents` for bounded live detail of direct child runs. Task state remains visible through the task surfaces.
+- Retention: bound in-memory run history, transcript items, live output, and rendered content. Preserve full child output through an explicit child session or artifact when continuation or durable evidence requires it.
+- Session lifecycle: cancel and release process-local runs during session shutdown. Durable task state remains available across context compaction and normal session recovery.
 
 ## Managed background terminals
 
@@ -59,8 +63,9 @@ This file records the current accepted semantics for Pi extensions and tools. It
 
 ## Tool visibility and discovery
 
-- Availability bias: keep general and specialized callable tools active so the model knows they exist. Defer only tools whose invocation is valid inside an owning workflow state.
+- Availability bias: keep general and specialized callable tools active so the model knows they exist. Defer only tools whose invocation is valid inside an owning workflow state or advanced mode tools with a compact active replacement and searchable, explicit names.
 - State gates: commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review-artifact writing remain inactive until their owning workflow activates them deterministically.
+- Advanced subagents: keep common single and parallel execution on `subagent`. Register `subagent_chain`, `subagent_continue`, and `subagent_fanout` but deactivate them at session start; `tool_search` activates them on demand. Preserve legacy advanced arguments on `subagent` for resumed sessions without advertising those branches in its provider schema.
 - Search behavior: keep `tool_search` active as a fallback. A non-empty query activates all matching inactive tools by default; list mode never activates tools.
 - Catalog: `tool_search` guidance names the deferred capability categories so hidden schemas do not make those capabilities undiscoverable.
 - Telemetry: record metadata-only toolset exposure, hashed search decisions, activation results, and tool use. Do not record raw queries, arguments, descriptions, or output.
@@ -84,7 +89,7 @@ This file records the current accepted semantics for Pi extensions and tools. It
 
 - Classification: process-local workflow control.
 - Authorization: creating, using, listing, and cancelling schedules do not require a user request, approval, or confirmation.
-- Use: delayed workflow continuation, status follow-ups, reminders, and recurring checks.
+- Use: delayed workflow continuation, status follow-ups, reminders, and recurring checks. Schedule controls when Pi receives a prompt; it does not store todo state, dependencies, or process lifecycle.
 - Waiting: for waits of 60 seconds or longer, use a scheduled follow-up instead of shell sleep loops, polling loops, or background workers used only as timers.
 - Timing: schedule a follow-up near half the expected wait, bounded between 60 seconds and 15 minutes; use five minutes when the duration is unknown.
 - Clarification: ask only when a required value such as timing, recurrence, or timezone is missing or ambiguous. Do not frame clarification as approval or confirmation.

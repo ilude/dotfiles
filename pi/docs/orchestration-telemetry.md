@@ -198,8 +198,8 @@ the token and cost fields are optional. `costSource` is `pi-usage` or
 - `orchestrationId` identifies one delegation invocation and joins a run to the
   matching member of `orchestrationIds`.
 - `runId` identifies one worker execution inside a run.
-- `taskId` identifies a durable task when a worker comes from task execution. It
-  is not an orchestration invocation ID.
+- `taskId` is retained only when parsing historical task-execution records. New
+  task records do not execute workers. It is not an orchestration invocation ID.
 - `interactionId` identifies the parent interaction. It joins run
   `interactionId` values to interaction records and joins interaction records to
   workflow-friction records by their explicit interaction ID.

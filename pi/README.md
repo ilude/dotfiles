@@ -318,9 +318,9 @@ Provides bounded process-local management for long-lived Bash commands through `
 
 ### `tool-visibility.ts` and `tool-search.ts`
 
-Keeps only workflow-state-gated tools out of the default provider schema until they are valid: commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review-artifact writing. Their owning extensions activate them from deterministic command or prompt state. General and specialized callable tools, including Onclave, Coms LAN trust, usage-report, web, PowerShell, and scheduler tools, remain active so the model knows they exist.
+Keeps workflow-state-gated tools out of the default provider schema until they are valid: commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review-artifact writing. Their owning extensions activate them from deterministic command or prompt state. The common `subagent` schema exposes single and parallel execution; advanced `subagent_chain`, `subagent_continue`, and `subagent_fanout` tools are registered but deferred at session start. General and specialized callable tools, including Onclave, Coms LAN trust, usage-report, web, PowerShell, and scheduler tools, remain active so the model knows they exist.
 
-`tool_search` remains active as a fallback and activates all matching inactive tools by default for a non-empty capability query. Listing all tools without a query remains inspection-only. Metadata-only `toolset_exposure`, `tool_search_decision`, and `tool_use` metrics record the visible toolset, hashed searches, activation results, and later use without raw queries, arguments, descriptions, or output. The `tool_discovery_activity` DuckDB view exposes those events for local review.
+`tool_search` remains active as a fallback and activates all matching inactive tools by default for a non-empty capability query, including deferred advanced subagent modes. Listing all tools without a query remains inspection-only. Metadata-only `toolset_exposure`, `tool_search_decision`, and `tool_use` metrics record the visible toolset, hashed searches, activation results, and later use without raw queries, arguments, descriptions, or output. The `tool_discovery_activity` DuckDB view exposes those events for local review.
 
 ### `active-turn-compaction.ts`
 
@@ -402,9 +402,10 @@ failures, quiescence, or repeated iterations without a commit.
 
 Provides process-local one-shot and recurring prompt scheduling. Jobs survive
 `/reload`, `/new`, `/resume`, and `/fork` within the current Pi process, then
-stop when that process exits. If a job becomes due during session replacement,
-it is delivered to the next active session. Recurring jobs keep at most one
-prompt pending until the agent settles.
+stop when that process exits. Schedule controls when Pi receives a prompt; it
+does not store todo state, dependencies, or process lifecycle. If a job becomes
+due during session replacement, it is delivered to the next active session.
+Recurring jobs keep at most one prompt pending until the agent settles.
 
 ```text
 /at 15m -- Recheck the deployment status
@@ -495,8 +496,9 @@ Shows Claude Code-style context usage for Pi.
 
 Behavior:
 - Displays current context usage from Pi's `ctx.getContextUsage()` API.
-- Estimates per-component buckets for system prompt, active provider-visible tool descriptions and parameter schemas, user messages, assistant text/thinking, tool calls, tool results, bash output, injected context, and summaries.
-- Shows cumulative session token spend, cache reads/writes, cost, and component breakdown.
+- Estimates per-component buckets for rendered system-prompt sections, active provider-visible tool descriptions and parameter schemas, user messages, assistant text/thinking, tool calls, tool results, bash output, provider-visible injected context, and summaries. Prompt buckets include their rendered wrappers, paths, skill locations, and built-in guidance instead of assigning that overhead to a generic base-prompt remainder.
+- Shows cumulative session token spend, cache reads/writes, cost, component breakdown, per-tool schema weight, per-context-file content and wrapper estimates, aggregate skill name/description/location/wrapper estimates, and injected context grouped by custom message type.
+- Reconciles Pi's provider-based context estimate with the character-based component estimate and reports the unattributed remainder or component overage explicitly.
 - Emits the full report as a normal transcript message so it scrolls with the conversation; the extension filters those report messages back out of future LLM context.
 
 ### `provider.ts`
@@ -568,13 +570,13 @@ records; direct `subagent` calls remain transient.
 Storage location: `~/.pi/agent/operator/{tasks,permissions}/`. Override
 with `PI_OPERATOR_DIR` (used by tests).
 
-All direct and task-backed child Pi processes also register with the bounded
-process-local manager in `pi/extensions/subagent/run-manager.ts`. Task-backed
-runs link their runtime `runId` to the durable `taskId`; direct runs have no
-task ID. `/subagents` presents both kinds of runs and can cancel active child
-processes without treating its TUI state as lifecycle authority. Damage-control
-continues to write permission decisions defensively so registry I/O failure
-never breaks the protected producer flow.
+All child Pi processes register with the bounded process-local manager in
+`pi/extensions/subagent/run-manager.ts`. `/subagents` presents those transient
+runs and can cancel active child processes without treating its TUI state as
+lifecycle authority. The task registry separately stores durable todo,
+dependency, scope, and lifecycle state; it does not execute or manage child
+processes. Damage-control continues to write permission decisions defensively
+so registry I/O failure never breaks the protected producer flow.
 
 #### `operator-status.ts`
 
@@ -607,19 +609,18 @@ Operator surface for the durable task registry.
 
 Commands:
 - `/tasks` -- urgency-grouped list (blocked > failed > running > pending > completed > cancelled), compact rows with short id + summary + relative time + retry count
-- `/tasks <id-prefix>` -- detail view (id, state, origin, agent, summary, prompt/preview, timestamps, retries, blockReason/errorReason, usage tokens). Prefix matching needs >=4 chars and rejects ambiguous matches
+- `/tasks <id-prefix>` -- detail view (id, state, summary, scope, dependencies, notes, timestamps, retries, and legacy metadata when present). Prefix matching needs >=4 chars and rejects ambiguous matches
 - `/tasks cancel <id>` -- transitions `running`/`blocked`/`pending` -> `cancelled`; preserves the final summary
 - `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
 
 Model-callable task surface:
-- The unified `task` tool owns durable dependencies and background execution through `create`, `batch`, `update`, `remove`, `list`, `ready`, `get`, `execute`, `execute_many`, `drain`, `await`, `stop`, and `output` actions. Ordinary multi-step work uses a lightweight prose plan instead; durable records are optional for user-requested lists, main-thread tracking, dependencies, cross-turn work, and background execution.
-- A graph-aware `batch` can mix manual and executable tasks with request-local keys and dependency keys. Use returned aliases for later actions; manual tasks remain main-thread-owned and advance through `update`.
+- The unified `task` tool owns durable todo and dependency state through `create`, `batch`, `update`, `remove`, `list`, `ready`, and `get`. Ordinary short workflows can remain prose; durable records are useful for requested todo lists, dependency graphs, and work that may span context compaction.
+- A graph-aware `batch` creates todo items with request-local keys and dependency keys. Use returned aliases for later actions.
 - Tasks default to the current repository workspace; `list` and `ready` accept `all: true` for a cross-repository view and return compact model-visible summaries. Use `get` for one complete record.
-- Executable tasks accept `agent`, `task`, `cwd`, `agentScope`, `model`, `modelSize`, and optional worktree-relative `scope` paths/globs. Use bounded `execute_many` for an explicit set, or opt into `drain` for dependency-aware dispatch with bounded concurrency, read-only parallelism, writer-scope serialization, critical-path-first ordering, and explicit starvation results. Terminal task events wake the current Pi process through the same follow-up prompt path as scheduled prompts. Call `await` only to join same-session workers immediately; do not poll.
-- `stop` cancels a running child process tree. `output` returns small results inline and a concise durable artifact reference for large results; full bounded details remain available to the TUI renderer.
-- Start execution once, request output when needed, and record lifecycle changes only when state changes. Do not poll task actions in loops.
+- The parent agent selects ready work, marks it `running`, executes it through `subagent` or `bg_start`, and then records its terminal state. Task never starts, waits for, stops, or captures output from those processes.
+- Optional worktree-relative `scope` paths or globs describe task boundaries for coordination. `blockedBy` is the authority for dependency readiness.
 - Batch graph validation occurs before writes, but batch publication is not transactional. On `write_failed`, inspect the returned persisted IDs, clear each persisted task's `blockedBy` in reverse request order through `update`, then tombstone it with `remove`; do not assume automatic rollback or retry.
-- Legacy `.pi/todo.json` entries are imported idempotently into the durable registry at session startup. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity. The retired `todo` and individual `task_*` tools are no longer registered.
+- Legacy `.pi/todo.json` entries are imported idempotently into the durable registry at session startup. Existing task records with retired execution metadata remain readable but inert. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity.
 
 Lifecycle (defined in `pi/lib/operator-state.ts`):
 ```
@@ -781,11 +782,18 @@ Work directly on one coherent task. Delegate when independent work, specialized 
 
 Repository-owned worker definitions live in `pi/agents/`; loading and precedence are implemented by `pi/extensions/subagent/agents.ts`.
 
-The `subagent` tool preserves foreground single, parallel, chain, and continue
-modes. Set `background=true` for transient detached execution; the tool returns
-immediately and later delivers one bounded follow-up result. Use `/subagents`
-for the unified process-local dashboard and run detail view. Use `task` instead
-when work needs durable dependencies, tracking, or recovery.
+The active `subagent` tool provides foreground single and parallel modes. Set
+`background=true` for transient detached execution; the tool returns immediately
+and later delivers one bounded follow-up result. Advanced `subagent_chain`,
+`subagent_continue`, and `subagent_fanout` tools are discoverable through
+`tool_search` and activate on demand. Legacy advanced arguments on `subagent`
+remain executable for resumed sessions but are omitted from its advertised
+provider schema. Agent fields enumerate the user agents and trusted project
+agents discovered for the current session; `/reload` refreshes that catalog.
+Every invocation validates all requested agents against `agentScope` before any
+worker starts or a background run is acknowledged. Use `/subagents` for the
+unified process-local dashboard and run detail view. Use `task` instead when
+work needs durable dependencies, tracking, or recovery.
 
 ### Agent configuration
 

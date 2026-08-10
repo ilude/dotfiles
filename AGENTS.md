@@ -14,38 +14,7 @@ Claude hooks, commands, settings, runtime workarounds, and content ingestion are
 
 ## Command index
 
-Installation details live in [`README.md#installation`](README.md#installation), with development guidance in [`README.md#development`](README.md#development); the entrypoints are:
-
-```bash
-# Linux, Git Bash, MSYS2
-~/.dotfiles/install
-
-# WSL
-~/.dotfiles/wsl/install
-~/.dotfiles/wsl/install --packages
-```
-
-```powershell
-# Windows PowerShell
-~\.dotfiles\install.ps1
-~\.dotfiles\install.ps1 -Work
-~\.dotfiles\install.ps1 -ITAdmin
-~\.dotfiles\install.ps1 -NoElevate
-~\.dotfiles\install.ps1 -ListPackages
-```
-
-Validation commands:
-
-```bash
-make test
-make test-quick
-make test-pytest
-make lint
-make lint-python
-make format
-make check
-just update
-```
+Installation entrypoints and options live in [`README.md#installation`](README.md#installation); development and validation commands live in [`README.md#development`](README.md#development). Inspect the applicable entrypoint before changing or running its flow.
 
 Tooling rules:
 
@@ -69,10 +38,8 @@ The installer entrypoints and supporting paths are indexed in [`README.md#struct
 - `wsl/install.conf.yaml` must mirror every relevant cross-platform link from `install.conf.yaml`. Add the WSL equivalent with each cross-platform link; exclude Windows-only targets such as the PowerShell profile and Windows VS Code paths.
 - All terminals converge through `.bash_profile -> .zshenv -> .zshrc`; see the [shell architecture](README.md#shell-architecture).
 - In MSYS2 and Git Bash, pass `ZDOTDIR` through `env` when execing zsh.
-- In shell config and prompt logic, prefer `${ZDOTDIR:-$HOME}` over raw `~` or `$HOME` when path resolution crosses the Git Bash/MSYS2 boundary.
 - On Windows with MSYS2, `nsswitch.conf` must resolve HOME with `db_home: env windows cygwin desc`.
-- In WSL prompt normalization, compare Windows-home paths case-insensitively.
-- Canonical platform helpers live in `zsh/rc.d/00-helpers.zsh`; standalone scripts may redefine platform detection only to remain self-contained.
+- Before changing files under `zsh/`, read and follow `zsh/AGENTS.md`; standalone scripts may redefine platform detection only to remain self-contained.
 
 ### Git identity, LFS, and submodules
 
