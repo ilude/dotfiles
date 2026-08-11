@@ -168,7 +168,10 @@ export function registerActiveTurnCompaction(
 	});
 
 	pi.on("session_before_compact", (event) => {
-		if (failureCircuitOpen && event.reason === "threshold")
+		if (
+			event.reason === "threshold" &&
+			(compactionPending || failureCircuitOpen)
+		)
 			return { cancel: true };
 		return undefined;
 	});

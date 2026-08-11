@@ -227,6 +227,38 @@ describe("active-turn compaction", () => {
 		);
 	});
 
+	it("cancels native threshold compaction while extension compaction is pending", async () => {
+		const runtime = setup(usage(360_000));
+		await runtime.sessionStart(
+			{ type: "session_start", reason: "startup" },
+			runtime.ctx,
+		);
+		await runtime.turnEnd(activeTurn(), runtime.ctx);
+
+		expect(
+			await runtime.sessionBeforeCompact(
+				{ type: "session_before_compact", reason: "threshold" },
+				runtime.ctx,
+			),
+		).toEqual({ cancel: true });
+		for (const reason of ["manual", "overflow"] as const) {
+			expect(
+				await runtime.sessionBeforeCompact(
+					{ type: "session_before_compact", reason },
+					runtime.ctx,
+				),
+			).toBeUndefined();
+		}
+
+		runtime.compactOptions?.onComplete?.({} as never);
+		expect(
+			await runtime.sessionBeforeCompact(
+				{ type: "session_before_compact", reason: "threshold" },
+				runtime.ctx,
+			),
+		).toBeUndefined();
+	});
+
 	it("attempts compaction only once while the same run remains above threshold", async () => {
 		const runtime = setup(usage(360_000));
 		await runtime.sessionStart(
