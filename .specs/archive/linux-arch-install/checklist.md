@@ -1,3 +1,7 @@
+Status: Dormant (2026-08-12)
+Decision: No execution evidence; archived until an Arch/Niri target is real.
+Historical planning material preserved below.
+
 # Arch Linux + Niri Desktop Setup Checklist
 
 ## Goals

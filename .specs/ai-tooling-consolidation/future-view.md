@@ -21,10 +21,10 @@ Source: [README, `.specs/ai-tooling-consolidation/README.md`; Repos, `C:/project
 | Menos | Menos is the intended shared durable memory and content backend for Pi and Claude, with content ingestion, semantic search, tags, links, entities, graphs, jobs, and usage accounting documented. | The knowledge compiler is reviewed but not completed; current storage architecture documentation conflicts. | [Onclave, `onclave/services/menos/.claude/rules/api-reference.md`; Active, `.specs/menos-knowledge-compiler/plan.md`] |
 | Onclave V1 | Secure LAN Pi communication V1 is functionally complete, with explicit Ed25519 trust, authenticated WSS, metadata-only audit, and two-host acceptance evidence. | V1 is frozen pending V2 parity and eventual retirement. | [Onclave, `onclave/docs/extensions/onclave-comms/status.md`; Onclave, `onclave/README.md`] |
 | Onclave V2 | Broker-backed V2 core and Pi adapter have completed documented phases 0-5 on `feature/v2-broker-core`, with durable queues, dead letters, performatives, strict correlation, budgets, and same-host validation. | Cross-host validation, TLS, policy reload verification, delegation execution, and per-adapter broker users remain incomplete or deferred. | [Onclave, `onclave/docs/extensions/onclave-comms/v2-status.md`] |
-| Herdr | Herdr is enabled as an opt-in Pi terminal control and metadata layer. | It is not an orchestration replacement, notification system, worktree manager, or background-process runtime. | [Pi, `pi/settings.json:19-20`; Active, `.specs/pi-herdr-full-integration/plan.md`] |
+| Herdr | Herdr is enabled as an opt-in Pi terminal control and metadata layer. | It is not an orchestration replacement, notification system, worktree manager, or background-process runtime. | [Pi, `pi/settings.json:19-20`; Active, `.specs/archive/pi-herdr-full-integration/plan.md`] |
 | Hermes | Hermes is a proposed agent-runtime and homelab operator direction. | No selected target host, provider stack, webhook, exposure model, or live proof is established. | [Active, `.specs/hermes-deploy/PRD.md`] |
 | Homelab ownership | `homelab-infra` owns durable infrastructure and Proxmox; `onramp-vNext` is the intended app catalog and lifecycle surface; Onclave incubates AI services. | Temporary direct deployment paths have not completed their handoff to the consuming platform. | [Repos, `C:/projects/Personal/homelab-infra/README.md`; Onclave, `onclave/docs/deployment-contract-exception.md`] |
-| Secrets | Bitwarden Secrets Manager is the current platform secret source in the newer platform direction. | Older active specs target Infisical and conflict with the newer platform contract. | [Onclave, `onclave/docs/PRDS/2026-07-26-homelab-platform-architecture-PRD.md`; Active, `.specs/infisical-secrets/plan.md`] |
+| Secrets | Bitwarden Secrets Manager is the current platform secret source in the newer platform direction. | Older active specs target Infisical and conflict with the newer platform contract. | [Onclave, `onclave/docs/PRDS/2026-07-26-homelab-platform-architecture-PRD.md`; Active, `.specs/archive/infisical-secrets/plan.md`] |
 | Infra rollout | Rootless Podman Quadlet migration is planned, with Menos as the intended canary. | No service migration or live validation is complete. | [Active, `.specs/rootless-podman-quadlet-hardening/plan.md`] |
 | High-risk execution | Multipass no-host-mount YOLO isolation has a reviewed design. | It remains planned and has no implementation artifacts. | [Active, `.specs/multipass-yolo-workflows/plan.md`] |
 | Research vault | The Obsidian vault is an implemented idea garden and curated research index. | Its proposals are not commitments unless promoted through evidence and a bounded slice. | [Vault, `AGENTS.md`; Vault, `agent-workflows/AGENTS.md`] |
@@ -36,13 +36,13 @@ Source: [README, `.specs/ai-tooling-consolidation/README.md`; Repos, `C:/project
 
 The parent starts ready work, marks it running, dispatches workers, validates output, and writes the terminal task state.
 This is settled because mixing task storage with execution and scheduling produced a larger, less clear control plane.
-Strongest source: [Pi, `pi/README.md:630-637`; Active, `.specs/pi-task-todo-boundary/plan.md`]
+Strongest source: [Pi, `pi/README.md:630-637`; Active, `.specs/archive/pi-task-todo-boundary/plan.md`]
 
 ### Durable task state is not a scheduler
 
 `task` owns durable todo and dependency state only; `schedule` remains process-local prompt timing and workers remain transient execution.
 This is settled because separate task, todo, team, and execution systems created drift.
-Strongest source: [Active, `.specs/pi-task-todo-boundary/plan.md`; Archive, `.specs/archive/pi-task-dag-runner/plan.md`]
+Strongest source: [Active, `.specs/archive/pi-task-todo-boundary/plan.md`; Archive, `.specs/archive/pi-task-dag-runner/plan.md`]
 
 ### Direct work is the default
 
@@ -72,13 +72,13 @@ Strongest source: [Active, `.specs/pi-workflow-refinement/notes.md`; Pi, `pi/doc
 
 Background systems may observe, classify, recommend, and measure, but users approve policy, prompt, skill, routing, and workflow mutations.
 This is settled because self-modifying workflow policy obscures authority and causality.
-Strongest source: [Archive, `.specs/archive/rationalization-phase4/plan.md`; Active, `.specs/pi-workflow-friction-review/design.md`]
+Strongest source: [Archive, `.specs/archive/rationalization-phase4/plan.md`; Active, `.specs/archive/pi-workflow-friction-review/design.md`]
 
 ### One capability has one owner
 
 Pi owns runtime behavior; Menos owns durable knowledge; Onclave owns trusted inter-agent delivery; infrastructure repositories own infrastructure; skills own scoped guidance.
 This is settled because duplicate authorities create inconsistent state and stale contracts.
-Strongest source: [Pi, `pi/AGENTS.md:36-40`; Active, `.specs/pi-task-todo-boundary/plan.md`; Onclave, `onclave/docs/PRDS/2026-07-26-homelab-platform-architecture-PRD.md`]
+Strongest source: [Pi, `pi/AGENTS.md:36-40`; Active, `.specs/archive/pi-task-todo-boundary/plan.md`; Onclave, `onclave/docs/PRDS/2026-07-26-homelab-platform-architecture-PRD.md`]
 
 ### Durable artifacts outrank chat reconstruction
 
@@ -139,7 +139,7 @@ Source: [Pi, `pi/README.md:579-594`; Active, `.specs/pi-durable-work-activation/
 Source: [Vault, `agent-workflows/workflow-ideas/durable-task-dependency-systems.md`; Active, `.specs/pi-workflow-refinement/notes.md`]
 
 **Evidence gates:** Measure missed durable activation after compaction before adding lifecycle IDs; measure repeated parent relay cost before worker messaging; measure recovery failures before claims, leases, retries, or durable attempts.
-Source: [Active, `.specs/pi-durable-work-activation/plan.md`; Active, `.specs/pi-extension-refactors/backlog.md`; Vault, `agent-workflows/workflow-ideas/durable-task-dependency-systems.md`]
+Source: [Active, `.specs/pi-durable-work-activation/plan.md`; Active, `.specs/archive/pi-extension-refactors/backlog.md`; Vault, `agent-workflows/workflow-ideas/durable-task-dependency-systems.md`]
 
 ### Knowledge and memory through Menos
 
@@ -191,7 +191,7 @@ Source: [Pi, `pi/README.md:312-317`; Active, `.specs/multipass-yolo-workflows/pl
 Source: [Pi, `pi/lib/metrics.ts:1-25`; Pi, `pi/README.md:457-489`]
 
 **Agreed direction:** Use an auditable loop of observe, select, review, aggregate, discuss, approve, change, and remeasure; keep raw prompts and full responses outside long-lived default telemetry.
-Source: [Active, `.specs/pi-workflow-friction-review/design.md`; Vault, `agent-workflows/patterns/pi-observability-timing.md`]
+Source: [Active, `.specs/archive/pi-workflow-friction-review/design.md`; Vault, `agent-workflows/patterns/pi-observability-timing.md`]
 
 **Evidence gates:** Do not claim savings without matched cohorts; do not treat structural experiment validation as quality proof; add retention only when a concrete retention policy and operational owner are chosen.
 Source: [Pi, `pi/docs/orchestration-telemetry.md:156-172`; Pi, `pi/docs/orchestration-telemetry.md:264-268`; Pi, `pi/README.md:485`]
@@ -232,14 +232,14 @@ Source: [Repos, `C:/projects/Personal/chudnovsky/PRD.md`; Onclave, `onclave/docs
 | Resource keys and admission | Serialize overlapping writers through explicit resource ownership. | parked | Vault: `durable-task-dependency-systems.md` | Repeated writer contention beyond occupancy warnings. |
 | Durable claims and leases | Add restart-safe task claims for concurrent agents. | evidence-gated | Vault: `durable-task-dependency-systems.md`; Archive: `pi-task-dag-runner/plan.md` | Measured need outweighs at-least-once mutation risk. |
 | Parent-independent execution | Let a durable system resume selected work without a live parent. | parked | Vault: `durable-task-dependency-systems.md` | Explicit authorization and recovery model. |
-| Worker-to-worker messages | Exchange small structured worker messages through durable task primitives. | evidence-gated | Active: `.specs/pi-extension-refactors/backlog.md` | Claims, dependency unblocking, notifications, artifacts, and recurring value. |
+| Worker-to-worker messages | Exchange small structured worker messages through durable task primitives. | evidence-gated | Active: `.specs/archive/pi-extension-refactors/backlog.md` | Claims, dependency unblocking, notifications, artifacts, and recurring value. |
 | Typed stage contracts | Generate bounded tool, evidence, retry, and stop-condition contracts. | parked | Active: `.specs/pi-workflow-refinement/notes.md` | Stable repeated stage shape. |
 | Hosted tool-calling orchestration | Evaluate provider-hosted orchestration against local Pi artifacts. | parked | Active: `.specs/pi-workflow-refinement/notes.md` | Show improvement over local inspectable execution. |
 | Adaptive review composition | Select reviewers from measured risk and complexity rather than fixed panels. | evidence-gated | Active: `.specs/pi-workflow-refinement/notes.md`; Vault: `adaptive-plan-review-telemetry.md` | Yield, duplicate, false-positive, cost, and failure evidence. |
 | Embedded plan review | Fold suitable review into `/plan-it` and reduce command count. | evidence-gated | Vault: `adaptive-plan-review-telemetry.md` | Safe reviewer policy established from telemetry. |
-| Reviewer-quality evaluation | Measure reviewer value, corrections, and false positives. | in-progress | Active: `.specs/pi-workflow-friction-review/design.md` | Sufficient reviewed interactions and user corrections. |
-| Friction review retention | Define deletion and retention for persistent friction metadata. | parked | Active: `.specs/pi-workflow-friction-review/design.md` | Choose privacy policy and owner. |
-| Manual interaction capture | Select a completed interaction for the background review queue. | superseded | Active: `.specs/pi-workflow-friction-review/design.md`; Pi: `pi/README.md` | Replaced by `/improve`. |
+| Reviewer-quality evaluation | Measure reviewer value, corrections, and false positives. | in-progress | Active: `.specs/archive/pi-workflow-friction-review/design.md` | Sufficient reviewed interactions and user corrections. |
+| Friction review retention | Define deletion and retention for persistent friction metadata. | parked | Active: `.specs/archive/pi-workflow-friction-review/design.md` | Choose privacy policy and owner. |
+| Manual interaction capture | Select a completed interaction for the background review queue. | superseded | Active: `.specs/archive/pi-workflow-friction-review/design.md`; Pi: `pi/README.md` | Replaced by `/improve`. |
 | Workflow evaluation suite | Create representative durable cases for prompt and reviewer changes. | parked | Active: `.specs/pi-workflow-refinement/notes.md` | Select cases and measurable outcomes. |
 | Prompt deduplication evaluation | Remove duplicated prompt groups incrementally. | evidence-gated | Active: `.specs/pi-workflow-refinement/notes.md` | Representative evaluations after each removal. |
 | Contextual UI validation | Replace generic visual prescriptions with project-context and browser evidence. | settled direction | Active: `.specs/pi-workflow-refinement/notes.md` | UI changes require rendered evidence. |
@@ -285,19 +285,19 @@ Source: [Repos, `C:/projects/Personal/chudnovsky/PRD.md`; Onclave, `onclave/docs
 | Menos agentic search | Add coordinator-owned retrieval and tool-less reasoning workers. | parked | Onclave: `docs/menos/specs/orchestrator.md` | Resolve current Menos storage and deployment architecture. |
 | Menos preference learning | Learn recommendations and application suggestions from durable signals. | parked | Onclave: `docs/menos/backlog/discussions-needed.md` | Establish quality and feedback evaluation. |
 | Menos UI roadmap | Add history, projects, canvas, styles, global memory, web search, sandboxing, and images. | parked | Onclave: `docs/menos/specs/ui-roadmap.md` | Agentic search remains higher priority. |
-| Infisical deployment | Deploy self-hosted Infisical with machine identities, backups, and restore proof. | in-progress | Active: `.specs/infisical-secrets/plan.md` | Live deployment and restore drill. |
-| Infisical DNS and certificates | Configure Joyride, Cloudflare DNS-01, and Caddy TLS for Infisical. | in-progress | Active: `.specs/infisical-dns-certs/plan.md` | DNS, token, staging, production certificate, HTTPS proof. |
-| Menos Infisical runtime | Render Menos `.env` atomically at deploy time from Infisical. | in-progress | Active: `.specs/menos-infisical-runtime/plan.md` | T7 wrappers, live deploy, redeploy proof. |
-| Docker secrets migration | Replace rendered `.env` only after runtime rendering stabilizes. | parked | Active: `.specs/menos-infisical-runtime/plan.md` | Stable initial migration. |
+| Infisical deployment | Deploy self-hosted Infisical with machine identities, backups, and restore proof. | in-progress | Active: `.specs/archive/infisical-secrets/plan.md` | Live deployment and restore drill. |
+| Infisical DNS and certificates | Configure Joyride, Cloudflare DNS-01, and Caddy TLS for Infisical. | in-progress | Active: `.specs/archive/infisical-dns-certs/plan.md` | DNS, token, staging, production certificate, HTTPS proof. |
+| Menos Infisical runtime | Render Menos `.env` atomically at deploy time from Infisical. | in-progress | Active: `.specs/archive/menos-infisical-runtime/plan.md` | T7 wrappers, live deploy, redeploy proof. |
+| Docker secrets migration | Replace rendered `.env` only after runtime rendering stabilizes. | parked | Active: `.specs/archive/menos-infisical-runtime/plan.md` | Stable initial migration. |
 | Quadlet migration | Replace rootless podman-compose wrappers with role-based Quadlets. | planned | Active: `.specs/rootless-podman-quadlet-hardening/plan.md` | Backup, restore path, staging validation, Menos canary. |
 | Multipass YOLO workflow | Run high-risk autonomous work inside cloned-repository VMs with no host mounts. | planned | Active: `.specs/multipass-yolo-workflows/plan.md`; Vault: `multipass-yolo-sandboxes.md` | Windows driver, egress, secret, receipt, teardown policy. |
 | Nested sandbox containers | Add Docker or devcontainers inside Multipass for higher-risk work. | parked | Active: `.specs/multipass-yolo-workflows/plan.md` | Task risk justifies added layer. |
 | Complexity risk framework | Normalize native Go, Python, TypeScript, and JavaScript complexity and risk tools. | planned | Active: `.specs/complexity-risk-gates/PRD.md` | Pick host repo, analyzers, thresholds, fixtures. |
 | Complexity MCP surface | Expose complexity through structured MCP after core local checks. | parked | Active: `.specs/complexity-risk-gates/PRD.md` | Native adapters and JSON schema stable. |
 | Coverage-risk joins | Add language-specific coverage and CRAP-style risk after basic checks. | parked | Active: `.specs/complexity-risk-gates/PRD.md` | Native complexity MVP stable. |
-| Arch Niri desktop | Build keyboard-driven Niri workspaces around independent git worktree projects. | parked | Active: `.specs/linux-arch-install/checklist.md` | Revalidate stale packages, device names, paths, and target. |
-| Keyboard coaching | Instrument keyboard habits with event metrics, reports, and prompts. | parked | Active: `.specs/linux-arch-install/keyboard-training.md` | Confirm desktop initiative remains active. |
-| Zed and LazyVim trial | Prefer Zed initially and evaluate LazyVim later. | parked | Active: `.specs/linux-arch-install/editor-alternatives.md` | Confirm desktop direction. |
+| Arch Niri desktop | Build keyboard-driven Niri workspaces around independent git worktree projects. | parked | Active: `.specs/archive/linux-arch-install/checklist.md` | Revalidate stale packages, device names, paths, and target. |
+| Keyboard coaching | Instrument keyboard habits with event metrics, reports, and prompts. | parked | Active: `.specs/archive/linux-arch-install/keyboard-training.md` | Confirm desktop initiative remains active. |
+| Zed and LazyVim trial | Prefer Zed initially and evaluate LazyVim later. | parked | Active: `.specs/archive/linux-arch-install/editor-alternatives.md` | Confirm desktop direction. |
 | Low-VRAM local LLM runtime | Run local models under constrained VRAM. | abandoned | Archive: `.specs/archive/low-vram-local-llm-runtime/PRD.md` | No successor plan. |
 | Zellij cockpit | Build a Windows Pi cockpit before advanced agent management. | abandoned | Archive: `.specs/archive/zellij-windows-cockpit-v1/plan.md` | Dormant with no successor. |
 | Zellij agent manager | Add persistent sessions, roster, and workspace coordination. | superseded | Archive: `.specs/archive/zellij-windows-cockpit-v1/extra-notes.md` | Requires simple cockpit first, which is dormant. |
@@ -337,7 +337,7 @@ Source: [Repos, `C:/projects/Personal/chudnovsky/PRD.md`; Onclave, `onclave/docs
 The mixed task runner combined durable task state with execution, waiting, output, and scheduling behavior.
 It was replaced by a durable task boundary where the parent and worker surfaces retain execution authority.
 Lesson: task persistence and process orchestration must not share ambiguous lifecycle ownership.
-Source: [Vault, `agent-workflows/workflow-ideas/durable-task-dependency-systems.md`; Active, `.specs/pi-task-todo-boundary/plan.md`]
+Source: [Vault, `agent-workflows/workflow-ideas/durable-task-dependency-systems.md`; Active, `.specs/archive/pi-task-todo-boundary/plan.md`]
 
 ### Fixed multi-reviewer panels
 
@@ -438,20 +438,20 @@ Source: [Archive, `.specs/archive/zellij-windows-cockpit-v1/plan.md`; Vault, `ag
 
 Choose whether `homelab-infra` and `onramp-vNext` are authoritative for Menos, Onclave, Infisical, and SearXNG deployment, then archive or migrate older direct Ansible plans.
 Older active specs target Menos infrastructure paths, while newer platform documentation assigns application ownership elsewhere.
-Source: [Active, `.specs/menos-infisical-runtime/plan.md`; Active, `.specs/rootless-podman-quadlet-hardening/plan.md`; Onclave, `onclave/docs/PRDS/2026-07-26-homelab-platform-architecture-PRD.md`]
+Source: [Active, `.specs/archive/menos-infisical-runtime/plan.md`; Active, `.specs/rootless-podman-quadlet-hardening/plan.md`; Onclave, `onclave/docs/PRDS/2026-07-26-homelab-platform-architecture-PRD.md`]
 
 ### Decision: What is the authoritative secret system?
 
-DECIDED 2026-08-12: Bitwarden Secrets Manager wins as of now. Infisical specs (`.specs/infisical-secrets/`, `.specs/menos-infisical-runtime/`) should be treated as superseded for platform authority until explicitly revived.
+DECIDED 2026-08-12: Bitwarden Secrets Manager wins as of now. Infisical specs (`.specs/archive/infisical-secrets/`, `.specs/archive/menos-infisical-runtime/`) should be treated as superseded for platform authority until explicitly revived.
 Choose Bitwarden Secrets Manager as the current platform authority or explicitly retain Infisical as an active competing secret platform.
 The newer homelab architecture names BWS, while active specs still plan Infisical deployment and Menos runtime rendering through it.
-Source: [Onclave, `onclave/docs/PRDS/2026-07-26-homelab-platform-architecture-PRD.md`; Active, `.specs/infisical-secrets/plan.md`; `.specs/menos-infisical-runtime/plan.md`]
+Source: [Onclave, `onclave/docs/PRDS/2026-07-26-homelab-platform-architecture-PRD.md`; Active, `.specs/archive/infisical-secrets/plan.md`; `.specs/archive/menos-infisical-runtime/plan.md`]
 
 ### Decision: Is Infisical deployed, disabled, or awaiting first deployment?
 
 Record one current state before more Infisical or Menos runtime work proceeds.
 The active plans describe pending live validation, the Menos runtime assumes a stable endpoint, and Quadlet planning excludes disabled Infisical.
-Source: [Active, `.specs/infisical-secrets/plan.md`; `.specs/menos-infisical-runtime/plan.md`; `.specs/rootless-podman-quadlet-hardening/plan.md`]
+Source: [Active, `.specs/archive/infisical-secrets/plan.md`; `.specs/archive/menos-infisical-runtime/plan.md`; `.specs/rootless-podman-quadlet-hardening/plan.md`]
 
 ### Decision: Which Menos database and deployment contract is authoritative?
 
@@ -510,7 +510,7 @@ Source: [Onclave, `onclave/docs/extensions/onclave-comms/trust-ux-future.md`; `o
 DECIDED 2026-08-12: Hermes is the homelab front door. Hermes owns inbound webhooks, external triggers, and always-on automation; Pi remains the interactive dev agent; onclave-comms carries agent-to-agent messages; Herdr stays a Pi terminal layer. Hermes' Kanban/task board must be reconciled with the Pi task registry before Hermes-driven work touches Pi-managed tasks.
 Choose Hermes as a separate experimental runtime, homelab operator backend, selected-workflow backend, or future replacement for narrow workflows.
 Herdr is explicitly a Pi terminal layer, while Hermes and Onclave describe broader automation roles without a settled boundary.
-Source: [Active, `.specs/hermes-deploy/PRD.md`; Active, `.specs/pi-herdr-full-integration/plan.md`; Onclave, `onclave/docs/PRDS/openclaw-hermes-integration-PRD.md`]
+Source: [Active, `.specs/hermes-deploy/PRD.md`; Active, `.specs/archive/pi-herdr-full-integration/plan.md`; Onclave, `onclave/docs/PRDS/openclaw-hermes-integration-PRD.md`]
 
 ### Decision: Should Pi lifecycle identity be implemented now?
 
@@ -522,7 +522,7 @@ Source: [Active, `.specs/pi-durable-work-activation/plan.md`; `.specs/pi-workflo
 
 Decide whether plans may be complete with explicitly unavailable `/reload`, `/context`, or TUI checks, or whether those checks must be run before closure.
 Several Pi plans differ in their treatment of unavailable live validation.
-Source: [Active, `.specs/pi-herdr-full-integration/plan.md`; `.specs/pi-task-todo-boundary/plan.md`; `.specs/writing-quality-skill-layering/plan.md`]
+Source: [Active, `.specs/archive/pi-herdr-full-integration/plan.md`; `.specs/archive/pi-task-todo-boundary/plan.md`; `.specs/writing-quality-skill-layering/plan.md`]
 
 ### Decision: Which client owns video inspection?
 
@@ -534,7 +534,7 @@ Source: [Active, `.specs/ffmpeg-yt-dlp-video-workflow/PRD.md`; Pi, `pi/AGENTS.md
 
 Either replace the stale desktop plan with a current validated target or archive it.
 The plan has stale path references, generic device assumptions, and no execution evidence.
-Source: [Active, `.specs/linux-arch-install/checklist.md`; `.specs/linux-arch-install/editor-alternatives.md`]
+Source: [Active, `.specs/archive/linux-arch-install/checklist.md`; `.specs/archive/linux-arch-install/editor-alternatives.md`]
 
 ### Decision: Which alternate coding-agent projects remain active?
 
@@ -557,7 +557,7 @@ Source: [Active, `.specs/pi-workflow-refinement/notes.md`]
 Source: [Active, `.specs/pi-workflow-refinement/notes.md`]
 
 5. How should friction-review retention, deletion, and operator access be governed while preserving useful longitudinal evidence?
-Source: [Active, `.specs/pi-workflow-friction-review/design.md`]
+Source: [Active, `.specs/archive/pi-workflow-friction-review/design.md`]
 
 6. Which retrieval quality measure can distinguish stable poor Menos results from meaningful improvement after compilation?
 Source: [Active, `.specs/menos-knowledge-compiler/eval-baseline-pre.md`; `.specs/menos-knowledge-compiler/plan.md`]
@@ -625,7 +625,7 @@ Treat Section 6 as a decision queue, not a request for automatic reconciliation.
 Source: [Active, `.specs/ai-tooling-consolidation/notes-specs-active.md`; Onclave, `onclave/docs/PRDS/2026-07-26-homelab-platform-architecture-PRD.md`]
 
 Update this document when a listed evidence gate is met, a parked idea is promoted or abandoned, a contradiction receives an explicit decision, or a real runtime capability materially changes.
-Source: [README, `.specs/ai-tooling-consolidation/README.md`; Active, `.specs/pi-workflow-friction-review/design.md`]
+Source: [README, `.specs/ai-tooling-consolidation/README.md`; Active, `.specs/archive/pi-workflow-friction-review/design.md`]
 
 Update the relevant source note first when detailed inventory or evidence changes, then update this synthesis to preserve its role as a concise durable reference.
 Source: [README, `.specs/ai-tooling-consolidation/README.md`]

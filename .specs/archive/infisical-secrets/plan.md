@@ -1,9 +1,13 @@
 ---
 created: 2026-04-30
-status: draft
+status: superseded
 completed:
 review-rounds: 1
 ---
+
+Status: Superseded (2026-08-12)
+Decision: Bitwarden Secrets Manager became the authoritative platform secret system. See .specs/ai-tooling-consolidation/future-view.md section 6.
+Historical implementation evidence preserved below.
 
 # Plan: Self-hosted Infisical for shared secret storage
 
