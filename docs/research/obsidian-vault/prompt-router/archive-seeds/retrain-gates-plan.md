@@ -8,7 +8,7 @@ completed: 2026-05-26
 
 ## Context & Motivation
 
-The prompt-router curation MVP is complete and archived at `.specs/archive/prompt-router-curation-pipeline/plan.md`. It added `pi/prompt-routing/curation_pipeline.py`, bounded source pulls, normalization, deterministic features, v3 ConfGate weak labels, four triage statuses, prompt-safe summaries, scan/list/cleanup safeguards, tests, and docs. Its final network smoke wrote ignored outputs under `pi/prompt-routing/experiments/curation/final-smoke`, produced candidates from `routellm_gpt4_dataset` and `smolagents_codeagent_traces`, timed out `CARROT-LLM-Routing/SPROUT` as an explicit skipped source, and did not modify production corpus or model artifacts.
+The prompt-router curation MVP is complete and archived at `../../../../../.specs/archive/prompt-router-curation-pipeline/plan.md`. It added `pi/prompt-routing/curation_pipeline.py`, bounded source pulls, normalization, deterministic features, v3 ConfGate weak labels, four triage statuses, prompt-safe summaries, scan/list/cleanup safeguards, tests, and docs. Its final network smoke wrote ignored outputs under `pi/prompt-routing/experiments/curation/final-smoke`, produced candidates from `routellm_gpt4_dataset` and `smolagents_codeagent_traces`, timed out `CARROT-LLM-Routing/SPROUT` as an explicit skipped source, and did not modify production corpus or model artifacts.
 
 The archived PRD says the next router data step is not direct promotion. The next step is to review candidate outputs, define fixed pass/fail retraining gates before training, and run a baseline-vs-candidate experiment without mutating production training files or model artifacts. This plan turns that PRD next step into a repeatable local experiment: candidate rows stay experimental, `accepted_route` is not treated as ground truth unless a later manual promotion workflow creates reviewed rows, and the experiment report decides only whether candidate additions are promising enough for follow-up.
 
@@ -79,7 +79,7 @@ The smallest useful outcome is a local, ignored experiment run that answers: "Do
 - **Lint command**: `make lint-python`
 - **Repo-wide validation**: `make test-quick` plus targeted prompt-routing tests; `make check` is stronger but not required for this scoped local experiment unless failures suggest broader impact.
 - **Relevant existing files**: `pi/prompt-routing/curation_pipeline.py`, `pi/prompt-routing/train.py`, `pi/prompt-routing/evaluate.py`, `pi/prompt-routing/classify.py`, `pi/prompt-routing/tests/test_curation_*.py`, `pi/prompt-routing/docs/curation-pipeline.md`.
-- **Relevant archived context**: `.specs/archive/prompt-router-curation-pipeline/PRD.md` and `.specs/archive/prompt-router-curation-pipeline/plan.md`.
+- **Relevant archived context**: `../../../../../.specs/archive/prompt-router-curation-pipeline/PRD.md` and `../../../../../.specs/archive/prompt-router-curation-pipeline/plan.md`.
 
 ## Automation Plan
 
@@ -413,7 +413,7 @@ If deployment is skipped because it is not required, `/do-it` may mark the deplo
 
 ## Handoff Notes
 
-- Read `.specs/archive/prompt-router-curation-pipeline/PRD.md`, `.specs/archive/prompt-router-curation-pipeline/plan.md`, and `pi/prompt-routing/AGENTS.md` before implementing.
+- Read `../../../../../.specs/archive/prompt-router-curation-pipeline/PRD.md`, `../../../../../.specs/archive/prompt-router-curation-pipeline/plan.md`, and `pi/prompt-routing/AGENTS.md` before implementing.
 - Use existing MVP curation outputs at `pi/prompt-routing/experiments/curation/final-smoke` when available for smoke tests. If missing, regenerate with `curation_pipeline.py run` using bounded limits.
 - Keep all experiment outputs ignored under `pi/prompt-routing/experiments/retraining/`.
 - Prefer a single top-level script `pi/prompt-routing/curation_experiment.py` to match the existing `package = false` project pattern.

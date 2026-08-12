@@ -1,7 +1,7 @@
 ---
 created: 2026-05-02
 status: research-note
-source: .specs/multipass-yolo-workflows/
+source: ../../../../../.specs/multipass-yolo-workflows/
 ---
 
 # Multipass YOLO Sandboxes

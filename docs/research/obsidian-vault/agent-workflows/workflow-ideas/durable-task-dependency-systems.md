@@ -86,7 +86,7 @@ This boundary was deliberately restored after an earlier mixed DAG runner made t
 - [Pi tasks control-plane PRD](../../../../../.specs/archive/pi-tasks-control-plane/PRD.md)
 - [Pi task ready dependency UX](../../../../../.specs/archive/pi-task-ready-deps/plan.md)
 - [Durable mixed task DAG runner](../../../../../.specs/archive/pi-task-dag-runner/plan.md)
-- [Task/todo boundary](../../../../../.specs/pi-task-todo-boundary/plan.md)
+- [Task/todo boundary](../../../../../.specs/archive/pi-task-todo-boundary/plan.md)
 
 The lesson from that history is important: execution features are not individually large, but together they create a scheduler and recovery system.
 
@@ -677,7 +677,7 @@ All other systems remain an unordered parking lot. Promote only the smallest opt
 ### Local sources
 
 - [Durable work activation plan](../../../../../.specs/pi-durable-work-activation/plan.md)
-- [Task/todo boundary plan](../../../../../.specs/pi-task-todo-boundary/plan.md)
+- [Task/todo boundary plan](../../../../../.specs/archive/pi-task-todo-boundary/plan.md)
 - [Archived mixed DAG runner plan](../../../../../.specs/archive/pi-task-dag-runner/plan.md)
 - [Archived task readiness plan](../../../../../.specs/archive/pi-task-ready-deps/plan.md)
 - [Task registry](../../../../../pi/lib/task-registry.ts)

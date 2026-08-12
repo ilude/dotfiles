@@ -1,7 +1,7 @@
 ---
 created: 2026-04-07
 status: research-note
-source: .specs/menos-knowledge-compiler/
+source: ../../../../../.specs/menos-knowledge-compiler/
 ---
 
 # menos Knowledge Compiler

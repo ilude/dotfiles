@@ -28,4 +28,4 @@ and complexity datasets.
 
 The original plan and PRD artifacts that started this work were copied into
 `archive-seeds/` so future sessions do not need to rediscover them from
-`.specs/archive/`.
+`../../../../.specs/archive/`.

@@ -9,8 +9,10 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [_templates/research-note](_templates/research-note.md) — default shape for new research notes
 - [patterns/self-healing-harnesses](patterns/self-healing-harnesses.md) — browser harness / agent-written helpers
 - [patterns/agent-terminal-workspaces](patterns/agent-terminal-workspaces.md) — cmux-style multitasking terminal UX
+- [patterns/agent-friendly-platforms](patterns/agent-friendly-platforms.md) — docs, APIs, rules, and validation designed for agents
 - [patterns/markdown-skills-memory](patterns/markdown-skills-memory.md) — skills, memory, and domain docs
 - [patterns/pi-observability-timing](patterns/pi-observability-timing.md) — metadata-only timing spans and runtime/source boundaries
+- [patterns/sandboxed-agent-runtimes](patterns/sandboxed-agent-runtimes.md) — isolated execution environments for risky or long-running work
 - [workflow-ideas/kiss-pi-workflow-ideas](workflow-ideas/kiss-pi-workflow-ideas.md) — actionable ideas for our setup
 - [workflow-ideas/specs-workflow-trajectory](workflow-ideas/specs-workflow-trajectory.md) — synthesis of active and archived `.specs/`
 - [workflow-ideas/specs-derived-roadmap](workflow-ideas/specs-derived-roadmap.md) — roadmap ideas derived from specs + ecosystem research

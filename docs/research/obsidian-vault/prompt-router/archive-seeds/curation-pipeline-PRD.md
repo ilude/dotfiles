@@ -250,11 +250,11 @@ The core problem is not lack of raw prompts. It is deciding which rows are safe 
 
 - Recommended next command:
   ```bash
-  /plan-it .specs/prompt-router-curation-pipeline/PRD.md
+  /plan-it ../../../../../.specs/archive/prompt-router-curation-pipeline/PRD.md
   ```
 - Review command:
   ```bash
-  /review-it .specs/prompt-router-curation-pipeline/PRD.md
+  /review-it ../../../../../.specs/archive/prompt-router-curation-pipeline/PRD.md
   ```
 - Notes for planner:
   - Start with a multi-source bounded ingestion spike, not model retraining.

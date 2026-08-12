@@ -1,6 +1,6 @@
 ---
 status: research-note
-source: .specs/safe-edit-tools/plan.md
+source: ../../../../../.specs/archive/safe-edit-tools/plan.md
 ---
 
 # Pi safe edit tools

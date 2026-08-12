@@ -84,7 +84,7 @@ GitHub's Markdown viewer.
 - Prefer `[Readable title](relative/path.md)` over Obsidian wiki links like
   `[[relative/path]]`.
 - For notes in this topic, use links such as `[Menos](projects/menos.md)` from
-  the topic root or `[Menos](../projects/menos.md)` from a sibling folder.
+  the topic root or `[Menos](projects/menos.md)` from a sibling folder.
 - Prefer relative conceptual links over raw paths in prose.
 - Keep source paths/URLs in frontmatter or a short source section.
 - When moving a note, update `README.md`, `index.md`, and obvious backlinks.

@@ -75,7 +75,7 @@ The smallest useful outcome is a deterministic command that creates inspectable 
 - **Test command**: `uv run --project pi/prompt-routing python -m pytest pi/prompt-routing/tests/`
 - **Lint command**: `make lint-python` for repo-owned linting. If adding a prompt-routing scoped ruff command, run it from `pi/prompt-routing` as `uv run --project . ruff check .` only after confirming ruff is available in that project environment.
 - **Repo-wide validation**: `make test-quick` and targeted prompt-routing tests for this MVP; `make check` is stronger but may be expensive and can be run if time permits.
-- **Existing spec slug**: `.specs/prompt-router-curation-pipeline/` already exists and contains the PRD.
+- **Existing spec slug**: `../../../../../.specs/archive/prompt-router-curation-pipeline/` already exists and contains the PRD.
 
 ## Automation Plan
 
@@ -414,7 +414,7 @@ If deployment is skipped because it is not required, `/do-it` may mark the deplo
 
 ## Handoff Notes
 
-- Use `pi/prompt-routing/AGENTS.md` and `.specs/prompt-router-curation-pipeline/PRD.md` as authoritative context.
+- Use `pi/prompt-routing/AGENTS.md` and `../../../../../.specs/archive/prompt-router-curation-pipeline/PRD.md` as authoritative context.
 - Prefer a single top-level Python script plus top-level helper modules under `pi/prompt-routing` rather than a package layout, because `pyproject.toml` has `package = false` and existing commands execute file scripts.
 - The live Pi router must not gain network dependencies.
 - If a Hugging Face source is gated, unavailable, or too large for bounded sampling, record it as skipped in the summary and continue; however, final archive still requires at least one public source with nonzero candidates plus three fixture-backed source shapes.

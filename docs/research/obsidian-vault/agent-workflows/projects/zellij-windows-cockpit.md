@@ -2,7 +2,7 @@
 created: 2026-04-19
 updated: 2026-04-27
 status: research-note
-source: .specs/zellij-windows-cockpit-v1/
+source: ../../../../../.specs/archive/zellij-windows-cockpit-v1/
 ---
 
 # Zellij Windows Cockpit

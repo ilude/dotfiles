@@ -17,13 +17,13 @@ The specs show a consistent push toward a **local-first, Pi-centered, safety-gat
 
 Related specs:
 
-- `.specs/archive/pi-agent-setup/plan.md`
-- `.specs/archive/pi-claude-parity/plan.md`
-- `.specs/archive/pi-platform-alignment/plan.md`
-- `.specs/archive/pi-workflow-borrowed-features/`
-- `.specs/archive/pi-operator-layer-mvp/plan.md`
-- `.specs/pi-workflow-hardening/plan.md`
-- `.specs/pi-setup-refactor/plan.md`
+- `../../../../../.specs/archive/pi-agent-setup/plan.md`
+- `../../../../../.specs/archive/pi-claude-parity/plan.md`
+- `../../../../../.specs/archive/pi-platform-alignment/plan.md`
+- `../../../../../.specs/archive/pi-workflow-borrowed-features/`
+- `../../../../../.specs/archive/pi-operator-layer-mvp/plan.md`
+- `../../../../../.specs/archive/pi-workflow-hardening/plan.md`
+- `../../../../../.specs/archive/pi-setup-refactor/plan.md`
 
 The direction is not “copy Claude Code.” It is: borrow proven ergonomics, then implement them in Pi-native ways.
 
@@ -40,11 +40,11 @@ Core ideas:
 
 Related specs:
 
-- `.specs/archive/deterministic-commit-helper/plan.md`
-- `.specs/archive/pi-commit-extension/plan.md`
-- `.specs/archive/pi-commit-llm-workflow/plan.md`
-- `.specs/archive/commit-error-handling/plan.md`
-- `.specs/pi-review-2026-05-03/plan.md`
+- `../../../../../.specs/archive/deterministic-commit-helper/plan.md`
+- `../../../../../.specs/archive/pi-commit-extension/plan.md`
+- `../../../../../.specs/archive/pi-commit-llm-workflow/plan.md`
+- `../../../../../.specs/archive/commit-error-handling/plan.md`
+- `../../../../../.specs/archive/pi-review-2026-05-03/plan.md`
 
 The commit workflow has been driven toward:
 
@@ -60,12 +60,12 @@ This aligns with the broader pattern: agents can propose, but state changes need
 
 Related specs:
 
-- `.specs/archive/pi-expertise-project-scope/plan.md`
-- `.specs/archive/pi-expertise-snapshotting/plan.md`
-- `.specs/archive/pi-memory-retrieval/plan.md`
-- `.specs/archive/read-expertise-vector/plan.md`
-- `.specs/pi-memory-followups/plan.md`
-- `.specs/menos-knowledge-compiler/plan.md`
+- `../../../../../.specs/archive/pi-expertise-project-scope/plan.md`
+- `../../../../../.specs/archive/pi-expertise-snapshotting/plan.md`
+- `../../../../../.specs/archive/pi-memory-retrieval/plan.md`
+- `../../../../../.specs/archive/read-expertise-vector/plan.md`
+- `../../../../../.specs/archive/pi-memory-followups/plan.md`
+- `../../../../../.specs/menos-knowledge-compiler/plan.md`
 
 The trajectory is toward layered memory:
 
@@ -82,12 +82,12 @@ Important constraint: procedural memory should not auto-promote. Stable policy b
 
 Related specs:
 
-- `.specs/archive/dc-hardening/plan.md`
-- `.specs/archive/treesitter-ast-dmg-ctrl/plan.md`
-- `.specs/archive/ssh-pem-use-inspect-split/pi-parity-gap.md`
-- `.specs/infisical-secrets/plan.md`
-- `.specs/serapis-env-vault/`
-- `.specs/multipass-yolo-workflows/plan.md`
+- `../../../../../.specs/archive/dc-hardening/plan.md`
+- `../../../../../.specs/archive/treesitter-ast-dmg-ctrl/plan.md`
+- `../../../../../.specs/archive/ssh-pem-use-inspect-split/pi-parity-gap.md`
+- `../../../../../.specs/archive/infisical-secrets/plan.md`
+- `../../../../../.specs/archive/serapis-env-vault/`
+- `../../../../../.specs/multipass-yolo-workflows/plan.md`
 
 The direction is defense in depth:
 
@@ -101,11 +101,11 @@ The direction is defense in depth:
 
 Related specs:
 
-- `.specs/archive/pi-test-orchestrator/plan.md`
-- `.specs/archive/pi-observability-timing/plan.md`
-- `.specs/archive/pi-tool-reduction/plan.md`
-- `.specs/archive/test-modernization/plan.md`
-- `.specs/pi-review-2026-05-03/findings.md`
+- `../../../../../.specs/archive/pi-test-orchestrator/plan.md`
+- `../../../../../.specs/archive/pi-observability-timing/plan.md`
+- `../../../../../.specs/archive/pi-tool-reduction/plan.md`
+- `../../../../../.specs/archive/test-modernization/plan.md`
+- `../../../../../.specs/archive/pi-review-2026-05-03/findings.md`
 
 The workflow is moving toward:
 
@@ -120,10 +120,10 @@ The workflow is moving toward:
 
 Related specs:
 
-- `.specs/zellij-windows-cockpit-v1/`
-- `.specs/archive/zellij-cockpit-v1-1-ux/plan.md`
-- `.specs/linux-arch-install/keyboard-training.md`
-- `.specs/linux-arch-install/editor-alternatives.md`
+- `../../../../../.specs/archive/zellij-windows-cockpit-v1/`
+- `../../../../../.specs/archive/zellij-cockpit-v1-1-ux/plan.md`
+- `../../../../../.specs/archive/linux-arch-install/keyboard-training.md`
+- `../../../../../.specs/archive/linux-arch-install/editor-alternatives.md`
 - `.specs/bash-crash-investigation.md`
 - `.specs/bash-crash-remediation-plan.md`
 
@@ -143,10 +143,10 @@ This maps directly to [agent-terminal-workspaces](../patterns/agent-terminal-wor
 
 Related specs:
 
-- `.specs/x-research-pipeline/plan.md`
+- `../../../../../.specs/archive/x-research-pipeline/plan.md`
 - `.specs/pipelines-n-policies/notes.md`
-- `.specs/menos-circuit-breaker/plan.md`
-- `.specs/menos-knowledge-compiler/plan.md`
+- `../../../../../.specs/archive/menos-circuit-breaker/plan.md`
+- `../../../../../.specs/menos-knowledge-compiler/plan.md`
 
 The direction is to make menos the durable backend for research/content while Pi and Claude share access patterns rather than forking state.
 

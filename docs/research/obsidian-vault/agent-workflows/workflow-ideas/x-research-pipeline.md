@@ -1,7 +1,7 @@
 ---
 created: 2026-04-30
 status: research-note
-source: .specs/x-research-pipeline/
+source: ../../../../../.specs/archive/x-research-pipeline/
 ---
 
 # X Research Pipeline
