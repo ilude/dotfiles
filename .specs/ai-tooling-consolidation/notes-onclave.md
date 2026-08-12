@@ -1,3 +1,9 @@
+---
+status: evidence-snapshot
+captured: 2026-08-12
+canonical: false
+---
+
 # Onclave Curated Markdown Research Note
 
 ## 1. System map

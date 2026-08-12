@@ -1,3 +1,9 @@
+---
+status: evidence-snapshot
+captured: 2026-08-12
+canonical: false
+---
+
 # Current Pi Runtime Customization
 
 ## 1. Capability inventory

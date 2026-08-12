@@ -1,3 +1,9 @@
+---
+status: evidence-snapshot
+captured: 2026-08-12
+canonical: false
+---
+
 # Future AI Development Tooling Vision
 
 ## 1. Inventory

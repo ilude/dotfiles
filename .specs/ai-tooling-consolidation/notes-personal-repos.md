@@ -1,3 +1,9 @@
+---
+status: evidence-snapshot
+captured: 2026-08-12
+canonical: false
+---
+
 # AI Dev Tooling Ecosystem Survey
 
 ## Scope and method

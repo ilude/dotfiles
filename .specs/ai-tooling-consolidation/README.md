@@ -22,3 +22,10 @@ All notes are written by GPT subagents. Each note records: inventory reviewed,
 ideas found with source paths, status classification (implemented, in
 progress, parked, superseded, abandoned), recurring themes, contradictions,
 explicit future-direction statements, and open questions.
+
+## Authority convention
+
+- Research and unpromoted ideas live in the Obsidian vault; approved bounded work lives in active `.specs/`; completed, superseded, or dormant plans move to `.specs/archive/` with a disposition note.
+- Implementation truth lives in the owning repository's README and status docs, never in specs or research notes.
+- Cross-system decisions and direction live in `future-view.md` (section 6 is the decision queue and ledger).
+- The `notes-*.md` files here are dated evidence snapshots, not current truth; regenerate rather than edit them.

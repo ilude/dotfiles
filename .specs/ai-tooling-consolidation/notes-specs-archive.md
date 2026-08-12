@@ -1,3 +1,9 @@
+---
+status: evidence-snapshot
+captured: 2026-08-12
+canonical: false
+---
+
 # Historical and Meta Specs Research Note
 
 ## 1. Inventory
