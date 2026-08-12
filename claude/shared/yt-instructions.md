@@ -1,6 +1,6 @@
 # YouTube Ingest & Retrieval
 
-Ingest YouTube videos via menos API, retrieve transcripts, and search ingested content.
+Ingest YouTube videos via Onclave API, retrieve transcripts, and search ingested content.
 
 ## Usage
 
@@ -10,14 +10,14 @@ Parse the arguments to determine the subcommand:
 
 ### Subcommand: `list [n]`
 
-If the first argument is `list`, show recently ingested videos. If menos is unreachable, report that this operation has no local fallback and suggest retrying later.
+If the first argument is `list`, show recently ingested videos. If Onclave is unreachable, report that this operation has no local fallback and suggest retrying later.
 
 - **Optional**: number of videos to show (default: 10, max: 100)
 - **Optional flags**: `--all` (include test content), `--test` (only test content)
 
 Run:
 ```bash
-cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run list_videos.py {n}
+cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run list_videos.py {n}
 ```
 
 **IMPORTANT**: The script output is NOT visible to the user -- only you can see it. You MUST read the script output, then format and display it back to the user as a markdown table or formatted list. Do not just run the command and say "here are the results" -- the user cannot see tool output. Reproduce the full list in your response.
@@ -26,11 +26,11 @@ Stop after displaying. No further steps needed.
 
 ### Subcommand: `search <query>`
 
-If the first argument is `search`, perform semantic search across all ingested content. If menos is unreachable, report that this operation has no local fallback and suggest retrying later.
+If the first argument is `search`, perform semantic search across all ingested content. If Onclave is unreachable, report that this operation has no local fallback and suggest retrying later.
 
 Run:
 ```bash
-cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run search.py {query}
+cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run search.py {query}
 ```
 
 **IMPORTANT**: The script output is NOT visible to the user. Format and display the search results back to the user. Include scores, IDs, and snippets.
@@ -39,18 +39,18 @@ Stop after displaying. No further steps needed.
 
 ### Subcommand: `transcript <video_id_or_url>`
 
-If the first argument is `transcript`, fetch the transcript for a previously ingested video from menos. If menos is unreachable and `~/.dotfiles/yt/<video_id>/transcript.txt` exists, read and display that local transcript instead.
+If the first argument is `transcript`, fetch the transcript for a previously ingested video from Onclave. If Onclave is unreachable and `~/.dotfiles/yt/<video_id>/transcript.txt` exists, read and display that local transcript instead.
 
 This is a two-step pipeline: resolve the video_id to a content_id, then fetch the content.
 
 **Step 1**: Resolve video_id to content_id:
 ```bash
-cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run find_content.py "{video_id}"
+cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run find_content.py "{video_id}"
 ```
 
 **Step 2**: Fetch the transcript using the content_id from step 1:
 ```bash
-cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run get_content.py {content_id} --transcript-only
+cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run get_content.py {content_id} --transcript-only
 ```
 
 **IMPORTANT**: The script output is NOT visible to the user. Display the transcript text in your response.
@@ -59,10 +59,10 @@ If the video has not been ingested yet, tell the user and suggest running `/yt {
 
 ### Subcommand: `content <content_id>`
 
-If the first argument is `content`, fetch full content details by menos content_id. If menos is unreachable, report that this operation has no local fallback and suggest retrying later.
+If the first argument is `content`, fetch full content details by Onclave content_id. If Onclave is unreachable, report that this operation has no local fallback and suggest retrying later.
 
 ```bash
-cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run get_content.py {content_id} --json
+cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run get_content.py {content_id} --json
 ```
 
 **IMPORTANT**: The script output is NOT visible to the user. Format and display the content details.
@@ -80,12 +80,12 @@ If the first argument is NOT one of the above subcommands, treat it as an ingest
 
 Extract the 11-character video ID from the URL or use directly if already an ID.
 
-### 2. Call menos API, then locally fall back only on reachability/server failure
+### 2. Call Onclave API, then locally fall back only on reachability/server failure
 
-Always attempt menos directly first; do not gate on the status file. The status file at `~/.dotfiles/yt/menos_status.json` is only a user-facing hint such as "menos last seen up/down at <checked_at>".
+Always attempt Onclave directly first; do not gate on the status file. The status file at `~/.dotfiles/yt/onclave_status.json` is only a user-facing hint such as "Onclave last seen up/down at <checked_at>".
 
 ```bash
-cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run ingest_video.py "{url_or_video_id}"
+cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run ingest_video.py "{url_or_video_id}"
 ```
 
 This command calls the unified ingest endpoint: `POST /api/v1/ingest`.
@@ -93,8 +93,8 @@ This command calls the unified ingest endpoint: `POST /api/v1/ingest`.
 On connection errors or 5xx responses only, fall back to local fetch:
 
 ```bash
-cd ~/.dotfiles/tools/menos-youtube && uv run fetch_transcript.py "{url_or_video_id}"
-cd ~/.dotfiles/tools/menos-youtube && uv run fetch_metadata.py "{url_or_video_id}"
+cd ~/.dotfiles/tools/onclave-youtube && uv run fetch_transcript.py "{url_or_video_id}"
+cd ~/.dotfiles/tools/onclave-youtube && uv run fetch_metadata.py "{url_or_video_id}"
 ```
 
 Run transcript and metadata retrieval independently so metadata still runs if transcript retrieval fails. The local fetchers write `~/.dotfiles/yt/<video_id>/`, and `.complete` records separate `transcript` and `metadata` states after successful writes. Describe the cache as ready for background backfill only when transcript retrieval succeeded; otherwise report that only metadata was cached and include the transcript failure. Do not use local fallback for 4xx auth/validation errors.
@@ -116,30 +116,30 @@ When the user asks detailed questions about a video after ingestion:
 
 1. **For specific questions**, use semantic search:
    ```bash
-   cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run search.py "the user's question"
+   cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run search.py "the user's question"
    ```
 
 2. **For full transcript**, use the find + get pipeline:
    ```bash
-   cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run find_content.py "{video_id}"
+   cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run find_content.py "{video_id}"
    # Then use the content_id from the output:
-   cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run get_content.py {content_id} --transcript-only
+   cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run get_content.py {content_id} --transcript-only
    ```
 
 3. **If ingest just ran**, poll `GET /api/v1/jobs/{job_id}` until terminal before expecting summary/tags/topics/entities:
    ```bash
-   cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run check_job.py {job_id} --wait
+   cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run check_job.py {job_id} --wait
    ```
 
 ## Environment Setup
 
 Required:
 - SSH key at `~/.ssh/id_ed25519` (for API auth via RFC 9421 signing)
-- `MENOS_API_BASE` set in the environment or `~/.dotfiles/.env` to the active `/api/v1` endpoint; there is no embedded endpoint fallback
+- `ONCLAVE_API_BASE` set in the environment or `~/.dotfiles/.env` to override the active `/api/v1` endpoint, or `HOST_DOMAIN` to derive `https://onclave.<HOST_DOMAIN>/api/v1`
 
 Optional (for local file browsing):
-- rclone configured with `menos` remote
-- Mount: `rclone mount menos:menos L: --vfs-cache-mode full`
+- rclone configured with `onclave` remote
+- Mount: `rclone mount onclave:onclave L: --vfs-cache-mode full`
 
 ## Available Scripts
 
@@ -148,7 +148,7 @@ Optional (for local file browsing):
 | `ingest_video.py` | Ingest a YouTube video via POST /api/v1/ingest |
 | `list_videos.py` | List ingested YouTube videos |
 | `search.py` | Semantic search across all ingested content |
-| `find_content.py` | Resolve YouTube video_id to menos content_id |
+| `find_content.py` | Resolve YouTube video_id to Onclave content_id |
 | `get_content.py` | Fetch content (transcript, metadata) by content_id |
 | `check_job.py` | Check/poll/cancel pipeline jobs |
 | `reprocess.py` | Reprocess content through the pipeline |

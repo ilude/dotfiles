@@ -125,7 +125,7 @@
       {
         "hooks": [
           {
-            "command": "python $HOME/.claude/hooks/menos-circuit/probe.py",
+            "command": "python $HOME/.claude/hooks/onclave-circuit/probe.py",
             "timeout": 5,
             "type": "command"
           }
@@ -134,7 +134,7 @@
       {
         "hooks": [
           {
-            "command": "python $HOME/.claude/hooks/menos-circuit/backfill.py --detach",
+            "command": "python $HOME/.claude/hooks/onclave-circuit/backfill.py --detach",
             "timeout": 2,
             "type": "command"
           }

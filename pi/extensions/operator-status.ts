@@ -10,9 +10,8 @@
  *   - "elevated" -- shown only when session approvals exist, e.g. `elevated (2)`
  *
  * Healthy default keeps the bar quiet (no `OK` token, no zero counters). The
- * other slots (model/provider/codex/effort) are owned by other extensions
- * (prompt-router, etc.); this extension only fills the operator-specific
- * gaps.
+ * other slots (model/provider/codex/effort) are owned by other extensions;
+ * this extension only fills the operator-specific gaps.
  */
 
 import * as childProcess from "node:child_process";
@@ -38,7 +37,7 @@ import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
 let cachedPiVersion: string | null | undefined;
 let currentSessionStartedAt: string | null = null;
 const cachedStatusDirectories = new Map<string, string>();
-const FOOTER_STATUS_EXCLUDE_KEYS = new Set(["damage-control", "router"]);
+const FOOTER_STATUS_EXCLUDE_KEYS = new Set(["damage-control"]);
 const FOOTER_STATUS_PRIORITY = new Map([
 	["loop", 0],
 	["task", 10],
@@ -286,7 +285,7 @@ export function formatPiStatusLine(options: {
 	piVersion: string | null;
 	reloadNeeded?: boolean;
 	contextUsage?: ContextUsage | null;
-	router: string | null;
+	rightStatus: string | null;
 	width: number;
 }): string {
 	const directory = formatPiStatusDirectory(options.cwd);
@@ -308,7 +307,7 @@ export function formatPiStatusLine(options: {
 		const availableModelWidth = Math.max(0, options.width - nonModelWidth);
 		left = buildLeft(truncateToWidth(model, availableModelWidth));
 	}
-	const composed = rightAnchor(left, options.router, options.width);
+	const composed = rightAnchor(left, options.rightStatus, options.width);
 	return visibleWidth(composed) > options.width
 		? truncateToWidth(composed, options.width)
 		: composed;
@@ -337,7 +336,7 @@ function installClaudeStyleFooter(
 				piVersion,
 				reloadNeeded,
 				contextUsage,
-				router: rightAnchoredStatus(footerData),
+				rightStatus: rightAnchoredStatus(footerData),
 				width,
 			});
 			const extensionStatusLine = formatExtensionStatusLine(footerData, width);

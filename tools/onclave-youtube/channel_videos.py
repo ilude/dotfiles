@@ -7,7 +7,7 @@
 #     "httpx>=0.27.0",
 # ]
 # ///
-"""List videos from a YouTube channel via menos, with local fallback."""
+"""List videos from a YouTube channel via Onclave, with local fallback."""
 
 import argparse
 import io
@@ -160,7 +160,7 @@ def _local_channel_videos(channel: str, limit: int) -> dict:
     return {"channel": channel, "count": len(videos), "videos": videos, "source": "local"}
 
 
-def _menos_channel_videos(channel: str, limit: int) -> dict:
+def _onclave_channel_videos(channel: str, limit: int) -> dict:
     signer = _load_signer()
     api_base = get_api_base()
     host = get_api_host()
@@ -172,7 +172,7 @@ def _menos_channel_videos(channel: str, limit: int) -> dict:
         response = client.get(url, headers=headers)
         if response.status_code == 404:
             raise httpx.RequestError(
-                "API endpoint not found; deployed menos does not support channel listing yet"
+                "API endpoint not found; deployed Onclave does not support channel listing yet"
             )
         if response.status_code >= 500:
             raise httpx.RequestError(f"API returned {response.status_code}: {response.text}")
@@ -181,7 +181,7 @@ def _menos_channel_videos(channel: str, limit: int) -> dict:
             print(response.text, file=sys.stderr)
             sys.exit(1)
         data = response.json()
-        data["source"] = "menos"
+        data["source"] = "onclave"
         return data
 
 
@@ -209,10 +209,10 @@ def main() -> None:
 
     limit = min(max(args.limit, 1), 500)
     try:
-        data = _menos_channel_videos(args.channel, limit)
+        data = _onclave_channel_videos(args.channel, limit)
     except httpx.RequestError as e:
         print(
-            f"Warning: menos unavailable, falling back to local YouTube API: {e}",
+            f"Warning: Onclave unavailable, falling back to local YouTube API: {e}",
             file=sys.stderr,
         )
         try:

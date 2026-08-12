@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Upload locally cached YouTube transcripts to menos when it is reachable."""
+"""Upload locally cached YouTube transcripts to Onclave when it is reachable."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ LOG_PATH = YT_ROOT / ".backfill.log"
 
 def setup_logging() -> logging.Logger:
     YT_ROOT.mkdir(parents=True, exist_ok=True)
-    logger = logging.getLogger("menos-backfill")
+    logger = logging.getLogger("onclave-backfill")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
         handler = logging.handlers.RotatingFileHandler(LOG_PATH, maxBytes=1_000_000, backupCount=3)
@@ -221,10 +221,10 @@ def process_backfill(logger: logging.Logger) -> None:
 def run() -> int:
     logger = setup_logging()
     if disabled():
-        logger.info("disabled via MENOS_CIRCUIT_DISABLED")
+        logger.info("disabled via ONCLAVE_CIRCUIT_DISABLED")
         return 0
     if not configured_api_base():
-        logger.info("skip: MENOS_API_BASE or MENOS_BASE_URL not configured")
+        logger.info("skip: ONCLAVE_API_BASE not configured")
         return 0
     status = read_status()
     if status and status.get("available") is False:

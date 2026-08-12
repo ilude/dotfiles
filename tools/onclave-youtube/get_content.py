@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Fetch content from menos by content_id with signed auth.
+"""Fetch content from Onclave by content_id with signed auth.
 
 Usage:
     uv run get_content.py <content_id> [--transcript-only] [--json]
@@ -89,7 +89,7 @@ def run(args) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Fetch content from menos API by content ID")
+    parser = argparse.ArgumentParser(description="Fetch content from Onclave API by content ID")
     parser.add_argument("content_id", help="Content ID to fetch")
     parser.add_argument(
         "--transcript-only", action="store_true", help="Print only the transcript text"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Probe menos health and update the shared status hint file."""
+"""Probe Onclave health and update the shared status hint file."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def main() -> int:
             write_status(True, None)
         else:
             write_status(False, f"HTTP {status}: {body[:200].decode('utf-8', 'replace')}")
-    except Exception as exc:  # session startup must never fail because of menos
+    except Exception as exc:  # session startup must never fail because of Onclave
         try:
             write_status(False, str(exc))
         except Exception:

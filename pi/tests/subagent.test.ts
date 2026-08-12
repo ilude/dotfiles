@@ -184,6 +184,7 @@ You are a test agent.
 			type: "string",
 			enum: expect.arrayContaining(["builder", "tester", "typescript-pro"]),
 		});
+		expect(properties.taskId).toMatchObject({ type: "string" });
 		expect(properties.tasks).toMatchObject({
 			items: {
 				properties: {
@@ -195,6 +196,7 @@ You are a test agent.
 							"typescript-pro",
 						]),
 					},
+					taskId: { type: "string" },
 				},
 			},
 		});
@@ -1525,6 +1527,193 @@ You are a test agent.
 	);
 
 	it(
+		"links foreground and parallel runs to existing running tasks without changing task state",
+		async () => {
+			mockSuccessfulSpawn();
+			const { tool } = await loadTool();
+			const { createTask, getTask, resolveTaskWorkspace } = await import(
+				"../lib/task-registry.ts"
+			);
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
+			const workspace = resolveTaskWorkspace(tmpDir);
+			const nestedCwd = path.join(tmpDir, "nested-workspace");
+			await fs.promises.mkdir(nestedCwd);
+			const singleTask = createTask({
+				origin: "other",
+				state: "running",
+				summary: "single linked work",
+				workspace,
+			});
+			const firstParallelTask = createTask({
+				origin: "other",
+				state: "running",
+				summary: "first parallel work",
+				workspace: resolveTaskWorkspace(nestedCwd),
+			});
+			const secondParallelTask = createTask({
+				origin: "other",
+				state: "running",
+				summary: "second parallel work",
+				workspace,
+			});
+			const ctx = createMockCtx({ cwd: tmpDir });
+
+			const single = await tool.execute(
+				"call-linked-single",
+				{
+					agent: "tester",
+					task: "Check linked work",
+					taskId: singleTask.id,
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(single.details.results[0].taskId).toBe(singleTask.id);
+			expect(
+				subagentRunManager.get(single.details.results[0].runId as string),
+			).toMatchObject({ taskId: singleTask.id, owner: "task" });
+
+			const parallel = await tool.execute(
+				"call-linked-parallel",
+				{
+					tasks: [
+						{
+							agent: "tester",
+							task: "Check first part",
+							taskId: firstParallelTask.id,
+							cwd: nestedCwd,
+						},
+						{
+							agent: "tester",
+							task: "Check second part",
+							taskId: secondParallelTask.id,
+						},
+					],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(parallel.details.results.map((result) => result.taskId)).toEqual([
+				firstParallelTask.id,
+				secondParallelTask.id,
+			]);
+			for (const task of [singleTask, firstParallelTask, secondParallelTask])
+				expect(getTask(task.id)?.state).toBe("running");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it("rejects invalid task links atomically before spawning", async () => {
+		const { tool } = await loadTool();
+		const {
+			createTask,
+			resolveTaskWorkspace,
+			tombstoneTask,
+		} = await import("../lib/task-registry.ts");
+		const workspace = resolveTaskWorkspace(tmpDir);
+		const pending = createTask({
+			origin: "other",
+			summary: "pending linked work",
+			workspace,
+		});
+		const deleted = createTask({
+			origin: "other",
+			state: "running",
+			summary: "deleted linked work",
+			workspace,
+		});
+		tombstoneTask(deleted.id);
+		const foreign = createTask({
+			origin: "other",
+			state: "running",
+			summary: "foreign linked work",
+			workspace: resolveTaskWorkspace(path.join(tmpDir, "foreign")),
+		});
+		const ctx = createMockCtx({ cwd: tmpDir });
+		const invalidIds = ["missing-task", pending.id, deleted.id, foreign.id];
+
+		for (const taskId of invalidIds) {
+			await expect(
+				tool.execute(
+					`call-invalid-task-${taskId}`,
+					{
+						agent: "tester",
+						task: "Do not spawn",
+						taskId,
+						agentScope: "project",
+					},
+					undefined,
+					undefined,
+					ctx,
+				),
+			).rejects.toThrow(/Task (?:not found:|.*(?:different workspace|must be running))/);
+		}
+		expect(spawnMock).not.toHaveBeenCalled();
+	});
+
+	it(
+		"links background runs without changing task state",
+		async () => {
+			const proc = createMockProcess();
+			spawnMock.mockImplementation(() => proc);
+			const { pi, tool } = await loadTool();
+			const { createTask, getTask, resolveTaskWorkspace } = await import(
+				"../lib/task-registry.ts"
+			);
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
+			const task = createTask({
+				origin: "other",
+				state: "running",
+				summary: "background linked work",
+				workspace: resolveTaskWorkspace(tmpDir),
+			});
+
+			const started = await tool.execute(
+				"call-linked-background",
+				{
+					agent: "tester",
+					task: "Work in the background",
+					taskId: task.id,
+					agentScope: "project",
+					background: true,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(started.content[0].text).toContain("Started task-linked background");
+			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			expect(subagentRunManager.list()[0]).toMatchObject({
+				taskId: task.id,
+				owner: "task",
+				status: "running",
+			});
+
+			proc.emit("close", 1);
+			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			expect(pi.sendMessage.mock.calls[0][0]).toMatchObject({
+				customType: "subagent-result",
+				details: { taskIds: [task.id], failed: true },
+			});
+			expect(getTask(task.id)?.state).toBe("running");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
 		"runs transient background work and delivers its result later",
 		async () => {
 			const proc = createMockProcess();
@@ -1775,15 +1964,25 @@ You are a test agent.
 				});
 			});
 			const { tool } = await loadTool();
+			const { createTask, getTask, resolveTaskWorkspace } = await import(
+				"../lib/task-registry.ts"
+			);
 			const { subagentRunManager } = await import(
 				"../extensions/subagent/run-manager.ts"
 			);
+			const task = createTask({
+				origin: "other",
+				state: "running",
+				summary: "cancelled linked work",
+				workspace: resolveTaskWorkspace(tmpDir),
+			});
 			const controller = new AbortController();
 			const execution = tool.execute(
 				"call-cancelled-usage",
 				{
 					agent: "tester",
 					task: "Cancel after usage",
+					taskId: task.id,
 					agentScope: "project",
 					confirmProjectAgents: false,
 				},
@@ -1811,7 +2010,8 @@ You are a test agent.
 
 			const [snapshot] = subagentRunManager.list();
 			expect(snapshot).toMatchObject({
-				owner: "direct",
+				taskId: task.id,
+				owner: "task",
 				status: "cancelled",
 				usage: {
 					input: 4,
@@ -1820,6 +2020,7 @@ You are a test agent.
 					cost: null,
 				},
 			});
+			expect(getTask(task.id)?.state).toBe("running");
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

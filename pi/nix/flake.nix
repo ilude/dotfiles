@@ -1,5 +1,5 @@
 {
-  description = "Pi coding agent + dotfiles configuration layer (extensions, agents, skills, settings, optional prompt router).";
+  description = "Pi coding agent + dotfiles configuration layer (extensions, agents, skills, settings).";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -42,10 +42,6 @@
           # ever enter the build sandbox.
           pi-config = pkgs.callPackage ./pi-config.nix { src = piSrc; };
 
-          # Optional prompt-routing classifier (python + sklearn + lgbm +
-          # sentence-transformers). Adds ~500 MB to the closure.
-          prompt-router = pkgs.callPackage ./prompt-router.nix { src = piSrc; };
-
           default = pi-config;
         });
 
@@ -74,7 +70,6 @@
       # coding-agents flake or nixpkgs that breaks the source filter.
       checks = forAllSystems (system: {
         pi-config = self.packages.${system}.pi-config;
-        prompt-router = self.packages.${system}.prompt-router;
       });
 
       homeManagerModules = {

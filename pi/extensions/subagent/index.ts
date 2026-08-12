@@ -56,8 +56,10 @@ import {
 	type ReadOnlyFanoutAssignment,
 } from "../../lib/orchestration-telemetry.js";
 import {
+	getTask,
 	type NormalizedTaskUsage,
 	normalizeTaskUsage,
+	resolveTaskWorkspace,
 } from "../../lib/task-registry.js";
 import { registerOrchestrationInvocation } from "../../lib/workflow-friction.js";
 import {
@@ -1202,6 +1204,7 @@ export async function runSingleAgent(
 type TaskParams = {
 	agent: string;
 	task: string;
+	taskId?: string;
 	effort?: AgentEffort;
 	cwd?: string;
 	output?: string | boolean;
@@ -1229,6 +1232,21 @@ type ContinueParams = {
 	outputMode?: OutputMode;
 	effort?: AgentEffort;
 };
+
+function validateLinkedTask(
+	taskId: string | undefined,
+	runCwd: string | undefined,
+	defaultCwd: string,
+): void {
+	if (taskId === undefined) return;
+	const task = getTask(taskId);
+	if (!task || task.deletedAt) throw new Error(`Task not found: ${taskId}`);
+	const workspace = resolveTaskWorkspace(runCwd ?? defaultCwd);
+	if (task.workspace !== workspace)
+		throw new Error(`Task ${taskId} belongs to a different workspace.`);
+	if (task.state !== "running")
+		throw new Error(`Task ${taskId} must be running before delegation.`);
+}
 
 const OutputModeSchema = StringEnum(["inline", "file-only"] as const, {
 	description:
@@ -1273,6 +1291,9 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 	const taskItem = Type.Object({
 		agent: agentName("Name of the agent to invoke"),
 		task: Type.String({ description: "Task to delegate to the agent" }),
+		taskId: Type.Optional(
+			Type.String({ description: "Existing running durable task ID" }),
+		),
 		effort: Type.Optional(EffortSchema),
 		cwd: Type.Optional(
 			Type.String({ description: "Working directory for the agent process" }),
@@ -1347,6 +1368,9 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 				description: "Task to delegate (for single mode)",
 			}),
 		),
+		taskId: Type.Optional(
+			Type.String({ description: "Existing running durable task ID" }),
+		),
 		tasks: Type.Optional(
 			Type.Array(taskItem, {
 				description: "Array of {agent, task} for parallel execution",
@@ -1417,6 +1441,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		subagent: Type.Object({
 			agent: legacy.properties.agent,
 			task: legacy.properties.task,
+			taskId: legacy.properties.taskId,
 			tasks: legacy.properties.tasks,
 			...common,
 			cwd: legacy.properties.cwd,
@@ -1558,6 +1583,9 @@ export default function (pi: ExtensionAPI) {
 					orchestrationId,
 					mode,
 					failed,
+					taskIds: result?.details?.results.flatMap((worker) =>
+						worker.taskId ? [worker.taskId] : [],
+					),
 				},
 			},
 			{ deliverAs: "followUp", triggerTurn: true },
@@ -1605,17 +1633,17 @@ export default function (pi: ExtensionAPI) {
 		name: "subagent",
 		label: "Subagent",
 		description: [
-			"Delegate transient work to isolated specialist agents.",
+			"Delegate work to isolated specialist agents.",
 			"Use agent and task for one worker or tasks for parallel workers.",
 			"Foreground execution waits; background=true returns immediately and delivers a follow-up result.",
-			"Use task for durable tracking or dependencies. Advanced chain, continuation, and read-only fanout modes are available through deferred subagent tools.",
+			"Use taskId to link an existing running durable task. Advanced chain, continuation, and read-only fanout modes are available through deferred subagent tools.",
 		].join(" "),
 		promptSnippet:
-			"Delegate transient foreground or background work to isolated specialist agents",
+			"Delegate foreground or background work to isolated specialist agents",
 		promptGuidelines: [
-			"Use subagent with background=true for independent transient work, continue useful parent work, and consume the delivered follow-up instead of polling.",
+			"Use subagent with background=true for independent work, continue useful parent work, and consume the delivered follow-up instead of polling.",
 			"Use foreground subagent execution when the current turn cannot continue without the result; use tool_search for subagent_chain when later work depends on earlier output.",
-			"Use task instead of subagent when work needs durable tracking, dependencies, or cross-session recovery.",
+			"For durable work, select a ready task, mark it running, pass taskId to subagent, validate the result, then record the terminal state. Ordinary transient runs remain task-free.",
 		],
 		parameters: InitialSubagentSchemas.legacy,
 
@@ -1726,6 +1754,7 @@ export default function (pi: ExtensionAPI) {
 					? ({
 							agent: params.agent,
 							task: params.task,
+							taskId: params.taskId,
 							cwd: params.cwd,
 							output: params.output,
 							outputMode: params.outputMode,
@@ -1891,7 +1920,7 @@ export default function (pi: ExtensionAPI) {
 					if (routingExperiment && args[12] === undefined)
 						args[12] = routingExperiment.effort;
 					args[16] ??= {
-						owner: "direct",
+						owner: args[13] ? "task" : "direct",
 						orchestrationId,
 						mode: executionMode,
 						...(fanoutAssignment ? { readOnly: true } : {}),
@@ -2030,6 +2059,14 @@ export default function (pi: ExtensionAPI) {
 				if (params.continue) requestedAgentNames.add(params.continue.agent);
 			}
 			const availableAgentNames = new Set(agents.map((agent) => agent.name));
+			if (params.taskId !== undefined && !selectedSingle)
+				throw new Error("taskId is only valid for single mode.");
+			if (selectedTasks)
+				for (const task of selectedTasks)
+					validateLinkedTask(task.taskId, task.cwd, ctx.cwd);
+			if (selectedSingle)
+				validateLinkedTask(selectedSingle.taskId, selectedSingle.cwd, ctx.cwd);
+
 			const unknownAgentNames = Array.from(requestedAgentNames).filter(
 				(name) => !availableAgentNames.has(name),
 			);
@@ -2094,6 +2131,9 @@ export default function (pi: ExtensionAPI) {
 					);
 			}
 
+			const linkedTaskCount =
+				(selectedTasks?.filter((task) => task.taskId).length ?? 0) +
+				(selectedSingle?.taskId ? 1 : 0);
 			const executeSelectedMode = async (): Promise<
 				AgentToolResult<SubagentDetails>
 			> => {
@@ -2312,7 +2352,7 @@ export default function (pi: ExtensionAPI) {
 							modelSize,
 							modelPolicy,
 							t.effort ?? effort,
-							undefined,
+							t.taskId,
 							undefined,
 							{ continuable: params.continuable === true },
 						);
@@ -2362,7 +2402,7 @@ export default function (pi: ExtensionAPI) {
 					modelSize,
 					modelPolicy,
 					effort,
-					undefined,
+					selectedSingle.taskId,
 					undefined,
 					{ continuable: params.continuable === true },
 				);
@@ -2437,7 +2477,7 @@ export default function (pi: ExtensionAPI) {
 				content: [
 					{
 						type: "text",
-						text: `Started transient background ${executionMode} ${orchestrationId}. Continue parent work; completion will arrive as a follow-up. Use /subagents to inspect or cancel it.`,
+						text: `Started ${linkedTaskCount > 0 ? "task-linked" : "transient"} background ${executionMode} ${orchestrationId}. Continue parent work; completion will arrive as a follow-up. Use /subagents to inspect or cancel it.`,
 					},
 				],
 				details: makeDetails(originalMode)([]),

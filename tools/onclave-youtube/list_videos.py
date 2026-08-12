@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""List recently ingested YouTube videos via menos API."""
+"""List recently ingested YouTube videos via Onclave API."""
 
 import argparse
 import sys

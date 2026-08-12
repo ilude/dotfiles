@@ -3,14 +3,6 @@
   "defaultModel": "gpt-5.6-sol",
   "defaultThinkingLevel": "high",
   "lastChangelogVersion": "0.84.1",
-  "router": {
-    "classifier": {
-      "mode": "confgate"
-    },
-    "effort": {
-      "defaultLevel": "high"
-    }
-  },
   "sessionBudget": {
     "enabled": true,
     "maxSameAgentSpawns": 1,

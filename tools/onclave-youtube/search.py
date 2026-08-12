@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Semantic search across ingested content via menos API.
+"""Semantic search across ingested content via Onclave API.
 
 Usage:
     uv run search.py <query> [--limit N] [--json]
@@ -17,7 +17,7 @@ from signing import RequestSigner
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Semantic search across ingested content via menos API"
+        description="Semantic search across ingested content via Onclave API"
     )
     parser.add_argument("query", nargs="+", help="Search query text")
     parser.add_argument(

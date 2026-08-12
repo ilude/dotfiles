@@ -38,26 +38,6 @@ in
       '';
     };
 
-    promptRouter = {
-      enable = lib.mkEnableOption ''
-        the prompt-routing classifier. When enabled, `package` for the
-        router must be set to the `prompt-router` output of this flake. Adds
-        Python with scikit-learn, sentence-transformers, and lightgbm to the
-        closure (~500 MB) and installs a `pi-classify-prompt` wrapper on PATH
-      '';
-
-      package = lib.mkOption {
-        type = lib.types.nullOr lib.types.package;
-        default = null;
-        example = lib.literalExpression
-          "inputs.pi-dotfiles.packages.\${system}.prompt-router";
-        description = ''
-          Derivation containing the prompt-routing classifier and its
-          Python dependencies. Required when `promptRouter.enable = true`.
-        '';
-      };
-    };
-
     stateDir = lib.mkOption {
       type = lib.types.str;
       default = ".pi/agent";
@@ -108,14 +88,6 @@ in
           (got "${cfg.stateDir}").
         '';
       }
-      {
-        assertion = !cfg.promptRouter.enable || cfg.promptRouter.package != null;
-        message = ''
-          programs.pi-agent.promptRouter.enable is true but
-          programs.pi-agent.promptRouter.package is null. Set it to the
-          `prompt-router` output of the pi-dotfiles flake.
-        '';
-      }
     ];
 
     # Delegate the Pi binary install to the upstream community module.
@@ -157,11 +129,6 @@ in
         "${cfg.stateDir}/skills/pi-skills".source =
           "${cfg.package}/skills/pi-skills";
       }
-
-      (lib.mkIf cfg.promptRouter.enable {
-        "${cfg.stateDir}/prompt-routing".source =
-          "${cfg.promptRouter.package}/share/prompt-routing";
-      })
     ];
 
     # Writable runtime directories. Created if missing; never overwritten
@@ -180,8 +147,5 @@ in
     # writes into shell rc files (see pi/README.md). mkDefault so user can
     # still override.
     home.sessionVariables.PI_CACHE_RETENTION = lib.mkDefault "long";
-
-    home.packages =
-      lib.optional cfg.promptRouter.enable cfg.promptRouter.package;
   };
 }

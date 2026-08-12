@@ -1,4 +1,4 @@
-"""Shared job polling utility for menos API scripts."""
+"""Shared job polling utility for Onclave API scripts."""
 
 import sys
 import time

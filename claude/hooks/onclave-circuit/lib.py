@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Shared helpers for menos availability probing and local YouTube backfill."""
+"""Shared helpers for Onclave availability probing and local YouTube backfill."""
 
 from __future__ import annotations
 
@@ -15,13 +15,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-STATUS_PATH = Path.home() / ".dotfiles" / "yt" / "menos_status.json"
+STATUS_PATH = Path.home() / ".dotfiles" / "yt" / "onclave_status.json"
 YT_ROOT = Path.home() / ".dotfiles" / "yt"
 TRANSCRIPT_LIMIT_BYTES = 5 * 1024 * 1024
 
 
 def disabled() -> bool:
-    return os.getenv("MENOS_CIRCUIT_DISABLED") == "1"
+    return os.getenv("ONCLAVE_CIRCUIT_DISABLED") == "1"
 
 
 def now_iso() -> str:
@@ -29,14 +29,14 @@ def now_iso() -> str:
 
 
 def configured_api_base() -> str | None:
-    value = os.getenv("MENOS_API_BASE") or os.getenv("MENOS_BASE_URL")
+    value = os.getenv("ONCLAVE_API_BASE")
     return value.strip() if value and value.strip() else None
 
 
 def api_base() -> str:
     value = configured_api_base()
     if not value:
-        raise RuntimeError("MENOS_API_BASE or MENOS_BASE_URL is not configured")
+        raise RuntimeError("ONCLAVE_API_BASE is not configured")
     return value
 
 
@@ -101,7 +101,7 @@ def http_request(
 
 
 def load_signer():
-    yt_dir = Path.home() / ".dotfiles" / "tools" / "menos-youtube"
+    yt_dir = Path.home() / ".dotfiles" / "tools" / "onclave-youtube"
     sys.path.insert(0, str(yt_dir))
     from signing import RequestSigner  # type: ignore
 

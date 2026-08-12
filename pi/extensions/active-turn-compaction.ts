@@ -3,14 +3,26 @@ import {
 	sessionEntryToContextMessages,
 	type ContextUsage,
 	type ExtensionAPI,
+	type ExtensionContext,
 	type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import { uiNotify } from "../lib/extension-utils.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
 
 const DEFAULT_RESERVE_TOKENS = 16_384;
 const DEFAULT_KEEP_RECENT_TOKENS = 20_000;
 const CONTINUATION_TYPE = "active-turn-compaction.continue";
+const COMPACTION_HANDOFF_INSTRUCTIONS = `Preserve a durable handoff for the active request. Include:
+- objective and constraints
+- decisions already made
+- changed files
+- validation run and results
+- blockers
+- existing durable task IDs and states
+- remaining task frontier
+- exact next action
+Keep the handoff bounded and omit unrelated history.`;
+const CONTINUATION_INSTRUCTIONS =
+	"Continue the current user request from the compaction summary. First inspect current durable tasks. If unfinished multi-step work remains and no usable task records exist, create or batch only the minimal remaining frontier. Then resume the exact next action. Do not treat compaction as completion.";
 
 export interface ActiveTurnCompactionPolicy {
 	enabled: boolean;
@@ -149,14 +161,64 @@ export function registerActiveTurnCompaction(
 	let generation = 0;
 	let compactionPending = false;
 	let compactionAbortArtifactPending = false;
+	let manualCompactionStarted = false;
+	let pendingGeneration = 0;
 	let attemptedAboveThreshold = false;
 	let failureCircuitOpen = false;
+
+	const resumeRequest = () => {
+		pi.sendMessage(
+			{
+				customType: CONTINUATION_TYPE,
+				content: CONTINUATION_INSTRUCTIONS,
+				display: false,
+			},
+			{ triggerTurn: true, deliverAs: "followUp" },
+		);
+	};
+
+	const startManualCompaction = (ctx: ExtensionContext) => {
+		if (
+			!compactionPending ||
+			manualCompactionStarted ||
+			generation !== pendingGeneration
+		)
+			return;
+
+		manualCompactionStarted = true;
+		const triggerGeneration = pendingGeneration;
+		ctx.compact({
+			customInstructions: COMPACTION_HANDOFF_INSTRUCTIONS,
+			onComplete: () => {
+				if (generation !== triggerGeneration) return;
+				compactionPending = false;
+				compactionAbortArtifactPending = false;
+				manualCompactionStarted = false;
+				resumeRequest();
+			},
+			onError: (error) => {
+				if (generation !== triggerGeneration) return;
+				compactionPending = false;
+				compactionAbortArtifactPending = false;
+				manualCompactionStarted = false;
+				if (
+					error.name !== "AbortError" &&
+					error.message !== "Compaction cancelled"
+				) {
+					failureCircuitOpen = true;
+					resumeRequest();
+				}
+			},
+		});
+	};
 
 	pi.on("session_start", (_event, ctx) => {
 		generation += 1;
 		policy = loadPolicy(ctx.cwd, ctx.isProjectTrusted());
 		compactionPending = false;
 		compactionAbortArtifactPending = false;
+		manualCompactionStarted = false;
+		pendingGeneration = generation;
 		attemptedAboveThreshold = false;
 		failureCircuitOpen = false;
 	});
@@ -165,13 +227,11 @@ export function registerActiveTurnCompaction(
 		generation += 1;
 		compactionPending = false;
 		compactionAbortArtifactPending = false;
+		manualCompactionStarted = false;
 	});
 
 	pi.on("session_before_compact", (event) => {
-		if (
-			event.reason === "threshold" &&
-			(compactionPending || failureCircuitOpen)
-		)
+		if (event.reason === "threshold" && failureCircuitOpen)
 			return { cancel: true };
 		return undefined;
 	});
@@ -179,6 +239,20 @@ export function registerActiveTurnCompaction(
 	pi.on("session_compact", () => {
 		failureCircuitOpen = false;
 		attemptedAboveThreshold = false;
+		if (
+			!compactionPending ||
+			manualCompactionStarted ||
+			generation !== pendingGeneration
+		)
+			return;
+
+		compactionPending = false;
+		compactionAbortArtifactPending = false;
+		resumeRequest();
+	});
+
+	pi.on("agent_settled", (_event, ctx) => {
+		startManualCompaction(ctx);
 	});
 
 	pi.on("message_end", (event) => {
@@ -206,6 +280,7 @@ export function registerActiveTurnCompaction(
 		}
 		if (
 			event.toolResults.length === 0 ||
+			ctx.hasPendingMessages() ||
 			compactionPending ||
 			attemptedAboveThreshold ||
 			failureCircuitOpen
@@ -221,48 +296,11 @@ export function registerActiveTurnCompaction(
 			return;
 
 		compactionPending = true;
+		manualCompactionStarted = false;
+		pendingGeneration = generation;
 		attemptedAboveThreshold = true;
-		const triggerGeneration = generation;
-		uiNotify(
-			ctx,
-			"info",
-			"Compacting context before continuing the active request.",
-			{ prefix: "auto-compact" },
-		);
-
-		const resumeRequest = () => {
-			pi.sendMessage(
-				{
-					customType: CONTINUATION_TYPE,
-					content:
-						"Continue working on the current user request from the compaction summary. Do not treat compaction as completion.",
-					display: false,
-				},
-				{ triggerTurn: true, deliverAs: "followUp" },
-			);
-		};
-
 		compactionAbortArtifactPending = true;
-		ctx.compact({
-			onComplete: () => {
-				if (generation !== triggerGeneration) return;
-				compactionPending = false;
-				compactionAbortArtifactPending = false;
-				uiNotify(ctx, "success", "Compaction completed; continuing the request.", {
-					prefix: "auto-compact",
-				});
-				resumeRequest();
-			},
-			onError: (error) => {
-				if (generation !== triggerGeneration) return;
-				compactionPending = false;
-				compactionAbortArtifactPending = false;
-				if (error.name !== "AbortError" && error.message !== "Compaction cancelled") {
-					failureCircuitOpen = true;
-					resumeRequest();
-				}
-			},
-		});
+		ctx.abort();
 	});
 }
 

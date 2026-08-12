@@ -16,7 +16,6 @@ which already solves the upstream lockfile blocker tracked in
 | -------------------------------- | -------------------------------------------------- |
 | `pi` binary                      | `coding-agents` flake (kissgyorgy)                 |
 | Extensions, agents, skills, etc. | `pi-config` derivation (this flake)                |
-| Optional prompt-routing model    | `prompt-router` derivation (this flake, opt-in)    |
 | Writable runtime state           | `~/<stateDir>` (default `~/.pi/agent`), never copied to the store |
 
 Targets `x86_64-linux` only. macOS / WSL / Windows users should keep using
@@ -24,10 +23,10 @@ the existing `~/.dotfiles/install` flow.
 
 ## Quick start
 
-The module follows the canonical Home Manager pattern: it's a plain module
+The module follows the canonical Home Manager pattern: it is a plain module
 file, the kissgyorgy `coding-agents` flake is injected via
-`extraSpecialArgs`, and the config-layer / prompt-router packages are passed
-explicitly through module options.
+`extraSpecialArgs`, and the config-layer package is passed explicitly through
+a module option.
 
 ```nix
 {
@@ -69,13 +68,6 @@ explicitly through module options.
               # Required: the static config layer.
               package = pi.pi-config;
 
-              # Optional: enable the Python prompt-routing classifier
-              # (~500 MB closure: sklearn + sentence-transformers + lightgbm).
-              promptRouter = {
-                enable = true;
-                package = pi.prompt-router;
-              };
-
               # Optional: relocate writable runtime state.
               # Path is interpreted relative to $HOME.
               # stateDir = ".local/share/pi/agent";
@@ -95,14 +87,12 @@ After `home-manager switch`:
     `skills/workflow`, `skills/pi-skills`, `lib/`, `multi-team/agents`,
     `multi-team/skills`, `project-templates/`, `settings.json`,
     `AGENTS.md`, `damage-control-rules.yaml`, `quality-gates.json`,
-    `justfile`, `keybindings.json`, and (if enabled) `prompt-routing/`;
+    `justfile`, and `keybindings.json`;
   - writable directories created on activation for `history/`, `sessions/`,
     `multi-team/expertise/`, `multi-team/logs/`, `multi-team/sessions/`.
 - `auth.json` is **not** managed -- run `pi` and `/login` (or set
   `ANTHROPIC_API_KEY` / similar) to populate it. It will land in the
   writable `stateDir`.
-- If `promptRouter.enable = true`, a `pi-classify-prompt` wrapper is on
-  `$PATH` that runs `classify.py` against the bundled Python env.
 
 ## Module options
 
@@ -111,8 +101,6 @@ After `home-manager switch`:
 | `programs.pi-agent.enable`                      | bool      | `false`       |                                                                                                    |
 | `programs.pi-agent.package`                     | package   | _(required)_  | The `pi-config` flake output (or a fork/pin).                                                      |
 | `programs.pi-agent.stateDir`                    | str       | `.pi/agent`   | Path relative to `$HOME`. Asserted to be relative and free of `..` traversal.                      |
-| `programs.pi-agent.promptRouter.enable`         | bool      | `false`       | Pulls in Python + classifier deps (~500 MB).                                                       |
-| `programs.pi-agent.promptRouter.package`        | package?  | `null`        | Required when `promptRouter.enable = true`. The `prompt-router` flake output.                      |
 | `programs.pi-agent.extraExtensionsDir`          | str?      | `null`        | When non-null, overrides `coding-agents.pi-coding-agent.extensionsDir`. By default, the dotfiles `extensions/` set wins. |
 
 ### Special args
@@ -127,13 +115,12 @@ The module also expects, via `home-manager.extraSpecialArgs`:
 
 ```text
 packages.x86_64-linux.pi-config       # config-layer derivation (symlinkJoin of fileset-filtered subpaths)
-packages.x86_64-linux.prompt-router   # optional python + classifier
 packages.x86_64-linux.default         # = pi-config
 homeManagerModules.pi-agent           # the module (plain path, requires extraSpecialArgs)
 homeManagerModules.default            # = pi-agent
 devShells.x86_64-linux.default        # bun + node + just + python
 formatter.x86_64-linux                # nixfmt-rfc-style
-checks.x86_64-linux.{pi-config,prompt-router}
+checks.x86_64-linux.pi-config
 ```
 
 Inspect locally:

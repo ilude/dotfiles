@@ -1,5 +1,9 @@
 # Prompt Router Classifier Experiment Pipeline
 
+Status: historical research workflow. The Pi runtime integration is retired.
+References to production behavior and production artifacts below describe the
+former baseline and remain only for experiment reproducibility.
+
 ## Purpose
 
 This document defines the experiment workflow for changing the prompt-router

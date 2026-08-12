@@ -1,7 +1,7 @@
 # Router v3 Classifier Output Contract
 
-Status: current. Locks the production classifier output shape consumed by the
-Pi prompt-router runtime.
+Status: historical classifier contract. The Pi runtime consumer is retired;
+this shape remains for offline validation and reproducibility.
 
 ---
 
@@ -59,7 +59,7 @@ Ordering: `mini < core < large` and `none < low < medium < high`.
 }
 ```
 
-The TypeScript runtime rejects malformed candidates, unknown route labels,
+Offline contract validation rejects malformed candidates, unknown route labels,
 unknown effort labels, out-of-range confidence values, unknown schema versions,
 and outputs where `primary` is missing from `candidates`.
 
@@ -101,19 +101,17 @@ Minimal example:
 
 ---
 
-## 4. Runtime semantics
+## 4. Historical consumer semantics
 
-- The router dispatches the first attempt to `primary` after runtime policy
-  floors and overrides are applied.
-- `candidates` replaces the older `fallback_route` concept. Runtime fallback
-  policy can choose from candidates or clamp upward based on context.
-- The router must not use `reason`, `predicted_domain`, `model_version`, or
-  `ensemble_rule` to dispatch. These fields are observability only.
+The retired runtime dispatched the first attempt to `primary` after policy
+floors and overrides, and could choose from `candidates` for fallback. It did
+not use `reason`, `predicted_domain`, `model_version`, or `ensemble_rule` for
+dispatch.
 
 ---
 
 ## 5. Versioning
 
-Breaking changes require a new `schema_version` and TypeScript runtime support.
-Additive observability-only fields may remain on `3.0.0` if old runtimes can
-ignore them safely.
+Breaking changes require a new `schema_version` and corresponding offline
+validator support. Additive observability-only fields may remain on `3.0.0` if
+existing research consumers can ignore them safely.

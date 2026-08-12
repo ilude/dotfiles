@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Check pipeline job status via menos API.
+"""Check pipeline job status via Onclave API.
 
 Usage:
     uv run check_job.py <job_id> [--verbose] [--wait] [--cancel]
@@ -77,7 +77,7 @@ def cancel_job(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Check pipeline job status via menos API")
+    parser = argparse.ArgumentParser(description="Check pipeline job status via Onclave API")
     parser.add_argument("job_id", help="Pipeline job ID")
     parser.add_argument(
         "--verbose",

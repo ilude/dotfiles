@@ -230,7 +230,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// --------------------------------------------------------------------------
-	// model_select: emit when Pi switches model (manual or via prompt-router).
+	// model_select: emit when Pi switches model.
 	// --------------------------------------------------------------------------
 	pi.on("model_select", async (event) => {
 		if (!getWriter()) return;

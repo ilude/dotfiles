@@ -101,32 +101,6 @@ export interface SpillReference {
 	bytes_uncompressed: number;
 }
 
-/**
- * Routing decision contract. Captures enough information to evaluate the
- * prompt-router classifier separately from policy/cap/hysteresis effects.
- */
-export interface RoutingDecisionPayload {
-	prompt_hash: string;
-	prompt_excerpt: string;
-	raw_classifier_output: unknown;
-	applied_route: string;
-	selected_model_size?: "small" | "medium" | "large" | null;
-	actual_model?: {
-		provider?: string;
-		id?: string;
-		name?: string;
-		model?: string;
-	} | null;
-	model_switch_applied?: boolean | null;
-	confidence: number | null;
-	rule_fired: string | null;
-	fallback_metadata: {
-		cap?: string | null;
-		hysteresis?: string | null;
-		[k: string]: unknown;
-	} | null;
-}
-
 /** Diagnostic emitted when JSON cloning fails. */
 export interface PayloadUnserializablePayload {
 	field: string;
@@ -144,8 +118,8 @@ export interface TranscriptDisabledPayload {
 /**
  * Event union for IDE help. Concrete event types are open-ended; the writer
  * accepts any object shape as `payload`. The plan documents the canonical
- * `event_type` values produced by wave 2 (llm_request, routing_decision,
- * assistant_message, tool_call, tool_result, model_select, etc.).
+ * `event_type` values produced by wave 2 (llm_request, assistant_message,
+ * tool_call, tool_result, model_select, etc.).
  */
 export interface TranscriptEvent {
 	envelope: Omit<TranscriptEnvelope, "schema_version" | "event_id" | "monotonic_ns" | "timestamp"> & {
@@ -790,20 +764,4 @@ function safeStringify(value: unknown): string | undefined {
 	} catch {
 		return undefined;
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Helpers used by integration extensions
-// ---------------------------------------------------------------------------
-
-/** Stable sha256 hex of `text`. Used for routing-decision prompt_hash. */
-export function sha256Hex(text: string): string {
-	return crypto.createHash("sha256").update(text, "utf-8").digest("hex");
-}
-
-/** Truncating excerpt helper for `prompt_excerpt`. */
-export function makeExcerpt(text: string, maxChars = 240): string {
-	if (typeof text !== "string") return "";
-	if (text.length <= maxChars) return text;
-	return text.slice(0, maxChars - 3) + "...";
 }

@@ -1,5 +1,8 @@
 # Classifier Experiments: Alternative Architectures vs Former T2 Baseline
 
+Status: historical research record. The Pi runtime integration is retired, and
+references to production state below describe the system as it existed then.
+
 Eval set: `eval_v3.jsonl` (n=564, held-out). Training set: `train_v3.jsonl + dev_v3.jsonl` (n=3248).
 
 ## What was tried and why
@@ -113,6 +116,5 @@ At that time, the legacy runtime used 181 handcrafted examples and a
 compatibility and historical reference, but are not the production v3 runtime.
 The tracked v3 SHA256 sidecars and the pre-wave-4 data backup at
 `data/synthetic_route_labels.pre_wave4.jsonl` remain subject to the documented
-integrity and migration rules. Current production uses ConfGate because
-`pi/settings.json` selects it and the prompt-router extension passes
-`--classifier confgate`; the standalone parser defaults to T2.
+integrity and migration rules. The retired production integration used ConfGate through `pi/settings.json` and
+the prompt-router extension; the standalone parser defaults to T2.

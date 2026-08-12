@@ -204,30 +204,6 @@ SOURCES: tuple[SourceSpec, ...] = (
         lambda layout: _one(layout.agent_dir / "logs" / "usage.jsonl"),
     ),
     SourceSpec(
-        "classifier_failures",
-        "Prompt classifier failure records without prompt text.",
-        "metadata",
-        (
-            ("schema_version", "UBIGINT"),
-            ("id", "VARCHAR"),
-            ("ts", "VARCHAR"),
-            ("timestamp", "VARCHAR"),
-            ("event", "VARCHAR"),
-            ("route_decision_id", "VARCHAR"),
-            ("prompt_hash", "VARCHAR"),
-            ("error", "VARCHAR"),
-            ("classifier_mode", "VARCHAR"),
-            ("code", "BIGINT"),
-            ("prompt_length", "BIGINT"),
-            ("elapsed_ms", "BIGINT"),
-            ("stdout_length", "BIGINT"),
-            ("stderr_length", "BIGINT"),
-        ),
-        lambda layout: _one(
-            layout.repo_root / "pi" / "prompt-routing" / "logs" / "classifier_failures.jsonl"
-        ),
-    ),
-    SourceSpec(
         "workflow_episodes",
         "Workflow command episode envelopes.",
         "metadata",
@@ -337,24 +313,6 @@ SOURCES: tuple[SourceSpec, ...] = (
             ("experimentId", "VARCHAR"),
         ),
         lambda layout: _one(layout.workflow_friction_dir / "learning-decisions.jsonl"),
-    ),
-    SourceSpec(
-        "routing_classifier_events",
-        "Prompt-router classifier decisions; prompt text is intentionally omitted.",
-        "metadata",
-        (
-            ("ts", "DOUBLE"),
-            ("timestamp", "VARCHAR"),
-            ("prompt_hash", "VARCHAR"),
-            ("route_decision_id", "VARCHAR"),
-            ("primary", "JSON"),
-            ("confidence", "DOUBLE"),
-            ("elapsed_us", "DOUBLE"),
-            ("schema_version", "VARCHAR"),
-        ),
-        lambda layout: _one(
-            layout.repo_root / "pi" / "prompt-routing" / "logs" / "routing_log.jsonl"
-        ),
     ),
     SourceSpec(
         "damage_control_judgments",
@@ -501,85 +459,6 @@ SELECT
 FROM trace_events
 GROUP BY event_type;
 
-CREATE VIEW trace_routing_decisions AS
-SELECT
-  session_id,
-  turn_id,
-  trace_id,
-  timestamp,
-  json_extract_string(payload, '$.prompt_hash') AS prompt_hash,
-  json_extract_string(payload, '$.route_decision_id') AS route_decision_id,
-  json_extract_string(payload, '$.applied_route') AS applied_route,
-  json_extract_string(payload, '$.selected_model_size') AS selected_model_size,
-  json_extract_string(payload, '$.actual_model.provider') AS actual_provider,
-  json_extract_string(payload, '$.actual_model.id') AS actual_model_id,
-  json_extract_string(payload, '$.rule_fired') AS rule_fired,
-  filename
-FROM trace_events
-WHERE event_type = 'routing_decision';
-
-CREATE VIEW routing_decisions_joined AS
-WITH router_ranked AS (
-  SELECT
-    *,
-    CASE
-      WHEN route_decision_id IS NULL
-        OR regexp_full_match(route_decision_id, 'route-[0-9a-f]{16}')
-      THEN NULL
-      ELSE route_decision_id
-    END AS correlation_id,
-    row_number() OVER (
-      PARTITION BY prompt_hash
-      ORDER BY timestamp NULLS LAST, ts NULLS LAST, filename
-    ) AS legacy_occurrence
-  FROM routing_classifier_events
-  WHERE prompt_hash IS NOT NULL
-),
-trace_ranked AS (
-  SELECT
-    *,
-    CASE
-      WHEN route_decision_id IS NULL
-        OR regexp_full_match(route_decision_id, 'route-[0-9a-f]{16}')
-      THEN NULL
-      ELSE route_decision_id
-    END AS correlation_id,
-    row_number() OVER (
-      PARTITION BY prompt_hash
-      ORDER BY timestamp NULLS LAST, filename
-    ) AS legacy_occurrence
-  FROM trace_routing_decisions
-)
-SELECT
-  r.timestamp AS classifier_timestamp,
-  r.prompt_hash,
-  r.route_decision_id,
-  json_extract_string(r.primary, '$.model_size') AS classifier_model_size,
-  json_extract_string(r.primary, '$.effort') AS classifier_effort,
-  r.confidence,
-  r.elapsed_us,
-  t.session_id,
-  t.turn_id,
-  t.trace_id,
-  t.timestamp AS trace_timestamp,
-  t.applied_route,
-  t.selected_model_size,
-  t.actual_provider,
-  t.actual_model_id,
-  t.rule_fired
-FROM router_ranked r
-LEFT JOIN trace_ranked t
-  ON (
-    r.correlation_id IS NOT NULL
-    AND t.correlation_id IS NOT NULL
-    AND r.correlation_id = t.correlation_id
-  )
-  OR (
-    r.correlation_id IS NULL
-    AND t.correlation_id IS NULL
-    AND r.prompt_hash = t.prompt_hash
-    AND r.legacy_occurrence = t.legacy_occurrence
-  );
 
 CREATE VIEW workflow_episode_summary AS
 SELECT

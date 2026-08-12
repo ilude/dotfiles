@@ -3,9 +3,8 @@
  *
  * Owned by .specs/pi-platform-alignment/plan.md (Phase 1 T3). Centralizes
  * what was previously ad-hoc settings reads in individual extensions
- * (agent-chain, prompt-router, session-hooks, etc.). Today's call sites
- * read a single file; the cascade lets a project override or extend the
- * user-level config.
+ * (agent-chain, session-hooks, etc.). Today's call sites read a single file;
+ * the cascade lets a project override or extend the user-level config.
  *
  * Source order (highest precedence wins for scalars; arrays append):
  *

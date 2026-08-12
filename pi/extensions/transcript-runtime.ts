@@ -11,8 +11,8 @@
  *
  * Module-level state is intentional: a Pi process is exactly one session, and
  * the writer/turn-counter must be shared by transcript-provider, transcript-
- * tools, prompt-router, session-hooks, and subagent extensions without
- * threading a context object through every event handler.
+ * tools, session-hooks, and subagent extensions without threading a context
+ * object through every event handler.
  *
  * All functions are no-ops when the writer is not initialized or transcript
  * tracing is disabled. None of them throw.

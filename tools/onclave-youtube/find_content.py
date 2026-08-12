@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Resolve a YouTube video_id to a menos content_id.
+"""Resolve a YouTube video_id to an Onclave content_id.
 
 Usage:
     uv run find_content.py <video_id>
@@ -70,7 +70,9 @@ def run(video_id: str) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Resolve a YouTube video ID to a menos content ID")
+    parser = argparse.ArgumentParser(
+        description="Resolve a YouTube video ID to an Onclave content ID"
+    )
     parser.add_argument("video_id", help="YouTube video ID or URL")
     args = parser.parse_args()
     try:

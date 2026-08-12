@@ -226,9 +226,9 @@ This repository keeps curated Pi source/config trackable and leaves generated ru
 state local. Commit changes to maintained config such as `pi/agents/`,
 `pi/multi-team/skills/`, `pi/skills/`, `pi/extensions/`,
 `pi/lib/`, `pi/tests/`, `pi/settings.json`, `pi/feature-memory.json`, tracked
-feature dossiers under `.specs/features/`, prompt-router source/docs/data/models
-that are intentionally versioned, and lockfiles such as
-`pi/prompt-routing/uv.lock`.
+feature dossiers under `.specs/features/`, retired prompt-routing research
+code/docs/data/models that remain intentionally versioned, and lockfiles such
+as `pi/prompt-routing/uv.lock`.
 
 Do not delete or commit local runtime state unless a separate migration explicitly
 approves it. Treat these as generated/local: `pi/history/`, `pi/sessions/`,
@@ -236,8 +236,9 @@ approves it. Treat these as generated/local: `pi/history/`, `pi/sessions/`,
 `*-expertise-log.jsonl` files and project-local directories under
 `pi/multi-team/expertise/`, local indexes, caches, logs, virtualenvs, and
 `node_modules/`. Expertise JSONL is the durable runtime source of truth, but it is
-not curated repository source. Curated prompt-router data and models may remain
-versioned; classify them deliberately rather than hiding broad directories.
+not curated repository source. Curated prompt-routing research data and models
+may remain versioned; classify them deliberately rather than hiding broad
+directories.
 
 ---
 
@@ -484,7 +485,7 @@ Eligible candidates are ranked by safety or correctness impact first, then verif
 
 Each discussion remains in a deterministic `discussing` state while the user asks questions or raises issues. Ordinary conversation never authorizes a change. Only `/improve decide apply`, `/improve decide edit <change>`, or `/improve decide skip <reason>` captures a decision and resumes execution without another approval request. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison. A recorded applied or skipped decision removes that candidate from later lists.
 
-Interaction capture and background review remain automatic internal stages. Free-form `/improve <capture note>` input is no longer supported. The retired `/capture`, `/learning-review`, `/workflow-review`, and `/skill-review` commands are not registered. `/review-it` remains separate because it reviews a supplied plan or PRD, while `/usage`, `/usage-stats`, `/extension-stats`, `/router-stats`, `/skill-stats`, and `/orchestration-stats` remain read-only diagnostics. `/usage-stats` renders its deterministic report without starting a provider turn.
+Interaction capture and background review remain automatic internal stages. Free-form `/improve <capture note>` input is no longer supported. The retired `/capture`, `/learning-review`, `/workflow-review`, and `/skill-review` commands are not registered. `/review-it` remains separate because it reviews a supplied plan or PRD, while `/usage`, `/usage-stats`, `/extension-stats`, `/skill-stats`, and `/orchestration-stats` remain read-only diagnostics. `/usage-stats` renders its deterministic report without starting a provider turn.
 
 ### `orchestration-stats.ts`
 
@@ -587,7 +588,8 @@ Three companion extensions surface durable task and permission state for
 long-running work. The registries in `pi/lib/task-registry.ts` and
 `pi/lib/permission-registry.ts` are the canonical owners of `TaskRecordV1`
 and `PermissionDecision`. Only the `task` surface creates durable task
-records; direct `subagent` calls remain transient.
+records; `subagent` may correlate a child run with an existing running task but
+never creates or mutates the task record.
 
 Storage location: `~/.pi/agent/operator/{tasks,permissions}/`. Override
 with `PI_OPERATOR_DIR` (used by tests).
@@ -639,7 +641,7 @@ Model-callable task surface:
 - The unified `task` tool owns durable todo and dependency state through `create`, `batch`, `update`, `remove`, `list`, `ready`, and `get`. Ordinary short workflows can remain prose; durable records are useful for requested todo lists, dependency graphs, and work that may span context compaction.
 - A graph-aware `batch` creates todo items with request-local keys and dependency keys. Use returned aliases for later actions.
 - Tasks default to the current repository workspace. `list` excludes unscoped, terminal, and foreign-workspace records unless `all: true` requests a cross-repository view; tombstones remain excluded. `ready` applies the same workspace boundary and returns only ready pending tasks. Collections return compact model-visible summaries; use `get` for one complete record.
-- The parent agent selects ready work, marks it `running`, executes it through `subagent` or `bg_start`, and then records its terminal state. Task never starts, waits for, stops, or captures output from those processes.
+- The parent agent selects ready work, marks it `running`, passes its `taskId` when executing through `subagent` (or uses `bg_start` without linkage), validates the result, and then records the terminal state. Task never starts, waits for, stops, or captures output from those processes.
 - Optional worktree-relative `scope` paths or globs describe task boundaries for coordination. `blockedBy` is the authority for dependency readiness.
 - Batch graph validation occurs before writes, but batch publication is not transactional. On `write_failed`, inspect the returned persisted IDs, clear each persisted task's `blockedBy` in reverse request order through `update`, then tombstone it with `remove`; do not assume automatic rollback or retry.
 - Legacy `.pi/todo.json` entries are imported once per workspace. Startup cleanup removes imported legacy and retired execution-era records unless an active durable dependency still references them, plus terminal task graphs with no active dependents. Failed and other non-terminal durable records require an explicit update or removal. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity.
@@ -668,133 +670,12 @@ emits today), `manual_once` (user one-shot approval/denial via `/permissions
 retry` or interactive confirm), `session` (session-scoped trust),
 `unknown` (uninstrumented paths).
 
-### `prompt-router.ts`
+## Prompt-routing research artifacts
 
-Classifies every user prompt and switches **both canonical route and thinking
-effort** for the same generation turn. The router uses canonical route sizes
-`nano`, `mini`, `core`, `large`, and `max`; legacy classifier labels are adapted
-at the TypeScript boundary and are not primary operator vocabulary.
-
-Routing is **dynamic**: the raw classifier route is resolved through the current
-provider/profile contract, then policy applies context-continuation holds,
-explicit overrides, provider trust boundaries, route-state fallbacks, and effort
-caps before Pi sends the provider request.
-
-See `pi/prompt-routing/docs/operator-handoff.md` for `/router-status`,
-`/router-explain`, required operator examples, telemetry privacy/purge, and eval
-commands.
-
-#### Runtime routing contract
-
-The provider route is authoritative. It applies explicit overrides, a one-turn
-hold for dependent continuation prompts, explicit downgrade-intent bypass, a
-context-window floor, and provider-family trust boundaries.
-
-Active settings are limited to `router.classifier.mode` and
-`router.effort.defaultLevel`; see
-`pi/prompt-routing/docs/settings-doc.md` for the per-key reference. Legacy
-`router.policy.*` settings and `router.effort.maxLevel` are retired.
-
-**Footer indicator:** `> <small model>` / `>> <medium model>` / `>>> <large model>` after each routed prompt.
-
-**Slash commands:**
-```text
-/router-status    # current route, classifier mode, overrides, route states
-/router-explain   # full decision trail for the last turn
-/router-reset     # clear session router state
-/router-off       # disable routing (keep current model)
-/router-on        # re-enable routing
-```
-
-`/router-explain` shows the actual classifier mode, canonical raw/applied
-routes, confidence/candidates, policy rule fired, context capsule flags,
-provider/model/effort resolution, route state, fallback reason when present, and
-a one-line operator summary.
-
-Common `Rule fired` values include `classifier`, `context-continuation-hold`,
-`explicit-route-override`, `manual-model-selection`, `context-window-floor`,
-and `null-fallback`.
-
-**Where the classifier lives.** `~/.dotfiles/pi/prompt-routing/` -- see the
-README/AGENTS.md there for the training pipeline. `classify.py` is the CLI
-wrapper the extension spawns per turn; ConfGate is implemented in
-`classifier_confgate.py` (LGB primary, T2 fallback when LGB conf < CONF_GATE).
-Artifacts: `models/router_v3.joblib` (T2) and `models/router_v3_lgbm.joblib`
-(LGB), both SHA256-verified at load.
-
-**Troubleshooting:**
-
-- Routing decisions are logged with prompt hashes by default, not raw prompt
-  text. See `pi/prompt-routing/analytics.md` for the privacy, purge, and
-  rotation contract.
-- If `/router-explain` shows `Rule fired: null-fallback`, the classifier failed
-  or returned garbage; the router kept the previous safe route. Reproduce with
-  `uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/classify.py --classifier t2 "test prompt"`.
-- If `context-continuation-hold` fires unexpectedly, check whether the prompt
-  looked like a dependent follow-up. Add explicit cheap/fast/brief wording to
-  request a downgrade.
-
----
-
-## Prompt Routing
-
-The `prompt-routing/` directory contains a local complexity classifier that
-automates model selection. The `prompt-router.ts` extension integrates it
-transparently into every Pi session.
-
-### How it works
-
-```
-You type a prompt
-        v
-prompt-router.ts intercepts (input event)
-        v
-classify.py calls model.pkl (~200ms)
-        v
-route() returns low | mid | high
-        v
-resolve current provider/model ladder
-        v
-pi.setModel() switches to the resolved small / medium / large rung
-        v
-Agent runs on the right model
-```
-
-### Corpus and retraining
-
-The classifier was built by a multi-agent ML team (ML Research Lead,
-Data Engineer, Model Engineer, Eval Engineer) using 1,582 labeled examples
-across three domains. The corpus is in `prompt-routing/data/training_corpus.json`.
-
-`prompt-routing/` is a uv project. Dependency source of truth is
-`pi/prompt-routing/pyproject.toml` plus the tracked
-`pi/prompt-routing/uv.lock`; `requirements.txt` is export-only compatibility
-output, not an input for local installs.
-
-To retrain after adding examples to the corpus:
-
-```bash
-uv sync --project ~/.dotfiles/pi/prompt-routing --locked
-uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/train.py
-uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/evaluate.py --holdout   # must pass all gates
-uv run --project ~/.dotfiles/pi/prompt-routing python -m pytest ~/.dotfiles/pi/prompt-routing/tests/
-```
-
-To label new training data from your Claude history:
-
-```bash
-uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/label_history.py --signal high,low --resume
-uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/merge_labels.py --dry-run
-uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/merge_labels.py --cap <N>
-```
-
-To run the daily audit (compare live routing against Opus labels):
-
-```bash
-uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/audit.py
-```
-
-Full documentation: `~/.dotfiles/pi/prompt-routing/AGENTS.md`
+The retired prompt-routing experiment remains under `pi/prompt-routing/` for
+reproducibility. Its curated datasets, model artifacts, evaluation code, and
+research reports are not loaded by Pi and do not affect model or thinking-level
+selection. See `pi/prompt-routing/AGENTS.md` before changing those artifacts.
 
 ---
 
@@ -813,9 +694,13 @@ remain executable for resumed sessions but are omitted from its advertised
 provider schema. Agent fields enumerate the user agents and trusted project
 agents discovered for the current session; `/reload` refreshes that catalog.
 Every invocation validates all requested agents against `agentScope` before any
-worker starts or a background run is acknowledged. Use `/subagents` for the
-unified process-local dashboard and run detail view. Use `task` instead when
-work needs durable dependencies, tracking, or recovery.
+worker starts or a background run is acknowledged. Single and parallel items
+may also supply the ID of an existing running task in the effective cwd's
+workspace; this correlates existing run and telemetry projections without
+changing task state. Use `/subagents` for the unified process-local dashboard
+and run detail view. For durable work, select a ready task, mark it `running`,
+pass its `taskId` to `subagent`, validate the result, and record the terminal
+state. Disposable delegation remains task-free.
 
 ### Agent configuration
 
@@ -877,7 +762,6 @@ The sidecar trace captures:
 - Exact provider request payloads sent before each LLM call (`llm_request` events).
 - Assistant message content returned at turn end, including **visible thinking** blocks that the model exposes (`assistant_message`, one record per turn at `message_end` -- never one per streaming token).
 - Tool-call inputs and outputs as Pi received them, including truncation metadata and a `full_output_path` reference when output is spilled to disk (`tool_call`, `tool_result`).
-- Prompt-router classifier output, applied route, confidence, rule, context flags, overrides, provider trust, and fallback metadata (`routing_decision`).
 - Model-selection changes (`model_select`).
 - Session lifecycle (`session_start`, `session_shutdown`).
 - Nested subagent events correlated to their parent via `parent_trace_id` (W3C Trace Context `TRACEPARENT` propagation).
@@ -954,7 +838,6 @@ Each Pi extension hook emits exactly one event family into the sidecar trace. Th
 | `tool_execution_start` | `tool_execution_start` | Records start time for duration computation |
 | `tool_execution_end` | `tool_execution_end` | Carries `duration_ms` and `is_error` |
 | `tool_result` | `tool_result` | Content, details, error state, truncation metadata |
-| `routing_decision` (in `prompt-router.ts`) | `routing_decision` | `route_decision_id` joins to `routing_log.jsonl`; legacy records fall back to ordered `prompt_hash` occurrences |
 | `session_shutdown` | `session_shutdown` | Final event before archival |
 
 ### Streaming discipline
@@ -966,10 +849,6 @@ Pi fires `message_update` per token during assistant message streaming. The tran
 - A per-turn dedupe flag guards against duplicate emission when Pi fires `message_end` for tool-result messages in the same turn.
 
 An optional `assistant_streaming` heartbeat (one record per N seconds during long generations) is documented in the schema but disabled by default.
-
-### Routing decision correlation
-
-New `routing_decision` records and Python-side classifier records share a unique `route_decision_id` for an exact post-hoc join. Both also retain `prompt_hash = sha256(prompt_text)` for privacy-safe grouping and backward compatibility. Existing records without an invocation ID are paired deterministically by ordered `prompt_hash` occurrence. The logs remain independent: the TypeScript sidecar trace captures the runtime envelope (turn, session, applied route, policy decision), while the Python log captures classifier internals (TF-IDF features, candidate scores). Neither log is modified by the other.
 
 ### Subagent correlation (W3C TRACEPARENT)
 

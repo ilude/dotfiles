@@ -67,7 +67,6 @@ export default defineConfig({
 				"extensions/ask-user.ts",
 				"extensions/tool-search.ts",
 				"extensions/workflow-commands.ts",
-				"extensions/prompt-router.ts",
 				"lib/model-routing.ts",
 				"lib/commit/**",
 				"lib/observability.ts",

@@ -1,4 +1,4 @@
-"""Shared HTTP request signing for menos API (RFC 9421)."""
+"""Shared HTTP request signing for Onclave API (RFC 9421)."""
 
 import hashlib
 import time

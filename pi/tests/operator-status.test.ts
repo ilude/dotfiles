@@ -108,7 +108,6 @@ describe("footer extension status placement", () => {
 			bedrock: "bedrock $17.49",
 			"damage-control": "damage-control: active",
 			codex: "codex 5h 42% | wk 61%",
-			router: "router: ready",
 			tps: "done -- 42 tok/s",
 		});
 		const status = "done -- 42 tok/s | bedrock $17.49";
@@ -189,7 +188,7 @@ describe("formatPiStatusLine", () => {
 			pi: createMockPi() as any,
 			piVersion: "0.72.0",
 			reloadNeeded: false,
-			router: null,
+			rightStatus: null,
 			width: 120,
 		});
 
@@ -206,7 +205,7 @@ describe("formatPiStatusLine", () => {
 			pi: createMockPi() as any,
 			piVersion: "0.72.0",
 			reloadNeeded: true,
-			router: null,
+			rightStatus: null,
 			width: 120,
 		});
 
@@ -224,7 +223,7 @@ describe("formatPiStatusLine", () => {
 			pi: pi as any,
 			piVersion: "0.72.0",
 			contextUsage: { tokens: 168_000, contextWindow: 200_000, percent: 84 },
-			router: null,
+			rightStatus: null,
 			width: 120,
 		});
 
@@ -282,7 +281,7 @@ describe("formatPiStatusLine", () => {
 			model: { id: "gpt-5.6-sol" },
 			pi: pi as any,
 			piVersion: "0.72.0",
-			router: null,
+			rightStatus: null,
 			width: 120,
 		});
 		expect(line).toContain("\x1b[37m[\x1b[33moff\x1b[37m]\x1b[0m");

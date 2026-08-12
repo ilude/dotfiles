@@ -132,105 +132,15 @@ def layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SourceLayout:
         [
             {
                 "schema_version": "1.1.0",
-                "event_id": "event-new",
-                "session_id": "session-new",
-                "turn_id": "turn-new",
-                "trace_id": "trace-new",
-                "event_type": "routing_decision",
+                "event_id": "event-tool",
+                "session_id": "session-1",
+                "turn_id": "turn-1",
+                "trace_id": "trace-1",
+                "event_type": "tool_result",
                 "timestamp": "2026-07-01T00:00:06Z",
                 "monotonic_ns": "6",
-                "payload": {
-                    "prompt_hash": "hash-new",
-                    "route_decision_id": "route-11111111-1111-4111-8111-111111111111",
-                    "applied_route": "core",
-                    "selected_model_size": "medium",
-                    "actual_model": {"provider": "provider-new", "id": "model-new"},
-                    "rule_fired": "classifier",
-                },
-            },
-            {
-                "schema_version": "1.0.0",
-                "session_id": "session-old-1",
-                "turn_id": "turn-old-1",
-                "trace_id": "trace-old-1",
-                "event_type": "routing_decision",
-                "timestamp": "2026-07-01T00:00:04Z",
-                "monotonic_ns": "4",
-                "payload": {
-                    "prompt_hash": "hash-old",
-                    "route_decision_id": "route-0123456789abcdef",
-                    "applied_route": "mini",
-                },
-            },
-            {
-                "schema_version": "1.0.0",
-                "session_id": "session-old-2",
-                "turn_id": "turn-old-2",
-                "trace_id": "trace-old-2",
-                "event_type": "routing_decision",
-                "timestamp": "2026-07-01T00:00:05Z",
-                "monotonic_ns": "5",
-                "payload": {
-                    "prompt_hash": "hash-old",
-                    "route_decision_id": "route-0123456789abcdef",
-                    "applied_route": "core",
-                },
-            },
-        ],
-    )
-    write_jsonl(
-        repo / "pi" / "prompt-routing" / "logs" / "classifier_failures.jsonl",
-        [
-            {
-                "schema_version": 1,
-                "id": "failure-1",
-                "ts": "2026-07-01T00:00:05Z",
-                "timestamp": "2026-07-01T00:00:05Z",
-                "event": "nonzero_exit",
-                "route_decision_id": "route-failed",
-                "prompt_hash": "hash-failed",
-                "classifier_mode": "confgate",
-                "code": 1,
-                "prompt_length": 20,
-                "elapsed_ms": 10,
-                "stdout_length": 0,
-                "stderr_length": 12,
-                "stderr_preview": "intentionally omitted from view",
+                "payload": {"tool_name": "read"},
             }
-        ],
-    )
-    write_jsonl(
-        repo / "pi" / "prompt-routing" / "logs" / "routing_log.jsonl",
-        [
-            {
-                "ts": 1.0,
-                "timestamp": "2026-07-01T00:00:04Z",
-                "prompt_hash": "hash-old",
-                "primary": {"model_size": "small", "effort": "low"},
-                "confidence": 0.7,
-                "elapsed_us": 10.0,
-                "schema_version": "3.0.0",
-            },
-            {
-                "ts": 2.0,
-                "timestamp": "2026-07-01T00:00:05Z",
-                "prompt_hash": "hash-old",
-                "primary": {"model_size": "medium", "effort": "medium"},
-                "confidence": 0.8,
-                "elapsed_us": 11.0,
-                "schema_version": "3.0.0",
-            },
-            {
-                "ts": 3.0,
-                "timestamp": "2026-07-01T00:00:06Z",
-                "prompt_hash": "hash-new",
-                "route_decision_id": "route-11111111-1111-4111-8111-111111111111",
-                "primary": {"model_size": "medium", "effort": "high"},
-                "confidence": 0.9,
-                "elapsed_us": 12.0,
-                "schema_version": "3.0.0",
-                "prompt": "must not be registered",
-            },
         ],
     )
     write_jsonl(
@@ -344,31 +254,6 @@ def test_registers_explicit_sources_and_metadata_views(layout: SourceLayout) -> 
     assert connection.sql("SELECT event_count FROM workflow_episode_summary").fetchone() == (1,)
     assert connection.sql("SELECT count(*) FROM damage_control_judgments").fetchone() == (1,)
     assert connection.sql("SELECT count(*) FROM coms_audit_events").fetchone() == (1,)
-    assert connection.sql(
-        "SELECT schema_version, classifier_mode FROM classifier_failures"
-    ).fetchone() == (1, "confgate")
-
-    columns = {row[0] for row in connection.sql("DESCRIBE routing_classifier_events").fetchall()}
-    assert "prompt" not in columns
-    assert "prompt_excerpt" not in columns
-
-
-def test_routing_join_uses_unique_ids_and_legacy_occurrence_order(layout: SourceLayout) -> None:
-    connection, _ = connect_with_views(layout)
-
-    rows = connection.sql(
-        """
-        SELECT prompt_hash, classifier_model_size, session_id, applied_route
-        FROM routing_decisions_joined
-        ORDER BY classifier_timestamp
-        """
-    ).fetchall()
-
-    assert rows == [
-        ("hash-old", "small", "session-old-1", "mini"),
-        ("hash-old", "medium", "session-old-2", "core"),
-        ("hash-new", "medium", "session-new", "core"),
-    ]
 
 
 def test_default_layout_honors_metrics_and_transcript_locations(

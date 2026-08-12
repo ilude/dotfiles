@@ -30,7 +30,6 @@ import {
   makeBashTruncatedResultEvent,
   makeParallelToolResultEvents,
   makeProviderRequestEvent,
-  makeRoutingDecisionEvent,
   makeSessionShutdownEvent,
   makeSessionStartEvent,
   makeSubagentSessionStartEvent,
@@ -96,14 +95,13 @@ describe("multi-turn session_id and turn_id correlation", () => {
     await writer.write(makeSessionStartEvent({ session_id: sessionId, turn_id: "turn-0" }));
     for (let turn = 1; turn <= 3; turn++) {
       const envBase = { session_id: sessionId, turn_id: `turn-${turn}` };
-      await writer.write(makeRoutingDecisionEvent({ env: envBase }));
       await writer.write(makeProviderRequestEvent({ env: { ...envBase, message_id: `msg-${turn}` } }));
       await writer.write(makeAssistantMessageEvent({ env: { ...envBase, message_id: `msg-resp-${turn}` } }));
     }
     await writer.write(makeSessionShutdownEvent(3, { session_id: sessionId, turn_id: "turn-3" }));
 
     const records = readJsonl(jsonlPath(tmpDir, sessionId));
-    expect(records.length).toBe(11); // 1 start + 3*(routing+request+response) + 1 shutdown
+    expect(records.length).toBe(8); // 1 start + 3*(request+response) + 1 shutdown
 
     for (const rec of records) {
       expect(rec.session_id).toBe(sessionId);
@@ -117,23 +115,21 @@ describe("multi-turn session_id and turn_id correlation", () => {
     const turn1Env = { session_id: sessionId, turn_id: "turn-1" };
     const turn2Env = { session_id: sessionId, turn_id: "turn-2" };
 
-    // Turn 1: routing + request + response
-    await writer.write(makeRoutingDecisionEvent({ env: turn1Env }));
+    // Turn 1: request + response
     await writer.write(makeProviderRequestEvent({ env: { ...turn1Env, message_id: "msg-1" } }));
     await writer.write(makeAssistantMessageEvent({ env: { ...turn1Env, message_id: "msg-resp-1" } }));
 
-    // Turn 2: routing + request + response
-    await writer.write(makeRoutingDecisionEvent({ env: turn2Env }));
+    // Turn 2: request + response
     await writer.write(makeProviderRequestEvent({ env: { ...turn2Env, message_id: "msg-2" } }));
     await writer.write(makeAssistantMessageEvent({ env: { ...turn2Env, message_id: "msg-resp-2" } }));
 
     const records = readJsonl(jsonlPath(tmpDir, sessionId));
-    expect(records.length).toBe(6);
+    expect(records.length).toBe(4);
 
     const turn1Records = records.filter((r) => r.turn_id === "turn-1");
     const turn2Records = records.filter((r) => r.turn_id === "turn-2");
-    expect(turn1Records.length).toBe(3);
-    expect(turn2Records.length).toBe(3);
+    expect(turn1Records.length).toBe(2);
+    expect(turn2Records.length).toBe(2);
   });
 
   it("message_id links the llm_request to its assistant_message within a turn", async () => {
@@ -171,21 +167,6 @@ describe("multi-turn session_id and turn_id correlation", () => {
     // Payload also carries the tool_call_id for cross-field lookup.
     expect((records[0].payload as any).tool_call_id).toBe(tcId);
     expect((records[1].payload as any).tool_call_id).toBe(tcId);
-  });
-
-  it("routing_decision record precedes llm_request in the same turn", async () => {
-    const sessionId = "corr-session-005";
-    const writer = makeWriter(tmpDir, sessionId);
-    const envBase = { session_id: sessionId, turn_id: "turn-1" };
-
-    await writer.write(makeRoutingDecisionEvent({ env: envBase }));
-    await writer.write(makeProviderRequestEvent({ env: { ...envBase, message_id: "msg-1" } }));
-
-    const records = readJsonl(jsonlPath(tmpDir, sessionId));
-    expect(records[0].event_type).toBe("routing_decision");
-    expect(records[1].event_type).toBe("llm_request");
-    expect(records[0].turn_id).toBe(records[1].turn_id);
-    expect(records[0].session_id).toBe(records[1].session_id);
   });
 
   it("exactly one assistant_message record per turn (no streaming duplicates)", async () => {
@@ -455,7 +436,6 @@ describe("trace_id consistency", () => {
     const envBase = { session_id: sessionId, trace_id: traceId };
 
     await writer.write(makeSessionStartEvent({ ...envBase, turn_id: "turn-0" }));
-    await writer.write(makeRoutingDecisionEvent({ env: { ...envBase, turn_id: "turn-1" } }));
     await writer.write(makeProviderRequestEvent({ env: { ...envBase, turn_id: "turn-1", message_id: "m1" } }));
     await writer.write(makeAssistantMessageEvent({ env: { ...envBase, turn_id: "turn-1", message_id: "m1" } }));
 

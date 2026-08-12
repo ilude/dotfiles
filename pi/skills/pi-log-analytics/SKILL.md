@@ -1,6 +1,6 @@
 ---
 name: pi-log-analytics
-description: "Pi session, trace, metrics, routing, workflow-friction, workflow-telemetry, usage, or local JSONL analysis with DuckDB. Use for aggregating or correlating Pi runtime logs. Not for adding telemetry, generic SQL/database design, or non-Pi logs."
+description: "Pi session, trace, metrics, workflow-friction, workflow-telemetry, usage, or local JSONL analysis with DuckDB. Use for aggregating or correlating Pi runtime logs. Not for adding telemetry, generic SQL/database design, or non-Pi logs."
 ---
 
 # Pi Log Analytics
@@ -39,7 +39,7 @@ uv run --project pi/analytics python pi/analytics/pi_log_query.py query \
 5. If a query reports malformed JSONL, validate that source without printing records:
 
 ```bash
-uv run --project pi/analytics python pi/analytics/pi_log_query.py validate routing_classifier_events
+uv run --project pi/analytics python pi/analytics/pi_log_query.py validate metric_events
 ```
 
 6. Use `--ignore-malformed` only after validation when an incomplete exploratory result is acceptable. Report the omitted row count.
@@ -50,7 +50,6 @@ uv run --project pi/analytics python pi/analytics/pi_log_query.py validate routi
 
 - Treat `session_entries.message`, `session_entries.content`, and `trace_events.payload` as potentially sensitive. Do not select or print raw content unless the task requires it.
 - Use `session_entries` as the canonical corpus. `history_entries` can overlap it; never union both without explicit session-level deduplication.
-- Correlate current routing records with `route_decision_id`. Use `routing_decisions_joined` for legacy occurrence matching.
 - Keep exports and caches under `.tmp/pi-log-analytics/`. Never commit DuckDB, Parquet, JSONL, or copied runtime data.
 - Use explicit schemas. Never use `read_ndjson_auto()` for heterogeneous trace payloads.
 - Malformed JSONL fails by default. Never use `--ignore-malformed` without first validating and reporting the omitted records.

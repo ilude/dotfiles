@@ -6,7 +6,7 @@
  *   2. Three-tier redaction (headers, field-name, free-text) without mutation
  *   3. Settings loader reads ~/.pi/agent/settings.json only; default-off; mode bits;
  *      symlink defense; rotation; idempotent sweep; circuit breaker
- *   4. routing_decision schema + transcript-purge command registration
+ *   4. transcript-purge command registration
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,12 +25,9 @@ import {
 	expandHomePath,
 	isCompatibleSchemaVersion,
 	loadSettings,
-	makeExcerpt,
 	redact,
 	redactFreeText,
-	sha256Hex,
 	sweepRetention,
-	type RoutingDecisionPayload,
 	type SpillReference,
 	type TranscriptSettings,
 } from "../lib/transcript.ts";
@@ -611,44 +608,6 @@ describe("routing decision schema and purge command", () => {
 		else process.env.USERPROFILE = originalUserProfile;
 	});
 
-	it("encodes the full routing_decision envelope without ambiguity", async () => {
-		const writer = makeWriter(tmpDir);
-		const promptText = "Refactor the auth pipeline to use JWT.";
-		const decision: RoutingDecisionPayload = {
-			prompt_hash: sha256Hex(promptText),
-			prompt_excerpt: makeExcerpt(promptText),
-			raw_classifier_output: { primary: { model_tier: "Sonnet", effort: "medium" }, confidence: 0.81 },
-			applied_route: "core",
-			selected_model_size: "medium",
-			actual_model: { provider: "anthropic", id: "claude-sonnet-4-5", name: "Sonnet" },
-			model_switch_applied: true,
-			confidence: 0.81,
-			rule_fired: "classifier",
-			fallback_metadata: { cap: null, hysteresis: null },
-		};
-		await writer.write({
-			envelope: {
-				session_id: SESSION_ID,
-				turn_id: "turn-1",
-				trace_id: "trace-1",
-				event_type: "routing_decision",
-			},
-			payload: { ...decision },
-		});
-		const records = readJsonl(path.join(tmpDir, `${SESSION_ID}.jsonl`));
-		expect(records.length).toBe(1);
-		const payload = records[0].payload as Record<string, unknown>;
-		expect(payload.prompt_hash).toBe(decision.prompt_hash);
-		expect(payload.prompt_excerpt).toBe(decision.prompt_excerpt);
-		expect(payload.applied_route).toBe("core");
-		expect(payload.selected_model_size).toBe("medium");
-		expect(payload.actual_model).toEqual({ provider: "anthropic", id: "claude-sonnet-4-5", name: "Sonnet" });
-		expect(payload.model_switch_applied).toBe(true);
-		expect(payload.confidence).toBe(0.81);
-		expect(payload.rule_fired).toBe("classifier");
-		expect(payload.raw_classifier_output).toBeDefined();
-		expect(payload.fallback_metadata).toEqual({ cap: null, hysteresis: null });
-	});
 
 	it("rejects invalid /transcript-purge age without removing files", async () => {
 		const settingsPath = path.join(tmpHome, ".pi", "agent", "settings.json");

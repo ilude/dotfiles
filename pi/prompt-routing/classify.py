@@ -1,9 +1,8 @@
 """
-classify.py -- CLI wrapper for the v3 route-level prompt router.
+classify.py -- offline CLI for the retired v3 route-level classifier.
 
-Called by the Pi prompt-router extension to classify a prompt.
-Reads the prompt from argv[1] or stdin, classifies it, and prints
-a single-line JSON object to stdout.
+Reads the prompt from argv[1] or stdin, classifies it, and prints a single-line
+JSON object to stdout. Pi no longer invokes this CLI at runtime.
 
 Usage:
     uv run --project ~/.dotfiles/pi/prompt-routing python \
@@ -22,7 +21,7 @@ Flags:
         t2       (default) -- T2 LinearSVC only
         ensemble           -- veto ensemble of T2 + LightGBM (experimental)
         lgbm               -- LightGBM only
-        confgate           -- confidence-gated LGB+T2 delegation (production)
+        confgate           -- confidence-gated LGB+T2 delegation (retired baseline)
 
 Output (single-line JSON, trailing newline):
     {"schema_version":"3.0.0","primary":{"model_tier":"core","effort":"medium"},

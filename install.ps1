@@ -302,7 +302,7 @@ function Configure-Rclone {
 
     # Build config content
     $configContent = @"
-[menos]
+[onclave]
 type = s3
 provider = Minio
 env_auth = false
@@ -315,7 +315,7 @@ acl = private
     # Check if config already exists and matches
     if (Test-Path $rcloneConf) {
         $existing = Get-Content $rcloneConf -Raw
-        if ($existing -match '\[menos\]' -and $existing -match [regex]::Escape($endpoint)) {
+        if ($existing -match '\[onclave\]' -and $existing -match [regex]::Escape($endpoint)) {
             Write-Host "  rclone config: already configured" -ForegroundColor DarkGray
             return
         }

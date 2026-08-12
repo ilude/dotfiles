@@ -9,7 +9,6 @@
  *   - Assistant message with visible thinking blocks + tool-call requests
  *   - Tool result with details, truncation metadata, and full-output path
  *   - Bash execution with truncated output and full-output spill reference
- *   - Routing decision with classifier-vs-applied-route fields
  *   - Parallel tool completion (unordered, ordered by tool_call_id)
  *   - Nested subagent event (carries parent_trace_id)
  *   - Session lifecycle (session_start, session_shutdown)
@@ -18,11 +17,7 @@
  * `TranscriptWriter.write()` without translation code.
  */
 
-import type {
-  RoutingDecisionPayload,
-  TranscriptEvent,
-} from "../../lib/transcript.ts";
-import { makeExcerpt, sha256Hex } from "../../lib/transcript.ts";
+import type { TranscriptEvent } from "../../lib/transcript.ts";
 
 // ---------------------------------------------------------------------------
 // Shared envelope defaults
@@ -333,56 +328,6 @@ export function makeBashTruncatedResultEvent(
       ...overrides.env,
     }),
     payload: payload as unknown as Record<string, unknown>,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Routing decision
-// ---------------------------------------------------------------------------
-
-/**
- * Builds a `routing_decision` event fixture with classifier-vs-applied-route
- * fields. The `raw_classifier_output` contains the raw ConfGate recommendation
- * while `applied_route` may differ due to policy/cap/hysteresis.
- */
-export function makeRoutingDecisionEvent(
-  overrides: {
-    env?: BaseEnvelopeFields;
-    promptText?: string;
-    classifierTier?: string;
-    appliedRoute?: string;
-    ruleFired?: string;
-    confidence?: number;
-    capApplied?: string | null;
-  } = {},
-): TranscriptEvent {
-  const promptText =
-    overrides.promptText ?? "Refactor the auth pipeline to use JWT.";
-  const decision: RoutingDecisionPayload = {
-    prompt_hash: sha256Hex(promptText),
-    prompt_excerpt: makeExcerpt(promptText),
-    raw_classifier_output: {
-      primary: {
-        model_tier: overrides.classifierTier ?? "Sonnet",
-        effort: "medium",
-      },
-      confidence: overrides.confidence ?? 0.81,
-      ensemble_rule: "lgb-confident",
-    },
-    applied_route: overrides.appliedRoute ?? "core",
-    selected_model_size: "medium",
-    actual_model: { provider: "anthropic", id: "claude-sonnet-4-5", name: "Sonnet" },
-    model_switch_applied: true,
-    confidence: overrides.confidence ?? 0.81,
-    rule_fired: overrides.ruleFired ?? "classifier",
-    fallback_metadata: {
-      cap: overrides.capApplied ?? null,
-      hysteresis: null,
-    },
-  };
-  return {
-    envelope: base("routing_decision", overrides.env),
-    payload: decision as unknown as Record<string, unknown>,
   };
 }
 

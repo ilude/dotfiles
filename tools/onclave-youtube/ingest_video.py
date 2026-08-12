@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Ingest a YouTube video via menos unified ingest endpoint."""
+"""Ingest a YouTube video via Onclave unified ingest endpoint."""
 
 import argparse
 import json
@@ -118,7 +118,7 @@ def run(args) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Ingest a YouTube video via menos API")
+    parser = argparse.ArgumentParser(description="Ingest a YouTube video via Onclave API")
     parser.add_argument("video", help="YouTube URL or video ID")
     parser.add_argument("--wait", action="store_true", help="Poll job status until completion")
     parser.add_argument(

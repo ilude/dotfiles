@@ -2,13 +2,15 @@
 
 ## Purpose
 
-`pi/prompt-routing/` owns the local prompt classifier and its curated data,
-models, evaluation, and operator documentation. It provides route context to
-the Pi prompt-router extension; it does not make remote calls.
+`pi/prompt-routing/` preserves the retired local prompt-classifier experiment:
+curated data, models, evaluation code, and research documentation. Pi does not
+load this directory at runtime. Keep it only for reproducibility and future
+research.
 
 ## Mandatory gates
 
-Do not ship or promote unless all mandatory production gates pass:
+Do not revive, ship, or promote the classifier unless all mandatory production
+gates pass:
 
 - Holdout accuracy is at least 85%.
 - HIGH-to-LOW inversions are zero.
@@ -18,39 +20,28 @@ Do not ship or promote unless all mandatory production gates pass:
 Treat a missing sidecar or hash mismatch as a hard failure. Do not bypass,
 weaken, or silently recover from it.
 
-## Production runtime
+## Retired runtime
 
-`pi/settings.json` selects ConfGate with `router.classifier.mode=confgate`.
-The prompt-router extension passes that mode to `classify.py` as
-`--classifier confgate`:
-
-- `classifier_confgate.py` implements the ConfGate wrapper.
-- The standalone `classify.py` CLI parser defaults to `t2` when no
-  `--classifier` argument is supplied.
-- `models/router_v3_lgbm.joblib` is the SHA256-verified primary artifact.
-- `models/router_v3.joblib` is the SHA256-verified T2 fallback artifact.
-- ConfGate uses the primary result when confident and otherwise consults T2.
-- Canonical route context is `nano`, `mini`, `core`, `large`, and `max`.
-
-The legacy interface (`router.py`) and legacy data path remain for
-compatibility and migration. They are not the production v3 runtime.
+The former TypeScript extension, Pi settings, commands, and operator diagnostics
+have been removed. `classify.py`, `classifier_confgate.py`, `router.py`, and the
+model artifacts remain offline research surfaces only. Running them manually
+must not be described as active Pi behavior.
 
 ## Read before editing
 
 Read the relevant source, tests, and linked documentation before changing
 classifier behavior, data, artifacts, evaluation, or runtime integration:
 
-1. [`Pi README`](../README.md), [`docs/operator-handoff.md`](docs/operator-handoff.md),
-   and [`docs/settings-doc.md`](docs/settings-doc.md).
-2. [`docs/classifier-experiment-pipeline.md`](docs/classifier-experiment-pipeline.md)
+1. [`Pi README`](../README.md) and
+   [`docs/classifier-experiment-pipeline.md`](docs/classifier-experiment-pipeline.md)
    for experiment, promotion, and curation workflow.
-3. [`docs/classifier-training.md`](docs/classifier-training.md),
+2. [`docs/classifier-training.md`](docs/classifier-training.md),
    [`docs/classifier-experiments.md`](docs/classifier-experiments.md), and
    [`docs/router-v3-output.schema.json`](docs/router-v3-output.schema.json) when
    applicable.
-4. `.specs/prompt-router-curation-pipeline/PRD.md` if present, before ingestion,
+3. `.specs/prompt-router-curation-pipeline/PRD.md` if present, before ingestion,
    weak labeling, review queue, retraining, or external-data work.
-5. Any documentation linked by the files above that applies to the change.
+4. Any documentation linked by the files above that applies to the change.
 
 Keep long workflow instructions in those documents. Do not duplicate them here.
 
@@ -78,15 +69,11 @@ experiment rationale in `docs/classifier-experiments.md`.
 
 ## Required validation
 
-Run these exact commands after relevant changes:
+Run these exact commands after relevant research changes:
 
 ```bash
-cd pi && pnpm test prompt-router.test.ts
 uv run --project pi/prompt-routing pytest pi/prompt-routing/tests
-uv run --project pi/prompt-routing python pi/prompt-routing/evaluate.py \
-  --config pi/settings.json \
-  --sequences pi/prompt-routing/tests/fixtures/context_sequences_v1.jsonl \
-  --json
+uv run --project pi/prompt-routing python pi/prompt-routing/evaluate.py --json
 ```
 
 Report the gate results and changed artifact hashes. Do not claim production

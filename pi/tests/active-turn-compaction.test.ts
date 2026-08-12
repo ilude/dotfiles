@@ -46,6 +46,7 @@ function setup(
 	});
 	const ctx = createMockCtx({
 		isProjectTrusted: () => true,
+		hasPendingMessages: () => false,
 		getContextUsage: vi.fn(() => currentUsage),
 		sessionManager: { getBranch: () => [] },
 		compact,
@@ -75,6 +76,7 @@ function setup(
 		sessionShutdown: hook("session_shutdown"),
 		sessionBeforeCompact: hook("session_before_compact"),
 		sessionCompact: hook("session_compact"),
+		agentSettled: hook("agent_settled"),
 		messageEnd: hook("message_end"),
 		turnEnd: hook("turn_end"),
 	};
@@ -211,23 +213,34 @@ describe("active-turn compaction", () => {
 		await runtime.sessionStart({ type: "session_start", reason: "startup" }, runtime.ctx);
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
 
+		expect(runtime.ctx.abort).toHaveBeenCalledTimes(1);
+		expect(runtime.compact).not.toHaveBeenCalled();
+		expect(runtime.ctx.ui.notify).not.toHaveBeenCalled();
+
+		await runtime.agentSettled(
+			{ type: "agent_settled" },
+			runtime.ctx,
+		);
 		expect(runtime.compact).toHaveBeenCalledTimes(1);
-		expect(runtime.ctx.ui.notify).toHaveBeenCalledWith(
-			"[auto-compact] Compacting context before continuing the active request.",
-			"info",
+		expect(runtime.compactOptions?.customInstructions).toEqual(
+			expect.any(String),
+		);
+		expect(runtime.compactOptions?.customInstructions?.trim().length).toBeGreaterThan(
+			0,
 		);
 
 		runtime.compactOptions?.onComplete?.({} as never);
 		expect(runtime.pi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "active-turn-compaction.continue",
+				content: expect.stringMatching(/inspect current durable tasks/i),
 				display: false,
 			}),
 			{ triggerTurn: true, deliverAs: "followUp" },
 		);
 	});
 
-	it("cancels native threshold compaction while extension compaction is pending", async () => {
+	it("lets native threshold compaction satisfy a pending request without cancellation noise", async () => {
 		const runtime = setup(usage(360_000));
 		await runtime.sessionStart(
 			{ type: "session_start", reason: "startup" },
@@ -235,13 +248,7 @@ describe("active-turn compaction", () => {
 		);
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
 
-		expect(
-			await runtime.sessionBeforeCompact(
-				{ type: "session_before_compact", reason: "threshold" },
-				runtime.ctx,
-			),
-		).toEqual({ cancel: true });
-		for (const reason of ["manual", "overflow"] as const) {
+		for (const reason of ["threshold", "manual", "overflow"] as const) {
 			expect(
 				await runtime.sessionBeforeCompact(
 					{ type: "session_before_compact", reason },
@@ -250,13 +257,16 @@ describe("active-turn compaction", () => {
 			).toBeUndefined();
 		}
 
-		runtime.compactOptions?.onComplete?.({} as never);
-		expect(
-			await runtime.sessionBeforeCompact(
-				{ type: "session_before_compact", reason: "threshold" },
-				runtime.ctx,
-			),
-		).toBeUndefined();
+		await runtime.sessionCompact(
+			{ type: "session_compact", reason: "threshold" },
+			runtime.ctx,
+		);
+		await runtime.agentSettled(
+			{ type: "agent_settled" },
+			runtime.ctx,
+		);
+		expect(runtime.compact).not.toHaveBeenCalled();
+		expect(runtime.pi.sendMessage).toHaveBeenCalledTimes(1);
 	});
 
 	it("attempts compaction only once while the same run remains above threshold", async () => {
@@ -268,6 +278,10 @@ describe("active-turn compaction", () => {
 
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
+		await runtime.agentSettled(
+			{ type: "agent_settled" },
+			runtime.ctx,
+		);
 
 		expect(runtime.compact).toHaveBeenCalledTimes(1);
 	});
@@ -341,6 +355,22 @@ describe("active-turn compaction", () => {
 		).toBeUndefined();
 	});
 
+	it("does not interrupt when a user continuation is already queued", async () => {
+		const runtime = setup(usage(360_000));
+		const ctx = {
+			...runtime.ctx,
+			hasPendingMessages: () => true,
+		} as ExtensionContext;
+		await runtime.sessionStart(
+			{ type: "session_start", reason: "startup" },
+			ctx,
+		);
+		await runtime.turnEnd(activeTurn(), ctx);
+
+		expect(runtime.ctx.abort).not.toHaveBeenCalled();
+		expect(runtime.compact).not.toHaveBeenCalled();
+	});
+
 	it("does not interrupt a final turn or a turn below the threshold", async () => {
 		const runtime = setup(usage(355_616));
 		await runtime.sessionStart({ type: "session_start", reason: "startup" }, runtime.ctx);
@@ -355,6 +385,10 @@ describe("active-turn compaction", () => {
 		const runtime = setup(usage(360_000));
 		await runtime.sessionStart({ type: "session_start", reason: "startup" }, runtime.ctx);
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
+		await runtime.agentSettled(
+			{ type: "agent_settled" },
+			runtime.ctx,
+		);
 		runtime.compactOptions?.onError?.(new Error("summarizer unavailable"));
 		expect(runtime.ctx.ui.notify).not.toHaveBeenCalledWith(
 			"[auto-compact] Compaction failed: summarizer unavailable",
@@ -394,6 +428,10 @@ describe("active-turn compaction", () => {
 			),
 		).toBeUndefined();
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
+		await runtime.agentSettled(
+			{ type: "agent_settled" },
+			runtime.ctx,
+		);
 		expect(runtime.compact).toHaveBeenCalledTimes(2);
 	});
 
@@ -404,6 +442,10 @@ describe("active-turn compaction", () => {
 			cancelled.ctx,
 		);
 		await cancelled.turnEnd(activeTurn(), cancelled.ctx);
+		await cancelled.agentSettled(
+			{ type: "agent_settled" },
+			cancelled.ctx,
+		);
 		cancelled.compactOptions?.onError?.(new Error("Compaction cancelled"));
 		expect(cancelled.pi.sendMessage).not.toHaveBeenCalled();
 
@@ -413,6 +455,10 @@ describe("active-turn compaction", () => {
 			stale.ctx,
 		);
 		await stale.turnEnd(activeTurn(), stale.ctx);
+		await stale.agentSettled(
+			{ type: "agent_settled" },
+			stale.ctx,
+		);
 		await stale.sessionShutdown(
 			{ type: "session_shutdown", reason: "reload" },
 			stale.ctx,
@@ -429,6 +475,7 @@ describe("active-turn compaction", () => {
 		});
 		const disabledCtx = createMockCtx({
 			isProjectTrusted: () => true,
+			hasPendingMessages: () => false,
 			getContextUsage: () => usage(360_000),
 			compact: vi.fn(),
 		});

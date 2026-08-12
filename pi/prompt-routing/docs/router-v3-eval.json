@@ -1,34 +1,34 @@
 {
-  "n": 605,
-  "top1_accuracy": 0.7900826446280992,
-  "catastrophic_under_routing": 0,
-  "over_routing_rate": 0.21487603305785125,
-  "cost_weighted_quality": 0.6835435225931092,
+  "n": 625,
+  "top1_accuracy": 0.744,
+  "catastrophic_under_routing": 9,
+  "over_routing_rate": 0.3056,
+  "cost_weighted_quality": 0.6583979220779215,
   "per_tier_recall": {
-    "Haiku": 0.756198347107438,
-    "Sonnet": 0.7811158798283262,
-    "Opus": 0.8692307692307693
+    "mini": 0.5758754863813229,
+    "core": 0.875,
+    "large": 0.84375
   },
   "per_tier_precision": {
-    "Haiku": 0.8672985781990521,
-    "Sonnet": 0.7109375,
-    "Opus": 0.8188405797101449
+    "mini": 0.9426751592356688,
+    "core": 0.5796178343949044,
+    "large": 0.8766233766233766
   },
   "per_tier_f1": {
-    "Haiku": 0.8079470198675496,
-    "Sonnet": 0.7443762781186094,
-    "Opus": 0.8432835820895522
+    "mini": 0.714975845410628,
+    "core": 0.6973180076628352,
+    "large": 0.8598726114649682
   },
   "per_tier_total": {
-    "Haiku": 242,
-    "Sonnet": 233,
-    "Opus": 130
+    "mini": 257,
+    "core": 208,
+    "large": 160
   },
   "inference_timing_us": {
-    "mean_us": 260.97694993950427,
-    "p50_us": 212.3001031577587,
-    "p95_us": 589.9099516682327,
-    "p99_us": 817.6669408567249,
+    "mean_us": 1303.3482997561805,
+    "p50_us": 1153.6499951034784,
+    "p95_us": 2264.99498821795,
+    "p99_us": 3560.7960142078805,
     "n_runs": 2000
   },
   "classifier": "linearSVC_joint_v3",
@@ -90,7 +90,7 @@
       {
         "model": "router_v3.joblib",
         "sha256": "router_v3.sha256",
-        "hash": "2d576fa3cfda5429a08ee5d1efcc4abc69c1df4602c0b7229e841bce5d1afbb4"
+        "hash": "ee772b35c67e2fc1445b1f7c85b0844120e0ae4a3ed5c49b726eb551a28cfe1a"
       }
     ]
   },
@@ -98,9 +98,9 @@
     "raw_prompt_included": false,
     "excerpt_included": false,
     "sample_prompt_hashes": [
-      "65a616ec0f31895950c6c6137e769b13d109d543aeb125335f5032c21664bb10",
-      "98386d973992e6f4d9c91958b203cc4c0eda496a3c4793bf0d3eac4295f90859",
-      "d4bab71925dc72eb11fd638d96fe4b10fa30565b2d37b12a168d343600062df8"
+      "51dd698284736faf6de00884b08293505c73d71530342d3d2e7b7f97aedc8951",
+      "d6b650a4aa7fc1dbcbf556f286e979410d493ae314f33687c5ab9d76944223a0",
+      "c07d2d333ff7ba5003cbbfd250a426b7e4041f30a257f50641a41d3049042cf3"
     ]
   }
 }

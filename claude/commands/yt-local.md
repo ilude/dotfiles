@@ -1,15 +1,15 @@
 ---
-description: Fetch YouTube transcript and metadata locally (no menos required)
+description: Fetch YouTube transcript and metadata locally (no Onclave required)
 argument-hint: <url-or-id> [--json] [--timed] [--urls-only]
 ---
 
-Local YouTube fetcher -- standalone fallback for when the menos API is unavailable.
+Local YouTube fetcher -- standalone fallback for when the Onclave API is unavailable.
 Uses `youtube-transcript-api` (with optional Webshare proxy) and YouTube Data API v3.
 
 ## Usage
 
 ```bash
-cd ~/.dotfiles/tools/menos-youtube
+cd ~/.dotfiles/tools/onclave-youtube
 
 # Transcript (no API key needed; Webshare proxy optional)
 uv run fetch_transcript.py "$ARGUMENTS"
@@ -63,9 +63,9 @@ The `yt/` directory is gitignored and should be treated as local fetched data.
 
 Given `$ARGUMENTS` (a YouTube URL or 11-char video ID):
 
-1. Run `uv run ~/.dotfiles/tools/menos-youtube/fetch_transcript.py "$ARGUMENTS"` to fetch and persist the transcript.
-2. If metadata is needed, run `uv run ~/.dotfiles/tools/menos-youtube/fetch_metadata.py "$ARGUMENTS"` to fetch and persist metadata, description, and description URLs.
+1. Run `uv run ~/.dotfiles/tools/onclave-youtube/fetch_transcript.py "$ARGUMENTS"` to fetch and persist the transcript.
+2. If metadata is needed, run `uv run ~/.dotfiles/tools/onclave-youtube/fetch_metadata.py "$ARGUMENTS"` to fetch and persist metadata, description, and description URLs.
 3. Prefer reading the saved files in `~/.dotfiles/yt/<video_id>/` for summarization, especially for long transcripts. Use stdout as a quick preview.
 4. Summarize transcript content and surface any URLs from `description_urls.txt`.
 
-If menos comes back online, prefer `/yt` (server-side ingestion + pipeline). This command is a local-only fallback that persists local fetched artifacts but does not ingest into the menos vault.
+If Onclave comes back online, prefer `/yt` (server-side ingestion + pipeline). This command is a local-only fallback that persists local fetched artifacts but does not ingest into the Onclave vault.

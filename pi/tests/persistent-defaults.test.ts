@@ -39,7 +39,7 @@ describe("persistent defaults guard", () => {
 					defaultModel: "other-model",
 					defaultProvider: "other-provider",
 					defaultThinkingLevel: "high",
-					router: { policy: { N_HOLD: 0 } },
+					metrics: { enabled: false },
 				},
 				null,
 				2,
@@ -51,7 +51,7 @@ describe("persistent defaults guard", () => {
 		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
 		expect(settings).toMatchObject({
 			...PINNED_DEFAULTS,
-			router: { policy: { N_HOLD: 0 } },
+			metrics: { enabled: false },
 		});
 	});
 

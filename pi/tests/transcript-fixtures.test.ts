@@ -9,7 +9,6 @@
  *   - Assistant message -- visible thinking block + tool-call request
  *   - Tool result -- content, details, truncation metadata
  *   - Bash execution -- truncated output with full-output path, AKIA key
- *   - Routing decision -- classifier vs applied route fields
  *   - Parallel tool completion -- unordered write, stable ordering
  *   - Nested subagent event -- parent_trace_id linkage
  *   - Session lifecycle -- session_start and session_shutdown
@@ -23,8 +22,6 @@ import {
   SCHEMA_VERSION,
   TranscriptWriter,
   defaultSettings,
-  makeExcerpt,
-  sha256Hex,
 } from "../lib/transcript.ts";
 import {
   DEFAULT_SESSION_ID,
@@ -32,7 +29,6 @@ import {
   makeBashTruncatedResultEvent,
   makeParallelToolResultEvents,
   makeProviderRequestEvent,
-  makeRoutingDecisionEvent,
   makeSessionShutdownEvent,
   makeSessionStartEvent,
   makeSubagentSessionStartEvent,
@@ -96,7 +92,6 @@ describe("envelope invariants", () => {
     const events = [
       makeProviderRequestEvent(),
       makeAssistantMessageEvent(),
-      makeRoutingDecisionEvent(),
       makeSessionStartEvent(),
       makeSessionShutdownEvent(1),
     ];
@@ -104,7 +99,7 @@ describe("envelope invariants", () => {
       await writer.write(event);
     }
     const records = readJsonl(jsonlPath(tmpDir));
-    expect(records.length).toBe(5);
+    expect(records.length).toBe(4);
     for (const record of records) {
       const raw = JSON.stringify(record);
       expect(raw.indexOf('"schema_version"')).toBe(1);
@@ -290,69 +285,6 @@ describe("bash truncated result fixture", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Routing decision
-// ---------------------------------------------------------------------------
-
-describe("routing decision fixture (routing_decision)", () => {
-  it("writes a record with all required classifier-vs-applied-route fields", async () => {
-    const writer = makeWriter(tmpDir);
-    const promptText = "Refactor the auth pipeline to use JWT.";
-    await writer.write(
-      makeRoutingDecisionEvent({
-        promptText,
-        classifierTier: "Sonnet",
-        appliedRoute: "core",
-        ruleFired: "classifier",
-        confidence: 0.81,
-      }),
-    );
-    const records = readJsonl(jsonlPath(tmpDir));
-    expect(records.length).toBe(1);
-    const rec = records[0];
-    expect(rec.event_type).toBe("routing_decision");
-    const payload = rec.payload as Record<string, unknown>;
-    expect(payload.prompt_hash).toBe(sha256Hex(promptText));
-    expect(payload.prompt_excerpt).toBe(makeExcerpt(promptText));
-    expect(payload.applied_route).toBe("core");
-    expect(payload.confidence).toBe(0.81);
-    expect(payload.rule_fired).toBe("classifier");
-    expect(payload.raw_classifier_output).toBeDefined();
-    const raw = payload.raw_classifier_output as Record<string, unknown>;
-    expect((raw.primary as any).model_tier).toBe("Sonnet");
-    const fb = payload.fallback_metadata as Record<string, unknown>;
-    expect(fb.cap).toBeNull();
-    expect(fb.hysteresis).toBeNull();
-  });
-
-  it("captures cap metadata when an effort cap fires instead of classifier", async () => {
-    const writer = makeWriter(tmpDir);
-    await writer.write(
-      makeRoutingDecisionEvent({
-        classifierTier: "Opus",
-        appliedRoute: "mid:high",
-        ruleFired: "effort-cap",
-        confidence: 0.91,
-        capApplied: "high",
-      }),
-    );
-    const payload = readJsonl(jsonlPath(tmpDir))[0].payload as Record<string, unknown>;
-    expect(payload.rule_fired).toBe("effort-cap");
-    const fb = payload.fallback_metadata as Record<string, unknown>;
-    expect(fb.cap).toBe("high");
-  });
-
-  it("prompt_hash is a deterministic sha256 hex of the prompt text", () => {
-    const text = "hello world";
-    const event = makeRoutingDecisionEvent({ promptText: text });
-    const payload = event.payload as Record<string, unknown>;
-    expect(payload.prompt_hash).toBe(sha256Hex(text));
-    // Calling again with the same text produces the same hash.
-    const event2 = makeRoutingDecisionEvent({ promptText: text });
-    expect(event2.payload.prompt_hash).toBe(payload.prompt_hash);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Parallel tool completion
 // ---------------------------------------------------------------------------
 
@@ -461,7 +393,6 @@ describe("session lifecycle fixtures", () => {
   it("writes a full session lifecycle sequence in order", async () => {
     const writer = makeWriter(tmpDir);
     await writer.write(makeSessionStartEvent());
-    await writer.write(makeRoutingDecisionEvent());
     await writer.write(makeProviderRequestEvent());
     await writer.write(makeAssistantMessageEvent());
     await writer.write(makeToolCallEvent("tc-x", "bash", { command: "pwd" }));
@@ -469,7 +400,7 @@ describe("session lifecycle fixtures", () => {
     await writer.write(makeSessionShutdownEvent(1));
 
     const records = readJsonl(jsonlPath(tmpDir));
-    expect(records.length).toBe(7);
+    expect(records.length).toBe(6);
     const types = records.map((r) => r.event_type);
     expect(types[0]).toBe("session_start");
     expect(types[types.length - 1]).toBe("session_shutdown");

@@ -1,7 +1,8 @@
 # Classifier Training Notes -- v3 Route-Level Classifier
 
-Status: T2 artifact. Documents architecture choices, what was tried, honest
-gate results, and inference timing. Consumed by V1 validation.
+Status: historical T2 artifact. Documents architecture choices, what was tried,
+honest gate results, and inference timing. The runtime integration is retired;
+the recommendation below is retained as the decision recorded at the time.
 
 ---
 

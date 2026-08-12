@@ -3,8 +3,8 @@
  *
  * These tests exercise the wave-2 wiring by invoking the extension event
  * handlers directly with mocked Pi events. We do not spin up a real Pi
- * session -- the provider/router/tool/session/subagent extensions are
- * pure functions of (event, ctx) so we can call them through the mock
+ * session -- the provider/tool/session/subagent extensions are pure functions
+ * of (event, ctx) so we can call them through the mock
  * registration helper from helpers/mock-pi.ts.
  *
  * Coverage:
@@ -136,10 +136,10 @@ async function fire(
 }
 
 // ---------------------------------------------------------------------------
-// 1. Provider / router / message hooks
+// 1. Provider / message hooks
 // ---------------------------------------------------------------------------
 
-describe("T3 -- provider, router, message hooks (criterion 1)", () => {
+describe("T3 -- provider and message hooks (criterion 1)", () => {
 	let env: ReturnType<typeof setupTranscript>;
 	beforeEach(() => {
 		env = setupTranscript();

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Reprocess content through the unified pipeline via menos API.
+"""Reprocess content through the unified pipeline via Onclave API.
 
 Usage:
     uv run reprocess.py <content_id> [--force] [--wait] [--verbose]
@@ -82,7 +82,7 @@ def run(args) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Reprocess content through the unified pipeline via menos API"
+        description="Reprocess content through the unified pipeline via Onclave API"
     )
     parser.add_argument("content_id", help="Content ID to reprocess")
     parser.add_argument(

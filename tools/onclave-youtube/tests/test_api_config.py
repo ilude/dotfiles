@@ -96,7 +96,7 @@ class TestGetApiBase:
         with patch.dict(
             os.environ,
             {
-                "MENOS_API_BASE": "http://custom:9000/api/v1",
+                "ONCLAVE_API_BASE": "http://custom:9000/api/v1",
                 "HOST_DOMAIN": "example.internal",
             },
             clear=True,
@@ -107,7 +107,7 @@ class TestGetApiBase:
     def test_get_api_base_derives_url_from_host_domain(self):
         with patch.dict(os.environ, {"HOST_DOMAIN": "example.internal"}, clear=True):
             with patch("api_config.load_secrets_file"):
-                assert get_api_base() == "https://menos.example.internal/api/v1"
+                assert get_api_base() == "https://onclave.example.internal/api/v1"
 
     def test_get_api_base_requires_configuration(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -116,7 +116,7 @@ class TestGetApiBase:
                     get_api_base()
 
         message = str(exc_info.value)
-        assert "MENOS_API_BASE" in message
+        assert "ONCLAVE_API_BASE" in message
         assert "HOST_DOMAIN" in message
 
 
@@ -128,8 +128,8 @@ class TestGetApiHost:
             assert get_api_host() == "myhost:8000"
 
     def test_get_api_host_extracts_configured_netloc(self):
-        with patch("api_config.get_api_base", return_value="https://menos.example.net/api/v1"):
-            assert get_api_host() == "menos.example.net"
+        with patch("api_config.get_api_base", return_value="https://onclave.example.net/api/v1"):
+            assert get_api_host() == "onclave.example.net"
 
 
 class TestExtractVideoId:

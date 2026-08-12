@@ -56,10 +56,13 @@ describe("mergeSettings", () => {
 	});
 
 	it("nested objects merge deeply", () => {
-		const a = { router: { effort: { max: "high" }, policy: { holdTurns: 0 } } };
-		const b = { router: { policy: { holdTurns: 3, k: 2 } } };
+		const a = { metrics: { enabled: true, policy: { retentionDays: 14 } } };
+		const b = { metrics: { policy: { retentionDays: 30, rotateDaily: true } } };
 		expect(mergeSettings(a, b)).toEqual({
-			router: { effort: { max: "high" }, policy: { holdTurns: 3, k: 2 } },
+			metrics: {
+				enabled: true,
+				policy: { retentionDays: 30, rotateDaily: true },
+			},
 		});
 	});
 
@@ -107,10 +110,10 @@ describe("loadCascadedSettings", () => {
 	});
 
 	it("user file is loaded when userPath is provided", () => {
-		writeJson(userPath, { router: { effort: { maxLevel: "high" } } });
+		writeJson(userPath, { metrics: { enabled: false } });
 		const result = loadCascadedSettings({ projectRoot, userPath, skipProject: true, skipLocal: true });
 		expect(result.sources.user.loaded).toBe(true);
-		expect((result.merged.router as any).effort.maxLevel).toBe("high");
+		expect((result.merged.metrics as any).enabled).toBe(false);
 	});
 
 	it("project file overrides user file for scalars", () => {

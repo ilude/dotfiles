@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Post an annotation to a content item via menos API.
+"""Post an annotation to a content item via Onclave API.
 
 Usage:
     uv run post_annotation.py <content_id> <title> <text_file> [--tags TAG ...]
@@ -17,7 +17,7 @@ from signing import RequestSigner
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Post an annotation to a content item via menos API"
+        description="Post an annotation to a content item via Onclave API"
     )
     parser.add_argument("content_id", help="Content ID to annotate")
     parser.add_argument("title", help="Annotation title")

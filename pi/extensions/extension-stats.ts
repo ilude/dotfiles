@@ -12,7 +12,6 @@
  */
 
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -24,8 +23,6 @@ import type {
 import {
 	enumerateJsonlFiles,
 	extractEntryUsageTokens,
-	extractUsageTokens,
-	joinPromptsToNextAssistant,
 	readJsonlFile,
 	resolveAgentDir,
 } from "../lib/session-jsonl.ts";
@@ -83,7 +80,6 @@ interface BreakdownData {
 		discoveredOwners: number;
 		unattributedTools: number;
 		packageScanRoots: number;
-		unkeyedRouterTraceTurns: number;
 	};
 }
 
@@ -639,25 +635,10 @@ function addCommandUsage(
 	return { owner, commandKey };
 }
 
-function toFiniteNumber(value: unknown): number {
-	if (typeof value === "number") {
-		return Number.isFinite(value) ? value : 0;
-	}
-	if (typeof value === "string") {
-		const n = Number(value);
-		return Number.isFinite(n) ? n : 0;
-	}
-	return 0;
-}
-
 function estimateTextTokens(text: unknown): number {
 	return typeof text === "string" && text.length > 0
 		? Math.ceil(text.length / 4)
 		: 0;
-}
-
-function sha256Hex(text: string): string {
-	return createHash("sha256").update(text).digest("hex");
 }
 
 async function parseSessionFile(
@@ -933,226 +914,6 @@ function addSessionToRange(range: RangeAgg, session: ParsedSession): void {
 	}
 }
 
-function addTokensToRange(
-	range: RangeAgg,
-	dayKeyLocal: string,
-	owner: string,
-	toolKey: string,
-	tokens: number,
-): void {
-	const day = range.dayByKey.get(dayKeyLocal);
-	if (!day || tokens <= 0) return;
-	range.estimatedToolTokens += tokens;
-	day.estimatedToolTokens += tokens;
-	range.tokensByToolKey.set(
-		toolKey,
-		(range.tokensByToolKey.get(toolKey) ?? 0) + tokens,
-	);
-	day.tokensByToolKey.set(
-		toolKey,
-		(day.tokensByToolKey.get(toolKey) ?? 0) + tokens,
-	);
-	range.tokensByExtension.set(
-		owner,
-		(range.tokensByExtension.get(owner) ?? 0) + tokens,
-	);
-	day.tokensByExtension.set(
-		owner,
-		(day.tokensByExtension.get(owner) ?? 0) + tokens,
-	);
-}
-
-interface TraceTokenAttribution {
-	promptHashTimes: Map<string, number[]>;
-	unkeyedTurns: number;
-}
-
-async function addPromptRouterTraceTokensToRanges(
-	ranges: Map<number, RangeAgg>,
-	signal?: AbortSignal,
-): Promise<TraceTokenAttribution> {
-	const result: TraceTokenAttribution = {
-		promptHashTimes: new Map(),
-		unkeyedTurns: 0,
-	};
-	const traceRoot = path.join(resolveAgentDir(), "traces");
-	if (!(await pathExists(traceRoot))) return result;
-	const traceFiles = await enumerateJsonlFiles(traceRoot, signal);
-	for (const filePath of traceFiles) {
-		if (signal?.aborted) return result;
-		const byTurn = new Map<
-			string,
-			{ routedAt?: Date; tokens: number; promptHash?: string }
-		>();
-		for await (const { value } of readJsonlFile(filePath, { signal })) {
-			const obj = asRecord(value);
-			if (!obj) continue;
-			const turnId =
-				typeof obj.turn_id === "string" ? obj.turn_id : "turn-unknown";
-			const current = byTurn.get(turnId) ?? { tokens: 0 };
-			if (obj.event_type === "routing_decision") {
-				const routedAt = new Date(String(obj.timestamp ?? ""));
-				if (Number.isFinite(routedAt.getTime())) current.routedAt = routedAt;
-				const promptHash = asRecord(obj.payload)?.prompt_hash;
-				if (typeof promptHash === "string") current.promptHash = promptHash;
-			}
-			if (obj.event_type === "assistant_message")
-				current.tokens += extractUsageTokens(asRecord(obj.payload)?.usage);
-			byTurn.set(turnId, current);
-		}
-		for (const { routedAt, tokens, promptHash } of byTurn.values()) {
-			if (!routedAt || tokens <= 0) continue;
-			if (!promptHash) {
-				result.unkeyedTurns += 1;
-				continue;
-			}
-			const times = result.promptHashTimes.get(promptHash) ?? [];
-			times.push(routedAt.getTime());
-			result.promptHashTimes.set(promptHash, times);
-			const sessionDay = localMidnight(routedAt);
-			const dayKey = toLocalDayKey(routedAt);
-			for (const d of RANGE_DAYS) {
-				const range = ranges.get(d);
-				if (!range) continue;
-				const start = range.days[0].date;
-				const end = range.days[range.days.length - 1].date;
-				if (sessionDay < start || sessionDay > end) continue;
-				addTokensToRange(
-					range,
-					dayKey,
-					"prompt-router",
-					"prompt-router/route",
-					tokens,
-				);
-			}
-		}
-	}
-	return result;
-}
-
-async function readPromptRouterHashes(
-	cwd: string,
-	signal?: AbortSignal,
-): Promise<Set<string>> {
-	const logPath = path.join(
-		cwd,
-		"pi",
-		"prompt-routing",
-		"logs",
-		"routing_log.jsonl",
-	);
-	const hashes = new Set<string>();
-	if (!(await pathExists(logPath))) return hashes;
-	for await (const { value } of readJsonlFile(logPath, { signal })) {
-		const obj = asRecord(value);
-		if (typeof obj?.prompt_hash === "string") hashes.add(obj.prompt_hash);
-	}
-	return hashes;
-}
-
-async function addPromptRouterSessionTokensToRanges(
-	ranges: Map<number, RangeAgg>,
-	cwd: string,
-	sessionFiles: string[],
-	excludedPromptHashTimes: ReadonlyMap<string, number[]> = new Map(),
-	signal?: AbortSignal,
-): Promise<void> {
-	const hashes = await readPromptRouterHashes(cwd, signal);
-	if (hashes.size === 0) return;
-	const remainingExcluded = new Map(
-		[...excludedPromptHashTimes].map(([hash, times]) => [hash, [...times]]),
-	);
-	for (const filePath of sessionFiles) {
-		if (signal?.aborted) return;
-		for await (const joined of joinPromptsToNextAssistant(filePath, {
-			signal,
-		})) {
-			const hash = sha256Hex(joined.userText.trim());
-			if (!hashes.has(hash) || joined.usageTokens <= 0) continue;
-			const timestamp = joined.userEntry.timestamp;
-			const routedAt =
-				typeof timestamp === "string" ? new Date(timestamp) : null;
-			const remaining = remainingExcluded.get(hash) ?? [];
-			if (
-				routedAt &&
-				Number.isFinite(routedAt.getTime()) &&
-				remaining.length > 0
-			) {
-				let nearestIndex = 0;
-				for (let index = 1; index < remaining.length; index += 1)
-					if (
-						Math.abs(remaining[index] - routedAt.getTime()) <
-						Math.abs(remaining[nearestIndex] - routedAt.getTime())
-					)
-						nearestIndex = index;
-				if (Math.abs(remaining[nearestIndex] - routedAt.getTime()) <= 600_000) {
-					remaining.splice(nearestIndex, 1);
-					remainingExcluded.set(hash, remaining);
-					continue;
-				}
-			}
-			if (!routedAt || !Number.isFinite(routedAt.getTime())) continue;
-			const sessionDay = localMidnight(routedAt);
-			const dayKey = toLocalDayKey(routedAt);
-			for (const d of RANGE_DAYS) {
-				const range = requiredRange(ranges, d);
-				const start = range.days[0].date;
-				const end = range.days[range.days.length - 1].date;
-				if (sessionDay < start || sessionDay > end) continue;
-				addTokensToRange(
-					range,
-					dayKey,
-					"prompt-router",
-					"prompt-router/route",
-					joined.usageTokens,
-				);
-			}
-		}
-	}
-}
-
-async function addPromptRouterEventsToRanges(
-	ranges: Map<number, RangeAgg>,
-	cwd: string,
-	signal?: AbortSignal,
-): Promise<void> {
-	const logPath = path.join(
-		cwd,
-		"pi",
-		"prompt-routing",
-		"logs",
-		"routing_log.jsonl",
-	);
-	if (!(await pathExists(logPath))) return;
-
-	for await (const { value } of readJsonlFile(logPath, { signal })) {
-		const ts = toFiniteNumber(asRecord(value)?.ts);
-		if (ts <= 0) continue;
-		const startedAt = new Date(ts * 1000);
-		if (!Number.isFinite(startedAt.getTime())) continue;
-		const session: ParsedSession = {
-			startedAt,
-			dayKeyLocal: toLocalDayKey(startedAt),
-			toolCalls: 1,
-			estimatedToolTokens: 0,
-			callsByToolKey: new Map([["prompt-router/route", 1]]),
-			tokensByToolKey: new Map(),
-			callsByExtension: new Map([["prompt-router", 1]]),
-			tokensByExtension: new Map(),
-			sessionsByToolKey: new Set(["prompt-router/route"]),
-			sessionsByExtension: new Set(["prompt-router"]),
-		};
-		const sessionDay = localMidnight(startedAt);
-		for (const d of RANGE_DAYS) {
-			const range = requiredRange(ranges, d);
-			const start = range.days[0].date;
-			const end = range.days[range.days.length - 1].date;
-			if (sessionDay < start || sessionDay > end) continue;
-			addSessionToRange(range, session);
-		}
-	}
-}
-
 function resolveEffectiveMetric(
 	mode: MetricMode,
 	totalTokens: number,
@@ -1278,16 +1039,6 @@ async function computeBreakdown(
 		}
 	}
 
-	await addPromptRouterEventsToRanges(ranges, cwd, signal);
-	const traceTokens = await addPromptRouterTraceTokensToRanges(ranges, signal);
-	await addPromptRouterSessionTokensToRanges(
-		ranges,
-		cwd,
-		candidates,
-		traceTokens.promptHashTimes,
-		signal,
-	);
-
 	const allToolNames = new Set(pi.getAllTools().map((t) => t.name));
 	const unattributedTools = [...allToolNames].filter(
 		(name) => resolveToolOwner(name, ownersByTool) === "unknown-extension",
@@ -1303,7 +1054,6 @@ async function computeBreakdown(
 			discoveredOwners: ownership.ownerNames.length,
 			unattributedTools,
 			packageScanRoots: ownership.packageScanRoots,
-			unkeyedRouterTraceTurns: traceTokens.unkeyedTurns,
 		},
 	};
 }
@@ -1413,7 +1163,6 @@ function renderMarkdownReport(
 		`Generated: ${data.generatedAt.toISOString()}`,
 		`Sessions directory: ${data.sessionRoot}`,
 		`Attribution: extension/tool for extension-registered tools, Pi/tool for native tools (${data.ownerDiagnostics.unattributedTools} unattributed active tools, ${data.ownerDiagnostics.packageScanRoots} package scan roots).`,
-		`Router token fallback: ${data.ownerDiagnostics.unkeyedRouterTraceTurns} unkeyed trace turn${data.ownerDiagnostics.unkeyedRouterTraceTurns === 1 ? "" : "s"} excluded from trace-token attribution and reconciled from session evidence when available.`,
 	];
 
 	for (const days of reportDays) {

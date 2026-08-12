@@ -16,5 +16,11 @@
   },
   "assist": {
     "enabled": false
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!!tests/coverage"
+    ]
   }
 }

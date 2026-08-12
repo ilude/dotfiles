@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ilude.com/schemas/pi/router-v3-output.schema.json",
   "title": "Router v3 Classifier Output",
-  "description": "Frozen wire format for the v3 Pi prompt router classifier. One JSON object per classify.py invocation, serialized as a single line and terminated with a trailing newline. Consumed by pi/extensions/prompt-router.ts at the TypeScript boundary.",
+  "description": "Frozen output format for the retired v3 Pi prompt classifier. One JSON object per offline classify.py invocation, serialized as a single line and terminated with a trailing newline.",
   "type": "object",
   "required": [
     "schema_version",
@@ -13,7 +13,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "description": "Semver of this output contract. TypeScript router compares against a known-good set and falls back gracefully on mismatch.",
+      "description": "Semver of this output contract. Offline validators compare against a known-good set.",
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
@@ -22,7 +22,7 @@
       "$ref": "#/$defs/route"
     },
     "candidates": {
-      "description": "Candidate routes with calibrated marginal confidence. Ordered by ascending ordinal cost (model_tier first, then effort). MUST include the primary route. Used by the runtime for uncertainty fallback and by /router-explain for observability.",
+      "description": "Candidate routes with calibrated marginal confidence. Ordered by ascending ordinal cost (model_tier first, then effort). MUST include the primary route. Retained for offline evaluation and historical consumer compatibility.",
       "type": "array",
       "minItems": 1,
       "maxItems": 12,
@@ -31,10 +31,10 @@
       }
     },
     "confidence": {
-      "description": "Calibrated probability that primary is the cheapest acceptable route for this prompt (top-1 calibrated confidence). Consumers may apply an UNCERTAIN_THRESHOLD below which the router biases toward a costlier candidate.",
+      "description": "Calibrated probability that primary is the cheapest acceptable route for this prompt (top-1 calibrated confidence).",
       "type": "number",
-      "minimum": 0.0,
-      "maximum": 1.0
+      "minimum": 0,
+      "maximum": 1
     },
     "reason": {
       "description": "Short human-readable explanation of the route choice. Observability only; MUST NOT drive dispatch.",
@@ -42,17 +42,21 @@
       "maxLength": 512
     },
     "ambiguity_flag": {
-      "description": "Echo of the predicted ambiguity level, mirroring the corpus ambiguity field. Observability only; runtime uncertainty handling is driven by confidence, not this flag.",
+      "description": "Echo of the predicted ambiguity level, mirroring the corpus ambiguity field. Observability only.",
       "type": "string",
-      "enum": ["clear", "borderline", "ambiguous"]
+      "enum": [
+        "clear",
+        "borderline",
+        "ambiguous"
+      ]
     },
     "predicted_domain": {
-      "description": "Classifier's best-guess domain tag. Observability only; the runtime does not dispatch on this.",
+      "description": "Classifier's best-guess domain tag. Observability only.",
       "type": "string",
       "maxLength": 64
     },
     "model_version": {
-      "description": "SHA of the classifier artifact that produced this output. Required in production; optional in contract-schema terms because offline tools may omit it.",
+      "description": "SHA of the classifier artifact that produced this output. Optional in contract-schema terms because offline tools may omit it.",
       "type": "string",
       "maxLength": 128
     },
@@ -65,34 +69,58 @@
   "$defs": {
     "model_tier": {
       "type": "string",
-      "enum": ["mini", "core", "large"],
+      "enum": [
+        "mini",
+        "core",
+        "large"
+      ],
       "description": "Ordinal model tier. Ordering: mini < core < large."
     },
     "effort": {
       "type": "string",
-      "enum": ["none", "low", "medium", "high"],
+      "enum": [
+        "none",
+        "low",
+        "medium",
+        "high"
+      ],
       "description": "Ordinal reasoning effort tier. Ordering: none < low < medium < high."
     },
     "route": {
       "type": "object",
-      "required": ["model_tier", "effort"],
+      "required": [
+        "model_tier",
+        "effort"
+      ],
       "additionalProperties": false,
       "properties": {
-        "model_tier": { "$ref": "#/$defs/model_tier" },
-        "effort": { "$ref": "#/$defs/effort" }
+        "model_tier": {
+          "$ref": "#/$defs/model_tier"
+        },
+        "effort": {
+          "$ref": "#/$defs/effort"
+        }
       }
     },
     "candidate": {
       "type": "object",
-      "required": ["model_tier", "effort", "confidence"],
+      "required": [
+        "model_tier",
+        "effort",
+        "confidence"
+      ],
       "additionalProperties": false,
       "properties": {
-        "model_tier": { "$ref": "#/$defs/model_tier" },
-        "effort": { "$ref": "#/$defs/effort" },
+        "model_tier": {
+          "$ref": "#/$defs/model_tier"
+        },
+        "effort": {
+          "$ref": "#/$defs/effort"
+        },
         "confidence": {
           "type": "number",
-          "minimum": 0.0,
-          "maximum": 1.0,
+          "minimum": 0,
+          "maximum": 1,
           "description": "Calibrated marginal probability that this candidate route is acceptable for the prompt."
         }
       }

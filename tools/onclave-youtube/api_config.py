@@ -1,4 +1,4 @@
-"""Shared configuration for menos API client scripts."""
+"""Shared configuration for Onclave API client scripts."""
 
 import os
 import re
@@ -35,18 +35,19 @@ def load_secrets_file() -> None:
 
 
 def get_api_base() -> str:
-    """Get the configured or convention-based menos API base URL."""
+    """Get the configured or convention-based Onclave API base URL."""
     load_secrets_file()
-    value = os.getenv("MENOS_API_BASE", "").strip()
+    value = os.getenv("ONCLAVE_API_BASE", "").strip()
     if value:
         return value
 
     host_domain = os.getenv("HOST_DOMAIN", "").strip()
     if host_domain:
-        return f"https://menos.{host_domain}/api/v1"
+        return f"https://onclave.{host_domain}/api/v1"
 
     raise RuntimeError(
-        "MENOS_API_BASE or HOST_DOMAIN is required; set one in the environment or ~/.dotfiles/.env"
+        "ONCLAVE_API_BASE or HOST_DOMAIN is required; set one in the environment "
+        "or ~/.dotfiles/.env"
     )
 
 

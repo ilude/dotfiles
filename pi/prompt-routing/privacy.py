@@ -1,7 +1,7 @@
-"""Privacy helpers shared by prompt-routing CLIs.
+"""Privacy helpers shared by prompt-routing research CLIs.
 
-Keep in parity with pi/lib/transcript.ts sha256Hex: raw UTF-8 SHA256, no
-normalization beyond exactly the supplied text.
+Prompt hashes use raw UTF-8 SHA256 with no normalization beyond exactly the
+supplied text.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import hashlib
 
 
 def prompt_sha256_hex(text: str) -> str:
-    """Return the stable prompt hash used by the TypeScript runtime."""
+    """Return the stable prompt hash used by the research artifacts."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 

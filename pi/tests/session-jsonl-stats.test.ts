@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import extensionStats, {
 	collectExtensionUsageSnapshot,
 } from "../extensions/extension-stats.ts";
-import routerStats from "../extensions/router-stats.ts";
 import skillStats from "../extensions/skill-stats.ts";
 import {
 	enumerateJsonlFiles,
@@ -145,229 +143,6 @@ describe("shared session JSONL stats primitives", () => {
 		await expect(consume()).rejects.toThrow("diagnostic callback failed");
 	});
 
-	it("keeps router-stats and extension-stats usage attribution in parity", async () => {
-		const root = await makeTempDir("stats-parity-");
-		const agentDir = path.join(root, "agent");
-		const cwd = path.join(root, "workspace");
-		process.env.PI_CODING_AGENT_DIR = agentDir;
-
-		const prompt = "route this\nwith context";
-		const promptHash = createHash("sha256").update(prompt).digest("hex");
-		const now = new Date();
-		const usage = {
-			input: "1",
-			output: 2,
-			cacheRead: "3",
-			cacheWrite: 4,
-			"gen_ai.usage.input_tokens": "5",
-			"gen_ai.usage.output_tokens": 6,
-			"gen_ai.usage.cache_read_tokens": "7",
-			"gen_ai.usage.cache_write_tokens": 8,
-		};
-		const sessionName = `${now.toISOString().replace(/:/g, "-").replace(".", "-")}_parity.jsonl`;
-		await writeLines(path.join(agentDir, "sessions", sessionName), [
-			"{malformed",
-			JSON.stringify({
-				type: "message",
-				timestamp: now.toISOString(),
-				message: {
-					role: "user",
-					content: [
-						{ type: "text", text: "route this" },
-						{ type: "text", text: "with context" },
-					],
-				},
-			}),
-			JSON.stringify({
-				type: "message",
-				message: { role: "assistant", content: [], usage },
-			}),
-		]);
-		await writeLines(
-			path.join(cwd, "pi", "prompt-routing", "logs", "routing_log.jsonl"),
-			[
-				"not-json",
-				JSON.stringify({
-					ts: now.getTime() / 1000,
-					prompt_hash: promptHash,
-					prompt_excerpt: prompt,
-					primary: { model_size: "medium", effort: "high" },
-				}),
-			],
-		);
-
-		const ctx = createMockCtx({
-			cwd,
-			sessionManager: { getSessionDir: () => path.join(agentDir, "sessions") },
-		});
-		const routerPi = createMockPi();
-		routerStats(routerPi as unknown as ExtensionAPI);
-		await routerPi._commands
-			.find((command) => command.name === "router-stats")
-			?.handler("", ctx);
-
-		const extensionPi = createMockPi() as ReturnType<typeof createMockPi> & {
-			getAllTools: () => never[];
-		};
-		extensionPi.getAllTools = () => [];
-		extensionStats(extensionPi as unknown as ExtensionAPI);
-		await extensionPi._commands
-			.find((command) => command.name === "extension-stats")
-			?.handler("", ctx);
-
-		expect(commandOutput(routerPi, "router-stats")).toContain(
-			"1 routed prompts; 36 est. tokens",
-		);
-		expect(commandOutput(extensionPi, "extension-stats")).toContain(
-			"| prompt-router/route | 1 | 36 |",
-		);
-	});
-
-	it("pairs repeated prompt hashes by occurrence without multiplying tokens", async () => {
-		const root = await makeTempDir("router-repeat-");
-		const sessionDir = path.join(root, "sessions");
-		const cwd = path.join(root, "workspace");
-		const now = new Date();
-		const prompt = "repeat this route";
-		const promptHash = createHash("sha256").update(prompt).digest("hex");
-		const sessionName = `${now.toISOString().replace(/:/g, "-").replace(".", "-")}_repeat.jsonl`;
-		await writeLines(path.join(sessionDir, sessionName), [
-			JSON.stringify({
-				type: "message",
-				timestamp: now.toISOString(),
-				message: { role: "user", content: prompt },
-			}),
-			JSON.stringify({
-				type: "message",
-				message: { role: "assistant", content: [], usage: { input: 10 } },
-			}),
-			JSON.stringify({
-				type: "message",
-				timestamp: now.toISOString(),
-				message: { role: "user", content: prompt },
-			}),
-			JSON.stringify({
-				type: "message",
-				message: { role: "assistant", content: [], usage: { input: 20 } },
-			}),
-		]);
-		await writeLines(
-			path.join(cwd, "pi", "prompt-routing", "logs", "routing_log.jsonl"),
-			[10, 20].map((tokens) =>
-				JSON.stringify({
-					ts: now.getTime() / 1000,
-					prompt_hash: promptHash,
-					prompt_excerpt: `${prompt} ${tokens}`,
-					primary: { model_size: "medium", effort: "high" },
-				}),
-			),
-		);
-		const ctx = createMockCtx({
-			cwd,
-			sessionManager: { getSessionDir: () => sessionDir },
-		});
-		const pi = createMockPi();
-		routerStats(pi as unknown as ExtensionAPI);
-		await pi._commands
-			.find((command) => command.name === "router-stats")
-			?.handler("", ctx);
-		expect(commandOutput(pi, "router-stats")).toContain(
-			"2 routed prompts; 30 est. tokens",
-		);
-	});
-
-	it("reconciles keyed and unkeyed trace token evidence by occurrence", async () => {
-		const root = await makeTempDir("extension-trace-");
-		const agentDir = path.join(root, "agent");
-		const sessionDir = path.join(root, "sessions");
-		const cwd = path.join(root, "workspace");
-		process.env.PI_CODING_AGENT_DIR = agentDir;
-		const now = new Date();
-		const prompt = "trace-backed route";
-		const promptHash = createHash("sha256").update(prompt).digest("hex");
-		const secondPrompt = "session fallback route";
-		const secondPromptHash = createHash("sha256")
-			.update(secondPrompt)
-			.digest("hex");
-		const sessionName = `${now.toISOString().replace(/:/g, "-").replace(".", "-")}_trace.jsonl`;
-		await writeLines(path.join(sessionDir, sessionName), [
-			JSON.stringify({
-				type: "message",
-				timestamp: now.toISOString(),
-				message: { role: "user", content: prompt },
-			}),
-			JSON.stringify({
-				type: "message",
-				message: { role: "assistant", content: [], usage: { input: 36 } },
-			}),
-			JSON.stringify({
-				type: "message",
-				timestamp: now.toISOString(),
-				message: { role: "user", content: secondPrompt },
-			}),
-			JSON.stringify({
-				type: "message",
-				message: { role: "assistant", content: [], usage: { input: 12 } },
-			}),
-		]);
-		await writeLines(
-			path.join(cwd, "pi", "prompt-routing", "logs", "routing_log.jsonl"),
-			[
-				JSON.stringify({
-					ts: now.getTime() / 1000,
-					prompt_hash: promptHash,
-					prompt_excerpt: prompt,
-					primary: { model_size: "medium", effort: "high" },
-				}),
-				JSON.stringify({
-					ts: now.getTime() / 1000,
-					prompt_hash: secondPromptHash,
-					prompt_excerpt: secondPrompt,
-					primary: { model_size: "small", effort: "low" },
-				}),
-			],
-		);
-		await writeLines(path.join(agentDir, "traces", "trace.jsonl"), [
-			JSON.stringify({
-				turn_id: "turn-1",
-				event_type: "routing_decision",
-				timestamp: now.toISOString(),
-				payload: { prompt_hash: promptHash },
-			}),
-			JSON.stringify({
-				turn_id: "turn-1",
-				event_type: "assistant_message",
-				payload: { usage: { input: 36 } },
-			}),
-			JSON.stringify({
-				turn_id: "turn-2",
-				event_type: "routing_decision",
-				timestamp: now.toISOString(),
-			}),
-			JSON.stringify({
-				turn_id: "turn-2",
-				event_type: "assistant_message",
-				payload: { usage: { input: 12 } },
-			}),
-		]);
-		const pi = createMockPi() as ReturnType<typeof createMockPi> & {
-			getAllTools: () => never[];
-		};
-		pi.getAllTools = () => [];
-		extensionStats(pi as unknown as ExtensionAPI);
-		await pi._commands
-			.find((command) => command.name === "extension-stats")
-			?.handler(
-				"",
-				createMockCtx({
-					cwd,
-					sessionManager: { getSessionDir: () => sessionDir },
-				}),
-			);
-		const output = commandOutput(pi, "extension-stats");
-		expect(output).toContain("| prompt-router/route | 2 | 48 |");
-		expect(output).toContain("Router token fallback: 1 unkeyed trace turn");
-	});
 
 	it("attributes the current /usage command to codex-status", async () => {
 		const root = await makeTempDir("extension-usage-owner-");
@@ -477,35 +252,12 @@ describe("shared session JSONL stats primitives", () => {
 				},
 			}),
 		]);
-		await writeLines(
-			path.join(cwd, "pi", "prompt-routing", "logs", "routing_log.jsonl"),
-			[
-				JSON.stringify({
-					ts: now.getTime() / 1000,
-					prompt_hash: createHash("sha256").update(customPrompt).digest("hex"),
-					prompt_excerpt: customPrompt,
-					primary: { model_size: "medium", effort: "high" },
-				}),
-				JSON.stringify({
-					ts: now.getTime() / 1000,
-					prompt_hash: createHash("sha256").update(defaultPrompt).digest("hex"),
-					prompt_excerpt: defaultPrompt,
-					primary: { model_size: "small", effort: "low" },
-				}),
-			],
-		);
 
 		const getSessionDir = vi.fn(() => customSessionDir);
 		const ctx = createMockCtx({
 			cwd,
 			sessionManager: { getSessionDir },
 		});
-		const routerPi = createMockPi();
-		routerStats(routerPi as unknown as ExtensionAPI);
-		await routerPi._commands
-			.find((command) => command.name === "router-stats")
-			?.handler("", ctx);
-
 		const extensionPi = createMockPi() as ReturnType<typeof createMockPi> & {
 			getAllTools: () => never[];
 		};
@@ -521,12 +273,9 @@ describe("shared session JSONL stats primitives", () => {
 			.find((command) => command.name === "skill-stats")
 			?.handler("", ctx);
 
-		const routerOutput = commandOutput(routerPi, "router-stats");
 		const extensionOutput = commandOutput(extensionPi, "extension-stats");
 		const skillOutput = commandOutput(skillPi, "skill-stats");
-		expect(getSessionDir).toHaveBeenCalledTimes(3);
-		expect(routerOutput).toContain("2 routed prompts; 11 est. tokens");
-		expect(routerOutput).not.toContain("108 est. tokens");
+		expect(getSessionDir).toHaveBeenCalledTimes(2);
 		expect(extensionOutput).toContain(
 			`Sessions directory: ${customSessionDir}`,
 		);

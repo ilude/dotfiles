@@ -16,8 +16,8 @@
  *
  * Event names use snake_case to match the existing pi runtime event vocabulary:
  *   tool_use, tool_result, hook_fired, skill_invoked, task_status_change,
- *   routing_decision, permission_decision. Producers may emit any name --
- *   the logger does not enforce a closed enum.
+ *   permission_decision. Producers may emit any name -- the logger does not
+ *   enforce a closed enum.
  *
  * The PI_METRICS_DIR env override redirects the log root for tests and
  * separate-environment use. The `metrics.enabled` setting in the merged
