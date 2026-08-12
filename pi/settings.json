@@ -16,7 +16,9 @@
     "maxSameAgentSpawns": 1,
     "maxCommandErrorRepeats": 3
   },
-  "packages": [],
+  "packages": [
+    "npm:@ogulcancelik/pi-herdr@0.4.0"
+  ],
   "_disabledPackages": [
     "npm:pi-inspect",
     "npm:pi-code-previews",
@@ -25,21 +27,25 @@
   "hideThinkingBlock": false,
   "theme": "dark",
   "enabledModels": [
-    "openai-codex/gpt-5.6-luna",
     "openai-codex/gpt-5.6-sol",
     "openai-codex/gpt-5.6-terra",
-    "bedrock-mantle/openai.gpt-5.6-luna",
-    "bedrock-mantle/openai.gpt-5.6-terra",
-    "bedrock-mantle/openai.gpt-5.6-sol",
+    "openai-codex/gpt-5.6-luna",
     "openai-codex/gpt-5.5",
     "openai-codex/gpt-5.4",
-    "openai-codex/gpt-5.4-mini"
+    "openai-codex/gpt-5.4-mini",
+    "bedrock-mantle/anthropic.claude-fable-*",
+    "bedrock-mantle/anthropic.claude-opus-*",
+    "bedrock-mantle/anthropic.claude-sonnet-*",
+    "bedrock-mantle/anthropic.claude-haiku-*",
+    "bedrock-mantle/openai.gpt-*-sol",
+    "bedrock-mantle/openai.gpt-*-terra",
+    "bedrock-mantle/openai.gpt-*-luna"
   ],
   "bedrockRefresh": {
     "models": [
-      "us.anthropic.claude-opus-4-8",
+      "us.anthropic.claude-opus-5",
       "us.anthropic.claude-fable-5",
-      "us.anthropic.claude-sonnet-4-6"
+      "us.anthropic.claude-sonnet-5"
     ]
   },
   "activeTurnCompaction": {

@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import type {
 	ExecResult,
 	ExtensionAPI,
@@ -15,6 +16,10 @@ import {
 	parseAwsIni,
 	resolveBedrockTarget,
 } from "../lib/bedrock-auth.ts";
+import {
+	CLAUDE_FAMILIES,
+	selectLatestClaudeModelIds,
+} from "../lib/bedrock-model-policy.js";
 import {
 	getSettingsPath,
 	updateJsonObjectAtomic,
@@ -89,7 +94,7 @@ function helpText(): string {
 	return [
 		"Usage: /bedrock-refresh [--apply] [--profile PROFILE] [--region REGION]",
 		"",
-		"Poll AWS Bedrock for newer configured Claude Opus, Fable, and Sonnet model IDs.",
+		"Poll AWS Bedrock for newer configured Claude Fable, Opus, Sonnet, and Haiku model IDs.",
 		"Without --apply, this is read-only and reports current vs latest models.",
 		"With --apply, it updates pi/settings.json bedrockRefresh.models.",
 	].join("\n");
@@ -215,34 +220,6 @@ function stringValues(
 		.filter((value): value is string => value !== undefined);
 }
 
-function versionKey(modelId: string): number[] {
-	const suffix = modelId.split("claude-").at(-1) ?? modelId;
-	const matches = suffix.match(/\d+/g) ?? [];
-	const numbers = matches
-		.filter((value) => value.length !== 8)
-		.map((value) => Number.parseInt(value, 10));
-	return numbers.length > 0 ? numbers : [0];
-}
-
-function compareVersions(left: string, right: string): number {
-	const a = versionKey(left);
-	const b = versionKey(right);
-	const length = Math.max(a.length, b.length);
-	for (let index = 0; index < length; index++) {
-		const delta = (a[index] ?? 0) - (b[index] ?? 0);
-		if (delta !== 0) return delta;
-	}
-	return left.localeCompare(right);
-}
-
-function trackedLine(
-	modelId: string,
-): { family: string; major: number } | undefined {
-	const match = /claude-(opus|fable|sonnet)-(\d+)/.exec(modelId);
-	if (!match?.[1] || !match[2]) return undefined;
-	return { family: match[1], major: Number.parseInt(match[2], 10) };
-}
-
 async function runPoll(
 	parsed: ParsedArgs,
 	ctx: ExtensionContext,
@@ -319,19 +296,19 @@ async function runPoll(
 			)
 		: [];
 
+	const knownBedrockIds = new Set(
+		getBuiltinModels("amazon-bedrock").map((model) => model.id),
+	);
+	const recommended = selectLatestClaudeModelIds(
+		allModelIds.filter((modelId) => knownBedrockIds.has(modelId)),
+		"us.anthropic",
+	);
 	const latest: Record<string, string | null> = {};
-	const recommended: string[] = [];
-	for (const modelId of current) {
-		const line = trackedLine(modelId);
-		if (!line) continue;
-		const key = `${line.family}-${line.major}`;
-		const prefix = `us.anthropic.claude-${line.family}-${line.major}`;
-		const candidates = allModelIds.filter((candidate) =>
-			candidate.startsWith(prefix),
-		);
-		const latestCandidate = candidates.sort(compareVersions).at(-1) ?? null;
-		latest[key] = latestCandidate;
-		if (latestCandidate) recommended.push(latestCandidate);
+	for (const family of CLAUDE_FAMILIES) {
+		latest[family] =
+			recommended.find((modelId) =>
+				modelId.startsWith(`us.anthropic.claude-${family}-`),
+			) ?? null;
 	}
 
 	const missing = recommended.filter((modelId) => !current.includes(modelId));
@@ -354,7 +331,7 @@ function formatPollSummary(result: PollResult): string {
 		`AWS region:  ${result.region}`,
 		`Settings:    ${result.settingsFile}`,
 		"",
-		"Latest Bedrock us.* model IDs for configured major lines:",
+		"Latest Bedrock us.* model IDs by Claude family:",
 	];
 
 	for (const key of Object.keys(result.latest).sort()) {
@@ -376,7 +353,7 @@ function formatPollSummary(result: PollResult): string {
 	} else {
 		lines.push(
 			"",
-			"Bedrock refresh models are current for configured Opus, Fable, and Sonnet lines.",
+			"Bedrock refresh models are current for Fable, Opus, Sonnet, and Haiku.",
 		);
 	}
 

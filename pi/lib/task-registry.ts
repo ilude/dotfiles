@@ -222,6 +222,12 @@ export interface TaskOperationResult<T = TaskRecordV1> {
 	error?: string;
 }
 
+export interface TaskPruneResult {
+	removedIds: string[];
+	retiredRemoved: number;
+	terminalRemoved: number;
+}
+
 export function normalizeTaskScope(
 	scope: readonly string[] | undefined,
 ): string[] | undefined {
@@ -812,6 +818,70 @@ export const listTasks = (opts: ListTasksOptions = {}): TaskRecordV1[] => {
 	return out;
 };
 
+function isRetiredTaskRecord(record: TaskRecordV1): boolean {
+	return (
+		record.prompt !== undefined ||
+		record.agentName !== undefined ||
+		record.execution !== undefined ||
+		typeof record.metadata?.legacyTodoId === "string"
+	);
+}
+
+function protectedTaskIds(records: readonly TaskRecordV1[]): Set<string> {
+	const byId = tasksByIdSnapshot(records);
+	const protectedIds = new Set<string>();
+	const pending = records
+		.filter(
+			(record) =>
+				!record.deletedAt &&
+				!isRetiredTaskRecord(record) &&
+				!TERMINAL_TASK_STATES.has(record.state),
+		)
+		.flatMap((record) => record.blockedBy ?? []);
+	while (pending.length > 0) {
+		const id = pending.pop();
+		if (!id || protectedIds.has(id)) continue;
+		protectedIds.add(id);
+		pending.push(...(byId.get(id)?.blockedBy ?? []));
+	}
+	return protectedIds;
+}
+
+export function pruneTaskRegistry(): TaskPruneResult {
+	const records = listTasks({ includeTombstones: true });
+	const protectedIds = protectedTaskIds(records);
+	const removable = records.filter(
+		(record) =>
+			!protectedIds.has(record.id) &&
+			(isRetiredTaskRecord(record) ||
+				TERMINAL_TASK_STATES.has(record.state)),
+	);
+	const removedIds = new Set(removable.map((record) => record.id));
+	for (const record of records) {
+		if (removedIds.has(record.id)) continue;
+		const blocks = (record.blocks ?? []).filter((id) => !removedIds.has(id));
+		if (blocks.length !== (record.blocks ?? []).length)
+			writeTaskFile({ ...record, blocks });
+	}
+	for (const id of removedIds) {
+		try {
+			fs.unlinkSync(taskFilePath(id));
+		} catch (error) {
+			if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
+				throw error;
+		}
+	}
+	return {
+		removedIds: [...removedIds],
+		retiredRemoved: removable.filter(isRetiredTaskRecord).length,
+		terminalRemoved: removable.filter(
+			(record) =>
+				!isRetiredTaskRecord(record) &&
+				TERMINAL_TASK_STATES.has(record.state),
+		).length,
+	};
+}
+
 export function tombstoneTask(id: string, reason = "deleted"): TaskRecordV1 {
 	const existing = getTask(id);
 	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
@@ -949,7 +1019,7 @@ export function clearCompletedTasks(workspace?: string): TaskRecordV1[] {
 			(task) =>
 				task.state === "completed" &&
 				!task.deletedAt &&
-				(!workspace || !task.workspace || task.workspace === workspace),
+				(!workspace || task.workspace === workspace),
 		)
 		.map((task) => tombstoneTask(task.id, "clear completed"));
 }

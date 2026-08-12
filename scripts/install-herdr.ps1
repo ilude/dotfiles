@@ -1,13 +1,13 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-Installs the pinned Herdr Windows preview and configures PowerShell 7.
+Installs the pinned Herdr Windows preview with PowerShell 7 and Pi sidebar defaults.
 
 .DESCRIPTION
 Performs a first-time, per-user Herdr installation on 64-bit Windows. The
 release archive and every installed file are checked against pinned SHA-256
-digests. Existing conflicting installation or configuration state is not
-modified.
+digests. New configs use PowerShell 7 and Pi sidebar metadata rows. Existing
+conflicting installation or configuration state is not modified.
 
 Use -WhatIf to preview mutations without downloading or installing Herdr.
 #>
@@ -219,7 +219,18 @@ function Initialize-HerdrConfig {
         return
     }
     New-Item -ItemType Directory -Path (Split-Path -Parent $ConfigPath) -Force | Out-Null
-    $content = "[terminal]`n$expectedLine`n"
+    $content = @"
+[terminal]
+$expectedLine
+
+[ui.sidebar.agents.rows_by_agent]
+pi = [
+    ["state_icon", "agent", "state_text"],
+    ["`$model", "`$context"],
+    ["`$subagents", "`$tasks"],
+    ["workspace", "tab"],
+]
+"@
     [System.IO.File]::WriteAllText($ConfigPath, $content, [System.Text.UTF8Encoding]::new($false))
     Write-Output "Created Herdr configuration at $ConfigPath"
 }

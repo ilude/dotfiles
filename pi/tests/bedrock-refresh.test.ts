@@ -16,16 +16,21 @@ type ExtensionApiArg = Parameters<typeof bedrockRefresh>[0];
 const foundationModels = {
 	modelSummaries: [
 		{ modelId: "anthropic.claude-opus-4-8" },
+		{ modelId: "anthropic.claude-opus-5" },
 		{ modelId: "anthropic.claude-fable-5" },
 		{ modelId: "anthropic.claude-sonnet-4-6" },
+		{ modelId: "anthropic.claude-sonnet-5" },
 	],
 };
 
 const inferenceProfiles = {
 	inferenceProfileSummaries: [
+		{ inferenceProfileId: "us.anthropic.claude-opus-6" },
 		{ inferenceProfileId: "us.anthropic.claude-opus-4-8" },
+		{ inferenceProfileId: "us.anthropic.claude-opus-5" },
 		{ inferenceProfileId: "us.anthropic.claude-fable-5" },
 		{ inferenceProfileId: "us.anthropic.claude-sonnet-4-6" },
+		{ inferenceProfileId: "us.anthropic.claude-sonnet-5" },
 	],
 };
 
@@ -56,9 +61,9 @@ beforeEach(() => {
 			{
 				bedrockRefresh: {
 					models: [
-						"us.anthropic.claude-opus-4-8",
 						"us.anthropic.claude-fable-5",
-						"us.anthropic.claude-sonnet-4-6",
+						"us.anthropic.claude-opus-5",
+						"us.anthropic.claude-sonnet-5",
 					],
 				},
 				unrelated: { preserved: true },
@@ -175,7 +180,7 @@ describe("bedrock-refresh extension", () => {
 		);
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
 			expect.stringContaining(
-				"Bedrock refresh models are current for configured Opus, Fable, and Sonnet lines.",
+				"Bedrock refresh models are current for Fable, Opus, Sonnet, and Haiku.",
 			),
 			"info",
 		);
@@ -217,6 +222,30 @@ describe("bedrock-refresh extension", () => {
 			});
 			expect(options.env?.AWS_PROFILE).toBeUndefined();
 		}
+	});
+
+	it("ignores newer models absent from the installed Pi catalog", async () => {
+		const pi = createMockPi();
+		pi.exec = vi.fn(async (_cmd: string, args?: string[], _opts?: unknown) => ({
+			code: 0,
+			stdout: JSON.stringify(
+				args?.includes("list-inference-profiles")
+					? inferenceProfiles
+					: foundationModels,
+			),
+			stderr: "",
+		}));
+		const ctx = createBedrockCtx();
+
+		bedrockRefresh(pi as unknown as ExtensionApiArg);
+		await pi._commands[0]?.handler("--apply", ctx);
+
+		expect(fs.readFileSync(settingsPath, "utf-8")).toContain(
+			"us.anthropic.claude-opus-5",
+		);
+		expect(fs.readFileSync(settingsPath, "utf-8")).not.toContain(
+			"us.anthropic.claude-opus-6",
+		);
 	});
 
 	it("updates only refresh inventory and preserves unrelated settings", async () => {
@@ -265,9 +294,9 @@ describe("bedrock-refresh extension", () => {
 		expect(settings).toEqual({
 			bedrockRefresh: {
 				models: [
-					"us.anthropic.claude-opus-4-8",
 					"us.anthropic.claude-fable-5",
-					"us.anthropic.claude-sonnet-4-6",
+					"us.anthropic.claude-opus-5",
+					"us.anthropic.claude-sonnet-5",
 				],
 				preserved: "nested",
 			},

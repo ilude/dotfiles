@@ -18,8 +18,14 @@ const metricsRoot = fs.mkdtempSync(
 process.env.PI_METRICS_DIR = metricsRoot;
 
 const { registerTaskTools } = await import("../extensions/tasks.ts");
-const { createTask, getTask, listTasks, resolveTaskWorkspace, transitionTask } =
-	await import("../lib/task-registry.ts");
+const {
+	createTask,
+	getTask,
+	listTasks,
+	pruneTaskRegistry,
+	resolveTaskWorkspace,
+	transitionTask,
+} = await import("../lib/task-registry.ts");
 
 let tmpRoot: string;
 let prevOperatorDir: string | undefined;
@@ -320,7 +326,7 @@ describe("task tools", () => {
 		expect(fullVisible.record).toHaveProperty("createdAt");
 	});
 
-	it("lists only active workspace tasks unless all is requested", async () => {
+	it("lists only active scoped workspace tasks unless all is requested", async () => {
 		const pi = createMockPi();
 		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);
 		const workspace = resolveTaskWorkspace(tmpRoot);
@@ -336,6 +342,10 @@ describe("task tools", () => {
 			state: "running",
 		});
 		transitionTask(completed.id, "completed");
+		const unscoped = createTask({
+			origin: "other",
+			summary: "unscoped task",
+		});
 		const foreign = createTask({
 			origin: "other",
 			summary: "foreign task",
@@ -364,7 +374,7 @@ describe("task tools", () => {
 		);
 		expect(
 			new Set(all.details.records.map((record: { id: string }) => record.id)),
-		).toEqual(new Set([active.id, completed.id, foreign.id]));
+		).toEqual(new Set([active.id, completed.id, unscoped.id, foreign.id]));
 	});
 
 	it("rejects invalid completed-to-skipped updates without patching fields", async () => {
@@ -507,7 +517,7 @@ describe("task tools", () => {
 		expect(getTask(failed.id)?.errorReason).toBeUndefined();
 	});
 
-	it("reads legacy todos from an override while preserving the target workspace", async () => {
+	it("imports legacy todos from an override while preserving the target workspace", async () => {
 		const sourceRoot = fs.mkdtempSync(
 			path.join(os.tmpdir(), "pi-legacy-source-"),
 		);
@@ -529,13 +539,11 @@ describe("task tools", () => {
 		const previous = process.env.PI_LEGACY_TODO_SOURCE_DIR;
 		process.env.PI_LEGACY_TODO_SOURCE_DIR = sourceRoot;
 		try {
-			const pi = createMockPi();
 			const mod = await import("../extensions/tasks.ts");
-			mod.default(pi as Parameters<typeof mod.default>[0]);
-			await pi
-				._getHook("session_start")[0]
-				?.handler({}, createMockCtx({ cwd: tmpRoot }));
-			const records = listTasks();
+			const records = mod.importLegacyTodos(
+				tmpRoot,
+				process.env.PI_LEGACY_TODO_SOURCE_DIR,
+			);
 			expect(records).toHaveLength(1);
 			expect(records[0].metadata?.legacyTodoId).toBe("override-legacy");
 			expect(records[0].workspace).toBe(resolveTaskWorkspace(tmpRoot));
@@ -579,6 +587,10 @@ describe("task tools", () => {
 		expect(first?.state).toBe("completed");
 		expect(second?.notes).toBe("keep this");
 		expect(second?.blockedBy).toEqual([first?.id]);
+
+		pruneTaskRegistry();
+		expect(listTasks()).toHaveLength(0);
+		expect(importLegacyTodos(tmpRoot)).toHaveLength(0);
 	});
 
 	it("publishes graph-aware batches and rejects malformed bounds", async () => {

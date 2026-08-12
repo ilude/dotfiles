@@ -594,15 +594,134 @@ export function launchBranch(plan: BranchLaunchPlan): {
 	return { launched: true };
 }
 
+export function isHerdrManagedEnvironment(
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
+	return env.HERDR_ENV === "1";
+}
+
+function requiredHerdrEnvironment(
+	name: "HERDR_WORKSPACE_ID",
+	env: NodeJS.ProcessEnv = process.env,
+): string {
+	const value = env[name]?.trim();
+	if (!value) throw new Error(`Herdr launch requires ${name}.`);
+	return value;
+}
+
+function herdrAgentName(paneId: string): string {
+	const suffix = paneId
+		.toLowerCase()
+		.replace(/[^a-z0-9_-]+/g, "-")
+		.replace(/^-+|-+$/g, "");
+	return `pi-${suffix || "agent"}`.slice(0, 32);
+}
+
+async function runHerdrCommand(
+	pi: ExtensionAPI,
+	args: string[],
+	cwd: string,
+	signal: AbortSignal | undefined,
+	timeout: number,
+): Promise<string> {
+	const executable = process.env.HERDR_BIN_PATH?.trim() || "herdr";
+	const result = await pi.exec(executable, args, { cwd, signal, timeout });
+	if (signal?.aborted || result.killed) throw new Error("Herdr launch cancelled.");
+	if (result.code !== 0) {
+		const detail = (result.stderr || result.stdout).trim();
+		throw new Error(
+			detail || `Herdr command failed with exit code ${result.code}.`,
+		);
+	}
+	return result.stdout;
+}
+
+interface HerdrTabCreateResponse {
+	result?: {
+		root_pane?: { pane_id?: string };
+		tab?: { tab_id?: string };
+	};
+}
+
+async function createHerdrTab(
+	pi: ExtensionAPI,
+	input: {
+		cwd: string;
+		title: string;
+		signal?: AbortSignal;
+	},
+): Promise<{ paneId: string; tabId: string }> {
+	const workspaceId = requiredHerdrEnvironment("HERDR_WORKSPACE_ID");
+	const cwd =
+		process.platform === "win32" ? msysPathToWindows(input.cwd) : input.cwd;
+	const stdout = await runHerdrCommand(
+		pi,
+		[
+			"tab",
+			"create",
+			"--workspace",
+			workspaceId,
+			"--cwd",
+			cwd,
+			"--label",
+			input.title,
+			"--focus",
+		],
+		cwd,
+		input.signal,
+		15_000,
+	);
+	const json = extractJsonObject(stdout);
+	if (!json) throw new Error("Herdr tab create returned invalid JSON.");
+	const response = JSON.parse(json) as HerdrTabCreateResponse;
+	const paneId = response.result?.root_pane?.pane_id;
+	const tabId = response.result?.tab?.tab_id;
+	if (!paneId || !tabId)
+		throw new Error("Herdr tab create did not return tab and pane IDs.");
+	return { paneId, tabId };
+}
+
+async function createHerdrPiTab(
+	pi: ExtensionAPI,
+	input: {
+		cwd: string;
+		title: string;
+		sessionFile?: string;
+		signal?: AbortSignal;
+	},
+): Promise<void> {
+	const created = await createHerdrTab(pi, input);
+	const args = [
+		"agent",
+		"start",
+		herdrAgentName(created.paneId),
+		"--kind",
+		"pi",
+		"--pane",
+		created.paneId,
+	];
+	if (input.sessionFile)
+		args.push("--", ...buildPiResumeArgs(input.sessionFile));
+	const cwd =
+		process.platform === "win32" ? msysPathToWindows(input.cwd) : input.cwd;
+	await runHerdrCommand(pi, args, cwd, input.signal, 45_000);
+}
+
 async function executeNewInstanceCommand(
+	pi: ExtensionAPI,
 	args: string,
-	ctx: Pick<WorkflowContext, "cwd" | "ui">,
+	ctx: Pick<WorkflowContext, "cwd" | "ui"> & { signal?: AbortSignal },
 ) {
-	const title = args.trim() || defaultBranchTitle(ctx.cwd ?? process.cwd());
-	const plan = buildNewInstanceLaunchPlan({
-		cwd: ctx.cwd ?? process.cwd(),
-		title,
-	});
+	const cwd = ctx.cwd ?? process.cwd();
+	const title = args.trim() || defaultBranchTitle(cwd);
+	if (isHerdrManagedEnvironment()) {
+		await createHerdrPiTab(pi, { cwd, title, signal: ctx.signal });
+		return ctx.ui.notify(
+			`Opened new Pi instance in a Herdr tab: ${title}`,
+			"info",
+		);
+	}
+	const plan = buildNewInstanceLaunchPlan({ cwd, title });
 	const launched = launchBranch(plan);
 	if (launched.launched) {
 		return ctx.ui.notify(
@@ -620,14 +739,17 @@ async function executeNewInstanceCommand(
 }
 
 async function executeNewTerminalCommand(
+	pi: ExtensionAPI,
 	args: string,
-	ctx: Pick<WorkflowContext, "cwd" | "ui">,
+	ctx: Pick<WorkflowContext, "cwd" | "ui"> & { signal?: AbortSignal },
 ) {
-	const title = args.trim() || defaultBranchTitle(ctx.cwd ?? process.cwd());
-	const plan = buildNewTerminalLaunchPlan({
-		cwd: ctx.cwd ?? process.cwd(),
-		title,
-	});
+	const cwd = ctx.cwd ?? process.cwd();
+	const title = args.trim() || defaultBranchTitle(cwd);
+	if (isHerdrManagedEnvironment()) {
+		await createHerdrTab(pi, { cwd, title, signal: ctx.signal });
+		return ctx.ui.notify(`Opened new Herdr tab in this cwd: ${title}`, "info");
+	}
+	const plan = buildNewTerminalLaunchPlan({ cwd, title });
 	const launched = launchBranch(plan);
 	if (launched.launched) {
 		return ctx.ui.notify(`Opened new terminal in this cwd: ${title}`, "info");
@@ -641,7 +763,11 @@ async function executeNewTerminalCommand(
 	);
 }
 
-async function executeBranchCommand(args: string, ctx: WorkflowContext) {
+async function executeBranchCommand(
+	pi: ExtensionAPI,
+	args: string,
+	ctx: WorkflowContext,
+) {
 	const sessionManager = ctx.sessionManager;
 	const leafId = sessionManager?.getLeafId?.();
 	if (!sessionManager?.createBranchedSession || !leafId) {
@@ -657,9 +783,22 @@ async function executeBranchCommand(args: string, ctx: WorkflowContext) {
 			"error",
 		);
 	}
-	const title = args.trim() || defaultBranchTitle(ctx.cwd ?? process.cwd());
+	const cwd = ctx.cwd ?? process.cwd();
+	const title = args.trim() || defaultBranchTitle(cwd);
+	if (isHerdrManagedEnvironment()) {
+		await createHerdrPiTab(pi, {
+			cwd,
+			title,
+			sessionFile: branchSessionFile,
+			signal: ctx.signal,
+		});
+		return ctx.ui.notify(
+			`Opened branched Pi session in a Herdr tab: ${title}`,
+			"info",
+		);
+	}
 	const plan = buildBranchLaunchPlan({
-		cwd: ctx.cwd ?? process.cwd(),
+		cwd,
 		title,
 		sessionFile: branchSessionFile,
 	});
@@ -2283,7 +2422,7 @@ export default function (pi: ExtensionAPI) {
 			"Open a branched copy of this Pi session in a new terminal tab",
 		handler: async (args, ctx) => {
 			try {
-				await executeBranchCommand(args, ctx);
+				await executeBranchCommand(pi, args, ctx);
 			} catch (err) {
 				ctx.ui.notify(
 					err instanceof Error ? err.message : String(err),
@@ -2297,7 +2436,7 @@ export default function (pi: ExtensionAPI) {
 		description: "Open a new Pi instance in this cwd in a new terminal tab",
 		handler: async (args, ctx) => {
 			try {
-				await executeNewInstanceCommand(args, ctx);
+				await executeNewInstanceCommand(pi, args, ctx);
 			} catch (err) {
 				ctx.ui.notify(
 					err instanceof Error ? err.message : String(err),
@@ -2311,7 +2450,7 @@ export default function (pi: ExtensionAPI) {
 		description: "Open a plain shell in this cwd in a new terminal",
 		handler: async (args, ctx) => {
 			try {
-				await executeNewTerminalCommand(args, ctx);
+				await executeNewTerminalCommand(pi, args, ctx);
 			} catch (err) {
 				ctx.ui.notify(
 					err instanceof Error ? err.message : String(err),
@@ -2325,7 +2464,7 @@ export default function (pi: ExtensionAPI) {
 		description: "Open a new Pi instance in this cwd",
 		handler: async (ctx) => {
 			try {
-				await executeNewInstanceCommand("", ctx);
+				await executeNewInstanceCommand(pi, "", ctx);
 			} catch (err) {
 				ctx.ui.notify(
 					err instanceof Error ? err.message : String(err),

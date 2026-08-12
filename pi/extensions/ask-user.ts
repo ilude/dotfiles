@@ -52,74 +52,105 @@ export default function (pi: ExtensionAPI) {
       if (!ctx.hasUI) {
         return formatToolError("(no UI available -- cannot prompt user)");
       }
+      if (
+        (mode === "select" || mode === "multi_select") &&
+        (!params.options || params.options.length === 0)
+      ) {
+        return formatToolError(`Error: "${mode}" mode requires a non-empty options array.`);
+      }
+
+      const options = params.options ?? [];
+      const reportsHerdrState =
+        process.env.HERDR_ENV === "1" && Boolean(process.env.HERDR_PANE_ID);
+      if (reportsHerdrState) {
+        pi.events.emit("herdr:blocked", {
+          active: true,
+          label: params.question,
+        });
+      }
 
       let answer: string | boolean | undefined;
-
-      switch (mode) {
-        case "confirm":
-          emitTerminalBell();
-          answer = await ctx.ui.confirm("Question", params.question);
-          break;
-
-        case "select":
-          if (!params.options || params.options.length === 0) {
-            return formatToolError('Error: "select" mode requires a non-empty options array.');
-          }
-          emitTerminalBell();
-          answer = await ctx.ui.select(params.question, [...params.options, "Other (custom answer)"]);
-          if (answer === "Other (custom answer)") {
+      try {
+        switch (mode) {
+          case "confirm":
             emitTerminalBell();
-            answer = await ctx.ui.input(`${params.question}\nOther:`, params.placeholder);
-          }
-          break;
+            answer = await ctx.ui.confirm("Question", params.question);
+            break;
 
-        case "multi_select": {
-          if (!params.options || params.options.length === 0) {
-            return formatToolError('Error: "multi_select" mode requires a non-empty options array.');
-          }
-          const selected: string[] = [];
-          while (true) {
-            const remaining = params.options.filter((option) => !selected.includes(option));
-            const choices = [
-              ...remaining.map((option) => `+ ${option}`),
+          case "select":
+            emitTerminalBell();
+            answer = await ctx.ui.select(params.question, [
+              ...options,
               "Other (custom answer)",
-              "Done",
-            ];
-            const suffix = selected.length ? `\nSelected: ${selected.join(", ")}` : "";
-            emitTerminalBell();
-            const choice = await ctx.ui.select(`${params.question}${suffix}`, choices);
-            if (choice === undefined) {
-              answer = undefined;
-              break;
-            }
-            if (choice === "Done") {
-              answer = selected.join("\n");
-              break;
-            }
-            if (choice === "Other (custom answer)") {
+            ]);
+            if (answer === "Other (custom answer)") {
               emitTerminalBell();
-              const custom = await ctx.ui.input("Other:", params.placeholder);
-              if (custom) selected.push(custom);
-              continue;
+              answer = await ctx.ui.input(
+                `${params.question}\nOther:`,
+                params.placeholder,
+              );
             }
-            selected.push(choice.replace(/^\+ /, ""));
-            if (selected.length === params.options.length) {
+            break;
+
+          case "multi_select": {
+            const selected: string[] = [];
+            while (true) {
+              const remaining = options.filter(
+                (option) => !selected.includes(option),
+              );
+              const choices = [
+                ...remaining.map((option) => `+ ${option}`),
+                "Other (custom answer)",
+                "Done",
+              ];
+              const suffix = selected.length
+                ? `\nSelected: ${selected.join(", ")}`
+                : "";
               emitTerminalBell();
-              const addMore = await ctx.ui.confirm("Question", "All listed options selected. Add a custom answer?");
-              if (!addMore) {
+              const choice = await ctx.ui.select(
+                `${params.question}${suffix}`,
+                choices,
+              );
+              if (choice === undefined) {
+                answer = undefined;
+                break;
+              }
+              if (choice === "Done") {
                 answer = selected.join("\n");
                 break;
               }
+              if (choice === "Other (custom answer)") {
+                emitTerminalBell();
+                const custom = await ctx.ui.input("Other:", params.placeholder);
+                if (custom) selected.push(custom);
+                continue;
+              }
+              selected.push(choice.replace(/^\+ /, ""));
+              if (selected.length === options.length) {
+                emitTerminalBell();
+                const addMore = await ctx.ui.confirm(
+                  "Question",
+                  "All listed options selected. Add a custom answer?",
+                );
+                if (!addMore) {
+                  answer = selected.join("\n");
+                  break;
+                }
+              }
             }
+            break;
           }
-          break;
-        }
 
-        case "text":
-        default:
-          emitTerminalBell();
-          answer = await ctx.ui.input(params.question, params.placeholder);
-          break;
+          case "text":
+          default:
+            emitTerminalBell();
+            answer = await ctx.ui.input(params.question, params.placeholder);
+            break;
+        }
+      } finally {
+        if (reportsHerdrState) {
+          pi.events.emit("herdr:blocked", { active: false });
+        }
       }
 
       if (answer === undefined) {

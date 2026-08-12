@@ -1,7 +1,7 @@
 /**
  * Tests for ask-user extension — uses light mocks for UI interaction.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPi, createMockCtx, createMockTheme } from "./helpers/mock-pi.js";
 
 // Minimal mocks — no heavy child_process or os mocking needed
@@ -9,9 +9,15 @@ describe("ask-user extension", () => {
   let mockPi: ReturnType<typeof createMockPi>;
 
   beforeEach(async () => {
+    vi.stubEnv("HERDR_ENV", "");
+    vi.stubEnv("HERDR_PANE_ID", "");
     mockPi = createMockPi();
     const mod = await import("../extensions/ask-user.ts");
     mod.default(mockPi as any);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("uses a string enum for mode", () => {
@@ -56,6 +62,42 @@ describe("ask-user extension", () => {
       const result = await tool.execute("id", { question: "Test?" }, undefined, undefined, ctx);
       expect(ctx.ui.input).toHaveBeenCalled();
       expect(result.content[0].text).toBe("default mode");
+    });
+
+    it("reports blocked state only while a Herdr prompt is open", async () => {
+      vi.stubEnv("HERDR_ENV", "1");
+      vi.stubEnv("HERDR_PANE_ID", "w1:p1");
+      const tool = mockPi._getTool("ask_user")!;
+      const ctx = createMockCtx();
+      let resolveInput: ((answer: string) => void) | undefined;
+      ctx.ui.input = vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveInput = resolve;
+          }),
+      );
+
+      const execution = tool.execute(
+        "id",
+        { question: "Choose a value" },
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      expect(mockPi.events.emit).toHaveBeenCalledWith("herdr:blocked", {
+        active: true,
+        label: "Choose a value",
+      });
+      resolveInput?.("selected");
+      await execution;
+      expect(mockPi.events.emit.mock.calls).toEqual([
+        [
+          "herdr:blocked",
+          { active: true, label: "Choose a value" },
+        ],
+        ["herdr:blocked", { active: false }],
+      ]);
     });
   });
 

@@ -179,11 +179,17 @@ describe("shouldHideModel", () => {
 				id: "us.anthropic.claude-sonnet-4-6",
 				name: "Claude Sonnet 4.6",
 			}),
+		).toBe(true);
+		expect(
+			shouldHideModel("amazon-bedrock", {
+				id: "us.anthropic.claude-opus-5",
+				name: "Claude Opus 5",
+			}),
 		).toBe(false);
 		expect(
 			shouldHideModel("amazon-bedrock", {
-				id: "us.anthropic.claude-opus-4-8",
-				name: "Claude Opus 4.8",
+				id: "us.anthropic.claude-sonnet-5",
+				name: "Claude Sonnet 5",
 			}),
 		).toBe(false);
 		expect(
@@ -204,20 +210,20 @@ describe("shouldHideModel", () => {
 	it("hides non-US Amazon Bedrock regional models", () => {
 		expect(
 			shouldHideModel("amazon-bedrock", {
-				id: "au.anthropic.claude-sonnet-4-6",
-				name: "Claude Sonnet 4.6",
+				id: "au.anthropic.claude-sonnet-5",
+				name: "Claude Sonnet 5",
 			}),
 		).toBe(true);
 		expect(
 			shouldHideModel("amazon-bedrock", {
-				id: "eu.anthropic.claude-sonnet-4-6",
-				name: "Claude Sonnet 4.6",
+				id: "eu.anthropic.claude-sonnet-5",
+				name: "Claude Sonnet 5",
 			}),
 		).toBe(true);
 		expect(
 			shouldHideModel("amazon-bedrock", {
-				id: "us.anthropic.claude-sonnet-4-6",
-				name: "Claude Sonnet 4.6",
+				id: "us.anthropic.claude-sonnet-5",
+				name: "Claude Sonnet 5",
 			}),
 		).toBe(false);
 		expect(

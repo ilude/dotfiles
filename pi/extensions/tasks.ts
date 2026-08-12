@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -5,6 +6,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
+	getOperatorStateDir,
 	isAllowedTransition,
 	TERMINAL_TASK_STATES,
 } from "../lib/operator-state.js";
@@ -18,6 +20,7 @@ import {
 	listTasks,
 	normalizeTaskScope,
 	partitionReadyTasks,
+	pruneTaskRegistry,
 	resolveTaskWorkspace,
 	retryTask,
 	safeTransitionTask,
@@ -325,19 +328,37 @@ function isLegacyTodoItem(value: unknown): value is LegacyTodoItem {
 	);
 }
 
+function legacyTodoImportMarker(workspace: string): string {
+	const key = crypto.createHash("sha256").update(workspace).digest("hex");
+	return path.join(getOperatorStateDir(), "legacy-todo-imports", `${key}.json`);
+}
+
+function markLegacyTodosImported(workspace: string, source: string): void {
+	const marker = legacyTodoImportMarker(workspace);
+	fs.mkdirSync(path.dirname(marker), { recursive: true });
+	const tmp = `${marker}.${process.pid}.${crypto.randomUUID()}.tmp`;
+	fs.writeFileSync(
+		tmp,
+		`${JSON.stringify({ schemaVersion: 1, workspace, source, importedAt: new Date().toISOString() }, null, 2)}\n`,
+		"utf-8",
+	);
+	fs.renameSync(tmp, marker);
+}
+
 export function importLegacyTodos(
 	cwd: string,
 	sourceDir = cwd,
 ): TaskRecordV1[] {
 	const filePath = path.join(sourceDir, ".pi", "todo.json");
 	if (!fs.existsSync(filePath)) return [];
+	const workspace = resolveTaskWorkspace(cwd);
+	if (fs.existsSync(legacyTodoImportMarker(workspace))) return [];
 	const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
 		items?: unknown[];
 	};
 	const items = Array.isArray(parsed.items)
 		? parsed.items.filter(isLegacyTodoItem)
 		: [];
-	const workspace = resolveTaskWorkspace(cwd);
 	const existing = listTasks({ includeTombstones: true });
 	const byLegacyId = new Map<string, TaskRecordV1>();
 	for (const record of existing) {
@@ -379,7 +400,9 @@ export function importLegacyTodos(
 			transitionTask(record.id, "completed");
 		}
 	}
-	return imported.map((record) => getTask(record.id) ?? record);
+	const result = imported.map((record) => getTask(record.id) ?? record);
+	markLegacyTodosImported(workspace, filePath);
+	return result;
 }
 
 function validatedScope(value: unknown): string[] | undefined {
@@ -675,9 +698,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				const scopedRecords =
 					input.all === true
 						? allRecords
-						: allRecords.filter(
-								(record) => !record.workspace || record.workspace === workspace,
-							);
+						: allRecords.filter((record) => record.workspace === workspace);
 				const selected =
 					action === "ready"
 						? partitionReadyTasks(scopedRecords).ready
@@ -829,10 +850,15 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 			const parsed = parseTasksArgs(args);
 			const allTasks = listTasks({ includeTombstones: true });
 			const scopedTasks = allTasks.filter(
-				(task) =>
-					!task.workspace || task.workspace === resolveTaskWorkspace(ctx.cwd),
+				(task) => task.workspace === resolveTaskWorkspace(ctx.cwd),
 			);
-			const all = parsed.all ? allTasks : scopedTasks;
+			const selectedTasks = parsed.all ? allTasks : scopedTasks;
+			const listedTasks = parsed.all
+				? selectedTasks
+				: selectedTasks.filter(
+						(task) =>
+							!task.deletedAt && !TERMINAL_TASK_STATES.has(task.state),
+					);
 			if (parsed.verb === "help") return ctx.ui.notify(helpText(), "info");
 			if (parsed.verb === "settings") {
 				if (parsed.mode && isTaskRenderMode(parsed.mode))
@@ -848,9 +874,12 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 				return;
 			}
 			if (parsed.verb === "list")
-				return ctx.ui.notify(formatTaskList(all, getTaskRenderMode()), "info");
+				return ctx.ui.notify(
+					formatTaskList(listedTasks, getTaskRenderMode()),
+					"info",
+				);
 			if (parsed.verb === "ready") {
-				const ready = partitionReadyTasks(all).ready;
+				const ready = partitionReadyTasks(selectedTasks).ready;
 				return ctx.ui.notify(
 					ready.length > 0
 						? formatTaskList(ready, getTaskRenderMode())
@@ -859,7 +888,7 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 				);
 			}
 			if (parsed.verb === "blocked")
-				return ctx.ui.notify(formatBlockedView(all), "info");
+				return ctx.ui.notify(formatBlockedView(selectedTasks), "info");
 			if (parsed.verb === "create") {
 				try {
 					const task = createTask({
@@ -949,6 +978,14 @@ export default function (pi: ExtensionAPI) {
 		} catch (error) {
 			ctx.ui.notify(
 				`Legacy task migration failed: ${error instanceof Error ? error.message : String(error)}`,
+				"warning",
+			);
+		}
+		try {
+			pruneTaskRegistry();
+		} catch (error) {
+			ctx.ui.notify(
+				`Task cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
 				"warning",
 			);
 		}

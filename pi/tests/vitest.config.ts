@@ -24,6 +24,10 @@ export default defineConfig({
 	root: agentDir,
 	resolve: {
 		alias: {
+			"@earendil-works/pi-ai/providers/all": path.join(
+				piNodeModules,
+				"@earendil-works/pi-ai/dist/providers/all.js",
+			),
 			"@earendil-works/pi-coding-agent": path.join(
 				piPackageRoot,
 				"dist/index.js",

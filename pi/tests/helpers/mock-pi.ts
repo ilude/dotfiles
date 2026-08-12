@@ -29,6 +29,10 @@ export function createMockPi() {
 	let activeToolNames: string[] = [];
 
 	const mockPi = {
+		events: {
+			emit: vi.fn(),
+			on: vi.fn(() => () => {}),
+		},
 		registerTool: vi.fn((toolDef: any) => {
 			const existingIndex = tools.findIndex(
 				(tool) => tool.name === toolDef.name,

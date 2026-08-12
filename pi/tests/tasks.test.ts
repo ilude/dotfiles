@@ -128,16 +128,23 @@ describe("/tasks command", () => {
 	});
 
 	it("groups by urgency in the default list view", async () => {
-		const { createTask, transitionTask } = await import(
+		const { createTask, resolveTaskWorkspace, transitionTask } = await import(
 			"../lib/task-registry.ts"
 		);
+		const workspace = resolveTaskWorkspace("/test/dir");
 		const blocked = createTask({
 			origin: "subagent",
 			summary: "needs creds",
 			state: "running",
+			workspace,
 		});
 		transitionTask(blocked.id, "blocked", { blockReason: "no creds" });
-		createTask({ origin: "subagent", summary: "running 1", state: "running" });
+		createTask({
+			origin: "subagent",
+			summary: "running 1",
+			state: "running",
+			workspace,
+		});
 
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
@@ -265,13 +272,25 @@ describe("/tasks command", () => {
 	});
 
 	it("lists ready tasks through the registered command", async () => {
-		const { createTask } = await import("../lib/task-registry.ts");
-		const blocker = createTask({ origin: "subagent", summary: "blocker" });
-		const ready = createTask({ origin: "subagent", summary: "ready work" });
+		const { createTask, resolveTaskWorkspace } = await import(
+			"../lib/task-registry.ts"
+		);
+		const workspace = resolveTaskWorkspace("/test/dir");
+		const blocker = createTask({
+			origin: "subagent",
+			summary: "blocker",
+			workspace,
+		});
+		const ready = createTask({
+			origin: "subagent",
+			summary: "ready work",
+			workspace,
+		});
 		createTask({
 			origin: "subagent",
 			summary: "waiting work",
 			blockedBy: [blocker.id],
+			workspace,
 		});
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
@@ -283,15 +302,20 @@ describe("/tasks command", () => {
 	});
 
 	it("lists blocked tasks with actionable blocker context", async () => {
-		const { createTask } = await import("../lib/task-registry.ts");
+		const { createTask, resolveTaskWorkspace } = await import(
+			"../lib/task-registry.ts"
+		);
+		const workspace = resolveTaskWorkspace("/test/dir");
 		const blocker = createTask({
 			origin: "subagent",
 			summary: "blocker token=abc",
+			workspace,
 		});
 		const waiting = createTask({
 			origin: "subagent",
 			summary: "waiting work",
 			blockedBy: [blocker.id],
+			workspace,
 		});
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
@@ -342,7 +366,7 @@ describe("/tasks command", () => {
 		expect(after).toEqual(before);
 	});
 
-	it("lists only current-workspace tasks unless --all is provided", async () => {
+	it("lists only active current-workspace tasks unless --all is provided", async () => {
 		const { createTask, resolveTaskWorkspace } = await import(
 			"../lib/task-registry.ts"
 		);
@@ -355,7 +379,13 @@ describe("/tasks command", () => {
 			summary: "current workspace task",
 			workspace: resolveTaskWorkspace(currentDir),
 		});
-		const global = createTask({ origin: "other", summary: "global task" });
+		const completed = createTask({
+			origin: "other",
+			summary: "current completed task",
+			state: "completed",
+			workspace: resolveTaskWorkspace(currentDir),
+		});
+		const unscoped = createTask({ origin: "other", summary: "unscoped task" });
 		const foreign = createTask({
 			origin: "other",
 			summary: "foreign workspace task",
@@ -368,12 +398,16 @@ describe("/tasks command", () => {
 		const scoped = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
 			.calls[0][0] as string;
 		expect(scoped).toContain(current.summary);
-		expect(scoped).toContain(global.summary);
+		expect(scoped).not.toContain(completed.summary);
+		expect(scoped).not.toContain(unscoped.summary);
 		expect(scoped).not.toContain(foreign.summary);
 
+		await cmd.handler("settings mode full", ctx);
 		await cmd.handler("list --all", ctx);
 		const globalList = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
-			.calls[1][0] as string;
+			.calls[2][0] as string;
+		expect(globalList).toContain(completed.summary);
+		expect(globalList).toContain(unscoped.summary);
 		expect(globalList).toContain(foreign.summary);
 	});
 
@@ -408,7 +442,7 @@ describe("/tasks command", () => {
 		await cmd.handler("clear completed", ctx);
 
 		expect(getTask(current.id)?.deletedAt).toBeDefined();
-		expect(getTask(global.id)?.deletedAt).toBeDefined();
+		expect(getTask(global.id)?.deletedAt).toBeUndefined();
 		expect(getTask(foreign.id)?.deletedAt).toBeUndefined();
 	});
 

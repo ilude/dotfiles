@@ -10,6 +10,7 @@ import {
 	isTaskReady,
 	listTasks,
 	partitionReadyTasks,
+	pruneTaskRegistry,
 	TaskRegistryError,
 	tasksByIdSnapshot,
 	tombstoneTask,
@@ -199,6 +200,59 @@ describe("createTaskBatch validation and recovery", () => {
 		if (!dependentId || !blockerId)
 			throw new Error("persisted ids should exist");
 		expect(getTask(dependentId)?.blockedBy).toEqual([blockerId]);
+	});
+});
+
+describe("task registry pruning", () => {
+	it("removes retired records and completed graphs without breaking active dependencies", () => {
+		const activeRoot = createTask({ origin: "other", summary: "active root" });
+		const retired = createTask({
+			origin: "other",
+			summary: "retired child",
+			blockedBy: [activeRoot.id],
+		});
+		const retiredPath = path.join(tmpRoot, "tasks", `${retired.id}.json`);
+		const retiredRecord = JSON.parse(
+			fs.readFileSync(retiredPath, "utf-8"),
+		) as Record<string, unknown>;
+		fs.writeFileSync(
+			retiredPath,
+			`${JSON.stringify({ ...retiredRecord, agentName: "builder", prompt: "old execution" }, null, 2)}\n`,
+			"utf-8",
+		);
+		const completedBlocker = transitionTask(
+			createTask({ origin: "other", summary: "completed blocker", state: "running" })
+				.id,
+			"completed",
+		);
+		const pending = createTask({
+			origin: "other",
+			summary: "pending dependent",
+			blockedBy: [completedBlocker.id],
+		});
+		const standalone = createTask({
+			origin: "other",
+			summary: "standalone completed",
+			state: "completed",
+		});
+
+		const first = pruneTaskRegistry();
+
+		expect(first.removedIds).toEqual(
+			expect.arrayContaining([retired.id, standalone.id]),
+		);
+		expect(first.retiredRemoved).toBe(1);
+		expect(getTask(retired.id)).toBeNull();
+		expect(getTask(standalone.id)).toBeNull();
+		expect(getTask(completedBlocker.id)).not.toBeNull();
+		expect(getTask(activeRoot.id)?.blocks).toEqual([]);
+
+		transitionTask(pending.id, "running");
+		transitionTask(pending.id, "completed");
+		const second = pruneTaskRegistry();
+		expect(second.removedIds).toEqual(
+			expect.arrayContaining([completedBlocker.id, pending.id]),
+		);
 	});
 });
 

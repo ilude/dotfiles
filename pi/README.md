@@ -59,13 +59,13 @@ Bedrock credentials stay local and ignored in `~/.pi/agent/auth.json` (`pi/auth.
 
 This does not store AWS keys in the repo. The empty `key` keeps Pi 0.80.7 on profile-based AWS authentication instead of treating the ambient-auth marker as a Bedrock bearer token. The provider-scoped environment tells Pi to use the existing local AWS profile for Bedrock only, while normal shell AWS commands keep their own environment/profile behavior.
 
-Poll AWS Bedrock for newer Opus, Fable, and Sonnet model IDs from inside Pi:
+Poll AWS Bedrock for newer Fable, Opus, Sonnet, and Haiku model IDs from inside Pi:
 
 ```text
 /bedrock-refresh
 ```
 
-The command is read-only by default and reports current vs latest configured model lines. To update `pi/settings.json` `bedrockRefresh.models` to the latest matching `us.*` model IDs:
+The command is read-only by default and reports the newest model in each Claude family, including a newer major release. To update `pi/settings.json` `bedrockRefresh.models` to the latest matching `us.*` model IDs:
 
 ```text
 /bedrock-refresh --apply
@@ -83,39 +83,53 @@ env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE -u AWS_REGION -u AWS_DEFAULT_REGION \
   -p 'Reply with exactly: bedrock-ok'
 ```
 
-### Bedrock Mantle GPT-5.6
+### Automatic Bedrock routing
 
-`pi/extensions/bedrock-mantle.ts` registers a separate `bedrock-mantle`
-provider for the OpenAI GPT-5.6 Luna, Terra, and Sol models. These models use
-the Bedrock Mantle OpenAI Responses endpoint rather than Bedrock Converse.
-The extension delegates Responses serialization, streaming, and tool calls to
-Pi's maintained OpenAI Responses implementation.
+`pi/extensions/bedrock-mantle.ts` registers the `bedrock-mantle` provider as a
+curated Bedrock interface. At startup it reads the selected region's Mantle
+`/v1/models` catalog and exposes the newest supported Claude Fable, Opus,
+Sonnet, and Haiku models plus every tier of the newest supported GPT release.
+
+GPT models use Mantle's OpenAI Responses API. Claude models use Mantle's
+Anthropic Messages API when the selected Mantle region advertises them. When a
+Claude family is absent from Mantle, the same logical model ID routes through
+the corresponding `us.*` Bedrock Runtime inference profile instead. Routing is
+selected before a request starts; failed requests are not replayed through a
+different endpoint.
 
 Authentication reuses `AWS_BEARER_TOKEN_BEDROCK` when present. Otherwise the
 AWS-maintained `@aws/bedrock-token-generator` package creates a one-hour
 short-term bearer token from `BEDROCK_MANTLE_AWS_PROFILE`, `AWS_PROFILE`, or
 the normal AWS credential chain. The token stays in process memory and no
-long-term API key is stored. Region resolution prefers
-`BEDROCK_MANTLE_REGION`, then standard AWS region variables, and defaults to
-`us-east-2`.
+long-term API key is stored. `BEDROCK_MANTLE_REGION` controls Mantle independently
+from the Runtime `AWS_REGION` and defaults to `us-east-1`, where both current
+Claude and GPT families are available.
 
-The tracked `enabledModels` list exposes these model IDs in scoped `/model`
-selection:
+The tracked `enabledModels` patterns automatically include newly curated model
+IDs in scoped `/model` selection:
 
 ```text
-bedrock-mantle/openai.gpt-5.6-luna
-bedrock-mantle/openai.gpt-5.6-terra
-bedrock-mantle/openai.gpt-5.6-sol
+bedrock-mantle/anthropic.claude-fable-*
+bedrock-mantle/anthropic.claude-opus-*
+bedrock-mantle/anthropic.claude-sonnet-*
+bedrock-mantle/anthropic.claude-haiku-*
+bedrock-mantle/openai.gpt-*-sol
+bedrock-mantle/openai.gpt-*-terra
+bedrock-mantle/openai.gpt-*-luna
 ```
 
 Live validation with an existing AWS profile:
 
 ```bash
-AWS_PROFILE=default AWS_REGION=us-east-2 \
-  pi --no-extensions -e ~/.dotfiles/pi/extensions/bedrock-mantle.ts \
-  --provider bedrock-mantle --model openai.gpt-5.6-luna \
-  --thinking low --no-tools --no-skills --no-context-files --no-session \
+AWS_PROFILE=default \
+  pi --provider bedrock-mantle --model anthropic.claude-sonnet-5 \
+  --no-tools --no-skills --no-context-files --no-session \
   -p 'Reply with exactly: mantle-ok'
+
+BEDROCK_MANTLE_REGION=us-east-2 AWS_PROFILE=default AWS_REGION=us-east-2 \
+  pi --provider bedrock-mantle --model anthropic.claude-sonnet-5 \
+  --no-tools --no-skills --no-context-files --no-session \
+  -p 'Reply with exactly: runtime-ok'
 ```
 
 AWS protocol references:
@@ -543,7 +557,7 @@ Applies startup model-list cleanup for noisy provider catalogs.
 
 Behavior:
 - Hides date/version-suffixed and preview snapshot models for `openai-codex`, `github-copilot`, `opencode`, `opencode-go`, and `openrouter`.
-- Limits the built-in Amazon Bedrock provider to the configured `us.anthropic` Claude models; the separate `bedrock-mantle` provider exposes the tracked GPT-5.6 models.
+- Limits the built-in Amazon Bedrock provider to configured `us.anthropic` Claude models; the curated `bedrock-mantle` provider selects current Claude and GPT models and resolves their Mantle or Runtime transport.
 - Applies provider-specific blocklists (including internal/legacy model IDs) before `/model` selection.
 
 ### Worktree occupancy
@@ -608,7 +622,7 @@ Commands:
 Operator surface for the durable task registry.
 
 Commands:
-- `/tasks` -- urgency-grouped list (blocked > failed > running > pending > completed > cancelled), compact rows with short id + summary + relative time + retry count
+- `/tasks` -- active tasks assigned to the current repository workspace, urgency-grouped as blocked > failed > running > pending, with compact rows containing short id + summary + relative time + retry count. `/tasks list --all` includes unscoped, terminal, tombstoned, and foreign-workspace history.
 - `/tasks <id-prefix>` -- detail view (id, state, summary, scope, dependencies, notes, timestamps, retries, and legacy metadata when present). Prefix matching needs >=4 chars and rejects ambiguous matches
 - `/tasks cancel <id>` -- transitions `running`/`blocked`/`pending` -> `cancelled`; preserves the final summary
 - `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
@@ -616,11 +630,11 @@ Commands:
 Model-callable task surface:
 - The unified `task` tool owns durable todo and dependency state through `create`, `batch`, `update`, `remove`, `list`, `ready`, and `get`. Ordinary short workflows can remain prose; durable records are useful for requested todo lists, dependency graphs, and work that may span context compaction.
 - A graph-aware `batch` creates todo items with request-local keys and dependency keys. Use returned aliases for later actions.
-- Tasks default to the current repository workspace; `list` and `ready` accept `all: true` for a cross-repository view and return compact model-visible summaries. Use `get` for one complete record.
+- Tasks default to the current repository workspace. `list` excludes unscoped, terminal, and foreign-workspace records unless `all: true` requests a cross-repository view; tombstones remain excluded. `ready` applies the same workspace boundary and returns only ready pending tasks. Collections return compact model-visible summaries; use `get` for one complete record.
 - The parent agent selects ready work, marks it `running`, executes it through `subagent` or `bg_start`, and then records its terminal state. Task never starts, waits for, stops, or captures output from those processes.
 - Optional worktree-relative `scope` paths or globs describe task boundaries for coordination. `blockedBy` is the authority for dependency readiness.
 - Batch graph validation occurs before writes, but batch publication is not transactional. On `write_failed`, inspect the returned persisted IDs, clear each persisted task's `blockedBy` in reverse request order through `update`, then tombstone it with `remove`; do not assume automatic rollback or retry.
-- Legacy `.pi/todo.json` entries are imported idempotently into the durable registry at session startup. Existing task records with retired execution metadata remain readable but inert. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity.
+- Legacy `.pi/todo.json` entries are imported once per workspace. Startup cleanup removes imported legacy and retired execution-era records unless an active durable dependency still references them, plus terminal task graphs with no active dependents. Failed and other non-terminal durable records require an explicit update or removal. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity.
 
 Lifecycle (defined in `pi/lib/operator-state.ts`):
 ```

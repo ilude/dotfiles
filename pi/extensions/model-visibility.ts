@@ -33,9 +33,9 @@ const TARGET_PROVIDERS = [
 
 const ALLOW_EXACT_IDS = {
 	"amazon-bedrock": new Set([
-		"us.anthropic.claude-opus-4-8",
+		"us.anthropic.claude-opus-5",
 		"us.anthropic.claude-fable-5",
-		"us.anthropic.claude-sonnet-4-6",
+		"us.anthropic.claude-sonnet-5",
 	]),
 } as const;
 
