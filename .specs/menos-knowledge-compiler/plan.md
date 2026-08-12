@@ -5,7 +5,11 @@ review: review-2/synthesis.md
 completed:
 ---
 
-# Plan: menos knowledge compiler — personal long-term memory
+# Plan: menos knowledge compiler - personal long-term memory
+
+## Decision status
+
+DECIDED 2026-08-12: Retrieval repair is Milestone 0. Fix relevance, score calibration, latency, and missing titles/metadata before compiler waves begin. Snapshot comparisons against the current baseline are not acceptance evidence until retrieval discriminates. See `.specs/menos-knowledge-compiler/eval-baseline-pre.md` and `.specs/ai-tooling-consolidation/future-view.md`, Section 6.
 
 ## Context & Motivation
 
@@ -252,7 +256,8 @@ Honcho was evaluated during planning and is **not** being adopted as a second me
 
 | # | Task | Files | Type | Model | Agent | Depends On |
 |---|---|---|---|---|---|---|
-| T0.1 | Pre-capture eval harness + baseline | 3 | feature | sonnet | builder | — |
+| M0 | Retrieval repair | - | milestone | - | - | - |
+| T0.1 | Pre-capture eval harness + baseline | 3 | feature | sonnet | builder | M0 |
 | V0 | Validate eval harness | — | validation | sonnet | validator-heavy | T0.1 |
 | T1.1 | Per-content-type chunking + body-size cap | 3 | feature | sonnet | builder | V0 |
 | T1.2 | Session_log retention + purge extension | 1 | mechanical | haiku | builder-light | V0 |
@@ -291,6 +296,17 @@ Honcho was evaluated during planning and is **not** being adopted as a second me
 
 ## Execution Waves
 
+### Milestone 0: retrieval repair
+
+- Gate: Complete retrieval repair before any compiler wave begins; this milestone does not prescribe the retrieval design.
+- Acceptance criteria:
+  1. [ ] Architecture questions about menos itself return relevant menos documentation in top results.
+  2. [ ] Agentic-search scores discriminate and are not uniformly `1.0`.
+  3. [ ] Plain search latency is materially below the current 22s baseline.
+  4. [ ] Result titles and metadata are populated.
+
+---
+
 ### Wave 0 (baseline)
 
 **T0.1: Build snapshot-based eval harness and record pre-capture baseline** [sonnet] — builder
@@ -320,6 +336,7 @@ Honcho was evaluated during planning and is **not** being adopted as a second me
      - Verify: run `--capture` twice to different files, then `diff` them
      - Pass: zero diff (deterministic ordering, normalized snippets)
      - Fail: diff non-empty → check sort stability and snippet normalization
+     - Note: This byte-for-byte snapshot comparison validates stability only and is insufficient acceptance evidence until Milestone 0 passes.
   3. [ ] Compare mode works against the frozen baseline
      - Verify: `python scripts/eval_retrieval.py --compare .specs/menos-knowledge-compiler/eval-baseline-pre.md`
      - Pass: exits 0, prints per-query Jaccard@5, Jaccard@10, top-1 delta, Kendall tau; summary line `PASS: N/24 queries stable`
@@ -1019,6 +1036,7 @@ Honcho was evaluated during planning and is **not** being adopted as a second me
 ## Dependency Graph
 
 ```
+Milestone 0: M0 -> Wave 0
 Wave 0:    T0.1 → V0
 Wave 1:    T1.1, T1.2, T1.3, T1.4, T1.5, T1.6 (parallel) → V1    [blocked by V0]
 Wave 2:    T2.0 → T2.3 ; T2.1, T2.2, T2.4, T2.5 (parallel with T2.0) → V2   [blocked by V0]

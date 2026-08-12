@@ -1,9 +1,14 @@
 ---
 created: 2026-05-13
-status: draft
+status: planned
+role-decided: 2026-08-12
 ---
 
 # PRD: Hermes Deploy
+
+## Decided role (2026-08-12)
+
+Hermes is the homelab front door -- it owns inbound webhooks, external triggers, and always-on automation. Pi remains the interactive dev agent; onclave-comms carries agent-to-agent messages; Herdr remains a Pi terminal presentation/control layer. Hermes' Kanban/task board must be reconciled with the Pi task registry before Hermes-driven work touches Pi-managed tasks. See `.specs/ai-tooling-consolidation/future-view.md`, Section 6.
 
 ## Problem
 
@@ -140,6 +145,8 @@ We want a future-ready Hermes Agent deployment that can be installed, configured
 | Auxiliary models inherit expensive main model | Unexpected API spend | Explicit auxiliary model config and cost review |
 | Channel mismatch | Deploy solves wrong problem | Decide early whether this is agent-runtime-first or messaging-gateway-first |
 | Fast Hermes release cadence changes setup | Stale docs or broken commands | Pin tested version and record release notes/date during implementation |
+
+> Decision note: The Decided role (2026-08-12) section supersedes the agent-runtime-first versus messaging-gateway-first choice for Hermes.
 
 ## Open Questions
 
