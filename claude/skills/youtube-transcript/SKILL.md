@@ -36,7 +36,7 @@ All endpoints require RFC 9421 signed requests. Base URL from `API_BASE_URL` in 
 
 ## CLI Scripts
 
-Run from `api/` directory in the menos project:
+Run from `api/` directory in the Onclave project:
 
 ### fetch_video.py — Primary video access tool
 

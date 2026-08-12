@@ -27,7 +27,7 @@ Review a plan file for issues, ambiguities, questions, and unclear instructions.
   1. Check `./plan.md`; if present, select it and stop.
   2. Check `./.specs/**/plan.md` under the repository root `.specs/` only.
 - Repository root for detection is the current working directory when `/review` starts.
-- During auto-detection, exclude nested project trees/submodules (for example, `menos/.specs/**`) unless the user explicitly asks for cross-project search.
+- During auto-detection, exclude nested project trees/submodules (for example, `onclave/.specs/**`) unless the user explicitly asks for cross-project search.
 - If multiple candidates remain, sort paths lexicographically and ask the user to choose one path.
 - Do not broaden discovery scope unless the user explicitly requests it.
 - Prefer OpenCode tools (`Read`/`Glob`) over shell file discovery.

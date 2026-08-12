@@ -78,7 +78,7 @@ The following files and directories are automatically excluded via `.gitignore`:
 - Root `AGENTS.md` contains repository-specific rules for all coding agents.
 - `pi/AGENTS.md` is the canonical shared global instruction file.
 - `CLAUDE.md` links to `pi/AGENTS.md` so Claude Code receives the same global instructions.
-- Nested `.claude/CLAUDE.md` files still take precedence inside subprojects such as `menos/`.
+- Nested `.claude/CLAUDE.md` files still take precedence inside subprojects such as `onclave/`.
 
 ### Custom Commands
 

@@ -12,7 +12,7 @@ This repository supports multiple coding-agent clients. Keep shared behavior ali
 
 ## `/yt` locations
 
-- **Shared executable client**: `tools/menos-youtube/`
+- **Shared executable client**: `tools/onclave-youtube/`
 - **Pi**: `pi/prompts/yt.md` owns the Pi workflow and invokes the shared client without depending on Claude-owned paths.
 - **Claude/OpenCode/Copilot**: their prompt surfaces may share workflow instructions, but invoke the same client-neutral executable root.
 
