@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -15,22 +16,26 @@ import {
 	parseLizardCsv,
 } from "../lib/quality-gates/lizard.ts";
 import { recordEvent } from "../lib/metrics.js";
+import { getPiInvocation } from "../lib/pi-invocation.js";
 import {
 	loadQualityGatesPolicy,
 	type LanguageConfig,
 	type QualityGatesPolicy,
+	type RepairConfig,
 	type ValidatorConfig,
 } from "../lib/quality-gates/policy.ts";
 
-export type { LanguageConfig, QualityGatesPolicy, ValidatorConfig };
+export type { LanguageConfig, QualityGatesPolicy, RepairConfig, ValidatorConfig };
 
 const POLICY_PATH = fileURLToPath(
 	new URL("../quality-gates.json", import.meta.url),
 );
 const VALIDATOR_LOOKUP_TIMEOUT_MS = 2000;
 const VALIDATOR_RUN_TIMEOUT_MS = 10000;
+const REPAIR_CHILD_TIMEOUT_MS = 180000;
 const MAX_VALIDATOR_OUTPUT_CHARS = 8000;
 const MAX_QUALITY_MESSAGE_CHARS = 24000;
+export const QUALITY_AUTOFIX_ATTRIBUTE = "quality-autofix";
 const validatorAvailabilityCache = new Map<string, boolean>();
 
 function loadValidators(): QualityGatesPolicy {
@@ -395,6 +400,7 @@ export interface ValidationIssue {
 export type ValidationOutcomeKind =
 	| "passed"
 	| "failed"
+	| "autofixed"
 	| "unavailable"
 	| "skipped";
 
@@ -415,6 +421,7 @@ interface ValidationRunOptions {
 	lizardThresholds?: LizardThresholds;
 	executedProjectValidators?: Set<string>;
 	automatic?: boolean;
+	autofix?: boolean;
 	onOutcome?: (outcome: ValidationOutcome) => void;
 }
 
@@ -513,20 +520,47 @@ export async function runAvailableValidators(
 			absoluteFilePath,
 			projectRoot,
 		);
-		const result = await pi.exec(command[0], command.slice(1), {
-			cwd: projectRoot,
-			timeout: validator.timeout
-				? validator.timeout * 1000
-				: VALIDATOR_RUN_TIMEOUT_MS,
-		});
-		if (result.code !== 0 || (validator.failOnStdout && result.stdout.trim())) {
+		const timeoutMs = validator.timeout
+			? validator.timeout * 1000
+			: VALIDATOR_RUN_TIMEOUT_MS;
+		const runCheck = async (): Promise<string | undefined> => {
+			const result = await pi.exec(command[0], command.slice(1), {
+				cwd: projectRoot,
+				timeout: timeoutMs,
+			});
+			if (
+				result.code !== 0 ||
+				(validator.failOnStdout && result.stdout.trim())
+			)
+				return (
+					(result.stdout + result.stderr).trim() ||
+					`Validator exited with code ${result.code}`
+				);
+			return undefined;
+		};
+		let failureOutput = await runCheck();
+		if (failureOutput !== undefined && validator.fix && options.autofix) {
+			const fixCommand = buildValidatorCommand(
+				validator.fix,
+				absoluteFilePath,
+				projectRoot,
+			);
+			const fixResult = await pi.exec(fixCommand[0], fixCommand.slice(1), {
+				cwd: projectRoot,
+				timeout: timeoutMs,
+			});
+			if (fixResult.code === 0) {
+				failureOutput = await runCheck();
+				if (failureOutput === undefined) {
+					report("autofixed");
+					continue;
+				}
+			}
+		}
+		if (failureOutput !== undefined) {
 			failures.push({
 				name: validator.name,
-				output: boundedText(
-					(result.stdout + result.stderr).trim() ||
-						`Validator exited with code ${result.code}`,
-					MAX_VALIDATOR_OUTPUT_CHARS,
-				),
+				output: boundedText(failureOutput, MAX_VALIDATOR_OUTPUT_CHARS),
 			});
 			report("failed");
 		} else report("passed");
@@ -545,6 +579,14 @@ export async function runFirstAvailableValidator(
 
 interface FileValidationIssue extends ValidationIssue {
 	filePath: string;
+	absolutePath: string;
+	cwd: string;
+	repairable: boolean;
+}
+
+interface AppliedFix {
+	filePath: string;
+	name: string;
 }
 
 function formatIssueMessage(
@@ -581,6 +623,19 @@ interface TouchedFile {
 interface QualityGateState {
 	touchedFiles: Map<string, TouchedFile>;
 	successfulHashes: Map<string, string>;
+	repairAttempts: number;
+	lastFailureSignature?: string;
+}
+
+export type RepairChildRunner = (
+	model: string,
+	prompt: string,
+	cwd: string,
+) => Promise<{ exitCode: number; detail: string }>;
+
+export interface QualityGateRuntimeOptions {
+	repair?: RepairConfig;
+	runRepairChild?: RepairChildRunner;
 }
 
 interface PendingFileValidation extends TouchedFile {
@@ -591,11 +646,13 @@ interface PendingFileValidation extends TouchedFile {
 interface ValidationBatch {
 	failures: FileValidationIssue[];
 	advisories: FileValidationIssue[];
+	fixes: AppliedFix[];
 }
 
 const emptyValidationBatch = (): ValidationBatch => ({
 	failures: [],
 	advisories: [],
+	fixes: [],
 });
 
 function prepareFileValidation(
@@ -638,12 +695,42 @@ function recordValidationOutcome(
 	});
 }
 
+async function isQualityAutofixDisabled(
+	pi: ExtensionAPI,
+	filePath: string,
+	cwd: string,
+): Promise<boolean> {
+	const result = await pi.exec(
+		"git",
+		["check-attr", "-z", QUALITY_AUTOFIX_ATTRIBUTE, "--", filePath],
+		{ cwd, timeout: VALIDATOR_LOOKUP_TIMEOUT_MS },
+	);
+	if (result.code !== 0) return false;
+	const parts = result.stdout.split("\0");
+	for (let index = 0; index + 2 < parts.length; index += 3) {
+		if (
+			parts[index + 1] === QUALITY_AUTOFIX_ATTRIBUTE &&
+			parts[index + 2].trim() === "off"
+		)
+			return true;
+	}
+	return false;
+}
+
 const validatePendingFile = async (
 	pi: ExtensionAPI,
 	pending: PendingFileValidation,
 	state: QualityGateState,
+	options: QualityGateRuntimeOptions,
 ): Promise<ValidationBatch> => {
 	const outcomes: ValidationOutcome[] = [];
+	const autofixCandidate = pending.langConfig.validators.some(
+		(validator) => "command" in validator && validator.fix !== undefined,
+	);
+	const mutationAllowed =
+		autofixCandidate || options.repair !== undefined
+			? !(await isQualityAutofixDisabled(pi, pending.filePath, pending.cwd))
+			: true;
 	const issues = await runAvailableValidators(
 		pi,
 		pending.langConfig,
@@ -651,12 +738,16 @@ const validatePendingFile = async (
 		pending.cwd,
 		{
 			automatic: true,
+			autofix: autofixCandidate && mutationAllowed,
 			lizardThresholds: validators.lizardThresholds,
 			onOutcome: (outcome) => outcomes.push(outcome),
 		},
 	);
+	const fixApplied = outcomes.some(
+		(outcome) => outcome.outcome === "autofixed",
+	);
 	const hashAfter = contentHash(pending.filePath, pending.cwd);
-	if (pending.hashBefore !== hashAfter) {
+	if (!fixApplied && pending.hashBefore !== hashAfter) {
 		for (const outcome of outcomes)
 			recordValidationOutcome(pending, {
 				...outcome,
@@ -672,27 +763,42 @@ const validatePendingFile = async (
 		return emptyValidationBatch();
 	}
 	for (const outcome of outcomes) recordValidationOutcome(pending, outcome);
+	const fixes = outcomes
+		.filter((outcome) => outcome.outcome === "autofixed")
+		.map((outcome) => ({ filePath: pending.filePath, name: outcome.name }));
+	const issueContext = {
+		filePath: pending.filePath,
+		absolutePath: pending.absolutePath,
+		cwd: pending.cwd,
+		repairable: mutationAllowed,
+	};
 	const failures = issues
 		.filter((issue) => !issue.advisory)
-		.map((issue) => ({ filePath: pending.filePath, ...issue }));
+		.map((issue) => ({ ...issueContext, ...issue }));
 	const advisories = issues
 		.filter((issue) => issue.advisory)
-		.map((issue) => ({ filePath: pending.filePath, ...issue }));
+		.map((issue) => ({ ...issueContext, ...issue }));
 	const cacheable =
-		outcomes.some((outcome) => outcome.outcome === "passed") &&
+		outcomes.some(
+			(outcome) =>
+				outcome.outcome === "passed" || outcome.outcome === "autofixed",
+		) &&
 		outcomes.every(
 			(outcome) =>
-				outcome.outcome === "passed" || outcome.outcome === "skipped",
+				outcome.outcome === "passed" ||
+				outcome.outcome === "skipped" ||
+				outcome.outcome === "autofixed",
 		);
 	if (cacheable && failures.length === 0 && hashAfter)
 		state.successfulHashes.set(pending.absolutePath, hashAfter);
-	return { failures, advisories };
+	return { failures, advisories, fixes };
 };
 
 async function collectValidationBatch(
 	pi: ExtensionAPI,
 	languageByExtension: Map<string, LanguageConfig>,
 	state: QualityGateState,
+	options: QualityGateRuntimeOptions,
 ): Promise<ValidationBatch> {
 	const touchedFiles = [...state.touchedFiles.values()].sort((a, b) =>
 		a.absolutePath.localeCompare(b.absolutePath),
@@ -722,47 +828,299 @@ async function collectValidationBatch(
 				state,
 			);
 			if (!pending) continue;
-			const result = await validatePendingFile(pi, pending, state);
+			const result = await validatePendingFile(pi, pending, state, options);
 			batch.failures.push(...result.failures);
 			batch.advisories.push(...result.advisories);
+			batch.fixes.push(...result.fixes);
 		}
 	}
 	return batch;
 }
 
-function handleValidationBatch(
+function failureSignature(failures: FileValidationIssue[]): string {
+	return crypto
+		.createHash("sha256")
+		.update(
+			failures
+				.map(
+					(failure) =>
+						`${failure.absolutePath}\0${failure.name}\0${failure.output}`,
+				)
+				.sort()
+				.join("\n"),
+		)
+		.digest("hex");
+}
+
+const REPAIR_INSTRUCTION =
+	"Fix these quality gate failures now. Modify only the listed files, re-run each failed check to confirm it passes, and do not change unrelated behavior.";
+
+function buildRepairPrompt(failures: FileValidationIssue[]): string {
+	const report = failures
+		.map(
+			(failure) =>
+				`${failure.name} reported issues in ${failure.absolutePath}:\n${failure.output}`,
+		)
+		.join("\n\n");
+	return boundedText(
+		`${REPAIR_INSTRUCTION}\n\n${report}`,
+		MAX_QUALITY_MESSAGE_CHARS,
+	);
+}
+
+async function runRepairChildProcess(
+	model: string,
+	prompt: string,
+	cwd: string,
+): Promise<{ exitCode: number; detail: string }> {
+	let invocation: { command: string; args: string[] };
+	try {
+		invocation = getPiInvocation([
+			"-p",
+			"--no-session",
+			"--no-skills",
+			"--tools",
+			"read,bash,edit",
+			"--model",
+			model,
+			prompt,
+		]);
+	} catch (error) {
+		return {
+			exitCode: 1,
+			detail: error instanceof Error ? error.message : String(error),
+		};
+	}
+	return await new Promise((resolve) => {
+		let settled = false;
+		let output = "";
+		const finish = (exitCode: number, detail: string) => {
+			if (settled) return;
+			settled = true;
+			resolve({ exitCode, detail });
+		};
+		const proc = spawn(invocation.command, invocation.args, {
+			cwd,
+			shell: false,
+			stdio: ["ignore", "pipe", "pipe"],
+			env: process.env,
+			windowsHide: true,
+		});
+		const timer = setTimeout(() => {
+			proc.kill();
+			finish(1, "Delegated repair run timed out");
+		}, REPAIR_CHILD_TIMEOUT_MS);
+		const append = (chunk: Buffer) => {
+			output = boundedText(
+				output + chunk.toString("utf8"),
+				MAX_VALIDATOR_OUTPUT_CHARS,
+			);
+		};
+		proc.stdout?.on("data", append);
+		proc.stderr?.on("data", append);
+		proc.on("error", (error) => {
+			clearTimeout(timer);
+			finish(1, error.message);
+		});
+		proc.on("close", (code) => {
+			clearTimeout(timer);
+			finish(code ?? 1, output);
+		});
+	});
+}
+
+function sendQualityMessage(
 	pi: ExtensionAPI,
-	batch: ValidationBatch,
+	content: string,
+	triggerTurn: boolean,
 ): void {
-	sendAdvisoryIssues(pi, batch.advisories, batch.failures);
-	if (batch.failures.length === 0) return;
 	pi.sendMessage(
-		{
-			customType: "quality-gates",
-			content: formatIssueMessage(
-				"Quality gate validation failed",
-				batch.failures,
-			),
-			display: true,
-		},
-		{ triggerTurn: false },
+		{ customType: "quality-gates", content, display: true },
+		{ triggerTurn },
+	);
+}
+
+function reportFailures(
+	pi: ExtensionAPI,
+	failures: FileValidationIssue[],
+	advisories: number,
+): void {
+	sendQualityMessage(
+		pi,
+		formatIssueMessage("Quality gate validation failed", failures),
+		false,
 	);
 	recordEvent({
 		event: "quality_gate_notification",
-		data: {
-			failures: batch.failures.length,
-			advisories: batch.advisories.length,
-		},
+		data: { failures: failures.length, advisories },
 	});
+}
+
+function requeueForRevalidation(
+	state: QualityGateState,
+	failures: FileValidationIssue[],
+): void {
+	for (const failure of failures)
+		state.touchedFiles.set(failure.absolutePath, {
+			filePath: failure.filePath,
+			absolutePath: failure.absolutePath,
+			cwd: failure.cwd,
+		});
+}
+
+async function runDelegatedRepair(
+	pi: ExtensionAPI,
+	repair: RepairConfig,
+	repairable: FileValidationIssue[],
+	state: QualityGateState,
+	languageByExtension: Map<string, LanguageConfig>,
+	options: QualityGateRuntimeOptions,
+	activeProvider: string | undefined,
+): Promise<void> {
+	const runner = options.runRepairChild ?? runRepairChildProcess;
+	const byCwd = new Map<string, FileValidationIssue[]>();
+	for (const failure of repairable) {
+		const failures = byCwd.get(failure.cwd) ?? [];
+		failures.push(failure);
+		byCwd.set(failure.cwd, failures);
+	}
+	for (const [cwd, failures] of byCwd) {
+		const result = await runner(
+			repair.model,
+			buildRepairPrompt(failures),
+			cwd,
+		);
+		recordEvent({
+			event: "quality_gate_repair",
+			data: {
+				mode: "delegated",
+				attempt: state.repairAttempts,
+				failures: failures.length,
+				exitCode: result.exitCode,
+			},
+		});
+	}
+	const revalidated = await collectValidationBatch(
+		pi,
+		languageByExtension,
+		state,
+		options,
+	);
+	const resolved = repairable.filter(
+		(failure) =>
+			!revalidated.failures.some(
+				(remaining) =>
+					remaining.absolutePath === failure.absolutePath &&
+					remaining.name === failure.name,
+			),
+	);
+	if (resolved.length > 0)
+		sendQualityMessage(
+			pi,
+			boundedText(
+				`Quality gate delegated repair (${repair.model}) resolved these findings; file contents changed on disk:\n${resolved.map((failure) => `- ${failure.name}: ${failure.filePath}`).join("\n")}`,
+				MAX_QUALITY_MESSAGE_CHARS,
+			),
+			false,
+		);
+	await handleValidationBatch(
+		pi,
+		revalidated,
+		state,
+		languageByExtension,
+		options,
+		activeProvider,
+	);
+}
+
+async function handleValidationBatch(
+	pi: ExtensionAPI,
+	batch: ValidationBatch,
+	state: QualityGateState,
+	languageByExtension: Map<string, LanguageConfig>,
+	options: QualityGateRuntimeOptions,
+	activeProvider: string | undefined,
+): Promise<void> {
+	if (batch.fixes.length > 0) {
+		sendQualityMessage(
+			pi,
+			boundedText(
+				`Quality gate auto-fixed formatting; file contents changed on disk:\n${batch.fixes.map((fix) => `- ${fix.name}: ${fix.filePath}`).join("\n")}`,
+				MAX_QUALITY_MESSAGE_CHARS,
+			),
+			false,
+		);
+		recordEvent({
+			event: "quality_gate_autofix",
+			data: { fixes: batch.fixes.length },
+		});
+	}
+	sendAdvisoryIssues(pi, batch.advisories, batch.failures);
+	if (batch.failures.length === 0) {
+		state.repairAttempts = 0;
+		state.lastFailureSignature = undefined;
+		return;
+	}
+	const signature = failureSignature(batch.failures);
+	const repairable = batch.failures.filter((failure) => failure.repairable);
+	const repair = options.repair;
+	if (
+		repair === undefined ||
+		repairable.length === 0 ||
+		state.repairAttempts >= repair.maxAttempts ||
+		signature === state.lastFailureSignature
+	) {
+		state.lastFailureSignature = signature;
+		reportFailures(pi, batch.failures, batch.advisories.length);
+		return;
+	}
+	state.repairAttempts += 1;
+	state.lastFailureSignature = signature;
+	requeueForRevalidation(state, repairable);
+	const nonRepairable = batch.failures.filter(
+		(failure) => !failure.repairable,
+	);
+	if (nonRepairable.length > 0)
+		reportFailures(pi, nonRepairable, batch.advisories.length);
+	if (activeProvider === "openai-codex") {
+		recordEvent({
+			event: "quality_gate_repair",
+			data: {
+				mode: "active",
+				attempt: state.repairAttempts,
+				failures: repairable.length,
+			},
+		});
+		sendQualityMessage(
+			pi,
+			boundedText(
+				`${formatIssueMessage("Quality gate validation failed", repairable)}\n\n${REPAIR_INSTRUCTION}`,
+				MAX_QUALITY_MESSAGE_CHARS,
+			),
+			true,
+		);
+		return;
+	}
+	await runDelegatedRepair(
+		pi,
+		repair,
+		repairable,
+		state,
+		languageByExtension,
+		options,
+		activeProvider,
+	);
 }
 
 export function registerQualityGates(
 	pi: ExtensionAPI,
 	languageByExtension: Map<string, LanguageConfig> = extMap,
+	options: QualityGateRuntimeOptions = {},
 ): void {
 	const state: QualityGateState = {
 		touchedFiles: new Map<string, TouchedFile>(),
 		successfulHashes: new Map<string, string>(),
+		repairAttempts: 0,
 	};
 	pi.on("tool_result", (event: ToolResultEvent, ctx) => {
 		if (event.isError) return;
@@ -781,18 +1139,26 @@ export function registerQualityGates(
 			state.touchedFiles.set(absolutePath, { filePath, absolutePath, cwd });
 		}
 	});
-	pi.on("agent_settled", async () => {
+	pi.on("agent_settled", async (_event, ctx) => {
 		const batch = await collectValidationBatch(
 			pi,
 			languageByExtension,
 			state,
+			options,
 		);
-		handleValidationBatch(pi, batch);
+		await handleValidationBatch(
+			pi,
+			batch,
+			state,
+			languageByExtension,
+			options,
+			ctx?.model?.provider,
+		);
 	});
 }
 
 export { POLICY_PATH };
 
 export default function (pi: ExtensionAPI) {
-	registerQualityGates(pi);
+	registerQualityGates(pi, extMap, { repair: validators.repair });
 }

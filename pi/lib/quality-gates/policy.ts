@@ -19,6 +19,7 @@ export interface LizardValidatorConfig {
 export interface CommandValidatorConfig {
 	name: string;
 	command: string[];
+	fix?: string[];
 	automatic?: false;
 	check?: string;
 	detectAny?: string[];
@@ -37,11 +38,17 @@ export interface LanguageConfig {
 	validators: ValidatorConfig[];
 }
 
+export interface RepairConfig {
+	model: string;
+	maxAttempts: number;
+}
+
 export interface QualityGatesPolicy {
 	version: 1;
 	lizardThresholds: LizardThresholdsConfig;
 	excludedPaths: string[];
 	immutablePaths: string[];
+	repair?: RepairConfig;
 	languages: Record<string, LanguageConfig>;
 }
 
@@ -181,6 +188,8 @@ const buildCommandValidator = (
 		name: validator.name as string,
 		command: validator.command as string[],
 	};
+	if (isStringArray(validator.fix) && validator.fix.length > 0)
+		parsed.fix = validator.fix;
 	if (validator.automatic === false) parsed.automatic = false;
 	if (typeof validator.check === "string") parsed.check = validator.check;
 	if (detectAny) parsed.detectAny = detectAny;
@@ -198,6 +207,11 @@ const parseCommandValidator = (
 ): CommandValidatorConfig | undefined => {
 	if (!isStringArray(validator.command)) return undefined;
 	if (hasInvalidCommandMetadata(validator)) return undefined;
+	if (
+		validator.fix !== undefined &&
+		(!isStringArray(validator.fix) || validator.fix.length === 0)
+	)
+		return undefined;
 	const detectAny = parseDetectionField(validator.detectAny);
 	const detectAll = parseDetectionField(validator.detectAll);
 	if (detectAny === null) return undefined;
@@ -218,6 +232,23 @@ const parseValidator = (value: unknown): ValidatorConfig | undefined => {
 	return validator.kind === "lizard"
 		? parseLizardValidator(validator)
 		: parseCommandValidator(validator);
+};
+
+const parseRepairConfig = (value: unknown): RepairConfig | undefined => {
+	if (value === undefined) return undefined;
+	if (!value || typeof value !== "object")
+		throw new Error("Invalid repair config");
+	const repair = value as Record<string, unknown>;
+	const maxAttempts = numberField(repair.maxAttempts);
+	if (
+		typeof repair.model !== "string" ||
+		!repair.model.includes("/") ||
+		maxAttempts === undefined ||
+		maxAttempts < 1 ||
+		!Number.isInteger(maxAttempts)
+	)
+		throw new Error("Invalid repair config");
+	return { model: repair.model, maxAttempts };
 };
 
 export function parseQualityGatesPolicy(value: unknown): QualityGatesPolicy {
@@ -257,11 +288,13 @@ export function parseQualityGatesPolicy(value: unknown): QualityGatesPolicy {
 			validators: validators as ValidatorConfig[],
 		};
 	}
+	const repair = parseRepairConfig(policy.repair);
 	return {
 		version: 1,
 		lizardThresholds: lizardThresholds as LizardThresholdsConfig,
 		excludedPaths: policy.excludedPaths,
 		immutablePaths: policy.immutablePaths,
+		...(repair ? { repair } : {}),
 		languages,
 	};
 }

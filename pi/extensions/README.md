@@ -27,10 +27,15 @@ Damage-control loads the Pi-owned `pi/damage-control-rules.yaml` through
 `pi/lib/yaml-mini.ts`. `PI_DAMAGE_CONTROL_POLICY_PATH` may select an explicit
 alternate Pi policy. Missing or invalid default and override policies fail
 closed. Quality-gates loads validators, complexity thresholds, advisory modes,
-and excluded or immutable paths from the independent Pi-owned
-`pi/quality-gates.json`. Automatic settlement checks are limited to bounded,
-file-scoped validators; policy-marked explicit-only, project-scoped,
-long-running, and complexity validators remain outside the settlement path.
+fix commands, the repair policy, and excluded or immutable paths from the
+independent Pi-owned `pi/quality-gates.json`. Automatic settlement checks are
+limited to bounded, file-scoped validators; policy-marked explicit-only,
+project-scoped, long-running, and complexity validators remain outside the
+settlement path. Settlement failures are resolved through deterministic
+formatter autofix, then bounded repair turns (active session on `openai-codex`
+models, otherwise a delegated child Pi run on the configured repair model),
+then a visible report. The Git attribute `quality-autofix=off` keeps matching
+paths report-only.
 Neither extension reads another client's policy or executable. Keep loader
 helpers under `pi/lib/`, not as new auto-discovered `pi/extensions/*.ts` files.
 

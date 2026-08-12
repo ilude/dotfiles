@@ -342,9 +342,17 @@ Compacts a tool-driven request before the active model reaches its hard context 
 
 ### `quality-gates.ts`
 
-Collects files successfully changed by `write`, `edit`, `text_edit`, and `structured_edit`, preserving the cwd from each edit, then runs cheap file-scoped linters and format checks when the agent run ends. Diagnostics are displayed without starting an automatic repair turn. Validator output and aggregate messages are bounded, unchanged content is cached, and stale results are discarded.
+Collects files successfully changed by `write`, `edit`, `text_edit`, and `structured_edit`, preserving the cwd from each edit, then runs cheap file-scoped linters and format checks when the agent run ends. Validator output and aggregate messages are bounded, unchanged content is cached, and stale results are discarded.
 
-Validators, Lizard thresholds, excluded paths, and immutable paths are configured in the Pi-owned `~/.dotfiles/pi/quality-gates.json`. Automatic settlement checks skip policy-marked explicit-only, project-scoped, long-running, and Lizard validators; those remain available to explicit validation callers. Validator pass, failure, unavailable, skipped, duration, and notification outcomes are recorded in structured metrics.
+Validators, Lizard thresholds, excluded paths, immutable paths, and the repair policy are configured in the Pi-owned `~/.dotfiles/pi/quality-gates.json`. Automatic settlement checks skip policy-marked explicit-only, project-scoped, long-running, and Lizard validators; those remain available to explicit validation callers. Validator pass, failure, autofix, unavailable, skipped, duration, notification, and repair outcomes are recorded in structured metrics.
+
+Failures are resolved in three stages instead of being report-only:
+
+1. **Deterministic autofix** -- validators with a configured `fix` command (ruff-format, gofmt, rustfmt, clang-format, stylua, zig-fmt) run the formatter directly, re-run the check, and report only what still fails. A context notice lists auto-fixed files because their on-disk content changed.
+2. **Bounded repair turns** -- remaining non-advisory failures trigger a repair turn in the active session when the active model is an `openai-codex` subscription model. Any other active model (Bedrock fable, opus, sonnet, or Bedrock-hosted GPT) delegates the repair to a spawned child Pi run on the configured `repair.model` so metered models never pay for repairs. Attempts are capped by `repair.maxAttempts`, and an unchanged failure set stops retries immediately.
+3. **Visible report** -- failures that survive autofix and repair (or that cannot be repaired) are reported without triggering a turn, matching the previous behavior.
+
+Repositories or paths opt out of all mutation with the Git attribute `quality-autofix=off` in `.gitattributes` (for example `* quality-autofix=off` repo-wide); matching files keep report-only diagnostics. Removing the `repair` block from `quality-gates.json` disables repair turns globally while keeping deterministic autofix.
 
 ### `session-hooks.ts`
 

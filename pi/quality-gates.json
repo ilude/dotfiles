@@ -17,6 +17,10 @@
   "immutablePaths": [
     "**/migrations/**"
   ],
+  "repair": {
+    "model": "openai-codex/gpt-5.6-sol",
+    "maxAttempts": 2
+  },
   "languages": {
     "python": {
       "extensions": [
@@ -44,6 +48,11 @@
             "ruff",
             "format",
             "--check",
+            "{file}"
+          ],
+          "fix": [
+            "ruff",
+            "format",
             "{file}"
           ],
           "check": "ruff",
@@ -209,6 +218,11 @@
             "-l",
             "{file}"
           ],
+          "fix": [
+            "gofmt",
+            "-w",
+            "{file}"
+          ],
           "check": "gofmt",
           "always": true,
           "failOnStdout": true
@@ -246,6 +260,11 @@
             "clang-format",
             "--dry-run",
             "--Werror",
+            "{file}"
+          ],
+          "fix": [
+            "clang-format",
+            "-i",
             "{file}"
           ],
           "check": "clang-format",
@@ -299,6 +318,10 @@
           "command": [
             "rustfmt",
             "--check",
+            "{file}"
+          ],
+          "fix": [
+            "rustfmt",
             "{file}"
           ],
           "check": "rustfmt",
@@ -446,6 +469,10 @@
             "--check",
             "{file}"
           ],
+          "fix": [
+            "stylua",
+            "{file}"
+          ],
           "check": "stylua",
           "always": true
         },
@@ -469,6 +496,11 @@
             "clang-format",
             "--dry-run",
             "--Werror",
+            "{file}"
+          ],
+          "fix": [
+            "clang-format",
+            "-i",
             "{file}"
           ],
           "check": "clang-format",
@@ -648,6 +680,11 @@
             "zig",
             "fmt",
             "--check",
+            "{file}"
+          ],
+          "fix": [
+            "zig",
+            "fmt",
             "{file}"
           ],
           "check": "zig",

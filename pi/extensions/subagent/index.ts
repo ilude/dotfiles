@@ -32,6 +32,7 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { type TSchema, Type } from "typebox";
 import { emitTerminalBell } from "../../lib/extension-utils.js";
+import { getPiInvocation } from "../../lib/pi-invocation.js";
 import { recordEvent } from "../../lib/metrics.js";
 import { terminateProcessTree } from "../../lib/process-tree.js";
 import { deactivateTools } from "../../lib/tool-activation.js";
@@ -690,24 +691,6 @@ async function writePromptToTempFile(
 		});
 	});
 	return { dir: tmpDir, filePath };
-}
-
-function getPiInvocation(
-	args: string[],
-	currentScript = process.argv[1],
-	execPath = process.execPath,
-): { command: string; args: string[] } {
-	if (currentScript && fs.existsSync(currentScript)) {
-		return { command: execPath, args: [currentScript, ...args] };
-	}
-
-	const execName = path.basename(execPath).toLowerCase();
-	const isGenericRuntime = /^(node|bun)(\.exe)?$/.test(execName);
-	if (!isGenericRuntime) return { command: execPath, args };
-
-	throw new Error(
-		`Cannot launch subagent: Pi CLI entrypoint is unavailable (${currentScript || "process.argv[1] is empty"}).`,
-	);
 }
 
 export const subagentTestApi = { getPiInvocation };
