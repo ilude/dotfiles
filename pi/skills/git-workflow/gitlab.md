@@ -2,6 +2,31 @@
 
 Guidelines for using GitLab CLI (glab) across multiple GitLab instances.
 
+## Command Compatibility Gate
+
+Treat the installed `glab` help as the authority. CLI examples from memory, another tool, or another `glab` version are not evidence that a flag is supported.
+
+Before the first use of each subcommand path in a session:
+
+1. Run `glab <subcommand> --help` with a short timeout.
+2. Use only flags shown by that installed help.
+3. Verify the repository and host target before mutation.
+4. For a SHA-guarded mutation, obtain and use the full 40-character source SHA.
+
+If local help hangs or fails, do not guess syntax. Diagnose the executable first or use a previously verified command surface. For machine-readable GitLab state, prefer a bounded `glab api` request rather than assuming a porcelain subcommand supports `--output`, `--json`, or equivalent flags.
+
+### Failure handling
+
+| Failure | Required response |
+| --- | --- |
+| Unknown flag or command | Read that exact subcommand's installed help; do not substitute a guessed flag. |
+| SHA mismatch | Fetch current remote state and compare the full source SHA before deciding whether to retry. |
+| Timeout during a mutation | Query remote state first; the mutation may have succeeded. Never repeat it blindly. |
+| Timeout during a read | Check connectivity and use one bounded alternate query; do not issue equivalent retries. |
+| Server conflict | Inspect MR, pipeline, branch, and approval state before another mutation. |
+
+Do not combine MR creation, pipeline interpretation, and merge into one unverified command chain. Confirm the result of each mutation before proceeding.
+
 ## Critical: Multiple Instance Management
 
 **MUST always use explicit `--hostname` flag** when multiple GitLab instances are configured.
@@ -73,13 +98,14 @@ glab api version --hostname <hostname>
 glab api projects/project%2Fpath --hostname <hostname>
 ```
 
-## Validation Before Destructive Operations
+## Validation Before Mutating Operations
 
-**MUST validate target instance** before:
+**MUST validate target instance and repository** before:
 - Creating/deleting projects
 - Pushing code
 - Modifying CI/CD variables
-- Creating issues/MRs
+- Creating or merging issues/MRs
+- Retrying pipelines or jobs
 
 ```
 This will create the project on gitlab.example.com:
@@ -91,6 +117,9 @@ Proceeding...
 ## Verification Commands
 
 ```bash
+# Check executable resolution before diagnosing version or startup problems
+command -V glab
+
 # Check default host
 glab config get host
 
@@ -99,7 +128,12 @@ glab auth status
 
 # Test API access
 glab api version --hostname <hostname>
+
+# Capture a full SHA for a guarded mutation
+git rev-parse HEAD
 ```
+
+Run each command with a bounded timeout in automation. A hanging `glab --version` or `--help` is an executable/runtime problem, not permission to infer syntax.
 
 ## Integration with Git
 

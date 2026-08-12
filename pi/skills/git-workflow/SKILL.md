@@ -27,13 +27,14 @@ Compact index for Git operations and repository hosting. Load linked files for w
 
 ## Practical steps
 
-1. Inspect state before mutation: `git status --short --branch` and relevant diffs.
-2. For worktree status questions, run live state first: `git worktree list --porcelain` and `git status --short --branch`; report actual worktrees, branches, dirty state, stale/prunable entries, and convention mismatches.
-3. Before branch or worktree changes, verify the current worktree is clean or get explicit direction to preserve work.
-4. Separate user changes from agent changes; never stage unrelated files.
-5. Run repository-required secret and whitespace checks before committing.
-6. Use `wip: ...` save-point commits when preserving work before switching or syncing; treat them as local and temporary unless the user explicitly asks to push.
-7. Prefer revert/restore over destructive history operations; ask before resets, force pushes, or deleting stale worktree directories.
+1. Before any `glab` operation, read [gitlab.md](gitlab.md) and follow its command-compatibility checks.
+2. Inspect state before mutation: `git status --short --branch` and relevant diffs.
+3. For worktree status questions, run live state first: `git worktree list --porcelain` and `git status --short --branch`; report actual worktrees, branches, dirty state, stale/prunable entries, and convention mismatches.
+4. Before branch or worktree changes, verify the current worktree is clean or get explicit direction to preserve work.
+5. Separate user changes from agent changes; never stage unrelated files.
+6. Run repository-required secret and whitespace checks before committing.
+7. Use `wip: ...` save-point commits when preserving work before switching or syncing; treat them as local and temporary unless the user explicitly asks to push.
+8. Prefer revert/restore over destructive history operations; ask before resets, force pushes, or deleting stale worktree directories.
 
 ## Quick validation
 
