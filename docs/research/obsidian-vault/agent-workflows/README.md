@@ -19,6 +19,7 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [workflow-ideas/duckdb-for-pi-usage-analytics](workflow-ideas/duckdb-for-pi-usage-analytics.md) — optional DuckDB backend idea for Pi usage/session analytics
 - [workflow-ideas/adaptive-plan-review-telemetry](workflow-ideas/adaptive-plan-review-telemetry.md) -- telemetry signals for embedding `/review-it` into `/plan-it` later
 - [workflow-ideas/goal-closeout-handoff](workflow-ideas/goal-closeout-handoff.md) -- automatic closeout reports for `/goal` completion
+- [workflow-ideas/durable-task-dependency-systems](workflow-ideas/durable-task-dependency-systems.md) -- sourced designs for durable task DAGs, recovery, provenance, and Pi subagent integration
 - [workflow-ideas/menos-knowledge-compiler](workflow-ideas/menos-knowledge-compiler.md) — persona-scoped agent session memory on menos
 - [workflow-ideas/multipass-yolo-sandboxes](workflow-ideas/multipass-yolo-sandboxes.md) — Multipass + Infisical YOLO sandbox design
 - [workflow-ideas/x-research-pipeline](workflow-ideas/x-research-pipeline.md) — X.com research graph pipeline backed by menos
