@@ -1260,7 +1260,7 @@ const EffortSchema = StringEnum(
 
 const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
 	description:
-		'Which agent directories to use. Default: "user". Use "both" to include project-local agents.',
+		'Agent directories. Default: "user". Project-local names require "project" or "both".',
 	default: "user",
 });
 
@@ -1286,7 +1286,9 @@ const StructuredOutputSchema = Type.Record(Type.String(), Type.Unknown(), {
 function createSubagentSchemas(agentNames?: readonly string[]) {
 	const agentName = (description: string) =>
 		agentNames && agentNames.length > 0
-			? StringEnum(agentNames, { description })
+			? StringEnum(agentNames, {
+					description: `${description}. Default user agents; project agents require agentScope.`,
+				})
 			: Type.String({ description });
 	const taskItem = Type.Object({
 		agent: agentName("Name of the agent to invoke"),
@@ -1511,7 +1513,7 @@ function createSessionAgentCatalog(
 		? discoverAgents(cwd, "both")
 		: { agents: user.agents, projectAgentsDir: user.projectAgentsDir };
 	const agentNames = Array.from(
-		new Set([...user.agents, ...project.agents].map((agent) => agent.name)),
+		new Set(user.agents.map((agent) => agent.name)),
 	).sort();
 	return {
 		cwd,

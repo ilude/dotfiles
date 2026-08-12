@@ -182,7 +182,15 @@ You are a test agent.
 		expect(properties).not.toHaveProperty("readOnlyFanout");
 		expect(properties.agent).toMatchObject({
 			type: "string",
-			enum: expect.arrayContaining(["builder", "tester", "typescript-pro"]),
+			enum: expect.arrayContaining(["builder", "typescript-pro"]),
+			description: expect.stringContaining("Default user agents"),
+		});
+		expect((properties.agent as { enum: string[] }).enum).not.toContain(
+			"tester",
+		);
+		expect(properties.agentScope).toMatchObject({
+			default: "user",
+			description: expect.stringContaining("Project-local names require"),
 		});
 		expect(properties.taskId).toMatchObject({ type: "string" });
 		expect(properties.tasks).toMatchObject({
@@ -190,16 +198,19 @@ You are a test agent.
 				properties: {
 					agent: {
 						type: "string",
-						enum: expect.arrayContaining([
-							"builder",
-							"tester",
-							"typescript-pro",
-						]),
+						enum: expect.arrayContaining(["builder", "typescript-pro"]),
 					},
 					taskId: { type: "string" },
 				},
 			},
 		});
+		expect(
+			(
+				properties.tasks as {
+					items: { properties: { agent: { enum: string[] } } };
+				}
+			).items.properties.agent.enum,
+		).not.toContain("tester");
 		expect(properties.effort).toMatchObject({
 			type: "string",
 			enum: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
@@ -212,7 +223,7 @@ You are a test agent.
 				items: {
 					properties: {
 						agent: {
-							enum: expect.arrayContaining(["builder", "tester"]),
+							enum: expect.arrayContaining(["builder"]),
 						},
 					},
 				},
@@ -223,7 +234,7 @@ You are a test agent.
 				properties: object;
 			}).properties,
 		).toMatchObject({
-			agent: { enum: expect.arrayContaining(["builder", "tester"]) },
+			agent: { enum: expect.arrayContaining(["builder"]) },
 			session: expect.any(Object),
 		});
 		const fanoutParameters = pi._getTool("subagent_fanout")!.parameters as {
@@ -237,11 +248,17 @@ You are a test agent.
 		};
 		expect(fanoutParameters.required).toContain("outputSchema");
 		expect(fanoutParameters.properties.single.properties.agent.enum).toEqual(
-			expect.arrayContaining(["builder", "tester"]),
+			expect.arrayContaining(["builder"]),
+		);
+		expect(fanoutParameters.properties.single.properties.agent.enum).not.toContain(
+			"tester",
 		);
 		expect(
 			fanoutParameters.properties.parallel.items.properties.agent.enum,
-		).toEqual(expect.arrayContaining(["builder", "tester"]));
+		).toEqual(expect.arrayContaining(["builder"]));
+		expect(
+			fanoutParameters.properties.parallel.items.properties.agent.enum,
+		).not.toContain("tester");
 		expect(pi.getActiveTools()).not.toContain("subagent_chain");
 		expect(pi.getActiveTools()).not.toContain("subagent_continue");
 		expect(pi.getActiveTools()).not.toContain("subagent_fanout");
@@ -268,7 +285,7 @@ You are a test agent.
 		expect(renderedTask).not.toContain(`${task.slice(0, 60)}...`);
 	});
 
-	it("refreshes the agent enum on session reload and omits untrusted project agents", async () => {
+	it("keeps project agents out of the refreshed default enum", async () => {
 		const { pi } = await loadTool();
 		const sessionStart = pi._getHook("session_start")[0].handler;
 		await sessionStart(
@@ -304,11 +321,37 @@ You are another test agent.
 			}
 		).properties;
 		expect(properties.agent.enum).toEqual(
-			expect.arrayContaining(["builder", "tester", "tester-two"]),
+			expect.arrayContaining(["builder", "typescript-pro"]),
 		);
+		expect(properties.agent.enum).not.toContain("tester");
+		expect(properties.agent.enum).not.toContain("tester-two");
 	});
 
-	it("rejects unknown and out-of-scope background agents before spawning", async () => {
+	it("supports project scopes while retaining a default-user schema", async () => {
+		mockSuccessfulSpawn();
+		const { pi } = await loadTool();
+		await pi
+			._getHook("session_start")[0]
+			.handler({ reason: "startup" }, createMockCtx({ cwd: tmpDir }));
+		const tool = pi._getTool("subagent");
+		if (!tool) throw new Error("subagent tool not registered");
+		const ctx = createMockCtx({ cwd: tmpDir });
+
+		for (const agentScope of ["project", "both"] as const) {
+			const result = await tool.execute(
+				`call-${agentScope}-scope`,
+				{ agent: "tester", task: "Do work", agentScope },
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(result.details.agentScope).toBe(agentScope);
+			expect(result.details.results[0].agentSource).toBe("project");
+		}
+		expect(spawnMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("rejects unknown and default-scope background agents before spawning", async () => {
 		const { pi } = await loadTool();
 		const sessionStart = pi._getHook("session_start")[0].handler;
 		await sessionStart(
@@ -339,7 +382,6 @@ You are another test agent.
 				{
 					agent: "tester",
 					task: "Do work",
-					agentScope: "user",
 					background: true,
 				},
 				undefined,

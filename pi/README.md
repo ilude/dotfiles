@@ -691,9 +691,10 @@ and later delivers one bounded follow-up result. Advanced `subagent_chain`,
 `subagent_continue`, and `subagent_fanout` tools are discoverable through
 `tool_search` and activate on demand. Legacy advanced arguments on `subagent`
 remain executable for resumed sessions but are omitted from its advertised
-provider schema. Agent fields enumerate the user agents and trusted project
-agents discovered for the current session; `/reload` refreshes that catalog.
-Every invocation validates all requested agents against `agentScope` before any
+provider schema. Agent fields enumerate default user-scope agents. To invoke a
+trusted project agent, set `agentScope` to `project` or `both` and provide its
+project-local name; `/reload` refreshes that catalog. Every invocation validates
+all requested agents against `agentScope` before any
 worker starts or a background run is acknowledged. Single and parallel items
 may also supply the ID of an existing running task in the effective cwd's
 workspace; this correlates existing run and telemetry projections without
