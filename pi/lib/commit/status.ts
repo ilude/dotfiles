@@ -2,6 +2,7 @@ export const PORCELAIN_V2_STATUS_ARGS = [
 	"status",
 	"--porcelain=v2",
 	"--branch",
+	"--no-renames",
 	"-z",
 	"--untracked-files=all",
 ] as const;

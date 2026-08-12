@@ -5,7 +5,12 @@ import {
 	inspectGitStateAsync,
 	preflightGitStateAsync,
 } from "../commit/plan";
-import { changedFilesFromStatus, type ChangedFilesSnapshot, uniqueGitPaths } from "../commit/status";
+import {
+	changedFilesFromStatus,
+	type ChangedFilesSnapshot,
+	PORCELAIN_V2_STATUS_ARGS,
+	uniqueGitPaths,
+} from "../commit/status";
 import { parseDirectSubmodulePaths } from "../commit/submodule";
 
 export interface SlashCommitGitResult {
@@ -466,19 +471,33 @@ export function createCommitCommandExecutor(
 					ctx.signal,
 				);
 				try {
-					const stagedOutput = await dependencies.gitOrThrowAsync(
+					const stagedStatus = await dependencies.gitOrThrowAsync(
 						ctx.cwd,
-						["diff", "--cached", "--name-only", "-z"],
+						[...PORCELAIN_V2_STATUS_ARGS],
 						activity,
 						ctx.signal,
 					);
-					const stagedFiles = uniqueGitPaths(
-						stagedOutput.split("\0").filter(Boolean),
-					);
+					const stagedFiles = changedFilesFromStatus(stagedStatus).staged;
 					const expectedFiles = uniqueGitPaths(group.files);
 					if (JSON.stringify(stagedFiles) !== JSON.stringify(expectedFiles)) {
+						const missing = expectedFiles.filter(
+							(file) => !stagedFiles.includes(file),
+						);
+						const unexpected = stagedFiles.filter(
+							(file) => !expectedFiles.includes(file),
+						);
+						const summarize = (label: string, files: string[]) =>
+							files.length === 0
+								? undefined
+								: `${label} (${files.length}): ${files.slice(0, 5).join(", ")}${files.length > 5 ? ", ..." : ""}`;
 						throw new Error(
-							`Staged paths do not match commit group. Expected: ${expectedFiles.join(", ") || "none"}; actual: ${stagedFiles.join(", ") || "none"}`,
+							[
+								`Staging verification failed for commit ${index + 1}/${plan.groups.length}.`,
+								summarize("Missing", missing),
+								summarize("Unexpected", unexpected),
+							]
+								.filter(Boolean)
+								.join(" "),
 						);
 					}
 					const commitMessage = await dependencies.confirmCommitMessage({
@@ -525,11 +544,14 @@ export function createCommitCommandExecutor(
 			activity.finish();
 			dependencies.emitCommitReport(pi, ctx, commitSummaries);
 		} catch (error) {
-			activity.logInfo(
-				`Error: Commit failed: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			const rawMessage = error instanceof Error ? error.message : String(error);
+			const message =
+				rawMessage.length <= 2000
+					? rawMessage
+					: `${rawMessage.slice(0, 1978)}\n... details truncated`;
+			activity.logInfo(`Commit failed: ${message}`);
 			activity.finish();
-			throw error;
+			throw new Error(message);
 		}
 	}
 

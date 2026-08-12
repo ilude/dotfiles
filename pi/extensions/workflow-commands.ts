@@ -1955,95 +1955,48 @@ function echoSlashCommand(pi: ExtensionAPI, command: string, args: string) {
 	return text;
 }
 
-function formatGitOutput(result?: GitRunResult) {
-	if (!result) return [];
-	const lines: string[] = [];
-	const stdout = result.stdout.trim();
-	const stderr = result.stderr.trim();
-	if (stdout)
-		lines.push(...stdout.split("\n").map((line) => `stdout: ${line}`));
-	if (stderr)
-		lines.push(...stderr.split("\n").map((line) => `stderr: ${line}`));
-	lines.push(`exit: ${result.code}`);
-	return lines;
+const MAX_COMMIT_ACTIVITY_CHARS = 2000;
+
+function boundedCommitActivity(content: string): string {
+	if (content.length <= MAX_COMMIT_ACTIVITY_CHARS) return content;
+	return `${content.slice(0, MAX_COMMIT_ACTIVITY_CHARS - 22)}\n... details truncated`;
 }
 
 function createCommitActivity(
 	pi: ExtensionAPI,
 	ctx: WorkflowContext,
-	commandText: string,
+	_commandText: string,
 ): CommitActivity {
-	const fallbackLines: string[] = [];
-	const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-	let spinnerIndex = 0;
-	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
-
-	const stopSpinner = () => {
-		if (spinnerTimer) {
-			clearInterval(spinnerTimer);
-			spinnerTimer = undefined;
-		}
-		ctx.ui.setWidget?.("commit-spinner", undefined);
-	};
-
-	const startSpinner = (phase: string) => {
-		stopSpinner();
-		const tick = () => {
-			ctx.ui.setWidget?.(
-				"commit-spinner",
-				[`${spinnerFrames[spinnerIndex]} ${phase}`],
-				{
-					placement: "aboveEditor",
-				},
-			);
-			spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
-		};
-		tick();
-		spinnerTimer = setInterval(tick, 120);
-	};
-
 	const emit = (content: string) => {
+		const bounded = boundedCommitActivity(content);
 		if (typeof pi.sendMessage === "function") {
 			pi.sendMessage({
 				customType: COMMIT_ACTIVITY_TYPE,
-				content,
+				content: bounded,
 				display: true,
 			});
 			return;
 		}
-		fallbackLines.push(content);
-		ctx.ui.setWidget?.("commit-progress", fallbackLines.slice(-12), {
-			placement: "aboveEditor",
-		});
+		ctx.ui.notify(bounded, "info");
 	};
-
-	emit(commandText);
-
-	const shouldSpinForPhase = (phase: string) =>
-		phase === "preparing" ||
-		phase === "planning commits" ||
-		phase.startsWith("creating commit") ||
-		phase === "pushing";
 
 	return {
 		setPhase(message?: string) {
-			const phase = message ?? "done";
-			emit(`phase: ${phase}`);
-			if (shouldSpinForPhase(phase)) startSpinner(phase);
-			else stopSpinner();
+			ctx.ui.setStatus?.(
+				"commit",
+				message && message !== "done" ? `commit: ${message}` : undefined,
+			);
 		},
-		logCommand(command: string, result?: GitRunResult) {
-			const output = formatGitOutput(result)
-				.map((line) => `  ${line}`)
-				.join("\n");
-			emit(output ? `$ ${command}\n${output}` : `$ ${command}`);
+		logCommand(_command: string, _result?: GitRunResult) {
+			// Internal Git commands remain available to the workflow but do not
+			// create persistent transcript noise. Failures are reported by the
+			// owning operation with bounded context.
 		},
 		logInfo(message: string) {
 			emit(message);
 		},
 		finish() {
-			stopSpinner();
-			emit("phase: done");
+			ctx.ui.setStatus?.("commit", undefined);
 		},
 	};
 }

@@ -86,6 +86,16 @@ describe("workflow command dispatch", () => {
 		return `# branch.head main\0${entries}`;
 	}
 
+	function stagedStatus(files: string[]) {
+		const entries = files
+			.map(
+				(file) =>
+					`1 M. N... 100644 100644 100644 abcdef1 abcdef2 ${file}\0`,
+			)
+			.join("");
+		return `# branch.head main\0${entries}`;
+	}
+
 	function untrackedStatus(file: string) {
 		return `# branch.head main\0? ${file}\0`;
 	}
@@ -110,6 +120,7 @@ describe("workflow command dispatch", () => {
 						"status",
 						"--porcelain=v2",
 						"--branch",
+						"--no-renames",
 						"-z",
 						"--untracked-files=all",
 					],
@@ -246,6 +257,7 @@ describe("workflow command dispatch", () => {
 				"status",
 				"--porcelain=v2",
 				"--branch",
+				"--no-renames",
 				"-z",
 				"--untracked-files=all",
 			],
@@ -253,6 +265,10 @@ describe("workflow command dispatch", () => {
 		);
 		expect(mockPi.sendMessage).not.toHaveBeenCalledWith(
 			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
+			expect.anything(),
+		);
+		expect(mockPi.sendMessage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow-commit-activity" }),
 			expect.anything(),
 		);
 		expect(notify).toHaveBeenCalledWith("Working tree is clean", "info");
@@ -297,7 +313,10 @@ describe("workflow command dispatch", () => {
 			const signature = args.join(" ");
 			if (args[0] === "status") {
 				return mockGitSpawn({
-					stdout: modifiedStatus(files),
+					stdout:
+						stagedFiles.length > 0
+							? stagedStatus(stagedFiles)
+							: modifiedStatus(files),
 				});
 			}
 			if (
@@ -316,9 +335,6 @@ describe("workflow command dispatch", () => {
 				const separator = args.indexOf("--");
 				stagedFiles = args.slice(separator + 1);
 				return mockGitSpawn();
-			}
-			if (signature === "diff --cached --name-only -z") {
-				return mockGitSpawn({ stdout: `${stagedFiles.join("\0")}\0` });
 			}
 			if (args[0] === "commit") stagedFiles = [];
 			if (signature === "rev-parse --short HEAD") {
@@ -373,9 +389,10 @@ describe("workflow command dispatch", () => {
 		);
 		expect(
 			gitArgs.filter((call) =>
-				call.startsWith("status --porcelain=v2 --branch -z"),
+				call.startsWith("status --porcelain=v2 --branch --no-renames -z"),
 			),
-		).toHaveLength(1);
+		).toHaveLength(3);
+		expect(gitArgs).not.toContain("diff --cached --name-only -z");
 		expect(gitArgs).not.toContain("rev-parse --verify HEAD");
 		expect(gitArgs.some((call) => call.startsWith("diff-index "))).toBe(false);
 		expect(
@@ -384,6 +401,85 @@ describe("workflow command dispatch", () => {
 			),
 		).toBe(false);
 		expect(gitArgs.some((call) => call.startsWith("reset "))).toBe(false);
+		expect(notify).not.toHaveBeenCalledWith(
+			expect.stringContaining("Commit failed:"),
+			"error",
+		);
+	});
+
+	it("verifies directory migrations without rename collapse", async () => {
+		const notify = vi.fn();
+		const cwd = "/repo";
+		const oldFiles = [
+			"tools/menos-youtube/api_config.py",
+			"tools/menos-youtube/search.py",
+		];
+		const newFiles = [
+			"tools/onclave-youtube/api_config.py",
+			"tools/onclave-youtube/search.py",
+		];
+		const files = [...oldFiles, ...newFiles].sort();
+		const unstagedStatus = `# branch.head main\0${oldFiles
+			.map(
+				(file) =>
+					`1 .D N... 100644 100644 000000 abcdef1 abcdef1 ${file}\0`,
+			)
+			.join("")}${newFiles.map((file) => `? ${file}\0`).join("")}`;
+		const indexedStatus = `# branch.head main\0${oldFiles
+			.map(
+				(file) =>
+					`1 D. N... 100644 000000 000000 abcdef1 abcdef1 ${file}\0`,
+			)
+			.join("")}${newFiles
+			.map(
+				(file) =>
+					`1 A. N... 000000 100644 100644 abcdef2 abcdef2 ${file}\0`,
+			)
+			.join("")}`;
+		let staged = false;
+		mockSpawn.mockImplementation((_command, args: string[]) => {
+			if (args[0] === "status")
+				return mockGitSpawn({
+					stdout: staged ? indexedStatus : unstagedStatus,
+				});
+			if (args[0] === "add") {
+				staged = true;
+				return mockGitSpawn();
+			}
+			if (args[0] === "commit") {
+				staged = false;
+				return mockGitSpawn();
+			}
+			if (args[0] === "rev-parse")
+				return mockGitSpawn({ stdout: "abc1234\n" });
+			if (args[0] === "check-ignore") return mockGitSpawn({ code: 1 });
+			return mockGitSpawn();
+		});
+
+		await getHandler("commit")("", { cwd, ui: { notify } });
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			expect.any(String),
+			[
+				"status",
+				"--porcelain=v2",
+				"--branch",
+				"--no-renames",
+				"-z",
+				"--untracked-files=all",
+			],
+			expect.objectContaining({ cwd }),
+		);
+		expect(mockTypedAgentRun).toHaveBeenCalledWith(
+			"commit-planner",
+			expect.objectContaining({ files }),
+			expect.anything(),
+		);
+		expect(
+			mockSpawn.mock.calls.filter(
+				([, args]) => (args as string[])[0] === "commit",
+			),
+		).toHaveLength(1);
 		expect(notify).not.toHaveBeenCalledWith(
 			expect.stringContaining("Commit failed:"),
 			"error",
@@ -632,7 +728,7 @@ describe("workflow command dispatch", () => {
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow-commit-activity",
-				content: "Error: Commit failed: fatal: not a git repository",
+				content: "Commit failed: fatal: not a git repository",
 				display: true,
 			}),
 		);
@@ -679,7 +775,7 @@ describe("workflow command dispatch", () => {
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow-commit-activity",
-				content: "Error: Commit failed: synthetic upstream failure",
+				content: "Commit failed: synthetic upstream failure",
 				display: true,
 			}),
 		);
@@ -704,7 +800,7 @@ describe("workflow command dispatch", () => {
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow-commit-activity",
-				content: "Error: Commit failed: Operation cancelled",
+				content: "Commit failed: Operation cancelled",
 				display: true,
 			}),
 		);
