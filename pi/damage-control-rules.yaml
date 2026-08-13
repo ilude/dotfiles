@@ -1442,31 +1442,19 @@ dangerous_commands:
   - pattern: "\\bglab\\s+mr\\s+delete\\b"
     regex: "\\bglab\\s+mr\\s+delete\\b"
     reason: "glab mr delete (permanently deletes merge requests)"
-    action: "block"
+    action: "ask"
     tools:
       - "bash"
   - pattern: "\\bglab\\s+issue\\s+delete\\b"
     regex: "\\bglab\\s+issue\\s+delete\\b"
     reason: "glab issue delete (permanently deletes issues)"
-    action: "block"
+    action: "ask"
     tools:
       - "bash"
   - pattern: "\\bglab\\s+release\\s+delete\\b"
     regex: "\\bglab\\s+release\\s+delete\\b"
     reason: "glab release delete (deletes release, may delete tag with --with-tag)"
     action: "block"
-    tools:
-      - "bash"
-  - pattern: "\\bglab\\s+mr\\s+merge\\b"
-    regex: "\\bglab\\s+mr\\s+merge\\b"
-    reason: "glab mr merge (merges MR, irreversible without revert)"
-    action: "ask"
-    tools:
-      - "bash"
-  - pattern: "\\bglab\\s+mr\\s+approve\\b"
-    regex: "\\bglab\\s+mr\\s+approve\\b"
-    reason: "glab mr approve (approves MR, may trigger auto-merge)"
-    action: "ask"
     tools:
       - "bash"
   - pattern: "\\bglab\\s+ssh-key\\s+delete\\b"

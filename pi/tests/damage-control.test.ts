@@ -1222,6 +1222,55 @@ describe("damage-control refactor hardening", () => {
 		).resolves.toBeUndefined();
 	});
 
+	it("real tracked rules allow glab MR merge and approval without confirmation", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const loaded = mod.loadRules();
+		const confirm = vi.fn(async () => true);
+		expect(loaded.health.status).toBe("active");
+
+		for (const command of ["glab mr merge 123", "glab mr approve 123"]) {
+			await expect(
+				mod.evaluateDangerousCommand(
+					command,
+					loaded.rules.dangerous_commands,
+					{
+						hasUI: true,
+						ui: { confirm },
+						toolName: "bash",
+					},
+				),
+			).resolves.toBeUndefined();
+		}
+		expect(confirm).not.toHaveBeenCalled();
+	});
+
+	it("real tracked rules ask before selected glab deletes", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const loaded = mod.loadRules();
+		const confirm = vi.fn(async () => true);
+		expect(loaded.health.status).toBe("active");
+
+		for (const command of [
+			"glab mr delete 123",
+			"glab issue delete 123",
+			"glab label delete synthetic-label",
+			"glab variable delete SYNTHETIC_VARIABLE",
+		]) {
+			await expect(
+				mod.evaluateDangerousCommand(
+					command,
+					loaded.rules.dangerous_commands,
+					{
+						hasUI: true,
+						ui: { confirm },
+						toolName: "bash",
+					},
+				),
+			).resolves.toBeUndefined();
+		}
+		expect(confirm).toHaveBeenCalledTimes(4);
+	});
+
 	it("real tracked rules block synthetic secret reads and destructive commands", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const loaded = mod.loadRules();
