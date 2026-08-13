@@ -13,7 +13,15 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 
-REQUIRED_SECRET_KEYS = ("BITWARDEN_ACCESS_KEY",)
+REQUIRED_SECRET_KEYS = (
+    "BITWARDEN_ACCESS_KEY",
+    "BITWARDEN_API_SERVER",
+    "ONCLAVE_BWS_PROJECT_ID",
+)
+BWS_PROJECT_ID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 MINIMUM_GO_VERSION = (1, 23)
 
 
@@ -176,6 +184,10 @@ def validate_secrets(path: Path) -> None:
     missing = [key for key in REQUIRED_SECRET_KEYS if not values.get(key, "").strip()]
     if missing:
         raise BootstrapError(f"private/secrets.env is missing required keys: {', '.join(missing)}")
+    if not BWS_PROJECT_ID_PATTERN.fullmatch(values["ONCLAVE_BWS_PROJECT_ID"].strip()):
+        raise BootstrapError("private/secrets.env has an invalid ONCLAVE_BWS_PROJECT_ID")
+    if not values["BITWARDEN_API_SERVER"].strip().lower().startswith("https://"):
+        raise BootstrapError("private/secrets.env has an invalid BITWARDEN_API_SERVER")
 
 
 def main(argv: list[str] | None = None) -> int:

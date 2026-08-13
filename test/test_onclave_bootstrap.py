@@ -101,7 +101,12 @@ def test_restore_private_uses_personal_identity_and_dolos(tmp_path: Path, monkey
         calls.append((dolos, root, selected_identity))
         secrets = root / "private" / "secrets.env"
         secrets.parent.mkdir()
-        secrets.write_text("BITWARDEN_ACCESS_KEY=token\n", encoding="utf-8")
+        secrets.write_text(
+            "BITWARDEN_ACCESS_KEY=token\n"
+            "BITWARDEN_API_SERVER=https://vault.example.internal/api\n"
+            "ONCLAVE_BWS_PROJECT_ID=3b241101-e2bb-4255-8caf-4136c566a962\n",
+            encoding="utf-8",
+        )
 
     monkeypatch.setattr(MODULE, "build_dolos", fake_build)
     monkeypatch.setattr(MODULE, "run_unpack", fake_unpack)
@@ -120,11 +125,47 @@ def test_restore_private_refuses_existing_incomplete_private_dir(tmp_path: Path)
         MODULE.restore_private(repo, tmp_path / "home", {})
 
 
-def test_validate_secrets_requires_bitwarden_access_key(tmp_path: Path) -> None:
+def test_validate_secrets_requires_bitwarden_bootstrap_values(tmp_path: Path) -> None:
     secrets = tmp_path / "secrets.env"
-    secrets.write_text(
-        "ONCLAVE_AMQP_ENDPOINT=amqp://rabbitmq.ilude.com/onclave\n", encoding="utf-8"
-    )
+    secrets.write_text("UNRELATED=value\n", encoding="utf-8")
 
     with pytest.raises(MODULE.BootstrapError, match="BITWARDEN_ACCESS_KEY"):
+        MODULE.validate_secrets(secrets)
+
+
+def test_validate_secrets_rejects_invalid_bws_project_id(tmp_path: Path) -> None:
+    secrets = tmp_path / "secrets.env"
+    secrets.write_text(
+        "BITWARDEN_ACCESS_KEY=token\n"
+        "BITWARDEN_API_SERVER=https://vault.example.internal/api\n"
+        "ONCLAVE_BWS_PROJECT_ID=not-a-project-id\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MODULE.BootstrapError, match="invalid ONCLAVE_BWS_PROJECT_ID"):
+        MODULE.validate_secrets(secrets)
+
+
+def test_validate_secrets_accepts_bws_bootstrap_values(tmp_path: Path) -> None:
+    secrets = tmp_path / "secrets.env"
+    secrets.write_text(
+        "BITWARDEN_ACCESS_KEY=token\n"
+        "BITWARDEN_API_SERVER=https://vault.example.internal/api\n"
+        "ONCLAVE_BWS_PROJECT_ID=3b241101-e2bb-4255-8caf-4136c566a962\n",
+        encoding="utf-8",
+    )
+
+    MODULE.validate_secrets(secrets)
+
+
+def test_validate_secrets_rejects_insecure_bws_api_server(tmp_path: Path) -> None:
+    secrets = tmp_path / "secrets.env"
+    secrets.write_text(
+        "BITWARDEN_ACCESS_KEY=token\n"
+        "BITWARDEN_API_SERVER=http://vault.example.internal/api\n"
+        "ONCLAVE_BWS_PROJECT_ID=3b241101-e2bb-4255-8caf-4136c566a962\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MODULE.BootstrapError, match="invalid BITWARDEN_API_SERVER"):
         MODULE.validate_secrets(secrets)

@@ -9,8 +9,6 @@ PI_DIR="${DOTFILES_DIR}/pi"
 PI_NODE_MODULES="${PI_DIR}/node_modules"
 ONCLAVE_DIR="${DOTFILES_DIR}/onclave"
 ONCLAVE_ADAPTER_DIR="${ONCLAVE_DIR}/extensions/onclave-pi"
-PRIVATE_SECRETS_FILE="${DOTFILES_DIR}/private/secrets.env"
-PRIVATE_ARCHIVE="${DOTFILES_DIR}/.dolos/artifacts/private.tar.gz.age"
 
 PACKAGES=(
     "@earendil-works/pi-coding-agent"
@@ -163,142 +161,91 @@ fi
 # 7. Onclave adapter source and workspace dependencies
 echo ""
 echo "Onclave adapter"
-if [[ -f "${ONCLAVE_ADAPTER_DIR}/src/onclave-pi.ts" ]]; then
-    ok "v2 adapter source is present"
+if [[ -f "${ONCLAVE_ADAPTER_DIR}/src/onclave-pi.ts" && \
+      -f "${ONCLAVE_ADAPTER_DIR}/src/lib/bws.ts" && \
+      -f "${ONCLAVE_ADAPTER_DIR}/src/lib/http-client.ts" && \
+      -f "${ONCLAVE_ADAPTER_DIR}/src/lib/http-signer.ts" ]]; then
+    ok "signed HTTPS adapter source is present"
 else
-    fail "adapter source missing (initialize the onclave submodule)"
+    fail "signed HTTPS adapter source is missing"
 fi
 if [[ -d "${ONCLAVE_DIR}/node_modules" ]]; then
-    if onclave_dep_error=$(cd "$ONCLAVE_ADAPTER_DIR" && node -e '
-        const { createRequire } = require("node:module");
-        const { join } = require("node:path");
-        const requireFromAdapter = createRequire(join(process.cwd(), "package.json"));
-        for (const name of ["amqplib", "@onclave/envelope", "typebox"]) requireFromAdapter.resolve(name);
-    ' 2>&1); then
-        ok "amqplib, @onclave/envelope, and typebox resolve"
+    if (
+        cd "$ONCLAVE_ADAPTER_DIR" &&
+            node -e '
+                const { createRequire } = require("node:module");
+                const { join } = require("node:path");
+                const requireFromAdapter = createRequire(join(process.cwd(), "package.json"));
+                for (const name of ["@onclave/envelope", "typebox"]) requireFromAdapter.resolve(name);
+            '
+    ) >/dev/null 2>&1; then
+        ok "adapter dependencies resolve"
     else
         fail "adapter dependencies do not resolve"
-        printf '         %s\n' "$onclave_dep_error"
-        echo "         Suggestion: pnpm install --dir ~/.dotfiles/onclave --frozen-lockfile"
     fi
 else
     fail "Onclave workspace dependencies are missing"
-    echo "         Suggestion: pnpm install --dir ~/.dotfiles/onclave --frozen-lockfile"
 fi
 
-# 8. Private secret bootstrap state
+# 8. Onclave HTTPS API configuration
 echo ""
-echo "Onclave private configuration"
-if [[ -f "$PRIVATE_SECRETS_FILE" ]]; then
-    ok "private/secrets.env is present"
-elif [[ -f "$PRIVATE_ARCHIVE" ]]; then
-    fail "private/secrets.env is missing; run scripts/onclave-bootstrap.py"
+echo "Onclave HTTPS API"
+if (
+    cd "$ONCLAVE_ADAPTER_DIR" &&
+        pnpm exec tsx - <<'TS'
+import { loadApiBaseFromBws } from "./src/lib/bws.ts";
+import { resolveApiBase } from "./src/lib/http-client.ts";
+
+const explicit = process.env.ONCLAVE_API_BASE;
+const apiBase = explicit ?? await loadApiBaseFromBws();
+resolveApiBase(apiBase, {});
+TS
+) >/dev/null 2>&1; then
+    ok "Bitwarden-backed HTTPS API configuration is valid"
 else
-    fail "private/secrets.env and the encrypted private archive are missing"
-fi
-if command -v bws >/dev/null 2>&1 && bws --version >/dev/null 2>&1; then
-    ok "Bitwarden Secrets Manager CLI is installed and executable"
-else
-    fail "bws is missing or unusable (run scripts/install-bws.py --force)"
+    fail "Bitwarden-backed HTTPS API configuration is invalid"
 fi
 
-# 9. Resolve the broker URL from an explicit override or BWS without printing it.
+# 9. Onclave signing key
+# Parse the same default OpenSSH key that the adapter uses at runtime.
 echo ""
-echo "Onclave broker configuration"
-onclave_url="${ONCLAVE_AMQP_URL:-}"
-if [[ -z "$onclave_url" && -n "${BITWARDEN_ACCESS_KEY:-}" ]]; then
-    if onclave_url=$(
-        cd "$ONCLAVE_DIR" &&
-            pnpm exec tsx - <<'TS'
-import { loadBrokerUrlFromBws } from "./extensions/onclave-pi/src/lib/bws.ts";
+echo "Onclave signing key"
+if (
+    cd "$ONCLAVE_ADAPTER_DIR" &&
+        pnpm exec tsx - <<'TS'
+import { loadDefaultRequestSigner } from "./src/lib/http-signer.ts";
 
-loadBrokerUrlFromBws()
-  .then((url) => {
-    if (!url) process.exit(1);
-    process.stdout.write(url);
-  })
-  .catch(() => process.exit(1));
+await loadDefaultRequestSigner();
 TS
-    ); then
-        ok "broker credentials resolved from Bitwarden Secrets Manager"
-    else
-        fail "broker credentials could not be resolved from Bitwarden Secrets Manager"
-    fi
+) >/dev/null 2>&1; then
+    ok "default OpenSSH signing key is valid"
+else
+    fail "default OpenSSH signing key is invalid"
 fi
 
-if [[ -z "$onclave_url" ]]; then
-    fail "no explicit broker URL or BITWARDEN_ACCESS_KEY; the adapter will not start"
-else
-    export ONCLAVE_AMQP_URL="$onclave_url"
-    if onclave_metadata=$(node <<'NODE'
-const value = process.env.ONCLAVE_AMQP_URL;
-try {
-    const url = new URL(value);
-    if (url.protocol !== "amqp:" && url.protocol !== "amqps:") process.exit(2);
-    const port = url.port || (url.protocol === "amqps:" ? "5671" : "5672");
-    const fields = [
-        url.protocol.slice(0, -1),
-        url.hostname,
-        port,
-        url.pathname || "/",
-        url.username ? "yes" : "no",
-        url.password ? "yes" : "no",
-    ];
-    process.stdout.write(fields.join("\t"));
-} catch {
-    process.exit(2);
-}
-NODE
-    ); then
-        IFS=$'\t' read -r onclave_scheme onclave_host onclave_port onclave_vhost onclave_user onclave_password <<<"$onclave_metadata"
-        ok "scheme=${onclave_scheme} host=${onclave_host} port=${onclave_port} vhost=${onclave_vhost} username=${onclave_user} password=${onclave_password}"
+# 10. Signed Onclave HTTPS API check
+echo ""
+echo "Onclave HTTPS API request"
+if (
+    cd "$ONCLAVE_ADAPTER_DIR" &&
+        pnpm exec tsx - <<'TS'
+import { loadApiBaseFromBws } from "./src/lib/bws.ts";
+import { OnclaveHttpClient, resolveApiBase } from "./src/lib/http-client.ts";
+import { loadDefaultRequestSigner } from "./src/lib/http-signer.ts";
 
-        if node <<'NODE'
-const net = require("node:net");
-const url = new URL(process.env.ONCLAVE_AMQP_URL);
-const port = Number(url.port || (url.protocol === "amqps:" ? 5671 : 5672));
-const socket = net.createConnection({ host: url.hostname, port });
-let settled = false;
-const finish = (code) => {
-    if (settled) return;
-    settled = true;
-    socket.destroy();
-    process.exitCode = code;
-};
-socket.setTimeout(5000, () => finish(1));
-socket.once("connect", () => finish(0));
-socket.once("error", () => finish(1));
-NODE
-        then
-            ok "broker TCP endpoint is reachable"
-            if (
-                cd "$ONCLAVE_ADAPTER_DIR" &&
-                    pnpm exec tsx - <<'TS'
-import { connect } from "amqplib";
-import { CoreRpcClient } from "./src/lib/rpc-client.ts";
-
-(async () => {
-    const connection = await connect(process.env.ONCLAVE_AMQP_URL!);
-    const channel = await connection.createChannel();
-    const rpc = new CoreRpcClient(channel, 5000);
-    await rpc.init();
-    const response = await rpc.call({ op: "list_agents" });
-    await channel.close();
-    await connection.close();
-    if (response.ok !== true) process.exit(1);
-})().catch(() => process.exit(1));
+const explicit = process.env.ONCLAVE_API_BASE;
+const apiBase = explicit ?? await loadApiBaseFromBws();
+const client = new OnclaveHttpClient({
+  apiBase: resolveApiBase(apiBase, {}),
+  signer: await loadDefaultRequestSigner(),
+});
+const response = await client.call({ op: "list_agents" }, AbortSignal.timeout(5000));
+if (response.ok !== true) process.exit(1);
 TS
-            ) >/dev/null 2>&1; then
-                ok "broker authentication and Onclave core RPC succeeded"
-            else
-                fail "broker authentication or Onclave core RPC failed"
-            fi
-        else
-            fail "broker TCP endpoint is not reachable"
-        fi
-    else
-        fail "ONCLAVE_AMQP_URL is invalid or does not use amqp/amqps"
-    fi
+) >/dev/null 2>&1; then
+    ok "signed HTTPS list_agents succeeded"
+else
+    fail "signed HTTPS list_agents failed"
 fi
 
 echo ""

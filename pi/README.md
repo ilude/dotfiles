@@ -282,9 +282,9 @@ pi --no-extensions
 pi -e ~/.dotfiles/pi/extensions/damage-control.ts
 ```
 
-The Onclave adapter defaults to the central `rabbitmq.ilude.com:5672/onclave` broker and the dotfiles-managed BWS project. `private/secrets.env` supplies the BWS bootstrap access key; the adapter reads RabbitMQ credentials from Bitwarden Secrets Manager and constructs the broker URL in memory. There is no localhost fallback. An explicit `--onclave-url` flag or `ONCLAVE_AMQP_URL` environment variable remains available for controlled overrides.
+The Onclave adapter connects over signed HTTPS using `~/.ssh/id_ed25519`. By default it uses the BWS bootstrap values from the Dolos-protected `private/secrets.env` file to load `ONCLAVE_API_BASE` from Bitwarden Secrets Manager in memory. An explicit `--onclave-url` flag or `ONCLAVE_API_BASE` environment variable overrides that lookup for a controlled invocation. The adapter does not write the fetched API base to disk or load RabbitMQ credentials.
 
-The installers install and execute-check the pinned cross-platform `bws` CLI, build Dolos when needed, and restore the encrypted private archive when `private/secrets.env` is absent. Restore uses `DOLOS_IDENTITY` when set, then `~/.ssh/id_ed25519-personal`, then `~/.ssh/id_ed25519`. The installer fails instead of leaving Onclave on an unusable fallback when restoration or validation fails. Restart the shell and Pi after changing the private configuration. Run `make pi-doctor` to resolve BWS credentials without printing them, inspect redacted broker metadata, resolve adapter dependencies, and test broker reachability, authentication, and core RPC.
+The installers install and execute-check the pinned cross-platform `bws` CLI, build Dolos when needed, and restore the encrypted private archive when `private/secrets.env` is absent. Restore uses `DOLOS_IDENTITY` when set, then `~/.ssh/id_ed25519-personal`, then `~/.ssh/id_ed25519`. Restart the shell and Pi after changing the private bootstrap configuration. Run `make pi-doctor` to validate the redacted BWS-backed HTTPS configuration, signing key, and signed `list_agents` request.
 
 ---
 
