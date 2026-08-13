@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import duckdb
+import pi_log_query
 import pytest
 
 from pi_log_query import (
@@ -294,11 +295,18 @@ def test_query_runner_is_read_only_and_bounded(layout: SourceLayout) -> None:
 
 
 def test_catalog_does_not_scan_or_merge_session_corpora(
-    layout: SourceLayout, capsys: pytest.CaptureFixture[str]
+    layout: SourceLayout,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     rows = {row[0]: row for row in source_catalog(layout)}
     assert rows["session_entries"][1] == 1
     assert rows["history_entries"][1] == 1
+    monkeypatch.setattr(
+        pi_log_query,
+        "connect_with_views",
+        lambda *args, **kwargs: pytest.fail("catalog registered row-reading views"),
+    )
 
     result = main(
         [
@@ -385,3 +393,467 @@ def test_malformed_jsonl_requires_validation_and_explicit_opt_in(
     assert "parsed_events" in captured.out
     assert "not-json" not in captured.out
     assert "omits malformed JSONL rows" in captured.err
+
+
+def test_selected_source_registers_only_selected_tables(layout: SourceLayout) -> None:
+    connection, paths = connect_with_views(layout, selected_sources=("session_entries",))
+
+    assert tuple(paths) == ("session_entries",)
+    assert connection.sql("SELECT count(*) FROM session_inventory").fetchone() == (1,)
+    with pytest.raises(duckdb.CatalogException):
+        connection.sql("SELECT count(*) FROM metric_events").fetchone()
+
+
+def test_files_excludes_reparse_point_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    included = tmp_path / "included"
+    excluded = tmp_path / "excluded"
+    write_jsonl(included / "included.jsonl", [{"id": "included"}])
+    write_jsonl(excluded / "excluded.jsonl", [{"id": "excluded"}])
+    excluded_inode = excluded.stat().st_ino
+    original = pi_log_query._is_reparse_point
+    monkeypatch.setattr(
+        pi_log_query,
+        "_is_reparse_point",
+        lambda file_stat: file_stat.st_ino == excluded_inode or original(file_stat),
+    )
+
+    assert pi_log_query._files(tmp_path, "*.jsonl") == [included / "included.jsonl"]
+
+
+def test_files_propagates_traversal_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    write_jsonl(tmp_path / "source.jsonl", [{"id": "source"}])
+    original = pi_log_query.os.scandir
+
+    def denied(path: Path):
+        if Path(path) == tmp_path:
+            raise PermissionError("denied")
+        return original(path)
+
+    monkeypatch.setattr(pi_log_query.os, "scandir", denied)
+
+    with pytest.raises(PermissionError, match="denied"):
+        pi_log_query._files(tmp_path, "*.jsonl")
+
+
+def test_files_from_overrides_discovery_with_relative_jsonl_paths(
+    layout: SourceLayout, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    imported = tmp_path / "imported" / "session.jsonl"
+    write_jsonl(imported, [{"type": "session", "id": "manifest-session"}])
+    manifest = tmp_path / "manifests" / "sources.jsonl"
+    manifest.parent.mkdir()
+    manifest.write_text(
+        "../imported/session.jsonl\n"
+        + json.dumps({"filename": "../imported/session.jsonl"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = main(
+        [
+            "--repo-root",
+            str(layout.repo_root),
+            "--agent-dir",
+            str(layout.agent_dir),
+            "--source",
+            "session_entries",
+            "--files-from",
+            f"session_entries={manifest}",
+            "query",
+            "SELECT id FROM session_entries",
+            "--format",
+            "jsonl",
+        ]
+    )
+
+    assert result == 0
+    assert json.loads(capsys.readouterr().out) == {"id": "manifest-session"}
+
+
+def test_thread_default_is_capped_and_connection_honors_explicit_value(
+    layout: SourceLayout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pi_log_query.os, "cpu_count", lambda: 64)
+    assert pi_log_query.build_parser().parse_args(["catalog"]).threads == 4
+
+    connection, _ = connect_with_views(layout, selected_sources=("session_entries",), threads=1)
+    assert str(connection.sql("SELECT current_setting('threads')").fetchone()[0]) == "1"
+
+
+def test_validation_cache_reuses_and_invalidates_files(
+    layout: SourceLayout, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args = [
+        "--repo-root",
+        str(layout.repo_root),
+        "--agent-dir",
+        str(layout.agent_dir),
+        "validate",
+        "session_entries",
+        "--format",
+        "jsonl",
+    ]
+
+    assert main(args) == 0
+    assert "checked_files=1 cached_files=0" in capsys.readouterr().err
+    assert main(args) == 0
+    assert "checked_files=0 cached_files=1" in capsys.readouterr().err
+
+    session_path = layout.agent_dir / "sessions" / "project" / "session-1.jsonl"
+    with session_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"type": "message", "id": "new-message"}) + "\n")
+    assert main(args) == 0
+    assert "checked_files=1 cached_files=0" in capsys.readouterr().err
+
+
+def test_selected_snapshot_metadata_excludes_unselected_sources(
+    layout: SourceLayout, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "selected.duckdb"
+    pi_log_query.refresh_snapshot(
+        snapshot,
+        layout,
+        selected_sources=("session_entries", "history_entries"),
+        threads=1,
+    )
+    connection = pi_log_query._open_snapshot(snapshot, 1, ("session_entries",))
+    try:
+        assert connection.sql(
+            "SELECT DISTINCT source_name FROM pi_log_snapshot_metadata"
+        ).fetchall() == [("session_entries",)]
+        with pytest.raises(duckdb.CatalogException):
+            connection.sql("SELECT count(*) FROM history_entries").fetchone()
+    finally:
+        connection.close()
+
+
+def test_snapshot_incrementally_refreshes_and_catalog_uses_metadata(
+    layout: SourceLayout, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    snapshot = tmp_path / "snapshot.duckdb"
+    base_args = [
+        "--repo-root",
+        str(layout.repo_root),
+        "--agent-dir",
+        str(layout.agent_dir),
+        "--snapshot-db",
+        str(snapshot),
+        "--source",
+        "session_entries",
+    ]
+
+    assert main([*base_args, "snapshot"]) == 0
+    capsys.readouterr()
+    assert main([*base_args, "query", "SELECT count(*) AS rows FROM session_entries"]) == 0
+    assert "3" in capsys.readouterr().out
+
+    session_path = layout.agent_dir / "sessions" / "project" / "session-1.jsonl"
+    with session_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"type": "message", "id": "snapshot-message"}) + "\n")
+    assert main([*base_args, "snapshot"]) == 0
+    capsys.readouterr()
+    session_path.unlink()
+    assert main([*base_args, "catalog", "--format", "jsonl"]) == 0
+    catalog = capsys.readouterr().out
+    assert '"files": 1' in catalog
+    assert main([*base_args, "query", "SELECT count(*) AS rows FROM session_entries"]) == 0
+    assert "4" in capsys.readouterr().out
+    assert main([*base_args, "snapshot"]) == 0
+    capsys.readouterr()
+    assert main([*base_args, "catalog", "--format", "jsonl"]) == 0
+    assert '"files": 0' in capsys.readouterr().out
+    assert main([*base_args, "query", "SELECT count(*) AS rows FROM session_entries"]) == 0
+    assert "0" in capsys.readouterr().out
+
+
+def test_batch_returns_multiple_results_and_rejects_non_select(
+    layout: SourceLayout, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sql_file = tmp_path / "batch.sql"
+    sql_file.write_text("SELECT 1 AS first; SELECT 2 AS second;", encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "--agent-dir",
+                str(layout.agent_dir),
+                "--source",
+                "session_entries",
+                "batch",
+                str(sql_file),
+                "--format",
+                "jsonl",
+            ]
+        )
+        == 0
+    )
+    assert [json.loads(line) for line in capsys.readouterr().out.splitlines()] == [
+        {"first": 1},
+        {"second": 2},
+    ]
+
+    sql_file.write_text("SELECT 1; DELETE FROM session_entries;", encoding="utf-8")
+    assert (
+        main(
+            [
+                "--agent-dir",
+                str(layout.agent_dir),
+                "--source",
+                "session_entries",
+                "batch",
+                str(sql_file),
+            ]
+        )
+        == 2
+    )
+    assert "only read-only SELECT" in capsys.readouterr().err
+
+
+def test_snapshot_batches_initial_files_and_replaces_only_changed_file(
+    layout: SourceLayout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = layout.agent_dir / "sessions" / "project" / "session-1.jsonl"
+    second = tmp_path / "sessions" / "session-2.jsonl"
+    write_jsonl(second, [{"type": "session", "id": "session-2"}])
+    snapshot = tmp_path / "snapshot.duckdb"
+    read_calls: list[list[str]] = []
+    original_connect = duckdb.connect
+
+    class TrackingConnection:
+        def __init__(self, connection: duckdb.DuckDBPyConnection) -> None:
+            self.connection = connection
+
+        def read_json(self, paths: list[str], **kwargs: object) -> duckdb.DuckDBPyRelation:
+            read_calls.append(paths)
+            return self.connection.read_json(paths, **kwargs)
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self.connection, name)
+
+    def tracking_connect(*args: object, **kwargs: object) -> TrackingConnection:
+        return TrackingConnection(original_connect(*args, **kwargs))
+
+    monkeypatch.setattr(pi_log_query.duckdb, "connect", tracking_connect)
+    overrides = {"session_entries": [first, second]}
+    pi_log_query.refresh_snapshot(
+        snapshot, layout, selected_sources=("session_entries",), source_overrides=overrides
+    )
+    assert read_calls == [[str(first.resolve()), str(second.resolve())]]
+
+    with first.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"type": "message", "id": "replacement-message"}) + "\n")
+    pi_log_query.refresh_snapshot(
+        snapshot, layout, selected_sources=("session_entries",), source_overrides=overrides
+    )
+    assert read_calls == [
+        [str(first.resolve()), str(second.resolve())],
+        [str(first.resolve())],
+    ]
+
+    connection = original_connect(str(snapshot), read_only=True)
+    try:
+        assert connection.execute(
+            "SELECT filename, count(*) FROM session_entries GROUP BY filename ORDER BY filename"
+        ).fetchall() == [
+            (str(first.resolve()), 4),
+            (str(second.resolve()), 1),
+        ]
+        assert connection.execute(
+            "SELECT count(*) FROM pi_log_snapshot_metadata WHERE source_name = 'session_entries'"
+        ).fetchone() == (2,)
+    finally:
+        connection.close()
+
+
+def test_validation_cache_preserves_entries_for_multiple_sources(
+    layout: SourceLayout, tmp_path: Path
+) -> None:
+    cache_path = tmp_path / "validation-cache.json"
+    session_spec = next(spec for spec in SOURCES if spec.name == "session_entries")
+    metrics_spec = next(spec for spec in SOURCES if spec.name == "metric_events")
+
+    pi_log_query._cached_validation(session_spec, session_spec.resolve_paths(layout), cache_path)
+    pi_log_query._cached_validation(metrics_spec, metrics_spec.resolve_paths(layout), cache_path)
+
+    cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert set(cache["entries"]) == {"session_entries", "metric_events"}
+    assert not cache_path.with_name(f".{cache_path.name}.lock").exists()
+
+
+def test_validation_cache_lock_times_out(
+    layout: SourceLayout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_path = tmp_path / "validation-cache.json"
+    lock_path = cache_path.with_name(f".{cache_path.name}.lock")
+    lock_path.write_text("held", encoding="utf-8")
+    monkeypatch.setattr(pi_log_query, "VALIDATION_CACHE_LOCK_TIMEOUT_SECONDS", 0.0)
+    session_spec = next(spec for spec in SOURCES if spec.name == "session_entries")
+
+    with pytest.raises(TimeoutError, match="timed out waiting for validation cache lock"):
+        pi_log_query._cached_validation(
+            session_spec, session_spec.resolve_paths(layout), cache_path
+        )
+
+    assert lock_path.exists()
+
+
+def test_snapshot_strict_refresh_reingests_unchanged_permissive_source(
+    layout: SourceLayout, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.duckdb"
+    usage_path = layout.agent_dir / "logs" / "usage.jsonl"
+    usage_path.parent.mkdir(parents=True, exist_ok=True)
+    usage_path.write_text('{"schemaVersion":1,"event":"start"}\nnot-json\n', encoding="utf-8")
+
+    pi_log_query.refresh_snapshot(
+        snapshot, layout, selected_sources=("usage_events",), ignore_errors=True
+    )
+    connection = pi_log_query._open_snapshot(snapshot, 1)
+    try:
+        assert connection.execute("SELECT count(*) FROM usage_events").fetchone() == (2,)
+    finally:
+        connection.close()
+
+    with pytest.raises(duckdb.InvalidInputException):
+        pi_log_query.refresh_snapshot(snapshot, layout, selected_sources=("usage_events",))
+
+    connection = pi_log_query._open_snapshot(snapshot, 1)
+    try:
+        assert connection.execute("SELECT count(*) FROM usage_events").fetchone() == (2,)
+    finally:
+        connection.close()
+
+
+def test_failed_initial_snapshot_refresh_is_not_openable(
+    layout: SourceLayout, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.duckdb"
+    usage_path = layout.agent_dir / "logs" / "usage.jsonl"
+    usage_path.parent.mkdir(parents=True, exist_ok=True)
+    usage_path.write_text('{"schemaVersion":1,"event":"start"}\nnot-json\n', encoding="utf-8")
+
+    with pytest.raises(duckdb.InvalidInputException):
+        pi_log_query.refresh_snapshot(snapshot, layout, selected_sources=("usage_events",))
+
+    with pytest.raises(ValueError, match="legacy or incomplete"):
+        pi_log_query._open_snapshot(snapshot, 1)
+
+    connection = duckdb.connect(str(snapshot), read_only=True)
+    try:
+        assert not pi_log_query._snapshot_metadata_exists(connection)
+        assert not pi_log_query._snapshot_state_exists(connection)
+    finally:
+        connection.close()
+
+
+def test_snapshot_reconciles_files_that_change_during_initial_load(
+    layout: SourceLayout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot = tmp_path / "snapshot.duckdb"
+    session_path = layout.agent_dir / "sessions" / "project" / "session-1.jsonl"
+    original = pi_log_query._snapshot_signatures
+    calls = 0
+
+    def change_once(paths_by_source):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            with session_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"type": "message", "id": "late"}) + "\n")
+        return original(paths_by_source)
+
+    monkeypatch.setattr(pi_log_query, "_snapshot_signatures", change_once)
+    pi_log_query.refresh_snapshot(snapshot, layout, selected_sources=("session_entries",))
+
+    connection = pi_log_query._open_snapshot(snapshot, 1)
+    try:
+        assert connection.execute("SELECT count(*) FROM session_entries").fetchone() == (4,)
+    finally:
+        connection.close()
+
+
+def test_snapshot_fails_when_files_never_stabilize(
+    layout: SourceLayout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot = tmp_path / "snapshot.duckdb"
+    session_path = layout.agent_dir / "sessions" / "project" / "session-1.jsonl"
+    original = pi_log_query._snapshot_signatures
+    calls = 0
+
+    def keep_changing(paths_by_source):
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            with session_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"type": "message", "id": f"late-{calls}"}) + "\n")
+        return original(paths_by_source)
+
+    monkeypatch.setattr(pi_log_query, "_snapshot_signatures", keep_changing)
+    with pytest.raises(RuntimeError, match="did not stabilize"):
+        pi_log_query.refresh_snapshot(snapshot, layout, selected_sources=("session_entries",))
+
+    with pytest.raises(ValueError, match="legacy or incomplete"):
+        pi_log_query._open_snapshot(snapshot, 1)
+
+
+def test_failed_changed_file_refresh_preserves_committed_snapshot(
+    layout: SourceLayout, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.duckdb"
+    pi_log_query.refresh_snapshot(snapshot, layout, selected_sources=("session_entries",))
+    session_path = layout.agent_dir / "sessions" / "project" / "session-1.jsonl"
+    with session_path.open("a", encoding="utf-8") as handle:
+        handle.write("not-json\n")
+
+    with pytest.raises(duckdb.InvalidInputException):
+        pi_log_query.refresh_snapshot(snapshot, layout, selected_sources=("session_entries",))
+
+    connection = pi_log_query._open_snapshot(snapshot, 1)
+    try:
+        assert connection.execute("SELECT count(*) FROM session_entries").fetchone() == (3,)
+        assert connection.execute(
+            "SELECT format_version, completed FROM pi_log_snapshot_state"
+        ).fetchall() == [(pi_log_query.SNAPSHOT_FORMAT_VERSION, True)]
+    finally:
+        connection.close()
+
+
+def test_snapshot_rejects_legacy_incomplete_schema(layout: SourceLayout, tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.duckdb"
+    connection = duckdb.connect(str(snapshot))
+    try:
+        connection.execute(
+            """CREATE TABLE pi_log_snapshot_metadata (
+            source_name VARCHAR NOT NULL, path VARCHAR NOT NULL, size UBIGINT NOT NULL,
+            mtime_ns UBIGINT NOT NULL, PRIMARY KEY (source_name, path))"""
+        )
+    finally:
+        connection.close()
+
+    with pytest.raises(ValueError, match="legacy or incomplete"):
+        pi_log_query.refresh_snapshot(snapshot, layout, selected_sources=("session_entries",))
+    with pytest.raises(ValueError, match="legacy or incomplete"):
+        pi_log_query._open_snapshot(snapshot, 1)
+
+
+def test_snapshot_rejects_incompatible_filename_schema_before_refresh(
+    layout: SourceLayout, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.duckdb"
+    spec = next(spec for spec in SOURCES if spec.name == "session_entries")
+    definitions = ", ".join(
+        f"{pi_log_query._quoted_identifier(name)} {data_type}" for name, data_type in spec.columns
+    )
+    pi_log_query.refresh_snapshot(snapshot, layout, selected_sources=("session_entries",))
+    connection = duckdb.connect(str(snapshot))
+    try:
+        connection.execute("DROP VIEW session_inventory")
+        connection.execute("DROP TABLE session_entries")
+        connection.execute(f"CREATE TABLE session_entries ({definitions}, filename BIGINT)")
+    finally:
+        connection.close()
+
+    with pytest.raises(ValueError, match="snapshot schema mismatch for session_entries"):
+        pi_log_query.refresh_snapshot(snapshot, layout, selected_sources=("session_entries",))
