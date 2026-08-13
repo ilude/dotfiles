@@ -1013,7 +1013,7 @@ describe("quality-gates extension", () => {
 			}
 		});
 
-		it("skips unchanged content after a successful validation", async () => {
+		it("runs mandatory automatic validation when evidence is unchanged", async () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-cache-"));
 			const filePath = path.join(root, "cached.content-cache");
 			try {
@@ -1055,7 +1055,7 @@ describe("quality-gates extension", () => {
 					pi.exec.mock.calls.filter(
 						([command]) => command === "content-cache-validator",
 					),
-				).toHaveLength(2);
+				).toHaveLength(3);
 			} finally {
 				fs.rmSync(root, { recursive: true, force: true });
 			}
@@ -1462,15 +1462,81 @@ describe("quality-gates extension", () => {
 				);
 				expect(options).toEqual({ triggerTurn: true });
 
-				// Unchanged failures after the repair turn hit the no-progress guard.
+				// Unchanged repair revalidation preserves the failure without re-running it.
 				await pi._getHook("agent_settled")[0].handler({}, ctx);
-				expect(pi.sendMessage).toHaveBeenCalledTimes(2);
-				const [message2, options2] = pi.sendMessage.mock.calls[1];
+				expect(
+					pi.exec.mock.calls.filter(([command]) => command === "lint-check"),
+				).toHaveLength(1);
+				expect(pi.sendMessage).toHaveBeenCalledTimes(3);
+				const [skipMessage, skipOptions] = pi.sendMessage.mock.calls[1];
+				expect(skipMessage.content).toContain("verification skipped");
+				expect(skipMessage.content).toContain("lint");
+				expect(skipMessage.content).toContain("foo.repairme");
+				expect(skipOptions).toEqual({ triggerTurn: false });
+				expect(
+					pi.sendMessage.mock.calls.filter(
+						([, messageOptions]) => messageOptions.triggerTurn === true,
+					),
+				).toHaveLength(1);
+				const [message2, options2] = pi.sendMessage.mock.calls[2];
 				expect(message2.content).toContain("Quality gate validation failed");
 				expect(message2.content).not.toContain(
 					"Fix these quality gate failures now",
 				);
 				expect(options2).toEqual({ triggerTurn: false });
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
+		});
+
+		it("re-runs model revalidation when its evidence changes", async () => {
+			const root = fs.mkdtempSync(
+				path.join(os.tmpdir(), "pi-quality-evidence-change-"),
+			);
+			const filePath = path.join(root, "foo.evidence-change");
+			try {
+				fs.writeFileSync(filePath, "broken\n");
+				const pi = createMockPi();
+				pi.exec.mockImplementation(async (command: string) => {
+					if (command === "git") return { code: 1, stdout: "", stderr: "" };
+					if (command === "evidence-change-validator")
+						return { code: 1, stdout: "still broken", stderr: "" };
+					return { code: 0, stdout: "", stderr: "" };
+				});
+				const map = buildExtMap({
+					test: {
+						extensions: [".evidence-change"],
+						validators: [
+							{
+								name: "evidence-change",
+								command: ["evidence-change-validator", "{file}"],
+								always: true,
+							},
+						],
+					},
+				});
+				registerQualityGates(pi as unknown as ExtensionAPI, map, {
+					repair: repairConfig,
+				});
+				const ctx = { cwd: root, model: { provider: "openai-codex" } };
+				await pi._getHook("tool_result")[0].handler({
+					toolName: "edit",
+					input: { path: filePath },
+				} as unknown as ToolResultEvent);
+				await pi._getHook("agent_settled")[0].handler({}, ctx);
+				fs.writeFileSync(filePath, "changed but still broken\n");
+				await pi._getHook("agent_settled")[0].handler({}, ctx);
+
+				expect(
+					pi.exec.mock.calls.filter(
+						([command]) => command === "evidence-change-validator",
+					),
+				).toHaveLength(2);
+				expect(
+					pi.sendMessage.mock.calls.some(
+						([message]) => message.content.includes("verification skipped"),
+					),
+				).toBe(false);
 			} finally {
 				fs.rmSync(root, { recursive: true, force: true });
 			}
@@ -1495,6 +1561,7 @@ describe("quality-gates extension", () => {
 				});
 				const runRepairChild = vi.fn(async () => {
 					repaired = true;
+					fs.writeFileSync(filePath, "repaired\n");
 					return { exitCode: 0, detail: "" };
 				});
 				const map = buildExtMap({

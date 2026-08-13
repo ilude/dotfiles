@@ -414,13 +414,31 @@ export interface ValidationOutcome {
 		| "long_running"
 		| "not_detected"
 		| "project_scope"
-		| "stale_result";
+		| "stale_result"
+		| "duplicate_evidence";
+}
+
+type ValidationInitiation =
+	| "automatic_hook"
+	| "model_initiated"
+	| "user_requested";
+
+type DecisiveValidationOutcome = "passed" | "failed" | "autofixed";
+
+interface ValidationEvidenceRecord {
+	validatorInputHash: string;
+	repositoryStateHash: string;
+	failureSignature?: string;
+	lastDecisiveOutcome: DecisiveValidationOutcome;
+	failure?: ValidationIssue;
 }
 
 interface ValidationRunOptions {
 	lizardThresholds?: LizardThresholds;
 	executedProjectValidators?: Set<string>;
 	automatic?: boolean;
+	initiation?: ValidationInitiation;
+	evidence?: Map<string, ValidationEvidenceRecord>;
 	autofix?: boolean;
 	onOutcome?: (outcome: ValidationOutcome) => void;
 }
@@ -445,6 +463,82 @@ function automaticSkipReason(
 	return undefined;
 }
 
+function hashEvidence(parts: Array<string | Buffer>): string {
+	const hash = crypto.createHash("sha256");
+	for (const part of parts) {
+		hash.update(part);
+		hash.update("\0");
+	}
+	return hash.digest("hex");
+}
+
+function normalizedFailureSignature(issue: ValidationIssue): string {
+	return hashEvidence([
+		issue.name,
+		issue.output.replaceAll("\r\n", "\n").trim(),
+		issue.advisory === true ? "advisory" : "blocking",
+	]);
+}
+
+function resolvedConfigurationPaths(
+	projectRoot: string,
+	patterns: string[],
+): string[] {
+	const paths = new Set<string>();
+	for (const pattern of patterns) {
+		if (pattern.includes("*") || pattern.includes("?")) {
+			for (const entry of fs.readdirSync(projectRoot).sort()) {
+				if (markerPattern(pattern).test(entry))
+					paths.add(path.join(projectRoot, entry));
+			}
+		} else {
+			const input = path.join(projectRoot, pattern);
+			if (fs.existsSync(input)) paths.add(input);
+		}
+	}
+	return [...paths].sort();
+}
+
+function validationEvidence(
+	validator: ValidatorConfig,
+	langConfig: LanguageConfig,
+	absoluteFilePath: string,
+	projectRoot: string,
+	lizardThresholds: LizardThresholds,
+): { key: string; validatorInputHash: string; repositoryStateHash: string } {
+	const targetContent = fs.readFileSync(absoluteFilePath);
+	const targetContentHash = hashEvidence([targetContent]);
+	let resolvedValidatorInput: string;
+	if ("command" in validator)
+		resolvedValidatorInput = JSON.stringify(
+			buildValidatorCommand(validator.command, absoluteFilePath, projectRoot),
+		);
+	else
+		resolvedValidatorInput = JSON.stringify({
+			thresholds: { ...lizardThresholds, ...validator.thresholds },
+			advisory: validator.advisory === true,
+		});
+	const validatorInputHash = hashEvidence([
+		validator.name,
+		resolvedValidatorInput,
+		targetContentHash,
+	]);
+	const configurationPaths = resolvedConfigurationPaths(projectRoot, [
+		...(langConfig.markers ?? []),
+		...("command" in validator ? validator.detectAny ?? [] : []),
+		...("command" in validator ? validator.detectAll ?? [] : []),
+	]);
+	const configurationInputs = configurationPaths.flatMap((input) => [
+		input,
+		fs.readFileSync(input),
+	]);
+	return {
+		key: `${absoluteFilePath}\0${projectRoot}\0${validator.name}`,
+		validatorInputHash,
+		repositoryStateHash: hashEvidence([targetContentHash, ...configurationInputs]),
+	};
+}
+
 export async function runAvailableValidators(
 	pi: ExtensionAPI,
 	langConfig: LanguageConfig,
@@ -455,19 +549,38 @@ export async function runAvailableValidators(
 	const absoluteFilePath = path.resolve(cwd, filePath);
 	const projectRoot =
 		findProjectRoot(absoluteFilePath, langConfig.markers ?? []) ?? cwd;
+	const initiation = options.initiation ?? "user_requested";
 	const failures: ValidationIssue[] = [];
 	for (const validator of langConfig.validators) {
 		const startedAt = Date.now();
+		let evidence: ReturnType<typeof validationEvidence> | undefined;
 		const report = (
 			outcome: ValidationOutcomeKind,
 			reason?: ValidationOutcome["reason"],
-		) =>
+			failure?: ValidationIssue,
+		) => {
+			if (
+				evidence &&
+				(outcome === "passed" || outcome === "failed" || outcome === "autofixed")
+			)
+				options.evidence?.set(evidence.key, {
+					validatorInputHash: evidence.validatorInputHash,
+					repositoryStateHash: evidence.repositoryStateHash,
+					lastDecisiveOutcome: outcome,
+					...(failure
+						? {
+								failure,
+								failureSignature: normalizedFailureSignature(failure),
+							}
+						: {}),
+				});
 			options.onOutcome?.({
 				name: validator.name,
 				outcome,
 				durationMs: Date.now() - startedAt,
 				...(reason ? { reason } : {}),
 			});
+		};
 		if (filterValidatorsByDetection([validator], projectRoot).length === 0) {
 			report("skipped", "not_detected");
 			continue;
@@ -495,23 +608,57 @@ export async function runAvailableValidators(
 			report("unavailable");
 			continue;
 		}
+		const lizardThresholds = {
+			...(options.lizardThresholds ?? LIZARD_THRESHOLDS),
+			...(!("command" in validator) ? validator.thresholds : {}),
+		};
+		if (options.evidence)
+			evidence = validationEvidence(
+				validator,
+				langConfig,
+				absoluteFilePath,
+				projectRoot,
+				lizardThresholds,
+			);
+		const previous = evidence ? options.evidence?.get(evidence.key) : undefined;
+		if (
+			initiation === "model_initiated" &&
+			evidence &&
+			previous?.validatorInputHash === evidence.validatorInputHash &&
+			previous.repositoryStateHash === evidence.repositoryStateHash
+		) {
+			if (
+				previous.lastDecisiveOutcome === "failed" &&
+				previous.failureSignature !== undefined &&
+				previous.failure !== undefined
+			) {
+				failures.push(previous.failure);
+				report("skipped", "duplicate_evidence");
+				continue;
+			}
+			if (
+				previous.lastDecisiveOutcome === "passed" ||
+				previous.lastDecisiveOutcome === "autofixed"
+			) {
+				report("skipped", "duplicate_evidence");
+				continue;
+			}
+		}
 		if (!("command" in validator)) {
 			const output = await runDifferentialLizard(
 				pi,
 				absoluteFilePath,
 				projectRoot,
-				{
-					...(options.lizardThresholds ?? LIZARD_THRESHOLDS),
-					...validator.thresholds,
-				},
+				lizardThresholds,
 			);
 			if (output) {
-				failures.push({
+				const failure: ValidationIssue = {
 					name: validator.name,
 					output: boundedText(output, MAX_VALIDATOR_OUTPUT_CHARS),
 					...(validator.advisory ? { advisory: true } : {}),
-				});
-				report("failed");
+				};
+				failures.push(failure);
+				report("failed", undefined, failure);
 			} else report("passed");
 			continue;
 		}
@@ -558,11 +705,12 @@ export async function runAvailableValidators(
 			}
 		}
 		if (failureOutput !== undefined) {
-			failures.push({
+			const failure = {
 				name: validator.name,
 				output: boundedText(failureOutput, MAX_VALIDATOR_OUTPUT_CHARS),
-			});
-			report("failed");
+			};
+			failures.push(failure);
+			report("failed", undefined, failure);
 		} else report("passed");
 	}
 	return failures;
@@ -618,11 +766,12 @@ interface TouchedFile {
 	filePath: string;
 	absolutePath: string;
 	cwd: string;
+	initiation: ValidationInitiation;
 }
 
 interface QualityGateState {
 	touchedFiles: Map<string, TouchedFile>;
-	successfulHashes: Map<string, string>;
+	evidence: Map<string, ValidationEvidenceRecord>;
 	repairAttempts: number;
 	lastFailureSignature?: string;
 }
@@ -658,7 +807,6 @@ const emptyValidationBatch = (): ValidationBatch => ({
 function prepareFileValidation(
 	touched: TouchedFile,
 	languageByExtension: Map<string, LanguageConfig>,
-	state: QualityGateState,
 ): PendingFileValidation | undefined {
 	if (!fs.existsSync(touched.absolutePath)) return undefined;
 	if (
@@ -670,11 +818,6 @@ function prepareFileValidation(
 	);
 	if (!langConfig) return undefined;
 	const hashBefore = contentHash(touched.filePath, touched.cwd);
-	if (
-		hashBefore &&
-		state.successfulHashes.get(touched.absolutePath) === hashBefore
-	)
-		return undefined;
 	return { ...touched, langConfig, hashBefore };
 }
 
@@ -738,6 +881,8 @@ const validatePendingFile = async (
 		pending.cwd,
 		{
 			automatic: true,
+			initiation: pending.initiation,
+			evidence: state.evidence,
 			autofix: autofixCandidate && mutationAllowed,
 			lizardThresholds: validators.lizardThresholds,
 			onOutcome: (outcome) => outcomes.push(outcome),
@@ -759,10 +904,18 @@ const validatePendingFile = async (
 				filePath: pending.filePath,
 				absolutePath: pending.absolutePath,
 				cwd: pending.cwd,
+				initiation: "automatic_hook",
 			});
 		return emptyValidationBatch();
 	}
 	for (const outcome of outcomes) recordValidationOutcome(pending, outcome);
+	for (const outcome of outcomes)
+		if (outcome.reason === "duplicate_evidence")
+			sendQualityMessage(
+				pi,
+				`Quality gate verification skipped: ${outcome.name} for ${pending.filePath}; validator input and resolved configuration evidence are unchanged.`,
+				false,
+			);
 	const fixes = outcomes
 		.filter((outcome) => outcome.outcome === "autofixed")
 		.map((outcome) => ({ filePath: pending.filePath, name: outcome.name }));
@@ -778,19 +931,6 @@ const validatePendingFile = async (
 	const advisories = issues
 		.filter((issue) => issue.advisory)
 		.map((issue) => ({ ...issueContext, ...issue }));
-	const cacheable =
-		outcomes.some(
-			(outcome) =>
-				outcome.outcome === "passed" || outcome.outcome === "autofixed",
-		) &&
-		outcomes.every(
-			(outcome) =>
-				outcome.outcome === "passed" ||
-				outcome.outcome === "skipped" ||
-				outcome.outcome === "autofixed",
-		);
-	if (cacheable && failures.length === 0 && hashAfter)
-		state.successfulHashes.set(pending.absolutePath, hashAfter);
 	return { failures, advisories, fixes };
 };
 
@@ -822,11 +962,7 @@ async function collectValidationBatch(
 		);
 		for (const touched of candidates) {
 			if (!changedPaths.has(touched.filePath)) continue;
-			const pending = prepareFileValidation(
-				touched,
-				languageByExtension,
-				state,
-			);
+			const pending = prepareFileValidation(touched, languageByExtension);
 			if (!pending) continue;
 			const result = await validatePendingFile(pi, pending, state, options);
 			batch.failures.push(...result.failures);
@@ -965,6 +1101,7 @@ function requeueForRevalidation(
 			filePath: failure.filePath,
 			absolutePath: failure.absolutePath,
 			cwd: failure.cwd,
+			initiation: "model_initiated",
 		});
 }
 
@@ -1119,7 +1256,7 @@ export function registerQualityGates(
 ): void {
 	const state: QualityGateState = {
 		touchedFiles: new Map<string, TouchedFile>(),
-		successfulHashes: new Map<string, string>(),
+		evidence: new Map<string, ValidationEvidenceRecord>(),
 		repairAttempts: 0,
 	};
 	pi.on("tool_result", (event: ToolResultEvent, ctx) => {
@@ -1136,7 +1273,12 @@ export function registerQualityGates(
 			if (!languageByExtension.has(path.extname(filePath).toLowerCase()))
 				continue;
 			const absolutePath = path.resolve(cwd, filePath);
-			state.touchedFiles.set(absolutePath, { filePath, absolutePath, cwd });
+			state.touchedFiles.set(absolutePath, {
+				filePath,
+				absolutePath,
+				cwd,
+				initiation: "automatic_hook",
+			});
 		}
 	});
 	pi.on("agent_settled", async (_event, ctx) => {
