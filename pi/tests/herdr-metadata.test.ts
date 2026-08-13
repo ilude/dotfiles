@@ -36,6 +36,7 @@ function metadataContext(
 	overrides: Record<string, unknown> = {},
 ): ReturnType<typeof createMockCtx> {
 	return createMockCtx({
+		mode: "tui",
 		model: { id: "gpt-5.6-sol", name: "GPT-5.6 Sol" },
 		getContextUsage: () => ({
 			tokens: 25_000,
@@ -113,6 +114,20 @@ describe("Herdr metadata extension", () => {
 		herdrMetadata(pi as Parameters<typeof herdrMetadata>[0]);
 
 		expect(pi.on).not.toHaveBeenCalled();
+		expect(pi.exec).not.toHaveBeenCalled();
+		expect(mockRuntime.listeners.size).toBe(0);
+	});
+
+	it("does not report metadata from headless child sessions", async () => {
+		const pi = createMockPi();
+		herdrMetadata(pi as Parameters<typeof herdrMetadata>[0]);
+		const ctx = metadataContext({ mode: "json", hasUI: false });
+
+		await emitHook(pi, "session_start", ctx);
+		await emitHook(pi, "model_select", ctx);
+		await emitHook(pi, "tool_result", ctx);
+		await emitHook(pi, "agent_settled", ctx);
+
 		expect(pi.exec).not.toHaveBeenCalled();
 		expect(mockRuntime.listeners.size).toBe(0);
 	});

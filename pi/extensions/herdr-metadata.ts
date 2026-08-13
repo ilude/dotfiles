@@ -142,6 +142,7 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
+		if (ctx.mode !== "tui") return;
 		sessionStartedAt = new Date().toISOString();
 		unsubscribeSubagents?.();
 		unsubscribeSubagents = subagentRunManager.subscribe(() => {
@@ -162,14 +163,17 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("model_select", async (_event, ctx) => {
+		if (!sessionStartedAt) return;
 		await publish(contextPatch(ctx));
 	});
 
 	pi.on("agent_settled", async (_event, ctx) => {
+		if (!sessionStartedAt) return;
 		await publishContextAndTasks(ctx);
 	});
 
 	pi.on("tool_result", async (_event, ctx) => {
+		if (!sessionStartedAt) return;
 		await publishContextAndTasks(ctx);
 	});
 
