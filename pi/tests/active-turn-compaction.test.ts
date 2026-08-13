@@ -115,7 +115,10 @@ describe("active-turn compaction", () => {
 			path.join(projectRoot, ".pi", "settings.json"),
 			JSON.stringify({
 				compaction: { reserveTokens: 12_000, keepRecentTokens: 24_000 },
-				activeTurnCompaction: { softLimitTokens: 255_616 },
+				activeTurnCompaction: {
+					softLimitTokens: 255_616,
+					softLimitMaxContextWindowTokens: 372_000,
+				},
 			}),
 			"utf-8",
 		);
@@ -127,6 +130,7 @@ describe("active-turn compaction", () => {
 				reserveTokens: 12_000,
 				keepRecentTokens: 24_000,
 				softLimitTokens: 255_616,
+				softLimitMaxContextWindowTokens: 372_000,
 			});
 		} finally {
 			invalidateSettingsCache();
@@ -134,19 +138,21 @@ describe("active-turn compaction", () => {
 		}
 	});
 
-	it("uses the lower of the soft limit and hard context reserve", () => {
-		const softPolicy = { ...policy, softLimitTokens: 255_616 };
+	it("applies the soft limit only to configured context window sizes", () => {
+		const softPolicy = {
+			...policy,
+			softLimitTokens: 255_616,
+			softLimitMaxContextWindowTokens: 372_000,
+		};
+
 		expect(
-			shouldCompactDuringActiveTurn(
-				usage(255_616, 1_050_000),
-				softPolicy,
-			),
+			shouldCompactDuringActiveTurn(usage(296_000, 1_000_000), softPolicy),
 		).toBe(false);
 		expect(
-			shouldCompactDuringActiveTurn(
-				usage(255_617, 1_050_000),
-				softPolicy,
-			),
+			shouldCompactDuringActiveTurn(usage(296_000, 372_000), softPolicy),
+		).toBe(true);
+		expect(
+			shouldCompactDuringActiveTurn(usage(983_617, 1_000_000), softPolicy),
 		).toBe(true);
 		expect(shouldCompactDuringActiveTurn(usage(355_617), policy)).toBe(true);
 	});

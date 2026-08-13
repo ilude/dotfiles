@@ -29,6 +29,7 @@ export interface ActiveTurnCompactionPolicy {
 	reserveTokens: number;
 	keepRecentTokens: number;
 	softLimitTokens?: number;
+	softLimitMaxContextWindowTokens?: number;
 }
 
 export interface ActiveTurnCompactionDependencies {
@@ -59,6 +60,8 @@ export function loadActiveTurnCompactionPolicy(
 	const reserveTokens = compaction.reserveTokens;
 	const keepRecentTokens = compaction.keepRecentTokens;
 	const softLimitTokens = activeTurnCompaction.softLimitTokens;
+	const softLimitMaxContextWindowTokens =
+		activeTurnCompaction.softLimitMaxContextWindowTokens;
 	return {
 		enabled: compaction.enabled !== false,
 		reserveTokens:
@@ -78,6 +81,12 @@ export function loadActiveTurnCompactionPolicy(
 			Number.isFinite(softLimitTokens) &&
 			softLimitTokens > 0
 				? softLimitTokens
+				: undefined,
+		softLimitMaxContextWindowTokens:
+			typeof softLimitMaxContextWindowTokens === "number" &&
+			Number.isFinite(softLimitMaxContextWindowTokens) &&
+			softLimitMaxContextWindowTokens > 0
+				? softLimitMaxContextWindowTokens
 				: undefined,
 	};
 }
@@ -140,10 +149,14 @@ export function shouldCompactDuringActiveTurn(
 	)
 		return false;
 	const hardLimit = usage.contextWindow - policy.reserveTokens;
-	const triggerLimit =
-		policy.softLimitTokens === undefined
-			? hardLimit
-			: Math.min(hardLimit, policy.softLimitTokens);
+	let triggerLimit = hardLimit;
+	if (
+		policy.softLimitTokens !== undefined &&
+		(policy.softLimitMaxContextWindowTokens === undefined ||
+			usage.contextWindow <= policy.softLimitMaxContextWindowTokens)
+	) {
+		triggerLimit = Math.min(hardLimit, policy.softLimitTokens);
+	}
 	return usage.tokens > triggerLimit;
 }
 

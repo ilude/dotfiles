@@ -244,13 +244,7 @@ directories.
 
 ## Authentication
 
-**API key (preferred):**
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...   # add to .bashrc / .zshrc
-```
-
-**Claude Pro/Max subscription:**
+Sign in with a Claude Pro/Max subscription:
 
 ```bash
 pi          # launch Pi
@@ -339,7 +333,7 @@ Keeps workflow-state-gated tools out of the default provider schema until they a
 
 ### `active-turn-compaction.ts`
 
-Compacts a tool-driven request before the active model reaches its hard context reserve, then continues from the saved summary. The extension also supports a provider-independent soft limit through `activeTurnCompaction.softLimitTokens`; the tracked setting uses `255616` tokens to leave 16,384 tokens below the preferred 272,000-token boundary. This is a local usage-conservation policy, not a claim about a provider's hard context window or subscription pricing. When Pi cannot find a valid compaction cut point, the extension leaves the active request running and retries only after later turns make compaction possible.
+Compacts a tool-driven request before the active model reaches its hard context reserve, then continues from the saved summary. The extension also supports a soft limit through `activeTurnCompaction.softLimitTokens`. When `activeTurnCompaction.softLimitMaxContextWindowTokens` is set, that soft limit applies only to models whose reported context window is no larger than the configured maximum; larger-context models use their native hard reserve instead. The tracked settings use a 255,616-token soft limit for models with context windows up to 372,000 tokens, so 1M-context models do not compact at the smaller-model threshold. This is a local usage-conservation policy, not a claim about a provider's hard context window or subscription pricing. When Pi cannot find a valid compaction cut point, the extension leaves the active request running and retries only after later turns make compaction possible.
 
 ### `quality-gates.ts`
 
@@ -619,7 +613,8 @@ usage, Pi version, and provider quota on the first line. Context usage is a
 separate pipe-delimited segment after the reasoning level. Onclave and other
 extension statuses render on the left of the second line, followed by token
 throughput. Onclave renders `Onclave: <client> | Peers: N`, coloring the client
-green only while connected and red otherwise. Compact Bedrock spend remains
+green only while connected and red otherwise. The default client identity is
+stable per Pi session, and the peer count excludes the current session. Compact Bedrock spend remains
 right-aligned as the final second-line segment.
 
 Commands:

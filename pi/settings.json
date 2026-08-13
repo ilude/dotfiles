@@ -41,6 +41,7 @@
     ]
   },
   "activeTurnCompaction": {
-    "softLimitTokens": 255616
+    "softLimitTokens": 255616,
+    "softLimitMaxContextWindowTokens": 372000
   }
 }
