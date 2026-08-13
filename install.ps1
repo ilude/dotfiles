@@ -1620,7 +1620,7 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to synchronize submodule configuration"
         }
-        git submodule update --init --recursive -- $DOTBOT_DIR 'onclave'
+        git submodule update --init --recursive -- $DOTBOT_DIR 'modules/onclave' 'modules/homelab-infra'
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to initialize required submodules"
         }
@@ -1982,7 +1982,7 @@ try {
     }
 
     # Install the workspace dependencies required by the Onclave Pi adapter loader.
-    $onclaveDir = Join-Path $BASEDIR "onclave"
+    $onclaveDir = Join-Path $BASEDIR "modules\onclave"
     $onclavePackageJson = Join-Path $onclaveDir "package.json"
     if (-not (Test-Path $onclavePackageJson)) {
         throw "Onclave submodule is not initialized at $onclaveDir"

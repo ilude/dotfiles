@@ -80,7 +80,7 @@ completed_steps+=(".env migration")
 current_step="Required submodules"
 cd "${BASEDIR}"
 git submodule sync --quiet --recursive
-git submodule update --init --recursive "${DOTBOT_DIR}" onclave
+git submodule update --init --recursive "${DOTBOT_DIR}" modules/onclave modules/homelab-infra
 completed_steps+=("Required submodules")
 
 current_step="Dotbot symlinks"
@@ -510,7 +510,7 @@ fi
 completed_steps+=("pi runtime deps")
 
 current_step="Onclave adapter dependencies"
-ONCLAVE_DIR="${BASEDIR}/onclave"
+ONCLAVE_DIR="${BASEDIR}/modules/onclave"
 if [[ -f "$ONCLAVE_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
     echo "Installing Onclave adapter dependencies..."
     pnpm install --dir "$ONCLAVE_DIR" --frozen-lockfile
@@ -521,7 +521,7 @@ if [[ -f "$ONCLAVE_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
         if (cd "$ONCLAVE_PI_DIR" && node -e "require.resolve('amqplib')" 2>/dev/null); then
             echo "Onclave adapter deps: OK"
         else
-            echo "[warn] onclave-pi deps unresolved; try: pnpm install --dir onclave"
+            echo "[warn] onclave-pi deps unresolved; try: pnpm install --dir modules/onclave"
         fi
     fi
 elif [[ -f "$ONCLAVE_DIR/package.json" ]]; then

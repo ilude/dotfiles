@@ -89,7 +89,7 @@ DOTBOT_PATH="$BASEDIR/$DOTBOT_DIR/$DOTBOT_BIN"
 if [[ -d ".git" ]]; then
     echo -e "${YELLOW}Initializing required submodules...${NC}"
     git submodule sync --quiet --recursive
-    git submodule update --init --recursive "${DOTBOT_DIR}" onclave
+    git submodule update --init --recursive "${DOTBOT_DIR}" modules/onclave modules/homelab-infra
 fi
 
 if [[ ! -f "$DOTBOT_PATH" ]]; then

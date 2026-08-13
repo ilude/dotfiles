@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repository-wide rules for coding agents. This cross-platform dotfiles repository supports Linux, Windows PowerShell, Git Bash/MSYS2, and WSL; uses Dotbot and git submodules including `dotbot/` and `onclave/`; and converges terminals on zsh.
+Repository-wide rules for coding agents. This cross-platform dotfiles repository supports Linux, Windows PowerShell, Git Bash/MSYS2, and WSL; uses Dotbot plus project submodules under `modules/`; and converges terminals on zsh.
 
 Read this file first. More specific instructions for the active client or directory take precedence without changing this file's repository-wide invariants:
 
@@ -11,6 +11,15 @@ Read this file first. More specific instructions for the active client or direct
 - Pi runtime: [`pi/README.md`](pi/README.md)
 
 Claude hooks, commands, settings, runtime workarounds, and content ingestion are Claude-only. Follow the owning surface rather than blending client, shell, PowerShell, WSL, or platform conventions.
+
+## Module and repository boundaries
+
+- `modules/onclave/` is the Onclave product repository. It owns the agent communication protocol, services, adapter implementation, and provider-neutral application contracts.
+- `modules/homelab-infra/` is the homelab infrastructure repository. It owns Proxmox resources, infrastructure services, host deployment orchestration, and the nested private `values/` repository.
+- This dotfiles repository owns workstation setup and Pi runtime integration. `pi/extensions/onclave-pi.ts` is only a loader for the implementation in `modules/onclave/`.
+- Treat each module as an independent repository with its own instructions, branch, validation, commit, and remote. Make changes in the owning repository rather than duplicating source across repositories.
+- For coordinated changes, preserve the boundary: Onclave publishes application contracts, homelab-infra consumes them for deployment, and dotfiles wires local clients to them. Do not move live inventory or site secrets out of `modules/homelab-infra/values/`.
+- Commit and push module changes from the module first, then commit the updated gitlink in dotfiles. Never include a module's files directly in a dotfiles commit.
 
 ## Command index
 

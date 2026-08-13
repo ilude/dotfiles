@@ -96,7 +96,11 @@ def test_pi_doctor_uses_signed_https_without_leaking_configuration(tmp_path: Pat
     home = tmp_path / "home"
     dotfiles = home / ".dotfiles"
     dotfiles.mkdir(parents=True)
-    (dotfiles / "onclave").symlink_to(DOTFILES / "onclave", target_is_directory=True)
+    modules = dotfiles / "modules"
+    modules.mkdir()
+    (modules / "onclave").symlink_to(
+        DOTFILES / "modules" / "onclave", target_is_directory=True
+    )
     (dotfiles / "pi").symlink_to(DOTFILES / "pi", target_is_directory=True)
     pi_agent = home / ".pi" / "agent"
     pi_agent.parent.mkdir()

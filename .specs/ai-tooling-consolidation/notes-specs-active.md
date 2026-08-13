@@ -356,7 +356,7 @@ Sources: `.specs/ffmpeg-yt-dlp-video-workflow/PRD.md`; `.specs/hermes-deploy/PRD
 
 ## 4. Contradictions or drift between specs
 
-1. **The infrastructure source of truth appears to have moved.** The Infisical and Menos runtime specs target `menos/infra/ansible/`, while the newer Quadlet plan says `.repos/homelab-infra` owns deployment and `.repos/onclave` is read-only input. This makes the older implementation paths likely historical or transitional. Sources: `.specs/infisical-secrets/plan.md`; `.specs/infisical-dns-certs/plan.md`; `.specs/menos-infisical-runtime/plan.md`; `.specs/rootless-podman-quadlet-hardening/plan.md`.
+1. **The infrastructure source of truth appears to have moved.** The Infisical and Menos runtime specs target `menos/infra/ansible/`, while the newer Quadlet plan says `modules/homelab-infra` owns deployment and `modules/onclave` is read-only input. This makes the older implementation paths likely historical or transitional. Sources: `.specs/infisical-secrets/plan.md`; `.specs/infisical-dns-certs/plan.md`; `.specs/menos-infisical-runtime/plan.md`; `.specs/rootless-podman-quadlet-hardening/plan.md`.
 
 2. **Infisical's deployment state conflicts across active specs.** The Infisical plans describe a partially implemented deployment awaiting live validation. The Menos runtime plan assumes `infisical.ilude.com` and its Caddy certificate path are already stable. The Quadlet plan says Infisical remains disabled and is not a rollout target. Sources: `.specs/infisical-secrets/plan.md`; `.specs/infisical-dns-certs/plan.md`; `.specs/menos-infisical-runtime/plan.md`; `.specs/rootless-podman-quadlet-hardening/plan.md`.
 
@@ -452,7 +452,7 @@ Sources: `.specs/ffmpeg-yt-dlp-video-workflow/PRD.md`; `.specs/hermes-deploy/PRD
 
 1. Which active specs are genuinely current versus simply not archived, especially `linux-arch-install`, `menos-knowledge-compiler`, and the older Infisical plans?
 
-2. Is `.repos/homelab-infra` now the authoritative deployment repository for Menos, Infisical, Onclave, and SearXNG? If so, should the active `menos/infra/ansible` specs be migrated, superseded, or archived?
+2. Is `modules/homelab-infra` now the authoritative deployment repository for Menos, Infisical, Onclave, and SearXNG? If so, should the active `menos/infra/ansible` specs be migrated, superseded, or archived?
 
 3. Is Infisical currently deployed, disabled, or awaiting first deployment? The answer determines whether `menos-infisical-runtime` can proceed at all.
 

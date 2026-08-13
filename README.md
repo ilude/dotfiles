@@ -143,6 +143,8 @@ Automatic identity switching based on directory or remote URL:
 | `test/` | Bats test files |
 | `plugins/` | Zsh plugins (auto-downloaded) |
 | `dotbot/` | Dotbot submodule |
+| `modules/onclave/` | Onclave product and Pi adapter submodule |
+| `modules/homelab-infra/` | Homelab infrastructure submodule with a nested private `values/` repository |
 
 ## Agent Surfaces
 

@@ -53,7 +53,7 @@ The repo installer pre-installs the Python hook dependencies used by Claude hook
 
 ## Onclave (Content Vault)
 
-The Onclave server is deployed from `onclave/services/core`. This repository contains its client tooling under `tools/onclave-youtube/`.
+The Onclave server is deployed from `modules/onclave/services/core`. This repository contains its client tooling under `tools/onclave-youtube/`.
 
 Set `HOST_DOMAIN` to derive the API base as `https://onclave.<domain>/api/v1`. Set `ONCLAVE_API_BASE` only when the client needs an explicit endpoint override.
 

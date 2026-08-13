@@ -7,7 +7,7 @@
 DOTFILES_DIR="${HOME}/.dotfiles"
 PI_DIR="${DOTFILES_DIR}/pi"
 PI_NODE_MODULES="${PI_DIR}/node_modules"
-ONCLAVE_DIR="${DOTFILES_DIR}/onclave"
+ONCLAVE_DIR="${DOTFILES_DIR}/modules/onclave"
 ONCLAVE_ADAPTER_DIR="${ONCLAVE_DIR}/extensions/onclave-pi"
 
 PACKAGES=(

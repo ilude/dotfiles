@@ -3,6 +3,10 @@
 	url = https://github.com/anishathalye/dotbot
 	ignore = dirty
 [submodule "onclave"]
-	path = onclave
+	path = modules/onclave
 	url = git@github.com:traefikturkey/onclave.git
 	branch = feature/v2-broker-core
+[submodule "modules/homelab-infra"]
+	path = modules/homelab-infra
+	url = git@github.com:ilude/homelab-infra.git
+	branch = main
