@@ -6,7 +6,7 @@
 	path = modules/onclave
 	url = git@github.com:traefikturkey/onclave.git
 	branch = feature/v2-broker-core
-[submodule "modules/homelab-infra"]
+[submodule "homelab-infra"]
 	path = modules/homelab-infra
 	url = git@github.com:ilude/homelab-infra.git
 	branch = main
