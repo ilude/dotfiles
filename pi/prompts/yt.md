@@ -1,5 +1,5 @@
 ---
-description: Ingest, search, list, or fetch YouTube content through menos
+description: Ingest, search, list, or fetch YouTube content through Onclave
 argument-hint: "<request>"
 ---
 
@@ -7,43 +7,35 @@ argument-hint: "<request>"
 
 YouTube request: $ARGUMENTS
 
-Use this workflow to ingest, search, list, fetch content, or fetch transcripts for YouTube videos through menos.
+Use this workflow to ingest, search, list, fetch content, or fetch transcripts for YouTube videos through the Onclave vault API.
 
-`MENOS_API_BASE` must be set in the environment or `~/.dotfiles/.env`. The clients fail clearly when it is missing instead of using an embedded endpoint.
+`ONCLAVE_API_BASE` is the only explicit endpoint override. When it is absent, the client derives `https://onclave.<HOST_DOMAIN>/api/v1` from `HOST_DOMAIN`. It fails clearly when neither value is configured.
+
+Run Onclave operations from `~/.dotfiles/tools/onclave-youtube` with the `onclave-youtube` command. Do not use local fetchers as a fallback. If the Onclave request fails, report the failure clearly. Local transcript or metadata fetching is only available through the explicit `/yt-local` workflow.
 
 ## Ingest default
 
 1. Extract the YouTube video ID or URL from the request.
-2. Attempt menos first; `~/.dotfiles/yt/menos_status.json` is a display hint and never gates the attempt.
+2. Ingest it through Onclave:
 
 ```bash
-cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run --isolated --frozen ingest_video.py "{url_or_video_id}"
+cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube ingest "{url_or_video_id}"
 ```
 
 3. On success, report `title`, `content_id`, and `job_id`.
-4. On connection errors or 5xx responses only, locally fall back:
-
-```bash
-cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run --script fetch_transcript.py "{url_or_video_id}"
-cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run --script fetch_metadata.py "{url_or_video_id}"
-```
-
-Run transcript and metadata retrieval independently so metadata still runs if transcript retrieval fails. The local fetchers write `~/.dotfiles/yt/<video_id>/`, and `.complete` records separate `transcript` and `metadata` states. Describe the cache as ready for backfill only when transcript retrieval succeeded; otherwise report that only metadata was cached and include the transcript failure. Do not fall back for 4xx auth or validation errors.
-
-The status file is a display hint only. If useful, mention `checked_at` / `available` as context.
 
 ## Other subcommands
 
-- `channel <@handle_or_url>`: run `cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run --script channel_videos.py "{handle_or_url}" --limit {n}` and render the results to the user. Supports `@name` and `https://www.youtube.com/@name`. The script calls menos first and falls back to the local YouTube Data API when menos is unreachable, returns 5xx, or the deployed menos version does not have the channel endpoint yet. The local fallback requires `YOUTUBE_API_KEY`.
-- `list [n]`: run `cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run --isolated --frozen list_videos.py {n}` and render the results to the user. No local fallback if menos is unreachable.
-- `search <query>`: run `cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run --isolated --frozen search.py {query}` and render scores/IDs/snippets. No local fallback if menos is unreachable.
-- `content <content_id>`: run `cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run --isolated --frozen get_content.py {content_id} --json`. No local fallback if menos is unreachable.
-- `transcript <video_id_or_url>`: first run `cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run --isolated --frozen find_content.py {video_id_or_url}`, then `cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run --isolated --frozen get_content.py {content_id} --transcript-only`. If menos is unreachable and `~/.dotfiles/yt/<video_id>/transcript.txt` exists, display the local transcript.
+- `channel <@handle_or_url>`: run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube channel "{handle_or_url}" --limit {n}` and render the results to the user. Supports `@name` and `https://www.youtube.com/@name`.
+- `list [n]`: run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube list {n}` and render the results to the user.
+- `search <query>`: run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube search {query}` and render scores, IDs, and snippets.
+- `content <content_id>`: run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube content {content_id} --json`.
+- `transcript <video_id_or_url>`: first run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube find {video_id_or_url}`, then run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube content {content_id} --transcript-only`.
 
 ## Manual local upload
 
-For a completed local cache, upload it explicitly with:
+For a completed local cache created through `/yt-local`, upload it explicitly with:
 
 ```bash
-cd ~/.dotfiles/tools/menos-youtube && unset VIRTUAL_ENV && uv run --isolated --frozen ingest_video.py "{video_id}" --from-local
+cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube ingest "{video_id}" --from-local
 ```
