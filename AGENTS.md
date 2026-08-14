@@ -14,7 +14,7 @@ Claude hooks, commands, settings, runtime workarounds, and content ingestion are
 
 ## Module and repository boundaries
 
-- `modules/onclave/` is the Onclave product repository. It owns the agent communication protocol, services, adapter implementation, and provider-neutral application contracts.
+- `modules/onclave/` is the Onclave product repository. It owns the agent communication protocol, services, adapter implementation, and provider-neutral application contracts. Keep its checkout attached to and tracking `origin/feature/v2-broker-core`; do not switch it to `main` or another branch unless the user explicitly requests that branch change.
 - `modules/homelab-infra/` is the homelab infrastructure repository. It owns Proxmox resources, infrastructure services, host deployment orchestration, and the nested private `values/` repository.
 - This dotfiles repository owns workstation setup and Pi runtime integration. `pi/extensions/onclave-pi.ts` is only a loader for the implementation in `modules/onclave/`.
 - Treat each module as an independent repository with its own instructions, branch, validation, commit, and remote. Make changes in the owning repository rather than duplicating source across repositories.
