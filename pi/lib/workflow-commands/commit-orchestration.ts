@@ -138,6 +138,11 @@ export interface CommitOrchestrationDependencies {
 		activity?: SlashCommitActivity,
 		signal?: AbortSignal,
 	): Promise<void>;
+	reviewStagedSecrets(
+		ctx: SlashCommitContext,
+		files: string[],
+		activity?: SlashCommitActivity,
+	): Promise<void>;
 	confirmCommitMessage(commitMessage: {
 		subject: string;
 		body?: string;
@@ -500,6 +505,11 @@ export function createCommitCommandExecutor(
 								.join(" "),
 						);
 					}
+					await dependencies.reviewStagedSecrets(
+						ctx,
+						expectedFiles,
+						activity,
+					);
 					const commitMessage = await dependencies.confirmCommitMessage({
 						subject: group.subject.trim(),
 						body: group.body?.trim() || undefined,

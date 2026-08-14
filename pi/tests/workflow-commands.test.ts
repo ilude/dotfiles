@@ -486,19 +486,31 @@ describe("workflow command dispatch", () => {
 		);
 	});
 
-	it("uses the shared secret scanner during /commit", async () => {
+	it("uses the shared secret scanner on staged content during /commit", async () => {
 		const notify = vi.fn();
 		const file = "pi/lib/secret-scan.ts";
-		for (const result of [
-			{ stdout: modifiedStatus([file]) },
-			{},
-			{ stdout: `${file}\n` },
-			{},
-			{ stdout: `${file}\n` },
-			{},
-		]) {
-			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
-		}
+		let staged = false;
+		mockSpawn.mockImplementation((_command, args: string[]) => {
+			if (args[0] === "status") {
+				return mockGitSpawn({
+					stdout: staged ? stagedStatus([file]) : modifiedStatus([file]),
+				});
+			}
+			if (args[0] === "check-ignore") return mockGitSpawn({ code: 1 });
+			if (args[0] === "add") {
+				staged = true;
+				return mockGitSpawn();
+			}
+			if (args[0] === "ls-files") {
+				return mockGitSpawn({
+					stdout: `100644 ${"a".repeat(40)} 0\t${file}\0`,
+				});
+			}
+			if (args[0] === "cat-file") {
+				return mockGitSpawn({ stdout: "export function scanSecrets() {}\n" });
+			}
+			return mockGitSpawn();
+		});
 		mockScanSecrets.mockImplementationOnce(() => {
 			throw new Error("shared scanner sentinel");
 		});
@@ -510,7 +522,7 @@ describe("workflow command dispatch", () => {
 
 		expect(mockScanSecrets).toHaveBeenCalledOnce();
 		expect(mockScanSecrets).toHaveBeenCalledWith(
-			expect.stringContaining("export function scanSecrets"),
+			"export function scanSecrets() {}\n",
 		);
 		expect(notify).toHaveBeenCalledWith(
 			"Commit failed: shared scanner sentinel",
@@ -518,24 +530,68 @@ describe("workflow command dispatch", () => {
 		);
 	});
 
-	it("skips secret review for paths marked commit-secrets=allow", async () => {
+	it("does not scan worktree content for staged deletions", async () => {
+		const notify = vi.fn();
+		const file = "generated/ignored.tf";
+		const status = `# branch.head main\0${`1 D. N... 100644 000000 000000 abcdef1 abcdef1 ${file}\0`}`;
+		mockSpawn.mockImplementation((_command, args: string[]) => {
+			if (args[0] === "status") return mockGitSpawn({ stdout: status });
+			if (args[0] === "check-ignore") {
+				return mockGitSpawn({ stdout: `${file}\0` });
+			}
+			if (args.includes("--diff-filter=D")) {
+				return mockGitSpawn({ stdout: `${file}\0` });
+			}
+			if (args[0] === "ls-files") return mockGitSpawn();
+			if (args[0] === "rev-parse") {
+				return mockGitSpawn({ stdout: "abc1234\n" });
+			}
+			return mockGitSpawn();
+		});
+
+		await getHandler("commit")("", { cwd: "/repo", ui: { notify } });
+
+		expect(mockScanSecrets).not.toHaveBeenCalled();
+		expect(
+			mockSpawn.mock.calls.filter(
+				([, args]) => (args as string[])[0] === "commit",
+			),
+		).toHaveLength(1);
+	});
+
+	it("skips secret review for staged paths marked commit-secrets=allow", async () => {
 		const notify = vi.fn();
 		const cwd = path.resolve(process.cwd(), "..");
 		const file = "pi/lib/extension-utils.ts";
+		let staged = false;
 		mockSpawn.mockImplementation((_command, args: string[]) => {
 			if (args[0] === "status") {
-				return mockGitSpawn({ stdout: modifiedStatus([file]) });
+				return mockGitSpawn({
+					stdout: staged ? stagedStatus([file]) : modifiedStatus([file]),
+				});
 			}
 			if (args[0] === "check-attr") {
 				return mockGitSpawn({
 					stdout: `${file}\0commit-secrets\0allow\0`,
 				});
 			}
-			if (args[0] === "check-ignore") {
-				return mockGitSpawn({ code: 1 });
-			}
+			if (args[0] === "check-ignore") return mockGitSpawn({ code: 1 });
 			if (args[0] === "add") {
-				return mockGitSpawn({ code: 1, stderr: "stop after attribute check\n" });
+				staged = true;
+				return mockGitSpawn();
+			}
+			if (args[0] === "ls-files") {
+				return mockGitSpawn({
+					stdout: `100644 ${"a".repeat(40)} 0\t${file}\0`,
+				});
+			}
+			if (args[0] === "cat-file") return mockGitSpawn({ stdout: "secret\n" });
+			if (args[0] === "commit") {
+				staged = false;
+				return mockGitSpawn();
+			}
+			if (args[0] === "rev-parse") {
+				return mockGitSpawn({ stdout: "abc1234\n" });
 			}
 			return mockGitSpawn();
 		});
@@ -554,7 +610,7 @@ describe("workflow command dispatch", () => {
 
 		expect(mockSpawn).toHaveBeenCalledWith(
 			expect.any(String),
-			["check-attr", "-z", "commit-secrets", "--", file],
+			["check-attr", "--cached", "-z", "commit-secrets", "--", file],
 			expect.objectContaining({ cwd }),
 		);
 		expect(
@@ -573,10 +629,13 @@ describe("workflow command dispatch", () => {
 	it("retries incomplete secret-review coverage with stable candidate IDs", async () => {
 		const notify = vi.fn();
 		const file = "pi/lib/extension-utils.ts";
+		let staged = false;
 		mockSpawn.mockImplementation((_command, args: string[]) => {
 			const signature = args.join(" ");
 			if (args[0] === "status") {
-				return mockGitSpawn({ stdout: modifiedStatus([file]) });
+				return mockGitSpawn({
+					stdout: staged ? stagedStatus([file]) : modifiedStatus([file]),
+				});
 			}
 			if (args[0] === "check-attr") {
 				return mockGitSpawn({
@@ -593,11 +652,15 @@ describe("workflow command dispatch", () => {
 			}
 			if (args[0] === "check-ignore") return mockGitSpawn({ code: 1 });
 			if (args[0] === "add") {
+				staged = true;
+				return mockGitSpawn();
+			}
+			if (args[0] === "ls-files") {
 				return mockGitSpawn({
-					code: 1,
-					stderr: "stop after review\n",
+					stdout: `100644 ${"a".repeat(40)} 0\t${file}\0`,
 				});
 			}
+			if (args[0] === "cat-file") return mockGitSpawn({ stdout: "secret\n" });
 			return mockGitSpawn();
 		});
 		mockScanSecrets.mockReturnValueOnce([
@@ -611,6 +674,17 @@ describe("workflow command dispatch", () => {
 			},
 		]);
 		mockTypedAgentRun
+			.mockResolvedValueOnce({
+				output: {
+					groups: [
+						{
+							files: [file],
+							subject: "chore(pi): update extension utilities",
+						},
+					],
+				},
+				attempts: 1,
+			})
 			.mockResolvedValueOnce({ output: { findings: [] }, attempts: 1 })
 			.mockResolvedValueOnce({
 				output: {
@@ -619,17 +693,6 @@ describe("workflow command dispatch", () => {
 							id: 1,
 							classification: "false_positive",
 							reason: "No credential value is present.",
-						},
-					],
-				},
-				attempts: 1,
-			})
-			.mockResolvedValueOnce({
-				output: {
-					groups: [
-						{
-							files: [file],
-							subject: "chore(pi): update extension utilities",
 						},
 					],
 				},
@@ -643,6 +706,12 @@ describe("workflow command dispatch", () => {
 
 		expect(mockTypedAgentRun).toHaveBeenNthCalledWith(
 			1,
+			"commit-planner",
+			expect.anything(),
+			expect.anything(),
+		);
+		expect(mockTypedAgentRun).toHaveBeenNthCalledWith(
+			2,
 			"secret-reviewer",
 			expect.objectContaining({
 				findings: [expect.objectContaining({ id: 1, path: file })],
@@ -650,19 +719,13 @@ describe("workflow command dispatch", () => {
 			expect.anything(),
 		);
 		expect(mockTypedAgentRun).toHaveBeenNthCalledWith(
-			2,
+			3,
 			"secret-reviewer",
 			expect.objectContaining({
 				coverageCorrection: expect.stringContaining(
 					"Return exactly 1 findings covering IDs 1 through 1",
 				),
 			}),
-			expect.anything(),
-		);
-		expect(mockTypedAgentRun).toHaveBeenNthCalledWith(
-			3,
-			"commit-planner",
-			expect.anything(),
 			expect.anything(),
 		);
 	});

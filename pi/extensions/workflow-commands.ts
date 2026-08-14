@@ -1342,24 +1342,10 @@ function buildSecretContext(content: string, index: number) {
 	return { line: lineIndex + 1, context: snippet.slice(0, 400) };
 }
 
-function scanFileForSecrets(
-	cwd: string,
+function scanContentForSecrets(
 	relativePath: string,
+	content: string,
 ): SecretCandidate[] {
-	const absolutePath = path.resolve(cwd, relativePath);
-	try {
-		if (!fs.statSync(absolutePath).isFile()) return [];
-	} catch {
-		return [];
-	}
-
-	let content: string;
-	try {
-		content = fs.readFileSync(absolutePath, "utf8");
-	} catch {
-		return [];
-	}
-
 	const findings: SecretCandidate[] = scanSecrets(content).map((finding) => {
 		const redactedContent = `${content.slice(0, finding.offset)}${finding.redacted}${content.slice(finding.offset + finding.length)}`;
 		return {
@@ -1388,8 +1374,49 @@ function scanFileForSecrets(
 	return findings;
 }
 
-function scanFilesForSecrets(cwd: string, files: string[]) {
-	return files.flatMap((file) => scanFileForSecrets(cwd, file));
+async function scanStagedFilesForSecrets(
+	cwd: string,
+	files: string[],
+	activity?: CommitActivity,
+	signal?: AbortSignal,
+) {
+	const indexResult = await runGitAsync(
+		cwd,
+		["ls-files", "--stage", "-z", "--", ...files],
+		activity,
+		signal,
+	);
+	if (indexResult.code !== 0) {
+		throw new Error(
+			(indexResult.stderr || indexResult.stdout).trim() ||
+				"git ls-files failed",
+		);
+	}
+	const entries = indexResult.stdout
+		.split("\0")
+		.filter(Boolean)
+		.map((record) => {
+			const match = record.match(/^(\d+) ([0-9a-f]+) 0\t([\s\S]+)$/);
+			if (!match) throw new Error("git ls-files returned malformed staged entry");
+			return { mode: match[1], objectId: match[2], path: match[3] };
+		})
+		.filter((entry) => entry.mode !== "160000");
+	const findings: SecretCandidate[] = [];
+	for (const entry of entries) {
+		const blob = await runGitAsync(
+			cwd,
+			["cat-file", "blob", entry.objectId],
+			activity,
+			signal,
+		);
+		if (blob.code !== 0) {
+			throw new Error(
+				(blob.stderr || blob.stdout).trim() || "git cat-file failed",
+			);
+		}
+		findings.push(...scanContentForSecrets(entry.path, blob.stdout));
+	}
+	return findings;
 }
 
 export function parseCommitSecretsAllowedPaths(output: string) {
@@ -1419,7 +1446,7 @@ async function getCommitSecretsAllowedPaths(
 	if (files.length === 0) return new Set<string>();
 	const output = await gitOrThrowAsync(
 		cwd,
-		["check-attr", "-z", COMMIT_SECRETS_ATTRIBUTE, "--", ...files],
+		["check-attr", "--cached", "-z", COMMIT_SECRETS_ATTRIBUTE, "--", ...files],
 		undefined,
 		signal,
 	);
@@ -1642,6 +1669,34 @@ async function confirmSecretScan(
 	);
 }
 
+async function reviewStagedSecrets(
+	ctx: WorkflowContext,
+	files: string[],
+	activity?: CommitActivity,
+) {
+	const findings = await scanStagedFilesForSecrets(
+		ctx.cwd,
+		files,
+		activity,
+		ctx.signal,
+	);
+	const findingPaths = uniqueSorted(findings.map((finding) => finding.path));
+	const allowedSecretPaths = await getCommitSecretsAllowedPaths(
+		ctx.cwd,
+		findingPaths,
+		ctx.signal,
+	);
+	const reviewableFindings = findings.filter(
+		(finding) => !allowedSecretPaths.has(normalizeGitPath(finding.path)),
+	);
+	if (allowedSecretPaths.size > 0) {
+		activity?.logInfo(
+			`${COMMIT_SECRETS_ATTRIBUTE}=allow for ${allowedSecretPaths.size} selected path(s); skipping secret review for those paths.`,
+		);
+	}
+	await confirmSecretScan(ctx, reviewableFindings);
+}
+
 export async function classifyUntrackedFiles(
 	ctx: WorkflowContext,
 	untrackedFiles: string[],
@@ -1843,7 +1898,40 @@ async function stageFilesAsync(
 		activity,
 		signal,
 	);
-	const stagingPlan = buildStagingPlan({ files, ignoredFiles: ignored });
+	let stagedIgnoredDeletions: string[] = [];
+	if (ignored.length > 0) {
+		const result = await runGitAsync(
+			cwd,
+			[
+				"diff",
+				"--cached",
+				"--name-only",
+				"-z",
+				"--diff-filter=D",
+				"--",
+				...ignored,
+			],
+			activity,
+			signal,
+		);
+		if (result.code !== 0) {
+			throw new Error(
+				(result.stderr || result.stdout).trim() || "git diff --cached failed",
+			);
+		}
+		stagedIgnoredDeletions = uniqueSorted(
+			result.stdout.split("\0").filter(Boolean),
+		);
+	}
+	const preservedDeletions = new Set(stagedIgnoredDeletions);
+	const filesToStage = files.filter((file) => !preservedDeletions.has(file));
+	const blockedIgnored = ignored.filter(
+		(file) => !preservedDeletions.has(file),
+	);
+	const stagingPlan = buildStagingPlan({
+		files: filesToStage,
+		ignoredFiles: blockedIgnored,
+	});
 	if (stagingPlan.unsafe.length > 0) {
 		throw new Error(
 			`Refusing to stage ignored paths:\n${stagingPlan.unsafe.map((file) => `- ${file}`).join("\n")}`,
@@ -1851,7 +1939,7 @@ async function stageFilesAsync(
 	}
 	await stageExactPathsAsync(
 		cwd,
-		files,
+		filesToStage,
 		(repoRoot, args, runSignal) =>
 			runGitAsync(repoRoot, args, activity, runSignal),
 		signal,
@@ -2196,23 +2284,6 @@ async function prepareCommitSelection(
 		);
 	}
 
-	const findings = scanFilesForSecrets(ctx.cwd, selection.files);
-	const findingPaths = uniqueSorted(findings.map((finding) => finding.path));
-	const allowedSecretPaths = await getCommitSecretsAllowedPaths(
-		ctx.cwd,
-		findingPaths,
-		ctx.signal,
-	);
-	const reviewableFindings = findings.filter(
-		(finding) => !allowedSecretPaths.has(normalizeGitPath(finding.path)),
-	);
-	if (allowedSecretPaths.size > 0) {
-		activity?.logInfo(
-			`${COMMIT_SECRETS_ATTRIBUTE}=allow for ${allowedSecretPaths.size} selected path(s); skipping secret review for those paths.`,
-		);
-	}
-	if (!(await confirmSecretScan(ctx, reviewableFindings))) return null;
-
 	const planning = await buildCommitPlanningContext(
 		ctx.cwd,
 		selection.files,
@@ -2237,6 +2308,7 @@ export const executeCommitCommand = createCommitCommandExecutor({
 	formatCommitPlanWarnings,
 	unstageFilesAsync,
 	stageFilesAsync,
+	reviewStagedSecrets,
 	confirmCommitMessage,
 	commitCurrentChangesAsync,
 	pushCurrentBranchAsync,
