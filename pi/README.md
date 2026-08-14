@@ -297,7 +297,7 @@ Intercepts tool calls and blocks dangerous operations before they execute.
 - **Dangerous commands** -- blocks `rm -rf`, `git reset --hard`, `dd if=`, etc.
 - **Safe-edit enforcement** -- structurally detects mutating Python heredocs, in-place `sed` or `perl`, and truncating `cat` redirection, then routes repository changes to Pi's safe file-edit tools. Blocks are recorded in damage-control decision and eval telemetry.
 - **Repeated-tool circuit breaker** -- aborts the current agent run before a sixth identical tool call when the first five calls produced the same normalized result. It applies to failures, blocked calls, and successful no-op results, persists through automatic continuations, resets on direct user input or when the agent settles, and records `repeated_tool_loop` telemetry.
-- **Scoped-delete containment** -- ask-tier `rm` commands are auto-allowed only when every statically extracted target stays under the session cwd or an approved scratch root. Parent traversal, home expansion, dynamic variables or substitution, non-scratch absolute paths, the cwd itself, `.git`, `.pi`, configured no-delete paths, parse failures, and remote SSH payloads still ask.
+- **Scoped-delete containment** -- ask-tier `rm` commands are auto-allowed only when every statically extracted target stays under the session cwd or an approved scratch root. `safe_delete_paths` entries authorize static local targets at or below configured roots, including inside compound commands, while the remaining command is still analyzed. Parent traversal, home expansion, dynamic variables or substitution, non-scratch absolute paths, the cwd itself, `.git`, `.pi`, configured no-delete paths, parse failures, and remote SSH payloads still ask.
 - **Symlink and glob containment** -- relative globs such as `build/*` are checked by prefix, and any existing target prefix that is a symlink falls back to confirmation.
 - **Zero-access paths** -- blocks read/write to `~/.ssh/*`, `*.pem`, `*.key`, `.env`
 - **No-delete paths** -- protects `package.json`, `Makefile`, `pyproject.toml`
@@ -682,7 +682,11 @@ Repository-owned worker definitions live in `pi/agents/`; loading and precedence
 
 The active `subagent` tool provides foreground single and parallel modes. Set
 `background=true` for transient detached execution; the tool returns immediately
-and later delivers one bounded follow-up result. Advanced `subagent_chain`,
+and later delivers one bounded follow-up result. Background workers are managed
+process-globally, so they survive in-process `/reload`, `/new`, `/resume`, and
+`/fork`; a completion during replacement is delivered exactly once to the next
+active session. Actual Pi quit and explicit `/subagents` cancellation terminate
+running workers. Advanced `subagent_chain`,
 `subagent_continue`, and `subagent_fanout` tools are discoverable through
 `tool_search` and activate on demand. Legacy advanced arguments on `subagent`
 remain executable for resumed sessions but are omitted from its advertised

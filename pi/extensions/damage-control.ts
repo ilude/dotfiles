@@ -1188,6 +1188,7 @@ export default function (pi: ExtensionAPI) {
 				astAnalysis: rules.astAnalysis,
 				cwd: ctx.cwd,
 				noDeletePaths: rules.no_delete_paths,
+				safeDeletePaths: rules.safe_delete_paths,
 				onAutoAllowed: (approval) => {
 					safeRecordDamageControlEval({
 						decisionType: "auto_allowed",

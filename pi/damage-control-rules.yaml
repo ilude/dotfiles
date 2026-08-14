@@ -2180,6 +2180,9 @@ read_only_paths:
   - ".venv/"
   - "venv/"
   - "target/"
+safe_delete_paths:
+  - ".tmp"
+
 no_delete_paths:
   - "~/.claude/"
   - "CLAUDE.md"

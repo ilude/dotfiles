@@ -76,6 +76,123 @@ describe("scoped delete", () => {
 		},
 	);
 
+	it("allows a configured safe-delete root inside a compound command", async () => {
+		const command = [
+			"rm -rf .tmp/support-war-classes &&",
+			"mkdir -p .tmp/support-war-classes &&",
+			"python - <<'PY'",
+			"print('ok')",
+			"PY",
+		].join("\n");
+		const onAutoAllowed = vi.fn();
+
+		await expect(
+			evaluateDangerousCommand(command, [rmRule], {
+				toolName: "bash",
+				cwd,
+				noDeletePaths: [],
+				safeDeletePaths: [".tmp"],
+				astAnalysis: loadRules().rules.astAnalysis,
+				onAutoAllowed,
+			}),
+		).resolves.toBeUndefined();
+		expect(onAutoAllowed).toHaveBeenCalledOnce();
+	});
+
+	it("keeps compound scratch cleanup interactive without a configured root", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				"rm -rf .tmp/support-war-classes && mkdir -p .tmp/support-war-classes",
+				[rmRule],
+				{
+					toolName: "bash",
+					cwd,
+					noDeletePaths: [],
+					safeDeletePaths: [],
+				},
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it.each([
+		"rm -rf .tmp/cache src && mkdir -p .tmp/cache",
+		"rm -rf .tmp/../src && mkdir -p .tmp/cache",
+		"rm -rf .tmp/cache && rm -rf /etc",
+	])("keeps unsafe configured-root delete variants interactive: %s", async (command) => {
+		await expect(
+			evaluateDangerousCommand(command, [rmRule], {
+				toolName: "bash",
+				cwd,
+				noDeletePaths: [],
+				safeDeletePaths: [".tmp"],
+				astAnalysis: loadRules().rules.astAnalysis,
+			}),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("keeps a configured safe-delete root interactive through a symlink", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-safe-delete-"));
+		const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pi-safe-outside-"));
+		try {
+			fs.symlinkSync(outside, path.join(root, ".tmp"), "junction");
+			await expect(
+				evaluateDangerousCommand(
+					"rm -rf .tmp/cache && mkdir -p .tmp/cache",
+					[rmRule],
+					{
+						toolName: "bash",
+						cwd: root,
+						noDeletePaths: [],
+						safeDeletePaths: [".tmp"],
+					},
+				),
+			).resolves.toMatchObject({ block: true });
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+			fs.rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects configured roots that resolve to the working directory", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				"rm -rf src/cache && mkdir -p src/cache",
+				[rmRule],
+				{
+					toolName: "bash",
+					cwd,
+					noDeletePaths: [],
+					safeDeletePaths: ["."],
+				},
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("continues evaluating rules after a configured safe delete", async () => {
+		const result = await evaluateDangerousCommand(
+			"rm -rf .tmp/cache && cat .env",
+			[
+				rmRule,
+				{
+					pattern: "env file",
+					regex: "\\.env\\b",
+					reason: "secret file",
+					action: "ask",
+					tools: ["bash"],
+				},
+			],
+			{
+				toolName: "bash",
+				cwd,
+				noDeletePaths: [],
+				safeDeletePaths: [".tmp"],
+				astAnalysis: loadRules().rules.astAnalysis,
+			},
+		);
+		expect(result?.block).toBe(true);
+		expect(result?.reason).toContain("env file");
+	});
+
 	it("allows a scoped delete only for an explicit delete rule", async () => {
 		const onAutoAllowed = vi.fn();
 		await expect(

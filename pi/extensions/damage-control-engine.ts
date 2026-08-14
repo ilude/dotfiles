@@ -795,6 +795,7 @@ export async function evaluateDangerousCommand(
 		astAnalysis?: AstAnalysisConfig;
 		cwd?: string;
 		noDeletePaths?: string[];
+		safeDeletePaths?: string[];
 	},
 ): Promise<{ block: true; reason: string } | undefined> {
 	const analysisCommand =
@@ -829,6 +830,7 @@ export async function evaluateDangerousCommand(
 	const skipPatternRules =
 		ctx?.toolName === "bash" && hasValidDryRun(analysisCommand);
 	const safeRmMatchIndices = new Set<number>();
+	let configuredSafeDeleteApproval: DamageControlAskApproval | undefined;
 	for (const rule of rules) {
 		if (skipPatternRules && !rule.pattern.includes("LD_")) continue;
 		if (
@@ -839,6 +841,27 @@ export async function evaluateDangerousCommand(
 		const ruleMatch = commandRuleMatch(analysisCommand, rule);
 		if (!ruleMatch) continue;
 		const rmMatchIndex = rmIndexForRuleMatch(ruleMatch);
+		if (
+			rule.action === "ask" &&
+			ctx?.toolName === "bash" &&
+			ctx.cwd &&
+			rmMatchIndex !== undefined &&
+			isScopedDeleteRule(rule) &&
+			isConfiguredSafeDeleteAt(
+				analysisCommand,
+				rmMatchIndex,
+				ctx.cwd,
+				ctx.safeDeletePaths ?? [],
+				ctx.noDeletePaths ?? [],
+			)
+		) {
+			safeRmMatchIndices.add(rmMatchIndex);
+			configuredSafeDeleteApproval ??= {
+				rule: rule.pattern,
+				reason: rule.reason,
+			};
+			continue;
+		}
 		if (shouldSkipMatchedRule(analysisCommand, rule, ctx)) {
 			if (rmMatchIndex !== undefined) safeRmMatchIndices.add(rmMatchIndex);
 			continue;
@@ -952,6 +975,9 @@ export async function evaluateDangerousCommand(
 				reason: `Blocked dangerous command (matched "AST analysis"): ${astDecision.reason}`,
 			};
 		}
+	}
+	if (configuredSafeDeleteApproval) {
+		ctx?.onAutoAllowed?.(configuredSafeDeleteApproval);
 	}
 	return undefined;
 }
@@ -1105,10 +1131,105 @@ function isTempRemoval(command: string, cwd: string): boolean {
 
 function rmCommandAtMatch(command: string, matchIndex: number): string {
 	const afterMatch = command.slice(matchIndex);
-	const separator = afterMatch.search(/\s(?:&&|\|\|)|[;]/);
+	const separator = afterMatch.search(/&&|\|\||;|\r?\n/);
 	return (
 		separator === -1 ? afterMatch : afterMatch.slice(0, separator)
 	).trim();
+}
+
+function hasParentTraversal(target: string): boolean {
+	return target.replaceAll("\\", "/").split("/").includes("..");
+}
+
+function configuredSafeDeleteRoot(
+	configuredPath: string,
+	cwd: string,
+): string | undefined {
+	const candidate = stripShellQuotes(configuredPath.trim());
+	if (
+		!candidate ||
+		!isStaticPath(candidate) ||
+		candidate.startsWith("~") ||
+		candidate.includes("`") ||
+		hasParentTraversal(candidate)
+	) {
+		return undefined;
+	}
+	const result = canonicalizeOrBlock(candidate, cwd);
+	if ("block" in result) return undefined;
+	if (
+		result.canonical === path.parse(result.canonical).root ||
+		isScopedDeleteFloor(result.canonical, cwd)
+	) {
+		return undefined;
+	}
+	return result.canonical;
+}
+
+function isConfiguredSafeDeleteTarget(
+	target: string,
+	cwd: string,
+	safeDeletePaths: string[],
+	noDeletePaths: string[],
+): boolean {
+	const candidate = stripShellQuotes(target);
+	if (
+		!candidate ||
+		!isStaticPath(candidate) ||
+		candidate.startsWith("~") ||
+		candidate.includes("`") ||
+		hasParentTraversal(candidate) ||
+		hasSymlinkPrefix(candidate, cwd) ||
+		checkNoDeletePaths([candidate], noDeletePaths, cwd)
+	) {
+		return false;
+	}
+	const result = canonicalizeOrBlock(candidate, cwd);
+	if ("block" in result || isScopedDeleteFloor(result.canonical, cwd)) {
+		return false;
+	}
+	return safeDeletePaths.some((configuredPath) => {
+		const root = configuredSafeDeleteRoot(configuredPath, cwd);
+		if (!root) return false;
+		const relative = path.relative(root, result.canonical);
+		return (
+			relative === "" ||
+			(!relative.startsWith("..") && !path.isAbsolute(relative))
+		);
+	});
+}
+
+function isConfiguredSafeDeleteAt(
+	command: string,
+	rmMatchIndex: number,
+	cwd: string,
+	safeDeletePaths: string[],
+	noDeletePaths: string[],
+): boolean {
+	if (safeDeletePaths.length === 0) return false;
+	const rmMatches = [...command.matchAll(/\brm\b/g)];
+	if (rmMatches.length !== 1 || rmMatches[0].index !== rmMatchIndex) {
+		return false;
+	}
+	if (
+		quotedPayloadAt(command, rmMatchIndex) !== undefined ||
+		/\b(?:ssh|scp)\b[\s\S]*\brm\b/.test(command)
+	) {
+		return false;
+	}
+	const rmCommand = rmCommandAtMatch(command, rmMatchIndex);
+	const targets = extractRmTargets(rmCommand);
+	return (
+		targets.length > 0 &&
+		targets.every((target) =>
+			isConfiguredSafeDeleteTarget(
+				target,
+				cwd,
+				safeDeletePaths,
+				noDeletePaths,
+			),
+		)
+	);
 }
 
 function isMatchedTempRemoval(

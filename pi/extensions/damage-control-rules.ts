@@ -28,6 +28,7 @@ export interface DamageControlRules {
 	zero_access_exclusions: string[];
 	read_only_paths: string[];
 	no_delete_paths: string[];
+	safe_delete_paths: string[];
 	write_confirm_paths: string[];
 	read_confirm_paths: string[];
 	content_scan_paths: string[];
@@ -68,6 +69,7 @@ function emptyRules(): DamageControlRules {
 		zero_access_exclusions: [],
 		read_only_paths: [],
 		no_delete_paths: [],
+		safe_delete_paths: [],
 		write_confirm_paths: [],
 		read_confirm_paths: [],
 		content_scan_paths: [],
@@ -108,6 +110,7 @@ export function validateDamageControlRules(value: unknown): string[] {
 		"zero_access_exclusions",
 		"read_only_paths",
 		"no_delete_paths",
+		"safe_delete_paths",
 		"write_confirm_paths",
 		"read_confirm_paths",
 		"content_scan_paths",
@@ -183,6 +186,7 @@ export function validateDamageControlRules(value: unknown): string[] {
 		"zero_access_exclusions",
 		"read_only_paths",
 		"no_delete_paths",
+		"safe_delete_paths",
 		"write_confirm_paths",
 		"read_confirm_paths",
 		"content_scan_paths",
@@ -248,6 +252,7 @@ export function parseDamageControlRules(content: string): DamageControlRules {
 		zero_access_exclusions: stringList(root, "zero_access_exclusions"),
 		read_only_paths: stringList(root, "read_only_paths"),
 		no_delete_paths: root.no_delete_paths as string[],
+		safe_delete_paths: stringList(root, "safe_delete_paths"),
 		write_confirm_paths: stringList(root, "write_confirm_paths"),
 		read_confirm_paths: stringList(root, "read_confirm_paths"),
 		content_scan_paths: stringList(root, "content_scan_paths"),

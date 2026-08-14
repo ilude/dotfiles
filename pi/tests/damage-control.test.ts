@@ -113,10 +113,13 @@ dangerous_commands:
 zero_access_paths: []
 zero_access_exclusions:
   - "*.env.j2"
+safe_delete_paths:
+  - ".tmp"
 no_delete_paths: []
 `);
 
 		expect(parsed.zero_access_exclusions).toEqual(["*.env.j2"]);
+		expect(parsed.safe_delete_paths).toEqual([".tmp"]);
 		expect(parsed.read_confirm_paths).toEqual([]);
 		expect(parsed.dangerous_commands).toEqual([
 			{
@@ -1315,6 +1318,19 @@ describe("damage-control refactor hardening", () => {
 		};
 
 		// Inert test input literals only; this test invokes no shell/process APIs.
+		const scratchReset = [
+			"rm -rf .tmp/support-war-classes &&",
+			"mkdir -p .tmp/support-war-classes &&",
+			"python - <<'PY'",
+			"print('ok')",
+			"PY",
+		].join("\n");
+		await expect(
+			handlers[1](
+				{ toolName: "bash", input: { command: scratchReset } },
+				ctx,
+			),
+		).resolves.toBeUndefined();
 		await expect(
 			handlers[1](
 				{ toolName: "bash", input: { command: "rm -rf ./synthetic-build" } },
