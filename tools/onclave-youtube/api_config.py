@@ -3,7 +3,6 @@
 import os
 import re
 from pathlib import Path
-from urllib.parse import urlparse
 
 
 def load_secrets_file() -> None:
@@ -13,8 +12,6 @@ def load_secrets_file() -> None:
     This allows the script to work even when not run from a shell that sourced .env.
     """
     secrets_path = Path.home() / ".dotfiles" / ".env"
-    if not secrets_path.exists():
-        secrets_path = Path.home() / ".dotfiles" / ".secrets"
     if not secrets_path.exists():
         return
 
@@ -49,12 +46,6 @@ def get_api_base() -> str:
         "ONCLAVE_API_BASE or HOST_DOMAIN is required; set one in the environment "
         "or ~/.dotfiles/.env"
     )
-
-
-def get_api_host() -> str:
-    """Extract host:port from API base URL."""
-    parsed = urlparse(get_api_base())
-    return parsed.netloc
 
 
 def extract_video_id(url_or_id: str) -> str:

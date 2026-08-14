@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "onclave-youtube"
 version = "4.0.0"
@@ -11,12 +15,32 @@ dependencies = [
 ]
 
 [project.scripts]
+onclave-youtube = "onclave_youtube:main"
 fetch-transcript = "fetch_transcript:main"
 fetch-metadata = "fetch_metadata:main"
-ingest-video = "ingest_video:main"
-check-job = "check_job:main"
-reprocess = "reprocess:main"
-channel-videos = "channel_videos:main"
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+py-modules = [
+    "api_config",
+    "channel_videos",
+    "check_job",
+    "fetch_metadata",
+    "fetch_transcript",
+    "find_content",
+    "get_content",
+    "ingest_video",
+    "job_utils",
+    "list_videos",
+    "onclave_client",
+    "onclave_youtube",
+    "post_annotation",
+    "reprocess",
+    "search",
+    "signing",
+]
 
 [dependency-groups]
 dev = [

@@ -4,14 +4,13 @@
 import argparse
 import sys
 from datetime import datetime
-from pathlib import Path
+from typing import Optional
 
 import httpx
-from api_config import get_api_base, get_api_host
-from signing import RequestSigner
+from onclave_client import OnclaveClient
 
 
-def _fmt_date(iso_str: str | None) -> str:
+def _fmt_date(iso_str: Optional[str]) -> str:
     """Format an ISO datetime string to a short date."""
     if not iso_str:
         return "n/a"
@@ -22,19 +21,7 @@ def _fmt_date(iso_str: str | None) -> str:
         return iso_str[:10] if len(iso_str) >= 10 else iso_str
 
 
-def _load_signer() -> RequestSigner:
-    ssh_key_path = Path.home() / ".ssh" / "id_ed25519"
-    if not ssh_key_path.exists():
-        print(f"Error: SSH key not found at {ssh_key_path}", file=sys.stderr)
-        sys.exit(1)
-    try:
-        return RequestSigner.from_file(ssh_key_path)
-    except Exception as e:
-        print(f"Error loading SSH key: {e}", file=sys.stderr)
-        sys.exit(1)
-
-
-def _tag_suffix(args) -> str:
+def _tag_suffix(args: argparse.Namespace) -> str:
     if args.all:
         return "&exclude_tags="
     if args.test:
@@ -42,7 +29,7 @@ def _tag_suffix(args) -> str:
     return ""
 
 
-def _print_item(i: int, item: dict) -> None:
+def _print_item(index: int, item: dict) -> None:
     title = (item.get("title") or "Untitled")[:70]
     metadata = item.get("metadata", {})
     video_id = metadata.get("video_id", "unknown")
@@ -51,68 +38,47 @@ def _print_item(i: int, item: dict) -> None:
     published = _fmt_date(metadata.get("published_at"))
     tags = item.get("tags") or metadata.get("tags") or []
     tags_str = f" [{', '.join(tags)}]" if tags else ""
-    print(f"  {i:>3}. {title}{tags_str}")
+    print(f"  {index:>3}. {title}{tags_str}")
     print(
         f"       https://youtube.com/watch?v={video_id}  "
         f"({chunks} chunks)  ingested: {ingested}  published: {published}"
     )
 
 
-def run(args) -> None:
+def run(args: argparse.Namespace) -> None:
     limit = min(max(args.limit, 1), 100)
-    signer = _load_signer()
-    api_base = get_api_base()
-    host = get_api_host()
-    fetch_limit = 100
-    suffix = _tag_suffix(args)
-    path = f"/api/v1/content?content_type=youtube&limit={fetch_limit}{suffix}"
-    url = f"{api_base}/content?content_type=youtube&limit={fetch_limit}{suffix}"
-    sig_headers = signer.sign_request("GET", path, host)
-    try:
-        with httpx.Client(timeout=30.0) as client:
-            response = client.get(url, headers=sig_headers)
-            if response.status_code != 200:
-                print(f"Error: API returned {response.status_code}", file=sys.stderr)
-                print(response.text, file=sys.stderr)
-                sys.exit(1)
-            data = response.json()
-            items = data.get("items", [])
-            items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-            items = items[:limit]
-            if not items:
-                print("No videos found.")
-                return
-            print(f"Last {len(items)} ingested videos:\n")
-            for i, item in enumerate(items, 1):
-                _print_item(i, item)
-            total = data.get("total", len(items))
-            print(f"\nShowing {len(items)} of {total} videos")
-    except httpx.RequestError as e:
-        print(f"Error: Request failed: {e}", file=sys.stderr)
+    path = f"/content?content_type=youtube&limit=100{_tag_suffix(args)}"
+    with OnclaveClient(timeout=30.0) as client:
+        response = client.get(path)
+    if response.status_code != 200:
+        print(f"Error: API returned {response.status_code}", file=sys.stderr)
+        print(response.text, file=sys.stderr)
         sys.exit(1)
+    data = response.json()
+    items = data.get("items", [])
+    items.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+    items = items[:limit]
+    if not items:
+        print("No videos found.")
+        return
+    print(f"Last {len(items)} ingested videos:\n")
+    for index, item in enumerate(items, 1):
+        _print_item(index, item)
+    total = data.get("total", len(items))
+    print(f"\nShowing {len(items)} of {total} videos")
 
 
-def main():
+def main(argv: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="List recently ingested YouTube videos")
-    parser.add_argument(
-        "limit",
-        nargs="?",
-        type=int,
-        default=10,
-        help="Number of videos to show (default: 10, max: 100)",
-    )
+    parser.add_argument("limit", nargs="?", type=int, default=10, help="Number of videos to show")
     tag_group = parser.add_mutually_exclusive_group()
-    tag_group.add_argument(
-        "--all",
-        action="store_true",
-        help="Include test-tagged content (default: test content excluded)",
-    )
-    tag_group.add_argument(
-        "--test",
-        action="store_true",
-        help="Show only test-tagged content",
-    )
-    run(parser.parse_args())
+    tag_group.add_argument("--all", action="store_true", help="Include test-tagged content")
+    tag_group.add_argument("--test", action="store_true", help="Show only test-tagged content")
+    try:
+        run(parser.parse_args(argv))
+    except (RuntimeError, httpx.RequestError) as error:
+        print(f"Error: {error}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

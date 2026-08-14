@@ -4,7 +4,7 @@ import os
 from unittest.mock import patch
 
 import pytest
-from api_config import extract_video_id, get_api_base, get_api_host, load_secrets_file
+from api_config import extract_video_id, get_api_base, load_secrets_file
 
 
 class TestLoadSecretsFile:
@@ -76,18 +76,6 @@ class TestLoadSecretsFile:
                 assert os.environ["QUOTED_VAR"] == "quoted_value"
                 assert os.environ["SINGLE_Q"] == "single"
 
-    def test_load_secrets_file_fallback_to_dot_secrets(self, tmp_path):
-        dotfiles = tmp_path / ".dotfiles"
-        dotfiles.mkdir()
-        # No .env, but .secrets exists
-        secrets = dotfiles / ".secrets"
-        secrets.write_text("FALLBACK_VAR=from_secrets\n")
-
-        with patch("api_config.Path.home", return_value=tmp_path):
-            with patch.dict(os.environ, {}, clear=True):
-                load_secrets_file()
-                assert os.environ["FALLBACK_VAR"] == "from_secrets"
-
 
 class TestGetApiBase:
     """Tests for get_api_base."""
@@ -119,17 +107,15 @@ class TestGetApiBase:
         assert "ONCLAVE_API_BASE" in message
         assert "HOST_DOMAIN" in message
 
-
-class TestGetApiHost:
-    """Tests for get_api_host."""
-
-    def test_get_api_host_extracts_netloc(self):
-        with patch("api_config.get_api_base", return_value="http://myhost:8000/api/v1"):
-            assert get_api_host() == "myhost:8000"
-
-    def test_get_api_host_extracts_configured_netloc(self):
-        with patch("api_config.get_api_base", return_value="https://onclave.example.net/api/v1"):
-            assert get_api_host() == "onclave.example.net"
+    def test_get_api_base_ignores_retired_menos_variable(self):
+        with patch.dict(
+            os.environ,
+            {"MENOS_API_BASE": "https://menos.example.internal/api/v1"},
+            clear=True,
+        ):
+            with patch("api_config.load_secrets_file"):
+                with pytest.raises(RuntimeError, match="ONCLAVE_API_BASE"):
+                    get_api_base()
 
 
 class TestExtractVideoId:

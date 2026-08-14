@@ -1,28 +1,16 @@
 #!/usr/bin/env python
-"""Ingest a YouTube video via Onclave unified ingest endpoint."""
+"""Ingest a YouTube video via the Onclave unified ingest endpoint."""
 
 import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import httpx
-from api_config import extract_video_id, get_api_base, get_api_host
+from api_config import extract_video_id
 from job_utils import poll_job
-from signing import RequestSigner
-
-
-def _load_signer() -> RequestSigner:
-    ssh_key_path = Path.home() / ".ssh" / "id_ed25519"
-    if not ssh_key_path.exists():
-        print(f"Error: SSH key not found at {ssh_key_path}", file=sys.stderr)
-        sys.exit(1)
-    try:
-        return RequestSigner.from_file(ssh_key_path)
-    except Exception as e:
-        print(f"Error loading SSH key: {e}", file=sys.stderr)
-        sys.exit(1)
+from onclave_client import OnclaveClient
 
 
 def _load_local_payload(video_id: str) -> dict[str, Any]:
@@ -30,31 +18,25 @@ def _load_local_payload(video_id: str) -> dict[str, Any]:
     marker = video_dir / ".complete"
     transcript_path = video_dir / "transcript.txt"
     if not marker.exists():
-        print(f"Error: local cache is not complete: {marker}", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError(f"local cache is not complete: {marker}")
     try:
         complete = json.loads(marker.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        print(f"Error: invalid .complete marker: {e}", file=sys.stderr)
-        sys.exit(1)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"invalid .complete marker: {error}") from error
     if not complete.get("transcript"):
-        print("Error: local cache marker does not have transcript=true", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError("local cache marker does not have transcript=true")
     if not transcript_path.exists():
-        print(f"Error: missing local transcript: {transcript_path}", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError(f"missing local transcript: {transcript_path}")
     transcript_text = transcript_path.read_text(encoding="utf-8")
     if not transcript_text.strip():
-        print(f"Error: empty local transcript: {transcript_path}", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError(f"empty local transcript: {transcript_path}")
     metadata_path = video_dir / "metadata.json"
     metadata = None
     if metadata_path.exists():
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            print(f"Error: invalid local metadata.json: {e}", file=sys.stderr)
-            sys.exit(1)
+        except json.JSONDecodeError as error:
+            raise RuntimeError(f"invalid local metadata.json: {error}") from error
     return {
         "url": f"https://youtube.com/watch?v={video_id}",
         "transcript_text": transcript_text,
@@ -63,61 +45,42 @@ def _load_local_payload(video_id: str) -> dict[str, Any]:
     }
 
 
-def run(args) -> None:
-    try:
-        video_id = extract_video_id(args.video)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    signer = _load_signer()
-    api_base = get_api_base()
-    host = get_api_host()
-
-    url = f"{api_base}/ingest"
-    path = "/api/v1/ingest"
+def run(args: argparse.Namespace) -> None:
+    video_id = extract_video_id(args.video)
+    path = "/ingest"
     if args.test:
-        url += "?tags=test"
         path += "?tags=test"
-
     body_data = (
         _load_local_payload(video_id)
         if args.from_local
         else {"url": f"https://youtube.com/watch?v={video_id}"}
     )
-    body_bytes = json.dumps(body_data).encode()
-    sig_headers = signer.sign_request("POST", path, host, body_bytes)
-    headers = {"Content-Type": "application/json", **sig_headers}
-
+    client = OnclaveClient(timeout=180.0)
     print(f"Ingesting video: {video_id}")
     if args.from_local:
         print("Source: local transcript cache")
-    print(f"API: {url}")
+    print(f"API: {client.api_base}{path}")
     print()
 
-    try:
-        with httpx.Client(timeout=180.0) as client:
-            response = client.post(url, content=body_bytes, headers=headers)
-            if response.status_code != 200:
-                print(f"Error: API returned {response.status_code}", file=sys.stderr)
-                print(response.text, file=sys.stderr)
-                sys.exit(1)
-            data = response.json()
-            print(f"Video ID: {video_id}")
-            print(f"Title: {data.get('title', 'N/A')}")
-            print(f"Content ID: {data.get('content_id', 'N/A')}")
-            print(f"Content Type: {data.get('content_type', 'N/A')}")
-            print(f"Job ID: {data.get('job_id', 'N/A')}")
-            print()
-            job_id = data.get("job_id")
-            if args.wait and job_id:
-                poll_job(client, signer, api_base, host, job_id, verbose=args.verbose)
-    except httpx.RequestError as e:
-        print(f"Error: Request failed: {e}", file=sys.stderr)
-        sys.exit(1)
+    with client:
+        response = client.post_json(path, body_data)
+        if response.status_code != 200:
+            print(f"Error: API returned {response.status_code}", file=sys.stderr)
+            print(response.text, file=sys.stderr)
+            sys.exit(1)
+        data = response.json()
+        print(f"Video ID: {video_id}")
+        print(f"Title: {data.get('title', 'N/A')}")
+        print(f"Content ID: {data.get('content_id', 'N/A')}")
+        print(f"Content Type: {data.get('content_type', 'N/A')}")
+        print(f"Job ID: {data.get('job_id', 'N/A')}")
+        print()
+        job_id = data.get("job_id")
+        if args.wait and job_id:
+            poll_job(client, job_id, verbose=args.verbose)
 
 
-def main():
+def main(argv: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="Ingest a YouTube video via Onclave API")
     parser.add_argument("video", help="YouTube URL or video ID")
     parser.add_argument("--wait", action="store_true", help="Poll job status until completion")
@@ -130,7 +93,14 @@ def main():
         action="store_true",
         help="Upload transcript/metadata from ~/.dotfiles/yt/<video_id>/",
     )
-    run(parser.parse_args())
+    try:
+        run(parser.parse_args(argv))
+    except httpx.RequestError as error:
+        print(f"Error: Request failed: {error}", file=sys.stderr)
+        sys.exit(1)
+    except (RuntimeError, ValueError) as error:
+        print(f"Error: {error}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
