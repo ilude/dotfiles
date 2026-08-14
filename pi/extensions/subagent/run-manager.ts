@@ -23,6 +23,14 @@ export type SubagentRunStatus =
 	| "failed"
 	| "cancelled";
 
+export interface SubagentBackgroundCompletion {
+	readonly orchestrationId: string;
+	readonly mode: Exclude<SubagentRunMode, "task-execute">;
+	readonly content: string;
+	readonly failed: boolean;
+	readonly taskIds: ReadonlyArray<string>;
+}
+
 export interface SubagentTranscriptItem {
 	readonly kind: "assistant" | "thinking" | "tool" | "tool-result";
 	readonly text: string;
@@ -58,6 +66,7 @@ export interface SubagentRunSnapshot {
 	readonly cwd: string;
 	readonly model?: string;
 	readonly effort?: string;
+	readonly background: boolean;
 	readonly status: SubagentRunStatus;
 	readonly startedAt: number;
 	readonly settledAt?: number;
@@ -84,6 +93,7 @@ interface MutableSubagentRunSnapshot {
 	cwd: string;
 	model?: string;
 	effort?: string;
+	background: boolean;
 	status: SubagentRunStatus;
 	startedAt: number;
 	settledAt?: number;
@@ -111,6 +121,7 @@ export interface BeginSubagentRun {
 	cwd: string;
 	model?: string;
 	effort?: string;
+	background?: boolean;
 }
 
 export interface UpdateSubagentRun {
@@ -126,6 +137,11 @@ export interface UpdateSubagentRun {
 
 export interface SettleSubagentRun extends UpdateSubagentRun {
 	status: Exclude<SubagentRunStatus, "running">;
+}
+
+interface RunSettlement {
+	promise: Promise<void>;
+	resolve: () => void;
 }
 
 function boundedTail(value: string, maxBytes: number): string {
@@ -177,6 +193,18 @@ export class SubagentRunManager {
 	private readonly controllers = new Map<string, AbortController>();
 	private readonly listeners = new Set<() => void>();
 	private readonly runListeners = new Map<string, Set<() => void>>();
+	private readonly backgroundCompletions = new Map<
+		string,
+		SubagentBackgroundCompletion
+	>();
+	private readonly completionListeners = new Set<
+		(completion: SubagentBackgroundCompletion) => void
+	>();
+	private readonly settlements = new Map<string, RunSettlement>();
+	private acceptBackgroundCompletions = true;
+	private disposalStarted = false;
+	private disposalComplete = false;
+	private disposePromise: Promise<void> | undefined;
 
 	list(): ReadonlyArray<SubagentRunSnapshot> {
 		return [...this.snapshots.values()].sort((left, right) => {
@@ -205,7 +233,48 @@ export class SubagentRunManager {
 		};
 	}
 
+	onBackgroundCompletion(
+		listener: (completion: SubagentBackgroundCompletion) => void,
+	): () => void {
+		this.completionListeners.add(listener);
+		return () => this.completionListeners.delete(listener);
+	}
+
+	pendingBackgroundCompletions(): ReadonlyArray<SubagentBackgroundCompletion> {
+		return [...this.backgroundCompletions.values()];
+	}
+
+	hasPendingBackgroundCompletion(orchestrationId: string): boolean {
+		return this.backgroundCompletions.has(orchestrationId);
+	}
+
+	consumeBackgroundCompletion(orchestrationId: string): void {
+		this.backgroundCompletions.delete(orchestrationId);
+	}
+
+	queueBackgroundCompletion(completion: SubagentBackgroundCompletion): void {
+		if (
+			!this.acceptBackgroundCompletions ||
+			this.backgroundCompletions.has(completion.orchestrationId)
+		)
+			return;
+		const pending: SubagentBackgroundCompletion = {
+			...completion,
+			taskIds: [...completion.taskIds],
+		};
+		this.backgroundCompletions.set(completion.orchestrationId, pending);
+		for (const listener of [...this.completionListeners]) {
+			try {
+				listener(pending);
+			} catch {
+				// A delivery listener must not affect process settlement.
+			}
+		}
+	}
+
 	begin(input: BeginSubagentRun, controller: AbortController): void {
+		if (this.disposalStarted)
+			throw new Error("Subagent run manager is disposing.");
 		if (this.snapshots.has(input.runId))
 			throw new Error(`Subagent run ID ${input.runId} is already registered.`);
 		if (this.activeCount() >= MAX_ACTIVE_SUBAGENT_RUNS) {
@@ -226,6 +295,7 @@ export class SubagentRunManager {
 				input.effort === undefined
 					? undefined
 					: boundedTail(input.effort, MAX_METADATA_TEXT_BYTES),
+			background: input.background === true,
 			status: "running",
 			startedAt: Date.now(),
 			usage: defaultUsage(),
@@ -235,6 +305,14 @@ export class SubagentRunManager {
 			liveTools: [],
 			finalText: "",
 		};
+		let resolveSettlement: (() => void) | undefined;
+		const settlement = new Promise<void>((resolve) => {
+			resolveSettlement = resolve;
+		});
+		this.settlements.set(input.runId, {
+			promise: settlement,
+			resolve: () => resolveSettlement?.(),
+		});
 		this.snapshots.set(input.runId, snapshot);
 		this.controllers.set(input.runId, controller);
 		this.prune();
@@ -375,7 +453,10 @@ export class SubagentRunManager {
 
 	settle(runId: string, result: SettleSubagentRun): void {
 		const snapshot = this.snapshots.get(runId);
-		if (!snapshot) return;
+		if (!snapshot || snapshot.status !== "running") {
+			this.resolveSettlement(runId);
+			return;
+		}
 		this.update(runId, result);
 		snapshot.status = result.status;
 		snapshot.settledAt = Date.now();
@@ -385,6 +466,7 @@ export class SubagentRunManager {
 		this.controllers.delete(runId);
 		this.prune();
 		this.notify(runId);
+		this.resolveSettlement(runId);
 	}
 
 	cancel(runId: string): boolean {
@@ -405,12 +487,62 @@ export class SubagentRunManager {
 		return cancelled;
 	}
 
+	cancelForeground(): string[] {
+		const cancelled: string[] = [];
+		for (const snapshot of this.snapshots.values()) {
+			if (snapshot.status !== "running" || snapshot.background) continue;
+			if (this.cancel(snapshot.runId)) cancelled.push(snapshot.runId);
+		}
+		return cancelled;
+	}
+
+	dispose(): Promise<void> {
+		if (this.disposePromise) return this.disposePromise;
+		this.disposalStarted = true;
+		this.acceptBackgroundCompletions = false;
+		let resolveDispose: (() => void) | undefined;
+		this.disposePromise = new Promise<void>((resolve) => {
+			resolveDispose = resolve;
+		});
+		const settlements = [...this.settlements.values()].map(
+			(settlement) => settlement.promise,
+		);
+		this.cancelAll();
+		void Promise.all(settlements).then(() => {
+			this.snapshots.clear();
+			this.controllers.clear();
+			this.backgroundCompletions.clear();
+			this.completionListeners.clear();
+			this.listeners.clear();
+			this.runListeners.clear();
+			this.disposalComplete = true;
+			resolveDispose?.();
+		});
+		return this.disposePromise;
+	}
+
 	clear(options: { abortRunning?: boolean } = {}): void {
+		if (this.disposalStarted && !this.disposalComplete)
+			throw new Error("Cannot clear subagent runs while disposal is in progress.");
 		if (options.abortRunning) this.cancelAll();
 		this.snapshots.clear();
 		this.controllers.clear();
+		this.settlements.clear();
+		this.backgroundCompletions.clear();
+		this.acceptBackgroundCompletions = true;
+		this.disposalStarted = false;
+		this.disposalComplete = false;
+		this.disposePromise = undefined;
 		this.notify();
 		this.runListeners.clear();
+		this.completionListeners.clear();
+	}
+
+	private resolveSettlement(runId: string): void {
+		const settlement = this.settlements.get(runId);
+		if (!settlement) return;
+		this.settlements.delete(runId);
+		settlement.resolve();
 	}
 
 	private appendTranscript(
@@ -483,4 +615,34 @@ export class SubagentRunManager {
 	}
 }
 
-export const subagentRunManager = new SubagentRunManager();
+const SUBAGENT_RUN_MANAGER_VERSION = 1;
+const SUBAGENT_RUN_MANAGER_KEY = Symbol.for(
+	"dotfiles.pi.subagent-run-manager",
+);
+
+type SubagentRunManagerGlobal = {
+	version: number;
+	manager: SubagentRunManager;
+};
+
+function managerGlobals(): typeof globalThis & Record<symbol, unknown> {
+	return globalThis as typeof globalThis & Record<symbol, unknown>;
+}
+
+export function getSubagentRunManager(): SubagentRunManager {
+	const globals = managerGlobals();
+	const existing = globals[
+		SUBAGENT_RUN_MANAGER_KEY
+	] as SubagentRunManagerGlobal | undefined;
+	if (existing?.version === SUBAGENT_RUN_MANAGER_VERSION) {
+		return existing.manager;
+	}
+	const manager = new SubagentRunManager();
+	globals[SUBAGENT_RUN_MANAGER_KEY] = {
+		version: SUBAGENT_RUN_MANAGER_VERSION,
+		manager,
+	} satisfies SubagentRunManagerGlobal;
+	return manager;
+}
+
+export const subagentRunManager = getSubagentRunManager();

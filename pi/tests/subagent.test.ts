@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension from "../extensions/workflow-friction-review.js";
+import { SubagentRunManager } from "../extensions/subagent/run-manager.ts";
 import { assignReadOnlyFanoutExperiment } from "../lib/orchestration-telemetry.js";
 import {
 	createMockCtx,
@@ -22,15 +23,37 @@ type MockProcess = EventEmitter & {
 	stderr: EventEmitter;
 	kill: ReturnType<typeof vi.fn>;
 	killed: boolean;
+	pid?: number;
+	exitCode?: number | null;
+	signalCode?: NodeJS.Signals | null;
 };
 
 function createMockProcess(): MockProcess {
 	const proc = new EventEmitter() as MockProcess;
 	proc.stdout = new EventEmitter();
 	proc.stderr = new EventEmitter();
-	proc.kill = vi.fn();
+	proc.kill = vi.fn(() => true);
 	proc.killed = false;
 	return proc;
+}
+
+function beginManagedRun(
+	manager: SubagentRunManager,
+	runId: string,
+): AbortController {
+	const controller = new AbortController();
+	manager.begin(
+		{
+			runId,
+			owner: "direct",
+			mode: "single",
+			agent: "tester",
+			task: "Test task",
+			cwd: process.cwd(),
+		},
+		controller,
+	);
+	return controller;
 }
 
 vi.mock("node:child_process", () => ({
@@ -95,6 +118,7 @@ You are a test agent.
 	});
 
 	afterEach(async () => {
+		vi.useRealTimers();
 		if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 		else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 		if (prevMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
@@ -156,6 +180,37 @@ You are a test agent.
 		required: ["value"],
 		additionalProperties: false,
 	};
+
+	it("rejects new runs after disposal starts", async () => {
+		const manager = new SubagentRunManager();
+		const disposal = manager.dispose();
+
+		expect(() => beginManagedRun(manager, "after-dispose")).toThrow(
+			"Subagent run manager is disposing.",
+		);
+		await disposal;
+	});
+
+	it("waits for active runs and shares one disposal promise", async () => {
+		const manager = new SubagentRunManager();
+		const controller = beginManagedRun(manager, "dispose-once");
+		const firstDisposal = manager.dispose();
+		const secondDisposal = manager.dispose();
+		let disposed = false;
+		void firstDisposal.then(() => {
+			disposed = true;
+		});
+
+		expect(secondDisposal).toBe(firstDisposal);
+		expect(controller.signal.aborted).toBe(true);
+		await Promise.resolve();
+		expect(disposed).toBe(false);
+
+		manager.settle("dispose-once", { status: "cancelled" });
+		await firstDisposal;
+		expect(disposed).toBe(true);
+		expect(manager.list()).toEqual([]);
+	});
 
 	it("enumerates discovered agents while deferring advanced mode tools", async () => {
 		const { pi } = await loadTool();
@@ -1222,9 +1277,12 @@ You are a test agent.
 	);
 
 	it(
-		"finishes a subagent when the child emits agent_end without close",
+		"waits for child close after agent_end before settling the manager run",
 		async () => {
 			const proc = createMockProcess();
+			proc.pid = 999_999;
+			proc.exitCode = null;
+			proc.signalCode = null;
 			const spawned = new Promise<void>((resolve) => {
 				spawnMock.mockImplementation(() => {
 					resolve();
@@ -1232,7 +1290,9 @@ You are a test agent.
 				});
 			});
 			const { tool } = await loadTool();
-
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
 			const ctx = createMockCtx({
 				cwd: tmpDir,
 				model: { provider: "anthropic", id: "claude-sonnet-4-6" },
@@ -1252,7 +1312,6 @@ You are a test agent.
 			);
 
 			await spawned;
-			expect(spawnMock).toHaveBeenCalledTimes(1);
 			proc.stdout.emit(
 				"data",
 				`${JSON.stringify({
@@ -1265,10 +1324,83 @@ You are a test agent.
 					],
 				})}\n`,
 			);
+			await Promise.resolve();
+
+			expect(subagentRunManager.list()[0]?.status).toBe("running");
+			if (process.platform === "win32") {
+				const firstTaskkill = spawnMock.mock.calls.find(
+					([command]) => command === "taskkill",
+				);
+				expect(firstTaskkill?.[1]).toContain("/F");
+			} else expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+			proc.emit("close", null);
 
 			const result = await execution;
 			expect(result.content[0].text).toContain("agent-end done");
-			expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+			expect(result.details.results[0]?.exitCode).toBe(0);
+			expect(subagentRunManager.list()[0]?.status).toBe("completed");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"fails after forced termination reaches the no-close deadline",
+		async () => {
+			vi.useFakeTimers();
+			const proc = createMockProcess();
+			proc.pid = 999_999;
+			proc.exitCode = null;
+			proc.signalCode = null;
+			let resolveSpawn: (() => void) | undefined;
+			const spawned = new Promise<void>((resolve) => {
+				resolveSpawn = resolve;
+			});
+			spawnMock.mockImplementation(() => {
+				resolveSpawn?.();
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const { SUBAGENT_TERMINATION_DEADLINE_MS } = await import(
+				"../extensions/subagent/index.ts"
+			);
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
+
+			const execution = tool.execute(
+				"call-agent-end-timeout",
+				{
+					agent: "tester",
+					task: "Finish without closing",
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+			await spawned;
+			proc.stdout.emit("data", `${JSON.stringify({ type: "agent_end" })}\n`);
+			await vi.advanceTimersByTimeAsync(SUBAGENT_TERMINATION_DEADLINE_MS);
+
+			const result = await execution;
+			if (process.platform === "win32") {
+				expect(
+					spawnMock.mock.calls.some(
+						([command, args]) =>
+							command === "taskkill" &&
+							Array.isArray(args) &&
+							args.includes("/F"),
+					),
+				).toBe(true);
+			} else expect(proc.kill).toHaveBeenCalledWith("SIGKILL");
+			expect(result.details.results[0]).toMatchObject({
+				exitCode: 1,
+				errorMessage: expect.stringContaining("did not close within"),
+			});
+			expect(subagentRunManager.list()[0]).toMatchObject({
+				status: "failed",
+				errorMessage: expect.stringContaining("did not close within"),
+			});
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -1717,6 +1849,10 @@ You are a test agent.
 				summary: "background linked work",
 				workspace: resolveTaskWorkspace(tmpDir),
 			});
+			const ctx = createMockCtx({ cwd: tmpDir });
+			await pi
+				._getHook("session_start")[0]
+				.handler({ reason: "startup" }, ctx);
 
 			const started = await tool.execute(
 				"call-linked-background",
@@ -1729,7 +1865,7 @@ You are a test agent.
 				},
 				undefined,
 				undefined,
-				createMockCtx({ cwd: tmpDir }),
+				ctx,
 			);
 
 			expect(started.content[0].text).toContain("Started task-linked background");
@@ -1765,6 +1901,10 @@ You are a test agent.
 			const { subagentRunManager } = await import(
 				"../extensions/subagent/run-manager.ts"
 			);
+			const ctx = createMockCtx({ cwd: tmpDir });
+			await pi
+				._getHook("session_start")[0]
+				.handler({ reason: "startup" }, ctx);
 
 			const started = await tool.execute(
 				"call-background",
@@ -1776,7 +1916,7 @@ You are a test agent.
 				},
 				undefined,
 				undefined,
-				createMockCtx({ cwd: tmpDir }),
+				ctx,
 			);
 
 			expect(started.content[0].text).toContain(
@@ -1827,6 +1967,256 @@ You are a test agent.
 			const delivered = pi.sendMessage.mock.calls[0][0].content as string;
 			expect(delivered).toContain("[Result truncated.");
 			expect(Buffer.byteLength(delivered, "utf8")).toBeLessThan(50 * 1024);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"preserves background workers and rebinds status listeners across reload",
+		async () => {
+			const proc = createMockProcess();
+			spawnMock.mockImplementation(() => proc);
+			const { pi: firstPi, tool } = await loadTool();
+			const firstCtx = createMockCtx({ cwd: tmpDir });
+			await firstPi
+				._getHook("session_start")[0]
+				.handler({ reason: "startup" }, firstCtx);
+			await tool.execute(
+				"call-reload-background",
+				{
+					agent: "tester",
+					task: "Survive reload",
+					agentScope: "project",
+					background: true,
+				},
+				undefined,
+				undefined,
+				firstCtx,
+			);
+			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			expect(firstCtx.ui.setStatus).toHaveBeenLastCalledWith(
+				"subagents",
+				"subagents 1 running (/subagents)",
+			);
+
+			await firstPi
+				._getHook("session_shutdown")[0]
+				.handler({ reason: "reload" }, firstCtx);
+			const firstStatusCalls = firstCtx.ui.setStatus.mock.calls.length;
+			const secondPi = createMockPi();
+			const mod = await import("../extensions/subagent/index.ts");
+			mod.default(secondPi as Parameters<typeof mod.default>[0]);
+			const secondCtx = createMockCtx({ cwd: tmpDir });
+			await secondPi
+				._getHook("session_start")[0]
+				.handler({ reason: "reload" }, secondCtx);
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
+			expect(subagentRunManager.list()[0]).toMatchObject({
+				status: "running",
+				background: true,
+				owner: "direct",
+			});
+			expect(secondCtx.ui.setStatus).toHaveBeenLastCalledWith(
+				"subagents",
+				"subagents 1 running (/subagents)",
+			);
+
+			proc.emit("close", 0);
+			await vi.waitFor(
+				() =>
+					expect(subagentRunManager.list()[0]?.status).toBe("completed"),
+				{ timeout: 5000 },
+			);
+			await vi.waitFor(
+				() => expect(secondPi.sendMessage).toHaveBeenCalledTimes(1),
+				{ timeout: 5000 },
+			);
+			expect(firstCtx.ui.setStatus).toHaveBeenCalledTimes(firstStatusCalls);
+			expect(firstPi.sendMessage).not.toHaveBeenCalled();
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it.each(["new", "resume", "fork"] as const)(
+		"delivers a completion during %s session replacement exactly once",
+		async (reason) => {
+			const proc = createMockProcess();
+			spawnMock.mockImplementation(() => proc);
+			const { pi: firstPi, tool } = await loadTool();
+			const firstCtx = createMockCtx({ cwd: tmpDir });
+			await firstPi
+				._getHook("session_start")[0]
+				.handler({ reason: "startup" }, firstCtx);
+			await tool.execute(
+				"call-replacement-background",
+				{
+					agent: "tester",
+					task: "Finish during replacement",
+					agentScope: "project",
+					background: true,
+				},
+				undefined,
+				undefined,
+				firstCtx,
+			);
+			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			await firstPi
+				._getHook("session_shutdown")[0]
+				.handler({ reason }, firstCtx);
+			proc.stdout.emit(
+				"data",
+				`${JSON.stringify({
+					type: "message_end",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "replacement complete" }],
+						stopReason: "stop",
+					},
+				})}\n`,
+			);
+			proc.emit("close", 0);
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
+			await vi.waitFor(
+				() =>
+					expect(subagentRunManager.pendingBackgroundCompletions()).toHaveLength(
+						1,
+					),
+				{ timeout: 5000 },
+			);
+			expect(firstPi.sendMessage).not.toHaveBeenCalled();
+
+			const secondPi = createMockPi();
+			const mod = await import("../extensions/subagent/index.ts");
+			mod.default(secondPi as Parameters<typeof mod.default>[0]);
+			const secondCtx = createMockCtx({ cwd: tmpDir });
+			await secondPi
+				._getHook("session_start")[0]
+				.handler({ reason }, secondCtx);
+			await vi.waitFor(
+				() => expect(secondPi.sendMessage).toHaveBeenCalledTimes(1),
+				{ timeout: 5000 },
+			);
+			await secondPi._getHook("agent_settled")[0].handler({}, secondCtx);
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(secondPi.sendMessage).toHaveBeenCalledTimes(1);
+			expect(subagentRunManager.pendingBackgroundCompletions()).toEqual([]);
+			expect(secondPi.sendMessage.mock.calls[0][0]).toMatchObject({
+				customType: "subagent-result",
+				content: expect.stringContaining("replacement complete"),
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"keeps a failed background completion delivery in the manager for retry",
+		async () => {
+			const proc = createMockProcess();
+			spawnMock.mockImplementation(() => proc);
+			const { pi, tool } = await loadTool();
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
+			const ctx = createMockCtx({ cwd: tmpDir });
+			pi.sendMessage.mockImplementationOnce(() => {
+				throw new Error("session unavailable");
+			});
+			await pi
+				._getHook("session_start")[0]
+				.handler({ reason: "startup" }, ctx);
+			await tool.execute(
+				"call-retry-background",
+				{
+					agent: "tester",
+					task: "Retry delivery",
+					agentScope: "project",
+					background: true,
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			proc.emit("close", 0);
+			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			expect(subagentRunManager.pendingBackgroundCompletions()).toHaveLength(1);
+
+			await pi._getHook("agent_settled")[0].handler({}, ctx);
+			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(2), {
+				timeout: 5000,
+			});
+			expect(subagentRunManager.pendingBackgroundCompletions()).toEqual([]);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"awaits running background worker settlement on quit",
+		async () => {
+			const proc = createMockProcess();
+			proc.pid = 999_999;
+			proc.exitCode = null;
+			proc.signalCode = null;
+			spawnMock.mockImplementation(() => proc);
+			const { pi, tool } = await loadTool();
+			const ctx = createMockCtx({ cwd: tmpDir });
+			await pi
+				._getHook("session_start")[0]
+				.handler({ reason: "startup" }, ctx);
+			await tool.execute(
+				"call-quit-background",
+				{
+					agent: "tester",
+					task: "Terminate on quit",
+					agentScope: "project",
+					background: true,
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			const shutdown = pi
+				._getHook("session_shutdown")[0]
+				.handler({ reason: "quit" }, ctx);
+			let shutdownComplete = false;
+			void shutdown.then(() => {
+				shutdownComplete = true;
+			});
+			if (process.platform === "win32") {
+				await vi.waitFor(
+					() =>
+						expect(
+							spawnMock.mock.calls.some(
+								([command]) => command === "taskkill",
+							),
+						).toBe(true),
+					{ timeout: 5000 },
+				);
+			} else {
+				await vi.waitFor(
+					() => expect(proc.kill).toHaveBeenCalledWith("SIGTERM"),
+					{ timeout: 5000 },
+				);
+			}
+			expect(shutdownComplete).toBe(false);
+			proc.emit("close", 1);
+			await shutdown;
+			expect(shutdownComplete).toBe(true);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -1990,6 +2380,38 @@ You are a test agent.
 				contextPeakTokens: 200,
 				turns: 2,
 				cost: 0,
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"settles a pre-spawn abort as cancelled",
+		async () => {
+			const { tool } = await loadTool();
+			const { subagentRunManager } = await import(
+				"../extensions/subagent/run-manager.ts"
+			);
+			const controller = new AbortController();
+			controller.abort();
+
+			await expect(
+				tool.execute(
+					"call-pre-spawn-abort",
+					{
+						agent: "tester",
+						task: "Do not spawn",
+						agentScope: "project",
+					},
+					controller.signal,
+					undefined,
+					createMockCtx({ cwd: tmpDir }),
+				),
+			).rejects.toThrow("Subagent was aborted");
+			expect(spawnMock).not.toHaveBeenCalled();
+			expect(subagentRunManager.list()[0]).toMatchObject({
+				status: "cancelled",
+				stopReason: "aborted",
 			});
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,

@@ -34,7 +34,7 @@ import { type TSchema, Type } from "typebox";
 import { emitTerminalBell } from "../../lib/extension-utils.js";
 import { getPiInvocation } from "../../lib/pi-invocation.js";
 import { recordEvent } from "../../lib/metrics.js";
-import { terminateProcessTree } from "../../lib/process-tree.js";
+import { signalProcessTree } from "../../lib/process-tree.js";
 import { deactivateTools } from "../../lib/tool-activation.js";
 import {
 	decodeSchemaOutput,
@@ -104,6 +104,8 @@ const STRUCTURED_CHAIN_ARTIFACT_BYTES = 8_000;
 const DELEGATED_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const BACKGROUND_RESULT_MAX_BYTES = 48 * 1024;
 const BACKGROUND_RESULT_MAX_LINES = 1000;
+export const SUBAGENT_TERMINATION_GRACE_MS = 5_000;
+export const SUBAGENT_TERMINATION_DEADLINE_MS = 10_000;
 const READ_ONLY_EXPERIMENT_TOOLS = new Set([
 	"read",
 	"grep",
@@ -728,6 +730,7 @@ interface SubagentRunContext {
 	owner?: "direct" | "task";
 	orchestrationId?: string;
 	mode?: SubagentRunMode;
+	background?: boolean;
 	readOnly?: boolean;
 }
 
@@ -884,6 +887,7 @@ export async function runSingleAgent(
 			cwd: cwd ?? defaultCwd,
 			model: currentResult.model,
 			effort: currentResult.effort,
+			background: runContext?.background,
 		},
 		runController,
 	);
@@ -930,10 +934,22 @@ export async function runSingleAgent(
 		const subagentStartedAt = new Date().toISOString();
 		const exitCode = await new Promise<number>((resolve) => {
 			let resolved = false;
+			let agentEnded = false;
+			let terminationRequested = false;
+			let terminationError: string | undefined;
+			let graceTimer: ReturnType<typeof setTimeout> | undefined;
+			let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
 			let proc: ReturnType<typeof spawn> | undefined;
+			let removeAbortListener: (() => void) | undefined;
+			const clearTerminationTimers = () => {
+				if (graceTimer) clearTimeout(graceTimer);
+				if (deadlineTimer) clearTimeout(deadlineTimer);
+			};
 			const finish = (code: number) => {
 				if (resolved) return;
 				resolved = true;
+				clearTerminationTimers();
+				removeAbortListener?.();
 				resolve(code);
 			};
 			const invocation = getPiInvocation(args);
@@ -1060,8 +1076,8 @@ export async function runSingleAgent(
 							subagentRunManager.appendMessage(runId, message);
 						emitUpdate();
 					}
-					finish(0);
-					proc?.kill("SIGTERM");
+					agentEnded = true;
+					requestTermination();
 				}
 			};
 
@@ -1076,27 +1092,66 @@ export async function runSingleAgent(
 				currentResult.stderr += data.toString();
 			});
 
+			const reportTerminationError = (phase: "graceful" | "forced", error: unknown) => {
+				if (terminationError) return;
+				const detail = error instanceof Error ? error.message : String(error);
+				terminationError = `${phase} process-tree termination failed: ${detail}`;
+			};
+			const forceTermination = () => {
+				if (resolved || !proc) return;
+				void signalProcessTree(proc, true).catch((error: unknown) =>
+					reportTerminationError("forced", error),
+				);
+			};
+			const requestTermination = () => {
+				if (terminationRequested || resolved || !proc) return;
+				terminationRequested = true;
+				const forceImmediately = process.platform === "win32";
+				void signalProcessTree(proc, forceImmediately).catch((error: unknown) =>
+					reportTerminationError(forceImmediately ? "forced" : "graceful", error),
+				);
+				graceTimer = setTimeout(
+					forceTermination,
+					SUBAGENT_TERMINATION_GRACE_MS,
+				);
+				graceTimer.unref();
+				deadlineTimer = setTimeout(() => {
+					if (resolved) return;
+					forceTermination();
+					currentResult.errorMessage = [
+						`Subagent process did not close within ${SUBAGENT_TERMINATION_DEADLINE_MS}ms after termination was requested.`,
+						terminationError,
+					]
+						.filter(Boolean)
+						.join(" ");
+					finish(1);
+				}, SUBAGENT_TERMINATION_DEADLINE_MS);
+				deadlineTimer.unref();
+			};
+
 			proc.on("close", (code) => {
 				if (buffer.trim()) processLine(buffer);
-				finish(code ?? 0);
+				finish(agentEnded && !wasAborted ? 0 : (code ?? 0));
 			});
 
 			proc.on("error", (error: Error) => {
+				if (resolved) return;
 				currentResult.errorMessage = `Failed to start subagent process (${invocation.command}): ${error.message}`;
 				finish(1);
 			});
 
 			const killProc = () => {
 				wasAborted = true;
-				terminateProcessTree(proc, {
-					forceImmediately: process.platform === "win32",
-				});
+				requestTermination();
 			};
 			if (runController.signal.aborted) killProc();
-			else
+			else {
 				runController.signal.addEventListener("abort", killProc, {
 					once: true,
 				});
+				removeAbortListener = () =>
+					runController.signal.removeEventListener("abort", killProc);
+			}
 		});
 
 		currentResult.exitCode = exitCode;
@@ -1529,12 +1584,14 @@ const ADVANCED_SUBAGENT_TOOL_NAMES = [
 ] as const;
 
 export default function (pi: ExtensionAPI) {
-	let sessionOpen = true;
+	let sessionOpen = false;
 	let sessionAgentCatalog: SessionAgentCatalog | undefined;
 	let statusContext: ExtensionContext | undefined;
 	let unsubscribeStatus: (() => void) | undefined;
+	let unsubscribeBackgroundCompletion: (() => void) | undefined;
 	let renderedStatus: string | undefined;
 	let refreshAgentTools: (agentNames: readonly string[]) => void = () => {};
+	let deliveryScheduled = false;
 
 	const updateStatus = () => {
 		if (!statusContext) return;
@@ -1544,13 +1601,46 @@ export default function (pi: ExtensionAPI) {
 		statusContext.ui.setStatus("subagents", nextStatus);
 	};
 
-	const deliverBackgroundResult = (
+	const flushPendingBackgroundCompletions = () => {
+		deliveryScheduled = false;
+		if (!sessionOpen) return;
+		for (const completion of subagentRunManager.pendingBackgroundCompletions()) {
+			try {
+				pi.sendMessage(
+					{
+						customType: "subagent-result",
+						content: completion.content,
+						display: true,
+						details: {
+							orchestrationId: completion.orchestrationId,
+							mode: completion.mode,
+							failed: completion.failed,
+							taskIds: completion.taskIds,
+						},
+					},
+					{ deliverAs: "followUp", triggerTurn: true },
+				);
+				subagentRunManager.consumeBackgroundCompletion(
+					completion.orchestrationId,
+				);
+			} catch {
+				// Keep the result pending and retry after the next settled agent turn.
+			}
+		}
+	};
+
+	const scheduleBackgroundCompletionDelivery = () => {
+		if (deliveryScheduled) return;
+		deliveryScheduled = true;
+		queueMicrotask(flushPendingBackgroundCompletions);
+	};
+
+	const queueBackgroundResult = (
 		orchestrationId: string,
 		mode: Exclude<SubagentRunMode, "task-execute">,
 		result?: AgentToolResult<SubagentDetails>,
 		error?: unknown,
 	) => {
-		if (!sessionOpen) return;
 		const rawText = result
 			? result.content
 					.filter((item) => item.type === "text")
@@ -1576,22 +1666,16 @@ export default function (pi: ExtensionAPI) {
 		const truncationNote = bounded.truncated
 			? "\n\n[Result truncated. Inspect the recent run with /subagents.]"
 			: "";
-		pi.sendMessage(
-			{
-				customType: "subagent-result",
-				content: `Background subagent ${mode} ${orchestrationId} ${failed ? "finished with failures" : "finished"}.\n\n${bounded.content}${truncationNote}`,
-				display: true,
-				details: {
-					orchestrationId,
-					mode,
-					failed,
-					taskIds: result?.details?.results.flatMap((worker) =>
-						worker.taskId ? [worker.taskId] : [],
-					),
-				},
-			},
-			{ deliverAs: "followUp", triggerTurn: true },
-		);
+		subagentRunManager.queueBackgroundCompletion({
+			orchestrationId,
+			mode,
+			content: `Background subagent ${mode} ${orchestrationId} ${failed ? "finished with failures" : "finished"}.\n\n${bounded.content}${truncationNote}`,
+			failed,
+			taskIds:
+				result?.details?.results.flatMap((worker) =>
+					worker.taskId ? [worker.taskId] : [],
+				) ?? [],
+		});
 	};
 
 	pi.registerCommand("subagents", {
@@ -1617,17 +1701,30 @@ export default function (pi: ExtensionAPI) {
 		renderedStatus = undefined;
 		unsubscribeStatus?.();
 		unsubscribeStatus = subagentRunManager.subscribe(updateStatus);
+		unsubscribeBackgroundCompletion?.();
+		unsubscribeBackgroundCompletion = subagentRunManager.onBackgroundCompletion(
+			scheduleBackgroundCompletionDelivery,
+		);
 		updateStatus();
+		scheduleBackgroundCompletionDelivery();
 	});
 
-	pi.on("session_shutdown", () => {
+	pi.on("agent_settled", () => {
+		if (subagentRunManager.pendingBackgroundCompletions().length > 0)
+			scheduleBackgroundCompletionDelivery();
+	});
+
+	pi.on("session_shutdown", async (event) => {
 		sessionOpen = false;
 		unsubscribeStatus?.();
 		unsubscribeStatus = undefined;
+		unsubscribeBackgroundCompletion?.();
+		unsubscribeBackgroundCompletion = undefined;
 		statusContext?.ui.setStatus("subagents", undefined);
 		statusContext = undefined;
 		renderedStatus = undefined;
-		subagentRunManager.clear({ abortRunning: true });
+		if (event.reason === "quit") await subagentRunManager.dispose();
+		else subagentRunManager.cancelForeground();
 		sessionAgentCatalog = undefined;
 	});
 
@@ -1650,6 +1747,8 @@ export default function (pi: ExtensionAPI) {
 		parameters: InitialSubagentSchemas.legacy,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+			const invocationCwd = ctx.cwd;
+			const parentSessionId = ctx.sessionManager?.getSessionId?.();
 			await compressDelegatedSessions().catch(() => []);
 			const agentScope =
 				(params.agentScope as unknown as AgentScope | undefined) ?? "user";
@@ -1702,9 +1801,9 @@ export default function (pi: ExtensionAPI) {
 					? `${resolvedModel.provider}/${resolvedModel.id}`
 					: undefined);
 			const discovery =
-				sessionAgentCatalog?.cwd === ctx.cwd
+				sessionAgentCatalog?.cwd === invocationCwd
 					? sessionAgentCatalog.byScope[agentScope]
-					: discoverAgents(ctx.cwd, agentScope);
+					: discoverAgents(invocationCwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? false;
 			const modeCount =
@@ -1860,9 +1959,7 @@ export default function (pi: ExtensionAPI) {
 				const event = buildOrchestrationRunEvent({
 					orchestrationId,
 					...(interactionId ? { interactionId } : {}),
-					...(ctx.sessionManager?.getSessionId?.()
-						? { parentSessionId: ctx.sessionManager.getSessionId() }
-						: {}),
+					...(parentSessionId ? { parentSessionId } : {}),
 					mode: originalMode,
 					fanOut: results.length,
 					status: allCompleted
@@ -1879,7 +1976,7 @@ export default function (pi: ExtensionAPI) {
 					),
 					parentVisibleBytes,
 					workers,
-					session: ctx.sessionManager?.getSessionId?.(),
+					session: parentSessionId,
 				});
 				if (event)
 					recordEvent(event as unknown as Parameters<typeof recordEvent>[0]);
@@ -1905,7 +2002,7 @@ export default function (pi: ExtensionAPI) {
 									: "failed",
 						checksTotal: results.length,
 						checksPassed,
-						session: ctx.sessionManager?.getSessionId?.(),
+						session: parentSessionId,
 					});
 					if (outcome)
 						recordEvent(
@@ -1925,6 +2022,7 @@ export default function (pi: ExtensionAPI) {
 						owner: args[13] ? "task" : "direct",
 						orchestrationId,
 						mode: executionMode,
+						background,
 						...(fanoutAssignment ? { readOnly: true } : {}),
 					};
 					if (outputSchema) {
@@ -2065,9 +2163,13 @@ export default function (pi: ExtensionAPI) {
 				throw new Error("taskId is only valid for single mode.");
 			if (selectedTasks)
 				for (const task of selectedTasks)
-					validateLinkedTask(task.taskId, task.cwd, ctx.cwd);
+					validateLinkedTask(task.taskId, task.cwd, invocationCwd);
 			if (selectedSingle)
-				validateLinkedTask(selectedSingle.taskId, selectedSingle.cwd, ctx.cwd);
+				validateLinkedTask(
+					selectedSingle.taskId,
+					selectedSingle.cwd,
+					invocationCwd,
+				);
 
 			const unknownAgentNames = Array.from(requestedAgentNames).filter(
 				(name) => !availableAgentNames.has(name),
@@ -2123,7 +2225,7 @@ export default function (pi: ExtensionAPI) {
 					...fanoutAssignment,
 					orchestrationId,
 					...(interactionId ? { interactionId } : {}),
-					session: ctx.sessionManager?.getSessionId?.(),
+					session: parentSessionId,
 				});
 				if (assignmentEvent)
 					experimentAssignmentEmitted = Boolean(
@@ -2142,7 +2244,7 @@ export default function (pi: ExtensionAPI) {
 			if (params.continue) {
 				const followUp = params.continue as ContinueParams;
 				const result = await run(
-					ctx.cwd,
+					invocationCwd,
 					agents,
 					followUp.agent,
 					followUp.task,
@@ -2163,7 +2265,7 @@ export default function (pi: ExtensionAPI) {
 					result,
 					followUp.output,
 					followUp.outputMode,
-					ctx.cwd,
+					invocationCwd,
 					followUp.cwd,
 					0,
 					false,
@@ -2214,7 +2316,7 @@ export default function (pi: ExtensionAPI) {
 						: undefined;
 
 					const result = await run(
-						ctx.cwd,
+						invocationCwd,
 						agents,
 						step.agent,
 						taskWithContext,
@@ -2235,7 +2337,7 @@ export default function (pi: ExtensionAPI) {
 						result,
 						step.output,
 						step.outputMode,
-						ctx.cwd,
+						invocationCwd,
 						step.cwd,
 						i,
 						structuredOutputIsBulky(result),
@@ -2335,7 +2437,7 @@ export default function (pi: ExtensionAPI) {
 					MAX_CONCURRENCY,
 					async (t, index) => {
 						const result = await run(
-							ctx.cwd,
+							invocationCwd,
 							agents,
 							t.agent,
 							t.task,
@@ -2362,7 +2464,7 @@ export default function (pi: ExtensionAPI) {
 							result,
 							t.output,
 							t.outputMode,
-							ctx.cwd,
+							invocationCwd,
 							t.cwd,
 							index,
 							true,
@@ -2391,7 +2493,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (selectedSingle) {
 				const result = await run(
-					ctx.cwd,
+					invocationCwd,
 					agents,
 					selectedSingle.agent,
 					selectedSingle.task,
@@ -2412,7 +2514,7 @@ export default function (pi: ExtensionAPI) {
 					result,
 					selectedSingle.output,
 					selectedSingle.outputMode,
-					ctx.cwd,
+					invocationCwd,
 					selectedSingle.cwd,
 					0,
 					false,
@@ -2465,10 +2567,10 @@ export default function (pi: ExtensionAPI) {
 			if (!background) return executeSelectedMode();
 			void executeSelectedMode()
 				.then((result) =>
-					deliverBackgroundResult(orchestrationId, executionMode, result),
+					queueBackgroundResult(orchestrationId, executionMode, result),
 				)
 				.catch((error) =>
-					deliverBackgroundResult(
+					queueBackgroundResult(
 						orchestrationId,
 						executionMode,
 						undefined,
