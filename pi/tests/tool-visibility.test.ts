@@ -6,6 +6,12 @@ vi.mock("../lib/metrics.ts", () => ({ recordEvent }));
 import toolVisibility, {
 	DEFERRED_TOOL_NAMES,
 } from "../extensions/tool-visibility.ts";
+import {
+	activateTools,
+	deactivateTools,
+	removeToolVisibilityRestriction,
+	setToolVisibilityRestriction,
+} from "../lib/tool-activation.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const GENERAL_TOOL_NAMES = [
@@ -90,6 +96,45 @@ describe("tool visibility", () => {
 				}),
 			}),
 		);
+	});
+
+	it("keeps desired owner state current under a keyed visibility restriction", () => {
+		const pi = createMockPi();
+		const fixed = [
+			"subagent",
+			"subagent_chain",
+			"subagent_fanout",
+			"subagent_workflow",
+			"task",
+			"ask_user",
+		];
+		for (const name of ["read", ...fixed, "plan_archive", "goal_complete"])
+			registerTool(pi, name);
+
+		deactivateTools(pi, [
+			"subagent_chain",
+			"subagent_fanout",
+			"subagent_workflow",
+			"plan_archive",
+		]);
+		setToolVisibilityRestriction(
+			pi,
+			"fable",
+			[...fixed, "plan_archive"],
+			fixed,
+		);
+
+		expect(new Set(pi.getActiveTools())).toEqual(new Set(fixed));
+		activateTools(pi, ["plan_archive", "goal_complete"]);
+		expect(pi.getActiveTools()).toContain("plan_archive");
+		expect(pi.getActiveTools()).not.toContain("goal_complete");
+
+		deactivateTools(pi, ["plan_archive", "read"]);
+		expect(pi.getActiveTools()).not.toContain("plan_archive");
+		removeToolVisibilityRestriction(pi, "fable");
+		expect(pi.getActiveTools()).toContain("goal_complete");
+		expect(pi.getActiveTools()).not.toContain("read");
+		expect(pi.getActiveTools()).not.toContain("plan_archive");
 	});
 
 	it("records changed toolsets and tool use without content", async () => {

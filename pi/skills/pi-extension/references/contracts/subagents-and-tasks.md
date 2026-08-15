@@ -2,7 +2,7 @@
 
 ## Tree execution
 
-- A root may run a coordinator or leaf. A coordinator may run leaves only. Leaves and depth-two children cannot invoke delegation or workflow tools.
+- The selected primary model owns root orchestration. An omitted child role resolves to `leaf`, except that naming the agent `orchestrator` without a role is rejected with explicit-role guidance. A non-Fable root may request `role: "coordinator"`; a coordinator may run leaves only. Leaves and depth-two children cannot invoke delegation or workflow tools.
 - The root-owned cross-process tree scheduler queues descendants and enforces eight active descendants by default. `PI_SUBAGENT_MAX_ACTIVE_DESCENDANTS` may configure a ceiling from 1 through 16.
 - Every child role shares a 64-turn ceiling, including structured-output correction. If turn 64 requests more tool work, stop after that turn and return a budget-limited partial result.
 - Read-only fan-out workers have an eight-minute wall-clock limit. Modifying leaves have no wall-clock hard timeout.
@@ -13,10 +13,12 @@
 ## Callable subagent behavior
 
 - `subagent` provides common foreground single and parallel execution. `background=true` returns immediately and delivers one bounded follow-up result when the orchestration settles; do not poll it.
-- `subagent_chain`, `subagent_continue`, `subagent_fanout`, and `subagent_workflow` are deferred capabilities activated through `tool_search`.
+- For non-Fable roots, `subagent_chain`, `subagent_continue`, `subagent_fanout`, and `subagent_workflow` are deferred capabilities activated through `tool_search`.
 - `readOnlyFanout` is opt-in for one read-only investigation with 2 through 8 independent work items, equivalent single-generalist and parallel-specialist plans, and one required output schema. Assignment is deterministic. Do not use it for dependent work, mutations, or live operations.
 - Validate every requested agent against `agentScope` before starting any worker or acknowledging background work. Project agents require `agentScope: "project"` or `"both"`; unknown names do not resolve as aliases. When `confirmProjectAgents` is requested, reject before spawn if no UI is available rather than bypassing confirmation.
 - An optional `taskId` requires an existing non-deleted running task in the effective workspace and provides correlation only. Subagent calls never create or transition `TaskRecordV1` entries.
+- When the exact root model is `amazon-bedrock/us.anthropic.claude-fable-5`, Fable cannot start a coordinator or continue a saved child session. Single, parallel, chain, fan-out, and typed workflow requests are preflighted after trusted agent discovery. Explicit models and agent pins must resolve to an available `openai-codex` model; omitted and size-based requests select only from available `openai-codex` models. One invalid request rejects the complete invocation before any child starts.
+- Fable cannot select a custom output path. Its foreground results are bounded to 50 KB or 2000 lines. Complete truncated output is saved to a runtime-generated private temporary artifact, while internal chain handoff keeps the existing full-output or artifact-reference behavior.
 
 ## Typed workflow
 

@@ -83,6 +83,14 @@ env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE -u AWS_REGION -u AWS_DEFAULT_REGION \
   -p 'Reply with exactly: bedrock-ok'
 ```
 
+### Fable subscription-only orchestration
+
+When the resolved primary model is exactly `amazon-bedrock/us.anthropic.claude-fable-5`, Fable remains the root orchestrator in TUI, RPC, JSON, and print modes. Its provider-visible control plane is limited to `subagent`, `subagent_chain`, `subagent_fanout`, `subagent_workflow`, `task`, and `ask_user`. The existing `/do-it` state gate may also expose `plan_archive`; Fable cannot expose it independently. `tool_search`, `subagent_continue`, direct inspection, mutation, validation, shell, web, and commit tools are blocked before execution. Switching away from Fable reveals the current tool state, including owner changes made while the restriction was active, rather than restoring a stale snapshot.
+
+Fable dispatches direct leaves and bounded workflows, not coordinators. After trusted agent discovery, every requested child model is resolved before any child starts. Explicit models and agent pins must name an available `openai-codex` model; omitted and size-based selections resolve from available `openai-codex` models only. One invalid member rejects the complete batch or workflow before spawn. Caller-supplied output paths are rejected. Fable-visible foreground results are limited to 50 KB or 2000 lines, with complete output written to a runtime-generated private temporary artifact when truncation is required.
+
+Other primary models retain their normal tools and routing. The selected primary model owns root orchestration by default. Naming the agent `orchestrator` without a role is rejected; a non-Fable root may request it as a leaf or explicitly set `role: "coordinator"`.
+
 ### Automatic Bedrock routing
 
 `pi/extensions/bedrock-mantle.ts` registers the `bedrock-mantle` provider as a

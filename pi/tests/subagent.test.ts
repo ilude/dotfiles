@@ -215,6 +215,44 @@ You are a test agent.
 `,
 			"utf8",
 		);
+		await fs.promises.writeFile(
+			path.join(agentsDir, "subscription.md"),
+			`---
+name: subscription
+description: Subscription test agent
+model: openai-codex/gpt-5.6-terra:high
+tools: read, grep
+---
+
+Run subscription work.
+`,
+			"utf8",
+		);
+		await fs.promises.writeFile(
+			path.join(agentsDir, "unpinned.md"),
+			`---
+name: unpinned
+description: Unpinned test agent
+tools: read, grep
+---
+
+Run unpinned work.
+`,
+			"utf8",
+		);
+		await fs.promises.writeFile(
+			path.join(agentsDir, "orchestrator.md"),
+			`---
+name: orchestrator
+description: Orchestrator test agent
+model: openai-codex/gpt-5.6-sol
+tools: read, grep, subagent
+---
+
+Coordinate bounded work.
+`,
+			"utf8",
+		);
 		prevOperatorDir = process.env.PI_OPERATOR_DIR;
 		prevMetricsDir = process.env.PI_METRICS_DIR;
 		prevRoutingSampleRate = process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
@@ -247,7 +285,7 @@ You are a test agent.
 		vi.clearAllMocks();
 	});
 
-	function mockSuccessfulSpawn() {
+	function mockSuccessfulSpawn(output = "done") {
 		spawnMock.mockImplementation((_command: string, _args: string[]) => {
 			const proc = createMockProcess();
 
@@ -258,7 +296,7 @@ You are a test agent.
 						type: "message_end",
 						message: {
 							role: "assistant",
-							content: [{ type: "text", text: "done" }],
+							content: [{ type: "text", text: output }],
 							usage: {
 								input: 10,
 								output: 5,
@@ -293,6 +331,21 @@ You are a test agent.
 		required: ["value"],
 		additionalProperties: false,
 	};
+	const fableModel = {
+		provider: "amazon-bedrock",
+		id: "us.anthropic.claude-fable-5",
+	};
+	const subscriptionModels = [
+		{ provider: "openai-codex", id: "gpt-5.6-luna" },
+		{ provider: "openai-codex", id: "gpt-5.6-terra" },
+		{ provider: "openai-codex", id: "gpt-5.6-sol" },
+	];
+	const fableCtx = (models = subscriptionModels) =>
+		createMockCtx({
+			cwd: tmpDir,
+			model: fableModel,
+			modelRegistry: { getAvailable: vi.fn(() => models) },
+		});
 
 	it("rejects new runs after disposal starts", async () => {
 		const manager = new SubagentRunManager();
@@ -1891,6 +1944,303 @@ You are a test agent.
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
+
+	it("requires explicit coordinator intent for the orchestrator agent", async () => {
+		mockSuccessfulSpawn();
+		const { tool } = await loadTool();
+		const ctx = createMockCtx({ cwd: tmpDir });
+
+		await expect(
+			tool.execute(
+				"implicit-orchestrator",
+				{
+					agent: "orchestrator",
+					task: "Coordinate work",
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow("primary model owns orchestration");
+		expect(spawnMock).not.toHaveBeenCalled();
+
+		await tool.execute(
+			"explicit-orchestrator",
+			{
+				agent: "orchestrator",
+				task: "Coordinate work",
+				role: "coordinator",
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(spawnMock).toHaveBeenCalledTimes(1);
+		expect(spawnMock.mock.calls[0][2].env.PI_SUBAGENT_TREE_ROLE).toBe(
+			"coordinator",
+		);
+	});
+
+	it("resolves every Fable child to an available subscription model", async () => {
+		mockSuccessfulSpawn();
+		const { tool } = await loadTool();
+		const cases = [
+			{
+				params: { agent: "subscription", task: "Pinned" },
+				expected: "openai-codex/gpt-5.6-terra:high",
+			},
+			{
+				params: { agent: "unpinned", task: "Default" },
+				expected: "openai-codex/gpt-5.6-terra",
+			},
+			{
+				params: {
+					agent: "unpinned",
+					task: "Small",
+					modelSize: "small",
+				},
+				expected: "openai-codex/gpt-5.6-luna",
+			},
+			{
+				params: {
+					agent: "unpinned",
+					task: "Explicit",
+					model: "openai-codex/gpt-5.6-sol:xhigh",
+				},
+				expected: "openai-codex/gpt-5.6-sol:xhigh",
+			},
+		] as const;
+
+		for (const [index, item] of cases.entries()) {
+			const before = spawnMock.mock.calls.length;
+			const result = await tool.execute(
+				`fable-model-${index}`,
+				{ ...item.params, agentScope: "project" },
+				undefined,
+				undefined,
+				fableCtx(),
+			);
+			const args = spawnMock.mock.calls[before][1] as string[];
+			expect(args[args.indexOf("--model") + 1]).toBe(item.expected);
+			expect(result.details.results[0].role).toBe("leaf");
+			expect(result.details.results[0].model).toBe(item.expected);
+			const outputPath = result.details.results[0].outputPath;
+			expect(outputPath).toBeDefined();
+			if (outputPath) await fs.promises.rm(outputPath, { force: true });
+		}
+	});
+
+	it("applies Fable routing to chain, fanout, and workflow leaves", async () => {
+		mockSuccessfulSpawn();
+		const { pi, tool } = await loadTool();
+
+		await tool.execute(
+			"fable-chain",
+			{
+				chain: [
+					{ agent: "unpinned", task: "First" },
+					{ agent: "subscription", task: "Use {previous}" },
+				],
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			fableCtx(),
+		);
+		let newCalls = spawnMock.mock.calls.splice(0);
+		expect(newCalls).toHaveLength(2);
+		expect(
+			newCalls.map((call) => {
+				const args = call[1] as string[];
+				return args[args.indexOf("--model") + 1];
+			}),
+		).toEqual([
+			"openai-codex/gpt-5.6-terra",
+			"openai-codex/gpt-5.6-terra:high",
+		]);
+
+		mockSuccessfulSpawn('{"value":"done"}');
+		const fanout = pi._getTool("subagent_fanout");
+		if (!fanout) throw new Error("subagent_fanout tool not registered");
+		await fanout.execute(
+			"fable-fanout",
+			{
+				single: { agent: "unpinned", task: "Inspect all" },
+				parallel: [
+					{ agent: "subscription", task: "Inspect one" },
+					{ agent: "unpinned", task: "Inspect two" },
+				],
+				outputSchema,
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			fableCtx(),
+		);
+		newCalls = spawnMock.mock.calls.splice(0);
+		expect(newCalls.length).toBeGreaterThan(0);
+		for (const call of newCalls) {
+			const args = call[1] as string[];
+			expect(args[args.indexOf("--model") + 1]).toMatch(
+				/^openai-codex\//,
+			);
+		}
+
+		mockSuccessfulSpawn(
+			'{"status":"found","evidence":["bounded"]}',
+		);
+		const workflow = pi._getTool("subagent_workflow");
+		if (!workflow) throw new Error("subagent_workflow tool not registered");
+		await workflow.execute(
+			"fable-workflow",
+			{
+				id: "fable-workflow",
+				items: [
+					{
+						key: "one",
+						agent: "unpinned",
+						task: "Inspect",
+						capabilities: ["read"],
+						input: { kind: "none" },
+					},
+				],
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			fableCtx(),
+		);
+		newCalls = spawnMock.mock.calls.splice(0);
+		expect(newCalls).toHaveLength(1);
+		const workflowArgs = newCalls[0][1] as string[];
+		expect(workflowArgs[workflowArgs.indexOf("--model") + 1]).toBe(
+			"openai-codex/gpt-5.6-terra",
+		);
+	});
+
+	it("rejects invalid Fable batches atomically before spawn", async () => {
+		mockSuccessfulSpawn();
+		const { pi, tool } = await loadTool();
+		const invalid = [
+			{
+				tasks: [
+					{ agent: "subscription", task: "Valid" },
+					{ agent: "tester", task: "Metered pin" },
+				],
+			},
+			{
+				agent: "unpinned",
+				task: "Metered override",
+				model: "anthropic/claude-opus-4-6",
+			},
+			{
+				agent: "subscription",
+				task: "Coordinator",
+				role: "coordinator",
+			},
+			{
+				agent: "subscription",
+				task: "Custom artifact",
+				output: "result.md",
+			},
+		] as const;
+		for (const [index, params] of invalid.entries()) {
+			await expect(
+				tool.execute(
+					`fable-invalid-${index}`,
+					{ ...params, agentScope: "project" },
+					undefined,
+					undefined,
+					fableCtx(),
+				),
+			).rejects.toThrow("Fable subscription-only orchestration");
+			expect(spawnMock).not.toHaveBeenCalled();
+		}
+
+		const workflow = pi._getTool("subagent_workflow");
+		if (!workflow) throw new Error("subagent_workflow tool not registered");
+		await expect(
+			workflow.execute(
+				"fable-invalid-workflow",
+				{
+					id: "fable-invalid-workflow",
+					items: [
+						{
+							key: "valid",
+							agent: "subscription",
+							task: "Valid",
+							capabilities: ["read"],
+							input: { kind: "none" },
+						},
+						{
+							key: "metered",
+							agent: "tester",
+							task: "Metered",
+							capabilities: ["read"],
+							input: { kind: "none" },
+						},
+					],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				fableCtx(),
+			),
+		).rejects.toThrow("Fable subscription-only orchestration");
+		expect(spawnMock).not.toHaveBeenCalled();
+
+		await expect(
+			tool.execute(
+				"fable-missing-model",
+				{
+					agent: "unpinned",
+					task: "No subscription model",
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				fableCtx([]),
+			),
+		).rejects.toThrow("none was found");
+		expect(spawnMock).not.toHaveBeenCalled();
+	});
+
+	it("bounds Fable foreground results and forces generated artifacts", async () => {
+		const fullOutput = `${"x".repeat(60_000)}\n${"line\n".repeat(2_500)}`;
+		mockSuccessfulSpawn(fullOutput);
+		const { tool } = await loadTool();
+		const result = await tool.execute(
+			"fable-bounded-output",
+			{
+				agent: "unpinned",
+				task: "Return a large result",
+				agentScope: "project",
+				output: false,
+			},
+			undefined,
+			undefined,
+			fableCtx(),
+		);
+		const visible = result.content[0].text;
+		expect(Buffer.byteLength(visible, "utf8")).toBeLessThanOrEqual(50 * 1024);
+		expect(visible.split(/\r\n|\r|\n/).length).toBeLessThanOrEqual(2_000);
+		expect(visible).toContain("Result truncated at the Fable foreground boundary");
+
+		const childPath = result.details.results[0].outputPath;
+		expect(childPath).toBeDefined();
+		if (childPath) {
+			expect(await fs.promises.readFile(childPath, "utf8")).toBe(fullOutput);
+			await fs.promises.rm(childPath, { force: true });
+		}
+		const match = visible.match(/Output saved to: (.+?) \(/);
+		expect(match?.[1]).toBeDefined();
+		if (match?.[1]) {
+			expect(await fs.promises.readFile(match[1], "utf8")).toBe(fullOutput);
+			await fs.promises.rm(match[1], { force: true });
+		}
+	});
 
 	it(
 		"uses modelSize/modelPolicy to override pinned agent models",

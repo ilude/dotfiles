@@ -5,6 +5,10 @@ import {
 	resolveDynamicModel,
 	resolveExplicitModelPolicy,
 } from "../lib/model-routing.js";
+import {
+	removeToolVisibilityRestriction,
+	setToolVisibilityRestriction,
+} from "../lib/tool-activation.js";
 import { type AgentScope, discoverAgents } from "./subagent/agents.js";
 
 const FABLE_THINKING_LEVEL = "high";
@@ -20,11 +24,38 @@ const FOREMAN_INSTRUCTION = [
 	"Keep solutions simple and proportionate: follow YAGNI and KISS, prefer the Pareto 80/20 solution, and avoid over-complication or gold-plating.",
 	"Require tests that protect distinct user-visible contracts, regressions, edge cases, or safety properties; do not create tests that merely restate implementation details or add no decision-relevant confidence.",
 ].join(" ");
+const FABLE_ROOT_INSTRUCTION = [
+	"You are the root orchestrator and must not delegate orchestration to a coordinator.",
+	"Use only direct openai-codex subscription leaves or bounded workflows for investigation, implementation, validation, and other work.",
+	"Do not call direct work tools, tool_search, subagent_continue, or supply custom output paths.",
+].join(" ");
+const FABLE_VISIBILITY_KEY = "fable";
+export const FABLE_CONTROL_TOOL_NAMES = [
+	"subagent",
+	"subagent_chain",
+	"subagent_fanout",
+	"subagent_workflow",
+	"task",
+	"ask_user",
+	"plan_archive",
+] as const;
+const FABLE_ALWAYS_VISIBLE_TOOL_NAMES = FABLE_CONTROL_TOOL_NAMES.filter(
+	(name) => name !== "plan_archive",
+);
+const FABLE_CONTROL_TOOLS = new Set<string>(FABLE_CONTROL_TOOL_NAMES);
+const FABLE_BOUNDARY = "Fable subscription-only orchestration boundary";
 
-type SubagentInput = {
+type DelegationRequest = {
 	agent?: unknown;
+	role?: unknown;
+	output?: unknown;
+};
+
+type SubagentInput = DelegationRequest & {
 	tasks?: unknown;
 	chain?: unknown;
+	steps?: unknown;
+	continue?: unknown;
 	agentScope?: unknown;
 	model?: unknown;
 	modelSize?: unknown;
@@ -62,6 +93,40 @@ function requestedAgentNames(input: SubagentInput): string[] {
 	return typeof input.agent === "string" ? [input.agent] : [];
 }
 
+function delegationRequests(input: SubagentInput): DelegationRequest[] {
+	const nested = [input.tasks, input.chain, input.steps].flatMap((value) =>
+		Array.isArray(value)
+			? value.filter(
+					(item): item is DelegationRequest =>
+						item !== null && typeof item === "object",
+				)
+			: [],
+	);
+	const continuation =
+		input.continue !== null && typeof input.continue === "object"
+			? [input.continue as DelegationRequest]
+			: [];
+	return [input, ...nested, ...continuation];
+}
+
+function fableDelegationViolation(input: SubagentInput): string | undefined {
+	const requests = delegationRequests(input);
+	if (requests.some((request) => request.role === "coordinator"))
+		return `${FABLE_BOUNDARY}: Fable is the root orchestrator and cannot request a coordinator.`;
+	if (
+		requests.some(
+			(request) =>
+				request.agent === "orchestrator" && request.role === undefined,
+		)
+	)
+		return `${FABLE_BOUNDARY}: the primary model owns orchestration. Specify role: "leaf" to run the orchestrator agent as a leaf.`;
+	if (requests.some((request) => typeof request.output === "string"))
+		return `${FABLE_BOUNDARY}: caller-supplied output paths are not allowed; Pi generates private artifacts.`;
+	if (input.continue !== undefined)
+		return `${FABLE_BOUNDARY}: saved-session continuation is not available to Fable.`;
+	return undefined;
+}
+
 function preservesRequestedAgentModels(
 	input: SubagentInput,
 	cwd: string,
@@ -76,7 +141,7 @@ function preservesRequestedAgentModels(
 	});
 }
 
-function isFableBedrockModel(model?: {
+export function isFableBedrockModel(model?: {
 	provider?: unknown;
 	id?: unknown;
 }): boolean {
@@ -163,6 +228,23 @@ export function subagentModelFor(
 export default function fableCommand(pi: ExtensionAPI): void {
 	let foremanMode = false;
 
+	const updateFableVisibility = (model?: {
+		provider?: unknown;
+		id?: unknown;
+	}): void => {
+		if (isFableBedrockModel(model)) {
+			setToolVisibilityRestriction(
+				pi,
+				FABLE_VISIBILITY_KEY,
+				FABLE_CONTROL_TOOL_NAMES,
+				FABLE_ALWAYS_VISIBLE_TOOL_NAMES,
+			);
+		} else removeToolVisibilityRestriction(pi, FABLE_VISIBILITY_KEY);
+	};
+
+	pi.on("session_start", (_event, ctx) => updateFableVisibility(ctx.model));
+	pi.on("model_select", (event) => updateFableVisibility(event.model));
+
 	pi.on("before_provider_request", (event, ctx) =>
 		sanitizeFableBedrockPayload(event.payload, ctx.model),
 	);
@@ -181,12 +263,17 @@ export default function fableCommand(pi: ExtensionAPI): void {
 	});
 
 	pi.on("before_agent_start", (event, ctx) => {
+		updateFableVisibility(ctx.model);
+		if (isFableBedrockModel(ctx.model)) {
+			return {
+				systemPrompt: `${event.systemPrompt}\n\n${FOREMAN_INSTRUCTION}\n\n${FABLE_ROOT_INSTRUCTION}`,
+			};
+		}
 		if (!isInteractiveOrchestratorParent(ctx)) return undefined;
 		const foremanRequested =
-			isFableBedrockModel(ctx.model) ||
-			(foremanMode &&
-				ctx.model?.provider === "openai-codex" &&
-				ctx.model.id === "gpt-5.6-sol");
+			foremanMode &&
+			ctx.model?.provider === "openai-codex" &&
+			ctx.model.id === "gpt-5.6-sol";
 		if (!foremanRequested) return undefined;
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${FOREMAN_INSTRUCTION}`,
@@ -194,6 +281,22 @@ export default function fableCommand(pi: ExtensionAPI): void {
 	});
 
 	pi.on("tool_call", (event, ctx) => {
+		if (isFableBedrockModel(ctx.model)) {
+			if (!FABLE_CONTROL_TOOLS.has(event.toolName)) {
+				return {
+					block: true,
+					reason: `${FABLE_BOUNDARY}: ${event.toolName} is not a permitted root control tool. Delegate the work to an openai-codex leaf.`,
+				};
+			}
+			if (event.toolName.startsWith("subagent")) {
+				const violation = fableDelegationViolation(
+					event.input as SubagentInput,
+				);
+				if (violation) return { block: true, reason: violation };
+			}
+			return undefined;
+		}
+
 		if (!isInteractiveOrchestratorParent(ctx)) return undefined;
 		if (event.toolName === "subagent") {
 			const input = event.input as SubagentInput;
@@ -209,7 +312,6 @@ export default function fableCommand(pi: ExtensionAPI): void {
 				ctx.modelRegistry.getAvailable(),
 				ctx.model,
 			);
-			return undefined;
 		}
 		return undefined;
 	});

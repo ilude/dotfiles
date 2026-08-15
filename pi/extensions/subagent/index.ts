@@ -21,6 +21,8 @@ import * as zlib from "node:zlib";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { StringEnum, type Message } from "@earendil-works/pi-ai";
 import {
+	DEFAULT_MAX_BYTES,
+	DEFAULT_MAX_LINES,
 	defineTool,
 	type ExtensionAPI,
 	type ExtensionContext,
@@ -41,8 +43,11 @@ import {
 	schemaOutputInstruction,
 } from "../../lib/typed-agent.js";
 import {
+	type ModelLike,
 	type ModelPolicy,
 	type ModelSize,
+	parseProviderModelString,
+	resolveDynamicModel,
 	type RoutingOutcomeAssignment,
 	resolveSampledDynamicModelFromRegistry,
 } from "../../lib/model-routing.js";
@@ -62,6 +67,7 @@ import {
 	resolveTaskWorkspace,
 } from "../../lib/task-registry.js";
 import { registerOrchestrationInvocation } from "../../lib/workflow-friction.js";
+import { isFableBedrockModel } from "../fable.js";
 import {
 	formatTraceparent,
 	getTraceId,
@@ -582,6 +588,36 @@ function saveOutputArtifact(
 	}
 }
 
+function boundFableVisibleResult<
+	T extends { content: Array<{ type: string; text?: string }> },
+>(result: T, label: string): T {
+	const fullOutput = result.content
+		.filter(
+			(item): item is { type: string; text: string } =>
+				item.type === "text" && typeof item.text === "string",
+		)
+		.map((item) => item.text)
+		.join("\n");
+	const initial = truncateTail(fullOutput, {
+		maxBytes: DEFAULT_MAX_BYTES,
+		maxLines: DEFAULT_MAX_LINES,
+	});
+	if (!initial.truncated) return result;
+
+	const saved = saveOutputArtifact(
+		getDefaultArtifactPath(`fable-${label}-${randomUUID()}`, 0),
+		fullOutput,
+	);
+	const reference = saved.reference?.message ??
+		`Full result artifact could not be saved: ${saved.error ?? "unknown error"}`;
+	const visible = truncateTail(
+		`${fullOutput}\n\n[Result truncated at the Fable foreground boundary. ${reference}]`,
+		{ maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES },
+	);
+	result.content = [{ type: "text", text: visible.content }];
+	return result;
+}
+
 function finalizeOutput(
 	result: SingleResult,
 	output: string | boolean | undefined,
@@ -851,17 +887,70 @@ function resolveChildRole(
 	const current = currentSubagentIdentity();
 	if (current.role === "leaf" || current.depth >= 2)
 		throw new Error("Leaf and depth-two subagents cannot delegate.");
-	const role =
-		requestedRole ??
-		(current.role === "root" && agentName === "orchestrator"
-			? "coordinator"
-			: "leaf");
+	if (
+		requestedRole === undefined &&
+		current.role === "root" &&
+		agentName === "orchestrator"
+	)
+		throw new Error(
+			'The primary model owns orchestration. Specify role: "leaf" to run the orchestrator agent as a leaf, or explicitly request role: "coordinator".',
+		);
+	const role = requestedRole ?? "leaf";
 	if (current.role === "coordinator" && role !== "leaf")
 		throw new Error("A coordinator may invoke leaf workers only.");
 	const depth = current.depth + 1;
 	if (role === "coordinator" && depth !== 1)
 		throw new Error("A coordinator may run only at depth one.");
 	return { role, depth };
+}
+
+const THINKING_SUFFIX_RE =
+	/:(off|minimal|low|medium|high|xhigh|max)$/;
+
+function fableModelBase(selection: string): string {
+	return selection.replace(THINKING_SUFFIX_RE, "");
+}
+
+function resolveFableChildModel(
+	availableModels: readonly ModelLike[],
+	currentModel: ModelLike | undefined,
+	agent: AgentConfig,
+	explicitModel: string | undefined,
+	modelSize: ModelSize | undefined,
+): string {
+	const requested = explicitModel ?? (modelSize ? undefined : agent.model);
+	if (requested) {
+		const parsed = parseProviderModelString(fableModelBase(requested));
+		if (!parsed || parsed.provider !== "openai-codex")
+			throw new Error(
+				`Fable subscription-only orchestration requires openai-codex child models; ${agent.name} resolved to ${requested}.`,
+			);
+		if (
+			!availableModels.some(
+				(model) =>
+					model.provider === parsed.provider && model.id === parsed.id,
+			)
+		)
+			throw new Error(
+				`Fable subscription-only orchestration model is unavailable: ${requested}.`,
+			);
+		return requested;
+	}
+
+	const subscriptionModels = availableModels.filter(
+		(model) => model.provider === "openai-codex",
+	);
+	const resolved = resolveDynamicModel(
+		subscriptionModels,
+		currentModel,
+		modelSize ?? "medium",
+		"same-provider",
+	);
+	if (!resolved)
+		throw new Error(
+			"Fable subscription-only orchestration requires an available openai-codex model, but none was found.",
+		);
+	return `${resolved.provider}/${resolved.id}`;
 }
 
 function agentCanModify(agent: AgentConfig | undefined): boolean {
@@ -1604,6 +1693,7 @@ type TaskParams = {
 	outputMode?: OutputMode;
 	resolvedRole?: SubagentRole;
 	resolvedDepth?: number;
+	resolvedModel?: string;
 	normalizedScopes?: string[];
 };
 
@@ -2209,6 +2299,7 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const currentIdentity = currentSubagentIdentity();
+			const fableRoot = isFableBedrockModel(ctx.model);
 			const internalWorkflowContext = internalWorkflowRuns.get(_toolCallId);
 			if (currentIdentity.role === "leaf" || currentIdentity.depth >= 2)
 				throw new Error("Leaf and depth-two subagents cannot delegate.");
@@ -2241,7 +2332,7 @@ export default function (pi: ExtensionAPI) {
 			const hasSingle = Boolean(params.agent && params.task);
 			const hasContinue = Boolean(params.continue);
 			const sampledResolution =
-				!explicitModel && modelSize
+				!fableRoot && !explicitModel && modelSize
 					? resolveSampledDynamicModelFromRegistry(
 							ctx.modelRegistry,
 							ctx,
@@ -2270,6 +2361,9 @@ export default function (pi: ExtensionAPI) {
 					? sessionAgentCatalog.byScope[agentScope]
 					: discoverAgents(invocationCwd, agentScope);
 			const agents = discovery.agents;
+			const availableModels = fableRoot
+				? (ctx.modelRegistry.getAvailable() as ModelLike[])
+				: [];
 			const confirmProjectAgents = params.confirmProjectAgents ?? false;
 			const modeCount =
 				Number(hasReadOnlyFanout) +
@@ -2771,23 +2865,48 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 
+			if (fableRoot && hasContinue)
+				throw new Error(
+					"Fable subscription-only orchestration does not allow saved-session continuation.",
+				);
+
 			const prepareChild = (item: TaskParams, forcedRole?: SubagentRole) => {
-				const resolved = resolveChildRole(forcedRole ?? item.role, item.agent);
+				const requestedRole = forcedRole ?? item.role;
+				if (fableRoot && requestedRole === "coordinator")
+					throw new Error(
+						"Fable subscription-only orchestration keeps Fable as the root and does not allow coordinators.",
+					);
+				if (fableRoot && typeof item.output === "string")
+					throw new Error(
+						"Fable subscription-only orchestration does not allow caller-supplied output paths.",
+					);
+				const resolved = resolveChildRole(requestedRole, item.agent);
 				item.resolvedRole = resolved.role;
 				item.resolvedDepth = resolved.depth;
 				item.normalizedScopes = normalizeRepositoryScopes(
 					item.scope ?? [],
 					invocationCwd,
 				);
+				if (fableRoot) {
+					const agent = agents.find((candidate) => candidate.name === item.agent);
+					if (!agent) throw new Error(`Unknown agent: ${item.agent}`);
+					item.resolvedModel = resolveFableChildModel(
+						availableModels,
+						ctx.model as ModelLike | undefined,
+						agent,
+						explicitModel,
+						modelSize,
+					);
+				}
 				if (item.taskId && resolved.role !== "coordinator")
 					throw new Error(
 						"taskId may correlate a root-owned coordinator invocation only.",
 					);
 			};
 			const chain = params.chain as unknown as TaskParams[] | undefined;
-			if (fanoutAssignment) {
-				if (selectedSingle) prepareChild(selectedSingle, "leaf");
-				for (const item of (selectedTasks ?? []) as TaskParams[])
+			if (fanoutPlan) {
+				prepareChild(fanoutPlan.single as TaskParams, "leaf");
+				for (const item of fanoutPlan.parallel as TaskParams[])
 					prepareChild(item, "leaf");
 			} else {
 				if (selectedSingle) prepareChild(selectedSingle);
@@ -2909,7 +3028,7 @@ export default function (pi: ExtensionAPI) {
 					executionSignal,
 					visibleUpdate,
 					makeDetails("single"),
-					resolvedModelId,
+					followUp.resolvedModel ?? resolvedModelId,
 					modelSize,
 					modelPolicy,
 					followUp.effort ?? effort,
@@ -2924,7 +3043,7 @@ export default function (pi: ExtensionAPI) {
 				);
 				finalizeOutput(
 					result,
-					followUp.output,
+					fableRoot ? true : followUp.output,
 					followUp.outputMode,
 					invocationCwd,
 					followUp.cwd,
@@ -2986,7 +3105,7 @@ export default function (pi: ExtensionAPI) {
 						executionSignal,
 						chainUpdate,
 						makeDetails("chain"),
-						resolvedModelId,
+						step.resolvedModel ?? resolvedModelId,
 						modelSize,
 						modelPolicy,
 						step.effort ?? effort,
@@ -3001,7 +3120,7 @@ export default function (pi: ExtensionAPI) {
 					);
 					finalizeOutput(
 						result,
-						step.output,
+						fableRoot ? true : step.output,
 						step.outputMode,
 						invocationCwd,
 						step.cwd,
@@ -3075,7 +3194,7 @@ export default function (pi: ExtensionAPI) {
 							contextPeakTokens: 0,
 							turns: 0,
 						},
-						model: resolvedModelId || agent?.model,
+						model: tasks[i].resolvedModel ?? resolvedModelId ?? agent?.model,
 						effort: tasks[i].effort ?? effort ?? agent?.effort ?? "default",
 					};
 				}
@@ -3119,7 +3238,7 @@ export default function (pi: ExtensionAPI) {
 									}
 								},
 								makeDetails("parallel"),
-								resolvedModelId,
+								t.resolvedModel ?? resolvedModelId,
 								modelSize,
 								modelPolicy,
 								t.effort ?? effort,
@@ -3134,7 +3253,7 @@ export default function (pi: ExtensionAPI) {
 							);
 							finalizeOutput(
 								result,
-								t.output,
+								fableRoot ? true : t.output,
 								t.outputMode,
 								invocationCwd,
 								t.cwd,
@@ -3191,7 +3310,7 @@ export default function (pi: ExtensionAPI) {
 					executionSignal,
 					visibleUpdate,
 					makeDetails("single"),
-					resolvedModelId,
+					selectedSingle.resolvedModel ?? resolvedModelId,
 					modelSize,
 					modelPolicy,
 					effort,
@@ -3206,7 +3325,7 @@ export default function (pi: ExtensionAPI) {
 				);
 				finalizeOutput(
 					result,
-					selectedSingle.output,
+					fableRoot ? true : selectedSingle.output,
 					selectedSingle.outputMode,
 					invocationCwd,
 					selectedSingle.cwd,
@@ -3260,7 +3379,10 @@ export default function (pi: ExtensionAPI) {
 
 			const executeWithTreeSettlement = async () => {
 				try {
-					return await executeSelectedMode();
+					const result = await executeSelectedMode();
+					return fableRoot && !background
+						? boundFableVisibleResult(result, orchestrationId)
+						: result;
 				} finally {
 					await settleInvocationTree();
 				}
@@ -3881,6 +4003,24 @@ export default function (pi: ExtensionAPI) {
 				const requestedNames = new Set(normalizedItems.map((item) => item.agent));
 				if (params.verify?.agent) requestedNames.add(params.verify.agent);
 				if (params.reduce?.agent) requestedNames.add(params.reduce.agent);
+				const fableRoot = isFableBedrockModel(ctx.model);
+				if (fableRoot) {
+					const availableModels = ctx.modelRegistry.getAvailable() as ModelLike[];
+					for (const name of requestedNames) {
+						const agent = agents.find((candidate) => candidate.name === name);
+						if (!agent)
+							throw new Error(
+								`Unknown workflow agent for agentScope "${agentScope}": ${name}`,
+							);
+						resolveFableChildModel(
+							availableModels,
+							ctx.model as ModelLike | undefined,
+							agent,
+							params.model,
+							params.modelSize,
+						);
+					}
+				}
 				if (
 					(agentScope === "project" || agentScope === "both") &&
 					params.confirmProjectAgents
@@ -4090,10 +4230,10 @@ export default function (pi: ExtensionAPI) {
 					gaps: item.gaps?.slice(0, 2),
 					verification: item.verification,
 				}));
-				return {
+				const toolResult = {
 					content: [
 						{
-							type: "text",
+							type: "text" as const,
 							text: JSON.stringify({
 								id: result.id,
 								counts,
@@ -4105,6 +4245,9 @@ export default function (pi: ExtensionAPI) {
 					],
 					details: { workflow: result },
 				};
+				return fableRoot
+					? boundFableVisibleResult(toolResult, toolCallId)
+					: toolResult;
 			},
 		});
 	};

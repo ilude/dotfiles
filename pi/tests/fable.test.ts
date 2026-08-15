@@ -10,6 +10,7 @@ vi.mock("../extensions/subagent/agents.js", () => ({
 
 import fableCommand, {
 	improveFableBedrockError,
+	isFableBedrockModel,
 	sanitizeFableBedrockPayload,
 } from "../extensions/fable.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
@@ -19,6 +20,10 @@ const codexModels = [
 	{ provider: "openai-codex", id: "gpt-5.6-terra" },
 	{ provider: "openai-codex", id: "gpt-5.6-sol" },
 ];
+const fableModel = {
+	provider: "amazon-bedrock",
+	id: "us.anthropic.claude-fable-5",
+};
 
 function orchestratorCtx(overrides: Record<string, unknown> = {}) {
 	return createMockCtx({
@@ -93,6 +98,81 @@ describe("Fable Bedrock compatibility", () => {
 });
 
 describe("fable orchestration policy", () => {
+	it("detects only the resolved Bedrock Fable model", () => {
+		expect(isFableBedrockModel(fableModel)).toBe(true);
+		expect(
+			isFableBedrockModel({
+				provider: "other",
+				id: "us.anthropic.claude-fable-5",
+			}),
+		).toBe(false);
+		expect(
+			isFableBedrockModel({
+				provider: "amazon-bedrock",
+				id: "claude-fable-test",
+			}),
+		).toBe(false);
+	});
+
+	it("enforces Fable guidance in every runtime mode", () => {
+		const { beforeAgentStart } = hooks();
+		for (const mode of ["tui", "rpc", "json", "print"]) {
+			const result = beforeAgentStart(
+				{ systemPrompt: "base" },
+				createMockCtx({ mode, model: fableModel }),
+			);
+			expect(result.systemPrompt).toContain("root orchestrator");
+			expect(result.systemPrompt).toContain("openai-codex subscription leaves");
+		}
+	});
+
+	it("hard-blocks tools and delegation arguments outside the Fable control plane", () => {
+		const { tool } = hooks();
+		for (const mode of ["tui", "rpc", "json", "print"]) {
+			const ctx = createMockCtx({ mode, model: fableModel });
+			for (const toolName of ["read", "bash", "tool_search", "subagent_continue"]) {
+				const blocked = tool({ toolName, input: {} }, ctx);
+				expect(blocked).toMatchObject({ block: true });
+				expect(blocked.reason).toContain(
+					"Fable subscription-only orchestration boundary",
+				);
+			}
+
+			for (const toolName of ["task", "ask_user", "plan_archive"]) {
+				expect(tool({ toolName, input: {} }, ctx)).toBeUndefined();
+			}
+			expect(
+				tool(
+					{
+						toolName: "subagent",
+						input: { agent: "builder", task: "work", role: "leaf" },
+					},
+					ctx,
+				),
+			).toBeUndefined();
+		}
+
+		const ctx = createMockCtx({ mode: "tui", model: fableModel });
+		for (const input of [
+			{ agent: "builder", task: "work", role: "coordinator" },
+			{ agent: "orchestrator", task: "work" },
+			{ agent: "builder", task: "work", output: "result.md" },
+			{
+				tasks: [
+					{ agent: "builder", task: "work", output: "nested.md" },
+				],
+			},
+			{
+				steps: [
+					{ agent: "builder", task: "work", role: "coordinator" },
+				],
+			},
+		]) {
+			const blocked = tool({ toolName: "subagent", input }, ctx);
+			expect(blocked).toMatchObject({ block: true });
+		}
+	});
+
 	it("does not append orchestration guidance for ordinary parents", () => {
 		const { beforeAgentStart } = hooks();
 		const event = { systemPrompt: "base" };
