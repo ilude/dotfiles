@@ -29,7 +29,8 @@ vi.mock("../lib/workflow-telemetry", () => ({
 	startWorkflowEpisode: vi.fn(),
 }));
 
-vi.mock("@earendil-works/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@earendil-works/pi-ai")>()),
 	completeSimple: vi.fn(),
 }));
 
@@ -37,6 +38,53 @@ function getHandler(mockPi: ReturnType<typeof createMockPi>, name: string) {
 	const command = mockPi._commands.find((c) => c.name === name);
 	if (!command) throw new Error(`${name} command not registered`);
 	return command.handler as (args: string, ctx: unknown) => Promise<void>;
+}
+
+function readyPlan(planPath: string): string {
+	const slug = planPath.split("/")[1];
+	return `---
+created: 2026-08-15
+status: ready
+completed:
+---
+
+# Plan: Workflow fixture
+
+## Objective
+
+Deliver the fixture.
+
+## Boundaries
+
+- In scope: Fixture.
+- Out of scope: Other work.
+- Preserve: Existing behavior.
+- Assumptions: None.
+
+## Tasks
+
+- [ ] **T1: Deliver fixture**
+  - Files: \`src/fixture.ts\`
+  - Change: Implement the fixture.
+  - Done when: The fixture works.
+  - Verify: \`pnpm test fixture.test.ts\`
+
+## Validation
+
+- [ ] Focused check: \`pnpm test fixture.test.ts\`
+  - Expected: The fixture passes.
+
+## Retention
+
+Archive the completed directory to \`.specs/archive/${slug}/\`.
+
+## Execution Status
+
+- State: planned, not started
+- Blocker: none
+- Next: T1
+- Resume: \`/do-it ${planPath}\`
+`;
 }
 
 async function createPlanFixture(): Promise<{
@@ -76,6 +124,69 @@ describe("workflow slash command dispatch", () => {
 			triggerTurn: true,
 			deliverAs: "followUp",
 		});
+		expect(mockPi.getActiveTools()).toContain("plan_progress");
+		expect(mockPi.appendEntry).toHaveBeenCalledWith(
+			"workflow.plan-lifecycle",
+			expect.objectContaining({ stage: "started", request: "build the thing" }),
+		);
+	});
+
+	it("restores and completes the compact plan lifecycle from session entries", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const lifecycle = await import(
+			"../lib/workflow-commands/plan-lifecycle.ts"
+		);
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(
+			path.join(fixture.root, fixture.planPath),
+			readyPlan(fixture.planPath),
+			"utf8",
+		);
+		const started = lifecycle.createPlanLifecycleSnapshot(
+			"restored-invocation",
+			"fixture",
+		);
+		const sessionStart = mockPi._getHook("session_start")[0]?.handler;
+		if (!sessionStart) throw new Error("session_start hook not registered");
+		await sessionStart(
+			{ reason: "resume" },
+			{
+				sessionManager: {
+					getBranch: () => [
+						{
+							type: "custom",
+							customType: lifecycle.PLAN_LIFECYCLE_ENTRY_TYPE,
+							data: started,
+						},
+					],
+				},
+			},
+		);
+		expect(mockPi.getActiveTools()).toContain("plan_progress");
+		const tool = mockPi._getTool("plan_progress");
+		if (!tool) throw new Error("plan_progress tool not registered");
+		const ctx = { cwd: fixture.root };
+		for (const input of [
+			{ action: "draft", planPath: fixture.planPath },
+			{ action: "risk", risk: "low", inspectedBy: "primary" },
+			{ action: "settle_review" },
+			{ action: "adjudicate", dispositions: [] },
+			{ action: "accept" },
+			{ action: "inspect", inspectedBy: "primary" },
+			{ action: "ready" },
+		]) {
+			await tool.execute("progress", input, undefined, undefined, ctx);
+		}
+		expect(mockPi.appendEntry).toHaveBeenLastCalledWith(
+			"workflow.plan-lifecycle",
+			expect.objectContaining({
+				stage: "ready",
+				planPath: fixture.planPath,
+			}),
+		);
+		expect(mockPi.getActiveTools()).not.toContain("plan_progress");
 	});
 
 	it("/review-it dispatches the plan path without opening a new session", async () => {

@@ -1,24 +1,37 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { formatToolError } from "../lib/extension-utils.js";
+import { archiveCompletedPlan } from "../lib/plan-archive.js";
 import {
 	beginGoalAttempt,
 	createGoalWorkItem,
 	type GoalFailureOutcome,
 	type GoalMode,
 	type GoalStrategy,
+	type GoalWaitReason,
 	goalStrategiesMateriallyDiffer,
 	recordGoalOutcome,
 	recordGoalReEvaluation,
+	recordGoalWait,
 	type UnattendedGoal,
 } from "../lib/goal-state.js";
 import { readLinkedPlan } from "../lib/plan-state.js";
 import {
+	currentPlanLifecycle,
+	startPlanLifecycle,
+	validatePlanFile,
+} from "../lib/workflow-commands/plan-lifecycle.js";
+import {
+	createTaskBatch,
 	getTask,
+	listTasks,
 	resolveTaskWorkspace,
 	safeTransitionTask,
 	startTask,
@@ -59,6 +72,14 @@ const MODIFYING_TOOLS = new Set([
 	"subagent_fanout",
 	"subagent_workflow",
 ]);
+const WAIT_REASONS = [
+	"operator_decision",
+	"access_or_credential",
+	"external_dependency",
+	"safety_boundary",
+	"objective_conflict",
+	"recovery_exhausted",
+] as const;
 const FAILURE_OUTCOMES = [
 	"error",
 	"inconclusive",
@@ -84,6 +105,15 @@ export type ForegroundGoal = {
 	hash: string;
 	path?: string;
 	sizeBytes?: number;
+	objectiveText?: string;
+	workspace?: string;
+	plans?: string[];
+	items?: Record<string, ReturnType<typeof createGoalWorkItem>>;
+	planning?: boolean;
+	requestedUnattended?: boolean;
+	initialHead?: string;
+	archivedPlanPath?: string;
+	closeoutState?: "archived_pending_commit";
 };
 
 type ParsedGoal = {
@@ -121,6 +151,7 @@ const PROCESS_INSTANCE_ID = randomUUID();
 const observedSuccessfulCommands = new Set<string>();
 let foregroundGoal: ForegroundGoal | null = null;
 let unattendedJobId: string | null = null;
+let pendingUnattendedContext: ExtensionCommandContext | null = null;
 
 function nowIso(): string {
 	return new Date().toISOString();
@@ -403,6 +434,36 @@ function entryData(entry: SessionEntry): unknown {
 	return entry.content;
 }
 
+function reconcileForegroundArchivePath(goal: ForegroundGoal): ForegroundGoal {
+	if (
+		goal.archivedPlanPath ||
+		!goal.workspace ||
+		goal.plans?.length !== 1
+	)
+		return goal;
+	const sourcePlan = goal.plans[0];
+	const archivedPlan = derivedArchivedPlanPath(sourcePlan);
+	if (
+		!archivedPlan ||
+		fs.existsSync(path.resolve(goal.workspace, sourcePlan)) ||
+		!fs.existsSync(path.resolve(goal.workspace, archivedPlan))
+	)
+		return goal;
+	const sourceDirectory = path.posix.dirname(sourcePlan);
+	const archivedDirectory = path.posix.dirname(archivedPlan);
+	const goalPath = goal.path;
+	return {
+		...goal,
+		path: goalPath?.startsWith(`${sourceDirectory}/`)
+			? `${archivedDirectory}/${goalPath.slice(sourceDirectory.length + 1)}`
+			: goalPath,
+		plans: [archivedPlan],
+		archivedPlanPath: archivedPlan,
+		closeoutState: "archived_pending_commit",
+		updatedAt: nowIso(),
+	};
+}
+
 function restoreGoal(ctx: GoalCommandContext): void {
 	foregroundGoal = null;
 	unattendedJobId = process.env.PI_GOAL_ID?.trim() || null;
@@ -417,7 +478,7 @@ function restoreGoal(ctx: GoalCommandContext): void {
 		const goal = data.goal;
 		foregroundGoal =
 			isRecord(goal) && goal.status === "active"
-				? (goal as ForegroundGoal)
+				? reconcileForegroundArchivePath(goal as ForegroundGoal)
 				: null;
 		if (!unattendedJobId && typeof data.unattendedGoalId === "string")
 			unattendedJobId = data.unattendedGoalId;
@@ -427,8 +488,16 @@ function restoreGoal(ctx: GoalCommandContext): void {
 
 function startupPrompt(goal: ForegroundGoal): string {
 	const source = goal.mode === "file" ? `file: ${goal.path}` : "inline objective";
+	const plan = goal.plans?.[0];
 	return [
-		"Active goal started. Work until the requested outcome is complete, use only checks relevant to that outcome, then call goal_complete.",
+		plan
+			? "Active goal started with a reviewed canonical plan. Execute its durable root-task dependency graph, validate the requested outcome, and call goal_complete only after the plan and required tasks are complete."
+			: "Active foreground goal started. Work interactively and directly in this session; do not create a detached loop, canonical plan, durable task graph, or archive-and-commit closeout by default.",
+		...(plan
+			? [`Canonical plan: ${plan}`]
+			: [
+				"If material risk or unresolved ambiguity makes direct execution unsafe, surface the specific issue and use a reviewed plan only when it is necessary.",
+			]),
 		`Source: ${source}`,
 		`Hash: ${goal.hash}`,
 		`Preview: ${goal.preview}`,
@@ -441,7 +510,9 @@ function foregroundReminder(goal: ForegroundGoal): string {
 			? `File-backed goal: ${goal.path} (${goal.sizeBytes} bytes, sha256 ${goal.hash}). Re-read the file only if needed or if the hash changes.`
 			: `Inline goal: sha256 ${goal.hash}.`;
 	return [
-		"Active /goal reminder: keep working until the requested outcome is complete, check only the changed contract, then call goal_complete.",
+		goal.plans?.length
+			? "Active /goal reminder: continue the reviewed canonical plan and durable root-task graph until the requested outcome is complete, validate the changed contract, update the plan, then call goal_complete."
+			: "Active /goal reminder: continue the requested work interactively in this session, validate the changed contract, then call goal_complete.",
 		source,
 		`Summary: ${goal.summary}`,
 	].join("\n");
@@ -501,6 +572,71 @@ function currentActiveItem(goal: UnattendedGoal) {
 	return Object.values(goal.items).find((item) => item.activeAttempt);
 }
 
+function planningToolAllowed(
+	goal: ForegroundGoal,
+	toolName: string,
+	input: unknown,
+): boolean {
+	if (toolName === "subagent") return true;
+	if ((toolName !== "edit" && toolName !== "write") || !isRecord(input))
+		return false;
+	const rawPath = input.path;
+	if (typeof rawPath !== "string" || !goal.workspace || goal.plans?.length !== 1)
+		return false;
+	return (
+		path.resolve(goal.workspace, rawPath) ===
+		path.resolve(goal.workspace, goal.plans[0])
+	);
+}
+
+function foregroundTaskGraphError(goal: ForegroundGoal): string | undefined {
+	if (!goal.workspace || goal.plans?.length !== 1 || !goal.items)
+		return "Foreground goal has no canonical plan and durable task mapping.";
+	const plan = readLinkedPlan(path.resolve(goal.workspace, goal.plans[0]));
+	for (const planTask of plan.tasks) {
+		if (!planTask.required) continue;
+		const item = goal.items[planTask.key];
+		if (!item) return `Required plan task ${planTask.key} has no durable root task.`;
+		const task = getTask(item.taskId);
+		if (!task || task.parentId)
+			return `Required plan task ${planTask.key} has an invalid durable root task.`;
+	}
+	return undefined;
+}
+
+function assertGoalTaskGraphReady(goal: UnattendedGoal): void {
+	const planTasks = goal.plans.flatMap((plan) =>
+		readLinkedPlan(path.resolve(goal.workspace, plan)).tasks.map((task) => ({
+			plan,
+			task,
+		})),
+	);
+	for (const { task: planTask } of planTasks) {
+		if (!planTask.required) continue;
+		const item = goal.items[planTask.key];
+		if (!item || !item.required)
+			throw new Error(
+				`required plan task ${planTask.key} is not linked to a durable root task`,
+			);
+		const task = getTask(item.taskId);
+		if (!task) throw new Error(`linked task not found: ${item.taskId}`);
+		const expected = planTask.dependsOn
+			.map((key) => goal.items[key]?.taskId)
+			.filter((id): id is string => Boolean(id))
+			.sort();
+		if (expected.length !== planTask.dependsOn.length)
+			throw new Error(`dependencies for ${planTask.key} are not fully linked`);
+		const actual = [...(task.blockedBy ?? [])].sort();
+		if (
+			expected.length !== actual.length ||
+			expected.some((id, index) => id !== actual[index])
+		)
+			throw new Error(
+				`linked task ${planTask.key} does not match the plan dependency graph`,
+			);
+	}
+}
+
 function selectWorkspaceGoalJob(cwd: string): LoopJob {
 	const jobs = listWorkspaceGoalJobs(cwd);
 	const active = jobs.filter((job) => job.goal?.state !== "completed");
@@ -513,49 +649,189 @@ function minimumPlanContent(goal: ForegroundGoal): string {
 	return [
 		"---",
 		`created: ${goal.startedAt.slice(0, 10)}`,
-		"status: active",
+		"status: draft",
+		"completed:",
 		"---",
 		"",
 		`# Plan: ${asciiBounded(goal.summary, 80) || "Complete goal"}`,
 		"",
 		"## Objective",
 		"",
-		`Complete unattended goal ${goal.id}. The /goal job owns the full objective and completion contract.`,
+		`${asciiBounded(goal.preview, 500)} The /goal job owns this objective and completion contract.`,
+		"",
+		"## Boundaries",
+		"",
+		"- In scope: The stated goal objective.",
+		"- Out of scope: Unrequested adjacent work.",
+		"- Preserve: Existing behavior outside the objective.",
+		"- Assumptions: None.",
 		"",
 		"## Tasks",
 		"",
-		"- [ ] **T1: Complete the goal objective**",
-		"  - State: pending",
+		`- [ ] **T1: ${asciiBounded(goal.summary, 100) || "Deliver the stated objective"}**`,
+		"  - Files: Determine the smallest owning paths during execution.",
+		"  - Depends on: none",
+		`  - Change: ${asciiBounded(goal.preview, 500)}`,
+		"  - Done when: The stated objective is complete without unrelated changes.",
 		"  - Verify: Record focused passing validation through goal_progress.",
+		"",
+		"## Validation",
+		"",
+		"- [ ] Focused check: Exercise the changed contract through its user entrypoint or closest exact check.",
+		"  - Expected: The requested outcome works and unrelated behavior is preserved.",
+		"",
+		"## Retention",
+		"",
+		`Keep incomplete work at this path. After completion, archive this spec directory to .specs/archive/goal-${goal.id}/.`,
 		"",
 		"## Execution Status",
 		"",
-		"- State: pending",
+		"- State: planned, not started",
 		"- Blocker: none",
 		"- Next: T1",
+		`- Resume: /do-it .specs/goal-${goal.id}/plan.md`,
 		"",
 	].join("\n");
 }
 
-function attachOrCreatePlan(parsed: ParsedGoal, cwd: string): string {
+function attachOrCreatePlanDetails(
+	parsed: ParsedGoal,
+	cwd: string,
+): { plan: string; needsReview: boolean } {
 	const root = fs.realpathSync(cwd);
+	let sourcePlan: string | undefined;
 	if (parsed.absolutePath) {
 		if (path.basename(parsed.absolutePath).toLowerCase() === "plan.md")
-			return displayPath(parsed.absolutePath, root);
-		const sibling = path.join(path.dirname(parsed.absolutePath), "plan.md");
-		if (fs.existsSync(sibling) && fs.statSync(sibling).isFile())
-			return displayPath(fs.realpathSync(sibling), root);
+			sourcePlan = parsed.absolutePath;
+		else {
+			const sibling = path.join(path.dirname(parsed.absolutePath), "plan.md");
+			if (fs.existsSync(sibling) && fs.statSync(sibling).isFile())
+				sourcePlan = fs.realpathSync(sibling);
+		}
 	}
-	const directory = parsed.absolutePath
-		? path.dirname(parsed.absolutePath)
+	const sourceRelative = sourcePlan ? displayPath(sourcePlan, root) : undefined;
+	if (
+		sourcePlan &&
+		/^\.specs\/(?!archive\/)[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(
+			sourceRelative ?? "",
+		)
+	) {
+		const plan = sourceRelative as string;
+		return { plan, needsReview: !validatePlanFile(root, plan).valid };
+	}
+	const objectiveRelative = parsed.absolutePath
+		? displayPath(parsed.absolutePath, root)
+		: undefined;
+	const specMatch = objectiveRelative?.match(/^\.specs\/(?!archive\/)([^/]+)\//);
+	const directory = specMatch
+		? path.join(root, ".specs", specMatch[1])
 		: path.join(root, ".specs", `goal-${parsed.goal.id}`);
-	if (!isContained(root, path.resolve(directory)))
-		throw new Error("Generated goal plan must stay under the workspace.");
 	const planPath = path.join(directory, "plan.md");
 	assertFuturePathContained(root, planPath);
 	fs.mkdirSync(directory, { recursive: true });
-	fs.writeFileSync(planPath, minimumPlanContent(parsed.goal), "utf8");
-	return displayPath(planPath, root);
+	fs.writeFileSync(
+		planPath,
+		sourcePlan ? fs.readFileSync(sourcePlan, "utf8") : minimumPlanContent(parsed.goal),
+		"utf8",
+	);
+	return { plan: displayPath(planPath, root), needsReview: true };
+}
+
+function attachOrCreatePlan(parsed: ParsedGoal, cwd: string): string {
+	return attachOrCreatePlanDetails(parsed, cwd).plan;
+}
+
+function explicitlySuppliedPlan(parsed: ParsedGoal): boolean {
+	return path.basename(parsed.absolutePath ?? "").toLowerCase() === "plan.md";
+}
+
+function materializePlanTasks(
+	goalId: string,
+	objectiveHash: string,
+	workspace: string,
+	planPath: string,
+): Record<string, ReturnType<typeof createGoalWorkItem>> {
+	const plan = readLinkedPlan(path.resolve(workspace, planPath));
+	if (plan.tasks.length === 0)
+		throw new Error(`canonical plan has no executable tasks: ${planPath}`);
+	const taskWorkspace = resolveTaskWorkspace(workspace);
+	const candidates = listTasks({ workspace: taskWorkspace }).filter(
+		(task) =>
+			!task.parentId &&
+			task.metadata?.canonicalPlanPath === planPath &&
+			task.metadata?.goalObjectiveHash === objectiveHash,
+	);
+	const byKey = new Map<string, (typeof candidates)[number]>();
+	for (const task of candidates) {
+		const key = task.metadata?.planTaskKey;
+		if (typeof key !== "string") continue;
+		if (byKey.has(key))
+			throw new Error(`multiple durable root tasks exist for plan key ${key}`);
+		byKey.set(key, task);
+	}
+	const missing = plan.tasks.filter((task) => !byKey.has(task.key));
+	if (missing.length > 0) {
+		const missingKeys = new Set(missing.map((task) => task.key));
+		const created = createTaskBatch(
+			missing.map((task) => ({
+				key: task.key,
+				origin: "other" as const,
+				summary: task.summary,
+				workspace: taskWorkspace,
+				scope: ["."],
+				metadata: {
+					goalId,
+					goalObjectiveHash: objectiveHash,
+					canonicalPlanPath: planPath,
+					planTaskKey: task.key,
+					required: task.required,
+				},
+				blockedBy: task.dependsOn.flatMap((key) => {
+					const dependency = byKey.get(key);
+					return dependency ? [dependency.id] : [];
+				}),
+				blockedByKeys: task.dependsOn.filter((key) => missingKeys.has(key)),
+			})),
+			taskWorkspace,
+		);
+		if (created.outcome !== "persisted")
+			throw new Error(
+				`task graph creation failed during ${created.failedPhase}: ${created.error}`,
+			);
+		for (const task of created.records) {
+			const key = task.metadata?.planTaskKey;
+			if (typeof key === "string") byKey.set(key, task);
+		}
+	}
+	const items: Record<string, ReturnType<typeof createGoalWorkItem>> = {};
+	for (const planTask of plan.tasks) {
+		const task = byKey.get(planTask.key);
+		if (!task)
+			throw new Error(`durable root task is missing for plan key ${planTask.key}`);
+		const blockedBy = planTask.dependsOn.map((key) => {
+			const dependency = byKey.get(key);
+			if (!dependency)
+				throw new Error(`durable dependency is missing for plan key ${key}`);
+			return dependency.id;
+		});
+		updateTask(task.id, {
+			blockedBy,
+			metadata: {
+				...(task.metadata ?? {}),
+				goalId,
+				goalObjectiveHash: objectiveHash,
+				canonicalPlanPath: planPath,
+				planTaskKey: planTask.key,
+				required: planTask.required,
+			},
+		});
+		items[planTask.key] = createGoalWorkItem(
+			planTask.key,
+			task.id,
+			planTask.required,
+		);
+	}
+	return items;
 }
 
 function createUnattendedGoal(
@@ -564,6 +840,12 @@ function createUnattendedGoal(
 	plan: string,
 ): UnattendedGoal {
 	const root = fs.realpathSync(cwd);
+	const items = materializePlanTasks(
+		parsed.goal.id,
+		parsed.goal.hash,
+		root,
+		plan,
+	);
 	return {
 		schemaVersion: 1,
 		id: parsed.goal.id,
@@ -583,7 +865,7 @@ function createUnattendedGoal(
 					objectiveSizeBytes: parsed.goal.sizeBytes,
 				}),
 		plans: [plan],
-		items: {},
+		items,
 		completionContract: {
 			requireLinkedPlanTasks: true,
 			requireLinkedRootTasks: true,
@@ -595,6 +877,72 @@ function createUnattendedGoal(
 		blockers: [],
 		knownGaps: [],
 	};
+}
+
+function derivedArchivedPlanPath(planPath: string): string | undefined {
+	const normalized = planPath.replace(/\\/g, "/");
+	const match = normalized.match(/^\.specs\/([^/]+)\/plan\.md$/);
+	return match ? `.specs/archive/${match[1]}/plan.md` : undefined;
+}
+
+async function reconcileArchivedGoalPath(job: LoopJob): Promise<LoopJob> {
+	const goal = job.goal;
+	if (!goal || goal.archivedPlanPath || goal.plans.length !== 1) return job;
+	const sourcePlan = goal.plans[0];
+	const archivedPlan = derivedArchivedPlanPath(sourcePlan);
+	if (!archivedPlan) return job;
+	if (
+		fs.existsSync(path.resolve(goal.workspace, sourcePlan)) ||
+		!fs.existsSync(path.resolve(goal.workspace, archivedPlan))
+	)
+		return job;
+	const sourceDirectory = path.posix.dirname(sourcePlan);
+	const archivedDirectory = path.posix.dirname(archivedPlan);
+	const objectivePath = goal.objectivePath;
+	const archivedObjectivePath = objectivePath?.startsWith(`${sourceDirectory}/`)
+		? `${archivedDirectory}/${objectivePath.slice(sourceDirectory.length + 1)}`
+		: objectivePath;
+	return updateLoopJob(job.id, (current) => ({
+		...current,
+		objectivePath: archivedObjectivePath,
+		plans: [archivedPlan],
+		goal: current.goal
+			? {
+					...current.goal,
+					objectivePath: archivedObjectivePath,
+					plans: [archivedPlan],
+					archivedPlanPath: archivedPlan,
+					closeoutState: "archived_pending_commit",
+					updatedAt: nowIso(),
+				}
+			: undefined,
+	}));
+}
+
+function isExpectedArchiveWorktree(
+	goal: UnattendedGoal,
+	porcelain: string,
+): boolean {
+	if (goal.closeoutState !== "archived_pending_commit" || !goal.archivedPlanPath)
+		return false;
+	const archivedDirectory = path.posix.dirname(goal.archivedPlanPath);
+	const sourcePlan = goal.archivedPlanPath.replace(/^\.specs\/archive\//, ".specs/");
+	const sourceDirectory = path.posix.dirname(sourcePlan);
+	const paths = porcelain
+		.split(/\r?\n/)
+		.filter(Boolean)
+		.flatMap((line) => line.slice(3).split(" -> "))
+		.map((value) => value.replace(/^"|"$/g, "").replace(/\\/g, "/"));
+	return (
+		paths.length > 0 &&
+		paths.every(
+			(value) =>
+				value === sourceDirectory ||
+				value.startsWith(`${sourceDirectory}/`) ||
+				value === archivedDirectory ||
+				value.startsWith(`${archivedDirectory}/`),
+		)
+	);
 }
 
 function verifyObjective(goal: UnattendedGoal): string | undefined {
@@ -617,16 +965,18 @@ async function reconcileForResume(
 	pi: ExtensionAPI,
 	job: LoopJob,
 ): Promise<{ ok: true; job: LoopJob } | { ok: false; message: string }> {
-	if (!job.goal) return { ok: false, message: "Loop job has no goal metadata." };
-	const objectiveError = verifyObjective(job.goal);
+	const activeJob = await reconcileArchivedGoalPath(job);
+	if (!activeJob.goal)
+		return { ok: false, message: "Loop job has no goal metadata." };
+	const objectiveError = verifyObjective(activeJob.goal);
 	if (objectiveError) return { ok: false, message: objectiveError };
-	for (const plan of job.goal.plans) {
-		const candidate = path.resolve(job.goal.workspace, plan);
+	for (const plan of activeJob.goal.plans) {
+		const candidate = path.resolve(activeJob.goal.workspace, plan);
 		if (!fs.existsSync(candidate))
 			return { ok: false, message: `Linked plan is missing: ${plan}` };
 	}
 	const status = await pi.exec("git", ["status", "--porcelain"], {
-		cwd: job.cwd,
+		cwd: activeJob.cwd,
 		timeout: 30_000,
 	});
 	if (status.code !== 0)
@@ -634,8 +984,11 @@ async function reconcileForResume(
 			ok: false,
 			message: status.stderr.trim() || "Unable to inspect repository state.",
 		};
-	if (status.stdout.trim()) {
-		await updateLoopJob(job.id, (current) => ({
+	if (
+		status.stdout.trim() &&
+		!isExpectedArchiveWorktree(activeJob.goal, status.stdout)
+	) {
+		await updateLoopJob(activeJob.id, (current) => ({
 			...current,
 			goal: current.goal
 				? {
@@ -657,24 +1010,11 @@ async function reconcileForResume(
 				"Resume stopped: the worktree is dirty after an interrupted attempt. Reconcile it before retrying.",
 		};
 	}
-	const reconciled = await updateLoopJob(job.id, (current) => {
+	const reconciled = await updateLoopJob(activeJob.id, (current) => {
 		if (!current.goal) return current;
 		const items = { ...current.goal.items };
 		let blockers = [...current.goal.blockers];
 		for (const [key, item] of Object.entries(items)) {
-			if (item.phase === "needs_operator") {
-				const reset = {
-					...item,
-					phase: "re_evaluation_required" as const,
-					recoveryStrategies: [],
-				};
-				delete reset.needsOperatorReason;
-				items[key] = reset;
-				blockers = blockers.filter(
-					(blocker) =>
-						blocker !== `${key}: ${item.needsOperatorReason ?? ""}`,
-				);
-			}
 			if (!item.activeAttempt) continue;
 			const task = getTask(item.taskId);
 			if (task?.state === "completed") {
@@ -740,19 +1080,27 @@ function requiredString(
 }
 
 function goalProgressResult(goal: UnattendedGoal, message: string) {
+	const active = currentActiveItem(goal);
+	const waiting = Object.values(goal.items).filter(
+		(item) => item.phase === "needs_operator",
+	);
+	const nextAction = active
+		? `Settle ${active.key} with goal_progress record_outcome.`
+		: waiting.length === Object.keys(goal.items).length && waiting.length > 0
+			? "Complete the recorded operator action for a waiting task."
+			: "Select a dependency-ready root task and call goal_progress begin_attempt.";
+	const report = {
+		outcome: "persisted",
+		command: "goal_progress",
+		target: `goal ${goal.id}`,
+		result: message,
+		effect: `${Object.keys(goal.items).length} durable root task(s) are linked; ${waiting.length} wait for operator action.`,
+		continues: goal.state === "running",
+		nextAction,
+	};
 	return {
-		content: [
-			{
-				type: "text" as const,
-				text: JSON.stringify({
-					outcome: "persisted",
-					goalId: goal.id,
-					state: goal.state,
-					message,
-				}),
-			},
-		],
-		details: { goalId: goal.id, state: goal.state },
+		content: [{ type: "text" as const, text: JSON.stringify(report) }],
+		details: { goalId: goal.id, state: goal.state, ...report },
 	};
 }
 
@@ -956,7 +1304,8 @@ export default function (pi: ExtensionAPI) {
 		const unattended = goalJob()?.goal;
 		if (foregroundGoal || unattended) activateTools(pi, ["goal_complete"]);
 		else deactivateTools(pi, ["goal_complete"]);
-		if (unattended) activateTools(pi, ["goal_progress"]);
+		if (unattended || foregroundGoal?.planning)
+			activateTools(pi, ["goal_progress"]);
 		else deactivateTools(pi, ["goal_progress"]);
 	});
 
@@ -969,7 +1318,12 @@ export default function (pi: ExtensionAPI) {
 			};
 		}
 		if (!foregroundGoal) return undefined;
-		activateTools(pi, ["goal_complete"]);
+		activateTools(
+			pi,
+			foregroundGoal.planning
+				? ["goal_complete", "goal_progress"]
+				: ["goal_complete"],
+		);
 		foregroundGoal = {
 			...foregroundGoal,
 			iterationCount: foregroundGoal.iterationCount + 1,
@@ -981,8 +1335,19 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", (event) => {
+		if (!MODIFYING_TOOLS.has(event.toolName)) return undefined;
+		if (foregroundGoal) {
+			if (!foregroundGoal.plans?.length) return undefined;
+			if (
+				foregroundGoal.planning &&
+				planningToolAllowed(foregroundGoal, event.toolName, event.input)
+			)
+				return undefined;
+			const error = foregroundTaskGraphError(foregroundGoal);
+			return error ? { block: true, reason: error } : undefined;
+		}
 		const goal = goalJob()?.goal;
-		if (!goal || !MODIFYING_TOOLS.has(event.toolName)) return undefined;
+		if (!goal) return undefined;
 		const active = currentActiveItem(goal);
 		if (
 			active?.activeAttempt?.ownerPid === process.pid &&
@@ -1119,27 +1484,85 @@ export default function (pi: ExtensionAPI) {
 					"explore",
 				);
 				observedSuccessfulCommands.clear();
-				if (!unattended) {
-					foregroundGoal = parsed.parsed.goal;
+				if (unattended && ctx.mode !== "tui" && ctx.mode !== "rpc")
+					throw new Error("/goal --unattended requires TUI or RPC mode.");
+				if (unattended) {
+					const existing = listWorkspaceGoalJobs(ctx.cwd).find(
+						(job) => job.goal?.state !== "completed",
+					);
+					if (existing)
+						throw new Error(
+							`Goal ${existing.goal?.id ?? existing.id} already owns this workspace. Use /goal status, /goal stop, or /goal resume.`,
+						);
+				}
+				const workspace = fs.realpathSync(ctx.cwd);
+				if (!unattended && !explicitlySuppliedPlan(parsed.parsed)) {
+					foregroundGoal = {
+						...parsed.parsed.goal,
+						objectiveText: parsed.parsed.objectiveText,
+						workspace,
+					};
 					unattendedJobId = null;
 					activateTools(pi, ["goal_complete"]);
 					deactivateTools(pi, ["goal_progress"]);
 					await appendState(pi, stateEntry(foregroundGoal));
-					await pi.sendUserMessage(parsed.parsed.startupPrompt);
+					await pi.sendUserMessage(startupPrompt(foregroundGoal));
 					return;
 				}
-				if (ctx.mode !== "tui" && ctx.mode !== "rpc")
-					throw new Error("/goal --unattended requires TUI or RPC mode.");
-				const existing = listWorkspaceGoalJobs(ctx.cwd).find(
-					(job) => job.goal?.state !== "completed",
-				);
-				if (existing)
-					throw new Error(
-						`Goal ${existing.goal?.id ?? existing.id} already owns this workspace. Use /goal status, /goal stop, or /goal resume.`,
+				const attached = attachOrCreatePlanDetails(parsed.parsed, workspace);
+				const initialHeadResult = await pi.exec("git", ["rev-parse", "HEAD"], {
+					cwd: workspace,
+					timeout: 30_000,
+				});
+				foregroundGoal = {
+					...parsed.parsed.goal,
+					objectiveText: parsed.parsed.objectiveText,
+					workspace,
+					plans: [attached.plan],
+					planning: attached.needsReview,
+					requestedUnattended: unattended,
+					...(initialHeadResult.code === 0 && initialHeadResult.stdout.trim()
+						? { initialHead: initialHeadResult.stdout.trim() }
+						: {}),
+				};
+				unattendedJobId = null;
+				if (attached.needsReview) {
+					pendingUnattendedContext = unattended ? ctx : null;
+					await startPlanLifecycle(
+						pi,
+						`Review ${attached.plan} for /goal: ${parsed.parsed.goal.summary}`,
 					);
-				const plan = attachOrCreatePlan(parsed.parsed, ctx.cwd);
-				const goal = createUnattendedGoal(parsed.parsed, ctx.cwd, plan);
-				const started = await startLoopJob(pi, ctx, [plan], {
+					activateTools(pi, ["goal_complete", "goal_progress"]);
+					await appendState(pi, stateEntry(foregroundGoal));
+					await pi.sendUserMessage(
+						[
+							`Create or repair the reviewed canonical plan at ${attached.plan}.`,
+							"Use plan_progress for draft, primary risk review, bounded material-risk review when required, adjudication, one repair or acceptance, final inspection, and ready.",
+							"After plan_progress reaches ready, call goal_progress with action materialize_plan. Do not begin modifying implementation work before that call succeeds.",
+						].join("\n"),
+					);
+					return;
+				}
+				const items = materializePlanTasks(
+					foregroundGoal.id,
+					foregroundGoal.hash,
+					workspace,
+					attached.plan,
+				);
+				foregroundGoal = { ...foregroundGoal, items, planning: false };
+				if (!unattended) {
+					activateTools(pi, ["goal_complete"]);
+					deactivateTools(pi, ["goal_progress"]);
+					await appendState(pi, stateEntry(foregroundGoal));
+					await pi.sendUserMessage(startupPrompt(foregroundGoal));
+					return;
+				}
+				const goal = createUnattendedGoal(
+					parsed.parsed,
+					workspace,
+					attached.plan,
+				);
+				const started = await startLoopJob(pi, ctx, [attached.plan], {
 					goal,
 					requireTui: false,
 				});
@@ -1178,6 +1601,8 @@ export default function (pi: ExtensionAPI) {
 					"resolve_blocker",
 					"gap",
 					"reconcile",
+					"wait",
+					"materialize_plan",
 				] as const),
 				key: Type.Optional(Type.String()),
 				taskId: Type.Optional(Type.String()),
@@ -1207,6 +1632,8 @@ export default function (pi: ExtensionAPI) {
 				evidence: Type.Optional(Type.String()),
 				assumptions: Type.Optional(Type.String()),
 				message: Type.Optional(Type.String()),
+				waitReason: Type.Optional(StringEnum(WAIT_REASONS)),
+				operatorAction: Type.Optional(Type.String({ maxLength: 500 })),
 				command: Type.Optional(Type.String()),
 				passed: Type.Optional(Type.Boolean()),
 				summary: Type.Optional(Type.String()),
@@ -1214,10 +1641,78 @@ export default function (pi: ExtensionAPI) {
 			},
 			{ additionalProperties: false },
 		),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			try {
 				const input = params as Record<string, unknown>;
 				const action = requiredString(input, "action");
+				if (action === "materialize_plan") {
+					if (!foregroundGoal?.planning || foregroundGoal.plans?.length !== 1)
+						throw new Error("No /goal plan is awaiting materialization.");
+					const planPath = foregroundGoal.plans[0];
+					const lifecycle = currentPlanLifecycle(pi);
+					if (lifecycle?.stage !== "ready" || lifecycle.planPath !== planPath)
+						throw new Error(
+							"The matching /plan-it lifecycle must reach ready before task materialization.",
+						);
+					const pending = foregroundGoal;
+					const workspace = pending.workspace ?? ctx.cwd;
+					const items = materializePlanTasks(
+						pending.id,
+						pending.hash,
+						workspace,
+						planPath,
+					);
+					foregroundGoal = {
+						...pending,
+						items,
+						planning: false,
+						updatedAt: nowIso(),
+					};
+					if (pending.requestedUnattended) {
+						if (!pendingUnattendedContext)
+							throw new Error(
+								"The unattended /goal command context is unavailable; restart /goal planning in this session.",
+							);
+						const parsed: ParsedGoal = {
+							goal: foregroundGoal,
+							startupPrompt: startupPrompt(foregroundGoal),
+							objectiveText: pending.objectiveText ?? "",
+						};
+						const goal = createUnattendedGoal(parsed, workspace, planPath);
+						const started = await startLoopJob(
+							pi,
+							pendingUnattendedContext,
+							[planPath],
+							{ goal, requireTui: false },
+						);
+						pendingUnattendedContext = null;
+						foregroundGoal = null;
+						unattendedJobId = started.id;
+						activateTools(pi, GOAL_TOOLS);
+						await appendState(pi, stateEntry(null, { unattendedGoalId: started.id }));
+						ctx.shutdown();
+						return goalProgressResult(
+							goal,
+							`materialized ${Object.keys(items).length} root task(s) from ${planPath} and started detached goal ${started.id}`,
+						);
+					}
+					deactivateTools(pi, ["goal_progress"]);
+					await appendState(pi, stateEntry(foregroundGoal));
+					await pi.sendUserMessage(startupPrompt(foregroundGoal));
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Materialized ${Object.keys(items).length} durable root task(s) from ${planPath}. Foreground execution continues with the dependency-ready task.`,
+							},
+						],
+						details: {
+							goalId: foregroundGoal.id,
+							state: "executing",
+							planPath,
+						},
+					};
+				}
 				if (action === "link_tasks") {
 					const links = Array.isArray(input.items)
 						? input.items
@@ -1234,7 +1729,9 @@ export default function (pi: ExtensionAPI) {
 						job.goal.plans.flatMap((plan) =>
 							readLinkedPlan(
 								path.resolve(job.goal?.workspace ?? job.cwd, plan),
-							).tasks.map((task) => [task.key, task] as const),
+							).tasks.map(
+								(task) => [task.key, { plan, task }] as const,
+							),
 						),
 					);
 					const additions: Record<string, ReturnType<typeof createGoalWorkItem>> = {};
@@ -1242,9 +1739,10 @@ export default function (pi: ExtensionAPI) {
 						if (!isRecord(raw)) throw new Error("linked task must be an object");
 						const key = requiredString(raw, "key");
 						const taskId = requiredString(raw, "taskId");
-						const planTask = planTasks.get(key);
-						if (!planTask)
+						const planned = planTasks.get(key);
+						if (!planned)
 							throw new Error(`linked task key is absent from the plans: ${key}`);
+						const { plan, task: planTask } = planned;
 						const task = getTask(taskId);
 						if (!task) throw new Error(`linked task not found: ${taskId}`);
 						if (
@@ -1279,6 +1777,8 @@ export default function (pi: ExtensionAPI) {
 							metadata: {
 								...(task.metadata ?? {}),
 								goalId: job.goal.id,
+								canonicalPlanPath: plan,
+								planTaskKey: key,
 								goalItemKey: key,
 								required,
 							},
@@ -1296,6 +1796,7 @@ export default function (pi: ExtensionAPI) {
 				if (action === "begin_attempt") {
 					const key = requiredString(input, "key");
 					const goal = await updateCurrentGoal((current) => {
+						assertGoalTaskGraphReady(current);
 						if (currentActiveItem(current))
 							throw new Error("another work item already has an active attempt");
 						const item = current.items[key];
@@ -1428,6 +1929,42 @@ export default function (pi: ExtensionAPI) {
 						};
 					});
 					return goalProgressResult(goal, `recorded re-evaluation for ${key}`);
+				}
+				if (action === "wait") {
+					const key = requiredString(input, "key");
+					const reason = requiredString(input, "waitReason") as GoalWaitReason;
+					if (!WAIT_REASONS.includes(reason))
+						throw new Error(`unknown terminal wait reason: ${reason}`);
+					const goal = await updateCurrentGoal((current) => {
+						const item = current.items[key];
+						if (!item) throw new Error(`goal work item not found: ${key}`);
+						const next = recordGoalWait(item, {
+							reason,
+							evidence: requiredString(input, "evidence"),
+							operatorAction: requiredString(input, "operatorAction"),
+							at: nowIso(),
+						});
+						const task = getTask(next.taskId);
+						if (task && ["pending", "running", "failed"].includes(task.state))
+							safeTransitionTask(next.taskId, "blocked", {
+								blockReason: next.needsOperatorReason,
+							});
+						return {
+							...current,
+							updatedAt: nowIso(),
+							items: { ...current.items, [key]: next },
+							blockers: [
+								...new Set([
+									...current.blockers,
+									`${key}: ${next.needsOperatorReason}; operator action: ${next.wait?.operatorAction}`,
+								]),
+							],
+						};
+					});
+					return goalProgressResult(
+						goal,
+						`${key} is waiting because ${reason}; independent ready tasks may continue`,
+					);
 				}
 				if (action === "validation") {
 					const command = requiredString(input, "command");
@@ -1587,6 +2124,79 @@ export default function (pi: ExtensionAPI) {
 		}),
 		async execute(_toolCallId, params) {
 			if (foregroundGoal) {
+				if (
+					foregroundGoal.workspace &&
+					foregroundGoal.plans?.length === 1 &&
+					foregroundGoal.items
+				) {
+					const blockers: string[] = [];
+					const plan = readLinkedPlan(
+						path.resolve(foregroundGoal.workspace, foregroundGoal.plans[0]),
+					);
+					blockers.push(...plan.blockers);
+					for (const task of plan.tasks) {
+						if (!task.required) continue;
+						const item = foregroundGoal.items[task.key];
+						const record = item ? getTask(item.taskId) : null;
+						if (!record)
+							blockers.push(`${task.key}: durable root task is missing`);
+						else if (!["completed", "skipped"].includes(record.state))
+							blockers.push(
+								`${task.key}: durable root task is ${record.state}`,
+							);
+					}
+					if (blockers.length > 0)
+						return formatToolError(
+							`Goal completion rejected:\n- ${blockers.join("\n- ")}`,
+							{ details: { blockers } },
+						);
+					const status = await pi.exec("git", ["status", "--porcelain"], {
+						cwd: foregroundGoal.workspace,
+						timeout: 30_000,
+					});
+					if (status.code !== 0 || status.stdout.trim())
+						return formatToolError(
+							status.code !== 0
+								? status.stderr.trim() || "Unable to inspect repository state."
+								: "Goal completion requires a clean worktree before archival or final completion.",
+						);
+					if (!foregroundGoal.archivedPlanPath) {
+						const archived = archiveCompletedPlan(
+							foregroundGoal.workspace,
+							foregroundGoal.plans[0],
+						);
+						foregroundGoal = {
+							...foregroundGoal,
+							plans: [archived.archivedPlan],
+							archivedPlanPath: archived.archivedPlan,
+							closeoutState: "archived_pending_commit",
+							updatedAt: nowIso(),
+						};
+						await appendState(pi, stateEntry(foregroundGoal));
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: `Archived ${archived.sourcePlan} to ${archived.archivedPlan}. The foreground goal remains active. Commit the archive with the in-scope changes, then call goal_complete again.`,
+								},
+							],
+							details: {
+								goalId: foregroundGoal.id,
+								state: "archived_pending_commit",
+								archivedPlanPath: archived.archivedPlan,
+							},
+						};
+					}
+					const archivedInHead = await pi.exec(
+						"git",
+						["cat-file", "-e", `HEAD:${foregroundGoal.archivedPlanPath}`],
+						{ cwd: foregroundGoal.workspace, timeout: 30_000 },
+					);
+					if (archivedInHead.code !== 0)
+						return formatToolError(
+							`Goal completion rejected: final HEAD does not contain ${foregroundGoal.archivedPlanPath}.`,
+						);
+				}
 				const completed = {
 					...foregroundGoal,
 					status: "completed" as const,
@@ -1617,11 +2227,67 @@ export default function (pi: ExtensionAPI) {
 			const job = goalJob();
 			if (!job?.goal)
 				return formatToolError("No active /goal is currently running.");
+			if (!job.goal.archivedPlanPath) {
+				const verification = await verifyUnattendedCompletion(pi, job);
+				if (!verification.ok)
+					return formatToolError(
+						`Goal completion rejected:\n- ${verification.blockers.join("\n- ")}`,
+						{ details: { blockers: verification.blockers } },
+					);
+				if (job.goal.plans.length !== 1)
+					return formatToolError(
+						"Goal completion requires exactly one canonical plan.",
+					);
+				const archived = archiveCompletedPlan(
+					job.goal.workspace,
+					job.goal.plans[0],
+				);
+				const sourceDirectory = path.posix.dirname(archived.sourcePlan);
+				const archivedDirectory = path.posix.dirname(archived.archivedPlan);
+				const objectivePath = job.goal.objectivePath;
+				const archivedObjectivePath = objectivePath?.startsWith(
+					`${sourceDirectory}/`,
+				)
+					? `${archivedDirectory}/${objectivePath.slice(sourceDirectory.length + 1)}`
+					: objectivePath;
+				await updateLoopJob(job.id, (current) => ({
+					...current,
+					objectivePath: archivedObjectivePath,
+					plans: [archived.archivedPlan],
+					goal: current.goal
+						? {
+								...current.goal,
+								objectivePath: archivedObjectivePath,
+								plans: [archived.archivedPlan],
+								archivedPlanPath: archived.archivedPlan,
+								closeoutState: "archived_pending_commit",
+								updatedAt: nowIso(),
+							}
+						: undefined,
+				}));
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Archived ${archived.sourcePlan} to ${archived.archivedPlan}. The goal remains active. Commit the archive with the in-scope changes, then call goal_complete again so final HEAD and the clean worktree can be verified.`,
+						},
+					],
+					details: {
+						goalId: job.goal.id,
+						state: "archived_pending_commit",
+						archivedPlanPath: archived.archivedPlan,
+					},
+				};
+			}
 			const verification = await verifyUnattendedCompletion(pi, job);
 			if (!verification.ok)
 				return formatToolError(
 					`Goal completion rejected:\n- ${verification.blockers.join("\n- ")}`,
 					{ details: { blockers: verification.blockers } },
+				);
+			if (!verification.artifacts.includes(job.goal.archivedPlanPath))
+				return formatToolError(
+					`Goal completion rejected:\n- final HEAD does not contain the archived plan: ${job.goal.archivedPlanPath}`,
 				);
 			const suppliedGaps = (params.knownGaps ?? "").trim();
 			const gaps = [...job.goal.knownGaps];

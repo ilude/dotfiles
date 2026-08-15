@@ -40,6 +40,14 @@ export type GoalAttempt = {
 	recovery: boolean;
 };
 
+export type GoalWaitReason =
+	| "operator_decision"
+	| "access_or_credential"
+	| "external_dependency"
+	| "safety_boundary"
+	| "objective_conflict"
+	| "recovery_exhausted";
+
 export type GoalRecoveryPhase =
 	| "ordinary"
 	| "re_evaluation_required"
@@ -63,6 +71,12 @@ export type GoalWorkItem = {
 	recoveryStrategies: GoalStrategy[];
 	lastOutcome?: GoalFailureOutcome;
 	needsOperatorReason?: string;
+	wait?: {
+		reason: GoalWaitReason;
+		evidence: string;
+		operatorAction: string;
+		recordedAt: string;
+	};
 	interruptedReason?: string;
 	interruptedStrategy?: GoalStrategy;
 	reconciledInterruptedStrategy?: GoalStrategy;
@@ -113,14 +127,20 @@ export type UnattendedGoal = {
 	finalHead?: string;
 	finalBranch?: string;
 	finalWorktree?: string;
+	closeoutState?: "archived_pending_commit";
+	archivedPlanPath?: string;
 	closeout?: string;
 };
 
-const QUALIFYING_FAILURES = new Set<GoalFailureOutcome>([
+const REEVALUATION_OUTCOMES = new Set<GoalFailureOutcome>([
 	"error",
 	"inconclusive",
 	"schema_invalid",
 	"verifier_contradiction",
+	"not_found",
+	"infrastructure_failure",
+	"capability_rejected",
+	"damage_control_denied",
 ]);
 
 const STRATEGY_KEYS: Array<keyof GoalStrategy> = [
@@ -133,7 +153,6 @@ const STRATEGY_KEYS: Array<keyof GoalStrategy> = [
 	"validationMethod",
 ];
 
-export const QUALIFYING_FAILURE_LIMIT = 20;
 export const RECOVERY_ATTEMPT_LIMIT = 2;
 
 function normalizedStrategy(strategy: GoalStrategy): GoalStrategy {
@@ -246,13 +265,12 @@ export function recordGoalOutcome(
 			recoveryStrategies: [],
 		};
 	}
-	if (!QUALIFYING_FAILURES.has(outcome)) return next;
+	if (!REEVALUATION_OUTCOMES.has(outcome)) return next;
 
 	next.qualifyingFailures += 1;
 	if (!attempt.recovery) {
 		next.lastOrdinaryStrategy = attempt.strategy;
-		if (next.qualifyingFailures >= QUALIFYING_FAILURE_LIMIT)
-			next.phase = "re_evaluation_required";
+		next.phase = "re_evaluation_required";
 		return next;
 	}
 
@@ -260,9 +278,15 @@ export function recordGoalOutcome(
 	if (next.recoveryStrategies.length >= RECOVERY_ATTEMPT_LIMIT) {
 		next.phase = "needs_operator";
 		next.needsOperatorReason =
-			"Two materially different recovery attempts failed after re-evaluation.";
+			"recovery_exhausted: two materially different recovery attempts failed";
+		next.wait = {
+			reason: "recovery_exhausted",
+			evidence: "Two materially different recovery attempts returned non-success outcomes.",
+			operatorAction: "Choose a new strategy, change the objective, or stop this work item.",
+			recordedAt: new Date().toISOString(),
+		};
 	} else {
-		next.phase = "recovery_ready";
+		next.phase = "re_evaluation_required";
 	}
 	return next;
 }
@@ -291,6 +315,36 @@ export function recordGoalReEvaluation(
 	};
 }
 
+export function recordGoalWait(
+	item: GoalWorkItem,
+	input: {
+		reason: GoalWaitReason;
+		evidence: string;
+		operatorAction: string;
+		at: string;
+	},
+): GoalWorkItem {
+	if (item.activeAttempt)
+		throw new Error(`work item ${item.key} has an active attempt to settle first`);
+	const evidence = input.evidence.trim();
+	const operatorAction = input.operatorAction.trim();
+	if (!evidence) throw new Error("terminal wait evidence is required");
+	if (!operatorAction) throw new Error("terminal wait operator action is required");
+	if (evidence.length > 500 || operatorAction.length > 500)
+		throw new Error("terminal wait evidence and operator action must be at most 500 characters");
+	return {
+		...item,
+		phase: "needs_operator",
+		needsOperatorReason: `${input.reason}: ${evidence}`,
+		wait: {
+			reason: input.reason,
+			evidence,
+			operatorAction,
+			recordedAt: input.at,
+		},
+	};
+}
+
 export function goalFailureQualifies(outcome: GoalFailureOutcome): boolean {
-	return QUALIFYING_FAILURES.has(outcome);
+	return REEVALUATION_OUTCOMES.has(outcome);
 }

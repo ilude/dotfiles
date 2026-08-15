@@ -193,10 +193,60 @@ export async function runIsolatedPiSmoke(options = {}) {
 	const invocations = [];
 	const results = [];
 	if (scenario === "goal-lifecycle") {
-		await writeFile(join(projectDir, "goal.md"), "Complete the disposable lifecycle smoke.\n");
+		const goalSpecDir = join(projectDir, ".specs", "smoke");
+		await mkdir(goalSpecDir, { recursive: true });
 		await writeFile(
-			join(projectDir, "plan.md"),
-			"# Plan\n\n- [ ] **T1: Complete the lifecycle smoke**\n  - State: pending\n",
+			join(goalSpecDir, "goal.md"),
+			"Complete the disposable lifecycle smoke.\n",
+		);
+		await writeFile(
+			join(goalSpecDir, "plan.md"),
+			[
+				"---",
+				"created: 2026-08-15",
+				"status: ready",
+				"completed:",
+				"---",
+				"",
+				"# Plan",
+				"",
+				"## Objective",
+				"",
+				"Complete the disposable lifecycle smoke.",
+				"",
+				"## Boundaries",
+				"",
+				"- In scope: Disposable lifecycle state and command behavior.",
+				"- Out of scope: Persistent repository or external service changes.",
+				"",
+				"## Tasks",
+				"",
+				"- [ ] **T1: Prepare the lifecycle smoke**",
+				"  - Files: fixture.txt",
+				"  - Change: Prepare the disposable lifecycle fixture.",
+				"  - Done when: The fixture is ready for dependent work.",
+				"  - Verify: Inspect the fixture state.",
+				"- [ ] **T2: Complete the lifecycle smoke**",
+				"  - Depends on: T1",
+				"  - Files: fixture.txt",
+				"  - Change: Complete the disposable lifecycle fixture.",
+				"  - Done when: The dependent lifecycle work is complete.",
+				"  - Verify: Run the lifecycle smoke check.",
+				"",
+				"## Validation",
+				"",
+				"- [ ] Run the lifecycle smoke.",
+				"",
+				"## Retention",
+				"",
+				"Archive to .specs/archive/smoke/.",
+				"",
+				"## Execution Status",
+				"",
+				"- State: ready",
+				"- Resume: /do-it .specs/smoke/plan.md",
+				"",
+			].join("\n"),
 		);
 		for (const args of [
 			["init", "-q"],
@@ -224,7 +274,7 @@ export async function runIsolatedPiSmoke(options = {}) {
 			extension("goal.ts"),
 		];
 		for (const [id, message] of [
-			["goal-start", "/goal --unattended goal.md"],
+			["goal-start", "/goal --unattended .specs/smoke/goal.md"],
 			["goal-status", "/goal status"],
 			["goal-stop", "/goal stop"],
 			["goal-resume", "/goal resume"],
@@ -249,12 +299,33 @@ export async function runIsolatedPiSmoke(options = {}) {
 			if (id === "goal-start") {
 				const jobs = await readdir(loopDir);
 				if (jobs.length !== 1)
-					throw new Error(`Expected one goal loop job, found ${jobs.length}`);
+					throw new Error(
+						`Expected one goal loop job, found ${jobs.length}: ${result.stderr}\n${result.stdout}`,
+					);
 				const job = JSON.parse(
 					await readFile(join(loopDir, jobs[0], "job.json"), "utf8"),
 				);
 				if (job.goal?.state !== "running" || job.goal?.id !== job.id)
 					throw new Error("Goal launch did not persist correlated running state");
+				if (Object.keys(job.goal?.items ?? {}).length !== 2)
+					throw new Error("Goal launch did not materialize both plan tasks");
+				const prerequisite = JSON.parse(
+					await readFile(
+						join(operatorDir, "tasks", `${job.goal.items.T1.taskId}.json`),
+						"utf8",
+					),
+				);
+				const dependent = JSON.parse(
+					await readFile(
+						join(operatorDir, "tasks", `${job.goal.items.T2.taskId}.json`),
+						"utf8",
+					),
+				);
+				if (
+					dependent.blockedBy?.length !== 1 ||
+					dependent.blockedBy[0] !== prerequisite.id
+				)
+					throw new Error("Goal launch did not preserve the plan dependency edge");
 			}
 			if (id === "goal-stop" || id === "goal-stop-again") {
 				const [jobId] = await readdir(loopDir);

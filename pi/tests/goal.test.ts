@@ -15,17 +15,61 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 import goal, { goalTestApi } from "../extensions/goal.ts";
 import { readLoopJob, updateLoopJob } from "../extensions/loop.ts";
-import {
-	createTask,
-	getTask,
-	resolveTaskWorkspace,
-	transitionTask,
-} from "../lib/task-registry.ts";
+import { getTask, transitionTask } from "../lib/task-registry.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 function writeFile(filePath: string, content: string | Buffer) {
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
 	fs.writeFileSync(filePath, content);
+}
+
+function readyPlan(
+	slug: string,
+	tasks: Array<{ key: string; summary: string; dependsOn?: string[] }>,
+): string {
+	return [
+		"---",
+		"created: 2026-08-15",
+		"status: ready",
+		"completed:",
+		"---",
+		"",
+		"# Plan",
+		"",
+		"## Objective",
+		"",
+		"Complete the fixture objective.",
+		"",
+		"## Boundaries",
+		"",
+		"- In scope: Fixture work.",
+		"- Out of scope: Other work.",
+		"",
+		"## Tasks",
+		"",
+		...tasks.flatMap((task) => [
+			`- [ ] **${task.key}: ${task.summary}**`,
+			"  - Files: fixture.txt",
+			`  - Depends on: ${task.dependsOn?.join(", ") ?? "none"}`,
+			"  - Change: Complete the fixture task.",
+			"  - Done when: The fixture task is complete.",
+			"  - Verify: Run the fixture check.",
+		]),
+		"",
+		"## Validation",
+		"",
+		"- [ ] Run the fixture check.",
+		"",
+		"## Retention",
+		"",
+		`Archive to .specs/archive/${slug}/.`,
+		"",
+		"## Execution Status",
+		"",
+		"- State: planned, not started",
+		`- Resume: /do-it .specs/${slug}/plan.md`,
+		"",
+	].join("\n");
 }
 
 function initializeRepository(workspace: string): string {
@@ -115,7 +159,7 @@ describe("goal extension", () => {
 		});
 	});
 
-	it("starts inline goals through the registered command and enforces the 15000 character limit", async () => {
+	it("starts ordinary inline goals directly in the active session and enforces the 15000 character limit", async () => {
 		const pi = createMockPi();
 		goal(pi as unknown as ExtensionAPI);
 		const command = pi._commands.find((item) => item.name === "goal");
@@ -129,13 +173,25 @@ describe("goal extension", () => {
 		expect(pi.appendEntry).toHaveBeenCalledWith(
 			"local-goal-state",
 			expect.objectContaining({
-				goal: expect.objectContaining({ mode: "inline", status: "active" }),
+				goal: expect.objectContaining({
+					mode: "inline",
+					status: "active",
+				}),
 			}),
 		);
 		expect(pi.sendUserMessage).toHaveBeenCalledWith(
-			expect.stringContaining("Active goal started"),
+			expect.stringContaining("Work interactively and directly in this session"),
 		);
+		expect(pi.sendUserMessage).not.toHaveBeenCalledWith(
+			expect.stringContaining("Use plan_progress"),
+		);
+		expect(pi.exec).not.toHaveBeenCalled();
 		expect(pi.getActiveTools()).toContain("goal_complete");
+		expect(pi.getActiveTools()).not.toContain("goal_progress");
+		const toolCall = pi._getHook("tool_call")[0]?.handler;
+		expect(
+			await toolCall?.({ toolName: "edit", input: { path: "fixture.txt" } }),
+		).toBeUndefined();
 
 		const accepted = goalTestApi.goalFromInline("x".repeat(15_000));
 		expect(accepted.ok).toBe(true);
@@ -148,11 +204,15 @@ describe("goal extension", () => {
 		const pi = createMockPi();
 		goal(pi as unknown as ExtensionAPI);
 		const fileContent = `${"important objective detail ".repeat(80)}finish safely`;
-		writeFile(path.join(tmp, "goal.md"), fileContent);
+		writeFile(path.join(tmp, ".specs", "file-goal", "goal.md"), fileContent);
+		writeFile(
+			path.join(tmp, ".specs", "file-goal", "plan.md"),
+			readyPlan("file-goal", [{ key: "T1", summary: "Finish safely" }]),
+		);
 
 		await pi._commands
 			.find((item) => item.name === "goal")
-			?.handler("goal.md", createMockCtx({ cwd: tmp }));
+			?.handler(".specs/file-goal/goal.md", createMockCtx({ cwd: tmp }));
 		const beforeHook = pi._getHook("before_agent_start")[0].handler;
 		const result = await beforeHook(
 			{ systemPrompt: "base" },
@@ -162,7 +222,9 @@ describe("goal extension", () => {
 		expect(pi.sendUserMessage).toHaveBeenCalledWith(
 			expect.stringContaining("Preview:"),
 		);
-		expect(result.systemPrompt).toContain("File-backed goal: goal.md");
+		expect(result.systemPrompt).toContain(
+			"File-backed goal: .specs/file-goal/goal.md",
+		);
 		expect(result.systemPrompt).toContain("sha256");
 		expect(result.systemPrompt).not.toContain(fileContent);
 		expect(result.systemPrompt.length).toBeLessThan(1200);
@@ -308,11 +370,47 @@ describe("goal extension", () => {
 		).toBeUndefined();
 	});
 
+	it("materializes and idempotently reconciles the canonical task dependency graph", () => {
+		writeFile(path.join(tmp, "goal.md"), "Complete the dependent work.\n");
+		writeFile(
+			path.join(tmp, "plan.md"),
+			[
+				"- [ ] **T1: Prepare the input**",
+				"- [ ] **T2: Consume the input**",
+				"  - Depends on: T1",
+			].join("\n"),
+		);
+		initializeRepository(tmp);
+		const parsed = goalTestApi.parseGoal("goal.md", tmp);
+		expect(parsed.ok).toBe(true);
+		if (!parsed.ok) return;
+		const first = goalTestApi.createUnattendedGoal(
+			parsed.parsed,
+			tmp,
+			"plan.md",
+		);
+		const second = goalTestApi.createUnattendedGoal(
+			parsed.parsed,
+			tmp,
+			"plan.md",
+		);
+		expect(second.items.T1.taskId).toBe(first.items.T1.taskId);
+		expect(second.items.T2.taskId).toBe(first.items.T2.taskId);
+		const prerequisite = getTask(first.items.T1.taskId);
+		const dependent = getTask(first.items.T2.taskId);
+		expect(dependent?.blockedBy).toEqual([prerequisite?.id]);
+		expect(dependent?.metadata).toMatchObject({
+			goalId: first.id,
+			canonicalPlanPath: "plan.md",
+			planTaskKey: "T2",
+		});
+	});
+
 	it("launches, correlates, reports, stops, and resumes an unattended goal without a loop id", async () => {
 		writeFile(path.join(tmp, ".specs", "demo", "goal.md"), "Ship the demo safely.\n");
 		writeFile(
 			path.join(tmp, ".specs", "demo", "plan.md"),
-			"# Plan\n\n- [ ] **T1: Ship the demo**\n  - State: pending\n",
+			readyPlan("demo", [{ key: "T1", summary: "Ship the demo" }]),
 		);
 		initializeRepository(tmp);
 		const pi = createMockPi();
@@ -348,31 +446,61 @@ describe("goal extension", () => {
 		expect(readLoopJob(jobId).goal?.state).toBe("running");
 	});
 
-	async function setupUnattendedGoalRecovery() {
-		writeFile(path.join(tmp, "goal.md"), "Complete both independent tasks.\n");
+	it("reconciles an archive move that completed before goal metadata persisted", async () => {
 		writeFile(
-			path.join(tmp, "plan.md"),
-			[
-				"# Plan",
-				"",
-				"- [ ] **T1: Repair the first item**",
-				"  - State: pending",
-				"- [ ] **T2: Complete the independent item**",
-				"  - State: pending",
-				"",
-			].join("\n"),
+			path.join(tmp, ".specs", "demo", "goal.md"),
+			"Archive the completed directory.\n",
+		);
+		writeFile(
+			path.join(tmp, ".specs", "demo", "plan.md"),
+			readyPlan("demo", [
+				{ key: "T1", summary: "Complete the archive fixture" },
+			]),
 		);
 		initializeRepository(tmp);
-		const first = createTask({
-			origin: "other",
-			summary: "Repair the first item",
-			workspace: resolveTaskWorkspace(tmp),
+		const pi = createMockPi();
+		configureGitExec(pi, tmp);
+		goal(pi as unknown as ExtensionAPI);
+		const command = pi._commands.find((item) => item.name === "goal");
+		if (!command) throw new Error("Goal command was not registered.");
+		const ctx = createMockCtx({ cwd: tmp, mode: "tui", shutdown: vi.fn() });
+		await command.handler("--unattended .specs/demo/goal.md", ctx);
+		await command.handler("stop", ctx);
+		fs.mkdirSync(path.join(tmp, ".specs", "archive"), { recursive: true });
+		fs.renameSync(
+			path.join(tmp, ".specs", "demo"),
+			path.join(tmp, ".specs", "archive", "demo"),
+		);
+		execFileSync("git", ["add", "--", ".specs/demo", ".specs/archive/demo"], {
+			cwd: tmp,
 		});
-		const second = createTask({
-			origin: "other",
-			summary: "Complete the independent item",
-			workspace: resolveTaskWorkspace(tmp),
+		execFileSync("git", ["commit", "-q", "-m", "docs: archive fixture"], {
+			cwd: tmp,
 		});
+		await command.handler("resume", ctx);
+		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
+		expect(readLoopJob(jobId).goal).toMatchObject({
+			state: "running",
+			objectivePath: ".specs/archive/demo/goal.md",
+			plans: [".specs/archive/demo/plan.md"],
+			archivedPlanPath: ".specs/archive/demo/plan.md",
+			closeoutState: "archived_pending_commit",
+		});
+	});
+
+	async function setupUnattendedGoalRecovery() {
+		writeFile(
+			path.join(tmp, ".specs", "recovery", "goal.md"),
+			"Complete both independent tasks.\n",
+		);
+		writeFile(
+			path.join(tmp, ".specs", "recovery", "plan.md"),
+			readyPlan("recovery", [
+				{ key: "T1", summary: "Repair the first item" },
+				{ key: "T2", summary: "Complete the independent item" },
+			]),
+		);
+		initializeRepository(tmp);
 		const pi = createMockPi();
 		configureGitExec(pi, tmp);
 		goal(pi as unknown as ExtensionAPI);
@@ -381,16 +509,13 @@ describe("goal extension", () => {
 		if (!command || !progress)
 			throw new Error("Goal command or progress tool was not registered.");
 		const ctx = createMockCtx({ cwd: tmp, mode: "tui", shutdown: vi.fn() });
-		await command.handler("--unattended goal.md", ctx);
-		const linked = await progress.execute("link", {
-			action: "link_tasks",
-			items: [
-				{ key: "T1", taskId: first.id },
-				{ key: "T2", taskId: second.id },
-			],
-		});
-		expect(linked.isError, linked.content[0].text).not.toBe(true);
+		await command.handler("--unattended .specs/recovery/goal.md", ctx);
 		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
+		const runningGoal = readLoopJob(jobId).goal;
+		if (!runningGoal) throw new Error("Unattended goal was not created.");
+		const first = getTask(runningGoal.items.T1.taskId);
+		const second = getTask(runningGoal.items.T2.taskId);
+		if (!first || !second) throw new Error("Goal root tasks were not created.");
 		return { pi, command, ctx, progress, first, second, jobId };
 	}
 
@@ -465,6 +590,13 @@ describe("goal extension", () => {
 			strategy: { agent: "reviewer" },
 		});
 		expect(identical.isError).toBe(true);
+		await progress.execute("reevaluate-2", {
+			action: "re_evaluate",
+			key: "T1",
+			evidence: "The first recovery still contradicted the verifier.",
+			assumptions: "The evidence source may be coupled to the failure.",
+			message: "Use an independent fixture and validation method.",
+		});
 		await progress.execute("recovery-2", {
 			action: "begin_attempt",
 			key: "T1",
@@ -542,7 +674,7 @@ describe("goal extension", () => {
 		expect(getTask(second.id)?.state).toBe("running");
 	});
 
-	it("preserves permission gates and resets exhausted recovery on resume", async () => {
+	it("preserves permission gates and exhausted recovery on resume", async () => {
 		const { pi, command, ctx, progress, first, second, jobId } =
 			await setupUnattendedGoalRecovery();
 		await progress.execute("independent", {
@@ -565,7 +697,9 @@ describe("goal extension", () => {
 		expect(getTask(second.id)?.state).toBe("blocked");
 		expect(readLoopJob(jobId).goal).toMatchObject({
 			state: "waiting_for_operator",
-			items: { T2: { qualifyingFailures: 0 } },
+			items: {
+				T2: { qualifyingFailures: 1, phase: "re_evaluation_required" },
+			},
 		});
 
 		const deniedReplay = await progress.execute("denied-replay", {
@@ -574,6 +708,13 @@ describe("goal extension", () => {
 			strategy: { agent: "builder" },
 		});
 		expect(deniedReplay.isError).toBe(true);
+		await progress.execute("permission-reevaluation", {
+			action: "re_evaluate",
+			key: "T2",
+			evidence: "The requested mutation requires operator approval.",
+			assumptions: "Read-only inspection does not require that approval.",
+			message: "Use the authorized read-only evidence path.",
+		});
 		const safer = await progress.execute("safer-alternative", {
 			action: "begin_attempt",
 			key: "T2",
@@ -598,7 +739,8 @@ describe("goal extension", () => {
 		});
 		expect(secondAlternative.isError).toBe(true);
 
-		const recoveryReason = "Recovery attempts are exhausted.";
+		const recoveryReason =
+			"recovery_exhausted: two materially different recovery attempts failed";
 		transitionTask(first.id, "running");
 		transitionTask(first.id, "blocked", { blockReason: recoveryReason });
 		await updateLoopJob(jobId, (current) => ({
@@ -612,6 +754,12 @@ describe("goal extension", () => {
 								...current.goal.items.T1,
 								phase: "needs_operator",
 								needsOperatorReason: recoveryReason,
+								wait: {
+									reason: "recovery_exhausted",
+									evidence: "Two materially different recovery attempts failed.",
+									operatorAction: "Choose a new strategy or stop this item.",
+									recordedAt: "2026-08-15T00:00:00.000Z",
+								},
 								recoveryStrategies: [
 									{ agent: "reviewer" },
 									{ evidenceSource: "independent fixture" },
@@ -628,83 +776,87 @@ describe("goal extension", () => {
 
 		await command.handler("resume", ctx);
 		const resumed = readLoopJob(jobId).goal;
-		expect(resumed?.items.T1.phase).toBe("re_evaluation_required");
-		expect(resumed?.blockers).not.toContain(`T1: ${recoveryReason}`);
+		expect(resumed?.items.T1.phase).toBe("needs_operator");
+		expect(resumed?.items.T1.wait?.reason).toBe("recovery_exhausted");
+		expect(resumed?.blockers).toContain(`T1: ${recoveryReason}`);
 		expect(resumed?.blockers).toContain(
 			"Permission decision permission-456 blocks T2.",
 		);
 	});
 
 	it("rejects incomplete linked work and accepts only evidence-backed unattended completion", async () => {
-		writeFile(path.join(tmp, "goal.md"), "Finish the verified item.\n");
 		writeFile(
-			path.join(tmp, "plan.md"),
-			[
-				"# Plan",
-				"",
-				"- [x] **T1: Finish the verified item**",
-				"  - State: complete",
-				"- [x] **T2: Finish the second required item**",
-				"  - State: complete",
-				"",
-			].join("\n"),
+			path.join(tmp, ".specs", "demo", "goal.md"),
+			"Finish the verified item.\n",
+		);
+		const planPath = path.join(tmp, ".specs", "demo", "plan.md");
+		const completedPlanContent = [
+			"---",
+			"created: 2026-08-15",
+			"status: complete",
+			"completed: 2026-08-15",
+			"---",
+			"",
+			"# Plan",
+			"",
+			"## Tasks",
+			"",
+			"- [x] **T1: Finish the verified item**",
+			"  - State: complete",
+			"- [x] **T2: Finish the second required item**",
+			"  - State: complete",
+			"",
+			"## Validation",
+			"",
+			"- [x] Focused checks passed",
+			"",
+			"## Execution Status",
+			"",
+			"- State: complete",
+			"",
+		].join("\n");
+		writeFile(
+			planPath,
+			readyPlan("demo", [
+				{ key: "T1", summary: "Finish the verified item" },
+				{ key: "T2", summary: "Finish the second required item" },
+			]),
 		);
 		initializeRepository(tmp);
-		const task = createTask({
-			origin: "other",
-			summary: "Finish the verified item",
-			workspace: resolveTaskWorkspace(tmp),
-		});
-		const secondTask = createTask({
-			origin: "other",
-			summary: "Finish the second required item",
-			workspace: resolveTaskWorkspace(tmp),
-		});
-		const childTask = createTask({
-			origin: "subagent",
-			parentId: task.id,
-			summary: "Transient child result",
-			workspace: resolveTaskWorkspace(tmp),
-		});
 		const pi = createMockPi();
 		configureGitExec(pi, tmp);
 		goal(pi as unknown as ExtensionAPI);
 		const command = pi._commands.find((item) => item.name === "goal");
 		await command?.handler(
-			"--unattended goal.md",
+			"--unattended .specs/demo/goal.md",
 			createMockCtx({ cwd: tmp, mode: "tui", shutdown: vi.fn() }),
 		);
 		const progress = pi._getTool("goal_progress");
-		const linked = await progress?.execute("link", {
-			action: "link_tasks",
-			items: [{ key: "T1", taskId: task.id }],
-		});
-		expect(linked.isError, linked.content[0].text).not.toBe(true);
+		const [runningJobId] = fs.readdirSync(
+			process.env.PI_LOOP_DIR as string,
+		);
+		const runningGoal = readLoopJob(runningJobId).goal;
+		if (!runningGoal) throw new Error("Unattended goal was not created.");
+		const task = getTask(runningGoal.items.T1.taskId);
+		const secondTask = getTask(runningGoal.items.T2.taskId);
+		if (!task || !secondTask)
+			throw new Error("Required durable root tasks were not created.");
 		const complete = pi._getTool("goal_complete");
 		const rejected = await complete?.execute("complete-1", {
 			summary: "Finished the item",
 		});
 		expect(rejected.isError).toBe(true);
 		expect(rejected.content[0].text).toContain("linked task is pending");
-		expect(rejected.content[0].text).toContain(
-			"T2: required plan task has no required durable root task",
-		);
 		expect(rejected.content[0].text).toContain("no relevant validation evidence");
-
-		const rejectedChild = await progress?.execute("link-child", {
+		expect(runningGoal.items.T2.required).toBe(true);
+		const replacement = await progress?.execute("replace-linked", {
 			action: "link_tasks",
-			items: [{ key: "T2", taskId: childTask.id }],
+			items: [{ key: "T2", taskId: task.id }],
 		});
-		expect(rejectedChild.isError).toBe(true);
-		expect(rejectedChild.content[0].text).toContain("not a durable root task");
-		const linkedSecond = await progress?.execute("link-second", {
-			action: "link_tasks",
-			items: [{ key: "T2", taskId: secondTask.id, required: false }],
-		});
-		expect(linkedSecond.isError).not.toBe(true);
-		expect(
-			readLoopJob(fs.readdirSync(process.env.PI_LOOP_DIR as string)[0]).goal?.items.T2.required,
-		).toBe(true);
+		expect(replacement.isError).toBe(true);
+		expect(replacement.content[0].text).toContain(
+			"already linked and cannot be replaced",
+		);
 		const unobservedValidation = await progress?.execute("unobserved-validation", {
 			action: "validation",
 			command: "pnpm test goal.test.ts",
@@ -742,14 +894,38 @@ describe("goal extension", () => {
 			passed: true,
 			summary: "focused lifecycle checks passed",
 		});
-		const accepted = await complete?.execute("complete-2", {
+		writeFile(planPath, completedPlanContent);
+		execFileSync("git", ["add", "--", ".specs/demo/plan.md"], { cwd: tmp });
+		execFileSync("git", ["commit", "-q", "-m", "docs: complete plan"], {
+			cwd: tmp,
+		});
+		const archived = await complete?.execute("complete-2", {
 			summary: "Finished the verified item",
 			knownGaps: "None",
 		});
-		expect(accepted.isError).not.toBe(true);
+		expect(archived.isError).not.toBe(true);
+		expect(archived.content[0].text).toContain(
+			"Archived .specs/demo/plan.md to .specs/archive/demo/plan.md",
+		);
+		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
+		expect(readLoopJob(jobId).goal).toMatchObject({
+			state: "running",
+			closeoutState: "archived_pending_commit",
+			archivedPlanPath: ".specs/archive/demo/plan.md",
+		});
+		execFileSync("git", ["add", "--", ".specs/demo", ".specs/archive/demo"], {
+			cwd: tmp,
+		});
+		execFileSync("git", ["commit", "-q", "-m", "docs: archive completed plan"], {
+			cwd: tmp,
+		});
+		const accepted = await complete?.execute("complete-3", {
+			summary: "Finished the verified item",
+			knownGaps: "None",
+		});
+		expect(accepted.isError, accepted.content[0].text).not.toBe(true);
 		expect(accepted.content[0].text).toContain("Repository state:");
 		expect(accepted.content[0].text).toContain("Exact next action:");
-		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
 		expect(readLoopJob(jobId).goal).toMatchObject({
 			state: "completed",
 			finalWorktree: "clean",

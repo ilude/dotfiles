@@ -2,7 +2,8 @@
 
 The invocation message lists the plan files owned by this loop. When it also
 names an unattended goal, `/goal` owns the objective and lifecycle while this
-existing loop remains the detached supervisor.
+existing loop remains the detached supervisor. Ordinary foreground `/goal
+<objective>` stays interactive in its Pi session and does not enter this loop.
 
 ## Iteration contract
 
@@ -18,18 +19,21 @@ user decision.
 
 For an unattended goal:
 
-- If plan tasks are not linked to durable root tasks, create the minimum root
-  task graph with `task`, then link each plan key through `goal_progress`.
+- Reconcile the canonical plan's task keys and `Depends on` edges with the
+  durable root tasks materialized by `/goal`. Do not replace an existing link;
+  report a duplicate, missing, or mismatched edge through `goal_progress`.
 - Mark one ready root task running and call `goal_progress begin_attempt` with
   its stable plan key and deterministic strategy before any modifying-capable
   tool.
-- Settle every attempt through `goal_progress record_outcome`. Capability
-  rejection, cancellation, permission denial, pre-execution infrastructure
-  failure, and valid `not_found` do not consume the qualifying-failure budget.
-- When ordinary attempts are suspended after twenty qualifying failures, use
-  `goal_progress re_evaluate` to reassess evidence, assumptions, and strategy.
-  The next two recovery strategies must change deterministic components;
-  prompt rewording is not a strategy change.
+- Settle every attempt through `goal_progress record_outcome`. `error`,
+  `inconclusive`, schema-invalid output, verifier contradiction, `not_found`,
+  and infrastructure failure immediately require `goal_progress re_evaluate`
+  before another attempt. The next recovery strategy must change a
+  deterministic component; prompt rewording is not a strategy change.
+- After two materially different recovery attempts fail, or when no safe
+  in-scope alternative exists, call `goal_progress wait` with one typed reason,
+  bounded evidence, and the exact operator action. Pause only that root task;
+  independent dependency-ready tasks continue.
 - If an ask-tier damage-control decision returns `needs_approval`, do not replay
   or disguise it. The affected task waits for the operator while independent
   ready tasks continue. At most one safer alternative may run, and only after
@@ -41,10 +45,13 @@ For an unattended goal:
 - Record focused validation through `goal_progress` in the same Pi process that
   observed the successful `bash` or `pwsh` result. Record changed artifacts
   through `goal_progress`.
-- Call `goal_complete` only after linked plans, linked required root tasks,
-  validation evidence, and repository state satisfy the objective. If it
-  rejects completion, preserve its exact blockers and continue only safe ready
-  work.
+- Call `goal_complete` only after the canonical plan, required root tasks,
+  validation evidence, and repository state satisfy the objective. The first
+  successful closeout call archives the plan while the goal stays active.
+  Commit that archive with the in-scope changes, then call `goal_complete`
+  again so final HEAD and the clean worktree are verified before active goal
+  state clears. If completion is rejected, preserve its exact blockers and
+  continue only safe ready work.
 
 ## Work rules
 
@@ -67,10 +74,11 @@ For an unattended goal:
 
 ## Stop and continuation behavior
 
-If the selected slice fails, make one evidence-driven recovery attempt unless
-`goal_progress` suspends ordinary attempts. If it remains blocked, record the
-exact blocker in its plan and durable task, then select independent work on the
-next iteration. Do not repeat the same failed command or speculative fix.
+If the selected slice fails, record its typed outcome and re-evaluate the
+observed evidence before choosing a materially different recovery strategy. If
+it must wait, record the typed reason, bounded evidence, and operator action in
+its plan and durable task, then select independent work on the next iteration.
+Do not repeat the same failed command or speculative fix.
 
 End every invocation with exactly one marker on its own final line:
 

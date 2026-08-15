@@ -24,6 +24,7 @@
 //   command name and add visual noise to user-facing command output.
 
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -33,6 +34,7 @@ import {
 	type ExtensionAPI,
 	type ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Key, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { commitFailureMessage } from "../lib/commit/failure";
@@ -54,6 +56,20 @@ import { emitTerminalBell, formatToolError } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { archiveCompletedPlan } from "../lib/plan-archive";
 import { withTimingSpan } from "../lib/observability";
+import {
+	createPlanLifecycleSnapshot,
+	isPlanLifecycleSnapshot,
+	PLAN_LIFECYCLE_ENTRY_TYPE,
+	type PlanDisposition,
+	registerPlanLifecycleController,
+	type PlanInspector,
+	type PlanLifecycleSnapshot,
+	type PlanProgressInput,
+	type PlanReviewerRole,
+	type PlanReviewOutcome,
+	transitionPlanLifecycle,
+	validatePlanFile,
+} from "../lib/workflow-commands/plan-lifecycle";
 import { scanSecrets } from "../lib/secret-scan";
 import { SLASH_COMMAND_ECHO_TYPE } from "../lib/slash-command-echo.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent";
@@ -2309,6 +2325,77 @@ async function prepareCommitSelection(
 	return { parsedArgs, selection, stagedFiles, ...planning };
 }
 
+interface PlanProgressParams {
+	action: PlanProgressInput["action"];
+	planPath?: string;
+	risk?: "low" | "material";
+	inspectedBy?: PlanInspector;
+	role?: PlanReviewerRole;
+	concern?: string;
+	outcome?: PlanReviewOutcome;
+	strategy?: string;
+	dispositions?: Array<{
+		role: PlanReviewerRole;
+		disposition: PlanDisposition;
+	}>;
+}
+
+function requirePlanProgressValue<T>(
+	value: T | undefined,
+	label: string,
+): T {
+	if (value === undefined) throw new Error(`${label} is required.`);
+	return value;
+}
+
+function planProgressInput(params: PlanProgressParams): PlanProgressInput {
+	switch (params.action) {
+		case "draft":
+			return {
+				action: params.action,
+				planPath: requirePlanProgressValue(params.planPath, "planPath"),
+			};
+		case "risk":
+			return {
+				action: params.action,
+				risk: requirePlanProgressValue(params.risk, "risk"),
+				inspectedBy: requirePlanProgressValue(
+					params.inspectedBy,
+					"inspectedBy",
+				),
+			};
+		case "review":
+			return {
+				action: params.action,
+				role: requirePlanProgressValue(params.role, "role"),
+				concern: requirePlanProgressValue(params.concern, "concern"),
+				outcome: requirePlanProgressValue(params.outcome, "outcome"),
+				strategy: requirePlanProgressValue(params.strategy, "strategy"),
+			};
+		case "adjudicate":
+			return {
+				action: params.action,
+				dispositions: requirePlanProgressValue(
+					params.dispositions,
+					"dispositions",
+				),
+			};
+		case "inspect":
+			return {
+				action: params.action,
+				inspectedBy: requirePlanProgressValue(
+					params.inspectedBy,
+					"inspectedBy",
+				),
+			};
+		case "settle_review":
+		case "repair":
+		case "accept":
+		case "ready":
+			return { action: params.action };
+	}
+}
+
 export const executeCommitCommand = createCommitCommandExecutor({
 	runGitAsync,
 	gitOrThrowAsync,
@@ -2331,6 +2418,143 @@ export const executeCommitCommand = createCommitCommandExecutor({
 });
 
 export default function (pi: ExtensionAPI) {
+	let activePlanLifecycle: PlanLifecycleSnapshot | undefined;
+
+	const persistPlanLifecycle = async (
+		snapshot: PlanLifecycleSnapshot,
+	): Promise<void> => {
+		activePlanLifecycle = snapshot;
+		await pi.appendEntry(PLAN_LIFECYCLE_ENTRY_TYPE, snapshot);
+	};
+
+	registerPlanLifecycleController(pi, {
+		start: async (request) => {
+			const snapshot = createPlanLifecycleSnapshot(randomUUID(), request);
+			await persistPlanLifecycle(snapshot);
+			activateTools(pi, ["plan_progress"]);
+			return snapshot;
+		},
+		current: () => activePlanLifecycle,
+	});
+
+	const restorePlanLifecycle = (ctx: {
+		sessionManager: { getBranch(): ReadonlyArray<unknown> };
+	}): void => {
+		activePlanLifecycle = undefined;
+		for (const entry of ctx.sessionManager.getBranch()) {
+			if (!entry || typeof entry !== "object") continue;
+			const candidate = entry as {
+				type?: unknown;
+				customType?: unknown;
+				data?: unknown;
+			};
+			if (
+				candidate.type === "custom" &&
+				candidate.customType === PLAN_LIFECYCLE_ENTRY_TYPE &&
+				isPlanLifecycleSnapshot(candidate.data)
+			)
+				activePlanLifecycle = candidate.data;
+		}
+		if (activePlanLifecycle && activePlanLifecycle.stage !== "ready")
+			activateTools(pi, ["plan_progress"]);
+		else deactivateTools(pi, ["plan_progress"]);
+	};
+
+	pi.registerTool({
+		name: "plan_progress",
+		label: "Plan Progress",
+		description:
+			"Record bounded /plan-it lifecycle transitions for the active invocation and validate the canonical plan before readiness.",
+		parameters: Type.Object(
+			{
+				action: StringEnum(
+					[
+						"draft",
+						"risk",
+						"review",
+						"settle_review",
+						"adjudicate",
+						"repair",
+						"accept",
+						"inspect",
+						"ready",
+					] as const,
+				),
+				planPath: Type.Optional(Type.String()),
+				risk: Type.Optional(StringEnum(["low", "material"] as const)),
+				inspectedBy: Type.Optional(
+					StringEnum(["primary", "read_only_leaf"] as const),
+				),
+				role: Type.Optional(
+					StringEnum(["adversary", "proponent", "specialist"] as const),
+				),
+				concern: Type.Optional(Type.String({ maxLength: 120 })),
+				outcome: Type.Optional(
+					StringEnum(
+						["supported", "no_finding", "failed", "covered"] as const,
+					),
+				),
+				strategy: Type.Optional(Type.String({ maxLength: 120 })),
+				dispositions: Type.Optional(
+					Type.Array(
+						Type.Object(
+							{
+								role: StringEnum(
+									["adversary", "proponent", "specialist"] as const,
+								),
+								disposition: StringEnum(
+									[
+										"required_repair",
+										"rejected",
+										"deferred",
+										"operator_decision",
+										"no_change",
+									] as const,
+								),
+							},
+							{ additionalProperties: false },
+						),
+						{ maxItems: 2 },
+					),
+				),
+			},
+			{ additionalProperties: false },
+		),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (!activePlanLifecycle)
+				throw new Error("No active /plan-it lifecycle exists in this session.");
+			const input = planProgressInput(params as PlanProgressParams);
+			if (input.action === "ready") {
+				const planPath = activePlanLifecycle.planPath;
+				if (!planPath) throw new Error("The active lifecycle has no plan path.");
+				const validation = validatePlanFile(ctx.cwd, planPath);
+				if (!validation.valid)
+					throw new Error(
+						`Plan contract validation failed: ${validation.errors.join(" ")}`,
+					);
+			}
+			const next = transitionPlanLifecycle(activePlanLifecycle, input);
+			await persistPlanLifecycle(next);
+			if (next.stage === "ready") deactivateTools(pi, ["plan_progress"]);
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: JSON.stringify({
+							outcome: "recorded",
+							planPath: next.planPath,
+							stage: next.stage,
+						}),
+					},
+				],
+				details: next,
+			};
+		},
+	});
+
+	pi.on("session_start", (_event, ctx) => restorePlanLifecycle(ctx));
+	pi.on("session_tree", (_event, ctx) => restorePlanLifecycle(ctx));
+
 	pi.registerTool({
 		name: "plan_archive",
 		label: "Archive Completed Plan",
@@ -2554,6 +2778,10 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Crystallize conversation context into an executable plan document; pass worktree/wt to require isolated branch work",
 		handler: async (args, _ctx) => {
+			await persistPlanLifecycle(
+				createPlanLifecycleSnapshot(randomUUID(), args),
+			);
+			activateTools(pi, ["plan_progress"]);
 			const planPath = args
 				.trim()
 				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
