@@ -10,6 +10,9 @@ import {
 export const DEFAULT_MAX_ACTIVE_TREE_DESCENDANTS = 8;
 export const MAX_ACTIVE_TREE_DESCENDANTS = 16;
 export const MAX_RETAINED_TREE_RUNS = 512;
+export const SUBAGENT_TREE_PROTOCOL_VERSION = 2;
+export const SUBAGENT_TREE_RESTART_REQUIRED =
+	"Subagent tree broker protocol or runtime generation does not match this Pi process. Restart Pi before starting new subagent work.";
 
 export type SubagentTreeRole = "root" | "coordinator" | "leaf";
 export type SubagentTreeRunState =
@@ -71,6 +74,16 @@ export interface SubagentTreePermit {
 	release(): Promise<void>;
 }
 
+export interface SubagentTreeController {
+	readonly parent: SubagentTreeMetadata;
+	acquire(
+		request: Omit<RequestSubagentTreePermit, "treeId" | "parentRunId">,
+		signal?: AbortSignal,
+	): Promise<SubagentTreePermit>;
+	cancel(runId?: string): Promise<string[]>;
+	childEnvironment(permit: SubagentTreePermit): NodeJS.ProcessEnv;
+}
+
 export interface SubagentTreeRunSnapshot extends SubagentTreeMetadata {
 	readonly state: SubagentTreeRunState;
 	readonly pid?: number;
@@ -80,6 +93,8 @@ export interface SubagentTreeBrokerCredentials {
 	readonly host: string;
 	readonly port: number;
 	readonly token: string;
+	readonly protocolVersion: number;
+	readonly runtimeGeneration: string;
 }
 
 export interface SubagentTreeEnvironment extends SubagentTreeBrokerCredentials {
@@ -111,6 +126,7 @@ type MutableTreeNode = {
 };
 
 type BrokerRequest =
+	| { readonly type: "handshake" }
 	| { readonly type: "acquire"; readonly request: RequestSubagentTreePermit }
 	| { readonly type: "register"; readonly runId: string; readonly pid: number }
 	| { readonly type: "release"; readonly runId: string }
@@ -119,6 +135,8 @@ type BrokerRequest =
 type BrokerRequestWithCaller = BrokerRequest & {
 	readonly callerRunId: string;
 	readonly callerToken: string;
+	readonly protocolVersion: number;
+	readonly runtimeGeneration: string;
 };
 
 type BrokerResponse =
@@ -127,6 +145,8 @@ type BrokerResponse =
 			readonly metadata?: SubagentTreeMetadata;
 			readonly ownerToken?: string;
 			readonly cancelled?: string[];
+			readonly protocolVersion?: number;
+			readonly runtimeGeneration?: string;
 		}
 	| { readonly ok: false; readonly error: string };
 type BrokerSuccessResponse = Extract<BrokerResponse, { readonly ok: true }>;
@@ -209,7 +229,9 @@ function isBrokerRequest(value: unknown): value is BrokerRequestWithCaller & {
 		typeof record.token === "string" &&
 		typeof record.callerRunId === "string" &&
 		typeof record.callerToken === "string" &&
-		["acquire", "register", "release", "cancel"].includes(
+		typeof record.protocolVersion === "number" &&
+		typeof record.runtimeGeneration === "string" &&
+		["handshake", "acquire", "register", "release", "cancel"].includes(
 			typeof record.type === "string" ? record.type : "",
 		)
 	);
@@ -248,6 +270,8 @@ function safeEqual(left: string, right: string): boolean {
 }
 
 export class SubagentTreeBroker {
+	readonly protocolVersion: number;
+	readonly runtimeGeneration: string;
 	private readonly nodes = new Map<string, MutableTreeNode>();
 	private readonly queue: string[] = [];
 	private readonly maxActiveDescendants: number;
@@ -255,10 +279,20 @@ export class SubagentTreeBroker {
 	private credentials: SubagentTreeBrokerCredentials | undefined;
 	private listenPromise: Promise<SubagentTreeBrokerCredentials> | undefined;
 
-	constructor(options: { maxActiveDescendants?: number } = {}) {
+	constructor(
+		options: {
+			maxActiveDescendants?: number;
+			protocolVersion?: number;
+			runtimeGeneration?: string;
+		} = {},
+	) {
 		this.maxActiveDescendants = validateLimit(
 			options.maxActiveDescendants ?? DEFAULT_MAX_ACTIVE_TREE_DESCENDANTS,
 		);
+		this.protocolVersion =
+			options.protocolVersion ?? SUBAGENT_TREE_PROTOCOL_VERSION;
+		this.runtimeGeneration = options.runtimeGeneration ?? randomUUID();
+		assertIdentifier(this.runtimeGeneration, "Runtime generation");
 	}
 
 	createTree(input: CreateSubagentTreeInput = {}): SubagentTreeRoot {
@@ -395,6 +429,15 @@ export class SubagentTreeBroker {
 		}));
 	}
 
+	hasOutstandingWork(): boolean {
+		return [...this.nodes.values()].some(
+			(node) =>
+				node.state === "active" ||
+				node.state === "queued" ||
+				Boolean(node.cancellationPending),
+		);
+	}
+
 	async listen(): Promise<SubagentTreeBrokerCredentials> {
 		if (this.credentials) return this.credentials;
 		if (this.listenPromise) return this.listenPromise;
@@ -416,7 +459,13 @@ export class SubagentTreeBroker {
 				throw new Error("Tree broker did not bind a TCP address.");
 			}
 			this.server.unref();
-			this.credentials = { host: "127.0.0.1", port: address.port, token };
+			this.credentials = {
+				host: "127.0.0.1",
+				port: address.port,
+				token,
+				protocolVersion: this.protocolVersion,
+				runtimeGeneration: this.runtimeGeneration,
+			};
 			return this.credentials;
 		})();
 		try {
@@ -602,11 +651,22 @@ export class SubagentTreeBroker {
 			if (!isBrokerRequest(candidate) || !safeEqual(candidate.token, token)) {
 				return { ok: false, error: "Tree broker authentication failed." };
 			}
+			if (
+				candidate.protocolVersion !== this.protocolVersion ||
+				candidate.runtimeGeneration !== this.runtimeGeneration
+			)
+				throw new SubagentTreeAdmissionError(SUBAGENT_TREE_RESTART_REQUIRED);
 			this.authenticateSocketCaller(
 				candidate.callerRunId,
 				candidate.callerToken,
 			);
 			switch (candidate.type) {
+				case "handshake":
+					return {
+						ok: true,
+						protocolVersion: this.protocolVersion,
+						runtimeGeneration: this.runtimeGeneration,
+					};
 				case "acquire": {
 					if (candidate.request.parentRunId !== candidate.callerRunId)
 						throw new SubagentTreeAdmissionError(
@@ -639,7 +699,98 @@ export class SubagentTreeBroker {
 	}
 }
 
-export class SubagentTreeClient {
+function identityEnvironment(
+	permit: SubagentTreePermit,
+): NodeJS.ProcessEnv {
+	const { metadata } = permit;
+	return {
+		PI_SUBAGENT_TREE_CALLER_TOKEN: permit.ownerToken,
+		PI_SUBAGENT_TREE_ID: metadata.treeId,
+		PI_SUBAGENT_TREE_RUN_ID: metadata.runId,
+		PI_SUBAGENT_TREE_ROLE: metadata.role,
+		PI_SUBAGENT_TREE_DEPTH: String(metadata.depth),
+	};
+}
+
+export class SubagentTreeRootClient implements SubagentTreeController {
+	readonly parent: SubagentTreeMetadata;
+	private remoteCredentials: SubagentTreeBrokerCredentials | undefined;
+
+	constructor(
+		private readonly broker: SubagentTreeBroker,
+		root: SubagentTreeRoot,
+	) {
+		this.parent = {
+			treeId: root.treeId,
+			runId: root.rootRunId,
+			role: "root",
+			depth: 0,
+		};
+	}
+
+	async acquire(
+		request: Omit<RequestSubagentTreePermit, "treeId" | "parentRunId">,
+		signal?: AbortSignal,
+	): Promise<SubagentTreePermit> {
+		if (signal?.aborted)
+			throw signal.reason ?? new Error("Tree permit request was cancelled.");
+		const runId = request.runId ?? randomUUID();
+		const pending = this.broker.acquire({
+			...request,
+			runId,
+			treeId: this.parent.treeId,
+			parentRunId: this.parent.runId,
+		});
+		const abort = () => {
+			this.broker.cancel(this.parent.runId, runId);
+		};
+		signal?.addEventListener("abort", abort, { once: true });
+		try {
+			const permit = await pending;
+			if (signal?.aborted) {
+				await permit.release();
+				throw signal.reason ?? new Error("Tree permit request was cancelled.");
+			}
+			if (permit.metadata.role === "coordinator") {
+				try {
+					this.remoteCredentials = await this.broker.listen();
+				} catch (error) {
+					await permit.release();
+					throw error;
+				}
+			}
+			return permit;
+		} finally {
+			signal?.removeEventListener("abort", abort);
+		}
+	}
+
+	async cancel(runId = this.parent.runId): Promise<string[]> {
+		return this.broker.cancel(this.parent.runId, runId);
+	}
+
+	childEnvironment(permit: SubagentTreePermit): NodeJS.ProcessEnv {
+		const identity = identityEnvironment(permit);
+		if (permit.metadata.role !== "coordinator") return identity;
+		if (!this.remoteCredentials)
+			throw new Error("Coordinator process is missing tree broker credentials.");
+		return {
+			...identity,
+			PI_SUBAGENT_TREE_BROKER_HOST: this.remoteCredentials.host,
+			PI_SUBAGENT_TREE_BROKER_PORT: String(this.remoteCredentials.port),
+			PI_SUBAGENT_TREE_BROKER_TOKEN: this.remoteCredentials.token,
+			PI_SUBAGENT_TREE_PROTOCOL_VERSION: String(
+				this.remoteCredentials.protocolVersion,
+			),
+			PI_SUBAGENT_TREE_RUNTIME_GENERATION:
+				this.remoteCredentials.runtimeGeneration,
+		};
+	}
+}
+
+export class SubagentTreeClient implements SubagentTreeController {
+	private handshakePromise: Promise<void> | undefined;
+
 	constructor(
 		private readonly credentials: SubagentTreeBrokerCredentials,
 		readonly parent: SubagentTreeMetadata,
@@ -652,6 +803,7 @@ export class SubagentTreeClient {
 	): Promise<SubagentTreePermit> {
 		if (signal?.aborted)
 			throw signal.reason ?? new Error("Tree permit request was cancelled.");
+		await this.handshake();
 		const requestWithParent: RequestSubagentTreePermit = {
 			...request,
 			runId: request.runId ?? randomUUID(),
@@ -708,22 +860,38 @@ export class SubagentTreeClient {
 	}
 
 	async cancel(runId = this.parent.runId): Promise<string[]> {
+		await this.handshake();
 		const response = await this.request({ type: "cancel", runId });
 		return response.cancelled ?? [];
 	}
 
 	childEnvironment(permit: SubagentTreePermit): NodeJS.ProcessEnv {
-		const { metadata } = permit;
 		return {
+			...identityEnvironment(permit),
 			PI_SUBAGENT_TREE_BROKER_HOST: this.credentials.host,
 			PI_SUBAGENT_TREE_BROKER_PORT: String(this.credentials.port),
 			PI_SUBAGENT_TREE_BROKER_TOKEN: this.credentials.token,
-			PI_SUBAGENT_TREE_CALLER_TOKEN: permit.ownerToken,
-			PI_SUBAGENT_TREE_ID: metadata.treeId,
-			PI_SUBAGENT_TREE_RUN_ID: metadata.runId,
-			PI_SUBAGENT_TREE_ROLE: metadata.role,
-			PI_SUBAGENT_TREE_DEPTH: String(metadata.depth),
+			PI_SUBAGENT_TREE_PROTOCOL_VERSION: String(
+				this.credentials.protocolVersion,
+			),
+			PI_SUBAGENT_TREE_RUNTIME_GENERATION:
+				this.credentials.runtimeGeneration,
 		};
+	}
+
+	private handshake(): Promise<void> {
+		this.handshakePromise ??= this.request({ type: "handshake" }).then(
+			(response) => {
+				if (
+					response.protocolVersion !== this.credentials.protocolVersion ||
+					response.runtimeGeneration !== this.credentials.runtimeGeneration
+				)
+					throw new SubagentTreeAdmissionError(
+						SUBAGENT_TREE_RESTART_REQUIRED,
+					);
+			},
+		);
+		return this.handshakePromise;
 	}
 
 	private async request(request: BrokerRequest): Promise<BrokerSuccessResponse> {
@@ -741,6 +909,8 @@ export class SubagentTreeClient {
 						token: this.credentials.token,
 						callerRunId: this.parent.runId,
 						callerToken: this.callerToken,
+						protocolVersion: this.credentials.protocolVersion,
+						runtimeGeneration: this.credentials.runtimeGeneration,
 					})}\n`,
 				),
 			);
@@ -773,6 +943,18 @@ export function treeClientFromEnvironment(
 	const runId = environment.PI_SUBAGENT_TREE_RUN_ID;
 	const role = environment.PI_SUBAGENT_TREE_ROLE;
 	const depth = Number(environment.PI_SUBAGENT_TREE_DEPTH);
+	const protocolVersion = Number(
+		environment.PI_SUBAGENT_TREE_PROTOCOL_VERSION,
+	);
+	const runtimeGeneration =
+		environment.PI_SUBAGENT_TREE_RUNTIME_GENERATION;
+	const hasBrokerEnvironment = Boolean(host || token || callerToken);
+	if (
+		hasBrokerEnvironment &&
+		(protocolVersion !== SUBAGENT_TREE_PROTOCOL_VERSION ||
+			!runtimeGeneration)
+	)
+		throw new SubagentTreeAdmissionError(SUBAGENT_TREE_RESTART_REQUIRED);
 	if (
 		!host ||
 		!Number.isInteger(port) ||
@@ -782,40 +964,78 @@ export function treeClientFromEnvironment(
 		!treeId ||
 		!runId ||
 		(role !== "coordinator" && role !== "leaf") ||
-		!Number.isInteger(depth)
+		!Number.isInteger(depth) ||
+		!runtimeGeneration
 	) {
 		return undefined;
 	}
 	return new SubagentTreeClient(
-		{ host, port, token },
+		{ host, port, token, protocolVersion, runtimeGeneration },
 		{ treeId, runId, role, depth },
 		callerToken,
 	);
 }
 
-const SUBAGENT_TREE_BROKER_VERSION = 1;
 const SUBAGENT_TREE_BROKER_KEY = Symbol.for("dotfiles.pi.subagent-tree-broker");
 
 type SubagentTreeBrokerGlobal = {
-	version: number;
+	protocolVersion: number;
 	broker: SubagentTreeBroker;
 };
 
-export function getSubagentTreeBroker(): SubagentTreeBroker {
-	const globals = globalThis as typeof globalThis & Record<symbol, unknown>;
-	const existing = globals[SUBAGENT_TREE_BROKER_KEY] as
-		| SubagentTreeBrokerGlobal
-		| undefined;
-	if (existing?.version === SUBAGENT_TREE_BROKER_VERSION) return existing.broker;
+function brokerGlobals(): typeof globalThis & Record<symbol, unknown> {
+	return globalThis as typeof globalThis & Record<symbol, unknown>;
+}
+
+function createSubagentTreeBroker(): SubagentTreeBroker {
 	const configuredLimit = process.env.PI_SUBAGENT_MAX_ACTIVE_DESCENDANTS;
-	const broker = new SubagentTreeBroker(
+	return new SubagentTreeBroker(
 		configuredLimit === undefined
 			? {}
 			: { maxActiveDescendants: Number(configuredLimit) },
 	);
+}
+
+function installSubagentTreeBroker(
+	globals: ReturnType<typeof brokerGlobals>,
+): SubagentTreeBroker {
+	const broker = createSubagentTreeBroker();
 	globals[SUBAGENT_TREE_BROKER_KEY] = {
-		version: SUBAGENT_TREE_BROKER_VERSION,
+		protocolVersion: SUBAGENT_TREE_PROTOCOL_VERSION,
 		broker,
 	} satisfies SubagentTreeBrokerGlobal;
 	return broker;
+}
+
+export function getSubagentTreeBroker(): SubagentTreeBroker {
+	const globals = brokerGlobals();
+	const existing = globals[SUBAGENT_TREE_BROKER_KEY] as
+		| SubagentTreeBrokerGlobal
+		| undefined;
+	if (!existing) return installSubagentTreeBroker(globals);
+
+	const compatible =
+		existing.protocolVersion === SUBAGENT_TREE_PROTOCOL_VERSION &&
+		existing.broker.protocolVersion === SUBAGENT_TREE_PROTOCOL_VERSION;
+	if (compatible) return existing.broker;
+
+	const hasOutstandingWork =
+		typeof existing.broker.hasOutstandingWork === "function"
+			? existing.broker.hasOutstandingWork()
+			: existing.broker
+					.list()
+					.some((run) => run.state === "active" || run.state === "queued");
+	if (hasOutstandingWork)
+		throw new SubagentTreeAdmissionError(SUBAGENT_TREE_RESTART_REQUIRED);
+
+	const replacement = installSubagentTreeBroker(globals);
+	void existing.broker.dispose();
+	return replacement;
+}
+
+export async function disposeInstalledSubagentTreeBroker(): Promise<void> {
+	const existing = brokerGlobals()[SUBAGENT_TREE_BROKER_KEY] as
+		| SubagentTreeBrokerGlobal
+		| undefined;
+	await existing?.broker.dispose();
 }

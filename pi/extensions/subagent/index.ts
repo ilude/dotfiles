@@ -97,9 +97,12 @@ import {
 	toolsForScopedModifier,
 } from "./scope-policy.js";
 import {
+	disposeInstalledSubagentTreeBroker,
 	getSubagentTreeBroker,
-	SubagentTreeClient,
+	SubagentTreeRootClient,
 	treeClientFromEnvironment,
+	type SubagentTreeBroker,
+	type SubagentTreeController,
 	type SubagentTreePermit,
 } from "./tree-runtime.js";
 import {
@@ -225,6 +228,25 @@ function formatTokens(count: number): string {
 	return `${(count / 1000000).toFixed(1)}M`;
 }
 
+interface SubagentActivityStats {
+	toolCalls: number;
+	distinctTools: number;
+	commandsRun: number;
+	filesRead: number;
+	filesWritten: number;
+	subagentsStarted: number;
+}
+
+function formatElapsedDuration(durationMs: number | undefined): string | undefined {
+	if (durationMs === undefined || !Number.isFinite(durationMs)) return undefined;
+	const seconds = Math.max(0, Math.round(durationMs / 1000));
+	const minutes = Math.floor(seconds / 60);
+	const remainder = seconds % 60;
+	return minutes > 0
+		? `${minutes}m${String(remainder).padStart(2, "0")}s`
+		: `${seconds}s`;
+}
+
 function formatUsageStats(
 	usage: {
 		input: number;
@@ -236,6 +258,8 @@ function formatUsageStats(
 		turns?: number;
 	},
 	model?: string,
+	durationMs?: number,
+	activity?: SubagentActivityStats,
 ): string {
 	const parts: string[] = [];
 	if (usage.turns)
@@ -247,6 +271,14 @@ function formatUsageStats(
 	if (usage.cost !== null) parts.push(`$${usage.cost.toFixed(4)}`);
 	if (usage.contextPeakTokens && usage.contextPeakTokens > 0) {
 		parts.push(`ctx:${formatTokens(usage.contextPeakTokens)}`);
+	}
+	const elapsed = formatElapsedDuration(durationMs);
+	if (elapsed) parts.push(`time:${elapsed}`);
+	if (activity) {
+		parts.push(`files:r${activity.filesRead}/w${activity.filesWritten}`);
+		parts.push(`commands:${activity.commandsRun}`);
+		parts.push(`tools:${activity.toolCalls}`);
+		parts.push(`subagents:${activity.subagentsStarted}`);
 	}
 	if (model) parts.push(model);
 	return parts.join(" ");
@@ -411,6 +443,7 @@ export interface SingleResult {
 	runId?: string;
 	taskId?: string;
 	durationMs?: number;
+	activity?: SubagentActivityStats;
 	sessionPath?: string;
 	structuredOutput?: unknown;
 	outputAttempts?: number;
@@ -731,6 +764,44 @@ function getDisplayItems(messages: Message[]): DisplayItem[] {
 	return items;
 }
 
+function addActivityPath(paths: Set<string>, value: unknown): void {
+	if (typeof value === "string" && value.trim()) paths.add(value.trim());
+	else if (Array.isArray(value))
+		for (const entry of value) addActivityPath(paths, entry);
+}
+
+function collectSubagentActivity(
+	messages: Message[],
+	subagentsStarted: number,
+): SubagentActivityStats {
+	const toolCalls = getDisplayItems(messages).filter(
+		(item): item is Extract<DisplayItem, { type: "toolCall" }> =>
+			item.type === "toolCall",
+	);
+	const tools = new Set<string>();
+	const filesRead = new Set<string>();
+	const filesWritten = new Set<string>();
+	let commandsRun = 0;
+	for (const call of toolCalls) {
+		tools.add(call.name);
+		if (call.name === "read")
+			addActivityPath(filesRead, call.args.path ?? call.args.file_path);
+		if (["write", "edit", "structured_edit"].includes(call.name))
+			addActivityPath(filesWritten, call.args.path ?? call.args.file_path);
+		if (call.name === "text_edit")
+			addActivityPath(filesWritten, call.args.paths);
+		if (["bash", "pwsh", "bg_start"].includes(call.name)) commandsRun++;
+	}
+	return {
+		toolCalls: toolCalls.length,
+		distinctTools: tools.size,
+		commandsRun,
+		filesRead: filesRead.size,
+		filesWritten: filesWritten.size,
+		subagentsStarted,
+	};
+}
+
 async function mapWithConcurrencyLimit<TIn, TOut>(
 	items: TIn[],
 	concurrency: number,
@@ -819,7 +890,7 @@ interface SubagentRunContext {
 	taskKey?: string;
 	attempt?: number;
 	retryOrigin?: string;
-	treeClient?: SubagentTreeClient;
+	treeClient?: SubagentTreeController;
 }
 
 type CurrentSubagentRole = "root" | SubagentRole;
@@ -2267,7 +2338,7 @@ export default function (pi: ExtensionAPI) {
 		if (event.reason === "quit") {
 			if (currentSubagentIdentity().role === "root") {
 				await subagentRunManager.dispose();
-				await getSubagentTreeBroker().dispose();
+				await disposeInstalledSubagentTreeBroker();
 			} else await subagentRunManager.dispose();
 		} else subagentRunManager.cancelForeground();
 		sessionAgentCatalog = undefined;
@@ -2374,9 +2445,10 @@ export default function (pi: ExtensionAPI) {
 
 			const orchestrationId = randomUUID();
 			const interactionId = registerOrchestrationInvocation(orchestrationId);
-			let invocationTreeClientPromise: Promise<SubagentTreeClient> | undefined;
+			let invocationTreeClientPromise: Promise<SubagentTreeController> | undefined;
+			let invocationBroker: SubagentTreeBroker | undefined;
 			let invocationRootRunId: string | undefined;
-			const getInvocationTreeClient = (): Promise<SubagentTreeClient> => {
+			const getInvocationTreeClient = (): Promise<SubagentTreeController> => {
 				if (invocationTreeClientPromise) return invocationTreeClientPromise;
 				invocationTreeClientPromise = (async () => {
 					if (currentIdentity.role !== "root") {
@@ -2388,19 +2460,10 @@ export default function (pi: ExtensionAPI) {
 						return client;
 					}
 					const broker = getSubagentTreeBroker();
+					invocationBroker = broker;
 					const root = broker.createTree({ treeId: orchestrationId });
 					invocationRootRunId = root.rootRunId;
-					const credentials = await broker.listen();
-					return new SubagentTreeClient(
-						credentials,
-						{
-							treeId: root.treeId,
-							runId: root.rootRunId,
-							role: "root",
-							depth: 0,
-						},
-						root.ownerToken,
-					);
+					return new SubagentTreeRootClient(broker, root);
 				})();
 				return invocationTreeClientPromise;
 			};
@@ -2408,7 +2471,7 @@ export default function (pi: ExtensionAPI) {
 				if (!invocationRootRunId) return;
 				const rootRunId = invocationRootRunId;
 				invocationRootRunId = undefined;
-				await getSubagentTreeBroker().release(rootRunId);
+				await invocationBroker?.release(rootRunId);
 			};
 			const fanoutPlanValid =
 				fanoutPlan !== undefined &&
@@ -2492,6 +2555,8 @@ export default function (pi: ExtensionAPI) {
 				orchestrationEmitted = true;
 				const details = result.details;
 				const results = details?.results ?? [];
+				for (const worker of results)
+					worker.activity = collectSubagentActivity(worker.messages, 1);
 				const parentText = result.content.find(
 					(item) => item.type === "text",
 				)?.text;
@@ -3585,7 +3650,12 @@ export default function (pi: ExtensionAPI) {
 							);
 						}
 					}
-					const usageStr = formatUsageStats(r.usage, r.model);
+					const usageStr = formatUsageStats(
+						r.usage,
+						r.model,
+						r.durationMs,
+						r.activity ?? collectSubagentActivity(r.messages, 1),
+					);
 					if (usageStr) {
 						container.addChild(new Spacer(1));
 						container.addChild(new Text(theme.fg("dim", usageStr), 0, 0));
@@ -3605,7 +3675,12 @@ export default function (pi: ExtensionAPI) {
 					if (displayItems.length > COLLAPSED_ITEM_COUNT)
 						text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
 				}
-				const usageStr = formatUsageStats(r.usage, r.model);
+				const usageStr = formatUsageStats(
+					r.usage,
+					r.model,
+					r.durationMs,
+					r.activity ?? collectSubagentActivity(r.messages, 1),
+				);
 				if (usageStr) text += `\n${theme.fg("dim", usageStr)}`;
 				return new Text(text, 0, 0);
 			}
@@ -3630,6 +3705,20 @@ export default function (pi: ExtensionAPI) {
 				}
 				return total;
 			};
+			const aggregateDuration = (
+				results: SingleResult[],
+				mode: "chain" | "parallel",
+			): number => {
+				const durations = results.map((result) => result.durationMs ?? 0);
+				return mode === "chain"
+					? durations.reduce((total, duration) => total + duration, 0)
+					: Math.max(0, ...durations);
+			};
+			const aggregateActivity = (results: SingleResult[]) =>
+				collectSubagentActivity(
+					results.flatMap((result) => result.messages),
+					results.length,
+				);
 
 			if (details.mode === "chain") {
 				const successCount = details.results.filter(
@@ -3706,12 +3795,22 @@ export default function (pi: ExtensionAPI) {
 							);
 						}
 
-						const stepUsage = formatUsageStats(r.usage, r.model);
+						const stepUsage = formatUsageStats(
+							r.usage,
+							r.model,
+							r.durationMs,
+							r.activity ?? collectSubagentActivity(r.messages, 1),
+						);
 						if (stepUsage)
 							container.addChild(new Text(theme.fg("dim", stepUsage), 0, 0));
 					}
 
-					const usageStr = formatUsageStats(aggregateUsage(details.results));
+					const usageStr = formatUsageStats(
+						aggregateUsage(details.results),
+						undefined,
+						aggregateDuration(details.results, "chain"),
+						aggregateActivity(details.results),
+					);
 					if (usageStr) {
 						container.addChild(new Spacer(1));
 						container.addChild(
@@ -3738,7 +3837,12 @@ export default function (pi: ExtensionAPI) {
 						text += `\n${theme.fg("muted", "(no output)")}`;
 					else text += `\n${renderDisplayItems(displayItems, 5)}`;
 				}
-				const usageStr = formatUsageStats(aggregateUsage(details.results));
+				const usageStr = formatUsageStats(
+					aggregateUsage(details.results),
+					undefined,
+					aggregateDuration(details.results, "chain"),
+					aggregateActivity(details.results),
+				);
 				if (usageStr) text += `\n\n${theme.fg("dim", `Total: ${usageStr}`)}`;
 				text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
 				return new Text(text, 0, 0);
@@ -3820,12 +3924,22 @@ export default function (pi: ExtensionAPI) {
 							);
 						}
 
-						const taskUsage = formatUsageStats(r.usage, r.model);
+						const taskUsage = formatUsageStats(
+							r.usage,
+							r.model,
+							r.durationMs,
+							r.activity ?? collectSubagentActivity(r.messages, 1),
+						);
 						if (taskUsage)
 							container.addChild(new Text(theme.fg("dim", taskUsage), 0, 0));
 					}
 
-					const usageStr = formatUsageStats(aggregateUsage(details.results));
+					const usageStr = formatUsageStats(
+						aggregateUsage(details.results),
+						undefined,
+						aggregateDuration(details.results, "parallel"),
+						aggregateActivity(details.results),
+					);
 					if (usageStr) {
 						container.addChild(new Spacer(1));
 						container.addChild(
@@ -3851,7 +3965,12 @@ export default function (pi: ExtensionAPI) {
 					else text += `\n${renderDisplayItems(displayItems, 5)}`;
 				}
 				if (!isRunning) {
-					const usageStr = formatUsageStats(aggregateUsage(details.results));
+					const usageStr = formatUsageStats(
+						aggregateUsage(details.results),
+						undefined,
+						aggregateDuration(details.results, "parallel"),
+						aggregateActivity(details.results),
+					);
 					if (usageStr) text += `\n\n${theme.fg("dim", `Total: ${usageStr}`)}`;
 				}
 				if (!expanded) text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;

@@ -3755,6 +3755,71 @@ You are a test agent.
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
+	it(
+		"records activity and renders elapsed closeout stats",
+		async () => {
+			spawnMock.mockImplementation(() => {
+				const proc = createMockProcess();
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [
+									{ type: "toolCall", id: "read-1", name: "read", arguments: { path: "a.ts" } },
+									{ type: "toolCall", id: "read-2", name: "read", arguments: { path: "a.ts" } },
+									{ type: "toolCall", id: "read-3", name: "read", arguments: { path: "b.ts" } },
+									{ type: "toolCall", id: "edit-1", name: "edit", arguments: { path: "a.ts" } },
+									{ type: "toolCall", id: "write-1", name: "write", arguments: { path: "c.ts" } },
+									{ type: "toolCall", id: "bash-1", name: "bash", arguments: { command: "pnpm test" } },
+									{ type: "toolCall", id: "pwsh-1", name: "pwsh", arguments: { command: "Get-Item ." } },
+									{ type: "text", text: "done" },
+								],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-closeout-stats",
+				{
+					agent: "tester",
+					task: "Record closeout activity",
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+			const worker = result.details.results[0];
+			expect(worker.activity).toEqual({
+				toolCalls: 7,
+				distinctTools: 5,
+				commandsRun: 2,
+				filesRead: 2,
+				filesWritten: 2,
+				subagentsStarted: 1,
+			});
+			worker.durationMs = 125_000;
+			const rendered = tool
+				.renderResult(result, { expanded: true }, createMockTheme(), {})
+				.render(240)
+				.join("\n");
+			expect(rendered).toContain("time:2m05s");
+			expect(rendered).toContain("files:r2/w2");
+			expect(rendered).toContain("commands:2");
+			expect(rendered).toContain("tools:7");
+			expect(rendered).toContain("subagents:1");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
 	it("resolves the current CLI without a shell-name fallback", async () => {
 		const cliPath = path.join(tmpDir, "cli.js");
 		await fs.promises.writeFile(cliPath, "", "utf8");

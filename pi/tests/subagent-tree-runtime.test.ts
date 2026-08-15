@@ -1,12 +1,49 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	getSubagentTreeBroker,
 	SubagentTreeAdmissionError,
 	SubagentTreeBroker,
 	SubagentTreeClient,
+	SubagentTreeRootClient,
+	SUBAGENT_TREE_PROTOCOL_VERSION,
+	SUBAGENT_TREE_RESTART_REQUIRED,
 	treeClientFromEnvironment,
 } from "../extensions/subagent/tree-runtime.ts";
 
 describe("SubagentTreeBroker", () => {
+	it("admits root leaves in process and listens only for coordinators", async () => {
+		const broker = new SubagentTreeBroker();
+		const listen = vi.spyOn(broker, "listen");
+		const root = broker.createTree({ treeId: "tree", rootRunId: "root" });
+		const client = new SubagentTreeRootClient(broker, root);
+
+		const leaf = await client.acquire({ runId: "leaf", role: "leaf" });
+		expect(listen).not.toHaveBeenCalled();
+		expect(client.childEnvironment(leaf)).toMatchObject({
+			PI_SUBAGENT_TREE_RUN_ID: "leaf",
+			PI_SUBAGENT_TREE_ROLE: "leaf",
+		});
+		expect(client.childEnvironment(leaf)).not.toHaveProperty(
+			"PI_SUBAGENT_TREE_BROKER_PORT",
+		);
+		await leaf.release();
+
+		const coordinator = await client.acquire({
+			runId: "coordinator",
+			role: "coordinator",
+		});
+		expect(listen).toHaveBeenCalledTimes(1);
+		expect(client.childEnvironment(coordinator)).toMatchObject({
+			PI_SUBAGENT_TREE_ROLE: "coordinator",
+			PI_SUBAGENT_TREE_PROTOCOL_VERSION: String(
+				SUBAGENT_TREE_PROTOCOL_VERSION,
+			),
+			PI_SUBAGENT_TREE_RUNTIME_GENERATION: broker.runtimeGeneration,
+		});
+		await coordinator.release();
+		await broker.dispose();
+	});
+
 	it("admits only root to coordinator or leaf and coordinator to leaf", async () => {
 		const broker = new SubagentTreeBroker();
 		const root = broker.createTree({ treeId: "tree", rootRunId: "root" });
@@ -491,6 +528,58 @@ describe("SubagentTreeBroker", () => {
 		await broker.dispose();
 	});
 
+	it("rejects remote generation mismatches before permit acquisition", async () => {
+		const broker = new SubagentTreeBroker();
+		const root = broker.createTree({ treeId: "tree", rootRunId: "root" });
+		const credentials = await broker.listen();
+		const stale = new SubagentTreeClient(
+			{ ...credentials, runtimeGeneration: "stale-generation" },
+			{
+				treeId: root.treeId,
+				runId: root.rootRunId,
+				role: "root",
+				depth: 0,
+			},
+			root.ownerToken,
+		);
+
+		await expect(
+			stale.acquire({ runId: "must-not-start", role: "leaf" }),
+		).rejects.toThrow(SUBAGENT_TREE_RESTART_REQUIRED);
+		expect(broker.list().map((run) => run.runId)).toEqual(["root"]);
+		await broker.dispose();
+	});
+
+	it("rejects a stale broker response without requesting a permit", async () => {
+		const broker = new SubagentTreeBroker();
+		const root = broker.createTree({ treeId: "tree", rootRunId: "root" });
+		const credentials = await broker.listen();
+		const client = new SubagentTreeClient(
+			credentials,
+			{
+				treeId: root.treeId,
+				runId: root.rootRunId,
+				role: "root",
+				depth: 0,
+			},
+			root.ownerToken,
+		);
+		const requestTarget = client as unknown as {
+			request: (request: unknown) => Promise<{ ok: true }>;
+		};
+		const request = vi
+			.spyOn(requestTarget, "request")
+			.mockResolvedValue({ ok: true });
+
+		await expect(
+			client.acquire({ runId: "must-not-start", role: "leaf" }),
+		).rejects.toThrow(SUBAGENT_TREE_RESTART_REQUIRED);
+		expect(request).toHaveBeenCalledTimes(1);
+		expect(request).toHaveBeenCalledWith({ type: "handshake" });
+		expect(broker.list().map((run) => run.runId)).toEqual(["root"]);
+		await broker.dispose();
+	});
+
 	it("authenticates cross-process clients and propagates child metadata", async () => {
 		const broker = new SubagentTreeBroker();
 		const root = broker.createTree();
@@ -528,6 +617,48 @@ describe("SubagentTreeBroker", () => {
 		).rejects.toThrow("authentication failed");
 		await coordinator.release();
 		await broker.dispose();
+	});
+
+	it("preserves an active incompatible broker and replaces it after settlement", async () => {
+		const key = Symbol.for("dotfiles.pi.subagent-tree-broker");
+		const globals = globalThis as typeof globalThis & Record<symbol, unknown>;
+		const previous = globals[key];
+		const compatible = new SubagentTreeBroker({
+			protocolVersion: SUBAGENT_TREE_PROTOCOL_VERSION,
+		});
+		let replacement: SubagentTreeBroker | undefined;
+		try {
+			globals[key] = {
+				protocolVersion: SUBAGENT_TREE_PROTOCOL_VERSION,
+				broker: compatible,
+			};
+			expect(getSubagentTreeBroker()).toBe(compatible);
+
+			const incompatible = new SubagentTreeBroker({ protocolVersion: 1 });
+			const active = incompatible.createTree({
+				treeId: "old-tree",
+				rootRunId: "old-root",
+			});
+			globals[key] = { protocolVersion: 1, broker: incompatible };
+			expect(() => getSubagentTreeBroker()).toThrow(
+				SUBAGENT_TREE_RESTART_REQUIRED,
+			);
+			expect(incompatible.hasOutstandingWork()).toBe(true);
+
+			await incompatible.release(active.rootRunId);
+			expect(incompatible.hasOutstandingWork()).toBe(false);
+			replacement = getSubagentTreeBroker();
+			expect(replacement).not.toBe(incompatible);
+			expect(replacement.protocolVersion).toBe(
+				SUBAGENT_TREE_PROTOCOL_VERSION,
+			);
+			expect(getSubagentTreeBroker()).toBe(replacement);
+		} finally {
+			if (previous === undefined) delete globals[key];
+			else globals[key] = previous;
+			await replacement?.dispose();
+			await compatible.dispose();
+		}
 	});
 
 	it("rejects ceilings above the hard limit", () => {
