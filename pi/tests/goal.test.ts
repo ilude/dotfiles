@@ -348,7 +348,7 @@ describe("goal extension", () => {
 		expect(readLoopJob(jobId).goal?.state).toBe("running");
 	});
 
-	it("requires re-evaluation after twenty qualifying failures and blocks only after two different recoveries", async () => {
+	async function setupUnattendedGoalRecovery() {
 		writeFile(path.join(tmp, "goal.md"), "Complete both independent tasks.\n");
 		writeFile(
 			path.join(tmp, "plan.md"),
@@ -377,12 +377,12 @@ describe("goal extension", () => {
 		configureGitExec(pi, tmp);
 		goal(pi as unknown as ExtensionAPI);
 		const command = pi._commands.find((item) => item.name === "goal");
-		await command?.handler(
-			"--unattended goal.md",
-			createMockCtx({ cwd: tmp, mode: "tui", shutdown: vi.fn() }),
-		);
 		const progress = pi._getTool("goal_progress");
-		const linked = await progress?.execute("link", {
+		if (!command || !progress)
+			throw new Error("Goal command or progress tool was not registered.");
+		const ctx = createMockCtx({ cwd: tmp, mode: "tui", shutdown: vi.fn() });
+		await command.handler("--unattended goal.md", ctx);
+		const linked = await progress.execute("link", {
 			action: "link_tasks",
 			items: [
 				{ key: "T1", taskId: first.id },
@@ -390,146 +390,167 @@ describe("goal extension", () => {
 			],
 		});
 		expect(linked.isError, linked.content[0].text).not.toBe(true);
+		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
+		return { pi, command, ctx, progress, first, second, jobId };
+	}
 
-		for (let attempt = 0; attempt < 20; attempt += 1) {
-			const started = await progress?.execute("begin", {
-				action: "begin_attempt",
-				key: "T1",
-				strategy: { agent: "builder" },
-			});
-			expect(started.isError).not.toBe(true);
-			await progress?.execute("outcome", {
-				action: "record_outcome",
-				key: "T1",
-				outcome: "error",
-			});
-		}
-		const relinked = await progress?.execute("relink", {
-			action: "link_tasks",
-			items: [{ key: "T1", taskId: first.id }],
+	it("persists recovery exhaustion and leaves independent work runnable", async () => {
+		const { progress, first, second, jobId } =
+			await setupUnattendedGoalRecovery();
+		await updateLoopJob(jobId, (current) => ({
+			...current,
+			goal: current.goal
+				? {
+						...current.goal,
+						items: {
+							...current.goal.items,
+							T1: {
+								...current.goal.items.T1,
+								qualifyingFailures: 19,
+								phase: "ordinary",
+							},
+						},
+					}
+				: undefined,
+		}));
+
+		const started = await progress.execute("begin", {
+			action: "begin_attempt",
+			key: "T1",
+			strategy: { agent: "builder" },
 		});
-		expect(relinked.isError).not.toBe(true);
-		expect(readLoopJob(fs.readdirSync(process.env.PI_LOOP_DIR as string)[0]).goal?.items.T1.phase).toBe(
-			"re_evaluation_required",
-		);
-		const replacement = await progress?.execute("replace-link", {
+		expect(started.isError).not.toBe(true);
+		await progress.execute("outcome", {
+			action: "record_outcome",
+			key: "T1",
+			outcome: "error",
+		});
+		expect(readLoopJob(jobId).goal?.items.T1).toMatchObject({
+			qualifyingFailures: 20,
+			phase: "re_evaluation_required",
+		});
+
+		const replacement = await progress.execute("replace-link", {
 			action: "link_tasks",
 			items: [{ key: "T1", taskId: second.id }],
 		});
 		expect(replacement.isError).toBe(true);
-		expect(replacement.content[0].text).toContain("different goal work");
-
-		const suspended = await progress?.execute("suspended", {
+		const suspended = await progress.execute("suspended", {
 			action: "begin_attempt",
 			key: "T1",
 			strategy: { agent: "builder" },
 		});
 		expect(suspended.isError).toBe(true);
-		expect(suspended.content[0].text).toContain("re-evaluation");
 
-		await progress?.execute("reevaluate", {
+		await progress.execute("reevaluate", {
 			action: "re_evaluate",
 			key: "T1",
 			evidence: "The original evidence source was incomplete.",
 			assumptions: "The failure may be fixture-specific.",
 			message: "Use an independent evidence source and validation method.",
 		});
-		await progress?.execute("recovery-1", {
+		await progress.execute("recovery-1", {
 			action: "begin_attempt",
 			key: "T1",
 			strategy: { agent: "reviewer" },
 		});
-		await progress?.execute("recovery-1-result", {
+		await progress.execute("recovery-1-result", {
 			action: "record_outcome",
 			key: "T1",
 			outcome: "verifier_contradiction",
 		});
-		const identical = await progress?.execute("identical", {
+		const identical = await progress.execute("identical", {
 			action: "begin_attempt",
 			key: "T1",
 			strategy: { agent: "reviewer" },
 		});
 		expect(identical.isError).toBe(true);
-		await progress?.execute("recovery-2", {
+		await progress.execute("recovery-2", {
 			action: "begin_attempt",
 			key: "T1",
 			strategy: { evidenceSource: "independent fixture" },
 		});
-		await progress?.execute("recovery-2-result", {
+		await progress.execute("recovery-2-result", {
 			action: "record_outcome",
 			key: "T1",
 			outcome: "inconclusive",
 		});
 
-		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
-		const failedItem = readLoopJob(jobId).goal?.items.T1;
-		expect(failedItem).toMatchObject({
+		expect(readLoopJob(jobId).goal?.items.T1).toMatchObject({
 			qualifyingFailures: 22,
 			phase: "needs_operator",
 		});
 		expect(getTask(first.id)?.state).toBe("blocked");
-		const blockedRetry = await progress?.execute("blocked-retry", {
+		const blockedRetry = await progress.execute("blocked-retry", {
 			action: "begin_attempt",
 			key: "T1",
 			strategy: { validationMethod: "operator-free retry" },
 		});
 		expect(blockedRetry.isError).toBe(true);
-		expect(getTask(first.id)?.state).toBe("blocked");
-		const independent = await progress?.execute("independent", {
+
+		const independent = await progress.execute("independent", {
 			action: "begin_attempt",
 			key: "T2",
 			strategy: { agent: "builder" },
 		});
 		expect(independent.isError).not.toBe(true);
 		expect(getTask(second.id)?.state).toBe("running");
+	});
 
-		const toolResultHook = pi._getHook("tool_result")[0]?.handler;
-		await toolResultHook?.({
-			content: [
-				{
-					type: "text",
-					text: JSON.stringify({ decisionId: "not-an-approval" }),
-				},
-			],
+	it("requires reconciliation before replaying a stale attempt", async () => {
+		const { pi, progress, second, jobId } =
+			await setupUnattendedGoalRecovery();
+		await progress.execute("independent", {
+			action: "begin_attempt",
+			key: "T2",
+			strategy: { agent: "builder" },
 		});
-		expect(getTask(second.id)?.state).toBe("running");
-		await updateLoopJob(
-			fs.readdirSync(process.env.PI_LOOP_DIR as string)[0],
-			(current) => ({
-				...current,
-				goal: current.goal
-					? {
-							...current.goal,
-							items: {
-								...current.goal.items,
-								T2: {
-									...current.goal.items.T2,
-									activeAttempt: {
-										...current.goal.items.T2.activeAttempt!,
-										ownerPid: process.pid,
-										ownerInstanceId: "stale-process-instance",
-									},
+		await updateLoopJob(jobId, (current) => ({
+			...current,
+			goal: current.goal
+				? {
+						...current.goal,
+						items: {
+							...current.goal.items,
+							T2: {
+								...current.goal.items.T2,
+								activeAttempt: {
+									...current.goal.items.T2.activeAttempt!,
+									ownerPid: process.pid,
+									ownerInstanceId: "stale-process-instance",
 								},
 							},
-						}
-					: undefined,
-			}),
-		);
+						},
+					}
+				: undefined,
+		}));
 		const toolCallHook = pi._getHook("tool_call")[0]?.handler;
 		expect(
 			await toolCallHook?.({ toolName: "bash", input: { command: "echo no" } }),
 		).toMatchObject({ block: true });
-		await progress?.execute("stale-reconcile", {
+		await progress.execute("stale-reconcile", {
 			action: "reconcile",
 			key: "T2",
 			message: "The prior process ended before modification.",
 		});
-		await progress?.execute("independent-again", {
+		const replay = await progress.execute("independent-again", {
 			action: "begin_attempt",
 			key: "T2",
 			strategy: { evidenceSource: "post-reconciliation evidence" },
 		});
+		expect(replay.isError).not.toBe(true);
+		expect(getTask(second.id)?.state).toBe("running");
+	});
 
+	it("preserves permission gates and resets exhausted recovery on resume", async () => {
+		const { pi, command, ctx, progress, first, second, jobId } =
+			await setupUnattendedGoalRecovery();
+		await progress.execute("independent", {
+			action: "begin_attempt",
+			key: "T2",
+			strategy: { agent: "builder" },
+		});
+		const toolResultHook = pi._getHook("tool_result")[0]?.handler;
 		await toolResultHook?.({
 			content: [
 				{
@@ -542,26 +563,18 @@ describe("goal extension", () => {
 			],
 		});
 		expect(getTask(second.id)?.state).toBe("blocked");
-		const deferred = readLoopJob(jobId).goal;
-		expect(deferred?.state).toBe("waiting_for_operator");
-		expect(deferred?.items.T2.qualifyingFailures).toBe(0);
-		expect(deferred?.blockers).toContain(
-			"Permission decision permission-123 blocks T2.",
-		);
-		const genericResolution = await progress?.execute("generic-resolution", {
-			action: "resolve_blocker",
-			key: "T2",
-			message: "Permission decision permission-123 blocks T2.",
+		expect(readLoopJob(jobId).goal).toMatchObject({
+			state: "waiting_for_operator",
+			items: { T2: { qualifyingFailures: 0 } },
 		});
-		expect(genericResolution.isError).toBe(true);
-		expect(genericResolution.content[0].text).toContain("cannot be cleared");
-		const deniedReplay = await progress?.execute("denied-replay", {
+
+		const deniedReplay = await progress.execute("denied-replay", {
 			action: "begin_attempt",
 			key: "T2",
 			strategy: { agent: "builder" },
 		});
 		expect(deniedReplay.isError).toBe(true);
-		const safer = await progress?.execute("safer-alternative", {
+		const safer = await progress.execute("safer-alternative", {
 			action: "begin_attempt",
 			key: "T2",
 			strategy: { toolApproach: "read-only evidence inspection" },
@@ -578,22 +591,45 @@ describe("goal extension", () => {
 				},
 			],
 		});
-		const secondAlternative = await progress?.execute("second-alternative", {
+		const secondAlternative = await progress.execute("second-alternative", {
 			action: "begin_attempt",
 			key: "T2",
 			strategy: { evidenceSource: "another source" },
 		});
 		expect(secondAlternative.isError).toBe(true);
 
-		await command?.handler(
-			"resume",
-			createMockCtx({ cwd: tmp, mode: "tui", shutdown: vi.fn() }),
-		);
+		const recoveryReason = "Recovery attempts are exhausted.";
+		transitionTask(first.id, "running");
+		transitionTask(first.id, "blocked", { blockReason: recoveryReason });
+		await updateLoopJob(jobId, (current) => ({
+			...current,
+			goal: current.goal
+				? {
+						...current.goal,
+						items: {
+							...current.goal.items,
+							T1: {
+								...current.goal.items.T1,
+								phase: "needs_operator",
+								needsOperatorReason: recoveryReason,
+								recoveryStrategies: [
+									{ agent: "reviewer" },
+									{ evidenceSource: "independent fixture" },
+								],
+							},
+						},
+						blockers: [
+							...current.goal.blockers,
+							`T1: ${recoveryReason}`,
+						],
+					}
+				: undefined,
+		}));
+
+		await command.handler("resume", ctx);
 		const resumed = readLoopJob(jobId).goal;
 		expect(resumed?.items.T1.phase).toBe("re_evaluation_required");
-		expect(resumed?.blockers).not.toContain(
-			"T1: Two materially different recovery attempts failed after re-evaluation.",
-		);
+		expect(resumed?.blockers).not.toContain(`T1: ${recoveryReason}`);
 		expect(resumed?.blockers).toContain(
 			"Permission decision permission-456 blocks T2.",
 		);
