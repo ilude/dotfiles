@@ -5,6 +5,7 @@ export interface CommitPlanningPromptContext {
 	diffStat: string;
 	diff: string;
 	hint: string;
+	validationCorrection?: string;
 }
 
 export interface SecretReviewPromptFinding {
@@ -61,7 +62,7 @@ Rules:
 - Prefer no body unless it adds useful why/context.
 
 Commit planning context (JSON):
-${JSON.stringify(payload, null, 2)}`;
+${JSON.stringify(payload, null, 2)}${context.validationCorrection ? `\n\nValidation correction:\n${context.validationCorrection}` : ""}`;
 }
 
 export function buildSecretReviewPrompt(

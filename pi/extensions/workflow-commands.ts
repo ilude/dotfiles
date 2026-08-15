@@ -275,6 +275,7 @@ const CommitPlannerInputSchema = Type.Object({
 	diffStat: Type.String(),
 	diff: Type.String(),
 	hint: Type.String(),
+	validationCorrection: Type.Optional(Type.String()),
 });
 const CommitPlanSchema = Type.Object({
 	groups: Type.Array(
@@ -970,15 +971,27 @@ async function generateCommitPlanWithLlm(
 		hint: string;
 	},
 ) {
-	const result = await commitPlannerAgent.run(
-		{
-			instructions: loadClaudeCommitInstructions(),
-			...context,
-		},
-		ctx,
-	);
-	const plan = parseCommitPlan(JSON.stringify(result.output));
-	validateCommitPlan(plan, context.files);
+	const runPlanner = async (validationCorrection?: string) => {
+		const result = await commitPlannerAgent.run(
+			{
+				instructions: loadClaudeCommitInstructions(),
+				...context,
+				validationCorrection,
+			},
+			ctx,
+		);
+		return parseCommitPlan(JSON.stringify(result.output));
+	};
+
+	let plan = await runPlanner();
+	try {
+		validateCommitPlan(plan, context.files);
+	} catch {
+		plan = await runPlanner(
+			"Your previous response failed deterministic validation. Regenerate the complete plan. Assign every listed changed file to exactly one group with no duplicates, omissions, or extra paths. Every subject must use the required conventional commit format and an allowed type.",
+		);
+		validateCommitPlan(plan, context.files);
+	}
 	return plan;
 }
 

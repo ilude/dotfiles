@@ -8,6 +8,7 @@ vi.mock("../lib/model-routing", () => ({
 	resolveCommitPlanningModelFromRegistry: resolveCommitPlanningModelMock,
 }));
 
+import { buildCommitPlanningPrompt } from "../lib/workflow-commands/prompts.ts";
 import {
 	buildStagingPlan,
 	chooseFilesToCommit,
@@ -48,6 +49,22 @@ describe("commit planner warnings", () => {
 			]),
 		).toEqual(["Planner warning: Review generated files before committing."]);
 		expect(formatCommitPlanWarnings(undefined)).toEqual([]);
+	});
+});
+
+describe("buildCommitPlanningPrompt", () => {
+	it("includes a semantic validation correction on the retry prompt", () => {
+		const prompt = buildCommitPlanningPrompt("instructions", {
+			files: ["a.ts"],
+			diffStat: "",
+			diff: "",
+			hint: "",
+			validationCorrection: "Regenerate the complete plan.",
+		});
+
+		expect(prompt).toContain(
+			"Validation correction:\nRegenerate the complete plan.",
+		);
 	});
 });
 

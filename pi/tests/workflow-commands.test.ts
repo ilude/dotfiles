@@ -303,7 +303,7 @@ describe("workflow command dispatch", () => {
 		);
 	});
 
-	it("keeps normal multi-group commit execution", async () => {
+	it("retries invalid planner coverage before multi-group commit execution", async () => {
 		const notify = vi.fn();
 		const cwd = path.resolve(process.cwd(), "..");
 		const files = ["pi/lib/extension-utils.ts", "pi/lib/model-routing.ts"];
@@ -346,6 +346,16 @@ describe("workflow command dispatch", () => {
 			}
 			return mockGitSpawn();
 		});
+		const validGroups = [
+			{
+				files: [files[0]],
+				subject: "chore(pi): update utilities",
+			},
+			{
+				files: [files[1]],
+				subject: "chore(pi): update routing",
+			},
+		];
 		mockTypedAgentRun.mockImplementation(
 			async (id: string, input: Record<string, unknown>) => ({
 				output:
@@ -360,23 +370,27 @@ describe("workflow command dispatch", () => {
 								})),
 							}
 						: {
-							groups: [
-								{
-									files: [files[0]],
-									subject: "chore(pi): update utilities",
-								},
-								{
-									files: [files[1]],
-									subject: "chore(pi): update routing",
-								},
-							],
-						},
+								groups: input.validationCorrection
+									? validGroups
+									: [validGroups[0], { ...validGroups[1], files }],
+							},
 				attempts: 1,
 			}),
 		);
 
 		await getHandler("commit")("", { cwd, ui: { notify } });
 
+		const plannerCalls = mockTypedAgentRun.mock.calls.filter(
+			([id]) => id === "commit-planner",
+		);
+		expect(plannerCalls).toHaveLength(2);
+		expect(plannerCalls[1]?.[1]).toEqual(
+			expect.objectContaining({
+				validationCorrection: expect.stringContaining(
+					"Assign every listed changed file to exactly one group",
+				),
+			}),
+		);
 		const commitCalls = mockSpawn.mock.calls.filter(
 			([, args]) => (args as string[])[0] === "commit",
 		);
