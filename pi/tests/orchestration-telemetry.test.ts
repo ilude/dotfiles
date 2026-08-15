@@ -66,9 +66,57 @@ describe("orchestration telemetry builders", () => {
 		const result = buildOrchestrationRunEvent(runInput());
 		expect(result).not.toBeNull();
 		expect(result?.data).toMatchObject({
-			schemaVersion: 1,
+			schemaVersion: 2,
 			inlineBytesNotReturned: 15,
 		});
+	});
+
+	it("records only safe optional tree metadata on version 2 workers", () => {
+		const result = buildOrchestrationRunEvent({
+			...runInput(),
+			workers: [
+				{
+					...runInput().workers[0],
+					treeId: "tree-1",
+					parentRunId: "parent-1",
+					depth: 2,
+					role: "leaf",
+					workflowPhase: "retry",
+					taskKey: "item-1",
+					attempt: 2,
+					retryOrigin: "run-0",
+					coordinatorTaskId: "task-1",
+				},
+			],
+		});
+		expect(result?.data).toMatchObject({
+			schemaVersion: 2,
+			workers: [
+				{
+					treeId: "tree-1",
+					parentRunId: "parent-1",
+					depth: 2,
+					role: "leaf",
+					workflowPhase: "retry",
+					taskKey: "item-1",
+					attempt: 2,
+					retryOrigin: "run-0",
+					coordinatorTaskId: "task-1",
+				},
+			],
+		});
+		expect(
+			buildOrchestrationRunEvent({
+				...runInput(),
+				workers: [{ ...runInput().workers[0], taskKey: "src/index.ts" }],
+			}),
+		).toBeNull();
+		expect(
+			buildOrchestrationRunEvent({
+				...runInput(),
+				workers: [{ ...runInput().workers[0], workflowPhase: "tool args" }],
+			} as never),
+		).toBeNull();
 	});
 
 	it("builds deterministic read-only fan-out assignment and outcome events", () => {
@@ -199,7 +247,7 @@ describe("orchestration telemetry builders", () => {
 				],
 				direct: false,
 			})?.data,
-		).toMatchObject({ schemaVersion: 1, direct: false });
+		).toMatchObject({ schemaVersion: 2, direct: false });
 		expect(
 			buildOrchestrationInteractionEvent({
 				interactionId: "interaction-1",
@@ -247,6 +295,55 @@ describe("readOrchestrationEvents", () => {
 		expect(result.events.map((entry) => entry.id)).toEqual(["daily", "legacy"]);
 		expect(result.diagnostics.malformedLines).toBe(1);
 		expect(result.diagnostics.duplicateLines).toBe(1);
+	});
+
+	it("normalizes version 1 telemetry without tree metadata", async () => {
+		const legacyRun = { ...runInput(), schemaVersion: 1 };
+		const legacyInteraction = {
+			schemaVersion: 1,
+			interactionId: "interaction-1",
+			orchestrationIds: ["orchestration-1"],
+			parentUsageByModel: [],
+			direct: false,
+		};
+		fs.writeFileSync(
+			path.join(tmpRoot, "metrics-2026-07-10.jsonl"),
+			[
+				event("legacy-v1-run", "2026-07-10T10:00:00.000Z", legacyRun),
+				event(
+					"legacy-v1-interaction",
+					"2026-07-10T10:00:00.000Z",
+					legacyInteraction,
+					"orchestration_interaction",
+				),
+			].join("\n") + "\n",
+			"utf-8",
+		);
+		const result = await readOrchestrationEvents({
+			dir: tmpRoot,
+			days: 1,
+			now: new Date("2026-07-10T12:00:00.000Z"),
+		});
+		expect(result.events).toHaveLength(2);
+		const run = result.events.find(
+			(entry) => entry.event === "orchestration_run",
+		);
+		if (!run || run.event !== "orchestration_run")
+			throw new Error("legacy run fixture must be readable");
+		expect(run.data).toMatchObject({
+			schemaVersion: 2,
+			orchestrationId: "orchestration-1",
+		});
+		expect(run.data.workers[0]).not.toHaveProperty("treeId");
+		const interaction = result.events.find(
+			(entry) => entry.event === "orchestration_interaction",
+		);
+		if (!interaction || interaction.event !== "orchestration_interaction")
+			throw new Error("legacy interaction fixture must be readable");
+		expect(interaction.data).toMatchObject({
+			schemaVersion: 2,
+			interactionId: "interaction-1",
+		});
 	});
 
 	it("reports oversized lines without retaining them", async () => {

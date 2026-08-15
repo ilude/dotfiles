@@ -31,7 +31,7 @@ Before first executing unfamiliar repository automation, inspect the specific en
 
 Follow applicable local instructions. Report conflicts that block the requested outcome; do not turn discoveries into instruction updates unless requested. Do not give time estimates.
 
-Delegate only when independent workstreams materially improve execution, such as parallel work, output-heavy investigation, or a distinct capability boundary. Never delegate serial stages or overlapping writes.
+Delegate only when independent workstreams materially improve execution, such as parallel work, output-heavy investigation, or a distinct capability boundary. Give each worker one narrow, single-phase deliverable. Use the subagent role topology for Pi orchestration, avoid overlapping writes, and do not delegate serial stages.
 
 ## Pi Runtime Ownership
 

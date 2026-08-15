@@ -2,8 +2,25 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const spawnMock = vi.hoisted(() =>
+	vi.fn(() => ({ pid: 4242, unref: vi.fn() })),
+);
+vi.mock("node:child_process", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:child_process")>();
+	return { ...actual, spawn: spawnMock };
+});
+
 import goal, { goalTestApi } from "../extensions/goal.ts";
+import { readLoopJob, updateLoopJob } from "../extensions/loop.ts";
+import {
+	createTask,
+	getTask,
+	resolveTaskWorkspace,
+	transitionTask,
+} from "../lib/task-registry.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 function writeFile(filePath: string, content: string | Buffer) {
@@ -11,15 +28,73 @@ function writeFile(filePath: string, content: string | Buffer) {
 	fs.writeFileSync(filePath, content);
 }
 
+function initializeRepository(workspace: string): string {
+	execFileSync("git", ["init", "-q"], { cwd: workspace });
+	execFileSync("git", ["config", "user.email", "goal-test@example.invalid"], {
+		cwd: workspace,
+	});
+	execFileSync("git", ["config", "user.name", "Goal Test"], {
+		cwd: workspace,
+	});
+	execFileSync("git", ["add", "--", "."], { cwd: workspace });
+	execFileSync("git", ["commit", "-q", "-m", "test: initialize goal"], {
+		cwd: workspace,
+	});
+	return execFileSync("git", ["rev-parse", "HEAD"], {
+		cwd: workspace,
+		encoding: "utf8",
+	}).trim();
+}
+
+function configureGitExec(pi: ReturnType<typeof createMockPi>, workspace: string) {
+	pi.exec.mockImplementation(async (command: string, args: string[]) => {
+		if (command !== "git") throw new Error(`Unexpected command: ${command}`);
+		try {
+			return {
+				stdout: execFileSync("git", args, { cwd: workspace, encoding: "utf8" }),
+				stderr: "",
+				code: 0,
+				killed: false,
+			};
+		} catch (error) {
+			return {
+				stdout: "",
+				stderr: error instanceof Error ? error.message : String(error),
+				code: 1,
+				killed: false,
+			};
+		}
+	});
+}
+
 describe("goal extension", () => {
 	let tmp: string;
+	let runtimeRoot: string;
+	let priorLoopDir: string | undefined;
+	let priorGoalId: string | undefined;
+	let priorOperatorDir: string | undefined;
 
 	beforeEach(() => {
 		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "goal-extension-"));
+		runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "goal-runtime-"));
+		priorLoopDir = process.env.PI_LOOP_DIR;
+		priorGoalId = process.env.PI_GOAL_ID;
+		priorOperatorDir = process.env.PI_OPERATOR_DIR;
+		process.env.PI_LOOP_DIR = path.join(runtimeRoot, "loops");
+		process.env.PI_OPERATOR_DIR = path.join(runtimeRoot, "operator");
+		delete process.env.PI_GOAL_ID;
 	});
 
 	afterEach(() => {
+		if (priorLoopDir === undefined) delete process.env.PI_LOOP_DIR;
+		else process.env.PI_LOOP_DIR = priorLoopDir;
+		if (priorGoalId === undefined) delete process.env.PI_GOAL_ID;
+		else process.env.PI_GOAL_ID = priorGoalId;
+		if (priorOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
+		else process.env.PI_OPERATOR_DIR = priorOperatorDir;
+		vi.clearAllMocks();
 		fs.rmSync(tmp, { recursive: true, force: true });
+		fs.rmSync(runtimeRoot, { recursive: true, force: true });
 	});
 
 	it("registers /goal and provider-safe goal_complete schema", () => {
@@ -151,6 +226,29 @@ describe("goal extension", () => {
 		}
 	});
 
+	it("rejects generated plan paths that traverse a directory link", () => {
+		const outside = fs.mkdtempSync(path.join(os.tmpdir(), "goal-plan-outside-"));
+		try {
+			try {
+				fs.symlinkSync(
+					outside,
+					path.join(tmp, ".specs"),
+					process.platform === "win32" ? "junction" : "dir",
+				);
+			} catch {
+				return;
+			}
+			const parsed = goalTestApi.parseGoal("Complete linked work", tmp);
+			expect(parsed.ok).toBe(true);
+			if (parsed.ok)
+				expect(() =>
+					goalTestApi.attachOrCreatePlan(parsed.parsed, tmp),
+				).toThrow("cannot traverse a symlink or junction");
+		} finally {
+			fs.rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
 	it("restores session state, completes the goal, clears active state, and returns closeout fields", async () => {
 		const pi = createMockPi();
 		goal(pi as unknown as ExtensionAPI);
@@ -208,5 +306,429 @@ describe("goal extension", () => {
 		expect(
 			await beforeHook({ systemPrompt: "base" }, createMockCtx({ cwd: tmp })),
 		).toBeUndefined();
+	});
+
+	it("launches, correlates, reports, stops, and resumes an unattended goal without a loop id", async () => {
+		writeFile(path.join(tmp, ".specs", "demo", "goal.md"), "Ship the demo safely.\n");
+		writeFile(
+			path.join(tmp, ".specs", "demo", "plan.md"),
+			"# Plan\n\n- [ ] **T1: Ship the demo**\n  - State: pending\n",
+		);
+		initializeRepository(tmp);
+		const pi = createMockPi();
+		configureGitExec(pi, tmp);
+		goal(pi as unknown as ExtensionAPI);
+		const command = pi._commands.find((item) => item.name === "goal");
+		const shutdown = vi.fn();
+		const ctx = createMockCtx({ cwd: tmp, mode: "tui", shutdown });
+
+		await command?.handler("--unattended .specs/demo/goal.md", ctx);
+
+		expect(spawnMock).toHaveBeenCalledOnce();
+		expect(shutdown).toHaveBeenCalledOnce();
+		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
+		const job = readLoopJob(jobId);
+		expect(job.goal).toMatchObject({
+			id: jobId,
+			state: "running",
+			objectivePath: ".specs/demo/goal.md",
+			plans: [".specs/demo/plan.md"],
+		});
+		expect(spawnMock.mock.calls[0]?.[1]).toContain("-GoalId");
+
+		await command?.handler("status", ctx);
+		expect(pi.sendMessage).toHaveBeenLastCalledWith(
+			expect.objectContaining({ content: expect.stringContaining(`Goal ${jobId}:`) }),
+			{ triggerTurn: false },
+		);
+		await command?.handler("stop", ctx);
+		expect(readLoopJob(jobId).goal?.state).toBe("stopped");
+		await command?.handler("resume", ctx);
+		expect(spawnMock).toHaveBeenCalledTimes(2);
+		expect(readLoopJob(jobId).goal?.state).toBe("running");
+	});
+
+	it("requires re-evaluation after twenty qualifying failures and blocks only after two different recoveries", async () => {
+		writeFile(path.join(tmp, "goal.md"), "Complete both independent tasks.\n");
+		writeFile(
+			path.join(tmp, "plan.md"),
+			[
+				"# Plan",
+				"",
+				"- [ ] **T1: Repair the first item**",
+				"  - State: pending",
+				"- [ ] **T2: Complete the independent item**",
+				"  - State: pending",
+				"",
+			].join("\n"),
+		);
+		initializeRepository(tmp);
+		const first = createTask({
+			origin: "other",
+			summary: "Repair the first item",
+			workspace: resolveTaskWorkspace(tmp),
+		});
+		const second = createTask({
+			origin: "other",
+			summary: "Complete the independent item",
+			workspace: resolveTaskWorkspace(tmp),
+		});
+		const pi = createMockPi();
+		configureGitExec(pi, tmp);
+		goal(pi as unknown as ExtensionAPI);
+		const command = pi._commands.find((item) => item.name === "goal");
+		await command?.handler(
+			"--unattended goal.md",
+			createMockCtx({ cwd: tmp, mode: "tui", shutdown: vi.fn() }),
+		);
+		const progress = pi._getTool("goal_progress");
+		const linked = await progress?.execute("link", {
+			action: "link_tasks",
+			items: [
+				{ key: "T1", taskId: first.id },
+				{ key: "T2", taskId: second.id },
+			],
+		});
+		expect(linked.isError, linked.content[0].text).not.toBe(true);
+
+		for (let attempt = 0; attempt < 20; attempt += 1) {
+			const started = await progress?.execute("begin", {
+				action: "begin_attempt",
+				key: "T1",
+				strategy: { agent: "builder" },
+			});
+			expect(started.isError).not.toBe(true);
+			await progress?.execute("outcome", {
+				action: "record_outcome",
+				key: "T1",
+				outcome: "error",
+			});
+		}
+		const relinked = await progress?.execute("relink", {
+			action: "link_tasks",
+			items: [{ key: "T1", taskId: first.id }],
+		});
+		expect(relinked.isError).not.toBe(true);
+		expect(readLoopJob(fs.readdirSync(process.env.PI_LOOP_DIR as string)[0]).goal?.items.T1.phase).toBe(
+			"re_evaluation_required",
+		);
+		const replacement = await progress?.execute("replace-link", {
+			action: "link_tasks",
+			items: [{ key: "T1", taskId: second.id }],
+		});
+		expect(replacement.isError).toBe(true);
+		expect(replacement.content[0].text).toContain("different goal work");
+
+		const suspended = await progress?.execute("suspended", {
+			action: "begin_attempt",
+			key: "T1",
+			strategy: { agent: "builder" },
+		});
+		expect(suspended.isError).toBe(true);
+		expect(suspended.content[0].text).toContain("re-evaluation");
+
+		await progress?.execute("reevaluate", {
+			action: "re_evaluate",
+			key: "T1",
+			evidence: "The original evidence source was incomplete.",
+			assumptions: "The failure may be fixture-specific.",
+			message: "Use an independent evidence source and validation method.",
+		});
+		await progress?.execute("recovery-1", {
+			action: "begin_attempt",
+			key: "T1",
+			strategy: { agent: "reviewer" },
+		});
+		await progress?.execute("recovery-1-result", {
+			action: "record_outcome",
+			key: "T1",
+			outcome: "verifier_contradiction",
+		});
+		const identical = await progress?.execute("identical", {
+			action: "begin_attempt",
+			key: "T1",
+			strategy: { agent: "reviewer" },
+		});
+		expect(identical.isError).toBe(true);
+		await progress?.execute("recovery-2", {
+			action: "begin_attempt",
+			key: "T1",
+			strategy: { evidenceSource: "independent fixture" },
+		});
+		await progress?.execute("recovery-2-result", {
+			action: "record_outcome",
+			key: "T1",
+			outcome: "inconclusive",
+		});
+
+		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
+		const failedItem = readLoopJob(jobId).goal?.items.T1;
+		expect(failedItem).toMatchObject({
+			qualifyingFailures: 22,
+			phase: "needs_operator",
+		});
+		expect(getTask(first.id)?.state).toBe("blocked");
+		const blockedRetry = await progress?.execute("blocked-retry", {
+			action: "begin_attempt",
+			key: "T1",
+			strategy: { validationMethod: "operator-free retry" },
+		});
+		expect(blockedRetry.isError).toBe(true);
+		expect(getTask(first.id)?.state).toBe("blocked");
+		const independent = await progress?.execute("independent", {
+			action: "begin_attempt",
+			key: "T2",
+			strategy: { agent: "builder" },
+		});
+		expect(independent.isError).not.toBe(true);
+		expect(getTask(second.id)?.state).toBe("running");
+
+		const toolResultHook = pi._getHook("tool_result")[0]?.handler;
+		await toolResultHook?.({
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify({ decisionId: "not-an-approval" }),
+				},
+			],
+		});
+		expect(getTask(second.id)?.state).toBe("running");
+		await updateLoopJob(
+			fs.readdirSync(process.env.PI_LOOP_DIR as string)[0],
+			(current) => ({
+				...current,
+				goal: current.goal
+					? {
+							...current.goal,
+							items: {
+								...current.goal.items,
+								T2: {
+									...current.goal.items.T2,
+									activeAttempt: {
+										...current.goal.items.T2.activeAttempt!,
+										ownerPid: process.pid,
+										ownerInstanceId: "stale-process-instance",
+									},
+								},
+							},
+						}
+					: undefined,
+			}),
+		);
+		const toolCallHook = pi._getHook("tool_call")[0]?.handler;
+		expect(
+			await toolCallHook?.({ toolName: "bash", input: { command: "echo no" } }),
+		).toMatchObject({ block: true });
+		await progress?.execute("stale-reconcile", {
+			action: "reconcile",
+			key: "T2",
+			message: "The prior process ended before modification.",
+		});
+		await progress?.execute("independent-again", {
+			action: "begin_attempt",
+			key: "T2",
+			strategy: { evidenceSource: "post-reconciliation evidence" },
+		});
+
+		await toolResultHook?.({
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify({
+						outcome: "needs_approval",
+						decisionId: "permission-123",
+					}),
+				},
+			],
+		});
+		expect(getTask(second.id)?.state).toBe("blocked");
+		const deferred = readLoopJob(jobId).goal;
+		expect(deferred?.state).toBe("waiting_for_operator");
+		expect(deferred?.items.T2.qualifyingFailures).toBe(0);
+		expect(deferred?.blockers).toContain(
+			"Permission decision permission-123 blocks T2.",
+		);
+		const genericResolution = await progress?.execute("generic-resolution", {
+			action: "resolve_blocker",
+			key: "T2",
+			message: "Permission decision permission-123 blocks T2.",
+		});
+		expect(genericResolution.isError).toBe(true);
+		expect(genericResolution.content[0].text).toContain("cannot be cleared");
+		const deniedReplay = await progress?.execute("denied-replay", {
+			action: "begin_attempt",
+			key: "T2",
+			strategy: { agent: "builder" },
+		});
+		expect(deniedReplay.isError).toBe(true);
+		const safer = await progress?.execute("safer-alternative", {
+			action: "begin_attempt",
+			key: "T2",
+			strategy: { toolApproach: "read-only evidence inspection" },
+		});
+		expect(safer.isError).not.toBe(true);
+		await toolResultHook?.({
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify({
+						outcome: "needs_approval",
+						decisionId: "permission-456",
+					}),
+				},
+			],
+		});
+		const secondAlternative = await progress?.execute("second-alternative", {
+			action: "begin_attempt",
+			key: "T2",
+			strategy: { evidenceSource: "another source" },
+		});
+		expect(secondAlternative.isError).toBe(true);
+
+		await command?.handler(
+			"resume",
+			createMockCtx({ cwd: tmp, mode: "tui", shutdown: vi.fn() }),
+		);
+		const resumed = readLoopJob(jobId).goal;
+		expect(resumed?.items.T1.phase).toBe("re_evaluation_required");
+		expect(resumed?.blockers).not.toContain(
+			"T1: Two materially different recovery attempts failed after re-evaluation.",
+		);
+		expect(resumed?.blockers).toContain(
+			"Permission decision permission-456 blocks T2.",
+		);
+	});
+
+	it("rejects incomplete linked work and accepts only evidence-backed unattended completion", async () => {
+		writeFile(path.join(tmp, "goal.md"), "Finish the verified item.\n");
+		writeFile(
+			path.join(tmp, "plan.md"),
+			[
+				"# Plan",
+				"",
+				"- [x] **T1: Finish the verified item**",
+				"  - State: complete",
+				"- [x] **T2: Finish the second required item**",
+				"  - State: complete",
+				"",
+			].join("\n"),
+		);
+		initializeRepository(tmp);
+		const task = createTask({
+			origin: "other",
+			summary: "Finish the verified item",
+			workspace: resolveTaskWorkspace(tmp),
+		});
+		const secondTask = createTask({
+			origin: "other",
+			summary: "Finish the second required item",
+			workspace: resolveTaskWorkspace(tmp),
+		});
+		const childTask = createTask({
+			origin: "subagent",
+			parentId: task.id,
+			summary: "Transient child result",
+			workspace: resolveTaskWorkspace(tmp),
+		});
+		const pi = createMockPi();
+		configureGitExec(pi, tmp);
+		goal(pi as unknown as ExtensionAPI);
+		const command = pi._commands.find((item) => item.name === "goal");
+		await command?.handler(
+			"--unattended goal.md",
+			createMockCtx({ cwd: tmp, mode: "tui", shutdown: vi.fn() }),
+		);
+		const progress = pi._getTool("goal_progress");
+		const linked = await progress?.execute("link", {
+			action: "link_tasks",
+			items: [{ key: "T1", taskId: task.id }],
+		});
+		expect(linked.isError, linked.content[0].text).not.toBe(true);
+		const complete = pi._getTool("goal_complete");
+		const rejected = await complete?.execute("complete-1", {
+			summary: "Finished the item",
+		});
+		expect(rejected.isError).toBe(true);
+		expect(rejected.content[0].text).toContain("linked task is pending");
+		expect(rejected.content[0].text).toContain(
+			"T2: required plan task has no required durable root task",
+		);
+		expect(rejected.content[0].text).toContain("no relevant validation evidence");
+
+		const rejectedChild = await progress?.execute("link-child", {
+			action: "link_tasks",
+			items: [{ key: "T2", taskId: childTask.id }],
+		});
+		expect(rejectedChild.isError).toBe(true);
+		expect(rejectedChild.content[0].text).toContain("not a durable root task");
+		const linkedSecond = await progress?.execute("link-second", {
+			action: "link_tasks",
+			items: [{ key: "T2", taskId: secondTask.id, required: false }],
+		});
+		expect(linkedSecond.isError).not.toBe(true);
+		expect(
+			readLoopJob(fs.readdirSync(process.env.PI_LOOP_DIR as string)[0]).goal?.items.T2.required,
+		).toBe(true);
+		const unobservedValidation = await progress?.execute("unobserved-validation", {
+			action: "validation",
+			command: "pnpm test goal.test.ts",
+			passed: true,
+		});
+		expect(unobservedValidation.isError).toBe(true);
+		expect(unobservedValidation.content[0].text).toContain("observed");
+		await pi._getHook("tool_result")[0]?.handler({
+			toolName: "bash",
+			input: { command: "pnpm test goal.test.ts" },
+			content: [{ type: "text", text: "passed" }],
+			isError: false,
+		});
+		await progress?.execute("stale-validation", {
+			action: "validation",
+			command: "pnpm test goal.test.ts",
+			passed: true,
+			summary: "recorded before required tasks completed",
+		});
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		for (const linkedTask of [task, secondTask]) {
+			transitionTask(linkedTask.id, "running");
+			transitionTask(linkedTask.id, "completed");
+		}
+		const stale = await complete?.execute("complete-stale", {
+			summary: "Finished the verified item",
+		});
+		expect(stale.isError).toBe(true);
+		expect(stale.content[0].text).toContain(
+			"validation predates required task completion",
+		);
+		await progress?.execute("validation", {
+			action: "validation",
+			command: "pnpm test goal.test.ts",
+			passed: true,
+			summary: "focused lifecycle checks passed",
+		});
+		const accepted = await complete?.execute("complete-2", {
+			summary: "Finished the verified item",
+			knownGaps: "None",
+		});
+		expect(accepted.isError).not.toBe(true);
+		expect(accepted.content[0].text).toContain("Repository state:");
+		expect(accepted.content[0].text).toContain("Exact next action:");
+		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
+		expect(readLoopJob(jobId).goal).toMatchObject({
+			state: "completed",
+			finalWorktree: "clean",
+		});
+		const immutable = await progress?.execute("after-complete", {
+			action: "validation",
+			command: "pnpm test goal.test.ts",
+			passed: true,
+		});
+		expect(immutable.isError).toBe(true);
+		expect(immutable.content[0].text).toContain("No unattended /goal is active");
+		await command?.handler("stop", createMockCtx({ cwd: tmp }));
+		expect(readLoopJob(jobId).goal?.state).toBe("completed");
+		await command?.handler("resume", createMockCtx({ cwd: tmp }));
+		expect(readLoopJob(jobId).goal?.state).toBe("completed");
+		expect(spawnMock).toHaveBeenCalledTimes(1);
 	});
 });

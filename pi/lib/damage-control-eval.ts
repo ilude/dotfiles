@@ -8,6 +8,7 @@ export type DamageControlEvalDecisionType =
 	| "prompt_shown"
 	| "ask_approved"
 	| "ask_denied"
+	| "needs_approval"
 	| "auto_allowed"
 	| "hard_block";
 
@@ -78,6 +79,7 @@ export interface DamageControlEvalStats {
 		promptShown: number;
 		askApproved: number;
 		askDenied: number;
+		needsApproval: number;
 		hardBlock: number;
 		autoAllowed: number;
 		labels: Record<string, number>;
@@ -201,6 +203,7 @@ export function summarizeDamageControlEval(
 			promptShown: number;
 			askApproved: number;
 			askDenied: number;
+			needsApproval: number;
 			hardBlock: number;
 			autoAllowed: number;
 			labels: Record<string, number>;
@@ -216,6 +219,7 @@ export function summarizeDamageControlEval(
 			promptShown: 0,
 			askApproved: 0,
 			askDenied: 0,
+			needsApproval: 0,
 			hardBlock: 0,
 			autoAllowed: 0,
 			labels: {},
@@ -224,6 +228,7 @@ export function summarizeDamageControlEval(
 		if (event.decisionType === "prompt_shown") row.promptShown += 1;
 		if (event.decisionType === "ask_approved") row.askApproved += 1;
 		if (event.decisionType === "ask_denied") row.askDenied += 1;
+		if (event.decisionType === "needs_approval") row.needsApproval += 1;
 		if (event.decisionType === "hard_block") row.hardBlock += 1;
 		if (event.decisionType === "auto_allowed") row.autoAllowed += 1;
 		for (const label of event.labels ?? []) {

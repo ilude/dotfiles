@@ -15,11 +15,6 @@ const HARD_OPTIONS = ["continue as scoped", "wrap up now", "stop"] as const;
 
 type HardChoice = (typeof HARD_OPTIONS)[number];
 
-export interface SpawnDescriptor {
-	agentType: string;
-	prompt: string;
-}
-
 interface PendingCommand {
 	command: string;
 }
@@ -81,25 +76,6 @@ function touchedPaths(
 	return [...new Set(paths)];
 }
 
-function spawnDescriptors(
-	toolName: string,
-	input: Record<string, unknown>,
-): SpawnDescriptor[] {
-	const descriptors: SpawnDescriptor[] = [];
-	const add = (value: unknown) => {
-		if (!value || typeof value !== "object") return;
-		const item = value as Record<string, unknown>;
-		if (typeof item.agent !== "string" || typeof item.task !== "string") return;
-		descriptors.push({ agentType: item.agent, prompt: item.task });
-	};
-	if (toolName === "subagent") {
-		add(input);
-		if (Array.isArray(input.tasks)) input.tasks.forEach(add);
-		if (Array.isArray(input.chain)) input.chain.forEach(add);
-	}
-	return descriptors;
-}
-
 function commandDescriptor(
 	toolName: string,
 	input: Record<string, unknown>,
@@ -133,16 +109,10 @@ function formatMetric(value: number): string {
 
 function formatFootprint(tracker: SessionBudgetTracker, now: number): string {
 	const snapshot = tracker.snapshot(now);
-	const spawns = snapshot.spawns.length
-		? snapshot.spawns
-				.map((item) => `${item.agentType}=${item.count}`)
-				.join(", ")
-		: "none";
 	return [
 		`${formatMetric(snapshot.elapsedMinutes)} minutes`,
 		`${snapshot.toolCalls} tool calls`,
 		`${snapshot.filesTouched.length} files touched`,
-		`spawns: ${spawns}`,
 	].join(", ");
 }
 
@@ -203,20 +173,14 @@ function formatBudgetStatus(
 ): string {
 	const snapshot = tracker.snapshot(now);
 	if (!snapshot.epochId) return "Session watchdog: enabled; no active epoch.";
-	const spawns = snapshot.spawns.length
-		? snapshot.spawns
-				.map((item) => `${item.agentType}=${item.count}`)
-				.join(", ")
-		: "none";
 	return [
 		"Session watchdog",
 		`Epoch: ${snapshot.epochId}`,
 		`Elapsed: ${formatMetric(snapshot.elapsedMinutes)}m (informational only)`,
 		`Tool calls: ${snapshot.toolCalls} (informational only)`,
 		`Files touched: ${snapshot.filesTouched.length}${snapshot.filesTouched.length ? ` - ${snapshot.filesTouched.join(", ")}` : ""}`,
-		`Spawns: ${spawns} (same-agent max ${config.maxSameAgentSpawns})`,
 		`Repeated command errors: ${snapshot.maxCommandErrorRepeats} (soft ${config.maxCommandErrorRepeats}, hard ${config.maxCommandErrorRepeats + 2})`,
-		`Sensors: repeat_spawn=${formatSensorState(snapshot.sensors.repeat_spawn)}, command_error_repeat=${formatSensorState(snapshot.sensors.command_error_repeat)}`,
+		`Sensor: command_error_repeat=${formatSensorState(snapshot.sensors.command_error_repeat)}`,
 	].join("\n");
 }
 
@@ -461,16 +425,6 @@ export function registerSessionBudget(
 				timestamp: deps.now(),
 				touchedPaths: touchedPaths(event.toolName, input),
 			});
-			for (const spawn of spawnDescriptors(event.toolName, input)) {
-				findings.push(
-					...tracker.process({
-						type: "spawn",
-						agentType: spawn.agentType,
-						promptHash: hashText(spawn.prompt),
-						timestamp: deps.now(),
-					}),
-				);
-			}
 			const soft = findings.filter((item) => item.level === "soft");
 			const hard = findings.filter((item) => item.level === "hard");
 			handleSoftFindings(soft, deps.now());
@@ -513,7 +467,6 @@ export const sessionBudgetTestApi = {
 	commandDescriptor,
 	errorSignature,
 	formatBudgetStatus,
-	spawnDescriptors,
 	touchedPaths,
 };
 

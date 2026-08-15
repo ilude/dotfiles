@@ -191,6 +191,7 @@ describe("loop extension", () => {
 			PI_LOOP_SUPERVISOR_PID: "321",
 			PI_LOOP_ITERATION: "7",
 			PI_LOOP_ATTEMPT: "2",
+			PI_LOOP_INVOCATION_ID: "invocation-789",
 		};
 		const prior = Object.fromEntries(
 			Object.keys(environment).map((key) => [key, process.env[key]]),
@@ -205,6 +206,20 @@ describe("loop extension", () => {
 			loopRuntimeLogging(pi as unknown as ExtensionAPI);
 			for (const hook of pi._getHook("session_start"))
 				await hook.handler({ reason: "startup" }, ctx);
+			for (const hook of pi._getHook("tool_result"))
+				await hook.handler(
+					{
+						toolCallId: "call-approval",
+						toolName: "bash",
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({ outcome: "needs_approval" }),
+							},
+						],
+					},
+					ctx,
+				);
 			for (const hook of pi._getHook("session_shutdown"))
 				await hook.handler({ reason: "quit" }, ctx);
 		} finally {
@@ -219,7 +234,7 @@ describe("loop extension", () => {
 			.trim()
 			.split("\n")
 			.map((line) => JSON.parse(line));
-		expect(records).toHaveLength(2);
+		expect(records).toHaveLength(3);
 		expect(records[0]).toMatchObject({
 			schema_version: 1,
 			event: "pi_process_started",
@@ -228,14 +243,20 @@ describe("loop extension", () => {
 			pi_pid: process.pid,
 			iteration: 7,
 			attempt: 2,
+			invocation_id: "invocation-789",
 			session_id: "session-456",
 		});
 		expect(records[1]).toMatchObject({
+			event: "approval_required",
+			tool_call_id: "call-approval",
+			tool: "bash",
+		});
+		expect(records[2]).toMatchObject({
 			event: "pi_process_stopped",
 			reason: "quit",
 			session_id: "session-456",
 		});
-		expect(records[1].duration_ms).toEqual(expect.any(Number));
+		expect(records[2].duration_ms).toEqual(expect.any(Number));
 	});
 
 	it("starts through the registered command after a clean Git preflight", async () => {

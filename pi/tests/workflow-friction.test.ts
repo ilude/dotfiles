@@ -1450,6 +1450,13 @@ describe("workflow friction extension", () => {
 		try {
 			const cwd = path.join(scratch, "workspace");
 			const sessionDir = path.join(scratch, "sessions");
+			const usageTimestamp = new Date(Date.now() - 24 * 60 * 60 * 1000);
+			const lowReviewedAt = new Date(
+				usageTimestamp.getTime() - 2 * 60 * 60 * 1000,
+			).toISOString();
+			const highReviewedAt = new Date(
+				usageTimestamp.getTime() - 60 * 60 * 1000,
+			).toISOString();
 			for (const skill of ["high-use", "low-use"]) {
 				const skillDir = path.join(scratch, "agent", "skills", skill);
 				await fs.mkdir(skillDir, { recursive: true });
@@ -1461,7 +1468,10 @@ describe("workflow friction extension", () => {
 			}
 			await fs.mkdir(sessionDir, { recursive: true });
 			await fs.writeFile(
-				path.join(sessionDir, "2026-07-14T00-00-00-000Z_ranking.jsonl"),
+				path.join(
+					sessionDir,
+					`${usageTimestamp.toISOString().replace(/[:.]/g, "-")}_ranking.jsonl`,
+				),
 				[
 					["high-use", "high-1"],
 					["high-use", "high-2"],
@@ -1474,7 +1484,7 @@ describe("workflow friction extension", () => {
 							data: {
 								skill,
 								source: "explicit_slash_command",
-								timestamp: "2026-07-14T00:00:00.000Z",
+								timestamp: usageTimestamp.toISOString(),
 								turnId,
 							},
 						}),
@@ -1484,11 +1494,11 @@ describe("workflow friction extension", () => {
 			);
 			const low = commandLearningReviewRecord(cwd, "project", "low-use");
 			low.interactionId = "candidate-low";
-			low.reviewedAt = "2026-07-12T00:00:00.000Z";
+			low.reviewedAt = lowReviewedAt;
 			if (low.review) low.review.impact = "efficiency";
 			const high = commandLearningReviewRecord(cwd, "project", "high-use");
 			high.interactionId = "candidate-high";
-			high.reviewedAt = "2026-07-13T00:00:00.000Z";
+			high.reviewedAt = highReviewedAt;
 			if (high.review) high.review.impact = "efficiency";
 			const reviewsPath = path.join(
 				path.dirname(learningDecisionsPath()),

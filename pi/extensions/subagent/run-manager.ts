@@ -1,5 +1,10 @@
 import type { Message } from "@earendil-works/pi-ai";
+import type { SubagentTreeRole } from "./tree-runtime.js";
 
+/**
+ * Retained for callers that display the default tree capacity. Admission is
+ * owned by the root tree broker rather than this process-local run manager.
+ */
 export const MAX_ACTIVE_SUBAGENT_RUNS = 8;
 export const MAX_TRACKED_SUBAGENT_RUNS = 64;
 export const MAX_SUBAGENT_TRANSCRIPT_ITEMS = 512;
@@ -59,6 +64,15 @@ export interface SubagentRunSnapshot {
 	readonly runId: string;
 	readonly taskId?: string;
 	readonly orchestrationId?: string;
+	readonly treeId?: string;
+	readonly parentRunId?: string;
+	readonly depth?: number;
+	readonly role?: SubagentTreeRole;
+	readonly workflowPhase?: string;
+	readonly taskKey?: string;
+	readonly attempt?: number;
+	readonly retryOrigin?: string;
+	readonly coordinatorTaskId?: string;
 	readonly owner: SubagentRunOwner;
 	readonly mode: SubagentRunMode;
 	readonly agent: string;
@@ -86,6 +100,15 @@ interface MutableSubagentRunSnapshot {
 	runId: string;
 	taskId?: string;
 	orchestrationId?: string;
+	treeId?: string;
+	parentRunId?: string;
+	depth?: number;
+	role?: SubagentTreeRole;
+	workflowPhase?: string;
+	taskKey?: string;
+	attempt?: number;
+	retryOrigin?: string;
+	coordinatorTaskId?: string;
 	owner: SubagentRunOwner;
 	mode: SubagentRunMode;
 	agent: string;
@@ -114,6 +137,15 @@ export interface BeginSubagentRun {
 	runId: string;
 	taskId?: string;
 	orchestrationId?: string;
+	treeId?: string;
+	parentRunId?: string;
+	depth?: number;
+	role?: SubagentTreeRole;
+	workflowPhase?: string;
+	taskKey?: string;
+	attempt?: number;
+	retryOrigin?: string;
+	coordinatorTaskId?: string;
 	owner: SubagentRunOwner;
 	mode: SubagentRunMode;
 	agent: string;
@@ -277,11 +309,6 @@ export class SubagentRunManager {
 			throw new Error("Subagent run manager is disposing.");
 		if (this.snapshots.has(input.runId))
 			throw new Error(`Subagent run ID ${input.runId} is already registered.`);
-		if (this.activeCount() >= MAX_ACTIVE_SUBAGENT_RUNS) {
-			throw new Error(
-				`At most ${MAX_ACTIVE_SUBAGENT_RUNS} subagent runs may be active at once.`,
-			);
-		}
 		const snapshot: MutableSubagentRunSnapshot = {
 			...input,
 			agent: boundedTail(input.agent, MAX_METADATA_TEXT_BYTES),
@@ -470,21 +497,34 @@ export class SubagentRunManager {
 	}
 
 	cancel(runId: string): boolean {
-		const snapshot = this.snapshots.get(runId);
-		const controller = this.controllers.get(runId);
-		if (!snapshot || snapshot.status !== "running" || !controller) return false;
-		controller.abort(new Error("Subagent run cancelled"));
-		return true;
+		return this.cancelTree(runId).includes(runId);
+	}
+
+	/** Cancel an in-process run together with every registered descendant. */
+	cancelTree(runId: string): string[] {
+		const cancelled: string[] = [];
+		for (const snapshot of this.snapshots.values()) {
+			if (
+				snapshot.status !== "running" ||
+				!this.isRunOrDescendant(snapshot.runId, runId)
+			)
+				continue;
+			const controller = this.controllers.get(snapshot.runId);
+			if (!controller) continue;
+			controller.abort(new Error("Subagent run cancelled"));
+			cancelled.push(snapshot.runId);
+		}
+		return cancelled;
 	}
 
 	cancelAll(owner?: SubagentRunOwner): string[] {
-		const cancelled: string[] = [];
+		const cancelled = new Set<string>();
 		for (const snapshot of this.snapshots.values()) {
 			if (snapshot.status !== "running") continue;
 			if (owner !== undefined && snapshot.owner !== owner) continue;
-			if (this.cancel(snapshot.runId)) cancelled.push(snapshot.runId);
+			for (const runId of this.cancelTree(snapshot.runId)) cancelled.add(runId);
 		}
-		return cancelled;
+		return [...cancelled];
 	}
 
 	cancelForeground(): string[] {
@@ -571,12 +611,15 @@ export class SubagentRunManager {
 		this.notify(runId);
 	}
 
-	private activeCount(): number {
-		let count = 0;
-		for (const snapshot of this.snapshots.values()) {
-			if (snapshot.status === "running") count++;
+	private isRunOrDescendant(runId: string, ancestorRunId: string): boolean {
+		let current = this.snapshots.get(runId);
+		while (current) {
+			if (current.runId === ancestorRunId) return true;
+			current = current.parentRunId
+				? this.snapshots.get(current.parentRunId)
+				: undefined;
 		}
-		return count;
+		return false;
 	}
 
 	private prune(): void {

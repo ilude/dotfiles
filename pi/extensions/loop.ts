@@ -9,6 +9,11 @@ import type {
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { createAsyncPoller, type AsyncPoller } from "../lib/async-poller.js";
+import type {
+	GoalPublicState,
+	UnattendedGoal,
+} from "../lib/goal-state.js";
+import { updateJsonObjectAtomic } from "../lib/settings-file.js";
 import {
 	executeCommitCommand,
 	filterCommitSafeFiles,
@@ -22,7 +27,7 @@ type LoopRequest = {
 	values: string[];
 };
 
-type LoopJob = {
+export type LoopJob = {
 	version: 1;
 	id: string;
 	cwd: string;
@@ -31,9 +36,23 @@ type LoopJob = {
 	startedAt: string;
 	initialHead: string;
 	maxIterations?: number;
+	goal?: UnattendedGoal;
 };
 
-function loopRoot(): string {
+export type LoopJobSnapshot = {
+	job: LoopJob;
+	state: GoalPublicState | "stopped";
+	alive: boolean;
+	iteration?: number;
+	stopReason?: string;
+};
+
+type LoopStartOptions = {
+	goal?: UnattendedGoal;
+	requireTui?: boolean;
+};
+
+export function loopRoot(): string {
 	if (process.env.PI_LOOP_DIR?.trim())
 		return path.resolve(process.env.PI_LOOP_DIR);
 	const localState = process.env.LOCALAPPDATA?.trim()
@@ -44,7 +63,7 @@ function loopRoot(): string {
 const STATUS_KEY = "loop";
 const STATUS_REFRESH_MS = 5_000;
 const MAX_LOOP_ITERATIONS = 100;
-const LOG_TAIL_BYTES = 8 * 1024;
+const LOG_TAIL_BYTES = 64 * 1024;
 const MAX_STATUS_JOBS = 64;
 const SCRIPT_PATH = fileURLToPath(
 	new URL("../scripts/run-loop.ps1", import.meta.url),
@@ -100,11 +119,11 @@ function resolvePlans(cwd: string, values: string[]): string[] {
 	});
 }
 
-function jobDirectory(id: string): string {
+export function jobDirectory(id: string): string {
 	return path.join(loopRoot(), id);
 }
 
-function jobPath(id: string): string {
+export function jobPath(id: string): string {
 	return path.join(jobDirectory(id), "job.json");
 }
 
@@ -120,7 +139,7 @@ function writeJob(job: LoopJob): void {
 	fs.renameSync(temporary, target);
 }
 
-function readJob(id: string): LoopJob {
+export function readLoopJob(id: string): LoopJob {
 	return JSON.parse(fs.readFileSync(jobPath(id), "utf8")) as LoopJob;
 }
 
@@ -128,7 +147,19 @@ async function readJobAsync(id: string): Promise<LoopJob> {
 	return JSON.parse(await fs.promises.readFile(jobPath(id), "utf8")) as LoopJob;
 }
 
-function listJobs(): LoopJob[] {
+export async function updateLoopJob(
+	id: string,
+	update: (job: LoopJob) => LoopJob,
+): Promise<LoopJob> {
+	let updated: LoopJob | undefined;
+	await updateJsonObjectAtomic(jobPath(id), (current) => {
+		updated = update(current as LoopJob);
+		return updated as unknown as Record<string, unknown>;
+	});
+	return updated ?? readLoopJob(id);
+}
+
+export function listLoopJobs(): LoopJob[] {
 	const root = loopRoot();
 	if (!fs.existsSync(root)) return [];
 	return fs
@@ -138,7 +169,7 @@ function listJobs(): LoopJob[] {
 		.slice(0, MAX_STATUS_JOBS)
 		.flatMap((entry) => {
 			try {
-				return [readJob(entry.name)];
+				return [readLoopJob(entry.name)];
 			} catch {
 				return [];
 			}
@@ -172,6 +203,14 @@ async function listJobsAsync(): Promise<LoopJob[]> {
 		.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
 }
 
+export function listWorkspaceGoalJobs(cwd: string): LoopJob[] {
+	const workspace = fs.realpathSync(cwd);
+	return listLoopJobs().filter(
+		(job) =>
+			job.goal !== undefined && path.resolve(job.cwd) === path.resolve(workspace),
+	);
+}
+
 function processAlive(pid: number): boolean {
 	try {
 		process.kill(pid, 0);
@@ -181,7 +220,7 @@ function processAlive(pid: number): boolean {
 	}
 }
 
-function readLoopIteration(id: string): number | undefined {
+function readLogTail(id: string): string {
 	const logPath = path.join(jobDirectory(id), "loop.log");
 	try {
 		const size = fs.statSync(logPath).size;
@@ -193,17 +232,60 @@ function readLoopIteration(id: string): number | undefined {
 		} finally {
 			fs.closeSync(descriptor);
 		}
-		const lines = buffer.toString("utf8").split(/\r?\n/).reverse();
-		for (const line of lines) {
-			const legacyMatch = line.match(/\biteration=(\d+)\b/);
-			if (legacyMatch) return Number(legacyMatch[1]);
-			const structuredMatch = line.match(/"iteration"\s*:\s*(\d+)/);
-			if (structuredMatch) return Number(structuredMatch[1]);
-		}
+		return buffer.toString("utf8");
 	} catch {
-		return undefined;
+		return "";
+	}
+}
+
+function readLoopIteration(id: string): number | undefined {
+	const lines = readLogTail(id).split(/\r?\n/).reverse();
+	for (const line of lines) {
+		const legacyMatch = line.match(/\biteration=(\d+)\b/);
+		if (legacyMatch) return Number(legacyMatch[1]);
+		const structuredMatch = line.match(/"iteration"\s*:\s*(\d+)/);
+		if (structuredMatch) return Number(structuredMatch[1]);
 	}
 	return undefined;
+}
+
+function readLoopStopReason(id: string): string | undefined {
+	for (const line of readLogTail(id).split(/\r?\n/).reverse()) {
+		if (!line.trim().startsWith("{")) continue;
+		try {
+			const record = JSON.parse(line) as Record<string, unknown>;
+			if (record.event === "loop_stopped" && typeof record.reason === "string")
+				return record.reason;
+		} catch {
+			continue;
+		}
+	}
+	return undefined;
+}
+
+function mapStoppedGoalState(reason: string | undefined): GoalPublicState {
+	if (reason === "quiescent" || reason === "repeated_no_progress")
+		return "waiting_for_operator";
+	if (reason === "operator_stop") return "stopped";
+	return "failed";
+}
+
+export function inspectLoopJob(job: LoopJob): LoopJobSnapshot {
+	const alive = processAlive(job.pid);
+	const stopReason = alive ? undefined : readLoopStopReason(job.id);
+	let state: GoalPublicState | "stopped";
+	if (job.goal?.state === "completed" || job.goal?.state === "stopped")
+		state = job.goal.state;
+	else if (alive) state = "running";
+	else if (job.goal) state = mapStoppedGoalState(stopReason);
+	else state = "stopped";
+	return {
+		job,
+		state,
+		alive,
+		iteration: readLoopIteration(job.id),
+		stopReason,
+	};
 }
 
 function formatLoopProgress(job: LoopJob, iteration: number): string {
@@ -318,7 +400,9 @@ async function preflight(pi: ExtensionAPI, cwd: string): Promise<string> {
 	return head.stdout.trim();
 }
 
-function launch(job: Omit<LoopJob, "pid" | "startedAt">): LoopJob {
+async function launch(
+	job: Omit<LoopJob, "pid" | "startedAt">,
+): Promise<LoopJob> {
 	if (!fs.existsSync(SCRIPT_PATH))
 		throw new Error(`Loop runner missing: ${SCRIPT_PATH}`);
 	if (!fs.existsSync(PROMPT_PATH))
@@ -341,6 +425,7 @@ function launch(job: Omit<LoopJob, "pid" | "startedAt">): LoopJob {
 			PROMPT_PATH,
 			"-PlanPaths",
 			job.plans.join(";"),
+			...(job.goal ? ["-GoalId", job.goal.id] : []),
 			"-StartupDelaySeconds",
 			"5",
 			"-MaxIterations",
@@ -354,18 +439,30 @@ function launch(job: Omit<LoopJob, "pid" | "startedAt">): LoopJob {
 		},
 	);
 	child.unref();
+	const startedAt = new Date().toISOString();
 	const started: LoopJob = {
 		...job,
 		pid: child.pid ?? 0,
-		startedAt: new Date().toISOString(),
+		startedAt,
+		...(job.goal
+			? {
+					goal: {
+						...job.goal,
+						state: "running",
+						updatedAt: startedAt,
+					},
+				}
+			: {}),
 	};
-	writeJob(started);
+	if (fs.existsSync(jobPath(started.id)))
+		await updateLoopJob(started.id, () => started);
+	else writeJob(started);
 	return started;
 }
 
 function selectJob(values: string[], cwd: string): LoopJob {
-	if (values[0]) return readJob(values[0]);
-	const matches = listJobs().filter(
+	if (values[0]) return readLoopJob(values[0]);
+	const matches = listLoopJobs().filter(
 		(job) => path.resolve(job.cwd) === path.resolve(cwd),
 	);
 	if (matches.length !== 1)
@@ -373,21 +470,105 @@ function selectJob(values: string[], cwd: string): LoopJob {
 	return matches[0];
 }
 
-async function stopJob(pi: ExtensionAPI, job: LoopJob): Promise<void> {
-	if (!processAlive(job.pid)) return;
-	if (process.platform === "win32") {
-		const result = await pi.exec(
-			"taskkill",
-			["/PID", String(job.pid), "/T", "/F"],
-			{ timeout: 30_000 },
-		);
-		if (result.code !== 0 && processAlive(job.pid))
-			throw new Error(
-				result.stderr.trim() || "Failed to stop loop process tree.",
+export async function stopLoopJob(
+	pi: ExtensionAPI,
+	job: LoopJob,
+	markGoalStopped = true,
+): Promise<LoopJob> {
+	if (processAlive(job.pid)) {
+		if (process.platform === "win32") {
+			const result = await pi.exec(
+				"taskkill",
+				["/PID", String(job.pid), "/T", "/F"],
+				{ timeout: 30_000 },
 			);
-		return;
+			if (result.code !== 0 && processAlive(job.pid))
+				throw new Error(
+					result.stderr.trim() || "Failed to stop loop process tree.",
+				);
+		} else {
+			process.kill(-job.pid, "SIGTERM");
+		}
 	}
-	process.kill(-job.pid, "SIGTERM");
+	if (!job.goal || !markGoalStopped) return readLoopJob(job.id);
+	const at = new Date().toISOString();
+	return updateLoopJob(job.id, (current) => ({
+		...current,
+		goal: current.goal
+			? {
+					...current.goal,
+					state: "stopped",
+					stoppedAt: at,
+					updatedAt: at,
+				}
+			: undefined,
+	}));
+}
+
+export async function resumeLoopJob(job: LoopJob): Promise<LoopJob> {
+	if (processAlive(job.pid))
+		throw new Error(`Loop ${job.id} is already running.`);
+	return launch({
+		version: 1,
+		id: job.id,
+		cwd: job.cwd,
+		plans: job.plans,
+		initialHead: job.initialHead,
+		maxIterations: job.maxIterations ?? MAX_LOOP_ITERATIONS,
+		...(job.goal
+			? {
+					goal: {
+						...job.goal,
+						state: "running",
+						updatedAt: new Date().toISOString(),
+					},
+				}
+			: {}),
+	});
+}
+
+export async function startLoopJob(
+	pi: ExtensionAPI,
+	ctx: ExtensionCommandContext,
+	planValues: string[],
+	options: LoopStartOptions = {},
+): Promise<LoopJob> {
+	if ((options.requireTui ?? true) && ctx.mode !== "tui")
+		throw new Error("Starting a detached loop requires TUI mode.");
+	const plans = resolvePlans(ctx.cwd, planValues);
+	const cwd = fs.realpathSync(ctx.cwd);
+	const active = listLoopJobs().find(
+		(job) =>
+			processAlive(job.pid) &&
+			(job.goal?.id === options.goal?.id ||
+				(job.plans.join("\0") === plans.join("\0") &&
+					(path.resolve(job.cwd) === path.resolve(cwd) ||
+						isContained(cwd, job.cwd) ||
+						isContained(job.cwd, cwd)))),
+	);
+	if (active)
+		throw new Error(`Loop ${active.id} is already running for this work.`);
+
+	if (committableChanges(cwd).length > 0) {
+		show(pi, "Preparing the loop baseline through /commit.");
+		await executeCommitCommand(pi, "", ctx);
+		if (committableChanges(cwd).length > 0)
+			throw new Error(
+				"The /commit baseline left outstanding changes. Resolve them before starting /loop.",
+			);
+	}
+
+	const initialHead = await preflight(pi, cwd);
+	const id = options.goal?.id ?? boundedId(cwd, plans);
+	return launch({
+		version: 1,
+		id,
+		cwd,
+		plans,
+		initialHead,
+		maxIterations: MAX_LOOP_ITERATIONS,
+		goal: options.goal,
+	});
 }
 
 async function handleLoop(
@@ -401,78 +582,39 @@ async function handleLoop(
 		return;
 	}
 	if (request.action === "status") {
-		const jobs = request.values[0] ? [readJob(request.values[0])] : listJobs();
+		const jobs = request.values[0]
+			? [readLoopJob(request.values[0])]
+			: listLoopJobs();
 		show(
 			pi,
 			jobs.length === 0
 				? "No loop jobs found."
 				: jobs
-						.map(
-							(job) =>
-								`${job.id} ${processAlive(job.pid) ? "running" : "stopped"} ${job.cwd} ${job.plans.join(", ")}`,
-						)
+						.map((job) => {
+							const snapshot = inspectLoopJob(job);
+							return `${job.id} ${snapshot.state} ${job.cwd} ${job.plans.join(", ")}`;
+						})
 						.join("\n"),
 		);
 		return;
 	}
 	if (request.action === "stop") {
 		const job = selectJob(request.values, ctx.cwd);
-		await stopJob(pi, job);
+		await stopLoopJob(pi, job);
 		show(pi, `Stopped loop ${job.id}.`);
 		return;
 	}
 	if (request.action === "resume") {
 		const prior = selectJob(request.values, ctx.cwd);
-		if (processAlive(prior.pid))
-			throw new Error(`Loop ${prior.id} is already running.`);
-		const started = launch({
-			version: 1,
-			id: prior.id,
-			cwd: prior.cwd,
-			plans: prior.plans,
-			initialHead: prior.initialHead,
-			maxIterations: prior.maxIterations ?? MAX_LOOP_ITERATIONS,
-		});
+		const started = await resumeLoopJob(prior);
 		show(pi, `Resumed loop ${started.id} (PID ${started.pid}).`);
 		return;
 	}
 
-	if (ctx.mode !== "tui") throw new Error("/loop start requires TUI mode.");
-	const plans = resolvePlans(ctx.cwd, request.values);
-	const cwd = fs.realpathSync(ctx.cwd);
-	const active = listJobs().find(
-		(job) =>
-			processAlive(job.pid) &&
-			job.plans.join("\0") === plans.join("\0") &&
-			(path.resolve(job.cwd) === path.resolve(cwd) ||
-				isContained(cwd, job.cwd) ||
-				isContained(job.cwd, cwd)),
-	);
-	if (active)
-		throw new Error(`Loop ${active.id} is already running for these plans.`);
-
-	if (committableChanges(cwd).length > 0) {
-		show(pi, "Preparing the loop baseline through /commit.");
-		await executeCommitCommand(pi, "", ctx);
-		if (committableChanges(cwd).length > 0)
-			throw new Error(
-				"The /commit baseline left outstanding changes. Resolve them before starting /loop.",
-			);
-	}
-
-	const initialHead = await preflight(pi, cwd);
-	const id = boundedId(cwd, plans);
-	const started = launch({
-		version: 1,
-		id,
-		cwd,
-		plans,
-		initialHead,
-		maxIterations: MAX_LOOP_ITERATIONS,
-	});
+	const started = await startLoopJob(pi, ctx, request.values);
 	show(
 		pi,
-		`Started loop ${started.id} (PID ${started.pid}). Pi will exit so the loop can take over this worktree. Baseline: ${initialHead.slice(0, 12)}.`,
+		`Started loop ${started.id} (PID ${started.pid}). Pi will exit so the loop can take over this worktree. Baseline: ${started.initialHead.slice(0, 12)}.`,
 	);
 	ctx.shutdown();
 }
@@ -480,6 +622,7 @@ async function handleLoop(
 export const loopTestApi = {
 	boundedId,
 	formatLoopStatus,
+	inspectLoopJob,
 	parseRequest,
 	processAlive,
 	readLoopIteration,

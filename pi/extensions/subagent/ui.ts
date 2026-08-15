@@ -50,6 +50,28 @@ export function reconcileSubagentDashboardSelection(
 	selection.id = runs[selection.index]?.runId;
 }
 
+function hierarchyPrefix(run: SubagentRunSnapshot): string {
+	if (!run.treeId) return "";
+	const indentation = "  ".repeat(Math.max(0, (run.depth ?? 1) - 1));
+	return `${indentation}${run.role ?? "worker"} `;
+}
+
+function treeMetadata(run: SubagentRunSnapshot): string | undefined {
+	if (!run.treeId) return undefined;
+	const parts = [
+		`tree ${run.treeId}`,
+		run.parentRunId ? `parent ${run.parentRunId}` : "",
+		run.depth === undefined ? "" : `depth ${run.depth}`,
+		run.role ?? "",
+		run.workflowPhase ? `phase ${run.workflowPhase}` : "",
+		run.taskKey ? `key ${run.taskKey}` : "",
+		run.attempt === undefined ? "" : `attempt ${run.attempt}`,
+		run.retryOrigin ? `retry ${run.retryOrigin}` : "",
+		run.coordinatorTaskId ? `coordinator ${run.coordinatorTaskId}` : "",
+	].filter(Boolean);
+	return parts.join(" | ");
+}
+
 function elapsed(run: SubagentRunSnapshot): string {
 	const end = run.settledAt ?? Date.now();
 	const seconds = Math.max(0, Math.round((end - run.startedAt) / 1000));
@@ -268,7 +290,7 @@ class SubagentDashboard implements Component {
 		}
 		if (data === "x") {
 			const run = runs[this.selection.index];
-			if (run?.status === "running") this.manager.cancel(run.runId);
+			if (run?.status === "running") this.manager.cancelTree(run.runId);
 		}
 	}
 
@@ -307,7 +329,7 @@ class SubagentDashboard implements Component {
 				statusColor(run.status),
 				statusLabel(run.status).padEnd(6),
 			);
-			const identity = `${oneLine(run.agent)} ${run.runId.slice(0, 8)} ${oneLine(run.task)}`;
+			const identity = `${hierarchyPrefix(run)}${oneLine(run.agent)} ${run.runId.slice(0, 8)} ${oneLine(run.task)}`;
 			const ownership =
 				run.owner === "task" && run.taskId
 					? `task ${run.taskId.slice(0, 8)}`
@@ -404,7 +426,7 @@ class SubagentDetail implements Component {
 			return;
 		}
 		if (data === "x") {
-			this.manager.cancel(this.runId);
+			this.manager.cancelTree(this.runId);
 			return;
 		}
 		if (this.keybindings.matches(data, "tui.editor.cursorUp")) {
@@ -457,7 +479,7 @@ class SubagentDetail implements Component {
 			safeWidth,
 		);
 		const metadata = truncateToWidth(
-			`run ${run.runId} | ${oneLine(run.cwd)}`,
+			`run ${run.runId} | ${treeMetadata(run) ?? oneLine(run.cwd)}`,
 			safeWidth,
 		);
 		const task = truncateToWidth(`task: ${oneLine(run.task)}`, safeWidth);

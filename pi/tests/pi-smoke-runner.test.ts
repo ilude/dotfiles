@@ -111,9 +111,15 @@ else process.stdout.write("orchestration-live-ok\\n");
 		const fixture = path.join(fixtureRoot, "fake-telemetry-pi.mjs");
 		fs.writeFileSync(
 			fixture,
-			`const args = process.argv.slice(2);
+			`import fs from "node:fs";
+import path from "node:path";
+const args = process.argv.slice(2);
 if (args.some((arg) => arg.startsWith("/orchestration-stats"))) process.stdout.write("delegated: 1; referenced run IDs: 1\\n");
-else process.stdout.write("orchestration-live-ok\\n");
+else {
+  fs.mkdirSync(process.env.PI_METRICS_DIR, { recursive: true });
+  fs.writeFileSync(path.join(process.env.PI_METRICS_DIR, "workers.jsonl"), JSON.stringify({ event: "orchestration_run", data: { workers: [{ role: "coordinator", treeId: "tree-1" }, { role: "leaf", treeId: "tree-1" }] } }) + "\\n");
+  process.stdout.write("orchestration-live-ok\\n");
+}
 `,
 			"utf8",
 		);

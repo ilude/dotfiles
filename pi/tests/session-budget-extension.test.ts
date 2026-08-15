@@ -12,7 +12,6 @@ import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const baseConfig: SessionBudgetConfig = {
 	enabled: true,
-	maxSameAgentSpawns: 1,
 	maxCommandErrorRepeats: 3,
 };
 
@@ -88,10 +87,11 @@ async function failCommand(runtime: ReturnType<typeof setup>, index: number) {
 	);
 }
 
-async function repeatSpawn(runtime: ReturnType<typeof setup>) {
-	const input = { agent: "reviewer", task: "Review the same plan" };
-	await callTool(runtime, "spawn-1", "subagent", input);
-	return callTool(runtime, "spawn-2", "subagent", input);
+async function triggerHardCommandGate(runtime: ReturnType<typeof setup>) {
+	for (let index = 1; index <= 5; index += 1) {
+		await failCommand(runtime, index);
+	}
+	return callTool(runtime, "hard-gate");
 }
 
 function hiddenMessages(runtime: ReturnType<typeof setup>) {
@@ -147,7 +147,6 @@ describe("session budget extension", () => {
 		try {
 			expect(loadSessionBudgetConfig(projectRoot, userPath)).toEqual({
 				enabled: true,
-				maxSameAgentSpawns: 1,
 				maxCommandErrorRepeats: 4,
 			});
 		} finally {
@@ -200,6 +199,22 @@ describe("session budget extension", () => {
 		);
 	});
 
+	it("allows repeated same-agent spawns without a budget gate", async () => {
+		const runtime = setup();
+		await startEpoch(runtime);
+		for (let index = 1; index <= 8; index += 1) {
+			await expect(
+				callTool(runtime, `subagent-${index}`, "subagent", {
+					agent: "reviewer",
+					task: "Review the same bounded item",
+				}),
+			).resolves.toBeUndefined();
+		}
+		expect(hiddenMessages(runtime)).toHaveLength(0);
+		expect(runtime.ctx.ui.select).not.toHaveBeenCalled();
+		expect(runtime.recordEvent).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		["continue as scoped", false, undefined],
 		["wrap up now", true, undefined],
@@ -212,7 +227,7 @@ describe("session budget extension", () => {
 		const runtime = setup();
 		runtime.ctx.ui.select.mockResolvedValue(choice);
 		await startEpoch(runtime);
-		const decision = await repeatSpawn(runtime);
+		const decision = await triggerHardCommandGate(runtime);
 
 		expect(runtime.ctx.ui.select).toHaveBeenCalledWith(
 			expect.stringContaining("Session watchdog hard check-in"),
@@ -237,7 +252,7 @@ describe("session budget extension", () => {
 		const runtime = setup();
 		runtime.ctx.ui.select.mockResolvedValue("stop");
 		await startEpoch(runtime);
-		await expect(repeatSpawn(runtime)).resolves.toEqual({
+		await expect(triggerHardCommandGate(runtime)).resolves.toEqual({
 			block: true,
 			reason: "Stopped by session watchdog user decision.",
 		});
@@ -257,7 +272,7 @@ describe("session budget extension", () => {
 		const runtime = setup();
 		runtime.ctx.hasUI = false;
 		await startEpoch(runtime);
-		await expect(repeatSpawn(runtime)).resolves.toEqual({
+		await expect(triggerHardCommandGate(runtime)).resolves.toEqual({
 			block: true,
 			reason: "Session watchdog hard check-in requires interactive user input.",
 		});
@@ -271,7 +286,7 @@ describe("session budget extension", () => {
 		const runtime = setup();
 		runtime.ctx.ui.select.mockResolvedValue(undefined);
 		await startEpoch(runtime);
-		await expect(repeatSpawn(runtime)).resolves.toEqual({
+		await expect(triggerHardCommandGate(runtime)).resolves.toEqual({
 			block: true,
 			reason: "Session watchdog hard check-in was cancelled.",
 		});
@@ -280,23 +295,6 @@ describe("session budget extension", () => {
 			reason: "Session watchdog hard check-in was cancelled.",
 		});
 		expect(runtime.ctx.ui.select).toHaveBeenCalledTimes(2);
-	});
-
-	it("hard-gates a repeated same-agent spawn with the same normalized prompt", async () => {
-		const runtime = setup();
-		runtime.ctx.ui.select.mockResolvedValue("continue as scoped");
-		await startEpoch(runtime);
-		const input = { agent: "reviewer", task: "Review the same plan" };
-		await callTool(runtime, "spawn-1", "subagent", input);
-		await callTool(runtime, "spawn-2", "subagent", {
-			agent: "reviewer",
-			task: "  review   the SAME plan ",
-		});
-
-		expect(runtime.ctx.ui.select).toHaveBeenCalledTimes(1);
-		expect(runtime.ctx.ui.select.mock.calls.flat().join(" ")).toContain(
-			"repeat_spawn",
-		);
 	});
 
 	it("queues a hard command-error trip and gates the next tool call", async () => {
@@ -329,7 +327,7 @@ describe("session budget extension", () => {
 		expect(runtime.ctx.ui.select).not.toHaveBeenCalled();
 	});
 
-	it("reports informational footprint and repetition thresholds through /budget", async () => {
+	it("reports informational footprint and command-error thresholds through /budget", async () => {
 		const runtime = setup();
 		await startEpoch(runtime);
 		await callTool(runtime, "edit-1", "edit", { path: "src/a.ts" });
@@ -345,7 +343,7 @@ describe("session budget extension", () => {
 		)?.[0].content;
 		expect(status).toContain("Tool calls: 2");
 		expect(status).toContain("Files touched: 1 - src/a.ts");
-		expect(status).toContain("Spawns: reviewer=1");
+		expect(status).not.toContain("Spawns:");
 		expect(status).toContain("Repeated command errors: 0");
 	});
 
@@ -387,7 +385,7 @@ describe("session budget extension", () => {
 			});
 			runtime.ctx.ui.select.mockResolvedValue("stop");
 			await startEpoch(runtime);
-			await expect(repeatSpawn(runtime)).resolves.toEqual({
+			await expect(triggerHardCommandGate(runtime)).resolves.toEqual({
 				block: true,
 				reason: "Stopped by session watchdog user decision.",
 			});

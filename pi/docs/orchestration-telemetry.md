@@ -42,16 +42,16 @@ Every stored record uses the metrics envelope below. The event payload is in
 
 ## `orchestration_run`
 
-A run describes one delegated orchestration invocation. `schemaVersion` in this
-payload is always `1`.
+A run describes one delegated orchestration invocation. New payloads use
+`schemaVersion` `2`; readers retain compatibility with version `1` records.
 
 | Field | Required | Meaning |
 |---|---:|---|
-| `schemaVersion` | yes | Orchestration payload schema version. |
+| `schemaVersion` | yes | Orchestration payload schema version; new records use `2`. |
 | `orchestrationId` | yes | Invocation identity. |
 | `parentSessionId` | no | Parent session identity when available. |
 | `interactionId` | no | Parent interaction identity for correlation. |
-| `mode` | yes | `single`, `parallel`, `chain`, `team`, or `task-execute`. |
+| `mode` | yes | `single`, `parallel`, `chain`, or `task-execute`. |
 | `fanOut` | no | Worker count requested by the invocation. |
 | `status` | yes | Run status. |
 | `durationMs` | no | Wall duration from invocation start to settlement. |
@@ -63,6 +63,8 @@ payload is always `1`.
 | `inlineBytesNotReturned` | yes | Derived `max(0, childTextBytes - parentVisibleBytes)`. |
 | `workers` | yes | Zero to 32 worker records. |
 
+Tree fields retain identifiers, role, depth, workflow phase, task key, attempt, and retry origin only. They never retain prompt content, raw scope paths, tool arguments, or child output.
+
 Run and worker `status` values are `pending`, `running`, `completed`, `failed`,
 `cancelled`, `stopped`, `failed_to_stop`, `orphaned`, or `rejected`.
 
@@ -71,6 +73,15 @@ Run and worker `status` values are `pending`, `running`, `completed`, `failed`,
 | Field | Required | Meaning |
 |---|---:|---|
 | `runId` | yes | One worker execution identity. |
+| `treeId` | no | Process-tree identity for this worker. |
+| `parentRunId` | no | Immediate parent worker identity in that tree. |
+| `depth` | no | Tree depth from the root, from 0 through 2. |
+| `role` | no | `root`, `coordinator`, or `leaf`. |
+| `workflowPhase` | no | `map`, `retry`, `verify`, or `reduce`. |
+| `taskKey` | no | Workflow item key. |
+| `attempt` | no | Workflow attempt, from 1 through 3. |
+| `retryOrigin` | no | Metadata identifier for the retry source. |
+| `coordinatorTaskId` | no | Root-owned durable task ID carried by a coordinator. |
 | `taskId` | no | Durable task identity when this worker has one. |
 | `agent` | yes | Sanitized worker identity. |
 | `resolvedModel` | no | Sanitized resolved model identity. |
@@ -100,6 +111,11 @@ when `costSource` is `pi-usage`; it is `null` when `costSource` is
 must use `processedTokens`, which includes input, output, cache creation, and
 cache read tokens.
 
+Every child role is capped at 64 completed turns, including structured-output
+correction. A worker that requests additional tool work on turn 64 is stopped
+after that turn and recorded as `cancelled` with its measured usage and partial
+output.
+
 ### Routing outcome sampling
 
 Policy-resolved `modelSize` dispatches are assigned deterministically to the
@@ -119,7 +135,7 @@ without a structured validation contract records `validationOutcome` as
 ## Read-only fan-out experiment
 
 `readOnlyFanout` is an opt-in subagent mode for one read-only investigation with
-at least two independent work items. The caller supplies equivalent
+2 through 8 independent work items. The caller supplies equivalent
 single-generalist and parallel-specialist plans and one required `outputSchema`.
 `read-only-fanout-v1` deterministically assigns one arm from the current
 interaction ID, or the tool-call ID when no interaction is active. Model-routing
@@ -129,7 +145,8 @@ confound each other.
 The experimental child process receives only configured read-oriented direct
 tools. `edit` and `write` are excluded; shell commands continue through damage
 control. This is a bounded tool restriction, not a claim that arbitrary shell
-commands are intrinsically read-only.
+commands are intrinsically read-only. Each selected worker is stopped after
+eight minutes and reported as cancelled with any partial output retained.
 
 ### `orchestration_experiment_assignment`
 
@@ -175,11 +192,11 @@ experiments.
 ## `orchestration_interaction`
 
 An interaction describes one parent interaction, whether it delegated work or
-not. `schemaVersion` in this payload is always `1`.
+not. New payloads use `schemaVersion` `2`; readers retain version `1`.
 
 | Field | Required | Meaning |
 |---|---:|---|
-| `schemaVersion` | yes | Orchestration payload schema version. |
+| `schemaVersion` | yes | Orchestration payload schema version; new records use `2`. |
 | `interactionId` | yes | Parent interaction identity. |
 | `orchestrationIds` | yes | Zero to 64 correlated orchestration invocation identities. |
 | `parentUsageByModel` | yes | Zero to 8 parent usage records grouped by provider and model. |
@@ -198,8 +215,10 @@ the token and cost fields are optional. `costSource` is `pi-usage` or
 - `orchestrationId` identifies one delegation invocation and joins a run to the
   matching member of `orchestrationIds`.
 - `runId` identifies one worker execution inside a run.
-- `taskId` is retained only when parsing historical task-execution records. New
-  task records do not execute workers. It is not an orchestration invocation ID.
+- `treeId` identifies one process tree. `parentRunId`, `depth`, and `role` describe
+  its worker topology; workflow fields describe phase and retry metadata only.
+- `taskId` and `coordinatorTaskId` correlate root-owned durable task records. They
+  are not orchestration invocation IDs, and workers do not mutate task state.
 - `interactionId` identifies the parent interaction. It joins run
   `interactionId` values to interaction records and joins interaction records to
   workflow-friction records by their explicit interaction ID.
@@ -242,7 +261,7 @@ Run `make check` from the repository root after the live gate. Archive preflight
 
 `readOrchestrationEvents({ dir, days, now })` reads the legacy
 `metrics.jsonl` file and UTC daily files in the requested time window. It
-accepts the run and interaction event names, validates their closed schemas,
+accepts version 1 and version 2 run and interaction records, validates their closed schemas,
 filters by envelope timestamp, deduplicates by envelope `id`, and returns a
 stable sort by `ts` then `id`. Experiment assignment and outcome events remain
 available through the general metrics stream and offline analytics; the bounded

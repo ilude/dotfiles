@@ -1585,7 +1585,7 @@ describe("damage-control eval hasUI tracking", () => {
 					},
 				},
 			);
-			await bashHandler(
+			const deferred = await bashHandler(
 				{
 					toolName: "bash",
 					toolCallId: "hasui-autodenied",
@@ -1601,6 +1601,15 @@ describe("damage-control eval hasUI tracking", () => {
 					},
 				},
 			);
+
+			expect(deferred).toMatchObject({ block: true });
+			const structured = JSON.parse(
+				(deferred as { reason: string }).reason,
+			) as Record<string, unknown>;
+			expect(structured).toMatchObject({
+				outcome: "needs_approval",
+				decisionId: expect.any(String),
+			});
 
 			const events = listDamageControlEvalEvents();
 			const promptShown = events.find(
@@ -1627,7 +1636,7 @@ describe("damage-control eval hasUI tracking", () => {
 				severity: "high",
 				promptId: promptShown?.id,
 			});
-			expect(denied?.decisionType).toBe("ask_denied");
+			expect(denied?.decisionType).toBe("needs_approval");
 			expect(denied?.hasUI).toBe(false);
 			expect(
 				events.some(
@@ -1868,7 +1877,7 @@ describe("damage-control registered-handler audit matrix", () => {
 				events.filter((event) => event.decisionType === "ask_approved"),
 			).toHaveLength(6);
 			expect(
-				events.filter((event) => event.decisionType === "ask_denied"),
+				events.filter((event) => event.decisionType === "needs_approval"),
 			).toHaveLength(5);
 			expect(
 				events

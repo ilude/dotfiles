@@ -11,7 +11,7 @@ import {
 } from "./task-registry.ts";
 import { sanitizeTaskValue } from "./task-security.ts";
 
-export const ORCHESTRATION_TELEMETRY_SCHEMA_VERSION = 1 as const;
+export const ORCHESTRATION_TELEMETRY_SCHEMA_VERSION = 2 as const;
 export const READ_ONLY_FANOUT_EXPERIMENT_ID = "read-only-fanout-v1";
 export const READ_ONLY_FANOUT_EXPERIMENT_VERSION = 1 as const;
 export const READ_ONLY_FANOUT_TASK_CLASS = "read-only-multi-item-analysis";
@@ -42,7 +42,10 @@ const STATUSES = new Set([
 const OUTPUT_MODES = new Set(["inline", "artifact", "none"]);
 const COST_SOURCES = new Set(["pi-usage", "unavailable"]);
 const VALIDATION_OUTCOMES = new Set(["passed", "failed", "unavailable"]);
+const TREE_ROLES = new Set(["root", "coordinator", "leaf"]);
+const WORKFLOW_PHASES = new Set(["map", "retry", "verify", "reduce"]);
 const METADATA_VALUE = /^[A-Za-z0-9 ._\-/:@]+$/;
+const METADATA_IDENTIFIER = /^[A-Za-z0-9._:@-]+$/;
 const FORBIDDEN_METADATA =
 	/(?:\bBearer\s+|-----BEGIN|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.|:\/\/[^/\s@]+@)/i;
 
@@ -59,11 +62,22 @@ type OrchestrationStatus =
 	| "rejected";
 type OutputMode = "inline" | "artifact" | "none";
 type CostSource = "pi-usage" | "unavailable";
+export type OrchestrationTreeRole = "root" | "coordinator" | "leaf";
+export type OrchestrationWorkflowPhase = "map" | "retry" | "verify" | "reduce";
 
 export type { CostSource, OrchestrationMode, OrchestrationStatus, OutputMode };
 
 export interface OrchestrationWorker {
 	runId: string;
+	treeId?: string;
+	parentRunId?: string;
+	depth?: number;
+	role?: OrchestrationTreeRole;
+	workflowPhase?: OrchestrationWorkflowPhase;
+	taskKey?: string;
+	attempt?: number;
+	retryOrigin?: string;
+	coordinatorTaskId?: string;
 	taskId?: string;
 	agent: string;
 	resolvedModel?: string;
@@ -84,7 +98,7 @@ export interface OrchestrationWorker {
 }
 
 export interface OrchestrationRunData {
-	schemaVersion: 1;
+	schemaVersion: 2;
 	orchestrationId: string;
 	parentSessionId?: string;
 	interactionId?: string;
@@ -114,7 +128,7 @@ export interface ParentUsageByModel {
 }
 
 export interface OrchestrationInteractionData {
-	schemaVersion: 1;
+	schemaVersion: 2;
 	interactionId: string;
 	orchestrationIds: string[];
 	parentUsageByModel: ParentUsageByModel[];
@@ -217,8 +231,26 @@ function metadataString(value: unknown): string | undefined {
 	return sanitized;
 }
 
+function metadataIdentifier(value: unknown): string | undefined {
+	const sanitized = metadataString(value);
+	if (!sanitized || sanitized === "[REDACTED]") return undefined;
+	return METADATA_IDENTIFIER.test(sanitized) ? sanitized : undefined;
+}
+
 function nonnegative(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) && value >= 0
+		? value
+		: undefined;
+}
+
+function treeDepth(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 2
+		? value
+		: undefined;
+}
+
+function workflowAttempt(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 3
 		? value
 		: undefined;
 }
@@ -226,6 +258,18 @@ function nonnegative(value: unknown): number | undefined {
 function status(value: unknown): OrchestrationStatus | undefined {
 	return typeof value === "string" && STATUSES.has(value)
 		? (value as OrchestrationStatus)
+		: undefined;
+}
+
+function treeRole(value: unknown): OrchestrationTreeRole | undefined {
+	return typeof value === "string" && TREE_ROLES.has(value)
+		? (value as OrchestrationTreeRole)
+		: undefined;
+}
+
+function workflowPhase(value: unknown): OrchestrationWorkflowPhase | undefined {
+	return typeof value === "string" && WORKFLOW_PHASES.has(value)
+		? (value as OrchestrationWorkflowPhase)
 		: undefined;
 }
 
@@ -314,6 +358,15 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 	if (
 		!hasOnlyKeys(worker, [
 			"runId",
+			"treeId",
+			"parentRunId",
+			"depth",
+			"role",
+			"workflowPhase",
+			"taskKey",
+			"attempt",
+			"retryOrigin",
+			"coordinatorTaskId",
 			"taskId",
 			"agent",
 			"resolvedModel",
@@ -339,6 +392,15 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 	const workerStatus = status(worker.status);
 	if (!runId || !agent || !workerStatus) return undefined;
 	const result: OrchestrationWorker = { runId, agent, status: workerStatus };
+	const treeId = metadataIdentifier(worker.treeId);
+	const parentRunId = metadataIdentifier(worker.parentRunId);
+	const depth = treeDepth(worker.depth);
+	const role = treeRole(worker.role);
+	const phase = workflowPhase(worker.workflowPhase);
+	const taskKey = metadataIdentifier(worker.taskKey);
+	const attempt = workflowAttempt(worker.attempt);
+	const retryOrigin = metadataIdentifier(worker.retryOrigin);
+	const coordinatorTaskId = metadataIdentifier(worker.coordinatorTaskId);
 	const taskId = metadataString(worker.taskId);
 	const resolvedModel = metadataString(worker.resolvedModel);
 	const experimentId = metadataString(worker.experimentId);
@@ -351,6 +413,16 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 			: undefined;
 	const workerOutputMode = outputMode(worker.outputMode);
 	const usage = normalizeUsage(worker.usage);
+	if (worker.treeId !== undefined && !treeId) return undefined;
+	if (worker.parentRunId !== undefined && !parentRunId) return undefined;
+	if (worker.depth !== undefined && depth === undefined) return undefined;
+	if (worker.role !== undefined && !role) return undefined;
+	if (worker.workflowPhase !== undefined && !phase) return undefined;
+	if (worker.taskKey !== undefined && !taskKey) return undefined;
+	if (worker.attempt !== undefined && attempt === undefined) return undefined;
+	if (worker.retryOrigin !== undefined && !retryOrigin) return undefined;
+	if (worker.coordinatorTaskId !== undefined && !coordinatorTaskId)
+		return undefined;
 	if (worker.taskId !== undefined && !taskId) return undefined;
 	if (worker.resolvedModel !== undefined && !resolvedModel) return undefined;
 	if (worker.experimentId !== undefined && !experimentId) return undefined;
@@ -361,6 +433,15 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 		return undefined;
 	if (worker.outputMode !== undefined && !workerOutputMode) return undefined;
 	if (worker.usage !== undefined && !usage) return undefined;
+	if (treeId) result.treeId = treeId;
+	if (parentRunId) result.parentRunId = parentRunId;
+	if (depth !== undefined) result.depth = depth;
+	if (role) result.role = role;
+	if (phase) result.workflowPhase = phase;
+	if (taskKey) result.taskKey = taskKey;
+	if (attempt !== undefined) result.attempt = attempt;
+	if (retryOrigin) result.retryOrigin = retryOrigin;
+	if (coordinatorTaskId) result.coordinatorTaskId = coordinatorTaskId;
 	if (taskId) result.taskId = taskId;
 	if (resolvedModel) result.resolvedModel = resolvedModel;
 	if (experimentId) result.experimentId = experimentId;
@@ -423,7 +504,7 @@ export function buildOrchestrationRunEvent(
 	const workers = input.workers.map(buildWorker);
 	if (workers.some((worker) => worker === undefined)) return null;
 	const data: MetricsData<OrchestrationRunData> = {
-		schemaVersion: 1,
+		schemaVersion: ORCHESTRATION_TELEMETRY_SCHEMA_VERSION,
 		orchestrationId,
 		mode: runMode,
 		status: runStatus,
@@ -556,7 +637,7 @@ export function buildOrchestrationInteractionEvent(
 	)
 		return null;
 	const data: MetricsData<OrchestrationInteractionData> = {
-		schemaVersion: 1,
+		schemaVersion: ORCHESTRATION_TELEMETRY_SCHEMA_VERSION,
 		interactionId,
 		orchestrationIds: orchestrationIds as string[],
 		parentUsageByModel: parentUsageByModel as ParentUsageByModel[],
@@ -813,7 +894,11 @@ function normalizePayload(
 	event: MetricsEvent,
 ): ReadOrchestrationEventsResult["events"][number] | null {
 	const data = event.data as Record<string, unknown> | undefined;
-	if (!data || data.schemaVersion !== ORCHESTRATION_TELEMETRY_SCHEMA_VERSION)
+	if (
+		!data ||
+		(data.schemaVersion !== 1 &&
+			data.schemaVersion !== ORCHESTRATION_TELEMETRY_SCHEMA_VERSION)
+	)
 		return null;
 	const {
 		schemaVersion: _schemaVersion,

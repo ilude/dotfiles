@@ -9,6 +9,8 @@ param(
 
     [string]$JobId = "default",
 
+    [string]$GoalId,
+
     [string]$PlanPaths = ".specs/rationalization-phase3/plan.md;.specs/rationalization-phase4/plan.md;.specs/rationalization-phase5/plan.md",
 
     [ValidateRange(0, 300)]
@@ -101,6 +103,55 @@ function Get-FileStats {
     }
 }
 
+function Get-RetrySuppressionReason {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Iteration,
+
+        [Parameter(Mandatory = $true)]
+        [int]$Attempt,
+
+        [Parameter(Mandatory = $true)]
+        [string]$InvocationId
+    )
+
+    if (-not (Test-Path -LiteralPath $script:LoopLog -PathType Leaf)) {
+        return $null
+    }
+    $sawRuntimeLogging = $false
+    foreach ($line in Get-Content -LiteralPath $script:LoopLog) {
+        try {
+            $record = $line | ConvertFrom-Json -ErrorAction Stop
+            if (
+                $record.iteration -ne $Iteration -or
+                $record.attempt -ne $Attempt -or
+                $record.invocation_id -ne $InvocationId
+            ) {
+                continue
+            }
+            if ($record.event -eq "pi_process_started") {
+                $sawRuntimeLogging = $true
+            }
+            if (
+                $record.event -eq "tool_execution_started" -and
+                $record.modifying_capable -eq $true
+            ) {
+                return "modifying_tool_started"
+            }
+            if ($record.event -eq "approval_required") {
+                return "approval_required"
+            }
+        }
+        catch {
+            continue
+        }
+    }
+    if ($GoalId -and -not $sawRuntimeLogging) {
+        return "runtime_evidence_missing"
+    }
+    return $null
+}
+
 function Get-HeadCommit {
     param(
         [Parameter(Mandatory = $true)]
@@ -177,8 +228,14 @@ function Get-PiArguments {
         }
     }
 
+    $goalContext = if ($GoalId) {
+        " This is unattended goal $GoalId; reconcile its durable goal and task state before selecting work."
+    }
+    else {
+        ""
+    }
     $arguments.Add(
-        "Run the next plan loop iteration for: $($Plans -join ', '). Follow the iteration contract and finish with the required LOOP_STATUS marker."
+        "Run the next plan loop iteration for: $($Plans -join ', ').$goalContext Follow the iteration contract and finish with the required LOOP_STATUS marker."
     )
     return $arguments.ToArray()
 }
@@ -259,6 +316,12 @@ Set-Content -LiteralPath (Join-Path $statePath "supervisor.pid") -Value $PID -En
 $env:PI_LOOP_LOG_PATH = $script:LoopLog
 $env:PI_LOOP_JOB_ID = $JobId
 $env:PI_LOOP_SUPERVISOR_PID = [string]$PID
+if ($GoalId) {
+    $env:PI_GOAL_ID = $GoalId
+}
+else {
+    Remove-Item Env:PI_GOAL_ID -ErrorAction SilentlyContinue
+}
 if ($StartupDelaySeconds -gt 0) {
     Start-Sleep -Seconds $StartupDelaySeconds
 }
@@ -271,6 +334,7 @@ Write-LoopEvent -Event "loop_started" -Data ([ordered]@{
     max_no_progress = $MaxNoProgress
     initial_backoff_seconds = $InitialBackoffSeconds
     startup_delay_seconds = $StartupDelaySeconds
+    goal_id = if ($GoalId) { $GoalId } else { $null }
 })
 
 $noProgress = 0
@@ -289,11 +353,14 @@ for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
     $completed = $false
     $iterationLog = Join-Path $logsPath ("iteration-{0:D3}.log" -f $iteration)
     for ($attempt = 1; $attempt -le $MaxInvocationRetries; $attempt++) {
+        $invocationId = [System.Guid]::NewGuid().ToString("N")
         $env:PI_LOOP_ITERATION = [string]$iteration
         $env:PI_LOOP_ATTEMPT = [string]$attempt
+        $env:PI_LOOP_INVOCATION_ID = $invocationId
         Write-LoopEvent -Event "invocation_started" -Data ([ordered]@{
             iteration = $iteration
             attempt = $attempt
+            invocation_id = $invocationId
             head_before = $beforeHead
             continue_session = $sessionExists
             session_files = $sessionStats.Count
@@ -350,6 +417,27 @@ for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
         if ($exitCode -eq 0) {
             $completed = $true
             break
+        }
+
+        $retrySuppressionReason = Get-RetrySuppressionReason `
+            -Iteration $iteration `
+            -Attempt $attempt `
+            -InvocationId $invocationId
+        if ($retrySuppressionReason) {
+            $iterationStopwatch.Stop()
+            Write-LoopEvent -Event "invocation_retry_suppressed" -Data ([ordered]@{
+                iteration = $iteration
+                attempt = $attempt
+                reason = $retrySuppressionReason
+            })
+            Write-LoopEvent -Event "loop_stopped" -Data ([ordered]@{
+                reason = "modifying_invocation_failed"
+                iteration = $iteration
+                attempt = $attempt
+                duration_ms = $iterationStopwatch.ElapsedMilliseconds
+                exit_code = 5
+            })
+            exit 5
         }
 
         if ($attempt -lt $MaxInvocationRetries) {

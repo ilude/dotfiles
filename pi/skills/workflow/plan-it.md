@@ -28,6 +28,8 @@ condition, and concise rollback required by active instructions.
 
 Remove any task, section, or implementation decision whose absence would not break the requested outcome or a real safety boundary. Before writing, verify referenced paths and commands, dependency order, source requirement traceability where applicable, and workflow-level validation.
 
+Every canonical plan must retain incomplete work at `.specs/{slug}/plan.md` and require `/do-it` to archive the entire completed spec directory to `.specs/archive/{slug}/`. Archival is part of plan completion, not an optional cleanup step.
+
 ## Artifact and Report
 
 Create `.specs/{lowercase-hyphenated-slug}/plan.md`. Report its path, scope,

@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 
 const CAPTURE_LIMIT = 64 * 1024;
 const TIMEOUT_MS = 15_000;
+const GOAL_LIFECYCLE_TIMEOUT_MS = 30_000;
 const LIVE_TIMEOUT_MS = 180_000;
 const LEGACY_SENTINEL = "isolated-smoke-legacy-task";
 
@@ -45,7 +46,16 @@ function reportCount(report, label) {
 	return match ? Number(match[1]) : undefined;
 }
 
-async function runProcess({ command, args, cwd, env, timeoutMs, rpc }) {
+async function runProcess({
+	command,
+	args,
+	cwd,
+	env,
+	timeoutMs,
+	rpc,
+	rpcMessage,
+	killAfterRpcResponse = true,
+}) {
 	const child = spawn(command, args, {
 		cwd,
 		env,
@@ -57,17 +67,29 @@ async function runProcess({ command, args, cwd, env, timeoutMs, rpc }) {
 	let stderr = Buffer.alloc(0);
 	child.stdout.on("data", (chunk) => {
 		stdout = appendBounded(stdout, chunk);
-		if (rpc && stdout.includes('"id":"smoke-state"')) child.kill();
+		if (
+			rpc &&
+			killAfterRpcResponse &&
+			stdout.includes(`"id":"${rpcMessage?.id ?? "smoke-state"}"`)
+		)
+			child.kill();
 	});
 	child.stderr.on("data", (chunk) => {
 		stderr = appendBounded(stderr, chunk);
 	});
-	if (rpc) child.stdin.write('{"id":"smoke-state","type":"get_state"}\n');
-	child.stdin.end();
+	if (rpc)
+		child.stdin.write(
+			`${JSON.stringify(rpcMessage ?? { id: "smoke-state", type: "get_state" })}\n`,
+		);
+	if (!rpc) child.stdin.end();
 	const status = await new Promise((resolveResult, reject) => {
 		const timer = setTimeout(() => {
 			child.kill();
-			reject(new Error(`Pi smoke timed out after ${timeoutMs}ms`));
+			reject(
+				new Error(
+					`Pi smoke timed out after ${timeoutMs}ms\nstdout:\n${stdout.toString("utf8")}\nstderr:\n${stderr.toString("utf8")}`,
+				),
+			);
 		}, timeoutMs);
 		child.once("error", (error) => {
 			clearTimeout(timer);
@@ -88,7 +110,11 @@ async function runProcess({ command, args, cwd, env, timeoutMs, rpc }) {
 export async function runIsolatedPiSmoke(options = {}) {
 	const live = options.live ?? false;
 	const scenario = options.scenario ?? "default";
-	if (scenario !== "default" && scenario !== "orchestration-telemetry")
+	if (
+		scenario !== "default" &&
+		scenario !== "orchestration-telemetry" &&
+		scenario !== "goal-lifecycle"
+	)
 		throw new Error(`Unknown smoke scenario: ${scenario}`);
 	if (scenario === "orchestration-telemetry" && !live)
 		throw new Error("orchestration-telemetry requires --live");
@@ -102,9 +128,17 @@ export async function runIsolatedPiSmoke(options = {}) {
 	const metricsDir = join(scratch, "metrics");
 	const operatorDir = join(scratch, "operator");
 	const frictionDir = join(scratch, "workflow-friction");
+	const loopDir = join(scratch, "loops");
 	const legacySourceDir = join(scratch, "legacy-source");
 	await Promise.all(
-		[projectDir, metricsDir, operatorDir, frictionDir, legacySourceDir].map(
+		[
+			projectDir,
+			metricsDir,
+			operatorDir,
+			frictionDir,
+			loopDir,
+			legacySourceDir,
+		].map(
 			(dir) => mkdir(dir, { recursive: true }),
 		),
 	);
@@ -140,9 +174,106 @@ export async function runIsolatedPiSmoke(options = {}) {
 		PI_METRICS_DIR: metricsDir,
 		PI_OPERATOR_DIR: operatorDir,
 		PI_WORKFLOW_FRICTION_DIR: frictionDir,
+		PI_LOOP_DIR: loopDir,
 	};
+	for (const name of [
+		"PI_SUBAGENT_RUN_ID",
+		"PI_SUBAGENT_ROLE",
+		"PI_SUBAGENT_DEPTH",
+		"PI_SUBAGENT_COORDINATOR_TASK_ID",
+		"PI_SUBAGENT_TREE_BROKER_HOST",
+		"PI_SUBAGENT_TREE_BROKER_PORT",
+		"PI_SUBAGENT_TREE_BROKER_TOKEN",
+		"PI_SUBAGENT_TREE_ID",
+		"PI_SUBAGENT_TREE_RUN_ID",
+		"PI_SUBAGENT_TREE_ROLE",
+		"PI_SUBAGENT_TREE_DEPTH",
+	])
+		delete env[name];
 	const invocations = [];
-	if (scenario === "orchestration-telemetry") {
+	const results = [];
+	if (scenario === "goal-lifecycle") {
+		await writeFile(join(projectDir, "goal.md"), "Complete the disposable lifecycle smoke.\n");
+		await writeFile(
+			join(projectDir, "plan.md"),
+			"# Plan\n\n- [ ] **T1: Complete the lifecycle smoke**\n  - State: pending\n",
+		);
+		for (const args of [
+			["init", "-q"],
+			["config", "user.email", "goal-smoke@example.invalid"],
+			["config", "user.name", "Goal Smoke"],
+			["add", "--", "."],
+			["commit", "-q", "-m", "test: initialize goal smoke"],
+		]) {
+			const result = await runProcess({
+				command: "git",
+				args,
+				cwd: projectDir,
+				env,
+				timeoutMs: TIMEOUT_MS,
+				rpc: false,
+			});
+			if (result.code !== 0)
+				throw new Error(`Goal smoke Git setup failed: ${result.stderr}`);
+		}
+		const piArgs = [
+			...commonArgs,
+			"--mode",
+			"rpc",
+			"--extension",
+			extension("goal.ts"),
+		];
+		for (const [id, message] of [
+			["goal-start", "/goal --unattended goal.md"],
+			["goal-status", "/goal status"],
+			["goal-stop", "/goal stop"],
+			["goal-resume", "/goal resume"],
+			["goal-stop-again", "/goal stop"],
+		]) {
+			invocations.push(piArgs);
+			const result = await runProcess({
+				command,
+				args: [...commandArgs, ...piArgs],
+				cwd: projectDir,
+				env,
+				timeoutMs: options.timeoutMs ?? GOAL_LIFECYCLE_TIMEOUT_MS,
+				rpc: true,
+				rpcMessage: { id, type: "prompt", message },
+				killAfterRpcResponse: true,
+			});
+			results.push(result);
+			if (!result.stdout.includes(`"id":"${id}"`))
+				throw new Error(
+					`Goal lifecycle command ${id} did not respond: ${result.stderr}\n${result.stdout}`,
+				);
+			if (id === "goal-start") {
+				const jobs = await readdir(loopDir);
+				if (jobs.length !== 1)
+					throw new Error(`Expected one goal loop job, found ${jobs.length}`);
+				const job = JSON.parse(
+					await readFile(join(loopDir, jobs[0], "job.json"), "utf8"),
+				);
+				if (job.goal?.state !== "running" || job.goal?.id !== job.id)
+					throw new Error("Goal launch did not persist correlated running state");
+			}
+			if (id === "goal-stop" || id === "goal-stop-again") {
+				const [jobId] = await readdir(loopDir);
+				const job = JSON.parse(
+					await readFile(join(loopDir, jobId, "job.json"), "utf8"),
+				);
+				if (job.goal?.state !== "stopped")
+					throw new Error("Goal stop did not persist stopped state");
+			}
+			if (id === "goal-resume") {
+				const [jobId] = await readdir(loopDir);
+				const job = JSON.parse(
+					await readFile(join(loopDir, jobId, "job.json"), "utf8"),
+				);
+				if (job.goal?.state !== "running")
+					throw new Error("Goal resume did not restore running state");
+			}
+		}
+	} else if (scenario === "orchestration-telemetry") {
 		invocations.push([
 			...commonArgs,
 			"--mode",
@@ -152,7 +283,7 @@ export async function runIsolatedPiSmoke(options = {}) {
 			"--extension",
 			extension("workflow-friction-review.ts"),
 			"--print",
-			"Delegate exactly once with the subagent tool to coding-light. Ask it to reply with exactly telemetry-worker-ok. After it completes, reply with exactly orchestration-live-ok.",
+			"Use the subagent tool exactly once with agent orchestrator and role coordinator. Tell the coordinator to use subagent exactly once with agent explorer and role leaf, ask that leaf to reply exactly telemetry-worker-ok, and then reply exactly telemetry-coordinator-ok. After the coordinator completes, reply exactly orchestration-live-ok. Do not answer directly without completing this hierarchy.",
 		]);
 		invocations.push([
 			...commonArgs,
@@ -185,19 +316,20 @@ export async function runIsolatedPiSmoke(options = {}) {
 		);
 	}
 
-	const results = [];
-	for (const piArgs of invocations) {
-		results.push(
-			await runProcess({
-				command,
-				args: [...commandArgs, ...piArgs],
-				cwd: projectDir,
-				env,
-				timeoutMs: options.timeoutMs ?? (live ? LIVE_TIMEOUT_MS : TIMEOUT_MS),
-				rpc: !live,
-			}),
-		);
-	}
+	if (scenario !== "goal-lifecycle")
+		for (const piArgs of invocations) {
+			results.push(
+				await runProcess({
+					command,
+					args: [...commandArgs, ...piArgs],
+					cwd: projectDir,
+					env,
+					timeoutMs:
+						options.timeoutMs ?? (live ? LIVE_TIMEOUT_MS : TIMEOUT_MS),
+					rpc: !live,
+				}),
+			);
+		}
 	const stdoutText = results.map((result) => result.stdout).join("\n");
 	const stderrText = results.map((result) => result.stderr).join("\n");
 	if (scenario === "orchestration-telemetry") {
@@ -211,6 +343,24 @@ export async function runIsolatedPiSmoke(options = {}) {
 			);
 		if (reportCount(results[1].stdout, "referenced run IDs") !== 1)
 			throw new Error(`Expected one referenced run ID: ${results[1].stdout}`);
+		const workers = [];
+		for (const file of await listFiles(metricsDir)) {
+			for (const line of (await readFile(file, "utf8")).split("\n")) {
+				if (!line.trim()) continue;
+				const record = JSON.parse(line);
+				if (record.event === "orchestration_run")
+					workers.push(...(record.data?.workers ?? []));
+			}
+		}
+		const coordinator = workers.find((worker) => worker.role === "coordinator");
+		const leaf = workers.find((worker) => worker.role === "leaf");
+		if (!coordinator || !leaf || coordinator.treeId !== leaf.treeId)
+			throw new Error(
+				`Expected one correlated coordinator and leaf: ${results[0].stdout}`,
+			);
+	} else if (scenario === "goal-lifecycle") {
+		if (results.length !== 5)
+			throw new Error(`Expected five goal lifecycle commands, found ${results.length}`);
 	} else if (
 		live &&
 		(results[0].code !== 0 ||
@@ -220,7 +370,7 @@ export async function runIsolatedPiSmoke(options = {}) {
 	else if (!live && !results[0].stdout.includes('"id":"smoke-state"'))
 		throw new Error(`Pi RPC smoke did not become ready: ${stderrText}`);
 
-	for (const root of [metricsDir, operatorDir, frictionDir]) {
+	for (const root of [metricsDir, operatorDir, frictionDir, loopDir]) {
 		if (!isAbsolute(root))
 			throw new Error(`Scratch root is not absolute: ${root}`);
 		for (const file of await listFiles(root)) {

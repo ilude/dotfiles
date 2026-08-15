@@ -139,8 +139,11 @@ describe("workflow slash command dispatch", () => {
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
 		const ctx = { newSession: vi.fn() };
 		const planPath = ".specs/workflow-fixture/plan.md";
+		mockPi.setActiveTools([]);
 
 		await getHandler(mockPi, "do-it")(planPath, ctx);
+
+		expect(mockPi.getActiveTools()).toEqual(["plan_archive"]);
 
 		expect(mockPi.sendMessage).toHaveBeenCalledWith({
 			customType: "slash-echo",

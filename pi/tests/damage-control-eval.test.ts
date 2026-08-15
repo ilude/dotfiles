@@ -88,10 +88,10 @@ describe("damage-control eval registry", () => {
 		});
 	});
 
-	it("persists hasUI so interactive denials are separable from auto-denials", async () => {
+	it("persists hasUI so interactive denials are separable from unattended deferrals", async () => {
 		const mod = await import("../lib/damage-control-eval.ts");
 		mod.recordDamageControlEval({
-			decisionType: "ask_denied",
+			decisionType: "needs_approval",
 			toolName: "bash",
 			redactedAction: "rm -rf ./build",
 			rule: "rm recursive force",

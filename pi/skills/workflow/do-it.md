@@ -48,7 +48,16 @@ On failure, isolate the changed boundary, make the smallest in-scope repair, and
 
 For a raw task, stop when the requested outcome and relevant checks are complete.
 
-For a plan, keep it at its existing path. When all required tasks and relevant validation are complete, mark its status complete. Archive or move it only when the user asks. If work remains, save the current status and exact next ready task instead.
+For an incomplete plan, keep it at its existing path and save the current status and exact next ready task.
+
+For a canonical `.specs/{slug}/plan.md`, completion requires all of these steps:
+
+1. Finish every required task and relevant validation.
+2. Mark the required task checkboxes, validation checkboxes, frontmatter status, completion date, and execution status complete.
+3. Call `plan_archive` with the original plan path. Do not use shell commands or file edits to move the plan.
+4. Confirm the tool returned `.specs/archive/{slug}/plan.md` and report that archived path.
+
+The plan is not complete until `plan_archive` succeeds. The tool moves the entire spec directory so supporting artifacts remain with the plan, and it refuses incomplete plans, unsafe paths, and archive collisions rather than merging or overwriting. A plan already under `.specs/archive/` needs no further move.
 
 ## Report
 

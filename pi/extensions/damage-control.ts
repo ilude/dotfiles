@@ -31,6 +31,7 @@ import { uiNotify } from "../lib/extension-utils.js";
 import { recordEvent } from "../lib/metrics.js";
 import {
 	type DecisionProvenance,
+	type PermissionDecision,
 	recordDecision,
 } from "../lib/permission-registry.js";
 import {
@@ -322,11 +323,11 @@ function safeRecordDeny(
 	rule?: string,
 	replayPayload?: Record<string, unknown>,
 	metadata?: Record<string, unknown>,
-): void {
+): PermissionDecision | undefined {
 	try {
 		const action = `${toolName}:${redactSummary(rawAction).slice(0, 200)}`;
 		const summary = redactSummary(reason);
-		recordDecision({
+		const decision = recordDecision({
 			action,
 			outcome: "deny",
 			provenance: DENY_PROVENANCE,
@@ -347,8 +348,10 @@ function safeRecordDeny(
 				toolCallId: metadata?.toolCallId,
 			},
 		});
+		return decision;
 	} catch {
 		// Registry/metrics failures must never block damage-control flow.
+		return undefined;
 	}
 }
 
@@ -581,7 +584,7 @@ function formatDamageControlStats(): string {
 			.map(([label, count]) => `${label}=${count}`)
 			.join(", ");
 		lines.push(
-			`    ${row.total} ${row.rule} (shown=${row.promptShown}, approved=${row.askApproved}, denied=${row.askDenied}, auto-allowed=${row.autoAllowed}, blocked=${row.hardBlock}${labels ? `, ${labels}` : ""})`,
+			`    ${row.total} ${row.rule} (shown=${row.promptShown}, approved=${row.askApproved}, denied=${row.askDenied}, needs-approval=${row.needsApproval}, auto-allowed=${row.autoAllowed}, blocked=${row.hardBlock}${labels ? `, ${labels}` : ""})`,
 		);
 	}
 	return lines.join("\n");
@@ -911,9 +914,12 @@ function recordBlock(
 		severity: prompt?.severity,
 		...metadata,
 	};
+	const confirmationRequired = decision.reason.startsWith("Confirmation required");
 	safeRecordDamageControlEval({
-		decisionType: decision.reason.startsWith("Confirmation required")
-			? "ask_denied"
+		decisionType: confirmationRequired
+			? hasUI
+				? "ask_denied"
+				: "needs_approval"
 			: "hard_block",
 		toolName,
 		rawAction,
@@ -928,7 +934,7 @@ function recordBlock(
 		promptId: prompt?.promptId,
 		id: evalEventId,
 	});
-	safeRecordDeny(
+	const persisted = safeRecordDeny(
 		toolName,
 		rawAction,
 		decision.reason,
@@ -943,6 +949,13 @@ function recordBlock(
 		}),
 		auditMetadata,
 	);
+	if (confirmationRequired && !hasUI) {
+		decision.reason = JSON.stringify({
+			outcome: "needs_approval",
+			decisionId: persisted?.id ?? "unavailable",
+			message: "Operator approval is required; the action was not executed.",
+		});
+	}
 }
 
 export default function (pi: ExtensionAPI) {

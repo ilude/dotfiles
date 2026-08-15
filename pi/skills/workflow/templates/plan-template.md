@@ -47,7 +47,7 @@ completed:
 
 ## Retention
 
-Keep the plan at this path after completion. Archive or move it only when the user asks.
+Keep incomplete work at this path. After all required tasks and validation pass, `/do-it` marks the plan complete and archives this entire spec directory to `.specs/archive/{slug}/`. Completion is not finished until deterministic archival succeeds.
 
 ## Execution Status
 

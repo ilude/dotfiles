@@ -7,7 +7,6 @@ import {
 
 const config: SessionBudgetConfig = {
 	enabled: true,
-	maxSameAgentSpawns: 1,
 	maxCommandErrorRepeats: 3,
 };
 
@@ -37,14 +36,19 @@ function commandFailure(value: SessionBudgetTracker) {
 }
 
 describe("session budget tracker", () => {
-	it("uses repetition defaults and rejects invalid thresholds", () => {
+	it("uses command-error defaults and rejects invalid thresholds", () => {
 		expect(parseSessionBudgetConfig(undefined)).toEqual({
 			enabled: true,
-			maxSameAgentSpawns: 1,
 			maxCommandErrorRepeats: 3,
 		});
-		expect(() => parseSessionBudgetConfig({ maxSameAgentSpawns: 0 })).toThrow(
-			"maxSameAgentSpawns must be a positive integer",
+		expect(
+			parseSessionBudgetConfig({ maxSameAgentSpawns: 1 }),
+		).toEqual({
+			enabled: true,
+			maxCommandErrorRepeats: 3,
+		});
+		expect(() => parseSessionBudgetConfig({ maxCommandErrorRepeats: 0 })).toThrow(
+			"maxCommandErrorRepeats must be a positive integer",
 		);
 	});
 
@@ -79,27 +83,6 @@ describe("session budget tracker", () => {
 			toolCalls: 0,
 			filesTouched: [],
 		});
-	});
-
-	it("trips on a repeated same-agent spawn with the same prompt hash", () => {
-		const value = tracker();
-		const spawn = (agentType: string, promptHash: string) =>
-			value.process({
-				type: "spawn",
-				agentType,
-				promptHash,
-				timestamp: 0,
-			});
-		expect(spawn("reviewer", "same")).toEqual([]);
-		expect(spawn("validator", "same")).toEqual([]);
-		expect(spawn("reviewer", "different")).toEqual([]);
-		expect(spawn("reviewer", "same")).toEqual([
-			expect.objectContaining({
-				sensor: "repeat_spawn",
-				level: "hard",
-				measured: 2,
-			}),
-		]);
 	});
 
 	it("trips command errors softly on the third repeat and hard on the fifth", () => {

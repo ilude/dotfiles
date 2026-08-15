@@ -1,19 +1,40 @@
 # Subagents and Durable Tasks
 
-- Runtime model: every child Pi invocation is registered with one bounded process-local run manager for live status, output activity, cancellation, and operator display.
-- Direct ownership: `subagent` calls never create or mutate `TaskRecordV1` entries. They may run in the foreground or detach with `background=true`; an optional `taskId` only correlates the child run with an existing running task.
-- Read-only fan-out experiment: `readOnlyFanout` is opt-in only for one read-only investigation with at least two independent work items. The caller supplies equivalent single-generalist and parallel-specialist plans under one required output schema; deterministic assignment selects one arm. Do not use it for dependent work, mutations, or live operations.
-- Experiment boundary: experimental children receive only configured read-oriented direct tools, with `edit` and `write` excluded. Shell commands still pass through damage control. Assignment telemetry is emitted before execution, structural output-schema validation is emitted after settlement, and model-routing outcome sampling is disabled for the invocation.
-- Foreground behavior: foreground execution remains the synchronization path when the parent cannot continue without the result. Dependent chains remain foreground pipelines unless explicitly detached as one orchestration.
-- Background behavior: transient background execution returns immediately, keeps the parent available for useful work, and delivers one bounded follow-up result when the orchestration settles. Do not poll it.
-- Agent catalog: every advertised subagent agent field enumerates default user-scope agents. Trusted project agents remain available when `agentScope` is `project` or `both`; validate that scope at runtime and do not infer aliases for unknown names. Refresh the catalog on session start or reload.
-- Dispatch preflight: validate every requested agent against the selected scope before starting any worker or acknowledging a background orchestration. When `taskId` is supplied, also require an existing non-deleted running task in the workspace resolved from that worker's effective cwd. Reject a parallel invocation atomically when any agent or task link is invalid.
-- Call rendering: show the complete task text for a single-agent invocation beneath its compact agent, scope, model, and background header. Keep parallel and chain call summaries bounded.
-- Durable ownership: only `task` creates durable todo records. It stores workflow intent, dependencies, scope, and lifecycle state but never starts, waits for, stops, or captures output from child processes.
-- Default visibility: list only non-terminal records assigned to the current repository workspace. Unscoped, terminal, and foreign-workspace records require an explicit all-records view, while tombstones stay out of model-callable collections, so unrelated history does not enter model context.
-- Cleanup: import legacy `.pi/todo.json` state once per workspace. At session startup, physically remove imported legacy and retired execution-era records unless an active durable dependency still references them, plus terminal task graphs with no active dependents. Failed and other non-terminal durable tasks remain until updated or removed explicitly.
-- Coordination: when executing an already selected durable task, use `task ready`, mark it `running`, pass its `taskId` to `subagent`, and record the terminal task state explicitly after validation. Use `bg_start` without task linkage when shell execution is appropriate. Ordinary transient runs remain task-free. The parent agent owns this sequence.
-- Authority: the run manager owns live child-process state. The task registry owns durable todo and dependency state. Neither surface mutates the other's lifecycle.
-- Operator UI: keep compact subagent counts visible and provide `/subagents` for bounded live detail of direct child runs. Task state remains visible through the task surfaces.
-- Retention: bound in-memory run history, transcript items, live output, and rendered content. Preserve full child output through an explicit child session or artifact when continuation or durable evidence requires it.
-- Session lifecycle: cancel and release process-local runs during session shutdown. Durable task state remains available across context compaction and normal session recovery.
+## Tree execution
+
+- A root may run a coordinator or leaf. A coordinator may run leaves only. Leaves and depth-two children cannot invoke delegation or workflow tools.
+- The root-owned cross-process tree scheduler queues descendants and enforces eight active descendants by default. `PI_SUBAGENT_MAX_ACTIVE_DESCENDANTS` may configure a ceiling from 1 through 16.
+- Every child role shares a 64-turn ceiling, including structured-output correction. If turn 64 requests more tool work, stop after that turn and return a budget-limited partial result.
+- Read-only fan-out workers have an eight-minute wall-clock limit. Modifying leaves have no wall-clock hard timeout.
+- Cancelling a coordinator or workflow recursively cancels queued and active descendants. A child capability may cancel only itself and its descendants; it cannot cancel or release an ancestor or sibling. Cancellation, process settlement, permit release, and scope release are idempotent.
+- One blocked, failed, or cancelled child is represented as that child's result and does not cancel an unrelated sibling unless the invocation-level signal is aborted.
+- `/subagents` can cancel a selected process-local tree. Run snapshots, bounded transcripts, live output, workflow state, and settled workflow results are process-local. They survive `/reload`, `/new`, `/resume`, and `/fork` in the same process and are discarded at process exit. Preserve full child output through an explicit child session or artifact when durable evidence is required.
+
+## Callable subagent behavior
+
+- `subagent` provides common foreground single and parallel execution. `background=true` returns immediately and delivers one bounded follow-up result when the orchestration settles; do not poll it.
+- `subagent_chain`, `subagent_continue`, `subagent_fanout`, and `subagent_workflow` are deferred capabilities activated through `tool_search`.
+- `readOnlyFanout` is opt-in for one read-only investigation with 2 through 8 independent work items, equivalent single-generalist and parallel-specialist plans, and one required output schema. Assignment is deterministic. Do not use it for dependent work, mutations, or live operations.
+- Validate every requested agent against `agentScope` before starting any worker or acknowledging background work. Project agents require `agentScope: "project"` or `"both"`; unknown names do not resolve as aliases. When `confirmProjectAgents` is requested, reject before spawn if no UI is available rather than bypassing confirmation.
+- An optional `taskId` requires an existing non-deleted running task in the effective workspace and provides correlation only. Subagent calls never create or transition `TaskRecordV1` entries.
+
+## Typed workflow
+
+- `subagent_workflow` accepts a closed map, retry, verify, and reduce specification with at most 256 unique items, two attempts by default, at most three attempts, and reduction groups of at most eight entries.
+- Every item declares required capabilities. Preflight compares them with the selected agent's effective tools; missing tools reject the item without consuming an attempt.
+- File analysis uses a bounded extract or repository-relative path/range input. Do not forward raw large-file content to a leaf or parent result.
+- Each leaf returns a bounded envelope with `found`, `not_found`, `inconclusive`, or `error`, plus compact evidence, changed files, validation, and gaps. Retry only failed, inconclusive, schema-invalid, or verifier-contradicted items. A materially identical retry is rejected.
+
+## Scope and durable-task boundaries
+
+- A modifying workflow item declares normalized repository-relative scopes. Concurrent modifying items must have disjoint canonical scopes, and tree admission rejects lexical or symlink/junction overlap atomically.
+- A scoped modifying leaf loses `bash` and `pwsh`; direct file mutations outside its assigned canonical scope are blocked. Existing symlinks and the nearest existing ancestor of a prospective target are resolved before containment is accepted.
+- Only `task` creates durable todo records. The root selects ready work, marks it running, delegates with the existing `taskId`, validates the result, and records terminal state. Coordinators may carry that task ID; leaves and retries remain transient.
+- The run manager owns live process state. The task registry owns durable todo and dependency state. Neither mutates the other's lifecycle.
+
+## Unattended goal recovery
+
+- `subagent_workflow` keeps its bounded per-invocation retry contract. `/goal --unattended` separately tracks outcomes per linked durable root task across loop invocations.
+- Twenty qualifying outcomes (`error`, `inconclusive`, schema-invalid output, or verifier contradiction) suspend ordinary attempts for that goal item and require a persisted re-evaluation. Two materially different recovery attempts are then allowed; two failures set only that item to `needs_operator`.
+- Capability rejection, cancellation, damage-control denial, infrastructure failure before execution, and valid `not_found` do not consume the goal recovery budget. The repeated identical tool-result guard remains independent.
+- Ask-tier damage-control decisions without UI return `needs_approval` with a redacted decision reference. The active linked root task becomes blocked while independent ready tasks may continue; the denied action is never replayed automatically.

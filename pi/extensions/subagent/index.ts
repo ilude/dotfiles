@@ -82,6 +82,30 @@ import {
 	type SubagentRunUsage,
 } from "./run-manager.js";
 import {
+	assertDisjointScopes,
+	decodeScopePolicyEnvironment,
+	directMutationViolation,
+	DIRECT_FILE_MUTATION_TOOLS,
+	encodeScopePolicyEnvironment,
+	normalizeRepositoryScopes,
+	toolsForScopedModifier,
+} from "./scope-policy.js";
+import {
+	getSubagentTreeBroker,
+	SubagentTreeClient,
+	treeClientFromEnvironment,
+	type SubagentTreePermit,
+} from "./tree-runtime.js";
+import {
+	getSubagentWorkflowRuntime,
+	WorkflowSpecificationSchema,
+	type WorkflowExecutionRequest,
+	type WorkflowInput,
+	type WorkflowReductionRequest,
+	type WorkflowResultEnvelope,
+	type WorkflowSpecification,
+} from "./workflow-runtime.js";
+import {
 	formatSubagentActivityStatus,
 	openSubagentDashboard,
 } from "./ui.js";
@@ -98,7 +122,10 @@ function buildSubagentTraceparent(): string {
 	return formatTraceparent(parentTraceId, newSpanId());
 }
 
-const MAX_CONCURRENCY = 8;
+export const MAX_SUBAGENT_WORKERS_PER_WAVE = 8;
+export const MAX_READ_ONLY_FANOUT_TASKS = 8;
+export const MAX_SUBAGENT_TURNS = 64;
+export const READ_ONLY_SUBAGENT_TIMEOUT_MS = 8 * 60 * 1000;
 const COLLAPSED_ITEM_COUNT = 10;
 const STRUCTURED_CHAIN_ARTIFACT_BYTES = 8_000;
 const DELEGATED_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -382,6 +409,15 @@ export interface SingleResult {
 	structuredOutput?: unknown;
 	outputAttempts?: number;
 	routingExperiment?: RoutingOutcomeAssignment;
+	treeId?: string;
+	parentRunId?: string;
+	depth?: number;
+	role?: SubagentRole;
+	workflowPhase?: "map" | "retry" | "verify" | "reduce";
+	taskKey?: string;
+	attempt?: number;
+	retryOrigin?: string;
+	coordinatorTaskId?: string;
 }
 
 export interface SubagentDetails {
@@ -726,12 +762,133 @@ function inferWorkflow(task: string): string | undefined {
 	return undefined;
 }
 
+export type SubagentRole = "coordinator" | "leaf";
+
 interface SubagentRunContext {
 	owner?: "direct" | "task";
 	orchestrationId?: string;
 	mode?: SubagentRunMode;
 	background?: boolean;
 	readOnly?: boolean;
+	maxTurns?: number;
+	timeoutMs?: number;
+	role?: SubagentRole;
+	depth?: number;
+	parentRunId?: string;
+	treeId?: string;
+	repositoryRoot?: string;
+	scopes?: string[];
+	coordinatorTaskId?: string;
+	workflowPhase?: "map" | "retry" | "verify" | "reduce";
+	taskKey?: string;
+	attempt?: number;
+	retryOrigin?: string;
+	treeClient?: SubagentTreeClient;
+}
+
+type CurrentSubagentRole = "root" | SubagentRole;
+
+interface SubagentExecutionIdentity {
+	role: CurrentSubagentRole;
+	depth: number;
+	runId?: string;
+	treeId?: string;
+	coordinatorTaskId?: string;
+}
+
+const DELEGATION_AND_WORKFLOW_TOOLS = new Set([
+	"subagent",
+	"subagent_chain",
+	"subagent_continue",
+	"subagent_fanout",
+	"subagent_workflow",
+]);
+
+type WorkflowPhase = "map" | "retry" | "verify" | "reduce";
+
+interface InternalWorkflowRunContext {
+	workflowPhase: WorkflowPhase;
+	taskKey: string;
+	attempt: number;
+	retryOrigin?: string;
+	modifying: boolean;
+}
+
+const internalWorkflowRuns = new Map<string, InternalWorkflowRunContext>();
+
+function currentSubagentIdentity(): SubagentExecutionIdentity {
+	const treeRunId = process.env.PI_SUBAGENT_TREE_RUN_ID?.trim() || undefined;
+	const legacyRunId = process.env.PI_SUBAGENT_RUN_ID?.trim() || undefined;
+	const runId = treeRunId ?? legacyRunId;
+	if (!runId) return { role: "root", depth: 0 };
+	const configuredRole = treeRunId
+		? process.env.PI_SUBAGENT_TREE_ROLE
+		: process.env.PI_SUBAGENT_ROLE;
+	const configuredDepth = treeRunId
+		? process.env.PI_SUBAGENT_TREE_DEPTH
+		: process.env.PI_SUBAGENT_DEPTH;
+	if (!treeRunId && !configuredRole && !configuredDepth)
+		return { role: "leaf", depth: 1, runId };
+	if (configuredRole !== "coordinator" && configuredRole !== "leaf")
+		throw new Error("Nested subagent process is missing a valid role.");
+	const depth = Number.parseInt(configuredDepth ?? "", 10);
+	if (!Number.isInteger(depth) || depth < 1 || depth > 2)
+		throw new Error("Nested subagent process has an invalid depth.");
+	return {
+		role: configuredRole,
+		depth,
+		runId,
+		treeId: process.env.PI_SUBAGENT_TREE_ID?.trim() || undefined,
+		coordinatorTaskId:
+			process.env.PI_SUBAGENT_COORDINATOR_TASK_ID?.trim() || undefined,
+	};
+}
+
+function resolveChildRole(
+	requestedRole: SubagentRole | undefined,
+	agentName: string,
+): { role: SubagentRole; depth: number } {
+	const current = currentSubagentIdentity();
+	if (current.role === "leaf" || current.depth >= 2)
+		throw new Error("Leaf and depth-two subagents cannot delegate.");
+	const role =
+		requestedRole ??
+		(current.role === "root" && agentName === "orchestrator"
+			? "coordinator"
+			: "leaf");
+	if (current.role === "coordinator" && role !== "leaf")
+		throw new Error("A coordinator may invoke leaf workers only.");
+	const depth = current.depth + 1;
+	if (role === "coordinator" && depth !== 1)
+		throw new Error("A coordinator may run only at depth one.");
+	return { role, depth };
+}
+
+function agentCanModify(agent: AgentConfig | undefined): boolean {
+	return Boolean(
+		agent?.tools?.some((tool) => DIRECT_FILE_MUTATION_TOOLS.has(tool)),
+	);
+}
+
+function childTools(
+	agent: AgentConfig,
+	role: SubagentRole,
+	hasScopeLease: boolean,
+): string[] | undefined {
+	let tools = agent.tools ? [...agent.tools] : undefined;
+	if (role === "coordinator") {
+		tools = (tools ?? ["read", "grep", "find", "ls", "subagent"]).filter(
+			(tool) => !DIRECT_FILE_MUTATION_TOOLS.has(tool),
+		);
+	}
+	if (role === "leaf") {
+		tools = (tools ?? ["read", "bash"]).filter(
+			(tool) => !DELEGATION_AND_WORKFLOW_TOOLS.has(tool),
+		);
+	}
+	if (hasScopeLease)
+		tools = toolsForScopedModifier(tools ?? ["read", "edit", "write"]);
+	return tools;
 }
 
 export class SubagentAbortError extends Error {
@@ -761,6 +918,9 @@ export async function runSingleAgent(
 	runContext?: SubagentRunContext,
 ): Promise<SingleResult> {
 	const runStartedAt = Date.now();
+	const turnLimit = runContext?.maxTurns ?? MAX_SUBAGENT_TURNS;
+	const readOnlyTimeoutMs =
+		runContext?.timeoutMs ?? READ_ONLY_SUBAGENT_TIMEOUT_MS;
 	const agent = agents.find((a) => a.name === agentName);
 
 	if (!agent) {
@@ -787,18 +947,31 @@ export async function runSingleAgent(
 		};
 	}
 
+	const resolvedChild =
+		runContext?.role && runContext.depth
+			? { role: runContext.role, depth: runContext.depth }
+			: resolveChildRole(runContext?.role, agentName);
+	const normalizedScopes = normalizeRepositoryScopes(
+		runContext?.scopes ?? [],
+		runContext?.repositoryRoot ?? defaultCwd,
+	);
 	const args: string[] = ["--mode", "json", "-p", "--no-skills"];
 	if (modelOverride) args.push("--model", modelOverride);
 	else if (agent.model) args.push("--model", agent.model);
 	const effectiveEffort = effortOverride ?? agent.effort;
 	if (effectiveEffort) args.push("--thinking", effectiveEffort);
 	if (runContext?.readOnly) {
-		const tools = (agent.tools ?? ["read", "bash"]).filter((tool) =>
-			READ_ONLY_EXPERIMENT_TOOLS.has(tool),
-		);
+		const tools = (agent.tools ?? ["read", "bash"])
+			.filter((tool) => READ_ONLY_EXPERIMENT_TOOLS.has(tool))
+			.filter((tool) => !DELEGATION_AND_WORKFLOW_TOOLS.has(tool));
 		args.push("--tools", (tools.length > 0 ? tools : ["read"]).join(","));
-	} else if (agent.tools && agent.tools.length > 0) {
-		args.push("--tools", agent.tools.join(","));
+	} else {
+		const tools = childTools(
+			agent,
+			resolvedChild.role,
+			normalizedScopes.length > 0,
+		);
+		if (tools && tools.length > 0) args.push("--tools", tools.join(","));
 	}
 	for (const skillPath of resolveAgentSkillPaths(agent))
 		args.push("--skill", skillPath);
@@ -873,12 +1046,43 @@ export async function runSingleAgent(
 		args.push("--no-session");
 	}
 	const runController = new AbortController();
+	let treePermit: SubagentTreePermit | undefined;
+	let removeTreeCancelListener: (() => void) | undefined;
+	const forwardAbort = () => runController.abort(signal?.reason);
+	if (signal?.aborted) forwardAbort();
+	else signal?.addEventListener("abort", forwardAbort, { once: true });
 	subagentRunManager.begin(
 		{
 			runId,
 			...(taskId ? { taskId } : {}),
 			...(runContext?.orchestrationId
 				? { orchestrationId: runContext.orchestrationId }
+				: {}),
+			...(runContext?.treeClient?.parent.treeId || runContext?.treeId
+				? {
+						treeId:
+							runContext?.treeClient?.parent.treeId ?? runContext?.treeId,
+					}
+				: {}),
+			...(runContext?.treeClient?.parent.runId || runContext?.parentRunId
+				? {
+						parentRunId:
+							runContext?.treeClient?.parent.runId ??
+							runContext?.parentRunId,
+					}
+				: {}),
+			role: resolvedChild.role,
+			depth: resolvedChild.depth,
+			...(runContext?.coordinatorTaskId
+				? { coordinatorTaskId: runContext.coordinatorTaskId }
+				: {}),
+			...(runContext?.workflowPhase
+				? { workflowPhase: runContext.workflowPhase }
+				: {}),
+			...(runContext?.taskKey ? { taskKey: runContext.taskKey } : {}),
+			...(runContext?.attempt ? { attempt: runContext.attempt } : {}),
+			...(runContext?.retryOrigin
+				? { retryOrigin: runContext.retryOrigin }
 				: {}),
 			owner: runContext?.owner ?? (taskId ? "task" : "direct"),
 			mode: runContext?.mode ?? (taskId ? "task-execute" : "single"),
@@ -891,9 +1095,6 @@ export async function runSingleAgent(
 		},
 		runController,
 	);
-	const forwardAbort = () => runController.abort(signal?.reason);
-	if (signal?.aborted) forwardAbort();
-	else signal?.addEventListener("abort", forwardAbort, { once: true });
 	const planPath = extractPlanPath(task);
 	const workflow = inferWorkflow(task);
 	const timingSpan = new TimingSpan({
@@ -915,9 +1116,58 @@ export async function runSingleAgent(
 	});
 	let timingFinished = false;
 	let wasAborted = false;
+	let budgetLimitReason: string | undefined;
 
 	try {
 		if (runController.signal.aborted) throw new SubagentAbortError();
+		if (runContext?.treeClient) {
+			try {
+				treePermit = await runContext.treeClient.acquire(
+					{
+						runId,
+						role: resolvedChild.role,
+						depth: resolvedChild.depth,
+						coordinatorTaskId: runContext.coordinatorTaskId,
+						workflowPhase: runContext.workflowPhase,
+						taskKey: runContext.taskKey,
+						attempt: runContext.attempt,
+						retryOrigin: runContext.retryOrigin,
+						...(normalizedScopes.length > 0
+							? {
+									scopeLease: {
+										repositoryRoot:
+											runContext.repositoryRoot ?? defaultCwd,
+										scopes: normalizedScopes,
+									},
+								}
+							: {}),
+					},
+					runController.signal,
+				);
+			} catch (error) {
+				if (runController.signal.aborted) throw new SubagentAbortError();
+				throw error;
+			}
+			const cancelTree = () => {
+				void runContext.treeClient?.cancel(runId).catch(() => []);
+			};
+			runController.signal.addEventListener("abort", cancelTree, {
+				once: true,
+			});
+			removeTreeCancelListener = () =>
+				runController.signal.removeEventListener("abort", cancelTree);
+			Object.assign(currentResult, {
+				treeId: treePermit.metadata.treeId,
+				parentRunId: treePermit.metadata.parentRunId,
+				depth: treePermit.metadata.depth,
+				role: treePermit.metadata.role,
+				workflowPhase: treePermit.metadata.workflowPhase,
+				taskKey: treePermit.metadata.taskKey,
+				attempt: treePermit.metadata.attempt,
+				retryOrigin: treePermit.metadata.retryOrigin,
+				coordinatorTaskId: treePermit.metadata.coordinatorTaskId,
+			});
+		}
 		if (agent.systemPrompt.trim()) {
 			const tmp = await writePromptToTempFile(agent.name, agent.systemPrompt);
 			tmpPromptDir = tmp.dir;
@@ -937,13 +1187,17 @@ export async function runSingleAgent(
 			let agentEnded = false;
 			let terminationRequested = false;
 			let terminationError: string | undefined;
+			let turnBudgetReached = false;
 			let graceTimer: ReturnType<typeof setTimeout> | undefined;
 			let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+			let readOnlyTimeoutTimer: ReturnType<typeof setTimeout> | undefined;
 			let proc: ReturnType<typeof spawn> | undefined;
 			let removeAbortListener: (() => void) | undefined;
+			let stopForBudget: (reason: string) => void = () => {};
 			const clearTerminationTimers = () => {
 				if (graceTimer) clearTimeout(graceTimer);
 				if (deadlineTimer) clearTimeout(deadlineTimer);
+				if (readOnlyTimeoutTimer) clearTimeout(readOnlyTimeoutTimer);
 			};
 			const finish = (code: number) => {
 				if (resolved) return;
@@ -962,6 +1216,32 @@ export async function runSingleAgent(
 				TRACEPARENT: buildSubagentTraceparent(),
 				PI_SUBAGENT_RUN_ID: runId,
 				PI_SUBAGENT_STARTED_AT: subagentStartedAt,
+				PI_SUBAGENT_ROLE: resolvedChild.role,
+				PI_SUBAGENT_DEPTH: String(resolvedChild.depth),
+				...(runContext?.treeId
+					? { PI_SUBAGENT_TREE_ID: runContext.treeId }
+					: {}),
+				...(runContext?.parentRunId
+					? { PI_SUBAGENT_PARENT_RUN_ID: runContext.parentRunId }
+					: {}),
+				...(runContext?.coordinatorTaskId
+					? {
+							PI_SUBAGENT_COORDINATOR_TASK_ID:
+								runContext.coordinatorTaskId,
+						}
+					: {}),
+				...(normalizedScopes.length > 0
+					? {
+							PI_SUBAGENT_SCOPE_POLICY: encodeScopePolicyEnvironment({
+								repositoryRoot:
+									runContext?.repositoryRoot ?? defaultCwd,
+								scopes: normalizedScopes,
+							}),
+						}
+					: {}),
+				...(runContext?.treeClient && treePermit
+					? runContext.treeClient.childEnvironment(treePermit)
+					: {}),
 			};
 			proc = spawn(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,
@@ -971,6 +1251,11 @@ export async function runSingleAgent(
 				windowsHide: true,
 				detached: process.platform !== "win32",
 			});
+			if (treePermit && proc.pid) {
+				void treePermit
+					.registerProcess({ pid: proc.pid })
+					.catch((error: unknown) => runController.abort(error));
+			}
 			let buffer = "";
 
 			const processLine = (line: string) => {
@@ -1066,6 +1351,23 @@ export async function runSingleAgent(
 					emitUpdate();
 				}
 
+				if (
+					event.type === "turn_end" &&
+					currentResult.usage.turns >= turnLimit
+				) {
+					turnBudgetReached = true;
+					if (currentResult.stopReason === "toolUse") {
+						stopForBudget(
+							`Subagent stopped after the ${turnLimit}-turn budget; output may be partial.`,
+						);
+					}
+				}
+				if (event.type === "turn_start" && turnBudgetReached) {
+					stopForBudget(
+						`Subagent stopped after the ${turnLimit}-turn budget; output may be partial.`,
+					);
+				}
+
 				if (event.type === "agent_end") {
 					if (
 						Array.isArray(event.messages) &&
@@ -1124,9 +1426,18 @@ export async function runSingleAgent(
 					]
 						.filter(Boolean)
 						.join(" ");
+					if (budgetLimitReason) currentResult.stopReason = "error";
 					finish(1);
 				}, SUBAGENT_TERMINATION_DEADLINE_MS);
 				deadlineTimer.unref();
+			};
+			stopForBudget = (reason: string) => {
+				if (budgetLimitReason || resolved) return;
+				budgetLimitReason = reason;
+				currentResult.stopReason = "aborted";
+				currentResult.errorMessage = reason;
+				emitUpdate();
+				requestTermination();
 			};
 
 			proc.on("close", (code) => {
@@ -1152,6 +1463,16 @@ export async function runSingleAgent(
 				removeAbortListener = () =>
 					runController.signal.removeEventListener("abort", killProc);
 			}
+			if (runContext?.readOnly) {
+				readOnlyTimeoutTimer = setTimeout(
+					() =>
+						stopForBudget(
+							"Read-only subagent stopped at its wall-clock budget; output may be partial.",
+						),
+					readOnlyTimeoutMs,
+				);
+				readOnlyTimeoutTimer.unref();
+			}
 		});
 
 		currentResult.exitCode = exitCode;
@@ -1166,6 +1487,19 @@ export async function runSingleAgent(
 			(continuable
 				? findDelegatedSession(delegatedSessionDir, runId)
 				: undefined);
+		if (budgetLimitReason && currentResult.stopReason !== "error") {
+			currentResult.stopReason = "aborted";
+			currentResult.errorMessage = budgetLimitReason;
+			timingSpan.finish("cancelled", {
+				exitCode,
+				workflow,
+				phase: "run",
+				planPath,
+				failureReason: budgetLimitReason,
+			});
+			timingFinished = true;
+			return currentResult;
+		}
 		if (wasAborted) {
 			currentResult.stopReason = "aborted";
 			timingSpan.finish("cancelled", {
@@ -1240,6 +1574,8 @@ export async function runSingleAgent(
 			finalText: getFinalOutput(currentResult.messages),
 			durationMs: currentResult.durationMs,
 		});
+		removeTreeCancelListener?.();
+		await treePermit?.release();
 		signal?.removeEventListener("abort", forwardAbort);
 		if (tmpPromptPath)
 			try {
@@ -1260,10 +1596,15 @@ type TaskParams = {
 	agent: string;
 	task: string;
 	taskId?: string;
+	role?: SubagentRole;
+	scope?: string[];
 	effort?: AgentEffort;
 	cwd?: string;
 	output?: string | boolean;
 	outputMode?: OutputMode;
+	resolvedRole?: SubagentRole;
+	resolvedDepth?: number;
+	normalizedScopes?: string[];
 };
 
 type ChainParams = TaskParams;
@@ -1338,6 +1679,57 @@ const StructuredOutputSchema = Type.Record(Type.String(), Type.Unknown(), {
 		"JSON Schema for validated child output. Invalid output receives at most one continuation correction.",
 });
 
+const WorkflowTextListSchema = Type.Array(Type.String({ maxLength: 500 }), {
+	maxItems: 32,
+});
+const WorkflowLeafOutputSchema = Type.Object(
+	{
+		status: StringEnum(
+			["found", "not_found", "inconclusive", "error"] as const,
+		),
+		evidence: Type.Optional(WorkflowTextListSchema),
+		changedFiles: Type.Optional(WorkflowTextListSchema),
+		validation: Type.Optional(WorkflowTextListSchema),
+		gaps: Type.Optional(WorkflowTextListSchema),
+	},
+	{ additionalProperties: false },
+);
+const WorkflowVerificationOutputSchema = Type.Object(
+	{
+		contradicted: Type.Boolean(),
+		evidence: Type.Optional(WorkflowTextListSchema),
+		gaps: Type.Optional(WorkflowTextListSchema),
+	},
+	{ additionalProperties: false },
+);
+const WorkflowReductionOutputSchema = Type.Object(
+	{
+		summary: Type.String({ maxLength: 500 }),
+		evidence: Type.Optional(WorkflowTextListSchema),
+		gaps: Type.Optional(WorkflowTextListSchema),
+	},
+	{ additionalProperties: false },
+);
+
+function workflowInputInstruction(input: WorkflowInput): string {
+	if (input.kind === "none") return "";
+	if (input.kind === "extract")
+		return `\n\nBounded workflow extract:\n${input.content}`;
+	return `\n\nInspect repository-relative path ${input.path}, lines ${input.startLine}-${input.endLine}. Keep evidence compact and do not copy the complete range into the result.`;
+}
+
+const SubagentRoleSchema = StringEnum(["coordinator", "leaf"] as const, {
+	description:
+		"Execution role. Root may start a coordinator or leaf; coordinators may start leaves only.",
+	default: "leaf",
+});
+
+const ModificationScopeSchema = Type.Array(Type.String(), {
+	minItems: 1,
+	description:
+		"Normalized repository-relative paths leased to a modifying leaf.",
+});
+
 function createSubagentSchemas(agentNames?: readonly string[]) {
 	const agentName = (description: string) =>
 		agentNames && agentNames.length > 0
@@ -1351,6 +1743,8 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		taskId: Type.Optional(
 			Type.String({ description: "Existing running durable task ID" }),
 		),
+		role: Type.Optional(SubagentRoleSchema),
+		scope: Type.Optional(ModificationScopeSchema),
 		effort: Type.Optional(EffortSchema),
 		cwd: Type.Optional(
 			Type.String({ description: "Working directory for the agent process" }),
@@ -1379,7 +1773,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 			single: readOnlyFanoutTaskItem,
 			parallel: Type.Array(readOnlyFanoutTaskItem, {
 				minItems: 2,
-				maxItems: MAX_CONCURRENCY,
+				maxItems: MAX_READ_ONLY_FANOUT_TASKS,
 			}),
 		},
 		{
@@ -1390,6 +1784,8 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 	const chainItem = Type.Object({
 		agent: agentName("Name of the agent to invoke"),
 		effort: Type.Optional(EffortSchema),
+		role: Type.Optional(SubagentRoleSchema),
+		scope: Type.Optional(ModificationScopeSchema),
 		task: Type.String({
 			description: "Task with optional {previous} placeholder for prior output",
 		}),
@@ -1428,13 +1824,19 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		taskId: Type.Optional(
 			Type.String({ description: "Existing running durable task ID" }),
 		),
+		role: Type.Optional(SubagentRoleSchema),
+		scope: Type.Optional(ModificationScopeSchema),
 		tasks: Type.Optional(
 			Type.Array(taskItem, {
-				description: "Array of {agent, task} for parallel execution",
+				minItems: 1,
+				maxItems: MAX_SUBAGENT_WORKERS_PER_WAVE,
+				description: "Parallel {agent, task} workers",
 			}),
 		),
 		chain: Type.Optional(
 			Type.Array(chainItem, {
+				minItems: 1,
+				maxItems: MAX_SUBAGENT_WORKERS_PER_WAVE,
 				description: "Array of {agent, task} for sequential execution",
 			}),
 		),
@@ -1499,6 +1901,8 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 			agent: legacy.properties.agent,
 			task: legacy.properties.task,
 			taskId: legacy.properties.taskId,
+			role: legacy.properties.role,
+			scope: legacy.properties.scope,
 			tasks: legacy.properties.tasks,
 			...common,
 			cwd: legacy.properties.cwd,
@@ -1508,6 +1912,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		chain: Type.Object({
 			steps: Type.Array(chainItem, {
 				minItems: 1,
+				maxItems: MAX_SUBAGENT_WORKERS_PER_WAVE,
 				description:
 					"Sequential steps; each task may use {previous} from the prior result.",
 			}),
@@ -1533,7 +1938,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 			single: readOnlyFanoutTaskItem,
 			parallel: Type.Array(readOnlyFanoutTaskItem, {
 				minItems: 2,
-				maxItems: MAX_CONCURRENCY,
+				maxItems: MAX_READ_ONLY_FANOUT_TASKS,
 			}),
 			outputSchema: StructuredOutputSchema,
 			agentScope: legacy.properties.agentScope,
@@ -1549,6 +1954,25 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 }
 
 const InitialSubagentSchemas = createSubagentSchemas();
+const WorkflowToolSchema = Type.Object(
+	{
+		...WorkflowSpecificationSchema.properties,
+		agentScope: Type.Optional(AgentScopeSchema),
+		model: Type.Optional(
+			Type.String({ description: "Exact provider/model override for workflow leaves" }),
+		),
+		modelSize: Type.Optional(ModelSizeSchema),
+		modelPolicy: Type.Optional(ModelPolicySchema),
+		effort: Type.Optional(EffortSchema),
+		confirmProjectAgents: Type.Optional(
+			Type.Boolean({
+				description: "Prompt before running project-local agents. Default: false.",
+				default: false,
+			}),
+		),
+	},
+	{ additionalProperties: false },
+);
 
 type SessionAgentCatalog = {
 	cwd: string;
@@ -1592,6 +2016,9 @@ export default function (pi: ExtensionAPI) {
 	let renderedStatus: string | undefined;
 	let refreshAgentTools: (agentNames: readonly string[]) => void = () => {};
 	let deliveryScheduled = false;
+	let activeScopePolicy = decodeScopePolicyEnvironment(
+		process.env.PI_SUBAGENT_SCOPE_POLICY,
+	);
 
 	const updateStatus = () => {
 		if (!statusContext) return;
@@ -1695,7 +2122,20 @@ export default function (pi: ExtensionAPI) {
 			ctx.isProjectTrusted(),
 		);
 		refreshAgentTools(sessionAgentCatalog.agentNames);
-		deactivateTools(pi, ADVANCED_SUBAGENT_TOOL_NAMES);
+		activeScopePolicy = decodeScopePolicyEnvironment(
+			process.env.PI_SUBAGENT_SCOPE_POLICY,
+		);
+		const identity = currentSubagentIdentity();
+		deactivateTools(
+			pi,
+			identity.role === "leaf" || identity.depth >= 2
+				? [
+						"subagent",
+						...ADVANCED_SUBAGENT_TOOL_NAMES,
+						"subagent_workflow",
+					]
+				: [...ADVANCED_SUBAGENT_TOOL_NAMES, "subagent_workflow"],
+		);
 		sessionOpen = true;
 		statusContext = ctx;
 		renderedStatus = undefined;
@@ -1714,6 +2154,17 @@ export default function (pi: ExtensionAPI) {
 			scheduleBackgroundCompletionDelivery();
 	});
 
+	pi.on("tool_call", (event, ctx) => {
+		if (!activeScopePolicy) return undefined;
+		const violation = directMutationViolation(
+			String(event.toolName ?? ""),
+			event.input,
+			ctx.cwd,
+			activeScopePolicy,
+		);
+		return violation ? { block: true, reason: violation } : undefined;
+	});
+
 	pi.on("session_shutdown", async (event) => {
 		sessionOpen = false;
 		unsubscribeStatus?.();
@@ -1723,8 +2174,12 @@ export default function (pi: ExtensionAPI) {
 		statusContext?.ui.setStatus("subagents", undefined);
 		statusContext = undefined;
 		renderedStatus = undefined;
-		if (event.reason === "quit") await subagentRunManager.dispose();
-		else subagentRunManager.cancelForeground();
+		if (event.reason === "quit") {
+			if (currentSubagentIdentity().role === "root") {
+				await subagentRunManager.dispose();
+				await getSubagentTreeBroker().dispose();
+			} else await subagentRunManager.dispose();
+		} else subagentRunManager.cancelForeground();
 		sessionAgentCatalog = undefined;
 	});
 
@@ -1733,20 +2188,30 @@ export default function (pi: ExtensionAPI) {
 		label: "Subagent",
 		description: [
 			"Delegate work to isolated specialist agents.",
-			"Use agent and task for one worker or tasks for parallel workers.",
+			"Root may launch a leaf or a coordinator; coordinators may launch leaves only.",
+			"Use agent and task for one worker or tasks for bounded parallel workers.",
+			"Modifying leaves require repository-relative scopes; active descendants share the root scheduler.",
 			"Foreground execution waits; background=true returns immediately and delivers a follow-up result.",
-			"Use taskId to link an existing running durable task. Advanced chain, continuation, and read-only fanout modes are available through deferred subagent tools.",
+			"Use taskId only to correlate a root-owned coordinator task. Advanced chain, continuation, fanout, and typed workflow tools are deferred.",
 		].join(" "),
 		promptSnippet:
 			"Delegate foreground or background work to isolated specialist agents",
 		promptGuidelines: [
+			"Delegate one narrow, single-phase deliverable per leaf. Use role=coordinator only for bounded decomposition and reduction.",
+			"A coordinator may invoke leaves; leaves and every depth-two child cannot invoke delegation or workflow tools.",
+			"Each child is capped at 64 turns; explicitly read-only fanout leaves are also capped at eight minutes.",
+			"Give every modifying leaf a normalized repository-relative scope and keep concurrent scopes disjoint.",
 			"Use subagent with background=true for independent work, continue useful parent work, and consume the delivered follow-up instead of polling.",
-			"Use foreground subagent execution when the current turn cannot continue without the result; use tool_search for subagent_chain when later work depends on earlier output.",
-			"For durable work, select a ready task, mark it running, pass taskId to subagent, validate the result, then record the terminal state. Ordinary transient runs remain task-free.",
+			"Use tool_search for deferred chain, continuation, fanout, and subagent_workflow capabilities.",
+			"For durable coordinated work, start a root-owned task, pass its taskId to the coordinator, validate the result, and close the task. Leaves remain transient.",
 		],
 		parameters: InitialSubagentSchemas.legacy,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+			const currentIdentity = currentSubagentIdentity();
+			const internalWorkflowContext = internalWorkflowRuns.get(_toolCallId);
+			if (currentIdentity.role === "leaf" || currentIdentity.depth >= 2)
+				throw new Error("Leaf and depth-two subagents cannot delegate.");
 			const invocationCwd = ctx.cwd;
 			const parentSessionId = ctx.sessionManager?.getSessionId?.();
 			await compressDelegatedSessions().catch(() => []);
@@ -1815,6 +2280,42 @@ export default function (pi: ExtensionAPI) {
 
 			const orchestrationId = randomUUID();
 			const interactionId = registerOrchestrationInvocation(orchestrationId);
+			let invocationTreeClientPromise: Promise<SubagentTreeClient> | undefined;
+			let invocationRootRunId: string | undefined;
+			const getInvocationTreeClient = (): Promise<SubagentTreeClient> => {
+				if (invocationTreeClientPromise) return invocationTreeClientPromise;
+				invocationTreeClientPromise = (async () => {
+					if (currentIdentity.role !== "root") {
+						const client = treeClientFromEnvironment();
+						if (!client)
+							throw new Error(
+								"Coordinator process is missing tree broker credentials.",
+							);
+						return client;
+					}
+					const broker = getSubagentTreeBroker();
+					const root = broker.createTree({ treeId: orchestrationId });
+					invocationRootRunId = root.rootRunId;
+					const credentials = await broker.listen();
+					return new SubagentTreeClient(
+						credentials,
+						{
+							treeId: root.treeId,
+							runId: root.rootRunId,
+							role: "root",
+							depth: 0,
+						},
+						root.ownerToken,
+					);
+				})();
+				return invocationTreeClientPromise;
+			};
+			const settleInvocationTree = async (): Promise<void> => {
+				if (!invocationRootRunId) return;
+				const rootRunId = invocationRootRunId;
+				invocationRootRunId = undefined;
+				await getSubagentTreeBroker().release(rootRunId);
+			};
 			const fanoutPlanValid =
 				fanoutPlan !== undefined &&
 				typeof fanoutPlan.single?.agent === "string" &&
@@ -1827,6 +2328,8 @@ export default function (pi: ExtensionAPI) {
 				fanoutPlan.single.output === undefined &&
 				fanoutPlan.single.outputMode === undefined &&
 				Array.isArray(fanoutPlan.parallel) &&
+				fanoutPlan.parallel.length >= 2 &&
+				fanoutPlan.parallel.length <= MAX_READ_ONLY_FANOUT_TASKS &&
 				fanoutPlan.parallel.every(
 					(item) =>
 						typeof item?.agent === "string" &&
@@ -1849,18 +2352,26 @@ export default function (pi: ExtensionAPI) {
 				: (params.tasks as unknown as TaskParams[] | undefined);
 			const selectedSingle = fanoutAssignment
 				? fanoutAssignment.arm === "single-generalist"
-					? fanoutPlan?.single
+					? (fanoutPlan?.single as TaskParams | undefined)
 					: undefined
 				: hasSingle
 					? ({
 							agent: params.agent,
 							task: params.task,
 							taskId: params.taskId,
+							role: params.role,
+							scope: params.scope,
 							cwd: params.cwd,
 							output: params.output,
 							outputMode: params.outputMode,
 						} as TaskParams)
 					: undefined;
+			const continueChild = params.continue
+				? ({
+						...(params.continue as ContinueParams),
+						role: "leaf",
+					} as TaskParams & ContinueParams)
+				: undefined;
 			const originalMode = hasChain
 				? "chain"
 				: selectedTasks
@@ -1910,6 +2421,25 @@ export default function (pi: ExtensionAPI) {
 							: undefined;
 					return {
 						runId: worker.runId ?? randomUUID(),
+						...(worker.treeId ? { treeId: worker.treeId } : {}),
+						...(worker.parentRunId
+							? { parentRunId: worker.parentRunId }
+							: {}),
+						...(worker.depth === undefined ? {} : { depth: worker.depth }),
+						...(worker.role ? { role: worker.role } : {}),
+						...(worker.workflowPhase
+							? { workflowPhase: worker.workflowPhase }
+							: {}),
+						...(worker.taskKey ? { taskKey: worker.taskKey } : {}),
+						...(worker.attempt === undefined
+							? {}
+							: { attempt: worker.attempt }),
+						...(worker.retryOrigin
+							? { retryOrigin: worker.retryOrigin }
+							: {}),
+						...(worker.coordinatorTaskId
+							? { coordinatorTaskId: worker.coordinatorTaskId }
+							: {}),
 						...(worker.taskId ? { taskId: worker.taskId } : {}),
 						agent: worker.agent,
 						...(worker.model ? { resolvedModel: worker.model } : {}),
@@ -2018,12 +2548,33 @@ export default function (pi: ExtensionAPI) {
 				try {
 					if (routingExperiment && args[12] === undefined)
 						args[12] = routingExperiment.effort;
-					args[16] ??= {
+					const suppliedContext = args[16] ?? {};
+					const treeClient = await getInvocationTreeClient();
+					const coordinatorTaskId =
+						suppliedContext.role === "coordinator"
+							? args[13]
+							: currentIdentity.coordinatorTaskId;
+					args[16] = {
 						owner: args[13] ? "task" : "direct",
 						orchestrationId,
 						mode: executionMode,
 						background,
+						treeId: currentIdentity.treeId ?? orchestrationId,
+						parentRunId: currentIdentity.runId,
+						repositoryRoot: invocationCwd,
+						treeClient,
+						...(coordinatorTaskId ? { coordinatorTaskId } : {}),
 						...(fanoutAssignment ? { readOnly: true } : {}),
+						...(internalWorkflowContext
+							? {
+									workflowPhase:
+										internalWorkflowContext.workflowPhase,
+									taskKey: internalWorkflowContext.taskKey,
+									attempt: internalWorkflowContext.attempt,
+									retryOrigin: internalWorkflowContext.retryOrigin,
+								}
+							: {}),
+						...suppliedContext,
 					};
 					if (outputSchema) {
 						args[3] = `${args[3]}\n\n${schemaOutputInstruction(outputSchema)}`;
@@ -2047,6 +2598,10 @@ export default function (pi: ExtensionAPI) {
 						return result;
 					} catch (firstError) {
 						result.outputAttempts = 1;
+						if (result.usage.turns >= MAX_SUBAGENT_TURNS)
+							throw new Error(
+								`Structured output validation failed at the ${MAX_SUBAGENT_TURNS}-turn budget; correction was not attempted: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+							);
 						if (!result.sessionPath)
 							throw new Error(
 								`Structured output validation failed and no continuable session is available: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
@@ -2054,6 +2609,11 @@ export default function (pi: ExtensionAPI) {
 						const correctionArgs = [...args] as Parameters<
 							typeof runSingleAgent
 						>;
+						const remainingTurns = MAX_SUBAGENT_TURNS - result.usage.turns;
+						const priorRunContext = correctionArgs[16];
+						const remainingReadOnlyTimeoutMs = priorRunContext?.readOnly
+							? READ_ONLY_SUBAGENT_TIMEOUT_MS - (result.durationMs ?? 0)
+							: undefined;
 						const validationError =
 							firstError instanceof Error
 								? firstError.message
@@ -2064,6 +2624,13 @@ export default function (pi: ExtensionAPI) {
 						correctionArgs[15] = {
 							continuable: true,
 							sessionPath: result.sessionPath,
+						};
+						correctionArgs[16] = {
+							...priorRunContext,
+							maxTurns: remainingTurns,
+							...(remainingReadOnlyTimeoutMs === undefined
+								? {}
+								: { timeoutMs: Math.max(1, remainingReadOnlyTimeoutMs) }),
 						};
 						const correction = await runSingleAgent(...correctionArgs);
 						mergeCorrectionResult(result, correction);
@@ -2092,15 +2659,14 @@ export default function (pi: ExtensionAPI) {
 						failedResult.errorMessage =
 							error instanceof Error ? error.message : String(error);
 					}
-					complete({
-						content: [],
-						details: makeDetails(
-							originalMode === "parallel" || originalMode === "chain"
-								? originalMode
-								: "single",
-						)(failedResult ? [failedResult] : []),
-						isError: true,
-					});
+					if (originalMode !== "parallel")
+						complete({
+							content: [],
+							details: makeDetails(
+								originalMode === "chain" ? "chain" : "single",
+							)(failedResult ? [failedResult] : []),
+							isError: true,
+						});
 					if (error instanceof Error && failedResult)
 						Object.assign(error, { subagentResult: failedResult });
 					throw error;
@@ -2120,12 +2686,27 @@ export default function (pi: ExtensionAPI) {
 					details: makeDetails("single")([]),
 				});
 			}
+			if (
+				(params.tasks?.length ?? 0) > MAX_SUBAGENT_WORKERS_PER_WAVE ||
+				(params.chain?.length ?? 0) > MAX_SUBAGENT_WORKERS_PER_WAVE
+			) {
+				return complete({
+					content: [
+						{
+							type: "text",
+							text: `Invalid parameters. A delegation wave may contain at most ${MAX_SUBAGENT_WORKERS_PER_WAVE} workers.`,
+						},
+					],
+					details: makeDetails(originalMode)([]),
+					isError: true,
+				});
+			}
 			if (hasReadOnlyFanout && (!fanoutPlanValid || !fanoutAssignment)) {
 				return complete({
 					content: [
 						{
 							type: "text",
-							text: "Invalid readOnlyFanout parameters. Provide one single plan and 2-8 parallel plans.",
+							text: `Invalid readOnlyFanout parameters. Provide one single plan and 2-${MAX_READ_ONLY_FANOUT_TASKS} parallel plans.`,
 						},
 					],
 					details: makeDetails("single")([]),
@@ -2190,16 +2771,91 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 
+			const prepareChild = (item: TaskParams, forcedRole?: SubagentRole) => {
+				const resolved = resolveChildRole(forcedRole ?? item.role, item.agent);
+				item.resolvedRole = resolved.role;
+				item.resolvedDepth = resolved.depth;
+				item.normalizedScopes = normalizeRepositoryScopes(
+					item.scope ?? [],
+					invocationCwd,
+				);
+				if (item.taskId && resolved.role !== "coordinator")
+					throw new Error(
+						"taskId may correlate a root-owned coordinator invocation only.",
+					);
+			};
+			const chain = params.chain as unknown as TaskParams[] | undefined;
+			if (fanoutAssignment) {
+				if (selectedSingle) prepareChild(selectedSingle, "leaf");
+				for (const item of (selectedTasks ?? []) as TaskParams[])
+					prepareChild(item, "leaf");
+			} else {
+				if (selectedSingle) prepareChild(selectedSingle);
+				for (const item of (selectedTasks ?? []) as TaskParams[])
+					prepareChild(item);
+			}
+			for (const item of chain ?? []) prepareChild(item);
+			if (continueChild) prepareChild(continueChild, "leaf");
+
+			const scopedCandidates = fanoutAssignment
+				? []
+				: [
+						...(selectedSingle ? [selectedSingle] : []),
+						...((selectedTasks ?? []) as TaskParams[]),
+						...(chain ?? []),
+						...(continueChild ? [continueChild] : []),
+					];
+			for (const item of scopedCandidates) {
+				const modifying = internalWorkflowContext
+					? internalWorkflowContext.modifying
+					: agentCanModify(
+							agents.find((agent) => agent.name === item.agent),
+						);
+				if (
+					item.resolvedRole === "leaf" &&
+					modifying &&
+					(item.normalizedScopes?.length ?? 0) === 0
+				)
+					throw new Error(
+						`Modifying leaf ${item.agent} must declare a repository-relative scope.`,
+					);
+			}
+
+			if (!fanoutAssignment && selectedTasks) {
+				const modifiers = (selectedTasks as TaskParams[]).filter((item) =>
+					agentCanModify(agents.find((agent) => agent.name === item.agent)),
+				);
+				if (modifiers.length > 1) {
+					assertDisjointScopes(
+						modifiers.map((item, index) => ({
+							key: `${item.agent}[${index}]`,
+							scopes: item.normalizedScopes ?? [],
+						})),
+						invocationCwd,
+					);
+				}
+			}
+
 			if (
 				(agentScope === "project" || agentScope === "both") &&
-				confirmProjectAgents &&
-				ctx.hasUI
+				confirmProjectAgents
 			) {
 				const projectAgentsRequested = Array.from(requestedAgentNames)
 					.map((name) => agents.find((a) => a.name === name))
 					.filter((a): a is AgentConfig => a?.source === "project");
 
 				if (projectAgentsRequested.length > 0) {
+					if (!ctx.hasUI)
+						return complete({
+							content: [
+								{
+									type: "text",
+									text: "Canceled: project-local agent approval requires an interactive UI.",
+								},
+							],
+							details: makeDetails(originalMode)([]),
+							isError: true,
+						});
 					const names = projectAgentsRequested.map((a) => a.name).join(", ");
 					const dir = discovery.projectAgentsDir ?? "(unknown)";
 					emitTerminalBell();
@@ -2241,8 +2897,8 @@ export default function (pi: ExtensionAPI) {
 			const executeSelectedMode = async (): Promise<
 				AgentToolResult<SubagentDetails>
 			> => {
-			if (params.continue) {
-				const followUp = params.continue as ContinueParams;
+			if (continueChild) {
+				const followUp = continueChild;
 				const result = await run(
 					invocationCwd,
 					agents,
@@ -2260,6 +2916,11 @@ export default function (pi: ExtensionAPI) {
 					undefined,
 					undefined,
 					{ continuable: true, sessionPath: followUp.session },
+					{
+						role: followUp.resolvedRole,
+						depth: followUp.resolvedDepth,
+						scopes: followUp.normalizedScopes,
+					},
 				);
 				finalizeOutput(
 					result,
@@ -2332,6 +2993,11 @@ export default function (pi: ExtensionAPI) {
 						undefined,
 						undefined,
 						{ continuable: params.continuable === true },
+						{
+							role: step.resolvedRole,
+							depth: step.resolvedDepth,
+							scopes: step.normalizedScopes,
+						},
 					);
 					finalizeOutput(
 						result,
@@ -2434,44 +3100,67 @@ export default function (pi: ExtensionAPI) {
 
 				const results = await mapWithConcurrencyLimit(
 					tasks,
-					MAX_CONCURRENCY,
+					MAX_SUBAGENT_WORKERS_PER_WAVE,
 					async (t, index) => {
-						const result = await run(
-							invocationCwd,
-							agents,
-							t.agent,
-							t.task,
-							t.cwd,
-							undefined,
-							executionSignal,
-							// Per-task update callback
-							(partial) => {
-								if (partial.details?.results[0]) {
-									allResults[index] = partial.details.results[0];
-									emitParallelUpdate();
-								}
-							},
-							makeDetails("parallel"),
-							resolvedModelId,
-							modelSize,
-							modelPolicy,
-							t.effort ?? effort,
-							t.taskId,
-							undefined,
-							{ continuable: params.continuable === true },
-						);
-						finalizeOutput(
-							result,
-							t.output,
-							t.outputMode,
-							invocationCwd,
-							t.cwd,
-							index,
-							true,
-						);
-						allResults[index] = result;
-						emitParallelUpdate();
-						return result;
+						try {
+							const result = await run(
+								invocationCwd,
+								agents,
+								t.agent,
+								t.task,
+								t.cwd,
+								undefined,
+								executionSignal,
+								// Per-task update callback
+								(partial) => {
+									if (partial.details?.results[0]) {
+										allResults[index] = partial.details.results[0];
+										emitParallelUpdate();
+									}
+								},
+								makeDetails("parallel"),
+								resolvedModelId,
+								modelSize,
+								modelPolicy,
+								t.effort ?? effort,
+								t.taskId,
+								undefined,
+								{ continuable: params.continuable === true },
+								{
+									role: t.resolvedRole,
+									depth: t.resolvedDepth,
+									scopes: t.normalizedScopes,
+								},
+							);
+							finalizeOutput(
+								result,
+								t.output,
+								t.outputMode,
+								invocationCwd,
+								t.cwd,
+								index,
+								true,
+							);
+							allResults[index] = result;
+							emitParallelUpdate();
+							return result;
+						} catch (error) {
+							if (executionSignal?.aborted) throw error;
+							const failedResult =
+								error instanceof Error
+									? (error as Error & { subagentResult?: SingleResult })
+										.subagentResult
+									: undefined;
+							const result: SingleResult = failedResult ?? {
+								...allResults[index],
+								exitCode: 1,
+								errorMessage:
+									error instanceof Error ? error.message : String(error),
+							};
+							allResults[index] = result;
+							emitParallelUpdate();
+							return result;
+						}
 					},
 				);
 
@@ -2509,6 +3198,11 @@ export default function (pi: ExtensionAPI) {
 					selectedSingle.taskId,
 					undefined,
 					{ continuable: params.continuable === true },
+					{
+						role: selectedSingle.resolvedRole,
+						depth: selectedSingle.resolvedDepth,
+						scopes: selectedSingle.normalizedScopes,
+					},
 				);
 				finalizeOutput(
 					result,
@@ -2564,8 +3258,15 @@ export default function (pi: ExtensionAPI) {
 			});
 			};
 
-			if (!background) return executeSelectedMode();
-			void executeSelectedMode()
+			const executeWithTreeSettlement = async () => {
+				try {
+					return await executeSelectedMode();
+				} finally {
+					await settleInvocationTree();
+				}
+			};
+			if (!background) return executeWithTreeSettlement();
+			void executeWithTreeSettlement()
 				.then((result) =>
 					queueBackgroundResult(orchestrationId, executionMode, result),
 				)
@@ -3123,6 +3824,287 @@ export default function (pi: ExtensionAPI) {
 					onUpdate,
 					ctx,
 				);
+			},
+		});
+
+		pi.registerTool({
+			name: "subagent_workflow",
+			label: "Subagent Workflow",
+			description:
+				"Run a bounded typed map, targeted retry, optional verification, and grouped reduction workflow. Every item declares required tools and bounded input. Modifying items require disjoint repository-relative scopes.",
+			parameters: WorkflowToolSchema,
+			async execute(toolCallId, rawParams, signal, onUpdate, ctx) {
+				const identity = currentSubagentIdentity();
+				if (identity.role === "leaf" || identity.depth >= 2)
+					throw new Error(
+						"Leaf and depth-two subagents cannot run subagent workflows.",
+					);
+				const params = rawParams as unknown as WorkflowSpecification & {
+					agentScope?: AgentScope;
+					model?: string;
+					modelSize?: ModelSize;
+					modelPolicy?: ModelPolicy;
+					effort?: AgentEffort;
+					confirmProjectAgents?: boolean;
+				};
+				const agentScope = params.agentScope ?? "user";
+				const discovery =
+					sessionAgentCatalog?.cwd === ctx.cwd
+						? sessionAgentCatalog.byScope[agentScope]
+						: discoverAgents(ctx.cwd, agentScope);
+				const agents = discovery.agents;
+				const normalizedItems = params.items.map((item) => ({
+					...item,
+					scope: item.scope
+						? normalizeRepositoryScopes(item.scope, ctx.cwd)
+						: undefined,
+				}));
+				const modifyingItems = normalizedItems.filter((item) =>
+					item.capabilities.some((tool) =>
+						DIRECT_FILE_MUTATION_TOOLS.has(tool),
+					),
+				);
+				for (const item of modifyingItems) {
+					if ((item.scope?.length ?? 0) === 0)
+						throw new Error(
+							`Modifying workflow item ${item.key} must declare a repository-relative scope.`,
+						);
+				}
+				assertDisjointScopes(
+					modifyingItems.map((item) => ({
+						key: item.key,
+						scopes: item.scope ?? [],
+					})),
+					ctx.cwd,
+				);
+
+				const requestedNames = new Set(normalizedItems.map((item) => item.agent));
+				if (params.verify?.agent) requestedNames.add(params.verify.agent);
+				if (params.reduce?.agent) requestedNames.add(params.reduce.agent);
+				if (
+					(agentScope === "project" || agentScope === "both") &&
+					params.confirmProjectAgents
+				) {
+					const projectNames = [...requestedNames].filter(
+						(name) =>
+							agents.find((agent) => agent.name === name)?.source ===
+							"project",
+					);
+					if (projectNames.length > 0) {
+						if (!ctx.hasUI)
+							throw new Error(
+								"Project-local workflow agent approval requires an interactive UI.",
+							);
+						const approved = await ctx.ui.confirm(
+							"Run project-local workflow agents?",
+							`Agents: ${projectNames.join(", ")}\nSource: ${discovery.projectAgentsDir ?? "(unknown)"}`,
+						);
+						if (!approved)
+							throw new Error("Project-local workflow agents were not approved.");
+					}
+				}
+
+				const effectiveAgent = (
+					agentName: string,
+					scope: readonly string[] = [],
+				) => {
+					const agent = agents.find((candidate) => candidate.name === agentName);
+					if (!agent) return undefined;
+					return {
+						name: agent.name,
+						effectiveTools:
+							childTools(agent, "leaf", scope.length > 0) ?? ["read", "bash"],
+					};
+				};
+				const assertPhaseCapabilities = (
+					phase: "verification" | "reduction",
+					agentName: string | undefined,
+					capabilities: readonly string[] | undefined,
+				) => {
+					if (!agentName || !capabilities)
+						throw new Error(
+							`Workflow ${phase} requires agent, task, and capabilities.`,
+						);
+					const agent = effectiveAgent(agentName);
+					if (!agent) throw new Error(`Unknown workflow agent: ${agentName}`);
+					const tools = new Set(agent.effectiveTools);
+					const missing = capabilities.filter((tool) => !tools.has(tool));
+					if (missing.length > 0)
+						throw new Error(
+							`Workflow ${phase} capability preflight rejected; missing tools: ${missing.join(", ")}.`,
+						);
+				};
+				if (params.verify) {
+					if (!params.verify.task)
+						throw new Error(
+							"Workflow verification requires agent, task, and capabilities.",
+						);
+					assertPhaseCapabilities(
+						"verification",
+						params.verify.agent,
+						params.verify.capabilities,
+					);
+				}
+				if (params.reduce) {
+					if (!params.reduce.task)
+						throw new Error(
+							"Workflow reduction requires agent, task, and capabilities.",
+						);
+					assertPhaseCapabilities(
+						"reduction",
+						params.reduce.agent,
+						params.reduce.capabilities,
+					);
+				}
+
+				const runPhase = async (options: {
+					agent: string;
+					task: string;
+					scope?: readonly string[];
+					phase: WorkflowPhase;
+					key: string;
+					attempt: number;
+					retryOrigin?: string;
+					modifying: boolean;
+					outputSchema: TSchema;
+					phaseSignal: AbortSignal;
+				}) => {
+					const internalCallId = `${toolCallId}-${randomUUID()}`;
+					internalWorkflowRuns.set(internalCallId, {
+						workflowPhase: options.phase,
+						taskKey: options.key,
+						attempt: options.attempt,
+						retryOrigin: options.retryOrigin,
+						modifying: options.modifying,
+					});
+					try {
+						const result = await subagentExecutor.execute(
+							internalCallId,
+							{
+								agent: options.agent,
+								task: options.task,
+								role: "leaf",
+								scope: options.scope ? [...options.scope] : undefined,
+								agentScope,
+								model: params.model,
+								modelSize: params.modelSize,
+								modelPolicy: params.modelPolicy,
+								effort: params.effort,
+								outputSchema: options.outputSchema,
+								continuable: true,
+								confirmProjectAgents: false,
+							},
+							options.phaseSignal,
+							onUpdate,
+							ctx,
+						);
+						const worker = result.details?.results.at(-1);
+						if (!worker?.structuredOutput)
+							throw new Error(
+								worker?.errorMessage ||
+									"Workflow leaf returned no structured result.",
+							);
+						return worker.structuredOutput;
+					} finally {
+						internalWorkflowRuns.delete(internalCallId);
+					}
+				};
+
+				const specification: WorkflowSpecification = {
+					id: params.id,
+					items: normalizedItems,
+					attempts: params.attempts,
+					concurrency: params.concurrency,
+					verify: params.verify,
+					reduce: params.reduce,
+				};
+				const result = await getSubagentWorkflowRuntime().run(
+					specification,
+					{
+						resolveAgent: (agentName, item) =>
+							effectiveAgent(agentName, item?.scope),
+						execute: (request: WorkflowExecutionRequest) =>
+							runPhase({
+								agent: request.agent,
+								task:
+									request.task + workflowInputInstruction(request.input),
+								scope: normalizedItems.find(
+									(item) => item.key === request.key,
+								)?.scope,
+								phase: request.attempt === 1 ? "map" : "retry",
+								key: request.key,
+								attempt: request.attempt,
+								retryOrigin:
+									request.attempt > 1
+										? `${request.key}-attempt-${request.attempt - 1}`
+										: undefined,
+								modifying: normalizedItems
+									.find((item) => item.key === request.key)
+									?.capabilities.some((tool) =>
+										DIRECT_FILE_MUTATION_TOOLS.has(tool),
+									) ?? false,
+								outputSchema: WorkflowLeafOutputSchema,
+								phaseSignal: request.signal,
+							}),
+						verify: params.verify
+							? (envelope: WorkflowResultEnvelope, phaseSignal) =>
+									runPhase({
+										agent: params.verify?.agent ?? "",
+										task: `${params.verify?.task ?? ""}\n\nVerify this bounded item envelope and report only contradiction metadata:\n${JSON.stringify(envelope)}`,
+										phase: "verify",
+										key: envelope.key,
+										attempt: 1,
+										modifying: false,
+										outputSchema: WorkflowVerificationOutputSchema,
+										phaseSignal,
+									})
+							: undefined,
+						reduce: params.reduce
+							? (request: WorkflowReductionRequest) =>
+									runPhase({
+										agent: params.reduce?.agent ?? "",
+										task: `${params.reduce?.task ?? ""}\n\nReduce this bounded group of at most eight envelopes:\n${JSON.stringify(request.entries)}`,
+										phase: "reduce",
+										key: `reduce-${request.level}`,
+										attempt: 1,
+										modifying: false,
+										outputSchema: WorkflowReductionOutputSchema,
+										phaseSignal: request.signal,
+									})
+							: undefined,
+					},
+					signal,
+				);
+				const counts = Object.fromEntries(
+					["found", "not_found", "inconclusive", "error"].map((status) => [
+						status,
+						result.items.filter((item) => item.status === status).length,
+					]),
+				);
+				const visibleItems = result.items.slice(0, 16).map((item) => ({
+					key: item.key,
+					status: item.status,
+					attempts: item.attempts,
+					evidence: item.evidence?.slice(0, 2),
+					validation: item.validation?.slice(0, 2),
+					gaps: item.gaps?.slice(0, 2),
+					verification: item.verification,
+				}));
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								id: result.id,
+								counts,
+								reduction: result.reductions.at(-1),
+								items: visibleItems,
+								omittedItems: Math.max(0, result.items.length - visibleItems.length),
+							}),
+						},
+					],
+					details: { workflow: result },
+				};
 			},
 		});
 	};

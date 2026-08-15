@@ -50,8 +50,9 @@ import {
 	type ChangedFilesSnapshot,
 	uniqueGitPaths,
 } from "../lib/commit/status";
-import { emitTerminalBell } from "../lib/extension-utils";
+import { emitTerminalBell, formatToolError } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
+import { archiveCompletedPlan } from "../lib/plan-archive";
 import { withTimingSpan } from "../lib/observability";
 import { scanSecrets } from "../lib/secret-scan";
 import { SLASH_COMMAND_ECHO_TYPE } from "../lib/slash-command-echo.js";
@@ -65,7 +66,7 @@ import {
 import { noteWorkflowSubmission } from "../lib/workflow-friction";
 import { sendHiddenWorkflowPrompt } from "../lib/workflow-prompt.js";
 import { startWorkflowEpisode } from "../lib/workflow-telemetry";
-import { activateTools } from "../lib/tool-activation";
+import { activateTools, deactivateTools } from "../lib/tool-activation";
 import { formatConfiguredUsageReport } from "./codex-status";
 import { isOperatorReloadNeeded } from "./operator-status";
 
@@ -2317,6 +2318,43 @@ export const executeCommitCommand = createCommitCommandExecutor({
 });
 
 export default function (pi: ExtensionAPI) {
+	pi.registerTool({
+		name: "plan_archive",
+		label: "Archive Completed Plan",
+		description:
+			"Atomically move a completed .specs/{slug}/plan.md directory to .specs/archive/{slug}. Refuses incomplete plans, symlink traversal, and target collisions.",
+		parameters: Type.Object(
+			{
+				path: Type.String({
+					description: "Repository-relative .specs/{slug}/plan.md path",
+				}),
+			},
+			{ additionalProperties: false },
+		),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			try {
+				const archived = archiveCompletedPlan(ctx.cwd, params.path);
+				deactivateTools(pi, ["plan_archive"]);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								outcome: "archived",
+								...archived,
+							}),
+						},
+					],
+					details: archived,
+				};
+			} catch (error) {
+				return formatToolError(
+					error instanceof Error ? error.message : String(error),
+				);
+			}
+		},
+	});
+
 	pi.on("input", async (event, ctx) => {
 		if (event.source === "extension") {
 			return { action: "continue" };
@@ -2578,6 +2616,9 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("do-it", {
 		description: "Execute a task or plan with proportional validation",
 		handler: async (args, _ctx) => {
+			const planPath = args.trim().replace(/^@/, "");
+			if (/^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(planPath))
+				activateTools(pi, ["plan_archive"]);
 			echoSlashCommand(pi, "do-it", args);
 			const template = loadSkill("do-it.md");
 			const prompt = buildSkillPrompt(template, args, {

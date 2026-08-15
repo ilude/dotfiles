@@ -1,0 +1,296 @@
+export const GOAL_PUBLIC_STATES = [
+	"running",
+	"waiting_for_operator",
+	"completed",
+	"stopped",
+	"failed",
+] as const;
+
+export type GoalPublicState = (typeof GOAL_PUBLIC_STATES)[number];
+export type GoalMode = "inline" | "file";
+
+export type GoalFailureOutcome =
+	| "error"
+	| "inconclusive"
+	| "schema_invalid"
+	| "verifier_contradiction"
+	| "capability_rejected"
+	| "cancelled"
+	| "damage_control_denied"
+	| "infrastructure_failure"
+	| "not_found"
+	| "success";
+
+export type GoalStrategy = {
+	agent?: string;
+	capabilities?: string;
+	evidenceSource?: string;
+	inputPartition?: string;
+	testedAssumption?: string;
+	toolApproach?: string;
+	validationMethod?: string;
+};
+
+export type GoalAttempt = {
+	id: string;
+	startedAt: string;
+	ownerPid: number;
+	ownerInstanceId: string;
+	strategy: GoalStrategy;
+	recovery: boolean;
+};
+
+export type GoalRecoveryPhase =
+	| "ordinary"
+	| "re_evaluation_required"
+	| "recovery_ready"
+	| "needs_operator";
+
+export type GoalWorkItem = {
+	key: string;
+	taskId: string;
+	required: boolean;
+	qualifyingFailures: number;
+	phase: GoalRecoveryPhase;
+	activeAttempt?: GoalAttempt;
+	lastOrdinaryStrategy?: GoalStrategy;
+	reEvaluation?: {
+		recordedAt: string;
+		evidence: string;
+		assumptions: string;
+		strategy: string;
+	};
+	recoveryStrategies: GoalStrategy[];
+	lastOutcome?: GoalFailureOutcome;
+	needsOperatorReason?: string;
+	interruptedReason?: string;
+	interruptedStrategy?: GoalStrategy;
+	reconciledInterruptedStrategy?: GoalStrategy;
+	approvalGate?: {
+		decisionId: string;
+		blocker: string;
+		strategy: GoalStrategy;
+		saferAlternativeUsed: boolean;
+	};
+};
+
+export type GoalValidationEvidence = {
+	command: string;
+	passed: boolean;
+	recordedAt: string;
+	summary?: string;
+};
+
+export type UnattendedGoal = {
+	schemaVersion: 1;
+	id: string;
+	mode: GoalMode;
+	state: GoalPublicState;
+	startedAt: string;
+	updatedAt: string;
+	workspace: string;
+	scope: string[];
+	summary: string;
+	preview: string;
+	objectiveHash: string;
+	objectiveText?: string;
+	objectivePath?: string;
+	objectiveSizeBytes?: number;
+	plans: string[];
+	items: Record<string, GoalWorkItem>;
+	completionContract: {
+		requireLinkedPlanTasks: true;
+		requireLinkedRootTasks: true;
+		requireValidationEvidence: true;
+		requireRepositoryState: true;
+	};
+	validations: GoalValidationEvidence[];
+	changedArtifacts: string[];
+	blockers: string[];
+	knownGaps: string[];
+	completedAt?: string;
+	stoppedAt?: string;
+	finalHead?: string;
+	finalBranch?: string;
+	finalWorktree?: string;
+	closeout?: string;
+};
+
+const QUALIFYING_FAILURES = new Set<GoalFailureOutcome>([
+	"error",
+	"inconclusive",
+	"schema_invalid",
+	"verifier_contradiction",
+]);
+
+const STRATEGY_KEYS: Array<keyof GoalStrategy> = [
+	"agent",
+	"capabilities",
+	"evidenceSource",
+	"inputPartition",
+	"testedAssumption",
+	"toolApproach",
+	"validationMethod",
+];
+
+export const QUALIFYING_FAILURE_LIMIT = 20;
+export const RECOVERY_ATTEMPT_LIMIT = 2;
+
+function normalizedStrategy(strategy: GoalStrategy): GoalStrategy {
+	return Object.fromEntries(
+		STRATEGY_KEYS.flatMap((key) => {
+			const value = strategy[key]?.trim();
+			return value ? [[key, value]] : [];
+		}),
+	) as GoalStrategy;
+}
+
+function sameStrategy(left: GoalStrategy, right: GoalStrategy): boolean {
+	return STRATEGY_KEYS.every(
+		(key) => (left[key]?.trim() ?? "") === (right[key]?.trim() ?? ""),
+	);
+}
+
+function hasStrategyComponent(strategy: GoalStrategy): boolean {
+	return STRATEGY_KEYS.some((key) => Boolean(strategy[key]?.trim()));
+}
+
+export function goalStrategiesMateriallyDiffer(
+	left: GoalStrategy,
+	right: GoalStrategy,
+): boolean {
+	return hasStrategyComponent(left) && !sameStrategy(left, right);
+}
+
+export function createGoalWorkItem(
+	key: string,
+	taskId: string,
+	required = true,
+): GoalWorkItem {
+	return {
+		key,
+		taskId,
+		required,
+		qualifyingFailures: 0,
+		phase: "ordinary",
+		recoveryStrategies: [],
+	};
+}
+
+export function beginGoalAttempt(
+	item: GoalWorkItem,
+	input: {
+		attemptId: string;
+		ownerPid: number;
+		ownerInstanceId: string;
+		startedAt: string;
+		strategy: GoalStrategy;
+	},
+): GoalWorkItem {
+	if (item.activeAttempt)
+		throw new Error(`work item ${item.key} already has an active attempt`);
+	if (item.phase === "re_evaluation_required")
+		throw new Error(
+			`work item ${item.key} requires autonomous re-evaluation before another attempt`,
+		);
+	if (item.phase === "needs_operator")
+		throw new Error(`work item ${item.key} needs operator input`);
+	const strategy = normalizedStrategy(input.strategy);
+	const recovery = item.phase === "recovery_ready";
+	if (recovery) {
+		if (!hasStrategyComponent(strategy))
+			throw new Error("recovery strategy must change a deterministic component");
+		if (
+			item.lastOrdinaryStrategy &&
+			sameStrategy(strategy, item.lastOrdinaryStrategy)
+		)
+			throw new Error(
+				"recovery strategy must differ from the suspended ordinary strategy",
+			);
+		if (item.recoveryStrategies.some((prior) => sameStrategy(prior, strategy)))
+			throw new Error("recovery strategy must differ from prior recovery attempts");
+		if (item.recoveryStrategies.length >= RECOVERY_ATTEMPT_LIMIT)
+			throw new Error(`work item ${item.key} needs operator input`);
+	}
+	return {
+		...item,
+		activeAttempt: {
+			id: input.attemptId,
+			ownerPid: input.ownerPid,
+			ownerInstanceId: input.ownerInstanceId,
+			startedAt: input.startedAt,
+			strategy,
+			recovery,
+		},
+	};
+}
+
+export function recordGoalOutcome(
+	item: GoalWorkItem,
+	outcome: GoalFailureOutcome,
+): GoalWorkItem {
+	const attempt = item.activeAttempt;
+	if (!attempt)
+		throw new Error(`work item ${item.key} has no active attempt to settle`);
+	const next: GoalWorkItem = {
+		...item,
+		lastOutcome: outcome,
+	};
+	delete next.activeAttempt;
+
+	if (outcome === "success") {
+		return {
+			...next,
+			qualifyingFailures: 0,
+			phase: "ordinary",
+			recoveryStrategies: [],
+		};
+	}
+	if (!QUALIFYING_FAILURES.has(outcome)) return next;
+
+	next.qualifyingFailures += 1;
+	if (!attempt.recovery) {
+		next.lastOrdinaryStrategy = attempt.strategy;
+		if (next.qualifyingFailures >= QUALIFYING_FAILURE_LIMIT)
+			next.phase = "re_evaluation_required";
+		return next;
+	}
+
+	next.recoveryStrategies = [...next.recoveryStrategies, attempt.strategy];
+	if (next.recoveryStrategies.length >= RECOVERY_ATTEMPT_LIMIT) {
+		next.phase = "needs_operator";
+		next.needsOperatorReason =
+			"Two materially different recovery attempts failed after re-evaluation.";
+	} else {
+		next.phase = "recovery_ready";
+	}
+	return next;
+}
+
+export function recordGoalReEvaluation(
+	item: GoalWorkItem,
+	input: { evidence: string; assumptions: string; strategy: string; at: string },
+): GoalWorkItem {
+	if (item.phase !== "re_evaluation_required")
+		throw new Error(`work item ${item.key} does not require re-evaluation`);
+	for (const [label, value] of [
+		["evidence", input.evidence],
+		["assumptions", input.assumptions],
+		["strategy", input.strategy],
+	] as const)
+		if (!value.trim()) throw new Error(`re-evaluation ${label} is required`);
+	return {
+		...item,
+		phase: "recovery_ready",
+		reEvaluation: {
+			recordedAt: input.at,
+			evidence: input.evidence.trim(),
+			assumptions: input.assumptions.trim(),
+			strategy: input.strategy.trim(),
+		},
+	};
+}
+
+export function goalFailureQualifies(outcome: GoalFailureOutcome): boolean {
+	return QUALIFYING_FAILURES.has(outcome);
+}

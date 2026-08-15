@@ -6,6 +6,12 @@ import * as zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension from "../extensions/workflow-friction-review.js";
 import { SubagentRunManager } from "../extensions/subagent/run-manager.ts";
+import {
+	assertDisjointScopes,
+	directMutationViolation,
+	normalizeRepositoryScopes,
+	toolsForScopedModifier,
+} from "../extensions/subagent/scope-policy.ts";
 import { assignReadOnlyFanoutExperiment } from "../lib/orchestration-telemetry.js";
 import {
 	createMockCtx,
@@ -15,7 +21,6 @@ import {
 
 const spawnMock = vi.fn();
 const SUBAGENT_TEST_TIMEOUT_MS = 30000;
-const SPAWN_WAIT_TIMEOUT_MS = 20000;
 const STRUCTURED_TEST_ARTIFACT_BYTES = 9000;
 
 type MockProcess = EventEmitter & {
@@ -59,6 +64,114 @@ function beginManagedRun(
 vi.mock("node:child_process", () => ({
 	spawn: spawnMock,
 }));
+
+describe("subagent modification scopes", () => {
+	it("normalizes repository-relative scopes and rejects escapes", () => {
+		expect(normalizeRepositoryScopes(["src\\api/", "./tests/api"])).toEqual([
+			"src/api",
+			"tests/api",
+		]);
+		expect(() => normalizeRepositoryScopes(["../outside"])).toThrow(
+			"stay inside the repository",
+		);
+		expect(() => normalizeRepositoryScopes(["C:/outside"])).toThrow(
+			"repository-relative",
+		);
+	});
+
+	it("rejects overlapping scopes before dispatch", () => {
+		expect(() =>
+			assertDisjointScopes([
+				{ key: "first", scopes: ["src"] },
+				{ key: "second", scopes: ["src/api"] },
+			]),
+		).toThrow("overlap between first and second");
+		expect(() =>
+			assertDisjointScopes([
+				{ key: "first", scopes: ["src/api"] },
+				{ key: "second", scopes: ["tests/api"] },
+			]),
+		).not.toThrow();
+	});
+
+	it("blocks direct out-of-scope mutation and removes command tools", () => {
+		const repositoryRoot = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagent-scope-"),
+		);
+		fs.mkdirSync(path.join(repositoryRoot, "src", "api"), {
+			recursive: true,
+		});
+		try {
+			const policy = {
+				repositoryRoot,
+				scopes: ["src/api"],
+			};
+			expect(
+				directMutationViolation(
+					"edit",
+					{ path: "src/api/router.ts" },
+					repositoryRoot,
+					policy,
+				),
+			).toBeUndefined();
+			expect(
+				directMutationViolation(
+					"text_edit",
+					{ paths: ["src/api/router.ts", "src/db.ts"] },
+					repositoryRoot,
+					policy,
+				),
+			).toContain("src/db.ts");
+			expect(
+				toolsForScopedModifier(["read", "bash", "pwsh", "edit", "write"]),
+			).toEqual(["read", "edit", "write"]);
+		} finally {
+			fs.rmSync(repositoryRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("canonicalizes scopes and direct mutations through existing ancestors", () => {
+		const repositoryRoot = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagent-scope-"),
+		);
+		const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-outside-"));
+		fs.mkdirSync(path.join(repositoryRoot, "src", "api"), {
+			recursive: true,
+		});
+		const linkType = process.platform === "win32" ? "junction" : "dir";
+		fs.symlinkSync(outside, path.join(repositoryRoot, "escape"), linkType);
+		fs.symlinkSync(
+			path.join(repositoryRoot, "src", "api"),
+			path.join(repositoryRoot, "api-link"),
+			linkType,
+		);
+		try {
+			expect(() =>
+				normalizeRepositoryScopes(["escape/new/file.ts"], repositoryRoot),
+			).toThrow("symlink or junction");
+			expect(() =>
+				assertDisjointScopes(
+					[
+						{ key: "source", scopes: ["src/api"] },
+						{ key: "linked", scopes: ["api-link"] },
+					],
+					repositoryRoot,
+				),
+			).toThrow("overlap between source and linked");
+			expect(
+				directMutationViolation(
+					"write",
+					{ path: "escape/new/file.ts" },
+					repositoryRoot,
+					{ repositoryRoot, scopes: ["src/api"] },
+				),
+			).toContain("outside the assigned scope");
+		} finally {
+			fs.rmSync(repositoryRoot, { recursive: true, force: true });
+			fs.rmSync(outside, { recursive: true, force: true });
+		}
+	});
+});
 
 describe("subagent model override routing", () => {
 	let tmpDir: string;
@@ -218,6 +331,7 @@ You are a test agent.
 			"subagent_chain",
 			"subagent_continue",
 			"subagent_fanout",
+			"subagent_workflow",
 		]) {
 			expect(pi._getTool(name)).toBeDefined();
 			expect(pi.getActiveTools()).toContain(name);
@@ -231,7 +345,7 @@ You are a test agent.
 		const properties = (
 			tool.parameters as { properties: Record<string, unknown> }
 		).properties;
-		expect(JSON.stringify(tool.parameters).length).toBeLessThan(4_000);
+		expect(JSON.stringify(tool.parameters).length).toBeLessThan(5_000);
 		expect(properties).not.toHaveProperty("chain");
 		expect(properties).not.toHaveProperty("continue");
 		expect(properties).not.toHaveProperty("readOnlyFanout");
@@ -248,7 +362,14 @@ You are a test agent.
 			description: expect.stringContaining("Project-local names require"),
 		});
 		expect(properties.taskId).toMatchObject({ type: "string" });
+		expect(properties.role).toMatchObject({
+			type: "string",
+			enum: ["coordinator", "leaf"],
+		});
+		expect(properties.scope).toMatchObject({ minItems: 1 });
 		expect(properties.tasks).toMatchObject({
+			minItems: 1,
+			maxItems: 8,
 			items: {
 				properties: {
 					agent: {
@@ -275,6 +396,8 @@ You are a test agent.
 				.properties,
 		).toMatchObject({
 			steps: {
+				minItems: 1,
+				maxItems: 8,
 				items: {
 					properties: {
 						agent: {
@@ -296,6 +419,7 @@ You are a test agent.
 			properties: {
 				single: { properties: { agent: { enum: string[] } } };
 				parallel: {
+					maxItems: number;
 					items: { properties: { agent: { enum: string[] } } };
 				};
 			};
@@ -308,6 +432,7 @@ You are a test agent.
 		expect(fanoutParameters.properties.single.properties.agent.enum).not.toContain(
 			"tester",
 		);
+		expect(fanoutParameters.properties.parallel.maxItems).toBe(8);
 		expect(
 			fanoutParameters.properties.parallel.items.properties.agent.enum,
 		).toEqual(expect.arrayContaining(["builder"]));
@@ -317,7 +442,132 @@ You are a test agent.
 		expect(pi.getActiveTools()).not.toContain("subagent_chain");
 		expect(pi.getActiveTools()).not.toContain("subagent_continue");
 		expect(pi.getActiveTools()).not.toContain("subagent_fanout");
+		expect(pi.getActiveTools()).not.toContain("subagent_workflow");
 		expect(pi.getActiveTools()).toContain("subagent");
+		const workflowParameters = pi._getTool("subagent_workflow")?.parameters as {
+			properties?: { items?: { maxItems?: number } };
+		};
+		expect(workflowParameters.properties?.items?.maxItems).toBe(256);
+	});
+
+	it("preflights workflow capabilities without consuming an attempt", async () => {
+		const { pi } = await loadTool();
+		const workflow = pi._getTool("subagent_workflow");
+		if (!workflow) throw new Error("subagent_workflow tool not registered");
+		const result = await workflow.execute(
+			"workflow-capability",
+			{
+				id: "workflow-capability",
+				items: [
+					{
+						key: "needs-edit",
+						agent: "tester",
+						task: "Edit a file.",
+						capabilities: ["edit"],
+						input: { kind: "none" },
+						scope: ["src"],
+					},
+				],
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+
+		expect(spawnMock).not.toHaveBeenCalled();
+		expect(result.details.workflow.items[0]).toMatchObject({
+			status: "error",
+			attempts: 0,
+		});
+		expect(result.details.workflow.items[0].gaps[0]).toContain(
+			"missing tools: edit",
+		);
+	});
+
+	it("runs the deferred workflow through a tree-aware structured leaf", async () => {
+		spawnMock.mockImplementation((_command: string, args: string[]) => {
+			const proc = createMockProcess();
+			const sessionDir = args[args.indexOf("--session-dir") + 1];
+			const sessionId = args[args.indexOf("--session-id") + 1];
+			fs.mkdirSync(sessionDir, { recursive: true });
+			fs.writeFileSync(
+				path.join(sessionDir, `2026-08-15T00-00-00-000Z_${sessionId}.jsonl`),
+				'{"type":"session"}\n',
+				"utf8",
+			);
+			queueMicrotask(() => {
+				proc.stdout.emit(
+					"data",
+					`${JSON.stringify({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [
+								{
+									type: "text",
+									text: '{"status":"found","evidence":["bounded"]}',
+								},
+							],
+							stopReason: "end_turn",
+						},
+					})}\n`,
+				);
+				proc.emit("close", 0);
+			});
+			return proc;
+		});
+		const { pi } = await loadTool();
+		const workflow = pi._getTool("subagent_workflow");
+		if (!workflow) throw new Error("subagent_workflow tool not registered");
+		const result = await workflow.execute(
+			"workflow-map",
+			{
+				id: "workflow-map",
+				items: [
+					{
+						key: "item-1",
+						agent: "tester",
+						task: "Inspect the bounded item.",
+						capabilities: ["read"],
+						input: { kind: "extract", content: "small input" },
+					},
+				],
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+
+		expect(result.details.workflow.items[0]).toMatchObject({
+			status: "found",
+			attempts: 1,
+			evidence: ["bounded"],
+		});
+		const environment = spawnMock.mock.calls[0][2].env as Record<string, string>;
+		expect(environment.PI_SUBAGENT_TREE_ROLE).toBe("leaf");
+		expect(environment.PI_SUBAGENT_TREE_DEPTH).toBe("1");
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		expect(subagentRunManager.list()[0]).toMatchObject({
+			workflowPhase: "map",
+			taskKey: "item-1",
+			attempt: 1,
+		});
+		const { getSubagentTreeBroker } = await import(
+			"../extensions/subagent/tree-runtime.ts"
+		);
+		expect(
+			getSubagentTreeBroker()
+				.list()
+				.find(
+					(node) =>
+						node.runId !== environment.PI_SUBAGENT_TREE_RUN_ID &&
+						node.treeId === environment.PI_SUBAGENT_TREE_ID,
+				),
+		).toMatchObject({ role: "root", state: "settled" });
 	});
 
 	it("renders the full single-agent task prompt", async () => {
@@ -446,6 +696,108 @@ You are another test agent.
 		).rejects.toThrow('for agentScope "user"');
 		expect(spawnMock).not.toHaveBeenCalled();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("rejects leaf delegation before spawning", async () => {
+		const previous = {
+			runId: process.env.PI_SUBAGENT_RUN_ID,
+			role: process.env.PI_SUBAGENT_ROLE,
+			depth: process.env.PI_SUBAGENT_DEPTH,
+		};
+		process.env.PI_SUBAGENT_RUN_ID = "parent-run";
+		process.env.PI_SUBAGENT_ROLE = "leaf";
+		process.env.PI_SUBAGENT_DEPTH = "1";
+		try {
+			const { tool } = await loadTool();
+			await expect(
+				tool.execute(
+					"call-nested",
+					{
+						agent: "tester",
+						task: "Delegate again",
+						agentScope: "project",
+					},
+					undefined,
+					undefined,
+					createMockCtx({ cwd: tmpDir }),
+				),
+			).rejects.toThrow("Leaf and depth-two subagents cannot delegate.");
+			expect(spawnMock).not.toHaveBeenCalled();
+		} finally {
+			for (const [name, value] of Object.entries({
+				PI_SUBAGENT_RUN_ID: previous.runId,
+				PI_SUBAGENT_ROLE: previous.role,
+				PI_SUBAGENT_DEPTH: previous.depth,
+			})) {
+				if (value === undefined) delete process.env[name];
+				else process.env[name] = value;
+			}
+		}
+	});
+
+	it("treats a legacy run-only environment as a leaf", async () => {
+		const names = [
+			"PI_SUBAGENT_RUN_ID",
+			"PI_SUBAGENT_ROLE",
+			"PI_SUBAGENT_DEPTH",
+			"PI_SUBAGENT_TREE_RUN_ID",
+			"PI_SUBAGENT_TREE_ROLE",
+			"PI_SUBAGENT_TREE_DEPTH",
+		] as const;
+		const previous = Object.fromEntries(
+			names.map((name) => [name, process.env[name]]),
+		) as Record<(typeof names)[number], string | undefined>;
+		for (const name of names) delete process.env[name];
+		process.env.PI_SUBAGENT_RUN_ID = "legacy-parent-run";
+		try {
+			const { pi, tool } = await loadTool();
+			for (const hook of pi._getHook("session_start"))
+				await hook.handler({}, createMockCtx({ cwd: tmpDir }));
+			expect(pi.getActiveTools()).not.toContain("subagent");
+			await expect(
+				tool.execute(
+					"call-legacy-nested",
+					{
+						agent: "tester",
+						task: "Delegate again",
+						agentScope: "project",
+					},
+					undefined,
+					undefined,
+					createMockCtx({ cwd: tmpDir }),
+				),
+			).rejects.toThrow("Leaf and depth-two subagents cannot delegate.");
+			expect(spawnMock).not.toHaveBeenCalled();
+		} finally {
+			for (const name of names) {
+				const value = previous[name];
+				if (value === undefined) delete process.env[name];
+				else process.env[name] = value;
+			}
+		}
+	});
+
+	it("rejects parallel batches wider than eight before spawning", async () => {
+		const { tool } = await loadTool();
+		const result = await tool.execute(
+			"call-too-wide",
+			{
+				tasks: Array.from({ length: 9 }, (_, index) => ({
+					agent: "tester",
+					task: `Item ${index + 1}`,
+				})),
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain(
+			"delegation wave may contain at most 8 workers",
+		);
+		expect(spawnMock).not.toHaveBeenCalled();
 	});
 
 	it("rejects an invalid parallel batch atomically", async () => {
@@ -589,6 +941,91 @@ You are another test agent.
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
+
+	it("fails closed when requested project-agent confirmation has no UI", async () => {
+		const { pi, tool } = await loadTool();
+		const workflow = pi._getTool("subagent_workflow");
+		if (!workflow) throw new Error("subagent_workflow tool not registered");
+		const ctx = createMockCtx({ cwd: tmpDir, hasUI: false });
+
+		const direct = await tool.execute(
+			"project-confirm-no-ui",
+			{
+				agent: "tester",
+				task: "Do not run.",
+				agentScope: "project",
+				confirmProjectAgents: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(direct.isError).toBe(true);
+		expect(direct.content[0].text).toContain("requires an interactive UI");
+
+		await expect(
+			workflow.execute(
+				"workflow-project-confirm-no-ui",
+				{
+					id: "workflow-project-confirm-no-ui",
+					items: [
+						{
+							key: "item",
+							agent: "tester",
+							task: "Do not run.",
+							capabilities: ["read"],
+							input: { kind: "none" },
+						},
+					],
+					agentScope: "project",
+					confirmProjectAgents: true,
+				},
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow("requires an interactive UI");
+		expect(ctx.ui.confirm).not.toHaveBeenCalled();
+		expect(spawnMock).not.toHaveBeenCalled();
+	});
+
+	it("keeps parallel siblings running when one child fails before launch", async () => {
+		await fs.promises.writeFile(
+			path.join(tmpDir, ".pi", "agents", "broken.md"),
+			`---
+name: broken
+description: Broken test agent
+skills:
+  - missing-skill.md
+---
+
+This agent cannot launch.
+`,
+			"utf8",
+		);
+		mockSuccessfulSpawn();
+		const { tool } = await loadTool();
+		const result = await tool.execute(
+			"parallel-isolated-failure",
+			{
+				tasks: [
+					{ agent: "tester", task: "Complete this sibling." },
+					{ agent: "broken", task: "Fail before launch." },
+				],
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+
+		expect(spawnMock).toHaveBeenCalledTimes(1);
+		expect(result.details.results).toMatchObject([
+			{ agent: "tester", exitCode: 0 },
+			{ agent: "broken", exitCode: 1 },
+		]);
+		expect(result.content[0].text).toContain("Parallel: 1/2 succeeded");
+	});
 
 	it(
 		"persists an opt-in child session and records its path",
@@ -916,6 +1353,175 @@ You are a test agent.
 	);
 
 	it(
+		"stops a child after 64 completed turns and returns the partial result",
+		async () => {
+			const proc = createMockProcess();
+			const spawned = new Promise<void>((resolve) => {
+				spawnMock.mockImplementation(() => {
+					resolve();
+					return proc;
+				});
+			});
+			const { tool } = await loadTool();
+			const execution = tool.execute(
+				"call-turn-budget",
+				{
+					agent: "tester",
+					task: "Investigate until bounded",
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+			await spawned;
+			for (let turn = 1; turn <= 64; turn += 1) {
+				proc.stdout.emit(
+					"data",
+					`${JSON.stringify({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [{ type: "text", text: `turn ${turn}` }],
+							stopReason: "toolUse",
+						},
+					})}\n${JSON.stringify({ type: "turn_end" })}\n`,
+				);
+			}
+			proc.emit("close", null);
+
+			const result = await execution;
+			expect(result.isError).toBe(true);
+			expect(result.details.results[0]).toMatchObject({
+				exitCode: 0,
+				stopReason: "aborted",
+				errorMessage: expect.stringContaining("64-turn budget"),
+				usage: { turns: 64 },
+			});
+			expect(result.content[0].text).toContain("output may be partial");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"stops an explicitly read-only child after eight minutes",
+		async () => {
+			vi.useFakeTimers();
+			const proc = createMockProcess();
+			const spawned = new Promise<void>((resolve) => {
+				spawnMock.mockImplementation(() => {
+					resolve();
+					return proc;
+				});
+			});
+			let toolCallId = "";
+			for (let index = 0; index < 100; index += 1) {
+				const candidate = `fanout-timeout-${index}`;
+				if (
+					assignReadOnlyFanoutExperiment(candidate, 2)?.arm ===
+					"single-generalist"
+				) {
+					toolCallId = candidate;
+					break;
+				}
+			}
+			if (!toolCallId) throw new Error("single fanout assignment not found");
+			const { tool } = await loadTool();
+			const execution = tool.execute(
+				toolCallId,
+				{
+					readOnlyFanout: {
+						single: { agent: "tester", task: "Inspect both items" },
+						parallel: [
+							{ agent: "tester", task: "Inspect item one" },
+							{ agent: "tester", task: "Inspect item two" },
+						],
+					},
+					agentScope: "project",
+					outputSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+			await spawned;
+			const { READ_ONLY_SUBAGENT_TIMEOUT_MS } = await import(
+				"../extensions/subagent/index.ts"
+			);
+			await vi.advanceTimersByTimeAsync(READ_ONLY_SUBAGENT_TIMEOUT_MS);
+			proc.emit("close", null);
+
+			const result = await execution;
+			expect(result.isError).toBe(true);
+			expect(result.details.results[0]).toMatchObject({
+				exitCode: 0,
+				stopReason: "aborted",
+				errorMessage: expect.stringContaining("wall-clock budget"),
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"does not start a structured-output correction after 64 turns",
+		async () => {
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(
+					path.join(
+						sessionDir,
+						`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+					),
+					'{"type":"session"}\n',
+					"utf8",
+				);
+				queueMicrotask(() => {
+					for (let turn = 1; turn <= 64; turn += 1) {
+						proc.stdout.emit(
+							"data",
+							`${JSON.stringify({
+								type: "message_end",
+								message: {
+									role: "assistant",
+									content: [{ type: "text", text: "still invalid" }],
+									stopReason: turn === 64 ? "stop" : "toolUse",
+								},
+							})}\n${JSON.stringify({ type: "turn_end" })}\n`,
+						);
+					}
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({ type: "agent_end" })}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+
+			await expect(
+				tool.execute(
+					"call-correction-at-turn-limit",
+					{
+						agent: "tester",
+						task: "Return structured output within the turn budget",
+						agentScope: "project",
+						outputSchema,
+					},
+					undefined,
+					undefined,
+					createMockCtx({ cwd: tmpDir }),
+				),
+			).rejects.toThrow("validation failed at the 64-turn budget");
+			expect(spawnMock).toHaveBeenCalledTimes(1);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
 		"uses exactly one continuation correction for invalid structured output",
 		async () => {
 			let call = 0;
@@ -1153,125 +1759,6 @@ You are a test agent.
 			expect(result.details.results[0].outputReference?.bytes).toBeGreaterThan(
 				STRUCTURED_TEST_ARTIFACT_BYTES,
 			);
-		},
-		SUBAGENT_TEST_TIMEOUT_MS,
-	);
-
-	it(
-		"queues parallel tasks beyond the concurrency limit",
-		async () => {
-			const procs: MockProcess[] = [];
-			const spawnWaiters = new Map<
-				number,
-				{
-					resolve: () => void;
-					reject: (error: Error) => void;
-					timer: ReturnType<typeof setTimeout>;
-				}
-			>();
-			const waitForSpawnCount = (count: number) =>
-				new Promise<void>((resolve, reject) => {
-					if (procs.length >= count) {
-						resolve();
-						return;
-					}
-					const timer = setTimeout(() => {
-						spawnWaiters.delete(count);
-						reject(
-							new Error(
-								`Timed out waiting for ${count} spawns; observed ${procs.length}`,
-							),
-						);
-					}, SPAWN_WAIT_TIMEOUT_MS);
-					spawnWaiters.set(count, { resolve, reject, timer });
-				});
-			spawnMock.mockImplementation(() => {
-				const proc = createMockProcess();
-				procs.push(proc);
-				for (const [count, waiter] of spawnWaiters) {
-					if (procs.length >= count) {
-						spawnWaiters.delete(count);
-						clearTimeout(waiter.timer);
-						waiter.resolve();
-					}
-				}
-				return proc;
-			});
-			const { tool } = await loadTool();
-
-			const ctx = createMockCtx({
-				cwd: tmpDir,
-				model: { provider: "anthropic", id: "claude-sonnet-4-6" },
-			});
-
-			const execution = tool.execute(
-				"call-parallel-queued",
-				{
-					tasks: Array.from({ length: 10 }, (_, index) => ({
-						agent: "tester",
-						task: `Parallel task ${index + 1}`,
-					})),
-					agentScope: "project",
-					confirmProjectAgents: false,
-				},
-				undefined,
-				undefined,
-				ctx,
-			);
-
-			await waitForSpawnCount(8);
-			expect(spawnMock).toHaveBeenCalledTimes(8);
-			expect(procs).toHaveLength(8);
-
-			procs[0].stdout.emit(
-				"data",
-				`${JSON.stringify({
-					type: "message_end",
-					message: {
-						role: "assistant",
-						content: [{ type: "text", text: "done" }],
-						stopReason: "end_turn",
-					},
-				})}\n`,
-			);
-			procs[0].emit("close", 0);
-
-			await waitForSpawnCount(9);
-			expect(spawnMock).toHaveBeenCalledTimes(9);
-
-			for (const proc of procs.slice(1)) {
-				proc.stdout.emit(
-					"data",
-					`${JSON.stringify({
-						type: "message_end",
-						message: {
-							role: "assistant",
-							content: [{ type: "text", text: "done" }],
-							stopReason: "end_turn",
-						},
-					})}\n`,
-				);
-				proc.emit("close", 0);
-			}
-
-			await waitForSpawnCount(10);
-			expect(spawnMock).toHaveBeenCalledTimes(10);
-			const lastProc = procs[9];
-			lastProc.stdout.emit(
-				"data",
-				`${JSON.stringify({
-					type: "message_end",
-					message: {
-						role: "assistant",
-						content: [{ type: "text", text: "done" }],
-						stopReason: "end_turn",
-					},
-				})}\n`,
-			);
-			lastProc.emit("close", 0);
-
-			const result = await execution;
-			expect(result.content[0].text).toContain("Parallel: 10/10 succeeded");
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -1740,6 +2227,7 @@ You are a test agent.
 					agent: "tester",
 					task: "Check linked work",
 					taskId: singleTask.id,
+					role: "coordinator",
 					agentScope: "project",
 				},
 				undefined,
@@ -1759,12 +2247,14 @@ You are a test agent.
 							agent: "tester",
 							task: "Check first part",
 							taskId: firstParallelTask.id,
+							role: "coordinator",
 							cwd: nestedCwd,
 						},
 						{
 							agent: "tester",
 							task: "Check second part",
 							taskId: secondParallelTask.id,
+							role: "coordinator",
 						},
 					],
 					agentScope: "project",
@@ -1860,6 +2350,7 @@ You are a test agent.
 					agent: "tester",
 					task: "Work in the background",
 					taskId: task.id,
+					role: "coordinator",
 					agentScope: "project",
 					background: true,
 				},
@@ -2447,6 +2938,7 @@ You are a test agent.
 					agent: "tester",
 					task: "Cancel after usage",
 					taskId: task.id,
+					role: "coordinator",
 					agentScope: "project",
 					confirmProjectAgents: false,
 				},

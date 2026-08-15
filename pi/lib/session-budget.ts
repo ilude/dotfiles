@@ -1,18 +1,16 @@
 export const SESSION_BUDGET_DEFAULTS = {
 	enabled: true,
-	maxSameAgentSpawns: 1,
 	maxCommandErrorRepeats: 3,
 } as const;
 
 export interface SessionBudgetConfig {
 	enabled: boolean;
-	maxSameAgentSpawns: number;
 	maxCommandErrorRepeats: number;
 }
 
-export type SessionBudgetSensor = "repeat_spawn" | "command_error_repeat";
+export type SessionBudgetSensor = "command_error_repeat";
 export type SessionBudgetLevel = "soft" | "hard";
-export type SessionBudgetMetric = "same_agent_spawns" | "command_errors";
+export type SessionBudgetMetric = "command_errors";
 
 export interface SessionBudgetFinding {
 	sensor: SessionBudgetSensor;
@@ -37,12 +35,6 @@ export type SessionBudgetEvent =
 			touchedPaths?: string[];
 	  }
 	| {
-			type: "spawn";
-			agentType: string;
-			promptHash: string;
-			timestamp: number;
-	  }
-	| {
 			type: "command_result";
 			command: string;
 			ok: boolean;
@@ -63,7 +55,6 @@ export interface SessionBudgetSnapshot {
 	elapsedMinutes: number;
 	toolCalls: number;
 	filesTouched: string[];
-	spawns: Array<{ agentType: string; count: number }>;
 	maxCommandErrorRepeats: number;
 	sensors: Record<SessionBudgetSensor, SessionBudgetSensorState>;
 }
@@ -74,8 +65,6 @@ interface EpochState {
 	startedAt: number;
 	toolCalls: number;
 	filesTouched: Set<string>;
-	spawnCounts: Map<string, number>;
-	spawnTypes: Map<string, number>;
 	commandErrorStreak?: {
 		command: string;
 		errorSignature: string;
@@ -129,11 +118,6 @@ export function parseSessionBudgetConfig(value: unknown): SessionBudgetConfig {
 	const settings = requireObject(value);
 	return {
 		enabled: readBoolean(settings, "enabled", SESSION_BUDGET_DEFAULTS.enabled),
-		maxSameAgentSpawns: readPositiveInteger(
-			settings,
-			"maxSameAgentSpawns",
-			SESSION_BUDGET_DEFAULTS.maxSameAgentSpawns,
-		),
 		maxCommandErrorRepeats: readPositiveInteger(
 			settings,
 			"maxCommandErrorRepeats",
@@ -159,8 +143,6 @@ export class SessionBudgetTracker {
 				startedAt: event.timestamp,
 				toolCalls: 0,
 				filesTouched: new Set(),
-				spawnCounts: new Map(),
-				spawnTypes: new Map(),
 				emitted: new Set(),
 				acknowledged: new Set(),
 			};
@@ -173,25 +155,6 @@ export class SessionBudgetTracker {
 			this.epoch.toolCalls += 1;
 			for (const filePath of event.touchedPaths ?? []) {
 				if (filePath) this.epoch.filesTouched.add(filePath);
-			}
-		}
-		if (event.type === "spawn") {
-			const key = `${event.agentType}\0${event.promptHash}`;
-			const count = (this.epoch.spawnCounts.get(key) ?? 0) + 1;
-			this.epoch.spawnCounts.set(key, count);
-			this.epoch.spawnTypes.set(
-				event.agentType,
-				(this.epoch.spawnTypes.get(event.agentType) ?? 0) + 1,
-			);
-			const threshold = this.config.maxSameAgentSpawns + 1;
-			if (count >= threshold) {
-				this.addFinding(findings, {
-					sensor: "repeat_spawn",
-					level: "hard",
-					metric: "same_agent_spawns",
-					measured: count,
-					threshold,
-				});
 			}
 		}
 		if (event.type === "command_result") {
@@ -244,7 +207,6 @@ export class SessionBudgetTracker {
 				elapsedMinutes: 0,
 				toolCalls: 0,
 				filesTouched: [],
-				spawns: [],
 				maxCommandErrorRepeats: 0,
 				sensors: this.sensorStates(undefined),
 			};
@@ -256,9 +218,6 @@ export class SessionBudgetTracker {
 			elapsedMinutes: Math.max(0, timestamp - this.epoch.startedAt) / MINUTE_MS,
 			toolCalls: this.epoch.toolCalls,
 			filesTouched: [...this.epoch.filesTouched].sort(),
-			spawns: [...this.epoch.spawnTypes.entries()]
-				.map(([agentType, count]) => ({ agentType, count }))
-				.sort((a, b) => a.agentType.localeCompare(b.agentType)),
 			maxCommandErrorRepeats: this.epoch.commandErrorStreak?.count ?? 0,
 			sensors: this.sensorStates(this.epoch),
 		};
@@ -284,7 +243,6 @@ export class SessionBudgetTracker {
 			acknowledged: epoch?.acknowledged.has(sensor) ?? false,
 		});
 		return {
-			repeat_spawn: state("repeat_spawn"),
 			command_error_repeat: state("command_error_repeat"),
 		};
 	}

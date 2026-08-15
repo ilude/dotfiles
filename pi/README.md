@@ -327,7 +327,7 @@ Provides bounded process-local management for long-lived Bash commands through `
 
 ### `tool-visibility.ts` and `tool-search.ts`
 
-Keeps workflow-state-gated tools out of the default provider schema until they are valid: commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review-artifact writing. Their owning extensions activate them from deterministic command or prompt state. The common `subagent` schema exposes single and parallel execution; advanced `subagent_chain`, `subagent_continue`, and `subagent_fanout` tools are registered but deferred at session start. General and specialized callable tools, including Onclave, Coms LAN trust, usage-report, web, PowerShell, and scheduler tools, remain active so the model knows they exist.
+Keeps workflow-state-gated tools out of the default provider schema until they are valid: commit execution, feature-memory recording, goal completion/progress, improvement decisions, plan archival, workflow-change tracking, and review-artifact writing. Their owning extensions activate them from deterministic command or prompt state. The common `subagent` schema exposes single and parallel execution; advanced `subagent_chain`, `subagent_continue`, `subagent_fanout`, and `subagent_workflow` tools are registered but deferred at session start. General and specialized callable tools, including Onclave, Coms LAN trust, usage-report, web, PowerShell, and scheduler tools, remain active so the model knows they exist.
 
 `tool_search` remains active as a fallback and activates all matching inactive tools by default for a non-empty capability query, including deferred advanced subagent modes. Listing all tools without a query remains inspection-only. Metadata-only `toolset_exposure`, `tool_search_decision`, and `tool_use` metrics record the visible toolset, hashed searches, activation results, and later use without raw queries, arguments, descriptions, or output. The `tool_discovery_activity` DuckDB view exposes those events for local review.
 
@@ -376,9 +376,9 @@ Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`. T
 ```
 
 Workflow highlights:
-- `/plan-it` writes standalone plans with evidence, dependencies, validation, and durable execution state.
+- `/plan-it` writes standalone plans with evidence, dependencies, validation, durable execution state, and mandatory completion archival.
 - `/review-it` reviews artifact readiness directly and applies supported must-fix and necessary clarity repairs by default; explicit review-only requests remain non-mutating. Delegation remains optional.
-- `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` in the current session. It does not require plan linting, duplicate task tracking, or automatic archiving.
+- `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` in the current session. It does not require plan linting or duplicate task tracking. After all tasks and validation pass, its deferred `plan_archive` tool atomically moves the completed spec directory to `.specs/archive/*` and refuses unsafe paths or collisions.
 - `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. The slash workflow and structured commit tools share porcelain-v2 status, preflight, and exact-path staging primitives; each planning pass reuses one status snapshot. Before the parent commit, each dirty direct submodule must be on an attached branch with an upstream, is updated with a fast-forward-only pull, and runs the same commit workflow; `/commit push` pushes each resulting submodule commit before the parent, while `--no-submodules` leaves dirty submodule worktrees untouched. Nested submodules are not processed automatically. Ignored files are omitted. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
 ### `loop.ts`
@@ -413,7 +413,77 @@ updates the footer only when the value changes. It disappears when no supervisor
 PID is active. A job becomes trustworthy only after its first
 validated commit; startup and extension loading alone are not reported as
 progress. The supervisor never pushes and stops after bounded invocation
-failures, quiescence, or repeated iterations without a commit.
+failures, quiescence, or repeated iterations without a commit. A failed Pi
+invocation is retried only when no modifying-capable tool started; otherwise the
+job stops for reconciliation rather than replaying a partially modifying
+attempt. An unattended goal also stops when correlated runtime evidence is
+missing, so extension-load or truncated-log failures cannot authorize a retry.
+
+### `goal.ts`
+
+`/goal` is the outcome-oriented entrypoint. Foreground behavior remains the
+same, while unattended mode owns the objective and uses the existing detached
+`/loop` supervisor, linked plans, and durable root tasks:
+
+```text
+/goal <objective-or-workspace-file>
+/goal --unattended <objective-or-workspace-file>
+/goal status
+/goal stop
+/goal resume
+```
+
+An unattended start attaches a sibling `plan.md` when present or writes one
+minimum executable plan, prepares the normal clean `/commit` baseline, records
+the objective source and hash in the loop job, and exits the interactive Pi
+process after launching the supervisor. One non-completed unattended goal may
+own a workspace. `/goal status`, `/goal stop`, and `/goal resume` select it by
+canonical workspace, so ordinary use never requires a loop ID or plan path.
+`/loop` remains the diagnostic surface.
+
+The public states are `running`, `waiting_for_operator`, `completed`, `stopped`,
+and `failed`. Each required plan item links to a durable root task through
+`goal_progress`; child-owned task records are rejected and leaf work and
+retries remain transient. A blocked task does not block independent ready tasks.
+Ask-tier damage-control decisions in print mode return a structured
+`needs_approval` result and block only the active root task.
+The same denied action cannot restart unattended; at most one materially
+different safer strategy may run. Hard blocks remain non-grantable.
+
+Qualifying work-item failures are `error`, `inconclusive`, schema-invalid
+output, and verifier contradiction. Twenty qualifying failures suspend ordinary
+attempts and require a persisted re-evaluation. Exactly two recovery attempts
+may then run, and each must change a deterministic strategy component. If both
+fail, only that item becomes `needs_operator`. Capability rejection,
+cancellation, permission denial, pre-execution infrastructure failure, and a
+valid `not_found` result do not consume this budget. The repeated identical
+tool-result circuit breaker remains independent and unchanged.
+
+`/goal resume` verifies the objective hash, plans, task state, and worktree. It
+never replays an interrupted modifying attempt. An attempt owned by an earlier
+Pi process instance cannot authorize a modifying tool. A dirty interrupted
+worktree stays
+`waiting_for_operator`; a clean interrupted root task is blocked for explicit
+reconciliation and a materially different replacement strategy while
+independent work may continue. Resume is also an explicit
+operator continuation for an item that exhausted both recovery attempts: the
+item returns to required re-evaluation, while unresolved permission-decision
+blockers remain blocked and are never replayed automatically.
+
+`goal_complete` keeps an unattended goal active unless every required plan item
+has a required linked root task and both are complete, the latest relevant
+validation evidence comes from an observed successful shell result and passes
+after required task completion, recorded artifacts match the final Git diff, and final Git state is identified with a clean
+worktree. Its closeout records the objective, completed work, changed artifacts,
+validation, final
+repository state, blockers or gaps, and the exact next action. Foreground goals
+retain their existing session-local completion behavior.
+
+Unattended goal identity, recovery state, validation evidence, and completion
+state persist in the loop job under the normal loop state root. Continued Pi
+sessions remain process/session files owned by `/loop`; live child trees and
+in-memory subagent workflow results remain process-local and are not recovered
+after a Pi process failure.
 
 ### `scheduler.ts`
 
@@ -680,27 +750,25 @@ Work directly on one coherent task. Delegate when independent work, specialized 
 
 Repository-owned worker definitions live in `pi/agents/`; loading and precedence are implemented by `pi/extensions/subagent/agents.ts`.
 
-The active `subagent` tool provides foreground single and parallel modes. Set
-`background=true` for transient detached execution; the tool returns immediately
-and later delivers one bounded follow-up result. Background workers are managed
-process-globally, so they survive in-process `/reload`, `/new`, `/resume`, and
-`/fork`; a completion during replacement is delivered exactly once to the next
-active session. Actual Pi quit and explicit `/subagents` cancellation terminate
-running workers. Advanced `subagent_chain`,
-`subagent_continue`, and `subagent_fanout` tools are discoverable through
-`tool_search` and activate on demand. Legacy advanced arguments on `subagent`
-remain executable for resumed sessions but are omitted from its advertised
-provider schema. Agent fields enumerate default user-scope agents. To invoke a
-trusted project agent, set `agentScope` to `project` or `both` and provide its
-project-local name; `/reload` refreshes that catalog. Every invocation validates
-all requested agents against `agentScope` before any
-worker starts or a background run is acknowledged. Single and parallel items
-may also supply the ID of an existing running task in the effective cwd's
-workspace; this correlates existing run and telemetry projections without
-changing task state. Use `/subagents` for the unified process-local dashboard
-and run detail view. For durable work, select a ready task, mark it `running`,
-pass its `taskId` to `subagent`, validate the result, and record the terminal
-state. Disposable delegation remains task-free.
+### Role topology and scheduling
+
+The process tree is `root -> coordinator -> leaf`. A root may start a coordinator or a leaf. A coordinator may start leaves only. Leaves and depth-two children cannot invoke delegation or workflow tools. The root-owned cross-process scheduler runs eight active descendants by default and queues excess work. `PI_SUBAGENT_MAX_ACTIVE_DESCENDANTS` may set a ceiling from 1 through 16.
+
+Every child role shares the 64-turn ceiling, including a structured-output correction. When turn 64 requests more tool work, the child stops after that turn and returns a budget-limited partial result. Read-only fan-out workers have an eight-minute wall-clock limit; modifying leaves have no wall-clock hard timeout.
+
+Cancellation is recursive: cancelling a coordinator or workflow cancels its queued and active descendants. `/subagents` shows bounded process-local tree detail and can cancel a selected tree. Bounded run history, transcript output, workflow state, and settled workflow results survive `/reload`, `/new`, `/resume`, and `/fork` only within the same Pi process; they are discarded when that process exits.
+
+### Callable subagent behavior
+
+The active `subagent` tool provides foreground single and parallel execution. Set `background=true` for transient detached execution; it returns immediately and later delivers one bounded follow-up result. Do not poll it. Advanced `subagent_chain`, `subagent_continue`, `subagent_fanout`, and `subagent_workflow` are discoverable through `tool_search` and activate on demand. Legacy advanced arguments on `subagent` remain executable for resumed sessions but are omitted from its advertised provider schema.
+
+`subagent_workflow` is a deferred closed typed map, retry, verify, and reduce workflow. It accepts at most 256 unique items, defaults to two attempts, permits at most three, and reduces groups of at most eight entries. Every item declares required tools; capability preflight compares them with the selected agent's effective tools before dispatch and rejects missing capabilities without consuming an attempt. File analysis uses a bounded extract or repository-relative path/range reference rather than raw large-file content. Leaf results are bounded envelopes with `found`, `not_found`, `inconclusive`, or `error`, plus compact evidence, changed files, validation, and gaps. Retries are limited to failed, inconclusive, schema-invalid, or verifier-contradicted items, and materially identical retries are rejected.
+
+Concurrent modifying workflow leaves require normalized, disjoint repository-relative scopes. Admission is atomic. Scoped modifying leaves lose `bash` and `pwsh`, and direct file mutations outside their lease are blocked.
+
+Agent fields enumerate default user-scope agents. To invoke a trusted project agent, set `agentScope` to `project` or `both` and provide its project-local name; `/reload` refreshes that catalog. Every invocation validates all requested agents against `agentScope` before any worker starts or a background run is acknowledged.
+
+A root owns durable task creation, state transitions, validation, and closure. A coordinator may carry an existing running task ID for correlation, but leaves, retries, and workflow tools never create or transition task records. For durable work, the root selects a ready task, marks it `running`, passes its `taskId` to `subagent`, validates the result, and records terminal state. Disposable delegation remains task-free.
 
 ### Agent configuration
 
@@ -716,8 +784,9 @@ disabled with `--no-skills`; each
 `skills` entry is resolved to an explicit skill file and passed with `--skill`.
 Skill entries may be discovered skill names or paths relative to the agent file.
 Missing skills fail the launch explicitly. `tools` is a tool-name allowlist, not
-a path sandbox; any assigned path scope in an agent prompt is guidance only.
-Unknown fields are not execution contracts.
+a path sandbox. A callable repository scope is enforced for a scoped modifying
+leaf; an assigned path scope in an agent prompt alone is guidance only. Unknown
+fields are not execution contracts.
 
 Agent config recovery: if a bad worker definition prevents normal coordination, start Pi
 with `pi --no-extensions`, repair the affected file under `pi/agents/`, run

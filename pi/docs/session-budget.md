@@ -1,23 +1,20 @@
 # Session watchdog
 
-The session watchdog records each request's footprint and interrupts repeated delegation or command failures. It never pauses work solely because a request runs for a long time or uses many tools.
+The session watchdog records each request's footprint and interrupts repeated command failures. It never pauses work solely because a request runs for a long time, uses many tools, or delegates repeatedly.
 
 ## Interaction epochs
 
 An epoch starts when Pi receives an input message and ends when the next input message arrives. Interactive, RPC, and extension-originated user messages all start epochs. Hidden custom notices do not.
 
-The watchdog records only the current epoch's start time, tool-call count, modified file paths, subagent types and normalized prompt hashes, and consecutive command-error signatures. It does not classify the request or judge its meaning.
+The watchdog records only the current epoch's start time, tool-call count, modified file paths, and consecutive command-error signatures. It does not classify the request or judge its meaning.
 
 ## Sensors and defaults
 
 | Sensor | Soft trip | Hard trip |
 | --- | --- | --- |
-| Repeat spawn | None | Second subagent launch with the same agent type and normalized prompt |
 | Command errors | Third consecutive identical command/error pair | Fifth consecutive identical command/error pair |
 
-Elapsed time and tool-call count are informational footprint values, not trip sensors. Long-running work continues without a time or turn limit.
-
-Direct `subagent` calls and executable `task` starts both feed the repeat-spawn sensor. A successful command, a changed command, or a changed error signature resets the command-error streak.
+Elapsed time and tool-call count are informational footprint values, not trip sensors. The watchdog adds no parent wall-time, turn limit, or delegation counter. Subagent execution has separate tree and worker bounds. A successful command, a changed command, or a changed error signature resets the command-error streak.
 
 ## Check the current budget
 
@@ -27,13 +24,13 @@ Run:
 /budget
 ```
 
-The report shows informational elapsed time and tool calls, modified files, subagent counts, the current command-error streak, repetition thresholds, and whether each sensor is clear, soft, hard, or acknowledged. If no user message has started an epoch, it reports that no epoch is active.
+The report shows informational elapsed time and tool calls, modified files, the current command-error streak, repetition thresholds, and whether the command-error sensor is clear, soft, hard, or acknowledged. If no user message has started an epoch, it reports that no epoch is active.
 
 ## Escalation behavior
 
 A soft trip injects one hidden re-anchoring notice for that sensor. The notice quotes the request that opened the epoch, reports the measured footprint, and directs the current run to finish only the remaining requested work or ask the user.
 
-A hard repeat-spawn trip gates the tool call that reaches the threshold. A hard command-error trip gates the following tool call because the failure is known only after command completion. The gate presents three choices:
+A hard command-error trip gates the following tool call because the failure is known only after command completion. That gate presents three choices:
 
 - `continue as scoped` - allow the pending tool and acknowledge that sensor for the rest of the epoch.
 - `wrap up now` - allow the pending tool and inject a directive to stop expanding work, perform only necessary validation, and report.
@@ -49,15 +46,14 @@ The user-owned `sessionBudget` object in `~/.pi/agent/settings.json` controls th
 {
   "sessionBudget": {
     "enabled": true,
-    "maxSameAgentSpawns": 1,
     "maxCommandErrorRepeats": 3
   }
 }
 ```
 
-Missing fields use the defaults above. Repeat limits must be positive integers. Legacy call/time limit fields are ignored. Invalid user configuration disables the watchdog for that session and `/budget` reports the configuration error.
+Missing fields use the defaults above. Command-error repeat limits must be positive integers. Legacy call, time, and same-agent spawn limit fields are ignored. Invalid user configuration disables the watchdog for that session and `/budget` reports the configuration error.
 
-Set `enabled` to `false` to disable event subscriptions while retaining the read-only `/budget` command. Project `.pi/settings.json` and `.pi/settings.local.json` files cannot weaken or disable this user-owned control.
+Set `enabled` to `false` to disable event subscriptions while retaining the read-only `/budget` command. Delegation repetition is intentionally not a watchdog sensor; stable logical work-item recovery belongs to `/goal`, while unchanged failed tool results remain covered by the separate repeated-result guard. Project `.pi/settings.json` and `.pi/settings.local.json` files cannot weaken or disable this user-owned control.
 
 Reload Pi after changing settings.
 

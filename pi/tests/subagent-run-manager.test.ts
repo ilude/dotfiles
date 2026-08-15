@@ -35,9 +35,10 @@ function beginRun(
 }
 
 describe("SubagentRunManager", () => {
-	it("owns cancellation and exposes linked task metadata", () => {
+	it("owns recursive cancellation and exposes linked tree metadata", () => {
 		const manager = new SubagentRunManager();
 		const controller = new AbortController();
+		const childController = new AbortController();
 		const listener = vi.fn();
 		manager.subscribe(listener);
 		manager.begin(
@@ -45,6 +46,11 @@ describe("SubagentRunManager", () => {
 				runId: "run-1",
 				taskId: "task-1",
 				orchestrationId: "orchestration-1",
+				treeId: "tree-1",
+				role: "coordinator",
+				depth: 1,
+				taskKey: "map-item",
+				attempt: 1,
 				owner: "task",
 				mode: "task-execute",
 				agent: "tester",
@@ -55,13 +61,33 @@ describe("SubagentRunManager", () => {
 			controller,
 		);
 
+		manager.begin(
+			{
+				runId: "run-2",
+				treeId: "tree-1",
+				parentRunId: "run-1",
+				role: "leaf",
+				depth: 2,
+				owner: "direct",
+				mode: "single",
+				agent: "tester",
+				task: "Inspect child",
+				cwd: "/tmp/project",
+			},
+			childController,
+		);
+
 		expect(manager.get("run-1")).toMatchObject({
 			taskId: "task-1",
+			treeId: "tree-1",
+			role: "coordinator",
+			depth: 1,
 			owner: "task",
 			status: "running",
 		});
-		expect(manager.cancel("run-1")).toBe(true);
+		expect(manager.cancelTree("run-1")).toEqual(["run-1", "run-2"]);
 		expect(controller.signal.aborted).toBe(true);
+		expect(childController.signal.aborted).toBe(true);
 		expect(listener).toHaveBeenCalled();
 	});
 
@@ -129,13 +155,11 @@ describe("SubagentRunManager", () => {
 		);
 	});
 
-	it("enforces one process-wide active-run cap", () => {
+	it("does not enforce a process-local active-run cap", () => {
 		const manager = new SubagentRunManager();
-		for (let index = 0; index < MAX_ACTIVE_SUBAGENT_RUNS; index++)
+		for (let index = 0; index <= MAX_ACTIVE_SUBAGENT_RUNS; index++)
 			beginRun(manager, `active-${index}`);
-		expect(() => beginRun(manager, "one-too-many")).toThrow(
-			`At most ${MAX_ACTIVE_SUBAGENT_RUNS}`,
-		);
+		expect(manager.list()).toHaveLength(MAX_ACTIVE_SUBAGENT_RUNS + 1);
 	});
 });
 
