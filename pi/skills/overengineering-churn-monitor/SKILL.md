@@ -84,6 +84,10 @@ RG-4-class mandates were already reduced by the changes cited as GIT-009 through
 
 See report Appendix D for treatment clauses, telemetry, guardrails, and stopping rules. Rejected designs are summarized in the report. No experiment has run, and nothing here authorizes a permanent policy change. [SRC-005; TMP-010; TMP-011]
 
+## Churn recovery
+
+On explicit churn feedback, cancel pending reviewers, freeze scope, return to the last passing checkpoint, list only unmet acceptance, make no new delegation or redesign, then complete or ask for a material scope decision. A second review of the same acceptance, invariant, or safety concern without materially changed evidence or scope is duplicate work; review of repair is prohibited unless explicitly required.
+
 ## Anti-patterns
 
 - Reading marginal medians causally.

@@ -20,7 +20,9 @@ Read the complete plan and resume from the first unchecked dependency-ready task
 
 Treat checked work as complete when current repository state and its recorded result do not contradict it. Do not demand separate evidence files, gate IDs, wave narratives, or duplicate checklists.
 
-Treat source requirement identifiers, defined terms, normative words, actors, conditions, bounds, exceptions, and verification as part of the execution contract. Do not silently weaken, strengthen, or reinterpret them. If repository evidence cannot resolve competing material interpretations, stop and ask for the product or design decision.
+Treat the plan's requested acceptance, stated invariants, and safety boundaries as the closed execution contract. Preserve source requirement identifiers when supplied, but do not invent requirement IDs or additional contracts. Do not silently weaken, strengthen, or reinterpret the contract. If repository evidence cannot resolve competing material interpretations, stop and ask for the product or design decision.
+
+Do not add tasks, follow-up work, full-suite checks, reviewer passes, telemetry, or documentation work unless the closed contract directly requires them. A reviewer finding is advisory unless it maps to requested acceptance, a stated invariant, or a safety boundary; reject or defer unmapped advice without editing for it.
 
 After a task's relevant check passes, mark its checkbox complete and save the plan. Record a concise result only when it is needed for resume, external mutation, or a required audit.
 
@@ -43,6 +45,8 @@ Run only checks that can establish whether the changed contract works.
 - Do not run a check merely because it is customary or available.
 
 On failure, isolate the changed boundary, make the smallest in-scope repair, and rerun only the failing check and any directly dependent check. Stop when repair requires unavailable access, destructive action, user judgment, or scope expansion.
+
+Do not perform post-implementation review unless the closed contract explicitly requires one. When it does, perform one review pass, apply at most one coherent repair for mapped findings, then validate directly. Do not review the repair unless direct validation still fails; if it fails, limit further review to the failing boundary.
 
 ## Completion
 

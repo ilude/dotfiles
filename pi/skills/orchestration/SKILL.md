@@ -18,6 +18,8 @@ The root-owned tree scheduler admits descendants across processes. It runs eight
 
 Cancelling a coordinator or workflow recursively cancels queued and active descendants. Tree and workflow state, bounded run history, and completed workflow results survive session replacement in the same Pi process only. They are discarded when that process exits.
 
+A second review is duplicate same-boundary work when it rechecks the same acceptance, invariant, or safety concern without materially changed evidence or scope. Do not schedule it, or a review of repair, unless that boundary explicitly requires it. On explicit churn feedback: cancel pending reviewers, freeze scope, return to the last passing checkpoint, list only unmet acceptance, make no new delegation or redesign, then complete or ask for a material scope decision.
+
 ## Typed workflow
 
 Use the deferred `subagent_workflow` capability for a closed map, retry, verify, and reduce workflow. It accepts at most 256 unique items, defaults to two attempts, permits at most three, and reduces groups of at most eight results.

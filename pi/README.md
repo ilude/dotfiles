@@ -85,7 +85,7 @@ env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE -u AWS_REGION -u AWS_DEFAULT_REGION \
 
 ### Fable subscription-only orchestration
 
-When the resolved primary model is exactly `amazon-bedrock/us.anthropic.claude-fable-5`, Fable remains the root orchestrator in TUI, RPC, JSON, and print modes. Its provider-visible control plane is limited to `subagent`, `subagent_chain`, `subagent_fanout`, `subagent_workflow`, `task`, and `ask_user`. The existing `/do-it` state gate may also expose `plan_archive`; Fable cannot expose it independently. `tool_search`, `subagent_continue`, direct inspection, mutation, validation, shell, web, and commit tools are blocked before execution. Switching away from Fable reveals the current tool state, including owner changes made while the restriction was active, rather than restoring a stale snapshot.
+When the resolved primary model is exactly `amazon-bedrock/us.anthropic.claude-fable-5`, Fable remains the root orchestrator in TUI, RPC, JSON, and print modes. Its provider-visible control plane is limited to `subagent`, `subagent_chain`, `subagent_fanout`, `subagent_workflow`, `task`, and `ask_user`. Active goal planning may also expose `goal_progress`, an active `/plan-it` lifecycle may expose `plan_progress`, and the existing `/do-it` state gate may expose `plan_archive`; Fable cannot expose these tools independently. `tool_search`, `subagent_continue`, direct inspection, mutation, validation, shell, web, and commit tools are blocked before execution. Switching away from Fable reveals the current tool state, including owner changes made while the restriction was active, rather than restoring a stale snapshot.
 
 Fable dispatches direct leaves and bounded workflows, not coordinators. After trusted agent discovery, every requested child model is resolved before any child starts. Explicit models and agent pins must name an available `openai-codex` model; omitted and size-based selections resolve from available `openai-codex` models only. One invalid member rejects the complete batch or workflow before spawn. Caller-supplied output paths are rejected. Fable-visible foreground results are limited to 50 KB or 2000 lines, with complete output written to a runtime-generated private temporary artifact when truncation is required.
 
@@ -441,31 +441,44 @@ same, while unattended mode owns the objective and uses the existing detached
 /goal resume
 ```
 
-An unattended start attaches a sibling `plan.md` when present or writes one
-minimum executable plan, prepares the normal clean `/commit` baseline, records
-the objective source and hash in the loop job, and exits the interactive Pi
-process after launching the supervisor. One non-completed unattended goal may
-own a workspace. `/goal status`, `/goal stop`, and `/goal resume` select it by
+Ordinary foreground `/goal <objective>` works directly and interactively in
+the active session. It does not create a canonical plan, durable task graph,
+detached loop, or archive-and-commit closeout by default. A foreground goal
+uses a reviewed plan only when the operator explicitly supplies one or material
+risk or unresolved ambiguity makes one necessary; any resulting plan and
+mapping state remains in the Pi session. Unattended mode always creates or
+attaches exactly one reviewed canonical plan, parses unique task keys and
+`Depends on` edges, rejects invalid graphs, and materializes the durable
+root-task graph before modifying work begins. Each unattended task is stamped
+with the goal ID, canonical plan path, objective hash, and plan task key so an
+interrupted partial batch can be reconciled without replacing stable links.
+Unattended mode prepares the normal clean `/commit` baseline, records the
+objective source and hash in the loop job, and exits the interactive Pi process
+after launching the supervisor. One non-completed unattended goal may own a
+workspace. `/goal status`, `/goal stop`, and `/goal resume` select it by
 canonical workspace, so ordinary use never requires a loop ID or plan path.
 `/loop` remains the diagnostic surface.
 
 The public states are `running`, `waiting_for_operator`, `completed`, `stopped`,
-and `failed`. Each required plan item links to a durable root task through
-`goal_progress`; child-owned task records are rejected and leaf work and
-retries remain transient. A blocked task does not block independent ready tasks.
+and `failed`. The task registry is authoritative for dependency readiness;
+child-owned task records are rejected and leaf work and retries remain
+transient. A blocked task does not block independent ready tasks.
 Ask-tier damage-control decisions in print mode return a structured
 `needs_approval` result and block only the active root task.
 The same denied action cannot restart unattended; at most one materially
 different safer strategy may run. Hard blocks remain non-grantable.
 
-Qualifying work-item failures are `error`, `inconclusive`, schema-invalid
-output, and verifier contradiction. Twenty qualifying failures suspend ordinary
-attempts and require a persisted re-evaluation. Exactly two recovery attempts
-may then run, and each must change a deterministic strategy component. If both
-fail, only that item becomes `needs_operator`. Capability rejection,
-cancellation, permission denial, pre-execution infrastructure failure, and a
-valid `not_found` result do not consume this budget. The repeated identical
-tool-result circuit breaker remains independent and unchanged.
+`error`, `inconclusive`, schema-invalid output, verifier contradiction,
+`not_found`, and infrastructure failure immediately suspend the affected
+ordinary attempt and require persisted re-evaluation. At most two recovery
+attempts may run, and each must change a deterministic strategy component. If
+both fail, only that item waits with reason `recovery_exhausted`. Other terminal
+waits record one of `operator_decision`, `access_or_credential`,
+`external_dependency`, `safety_boundary`, or `objective_conflict`, together
+with bounded evidence and the required operator action. Capability rejection
+and damage-control denial may use only an authorized alternative and are never
+bypassed. Cancellation and the repeated identical tool-result circuit breaker
+remain independent and unchanged.
 
 `/goal resume` verifies the objective hash, plans, task state, and worktree. It
 never replays an interrupted modifying attempt. An attempt owned by an earlier
@@ -478,14 +491,18 @@ operator continuation for an item that exhausted both recovery attempts: the
 item returns to required re-evaluation, while unresolved permission-decision
 blockers remain blocked and are never replayed automatically.
 
-`goal_complete` keeps an unattended goal active unless every required plan item
-has a required linked root task and both are complete, the latest relevant
-validation evidence comes from an observed successful shell result and passes
-after required task completion, recorded artifacts match the final Git diff, and final Git state is identified with a clean
-worktree. Its closeout records the objective, completed work, changed artifacts,
-validation, final
-repository state, blockers or gaps, and the exact next action. Foreground goals
-retain their existing session-local completion behavior.
+For an unattended goal, `goal_complete` keeps the goal active unless every
+required plan item has a required durable root task and both are complete, the
+latest relevant validation evidence comes from an observed successful shell
+result after task completion, and recorded artifacts match the final Git diff.
+The first successful closeout step archives the canonical spec directory and
+persists `archived_pending_commit`; the goal remains active. After the archive
+is in an identifiable in-scope commit, a second call verifies final HEAD and a
+clean worktree before completion clears active state. Its report names the
+objective, completed work, artifacts, validation, repository state, gaps, and
+exact next action. Ordinary foreground completion remains session-owned and
+reports the supplied completion evidence without unattended archival or commit
+requirements.
 
 Unattended goal identity, recovery state, validation evidence, and completion
 state persist in the loop job under the normal loop state root. Continued Pi

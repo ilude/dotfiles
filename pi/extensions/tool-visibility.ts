@@ -15,6 +15,7 @@ export const DEFERRED_TOOL_NAMES = [
 	"goal_progress",
 	"learning_candidate_decide",
 	"plan_archive",
+	"plan_progress",
 	"review_artifact_write",
 	"workflow_friction_mark_change",
 	"subagent_chain",

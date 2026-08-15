@@ -37,10 +37,15 @@ export const FABLE_CONTROL_TOOL_NAMES = [
 	"subagent_workflow",
 	"task",
 	"ask_user",
+	"goal_progress",
+	"plan_progress",
 	"plan_archive",
 ] as const;
 const FABLE_ALWAYS_VISIBLE_TOOL_NAMES = FABLE_CONTROL_TOOL_NAMES.filter(
-	(name) => name !== "plan_archive",
+	(name) =>
+		name !== "goal_progress" &&
+		name !== "plan_archive" &&
+		name !== "plan_progress",
 );
 const FABLE_CONTROL_TOOLS = new Set<string>(FABLE_CONTROL_TOOL_NAMES);
 const FABLE_BOUNDARY = "Fable subscription-only orchestration boundary";

@@ -11,7 +11,7 @@ Use `code-review` only when reviewing a change set for findings. Use `analysis-w
 
 ## Core Principle: Must vs May
 
-Report only issues that are demonstrably reachable and worth fixing. Suggestions are allowed, but label them separately from required findings.
+Report only demonstrably reachable issues mapped to requested acceptance, a repository invariant, or a safety boundary. Suggestions, including out-of-contract design improvements, are advisory and separate from required findings.
 
 ## Review Steps
 
@@ -24,6 +24,8 @@ Report only issues that are demonstrably reachable and worth fixing. Suggestions
 5. Prove reachability: inputs, callers, guards, and runtime conditions.
 6. Classify severity and confidence.
 7. Provide exact evidence and required fix.
+
+A review is one terminal pass. Do not repeat a same-boundary review or review a repair unless requested acceptance, an invariant, or safety explicitly requires it.
 
 ## Finding Format
 

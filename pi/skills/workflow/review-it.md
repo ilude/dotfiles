@@ -19,9 +19,9 @@ Plans require execution readiness. Requirements documents require clarity, consi
 
 ## Review
 
-Delegate only when independent perspectives materially improve the review without duplicating work. Keep synthesis and all artifact edits in the parent.
+Delegate only when independent perspectives materially improve a material-risk review without duplicating work. Low-risk artifacts use no reviewer fan-out. For material risk, use one adversary plus either one feasibility proponent for a distinct disputed claim or one domain specialist for domain evidence. Use no more than two perspectives and one round. Keep adjudication and all artifact edits in the parent.
 
-Each delegated assignment must name the artifact, repository scope, perspective, evidence required, allowed changes, and stop condition. Prefer bounded inline findings. Persist reviewer artifacts only when the active workflow, user, or review coordinator requires them.
+Each delegated assignment must name the artifact, repository scope, perspective, evidence required, allowed changes, and stop condition. Prefer bounded inline findings. Persist reviewer artifacts only when the active workflow or user requires them.
 
 Review only concerns that can affect the artifact's objective or next workflow:
 
@@ -34,13 +34,13 @@ Review only concerns that can affect the artifact's objective or next workflow:
 
 Sentence length, passive voice, or a style score is not a defect by itself. Repair wording only when it obscures meaning, responsibility, conditions, evidence, or the artifact's next action.
 
-A failed reviewer is not automatically a blocker. Continue when remaining evidence is sufficient; do not retry an equivalent failed delegation without a reason the retry will differ.
+A failed reviewer is not automatically a blocker. Retry that perspective at most once and only with a materially different strategy; otherwise continue only when remaining evidence covers it. Never rerun a healthy reviewer or launch a second or post-repair panel.
 
 ## Verify
 
 Reviewer output is advisory. Verify verdict-changing findings against the artifact and repository using the cheapest decisive evidence.
 
-Unless the request is explicitly review-only, apply only supported must-fix defects and necessary clarity changes in one coherent pass. Preserve the artifact's objective and valid completed work. Keep optional hardening advisory; do not add a new architecture or operational controls unrelated to actual risk.
+Classify outcome-changing reviewer claims as required repair, rejected or deferred advice, or an unresolved operator decision. Unless the request is explicitly review-only, apply only supported must-fix defects and necessary clarity changes in one coherent pass. Preserve the artifact's objective and valid completed work. Keep optional hardening advisory; do not add a new architecture or operational controls unrelated to actual risk.
 
 If a required fix depends on an unresolved product choice, unsafe external action, credential, or unavailable prerequisite, leave the choice unmade and report the blocker.
 
