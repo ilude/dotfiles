@@ -348,6 +348,7 @@ function markLegacyTodosImported(workspace: string, source: string): void {
 export function importLegacyTodos(
 	cwd: string,
 	sourceDir = cwd,
+	sessionId?: string,
 ): TaskRecordV1[] {
 	const filePath = path.join(sourceDir, ".pi", "todo.json");
 	if (!fs.existsSync(filePath)) return [];
@@ -377,6 +378,7 @@ export function importLegacyTodos(
 			summary: item.title,
 			notes: item.notes,
 			workspace,
+			sessionId,
 			metadata: {
 				legacyTodoId: item.id,
 				legacyTodoWorkspace: workspace,
@@ -423,6 +425,7 @@ function validatedBlockers(value: unknown): string[] | undefined {
 function taskInputFrom(
 	input: Record<string, unknown>,
 	cwd: string,
+	sessionId: string | undefined,
 	batch = false,
 ): CreateTaskBatchInput {
 	const summary = validateTaskText(
@@ -464,6 +467,7 @@ function taskInputFrom(
 		origin: "other",
 		summary,
 		workspace: resolveTaskWorkspace(cwd),
+		sessionId,
 		scope: validatedScope(input.scope),
 		notes,
 		blockedBy: batch
@@ -479,8 +483,23 @@ function taskInputFrom(
 function createTaskFromInput(
 	input: Record<string, unknown>,
 	cwd: string,
+	sessionId: string | undefined,
 ): TaskRecordV1 {
-	return createTask(taskInputFrom(input, cwd));
+	return createTask(taskInputFrom(input, cwd, sessionId));
+}
+
+function currentTaskSessionId(ctx: {
+	sessionManager?: { getSessionId?: () => string };
+}): string | undefined {
+	return ctx.sessionManager?.getSessionId?.();
+}
+
+function isCurrentTask(
+	record: TaskRecordV1,
+	workspace: string,
+	sessionId: string | undefined,
+): boolean {
+	return record.workspace === workspace && record.sessionId === sessionId;
 }
 
 function codePointPrefix(value: string, maxCodePoints: number): string {
@@ -566,7 +585,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			all: Type.Optional(
 				Type.Boolean({
 					description:
-						"Include terminal tasks and tasks from other workspaces when listing.",
+						"Include terminal tasks and tasks from other sessions or workspaces when listing.",
 				}),
 			),
 			tasks: Type.Optional(
@@ -639,10 +658,11 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 						`task field ${retiredField} is retired. Store todo state in task and execute work separately with subagent or bg_start.`,
 				});
 			const workspace = resolveTaskWorkspace(ctx.cwd);
+			const sessionId = currentTaskSessionId(ctx);
 			if (action === "create")
 				return operationToolResult({
 					outcome: "persisted",
-					record: createTaskFromInput(input, ctx.cwd),
+					record: createTaskFromInput(input, ctx.cwd, sessionId),
 				});
 			if (action === "batch") {
 				if (input.tasks !== undefined && !Array.isArray(input.tasks))
@@ -653,7 +673,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				const batchInputs = tasks.map((item) => {
 					if (!item || typeof item !== "object" || Array.isArray(item))
 						throw new Error("batch task must be an object");
-					return taskInputFrom(asParams(item), ctx.cwd, true);
+					return taskInputFrom(asParams(item), ctx.cwd, sessionId, true);
 				});
 				const result = createTaskBatch(batchInputs, workspace);
 				if (result.outcome === "write_failed") {
@@ -698,7 +718,9 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				const scopedRecords =
 					input.all === true
 						? allRecords
-						: allRecords.filter((record) => record.workspace === workspace);
+						: allRecords.filter((record) =>
+								isCurrentTask(record, workspace, sessionId),
+							);
 				const selected =
 					action === "ready"
 						? partitionReadyTasks(scopedRecords).ready
@@ -849,8 +871,10 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 		handler: async (args, ctx) => {
 			const parsed = parseTasksArgs(args);
 			const allTasks = listTasks({ includeTombstones: true });
-			const scopedTasks = allTasks.filter(
-				(task) => task.workspace === resolveTaskWorkspace(ctx.cwd),
+			const workspace = resolveTaskWorkspace(ctx.cwd);
+			const sessionId = currentTaskSessionId(ctx);
+			const scopedTasks = allTasks.filter((task) =>
+				isCurrentTask(task, workspace, sessionId),
 			);
 			const selectedTasks = parsed.all ? allTasks : scopedTasks;
 			const listedTasks = parsed.all
@@ -899,7 +923,8 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 							TASK_SUMMARY_MAX_LENGTH,
 							true,
 						),
-						workspace: resolveTaskWorkspace(ctx.cwd),
+						workspace,
+						sessionId,
 					});
 					return ctx.ui.notify(
 						`Created ${shortTaskId(task.id)}: ${truncateTaskText(task.summary, 80)}`,
@@ -914,7 +939,7 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 			}
 			if (parsed.verb === "clear")
 				return ctx.ui.notify(
-					`Cleared ${clearCompletedTasks(resolveTaskWorkspace(ctx.cwd)).length} completed task(s).`,
+					`Cleared ${clearCompletedTasks(workspace, sessionId).length} completed task(s).`,
 					"info",
 				);
 			if (!parsed.idArg) return ctx.ui.notify(helpText(), "warning");
@@ -970,10 +995,12 @@ export default function (pi: ExtensionAPI) {
 	registerTaskTools(pi);
 	registerTasksCommand(pi);
 	pi.on("session_start", (_event, ctx) => {
+		const sessionId = currentTaskSessionId(ctx);
 		try {
 			importLegacyTodos(
 				ctx.cwd,
 				process.env.PI_LEGACY_TODO_SOURCE_DIR || ctx.cwd,
+				sessionId,
 			);
 		} catch (error) {
 			ctx.ui.notify(
@@ -982,7 +1009,7 @@ export default function (pi: ExtensionAPI) {
 			);
 		}
 		try {
-			pruneTaskRegistry();
+			pruneTaskRegistry({ removeUnowned: sessionId !== undefined });
 		} catch (error) {
 			ctx.ui.notify(
 				`Task cleanup failed: ${error instanceof Error ? error.message : String(error)}`,

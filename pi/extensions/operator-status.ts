@@ -35,7 +35,7 @@ import {
 import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
 
 let cachedPiVersion: string | null | undefined;
-let currentSessionStartedAt: string | null = null;
+let currentSessionId: string | null = null;
 const cachedStatusDirectories = new Map<string, string>();
 const FOOTER_STATUS_EXCLUDE_KEYS = new Set(["damage-control"]);
 const FOOTER_STATUS_PRIORITY = new Map([
@@ -423,16 +423,14 @@ export function summarizeTaskCounts(records: TaskRecordV1[]): TaskCounts {
 
 export function filterCurrentSessionActiveTasks(
 	records: TaskRecordV1[],
-	sessionStartedAt: string | null,
+	sessionId: string | null,
 ): TaskRecordV1[] {
-	const sessionStartMs = sessionStartedAt
-		? Date.parse(sessionStartedAt)
-		: Number.NEGATIVE_INFINITY;
-	return records.filter((task) => {
-		if (task.state !== "running" && task.state !== "blocked") return false;
-		const createdMs = Date.parse(task.createdAt);
-		return Number.isFinite(createdMs) && createdMs >= sessionStartMs;
-	});
+	if (!sessionId) return [];
+	return records.filter(
+		(task) =>
+			(task.state === "running" || task.state === "blocked") &&
+			task.sessionId === sessionId,
+	);
 }
 
 export function formatTaskStatus(counts: TaskCounts): string | null {
@@ -457,7 +455,7 @@ function refreshOperatorStatus(ctx: {
 	if (!ctx.ui?.setStatus) return;
 	try {
 		const counts = summarizeTaskCounts(
-			filterCurrentSessionActiveTasks(listTasks(), currentSessionStartedAt),
+			filterCurrentSessionActiveTasks(listTasks(), currentSessionId),
 		);
 		const taskLabel = formatTaskStatus(counts);
 		ctx.ui.setStatus("task", taskLabel ?? "");
@@ -488,7 +486,7 @@ export function isOperatorReloadNeeded(
 
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (event, ctx) => {
-		currentSessionStartedAt = new Date().toISOString();
+		currentSessionId = ctx.sessionManager.getSessionId();
 		if (event.reason === "reload") resetOperatorReloadStatus();
 		const footerInstalled = installClaudeStyleFooter(ctx, pi);
 		if (!footerInstalled) {

@@ -10,7 +10,7 @@ const mockRuntime = vi.hoisted(() => ({
 	runs: [] as Array<{ status: string }>,
 	tasks: [] as Array<{
 		state: string;
-		createdAt: string;
+		sessionId: string;
 	}>,
 	unsubscribeCount: 0,
 }));
@@ -37,6 +37,7 @@ function metadataContext(
 ): ReturnType<typeof createMockCtx> {
 	return createMockCtx({
 		mode: "tui",
+		sessionManager: { getSessionId: () => "current-session" },
 		model: { id: "gpt-5.6-sol", name: "GPT-5.6 Sol" },
 		getContextUsage: () => ({
 			tokens: 25_000,
@@ -135,9 +136,9 @@ describe("Herdr metadata extension", () => {
 	it("reports model, context, subagent, and current-session task metadata", async () => {
 		mockRuntime.runs.push({ status: "running" }, { status: "completed" });
 		mockRuntime.tasks.push(
-			{ state: "running", createdAt: "2099-01-01T00:00:00.000Z" },
-			{ state: "blocked", createdAt: "2099-01-01T00:00:01.000Z" },
-			{ state: "running", createdAt: "2000-01-01T00:00:00.000Z" },
+			{ state: "running", sessionId: "current-session" },
+			{ state: "blocked", sessionId: "current-session" },
+			{ state: "running", sessionId: "other-session" },
 		);
 		const pi = createMockPi();
 		herdrMetadata(pi as Parameters<typeof herdrMetadata>[0]);
@@ -172,7 +173,7 @@ describe("Herdr metadata extension", () => {
 		mockRuntime.runs.push({ status: "running" });
 		mockRuntime.tasks.push({
 			state: "running",
-			createdAt: "2099-01-01T00:00:00.000Z",
+			sessionId: "current-session",
 		});
 		const pi = createMockPi();
 		herdrMetadata(pi as Parameters<typeof herdrMetadata>[0]);

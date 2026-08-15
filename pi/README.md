@@ -705,7 +705,7 @@ Commands:
 Operator surface for the durable task registry.
 
 Commands:
-- `/tasks` -- active tasks assigned to the current repository workspace, urgency-grouped as blocked > failed > running > pending, with compact rows containing short id + summary + relative time + retry count. `/tasks list --all` includes unscoped, terminal, tombstoned, and foreign-workspace history.
+- `/tasks` -- active tasks assigned to the current Pi session and repository workspace, urgency-grouped as blocked > failed > running > pending, with compact rows containing short id + summary + relative time + retry count. `/tasks list --all` includes other sessions plus unscoped, terminal, tombstoned, and foreign-workspace history.
 - `/tasks <id-prefix>` -- detail view (id, state, summary, scope, dependencies, notes, timestamps, retries, and legacy metadata when present). Prefix matching needs >=4 chars and rejects ambiguous matches
 - `/tasks cancel <id>` -- transitions `running`/`blocked`/`pending` -> `cancelled`; preserves the final summary
 - `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
@@ -713,11 +713,11 @@ Commands:
 Model-callable task surface:
 - The unified `task` tool owns durable todo and dependency state through `create`, `batch`, `update`, `remove`, `list`, `ready`, and `get`. Ordinary short workflows can remain prose; durable records are useful for requested todo lists, dependency graphs, and work that may span context compaction.
 - A graph-aware `batch` creates todo items with request-local keys and dependency keys. Use returned aliases for later actions.
-- Tasks default to the current repository workspace. `list` excludes unscoped, terminal, and foreign-workspace records unless `all: true` requests a cross-repository view; tombstones remain excluded. `ready` applies the same workspace boundary and returns only ready pending tasks. Collections return compact model-visible summaries; use `get` for one complete record.
+- Tasks are tagged with the creating Pi session and current repository workspace. `list` excludes other sessions plus unscoped, terminal, and foreign-workspace records unless `all: true` requests a global view; tombstones remain excluded. `ready` applies the same session/workspace boundary and returns only ready pending tasks. Collections return compact model-visible summaries; use `get` for one complete record.
 - The parent agent selects ready work, marks it `running`, passes its `taskId` when executing through `subagent` (or uses `bg_start` without linkage), validates the result, and then records the terminal state. Task never starts, waits for, stops, or captures output from those processes.
 - Optional worktree-relative `scope` paths or globs describe task boundaries for coordination. `blockedBy` is the authority for dependency readiness.
 - Batch graph validation occurs before writes, but batch publication is not transactional. On `write_failed`, inspect the returned persisted IDs, clear each persisted task's `blockedBy` in reverse request order through `update`, then tombstone it with `remove`; do not assume automatic rollback or retry.
-- Legacy `.pi/todo.json` entries are imported once per workspace. Startup cleanup removes imported legacy and retired execution-era records unless an active durable dependency still references them, plus terminal task graphs with no active dependents. Failed and other non-terminal durable records require an explicit update or removal. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity.
+- Legacy `.pi/todo.json` entries are imported once per workspace. Startup cleanup removes pre-session, imported legacy, and retired execution-era records unless an active durable dependency still references them, plus terminal task graphs with no active dependents. Failed and other non-terminal session-owned records remain available only to their owning session or an explicit global view until updated or removed. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity.
 
 Lifecycle (defined in `pi/lib/operator-state.ts`):
 ```

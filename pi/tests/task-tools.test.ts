@@ -377,6 +377,58 @@ describe("task tools", () => {
 		).toEqual(new Set([active.id, completed.id, unscoped.id, foreign.id]));
 	});
 
+	it("scopes default lists to the current session", async () => {
+		const pi = createMockPi();
+		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);
+		const tool = pi._getTool("task");
+		const currentCtx = createMockCtx({
+			cwd: tmpRoot,
+			sessionManager: { getSessionId: () => "current-session" },
+		});
+		const otherCtx = createMockCtx({
+			cwd: tmpRoot,
+			sessionManager: { getSessionId: () => "other-session" },
+		});
+		const current = await tool?.execute(
+			"create-current-session",
+			{ action: "create", summary: "current session task" },
+			undefined,
+			undefined,
+			currentCtx,
+		);
+		const other = await tool?.execute(
+			"create-other-session",
+			{ action: "create", summary: "other session task" },
+			undefined,
+			undefined,
+			otherCtx,
+		);
+
+		const listed = await tool?.execute(
+			"list-current-session",
+			{ action: "list" },
+			undefined,
+			undefined,
+			currentCtx,
+		);
+		expect(listed.details.records.map((record: { id: string }) => record.id)).toEqual([
+			current.details.record.id,
+		]);
+		expect(current.details.record.sessionId).toBe("current-session");
+		expect(other.details.record.sessionId).toBe("other-session");
+
+		const all = await tool?.execute(
+			"list-all-sessions",
+			{ action: "list", all: true },
+			undefined,
+			undefined,
+			currentCtx,
+		);
+		expect(new Set(all.details.records.map((record: { id: string }) => record.id))).toEqual(
+			new Set([current.details.record.id, other.details.record.id]),
+		);
+	});
+
 	it("rejects invalid completed-to-skipped updates without patching fields", async () => {
 		const pi = createMockPi();
 		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);

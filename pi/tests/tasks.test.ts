@@ -366,7 +366,7 @@ describe("/tasks command", () => {
 		expect(after).toEqual(before);
 	});
 
-	it("lists only active current-workspace tasks unless --all is provided", async () => {
+	it("lists only active current-session workspace tasks unless --all is provided", async () => {
 		const { createTask, resolveTaskWorkspace } = await import(
 			"../lib/task-registry.ts"
 		);
@@ -378,12 +378,20 @@ describe("/tasks command", () => {
 			origin: "other",
 			summary: "current workspace task",
 			workspace: resolveTaskWorkspace(currentDir),
+			sessionId: "current-session",
 		});
 		const completed = createTask({
 			origin: "other",
 			summary: "current completed task",
 			state: "completed",
 			workspace: resolveTaskWorkspace(currentDir),
+			sessionId: "current-session",
+		});
+		const otherSession = createTask({
+			origin: "other",
+			summary: "other session task",
+			workspace: resolveTaskWorkspace(currentDir),
+			sessionId: "other-session",
 		});
 		const unscoped = createTask({ origin: "other", summary: "unscoped task" });
 		const foreign = createTask({
@@ -392,13 +400,17 @@ describe("/tasks command", () => {
 			workspace: resolveTaskWorkspace(foreignDir),
 		});
 		const { cmd } = await loadTasks();
-		const ctx = createMockCtx({ cwd: currentDir });
+		const ctx = createMockCtx({
+			cwd: currentDir,
+			sessionManager: { getSessionId: () => "current-session" },
+		});
 
 		await cmd.handler("list", ctx);
 		const scoped = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
 			.calls[0][0] as string;
 		expect(scoped).toContain(current.summary);
 		expect(scoped).not.toContain(completed.summary);
+		expect(scoped).not.toContain(otherSession.summary);
 		expect(scoped).not.toContain(unscoped.summary);
 		expect(scoped).not.toContain(foreign.summary);
 
@@ -407,11 +419,12 @@ describe("/tasks command", () => {
 		const globalList = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
 			.calls[2][0] as string;
 		expect(globalList).toContain(completed.summary);
+		expect(globalList).toContain(otherSession.summary);
 		expect(globalList).toContain(unscoped.summary);
 		expect(globalList).toContain(foreign.summary);
 	});
 
-	it("clears completed tasks only in the current workspace", async () => {
+	it("clears completed tasks only in the current session and workspace", async () => {
 		const { createTask, getTask, resolveTaskWorkspace } = await import(
 			"../lib/task-registry.ts"
 		);
@@ -424,6 +437,14 @@ describe("/tasks command", () => {
 			summary: "current completed task",
 			state: "completed",
 			workspace: resolveTaskWorkspace(currentDir),
+			sessionId: "current-session",
+		});
+		const otherSession = createTask({
+			origin: "other",
+			summary: "other session completed task",
+			state: "completed",
+			workspace: resolveTaskWorkspace(currentDir),
+			sessionId: "other-session",
 		});
 		const global = createTask({
 			origin: "other",
@@ -437,13 +458,45 @@ describe("/tasks command", () => {
 			workspace: resolveTaskWorkspace(foreignDir),
 		});
 		const { cmd } = await loadTasks();
-		const ctx = createMockCtx({ cwd: currentDir });
+		const ctx = createMockCtx({
+			cwd: currentDir,
+			sessionManager: { getSessionId: () => "current-session" },
+		});
 
 		await cmd.handler("clear completed", ctx);
 
 		expect(getTask(current.id)?.deletedAt).toBeDefined();
+		expect(getTask(otherSession.id)?.deletedAt).toBeUndefined();
 		expect(getTask(global.id)?.deletedAt).toBeUndefined();
 		expect(getTask(foreign.id)?.deletedAt).toBeUndefined();
+	});
+
+	it("removes pre-session task records when a session starts", async () => {
+		const { createTask, getTask, resolveTaskWorkspace } = await import(
+			"../lib/task-registry.ts"
+		);
+		const unowned = createTask({
+			origin: "other",
+			summary: "pre-session task",
+			workspace: resolveTaskWorkspace(tmpRoot),
+		});
+		const owned = createTask({
+			origin: "other",
+			summary: "session task",
+			workspace: resolveTaskWorkspace(tmpRoot),
+			sessionId: "current-session",
+		});
+		const { pi } = await loadTasks();
+		const sessionStart = pi._getHook("session_start")[0];
+		const ctx = createMockCtx({
+			cwd: tmpRoot,
+			sessionManager: { getSessionId: () => "current-session" },
+		});
+
+		await sessionStart.handler({ reason: "startup" }, ctx);
+
+		expect(getTask(unowned.id)).toBeNull();
+		expect(getTask(owned.id)?.sessionId).toBe("current-session");
 	});
 
 	it("starts a ready task through the registered command", async () => {

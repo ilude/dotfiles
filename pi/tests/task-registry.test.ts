@@ -9,6 +9,7 @@ import {
 	listTasks,
 	normalizeTaskScope,
 	normalizeTaskUsage,
+	pruneTaskRegistry,
 	TaskRegistryError,
 	transitionTask,
 	updateTask,
@@ -375,6 +376,33 @@ describe("listTasks", () => {
 
 	it("returns [] when the tasks dir does not exist", () => {
 		expect(listTasks()).toEqual([]);
+	});
+
+	it("prunes pre-session graphs while preserving session-owned tasks", () => {
+		const unownedBlocker = createTask({
+			origin: "other",
+			summary: "legacy blocker",
+		});
+		const unownedDependent = createTask({
+			origin: "other",
+			summary: "legacy dependent",
+			blockedBy: [unownedBlocker.id],
+		});
+		const owned = createTask({
+			origin: "other",
+			summary: "session task",
+			sessionId: "session-1",
+		});
+
+		const result = pruneTaskRegistry({ removeUnowned: true });
+
+		expect(result.removedIds).toEqual(
+			expect.arrayContaining([unownedBlocker.id, unownedDependent.id]),
+		);
+		expect(result.unownedRemoved).toBe(2);
+		expect(getTask(unownedBlocker.id)).toBeNull();
+		expect(getTask(unownedDependent.id)).toBeNull();
+		expect(getTask(owned.id)?.sessionId).toBe("session-1");
 	});
 });
 

@@ -137,6 +137,7 @@ export interface TaskRecordV1 {
 	preview?: string;
 	repoSlug?: string;
 	workspace?: string;
+	sessionId?: string;
 	scope?: string[];
 	notes?: string;
 	blockReason?: string;
@@ -158,6 +159,7 @@ export interface CreateTaskInput {
 	preview?: string;
 	repoSlug?: string;
 	workspace?: string;
+	sessionId?: string;
 	scope?: string[];
 	notes?: string;
 	metadata?: Record<string, unknown>;
@@ -214,6 +216,7 @@ export interface ListTasksOptions {
 	limit?: number;
 	includeTombstones?: boolean;
 	workspace?: string;
+	sessionId?: string;
 }
 
 export interface TaskOperationResult<T = TaskRecordV1> {
@@ -226,6 +229,11 @@ export interface TaskPruneResult {
 	removedIds: string[];
 	retiredRemoved: number;
 	terminalRemoved: number;
+	unownedRemoved: number;
+}
+
+export interface TaskPruneOptions {
+	removeUnowned?: boolean;
 }
 
 export function normalizeTaskScope(
@@ -409,6 +417,7 @@ function createTaskRecord(
 		preview: input.preview,
 		repoSlug: input.repoSlug,
 		workspace: input.workspace,
+		sessionId: input.sessionId,
 		scope: normalizeTaskScope(input.scope),
 		notes: input.notes,
 		metadata: input.metadata,
@@ -785,6 +794,7 @@ const matchesTaskListScope = (
 	if (!opts.includeTombstones && record.deletedAt) return false;
 	if (opts.repoSlug && record.repoSlug !== opts.repoSlug) return false;
 	if (opts.workspace && record.workspace !== opts.workspace) return false;
+	if (opts.sessionId && record.sessionId !== opts.sessionId) return false;
 	return true;
 };
 
@@ -827,7 +837,10 @@ function isRetiredTaskRecord(record: TaskRecordV1): boolean {
 	);
 }
 
-function protectedTaskIds(records: readonly TaskRecordV1[]): Set<string> {
+function protectedTaskIds(
+	records: readonly TaskRecordV1[],
+	removeUnowned: boolean,
+): Set<string> {
 	const byId = tasksByIdSnapshot(records);
 	const protectedIds = new Set<string>();
 	const pending = records
@@ -835,7 +848,8 @@ function protectedTaskIds(records: readonly TaskRecordV1[]): Set<string> {
 			(record) =>
 				!record.deletedAt &&
 				!isRetiredTaskRecord(record) &&
-				!TERMINAL_TASK_STATES.has(record.state),
+				!TERMINAL_TASK_STATES.has(record.state) &&
+				(!removeUnowned || Boolean(record.sessionId)),
 		)
 		.flatMap((record) => record.blockedBy ?? []);
 	while (pending.length > 0) {
@@ -847,14 +861,20 @@ function protectedTaskIds(records: readonly TaskRecordV1[]): Set<string> {
 	return protectedIds;
 }
 
-export function pruneTaskRegistry(): TaskPruneResult {
+export function pruneTaskRegistry(
+	options: TaskPruneOptions = {},
+): TaskPruneResult {
 	const records = listTasks({ includeTombstones: true });
-	const protectedIds = protectedTaskIds(records);
+	const protectedIds = protectedTaskIds(
+		records,
+		options.removeUnowned === true,
+	);
 	const removable = records.filter(
 		(record) =>
 			!protectedIds.has(record.id) &&
 			(isRetiredTaskRecord(record) ||
-				TERMINAL_TASK_STATES.has(record.state)),
+				TERMINAL_TASK_STATES.has(record.state) ||
+				(options.removeUnowned === true && !record.sessionId)),
 	);
 	const removedIds = new Set(removable.map((record) => record.id));
 	for (const record of records) {
@@ -878,6 +898,12 @@ export function pruneTaskRegistry(): TaskPruneResult {
 			(record) =>
 				!isRetiredTaskRecord(record) &&
 				TERMINAL_TASK_STATES.has(record.state),
+		).length,
+		unownedRemoved: removable.filter(
+			(record) =>
+				!isRetiredTaskRecord(record) &&
+				!TERMINAL_TASK_STATES.has(record.state) &&
+				!record.sessionId,
 		).length,
 	};
 }
@@ -1013,13 +1039,17 @@ export function partitionReadyTasks(tasks: readonly TaskRecordV1[]): {
 	};
 }
 
-export function clearCompletedTasks(workspace?: string): TaskRecordV1[] {
+export function clearCompletedTasks(
+	workspace?: string,
+	sessionId?: string,
+): TaskRecordV1[] {
 	return listTasks({ includeTombstones: true })
 		.filter(
 			(task) =>
 				task.state === "completed" &&
 				!task.deletedAt &&
-				(!workspace || task.workspace === workspace),
+				(!workspace || task.workspace === workspace) &&
+				(!sessionId || task.sessionId === sessionId),
 		)
 		.map((task) => tombstoneTask(task.id, "clear completed"));
 }

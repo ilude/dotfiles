@@ -23,7 +23,9 @@ afterEach(() => {
 });
 
 function ctxWithStatus() {
-	const ctx = createMockCtx();
+	const ctx = createMockCtx({
+		sessionManager: { getSessionId: () => "current-session" },
+	});
 	ctx.ui.setStatus = vi.fn();
 	return ctx;
 }
@@ -31,19 +33,16 @@ function ctxWithStatus() {
 describe("summarizeTaskCounts / formatTaskStatus", () => {
 	it("filters status bar tasks to running/blocked tasks from current session", async () => {
 		const mod = await import("../extensions/operator-status.ts");
-		const sessionStartedAt = "2026-01-01T00:00:00.000Z";
+		const sessionId = "current-session";
 		const records = [
-			{ state: "failed", createdAt: "2026-01-01T00:01:00.000Z" },
-			{ state: "completed", createdAt: "2026-01-01T00:01:00.000Z" },
-			{ state: "running", createdAt: "2025-12-31T23:59:00.000Z" },
-			{ state: "running", createdAt: "2026-01-01T00:01:00.000Z" },
-			{ state: "blocked", createdAt: "2026-01-01T00:02:00.000Z" },
+			{ state: "failed", sessionId },
+			{ state: "completed", sessionId },
+			{ state: "running", sessionId: "other-session" },
+			{ state: "running", sessionId },
+			{ state: "blocked", sessionId },
 		] as any[];
 
-		const filtered = mod.filterCurrentSessionActiveTasks(
-			records,
-			sessionStartedAt,
-		);
+		const filtered = mod.filterCurrentSessionActiveTasks(records, sessionId);
 		expect(filtered.map((t) => t.state)).toEqual(["running", "blocked"]);
 	});
 
@@ -333,7 +332,12 @@ describe("session_start hook", () => {
 		await sessionHook.handler({}, ctx);
 
 		const { createTask } = await import("../lib/task-registry.ts");
-		createTask({ origin: "subagent", summary: "x", state: "running" });
+		createTask({
+			origin: "subagent",
+			summary: "x",
+			state: "running",
+			sessionId: "current-session",
+		});
 		await toolHook.handler({}, ctx);
 
 		const calls = (ctx.ui.setStatus as ReturnType<typeof vi.fn>).mock.calls;

@@ -32,6 +32,7 @@
 - A modifying workflow item declares normalized repository-relative scopes. Concurrent modifying items must have disjoint canonical scopes, and tree admission rejects lexical or symlink/junction overlap atomically.
 - A scoped modifying leaf loses `bash` and `pwsh`; direct file mutations outside its assigned canonical scope are blocked. Existing symlinks and the nearest existing ancestor of a prospective target are resolved before containment is accepted.
 - Only `task` creates durable todo records. The root selects ready work, marks it running, delegates with the existing `taskId`, validates the result, and records terminal state. Coordinators may carry that task ID; leaves and retries remain transient.
+- Task and `/tasks` creation records the owning Pi session and workspace. Default list and ready views show only that session and workspace; explicit `all` views include other sessions, workspaces, and terminal records. Session startup pruning removes pre-session records that cannot be assigned safely.
 - The run manager owns live process state. The task registry owns durable todo and dependency state. Neither mutates the other's lifecycle.
 
 ## Unattended goal recovery

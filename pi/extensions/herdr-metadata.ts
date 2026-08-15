@@ -61,9 +61,9 @@ function formatSubagents(): string | undefined {
 	return running > 0 ? `subagents ${running}` : undefined;
 }
 
-function formatTasks(sessionStartedAt: string): string | undefined {
+function formatTasks(sessionId: string): string | undefined {
 	const counts = summarizeTaskCounts(
-		filterCurrentSessionActiveTasks(listTasks(), sessionStartedAt),
+		filterCurrentSessionActiveTasks(listTasks(), sessionId),
 	);
 	return formatTaskStatus(counts) ?? undefined;
 }
@@ -83,7 +83,7 @@ export default function (pi: ExtensionAPI) {
 	const desired = new Map<MetadataToken, string | undefined>();
 	let reportSeq = Date.now() * 1_000;
 	let writeChain = Promise.resolve();
-	let sessionStartedAt: string | undefined;
+	let sessionId: string | undefined;
 	let unsubscribeSubagents: (() => void) | undefined;
 
 	function publish(patch: MetadataPatch, force = false): Promise<void> {
@@ -137,13 +137,13 @@ export default function (pi: ExtensionAPI) {
 	function publishContextAndTasks(ctx: ExtensionContext): Promise<void> {
 		return publish({
 			...contextPatch(ctx),
-			tasks: sessionStartedAt ? formatTasks(sessionStartedAt) : undefined,
+			tasks: sessionId ? formatTasks(sessionId) : undefined,
 		});
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
 		if (ctx.mode !== "tui") return;
-		sessionStartedAt = new Date().toISOString();
+		sessionId = ctx.sessionManager.getSessionId();
 		unsubscribeSubagents?.();
 		unsubscribeSubagents = subagentRunManager.subscribe(() => {
 			void publishSubagents().catch((error) => {
@@ -156,31 +156,31 @@ export default function (pi: ExtensionAPI) {
 			{
 				...contextPatch(ctx),
 				subagents: formatSubagents(),
-				tasks: formatTasks(sessionStartedAt),
+				tasks: formatTasks(sessionId),
 			},
 			true,
 		);
 	});
 
 	pi.on("model_select", async (_event, ctx) => {
-		if (!sessionStartedAt) return;
+		if (!sessionId) return;
 		await publish(contextPatch(ctx));
 	});
 
 	pi.on("agent_settled", async (_event, ctx) => {
-		if (!sessionStartedAt) return;
+		if (!sessionId) return;
 		await publishContextAndTasks(ctx);
 	});
 
 	pi.on("tool_result", async (_event, ctx) => {
-		if (!sessionStartedAt) return;
+		if (!sessionId) return;
 		await publishContextAndTasks(ctx);
 	});
 
 	pi.on("session_shutdown", async () => {
 		unsubscribeSubagents?.();
 		unsubscribeSubagents = undefined;
-		sessionStartedAt = undefined;
+		sessionId = undefined;
 		await writeChain;
 	});
 }
