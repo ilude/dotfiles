@@ -279,7 +279,7 @@ export function formatTaskToolResult(
 		return {
 			text: expanded
 				? formatTaskDetail(result.record)
-				: `ok ${result.record.state}${formatCompactRow(result.record)}`,
+				: `ok ${result.record.state}\n${formatCompactRow(result.record)}`,
 			failed: false,
 		};
 	}

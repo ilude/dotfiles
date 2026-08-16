@@ -164,7 +164,6 @@ export interface CreateTaskInput {
 	notes?: string;
 	metadata?: Record<string, unknown>;
 	blockedBy?: string[];
-	blocks?: string[];
 }
 
 export interface CreateTaskBatchInput extends CreateTaskInput {
@@ -175,7 +174,7 @@ export interface CreateTaskBatchInput extends CreateTaskInput {
 export interface TaskBatchFailureResult {
 	outcome: "write_failed";
 	operationId: string;
-	failedPhase: "write_records" | "reconcile_reverse_edges";
+	failedPhase: "write_records";
 	generated: Array<{ key?: string; id: string }>;
 	persistedIds: string[];
 	error: string;
@@ -199,7 +198,6 @@ export interface UpdateTaskPatch {
 	scope?: string[];
 	notes?: string;
 	blockedBy?: string[];
-	blocks?: string[];
 }
 
 export interface TransitionOptions {
@@ -222,6 +220,7 @@ export interface ListTasksOptions {
 export interface TaskOperationResult<T = TaskRecordV1> {
 	outcome: TaskPersistenceOutcome;
 	record?: T;
+	readiness?: TaskReadiness;
 	error?: string;
 }
 
@@ -349,52 +348,105 @@ function readTaskFile(file: string): TaskRecordV1 | null {
 
 function writeTaskFile(record: TaskRecordV1): void {
 	ensureDirectory(getTasksDir());
-	const sanitized = sanitizeTaskValue(record);
+	const persisted = { ...record };
+	delete persisted.blocks;
+	const sanitized = sanitizeTaskValue(persisted);
 	const target = taskFilePath(sanitized.id);
 	const tmp = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
 	fs.writeFileSync(tmp, `${JSON.stringify(sanitized, null, 2)}\n`, "utf-8");
 	fs.renameSync(tmp, target);
 }
 
-function assertNoCycle(id: string, blockedBy: string[]): void {
-	const pending = [...blockedBy];
-	const visited = new Set<string>();
-	while (pending.length > 0) {
-		const blocker = pending.pop();
-		if (!blocker || visited.has(blocker)) continue;
-		if (blocker === id)
-			throw new TaskRegistryError("dependency cycle rejected");
-		visited.add(blocker);
-		pending.push(...(getTask(blocker)?.blockedBy ?? []));
-	}
+const TASK_DEPENDENCY_MAX_ITEMS = 16;
+
+interface TaskDependencyCandidate {
+	id: string;
+	blockedBy?: unknown;
+	workspace?: string;
+	deletedAt?: string;
 }
 
-function maintainReverseEdges(
-	record: TaskRecordV1,
-	previousBlockedBy: readonly string[] = [],
+function normalizedDependencyIds(value: unknown, label = "blockedBy"): string[] {
+	if (value === undefined) return [];
+	if (!Array.isArray(value))
+		throw new TaskRegistryError(`${label} must be an array`);
+	if (value.length > TASK_DEPENDENCY_MAX_ITEMS)
+		throw new TaskRegistryError(`${label} may contain at most 16 entries`);
+	const normalized: string[] = [];
+	const unique = new Set<string>();
+	for (const dependency of value) {
+		if (typeof dependency !== "string" || !isValidId(dependency))
+			throw new TaskRegistryError(`invalid ${label}: ${String(dependency)}`);
+		if (unique.has(dependency))
+			throw new TaskRegistryError(`duplicate ${label}: ${dependency}`);
+		unique.add(dependency);
+		normalized.push(dependency);
+	}
+	return normalized;
+}
+
+function workspaceAllowsDependency(
+	workspace: string | undefined,
+	blocker: TaskDependencyCandidate,
+): boolean {
+	// Schema-version-1 records without workspace predate workspace scoping.
+	if (blocker.workspace === undefined) return true;
+	return blocker.workspace === workspace;
+}
+
+function assertDependencyGraphIsAcyclic(
+	candidateIds: readonly string[],
+	nodes: ReadonlyMap<string, TaskDependencyCandidate>,
 ): void {
-	const nextBlockedBy = new Set(record.blockedBy ?? []);
-	for (const blockerId of previousBlockedBy) {
-		if (nextBlockedBy.has(blockerId)) continue;
-		const blocker = getTask(blockerId);
-		if (!blocker) continue;
-		writeTaskFile({
-			...blocker,
-			blocks: (blocker.blocks ?? []).filter((id) => id !== record.id),
-			updatedAt: new Date().toISOString(),
-		});
+	const visiting = new Set<string>();
+	const visited = new Set<string>();
+	const visit = (id: string): void => {
+		if (visited.has(id)) return;
+		if (visiting.has(id))
+			throw new TaskRegistryError("dependency cycle rejected");
+		visiting.add(id);
+		for (const blocker of normalizedDependencyIds(nodes.get(id)?.blockedBy))
+			visit(blocker);
+		visiting.delete(id);
+		visited.add(id);
+	};
+	for (const id of candidateIds) visit(id);
+}
+
+function validateTaskDependencies(
+	candidates: readonly TaskDependencyCandidate[],
+	existingRecords: readonly TaskRecordV1[] = listTasks({
+		includeTombstones: true,
+	}),
+): ReadonlyMap<string, string[]> {
+	const normalized = new Map<string, string[]>();
+	const nodes = new Map<string, TaskDependencyCandidate>(
+		existingRecords.map((record) => [record.id, record]),
+	);
+	for (const candidate of candidates) {
+		if (!isValidId(candidate.id))
+			throw new TaskRegistryError(`invalid task id: ${candidate.id}`);
+		const blockedBy = normalizedDependencyIds(candidate.blockedBy);
+		normalized.set(candidate.id, blockedBy);
+		nodes.set(candidate.id, { ...candidate, blockedBy });
 	}
-	for (const blockerId of nextBlockedBy) {
-		const blocker = getTask(blockerId);
-		if (!blocker) continue;
-		const blocks = new Set(blocker.blocks ?? []);
-		blocks.add(record.id);
-		writeTaskFile({
-			...blocker,
-			blocks: [...blocks],
-			updatedAt: new Date().toISOString(),
-		});
+	for (const candidate of candidates) {
+		const blockedBy = normalized.get(candidate.id) ?? [];
+		for (const blockerId of blockedBy) {
+			const blocker = nodes.get(blockerId);
+			if (!blocker || blocker.deletedAt)
+				throw new TaskRegistryError(`task dependency not found: ${blockerId}`);
+			if (!workspaceAllowsDependency(candidate.workspace, blocker))
+				throw new TaskRegistryError(
+					`foreign workspace dependency: ${blockerId}`,
+				);
+		}
 	}
+	assertDependencyGraphIsAcyclic(
+		candidates.map((candidate) => candidate.id),
+		nodes,
+	);
+	return normalized;
 }
 
 function createTaskRecord(
@@ -422,90 +474,23 @@ function createTaskRecord(
 		notes: input.notes,
 		metadata: input.metadata,
 		blockedBy,
-		blocks: normalizeIdList(input.blocks),
 	});
 	if (initialState === "running") record.startedAt = now;
 	return record;
 }
 
 export function createTask(input: CreateTaskInput): TaskRecordV1 {
-	const blockedBy = normalizeIdList(input.blockedBy);
-	const record = createTaskRecord(input, crypto.randomUUID(), blockedBy);
-	assertNoCycle(record.id, blockedBy);
+	const id = crypto.randomUUID();
+	const dependencies = validateTaskDependencies([
+		{ id, blockedBy: input.blockedBy, workspace: input.workspace },
+	]);
+	const record = createTaskRecord(input, id, dependencies.get(id) ?? []);
 	writeTaskFile(record);
-	maintainReverseEdges(record);
-	return record;
+	return getTask(record.id) ?? record;
 }
 
 const TASK_BATCH_MAX_ITEMS = 16;
 const TASK_BATCH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
-
-function assertUniqueBatchValues(
-	values: readonly string[] | undefined,
-	label: string,
-): string[] {
-	const normalized = [...(values ?? [])];
-	if (normalized.length > TASK_BATCH_MAX_ITEMS)
-		throw new TaskRegistryError(`${label} may contain at most 16 entries`);
-	const unique = new Set<string>();
-	for (const value of normalized) {
-		if (!isValidId(value))
-			throw new TaskRegistryError(`invalid ${label}: ${value}`);
-		if (unique.has(value))
-			throw new TaskRegistryError(`duplicate ${label}: ${value}`);
-		unique.add(value);
-	}
-	return [...normalized];
-}
-
-function assertProspectiveBatchIsAcyclic(
-	records: readonly TaskRecordV1[],
-): void {
-	const prospective = new Map(records.map((record) => [record.id, record]));
-	const visiting = new Set<string>();
-	const visited = new Set<string>();
-	const visit = (id: string): void => {
-		if (visited.has(id)) return;
-		if (visiting.has(id))
-			throw new TaskRegistryError("dependency cycle rejected");
-		visiting.add(id);
-		const record = prospective.get(id) ?? getTask(id);
-		for (const blocker of record?.blockedBy ?? []) visit(blocker);
-		visiting.delete(id);
-		visited.add(id);
-	};
-	for (const record of records) visit(record.id);
-}
-
-function reconcileBatchReverseEdges(
-	records: readonly TaskRecordV1[],
-	beforeWrite: () => void,
-): void {
-	const existing = listTasks({ includeTombstones: true });
-	const allRecords = new Map(existing.map((record) => [record.id, record]));
-	for (const record of records) allRecords.set(record.id, record);
-	const affected = new Set(records.map((record) => record.id));
-	for (const record of records)
-		for (const blocker of record.blockedBy ?? []) affected.add(blocker);
-	const reverse = new Map<string, string[]>();
-	for (const record of allRecords.values()) {
-		for (const blocker of record.blockedBy ?? []) {
-			const dependents = reverse.get(blocker) ?? [];
-			dependents.push(record.id);
-			reverse.set(blocker, dependents);
-		}
-	}
-	for (const id of affected) {
-		const record = allRecords.get(id);
-		if (!record) continue;
-		beforeWrite();
-		writeTaskFile({
-			...record,
-			blocks: sortedTaskIds(reverse.get(id)),
-			updatedAt: new Date().toISOString(),
-		});
-	}
-}
 
 const resolveLocalBatchDependencies = (
 	localKeys: readonly string[],
@@ -522,19 +507,6 @@ const resolveLocalBatchDependencies = (
 	});
 };
 
-const assertDurableBatchDependencies = (
-	blockerIds: readonly string[],
-	workspace: string,
-): void => {
-	for (const blockerId of blockerIds) {
-		const blocker = getTask(blockerId);
-		if (!blocker || blocker.deletedAt)
-			throw new TaskRegistryError(`task dependency not found: ${blockerId}`);
-		if (blocker.workspace && blocker.workspace !== workspace)
-			throw new TaskRegistryError(`foreign workspace dependency: ${blockerId}`);
-	}
-};
-
 const createBatchTaskRecord = (
 	input: CreateTaskBatchInput,
 	index: number,
@@ -542,20 +514,18 @@ const createBatchTaskRecord = (
 	aliases: Readonly<Record<string, string>>,
 	workspace: string,
 ): TaskRecordV1 => {
-	const durableBlockers = assertUniqueBatchValues(input.blockedBy, "blockedBy");
+	const durableBlockers = normalizedDependencyIds(input.blockedBy);
 	const localBlockers = resolveLocalBatchDependencies(
 		input.blockedByKeys ?? [],
 		aliases,
 	);
-	const blockedBy = [...durableBlockers, ...localBlockers];
-	if (new Set(blockedBy).size !== blockedBy.length)
-		throw new TaskRegistryError("duplicate dependency after resolution");
+	const blockedBy = normalizedDependencyIds(
+		[...durableBlockers, ...localBlockers],
+		"dependency after resolution",
+	);
 	const id = generated[index]?.id;
 	if (!id) throw new TaskRegistryError("missing generated task id");
-	if (blockedBy.includes(id))
-		throw new TaskRegistryError("self-dependency rejected");
-	assertDurableBatchDependencies(durableBlockers, workspace);
-	return createTaskRecord({ ...input, workspace, blocks: [] }, id, blockedBy);
+	return createTaskRecord({ ...input, workspace }, id, blockedBy);
 };
 
 /** Creates a fully validated dependency graph without mutating existing records first. */
@@ -564,6 +534,8 @@ export function createTaskBatch(
 	workspace: string,
 	options: { beforeWrite?: () => void } = {},
 ): TaskBatchResult {
+	if (inputs.length === 0)
+		throw new TaskRegistryError("batch must contain at least one task");
 	if (inputs.length > TASK_BATCH_MAX_ITEMS)
 		throw new TaskRegistryError("batch may contain at most 16 tasks");
 	const operationId = crypto.randomUUID();
@@ -588,7 +560,9 @@ export function createTaskBatch(
 	const records = inputs.map((input, index) =>
 		createBatchTaskRecord(input, index, generated, aliases, workspace),
 	);
-	assertProspectiveBatchIsAcyclic(records);
+	const dependencies = validateTaskDependencies(records);
+	for (const record of records)
+		record.blockedBy = dependencies.get(record.id) ?? [];
 	const persistedIds: string[] = [];
 	try {
 		for (const record of records) {
@@ -606,18 +580,6 @@ export function createTaskBatch(
 			error: error instanceof Error ? error.message : String(error),
 		};
 	}
-	try {
-		reconcileBatchReverseEdges(records, () => options.beforeWrite?.());
-	} catch (error) {
-		return {
-			outcome: "write_failed",
-			operationId,
-			failedPhase: "reconcile_reverse_edges",
-			generated,
-			persistedIds,
-			error: error instanceof Error ? error.message : String(error),
-		};
-	}
 	return {
 		outcome: "persisted",
 		operationId,
@@ -629,11 +591,17 @@ export function createTaskBatch(
 export function updateTask(id: string, patch: UpdateTaskPatch): TaskRecordV1 {
 	const existing = getTask(id);
 	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
-	const nextBlockedBy =
-		patch.blockedBy !== undefined
-			? normalizeIdList(patch.blockedBy)
-			: existing.blockedBy;
-	assertNoCycle(id, nextBlockedBy ?? []);
+	let nextBlockedBy = existing.blockedBy ?? [];
+	if (patch.blockedBy !== undefined || patch.workspace !== undefined) {
+		const dependencies = validateTaskDependencies([
+			{
+				id,
+				blockedBy: patch.blockedBy ?? nextBlockedBy,
+				workspace: patch.workspace ?? existing.workspace,
+			},
+		]);
+		nextBlockedBy = dependencies.get(id) ?? [];
+	}
 	const updated: TaskRecordV1 = sanitizeTaskValue({
 		...existing,
 		...(patch.summary !== undefined ? { summary: patch.summary } : {}),
@@ -646,14 +614,10 @@ export function updateTask(id: string, patch: UpdateTaskPatch): TaskRecordV1 {
 			: {}),
 		...(patch.notes !== undefined ? { notes: patch.notes } : {}),
 		...(patch.blockedBy !== undefined ? { blockedBy: nextBlockedBy } : {}),
-		...(patch.blocks !== undefined
-			? { blocks: normalizeIdList(patch.blocks) }
-			: {}),
 		updatedAt: new Date().toISOString(),
 	});
 	writeTaskFile(updated);
-	maintainReverseEdges(updated, existing.blockedBy);
-	return updated;
+	return getTask(updated.id) ?? updated;
 }
 
 const updateSameStateTask = (
@@ -683,6 +647,7 @@ const applyRunningTransition = (
 	if (existing.state === "failed") {
 		next.retryCount = existing.retryCount + 1;
 		delete next.errorReason;
+		delete next.endedAt;
 	}
 	if (!existing.startedAt) next.startedAt = now;
 	delete next.blockReason;
@@ -770,11 +735,36 @@ export function safeTransitionTask(
 	}
 }
 
+function readAllTaskRecords(): TaskRecordV1[] {
+	const dir = getTasksDir();
+	if (!fs.existsSync(dir)) return [];
+	return fs
+		.readdirSync(dir)
+		.filter((entry) => entry.endsWith(".json"))
+		.map((entry) => readTaskFile(path.join(dir, entry)))
+		.filter((record): record is TaskRecordV1 => record !== null);
+}
+
+function deriveReverseBlocks(records: readonly TaskRecordV1[]): TaskRecordV1[] {
+	const reverse = new Map<string, string[]>();
+	for (const record of records) {
+		for (const blockerId of record.blockedBy ?? []) {
+			const dependents = reverse.get(blockerId) ?? [];
+			dependents.push(record.id);
+			reverse.set(blockerId, dependents);
+		}
+	}
+	return records.map((record) => ({
+		...record,
+		blocks: sortedTaskIds(reverse.get(record.id)),
+	}));
+}
+
 export const getTask = (id: string): TaskRecordV1 | null => {
 	if (!isValidId(id)) return null;
-	const file = taskFilePath(id);
-	if (!fs.existsSync(file)) return null;
-	return readTaskFile(file);
+	return deriveReverseBlocks(readAllTaskRecords()).find(
+		(record) => record.id === id,
+	) ?? null;
 };
 
 const matchesTaskStateAndOrigin = (
@@ -798,31 +788,14 @@ const matchesTaskListScope = (
 	return true;
 };
 
-const readListedTask = (
-	dir: string,
-	entry: string,
-	opts: ListTasksOptions,
-	stateFilter: ReadonlySet<TaskState> | null,
-	originFilter: ReadonlySet<TaskOrigin> | null,
-): TaskRecordV1 | null => {
-	if (!entry.endsWith(".json")) return null;
-	const record = readTaskFile(path.join(dir, entry));
-	if (!record) return null;
-	if (!matchesTaskStateAndOrigin(record, stateFilter, originFilter))
-		return null;
-	return matchesTaskListScope(record, opts) ? record : null;
-};
-
 export const listTasks = (opts: ListTasksOptions = {}): TaskRecordV1[] => {
-	const dir = getTasksDir();
-	if (!fs.existsSync(dir)) return [];
 	const stateFilter = opts.states ? new Set(opts.states) : null;
 	const originFilter = opts.origins ? new Set(opts.origins) : null;
-	const out: TaskRecordV1[] = [];
-	for (const entry of fs.readdirSync(dir)) {
-		const record = readListedTask(dir, entry, opts, stateFilter, originFilter);
-		if (record) out.push(record);
-	}
+	const out = deriveReverseBlocks(readAllTaskRecords()).filter(
+		(record) =>
+			matchesTaskStateAndOrigin(record, stateFilter, originFilter) &&
+			matchesTaskListScope(record, opts),
+	);
 	out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 	if (opts.limit && opts.limit > 0) return out.slice(0, opts.limit);
 	return out;
@@ -877,12 +850,6 @@ export function pruneTaskRegistry(
 				(options.removeUnowned === true && !record.sessionId)),
 	);
 	const removedIds = new Set(removable.map((record) => record.id));
-	for (const record of records) {
-		if (removedIds.has(record.id)) continue;
-		const blocks = (record.blocks ?? []).filter((id) => !removedIds.has(id));
-		if (blocks.length !== (record.blocks ?? []).length)
-			writeTaskFile({ ...record, blocks });
-	}
 	for (const id of removedIds) {
 		try {
 			fs.unlinkSync(taskFilePath(id));
@@ -998,17 +965,20 @@ export function isTaskReady(
 export function startTask(id: string): TaskOperationResult {
 	const record = getTask(id);
 	if (!record) return { outcome: "not_found", error: `task not found: ${id}` };
-	const blockers = getUnmetBlockers(
+	const readiness = getTaskReadiness(
 		record,
 		tasksByIdSnapshot(listTasks({ includeTombstones: true })),
 	);
-	if (blockers.length > 0)
+	if (!readiness.ready)
 		return {
 			outcome: "rejected",
 			record,
-			error: `task is waiting on ${blockers.map((item) => item.id).join(", ")}`,
+			readiness,
+			error: `task is waiting on ${readiness.unmetBlockers
+				.map((item) => item.id)
+				.join(", ")}`,
 		};
-	return safeTransitionTask(id, "running");
+	return { ...safeTransitionTask(id, "running"), readiness };
 }
 
 export function retryTask(id: string): TaskOperationResult {

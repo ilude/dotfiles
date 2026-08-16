@@ -11,12 +11,14 @@ import {
 	listTasks,
 	partitionReadyTasks,
 	pruneTaskRegistry,
+	startTask,
 	TaskRegistryError,
 	tasksByIdSnapshot,
 	tombstoneTask,
 	transitionTask,
 	updateTask,
 } from "../lib/task-registry.js";
+import { formatTaskDetail } from "../lib/task-renderer.js";
 
 let tmpRoot: string;
 let prevOperatorDir: string | undefined;
@@ -64,6 +66,20 @@ describe("createTaskBatch validation and recovery", () => {
 					origin: "other" as const,
 					summary: "duplicate dependencies",
 					blockedBy: [existing.id, existing.id],
+				},
+			],
+			[
+				{
+					origin: "other" as const,
+					summary: "invalid dependency",
+					blockedBy: ["../invalid"],
+				},
+			],
+			[
+				{
+					origin: "other" as const,
+					summary: "missing dependency",
+					blockedBy: ["missing-task"],
 				},
 			],
 			[
@@ -170,36 +186,29 @@ describe("createTaskBatch validation and recovery", () => {
 		expect(listTasks()).toHaveLength(1);
 	});
 
-	it("reports reverse-edge reconciliation failures with all persisted ids", () => {
+	it("writes each batch record once and derives reverse edges from blockedBy", () => {
 		let writes = 0;
-		const beforeWrite = () => {
-			writes += 1;
-			if (writes === 3) throw new Error("injected reconciliation failure");
-		};
 		const result = createTaskBatch(
 			[
 				{ origin: "other", summary: "first", key: "first" },
 				{ origin: "other", summary: "second", blockedByKeys: ["first"] },
 			],
 			workspace,
-			{ beforeWrite },
+			{ beforeWrite: () => (writes += 1) },
 		);
-		expect(result).toMatchObject({
-			outcome: "write_failed",
-			failedPhase: "reconcile_reverse_edges",
-		});
-		if (result.outcome !== "write_failed")
-			throw new Error("reconciliation should fail");
-		expect(result.persistedIds).toEqual(
-			result.generated.map((item) => item.id),
-		);
-		const dependentId = result.persistedIds[1];
-		const blockerId = result.persistedIds[0];
-		expect(dependentId).toBeDefined();
-		expect(blockerId).toBeDefined();
-		if (!dependentId || !blockerId)
-			throw new Error("persisted ids should exist");
-		expect(getTask(dependentId)?.blockedBy).toEqual([blockerId]);
+		expect(result.outcome).toBe("persisted");
+		expect(writes).toBe(2);
+		if (result.outcome !== "persisted") throw new Error("batch should persist");
+		const blockerId = result.records[0]?.id;
+		const dependentId = result.records[1]?.id;
+		if (!blockerId || !dependentId) throw new Error("records should exist");
+		expect(getTask(blockerId)?.blocks).toEqual([dependentId]);
+		for (const id of [blockerId, dependentId]) {
+			const stored = JSON.parse(
+				fs.readFileSync(path.join(tmpRoot, "tasks", `${id}.json`), "utf-8"),
+			) as Record<string, unknown>;
+			expect(stored).not.toHaveProperty("blocks");
+		}
 	});
 });
 
@@ -257,7 +266,7 @@ describe("task registry pruning", () => {
 });
 
 describe("task dependencies and tombstones", () => {
-	it("maintains bidirectional dependency edges", () => {
+	it("derives bidirectional dependency edges without persisting reverse edges", () => {
 		const blocker = createTask({ origin: "other", summary: "blocker" });
 		const dependent = createTask({
 			origin: "other",
@@ -266,6 +275,43 @@ describe("task dependencies and tombstones", () => {
 		});
 		expect(getTask(dependent.id)?.blockedBy).toEqual([blocker.id]);
 		expect(getTask(blocker.id)?.blocks).toContain(dependent.id);
+		const storedBlocker = JSON.parse(
+			fs.readFileSync(
+				path.join(tmpRoot, "tasks", `${blocker.id}.json`),
+				"utf-8",
+			),
+		) as Record<string, unknown>;
+		expect(storedBlocker).not.toHaveProperty("blocks");
+	});
+
+	it("migrates legacy stored blocks on write while preserving reader and renderer output", () => {
+		const blocker = createTask({ origin: "other", summary: "legacy blocker" });
+		const dependent = createTask({
+			origin: "other",
+			summary: "dependent",
+			blockedBy: [blocker.id],
+		});
+		const blockerPath = path.join(tmpRoot, "tasks", `${blocker.id}.json`);
+		const legacyBlocker = JSON.parse(
+			fs.readFileSync(blockerPath, "utf-8"),
+		) as Record<string, unknown>;
+		fs.writeFileSync(
+			blockerPath,
+			`${JSON.stringify({ ...legacyBlocker, blocks: ["stale-dependent"] }, null, 2)}\n`,
+			"utf-8",
+		);
+
+		const read = getTask(blocker.id);
+		expect(read?.blocks).toEqual([dependent.id]);
+		if (!read) throw new Error("legacy blocker should be readable");
+		expect(formatTaskDetail(read)).toContain(`blocks: ${dependent.id}`);
+
+		updateTask(blocker.id, { notes: "migrated" });
+		const migrated = JSON.parse(
+			fs.readFileSync(blockerPath, "utf-8"),
+		) as Record<string, unknown>;
+		expect(migrated).not.toHaveProperty("blocks");
+		expect(getTask(blocker.id)?.blocks).toEqual([dependent.id]);
 	});
 
 	it("rejects direct cycles", () => {
@@ -325,14 +371,23 @@ describe("task dependencies and tombstones", () => {
 		expect(partitioned.waiting.map((task) => task.id)).toContain(waiting.id);
 	});
 
-	it("treats missing and tombstoned blockers as unmet without mutating files", () => {
+	it("treats legacy missing and tombstoned blockers as unmet without mutating files", () => {
 		const tombstoned = createTask({ origin: "other", summary: "old blocker" });
 		const dependent = createTask({
 			origin: "other",
 			summary: "dependent",
-			blockedBy: ["missing-blocker", tombstoned.id],
+			blockedBy: [tombstoned.id],
 		});
 		tombstoneTask(tombstoned.id);
+		const dependentPath = path.join(tmpRoot, "tasks", `${dependent.id}.json`);
+		const legacyDependent = JSON.parse(
+			fs.readFileSync(dependentPath, "utf-8"),
+		) as Record<string, unknown>;
+		fs.writeFileSync(
+			dependentPath,
+			`${JSON.stringify({ ...legacyDependent, blockedBy: ["missing-blocker", tombstoned.id] }, null, 2)}\n`,
+			"utf-8",
+		);
 		const before = new Map(
 			fs
 				.readdirSync(path.join(tmpRoot, "tasks"))
@@ -342,9 +397,19 @@ describe("task dependencies and tombstones", () => {
 				]),
 		);
 		const byId = tasksByIdSnapshot(listTasks({ includeTombstones: true }));
+		const migratedDependent = getTask(dependent.id);
+		if (!migratedDependent) throw new Error("dependent should exist");
 		expect(
-			getUnmetBlockers(dependent, byId).map((item) => item.status),
+			getUnmetBlockers(migratedDependent, byId).map((item) => item.status),
 		).toEqual(["tombstoned", "missing"]);
+		const start = startTask(dependent.id);
+		expect(start.readiness).toMatchObject({
+			ready: false,
+			unmetBlockers: [
+				{ id: tombstoned.id, status: "tombstoned" },
+				{ id: "missing-blocker", status: "missing" },
+			],
+		});
 		const after = new Map(
 			fs
 				.readdirSync(path.join(tmpRoot, "tasks"))

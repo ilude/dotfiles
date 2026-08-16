@@ -31,7 +31,7 @@ describe("formatTaskToolResult", () => {
 		const result = formatTaskToolResult({ outcome: "persisted", record });
 
 		expect(result.failed).toBe(false);
-		expect(result.text).toContain("ok pending");
+		expect(result.text).toMatch(/^ok pending\n {2}[A-Za-z0-9]/);
 		expect(result.text).toContain("compact task");
 	});
 

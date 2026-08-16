@@ -11,6 +11,7 @@ import {
 	normalizeTaskUsage,
 	pruneTaskRegistry,
 	TaskRegistryError,
+	tombstoneTask,
 	transitionTask,
 	updateTask,
 } from "../lib/task-registry.js";
@@ -101,6 +102,54 @@ describe("createTask", () => {
 			),
 		);
 		expect(ids.size).toBe(5);
+	});
+
+	it("validates dependency ids, uniqueness, existence, tombstones, and workspace", () => {
+		const workspace = "/workspace";
+		const blocker = createTask({
+			origin: "other",
+			summary: "blocker",
+			workspace,
+		});
+		const tombstoned = createTask({
+			origin: "other",
+			summary: "old blocker",
+			workspace,
+		});
+		tombstoneTask(tombstoned.id);
+		const foreign = createTask({
+			origin: "other",
+			summary: "foreign blocker",
+			workspace: "/foreign",
+		});
+
+		for (const blockedBy of [
+			["../invalid"],
+			[blocker.id, blocker.id],
+			["missing-task"],
+			[tombstoned.id],
+			[foreign.id],
+		]) {
+			expect(() =>
+				createTask({
+					origin: "other",
+					summary: "invalid dependent",
+					workspace,
+					blockedBy,
+				}),
+			).toThrow(TaskRegistryError);
+		}
+	});
+
+	it("allows explicitly legacy unscoped blockers without weakening scoped checks", () => {
+		const legacy = createTask({ origin: "other", summary: "legacy blocker" });
+		const scoped = createTask({
+			origin: "other",
+			summary: "scoped dependent",
+			workspace: "/workspace",
+			blockedBy: [legacy.id],
+		});
+		expect(scoped.blockedBy).toEqual([legacy.id]);
 	});
 });
 
@@ -221,6 +270,7 @@ describe("transitionTask", () => {
 		expect(retried.state).toBe("running");
 		expect(retried.retryCount).toBe(1);
 		expect(retried.errorReason).toBeUndefined();
+		expect(retried.endedAt).toBeUndefined();
 	});
 
 	it("rejects transition from completed (terminal)", () => {
@@ -293,6 +343,49 @@ describe("transitionTask", () => {
 });
 
 describe("updateTask", () => {
+	it("uses the same strict dependency validation as create and batch", () => {
+		const workspace = "/workspace";
+		const blocker = createTask({
+			origin: "other",
+			summary: "blocker",
+			workspace,
+		});
+		const foreign = createTask({
+			origin: "other",
+			summary: "foreign",
+			workspace: "/foreign",
+		});
+		const tombstoned = createTask({
+			origin: "other",
+			summary: "old blocker",
+			workspace,
+		});
+		const target = createTask({
+			origin: "other",
+			summary: "target",
+			workspace,
+		});
+		tombstoneTask(tombstoned.id);
+
+		for (const blockedBy of [
+			["../invalid"],
+			[blocker.id, blocker.id],
+			["missing-task"],
+			[tombstoned.id],
+			[foreign.id],
+		]) {
+			expect(() => updateTask(target.id, { blockedBy })).toThrow(
+				TaskRegistryError,
+			);
+		}
+		expect(updateTask(target.id, { blockedBy: [blocker.id] }).blockedBy).toEqual([
+			blocker.id,
+		]);
+		expect(() => updateTask(target.id, { workspace: "/foreign" })).toThrow(
+			/foreign workspace dependency/,
+		);
+	});
+
 	it("patches summary/preview/usage without changing state", () => {
 		const task = createTask({ origin: "subagent", summary: "x" });
 		const updated = updateTask(task.id, {

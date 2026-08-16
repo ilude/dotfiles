@@ -236,6 +236,30 @@ describe("task tools", () => {
 				error: expect.stringContaining("field"),
 			});
 		}
+		const prepareArguments = (
+			tool as typeof tool & {
+				prepareArguments?: (args: unknown) => unknown;
+			}
+		)?.prepareArguments;
+		if (!prepareArguments) throw new Error("prepareArguments should be registered");
+		for (const legacyInput of [
+			{ action: "execute", id: task.id },
+			{ action: "create", summary: "legacy", agent: "builder" },
+		]) {
+			const prepared = prepareArguments(legacyInput);
+			expect(prepared).toMatchObject({ action: "get" });
+			const result = await tool?.execute(
+				"resumed-retired-call",
+				prepared,
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(result.details).toMatchObject({
+				outcome: "rejected",
+				error: expect.stringContaining("retired"),
+			});
+		}
 		expect(getTask(task.id)?.state).toBe("pending");
 		expect(listTasks()).toHaveLength(1);
 	});
@@ -567,6 +591,11 @@ describe("task tools", () => {
 		expect(retryResult.details.outcome).toBe("persisted");
 		expect(getTask(failed.id)?.retryCount).toBe(1);
 		expect(getTask(failed.id)?.errorReason).toBeUndefined();
+		expect(getTask(failed.id)?.endedAt).toBeUndefined();
+		expect(JSON.parse(retryResult.content[0].text).readiness).toEqual({
+			ready: true,
+			unmetBlockers: [],
+		});
 	});
 
 	it("imports legacy todos from an override while preserving the target workspace", async () => {
@@ -650,18 +679,24 @@ describe("task tools", () => {
 		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);
 		const tool = pi._getTool("task");
 		const ctx = createMockCtx({ cwd: tmpRoot });
-		const empty = await tool?.execute(
-			"batch-empty",
-			{ action: "batch" },
-			undefined,
-			undefined,
-			ctx,
-		);
-		expect(JSON.parse(empty.content[0].text)).toEqual({
-			outcome: "persisted",
-			count: 0,
-			tasks: [],
-		});
+		await expect(
+			tool?.execute(
+				"batch-empty",
+				{ action: "batch", tasks: [] },
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow("at least one task");
+		await expect(
+			tool?.execute(
+				"create-without-summary",
+				{ action: "create" },
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow("summary is required");
 		const result = await tool?.execute(
 			"batch-graph",
 			{

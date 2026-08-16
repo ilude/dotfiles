@@ -4,10 +4,11 @@ import * as path from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
+import { type Static, Type } from "typebox";
 import {
 	getOperatorStateDir,
 	isAllowedTransition,
+	TASK_STATES,
 	TERMINAL_TASK_STATES,
 } from "../lib/operator-state.js";
 import {
@@ -16,6 +17,7 @@ import {
 	createTask,
 	createTaskBatch,
 	getTask,
+	getTaskReadiness,
 	getUnmetBlockers,
 	listTasks,
 	normalizeTaskScope,
@@ -26,6 +28,7 @@ import {
 	safeTransitionTask,
 	startTask,
 	type TaskOperationResult,
+	type TaskReadiness,
 	type TaskRecordV1,
 	type TaskState,
 	type TransitionOptions,
@@ -69,6 +72,8 @@ function validateTaskText(
 	oneLine = false,
 ): string {
 	const trimmed = value.trim();
+	if (label === "summary" && trimmed.length === 0)
+		throw new Error("summary is required.");
 	if (trimmed.length > maxLength)
 		throw new Error(`${label} must be at most ${maxLength} characters.`);
 	if (oneLine && /[\r\n]/.test(trimmed))
@@ -156,7 +161,7 @@ function formatBlockedView(tasks: readonly TaskRecordV1[]): string {
 								: "";
 							const hint =
 								item.status === "missing" || item.status === "tombstoned"
-									? " Next: update/remove the stale dependency when a dependency-edit command is available."
+									? " Recovery: use task update to replace blockedBy without the stale dependency."
 									: "";
 							return `${shortTaskId(item.id)} (${item.status})${summary}.${hint}`;
 						})
@@ -169,17 +174,17 @@ function formatBlockedView(tasks: readonly TaskRecordV1[]): string {
 
 function formatStartBlockedMessage(
 	task: TaskRecordV1,
-	tasks: readonly TaskRecordV1[],
+	readiness: TaskReadiness,
 ): string | null {
-	const unmet = getUnmetBlockers(task, tasksByIdSnapshot(tasks));
-	if (unmet.length === 0) return null;
-	const blocker = unmet[0];
+	if (readiness.ready) return null;
+	const blocker = readiness.unmetBlockers[0];
+	if (!blocker) return null;
 	const summary = blocker.task?.summary
 		? ` ${truncateTaskText(blocker.task.summary, 80)}`
 		: "";
 	const recovery =
 		blocker.status === "missing" || blocker.status === "tombstoned"
-			? " Recovery: dependency is stale; update/remove it when a dependency-edit command is available."
+			? " Recovery: use task update to replace blockedBy without the stale dependency."
 			: "";
 	return `Cannot start ${shortTaskId(task.id)}: waiting on ${shortTaskId(blocker.id)} (${blocker.status})${summary}. Next: /tasks show ${shortTaskId(blocker.id)} or /tasks blocked.${recovery}`;
 }
@@ -202,20 +207,21 @@ function notifyOutcome(
 		);
 }
 
+function withReadinessDiagnostic(
+	result: TaskOperationResult,
+): TaskOperationResult {
+	if (!result.record || !result.readiness) return result;
+	const error = formatStartBlockedMessage(result.record, result.readiness);
+	return error ? { ...result, error } : result;
+}
+
 export class TaskLifecycleService {
 	start(id: string): TaskOperationResult {
-		const task = getTask(id);
-		if (!task) return { outcome: "not_found", error: `task not found: ${id}` };
-		const blocked = formatStartBlockedMessage(
-			task,
-			listTasks({ includeTombstones: true }),
-		);
-		if (blocked) return { outcome: "rejected", record: task, error: blocked };
-		return startTask(id);
+		return withReadinessDiagnostic(startTask(id));
 	}
 
 	retry(id: string): TaskOperationResult {
-		return retryTask(id);
+		return withReadinessDiagnostic(retryTask(id));
 	}
 
 	skip(id: string, skipReason?: string): TaskOperationResult {
@@ -300,6 +306,17 @@ function operationToolResult(result: TaskOperationResult, id?: string) {
 		outcome: result.outcome,
 		...(resultId ? { id: resultId } : {}),
 		...(result.record?.state ? { state: result.record.state } : {}),
+		...(result.readiness
+			? {
+					readiness: {
+						ready: result.readiness.ready,
+						unmetBlockers: result.readiness.unmetBlockers.map((blocker) => ({
+							id: blocker.id,
+							status: blocker.status,
+						})),
+					},
+				}
+			: {}),
 		...(error ? { error } : {}),
 	});
 }
@@ -414,12 +431,10 @@ function validatedScope(value: unknown): string[] | undefined {
 }
 
 function validatedBlockers(value: unknown): string[] | undefined {
-	if (!Array.isArray(value)) return undefined;
-	const ids = value.filter((item): item is string => typeof item === "string");
-	for (const id of ids) {
-		if (!getTask(id)) throw new Error(`task dependency not found: ${id}`);
-	}
-	return ids;
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value) || value.some((item) => typeof item !== "string"))
+		throw new Error("blockedBy must be an array of strings");
+	return value as string[];
 }
 
 function taskInputFrom(
@@ -428,9 +443,11 @@ function taskInputFrom(
 	sessionId: string | undefined,
 	batch = false,
 ): CreateTaskBatchInput {
+	if (typeof input.summary !== "string")
+		throw new Error("summary is required.");
 	const summary = validateTaskText(
 		"summary",
-		typeof input.summary === "string" ? input.summary : "untitled task",
+		input.summary,
 		TASK_SUMMARY_MAX_LENGTH,
 		true,
 	);
@@ -536,67 +553,150 @@ function retiredExecutionField(input: Record<string, unknown>): string | undefin
 	return undefined;
 }
 
+type RetiredTaskDiagnostic =
+	| { kind: "action"; value: string }
+	| { kind: "field"; value: string };
+
+function retiredDiagnosticMarker(diagnostic: RetiredTaskDiagnostic): string {
+	return `retired_${diagnostic.kind}_${diagnostic.value.replaceAll(/[^A-Za-z0-9_-]/g, "_")}`;
+}
+
+const RETIRED_DIAGNOSTICS = [
+	...[...RETIRED_EXECUTION_ACTIONS].map(
+		(value): RetiredTaskDiagnostic => ({ kind: "action", value }),
+	),
+	...RETIRED_EXECUTION_FIELDS.flatMap((value) => [
+		{ kind: "field" as const, value },
+		{ kind: "field" as const, value: `tasks[].${value}` },
+	]),
+];
+const RETIRED_DIAGNOSTICS_BY_MARKER = new Map(
+	RETIRED_DIAGNOSTICS.map(
+		(diagnostic) =>
+			[retiredDiagnosticMarker(diagnostic), diagnostic] as const,
+	),
+);
+
+function retiredTaskDiagnostic(
+	input: Record<string, unknown>,
+): RetiredTaskDiagnostic | undefined {
+	const action = input.action;
+	if (typeof action === "string" && RETIRED_EXECUTION_ACTIONS.has(action))
+		return { kind: "action", value: action };
+	const field = retiredExecutionField(input);
+	if (field) return { kind: "field", value: field };
+	return typeof input.id === "string"
+		? RETIRED_DIAGNOSTICS_BY_MARKER.get(input.id)
+		: undefined;
+}
+
+function prepareTaskArguments(args: unknown): unknown {
+	const diagnostic = retiredTaskDiagnostic(asParams(args));
+	return diagnostic
+		? { action: "get", id: retiredDiagnosticMarker(diagnostic) }
+		: args;
+}
+
 export function registerTaskTools(pi: ExtensionAPI): void {
 	const lifecycle = new TaskLifecycleService();
+	const summary = Type.String({
+		minLength: 1,
+		maxLength: TASK_SUMMARY_MAX_LENGTH,
+	});
+	const notes = Type.String({ maxLength: TASK_NOTES_MAX_LENGTH });
+	const id = Type.String({
+		minLength: 1,
+		maxLength: 64,
+		pattern: "^[A-Za-z0-9_-]+$",
+	});
+	const scope = Type.Array(
+		Type.String({ minLength: 1, maxLength: TASK_SCOPE_MAX_LENGTH }),
+		{
+			maxItems: TASK_SCOPE_MAX_ITEMS,
+			uniqueItems: true,
+		},
+	);
+	const blockedBy = Type.Array(id, {
+		maxItems: TASK_BATCH_MAX_ITEMS,
+		uniqueItems: true,
+	});
 	const taskItem = Type.Object(
 		{
-			summary: Type.Optional(
-				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
-			),
-			notes: Type.Optional(Type.String({ maxLength: TASK_NOTES_MAX_LENGTH })),
-			scope: Type.Optional(
-				Type.Array(
-					Type.String({ minLength: 1, maxLength: TASK_SCOPE_MAX_LENGTH }),
-					{
-						maxItems: TASK_SCOPE_MAX_ITEMS,
-					},
-				),
-			),
+			summary,
+			notes: Type.Optional(notes),
+			scope: Type.Optional(scope),
 			key: Type.Optional(Type.String({ pattern: "^[A-Za-z0-9_-]{1,32}$" })),
-			blockedBy: Type.Optional(
-				Type.Array(Type.String({ minLength: 1, maxLength: 64 }), {
-					maxItems: TASK_BATCH_MAX_ITEMS,
-				}),
-			),
+			blockedBy: Type.Optional(blockedBy),
 			blockedByKeys: Type.Optional(
 				Type.Array(Type.String({ pattern: "^[A-Za-z0-9_-]{1,32}$" }), {
 					maxItems: TASK_BATCH_MAX_ITEMS,
+					uniqueItems: true,
 				}),
 			),
 		},
-		{ additionalProperties: true },
+		{ additionalProperties: false },
 	);
-	const parameters = Type.Object(
-		{
-			action: StringEnum(
-				["create", "batch", "update", "remove", "list", "ready", "get"] as const,
-			),
-			id: Type.Optional(Type.String()),
-			summary: Type.Optional(
-				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
-			),
-			notes: Type.Optional(Type.String({ maxLength: TASK_NOTES_MAX_LENGTH })),
-			scope: Type.Optional(taskItem.properties.scope),
-			state: Type.Optional(Type.String()),
-			skipReason: Type.Optional(
-				Type.String({ maxLength: TASK_NOTES_MAX_LENGTH }),
-			),
-			blockedBy: Type.Optional(Type.Array(Type.String())),
-			all: Type.Optional(
-				Type.Boolean({
-					description:
-						"Include terminal tasks and tasks from other sessions or workspaces when listing.",
-				}),
-			),
-			tasks: Type.Optional(
-				Type.Array(taskItem, {
-					minItems: 0,
+	const all = Type.Boolean({
+		description:
+			"Include terminal tasks and tasks from other sessions or workspaces when listing.",
+	});
+	const parameters = Type.Union([
+		Type.Object(
+			{
+				action: StringEnum(["create"] as const),
+				summary,
+				notes: Type.Optional(notes),
+				scope: Type.Optional(scope),
+				blockedBy: Type.Optional(blockedBy),
+			},
+			{ additionalProperties: false },
+		),
+		Type.Object(
+			{
+				action: StringEnum(["batch"] as const),
+				tasks: Type.Array(taskItem, {
+					minItems: 1,
 					maxItems: TASK_BATCH_MAX_ITEMS,
 				}),
-			),
-		},
-		{ additionalProperties: true },
-	);
+			},
+			{ additionalProperties: false },
+		),
+		Type.Object(
+			{
+				action: StringEnum(["update"] as const),
+				id,
+				summary: Type.Optional(summary),
+				notes: Type.Optional(notes),
+				scope: Type.Optional(scope),
+				state: Type.Optional(StringEnum(TASK_STATES)),
+				skipReason: Type.Optional(notes),
+				blockedBy: Type.Optional(blockedBy),
+			},
+			{ additionalProperties: false },
+		),
+		Type.Object(
+			{ action: StringEnum(["remove"] as const), id },
+			{ additionalProperties: false },
+		),
+		Type.Object(
+			{
+				action: StringEnum(["list"] as const),
+				all: Type.Optional(all),
+			},
+			{ additionalProperties: false },
+		),
+		Type.Object(
+			{
+				action: StringEnum(["ready"] as const),
+				all: Type.Optional(all),
+			},
+			{ additionalProperties: false },
+		),
+		Type.Object(
+			{ action: StringEnum(["get"] as const), id },
+			{ additionalProperties: false },
+		),
+	]);
 	pi.registerTool({
 		name: "task",
 		label: "Task",
@@ -611,6 +711,9 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			"Task never starts, waits for, stops, or captures output from subagents or background processes.",
 		],
 		parameters,
+		prepareArguments(args): Static<typeof parameters> {
+			return prepareTaskArguments(args) as Static<typeof parameters>;
+		},
 		renderCall(args, theme) {
 			const input = asParams(args);
 			const action = input.action;
@@ -644,18 +747,18 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const input = asParams(params);
 			const action = input.action;
-			if (typeof action === "string" && RETIRED_EXECUTION_ACTIONS.has(action))
+			const retiredDiagnostic = retiredTaskDiagnostic(input);
+			if (retiredDiagnostic?.kind === "action")
 				return toolResult({
 					outcome: "rejected",
 					error:
-						`task action ${action} is retired. Mark ready work running, execute it with subagent or bg_start, then update the task terminal state.`,
+						`task action ${retiredDiagnostic.value} is retired. Mark ready work running, execute it with subagent or bg_start, then update the task terminal state.`,
 				});
-			const retiredField = retiredExecutionField(input);
-			if (retiredField)
+			if (retiredDiagnostic?.kind === "field")
 				return toolResult({
 					outcome: "rejected",
 					error:
-						`task field ${retiredField} is retired. Store todo state in task and execute work separately with subagent or bg_start.`,
+						`task field ${retiredDiagnostic.value} is retired. Store todo state in task and execute work separately with subagent or bg_start.`,
 				});
 			const workspace = resolveTaskWorkspace(ctx.cwd);
 			const sessionId = currentTaskSessionId(ctx);
@@ -668,6 +771,8 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				if (input.tasks !== undefined && !Array.isArray(input.tasks))
 					throw new Error("tasks must be an array");
 				const tasks = Array.isArray(input.tasks) ? input.tasks : [];
+				if (tasks.length === 0)
+					throw new Error("batch must contain at least one task");
 				if (tasks.length > TASK_BATCH_MAX_ITEMS)
 					throw new Error("batch may contain at most 16 tasks");
 				const batchInputs = tasks.map((item) => {
@@ -825,14 +930,16 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 							...existing,
 							blockedBy: patch.blockedBy ?? existing.blockedBy,
 						};
-						const blocked = formatStartBlockedMessage(
+						const readiness = getTaskReadiness(
 							candidate,
-							listTasks({ includeTombstones: true }),
+							tasksByIdSnapshot(listTasks({ includeTombstones: true })),
 						);
+						const blocked = formatStartBlockedMessage(candidate, readiness);
 						if (blocked)
 							return operationToolResult({
 								outcome: "rejected",
 								record: existing,
+								readiness,
 								error: blocked,
 							});
 					}
@@ -843,12 +950,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 						const transition = await lifecycle.transition(id, target, {
 							skipReason,
 						});
-						if (transition.outcome !== "persisted")
-							return operationToolResult(transition, id);
-						return operationToolResult({
-							outcome: "persisted",
-							record: transition.record,
-						});
+						return operationToolResult(transition, id);
 					}
 					return operationToolResult({ outcome: "persisted", record });
 				} catch (error) {
@@ -899,7 +1001,10 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 			}
 			if (parsed.verb === "list")
 				return ctx.ui.notify(
-					formatTaskList(listedTasks, getTaskRenderMode()),
+					formatTaskList(
+						listedTasks,
+						parsed.all ? "full" : getTaskRenderMode(),
+					),
 					"info",
 				);
 			if (parsed.verb === "ready") {
@@ -919,7 +1024,7 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 						origin: "other",
 						summary: validateTaskText(
 							"summary",
-							sanitizeTaskValue(parsed.text || "untitled task"),
+							sanitizeTaskValue(parsed.text ?? ""),
 							TASK_SUMMARY_MAX_LENGTH,
 							true,
 						),

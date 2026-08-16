@@ -30,17 +30,52 @@ async function loadTasks() {
 }
 
 describe("task tool schema", () => {
-	it("uses compact enums for action and repeated task fields", async () => {
+	it("publishes strict action-specific current schemas", async () => {
 		const { pi } = await loadTasks();
 		const tool = pi._getTool("task");
 		expect(tool).toBeDefined();
-		const properties = (
-			tool!.parameters as { properties: Record<string, Record<string, unknown>> }
-		).properties;
-		expect(JSON.stringify(tool!.parameters).length).toBeLessThan(1_500);
-		expect(properties.action).toMatchObject({
+		type Schema = {
+			additionalProperties?: boolean;
+			required?: string[];
+			properties: Record<string, Record<string, unknown>>;
+		};
+		const variants = (tool!.parameters as { anyOf: Schema[] }).anyOf;
+		expect(variants).toHaveLength(7);
+		for (const variant of variants)
+			expect(variant.additionalProperties).toBe(false);
+		const byAction = new Map(
+			variants.map((variant) => [
+				(variant.properties.action.enum as string[])[0],
+				variant,
+			]),
+		);
+		const create = byAction.get("create");
+		const batch = byAction.get("batch");
+		const update = byAction.get("update");
+		if (!batch) throw new Error("batch task schema not registered");
+		expect(create?.required).toEqual(expect.arrayContaining(["action", "summary"]));
+		expect(batch.required).toEqual(expect.arrayContaining(["action", "tasks"]));
+		expect(batch.properties.tasks).toMatchObject({ minItems: 1, maxItems: 16 });
+		const batchItem = (
+			batch.properties.tasks as {
+				items?: Schema;
+			}
+		).items;
+		expect(batchItem?.additionalProperties).toBe(false);
+		expect(batchItem?.required).toEqual(
+			expect.arrayContaining(["summary"]),
+		);
+		expect(update?.properties.state).toMatchObject({
 			type: "string",
-			enum: ["create", "batch", "update", "remove", "list", "ready", "get"],
+			enum: [
+				"pending",
+				"running",
+				"blocked",
+				"completed",
+				"failed",
+				"cancelled",
+				"skipped",
+			],
 		});
 		for (const name of [
 			"ids",
@@ -53,7 +88,7 @@ describe("task tool schema", () => {
 			"model",
 			"modelSize",
 		])
-			expect(properties).not.toHaveProperty(name);
+			expect(JSON.stringify(tool!.parameters)).not.toContain(`"${name}"`);
 	});
 });
 
@@ -125,6 +160,19 @@ describe("/tasks command", () => {
 		const notify = ctx.ui.notify as ReturnType<typeof vi.fn>;
 		expect(notify).toHaveBeenCalled();
 		expect(notify.mock.calls[0][0]).toContain("No tasks recorded");
+	});
+
+	it("rejects create without a summary", async () => {
+		const { cmd } = await loadTasks();
+		const ctx = createMockCtx();
+
+		await cmd.handler("create", ctx);
+
+		const notify = ctx.ui.notify as ReturnType<typeof vi.fn>;
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining("summary is required"),
+			"warning",
+		);
 	});
 
 	it("groups by urgency in the default list view", async () => {
@@ -221,6 +269,7 @@ describe("/tasks command", () => {
 		expect(after?.state).toBe("running");
 		expect(after?.retryCount).toBe(1);
 		expect(after?.errorReason).toBeUndefined();
+		expect(after?.endedAt).toBeUndefined();
 	});
 
 	it("retry rejects when task is not in failed state", async () => {
@@ -329,6 +378,28 @@ describe("/tasks command", () => {
 		expect(text).not.toContain("token=abc");
 	});
 
+	it("reports the available stale-dependency recovery action", async () => {
+		const { createTask, tombstoneTask } = await import(
+			"../lib/task-registry.ts"
+		);
+		const blocker = createTask({ origin: "subagent", summary: "old blocker" });
+		const waiting = createTask({
+			origin: "subagent",
+			summary: "waiting work",
+			blockedBy: [blocker.id],
+		});
+		tombstoneTask(blocker.id);
+		const { cmd } = await loadTasks();
+		const ctx = createMockCtx();
+
+		await cmd.handler(`start ${waiting.id}`, ctx);
+
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
+			.calls[0][0] as string;
+		expect(text).toContain("use task update to replace blockedBy");
+		expect(text).not.toContain("when a dependency-edit command is available");
+	});
+
 	it("rejects starting a waiting task without mutating persisted records", async () => {
 		const { createTask, getTask } = await import("../lib/task-registry.ts");
 		const blocker = createTask({ origin: "subagent", summary: "blocker" });
@@ -414,10 +485,11 @@ describe("/tasks command", () => {
 		expect(scoped).not.toContain(unscoped.summary);
 		expect(scoped).not.toContain(foreign.summary);
 
-		await cmd.handler("settings mode full", ctx);
+		await cmd.handler("settings mode hidden", ctx);
 		await cmd.handler("list --all", ctx);
 		const globalList = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
 			.calls[2][0] as string;
+		expect(globalList).not.toContain("Task display is hidden");
 		expect(globalList).toContain(completed.summary);
 		expect(globalList).toContain(otherSession.summary);
 		expect(globalList).toContain(unscoped.summary);
