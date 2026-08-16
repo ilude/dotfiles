@@ -722,27 +722,27 @@ Commands:
 Operator surface for the durable task registry.
 
 Commands:
-- `/tasks` -- active tasks assigned to the current Pi session and repository workspace, urgency-grouped as blocked > failed > running > pending, with compact rows containing short id + summary + relative time + retry count. `/tasks list --all` includes other sessions plus unscoped, terminal, tombstoned, and foreign-workspace history.
+- `/tasks` -- active tasks assigned to the current Pi session and repository workspace, urgency-grouped as blocked > failed > running > pending, with compact rows containing short id + summary + relative time + retry count. `/tasks list --all` forces the full view and includes other sessions plus unscoped, terminal, tombstoned, and foreign-workspace history.
 - `/tasks <id-prefix>` -- detail view (id, state, summary, scope, dependencies, notes, timestamps, retries, and legacy metadata when present). Prefix matching needs >=4 chars and rejects ambiguous matches
 - `/tasks cancel <id>` -- transitions `running`/`blocked`/`pending` -> `cancelled`; preserves the final summary
 - `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
 
 Model-callable task surface:
 - The unified `task` tool owns durable todo and dependency state through `create`, `batch`, `update`, `remove`, `list`, `ready`, and `get`. Ordinary short workflows can remain prose; durable records are useful for requested todo lists, dependency graphs, and work that may span context compaction.
-- A graph-aware `batch` creates todo items with request-local keys and dependency keys. Use returned aliases for later actions.
+- A graph-aware `batch` creates 1 through 16 todo items with required summaries, request-local keys, and dependency keys. Use returned aliases for later actions. Current tool schemas are action-specific and reject unrelated fields, while resumed legacy execution fields retain explicit retirement diagnostics.
 - Tasks are tagged with the creating Pi session and current repository workspace. `list` excludes other sessions plus unscoped, terminal, and foreign-workspace records unless `all: true` requests a global view; tombstones remain excluded. `ready` applies the same session/workspace boundary and returns only ready pending tasks. Collections return compact model-visible summaries; use `get` for one complete record.
 - The parent agent selects ready work, marks it `running`, passes its `taskId` when executing through `subagent` (or uses `bg_start` without linkage), validates the result, and then records the terminal state. Task never starts, waits for, stops, or captures output from those processes.
-- Optional worktree-relative `scope` paths or globs describe task boundaries for coordination. `blockedBy` is the authority for dependency readiness.
+- Optional worktree-relative `scope` paths or globs describe task boundaries for coordination. `blockedBy` is the persisted authority for dependency readiness; create, update, and batch reject missing, tombstoned, duplicate, or foreign-workspace dependencies. Reverse `blocks` detail is derived from current records rather than persisted as a second edge direction.
 - Batch graph validation occurs before writes, but batch publication is not transactional. On `write_failed`, inspect the returned persisted IDs, clear each persisted task's `blockedBy` in reverse request order through `update`, then tombstone it with `remove`; do not assume automatic rollback or retry.
 - Legacy `.pi/todo.json` entries are imported once per workspace. Startup cleanup removes pre-session, imported legacy, and retired execution-era records unless an active durable dependency still references them, plus terminal task graphs with no active dependents. Failed and other non-terminal session-owned records remain available only to their owning session or an explicit global view until updated or removed. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity.
 
 Lifecycle (defined in `pi/lib/operator-state.ts`):
 ```
-pending  -> running, cancelled, failed
+pending  -> running, cancelled, failed, skipped
 running  -> blocked, completed, failed, cancelled
-blocked  -> running, failed, cancelled
-failed   -> running              (retry only)
-completed, cancelled = terminal
+blocked  -> running, failed, cancelled, skipped
+failed   -> running, skipped     (running is retry)
+completed, cancelled, skipped = terminal
 ```
 
 #### `permissions.ts`
@@ -777,7 +777,7 @@ Repository-owned worker definitions live in `pi/agents/`; loading and precedence
 
 ### Role topology and scheduling
 
-The process tree is `root -> coordinator -> leaf`. A root may start a coordinator or a leaf. A coordinator may start leaves only. Leaves and depth-two children cannot invoke delegation or workflow tools. The root-owned cross-process scheduler runs eight active descendants by default and queues excess work. `PI_SUBAGENT_MAX_ACTIVE_DESCENDANTS` may set a ceiling from 1 through 16.
+The process tree is `root -> coordinator -> leaf`. A root may start a coordinator or a leaf. A coordinator may start leaves only. Leaves and depth-two children cannot invoke delegation or workflow tools. The root-owned cross-process scheduler runs eight active descendants by default and queues excess work. `PI_SUBAGENT_MAX_ACTIVE_DESCENDANTS` may set a ceiling from 1 through 16. Broker request and response frames are bounded; aborted, prematurely closed, or stalled transport settles without releasing capacity or scope before the broker confirms settlement.
 
 Every child role shares the 64-turn ceiling, including a structured-output correction. When turn 64 requests more tool work, the child stops after that turn and returns a budget-limited partial result. Read-only fan-out workers have an eight-minute wall-clock limit; modifying leaves have no wall-clock hard timeout.
 
@@ -785,13 +785,15 @@ Cancellation is recursive: cancelling a coordinator or workflow cancels its queu
 
 ### Callable subagent behavior
 
-The active `subagent` tool provides foreground single and parallel execution. Set `background=true` for transient detached execution; it returns immediately and later delivers one bounded follow-up result. `subagent_status` lets the root inspect the child PID, process liveness, latest observable activity, activity version, active tools, and usage. Passing a prior activity version reports whether observable activity advanced, but a quiet live process may still be waiting on a provider or a silent long-running tool. Completion remains push-based, so status checks are for current evidence rather than polling loops. Advanced `subagent_chain`, `subagent_continue`, `subagent_fanout`, and `subagent_workflow` are discoverable through `tool_search` and activate on demand. Legacy advanced arguments on `subagent` remain executable for resumed sessions but are omitted from its advertised provider schema.
+The active `subagent` tool provides foreground single and parallel execution. Set `background=true` for transient detached execution; it returns an orchestration ID immediately and later delivers one bounded follow-up result. `subagent_status` accepts that orchestration ID to group its tracked children or an exact run ID to inspect PID, process liveness, latest observable activity, activity version, active tools, and usage. Passing a prior activity version is valid only for an exact run and reports whether observable activity advanced, but a quiet live process may still be waiting on a provider or a silent long-running tool. Completion remains push-based, so status checks are for current evidence rather than polling loops. Advanced `subagent_chain`, `subagent_continue`, `subagent_fanout`, and `subagent_workflow` are discoverable through `tool_search` and activate on demand. Legacy advanced arguments on `subagent` remain executable for resumed sessions but are omitted from its advertised provider schema.
 
-`subagent_workflow` is a deferred closed typed map, retry, verify, and reduce workflow. It accepts at most 256 unique items, defaults to two attempts, permits at most three, and reduces groups of at most eight entries. Every item declares required tools; capability preflight compares them with the selected agent's effective tools before dispatch and rejects missing capabilities without consuming an attempt. File analysis uses a bounded extract or repository-relative path/range reference rather than raw large-file content. Leaf results are bounded envelopes with `found`, `not_found`, `inconclusive`, or `error`, plus compact evidence, changed files, validation, and gaps. Retries are limited to failed, inconclusive, schema-invalid, or verifier-contradicted items, and materially identical retries are rejected.
+Every provider-visible foreground result is bounded to 50 KB or 2000 lines. Complete truncated output is saved to a runtime-generated private artifact while chain handoff retains complete internal content. Callable output selection enables or disables those generated artifacts; caller-selected string paths remain only as resumed/direct compatibility input and are not advertised in current schemas.
+
+`subagent_workflow` is a deferred closed typed map, retry, verify, and reduce workflow. It accepts at most 256 unique items, defaults to two attempts, permits at most three, and reduces groups of at most eight entries. Every item declares required tools; capability preflight projects the child to those effective tools before dispatch and rejects missing capabilities without consuming an attempt. Item input defaults to `none`; file analysis may instead use a bounded extract or repository-relative path/range reference rather than raw large-file content. Optional verification and reduction clauses are complete all-or-nothing contracts, and those phases remove command and direct-file mutation tools. Leaf results are bounded envelopes with `found`, `not_found`, `inconclusive`, or `error`, plus compact evidence, changed files, validation, and gaps. Retries are limited to failed, inconclusive, schema-invalid, or verifier-contradicted items, and materially identical retries are rejected. Versioned process-local workflow state survives reload without replaying failed or cancelled work.
 
 Concurrent modifying workflow leaves require normalized, disjoint repository-relative scopes. Admission is atomic. Scoped modifying leaves lose `bash` and `pwsh`, and direct file mutations outside their lease are blocked.
 
-Agent fields enumerate default user-scope agents. To invoke a trusted project agent, set `agentScope` to `project` or `both` and provide its project-local name; `/reload` refreshes that catalog. Every invocation validates all requested agents against `agentScope` before any worker starts or a background run is acknowledged.
+Agent fields enumerate the current trust-aware catalog: user agents are always listed and project-agent names appear only after project trust is validated. To invoke a trusted project agent, set `agentScope` to `project` or `both` and provide its project-local name. A cwd or trust change rebuilds the catalog rather than falling back to raw project discovery; `/reload` also refreshes it. Every invocation validates all requested agents against `agentScope` before any worker starts or a background run is acknowledged.
 
 A root owns durable task creation, state transitions, validation, and closure. A coordinator may carry an existing running task ID for correlation, but leaves, retries, and workflow tools never create or transition task records. For durable work, the root selects a ready task, marks it `running`, passes its `taskId` to `subagent`, validates the result, and records terminal state. Disposable delegation remains task-free.
 
