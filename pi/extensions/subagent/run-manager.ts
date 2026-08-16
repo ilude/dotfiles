@@ -27,6 +27,16 @@ export type SubagentRunStatus =
 	| "completed"
 	| "failed"
 	| "cancelled";
+export type SubagentActivityKind =
+	| "started"
+	| "process-started"
+	| "output"
+	| "assistant"
+	| "thinking"
+	| "tool-started"
+	| "tool-output"
+	| "tool-finished"
+	| "tool-result";
 
 export interface SubagentBackgroundCompletion {
 	readonly orchestrationId: string;
@@ -38,6 +48,7 @@ export interface SubagentBackgroundCompletion {
 
 export interface SubagentTranscriptItem {
 	readonly kind: "assistant" | "thinking" | "tool" | "tool-result";
+	readonly timestamp: number;
 	readonly text: string;
 	readonly toolName?: string;
 	readonly isError?: boolean;
@@ -46,9 +57,14 @@ export interface SubagentTranscriptItem {
 export interface SubagentLiveTool {
 	readonly id: string;
 	readonly name: string;
+	readonly startedAt: number;
 	readonly input?: string;
 	readonly output?: string;
 }
+
+type SubagentLiveToolInput = Omit<SubagentLiveTool, "startedAt"> & {
+	readonly startedAt?: number;
+};
 
 export interface SubagentRunUsage {
 	readonly input: number;
@@ -82,7 +98,11 @@ export interface SubagentRunSnapshot {
 	readonly effort?: string;
 	readonly background: boolean;
 	readonly status: SubagentRunStatus;
+	readonly pid?: number;
 	readonly startedAt: number;
+	readonly lastActivityAt: number;
+	readonly lastActivityKind: SubagentActivityKind;
+	readonly activityVersion: number;
 	readonly settledAt?: number;
 	readonly durationMs?: number;
 	readonly exitCode?: number;
@@ -92,6 +112,7 @@ export interface SubagentRunSnapshot {
 	readonly usage: SubagentRunUsage;
 	readonly transcript: ReadonlyArray<SubagentTranscriptItem>;
 	readonly liveText: string;
+	readonly liveTextUpdatedAt?: number;
 	readonly liveTools: ReadonlyArray<SubagentLiveTool>;
 	readonly finalText: string;
 }
@@ -118,7 +139,11 @@ interface MutableSubagentRunSnapshot {
 	effort?: string;
 	background: boolean;
 	status: SubagentRunStatus;
+	pid?: number;
 	startedAt: number;
+	lastActivityAt: number;
+	lastActivityKind: SubagentActivityKind;
+	activityVersion: number;
 	settledAt?: number;
 	durationMs?: number;
 	exitCode?: number;
@@ -129,6 +154,7 @@ interface MutableSubagentRunSnapshot {
 	transcript: SubagentTranscriptItem[];
 	transcriptBytes: number;
 	liveText: string;
+	liveTextUpdatedAt?: number;
 	liveTools: SubagentLiveTool[];
 	finalText: string;
 }
@@ -309,6 +335,7 @@ export class SubagentRunManager {
 			throw new Error("Subagent run manager is disposing.");
 		if (this.snapshots.has(input.runId))
 			throw new Error(`Subagent run ID ${input.runId} is already registered.`);
+		const startedAt = Date.now();
 		const snapshot: MutableSubagentRunSnapshot = {
 			...input,
 			agent: boundedTail(input.agent, MAX_METADATA_TEXT_BYTES),
@@ -324,7 +351,10 @@ export class SubagentRunManager {
 					: boundedTail(input.effort, MAX_METADATA_TEXT_BYTES),
 			background: input.background === true,
 			status: "running",
-			startedAt: Date.now(),
+			startedAt,
+			lastActivityAt: startedAt,
+			lastActivityKind: "started",
+			activityVersion: 0,
 			usage: defaultUsage(),
 			transcript: [],
 			transcriptBytes: 0,
@@ -344,6 +374,14 @@ export class SubagentRunManager {
 		this.controllers.set(input.runId, controller);
 		this.prune();
 		this.notify(input.runId);
+	}
+
+	registerProcess(runId: string, pid: number): void {
+		const snapshot = this.snapshots.get(runId);
+		if (!snapshot || !Number.isInteger(pid) || pid <= 0) return;
+		snapshot.pid = pid;
+		this.markActivity(snapshot, "process-started");
+		this.notify(runId);
 	}
 
 	update(runId: string, patch: UpdateSubagentRun): void {
@@ -430,6 +468,8 @@ export class SubagentRunManager {
 			`${snapshot.liveText}${delta}`,
 			MAX_LIVE_TEXT_BYTES,
 		);
+		snapshot.liveTextUpdatedAt = Date.now();
+		this.markActivity(snapshot, "output", snapshot.liveTextUpdatedAt);
 		this.notify(runId);
 	}
 
@@ -437,10 +477,13 @@ export class SubagentRunManager {
 		const snapshot = this.snapshots.get(runId);
 		if (!snapshot) return;
 		snapshot.liveText = boundedTail(text, MAX_LIVE_TEXT_BYTES);
+		snapshot.liveTextUpdatedAt = text ? Date.now() : undefined;
+		if (snapshot.liveTextUpdatedAt !== undefined)
+			this.markActivity(snapshot, "output", snapshot.liveTextUpdatedAt);
 		this.notify(runId);
 	}
 
-	startTool(runId: string, tool: SubagentLiveTool): void {
+	startTool(runId: string, tool: SubagentLiveToolInput): void {
 		const snapshot = this.snapshots.get(runId);
 		if (!snapshot) return;
 		const current = snapshot.liveTools.filter((item) => item.id !== tool.id);
@@ -448,6 +491,7 @@ export class SubagentRunManager {
 			...current,
 			{
 				...tool,
+				startedAt: tool.startedAt ?? Date.now(),
 				name: boundedTail(tool.name, MAX_METADATA_TEXT_BYTES),
 				input:
 					tool.input === undefined
@@ -455,6 +499,7 @@ export class SubagentRunManager {
 						: boundedTail(tool.input, MAX_TRANSCRIPT_TEXT_BYTES),
 			},
 		].slice(-MAX_SUBAGENT_LIVE_TOOLS);
+		this.markActivity(snapshot, "tool-started", tool.startedAt);
 		this.notify(runId);
 	}
 
@@ -466,6 +511,7 @@ export class SubagentRunManager {
 				? { ...tool, output: boundedTail(output, MAX_TRANSCRIPT_TEXT_BYTES) }
 				: tool,
 		);
+		this.markActivity(snapshot, "tool-output");
 		this.notify(runId);
 	}
 
@@ -475,6 +521,7 @@ export class SubagentRunManager {
 		snapshot.liveTools = snapshot.liveTools.filter(
 			(tool) => tool.id !== toolId,
 		);
+		this.markActivity(snapshot, "tool-finished");
 		this.notify(runId);
 	}
 
@@ -489,6 +536,7 @@ export class SubagentRunManager {
 		snapshot.settledAt = Date.now();
 		snapshot.durationMs ??= snapshot.settledAt - snapshot.startedAt;
 		snapshot.liveText = "";
+		snapshot.liveTextUpdatedAt = undefined;
 		snapshot.liveTools = [];
 		this.controllers.delete(runId);
 		this.prune();
@@ -587,12 +635,13 @@ export class SubagentRunManager {
 
 	private appendTranscript(
 		runId: string,
-		item: SubagentTranscriptItem,
+		item: Omit<SubagentTranscriptItem, "timestamp"> & { timestamp?: number },
 	): void {
 		const snapshot = this.snapshots.get(runId);
 		if (!snapshot) return;
-		const boundedItem = {
+		const boundedItem: SubagentTranscriptItem = {
 			...item,
+			timestamp: item.timestamp ?? Date.now(),
 			...(item.toolName
 				? { toolName: boundedTail(item.toolName, MAX_METADATA_TEXT_BYTES) }
 				: {}),
@@ -600,6 +649,17 @@ export class SubagentRunManager {
 		};
 		snapshot.transcript.push(boundedItem);
 		snapshot.transcriptBytes += Buffer.byteLength(boundedItem.text, "utf8");
+		this.markActivity(
+			snapshot,
+			boundedItem.kind === "assistant"
+				? "assistant"
+				: boundedItem.kind === "thinking"
+					? "thinking"
+					: boundedItem.kind === "tool"
+						? "tool-started"
+						: "tool-result",
+			boundedItem.timestamp,
+		);
 		while (
 			snapshot.transcript.length > MAX_SUBAGENT_TRANSCRIPT_ITEMS ||
 			snapshot.transcriptBytes > MAX_SUBAGENT_TRANSCRIPT_BYTES
@@ -609,6 +669,16 @@ export class SubagentRunManager {
 				snapshot.transcriptBytes -= Buffer.byteLength(removed.text, "utf8");
 		}
 		this.notify(runId);
+	}
+
+	private markActivity(
+		snapshot: MutableSubagentRunSnapshot,
+		kind: SubagentActivityKind,
+		timestamp = Date.now(),
+	): void {
+		snapshot.lastActivityAt = timestamp;
+		snapshot.lastActivityKind = kind;
+		snapshot.activityVersion++;
 	}
 
 	private isRunOrDescendant(runId: string, ancestorRunId: string): boolean {

@@ -9,6 +9,10 @@ import {
 	SubagentRunManager,
 } from "../extensions/subagent/run-manager.ts";
 import {
+	inspectSubagentStatus,
+	formatSubagentStatus,
+} from "../extensions/subagent/status.ts";
+import {
 	formatSubagentActivityStatus,
 	openSubagentDashboard,
 	reconcileSubagentDashboardSelection,
@@ -91,6 +95,82 @@ describe("SubagentRunManager", () => {
 		expect(listener).toHaveBeenCalled();
 	});
 
+	it("records local-display timing inputs for run activity", () => {
+		const now = vi.spyOn(Date, "now");
+		try {
+			now.mockReturnValue(1_000);
+			const manager = new SubagentRunManager();
+			beginRun(manager, "timed");
+			now.mockReturnValue(1_500);
+			manager.registerProcess("timed", 123);
+			now.mockReturnValue(2_000);
+			manager.appendMessage("timed", {
+				role: "assistant",
+				content: [{ type: "text", text: "working" }],
+			} as never);
+			now.mockReturnValue(3_000);
+			manager.startTool("timed", { id: "tool-1", name: "read" });
+			now.mockReturnValue(4_000);
+			manager.setLiveText("timed", "streaming");
+
+			expect(manager.get("timed")).toMatchObject({
+				pid: 123,
+				startedAt: 1_000,
+				transcript: [{ timestamp: 2_000, text: "working" }],
+				liveTools: [{ id: "tool-1", startedAt: 3_000 }],
+				liveTextUpdatedAt: 4_000,
+				lastActivityAt: 4_000,
+				lastActivityKind: "output",
+				activityVersion: 4,
+			});
+		} finally {
+			now.mockRestore();
+		}
+	});
+
+	it("reports process liveness and progress against a prior activity version", () => {
+		const manager = new SubagentRunManager();
+		beginRun(manager, "status");
+		manager.registerProcess("status", 123);
+		manager.appendMessage("status", {
+			role: "assistant",
+			content: [{ type: "text", text: "progress" }],
+		} as never);
+		const run = manager.get("status");
+		if (!run) throw new Error("status run missing");
+
+		const progressed = inspectSubagentStatus(run, {
+			now: run.lastActivityAt + 5_000,
+			sinceActivityVersion: 1,
+			isProcessAlive: () => true,
+		});
+		expect(progressed).toMatchObject({
+			processState: "alive",
+			processAlive: true,
+			progressedSince: true,
+			activityVersion: 2,
+			quietForMs: 5_000,
+		});
+		expect(formatSubagentStatus(progressed)).toContain(
+			"emitted new observable activity",
+		);
+
+		const quiet = inspectSubagentStatus(run, {
+			now: run.lastActivityAt + 10_000,
+			sinceActivityVersion: run.activityVersion,
+			isProcessAlive: () => true,
+		});
+		expect(quiet.progressedSince).toBe(false);
+		expect(formatSubagentStatus(quiet)).toContain(
+			"may still be waiting on a provider",
+		);
+
+		const exited = inspectSubagentStatus(run, {
+			isProcessAlive: () => false,
+		});
+		expect(exited.processState).toBe("exited-unsettled");
+	});
+
 	it("bounds transcript items and tracked settled runs", () => {
 		const manager = new SubagentRunManager();
 		beginRun(manager, "transcript");
@@ -164,7 +244,10 @@ describe("SubagentRunManager", () => {
 });
 
 describe("subagent dashboard selection", () => {
-	it("renders the dashboard and detail view within narrow terminal widths", async () => {
+	it("renders local timestamps and stays within narrow terminal widths", async () => {
+		const now = vi.spyOn(Date, "now");
+		const startedAt = new Date(2026, 7, 15, 13, 14, 15).getTime();
+		now.mockReturnValue(startedAt);
 		const manager = new SubagentRunManager();
 		beginRun(manager, "run-1");
 		manager.appendMessage("run-1", {
@@ -177,7 +260,9 @@ describe("subagent dashboard selection", () => {
 			],
 		} as never);
 		manager.settle("run-1", { status: "completed" });
+		now.mockRestore();
 		let customCalls = 0;
+		const renderedViews: string[] = [];
 		const tui = {
 			terminal: { rows: 24 },
 			requestRender: vi.fn(),
@@ -201,6 +286,7 @@ describe("subagent dashboard selection", () => {
 			const lines = component.render(12);
 			expect(lines.every((line) => visibleWidth(line) <= 12)).toBe(true);
 			expect(lines.join("\n")).not.toContain("\u001b]");
+			renderedViews.push(component.render(160).join("\n"));
 			component.dispose?.();
 			return customCalls === 1 ? "run-1" : null;
 		});
@@ -214,6 +300,11 @@ describe("subagent dashboard selection", () => {
 			manager,
 		);
 		expect(custom).toHaveBeenCalledTimes(3);
+		expect(renderedViews[0]).toContain("start 13:14:15 local");
+		expect(renderedViews[1]).toContain(
+			"started 2026-08-15 13:14:15 local",
+		);
+		expect(renderedViews[1]).toContain("[13:14:15] assistant:");
 	});
 
 	it("formats explicit footer counts and the dashboard affordance", () => {

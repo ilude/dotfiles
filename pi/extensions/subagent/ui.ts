@@ -82,6 +82,27 @@ function elapsed(run: SubagentRunSnapshot): string {
 		: `${seconds}s`;
 }
 
+function localClock(timestamp: number): string {
+	const date = new Date(timestamp);
+	return [date.getHours(), date.getMinutes(), date.getSeconds()]
+		.map((part) => String(part).padStart(2, "0"))
+		.join(":");
+}
+
+function localDateTime(timestamp: number): string {
+	const date = new Date(timestamp);
+	const day = [
+		date.getFullYear(),
+		String(date.getMonth() + 1).padStart(2, "0"),
+		String(date.getDate()).padStart(2, "0"),
+	].join("-");
+	return `${day} ${localClock(timestamp)}`;
+}
+
+function activityTimestamp(timestamp: number | undefined): string {
+	return timestamp === undefined ? "[time unavailable]" : `[${localClock(timestamp)}]`;
+}
+
 function tokenLabel(tokens: number): string {
 	if (tokens < 1000) return `${tokens} tok`;
 	if (tokens < 1_000_000) return `${(tokens / 1000).toFixed(1)}k tok`;
@@ -338,7 +359,7 @@ class SubagentDashboard implements Component {
 				run.usage.contextPeakTokens > 0
 					? ` | ${tokenLabel(run.usage.contextPeakTokens)}`
 					: "";
-			const right = `pi | ${oneLine(run.model ?? "default")} | ${run.mode} | ${ownership}${usage} | ${elapsed(run)}`;
+			const right = `pi | ${oneLine(run.model ?? "default")} | ${run.mode} | ${ownership}${usage} | start ${localClock(run.startedAt)} local | ${elapsed(run)}`;
 			const rightWidth = visibleWidth(right);
 			const leftWidth = Math.max(8, safeWidth - rightWidth - 3);
 			const left = truncateToWidth(
@@ -479,7 +500,7 @@ class SubagentDetail implements Component {
 			safeWidth,
 		);
 		const metadata = truncateToWidth(
-			`run ${run.runId} | ${treeMetadata(run) ?? oneLine(run.cwd)}`,
+			`run ${run.runId} | started ${localDateTime(run.startedAt)} local | ${treeMetadata(run) ?? oneLine(run.cwd)}`,
 			safeWidth,
 		);
 		const task = truncateToWidth(`task: ${oneLine(run.task)}`, safeWidth);
@@ -537,7 +558,7 @@ class SubagentDetail implements Component {
 			if (sourceLines.length === 0) sourceLines.push("");
 			lines.push(
 				truncateToWidth(
-					`${this.theme.fg("muted", `${prefix}:`)} ${sourceLines[0]}`,
+					`${this.theme.fg("muted", `${activityTimestamp(item.timestamp)} ${prefix}:`)} ${sourceLines[0]}`,
 					width,
 				),
 			);
@@ -551,7 +572,7 @@ class SubagentDetail implements Component {
 				truncateToWidth(
 					this.theme.fg(
 						"warning",
-						`active ${oneLine(tool.name)}: ${activity}`,
+						`${activityTimestamp(tool.startedAt)} active ${oneLine(tool.name)}: ${activity}`,
 					),
 					width,
 				),
@@ -561,7 +582,10 @@ class SubagentDetail implements Component {
 			for (const line of terminalSafe(run.liveText).split(/\r?\n/)) {
 				lines.push(
 					truncateToWidth(
-						this.theme.fg("warning", `live: ${line}`),
+						this.theme.fg(
+							"warning",
+							`${activityTimestamp(run.liveTextUpdatedAt)} live: ${line}`,
+						),
 						width,
 					),
 				);

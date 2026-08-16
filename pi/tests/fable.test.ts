@@ -138,7 +138,12 @@ describe("fable orchestration policy", () => {
 				);
 			}
 
-			for (const toolName of ["task", "ask_user", "plan_archive"]) {
+			for (const toolName of [
+				"task",
+				"ask_user",
+				"plan_archive",
+				"subagent_status",
+			]) {
 				expect(tool({ toolName, input: {} }, ctx)).toBeUndefined();
 			}
 			expect(

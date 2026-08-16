@@ -12,7 +12,8 @@
 
 ## Callable subagent behavior
 
-- `subagent` provides common foreground single and parallel execution. `background=true` returns immediately and delivers one bounded follow-up result when the orchestration settles; do not poll it.
+- `subagent` provides common foreground single and parallel execution. `background=true` returns immediately and delivers one bounded follow-up result when the orchestration settles.
+- `subagent_status` is root-only and reports a tracked child's PID, process liveness, latest observable activity, activity version, active tools, and usage. A later check may pass the prior activity version to determine whether observable child events advanced. This is evidence of process and event progress, not proof of CPU work: a quiet live child may be waiting on a provider or a silent long-running tool. Completion remains push-based, so do not poll status in a loop.
 - For non-Fable roots, `subagent_chain`, `subagent_continue`, `subagent_fanout`, and `subagent_workflow` are deferred capabilities activated through `tool_search`.
 - `readOnlyFanout` is opt-in for one read-only investigation with 2 through 8 independent work items, equivalent single-generalist and parallel-specialist plans, and one required output schema. Assignment is deterministic. Do not use it for dependent work, mutations, or live operations.
 - Validate every requested agent against `agentScope` before starting any worker or acknowledging background work. Project agents require `agentScope: "project"` or `"both"`; unknown names do not resolve as aliases. When `confirmProjectAgents` is requested, reject before spawn if no UI is available rather than bypassing confirmation.

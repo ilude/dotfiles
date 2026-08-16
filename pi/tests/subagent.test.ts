@@ -539,10 +539,52 @@ Coordinate bounded work.
 		expect(pi.getActiveTools()).not.toContain("subagent_fanout");
 		expect(pi.getActiveTools()).not.toContain("subagent_workflow");
 		expect(pi.getActiveTools()).toContain("subagent");
+		expect(pi.getActiveTools()).toContain("subagent_status");
 		const workflowParameters = pi._getTool("subagent_workflow")?.parameters as {
 			properties?: { items?: { maxItems?: number } };
 		};
 		expect(workflowParameters.properties?.items?.maxItems).toBe(256);
+	});
+
+	it("lets the root inspect liveness and compare observable progress", async () => {
+		const { pi } = await loadTool();
+		const status = pi._getTool("subagent_status");
+		if (!status) throw new Error("subagent_status tool not registered");
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		beginManagedRun(subagentRunManager, "status-run");
+		subagentRunManager.registerProcess("status-run", process.pid);
+
+		const listing = await status.execute(
+			"status-list",
+			{},
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+		expect(listing.content[0]).toMatchObject({
+			type: "text",
+			text: expect.stringContaining("status-run | running | process=alive"),
+		});
+
+		const detail = await status.execute(
+			"status-detail",
+			{ runId: "status-run", sinceActivityVersion: 0 },
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+		expect(detail.details).toMatchObject({
+			found: true,
+			processState: "alive",
+			processAlive: true,
+			progressedSince: true,
+		});
+		expect(detail.content[0]).toMatchObject({
+			type: "text",
+			text: expect.stringContaining("activity version: 1"),
+		});
 	});
 
 	it("preflights workflow capabilities without consuming an attempt", async () => {
@@ -849,6 +891,18 @@ You are another test agent.
 			for (const hook of pi._getHook("session_start"))
 				await hook.handler({}, createMockCtx({ cwd: tmpDir }));
 			expect(pi.getActiveTools()).not.toContain("subagent");
+			expect(pi.getActiveTools()).not.toContain("subagent_status");
+			const status = pi._getTool("subagent_status");
+			if (!status) throw new Error("subagent_status tool not registered");
+			await expect(
+				status.execute(
+					"status-nested",
+					{},
+					undefined,
+					undefined,
+					createMockCtx({ cwd: tmpDir }),
+				),
+			).rejects.toThrow("Only the root agent can inspect subagent status.");
 			await expect(
 				tool.execute(
 					"call-legacy-nested",
@@ -2720,6 +2774,7 @@ You are a test agent.
 		"links background runs without changing task state",
 		async () => {
 			const proc = createMockProcess();
+			proc.pid = process.pid;
 			spawnMock.mockImplementation(() => proc);
 			const { pi, tool } = await loadTool();
 			const { createTask, getTask, resolveTaskWorkspace } = await import(
@@ -2761,7 +2816,24 @@ You are a test agent.
 			expect(subagentRunManager.list()[0]).toMatchObject({
 				taskId: task.id,
 				owner: "task",
+				pid: process.pid,
 				status: "running",
+			});
+			const runId = subagentRunManager.list()[0]?.runId;
+			if (!runId) throw new Error("background run missing");
+			const status = pi._getTool("subagent_status");
+			if (!status) throw new Error("subagent_status tool not registered");
+			const inspected = await status.execute(
+				"status-linked-background",
+				{ runId, sinceActivityVersion: 0 },
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(inspected.details).toMatchObject({
+				processState: "alive",
+				processAlive: true,
+				progressedSince: true,
 			});
 
 			proc.emit("close", 1);

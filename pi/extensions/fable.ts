@@ -32,6 +32,7 @@ const FABLE_ROOT_INSTRUCTION = [
 const FABLE_VISIBILITY_KEY = "fable";
 export const FABLE_CONTROL_TOOL_NAMES = [
 	"subagent",
+	"subagent_status",
 	"subagent_chain",
 	"subagent_fanout",
 	"subagent_workflow",

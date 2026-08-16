@@ -97,6 +97,11 @@ import {
 	toolsForScopedModifier,
 } from "./scope-policy.js";
 import {
+	formatSubagentStatus,
+	formatSubagentStatusList,
+	inspectSubagentStatus,
+} from "./status.js";
+import {
 	disposeInstalledSubagentTreeBroker,
 	getSubagentTreeBroker,
 	SubagentTreeRootClient,
@@ -1411,6 +1416,7 @@ export async function runSingleAgent(
 				windowsHide: true,
 				detached: process.platform !== "win32",
 			});
+			if (proc.pid) subagentRunManager.registerProcess?.(runId, proc.pid);
 			if (treePermit && proc.pid) {
 				void treePermit
 					.registerProcess({ pid: proc.pid })
@@ -2266,6 +2272,99 @@ export default function (pi: ExtensionAPI) {
 		});
 	};
 
+	pi.registerTool({
+		name: "subagent_status",
+		label: "Subagent Status",
+		description:
+			"Inspect process liveness, observable activity, and usage for process-local subagent runs. Pass a prior activity version to determine whether a running child emitted new observable progress since the previous check.",
+		promptSnippet:
+			"Inspect subagent process liveness, observable progress, and usage",
+		promptGuidelines: [
+			"Use subagent_status only when current evidence is needed for a background run; completion arrives automatically, so do not poll it in a loop.",
+			"Treat subagent_status process liveness and observable activity as evidence, not proof of CPU work; a quiet live child may be waiting on a provider or a silent long-running tool.",
+		],
+		parameters: Type.Object({
+			runId: Type.Optional(
+				Type.String({
+					description:
+						"Exact run ID from a prior subagent_status listing. Omit to list tracked runs.",
+				}),
+			),
+			sinceActivityVersion: Type.Optional(
+				Type.Integer({
+					minimum: 0,
+					description:
+						"Activity version returned by a previous check of this run.",
+				}),
+			),
+		}),
+		execute: async (
+			_toolCallId,
+			params,
+		): Promise<AgentToolResult<Record<string, unknown>>> => {
+			if (currentSubagentIdentity().role !== "root")
+				throw new Error("Only the root agent can inspect subagent status.");
+			if (!params.runId) {
+				if (params.sinceActivityVersion !== undefined)
+					throw new Error(
+						"runId is required when sinceActivityVersion is provided.",
+					);
+				const inspections = subagentRunManager
+					.list()
+					.map((run) => inspectSubagentStatus(run));
+				return {
+					content: [
+						{ type: "text", text: formatSubagentStatusList(inspections) },
+					],
+					details: {
+						runs: inspections.map((inspection) => ({
+							runId: inspection.run.runId,
+							status: inspection.run.status,
+							pid: inspection.run.pid,
+							processState: inspection.processState,
+							activityVersion: inspection.activityVersion,
+							lastActivityAt: inspection.lastActivityAt,
+							lastActivityKind: inspection.lastActivityKind,
+							quietForMs: inspection.quietForMs,
+						})),
+					},
+				};
+			}
+			const run = subagentRunManager.get(params.runId);
+			if (!run)
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Subagent run not found: ${params.runId}`,
+						},
+					],
+					details: { runId: params.runId, found: false },
+				};
+			const inspection = inspectSubagentStatus(run, {
+				sinceActivityVersion: params.sinceActivityVersion,
+			});
+			return {
+				content: [{ type: "text", text: formatSubagentStatus(inspection) }],
+				details: {
+					runId: run.runId,
+					found: true,
+					status: run.status,
+					pid: run.pid,
+					processState: inspection.processState,
+					processAlive: inspection.processAlive,
+					activityVersion: inspection.activityVersion,
+					lastActivityAt: inspection.lastActivityAt,
+					lastActivityKind: inspection.lastActivityKind,
+					quietForMs: inspection.quietForMs,
+					progressedSince: inspection.progressedSince,
+					usage: run.usage,
+					liveTools: run.liveTools.map((tool) => tool.name),
+				},
+			};
+		},
+	});
+
 	pi.registerCommand("subagents", {
 		description: "Inspect and manage process-local subagent runs",
 		handler: async (_args, ctx) => {
@@ -2287,6 +2386,7 @@ export default function (pi: ExtensionAPI) {
 			process.env.PI_SUBAGENT_SCOPE_POLICY,
 		);
 		const identity = currentSubagentIdentity();
+		if (identity.role !== "root") deactivateTools(pi, ["subagent_status"]);
 		deactivateTools(
 			pi,
 			identity.role === "leaf" || identity.depth >= 2
