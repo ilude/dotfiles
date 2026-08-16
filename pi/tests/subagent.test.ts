@@ -291,6 +291,30 @@ Coordinate bounded work.
 `,
 			"utf8",
 		);
+		await fs.promises.writeFile(
+			path.join(agentsDir, "reviewer.md"),
+			`---
+name: reviewer
+description: Reviewer test agent
+tools: read, grep, bash
+---
+
+Review without direct file mutation.
+`,
+			"utf8",
+		);
+		await fs.promises.writeFile(
+			path.join(agentsDir, "workflow-builder.md"),
+			`---
+name: workflow-builder
+description: Workflow builder test agent
+tools: read, bash, pwsh, edit, write
+---
+
+Execute workflow items with admitted tools only.
+`,
+			"utf8",
+		);
 		prevAgentDir = process.env.PI_CODING_AGENT_DIR;
 		prevOperatorDir = process.env.PI_OPERATOR_DIR;
 		prevMetricsDir = process.env.PI_METRICS_DIR;
@@ -420,7 +444,7 @@ Coordinate bounded work.
 		expect(manager.list()).toEqual([]);
 	});
 
-	it("enumerates discovered agents while deferring advanced mode tools", async () => {
+	it("enumerates trusted agents while deferring advanced mode tools", async () => {
 		const { pi } = await loadTool();
 		for (const name of [
 			"subagent_chain",
@@ -440,18 +464,15 @@ Coordinate bounded work.
 		const properties = (
 			tool.parameters as { properties: Record<string, unknown> }
 		).properties;
-		expect(JSON.stringify(tool.parameters).length).toBeLessThan(5_000);
+		expect(JSON.stringify(tool.parameters).length).toBeLessThan(10_000);
 		expect(properties).not.toHaveProperty("chain");
 		expect(properties).not.toHaveProperty("continue");
 		expect(properties).not.toHaveProperty("readOnlyFanout");
 		expect(properties.agent).toMatchObject({
 			type: "string",
-			enum: expect.arrayContaining(["builder", "typescript-pro"]),
-			description: expect.stringContaining("Default user agents"),
+			enum: expect.arrayContaining(["builder", "typescript-pro", "tester"]),
+			description: expect.stringContaining("Trusted catalog"),
 		});
-		expect((properties.agent as { enum: string[] }).enum).not.toContain(
-			"tester",
-		);
 		expect(properties.agentScope).toMatchObject({
 			default: "user",
 			description: expect.stringContaining("Project-local names require"),
@@ -469,19 +490,18 @@ Coordinate bounded work.
 				properties: {
 					agent: {
 						type: "string",
-						enum: expect.arrayContaining(["builder", "typescript-pro"]),
+						enum: expect.arrayContaining([
+							"builder",
+							"typescript-pro",
+							"tester",
+						]),
 					},
 					taskId: { type: "string" },
+					output: { type: "boolean" },
 				},
 			},
 		});
-		expect(
-			(
-				properties.tasks as {
-					items: { properties: { agent: { enum: string[] } } };
-				}
-			).items.properties.agent.enum,
-		).not.toContain("tester");
+		expect(properties.output).toMatchObject({ type: "boolean" });
 		expect(properties.effort).toMatchObject({
 			type: "string",
 			enum: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
@@ -498,6 +518,7 @@ Coordinate bounded work.
 						agent: {
 							enum: expect.arrayContaining(["builder"]),
 						},
+						output: { type: "boolean" },
 					},
 				},
 			},
@@ -509,6 +530,7 @@ Coordinate bounded work.
 		).toMatchObject({
 			agent: { enum: expect.arrayContaining(["builder"]) },
 			session: expect.any(Object),
+			output: { type: "boolean" },
 		});
 		const fanoutParameters = pi._getTool("subagent_fanout")!.parameters as {
 			properties: {
@@ -524,7 +546,7 @@ Coordinate bounded work.
 		expect(fanoutParameters.properties.single.properties.agent.enum).toEqual(
 			expect.arrayContaining(["builder"]),
 		);
-		expect(fanoutParameters.properties.single.properties.agent.enum).not.toContain(
+		expect(fanoutParameters.properties.single.properties.agent.enum).toContain(
 			"tester",
 		);
 		expect(fanoutParameters.properties.parallel.maxItems).toBe(8);
@@ -533,7 +555,7 @@ Coordinate bounded work.
 		).toEqual(expect.arrayContaining(["builder"]));
 		expect(
 			fanoutParameters.properties.parallel.items.properties.agent.enum,
-		).not.toContain("tester");
+		).toContain("tester");
 		expect(pi.getActiveTools()).not.toContain("subagent_chain");
 		expect(pi.getActiveTools()).not.toContain("subagent_continue");
 		expect(pi.getActiveTools()).not.toContain("subagent_fanout");
@@ -587,6 +609,52 @@ Coordinate bounded work.
 		});
 	});
 
+	it("groups status checks by a returned orchestration ID", async () => {
+		const { pi } = await loadTool();
+		const status = pi._getTool("subagent_status");
+		if (!status) throw new Error("subagent_status tool not registered");
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		for (const runId of ["group-run-1", "group-run-2"]) {
+			subagentRunManager.begin(
+				{
+					runId,
+					orchestrationId: "orchestration-group",
+					owner: "direct",
+					mode: "parallel",
+					agent: "tester",
+					task: runId,
+					cwd: tmpDir,
+				},
+				new AbortController(),
+			);
+		}
+
+		const grouped = await status.execute(
+			"status-group",
+			{ runId: "orchestration-group" },
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+
+		expect(grouped.content[0]).toMatchObject({
+			type: "text",
+			text: expect.stringContaining("orchestration: orchestration-group"),
+		});
+		expect(grouped.details).toMatchObject({
+			orchestrationId: "orchestration-group",
+			found: true,
+		});
+		expect(grouped.details.runs).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ runId: "group-run-1" }),
+				expect.objectContaining({ runId: "group-run-2" }),
+			]),
+		);
+	});
+
 	it("preflights workflow capabilities without consuming an attempt", async () => {
 		const { pi } = await loadTool();
 		const workflow = pi._getTool("subagent_workflow");
@@ -620,6 +688,128 @@ Coordinate bounded work.
 		expect(result.details.workflow.items[0].gaps[0]).toContain(
 			"missing tools: edit",
 		);
+	});
+
+	it("uses workflow capabilities as the runtime tool authority", async () => {
+		spawnMock.mockImplementation((_command: string, args: string[]) => {
+			const proc = createMockProcess();
+			const sessionDir = args[args.indexOf("--session-dir") + 1];
+			const sessionId = args[args.indexOf("--session-id") + 1];
+			fs.mkdirSync(sessionDir, { recursive: true });
+			fs.writeFileSync(
+				path.join(sessionDir, `2026-08-15T00-00-00-000Z_${sessionId}.jsonl`),
+				testSessionHeader(sessionId, tmpDir),
+				"utf8",
+			);
+			queueMicrotask(() => {
+				proc.stdout.emit(
+					"data",
+					`${JSON.stringify({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [
+								{
+									type: "text",
+									text: '{"status":"found","evidence":["bounded"]}',
+								},
+							],
+							stopReason: "end_turn",
+						},
+					})}\n`,
+				);
+				proc.emit("close", 0);
+			});
+			return proc;
+		});
+		const { pi } = await loadTool();
+		const workflow = pi._getTool("subagent_workflow");
+		if (!workflow) throw new Error("subagent_workflow tool not registered");
+		const result = await workflow.execute(
+			"workflow-authority",
+			{
+				id: "workflow-authority",
+				items: [
+					{
+						key: "read-only-item",
+						agent: "workflow-builder",
+						task: "Inspect without mutation.",
+						capabilities: ["read"],
+						input: { kind: "none" },
+					},
+				],
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+
+		expect(result.details.workflow.items[0]).toMatchObject({
+			status: "found",
+			attempts: 1,
+		});
+		const spawnArgs = spawnMock.mock.calls[0][1] as string[];
+		expect(spawnArgs[spawnArgs.indexOf("--tools") + 1]).toBe("read");
+
+		await expect(
+			workflow.execute(
+				"workflow-mutation-admission",
+				{
+					id: "workflow-mutation-admission",
+					items: [
+						{
+							key: "mutating-item",
+							agent: "workflow-builder",
+							task: "Edit without a lease.",
+							capabilities: ["edit"],
+							input: { kind: "none" },
+						},
+					],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			),
+		).rejects.toThrow("must declare a repository-relative scope");
+		expect(spawnMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects mutation tools in explicitly read-only workflow phases", async () => {
+		const { pi } = await loadTool();
+		const workflow = pi._getTool("subagent_workflow");
+		if (!workflow) throw new Error("subagent_workflow tool not registered");
+
+		await expect(
+			workflow.execute(
+				"workflow-read-only-verifier",
+				{
+					id: "workflow-read-only-verifier",
+					items: [
+						{
+							key: "item",
+							agent: "tester",
+							task: "Inspect.",
+							capabilities: ["read"],
+							input: { kind: "none" },
+						},
+					],
+					verify: {
+						agent: "reviewer",
+						task: "Verify.",
+						capabilities: ["bash"],
+					},
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			),
+		).rejects.toThrow(
+			"Workflow verification capability preflight rejected; missing tools: bash",
+		);
+		expect(spawnMock).not.toHaveBeenCalled();
 	});
 
 	it("runs the deferred workflow through a tree-aware structured leaf", async () => {
@@ -727,7 +917,7 @@ Coordinate bounded work.
 		expect(renderedTask).not.toContain(`${task.slice(0, 60)}...`);
 	});
 
-	it("keeps project agents out of the refreshed default enum", async () => {
+	it("adds project agents to schemas only after trust validation", async () => {
 		const { pi } = await loadTool();
 		const sessionStart = pi._getHook("session_start")[0].handler;
 		await sessionStart(
@@ -763,10 +953,13 @@ You are another test agent.
 			}
 		).properties;
 		expect(properties.agent.enum).toEqual(
-			expect.arrayContaining(["builder", "typescript-pro"]),
+			expect.arrayContaining([
+				"builder",
+				"typescript-pro",
+				"tester",
+				"tester-two",
+			]),
 		);
-		expect(properties.agent.enum).not.toContain("tester");
-		expect(properties.agent.enum).not.toContain("tester-two");
 	});
 
 	it("supports project scopes while retaining a default-user schema", async () => {
@@ -791,6 +984,72 @@ You are another test agent.
 			expect(result.details.results[0].agentSource).toBe("project");
 		}
 		expect(spawnMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not discover project agents after an untrusted cwd change", async () => {
+		const otherCwd = path.join(tmpDir, "untrusted-project");
+		const otherAgents = path.join(otherCwd, ".pi", "agents");
+		await fs.promises.mkdir(otherAgents, { recursive: true });
+		await fs.promises.writeFile(
+			path.join(otherAgents, "untrusted.md"),
+			`---
+name: untrusted
+description: Untrusted project agent
+---
+
+Do not load this agent.
+`,
+			"utf8",
+		);
+		const { pi } = await loadTool();
+		await pi
+			._getHook("session_start")[0]
+			.handler(
+				{ reason: "startup" },
+				createMockCtx({ cwd: tmpDir, isProjectTrusted: () => true }),
+			);
+		const tool = pi._getTool("subagent");
+		if (!tool) throw new Error("subagent tool not registered");
+
+		await expect(
+			tool.execute(
+				"untrusted-cwd",
+				{
+					agent: "untrusted",
+					task: "Do not run.",
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({
+					cwd: otherCwd,
+					isProjectTrusted: () => false,
+				}),
+			),
+		).rejects.toThrow('Unknown agent: "untrusted"');
+		expect(spawnMock).not.toHaveBeenCalled();
+	});
+
+	it("preserves command-capable reviewers without granting direct mutation", async () => {
+		mockSuccessfulSpawn();
+		const { tool } = await loadTool();
+		const result = await tool.execute(
+			"reviewer-compatibility",
+			{
+				agent: "reviewer",
+				task: "Review the current change.",
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+
+		expect(result.isError).not.toBe(true);
+		const spawnArgs = spawnMock.mock.calls[0][1] as string[];
+		expect(spawnArgs[spawnArgs.indexOf("--tools") + 1]).toBe(
+			"read,grep,bash",
+		);
 	});
 
 	it("rejects unknown and default-scope background agents before spawning", async () => {
@@ -1444,7 +1703,8 @@ You are a test agent.
 			for (const call of spawnMock.mock.calls) {
 				const args = call[1] as string[];
 				const tools = args[args.indexOf("--tools") + 1];
-				expect(tools).toBe("read,bash");
+				expect(tools).toBe("read");
+				expect(tools).not.toContain("bash");
 				expect(tools).not.toContain("edit");
 				expect(tools).not.toContain("write");
 				expect(args.join(" ")).toContain(
@@ -2304,6 +2564,78 @@ You are a test agent.
 			),
 		).rejects.toThrow("none was found");
 		expect(spawnMock).not.toHaveBeenCalled();
+	});
+
+	it("joins every text block in the final assistant response", async () => {
+		spawnMock.mockImplementation(() => {
+			const proc = createMockProcess();
+			queueMicrotask(() => {
+				proc.stdout.emit(
+					"data",
+					`${JSON.stringify({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [
+								{ type: "text", text: "first block" },
+								{ type: "thinking", thinking: "hidden" },
+								{ type: "text", text: "second block" },
+							],
+							stopReason: "end_turn",
+						},
+					})}\n`,
+				);
+				proc.emit("close", 0);
+			});
+			return proc;
+		});
+		const { tool } = await loadTool();
+		const result = await tool.execute(
+			"joined-final-blocks",
+			{
+				agent: "tester",
+				task: "Return two final blocks.",
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+
+		expect(result.content[0].text).toBe("first block\nsecond block");
+	});
+
+	it("bounds non-Fable foreground results with a private artifact", async () => {
+		const fullOutput = `${"x".repeat(60_000)}\n${"line\n".repeat(2_500)}`;
+		mockSuccessfulSpawn(fullOutput);
+		const { tool } = await loadTool();
+		const result = await tool.execute(
+			"provider-bounded-output",
+			{
+				agent: "tester",
+				task: "Return a large result",
+				agentScope: "project",
+				output: false,
+			},
+			undefined,
+			undefined,
+			createMockCtx({
+				cwd: tmpDir,
+				model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+			}),
+		);
+		const visible = result.content[0].text;
+		expect(Buffer.byteLength(visible, "utf8")).toBeLessThanOrEqual(50 * 1024);
+		expect(visible.split(/\r\n|\r|\n/).length).toBeLessThanOrEqual(2_000);
+		expect(visible).toContain(
+			"Result truncated at the provider-visible foreground boundary",
+		);
+		const match = visible.match(/Output saved to: (.+?) \(/);
+		expect(match?.[1]).toBeDefined();
+		if (match?.[1]) {
+			expect(await fs.promises.readFile(match[1], "utf8")).toBe(fullOutput);
+			await fs.promises.rm(match[1], { force: true });
+		}
 	});
 
 	it("bounds Fable foreground results and forces generated artifacts", async () => {

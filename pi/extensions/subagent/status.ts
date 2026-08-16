@@ -120,7 +120,7 @@ function assessment(inspection: SubagentStatusInspection): string {
 		return "child is alive and emitted new observable activity since the supplied version";
 	if (inspection.progressedSince === false)
 		return "child is alive but emitted no observable activity since the supplied version; it may still be waiting on a provider or a silent long-running tool";
-	return `child is alive; poll later with sinceActivityVersion=${inspection.activityVersion} to measure observable progress`;
+	return `child is alive; a later exact-run check may use sinceActivityVersion=${inspection.activityVersion} to compare observable progress`;
 }
 
 export function formatSubagentStatus(
@@ -173,4 +173,15 @@ export function formatSubagentStatusList(
 			].join(" | ");
 		})
 		.join("\n");
+}
+
+export function formatSubagentStatusGroup(
+	orchestrationId: string,
+	inspections: ReadonlyArray<SubagentStatusInspection>,
+): string {
+	return [
+		`orchestration: ${orchestrationId}`,
+		`runs: ${inspections.length}`,
+		formatSubagentStatusList(inspections),
+	].join("\n");
 }

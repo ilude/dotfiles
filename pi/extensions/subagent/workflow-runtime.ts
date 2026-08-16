@@ -5,17 +5,18 @@ import { Type } from "typebox";
 export const MAX_WORKFLOW_ITEMS = 256;
 export const DEFAULT_WORKFLOW_ATTEMPTS = 2;
 export const MAX_WORKFLOW_ATTEMPTS = 3;
+export const MIN_WORKFLOW_REDUCTION_GROUP_SIZE = 2;
 export const MAX_WORKFLOW_REDUCTION_GROUP_SIZE = 8;
 export const MAX_WORKFLOW_EXTRACT_BYTES = 16_000;
 export const MAX_WORKFLOW_RANGE_LINES = 400;
 export const MAX_WORKFLOW_TASK_BYTES = 8_000;
 export const MAX_RETAINED_WORKFLOWS = 128;
 
-const MAX_ENVELOPE_EVIDENCE = 8;
-const MAX_ENVELOPE_CHANGED_FILES = 32;
-const MAX_ENVELOPE_VALIDATION = 8;
-const MAX_ENVELOPE_GAPS = 8;
-const MAX_ENVELOPE_TEXT_BYTES = 500;
+export const MAX_ENVELOPE_EVIDENCE = 8;
+export const MAX_ENVELOPE_CHANGED_FILES = 32;
+export const MAX_ENVELOPE_VALIDATION = 8;
+export const MAX_ENVELOPE_GAPS = 8;
+export const MAX_ENVELOPE_TEXT_BYTES = 500;
 
 export type WorkflowItemStatus =
 	| "found"
@@ -44,22 +45,22 @@ export interface WorkflowItem {
 	readonly task: string;
 	readonly capabilities: readonly string[];
 	readonly scope?: readonly string[];
-	readonly input: WorkflowInput;
+	readonly input?: WorkflowInput;
 	readonly retries?: readonly WorkflowRetry[];
 }
 
 export interface WorkflowVerification {
 	readonly keys?: readonly string[];
-	readonly agent?: string;
-	readonly task?: string;
-	readonly capabilities?: readonly string[];
+	readonly agent: string;
+	readonly task: string;
+	readonly capabilities: readonly string[];
 }
 
 export interface WorkflowReduction {
 	readonly groupSize?: number;
-	readonly agent?: string;
-	readonly task?: string;
-	readonly capabilities?: readonly string[];
+	readonly agent: string;
+	readonly task: string;
+	readonly capabilities: readonly string[];
 }
 
 export interface WorkflowSpecification {
@@ -81,7 +82,7 @@ const WorkflowInputSchema = Type.Object(
 		startLine: Type.Optional(Type.Integer({ minimum: 1 })),
 		endLine: Type.Optional(Type.Integer({ minimum: 1 })),
 	},
-	{ additionalProperties: false },
+	{ additionalProperties: false, default: { kind: "none" } },
 );
 
 const WorkflowRetrySchema = Type.Object(
@@ -106,7 +107,7 @@ const WorkflowItemSchema = Type.Object(
 				maxItems: 64,
 			}),
 		),
-		input: WorkflowInputSchema,
+		input: Type.Optional(WorkflowInputSchema),
 		retries: Type.Optional(
 			Type.Array(WorkflowRetrySchema, { maxItems: MAX_WORKFLOW_ATTEMPTS - 1 }),
 		),
@@ -137,14 +138,14 @@ export const WorkflowSpecificationSchema = Type.Object(
 							maxItems: MAX_WORKFLOW_ITEMS,
 						}),
 					),
-					agent: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
-					task: Type.Optional(
-						Type.String({ minLength: 1, maxLength: MAX_WORKFLOW_TASK_BYTES }),
-					),
-					capabilities: Type.Optional(
-						Type.Array(Type.String({ minLength: 1, maxLength: 128 }), {
-							maxItems: 64,
-						}),
+					agent: Type.String({ minLength: 1, maxLength: 256 }),
+					task: Type.String({
+						minLength: 1,
+						maxLength: MAX_WORKFLOW_TASK_BYTES,
+					}),
+					capabilities: Type.Array(
+						Type.String({ minLength: 1, maxLength: 128 }),
+						{ maxItems: 64 },
 					),
 				},
 				{ additionalProperties: false },
@@ -155,23 +156,70 @@ export const WorkflowSpecificationSchema = Type.Object(
 				{
 					groupSize: Type.Optional(
 						Type.Integer({
-							minimum: 1,
+							minimum: MIN_WORKFLOW_REDUCTION_GROUP_SIZE,
 							maximum: MAX_WORKFLOW_REDUCTION_GROUP_SIZE,
 						}),
 					),
-					agent: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
-					task: Type.Optional(
-						Type.String({ minLength: 1, maxLength: MAX_WORKFLOW_TASK_BYTES }),
-					),
-					capabilities: Type.Optional(
-						Type.Array(Type.String({ minLength: 1, maxLength: 128 }), {
-							maxItems: 64,
-						}),
+					agent: Type.String({ minLength: 1, maxLength: 256 }),
+					task: Type.String({
+						minLength: 1,
+						maxLength: MAX_WORKFLOW_TASK_BYTES,
+					}),
+					capabilities: Type.Array(
+						Type.String({ minLength: 1, maxLength: 128 }),
+						{ maxItems: 64 },
 					),
 				},
 				{ additionalProperties: false },
 			),
 		),
+	},
+	{ additionalProperties: false },
+);
+
+function workflowEnvelopeTextListSchema(maxItems: number) {
+	return Type.Array(Type.String({ maxLength: MAX_ENVELOPE_TEXT_BYTES }), {
+		maxItems,
+	});
+}
+
+export const WorkflowLeafOutputSchema = Type.Object(
+	{
+		status: StringEnum(
+			["found", "not_found", "inconclusive", "error"] as const,
+		),
+		evidence: Type.Optional(
+			workflowEnvelopeTextListSchema(MAX_ENVELOPE_EVIDENCE),
+		),
+		changedFiles: Type.Optional(
+			workflowEnvelopeTextListSchema(MAX_ENVELOPE_CHANGED_FILES),
+		),
+		validation: Type.Optional(
+			workflowEnvelopeTextListSchema(MAX_ENVELOPE_VALIDATION),
+		),
+		gaps: Type.Optional(workflowEnvelopeTextListSchema(MAX_ENVELOPE_GAPS)),
+	},
+	{ additionalProperties: false },
+);
+
+export const WorkflowVerificationOutputSchema = Type.Object(
+	{
+		contradicted: Type.Boolean(),
+		evidence: Type.Optional(
+			workflowEnvelopeTextListSchema(MAX_ENVELOPE_EVIDENCE),
+		),
+		gaps: Type.Optional(workflowEnvelopeTextListSchema(MAX_ENVELOPE_GAPS)),
+	},
+	{ additionalProperties: false },
+);
+
+export const WorkflowReductionOutputSchema = Type.Object(
+	{
+		summary: Type.String({ maxLength: MAX_ENVELOPE_TEXT_BYTES }),
+		evidence: Type.Optional(
+			workflowEnvelopeTextListSchema(MAX_ENVELOPE_EVIDENCE),
+		),
+		gaps: Type.Optional(workflowEnvelopeTextListSchema(MAX_ENVELOPE_GAPS)),
 	},
 	{ additionalProperties: false },
 );
@@ -257,11 +305,23 @@ export interface WorkflowRunResult {
 	readonly reductions: readonly WorkflowReductionResult[];
 }
 
-export interface WorkflowSnapshot {
-	readonly id: string;
-	readonly state: "running" | "settled" | "cancelled" | "failed";
-	readonly result?: WorkflowRunResult;
-}
+export type WorkflowSnapshot =
+	| { readonly id: string; readonly state: "running" }
+	| {
+			readonly id: string;
+			readonly state: "settled";
+			readonly result: WorkflowRunResult;
+	  }
+	| {
+			readonly id: string;
+			readonly state: "cancelled";
+			readonly error: WorkflowCancelledError;
+	  }
+	| {
+			readonly id: string;
+			readonly state: "failed";
+			readonly error: Error;
+	  };
 
 export class WorkflowSpecificationError extends Error {
 	constructor(message: string) {
@@ -277,9 +337,13 @@ export class WorkflowCancelledError extends Error {
 	}
 }
 
+type ValidatedWorkflowItem = Omit<WorkflowItem, "input"> & {
+	readonly input: WorkflowInput;
+};
+
 type ValidatedSpecification = {
 	id: string;
-	items: readonly WorkflowItem[];
+	items: readonly ValidatedWorkflowItem[];
 	attempts: number;
 	concurrency: number;
 	verify?: WorkflowVerification;
@@ -293,11 +357,12 @@ type MutableWorkflowState = {
 	state: WorkflowSnapshot["state"];
 	controller: AbortController;
 	result?: WorkflowRunResult;
+	error?: Error;
 	promise?: Promise<WorkflowRunResult>;
 };
 
 type ItemExecution = {
-	item: WorkflowItem;
+	item: ValidatedWorkflowItem;
 	agent?: WorkflowAgent;
 	ready: boolean;
 	envelope: WorkflowResultEnvelope;
@@ -327,9 +392,41 @@ function compactStrings(
 }
 
 function assertTask(task: string, label: string): void {
-	if (!task.trim()) throw new WorkflowSpecificationError(`${label} is required.`);
+	if (typeof task !== "string" || !task.trim())
+		throw new WorkflowSpecificationError(`${label} is required.`);
 	if (byteLength(task) > MAX_WORKFLOW_TASK_BYTES)
 		throw new WorkflowSpecificationError(`${label} exceeds the workflow prompt bound.`);
+}
+
+function assertCapabilities(
+	capabilities: readonly string[],
+	label: string,
+): void {
+	if (
+		!Array.isArray(capabilities) ||
+		capabilities.length > 64 ||
+		capabilities.some(
+			(capability) =>
+				typeof capability !== "string" ||
+				!capability.trim() ||
+				capability.length > 128,
+		)
+	) {
+		throw new WorkflowSpecificationError(
+			`${label} must declare at most 64 bounded capabilities.`,
+		);
+	}
+}
+
+function assertOnlyFields(
+	value: object,
+	fields: readonly string[],
+	label: string,
+): void {
+	const permitted = new Set(fields);
+	if (Object.keys(value).some((key) => !permitted.has(key))) {
+		throw new WorkflowSpecificationError(`${label} contains unsupported fields.`);
+	}
 }
 
 function assertRelativePath(value: string): void {
@@ -346,8 +443,12 @@ export function validateWorkflowInput(input: WorkflowInput): WorkflowInput {
 	if (!input || typeof input !== "object" || !("kind" in input)) {
 		throw new WorkflowSpecificationError("Workflow input is required.");
 	}
-	if (input.kind === "none") return { kind: "none" };
+	if (input.kind === "none") {
+		assertOnlyFields(input, ["kind"], "None input");
+		return { kind: "none" };
+	}
 	if (input.kind === "extract") {
+		assertOnlyFields(input, ["kind", "content"], "Extract input");
 		if (typeof input.content !== "string")
 			throw new WorkflowSpecificationError("Extract input content must be a string.");
 		if (byteLength(input.content) > MAX_WORKFLOW_EXTRACT_BYTES) {
@@ -358,6 +459,11 @@ export function validateWorkflowInput(input: WorkflowInput): WorkflowInput {
 		return { kind: "extract", content: input.content };
 	}
 	if (input.kind === "path-range") {
+		assertOnlyFields(
+			input,
+			["kind", "path", "startLine", "endLine"],
+			"Path/range input",
+		);
 		assertRelativePath(input.path);
 		if (
 			!Number.isInteger(input.startLine) ||
@@ -426,52 +532,103 @@ function normalizeSpecification(specification: WorkflowSpecification): Validated
 		throw new WorkflowSpecificationError("Workflow concurrency must be an integer from 1 through 256.");
 	}
 	const keys = new Set<string>();
-	for (const item of specification.items) {
-		if (!item.key.trim() || !item.agent.trim())
+	const items = specification.items.map((item): ValidatedWorkflowItem => {
+		if (
+			typeof item.key !== "string" ||
+			!item.key.trim() ||
+			typeof item.agent !== "string" ||
+			!item.agent.trim()
+		) {
 			throw new WorkflowSpecificationError("Workflow item key and agent are required.");
+		}
 		if (keys.has(item.key))
 			throw new WorkflowSpecificationError(`Workflow item key ${item.key} is duplicated.`);
 		keys.add(item.key);
 		assertTask(item.task, `Workflow item ${item.key} task`);
-		validateWorkflowInput(item.input);
-		if (!Array.isArray(item.capabilities) || item.capabilities.some((tool: string) => !tool.trim())) {
-			throw new WorkflowSpecificationError(
-				`Workflow item ${item.key} must declare its capabilities.`,
-			);
+		assertCapabilities(item.capabilities, `Workflow item ${item.key}`);
+		if (item.retries !== undefined && !Array.isArray(item.retries)) {
+			throw new WorkflowSpecificationError(`Workflow item ${item.key} retries must be an array.`);
 		}
 		if ((item.retries?.length ?? 0) > attempts - 1) {
 			throw new WorkflowSpecificationError(
 				`Workflow item ${item.key} declares more retries than its attempt limit.`,
 			);
 		}
-		for (const retry of item.retries ?? []) {
+		const retries = item.retries?.map((retry: WorkflowRetry) => {
 			assertTask(retry.task, `Workflow retry for ${item.key}`);
-			validateWorkflowInput(retry.input);
+			return {
+				task: retry.task,
+				input: validateWorkflowInput(retry.input),
+			};
+		});
+		return {
+			key: item.key,
+			agent: item.agent,
+			task: item.task,
+			capabilities: [...item.capabilities],
+			...(item.scope ? { scope: [...item.scope] } : {}),
+			input: validateWorkflowInput(item.input ?? { kind: "none" }),
+			...(retries ? { retries } : {}),
+		};
+	});
+	let verify: WorkflowVerification | undefined;
+	if (specification.verify) {
+		assertTask(specification.verify.task, "Workflow verification task");
+		if (!specification.verify.agent?.trim()) {
+			throw new WorkflowSpecificationError("Workflow verification agent is required.");
 		}
-	}
-	if (specification.verify?.keys) {
-		for (const key of specification.verify.keys) {
-			if (!keys.has(key))
-				throw new WorkflowSpecificationError(`Verification target ${key} is not a workflow item.`);
-		}
-	}
-	const groupSize = specification.reduce?.groupSize ?? MAX_WORKFLOW_REDUCTION_GROUP_SIZE;
-	if (!Number.isInteger(groupSize) || groupSize < 1 || groupSize > MAX_WORKFLOW_REDUCTION_GROUP_SIZE) {
-		throw new WorkflowSpecificationError(
-			`Reduction groups must contain 1 through ${MAX_WORKFLOW_REDUCTION_GROUP_SIZE} results.`,
+		assertCapabilities(
+			specification.verify.capabilities,
+			"Workflow verification",
 		);
+		if (
+			specification.verify.keys !== undefined &&
+			(!Array.isArray(specification.verify.keys) ||
+				specification.verify.keys.length > MAX_WORKFLOW_ITEMS)
+		) {
+			throw new WorkflowSpecificationError("Workflow verification keys are invalid.");
+		}
+		for (const key of specification.verify.keys ?? []) {
+			if (typeof key !== "string" || !keys.has(key)) {
+				throw new WorkflowSpecificationError(`Verification target ${String(key)} is not a workflow item.`);
+			}
+		}
+		verify = {
+			...(specification.verify.keys
+				? { keys: [...specification.verify.keys] }
+				: {}),
+			agent: specification.verify.agent,
+			task: specification.verify.task,
+			capabilities: [...specification.verify.capabilities],
+		};
+	}
+	let reduce: (WorkflowReduction & { groupSize: number }) | undefined;
+	if (specification.reduce) {
+		assertTask(specification.reduce.task, "Workflow reduction task");
+		if (!specification.reduce.agent?.trim()) {
+			throw new WorkflowSpecificationError("Workflow reduction agent is required.");
+		}
+		assertCapabilities(specification.reduce.capabilities, "Workflow reduction");
+		const groupSize =
+			specification.reduce.groupSize ?? MAX_WORKFLOW_REDUCTION_GROUP_SIZE;
+		if (
+			!Number.isInteger(groupSize) ||
+			groupSize < MIN_WORKFLOW_REDUCTION_GROUP_SIZE ||
+			groupSize > MAX_WORKFLOW_REDUCTION_GROUP_SIZE
+		) {
+			throw new WorkflowSpecificationError(
+				`Reduction groups must contain ${MIN_WORKFLOW_REDUCTION_GROUP_SIZE} through ${MAX_WORKFLOW_REDUCTION_GROUP_SIZE} results.`,
+			);
+		}
+		reduce = {
+			groupSize,
+			agent: specification.reduce.agent,
+			task: specification.reduce.task,
+			capabilities: [...specification.reduce.capabilities],
+		};
 	}
 	const id = specification.id?.trim() || randomUUID();
-	const normalized = {
-		id,
-		items: specification.items,
-		attempts,
-		concurrency,
-		verify: specification.verify,
-		reduce: specification.reduce
-			? { ...specification.reduce, groupSize }
-			: undefined,
-	};
+	const normalized = { id, items, attempts, concurrency, verify, reduce };
 	return { ...normalized, fingerprint: JSON.stringify(normalized) };
 }
 
@@ -512,6 +669,12 @@ function parseVerification(value: unknown): WorkflowVerificationResult {
 		throw new WorkflowSpecificationError("Verification result must be an object.");
 	}
 	const record = value as Record<string, unknown>;
+	const permitted = new Set(["contradicted", "evidence", "gaps"]);
+	if (Object.keys(record).some((key) => !permitted.has(key))) {
+		throw new WorkflowSpecificationError(
+			"Verification result contains unsupported fields.",
+		);
+	}
 	if (typeof record.contradicted !== "boolean") {
 		throw new WorkflowSpecificationError("Verification result must declare contradicted.");
 	}
@@ -603,8 +766,25 @@ export class BoundedWorkflowRuntime {
 					`Workflow ID ${spec.id} is already retained with a different specification.`,
 				);
 			}
-			if (retained.result) return retained.result;
-			if (retained.promise) return retained.promise;
+			if (retained.state === "settled" && retained.result) return retained.result;
+			if (retained.state === "running" && retained.promise) return retained.promise;
+			if (
+				(retained.state === "failed" || retained.state === "cancelled") &&
+				retained.error
+			) {
+				throw retained.error;
+			}
+			throw new Error(`Retained workflow ${spec.id} has incomplete state.`);
+		}
+		if (spec.verify && !dependencies.verify) {
+			throw new WorkflowSpecificationError(
+				"Workflow verification requires a verification dependency.",
+			);
+		}
+		if (spec.reduce && !dependencies.reduce) {
+			throw new WorkflowSpecificationError(
+				"Workflow reduction requires a reduction dependency.",
+			);
 		}
 		const controller = new AbortController();
 		const forwardAbort = () => controller.abort(signal?.reason);
@@ -624,8 +804,16 @@ export class BoundedWorkflowRuntime {
 				return result;
 			})
 			.catch((error: unknown) => {
+				const terminalError = controller.signal.aborted
+					? error instanceof WorkflowCancelledError
+						? error
+						: new WorkflowCancelledError()
+					: error instanceof Error
+						? error
+						: new Error(String(error));
 				state.state = controller.signal.aborted ? "cancelled" : "failed";
-				throw error;
+				state.error = terminalError;
+				throw terminalError;
 			})
 			.finally(() => signal?.removeEventListener("abort", forwardAbort));
 		this.prune();
@@ -642,7 +830,21 @@ export class BoundedWorkflowRuntime {
 	get(id: string): WorkflowSnapshot | undefined {
 		const state = this.workflows.get(id);
 		if (!state) return undefined;
-		return { id: state.id, state: state.state, ...(state.result ? { result: state.result } : {}) };
+		if (state.state === "running") return { id: state.id, state: "running" };
+		if (state.state === "settled" && state.result) {
+			return { id: state.id, state: "settled", result: state.result };
+		}
+		if (state.state === "cancelled" && state.error) {
+			return {
+				id: state.id,
+				state: "cancelled",
+				error: state.error as WorkflowCancelledError,
+			};
+		}
+		if (state.state === "failed" && state.error) {
+			return { id: state.id, state: "failed", error: state.error };
+		}
+		throw new Error(`Retained workflow ${id} has incomplete state.`);
 	}
 
 	clear(): void {
@@ -885,13 +1087,24 @@ export class BoundedWorkflowRuntime {
 	}
 }
 
+const WORKFLOW_RUNTIME_VERSION = 1;
 const WORKFLOW_RUNTIME_KEY = Symbol.for("dotfiles.pi.subagent-workflow-runtime");
+
+type WorkflowRuntimeGlobal = {
+	version: number;
+	runtime: BoundedWorkflowRuntime;
+};
 
 export function getSubagentWorkflowRuntime(): BoundedWorkflowRuntime {
 	const globals = globalThis as typeof globalThis & Record<symbol, unknown>;
-	const existing = globals[WORKFLOW_RUNTIME_KEY];
-	if (existing instanceof BoundedWorkflowRuntime) return existing;
+	const existing = globals[WORKFLOW_RUNTIME_KEY] as
+		| WorkflowRuntimeGlobal
+		| undefined;
+	if (existing?.version === WORKFLOW_RUNTIME_VERSION) return existing.runtime;
 	const runtime = new BoundedWorkflowRuntime();
-	globals[WORKFLOW_RUNTIME_KEY] = runtime;
+	globals[WORKFLOW_RUNTIME_KEY] = {
+		version: WORKFLOW_RUNTIME_VERSION,
+		runtime,
+	} satisfies WorkflowRuntimeGlobal;
 	return runtime;
 }

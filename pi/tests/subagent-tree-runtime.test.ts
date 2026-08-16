@@ -1,3 +1,4 @@
+import * as net from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import {
 	getSubagentTreeBroker,
@@ -10,7 +11,343 @@ import {
 	treeClientFromEnvironment,
 } from "../extensions/subagent/tree-runtime.ts";
 
+type SocketRequestTarget = {
+	request(
+		request:
+			| { readonly type: "handshake" }
+			| {
+					readonly type: "acquire";
+					readonly request: {
+						readonly treeId: string;
+						readonly parentRunId: string;
+						readonly runId: string;
+						readonly role: "leaf";
+					};
+				},
+		options?: {
+			readonly signal?: AbortSignal;
+			readonly connectTimeoutMs?: number;
+			readonly responseTimeoutMs?: number;
+			readonly timeoutMode?: "response" | "idle";
+			readonly probeAcquireIdle?: boolean;
+		},
+	): Promise<unknown>;
+};
+
+type SocketServerFixture = {
+	readonly server: net.Server;
+	readonly port: number;
+	readonly sockets: Set<net.Socket>;
+};
+
+async function createSocketServer(
+	onConnection: (socket: net.Socket) => void,
+): Promise<SocketServerFixture> {
+	const sockets = new Set<net.Socket>();
+	const server = net.createServer((socket) => {
+		sockets.add(socket);
+		socket.once("close", () => sockets.delete(socket));
+		onConnection(socket);
+	});
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", () => {
+			server.off("error", reject);
+			resolve();
+		});
+	});
+	const address = server.address();
+	if (!address || typeof address === "string") {
+		server.close();
+		throw new Error("Socket test server did not bind a TCP port.");
+	}
+	return { server, port: address.port, sockets };
+}
+
+async function closeSocketServer(fixture: SocketServerFixture): Promise<void> {
+	for (const socket of fixture.sockets) socket.destroy();
+	if (!fixture.server.listening) return;
+	await new Promise<void>((resolve) => fixture.server.close(() => resolve()));
+}
+
+function createSocketClient(port: number): SubagentTreeClient {
+	return new SubagentTreeClient(
+		{
+			host: "127.0.0.1",
+			port,
+			token: "broker-token",
+			protocolVersion: SUBAGENT_TREE_PROTOCOL_VERSION,
+			runtimeGeneration: "socket-test-runtime",
+		},
+		{ treeId: "tree", runId: "root", role: "root", depth: 0 },
+		"caller-token",
+	);
+}
+
+function socketRequestTarget(client: SubagentTreeClient): SocketRequestTarget {
+	return client as unknown as SocketRequestTarget;
+}
+
+async function connectSocket(port: number): Promise<net.Socket> {
+	const socket = net.createConnection({ host: "127.0.0.1", port });
+	await new Promise<void>((resolve, reject) => {
+		socket.once("connect", resolve);
+		socket.once("error", reject);
+	});
+	return socket;
+}
+
+function readSocketLine(socket: net.Socket): Promise<string> {
+	return new Promise<string>((resolve, reject) => {
+		let buffer = "";
+		let settled = false;
+		const cleanup = () => {
+			socket.off("data", receive);
+			socket.off("error", fail);
+			socket.off("close", closed);
+		};
+		const finish = (line: string) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			resolve(line);
+		};
+		const fail = (error: Error) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			reject(error);
+		};
+		const closed = () => fail(new Error("Socket closed before a response line."));
+		const receive = (chunk: string) => {
+			buffer += chunk;
+			const newline = buffer.indexOf("\n");
+			if (newline >= 0) finish(buffer.slice(0, newline));
+		};
+		socket.setEncoding("utf8");
+		socket.on("data", receive);
+		socket.once("error", fail);
+		socket.once("close", closed);
+	});
+}
+
 describe("SubagentTreeBroker", () => {
+	it("rejects oversized request frames without retaining the input", async () => {
+		const broker = new SubagentTreeBroker();
+		const credentials = await broker.listen();
+		const socket = await connectSocket(credentials.port);
+		try {
+			const response = readSocketLine(socket);
+			socket.write("x".repeat(70 * 1024));
+			expect(JSON.parse(await response)).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("request frame exceeds"),
+			});
+		} finally {
+			socket.destroy();
+			await broker.dispose();
+		}
+	});
+
+	it("rejects oversized client request frames before connecting", async () => {
+		const request = socketRequestTarget(createSocketClient(1));
+		await expect(
+			request.request({
+				type: "acquire",
+				request: {
+					treeId: "x".repeat(70 * 1024),
+					parentRunId: "root",
+					runId: "oversized",
+					role: "leaf",
+				},
+			}),
+		).rejects.toThrow("request frame exceeds");
+	});
+
+	it("rejects oversized response frames", async () => {
+		const fixture = await createSocketServer((socket) => {
+			socket.write("x".repeat(70 * 1024));
+		});
+		try {
+			const request = socketRequestTarget(createSocketClient(fixture.port));
+			await expect(request.request({ type: "handshake" })).rejects.toThrow(
+				"response frame exceeds",
+			);
+		} finally {
+			await closeSocketServer(fixture);
+		}
+	});
+
+	it("rejects a connection that closes without a response", async () => {
+		const fixture = await createSocketServer((socket) => {
+			socket.once("data", () => socket.end());
+		});
+		try {
+			const request = socketRequestTarget(createSocketClient(fixture.port));
+			await expect(request.request({ type: "handshake" })).rejects.toThrow(
+				"closed without a response",
+			);
+		} finally {
+			await closeSocketServer(fixture);
+		}
+	});
+
+	it("applies a response deadline after connecting", async () => {
+		let requestReceived: (() => void) | undefined;
+		const received = new Promise<void>((resolve) => {
+			requestReceived = resolve;
+		});
+		const fixture = await createSocketServer((socket) => {
+			socket.once("data", () => requestReceived?.());
+		});
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const request = socketRequestTarget(createSocketClient(fixture.port));
+			const pending = request.request(
+				{ type: "handshake" },
+				{ connectTimeoutMs: 1_000, responseTimeoutMs: 100 },
+			);
+			const assertion = expect(pending).rejects.toThrow("response timed out");
+			await received;
+			await vi.advanceTimersByTimeAsync(100);
+			await assertion;
+		} finally {
+			vi.useRealTimers();
+			await closeSocketServer(fixture);
+		}
+	});
+
+	it("resets the acquire idle deadline on broker heartbeats", async () => {
+		let requestSocket: ((socket: net.Socket) => void) | undefined;
+		const received = new Promise<net.Socket>((resolve) => {
+			requestSocket = resolve;
+		});
+		const fixture = await createSocketServer((socket) => {
+			socket.once("data", () => requestSocket?.(socket));
+		});
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const request = socketRequestTarget(createSocketClient(fixture.port));
+			const pending = request.request(
+				{
+					type: "acquire",
+					request: {
+						treeId: "tree",
+						parentRunId: "root",
+						runId: "queued",
+						role: "leaf",
+					},
+				},
+				{
+					connectTimeoutMs: 1_000,
+					responseTimeoutMs: 100,
+					timeoutMode: "idle",
+					probeAcquireIdle: false,
+				},
+			);
+			const assertion = expect(pending).resolves.toMatchObject({
+				ok: true,
+				ownerToken: "permit-token",
+			});
+			const socket = await received;
+			await vi.advanceTimersByTimeAsync(90);
+			socket.write(" ");
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await vi.advanceTimersByTimeAsync(90);
+			socket.end(
+				`${JSON.stringify({
+					ok: true,
+					metadata: {
+						treeId: "tree",
+						parentRunId: "root",
+						runId: "queued",
+						role: "leaf",
+						depth: 1,
+					},
+					ownerToken: "permit-token",
+				})}\n`,
+			);
+			await assertion;
+		} finally {
+			vi.useRealTimers();
+			await closeSocketServer(fixture);
+		}
+	});
+
+	it("destroys an in-flight client request when it is aborted", async () => {
+		let requestSocket: ((socket: net.Socket) => void) | undefined;
+		const received = new Promise<net.Socket>((resolve) => {
+			requestSocket = resolve;
+		});
+		const fixture = await createSocketServer((socket) => {
+			socket.once("data", () => requestSocket?.(socket));
+		});
+		try {
+			const request = socketRequestTarget(createSocketClient(fixture.port));
+			const controller = new AbortController();
+			const pending = request.request(
+				{ type: "handshake" },
+				{ signal: controller.signal },
+			);
+			const assertion = expect(pending).rejects.toThrow("socket abort");
+			const socket = await received;
+			const closed = new Promise<void>((resolve) => socket.once("close", resolve));
+			controller.abort(new Error("socket abort"));
+			await assertion;
+			await closed;
+		} finally {
+			await closeSocketServer(fixture);
+		}
+	});
+
+	it("bounds best-effort cancellation when an aborted acquire broker is silent", async () => {
+		let acquireReceived: (() => void) | undefined;
+		const received = new Promise<void>((resolve) => {
+			acquireReceived = resolve;
+		});
+		const fixture = await createSocketServer((socket) => {
+			let buffer = "";
+			socket.setEncoding("utf8");
+			socket.on("data", (chunk: string) => {
+				buffer += chunk;
+				const newline = buffer.indexOf("\n");
+				if (newline < 0) return;
+				const candidate = JSON.parse(buffer.slice(0, newline)) as {
+					readonly type?: unknown;
+				};
+				if (candidate.type === "handshake") {
+					socket.end(
+						`${JSON.stringify({
+							ok: true,
+							protocolVersion: SUBAGENT_TREE_PROTOCOL_VERSION,
+							runtimeGeneration: "socket-test-runtime",
+						})}\n`,
+					);
+				} else if (candidate.type === "acquire") {
+					acquireReceived?.();
+				}
+			});
+		});
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const client = createSocketClient(fixture.port);
+			const controller = new AbortController();
+			const pending = client.acquire(
+				{ runId: "bounded-abort", role: "leaf" },
+				controller.signal,
+			);
+			const assertion = expect(pending).rejects.toThrow("cancelled");
+			await received;
+			controller.abort();
+			await vi.advanceTimersByTimeAsync(5_000);
+			await assertion;
+		} finally {
+			vi.useRealTimers();
+			await closeSocketServer(fixture);
+		}
+	});
+
 	it("admits root leaves in process and listens only for coordinators", async () => {
 		const broker = new SubagentTreeBroker();
 		const listen = vi.spyOn(broker, "listen");
@@ -411,6 +748,29 @@ describe("SubagentTreeBroker", () => {
 			},
 		});
 		await replacement.release();
+	});
+
+	it("allows a failed local release to be retried safely", async () => {
+		const broker = new SubagentTreeBroker();
+		const root = broker.createTree();
+		const permit = await broker.acquire({
+			treeId: root.treeId,
+			parentRunId: root.rootRunId,
+			runId: "retry-local-release",
+			role: "leaf",
+		});
+		const originalRelease = broker.release.bind(broker);
+		const release = vi
+			.spyOn(broker, "release")
+			.mockRejectedValueOnce(new Error("local release failed"))
+			.mockImplementation(originalRelease);
+
+		await expect(permit.release()).rejects.toThrow("local release failed");
+		await expect(permit.release()).resolves.toBeUndefined();
+		expect(release).toHaveBeenCalledTimes(2);
+		expect(
+			broker.list().find((run) => run.runId === "retry-local-release")?.state,
+		).toBe("settled");
 	});
 
 	it("allows a failed release acknowledgement to be retried safely", async () => {

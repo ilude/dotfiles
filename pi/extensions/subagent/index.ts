@@ -90,6 +90,7 @@ import {
 import {
 	assertDisjointScopes,
 	decodeScopePolicyEnvironment,
+	COMMAND_MUTATION_TOOLS,
 	directMutationViolation,
 	DIRECT_FILE_MUTATION_TOOLS,
 	encodeScopePolicyEnvironment,
@@ -98,6 +99,7 @@ import {
 } from "./scope-policy.js";
 import {
 	formatSubagentStatus,
+	formatSubagentStatusGroup,
 	formatSubagentStatusList,
 	inspectSubagentStatus,
 } from "./status.js";
@@ -112,7 +114,10 @@ import {
 } from "./tree-runtime.js";
 import {
 	getSubagentWorkflowRuntime,
+	WorkflowLeafOutputSchema,
+	WorkflowReductionOutputSchema,
 	WorkflowSpecificationSchema,
+	WorkflowVerificationOutputSchema,
 	type WorkflowExecutionRequest,
 	type WorkflowInput,
 	type WorkflowReductionRequest,
@@ -147,13 +152,6 @@ const BACKGROUND_RESULT_MAX_BYTES = 48 * 1024;
 const BACKGROUND_RESULT_MAX_LINES = 1000;
 export const SUBAGENT_TERMINATION_GRACE_MS = 5_000;
 export const SUBAGENT_TERMINATION_DEADLINE_MS = 10_000;
-const READ_ONLY_EXPERIMENT_TOOLS = new Set([
-	"read",
-	"grep",
-	"find",
-	"ls",
-	"bash",
-]);
 const READ_ONLY_EXPERIMENT_INSTRUCTION =
 	"This is a read-only experiment. Do not edit files or run mutating commands.";
 
@@ -475,13 +473,32 @@ export interface SubagentDetails {
 export function getFinalOutput(messages: Message[]): string {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const msg = messages[i];
-		if (msg.role === "assistant") {
-			for (const part of msg.content) {
-				if (part.type === "text") return part.text;
-			}
-		}
+		if (msg.role !== "assistant") continue;
+		return msg.content
+			.flatMap((part) => (part.type === "text" ? [part.text] : []))
+			.join("\n");
 	}
 	return "";
+}
+
+export type SubagentResultClassification =
+	| "running"
+	| "completed"
+	| "failed"
+	| "cancelled";
+
+export function classifySubagentResult(
+	result: Pick<SingleResult, "exitCode" | "stopReason" | "errorMessage">,
+): SubagentResultClassification {
+	if (result.exitCode === -1) return "running";
+	if (result.stopReason === "aborted") return "cancelled";
+	if (
+		result.exitCode !== 0 ||
+		result.stopReason === "error" ||
+		Boolean(result.errorMessage)
+	)
+		return "failed";
+	return "completed";
 }
 
 function eventResultText(value: unknown): string {
@@ -626,9 +643,9 @@ function saveOutputArtifact(
 	}
 }
 
-function boundFableVisibleResult<
+function boundProviderVisibleResult<
 	T extends { content: Array<{ type: string; text?: string }> },
->(result: T, label: string): T {
+>(result: T, label: string, boundary: "Fable" | "provider-visible"): T {
 	const fullOutput = result.content
 		.filter(
 			(item): item is { type: string; text: string } =>
@@ -643,13 +660,16 @@ function boundFableVisibleResult<
 	if (!initial.truncated) return result;
 
 	const saved = saveOutputArtifact(
-		getDefaultArtifactPath(`fable-${label}-${randomUUID()}`, 0),
+		getDefaultArtifactPath(
+			`${boundary === "Fable" ? "fable" : "foreground"}-${label}-${randomUUID()}`,
+			0,
+		),
 		fullOutput,
 	);
 	const reference = saved.reference?.message ??
 		`Full result artifact could not be saved: ${saved.error ?? "unknown error"}`;
 	const visible = truncateTail(
-		`${fullOutput}\n\n[Result truncated at the Fable foreground boundary. ${reference}]`,
+		`${fullOutput}\n\n[Result truncated at the ${boundary} foreground boundary. ${reference}]`,
 		{ maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES },
 	);
 	result.content = [{ type: "text", text: visible.content }];
@@ -673,8 +693,7 @@ function finalizeOutput(
 		: undefined;
 	if (
 		result.outputPath &&
-		result.exitCode === 0 &&
-		result.stopReason !== "error"
+		classifySubagentResult(result) === "completed"
 	) {
 		const saved = saveOutputArtifact(
 			result.outputPath,
@@ -719,13 +738,18 @@ export function aggregateParallelOutputs(results: SingleResult[]): string {
 			const header = `=== Parallel Task ${i + 1} (${r.agent}) ===`;
 			const output = getResultOutput(r);
 			const hasOutput = Boolean(output.trim());
-			const isModelError = r.stopReason === "error" || Boolean(r.errorMessage);
+			const classification = classifySubagentResult(r);
+			const isModelError =
+				r.stopReason === "error" ||
+				(Boolean(r.errorMessage) && r.exitCode === 0);
 			const status =
-				r.exitCode !== 0 || isModelError
-					? `FAILED (${isModelError ? "model error" : `exit code ${r.exitCode}`})${r.errorMessage ? `: ${r.errorMessage}` : ""}`
-					: !hasOutput
-						? "EMPTY OUTPUT (no textual response returned)"
-						: "";
+				classification === "cancelled"
+					? `FAILED (cancelled)${r.errorMessage ? `: ${r.errorMessage}` : ""}`
+					: classification === "failed"
+						? `FAILED (${isModelError ? "model error" : `exit code ${r.exitCode}`})${r.errorMessage ? `: ${r.errorMessage}` : ""}`
+						: !hasOutput
+							? "EMPTY OUTPUT (no textual response returned)"
+							: "";
 			let body = status
 				? hasOutput
 					? `${status}\n${output}`
@@ -895,6 +919,7 @@ interface SubagentRunContext {
 	taskKey?: string;
 	attempt?: number;
 	retryOrigin?: string;
+	workflowCapabilities?: readonly string[];
 	treeClient?: SubagentTreeController;
 }
 
@@ -923,7 +948,8 @@ interface InternalWorkflowRunContext {
 	taskKey: string;
 	attempt: number;
 	retryOrigin?: string;
-	modifying: boolean;
+	capabilities: readonly string[];
+	readOnly: boolean;
 }
 
 const internalWorkflowRuns = new Map<string, InternalWorkflowRunContext>();
@@ -1029,31 +1055,54 @@ function resolveFableChildModel(
 	return `${resolved.provider}/${resolved.id}`;
 }
 
-function agentCanModify(agent: AgentConfig | undefined): boolean {
-	return Boolean(
-		agent?.tools?.some((tool) => DIRECT_FILE_MUTATION_TOOLS.has(tool)),
-	);
+interface ChildToolAuthority {
+	tools: string[];
+	canDirectlyMutate: boolean;
 }
 
-function childTools(
+interface ChildToolAuthorityOptions {
+	role: SubagentRole;
+	hasScopeLease: boolean;
+	readOnly?: boolean;
+	workflowCapabilities?: readonly string[];
+}
+
+function resolveChildToolAuthority(
 	agent: AgentConfig,
-	role: SubagentRole,
-	hasScopeLease: boolean,
-): string[] | undefined {
-	let tools = agent.tools ? [...agent.tools] : undefined;
-	if (role === "coordinator") {
-		tools = (tools ?? ["read", "grep", "find", "ls", "subagent"]).filter(
-			(tool) => !DIRECT_FILE_MUTATION_TOOLS.has(tool),
-		);
-	}
-	if (role === "leaf") {
-		tools = (tools ?? ["read", "bash"]).filter(
+	options: ChildToolAuthorityOptions,
+): ChildToolAuthority {
+	const defaults =
+		options.role === "coordinator"
+			? ["read", "grep", "find", "ls", "subagent"]
+			: ["read", "bash"];
+	let tools = [...(agent.tools ?? defaults)];
+	if (options.role === "coordinator") {
+		tools = tools.filter((tool) => !DIRECT_FILE_MUTATION_TOOLS.has(tool));
+	} else {
+		tools = tools.filter(
 			(tool) => !DELEGATION_AND_WORKFLOW_TOOLS.has(tool),
 		);
 	}
-	if (hasScopeLease)
-		tools = toolsForScopedModifier(tools ?? ["read", "edit", "write"]);
-	return tools;
+	if (options.workflowCapabilities) {
+		const admitted = new Set(options.workflowCapabilities);
+		tools = tools.filter((tool) => admitted.has(tool));
+	}
+	if (options.readOnly) {
+		tools = tools.filter(
+			(tool) =>
+				!COMMAND_MUTATION_TOOLS.has(tool) &&
+				!DIRECT_FILE_MUTATION_TOOLS.has(tool) &&
+				!DELEGATION_AND_WORKFLOW_TOOLS.has(tool),
+		);
+	}
+	if (options.hasScopeLease) tools = toolsForScopedModifier(tools);
+	tools = [...new Set(tools)];
+	return {
+		tools,
+		canDirectlyMutate: tools.some((tool) =>
+			DIRECT_FILE_MUTATION_TOOLS.has(tool),
+		),
+	};
 }
 
 export class SubagentAbortError extends Error {
@@ -1120,24 +1169,28 @@ export async function runSingleAgent(
 		runContext?.scopes ?? [],
 		runContext?.repositoryRoot ?? defaultCwd,
 	);
+	const authority = resolveChildToolAuthority(agent, {
+		role: resolvedChild.role,
+		hasScopeLease: normalizedScopes.length > 0,
+		readOnly: runContext?.readOnly,
+		workflowCapabilities: runContext?.workflowCapabilities,
+	});
+	if (
+		resolvedChild.role === "leaf" &&
+		authority.canDirectlyMutate &&
+		normalizedScopes.length === 0
+	)
+		throw new Error(
+			`Modifying leaf ${agent.name} must declare a repository-relative scope.`,
+		);
 	const args: string[] = ["--mode", "json", "-p", "--no-skills"];
 	if (modelOverride) args.push("--model", modelOverride);
 	else if (agent.model) args.push("--model", agent.model);
 	const effectiveEffort = effortOverride ?? agent.effort;
 	if (effectiveEffort) args.push("--thinking", effectiveEffort);
-	if (runContext?.readOnly) {
-		const tools = (agent.tools ?? ["read", "bash"])
-			.filter((tool) => READ_ONLY_EXPERIMENT_TOOLS.has(tool))
-			.filter((tool) => !DELEGATION_AND_WORKFLOW_TOOLS.has(tool));
-		args.push("--tools", (tools.length > 0 ? tools : ["read"]).join(","));
-	} else {
-		const tools = childTools(
-			agent,
-			resolvedChild.role,
-			normalizedScopes.length > 0,
-		);
-		if (tools && tools.length > 0) args.push("--tools", tools.join(","));
-	}
+	if (authority.tools.length > 0)
+		args.push("--tools", authority.tools.join(","));
+	else args.push("--no-tools");
 	for (const skillPath of resolveAgentSkillPaths(agent))
 		args.push("--skill", skillPath);
 
@@ -1677,14 +1730,14 @@ export async function runSingleAgent(
 			timingFinished = true;
 			throw new SubagentAbortError();
 		}
-		const isModelError = currentResult.stopReason === "error";
-		if (exitCode === 0 && !isModelError) {
+		const classification = classifySubagentResult(currentResult);
+		if (classification === "completed") {
 			timingSpan.finish("ok", { exitCode, workflow, phase: "run", planPath });
 		} else {
 			const errorReason =
 				currentResult.errorMessage ||
 				currentResult.stderr.slice(-500) ||
-				(isModelError
+				(currentResult.stopReason === "error"
 					? "model returned stopReason=error"
 					: `exit code ${exitCode}`);
 			currentResult.errorMessage ??= errorReason;
@@ -1722,15 +1775,16 @@ export async function runSingleAgent(
 		throw err;
 	} finally {
 		currentResult.durationMs = Date.now() - runStartedAt;
-		const cancelled =
-			currentResult.stopReason === "aborted" || runController.signal.aborted;
-		const failed =
-			!cancelled &&
-			(currentResult.exitCode !== 0 ||
-				currentResult.stopReason === "error" ||
-				Boolean(currentResult.errorMessage));
+		const classification = runController.signal.aborted
+			? "cancelled"
+			: classifySubagentResult(currentResult);
 		subagentRunManager.settle(runId, {
-			status: cancelled ? "cancelled" : failed ? "failed" : "completed",
+			status:
+				classification === "cancelled"
+					? "cancelled"
+					: classification === "failed"
+						? "failed"
+						: "completed",
 			model: currentResult.model,
 			exitCode: currentResult.exitCode,
 			stopReason: currentResult.stopReason,
@@ -1775,6 +1829,47 @@ type TaskParams = {
 };
 
 type ChainParams = TaskParams;
+
+type DirectInvocationInput = {
+	agent?: string;
+	task?: string;
+	taskId?: string;
+	role?: SubagentRole;
+	scope?: string[];
+	cwd?: string;
+	output?: string | boolean;
+	outputMode?: OutputMode;
+	tasks?: TaskParams[];
+};
+
+type NormalizedDirectInvocation =
+	| { mode: "single"; items: [TaskParams] }
+	| { mode: "parallel"; items: TaskParams[] };
+
+function normalizeDirectInvocation(
+	input: DirectInvocationInput,
+): NormalizedDirectInvocation | undefined {
+	const hasSingle = Boolean(input.agent && input.task);
+	const hasParallel = (input.tasks?.length ?? 0) > 0;
+	if (hasSingle === hasParallel) return undefined;
+	if (hasParallel)
+		return { mode: "parallel", items: [...(input.tasks ?? [])] };
+	return {
+		mode: "single",
+		items: [
+			{
+				agent: input.agent ?? "",
+				task: input.task ?? "",
+				taskId: input.taskId,
+				role: input.role,
+				scope: input.scope,
+				cwd: input.cwd,
+				output: input.output,
+				outputMode: input.outputMode,
+			},
+		],
+	};
+}
 
 type ReadOnlyFanoutTaskParams = TaskParams & {
 	output?: undefined;
@@ -1846,38 +1941,6 @@ const StructuredOutputSchema = Type.Record(Type.String(), Type.Unknown(), {
 		"JSON Schema for validated child output. Invalid output receives at most one continuation correction.",
 });
 
-const WorkflowTextListSchema = Type.Array(Type.String({ maxLength: 500 }), {
-	maxItems: 32,
-});
-const WorkflowLeafOutputSchema = Type.Object(
-	{
-		status: StringEnum(
-			["found", "not_found", "inconclusive", "error"] as const,
-		),
-		evidence: Type.Optional(WorkflowTextListSchema),
-		changedFiles: Type.Optional(WorkflowTextListSchema),
-		validation: Type.Optional(WorkflowTextListSchema),
-		gaps: Type.Optional(WorkflowTextListSchema),
-	},
-	{ additionalProperties: false },
-);
-const WorkflowVerificationOutputSchema = Type.Object(
-	{
-		contradicted: Type.Boolean(),
-		evidence: Type.Optional(WorkflowTextListSchema),
-		gaps: Type.Optional(WorkflowTextListSchema),
-	},
-	{ additionalProperties: false },
-);
-const WorkflowReductionOutputSchema = Type.Object(
-	{
-		summary: Type.String({ maxLength: 500 }),
-		evidence: Type.Optional(WorkflowTextListSchema),
-		gaps: Type.Optional(WorkflowTextListSchema),
-	},
-	{ additionalProperties: false },
-);
-
 function workflowInputInstruction(input: WorkflowInput): string {
 	if (input.kind === "none") return "";
 	if (input.kind === "extract")
@@ -1897,11 +1960,21 @@ const ModificationScopeSchema = Type.Array(Type.String(), {
 		"Normalized repository-relative paths leased to a modifying leaf.",
 });
 
+const AdvertisedOutputSchema = Type.Boolean({
+	description:
+		"Save full output to a runtime-generated private artifact. Set false to disable optional artifact saving.",
+});
+
+const LegacyOutputSchema = Type.Union([Type.String(), Type.Boolean()], {
+	description:
+		"Legacy output artifact selector. String paths remain executable for resumed and direct calls but are not advertised.",
+});
+
 function createSubagentSchemas(agentNames?: readonly string[]) {
 	const agentName = (description: string) =>
 		agentNames && agentNames.length > 0
 			? StringEnum(agentNames, {
-					description: `${description}. Default user agents; project agents require agentScope.`,
+					description: `${description}. Trusted catalog; project agents require agentScope project or both.`,
 				})
 			: Type.String({ description });
 	const taskItem = Type.Object({
@@ -1916,12 +1989,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		cwd: Type.Optional(
 			Type.String({ description: "Working directory for the agent process" }),
 		),
-		output: Type.Optional(
-			Type.Union([Type.String(), Type.Boolean()], {
-				description:
-					"Optional artifact path for full output. Set false to disable saved artifacts. Relative paths resolve from the task cwd or current cwd.",
-			}),
-		),
+		output: Type.Optional(AdvertisedOutputSchema),
 		outputMode: Type.Optional(OutputModeSchema),
 	});
 	const readOnlyFanoutTaskItem = Type.Object(
@@ -1959,13 +2027,16 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		cwd: Type.Optional(
 			Type.String({ description: "Working directory for the agent process" }),
 		),
-		output: Type.Optional(
-			Type.Union([Type.String(), Type.Boolean()], {
-				description:
-					"Optional artifact path for full output. Set false to disable saved artifacts. Relative paths resolve from the step cwd or current cwd.",
-			}),
-		),
+		output: Type.Optional(AdvertisedOutputSchema),
 		outputMode: Type.Optional(OutputModeSchema),
+	});
+	const legacyTaskItem = Type.Object({
+		...taskItem.properties,
+		output: Type.Optional(LegacyOutputSchema),
+	});
+	const legacyChainItem = Type.Object({
+		...chainItem.properties,
+		output: Type.Optional(LegacyOutputSchema),
 	});
 	const legacy = Type.Object({
 		readOnlyFanout: Type.Optional(readOnlyFanoutSchema),
@@ -1976,7 +2047,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 				task: Type.String({ description: "Follow-up message" }),
 				effort: Type.Optional(EffortSchema),
 				cwd: Type.Optional(Type.String({ description: "Working directory" })),
-				output: Type.Optional(Type.Union([Type.String(), Type.Boolean()])),
+				output: Type.Optional(LegacyOutputSchema),
 				outputMode: Type.Optional(OutputModeSchema),
 			}),
 		),
@@ -1994,14 +2065,14 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		role: Type.Optional(SubagentRoleSchema),
 		scope: Type.Optional(ModificationScopeSchema),
 		tasks: Type.Optional(
-			Type.Array(taskItem, {
+			Type.Array(legacyTaskItem, {
 				minItems: 1,
 				maxItems: MAX_SUBAGENT_WORKERS_PER_WAVE,
 				description: "Parallel {agent, task} workers",
 			}),
 		),
 		chain: Type.Optional(
-			Type.Array(chainItem, {
+			Type.Array(legacyChainItem, {
 				minItems: 1,
 				maxItems: MAX_SUBAGENT_WORKERS_PER_WAVE,
 				description: "Array of {agent, task} for sequential execution",
@@ -2043,12 +2114,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 				description: "Working directory for the agent process (single mode)",
 			}),
 		),
-		output: Type.Optional(
-			Type.Union([Type.String(), Type.Boolean()], {
-				description:
-					"Optional artifact path for full output in single mode. Set false to disable saved artifacts.",
-			}),
-		),
+		output: Type.Optional(LegacyOutputSchema),
 		outputMode: Type.Optional(OutputModeSchema),
 	});
 	const common = {
@@ -2070,10 +2136,16 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 			taskId: legacy.properties.taskId,
 			role: legacy.properties.role,
 			scope: legacy.properties.scope,
-			tasks: legacy.properties.tasks,
+			tasks: Type.Optional(
+				Type.Array(taskItem, {
+					minItems: 1,
+					maxItems: MAX_SUBAGENT_WORKERS_PER_WAVE,
+					description: "Parallel {agent, task} workers",
+				}),
+			),
 			...common,
 			cwd: legacy.properties.cwd,
-			output: legacy.properties.output,
+			output: Type.Optional(AdvertisedOutputSchema),
 			outputMode: legacy.properties.outputMode,
 		}),
 		chain: Type.Object({
@@ -2091,7 +2163,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 			task: Type.String({ description: "Follow-up message" }),
 			effort: Type.Optional(EffortSchema),
 			cwd: Type.Optional(Type.String({ description: "Working directory" })),
-			output: Type.Optional(Type.Union([Type.String(), Type.Boolean()])),
+			output: Type.Optional(AdvertisedOutputSchema),
 			outputMode: Type.Optional(OutputModeSchema),
 			agentScope: legacy.properties.agentScope,
 			model: legacy.properties.model,
@@ -2143,6 +2215,7 @@ const WorkflowToolSchema = Type.Object(
 
 type SessionAgentCatalog = {
 	cwd: string;
+	projectTrusted: boolean;
 	byScope: Record<AgentScope, AgentDiscoveryResult>;
 	agentNames: string[];
 };
@@ -2159,13 +2232,27 @@ function createSessionAgentCatalog(
 		? discoverAgents(cwd, "both")
 		: { agents: user.agents, projectAgentsDir: user.projectAgentsDir };
 	const agentNames = Array.from(
-		new Set(user.agents.map((agent) => agent.name)),
+		new Set(both.agents.map((agent) => agent.name)),
 	).sort();
 	return {
 		cwd,
+		projectTrusted,
 		byScope: { user, project, both },
 		agentNames,
 	};
+}
+
+function resolveSessionAgentCatalog(
+	catalog: SessionAgentCatalog | undefined,
+	ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
+): SessionAgentCatalog {
+	const projectTrusted = ctx.isProjectTrusted();
+	if (
+		catalog?.cwd === ctx.cwd &&
+		catalog.projectTrusted === projectTrusted
+	)
+		return catalog;
+	return createSessionAgentCatalog(ctx.cwd, projectTrusted);
 }
 
 const ADVANCED_SUBAGENT_TOOL_NAMES = [
@@ -2186,6 +2273,17 @@ export default function (pi: ExtensionAPI) {
 	let activeScopePolicy = decodeScopePolicyEnvironment(
 		process.env.PI_SUBAGENT_SCOPE_POLICY,
 	);
+
+	const agentDiscoveryFor = (
+		ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
+		scope: AgentScope,
+	): AgentDiscoveryResult => {
+		const previousCatalog = sessionAgentCatalog;
+		sessionAgentCatalog = resolveSessionAgentCatalog(previousCatalog, ctx);
+		if (sessionAgentCatalog !== previousCatalog)
+			refreshAgentTools(sessionAgentCatalog.agentNames);
+		return sessionAgentCatalog.byScope[scope];
+	};
 
 	const updateStatus = () => {
 		if (!statusContext) return;
@@ -2251,10 +2349,7 @@ export default function (pi: ExtensionAPI) {
 			Boolean(error) ||
 			Boolean(
 				result?.details?.results.some(
-					(worker) =>
-						worker.exitCode !== 0 ||
-						worker.stopReason === "error" ||
-						worker.stopReason === "aborted",
+					(worker) => classifySubagentResult(worker) !== "completed",
 				),
 			);
 		const truncationNote = bounded.truncated
@@ -2276,7 +2371,7 @@ export default function (pi: ExtensionAPI) {
 		name: "subagent_status",
 		label: "Subagent Status",
 		description:
-			"Inspect process liveness, observable activity, and usage for process-local subagent runs. Pass a prior activity version to determine whether a running child emitted new observable progress since the previous check.",
+			"Inspect process liveness, observable activity, and usage for process-local subagent runs. A returned background orchestration ID groups all matching child runs. Pass a prior activity version only with an exact run ID.",
 		promptSnippet:
 			"Inspect subagent process liveness, observable progress, and usage",
 		promptGuidelines: [
@@ -2287,7 +2382,7 @@ export default function (pi: ExtensionAPI) {
 			runId: Type.Optional(
 				Type.String({
 					description:
-						"Exact run ID from a prior subagent_status listing. Omit to list tracked runs.",
+						"Exact run ID or returned background orchestration ID. Omit to list tracked runs.",
 				}),
 			),
 			sinceActivityVersion: Type.Optional(
@@ -2331,16 +2426,47 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 			const run = subagentRunManager.get(params.runId);
-			if (!run)
+			if (!run) {
+				const groupedRuns = subagentRunManager.getByOrchestrationId(
+					params.runId,
+				);
+				if (groupedRuns.length === 0)
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Subagent run or orchestration not found: ${params.runId}`,
+							},
+						],
+						details: { runId: params.runId, found: false },
+					};
+				if (params.sinceActivityVersion !== undefined)
+					throw new Error(
+						"sinceActivityVersion requires an exact run ID, not an orchestration ID.",
+					);
+				const inspections = groupedRuns.map((groupedRun) =>
+					inspectSubagentStatus(groupedRun),
+				);
 				return {
 					content: [
 						{
 							type: "text",
-							text: `Subagent run not found: ${params.runId}`,
+							text: formatSubagentStatusGroup(params.runId, inspections),
 						},
 					],
-					details: { runId: params.runId, found: false },
+					details: {
+						orchestrationId: params.runId,
+						found: true,
+						runs: inspections.map((grouped) => ({
+							runId: grouped.run.runId,
+							status: grouped.run.status,
+							pid: grouped.run.pid,
+							processState: grouped.processState,
+							activityVersion: grouped.activityVersion,
+						})),
+					},
 				};
+			}
 			const inspection = inspectSubagentStatus(run, {
 				sinceActivityVersion: params.sinceActivityVersion,
 			});
@@ -2377,10 +2503,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", (_event, ctx) => {
-		sessionAgentCatalog = createSessionAgentCatalog(
-			ctx.cwd,
-			ctx.isProjectTrusted(),
-		);
+		sessionAgentCatalog = resolveSessionAgentCatalog(undefined, ctx);
 		refreshAgentTools(sessionAgentCatalog.agentNames);
 		activeScopePolicy = decodeScopePolicyEnvironment(
 			process.env.PI_SUBAGENT_SCOPE_POLICY,
@@ -2502,6 +2625,17 @@ export default function (pi: ExtensionAPI) {
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
 			const hasSingle = Boolean(params.agent && params.task);
 			const hasContinue = Boolean(params.continue);
+			const directInvocation = normalizeDirectInvocation({
+				agent: params.agent,
+				task: params.task,
+				taskId: params.taskId,
+				role: params.role,
+				scope: params.scope,
+				cwd: params.cwd,
+				output: params.output,
+				outputMode: params.outputMode,
+				tasks: params.tasks as unknown as TaskParams[] | undefined,
+			});
 			const sampledResolution =
 				!fableRoot && !explicitModel && modelSize
 					? resolveSampledDynamicModelFromRegistry(
@@ -2527,10 +2661,7 @@ export default function (pi: ExtensionAPI) {
 				(resolvedModel
 					? `${resolvedModel.provider}/${resolvedModel.id}`
 					: undefined);
-			const discovery =
-				sessionAgentCatalog?.cwd === invocationCwd
-					? sessionAgentCatalog.byScope[agentScope]
-					: discoverAgents(invocationCwd, agentScope);
+			const discovery = agentDiscoveryFor(ctx, agentScope);
 			const agents = discovery.agents;
 			const availableModels = fableRoot
 				? (ctx.modelRegistry.getAvailable() as ModelLike[])
@@ -2602,26 +2733,24 @@ export default function (pi: ExtensionAPI) {
 						fanoutPlan.parallel.length,
 					)
 				: undefined;
-			const selectedTasks = fanoutAssignment
-				? fanoutAssignment.arm === "parallel-specialists"
-					? fanoutPlan?.parallel
-					: undefined
-				: (params.tasks as unknown as TaskParams[] | undefined);
-			const selectedSingle = fanoutAssignment
-				? fanoutAssignment.arm === "single-generalist"
-					? (fanoutPlan?.single as TaskParams | undefined)
-					: undefined
-				: hasSingle
-					? ({
-							agent: params.agent,
-							task: params.task,
-							taskId: params.taskId,
-							role: params.role,
-							scope: params.scope,
-							cwd: params.cwd,
-							output: params.output,
-							outputMode: params.outputMode,
-						} as TaskParams)
+			const selectedDirectInvocation: NormalizedDirectInvocation | undefined =
+				fanoutAssignment
+					? fanoutAssignment.arm === "parallel-specialists"
+						? {
+								mode: "parallel",
+								items: [...(fanoutPlan?.parallel ?? [])],
+							}
+						: fanoutPlan?.single
+							? { mode: "single", items: [fanoutPlan.single] }
+							: undefined
+					: directInvocation;
+			const selectedTasks =
+				selectedDirectInvocation?.mode === "parallel"
+					? selectedDirectInvocation.items
+					: undefined;
+			const selectedSingle =
+				selectedDirectInvocation?.mode === "single"
+					? selectedDirectInvocation.items[0]
 					: undefined;
 			const continueChild = params.continue
 				? ({
@@ -2631,9 +2760,7 @@ export default function (pi: ExtensionAPI) {
 				: undefined;
 			const originalMode = hasChain
 				? "chain"
-				: selectedTasks
-					? "parallel"
-					: "single";
+				: selectedDirectInvocation?.mode ?? "single";
 			const executionMode: Exclude<SubagentRunMode, "task-execute"> =
 				hasContinue ? "continue" : originalMode;
 			const makeDetails =
@@ -2662,11 +2789,7 @@ export default function (pi: ExtensionAPI) {
 				)?.text;
 				const parentVisibleBytes = Buffer.byteLength(parentText ?? "", "utf-8");
 				const workers: OrchestrationWorker[] = results.map((worker, index) => {
-					const isCancelled = worker.stopReason === "aborted";
-					const failed =
-						worker.exitCode !== 0 ||
-						worker.stopReason === "error" ||
-						isCancelled;
+					const classification = classifySubagentResult(worker);
 					const isFinalChainWorker =
 						originalMode === "chain" && index === results.length - 1;
 					const childText = getResultOutput(worker);
@@ -2708,13 +2831,18 @@ export default function (pi: ExtensionAPI) {
 									experimentArm: worker.routingExperiment.id,
 									experimentTaskClass: worker.routingExperiment.taskClass,
 									validationOutcome: outputSchema
-										? failed
-											? ("failed" as const)
-											: ("passed" as const)
+										? classification === "completed"
+											? ("passed" as const)
+											: ("failed" as const)
 										: ("unavailable" as const),
 								}
 							: {}),
-						status: isCancelled ? "cancelled" : failed ? "failed" : "completed",
+						status:
+							classification === "cancelled"
+								? "cancelled"
+								: classification === "failed"
+									? "failed"
+									: "completed",
 						exitCode: Math.max(0, worker.exitCode),
 						durationMs: worker.durationMs ?? 0,
 						outputMode:
@@ -2772,9 +2900,7 @@ export default function (pi: ExtensionAPI) {
 				if (fanoutAssignment && experimentAssignmentEmitted) {
 					const checksPassed = results.filter(
 						(worker) =>
-							worker.exitCode === 0 &&
-							worker.stopReason !== "error" &&
-							worker.stopReason !== "aborted" &&
+							classifySubagentResult(worker) === "completed" &&
 							Object.hasOwn(worker, "structuredOutput"),
 					).length;
 					const outcome = buildOrchestrationExperimentOutcomeEvent({
@@ -2831,6 +2957,9 @@ export default function (pi: ExtensionAPI) {
 									taskKey: internalWorkflowContext.taskKey,
 									attempt: internalWorkflowContext.attempt,
 									retryOrigin: internalWorkflowContext.retryOrigin,
+									workflowCapabilities:
+										internalWorkflowContext.capabilities,
+									readOnly: internalWorkflowContext.readOnly,
 								}
 							: {}),
 						...suppliedContext,
@@ -2843,9 +2972,7 @@ export default function (pi: ExtensionAPI) {
 					if (routingExperiment) result.routingExperiment = routingExperiment;
 					if (
 						!outputSchema ||
-						result.exitCode !== 0 ||
-						result.stopReason === "error" ||
-						result.stopReason === "aborted"
+						classifySubagentResult(result) !== "completed"
 					)
 						return result;
 					try {
@@ -3052,9 +3179,25 @@ export default function (pi: ExtensionAPI) {
 					item.scope ?? [],
 					invocationCwd,
 				);
+				const agent = agents.find((candidate) => candidate.name === item.agent);
+				if (!agent) throw new Error(`Unknown agent: ${item.agent}`);
+				const authority = resolveChildToolAuthority(agent, {
+					role: resolved.role,
+					hasScopeLease: item.normalizedScopes.length > 0,
+					readOnly: fanoutAssignment
+						? true
+						: internalWorkflowContext?.readOnly,
+					workflowCapabilities: internalWorkflowContext?.capabilities,
+				});
+				if (
+					resolved.role === "leaf" &&
+					authority.canDirectlyMutate &&
+					item.normalizedScopes.length === 0
+				)
+					throw new Error(
+						`Modifying leaf ${item.agent} must declare a repository-relative scope.`,
+					);
 				if (fableRoot) {
-					const agent = agents.find((candidate) => candidate.name === item.agent);
-					if (!agent) throw new Error(`Unknown agent: ${item.agent}`);
 					item.resolvedModel = resolveFableChildModel(
 						availableModels,
 						ctx.model as ModelLike | undefined,
@@ -3081,34 +3224,19 @@ export default function (pi: ExtensionAPI) {
 			for (const item of chain ?? []) prepareChild(item);
 			if (continueChild) prepareChild(continueChild, "leaf");
 
-			const scopedCandidates = fanoutAssignment
-				? []
-				: [
-						...(selectedSingle ? [selectedSingle] : []),
-						...((selectedTasks ?? []) as TaskParams[]),
-						...(chain ?? []),
-						...(continueChild ? [continueChild] : []),
-					];
-			for (const item of scopedCandidates) {
-				const modifying = internalWorkflowContext
-					? internalWorkflowContext.modifying
-					: agentCanModify(
-							agents.find((agent) => agent.name === item.agent),
-						);
-				if (
-					item.resolvedRole === "leaf" &&
-					modifying &&
-					(item.normalizedScopes?.length ?? 0) === 0
-				)
-					throw new Error(
-						`Modifying leaf ${item.agent} must declare a repository-relative scope.`,
-					);
-			}
-
 			if (!fanoutAssignment && selectedTasks) {
-				const modifiers = (selectedTasks as TaskParams[]).filter((item) =>
-					agentCanModify(agents.find((agent) => agent.name === item.agent)),
-				);
+				const modifiers = (selectedTasks as TaskParams[]).filter((item) => {
+					const agent = agents.find(
+						(candidate) => candidate.name === item.agent,
+					);
+					return agent
+						? resolveChildToolAuthority(agent, {
+								role: item.resolvedRole ?? "leaf",
+								hasScopeLease:
+									(item.normalizedScopes?.length ?? 0) > 0,
+							}).canDirectlyMutate
+						: false;
+				});
 				if (modifiers.length > 1) {
 					assertDisjointScopes(
 						modifiers.map((item, index) => ({
@@ -3215,10 +3343,7 @@ export default function (pi: ExtensionAPI) {
 					0,
 					false,
 				);
-				const isError =
-					result.exitCode !== 0 ||
-					result.stopReason === "error" ||
-					result.stopReason === "aborted";
+				const isError = classifySubagentResult(result) !== "completed";
 				return complete({
 					content: [
 						{
@@ -3294,10 +3419,7 @@ export default function (pi: ExtensionAPI) {
 					);
 					results.push(result);
 
-					const isError =
-						result.exitCode !== 0 ||
-						result.stopReason === "error" ||
-						result.stopReason === "aborted";
+					const isError = classifySubagentResult(result) !== "completed";
 					if (isError) {
 						const errorMsg =
 							result.errorMessage ||
@@ -3448,11 +3570,9 @@ export default function (pi: ExtensionAPI) {
 					},
 				);
 
-				const isSuccessfulResult = (r: SingleResult) =>
-					r.exitCode === 0 &&
-					r.stopReason !== "error" &&
-					r.stopReason !== "aborted";
-				const successCount = results.filter(isSuccessfulResult).length;
+				const successCount = results.filter(
+					(result) => classifySubagentResult(result) === "completed",
+				).length;
 				return complete({
 					content: [
 						{
@@ -3497,10 +3617,7 @@ export default function (pi: ExtensionAPI) {
 					0,
 					false,
 				);
-				const isError =
-					result.exitCode !== 0 ||
-					result.stopReason === "error" ||
-					result.stopReason === "aborted";
+				const isError = classifySubagentResult(result) !== "completed";
 				if (isError) {
 					const errorMsg =
 						result.errorMessage ||
@@ -3545,9 +3662,13 @@ export default function (pi: ExtensionAPI) {
 			const executeWithTreeSettlement = async () => {
 				try {
 					const result = await executeSelectedMode();
-					return fableRoot && !background
-						? boundFableVisibleResult(result, orchestrationId)
-						: result;
+					return background
+						? result
+						: boundProviderVisibleResult(
+								result,
+								orchestrationId,
+								fableRoot ? "Fable" : "provider-visible",
+							);
 				} finally {
 					await settleInvocationTree();
 				}
@@ -3696,10 +3817,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (details.mode === "single" && details.results.length === 1) {
 				const r = details.results[0];
-				const isError =
-					r.exitCode !== 0 ||
-					r.stopReason === "error" ||
-					r.stopReason === "aborted";
+				const isError = classifySubagentResult(r) !== "completed";
 				const icon = isError
 					? theme.fg("error", "✗")
 					: theme.fg("success", "✓");
@@ -3822,7 +3940,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (details.mode === "chain") {
 				const successCount = details.results.filter(
-					(r) => r.exitCode === 0,
+					(result) => classifySubagentResult(result) === "completed",
 				).length;
 				const icon =
 					successCount === details.results.length
@@ -3847,7 +3965,7 @@ export default function (pi: ExtensionAPI) {
 
 					for (const r of details.results) {
 						const rIcon =
-							r.exitCode === 0
+							classifySubagentResult(r) === "completed"
 								? theme.fg("success", "✓")
 								: theme.fg("error", "✗");
 						const displayItems = getDisplayItems(r.messages);
@@ -3928,7 +4046,7 @@ export default function (pi: ExtensionAPI) {
 					theme.fg("accent", `${successCount}/${details.results.length} steps`);
 				for (const r of details.results) {
 					const rIcon =
-						r.exitCode === 0
+						classifySubagentResult(r) === "completed"
 							? theme.fg("success", "✓")
 							: theme.fg("error", "✗");
 					const displayItems = getDisplayItems(r.messages);
@@ -3949,11 +4067,13 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (details.mode === "parallel") {
-				const running = details.results.filter((r) => r.exitCode === -1).length;
-				const successCount = details.results.filter(
-					(r) => r.exitCode === 0,
+				const running = details.results.filter(
+					(result) => classifySubagentResult(result) === "running",
 				).length;
-				const failCount = details.results.filter((r) => r.exitCode > 0).length;
+				const successCount = details.results.filter(
+					(result) => classifySubagentResult(result) === "completed",
+				).length;
+				const failCount = details.results.length - running - successCount;
 				const isRunning = running > 0;
 				const icon = isRunning
 					? theme.fg("warning", "⏳")
@@ -3976,7 +4096,7 @@ export default function (pi: ExtensionAPI) {
 
 					for (const r of details.results) {
 						const rIcon =
-							r.exitCode === 0
+							classifySubagentResult(r) === "completed"
 								? theme.fg("success", "✓")
 								: theme.fg("error", "✗");
 						const displayItems = getDisplayItems(r.messages);
@@ -4052,16 +4172,17 @@ export default function (pi: ExtensionAPI) {
 				// Collapsed view (or still running)
 				let text = `${icon}  ${theme.fg("toolTitle", theme.bold("parallel "))}${theme.fg("accent", status)}`;
 				for (const r of details.results) {
+					const classification = classifySubagentResult(r);
 					const rIcon =
-						r.exitCode === -1
+						classification === "running"
 							? theme.fg("warning", "⏳")
-							: r.exitCode === 0
+							: classification === "completed"
 								? theme.fg("success", "✓")
 								: theme.fg("error", "✗");
 					const displayItems = getDisplayItems(r.messages);
 					text += `\n\n${theme.fg("muted", "--- ")}${theme.fg("accent", r.agent)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))} ${rIcon}`;
 					if (displayItems.length === 0)
-						text += `\n${theme.fg("muted", r.exitCode === -1 ? "(running...)" : "(no output)")}`;
+						text += `\n${theme.fg("muted", classification === "running" ? "(running...)" : "(no output)")}`;
 					else text += `\n${renderDisplayItems(displayItems, 5)}`;
 				}
 				if (!isRunning) {
@@ -4085,8 +4206,13 @@ export default function (pi: ExtensionAPI) {
 	const registerSubagentTools = (
 		schemas: ReturnType<typeof createSubagentSchemas>,
 	) => {
+		const {
+			parameters: _legacyParameters,
+			prepareArguments: _legacyPrepareArguments,
+			...subagentTool
+		} = subagentExecutor;
 		pi.registerTool({
-			...subagentExecutor,
+			...subagentTool,
 			parameters: schemas.subagent,
 		});
 
@@ -4189,10 +4315,7 @@ export default function (pi: ExtensionAPI) {
 					confirmProjectAgents?: boolean;
 				};
 				const agentScope = params.agentScope ?? "user";
-				const discovery =
-					sessionAgentCatalog?.cwd === ctx.cwd
-						? sessionAgentCatalog.byScope[agentScope]
-						: discoverAgents(ctx.cwd, agentScope);
+				const discovery = agentDiscoveryFor(ctx, agentScope);
 				const agents = discovery.agents;
 				const normalizedItems = params.items.map((item) => ({
 					...item,
@@ -4265,14 +4388,23 @@ export default function (pi: ExtensionAPI) {
 
 				const effectiveAgent = (
 					agentName: string,
-					scope: readonly string[] = [],
+					options: {
+						scope?: readonly string[];
+						capabilities?: readonly string[];
+						readOnly?: boolean;
+					} = {},
 				) => {
 					const agent = agents.find((candidate) => candidate.name === agentName);
 					if (!agent) return undefined;
+					const authority = resolveChildToolAuthority(agent, {
+						role: "leaf",
+						hasScopeLease: (options.scope?.length ?? 0) > 0,
+						workflowCapabilities: options.capabilities,
+						readOnly: options.readOnly,
+					});
 					return {
 						name: agent.name,
-						effectiveTools:
-							childTools(agent, "leaf", scope.length > 0) ?? ["read", "bash"],
+						effectiveTools: authority.tools,
 					};
 				};
 				const assertPhaseCapabilities = (
@@ -4284,7 +4416,10 @@ export default function (pi: ExtensionAPI) {
 						throw new Error(
 							`Workflow ${phase} requires agent, task, and capabilities.`,
 						);
-					const agent = effectiveAgent(agentName);
+					const agent = effectiveAgent(agentName, {
+						capabilities,
+						readOnly: true,
+					});
 					if (!agent) throw new Error(`Unknown workflow agent: ${agentName}`);
 					const tools = new Set(agent.effectiveTools);
 					const missing = capabilities.filter((tool) => !tools.has(tool));
@@ -4324,7 +4459,8 @@ export default function (pi: ExtensionAPI) {
 					key: string;
 					attempt: number;
 					retryOrigin?: string;
-					modifying: boolean;
+					capabilities: readonly string[];
+					readOnly: boolean;
 					outputSchema: TSchema;
 					phaseSignal: AbortSignal;
 				}) => {
@@ -4334,7 +4470,8 @@ export default function (pi: ExtensionAPI) {
 						taskKey: options.key,
 						attempt: options.attempt,
 						retryOrigin: options.retryOrigin,
-						modifying: options.modifying,
+						capabilities: options.capabilities,
+						readOnly: options.readOnly,
 					});
 					try {
 						const result = await subagentExecutor.execute(
@@ -4381,7 +4518,10 @@ export default function (pi: ExtensionAPI) {
 					specification,
 					{
 						resolveAgent: (agentName, item) =>
-							effectiveAgent(agentName, item?.scope),
+							effectiveAgent(agentName, {
+								scope: item?.scope,
+								capabilities: item?.capabilities,
+							}),
 						execute: (request: WorkflowExecutionRequest) =>
 							runPhase({
 								agent: request.agent,
@@ -4397,11 +4537,11 @@ export default function (pi: ExtensionAPI) {
 									request.attempt > 1
 										? `${request.key}-attempt-${request.attempt - 1}`
 										: undefined,
-								modifying: normalizedItems
-									.find((item) => item.key === request.key)
-									?.capabilities.some((tool) =>
-										DIRECT_FILE_MUTATION_TOOLS.has(tool),
-									) ?? false,
+								capabilities:
+									normalizedItems.find(
+										(item) => item.key === request.key,
+									)?.capabilities ?? [],
+								readOnly: false,
 								outputSchema: WorkflowLeafOutputSchema,
 								phaseSignal: request.signal,
 							}),
@@ -4413,7 +4553,8 @@ export default function (pi: ExtensionAPI) {
 										phase: "verify",
 										key: envelope.key,
 										attempt: 1,
-										modifying: false,
+										capabilities: params.verify?.capabilities ?? [],
+										readOnly: true,
 										outputSchema: WorkflowVerificationOutputSchema,
 										phaseSignal,
 									})
@@ -4426,7 +4567,8 @@ export default function (pi: ExtensionAPI) {
 										phase: "reduce",
 										key: `reduce-${request.level}`,
 										attempt: 1,
-										modifying: false,
+										capabilities: params.reduce?.capabilities ?? [],
+										readOnly: true,
 										outputSchema: WorkflowReductionOutputSchema,
 										phaseSignal: request.signal,
 									})
@@ -4464,9 +4606,11 @@ export default function (pi: ExtensionAPI) {
 					],
 					details: { workflow: result },
 				};
-				return fableRoot
-					? boundFableVisibleResult(toolResult, toolCallId)
-					: toolResult;
+				return boundProviderVisibleResult(
+					toolResult,
+					toolCallId,
+					fableRoot ? "Fable" : "provider-visible",
+				);
 			},
 		});
 	};

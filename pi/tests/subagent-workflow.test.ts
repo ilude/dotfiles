@@ -1,12 +1,36 @@
-import { describe, expect, it, vi } from "vitest";
+import { Check, Default } from "typebox/value";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	BoundedWorkflowRuntime,
+	MAX_ENVELOPE_EVIDENCE,
 	MAX_WORKFLOW_EXTRACT_BYTES,
 	WorkflowCancelledError,
+	WorkflowLeafOutputSchema,
 	WorkflowSpecificationError,
+	WorkflowSpecificationSchema,
+	getSubagentWorkflowRuntime,
 	partitionFileRange,
+	type WorkflowExecutionRequest,
 	type WorkflowRuntimeDependencies,
+	type WorkflowSpecification,
 } from "../extensions/subagent/workflow-runtime.ts";
+
+const WORKFLOW_RUNTIME_KEY = Symbol.for("dotfiles.pi.subagent-workflow-runtime");
+const workflowGlobals = globalThis as typeof globalThis & Record<symbol, unknown>;
+let previousWorkflowRuntime: unknown;
+
+beforeEach(() => {
+	previousWorkflowRuntime = workflowGlobals[WORKFLOW_RUNTIME_KEY];
+	delete workflowGlobals[WORKFLOW_RUNTIME_KEY];
+});
+
+afterEach(() => {
+	if (previousWorkflowRuntime === undefined) {
+		delete workflowGlobals[WORKFLOW_RUNTIME_KEY];
+	} else {
+		workflowGlobals[WORKFLOW_RUNTIME_KEY] = previousWorkflowRuntime;
+	}
+});
 
 function dependencies(
 	execute: WorkflowRuntimeDependencies["execute"],
@@ -20,6 +44,124 @@ function dependencies(
 }
 
 describe("BoundedWorkflowRuntime", () => {
+	it("aligns schema defaults, complete phases, envelope bounds, and runtime input", async () => {
+		const specification = {
+			items: [
+				{
+					key: "default-input",
+					agent: "worker",
+					task: "Inspect without explicit input.",
+					capabilities: ["read"],
+				},
+			],
+		};
+		expect(Check(WorkflowSpecificationSchema, specification)).toBe(true);
+		const defaulted = Default(
+			WorkflowSpecificationSchema,
+			structuredClone(specification),
+		) as WorkflowSpecification;
+		expect(defaulted.items[0]?.input).toEqual({ kind: "none" });
+		expect(
+			Check(WorkflowSpecificationSchema, {
+				...specification,
+				verify: { agent: "worker", task: "Verify." },
+			}),
+		).toBe(false);
+		expect(
+			Check(WorkflowSpecificationSchema, {
+				...specification,
+				reduce: { groupSize: 1, agent: "worker", task: "Reduce.", capabilities: [] },
+			}),
+		).toBe(false);
+		expect(
+			Check(WorkflowLeafOutputSchema, {
+				status: "found",
+				evidence: Array.from(
+					{ length: MAX_ENVELOPE_EVIDENCE + 1 },
+					() => "evidence",
+				),
+			}),
+		).toBe(false);
+
+		const execute = vi.fn(({ input }: WorkflowExecutionRequest) => ({
+			status: input.kind === "none" ? "found" : "error",
+		}));
+		const result = await new BoundedWorkflowRuntime().run(
+			specification,
+			dependencies(execute),
+		);
+		expect(execute).toHaveBeenCalledWith(
+			expect.objectContaining({ input: { kind: "none" } }),
+		);
+		expect(result.items[0]?.status).toBe("found");
+
+		await expect(
+			new BoundedWorkflowRuntime().run(
+				{
+					...specification,
+					verify: { agent: "worker", task: "Verify." },
+				} as unknown as WorkflowSpecification,
+				dependencies(execute),
+			),
+		).rejects.toBeInstanceOf(WorkflowSpecificationError);
+	});
+
+	it("retains active and settled work in the versioned global holder", async () => {
+		let release!: () => void;
+		let started!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const executionStarted = new Promise<void>((resolve) => {
+			started = resolve;
+		});
+		const runtime = getSubagentWorkflowRuntime();
+		const specification = {
+			id: "global-retained",
+			items: [
+				{
+					key: "held",
+					agent: "worker",
+					task: "Wait for release.",
+					capabilities: [],
+				},
+			],
+		};
+		const running = runtime.run(
+			specification,
+			dependencies(async () => {
+				started();
+				await gate;
+				return { status: "found" };
+			}),
+		);
+		await executionStarted;
+
+		const holder = (
+			globalThis as typeof globalThis & Record<symbol, unknown>
+		)[WORKFLOW_RUNTIME_KEY] as {
+			version: number;
+			runtime: BoundedWorkflowRuntime;
+		};
+		expect(holder.version).toBe(1);
+		expect(getSubagentWorkflowRuntime()).toBe(runtime);
+		expect(runtime.get("global-retained")?.state).toBe("running");
+
+		release();
+		const result = await running;
+		const explicitlyDefaulted = {
+			...specification,
+			items: specification.items.map((item) => ({
+				...item,
+				input: { kind: "none" as const },
+			})),
+		};
+		expect(
+			await runtime.run(explicitlyDefaulted, dependencies(vi.fn())),
+		).toBe(result);
+		expect(runtime.get("global-retained")?.state).toBe("settled");
+	});
+
 	it("queues map items at the requested concurrency and retains settled results", async () => {
 		const runtime = new BoundedWorkflowRuntime();
 		let active = 0;
@@ -158,8 +300,18 @@ describe("BoundedWorkflowRuntime", () => {
 		const reductions: unknown[][] = [];
 		const result = await runtime.run(
 			{
-				verify: { keys: ["target"] },
-				reduce: { groupSize: 2 },
+				verify: {
+					keys: ["target"],
+					agent: "worker",
+					task: "Verify the target.",
+					capabilities: ["read"],
+				},
+				reduce: {
+					groupSize: 2,
+					agent: "worker",
+					task: "Reduce the envelopes.",
+					capabilities: ["read"],
+				},
 				items: [
 					{
 						key: "target",
@@ -204,7 +356,48 @@ describe("BoundedWorkflowRuntime", () => {
 		expect(result.reductions).toEqual([{ summary: "group-3", evidence: [], gaps: [] }]);
 	});
 
-	it("rejects oversized extracts and cancels active execution", async () => {
+	it("retains typed failed state without replaying work", async () => {
+		const runtime = new BoundedWorkflowRuntime();
+		const failure = new Error("reduction failed");
+		const execute = vi.fn(() => ({ status: "found" }));
+		const reduce = vi.fn(() => {
+			throw failure;
+		});
+		const specification = {
+			id: "failed",
+			reduce: {
+				groupSize: 2,
+				agent: "worker",
+				task: "Reduce the result.",
+				capabilities: ["read"],
+			},
+			items: [
+				{
+					key: "item",
+					agent: "worker",
+					task: "Inspect.",
+					capabilities: ["read"],
+				},
+			],
+		};
+		const runtimeDependencies = dependencies(execute, { reduce });
+
+		await expect(
+			runtime.run(specification, runtimeDependencies),
+		).rejects.toBe(failure);
+		const snapshot = runtime.get("failed");
+		expect(snapshot?.state).toBe("failed");
+		if (snapshot?.state !== "failed") throw new Error("Expected failed snapshot.");
+		expect(snapshot.error).toBe(failure);
+
+		await expect(
+			runtime.run(specification, runtimeDependencies),
+		).rejects.toBe(failure);
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(reduce).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects oversized extracts and retains cancellation without replaying work", async () => {
 		await expect(
 			new BoundedWorkflowRuntime().run(
 				{
@@ -227,31 +420,39 @@ describe("BoundedWorkflowRuntime", () => {
 		const executionStarted = new Promise<void>((resolve) => {
 			started = resolve;
 		});
-		const running = runtime.run(
-			{
-				id: "cancelled",
-				items: [
-					{
-						key: "wait",
-						agent: "worker",
-						task: "Wait.",
-						capabilities: [],
-						input: { kind: "none" },
-					},
-				],
-			},
-			dependencies(({ signal }) => {
-				started();
-				return new Promise((_resolve, reject) =>
-					signal.addEventListener("abort", () => reject(new WorkflowCancelledError()), {
-						once: true,
-					}),
-				);
-			}),
-		);
+		const specification = {
+			id: "cancelled",
+			items: [
+				{
+					key: "wait",
+					agent: "worker",
+					task: "Wait.",
+					capabilities: [],
+					input: { kind: "none" as const },
+				},
+			],
+		};
+		const execute = vi.fn(({ signal }: WorkflowExecutionRequest) => {
+			started();
+			return new Promise((_resolve, reject) =>
+				signal.addEventListener("abort", () => reject(new WorkflowCancelledError()), {
+					once: true,
+				}),
+			);
+		});
+		const runtimeDependencies = dependencies(execute);
+		const running = runtime.run(specification, runtimeDependencies);
 		await executionStarted;
 		expect(runtime.cancel("cancelled")).toBe(true);
 		await expect(running).rejects.toBeInstanceOf(WorkflowCancelledError);
-		expect(runtime.get("cancelled")?.state).toBe("cancelled");
+		const snapshot = runtime.get("cancelled");
+		expect(snapshot?.state).toBe("cancelled");
+		if (snapshot?.state !== "cancelled")
+			throw new Error("Expected cancelled snapshot.");
+		expect(snapshot.error).toBeInstanceOf(WorkflowCancelledError);
+		await expect(
+			runtime.run(specification, runtimeDependencies),
+		).rejects.toBe(snapshot.error);
+		expect(execute).toHaveBeenCalledTimes(1);
 	});
 });

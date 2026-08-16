@@ -276,6 +276,14 @@ export class SubagentRunManager {
 		return this.snapshots.get(runId);
 	}
 
+	getByOrchestrationId(
+		orchestrationId: string,
+	): ReadonlyArray<SubagentRunSnapshot> {
+		return this.list().filter(
+			(run) => run.orchestrationId === orchestrationId,
+		);
+	}
+
 	subscribe(listener: () => void): () => void {
 		this.listeners.add(listener);
 		return () => this.listeners.delete(listener);

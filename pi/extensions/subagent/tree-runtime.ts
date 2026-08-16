@@ -14,6 +14,16 @@ export const SUBAGENT_TREE_PROTOCOL_VERSION = 2;
 export const SUBAGENT_TREE_RESTART_REQUIRED =
 	"Subagent tree broker protocol or runtime generation does not match this Pi process. Restart Pi before starting new subagent work.";
 
+const MAX_TREE_BROKER_FRAME_BYTES = 64 * 1024;
+const TREE_BROKER_CONNECT_DEADLINE_MS = 5_000;
+const TREE_BROKER_RESPONSE_DEADLINE_MS = 10_000;
+const TREE_BROKER_REQUEST_IDLE_DEADLINE_MS = 5_000;
+const TREE_BROKER_ACQUIRE_IDLE_DEADLINE_MS = 5_000;
+const TREE_BROKER_ACQUIRE_HEARTBEAT_MS = 1_000;
+const TREE_BROKER_CANCELLATION_DEADLINE_MS = 1_000;
+const TREE_BROKER_CANCELLATION_ATTEMPTS = 3;
+const TREE_BROKER_CANCELLATION_RETRY_MS = 10;
+
 export type SubagentTreeRole = "root" | "coordinator" | "leaf";
 export type SubagentTreeRunState =
 	| "queued"
@@ -151,6 +161,14 @@ type BrokerResponse =
 	| { readonly ok: false; readonly error: string };
 type BrokerSuccessResponse = Extract<BrokerResponse, { readonly ok: true }>;
 
+type BrokerRequestOptions = {
+	readonly signal?: AbortSignal;
+	readonly connectTimeoutMs?: number;
+	readonly responseTimeoutMs?: number;
+	readonly timeoutMode?: "response" | "idle";
+	readonly probeAcquireIdle?: boolean;
+};
+
 function assertIdentifier(value: string, label: string): void {
 	if (!value.trim()) throw new SubagentTreeAdmissionError(`${label} is required.`);
 	if (value.length > 256)
@@ -267,6 +285,68 @@ function safeEqual(left: string, right: string): boolean {
 		leftBuffer.length === rightBuffer.length &&
 		timingSafeEqual(leftBuffer, rightBuffer)
 	);
+}
+
+function encodeBrokerFrame(value: unknown, label: "request" | "response"): string {
+	const payload = JSON.stringify(value);
+	if (payload === undefined || Buffer.byteLength(payload, "utf8") > MAX_TREE_BROKER_FRAME_BYTES)
+		throw new Error(
+			`Tree broker ${label} frame exceeds ${MAX_TREE_BROKER_FRAME_BYTES} bytes.`,
+		);
+	return `${payload}\n`;
+}
+
+function encodeBrokerResponse(response: BrokerResponse): string {
+	try {
+		return encodeBrokerFrame(response, "response");
+	} catch {
+		return `${JSON.stringify({
+			ok: false,
+			error: `Tree broker response frame exceeds ${MAX_TREE_BROKER_FRAME_BYTES} bytes.`,
+		} satisfies BrokerResponse)}\n`;
+	}
+}
+
+function createRetryableReleaseOnce(
+	release: () => Promise<void>,
+): () => Promise<void> {
+	let released = false;
+	let pending: Promise<void> | undefined;
+	return () => {
+		if (released) return Promise.resolve();
+		if (pending) return pending;
+		pending = release()
+			.then(() => {
+				released = true;
+			})
+			.finally(() => {
+				pending = undefined;
+			});
+		return pending;
+	};
+}
+
+function abortReason(signal: AbortSignal, message: string): unknown {
+	const reason: unknown = signal.reason;
+	if (!(reason instanceof Error && reason.name === "AbortError") && reason !== undefined)
+		return reason;
+	return new Error(message);
+}
+
+function waitForSignal<T>(
+	pending: Promise<T>,
+	signal: AbortSignal | undefined,
+	message: string,
+): Promise<T> {
+	if (!signal) return pending;
+	if (signal.aborted) return Promise.reject(abortReason(signal, message));
+	return new Promise<T>((resolve, reject) => {
+		const abort = () => reject(abortReason(signal, message));
+		signal.addEventListener("abort", abort, { once: true });
+		pending.then(resolve, reject).finally(() => {
+			signal.removeEventListener("abort", abort);
+		});
+	});
 }
 
 export class SubagentTreeBroker {
@@ -509,25 +589,14 @@ export class SubagentTreeBroker {
 	}
 
 	private makePermit(node: MutableTreeNode): SubagentTreePermit {
-		let released = false;
-		let releasePending: Promise<void> | undefined;
 		return {
 			metadata: node.metadata,
 			ownerToken: node.ownerToken,
 			registerProcess: async (registration) =>
 				this.registerProcess(node.metadata.runId, node.metadata.runId, registration),
-			release: async () => {
-				if (released) return;
-				if (releasePending) return releasePending;
-				releasePending = this.release(node.metadata.runId)
-					.then(() => {
-						released = true;
-					})
-					.finally(() => {
-						releasePending = undefined;
-					});
-				return releasePending;
-			},
+			release: createRetryableReleaseOnce(async () => {
+				await this.release(node.metadata.runId);
+			}),
 		};
 	}
 
@@ -619,17 +688,53 @@ export class SubagentTreeBroker {
 	}
 
 	private handleSocket(socket: net.Socket, token: string): void {
-		let buffer = "";
-		socket.setEncoding("utf8");
-		socket.on("data", (chunk: string) => {
-			buffer += chunk;
-			const newline = buffer.indexOf("\n");
-			if (newline < 0) return;
-			const line = buffer.slice(0, newline);
-			socket.removeAllListeners("data");
-			void this.handleSocketRequest(line, token).then((response) => {
-				socket.end(`${JSON.stringify(response)}\n`);
-			});
+		const chunks: Buffer[] = [];
+		let frameBytes = 0;
+		let requestAccepted = false;
+		let responseStarted = false;
+		const finishResponse = (response: BrokerResponse) => {
+			if (responseStarted || socket.destroyed) return;
+			responseStarted = true;
+			socket.setTimeout(0);
+			socket.end(encodeBrokerResponse(response));
+		};
+		const rejectFrame = (error: string) => {
+			socket.off("data", receiveData);
+			finishResponse({ ok: false, error });
+		};
+		const receiveData = (chunk: Buffer) => {
+			const newline = chunk.indexOf(0x0a);
+			const retainedBytes = newline < 0 ? chunk.length : newline;
+			if (frameBytes + retainedBytes > MAX_TREE_BROKER_FRAME_BYTES) {
+				rejectFrame(
+					`Tree broker request frame exceeds ${MAX_TREE_BROKER_FRAME_BYTES} bytes.`,
+				);
+				return;
+			}
+			if (newline < 0) {
+				chunks.push(chunk);
+				frameBytes += chunk.length;
+				return;
+			}
+			requestAccepted = true;
+			socket.off("data", receiveData);
+			socket.setTimeout(0);
+			const finalChunk = chunk.subarray(0, newline);
+			const line = Buffer.concat([...chunks, finalChunk], frameBytes + newline).toString(
+				"utf8",
+			);
+			void this.handleSocketRequest(line, token, socket).then(finishResponse);
+		};
+		socket.setTimeout(TREE_BROKER_REQUEST_IDLE_DEADLINE_MS, () => {
+			rejectFrame("Tree broker request framing timed out.");
+		});
+		socket.on("data", receiveData);
+		socket.once("end", () => {
+			if (!requestAccepted)
+				finishResponse({
+					ok: false,
+					error: "Tree broker connection closed before a complete request frame.",
+				});
 		});
 		socket.once("error", () => socket.destroy());
 	}
@@ -645,7 +750,11 @@ export class SubagentTreeBroker {
 			);
 	}
 
-	private async handleSocketRequest(line: string, token: string): Promise<BrokerResponse> {
+	private async handleSocketRequest(
+		line: string,
+		token: string,
+		socket: net.Socket,
+	): Promise<BrokerResponse> {
 		try {
 			const candidate: unknown = JSON.parse(line);
 			if (!isBrokerRequest(candidate) || !safeEqual(candidate.token, token)) {
@@ -672,12 +781,50 @@ export class SubagentTreeBroker {
 						throw new SubagentTreeAdmissionError(
 							"Tree permit acquisition must use the authenticated caller as parent.",
 						);
-					const permit = await this.acquire(candidate.request);
-					return {
-						ok: true,
-						metadata: permit.metadata,
-						ownerToken: permit.ownerToken,
+					const request = {
+						...candidate.request,
+						runId: candidate.request.runId ?? randomUUID(),
 					};
+					let disconnected = socket.destroyed;
+					const cancelDisconnectedAcquire = () => {
+						disconnected = true;
+						try {
+							this.cancel(candidate.callerRunId, request.runId);
+						} catch {
+							// The bounded client cancellation remains the fallback for admission races.
+						}
+					};
+					socket.once("close", cancelDisconnectedAcquire);
+					const heartbeat = setInterval(() => {
+						if (
+							!socket.destroyed &&
+							socket.writable &&
+							!socket.writableNeedDrain
+						)
+							socket.write(" ");
+					}, TREE_BROKER_ACQUIRE_HEARTBEAT_MS);
+					heartbeat.unref();
+					try {
+						const permit = await this.acquire(request);
+						if (disconnected || socket.destroyed) {
+							try {
+								this.cancel(candidate.callerRunId, permit.metadata.runId);
+							} finally {
+								await permit.release();
+							}
+							throw new SubagentTreeAdmissionError(
+								"Tree permit requester disconnected before admission completed.",
+							);
+						}
+						return {
+							ok: true,
+							metadata: permit.metadata,
+							ownerToken: permit.ownerToken,
+						};
+					} finally {
+						clearInterval(heartbeat);
+						socket.off("close", cancelDisconnectedAcquire);
+					}
 				}
 				case "register":
 					await this.registerProcess(candidate.callerRunId, candidate.runId, {
@@ -802,61 +949,44 @@ export class SubagentTreeClient implements SubagentTreeController {
 		signal?: AbortSignal,
 	): Promise<SubagentTreePermit> {
 		if (signal?.aborted)
-			throw signal.reason ?? new Error("Tree permit request was cancelled.");
-		await this.handshake();
+			throw abortReason(signal, "Tree permit request was cancelled.");
+		await this.handshake(signal);
+		if (signal?.aborted)
+			throw abortReason(signal, "Tree permit request was cancelled.");
 		const requestWithParent: RequestSubagentTreePermit = {
 			...request,
 			runId: request.runId ?? randomUUID(),
 			treeId: this.parent.treeId,
 			parentRunId: this.parent.runId,
 		};
-		let abortRequested = false;
-		const pending = this.request({ type: "acquire", request: requestWithParent });
-		const abort = () => {
-			abortRequested = true;
-			void this
-				.request({ type: "cancel", runId: requestWithParent.runId ?? "" })
-				.catch(() => undefined);
-		};
-		signal?.addEventListener("abort", abort, { once: true });
+		let response: BrokerSuccessResponse;
 		try {
-			const response = await pending;
-			if (!response.metadata || !response.ownerToken)
-				throw new Error("Tree broker did not return permit credentials.");
-			const metadata = asMetadata(response.metadata);
-			if (abortRequested || signal?.aborted) {
-				await this
-					.request({ type: "release", runId: metadata.runId })
-					.catch(() => undefined);
-				throw signal?.reason ?? new Error("Tree permit request was cancelled.");
-			}
-			let released = false;
-			let releasePending: Promise<void> | undefined;
-			return {
-				metadata,
-				ownerToken: response.ownerToken,
-				registerProcess: async ({ pid }) => {
-					await this.request({ type: "register", runId: metadata.runId, pid });
-				},
-				release: async () => {
-					if (released) return;
-					if (releasePending) return releasePending;
-					releasePending = this.request({
-						type: "release",
-						runId: metadata.runId,
-					})
-						.then(() => {
-							released = true;
-						})
-						.finally(() => {
-							releasePending = undefined;
-						});
-					return releasePending;
-				},
-			};
-		} finally {
-			signal?.removeEventListener("abort", abort);
+			response = await this.request(
+				{ type: "acquire", request: requestWithParent },
+				{ signal, timeoutMode: "idle" },
+			);
+		} catch (error) {
+			if (!signal?.aborted) throw error;
+			await this.cancelAbortedAcquire(requestWithParent.runId ?? "");
+			throw abortReason(signal, "Tree permit request was cancelled.");
 		}
+		if (!response.metadata || !response.ownerToken)
+			throw new Error("Tree broker did not return permit credentials.");
+		const metadata = asMetadata(response.metadata);
+		if (signal?.aborted) {
+			await this.cancelAbortedAcquire(metadata.runId);
+			throw abortReason(signal, "Tree permit request was cancelled.");
+		}
+		return {
+			metadata,
+			ownerToken: response.ownerToken,
+			registerProcess: async ({ pid }) => {
+				await this.request({ type: "register", runId: metadata.runId, pid });
+			},
+			release: createRetryableReleaseOnce(async () => {
+				await this.request({ type: "release", runId: metadata.runId });
+			}),
+		};
 	}
 
 	async cancel(runId = this.parent.runId): Promise<string[]> {
@@ -879,9 +1009,9 @@ export class SubagentTreeClient implements SubagentTreeController {
 		};
 	}
 
-	private handshake(): Promise<void> {
-		this.handshakePromise ??= this.request({ type: "handshake" }).then(
-			(response) => {
+	private async handshake(signal?: AbortSignal): Promise<void> {
+		if (!this.handshakePromise) {
+			const pending = this.request({ type: "handshake" }).then((response) => {
 				if (
 					response.protocolVersion !== this.credentials.protocolVersion ||
 					response.runtimeGeneration !== this.credentials.runtimeGeneration
@@ -889,45 +1019,211 @@ export class SubagentTreeClient implements SubagentTreeController {
 					throw new SubagentTreeAdmissionError(
 						SUBAGENT_TREE_RESTART_REQUIRED,
 					);
-			},
+			});
+			this.handshakePromise = pending;
+			void pending.catch(() => {
+				if (this.handshakePromise === pending) this.handshakePromise = undefined;
+			});
+		}
+		await waitForSignal(
+			this.handshakePromise,
+			signal,
+			"Tree permit request was cancelled.",
 		);
-		return this.handshakePromise;
 	}
 
-	private async request(request: BrokerRequest): Promise<BrokerSuccessResponse> {
+	private async cancelAbortedAcquire(runId: string): Promise<void> {
+		await this.bestEffortRequest({ type: "cancel", runId });
+		await this.bestEffortRequest({ type: "release", runId });
+	}
+
+	private async bestEffortRequest(request: BrokerRequest): Promise<void> {
+		const deadline = Date.now() + TREE_BROKER_CANCELLATION_DEADLINE_MS;
+		const controller = new AbortController();
+		const deadlineTimer = setTimeout(() => {
+			controller.abort(new Error("Tree broker cancellation request timed out."));
+		}, TREE_BROKER_CANCELLATION_DEADLINE_MS);
+		deadlineTimer.unref();
+		try {
+			for (
+				let attempt = 0;
+				attempt < TREE_BROKER_CANCELLATION_ATTEMPTS;
+				attempt += 1
+			) {
+				const remaining = deadline - Date.now();
+				if (remaining <= 0 || controller.signal.aborted) return;
+				try {
+					await this.request(request, {
+						signal: controller.signal,
+						connectTimeoutMs: remaining,
+						responseTimeoutMs: remaining,
+					});
+					return;
+				} catch {
+					const retryMs = Math.min(
+						TREE_BROKER_CANCELLATION_RETRY_MS,
+						deadline - Date.now(),
+					);
+					if (
+						controller.signal.aborted ||
+						attempt + 1 >= TREE_BROKER_CANCELLATION_ATTEMPTS ||
+						retryMs <= 0
+					)
+						return;
+					await new Promise<void>((resolve) => setTimeout(resolve, retryMs));
+				}
+			}
+		} finally {
+			clearTimeout(deadlineTimer);
+		}
+	}
+
+	private async request(
+		request: BrokerRequest,
+		options: BrokerRequestOptions = {},
+	): Promise<BrokerSuccessResponse> {
+		const signal = options.signal;
+		if (signal?.aborted)
+			throw abortReason(signal, "Tree broker request was cancelled.");
+		const frame = encodeBrokerFrame(
+			{
+				...request,
+				token: this.credentials.token,
+				callerRunId: this.parent.runId,
+				callerToken: this.callerToken,
+				protocolVersion: this.credentials.protocolVersion,
+				runtimeGeneration: this.credentials.runtimeGeneration,
+			},
+			"request",
+		);
+		const connectTimeoutMs =
+			options.connectTimeoutMs ?? TREE_BROKER_CONNECT_DEADLINE_MS;
+		const responseTimeoutMs =
+			options.responseTimeoutMs ??
+			(request.type === "acquire"
+				? TREE_BROKER_ACQUIRE_IDLE_DEADLINE_MS
+				: TREE_BROKER_RESPONSE_DEADLINE_MS);
+		const timeoutMode =
+			options.timeoutMode ?? (request.type === "acquire" ? "idle" : "response");
 		return new Promise<BrokerSuccessResponse>((resolve, reject) => {
 			const socket = net.createConnection({
 				host: this.credentials.host,
 				port: this.credentials.port,
 			});
 			let buffer = "";
+			let settled = false;
+			let connectTimer: NodeJS.Timeout | undefined;
+			let responseTimer: NodeJS.Timeout | undefined;
+			let idleProbePending = false;
+			const clearTimers = () => {
+				if (connectTimer) clearTimeout(connectTimer);
+				if (responseTimer) clearTimeout(responseTimer);
+				connectTimer = undefined;
+				responseTimer = undefined;
+			};
+			const cleanup = () => {
+				clearTimers();
+				signal?.removeEventListener("abort", abort);
+			};
+			const fail = (error: unknown) => {
+				if (settled) return;
+				settled = true;
+				cleanup();
+				socket.destroy();
+				reject(error);
+			};
+			const succeed = (response: BrokerSuccessResponse) => {
+				if (settled) return;
+				settled = true;
+				cleanup();
+				socket.destroy();
+				resolve(response);
+			};
+			const abort = () =>
+				fail(abortReason(signal as AbortSignal, "Tree broker request was cancelled."));
+			const armResponseTimer = () => {
+				if (responseTimer) clearTimeout(responseTimer);
+				responseTimer = setTimeout(() => {
+					responseTimer = undefined;
+					if (
+						timeoutMode === "idle" &&
+						request.type === "acquire" &&
+						options.probeAcquireIdle !== false &&
+						!idleProbePending
+					) {
+						idleProbePending = true;
+						void this.request(
+							{ type: "handshake" },
+							{
+								signal,
+								connectTimeoutMs,
+								responseTimeoutMs: TREE_BROKER_RESPONSE_DEADLINE_MS,
+								probeAcquireIdle: false,
+							},
+						).then(
+							() => {
+								idleProbePending = false;
+								if (!settled) armResponseTimer();
+							},
+							(error) => {
+								idleProbePending = false;
+								fail(
+									new Error("Tree broker acquire response became idle.", {
+										cause: error,
+									}),
+								);
+							},
+						);
+						return;
+					}
+					fail(new Error("Tree broker response timed out."));
+				}, Math.max(1, responseTimeoutMs));
+				responseTimer.unref();
+			};
+			connectTimer = setTimeout(() => {
+				fail(new Error("Tree broker connection timed out."));
+			}, Math.max(1, connectTimeoutMs));
+			connectTimer.unref();
 			socket.setEncoding("utf8");
-			socket.once("connect", () =>
-				socket.write(
-					`${JSON.stringify({
-						...request,
-						token: this.credentials.token,
-						callerRunId: this.parent.runId,
-						callerToken: this.callerToken,
-						protocolVersion: this.credentials.protocolVersion,
-						runtimeGeneration: this.credentials.runtimeGeneration,
-					})}\n`,
-				),
-			);
-			socket.on("data", (chunk: string) => {
-				buffer += chunk;
-				if (!buffer.includes("\n")) return;
+			socket.once("connect", () => {
+				if (connectTimer) clearTimeout(connectTimer);
+				connectTimer = undefined;
+				armResponseTimer();
 				try {
-					const response = asResponse(JSON.parse(buffer.split("\n", 1)[0] ?? ""));
-					if (!response.ok) throw new SubagentTreeAdmissionError(response.error);
-					resolve(response);
+					socket.write(frame);
 				} catch (error) {
-					reject(error);
-				} finally {
-					socket.destroy();
+					fail(error);
 				}
 			});
-			socket.once("error", reject);
+			socket.on("data", (chunk: string) => {
+				if (timeoutMode === "idle") armResponseTimer();
+				buffer = `${buffer}${chunk}`.replace(/^[\t\r ]+/, "");
+				const newline = buffer.indexOf("\n");
+				const line = newline < 0 ? buffer : buffer.slice(0, newline);
+				if (Buffer.byteLength(line, "utf8") > MAX_TREE_BROKER_FRAME_BYTES) {
+					fail(
+						new Error(
+							`Tree broker response frame exceeds ${MAX_TREE_BROKER_FRAME_BYTES} bytes.`,
+						),
+					);
+					return;
+				}
+				if (newline < 0) return;
+				try {
+					const response = asResponse(JSON.parse(line));
+					if (!response.ok) throw new SubagentTreeAdmissionError(response.error);
+					succeed(response);
+				} catch (error) {
+					fail(error);
+				}
+			});
+			socket.once("error", fail);
+			socket.once("close", () => {
+				if (!settled)
+					fail(new Error("Tree broker connection closed without a response."));
+			});
+			signal?.addEventListener("abort", abort, { once: true });
+			if (signal?.aborted) abort();
 		});
 	}
 }

@@ -153,7 +153,7 @@ export function loadAgentsFromDir(
 	return agents;
 }
 
-export function isDirectory(p: string): boolean {
+function isDirectory(p: string): boolean {
 	try {
 		return fs.statSync(p).isDirectory();
 	} catch {
@@ -161,7 +161,7 @@ export function isDirectory(p: string): boolean {
 	}
 }
 
-export function findNearestProjectAgentsDir(cwd: string): string | null {
+function findNearestProjectAgentsDir(cwd: string): string | null {
 	let currentDir = cwd;
 	while (true) {
 		const candidate = path.join(currentDir, ".pi", "agents");
@@ -173,7 +173,7 @@ export function findNearestProjectAgentsDir(cwd: string): string | null {
 	}
 }
 
-export function buildAgentMap(
+function buildAgentMap(
 	userAgents: AgentConfig[],
 	projectAgents: AgentConfig[],
 	scope: AgentScope,
@@ -204,19 +204,4 @@ export function discoverAgents(
 
 	const agentMap = buildAgentMap(userAgents, projectAgents, scope);
 	return { agents: Array.from(agentMap.values()), projectAgentsDir };
-}
-
-export function formatAgentList(
-	agents: AgentConfig[],
-	maxItems: number,
-): { text: string; remaining: number } {
-	if (agents.length === 0) return { text: "none", remaining: 0 };
-	const listed = agents.slice(0, maxItems);
-	const remaining = agents.length - listed.length;
-	return {
-		text: listed
-			.map((a) => `${a.name} (${a.source}): ${a.description}`)
-			.join("; "),
-		remaining,
-	};
 }
