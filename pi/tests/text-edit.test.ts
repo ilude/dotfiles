@@ -1,13 +1,21 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import textEditExtension, {
 	applyTextOperations,
 	type Operation,
 } from "../extensions/text-edit.ts";
+
+const tempPaths = new Set<string>();
 
 type RegisteredTool = {
 	name: string;
@@ -25,9 +33,17 @@ class MockPi {
 }
 function repo() {
 	const dir = mkdtempSync(path.join(tmpdir(), "safe-edit-"));
+	tempPaths.add(dir);
 	execFileSync("git", ["init"], { cwd: dir, stdio: "ignore" });
 	return dir;
 }
+afterEach(() => {
+	for (const tempPath of tempPaths) {
+		rmSync(tempPath, { recursive: true, force: true });
+	}
+	tempPaths.clear();
+});
+
 function tool() {
 	const pi = new MockPi();
 	textEditExtension(pi as never);
@@ -254,6 +270,7 @@ describe("text_edit", () => {
 		writeFileSync(path.join(cwd, ".gitignore"), "ignored.txt\n");
 		writeFileSync(path.join(cwd, "ignored.txt"), "x");
 		const outside = path.join(tmpdir(), `outside-${Date.now()}.txt`);
+		tempPaths.add(outside);
 		writeFileSync(outside, "x");
 		symlinkSync(outside, path.join(cwd, "link.txt"));
 		const t = tool();

@@ -1,15 +1,17 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import structuredEditExtension, {
 	applyStructuredOperations,
 	type Operation,
 } from "../extensions/structured-edit.ts";
 
 type ToolResult = { isError?: boolean };
+
+const tempRepos = new Set<string>();
 
 class MockPi {
 	tools: unknown[] = [];
@@ -19,9 +21,17 @@ class MockPi {
 }
 function repo() {
 	const dir = mkdtempSync(path.join(tmpdir(), "structured-edit-"));
+	tempRepos.add(dir);
 	execFileSync("git", ["init"], { cwd: dir, stdio: "ignore" });
 	return dir;
 }
+afterEach(() => {
+	for (const dir of tempRepos) {
+		rmSync(dir, { recursive: true, force: true });
+	}
+	tempRepos.clear();
+});
+
 function tool() {
 	const pi = new MockPi();
 	structuredEditExtension(pi as never);

@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +18,7 @@ import { createMockCtx, createMockPi } from "./helpers/mock-pi";
 
 const OLD_HOME = process.env.HOME;
 const OLD_USERPROFILE = process.env.USERPROFILE;
+const tempHomes = new Set<string>();
 
 function fakeJwt(claims: Record<string, unknown>): string {
 	const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
@@ -26,6 +27,7 @@ function fakeJwt(claims: Record<string, unknown>): string {
 
 function tempHome(): string {
 	const home = mkdtempSync(join(tmpdir(), "codex-status-test-"));
+	tempHomes.add(home);
 	process.env.HOME = home;
 	process.env.USERPROFILE = home;
 	return home;
@@ -35,6 +37,10 @@ afterEach(() => {
 	resetCodexStatusStateForTests();
 	process.env.HOME = OLD_HOME;
 	process.env.USERPROFILE = OLD_USERPROFILE;
+	for (const home of tempHomes) {
+		rmSync(home, { recursive: true, force: true });
+	}
+	tempHomes.clear();
 	vi.useRealTimers();
 	vi.restoreAllMocks();
 });

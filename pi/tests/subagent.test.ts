@@ -42,6 +42,16 @@ function createMockProcess(): MockProcess {
 	return proc;
 }
 
+function testSessionHeader(sessionId: string, cwd: string): string {
+	return `${JSON.stringify({
+		type: "session",
+		version: 3,
+		id: sessionId,
+		timestamp: "2026-07-17T00:00:00.000Z",
+		cwd,
+	})}\n`;
+}
+
 function beginManagedRun(
 	manager: SubagentRunManager,
 	runId: string,
@@ -176,6 +186,7 @@ describe("subagent modification scopes", () => {
 describe("subagent model override routing", () => {
 	let tmpDir: string;
 	let skillDir: string;
+	let prevAgentDir: string | undefined;
 	let prevOperatorDir: string | undefined;
 	let prevMetricsDir: string | undefined;
 	let prevRoutingSampleRate: string | undefined;
@@ -184,10 +195,37 @@ describe("subagent model override routing", () => {
 		tmpDir = await fs.promises.mkdtemp(
 			path.join(os.tmpdir(), "pi-subagent-test-"),
 		);
+		const isolatedAgentDir = path.join(tmpDir, "agent");
+		const userAgentsDir = path.join(isolatedAgentDir, "agents");
 		const agentsDir = path.join(tmpDir, ".pi", "agents");
 		skillDir = path.join(tmpDir, ".pi", "skills", "test-skill");
+		await fs.promises.mkdir(userAgentsDir, { recursive: true });
 		await fs.promises.mkdir(agentsDir, { recursive: true });
 		await fs.promises.mkdir(skillDir, { recursive: true });
+		await fs.promises.writeFile(
+			path.join(userAgentsDir, "builder.md"),
+			`---
+name: builder
+description: Test builder agent
+tools: read
+---
+
+Build the requested change.
+`,
+			"utf8",
+		);
+		await fs.promises.writeFile(
+			path.join(userAgentsDir, "typescript-pro.md"),
+			`---
+name: typescript-pro
+description: Test TypeScript agent
+tools: read
+---
+
+Inspect TypeScript code.
+`,
+			"utf8",
+		);
 		await fs.promises.writeFile(
 			path.join(skillDir, "SKILL.md"),
 			`---
@@ -253,9 +291,11 @@ Coordinate bounded work.
 `,
 			"utf8",
 		);
+		prevAgentDir = process.env.PI_CODING_AGENT_DIR;
 		prevOperatorDir = process.env.PI_OPERATOR_DIR;
 		prevMetricsDir = process.env.PI_METRICS_DIR;
 		prevRoutingSampleRate = process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
+		process.env.PI_CODING_AGENT_DIR = isolatedAgentDir;
 		process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "0";
 		process.env.PI_OPERATOR_DIR = path.join(tmpDir, "operator");
 		process.env.PI_METRICS_DIR = path.join(tmpDir, "metrics");
@@ -270,6 +310,8 @@ Coordinate bounded work.
 
 	afterEach(async () => {
 		vi.useRealTimers();
+		if (prevAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
 		if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 		else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 		if (prevMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
@@ -546,7 +588,7 @@ Coordinate bounded work.
 			fs.mkdirSync(sessionDir, { recursive: true });
 			fs.writeFileSync(
 				path.join(sessionDir, `2026-08-15T00-00-00-000Z_${sessionId}.jsonl`),
-				'{"type":"session"}\n',
+				testSessionHeader(sessionId, tmpDir),
 				"utf8",
 			);
 			queueMicrotask(() => {
@@ -1092,7 +1134,7 @@ This agent cannot launch.
 					`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
 				);
 				fs.mkdirSync(sessionDir, { recursive: true });
-				fs.writeFileSync(sessionPath, '{"type":"session"}\n', "utf8");
+				fs.writeFileSync(sessionPath, testSessionHeader(sessionId, tmpDir), "utf8");
 				queueMicrotask(() => {
 					proc.stdout.emit(
 						"data",
@@ -1125,6 +1167,9 @@ This agent cannot launch.
 
 			const child = result.details.results[0];
 			expect(child.sessionPath).toMatch(/\.jsonl$/);
+			expect(
+				path.relative(tmpDir, child.sessionPath as string),
+			).not.toMatch(/^\.\.(?:[\\/]|$)/);
 			expect(fs.existsSync(child.sessionPath as string)).toBe(true);
 			const { subagentRunManager } = await import(
 				"../extensions/subagent/run-manager.ts"
@@ -1223,7 +1268,7 @@ This agent cannot launch.
 				fs.mkdirSync(sessionDir, { recursive: true });
 				fs.writeFileSync(
 					path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`),
-					'{"type":"session"}\n',
+					testSessionHeader(sessionId, tmpDir),
 					"utf8",
 				);
 				queueMicrotask(() => {
@@ -1295,7 +1340,7 @@ You are a test agent.
 						sessionDir,
 						`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
 					),
-					'{"type":"session"}\n',
+					testSessionHeader(sessionId, tmpDir),
 					"utf8",
 				);
 				queueMicrotask(() => {
@@ -1528,7 +1573,7 @@ You are a test agent.
 						sessionDir,
 						`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
 					),
-					'{"type":"session"}\n',
+					testSessionHeader(sessionId, tmpDir),
 					"utf8",
 				);
 				queueMicrotask(() => {
@@ -1589,7 +1634,7 @@ You are a test agent.
 							sessionDir,
 							`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
 						),
-						'{"type":"session"}\n',
+						testSessionHeader(sessionId, tmpDir),
 						"utf8",
 					);
 				}
@@ -1653,7 +1698,7 @@ You are a test agent.
 							sessionDir,
 							`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
 						),
-						'{"type":"session"}\n',
+						testSessionHeader(sessionId, tmpDir),
 						"utf8",
 					);
 				}
@@ -1707,7 +1752,7 @@ You are a test agent.
 				fs.mkdirSync(sessionDir, { recursive: true });
 				fs.writeFileSync(
 					path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`),
-					'{"type":"session"}\n',
+					testSessionHeader(sessionId, tmpDir),
 					"utf8",
 				);
 				const text =
@@ -1769,7 +1814,7 @@ You are a test agent.
 				fs.mkdirSync(sessionDir, { recursive: true });
 				fs.writeFileSync(
 					path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`),
-					'{"type":"session"}\n',
+					testSessionHeader(sessionId, tmpDir),
 					"utf8",
 				);
 				const text = JSON.stringify({

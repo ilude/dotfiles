@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi.js";
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -87,11 +87,14 @@ Archive the completed directory to \`.specs/archive/${slug}/\`.
 `;
 }
 
+const fixtureRoots = new Set<string>();
+
 async function createPlanFixture(): Promise<{
 	root: string;
 	planPath: string;
 }> {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-dispatch-"));
+	fixtureRoots.add(root);
 	const planPath = ".specs/workflow-fixture/plan.md";
 	const absolutePlan = path.join(root, planPath);
 	await fs.promises.mkdir(path.dirname(absolutePlan), { recursive: true });
@@ -102,6 +105,13 @@ async function createPlanFixture(): Promise<{
 describe("workflow slash command dispatch", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		for (const root of fixtureRoots) {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+		fixtureRoots.clear();
 	});
 
 	it("/plan-it sends its hidden workflow prompt as a follow-up turn", async () => {

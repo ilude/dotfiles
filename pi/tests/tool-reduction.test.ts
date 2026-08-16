@@ -9,10 +9,20 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 
 // ---------------------------------------------------------------------------
@@ -40,15 +50,26 @@ vi.mock("node:child_process", async (importOriginal) => {
 	};
 });
 
-const FIXTURE_PATH = path.resolve(
-	os.homedir(),
-	".dotfiles",
-	"pi",
-	"tool-reduction",
+const TOOL_REDUCTION_ROOT = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"../tool-reduction",
+);
+const FIXTURE_PATH = path.join(
+	TOOL_REDUCTION_ROOT,
 	"tests",
 	"fixtures",
 	"git-status-sample.txt",
 );
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
+const tempRoots = new Set<string>();
+let suiteHome: string;
+
+function createTempRoot(prefix: string): string {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+	tempRoots.add(root);
+	return root;
+}
 
 type TextBlock = { type: "text"; text: string };
 
@@ -154,11 +175,44 @@ function contextWithUsage(
 
 let mockPi: ReturnType<typeof createMockPi>;
 
+beforeAll(() => {
+	suiteHome = fs.mkdtempSync(path.join(os.tmpdir(), "tool-reduction-suite-"));
+	const linkedRoot = path.join(
+		suiteHome,
+		".dotfiles",
+		"pi",
+		"tool-reduction",
+	);
+	fs.mkdirSync(path.dirname(linkedRoot), { recursive: true });
+	fs.symlinkSync(
+		TOOL_REDUCTION_ROOT,
+		linkedRoot,
+		process.platform === "win32" ? "junction" : "dir",
+	);
+	process.env.HOME = suiteHome;
+	process.env.USERPROFILE = suiteHome;
+});
+
+afterAll(() => {
+	if (originalHome === undefined) delete process.env.HOME;
+	else process.env.HOME = originalHome;
+	if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+	else process.env.USERPROFILE = originalUserProfile;
+	fs.rmSync(suiteHome, { recursive: true, force: true });
+});
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	vi.resetModules();
 	spawnBehavior = "real";
 	mockPi = createMockPi();
+});
+
+afterEach(() => {
+	for (const root of tempRoots) {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+	tempRoots.clear();
 });
 
 	// ---------------------------------------------------------------------------
@@ -203,9 +257,7 @@ beforeEach(() => {
 
 	describe("recovery markers", () => {
 		it("writes reducer-only raw output and appends a recovery marker", async () => {
-			const scratchHome = fs.mkdtempSync(
-				path.join(os.tmpdir(), "tool-reduction-home-"),
-			);
+			const scratchHome = createTempRoot("tool-reduction-home-");
 			const previousHome = process.env.HOME;
 			process.env.HOME = scratchHome;
 			try {
@@ -235,7 +287,7 @@ beforeEach(() => {
 
 		it("uses Pi's full output path when the bash result was truncated", async () => {
 			const fullPath = path.join(
-				fs.mkdtempSync(path.join(os.tmpdir(), "tool-reduction-full-")),
+				createTempRoot("tool-reduction-full-"),
 				"full.txt",
 			);
 			fs.writeFileSync(fullPath, "complete raw output", "utf-8");
@@ -278,7 +330,7 @@ beforeEach(() => {
 		});
 
 		it("removes expired raw output and enforces the byte cap", async () => {
-			const rawDir = fs.mkdtempSync(path.join(os.tmpdir(), "tool-reduction-raw-"));
+			const rawDir = createTempRoot("tool-reduction-raw-");
 			const expired = path.join(rawDir, "expired.txt");
 			const oldest = path.join(rawDir, "oldest.txt");
 			const newest = path.join(rawDir, "newest.txt");
@@ -320,7 +372,7 @@ describe("retroactive context reduction", () => {
 			];
 
 			const sessionFile = path.join(
-				fs.mkdtempSync(path.join(os.tmpdir(), "tool-reduction-session-")),
+				createTempRoot("tool-reduction-session-"),
 				"session.jsonl",
 			);
 			fs.writeFileSync(
