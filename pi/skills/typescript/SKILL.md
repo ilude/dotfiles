@@ -22,6 +22,7 @@ Compact index for TypeScript and JavaScript work. Load linked files only when th
 1. Identify the package root by lockfile and nearest `package.json`.
 2. Read package scripts before selecting commands.
 3. If adding dependencies, update only the owning package-manager files.
+4. For test work, read the shared [testing skill](../testing/SKILL.md) and use [testing.md](testing.md) for TypeScript and JavaScript runner details.
 
 ## Quick validation
 

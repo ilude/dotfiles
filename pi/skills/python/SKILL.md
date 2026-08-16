@@ -20,6 +20,7 @@ Compact index for Python work. Load linked files only for framework-specific det
 
 1. Identify the Python project root and read `pyproject.toml` and relevant tests.
 2. Use `uv` for dependency and command execution when the project supports it.
+3. For test work, read the shared [testing skill](../testing/SKILL.md) and use [testing.md](testing.md) for pytest details.
 
 ## Quick validation
 

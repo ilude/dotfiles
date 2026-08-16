@@ -1,369 +1,137 @@
 # Python Testing with Pytest
 
-Pytest patterns and best practices for Python projects.
+Read the shared [testing skill](../testing/SKILL.md) for test selection, fixture isolation, teardown, mocking boundaries, and residue checks. This reference owns pytest and Python-specific patterns.
 
-## Warnings and Pre-Commit Checks
+## Execution
 
-When the project or an explicitly invoked pre-commit workflow requires warning-free tests, treat warnings as failures and run its required checks. Otherwise, validate warnings and checks relevant to the changed contract.
-
----
-
-## UV execution rules
+Use the repository-owned `uv` or Make targets.
 
 ```bash
-# CORRECT
 uv run pytest
-uv run pytest -v
-uv run pytest tests/unit/ -v
-uv run pytest --cov=app --cov-report=html
-
-# WRONG - Never add -m flag
-# uv run -m pytest
+uv run pytest tests/unit/test_file.py
+uv run pytest tests/unit/test_file.py::test_name
+uv run pytest -k "name"
+uv run pytest -x --tb=short
 ```
 
----
+Do not use `uv run -m pytest`. Run full suites, warnings-as-errors, and coverage only when repository policy or the changed contract requires them.
 
-## Testing Strategy
+## Filesystem and environment fixtures
 
-### Test Pyramid
-1. **Unit Tests (70%)** - Fast, isolated, test individual functions/classes
-2. **Integration Tests (20%)** - Test component interactions
-3. **End-to-End Tests (10%)** - Full system tests
-
-### What to Test
-**DO test:**
-- Public APIs and interfaces
-- Business logic and calculations
-- Edge cases (empty inputs, None values, boundaries)
-- Error handling and exceptions
-- Data validation
-- Critical paths through the application
-
-**DON'T test:**
-- Private implementation details
-- Third-party library internals
-- Trivial getters/setters
-- Framework magic (unless you suspect bugs)
-
-### Coverage Requirements
-Follow project-defined coverage thresholds when they apply. For changed critical paths, prioritize behavior coverage over line count.
-
----
-
-## Test Structure - Arrange-Act-Assert Pattern
-
-Use the **Arrange-Act-Assert (AAA)** pattern when it clarifies a test:
-
-1. **Arrange** - Set up test data and conditions
-2. **Act** - Execute the functionality being tested
-3. **Assert** - Verify the results
+Prefer `tmp_path` or `tmp_path_factory` for isolated data. Use `monkeypatch.setenv` so pytest restores environment variables.
 
 ```python
-# GOOD - Clear AAA structure
-def test_user_registration():
-    # Arrange
-    user_data = {"email": "test@example.com", "password": "secure"}
-    # Act
-    result = register_user(user_data)
-    # Assert
-    assert result.success
-    assert result.user.email == "test@example.com"
+from pathlib import Path
 
-# BAD - Testing implementation details
-def test_internal_method():
-    obj = MyClass()
-    assert obj._internal_state == expected  # Don't test private state
-```
-
----
-
-## Test Organization
-
-### Directory Structure
-```
-tests/
-├── __init__.py
-├── conftest.py              # Session/module level fixtures
-├── unit/                    # Fast, isolated tests (70%)
-│   ├── __init__.py
-│   ├── conftest.py          # Unit-specific fixtures
-│   └── test_*.py
-├── integration/             # Component interaction tests (20%)
-│   ├── __init__.py
-│   ├── conftest.py          # Integration-specific fixtures
-│   └── test_*.py
-└── e2e/                     # End-to-end tests (10%)
-    ├── __init__.py
-    └── test_*.py
-```
-
-### Naming Conventions
-- Test files: `test_*.py` or `*_test.py`
-- Test classes: `Test*` (e.g., `TestUserService`)
-- Test functions: `test_*` (e.g., `test_create_user_success`)
-- Fixtures: Descriptive names (e.g., `user_service`, `mock_database`)
-
-**MUST NOT name non-test classes with "Test" prefix - framework will try to collect them as tests.**
-
----
-
-## Fixture Scopes
-
-```python
-@pytest.fixture(scope="session")
-def database_connection():
-    """Created once per test session - expensive setup."""
-    connection = setup_expensive_database()
-    yield connection
-    connection.cleanup()
-
-@pytest.fixture(scope="module")
-def api_client():
-    """Created once per test module."""
-    return APIClient(config="test")
-
-@pytest.fixture(scope="function")  # Default
-def user():
-    """Created for each test function - isolated."""
-    return User(email="test@example.com")
-```
-
-### Setup and Teardown
-
-```python
-@pytest.fixture
-def database():
-    # Setup
-    db = Database(":memory:")
-    db.initialize()
-
-    yield db  # Provide to test
-
-    # Teardown
-    db.close()
-```
-
-### Fixture Dependencies
-
-```python
-@pytest.fixture
-def database():
-    db = Database(":memory:")
-    yield db
-    db.close()
-
-@pytest.fixture
-def user_service(database):
-    return UserService(database)
-
-@pytest.fixture
-def authenticated_user(user_service):
-    user = user_service.create_user(username="testuser", email="test@example.com")
-    yield user
-    user_service.delete_user(user.id)
-```
-
----
-
-## conftest.py Patterns
-
-```python
-# tests/conftest.py
 import pytest
 
-@pytest.fixture(scope="session")
-def database_connection():
-    db = Database(":memory:")
-    db.initialize()
-    yield db
-    db.close()
 
 @pytest.fixture
-def user_service(database_connection):
-    return UserService(database_connection)
-
-@pytest.fixture
-def sample_user_data():
-    return {"username": "testuser", "email": "test@example.com", "password": "secure123"}
+def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    return home
 ```
 
----
+Apply path changes before importing modules that cache their locations. Use `monkeypatch.syspath_prepend`, `importlib.reload`, or a delayed import only when the module contract requires it.
 
-## Parametrized Testing
+Do not use bare `tempfile.mkdtemp()` without registered cleanup. Use `tempfile.TemporaryDirectory` or a yielding fixture when explicit removal is required. Pytest may retain managed `tmp_path` roots for debugging; that is runner-managed retention, not permission to write into live state.
 
-```python
-@pytest.mark.parametrize("input,expected", [
-    ("hello", "HELLO"),
-    ("world", "WORLD"),
-    ("", ""),
-])
-def test_uppercase(input, expected):
-    assert input.upper() == expected
+## Yielding fixtures and resource cleanup
 
-@pytest.mark.parametrize("method,expected_status", [
-    ("GET", 200),
-    ("POST", 201),
-    ("DELETE", 204),
-])
-def test_http_methods(client, method, expected_status):
-    response = client.request(method, "/api/resource")
-    assert response.status_code == expected_status
-```
-
----
-
-## Async Testing
+Put cleanup after `yield` or in `finally`.
 
 ```python
-@pytest.mark.asyncio
-async def test_async_fetch_data():
-    result = await fetch_data_async("user123")
-    assert result is not None
+import subprocess
+
+import pytest
+
 
 @pytest.fixture
-async def async_client():
-    client = AsyncHTTPClient()
-    await client.connect()
-    yield client
-    await client.disconnect()
+def worker():
+    process = subprocess.Popen(["worker", "--test-mode"])
+    try:
+        yield process
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+```
+
+Choose fixture scope by ownership:
+
+- `function` for mutable or isolated state.
+- `module` for read-only state shared within one module.
+- `session` only for expensive state that is safe across the entire run and has session teardown.
+
+## Parametrization
+
+```python
+import pytest
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("hello", "HELLO"),
+        ("", ""),
+    ],
+)
+def test_uppercase(value: str, expected: str):
+    assert value.upper() == expected
+```
+
+Use descriptive parameter IDs when raw values do not explain a failure.
+
+## Async tests
+
+Use the async plugin and fixture conventions already configured by the repository.
+
+```python
+import pytest
+
 
 @pytest.mark.asyncio
-async def test_api_call(async_client):
-    response = await async_client.get("/api/users")
+async def test_fetches_user(async_client):
+    response = await async_client.get("/users/user-1")
     assert response.status_code == 200
 ```
 
----
+Ensure async clients, tasks, and event-loop resources are closed by their owning fixtures.
 
-## Mocking Patterns
+## Mocking
 
-```python
-from unittest.mock import Mock, patch
-
-def test_send_email_success():
-    mock_smtp = Mock()
-    with patch("smtplib.SMTP", return_value=mock_smtp):
-        result = send_email("test@example.com", "Subject", "Body")
-    mock_smtp.send_message.assert_called_once()
-    assert result is True
-
-@pytest.fixture
-def mock_database():
-    with patch("app.database.Database") as mock_db:
-        mock_db.return_value.query.return_value = {"id": 1, "name": "Test"}
-        yield mock_db
-
-def test_user_service_with_mock(mock_database):
-    service = UserService(mock_database.return_value)
-    user = service.get_user(1)
-    assert user["name"] == "Test"
-```
-
-**When to mock:**
-- External services (APIs, databases, network)
-- Slow operations
-- Non-deterministic behavior (time, random)
-- Edge cases difficult to reproduce
-
----
-
-## Exception Testing
+Use `unittest.mock` or the repository's configured plugin. Patch the name used by the module under test, not the symbol's original definition.
 
 ```python
-def test_exception_raised():
-    with pytest.raises(UserNotFoundError) as exc_info:
-        user_service.get_user("nonexistent_id")
-    assert "nonexistent_id" in str(exc_info.value)
+from unittest.mock import patch
 
-def test_exception_type_matching():
-    with pytest.raises((ValueError, TypeError)):
-        process_data(None)
 
-def test_create_user_invalid_email(user_service):
-    """Test user creation fails with invalid email."""
-    user_data = {
-        "username": "testuser",
-        "email": "invalid-email",
-        "age": 25
-    }
-    with pytest.raises(ValidationError) as exc_info:
-        user_service.create_user(user_data)
-    assert "email" in str(exc_info.value)
+def test_sends_message():
+    with patch("app.notifications.send") as send:
+        notify_user("user-1")
+    send.assert_called_once_with("user-1")
 ```
 
----
+Use `monkeypatch` for environment variables, attributes, and simple boundary replacement. Avoid mocking internal methods when the public behavior can be exercised directly.
 
-## Edge Case Testing
-
-Test relevant edge cases:
+## Exceptions
 
 ```python
-def test_edge_cases():
-    calculator = Calculator()
-    assert calculator.sum([]) == 0          # Empty input
-    assert calculator.sum([5]) == 5         # Single item
-    assert calculator.sum([-1, -2]) == -3   # Negative numbers
-    assert calculator.sum([0, 0]) == 0      # Zero
+import pytest
 
-def test_none_handling(service):
-    with pytest.raises(ValueError):
-        service.process(None)
 
-def test_boundary_values():
-    # Test at boundaries
-    assert validate_age(0) is True          # Minimum
-    assert validate_age(150) is True        # Maximum
-    assert validate_age(-1) is False        # Below minimum
-    assert validate_age(151) is False       # Above maximum
+def test_missing_user_reports_identifier():
+    with pytest.raises(UserNotFoundError, match="user-1"):
+        load_user("user-1")
 ```
 
----
+Assert the exception type and stable public details. Do not couple tests to incidental traceback formatting.
 
-## Integration Testing
+## Markers and collection
 
-```python
-@pytest.fixture(scope="module")
-def test_database():
-    """Provide test database for integration tests."""
-    db = create_test_database()
-    run_migrations(db)
-    yield db
-    cleanup_database(db)
-
-@pytest.mark.integration
-def test_user_operations(test_database):
-    """Test user repository with real database."""
-    user = create_user(test_database, email="test@example.com")
-    assert user.id is not None
-
-    retrieved = get_user(test_database, user.id)
-    assert retrieved.email == "test@example.com"
-```
-
----
-
-## Test Markers
-
-```python
-@pytest.mark.slow
-def test_expensive_operation():
-    result = process_large_dataset()
-    assert result.success
-
-@pytest.mark.integration
-def test_database_integration():
-    result = query_database()
-    assert result is not None
-
-# Run commands:
-# uv run pytest -m "not slow"
-# uv run pytest -m integration
-# uv run pytest -m "unit and not slow"
-```
-
----
-
-## pyproject.toml Configuration
+Declare custom markers in `pyproject.toml` and run them through the repository workflow.
 
 ```toml
 [tool.pytest.ini_options]
@@ -371,112 +139,27 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = ["-v", "--strict-markers", "--tb=short", "--cov=app", "--cov-report=term-missing"]
+addopts = ["--strict-markers", "--tb=short"]
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "asyncio: marks tests as async tests",
+    "integration: requires integration dependencies",
+    "slow: exercises a slow contract",
 ]
-filterwarnings = ["error"]
-
-[tool.coverage.run]
-source = ["app"]
-omit = ["*/tests/*", "*/migrations/*", "*/__init__.py"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise NotImplementedError",
-    "if TYPE_CHECKING:",
-]
-min_coverage = 80
 ```
 
----
+Do not name non-test classes with a `Test` prefix because pytest may collect them.
 
-## Essential Commands
+## Useful diagnostics
 
 ```bash
-# Development - Targeted
-uv run pytest tests/unit/test_file.py -v           # Specific file
-uv run pytest -k "test_name" -v                    # Pattern match
-uv run pytest tests/unit/test_file.py::test_func   # Exact test
-uv run pytest -v --tb=short                        # Cleaner errors
-
-# Debugging
-uv run pytest -l                                   # Show locals
-uv run pytest --pdb                                # Debug on failure
-uv run pytest -x                                   # Stop on first failure
-uv run pytest --lf                                 # Rerun last failed
-
-# Warnings as errors
+uv run pytest --lf
+uv run pytest -l
+uv run pytest --pdb
 uv run pytest -W error
-
-# Coverage
-uv run pytest --cov=app --cov-report=html          # HTML report
-uv run pytest --cov=app --cov-report=term-missing  # Terminal report
-
-# Verification
-make check                                         # Full suite + quality
-uv run ruff check app/ tests/                      # Linting
-uv run mypy app/ tests/                            # Type check
+uv run pytest --collect-only
 ```
 
----
+Use `--lf` only after inspecting the current failure set. Do not substitute repeated retries for diagnosing a flaky test.
 
-## Import Error Solutions
+## Import layout
 
-**Ensure __init__.py exists:**
-```
-tests/
-├── __init__.py  # Important!
-├── conftest.py
-└── unit/
-    ├── __init__.py
-    └── test_*.py
-```
-
-**Add to pyproject.toml:**
-```toml
-[tool.pytest.ini_options]
-pythonpath = ["src"]
-```
-
----
-
-## Development Workflow
-
-**During Development:**
-1. Write/modify code.
-2. Run targeted tests when they protect the changed contract.
-3. Address relevant failures.
-
-**Before Commit:**
-Run the full suite, warning checks, and coverage gates only when the project or an explicitly invoked workflow requires them. Otherwise, run the focused validation that protects the changed contract.
-
-Add tests for new features when they are needed to protect their contract. Do not ignore failures relevant to the requested change.
-
----
-
-## Test Quality Checklist
-
-- Run in isolation (no shared state)
-- Deterministic (same result every time)
-- Fast (mock slow operations)
-- Clear names document behavior
-- Test edge cases and errors
-- Zero warnings in output
-- >80% coverage on critical paths
-
----
-
-## Advanced Testing Patterns
-
-| Pattern | Description |
-|---------|-------------|
-| **Local-first** | Prefer tests that run locally without external dependencies unless the contract needs external integration |
-| **Testcontainers** | Use testcontainers for integration tests |
-| **Flaky policy** | 48-hour remediation, then quarantine or delete |
-| **Idempotence** | Verify operations are safely re-runnable |
-| **Factories > Fixtures** | Prefer factories for flexible test data |
+Follow the repository's package layout and import mode. Add `__init__.py` or pytest `pythonpath` configuration only when that matches the package's intended import contract; do not patch `sys.path` ad hoc in individual tests.
