@@ -5,6 +5,7 @@ import {
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { formatToolTiming } from "../lib/tool-timing.js";
 
 type ToolTheme = {
 	bold(text: string): string;
@@ -18,15 +19,18 @@ function bashToolFor(cwd: string) {
 function formatBashCall(
 	args: { command?: string; timeout?: number },
 	cwd: string,
+	startedAt: number | undefined,
 	theme: ToolTheme,
 ): string {
 	const command = args.command || theme.fg("toolOutput", "...");
-	const timeoutSuffix = args.timeout
-		? theme.fg("muted", `, timeout ${args.timeout}s`)
-		: "";
+	const timing = formatToolTiming(startedAt, args.timeout);
+	const metadata = [
+		`cwd: ${cwd}`,
+		timing ?? (args.timeout ? `timeout ${args.timeout}s` : undefined),
+	].filter(Boolean);
 	return (
 		theme.fg("toolTitle", theme.bold(`$ ${command}`)) +
-		theme.fg("muted", ` (cwd: ${cwd}${timeoutSuffix})`)
+		theme.fg("muted", ` (${metadata.join(", ")})`)
 	);
 }
 
@@ -65,11 +69,17 @@ export default function (pi: ExtensionAPI) {
 			);
 		},
 		renderCall(args, theme, context) {
+			if (context.executionStarted && context.state.startedAt === undefined) {
+				context.state.startedAt = Date.now();
+				context.state.endedAt = undefined;
+			}
 			const text =
 				context.lastComponent instanceof Text
 					? context.lastComponent
 					: new Text("", 0, 0);
-			text.setText(formatBashCall(args, context.cwd, theme));
+			text.setText(
+				formatBashCall(args, context.cwd, context.state.startedAt, theme),
+			);
 			return text;
 		},
 		renderResult(result, options, theme, context) {

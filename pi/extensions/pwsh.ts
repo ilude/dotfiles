@@ -15,6 +15,7 @@ import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { tmpdir, release } from "node:os";
 import { join } from "node:path";
+import { formatToolTiming } from "../lib/tool-timing.js";
 
 const DEFAULT_TIMEOUT_SECONDS = 120;
 
@@ -236,14 +237,20 @@ async function executePwsh(
 export function renderCall(
   args: { command: string; timeout?: number },
   theme: any,
-  _context: any
+  context: any
 ): any {
+  if (context.executionStarted && context.state.startedAt === undefined) {
+    context.state.startedAt = Date.now();
+  }
+
   const lines = args.command.split("\n");
   const firstLine = lines[0];
   const isMultiline = lines.length > 1;
-  const commandDisplay = isMultiline ? `${firstLine} …` : firstLine;
-  const timeoutSuffix = args.timeout ? theme.fg("dim", ` [timeout: ${args.timeout}s]`) : "";
-  const content = `PS> ${commandDisplay}${timeoutSuffix}`;
+  const commandDisplay = isMultiline ? `${firstLine} ...` : firstLine;
+  const timeoutSeconds = args.timeout ?? DEFAULT_TIMEOUT_SECONDS;
+  const timing = formatToolTiming(context.state.startedAt, timeoutSeconds);
+  const timingSuffix = theme.fg("dim", ` [${timing ?? `timeout ${timeoutSeconds}s`}]`);
+  const content = `PS> ${commandDisplay}${timingSuffix}`;
   return new Text(content, 0, 0);
 }
 

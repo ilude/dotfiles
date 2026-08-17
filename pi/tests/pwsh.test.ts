@@ -73,20 +73,40 @@ describe("pwsh extension", () => {
   });
 
   describe("renderCall", () => {
+    const renderContext = (state: Record<string, unknown> = {}, executionStarted = false) => ({
+      executionStarted,
+      state,
+    });
+
     it("should render single-line command", () => {
-      const result = tool.renderCall({ command: "Get-Date" }, theme, {});
+      const result = tool.renderCall({ command: "Get-Date" }, theme, renderContext());
       expect(result).toBeDefined();
     });
 
     it("should show timeout when specified", () => {
-      tool.renderCall({ command: "test", timeout: 30 }, theme, {});
+      tool.renderCall({ command: "test", timeout: 30 }, theme, renderContext());
       expect(theme.fg).toHaveBeenCalledWith("dim", expect.stringContaining("30s"));
     });
 
-    it("should not show timeout when unspecified", () => {
-      tool.renderCall({ command: "test" }, theme, {});
-      const dimCalls = theme.fg.mock.calls.filter((c: any) => c[0] === "dim");
-      expect(dimCalls.some((c: any) => c[1].includes("timeout"))).toBe(false);
+    it("should show the effective default timeout when unspecified", () => {
+      tool.renderCall({ command: "test" }, theme, renderContext());
+      expect(theme.fg).toHaveBeenCalledWith("dim", expect.stringContaining("timeout 120s"));
+    });
+
+    it("should render the local start time and timeout deadline", () => {
+      const startedAt = new Date(2026, 7, 19, 11, 29, 30).getTime();
+      tool.renderCall(
+        { command: "test", timeout: 90 },
+        theme,
+        renderContext({ startedAt }, true),
+      );
+
+      expect(theme.fg).toHaveBeenCalledWith(
+        "dim",
+        expect.stringContaining(
+          "started 11:29:30 local, timeout 90s at 11:31:00 local",
+        ),
+      );
     });
   });
 
