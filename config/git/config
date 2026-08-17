@@ -150,3 +150,5 @@
 [includeIf "hasconfig:remote.*.url:github.com-work:*/**"]
   path = ~/.gitconfig-professional
 # Work-specific credential helpers belong in .gitconfig-professional-local
+[credential "https://registry1.dso.mil"]
+	provider = generic
