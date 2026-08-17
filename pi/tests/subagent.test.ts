@@ -2391,6 +2391,36 @@ You are a test agent.
 		}
 	});
 
+	it("applies subscription routing to Mantle Opus roots", async () => {
+		mockSuccessfulSpawn();
+		const { tool } = await loadTool();
+		const result = await tool.execute(
+			"mantle-opus-model",
+			{
+				agent: "unpinned",
+				task: "Bounded work",
+				agentScope: "project",
+				modelSize: "small",
+			},
+			undefined,
+			undefined,
+			createMockCtx({
+				cwd: tmpDir,
+				model: {
+					provider: "bedrock-mantle",
+					id: "anthropic.claude-opus-5",
+				},
+				modelRegistry: { getAvailable: vi.fn(() => subscriptionModels) },
+			}),
+		);
+		const args = spawnMock.mock.calls[0][1] as string[];
+		expect(args[args.indexOf("--model") + 1]).toBe(
+			"openai-codex/gpt-5.6-luna",
+		);
+		expect(args[args.indexOf("--thinking") + 1]).toBe("high");
+		expect(result.details.results[0].role).toBe("leaf");
+	});
+
 	it("applies Fable routing to chain, fanout, and workflow leaves", async () => {
 		mockSuccessfulSpawn();
 		const { pi, tool } = await loadTool();
@@ -2514,7 +2544,7 @@ You are a test agent.
 					undefined,
 					fableCtx(),
 				),
-			).rejects.toThrow("Fable subscription-only orchestration");
+			).rejects.toThrow("Bedrock Claude subscription-only orchestration");
 			expect(spawnMock).not.toHaveBeenCalled();
 		}
 
@@ -2547,7 +2577,7 @@ You are a test agent.
 				undefined,
 				fableCtx(),
 			),
-		).rejects.toThrow("Fable subscription-only orchestration");
+		).rejects.toThrow("Bedrock Claude subscription-only orchestration");
 		expect(spawnMock).not.toHaveBeenCalled();
 
 		await expect(
@@ -2605,7 +2635,7 @@ You are a test agent.
 		expect(result.content[0].text).toBe("first block\nsecond block");
 	});
 
-	it("bounds non-Fable foreground results with a private artifact", async () => {
+	it("bounds ordinary foreground results with a private artifact", async () => {
 		const fullOutput = `${"x".repeat(60_000)}\n${"line\n".repeat(2_500)}`;
 		mockSuccessfulSpawn(fullOutput);
 		const { tool } = await loadTool();
@@ -2638,7 +2668,7 @@ You are a test agent.
 		}
 	});
 
-	it("bounds Fable foreground results and forces generated artifacts", async () => {
+	it("bounds subscription-root results and forces generated artifacts", async () => {
 		const fullOutput = `${"x".repeat(60_000)}\n${"line\n".repeat(2_500)}`;
 		mockSuccessfulSpawn(fullOutput);
 		const { tool } = await loadTool();
@@ -2657,7 +2687,7 @@ You are a test agent.
 		const visible = result.content[0].text;
 		expect(Buffer.byteLength(visible, "utf8")).toBeLessThanOrEqual(50 * 1024);
 		expect(visible.split(/\r\n|\r|\n/).length).toBeLessThanOrEqual(2_000);
-		expect(visible).toContain("Result truncated at the Fable foreground boundary");
+		expect(visible).toContain("Result truncated at the subscription foreground boundary");
 
 		const childPath = result.details.results[0].outputPath;
 		expect(childPath).toBeDefined();
@@ -2716,6 +2746,50 @@ You are a test agent.
 			expect(spawnArgs).toContain("openai-codex/gpt-5.5");
 			expect(spawnArgs).not.toContain("openai-codex/gpt-5.1-codex-max");
 			expect(spawnArgs).not.toContain("anthropic/claude-sonnet-4-6");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"applies Luna high, Terra medium, and Sol low to unsampled size routes",
+		async () => {
+			process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "0";
+			mockSuccessfulSpawn();
+			const { tool } = await loadTool();
+			const ctx = createMockCtx({
+				cwd: tmpDir,
+				model: { provider: "openai-codex", id: "gpt-5.6-sol" },
+				modelRegistry: {
+					getAvailable: vi.fn(() => [
+						{ provider: "openai-codex", id: "gpt-5.6-luna" },
+						{ provider: "openai-codex", id: "gpt-5.6-terra" },
+						{ provider: "openai-codex", id: "gpt-5.6-sol" },
+					]),
+				},
+			});
+			const cases = [
+				["small", "openai-codex/gpt-5.6-luna", "high"],
+				["medium", "openai-codex/gpt-5.6-terra", "medium"],
+				["large", "openai-codex/gpt-5.6-sol", "low"],
+			] as const;
+
+			for (const [index, [modelSize, model, effort]] of cases.entries()) {
+				await tool.execute(
+					`call-size-route-${index}`,
+					{
+						agent: "tester",
+						task: "Check routed effort",
+						agentScope: "project",
+						modelSize,
+					},
+					undefined,
+					undefined,
+					ctx,
+				);
+				const args = spawnMock.mock.calls[index][1] as string[];
+				expect(args[args.indexOf("--model") + 1]).toBe(model);
+				expect(args[args.indexOf("--thinking") + 1]).toBe(effort);
+			}
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

@@ -118,13 +118,14 @@ output.
 
 ### Routing outcome sampling
 
-Policy-resolved `modelSize` dispatches are assigned deterministically to the
-`codex-routing-outcomes-v1` experiment at a default rate of 10 percent. The
+Policy-resolved `modelSize` dispatches use Luna high for `small`, Terra medium
+for `medium`, and Sol low for `large`. They are assigned deterministically to
+the `codex-routing-outcomes-v1` experiment at a default rate of 10 percent. The
 three data-defined arms are Terra at medium effort, Luna at high effort, and Sol
 at low effort. Explicit model or effort overrides and continued sessions are
 never sampled. Set `PI_ROUTING_OUTCOME_SAMPLE_RATE=0` to disable sampling; values
 from 0 through 1 are accepted. At zero, model resolution and telemetry remain on
-the unsampled path.
+the unsampled size ladder.
 
 The assignment hash uses the run or task identity, so retries of one identity
 stay in one arm. Sampled worker rows use the existing status, exit code,

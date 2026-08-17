@@ -4,7 +4,7 @@ description: Read-only codebase and technical-documentation exploration worker f
 model: openai-codex/gpt-5.6-sol
 isolation: none
 memory: none
-effort: medium
+effort: low
 skills:
   - analysis-workflow
 tools: read, grep, find, ls, web_search, web_fetch

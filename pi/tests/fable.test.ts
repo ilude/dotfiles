@@ -11,7 +11,9 @@ vi.mock("../extensions/subagent/agents.js", () => ({
 import fableCommand, {
 	improveFableBedrockError,
 	isFableBedrockModel,
+	isSubscriptionOrchestratorModel,
 	sanitizeFableBedrockPayload,
+	subagentModelFor,
 } from "../extensions/fable.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -24,6 +26,12 @@ const fableModel = {
 	provider: "amazon-bedrock",
 	id: "us.anthropic.claude-fable-5",
 };
+const subscriptionOrchestratorModels = [
+	fableModel,
+	{ provider: "amazon-bedrock", id: "us.anthropic.claude-opus-5" },
+	{ provider: "bedrock-mantle", id: "anthropic.claude-fable-5" },
+	{ provider: "bedrock-mantle", id: "anthropic.claude-opus-5" },
+];
 
 function orchestratorCtx(overrides: Record<string, unknown> = {}) {
 	return createMockCtx({
@@ -97,64 +105,74 @@ describe("Fable Bedrock compatibility", () => {
 	});
 });
 
-describe("fable orchestration policy", () => {
-	it("detects only the resolved Bedrock Fable model", () => {
+describe("Bedrock Claude orchestration policy", () => {
+	it("detects Fable and Opus on both Bedrock transports", () => {
 		expect(isFableBedrockModel(fableModel)).toBe(true);
-		expect(
-			isFableBedrockModel({
-				provider: "other",
-				id: "us.anthropic.claude-fable-5",
-			}),
-		).toBe(false);
-		expect(
-			isFableBedrockModel({
-				provider: "amazon-bedrock",
-				id: "claude-fable-test",
-			}),
-		).toBe(false);
+		for (const model of subscriptionOrchestratorModels)
+			expect(isSubscriptionOrchestratorModel(model)).toBe(true);
+		for (const model of [
+			{ provider: "other", id: "us.anthropic.claude-fable-5" },
+			{ provider: "amazon-bedrock", id: "claude-fable-test" },
+			{ provider: "bedrock-mantle", id: "anthropic.claude-sonnet-5" },
+		])
+			expect(isSubscriptionOrchestratorModel(model)).toBe(false);
 	});
 
-	it("enforces Fable guidance in every runtime mode", () => {
+	it("enforces subscription guidance in every runtime mode", () => {
 		const { beforeAgentStart } = hooks();
-		for (const mode of ["tui", "rpc", "json", "print"]) {
-			const result = beforeAgentStart(
-				{ systemPrompt: "base" },
-				createMockCtx({ mode, model: fableModel }),
-			);
-			expect(result.systemPrompt).toContain("root orchestrator");
-			expect(result.systemPrompt).toContain("openai-codex subscription leaves");
+		for (const model of subscriptionOrchestratorModels) {
+			for (const mode of ["tui", "rpc", "json", "print"]) {
+				const result = beforeAgentStart(
+					{ systemPrompt: "base" },
+					createMockCtx({ mode, model }),
+				);
+				expect(result.systemPrompt).toContain("root orchestrator");
+				expect(result.systemPrompt).toContain(
+					"openai-codex subscription leaves",
+				);
+				expect(result.systemPrompt).toContain(
+					"small for bounded work (Luna high)",
+				);
+			}
 		}
 	});
 
-	it("hard-blocks tools and delegation arguments outside the Fable control plane", () => {
+	it("hard-blocks tools and delegation arguments outside the subscription control plane", () => {
 		const { tool } = hooks();
-		for (const mode of ["tui", "rpc", "json", "print"]) {
-			const ctx = createMockCtx({ mode, model: fableModel });
-			for (const toolName of ["read", "bash", "tool_search", "subagent_continue"]) {
-				const blocked = tool({ toolName, input: {} }, ctx);
-				expect(blocked).toMatchObject({ block: true });
-				expect(blocked.reason).toContain(
-					"Fable subscription-only orchestration boundary",
-				);
-			}
+		for (const model of subscriptionOrchestratorModels) {
+			for (const mode of ["tui", "rpc", "json", "print"]) {
+				const ctx = createMockCtx({ mode, model });
+				for (const toolName of [
+					"read",
+					"bash",
+					"tool_search",
+					"subagent_continue",
+				]) {
+					const blocked = tool({ toolName, input: {} }, ctx);
+					expect(blocked).toMatchObject({ block: true });
+					expect(blocked.reason).toContain(
+						"Bedrock Claude subscription-only orchestration boundary",
+					);
+				}
 
-			for (const toolName of [
-				"task",
-				"ask_user",
-				"plan_archive",
-				"subagent_status",
-			]) {
-				expect(tool({ toolName, input: {} }, ctx)).toBeUndefined();
+				for (const toolName of [
+					"task",
+					"ask_user",
+					"plan_archive",
+					"subagent_status",
+				]) {
+					expect(tool({ toolName, input: {} }, ctx)).toBeUndefined();
+				}
+				expect(
+					tool(
+						{
+							toolName: "subagent",
+							input: { agent: "builder", task: "work", role: "leaf" },
+						},
+						ctx,
+					),
+				).toBeUndefined();
 			}
-			expect(
-				tool(
-					{
-						toolName: "subagent",
-						input: { agent: "builder", task: "work", role: "leaf" },
-					},
-					ctx,
-				),
-			).toBeUndefined();
 		}
 
 		const ctx = createMockCtx({ mode: "tui", model: fableModel });
@@ -203,7 +221,7 @@ describe("fable orchestration policy", () => {
 		).toBeUndefined();
 	});
 
-	it("resolves subagent sizes from available models and preserves explicit models", async () => {
+	it("resolves subagent sizes and leaves dynamic routing to the executor", async () => {
 		const { tool } = hooks();
 		const cases = [
 			["small", "openai-codex/gpt-5.6-luna"],
@@ -211,9 +229,13 @@ describe("fable orchestration policy", () => {
 			["large", "openai-codex/gpt-5.6-sol"],
 		] as const;
 		for (const [modelSize, model] of cases) {
+			expect(
+				subagentModelFor({ modelSize }, codexModels, codexModels[2]),
+			).toBe(model);
 			const event = { toolName: "subagent", input: { modelSize } };
 			expect(tool(event, orchestratorCtx())).toBeUndefined();
-			expect(event.input.model).toBe(model);
+			expect(event.input).not.toHaveProperty("model");
+			expect(event.input).toHaveProperty("modelPolicy", "same-family");
 		}
 
 		const explicit = {
@@ -240,13 +262,18 @@ describe("fable orchestration policy", () => {
 			expect(event.input.model).toBe(model);
 		}
 
-		const defaulted = { toolName: "subagent", input: {} as { model?: string } };
+		const defaulted = {
+			toolName: "subagent",
+			input: {} as { modelSize?: string; modelPolicy?: string },
+		};
 		expect(tool(defaulted, orchestratorCtx())).toBeUndefined();
-		expect(defaulted.input.model).toBe("openai-codex/gpt-5.6-terra");
+		expect(defaulted.input).toEqual({
+			modelSize: "medium",
+			modelPolicy: "same-family",
+		});
 	});
 
 	it("uses current-provider metadata rather than the former fixed ladder", () => {
-		const { tool } = hooks();
 		const models = [
 			{
 				provider: "anthropic",
@@ -263,17 +290,9 @@ describe("fable orchestration policy", () => {
 				cost: { input: 15, output: 75 },
 			},
 		];
-		const event = {
-			toolName: "subagent",
-			input: { modelSize: "large" },
-		};
-		const ctx = orchestratorCtx({
-			model: models[1],
-			modelRegistry: { getAvailable: vi.fn(() => models) },
-		});
-
-		expect(tool(event, ctx)).toBeUndefined();
-		expect(event.input).toHaveProperty("model", "anthropic/claude-opus-4-6");
+		expect(subagentModelFor({ modelSize: "large" }, models, models[1])).toBe(
+			"anthropic/claude-opus-4-6",
+		);
 	});
 
 	it("leaves allowed pinned agents unoverridden without a size", () => {
@@ -337,7 +356,7 @@ describe("fable orchestration policy", () => {
 		expect(event.input).not.toHaveProperty("model");
 	});
 
-	it("adds foreman guidance only for Fable or explicit foreman mode", () => {
+	it("adds foreman guidance for subscription roots or explicit foreman mode", () => {
 		const { beforeAgentStart } = hooks("medium");
 		expect(
 			beforeAgentStart({ systemPrompt: "base" }, orchestratorCtx()),

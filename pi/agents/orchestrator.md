@@ -2,7 +2,7 @@
 name: orchestrator
 description: Coordinates independent workstreams when direct execution would lose domain coverage, verification independence, or parent context.
 model: openai-codex/gpt-5.6-sol
-effort: high
+effort: low
 skills:
   - orchestration
 tools: read, grep, find, ls, subagent

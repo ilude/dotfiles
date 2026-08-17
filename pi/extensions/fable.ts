@@ -24,12 +24,13 @@ const FOREMAN_INSTRUCTION = [
 	"Keep solutions simple and proportionate: follow YAGNI and KISS, prefer the Pareto 80/20 solution, and avoid over-complication or gold-plating.",
 	"Require tests that protect distinct user-visible contracts, regressions, edge cases, or safety properties; do not create tests that merely restate implementation details or add no decision-relevant confidence.",
 ].join(" ");
-const FABLE_ROOT_INSTRUCTION = [
+const SUBSCRIPTION_ROOT_INSTRUCTION = [
 	"You are the root orchestrator and must not delegate orchestration to a coordinator.",
 	"Use only direct openai-codex subscription leaves or bounded workflows for investigation, implementation, validation, and other work.",
+	"Select modelSize small for bounded work (Luna high), medium for ordinary multi-file work (Terra medium), and large for complex cross-cutting work (Sol low).",
 	"Do not call direct work tools, tool_search, subagent_continue, or supply custom output paths.",
 ].join(" ");
-const FABLE_VISIBILITY_KEY = "fable";
+const SUBSCRIPTION_VISIBILITY_KEY = "bedrock-claude-orchestrator";
 export const FABLE_CONTROL_TOOL_NAMES = [
 	"subagent",
 	"subagent_status",
@@ -49,7 +50,8 @@ const FABLE_ALWAYS_VISIBLE_TOOL_NAMES = FABLE_CONTROL_TOOL_NAMES.filter(
 		name !== "plan_progress",
 );
 const FABLE_CONTROL_TOOLS = new Set<string>(FABLE_CONTROL_TOOL_NAMES);
-const FABLE_BOUNDARY = "Fable subscription-only orchestration boundary";
+const SUBSCRIPTION_BOUNDARY =
+	"Bedrock Claude subscription-only orchestration boundary";
 
 type DelegationRequest = {
 	agent?: unknown;
@@ -65,6 +67,7 @@ type SubagentInput = DelegationRequest & {
 	agentScope?: unknown;
 	model?: unknown;
 	modelSize?: unknown;
+	modelPolicy?: unknown;
 };
 
 type AgentRequest = { agent?: unknown };
@@ -115,21 +118,23 @@ function delegationRequests(input: SubagentInput): DelegationRequest[] {
 	return [input, ...nested, ...continuation];
 }
 
-function fableDelegationViolation(input: SubagentInput): string | undefined {
+function subscriptionDelegationViolation(
+	input: SubagentInput,
+): string | undefined {
 	const requests = delegationRequests(input);
 	if (requests.some((request) => request.role === "coordinator"))
-		return `${FABLE_BOUNDARY}: Fable is the root orchestrator and cannot request a coordinator.`;
+		return `${SUBSCRIPTION_BOUNDARY}: the selected Claude model is the root orchestrator and cannot request a coordinator.`;
 	if (
 		requests.some(
 			(request) =>
 				request.agent === "orchestrator" && request.role === undefined,
 		)
 	)
-		return `${FABLE_BOUNDARY}: the primary model owns orchestration. Specify role: "leaf" to run the orchestrator agent as a leaf.`;
+		return `${SUBSCRIPTION_BOUNDARY}: the primary model owns orchestration. Specify role: "leaf" to run the orchestrator agent as a leaf.`;
 	if (requests.some((request) => typeof request.output === "string"))
-		return `${FABLE_BOUNDARY}: caller-supplied output paths are not allowed; Pi generates private artifacts.`;
+		return `${SUBSCRIPTION_BOUNDARY}: caller-supplied output paths are not allowed; Pi generates private artifacts.`;
 	if (input.continue !== undefined)
-		return `${FABLE_BOUNDARY}: saved-session continuation is not available to Fable.`;
+		return `${SUBSCRIPTION_BOUNDARY}: saved-session continuation is not available.`;
 	return undefined;
 }
 
@@ -155,6 +160,18 @@ export function isFableBedrockModel(model?: {
 		model?.provider === "amazon-bedrock" &&
 		model.id === "us.anthropic.claude-fable-5"
 	);
+}
+
+export function isSubscriptionOrchestratorModel(model?: {
+	provider?: unknown;
+	id?: unknown;
+}): boolean {
+	if (typeof model?.id !== "string") return false;
+	if (model.provider === "amazon-bedrock")
+		return /^us\.anthropic\.claude-(?:fable|opus)-/.test(model.id);
+	if (model.provider === "bedrock-mantle")
+		return /^anthropic\.claude-(?:fable|opus)-/.test(model.id);
+	return false;
 }
 
 export function sanitizeFableBedrockPayload(
@@ -234,22 +251,27 @@ export function subagentModelFor(
 export default function fableCommand(pi: ExtensionAPI): void {
 	let foremanMode = false;
 
-	const updateFableVisibility = (model?: {
+	const updateSubscriptionVisibility = (model?: {
 		provider?: unknown;
 		id?: unknown;
 	}): void => {
-		if (isFableBedrockModel(model)) {
+		if (isSubscriptionOrchestratorModel(model)) {
 			setToolVisibilityRestriction(
 				pi,
-				FABLE_VISIBILITY_KEY,
+				SUBSCRIPTION_VISIBILITY_KEY,
 				FABLE_CONTROL_TOOL_NAMES,
 				FABLE_ALWAYS_VISIBLE_TOOL_NAMES,
 			);
-		} else removeToolVisibilityRestriction(pi, FABLE_VISIBILITY_KEY);
+		} else
+			removeToolVisibilityRestriction(pi, SUBSCRIPTION_VISIBILITY_KEY);
 	};
 
-	pi.on("session_start", (_event, ctx) => updateFableVisibility(ctx.model));
-	pi.on("model_select", (event) => updateFableVisibility(event.model));
+	pi.on("session_start", (_event, ctx) =>
+		updateSubscriptionVisibility(ctx.model),
+	);
+	pi.on("model_select", (event) =>
+		updateSubscriptionVisibility(event.model),
+	);
 
 	pi.on("before_provider_request", (event, ctx) =>
 		sanitizeFableBedrockPayload(event.payload, ctx.model),
@@ -269,10 +291,10 @@ export default function fableCommand(pi: ExtensionAPI): void {
 	});
 
 	pi.on("before_agent_start", (event, ctx) => {
-		updateFableVisibility(ctx.model);
-		if (isFableBedrockModel(ctx.model)) {
+		updateSubscriptionVisibility(ctx.model);
+		if (isSubscriptionOrchestratorModel(ctx.model)) {
 			return {
-				systemPrompt: `${event.systemPrompt}\n\n${FOREMAN_INSTRUCTION}\n\n${FABLE_ROOT_INSTRUCTION}`,
+				systemPrompt: `${event.systemPrompt}\n\n${FOREMAN_INSTRUCTION}\n\n${SUBSCRIPTION_ROOT_INSTRUCTION}`,
 			};
 		}
 		if (!isInteractiveOrchestratorParent(ctx)) return undefined;
@@ -287,15 +309,15 @@ export default function fableCommand(pi: ExtensionAPI): void {
 	});
 
 	pi.on("tool_call", (event, ctx) => {
-		if (isFableBedrockModel(ctx.model)) {
+		if (isSubscriptionOrchestratorModel(ctx.model)) {
 			if (!FABLE_CONTROL_TOOLS.has(event.toolName)) {
 				return {
 					block: true,
-					reason: `${FABLE_BOUNDARY}: ${event.toolName} is not a permitted root control tool. Delegate the work to an openai-codex leaf.`,
+					reason: `${SUBSCRIPTION_BOUNDARY}: ${event.toolName} is not a permitted root control tool. Delegate the work to an openai-codex leaf.`,
 				};
 			}
 			if (event.toolName.startsWith("subagent")) {
-				const violation = fableDelegationViolation(
+				const violation = subscriptionDelegationViolation(
 					event.input as SubagentInput,
 				);
 				if (violation) return { block: true, reason: violation };
@@ -306,18 +328,15 @@ export default function fableCommand(pi: ExtensionAPI): void {
 		if (!isInteractiveOrchestratorParent(ctx)) return undefined;
 		if (event.toolName === "subagent") {
 			const input = event.input as SubagentInput;
+			if (input.model !== undefined) return undefined;
 			if (
-				input.model === undefined &&
 				input.modelSize === undefined &&
 				preservesRequestedAgentModels(input, ctx.cwd)
 			) {
 				return undefined;
 			}
-			input.model = subagentModelFor(
-				input,
-				ctx.modelRegistry.getAvailable(),
-				ctx.model,
-			);
+			if (input.modelSize === undefined) input.modelSize = "medium";
+			if (input.modelPolicy === undefined) input.modelPolicy = "same-family";
 		}
 		return undefined;
 	});

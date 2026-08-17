@@ -2,7 +2,7 @@
 name: reviewer
 description: "Reviews completed work against the original plan. Verifies each success criterion and flags gaps."
 model: openai-codex/gpt-5.6-sol
-effort: medium
+effort: low
 skills:
   - analysis-workflow
 tools: read, grep, review_artifact_write

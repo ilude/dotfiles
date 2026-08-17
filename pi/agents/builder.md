@@ -1,8 +1,8 @@
 ---
 name: builder
 description: General implementation worker for bounded coding, refactoring, debugging, documentation, and utility tasks.
-model: openai-codex/gpt-5.6-terra
-effort: medium
+model: openai-codex/gpt-5.6-luna
+effort: high
 skills:
   - development-philosophy
   - least-astonishment

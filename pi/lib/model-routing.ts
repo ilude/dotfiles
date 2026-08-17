@@ -26,6 +26,7 @@ export type ModelSize =
 	| "small"
 	| "medium";
 export type ModelPolicy = "same-provider" | "same-family";
+export type RoutedEffort = "low" | "medium" | "high";
 
 export const ROUTING_OUTCOME_EXPERIMENT_ID = "codex-routing-outcomes-v1";
 export const ROUTING_OUTCOME_SAMPLE_RATE = 0.1;
@@ -389,6 +390,12 @@ export function isConfiguredPremiumCodex(
 
 export function preferredModelId(size: ModelSize): string {
 	return `openai-codex/${MODEL_ROUTING_POLICY.preferredCodexIds[size][0]}`;
+}
+
+export function preferredEffortForSize(size: ModelSize): RoutedEffort {
+	if (size === "nano" || size === "mini" || size === "small") return "high";
+	if (size === "core" || size === "medium") return "medium";
+	return "low";
 }
 
 function findFirstMini<T extends ModelLike>(

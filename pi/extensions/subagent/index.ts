@@ -47,6 +47,7 @@ import {
 	type ModelPolicy,
 	type ModelSize,
 	parseProviderModelString,
+	preferredEffortForSize,
 	resolveDynamicModel,
 	type RoutingOutcomeAssignment,
 	resolveSampledDynamicModelFromRegistry,
@@ -67,7 +68,7 @@ import {
 	resolveTaskWorkspace,
 } from "../../lib/task-registry.js";
 import { registerOrchestrationInvocation } from "../../lib/workflow-friction.js";
-import { isFableBedrockModel } from "../fable.js";
+import { isSubscriptionOrchestratorModel } from "../fable.js";
 import {
 	formatTraceparent,
 	getTraceId,
@@ -645,7 +646,7 @@ function saveOutputArtifact(
 
 function boundProviderVisibleResult<
 	T extends { content: Array<{ type: string; text?: string }> },
->(result: T, label: string, boundary: "Fable" | "provider-visible"): T {
+>(result: T, label: string, boundary: "subscription" | "provider-visible"): T {
 	const fullOutput = result.content
 		.filter(
 			(item): item is { type: string; text: string } =>
@@ -661,7 +662,7 @@ function boundProviderVisibleResult<
 
 	const saved = saveOutputArtifact(
 		getDefaultArtifactPath(
-			`${boundary === "Fable" ? "fable" : "foreground"}-${label}-${randomUUID()}`,
+			`${boundary === "subscription" ? "subscription" : "foreground"}-${label}-${randomUUID()}`,
 			0,
 		),
 		fullOutput,
@@ -1009,11 +1010,11 @@ function resolveChildRole(
 const THINKING_SUFFIX_RE =
 	/:(off|minimal|low|medium|high|xhigh|max)$/;
 
-function fableModelBase(selection: string): string {
+function modelSelectionBase(selection: string): string {
 	return selection.replace(THINKING_SUFFIX_RE, "");
 }
 
-function resolveFableChildModel(
+function resolveSubscriptionChildModel(
 	availableModels: readonly ModelLike[],
 	currentModel: ModelLike | undefined,
 	agent: AgentConfig,
@@ -1022,10 +1023,10 @@ function resolveFableChildModel(
 ): string {
 	const requested = explicitModel ?? (modelSize ? undefined : agent.model);
 	if (requested) {
-		const parsed = parseProviderModelString(fableModelBase(requested));
+		const parsed = parseProviderModelString(modelSelectionBase(requested));
 		if (!parsed || parsed.provider !== "openai-codex")
 			throw new Error(
-				`Fable subscription-only orchestration requires openai-codex child models; ${agent.name} resolved to ${requested}.`,
+				`Bedrock Claude subscription-only orchestration requires openai-codex child models; ${agent.name} resolved to ${requested}.`,
 			);
 		if (
 			!availableModels.some(
@@ -1034,7 +1035,7 @@ function resolveFableChildModel(
 			)
 		)
 			throw new Error(
-				`Fable subscription-only orchestration model is unavailable: ${requested}.`,
+				`Bedrock Claude subscription-only orchestration model is unavailable: ${requested}.`,
 			);
 		return requested;
 	}
@@ -1050,7 +1051,7 @@ function resolveFableChildModel(
 	);
 	if (!resolved)
 		throw new Error(
-			"Fable subscription-only orchestration requires an available openai-codex model, but none was found.",
+			"Bedrock Claude subscription-only orchestration requires an available openai-codex model, but none was found.",
 		);
 	return `${resolved.provider}/${resolved.id}`;
 }
@@ -1924,7 +1925,7 @@ const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
 
 const ModelSizeSchema = StringEnum(["small", "medium", "large"] as const, {
 	description:
-		"Dynamic model size override. Resolves against the current session model/provider and available registry models.",
+		"Dynamic model size override. Resolves against the current session model/provider and available registry models. Without an explicit effort, small uses high, medium uses medium, and large uses low.",
 });
 
 const ModelPolicySchema = StringEnum(
@@ -2593,7 +2594,7 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const currentIdentity = currentSubagentIdentity();
-			const fableRoot = isFableBedrockModel(ctx.model);
+			const subscriptionRoot = isSubscriptionOrchestratorModel(ctx.model);
 			const internalWorkflowContext = internalWorkflowRuns.get(_toolCallId);
 			if (currentIdentity.role === "leaf" || currentIdentity.depth >= 2)
 				throw new Error("Leaf and depth-two subagents cannot delegate.");
@@ -2637,7 +2638,7 @@ export default function (pi: ExtensionAPI) {
 				tasks: params.tasks as unknown as TaskParams[] | undefined,
 			});
 			const sampledResolution =
-				!fableRoot && !explicitModel && modelSize
+				!subscriptionRoot && !explicitModel && modelSize
 					? resolveSampledDynamicModelFromRegistry(
 							ctx.modelRegistry,
 							ctx,
@@ -2656,6 +2657,12 @@ export default function (pi: ExtensionAPI) {
 					: undefined;
 			const resolvedModel = sampledResolution?.model;
 			const routingExperiment = sampledResolution?.experiment;
+			const routedEffort =
+				effort ??
+				routingExperiment?.effort ??
+				(!explicitModel && modelSize
+					? preferredEffortForSize(modelSize)
+					: undefined);
 			const resolvedModelId =
 				explicitModel ??
 				(resolvedModel
@@ -2663,7 +2670,7 @@ export default function (pi: ExtensionAPI) {
 					: undefined);
 			const discovery = agentDiscoveryFor(ctx, agentScope);
 			const agents = discovery.agents;
-			const availableModels = fableRoot
+			const availableModels = subscriptionRoot
 				? (ctx.modelRegistry.getAvailable() as ModelLike[])
 				: [];
 			const confirmProjectAgents = params.confirmProjectAgents ?? false;
@@ -3157,20 +3164,20 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 
-			if (fableRoot && hasContinue)
+			if (subscriptionRoot && hasContinue)
 				throw new Error(
-					"Fable subscription-only orchestration does not allow saved-session continuation.",
+					"Bedrock Claude subscription-only orchestration does not allow saved-session continuation.",
 				);
 
 			const prepareChild = (item: TaskParams, forcedRole?: SubagentRole) => {
 				const requestedRole = forcedRole ?? item.role;
-				if (fableRoot && requestedRole === "coordinator")
+				if (subscriptionRoot && requestedRole === "coordinator")
 					throw new Error(
-						"Fable subscription-only orchestration keeps Fable as the root and does not allow coordinators.",
+						"Bedrock Claude subscription-only orchestration keeps the selected Claude model as the root and does not allow coordinators.",
 					);
-				if (fableRoot && typeof item.output === "string")
+				if (subscriptionRoot && typeof item.output === "string")
 					throw new Error(
-						"Fable subscription-only orchestration does not allow caller-supplied output paths.",
+						"Bedrock Claude subscription-only orchestration does not allow caller-supplied output paths.",
 					);
 				const resolved = resolveChildRole(requestedRole, item.agent);
 				item.resolvedRole = resolved.role;
@@ -3197,8 +3204,8 @@ export default function (pi: ExtensionAPI) {
 					throw new Error(
 						`Modifying leaf ${item.agent} must declare a repository-relative scope.`,
 					);
-				if (fableRoot) {
-					item.resolvedModel = resolveFableChildModel(
+				if (subscriptionRoot) {
+					item.resolvedModel = resolveSubscriptionChildModel(
 						availableModels,
 						ctx.model as ModelLike | undefined,
 						agent,
@@ -3324,7 +3331,7 @@ export default function (pi: ExtensionAPI) {
 					followUp.resolvedModel ?? resolvedModelId,
 					modelSize,
 					modelPolicy,
-					followUp.effort ?? effort,
+					followUp.effort ?? routedEffort,
 					undefined,
 					undefined,
 					{ continuable: true, sessionPath: followUp.session },
@@ -3336,7 +3343,7 @@ export default function (pi: ExtensionAPI) {
 				);
 				finalizeOutput(
 					result,
-					fableRoot ? true : followUp.output,
+					subscriptionRoot ? true : followUp.output,
 					followUp.outputMode,
 					invocationCwd,
 					followUp.cwd,
@@ -3398,7 +3405,7 @@ export default function (pi: ExtensionAPI) {
 						step.resolvedModel ?? resolvedModelId,
 						modelSize,
 						modelPolicy,
-						step.effort ?? effort,
+						step.effort ?? routedEffort,
 						undefined,
 						undefined,
 						{ continuable: params.continuable === true },
@@ -3410,7 +3417,7 @@ export default function (pi: ExtensionAPI) {
 					);
 					finalizeOutput(
 						result,
-						fableRoot ? true : step.output,
+						subscriptionRoot ? true : step.output,
 						step.outputMode,
 						invocationCwd,
 						step.cwd,
@@ -3482,7 +3489,8 @@ export default function (pi: ExtensionAPI) {
 							turns: 0,
 						},
 						model: tasks[i].resolvedModel ?? resolvedModelId ?? agent?.model,
-						effort: tasks[i].effort ?? effort ?? agent?.effort ?? "default",
+						effort:
+							tasks[i].effort ?? routedEffort ?? agent?.effort ?? "default",
 					};
 				}
 
@@ -3528,7 +3536,7 @@ export default function (pi: ExtensionAPI) {
 								t.resolvedModel ?? resolvedModelId,
 								modelSize,
 								modelPolicy,
-								t.effort ?? effort,
+								t.effort ?? routedEffort,
 								t.taskId,
 								undefined,
 								{ continuable: params.continuable === true },
@@ -3540,7 +3548,7 @@ export default function (pi: ExtensionAPI) {
 							);
 							finalizeOutput(
 								result,
-								fableRoot ? true : t.output,
+								subscriptionRoot ? true : t.output,
 								t.outputMode,
 								invocationCwd,
 								t.cwd,
@@ -3598,7 +3606,7 @@ export default function (pi: ExtensionAPI) {
 					selectedSingle.resolvedModel ?? resolvedModelId,
 					modelSize,
 					modelPolicy,
-					effort,
+					routedEffort,
 					selectedSingle.taskId,
 					undefined,
 					{ continuable: params.continuable === true },
@@ -3610,7 +3618,7 @@ export default function (pi: ExtensionAPI) {
 				);
 				finalizeOutput(
 					result,
-					fableRoot ? true : selectedSingle.output,
+					subscriptionRoot ? true : selectedSingle.output,
 					selectedSingle.outputMode,
 					invocationCwd,
 					selectedSingle.cwd,
@@ -3667,7 +3675,7 @@ export default function (pi: ExtensionAPI) {
 						: boundProviderVisibleResult(
 								result,
 								orchestrationId,
-								fableRoot ? "Fable" : "provider-visible",
+								subscriptionRoot ? "subscription" : "provider-visible",
 							);
 				} finally {
 					await settleInvocationTree();
@@ -4345,8 +4353,8 @@ export default function (pi: ExtensionAPI) {
 				const requestedNames = new Set(normalizedItems.map((item) => item.agent));
 				if (params.verify?.agent) requestedNames.add(params.verify.agent);
 				if (params.reduce?.agent) requestedNames.add(params.reduce.agent);
-				const fableRoot = isFableBedrockModel(ctx.model);
-				if (fableRoot) {
+				const subscriptionRoot = isSubscriptionOrchestratorModel(ctx.model);
+				if (subscriptionRoot) {
 					const availableModels = ctx.modelRegistry.getAvailable() as ModelLike[];
 					for (const name of requestedNames) {
 						const agent = agents.find((candidate) => candidate.name === name);
@@ -4354,7 +4362,7 @@ export default function (pi: ExtensionAPI) {
 							throw new Error(
 								`Unknown workflow agent for agentScope "${agentScope}": ${name}`,
 							);
-						resolveFableChildModel(
+						resolveSubscriptionChildModel(
 							availableModels,
 							ctx.model as ModelLike | undefined,
 							agent,
@@ -4609,7 +4617,7 @@ export default function (pi: ExtensionAPI) {
 				return boundProviderVisibleResult(
 					toolResult,
 					toolCallId,
-					fableRoot ? "Fable" : "provider-visible",
+					subscriptionRoot ? "subscription" : "provider-visible",
 				);
 			},
 		});

@@ -4,6 +4,7 @@ import {
 	getCurrentModelHint,
 	isConfiguredPremiumCodex,
 	isPremiumCodexModel,
+	preferredEffortForSize,
 	resolveCommitPlanningModel,
 	resolveDynamicModel,
 	resolveExplicitModelPolicy,
@@ -174,7 +175,7 @@ describe("resolveDynamicModel", () => {
 		).toEqual(models[2]);
 	});
 
-	it("maps the GPT-5.6 ladder to Luna, Terra, and Sol", () => {
+	it("maps the GPT-5.6 ladder to Luna high, Terra medium, and Sol low", () => {
 		const models = [
 			{ provider: "openai-codex", id: "gpt-5.6-luna" },
 			{ provider: "openai-codex", id: "gpt-5.6-terra" },
@@ -190,6 +191,9 @@ describe("resolveDynamicModel", () => {
 		expect(
 			resolveDynamicModel(models, current, "large", "same-family"),
 		).toEqual(models[2]);
+		expect(preferredEffortForSize("small")).toBe("high");
+		expect(preferredEffortForSize("medium")).toBe("medium");
+		expect(preferredEffortForSize("large")).toBe("low");
 	});
 
 	it("uses the anthropic ladder when current model is anthropic", () => {
