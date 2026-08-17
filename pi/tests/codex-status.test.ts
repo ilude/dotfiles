@@ -313,7 +313,7 @@ describe("codex-status usage", () => {
 					},
 				},
 			}),
-		).toBe("codex 5h 42% | wk 61%");
+		).toBe("codex: 5h 42% | wk 61%");
 		expect(
 			formatCodexFooterStatus({
 				rate_limit: {
@@ -324,8 +324,56 @@ describe("codex-status usage", () => {
 					secondary_window: null,
 				},
 			}),
-		).toBe("codex 5h disabled | wk 5%");
+		).toBe("codex: 5h 0% | wk 5%");
 		expect(formatCodexFooterStatus({ rate_limit: {} })).toBe("codex: unknown");
+	});
+
+	it("colors disabled, idle, and growing five-hour footer usage", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(2026, 4, 7, 19, 18, 0));
+		const resetAt = new Date(2026, 4, 7, 22, 18, 0).getTime() / 1000;
+
+		expect(
+			formatCodexFooterStatus(
+				{
+					rate_limit: {
+						primary_window: {
+							used_percent: 5,
+							limit_window_seconds: 7 * 24 * 60 * 60,
+						},
+					},
+				},
+				{ color: true },
+			),
+		).toContain("5h \u001b[94m0%\u001b[0m");
+		expect(
+			formatCodexFooterStatus(
+				{
+					rate_limit: {
+						primary_window: {
+							used_percent: 0,
+							limit_window_seconds: 5 * 60 * 60,
+							reset_at: resetAt,
+						},
+					},
+				},
+				{ color: true },
+			),
+		).toContain("5h \u001b[92m0%\u001b[0m");
+		expect(
+			formatCodexFooterStatus(
+				{
+					rate_limit: {
+						primary_window: {
+							used_percent: 50,
+							limit_window_seconds: 5 * 60 * 60,
+							reset_at: resetAt,
+						},
+					},
+				},
+				{ color: true },
+			),
+		).toContain("5h \u001b[31m50%\u001b[0m");
 	});
 
 	it("formats Bedrock month-to-date local estimates", () => {

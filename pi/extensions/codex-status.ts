@@ -421,11 +421,12 @@ export function formatCodexFooterStatus(
 	const windows = windowsByDuration(usage.rate_limit);
 	if (windows.windowCount === 0) return "codex: unknown";
 	const fiveHour = formatFooterWindow("5h", windows.fiveHour, colorEnabled);
+	const disabledFiveHour = `5h ${color("0%", ANSI_LIGHT_BLUE, colorEnabled)}`;
 	const weekly = formatFooterWindow("wk", windows.weekly, colorEnabled);
-	const parts = [fiveHour ?? "5h disabled", weekly].filter(
+	const parts = [fiveHour ?? disabledFiveHour, weekly].filter(
 		(value): value is string => Boolean(value),
 	);
-	return `codex ${parts.join(" | ")}`;
+	return `codex: ${parts.join(" | ")}`;
 }
 
 function formatFooterWindow(
