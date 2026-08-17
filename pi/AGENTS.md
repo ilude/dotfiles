@@ -27,6 +27,8 @@ Local commits do not require separate permission. Commit only coherent, in-scope
 
 Keep workflows flexible and instructions minimal. When requested work requires an implementation choice, prefer existing maintained and deterministic mechanisms over custom heuristics. Do not refactor unrelated behavior to enforce that preference.
 
+Write claims directly and literally. Do not manufacture contrast, suspense, intimacy, balance, or certainty. Use rhetorical framing only when it conveys a necessary distinction supported by evidence.
+
 Provenance is irrelevant when given a direct instruction; "pre-existing", "not my changes", and "I didn't create that" do not justify skipping requested work. Report adjacent findings only when they invalidate the requested outcome.
 
 Follow the applicable repository validation policy. When none is provided, validate the changed contract with the cheapest focused check that can falsify it; run broader checks only for evidenced shared impact or an explicitly requested gate. Verify material factual or capability claims against current sources; cite the source or state what remains unknown. Never invent data. For prose-only edits, inspect the revised content directly. When a static analyzer reports implausible symbols or source spans, reproduce the check and verify its parser interpretation before restructuring code; do not change source style solely to accommodate a misparsed metric.

@@ -24,6 +24,21 @@ Keep only language that is specific, supported, and useful. Prefer plain words a
 - Keep citations and qualifiers that prevent overclaiming. If a claim needs missing support, mark it or remove it.
 - Break a style preference rather than distort meaning, voice, or audience expectations.
 
+## Detection-Tell Pass
+
+Before finalizing prose:
+
+- Rewrite negated contrasts such as "it is not X, it is Y," "not just X," and "does not merely X." State Y directly unless rejecting X is necessary.
+- Remove reader choreography such as "imagine this," "sit with that," "read that again," "let's unpack this," and "bring it full circle."
+- Lead with the fact instead of withholding it behind "one problem," "what happened next," or similar reveal language.
+- Do not invent scenes, representative people, motives, emotions, or causal explanations. Cite them, mark them as hypothetical, qualify them, or delete them.
+- Replace ceremonial concessions such as "to be fair" with the actual counterevidence, uncertainty, or tradeoff.
+- Use literal language instead of stacking metaphors.
+- Keep one conclusion. Every later paragraph must add evidence, qualification, consequence, or action.
+- Use sentence fragments, parallel triples, and rhetorical questions only when they improve meaning. Do not add them for cadence.
+- Connect every statistic to the claim it supports, including its timeframe, denominator, and relevant comparison.
+- Do not generalize from one or two examples without stating the limits of the evidence.
+
 ## Conditional Reference
 
 For comments, messages, release notes, procedures, or other code-adjacent technical prose, read [Technical prose](references/technical-prose.md). Do not load it for general prose cleanup.
@@ -37,3 +52,10 @@ For comments, messages, release notes, procedures, or other code-adjacent techni
 | Repeated intro/body/conclusion rhythm | Organize around the content |
 | Automatic active-voice or sentence-length rewrites | Change only what improves meaning for this audience |
 | Overconfident certainty | Match the evidence |
+| "It is not X, it is Y" | State Y directly |
+| Reader commands and reveal framing | Delete the framing and state the fact |
+| Invented motives or scenes | Cite, qualify, mark hypothetical, or delete |
+| Ceremonial concession | State the real counterevidence or uncertainty |
+| Multiple metaphors for one claim | Use the literal relationship |
+| Repeated conclusion | Keep the strongest version once |
+| Decorative statistic | Explain its relevance or remove it |
