@@ -707,9 +707,10 @@ The custom footer renders directory, branch, model, reasoning level, context
 usage, Pi version, and provider quota on the first line. Context usage is a
 separate pipe-delimited segment after the reasoning level. Onclave and other
 extension statuses render on the left of the second line, followed by token
-throughput. Onclave renders `Onclave: <client> | Peers: N`, coloring the client
-green only while connected and red otherwise. The default client identity is
-stable per Pi session, and the peer count excludes the current session. Compact Bedrock spend remains
+throughput. Onclave renders `Onclave[N]: <client>`, coloring the client green only while
+connected and red otherwise. The default client identity uses the compact
+`pi-<12-character-session-prefix>` format, remains stable per Pi session, and
+the peer count excludes the current session. Compact Bedrock spend remains
 right-aligned as the final second-line segment.
 
 Commands:

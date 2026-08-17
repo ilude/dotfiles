@@ -106,12 +106,12 @@ describe("footer extension status placement", () => {
 		const data = footerData({
 			bedrock: "bedrock $17.49",
 			"damage-control": "damage-control: active",
-			codex: "codex 5h 42% | wk 61%",
+			codex: "codex: 5h 42% | wk 61%",
 			tps: "done -- 42 tok/s",
 		});
 		const status = "done -- 42 tok/s | bedrock $17.49";
 
-		expect(mod.rightAnchoredStatus(data)).toBe("codex 5h 42% | wk 61%");
+		expect(mod.rightAnchoredStatus(data)).toBe("codex: 5h 42% | wk 61%");
 		expect(mod.formatExtensionStatuses(data)).toBe(status);
 		expect(mod.formatExtensionStatusLine(data, 50)).toBe(
 			"done -- 42 tok/s                    bedrock $17.49",
@@ -137,7 +137,7 @@ describe("footer extension status placement", () => {
 	it("places token throughput after Onclave and keeps Bedrock spend right-aligned", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const onclave =
-			"Onclave: \x1b[32mdev-wks-mglenn-gcc_automation-main\x1b[0m | Peers: 2";
+			"Onclave[2]: \x1b[32mpi-01a0115194f6\x1b[0m";
 		const data = footerData({
 			"onclave-v2": onclave,
 			bedrock: "bedrock $71.64",
