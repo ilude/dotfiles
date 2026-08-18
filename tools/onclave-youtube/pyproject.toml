@@ -37,6 +37,7 @@ py-modules = [
     "onclave_client",
     "onclave_youtube",
     "post_annotation",
+    "reindex_embeddings",
     "reprocess",
     "search",
     "signing",

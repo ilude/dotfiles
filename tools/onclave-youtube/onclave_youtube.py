@@ -10,6 +10,7 @@ from get_content import main as content_main
 from ingest_video import main as ingest_main
 from list_videos import main as list_main
 from post_annotation import main as annotate_main
+from reindex_embeddings import main as reindex_embeddings_main
 from reprocess import main as reprocess_main
 from search import main as search_main
 
@@ -24,6 +25,7 @@ COMMANDS: dict[str, Command] = {
     "find": find_main,
     "job": job_main,
     "reprocess": reprocess_main,
+    "reindex-embeddings": reindex_embeddings_main,
     "annotate": annotate_main,
 }
 
