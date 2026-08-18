@@ -3,192 +3,46 @@ name: api-design
 description: API design, REST, GraphQL, or authentication patterns.
 ---
 
-# API Design Patterns
+# API Design
 
-Language-agnostic patterns for designing REST and GraphQL APIs. Focus on solving real problems with simple, maintainable solutions that match the project's existing API conventions.
+## References
 
-## Reference Documentation
+Load only the reference needed for the request:
 
-For detailed patterns and examples, see:
-- [rest-patterns.md](rest-patterns.md) - Resource naming, HTTP methods, status codes, versioning, pagination
-- [graphql-patterns.md](graphql-patterns.md) - Schema design, queries, mutations, resolvers, N+1 prevention
-- [auth-patterns.md](auth-patterns.md) - API keys, JWT, OAuth2, permission models (RBAC/ABAC)
+- [REST](rest-patterns.md)
+- [GraphQL](graphql-patterns.md)
+- [Authentication and authorization](auth-patterns.md)
 
----
+## Process
 
-## Philosophy
+1. Inspect the repository's existing API conventions and consumers.
+2. Define the resource, operation, inputs, outputs, errors, authorization, and compatibility requirements.
+3. Choose the simplest established pattern that meets those requirements.
+4. Specify observable behavior before implementation.
+5. Validate through the real protocol boundary when serialization, authentication, transport, or deployment behavior matters.
 
-- **Simple over clever** - Choose straightforward patterns that solve the problem
-- **Consistency** - Apply patterns consistently across endpoints
-- **Least Astonishment** - APIs should do what their names suggest, nothing more
-- **Pragmatism** - Pick approaches based on actual use cases, not theoretical purity
-- **No over-engineering** - Don't add features or complexity "just in case"
+## Defaults
 
----
+- Use resource nouns and standard HTTP methods for REST.
+- Keep response and error shapes consistent with neighboring endpoints.
+- Distinguish missing authentication (`401`) from insufficient permission (`403`).
+- Validate requests at the boundary without exposing internal errors.
+- Put credentials in headers, never URLs.
+- Add pagination, filtering, caching, rate limits, versioning, GraphQL depth limits, or DataLoaders only when the contract requires them.
+- Prefer backward-compatible changes. For GraphQL fields, deprecate before removal.
 
-## Avoid complexity theater
+## Error contract
 
-**Adding patterns is easy. Adding patterns WORTH THE COMPLEXITY is hard.**
+Errors should provide a stable machine-readable code and a safe human-readable message. Add structured details only when consumers need them. Do not expose stack traces, database constraints, credentials, or internal identifiers.
 
-Before recommending ANY API pattern, ask:
+## Review
 
-1. **Does this solve a real problem or a hypothetical one?**
-   - "We might need..." vs "We currently need..."
-   - YAGNI (You Aren't Gonna Need It) applies to APIs too
+Check only what the API contract uses:
 
-2. **Is the simpler approach sufficient?**
-   - REST before GraphQL (unless you have N+1 query problems)
-   - Query parameters before complex filtering DSLs
-   - Flat responses before nested structures
-
-3. **What's the maintenance cost?**
-   - Every abstraction requires documentation, testing, and support
-   - Versioning strategies add cognitive overhead
-
-### The Complexity Theater Litmus Test
-
-> "If I remove this pattern, what specific problem occurs in production?"
-
-If the answer is vague ("flexibility", "future-proofing", "best practices"), the pattern may be theater.
-
-### API Anti-Patterns to Avoid
-
-| Anti-Pattern | Example | Problem |
-|--------------|---------|---------|
-| **Premature GraphQL** | "Use GraphQL for flexibility" | When you have 3 endpoints and 10 users |
-| **Over-versioning** | "v1, v2, v3 for every change" | When backwards-compatible changes suffice |
-| **Enterprise patterns** | "Add HATEOAS for discoverability" | When your API has 5 endpoints |
-| **Pagination theater** | "Cursor-based pagination everywhere" | When datasets are under 1000 items |
-
----
-
-## Core Design Principles
-
-### REST Fundamentals
-- Use **nouns** for resources, not verbs: `GET /users` not `GET /getUsers`
-- Use **plural** for collections: `/users`, `/posts`
-- Represent relationships hierarchically: `/users/{id}/posts`
-- Use query parameters for filtering: `GET /users?role=admin&status=active`
-
-### HTTP Methods
-| Method | Purpose | Idempotent |
-|--------|---------|-----------|
-| GET | Retrieve | Yes |
-| POST | Create | No |
-| PUT | Replace | Yes |
-| PATCH | Update | No |
-| DELETE | Remove | Yes |
-
-### GraphQL Principles
-- **Deprecation over versioning** - Use `@deprecated` directive
-- **DataLoaders for N+1 prevention** - Use batching when nested resolvers would create N+1 queries
-- **Query depth limiting** - Set limits when the requested GraphQL contract needs them
-
----
-
-## Quick Reference Tables
-
-### HTTP Status Codes
-
-| Code | Meaning | When to Use |
-|------|---------|-------------|
-| 200 | OK | General success |
-| 201 | Created | Resource created (POST) |
-| 204 | No Content | Success, no body (DELETE) |
-| 400 | Bad Request | Invalid input |
-| 401 | Unauthorized | Missing/invalid auth |
-| 403 | Forbidden | Authenticated, no permission |
-| 404 | Not Found | Resource doesn't exist |
-| 422 | Unprocessable | Validation errors |
-| 429 | Too Many Requests | Rate limit exceeded |
-| 500 | Server Error | Unexpected error |
-
-### Authentication Methods
-
-| Method | Best For | Complexity |
-|--------|----------|------------|
-| API Key | Service-to-service, simple APIs | Low |
-| JWT | Public APIs, stateless auth | Medium |
-| OAuth2 | Third-party integrations, "Login with X" | High |
-
-### Pagination Strategies
-
-| Strategy | Best For |
-|----------|----------|
-| Offset/Limit | Small, static datasets |
-| Cursor-based | Large, growing datasets (RECOMMENDED) |
-| Keyset | Natural sort fields |
-
----
-
-## Error Response Format
-
-**Standard structure:**
-```json
-{
-  "code": "ERROR_CODE",
-  "message": "Human-readable message",
-  "details": {}
-}
-```
-
-**Error codes (use consistently):**
-- `INVALID_REQUEST` - Malformed request
-- `VALIDATION_ERROR` - Field validation failed
-- `AUTHENTICATION_FAILED` - Invalid credentials
-- `INSUFFICIENT_PERMISSIONS` - Authorized but lacks permission
-- `RESOURCE_NOT_FOUND` - 404
-- `RESOURCE_ALREADY_EXISTS` - 409 on duplicate
-- `INTERNAL_SERVER_ERROR` - 500
-
----
-
-## Common Pitfalls
-
-### Endpoint Explosion
-```
-Bad:  GET /users/admins, GET /users/active, GET /users/verified
-Good: GET /users?role=admin&status=active&verified=true
-```
-
-### God Endpoints
-```
-Bad:  GET /data?type=users&action=delete&id=123
-Good: DELETE /users/123
-```
-
-### Inconsistent Errors
-Standardize error format across ALL endpoints.
-
-### Missing Pagination
-Paginate collection endpoints when their requested contract needs bounded results; do not add pagination to small, intentionally complete collections.
-
-### Exposed Internals
-```
-Bad:  "ERROR: Unique constraint violation on users_email_idx"
-Good: { "code": "VALIDATION_ERROR", "message": "Email already in use" }
-```
-
-### Credentials in URLs
-```
-Bad:  GET /api/data?api_key=secret123
-Good: GET /api/data (Authorization: Bearer <token>)
-```
-
----
-
-## API Design Checklist
-
-Apply the items required by the requested API contract:
-- [ ] Consistent endpoint structure
-- [ ] Clear error responses
-- [ ] Proper status codes
-- [ ] Pagination for bounded collection results
-- [ ] Authentication/authorization for protected access
-- [ ] Request validation
-- [ ] Documentation (OpenAPI/GraphQL schema) when consumers need it
-- [ ] Caching headers for REST responses whose caching behavior is part of the contract
-
----
-
-**Note:** For project-specific API patterns, check the active repo/client instruction files, such as `AGENTS.md`, `CLAUDE.md`, README files, or local API docs.
+- Resource and operation semantics.
+- Request and response schemas.
+- Status or GraphQL error behavior.
+- Authentication and authorization.
+- Compatibility with current consumers.
+- Bounded collection behavior when required.
+- Consumer-facing schema or OpenAPI documentation when required.

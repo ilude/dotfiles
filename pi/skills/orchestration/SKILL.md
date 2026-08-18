@@ -8,33 +8,28 @@ description: "Coordinate bounded root-to-coordinator-to-leaf work when independe
 ## Topology
 
 - A root may start a coordinator or a leaf.
-- A coordinator may start leaf workers only.
+- A coordinator may start leaves only.
 - Leaves and depth-two children cannot delegate or start workflows.
-- Keep each leaf assignment narrow: state its deliverable, allowed changes, required capabilities, evidence, and stop condition.
+- State each leaf's deliverable, allowed changes, capabilities, evidence, and stop condition.
 
-## Scheduling and cancellation
+## Scheduler
 
-The root-owned tree scheduler admits descendants across processes. It runs eight descendants by default and accepts a configured ceiling no greater than 16; excess work queues rather than being rejected by an invocation count. Every child role shares the 64-turn ceiling, including structured-output correction. Read-only fan-out workers stop after eight minutes; modifying leaves have no wall-clock hard timeout.
+The process-wide tree scheduler runs up to eight descendants by default and accepts a configured ceiling no greater than 16. Excess work queues. Every child has a 64-turn limit. Read-only fan-out workers stop after eight minutes.
 
-Cancelling a coordinator or workflow recursively cancels queued and active descendants. Tree and workflow state, bounded run history, and completed workflow results survive session replacement in the same Pi process only. They are discarded when that process exits.
-
-A second review is duplicate same-boundary work when it rechecks the same acceptance, invariant, or safety concern without materially changed evidence or scope. Do not schedule it, or a review of repair, unless that boundary explicitly requires it. On explicit churn feedback: cancel pending reviewers, freeze scope, return to the last passing checkpoint, list only unmet acceptance, make no new delegation or redesign, then complete or ask for a material scope decision.
+Cancelling a coordinator or workflow cancels its queued and active descendants. Tree state, bounded history, and completed workflow results survive session replacement in the same Pi process but not process exit.
 
 ## Typed workflow
 
-Use the deferred `subagent_workflow` capability for a closed map, retry, verify, and reduce workflow. It accepts at most 256 unique items, defaults to two attempts, permits at most three, and reduces groups of at most eight results.
+Use `subagent_workflow` for a closed map, retry, verify, and reduce operation.
 
-- Every item declares its required tools. Capability preflight compares them with the selected leaf's effective tools before dispatch; missing tools reject the item without consuming an attempt.
-- Use a bounded extract or a repository-relative path/range reference for file analysis. Do not put large file contents in a leaf prompt or parent result.
-- Leaf results use a bounded envelope: `found`, `not_found`, `inconclusive`, or `error`, plus compact evidence, changed files, validation, and gaps.
-- Retry only failed, inconclusive, schema-invalid, or verifier-contradicted items. A materially identical retry is rejected.
+- It accepts at most 256 unique items, two attempts by default, three at most, and reduction groups of at most eight.
+- Each item declares required capabilities. Missing capabilities reject the item before an attempt starts.
+- Inputs use a bounded extract or repository-relative path and line range.
+- Results use `found`, `not_found`, `inconclusive`, or `error` with bounded evidence, changed files, validation, and gaps.
+- Retry only failed, inconclusive, schema-invalid, or verifier-contradicted items. Identical retries are rejected.
 
-## Mutation and task boundaries
+## Mutation and tasks
 
-Concurrent modifying leaves must declare normalized, disjoint repository-relative scopes. Admission is atomic. Scoped modifying leaves lose shell and PowerShell tools, and direct file mutation outside the lease is blocked.
-
-The root owns durable task creation, transitions, validation, and closure. A coordinator may carry an existing task ID for correlation. Leaves, retries, and workflow tools never create or transition durable tasks.
-
-## Result handling
-
-Use bounded envelopes and grouped reductions rather than forwarding raw leaf output. Treat all worker output as advisory until the root validates the requested outcome. `/subagents` shows bounded process-local tree detail and can cancel a selected tree.
+- Concurrent modifying leaves require normalized, disjoint repository-relative scopes. Scoped leaves cannot mutate outside their lease.
+- The root owns durable task creation, state changes, validation, and closure. Coordinators may carry a task ID for correlation. Leaves and workflow tools do not change task records.
+- Reduce or summarize worker output before returning it. The root must validate the requested outcome.

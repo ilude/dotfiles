@@ -9,36 +9,25 @@ description: "Analyze, validate, debug, troubleshoot, critique, red-team, advers
 
 | Need | Use |
 | --- | --- |
-| Debugging, validation, root-cause analysis, red-team critique | `analysis-workflow` |
-| Reviewing a diff/branch/PR/commit for findings | `code-review` |
-| Logs, metrics, traces, alerts, SLOs | `logging-observability` |
-| Failed live mutation | Follow the active repository incident policy |
+| Debugging, validation, root-cause analysis, or adversarial critique | `analysis-workflow` |
+| Reviewing a diff, branch, PR, or commit | `code-review` |
+| Logs, metrics, traces, alerts, or SLOs | `logging-observability` |
+| Failed live mutation | The repository incident policy |
 
-## Core Principle
+## Process
 
-Structured evidence beats analysis theater. Form hypotheses, test them, and separate observed facts from guesses.
+1. State the question, failure, or decision.
+2. Gather direct evidence, including any working example that exercises the relevant boundary.
+3. List plausible explanations or assumptions and what would disprove each one.
+4. If feasibility is unproven, select the minimum materially different executable slices needed to decide it.
+5. Run the cheapest decisive check or authorized slice first.
+6. Report confirmed facts, likely causes, unknowns, and the smallest evidence-backed next action.
 
-## Practical Steps
+Documentation, mocks, type checks, and unit tests can support analysis. They do not prove an external boundary.
 
-1. State the question or failure mode.
-2. Gather direct evidence before proposing fixes.
-3. List plausible hypotheses and what would falsify each.
-4. Run the cheapest decisive check first.
-5. Distinguish confirmed facts, likely causes, and unknowns.
-6. Recommend the smallest next action backed by evidence.
+## Debugging questions
 
-## Debugging Checklist
-
-- What changed recently?
-- Can the issue be reproduced?
-- What exact input/state triggers it?
-- Which layer first diverges from expected behavior?
-- What evidence would disprove the leading theory?
-
-## Anti-Patterns
-
-- Producing long critique without checking evidence.
-- Treating correlation as cause.
-- Jumping to broad refactors before isolating the fault.
-- Reporting risks without probability, impact, or mitigation.
-- Retrying without evidence that distinguishes a new hypothesis.
+- What exact input and state reproduce the problem?
+- Which layer first differs from expected behavior?
+- What changed?
+- What evidence would disprove the leading explanation?
