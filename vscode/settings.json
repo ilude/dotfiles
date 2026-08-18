@@ -346,7 +346,8 @@
     "ollama": "linux",
     "stg-docker-1": "linux",
     "pve.ilude.com": "linux",
-    "tailscale.ilude.com": "linux"
+    "tailscale.ilude.com": "linux",
+    "pve-patriot.ilude.com": "linux"
   },
   "specstory.cloudSync.enabled": "never",
   "workbench.editor.enablePreview": false,
