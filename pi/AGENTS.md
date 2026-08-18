@@ -21,8 +21,7 @@
 - Resolve uncertainty with non-mutating inspection.
 - Stop before an unintended destructive action, disclosure, or mutation against the wrong target.
 - Sensitive content may be handled when its destination matches the repository's purpose and trust boundary.
-- Do not retry the same failed action without evidence supporting a new hypothesis.
-- After three identical failures, re-plan instead of changing syntax to evade the runtime block.
+- On failure, diagnose and fix it before continuing. After three identical failures, re-plan instead of changing syntax to bypass the runtime block.
 - A direct request naming a live target and expected mutations authorizes the in-scope apply, sync, cutover, or recovery. Ask again only if the target, destructive scope, rollback risk, or outcome changes.
 - After a failed live mutation, diagnose and recover that boundary before continuing a broader rollout.
 
