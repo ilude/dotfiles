@@ -468,13 +468,26 @@ if command -v pnpm &>/dev/null; then
         npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
     fi
 
+    pi_pnpm_args=(add -g --allow-build=koffi --allow-build=protobufjs
+        "@earendil-works/pi-coding-agent@${PI_VERSION}"
+        "@earendil-works/pi-agent-core@${PI_VERSION}"
+        "@earendil-works/pi-ai@${PI_VERSION}"
+        "@earendil-works/pi-tui@${PI_VERSION}"
+        "typebox@${PI_TYPEBOX_VERSION}")
+
     echo "Installing/updating pi-coding-agent ${PI_VERSION} via pnpm (minimumReleaseAge=${PI_PNPM_MINIMUM_RELEASE_AGE} minutes)..."
-    pnpm --config.minimumReleaseAge="${PI_PNPM_MINIMUM_RELEASE_AGE}" add -g --allow-build=koffi --allow-build=protobufjs \
-        "@earendil-works/pi-coding-agent@${PI_VERSION}" \
-        "@earendil-works/pi-agent-core@${PI_VERSION}" \
-        "@earendil-works/pi-ai@${PI_VERSION}" \
-        "@earendil-works/pi-tui@${PI_VERSION}" \
-        "typebox@${PI_TYPEBOX_VERSION}"
+    # Transitive AWS SDK packages pin siblings to exact versions, and those
+    # siblings are published on independent schedules. A parent can therefore
+    # clear the release-age gate while its pinned child has not, leaving the
+    # resolver with zero candidates (ERR_PNPM_NO_MATCHING_VERSION). Retrying at
+    # the wider global window usually selects an older parent whose pins are
+    # also past the gate. A still-failing install must not abort the rest of
+    # the script; the previously installed pi keeps working.
+    if ! pnpm --config.minimumReleaseAge="${PI_PNPM_MINIMUM_RELEASE_AGE}" "${pi_pnpm_args[@]}"; then
+        echo "Warning: pi install failed at minimumReleaseAge=${PI_PNPM_MINIMUM_RELEASE_AGE}; retrying with the global window..."
+        pnpm "${pi_pnpm_args[@]}" ||
+            echo "Warning: pi-coding-agent install failed; keeping existing install ($(pi --version 2>/dev/null || echo none))"
+    fi
 
     pi_markdown_patch="${BASEDIR}/install.d/50-pi-markdown-code-fence-fix.py"
     if [[ -f "$pi_markdown_patch" ]]; then
