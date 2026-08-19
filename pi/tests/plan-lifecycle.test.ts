@@ -18,6 +18,11 @@ completed:
 
 Deliver the example.
 
+## Completion Evidence
+
+- Evidence: The example works through its supported entrypoint.
+- Fails when: The supported entrypoint does not produce the expected result.
+
 ## Boundaries
 
 - In scope: Example.
@@ -160,11 +165,16 @@ describe("plan lifecycle", () => {
 		});
 		const invalid = readyPlan(path)
 			.replace("status: ready", "status: draft")
+			.replace(
+				"- Fails when: The supported entrypoint does not produce the expected result.\n",
+				"",
+			)
 			.replace("  - Verify: `pnpm test example.test.ts`", "");
 		const validation = validatePlanContract(invalid, path);
 		expect(validation.valid).toBe(false);
 		expect(validation.errors).toEqual(
 			expect.arrayContaining([
+				"Completion Evidence is missing Fails when:.",
 				"Plan frontmatter status must be ready.",
 				"T1 is missing Verify:",
 			]),

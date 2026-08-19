@@ -491,8 +491,8 @@ function startupPrompt(goal: ForegroundGoal): string {
 	const plan = goal.plans?.[0];
 	return [
 		plan
-			? "Active goal started with a reviewed canonical plan. Execute its durable root-task dependency graph, validate the requested outcome, and call goal_complete only after the plan and required tasks are complete."
-			: "Active foreground goal started. Work interactively and directly in this session; do not create a detached loop, canonical plan, durable task graph, or archive-and-commit closeout by default.",
+			? "Active goal started with a reviewed canonical plan. Execute its durable root-task dependency graph, prove the plan's Completion Evidence, and call goal_complete only after the plan and required tasks are complete."
+			: "Active foreground goal started. Before substantial work, state observable pass/fail completion evidence. If materially different conditions fit, settle them with the operator instead of choosing one. Work interactively and directly in this session; create one root task only when compaction, delegation, or delayed continuation is likely, and record the settled checks in its notes.",
 		...(plan
 			? [`Canonical plan: ${plan}`]
 			: [
@@ -511,8 +511,8 @@ function foregroundReminder(goal: ForegroundGoal): string {
 			: `Inline goal: sha256 ${goal.hash}.`;
 	return [
 		goal.plans?.length
-			? "Active /goal reminder: continue the reviewed canonical plan and durable root-task graph until the requested outcome is complete, validate the changed contract, update the plan, then call goal_complete."
-			: "Active /goal reminder: continue the requested work interactively in this session, validate the changed contract, then call goal_complete.",
+			? "Active /goal reminder: continue the reviewed canonical plan and durable root-task graph until its Completion Evidence passes, update the plan, then call goal_complete."
+			: "Active /goal reminder: continue toward the settled completion evidence, preserve any root task created for resume, then call goal_complete only after those checks pass.",
 		source,
 		`Summary: ${goal.summary}`,
 	].join("\n");
@@ -659,6 +659,10 @@ function minimumPlanContent(goal: ForegroundGoal): string {
 		"",
 		`${asciiBounded(goal.preview, 500)} The /goal job owns this objective and completion contract.`,
 		"",
+		"## Completion Evidence",
+		"",
+		"Settle concise `Evidence:` and `Fails when:` statements with the operator before readiness. Do not infer materially ambiguous conditions.",
+		"",
 		"## Boundaries",
 		"",
 		"- In scope: The stated goal objective.",
@@ -752,6 +756,15 @@ function materializePlanTasks(
 	planPath: string,
 ): Record<string, ReturnType<typeof createGoalWorkItem>> {
 	const plan = readLinkedPlan(path.resolve(workspace, planPath));
+	const taskNotes = (task: (typeof plan.tasks)[number]): string | undefined => {
+		const notes = [
+			task.doneWhen ? `Done when: ${task.doneWhen}` : "",
+			task.verify ? `Verify: ${task.verify}` : "",
+		]
+			.filter(Boolean)
+			.join(" ");
+		return notes ? asciiBounded(notes, 500) : undefined;
+	};
 	if (plan.tasks.length === 0)
 		throw new Error(`canonical plan has no executable tasks: ${planPath}`);
 	const taskWorkspace = resolveTaskWorkspace(workspace);
@@ -777,6 +790,7 @@ function materializePlanTasks(
 				key: task.key,
 				origin: "other" as const,
 				summary: task.summary,
+				notes: taskNotes(task),
 				workspace: taskWorkspace,
 				scope: ["."],
 				metadata: {
@@ -816,6 +830,7 @@ function materializePlanTasks(
 		});
 		updateTask(task.id, {
 			blockedBy,
+			notes: taskNotes(planTask),
 			metadata: {
 				...(task.metadata ?? {}),
 				goalId,

@@ -40,6 +40,11 @@ function readyPlan(
 		"",
 		"Complete the fixture objective.",
 		"",
+		"## Completion Evidence",
+		"",
+		"- Evidence: The fixture objective works through its supported entrypoint.",
+		"- Fails when: The supported entrypoint does not produce the expected result.",
+		"",
 		"## Boundaries",
 		"",
 		"- In scope: Fixture work.",
@@ -288,6 +293,21 @@ describe("goal extension", () => {
 		}
 	});
 
+	it("leaves generated completion evidence for operator settlement", () => {
+		const parsed = goalTestApi.parseGoal("Complete ambiguous work", tmp);
+		expect(parsed.ok).toBe(true);
+		if (!parsed.ok) return;
+
+		const plan = goalTestApi.attachOrCreatePlan(parsed.parsed, tmp);
+		const content = fs.readFileSync(path.join(tmp, plan), "utf8");
+		expect(content).toContain("## Completion Evidence");
+		expect(content).toContain(
+			"Settle concise `Evidence:` and `Fails when:` statements with the operator before readiness.",
+		);
+		expect(content).not.toMatch(/^\s*-\s+Evidence:/m);
+		expect(content).not.toMatch(/^\s*-\s+Fails when:/m);
+	});
+
 	it("rejects generated plan paths that traverse a directory link", () => {
 		const outside = fs.mkdtempSync(path.join(os.tmpdir(), "goal-plan-outside-"));
 		try {
@@ -378,6 +398,8 @@ describe("goal extension", () => {
 				"- [ ] **T1: Prepare the input**",
 				"- [ ] **T2: Consume the input**",
 				"  - Depends on: T1",
+				"  - Done when: The fixture task is complete.",
+				"  - Verify: Run the fixture check.",
 			].join("\n"),
 		);
 		initializeRepository(tmp);
@@ -399,10 +421,14 @@ describe("goal extension", () => {
 		const prerequisite = getTask(first.items.T1.taskId);
 		const dependent = getTask(first.items.T2.taskId);
 		expect(dependent?.blockedBy).toEqual([prerequisite?.id]);
-		expect(dependent?.metadata).toMatchObject({
-			goalId: first.id,
-			canonicalPlanPath: "plan.md",
-			planTaskKey: "T2",
+		expect(dependent).toMatchObject({
+			notes:
+				"Done when: The fixture task is complete. Verify: Run the fixture check.",
+			metadata: {
+				goalId: first.id,
+				canonicalPlanPath: "plan.md",
+				planTaskKey: "T2",
+			},
 		});
 	});
 

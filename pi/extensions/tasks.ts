@@ -63,6 +63,7 @@ const TASK_BATCH_RESULT_MAX_BYTES = 4_096;
 const TASK_BATCH_ERROR_MAX_CODE_POINTS = 200;
 const TASK_SCOPE_MAX_ITEMS = 16;
 const TASK_SCOPE_MAX_LENGTH = 256;
+const TASK_REMINDER_MAX_ITEMS = 8;
 const TASK_BATCH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 
 function validateTaskText(
@@ -511,6 +512,23 @@ function currentTaskSessionId(ctx: {
 	return ctx.sessionManager?.getSessionId?.();
 }
 
+export function activeRootTaskReminder(cwd: string): string | undefined {
+	const workspace = resolveTaskWorkspace(cwd);
+	const running = listTasks({ workspace, states: ["running"] }).filter(
+		(record) => !record.parentId,
+	);
+	if (running.length === 0) return undefined;
+	const listed = running.slice(0, TASK_REMINDER_MAX_ITEMS);
+	return [
+		`Active durable root task${running.length === 1 ? "" : "s"} in this workspace:`,
+		...listed.map((record) => `- ${record.id}: ${record.summary} (${record.state})`),
+		...(running.length > listed.length
+			? [`- ${running.length - listed.length} more; inspect the task list before selecting work.`]
+			: []),
+		"Inspect the relevant task before substantive work. Treat its deliverable and acceptance checks as authoritative. If multiple tasks could own the request, do not choose silently.",
+	].join("\n");
+}
+
 function isCurrentTask(
 	record: TaskRecordV1,
 	workspace: string,
@@ -705,6 +723,9 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 		promptSnippet: "Track durable todo items, dependencies, and workflow state",
 		promptGuidelines: [
 			"Use task for durable todo tracking, dependencies, and work that must survive context compaction; ordinary short workflows can remain prose.",
+			"After compaction or session resume, inspect the running root task before substantive work. Treat its deliverable and acceptance checks as authoritative.",
+			"Add another task only when it represents an independently verifiable deliverable required by the root completion checks.",
+			"When a user correction changes the outcome, update the root task first and cancel or skip work that is no longer required.",
 			"Keep summary under 100 characters and notes under 500. Put detailed context in an artifact and reference its path.",
 			"Summary contains only the deliverable; notes contain only blockers, dependencies, or acceptance checks. Never copy conversation summaries, plans, diffs, or investigation narratives into task fields.",
 			"Use blockedBy for dependencies and ready to select runnable work. Mark selected work running before dispatching it with subagent or bg_start, then record its terminal state explicitly.",
@@ -1099,6 +1120,11 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 export default function (pi: ExtensionAPI) {
 	registerTaskTools(pi);
 	registerTasksCommand(pi);
+	pi.on("before_agent_start", (event, ctx) => {
+		const reminder = activeRootTaskReminder(ctx.cwd);
+		if (!reminder) return undefined;
+		return { systemPrompt: `${event.systemPrompt}\n\n${reminder}` };
+	});
 	pi.on("session_start", (_event, ctx) => {
 		const sessionId = currentTaskSessionId(ctx);
 		try {

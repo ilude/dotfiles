@@ -332,6 +332,7 @@ export function validatePlanContract(
 		errors.push("Plan path is not canonical.");
 	for (const heading of [
 		"## Objective",
+		"## Completion Evidence",
 		"## Boundaries",
 		"## Tasks",
 		"## Validation",
@@ -340,6 +341,12 @@ export function validatePlanContract(
 	]) {
 		if (!content.includes(heading)) errors.push(`Missing ${heading}.`);
 	}
+	const completionSection =
+		content.split("## Completion Evidence", 2)[1]?.split(/^## /m, 1)[0] ?? "";
+	if (!/^\s*-\s+Evidence:\s*\S/im.test(completionSection))
+		errors.push("Completion Evidence is missing Evidence:.");
+	if (!/^\s*-\s+Fails when:\s*\S/im.test(completionSection))
+		errors.push("Completion Evidence is missing Fails when:.");
 	if (!/^---\r?\n[\s\S]*?^status:\s*ready\s*$/m.test(content))
 		errors.push("Plan frontmatter status must be ready.");
 	const taskKeys = [...content.matchAll(TASK_PATTERN)].map((match) => match[1]);

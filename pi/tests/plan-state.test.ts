@@ -31,16 +31,22 @@ describe("linked plan state", () => {
 		expect(plan.blockers).toEqual(["T1 (running) is not terminal"]);
 	});
 
-	it("parses dependencies and rejects invalid task graphs", () => {
+	it("parses dependencies, completion checks, and rejects invalid task graphs", () => {
 		const plan = parseLinkedPlan(
 			"plan.md",
 			[
 				"- [ ] **T1: First**",
 				"- [ ] **T2: Second**",
 				"  - Depends on: T1",
+				"  - Done when: The second result is observable.",
+				"  - Verify: Run the focused second-result check.",
 			].join("\n"),
 		);
-		expect(plan.tasks[1]?.dependsOn).toEqual(["T1"]);
+		expect(plan.tasks[1]).toMatchObject({
+			dependsOn: ["T1"],
+			doneWhen: "The second result is observable.",
+			verify: "Run the focused second-result check.",
+		});
 		expect(() =>
 			parseLinkedPlan(
 				"plan.md",

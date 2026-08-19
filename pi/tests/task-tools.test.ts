@@ -17,7 +17,8 @@ const metricsRoot = fs.mkdtempSync(
 );
 process.env.PI_METRICS_DIR = metricsRoot;
 
-const { registerTaskTools } = await import("../extensions/tasks.ts");
+const tasksExtension = await import("../extensions/tasks.ts");
+const { registerTaskTools } = tasksExtension;
 const {
 	createTask,
 	getTask,
@@ -53,6 +54,60 @@ afterAll(() => {
 });
 
 describe("task tools", () => {
+	it("reminds the agent about running workspace root tasks", async () => {
+		const workspace = resolveTaskWorkspace(tmpRoot);
+		const first = createTask({
+			origin: "other",
+			summary: "Preserve the first outcome",
+			workspace,
+			notes: "Done when the first acceptance check passes.",
+		});
+		const second = createTask({
+			origin: "other",
+			summary: "Preserve the second outcome",
+			workspace,
+		});
+		const pending = createTask({
+			origin: "other",
+			summary: "Pending work",
+			workspace,
+		});
+		const otherRoot = path.join(tmpRoot, "other");
+		fs.mkdirSync(otherRoot, { recursive: true });
+		const other = createTask({
+			origin: "other",
+			summary: "Other workspace work",
+			workspace: resolveTaskWorkspace(otherRoot),
+		});
+		for (const record of [first, second, other])
+			transitionTask(record.id, "running");
+
+		const pi = createMockPi();
+		tasksExtension.default(pi as Parameters<typeof tasksExtension.default>[0]);
+		const beforeAgentStart = pi._getHook("before_agent_start")[0]?.handler;
+		const reminder = await beforeAgentStart?.(
+			{ systemPrompt: "base" },
+			createMockCtx({ cwd: tmpRoot }),
+		);
+
+		expect(reminder?.systemPrompt).toContain(first.id);
+		expect(reminder?.systemPrompt).toContain(second.id);
+		expect(reminder?.systemPrompt).toContain(
+			"If multiple tasks could own the request, do not choose silently.",
+		);
+		expect(reminder?.systemPrompt).not.toContain(pending.id);
+		expect(reminder?.systemPrompt).not.toContain(other.id);
+
+		transitionTask(first.id, "completed");
+		transitionTask(second.id, "completed");
+		expect(
+			await beforeAgentStart?.(
+				{ systemPrompt: "base" },
+				createMockCtx({ cwd: tmpRoot }),
+			),
+		).toBeUndefined();
+	});
+
 	it("accepts additive write scopes on create, batch, and update", async () => {
 		const pi = createMockPi();
 		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);

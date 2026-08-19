@@ -12,17 +12,19 @@ const DEFAULT_RESERVE_TOKENS = 16_384;
 const DEFAULT_KEEP_RECENT_TOKENS = 20_000;
 const CONTINUATION_TYPE = "active-turn-compaction.continue";
 const COMPACTION_HANDOFF_INSTRUCTIONS = `Preserve a durable handoff for the active request. Include:
-- objective and constraints
-- decisions already made
+- requested outcome and settled observable completion evidence
+- the condition under which that evidence fails
+- latest user correction affecting scope or completion; omit superseded intent
+- canonical plan or goal artifact path when present
+- authoritative root task IDs, states, scopes, and acceptance checks
+- completed checks and first unmet completion check
 - changed files
 - validation run and results
 - blockers
-- existing durable task IDs and states
-- remaining task frontier
 - exact next action
 Keep the handoff bounded and omit unrelated history.`;
 const CONTINUATION_INSTRUCTIONS =
-	"Continue the current user request from the compaction summary. First inspect current durable tasks. If unfinished multi-step work remains and no usable task records exist, create or batch only the minimal remaining frontier. Then resume the exact next action. Do not treat compaction as completion.";
+	"Continue from durable state, not reconstructed conversation context. First inspect active root tasks and any linked plan or goal artifact. Treat their completion evidence and latest recorded scope as authoritative. Resume from the first unmet completion check. Create only the minimal missing frontier when no usable task record exists; do not create replacement tasks for existing deliverables. Do not treat compaction as completion.";
 
 export interface ActiveTurnCompactionPolicy {
 	enabled: boolean;

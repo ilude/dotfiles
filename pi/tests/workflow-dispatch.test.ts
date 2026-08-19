@@ -54,6 +54,11 @@ completed:
 
 Deliver the fixture.
 
+## Completion Evidence
+
+- Evidence: The fixture works through its supported entrypoint.
+- Fails when: The supported entrypoint does not produce the expected result.
+
 ## Boundaries
 
 - In scope: Fixture.

@@ -228,18 +228,23 @@ describe("active-turn compaction", () => {
 			runtime.ctx,
 		);
 		expect(runtime.compact).toHaveBeenCalledTimes(1);
-		expect(runtime.compactOptions?.customInstructions).toEqual(
-			expect.any(String),
+		expect(runtime.compactOptions?.customInstructions).toContain(
+			"settled observable completion evidence",
 		);
-		expect(runtime.compactOptions?.customInstructions?.trim().length).toBeGreaterThan(
-			0,
+		expect(runtime.compactOptions?.customInstructions).toContain(
+			"authoritative root task IDs, states, scopes, and acceptance checks",
+		);
+		expect(runtime.compactOptions?.customInstructions).toContain(
+			"first unmet completion check",
 		);
 
 		runtime.compactOptions?.onComplete?.({} as never);
 		expect(runtime.pi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "active-turn-compaction.continue",
-				content: expect.stringMatching(/inspect current durable tasks/i),
+				content: expect.stringMatching(
+					/inspect active root tasks[\s\S]*first unmet completion check/i,
+				),
 				display: false,
 			}),
 			{ triggerTurn: true, deliverAs: "followUp" },

@@ -5,6 +5,8 @@ export type LinkedPlanTask = {
 	summary: string;
 	checked: boolean;
 	state?: string;
+	doneWhen?: string;
+	verify?: string;
 	required: boolean;
 	dependsOn: string[];
 	line: number;
@@ -21,6 +23,8 @@ const TASK_PATTERN = /^\s*- \[([ xX])\]\s+\*\*([A-Za-z][A-Za-z0-9_-]*):\s*([^*]+
 const STATE_PATTERN = /^\s*-\s+State:\s*(\S.*)$/i;
 const OPTIONAL_PATTERN = /^\s*-\s+(?:Required:\s*false|Optional:\s*true)\s*$/i;
 const DEPENDS_ON_PATTERN = /^\s*-\s+Depends on:\s*(\S.*)$/i;
+const DONE_WHEN_PATTERN = /^\s*-\s+Done when:\s*(\S.*)$/i;
+const VERIFY_PATTERN = /^\s*-\s+Verify:\s*(\S.*)$/i;
 const NONTERMINAL_STATES = new Set([
 	"active",
 	"blocked",
@@ -81,6 +85,10 @@ export function parseLinkedPlan(path: string, content: string): LinkedPlanState 
 		if (!current) continue;
 		const stateMatch = line.match(STATE_PATTERN);
 		if (stateMatch) current.state = stateMatch[1].trim().toLowerCase();
+		const doneWhenMatch = line.match(DONE_WHEN_PATTERN);
+		if (doneWhenMatch) current.doneWhen = doneWhenMatch[1].trim();
+		const verifyMatch = line.match(VERIFY_PATTERN);
+		if (verifyMatch) current.verify = verifyMatch[1].trim();
 		if (OPTIONAL_PATTERN.test(line)) current.required = false;
 		const dependencyMatch = line.match(DEPENDS_ON_PATTERN);
 		if (dependencyMatch) {
