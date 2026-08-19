@@ -7,7 +7,7 @@ description: "Focused, pattern-matching edits to existing code. Not for architec
 
 ## Boundary
 
-Use this skill as an edit-time diff guard. `pi/AGENTS.md` Development Philosophy owns broader implementation strategy and architecture trade-offs.
+Use this skill as an edit-time diff guard. `pi/AGENTS.md` Engineering owns broader implementation strategy and architecture trade-offs.
 
 ## Core Principle
 

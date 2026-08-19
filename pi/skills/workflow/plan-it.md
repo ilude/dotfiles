@@ -12,6 +12,7 @@ and constraints. Never choose a PRD merely because it is newest. If no
 substantive goal exists, ask what the plan should accomplish.
 
 - Treat the latest user intent as authoritative when it changes earlier assumptions.
+- Before drafting, state the observable evidence that would prove the requested outcome and how that evidence could fail. If materially different completion conditions fit the request, discuss them with the operator and settle one; do not fill the gap yourself.
 - Plan the smallest complete outcome using the existing mechanism.
 - Translate supplied source requirements into executable work without weakening them. Preserve supplied requirement identifiers, defined terms, normative words, actors, conditions, bounds, exceptions, and verification; do not invent requirement IDs or contracts.
 - Do not invent architecture for later stages or hypothetical requirements.
@@ -42,6 +43,8 @@ transcripts, synthesis workers, or separate reviewer artifacts.
 
 ## Plan Contract
 
+Include `## Completion Evidence` after the objective with concise `Evidence:` and `Fails when:` statements settled from the request or operator discussion. This is the plan's scope and stopping boundary.
+
 Use one checkbox list with 1-3 tasks. Each task names the affected files or
 targets, dependencies only when present, the action, observable acceptance, and
 relevant verification.
@@ -50,10 +53,7 @@ Include context, boundaries, assumptions, safety, current status, or blockers
 only when they change execution. For shared or live state, name the target, stop
 condition, and concise rollback required by active instructions.
 
-Remove any task, section, or implementation decision whose absence would not
-break the requested outcome or a real safety boundary. Before readiness, verify
-referenced paths and commands, dependency order, source requirement traceability
-where applicable, and workflow-level validation.
+Remove any task, section, or implementation decision not required by the completion evidence or a real safety boundary. Before readiness, verify that task-level `Done when` and `Verify` clauses collectively prove the completion evidence, then verify referenced paths and commands, dependency order, source requirement traceability where applicable, and workflow-level validation.
 
 Every canonical plan must retain incomplete work at `.specs/{slug}/plan.md` and
 require `/do-it` to archive the entire completed spec directory to

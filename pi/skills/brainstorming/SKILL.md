@@ -7,7 +7,7 @@ description: Generate approaches before implementation for design decisions, arc
 
 ## Boundary
 
-`pi/AGENTS.md` Development Philosophy owns implementation strategy. Use this skill only to compare genuine alternatives, not to manufacture options for obvious fixes.
+`pi/AGENTS.md` Engineering owns implementation strategy. Use this skill only to compare genuine alternatives, not to manufacture options for obvious fixes.
 
 ## Process
 

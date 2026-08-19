@@ -22,10 +22,23 @@ Runner references:
 ## Test design
 
 - Test observable behavior, parsed contracts, schemas, and failure handling rather than private implementation details or policy prose.
-- Follow the feasibility-slice rules in `pi/AGENTS.md`. Tests can support a slice but cannot replace proof of an external boundary.
+- Name the seam: the public interface where the behavior is observed. Ask the user only when competing seams would create materially different contracts.
+- Derive expected values from an independent source such as a specification, worked example, known-good result, or distinct implementation. Do not recompute the expectation with the logic under test.
 - Use the repository runner. Start with the focused test that can falsify the changed contract.
 - Keep tests deterministic and independent of execution order.
 - Follow repository coverage requirements. Do not invent a percentage target or use coverage as a substitute for behavior.
+
+## Test-first loop
+
+Use a red-green loop when the user requests test-first development or a feature or regression has a useful seam:
+
+1. Define one behavior and its seam.
+2. Write the smallest test that expresses that behavior, then run it and confirm it fails for the expected reason.
+3. Implement only enough to make that test pass.
+4. Repeat in vertical slices, letting each cycle inform the next.
+5. Refactor only from green, then rerun the focused checks.
+
+If no correct seam can reproduce the contract, report that gap and use an appropriate executable slice instead of adding a shallow test that gives false confidence.
 
 ## Isolation and cleanup
 
@@ -46,6 +59,7 @@ Runner references:
 ## Failure handling
 
 - Record the expected successful outcome before editing.
+- Do not write a horizontal batch of tests for imagined behavior before exercising the first vertical slice.
 - Run the focused test through its supported command.
 - When residue is part of the regression, compare relevant external state before and after the test.
 - Reproduce a broader-suite failure directly before calling it unrelated. Never report a failing suite as green.

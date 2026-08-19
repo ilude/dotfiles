@@ -21,9 +21,12 @@ description: "Analyze, validate, debug, troubleshoot, critique, red-team, advers
 3. List plausible explanations or assumptions and what would disprove each one.
 4. If feasibility is unproven, select the minimum materially different executable slices needed to decide it.
 5. Run the cheapest decisive check or authorized slice first.
-6. Report confirmed facts, likely causes, unknowns, and the smallest evidence-backed next action.
+6. Stop when further evidence is unlikely to change the conclusion or next action.
+7. Report confirmed facts, likely causes, unknowns, and the smallest evidence-backed next action.
 
-Documentation, mocks, type checks, and unit tests can support analysis. They do not prove an external boundary.
+## Conditional Reference
+
+For a hard or recurring bug, nondeterministic failure, performance regression, unclear reproduction path, or investigation requiring temporary instrumentation, read [Diagnosing bugs](diagnosing-bugs.md). Use the short process above for straightforward failures.
 
 ## Debugging questions
 

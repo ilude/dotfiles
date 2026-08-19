@@ -3,42 +3,32 @@ name: grill-me
 description: Stress-test a plan or design, get grilled on a design, or "grill me".
 ---
 
-Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+Interview the user until the plan or design has a shared, testable meaning. Map decisions as a dependency tree. The current frontier is every unresolved decision whose prerequisites are settled.
 
-If a question can be answered by exploring the codebase, explore the codebase instead.
+Separate facts from decisions. Inspect the codebase or environment for facts instead of asking the user. Delegate independent fact-finding when useful, and continue with unrelated frontier questions while it runs. Present decisions to the user with a recommended answer and the material trade-off; do not decide on the user's behalf.
 
 ## Conversation Loop
 
-Run the interview as a structured decision-tree traversal.
+1. Identify the current frontier.
+2. Ask one question or a small related batch, whichever is easier to answer. Do not ask questions that depend on unresolved answers.
+3. Include a recommendation and its main trade-off for each question.
+4. Wait for the user's answers, briefly record the decisions, and recompute the frontier.
+5. At a natural topic boundary or when the discussion becomes long, summarize what is settled, what remains, and whether to continue, draft an artifact, or change direction.
 
-For each question:
-1. Ask exactly one question.
-2. Include the recommended answer.
-3. After the user answers, briefly lock the decision.
-4. Immediately continue to the next unresolved dependent question.
-
-Do not stop after each answer.
-
-## Batch Checkpoints
-
-After roughly every 10 answered questions:
-1. Summarize the decisions locked so far.
-2. Estimate how many major questions remain.
-3. Identify the next decision area.
-4. Ask whether the user wants to continue, pause, switch to drafting the artifact, or change direction.
-
-If the design tree is nearly complete, say so and ask whether to finish the remaining questions.
+When the frontier is empty, summarize the shared understanding and ask the user to confirm it before acting on the plan.
 
 ## Stop Conditions
 
-Stop only when:
-- the user says stop/done/enough,
-- the user chooses to pause at a 10-question checkpoint,
-- the design tree is complete,
-- or codebase inspection is needed before continuing.
+Stop when:
+- the user says stop, pause, or change direction;
+- the frontier is empty and the user confirms the shared understanding; or
+- every remaining branch depends on unresolved research or access.
 
 ## Anti-Patterns
 
-- Do not ask one question and then end with "next question when ready."
-- Do not summarize after every question unless needed to lock a decision.
-- Do not continue indefinitely without a checkpoint.
+- Asking the user for facts available from the environment.
+- Answering a decision that belongs to the user.
+- Asking dependent questions before their prerequisites are settled.
+- Forcing a fixed question count, batch size, or response format.
+- Repeating summaries after every answer.
+- Acting on the plan before the confirmation gate.

@@ -1,0 +1,48 @@
+# Codebase Design
+
+Use this reference after a module or architecture candidate has been selected and the unresolved question is its responsibility, interface, seam placement, or dependency strategy.
+
+## Working terms
+
+- **Module:** Code and behavior presented through one or more coherent interfaces. Its scale can be a function, class, package, process, or cross-layer slice.
+- **Interface:** Everything a caller must know to use a module correctly, including inputs, outputs, invariants, ordering, errors, configuration, consistency, performance expectations, and side effects.
+- **Seam:** A location where behavior can vary or be substituted without rewriting its callers.
+- **Adapter:** A concrete implementation occupying a seam, such as an HTTP client, database implementation, local substitute, or test double.
+- **Depth:** Useful behavior and hidden complexity provided for the amount of interface callers must understand.
+- **Locality:** Related behavior, invariants, change, failure handling, and verification remaining together.
+
+Use established repository and domain terms when they are more precise. Distinguish a module interface, network API, test seam, deployment service, and bounded-context boundary rather than forcing one vocabulary onto all of them.
+
+## Design process
+
+1. State the behavior and responsibility the module owns. Apply `domain-modeling` first when its language, lifecycle, invariants, or bounded-context ownership is unclear.
+2. List what each caller must know. A short method signature can still hide a wide, shallow interface when callers must understand an unwritten protocol.
+3. Identify state, invariants, side effects, and failure behavior that should stay local to the responsibility.
+4. Place seams only where something meaningfully varies or crosses ownership, process, deployment, trust, persistence, or an external contract.
+5. Classify dependencies and choose the simplest suitable treatment:
+   - In-process behavior may need no adapter.
+   - A real local substitute may be better than a mock.
+   - An owned remote system needs an explicit transport contract.
+   - An external system needs a controlled adapter and contract validation.
+6. When the choice is consequential and materially different interfaces are plausible, apply `brainstorming` to compare alternatives. Do not generate variants that differ only in naming or method arrangement.
+7. Compare designs by depth, locality, domain coherence, caller complexity, failure behavior, migration cost, and testability.
+8. Select the smallest interface that supports the known behavior without speculative extension points.
+
+A module may expose multiple interfaces when they serve coherent audiences or purposes, such as commands, queries, administration, events, or migration compatibility.
+
+## Testing and seams
+
+The stable caller-facing interface should carry most behavioral confidence, but it is not the only valid test surface. Preserve focused internal tests when they cover an independently meaningful algorithm or contract, combinatorial edge cases, faster feedback, or useful fault localization.
+
+Make dependencies explicit when they genuinely vary or cross a meaningful seam. Do not inject every collaborator for the sake of mocking. Keep unavoidable side effects explicit and controlled rather than forcing inherently stateful domain behavior into pure-return shapes.
+
+Adapter count is evidence, not a rule. A single production adapter can still sit at a justified ownership, trust, process, or external boundary. Conversely, creating a test double does not by itself justify a production abstraction.
+
+## Guardrails
+
+- Do not create a seam only because a test is difficult to write; first check whether the behavior is observed at the wrong level.
+- Do not deepen a module into an incoherent collection of unrelated responsibilities.
+- Do not expose internal seams through the public interface solely for tests.
+- Do not replace repository terminology with a borrowed glossary.
+- Do not delete lower-level tests until their distinct confidence is preserved or no longer meaningful.
+- Do not optimize architecture for automated navigation at the expense of human comprehension, domain integrity, or operational correctness.

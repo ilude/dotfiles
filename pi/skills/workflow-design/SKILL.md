@@ -15,7 +15,7 @@ description: "Command UX: command surfaces, task runners, package scripts, Makef
 
 ## Core Principle
 
-A good workflow has one obvious entry point and predictable side effects. `pi/AGENTS.md` Development Philosophy owns general implementation and delegation strategy, and the repository validation policy owns workflow verification.
+A good workflow has one obvious entry point and predictable side effects. `pi/AGENTS.md` Engineering owns general implementation and delegation strategy, and the repository validation policy owns workflow verification.
 
 ## Practical Steps
 

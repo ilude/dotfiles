@@ -11,6 +11,7 @@ description: "Coordinate bounded root-to-coordinator-to-leaf work when independe
 - A coordinator may start leaves only.
 - Leaves and depth-two children cannot delegate or start workflows.
 - State each leaf's deliverable, allowed changes, capabilities, evidence, and stop condition.
+- Before fan-out over a shared unproven dependency, run one representative leaf and expand only if it succeeds.
 
 ## Scheduler
 

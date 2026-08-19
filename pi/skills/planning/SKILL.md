@@ -1,6 +1,6 @@
 ---
 name: planning
-description: "Requirements, user stories, acceptance/verification criteria, or testable outcomes. Not for PRD drafting (/prd) or Pi /goal prompts."
+description: "Requirements, user stories, acceptance/verification criteria, testable outcomes, or wayfinding for a large unclear effort across sessions. Not for PRD drafting (/prd) or Pi /goal prompts."
 ---
 
 # Planning
@@ -10,6 +10,7 @@ description: "Requirements, user stories, acceptance/verification criteria, or t
 | Need | Use |
 | --- | --- |
 | Requirements, acceptance criteria, constraints, verification | `planning` |
+| Large multi-session effort whose route is not yet clear | `planning` with the wayfinding reference |
 | Product requirements document artifact | `prd` |
 | Long-running Pi `/goal` prompt | `pi-goal` |
 | Implementation philosophy or architecture tradeoffs | `development-philosophy` |
@@ -28,9 +29,10 @@ Make completion falsifiable. Each normative requirement should state one obligat
 6. Define a verification method and pass condition that directly exercise the outcome.
 7. Surface blockers or competing interpretations that would change the design instead of choosing one silently.
 
-## Conditional Reference
+## Conditional References
 
-For formal requirements, acceptance criteria, or a requirements section in another artifact, read [Requirements language](references/requirements-language.md). Do not force its sentence patterns onto narrative context or rationale.
+- For formal requirements, acceptance criteria, or a requirements section in another artifact, read [Requirements language](references/requirements-language.md). Do not force its sentence patterns onto narrative context or rationale.
+- For an effort too unclear or large to plan in one session, read [Wayfinding](wayfinding.md). Use an ordinary plan when the route is already clear.
 
 ## Acceptance Criteria Pattern
 

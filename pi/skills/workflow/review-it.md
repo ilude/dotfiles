@@ -13,7 +13,9 @@ Load `planning` for requirements, acceptance criteria, plan outcomes, and verifi
 1. Read the explicit artifact path. Ask for it when absent.
 2. Stop when the path does not exist or the artifact is empty.
 3. Read the complete artifact and only enough repository context to verify its claims.
-4. Identify its objective, intended next workflow, scope, dependencies, validation, and actual risk.
+4. Identify its objective, completion evidence, intended next workflow, scope, dependencies, validation, and actual risk.
+
+For a plan, preserve the settled `Completion Evidence` as its scope and stopping boundary. If it is missing or materially ambiguous, ask the operator and leave it unsettled rather than inventing it. Repairs may clarify wording without changing the observable pass/fail meaning.
 
 Plans require execution readiness. Requirements documents require clarity, consistency, scope, and testability. Other artifacts use the closest relevant criteria.
 
@@ -23,7 +25,7 @@ Delegate only when independent perspectives materially improve a material-risk r
 
 Each delegated assignment must name the artifact, repository scope, perspective, evidence required, allowed changes, and stop condition. Prefer bounded inline findings. Persist reviewer artifacts only when the active workflow or user requires them.
 
-Review only concerns that can affect the artifact's objective or next workflow:
+Review only concerns that can affect the artifact's objective, completion evidence, or next workflow:
 
 - correctness and unsupported claims;
 - missing or contradictory scope, dependencies, and assumptions;
@@ -48,7 +50,7 @@ If a required fix depends on an unresolved product choice, unsafe external actio
 
 Read the artifact as a fresh executor would. If repaired, inspect the revised content directly.
 
-For a plan, confirm that tasks are actionable, real dependencies agree with order, validation exercises the requested workflow, conditional safety controls match actual risk, and resume state is clear. Do not require duplicate task tables, gate IDs, evidence destinations, or separate review artifacts.
+For a plan, confirm that completion evidence is observable and falsifiable, task-level `Done when` and `Verify` clauses collectively prove it, real dependencies agree with order, conditional safety controls match actual risk, and resume state is clear. Do not require duplicate task tables, gate IDs, evidence destinations, or separate review artifacts.
 
 For prose-only changes, validate the content directly. Run repository tests only when parsing, loading, generated output, or runtime behavior changed and the test exercises that contract.
 

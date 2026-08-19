@@ -17,9 +17,10 @@ A goal prompt should state the outcome and constraints clearly enough for autono
 
 1. Prefer inline `/goal ...` unless the user asks for a file or the prompt needs durable detail.
 2. State the outcome, relevant scope, and constraints.
-3. Include tasks only when order or coverage would otherwise be ambiguous.
-4. Name validation only when it directly tests the requested outcome; do not prescribe generic checks.
-5. Add waves, backup, rollback, approval, or incident behavior only for actual destructive, stateful, deployment, external-mutation, secret, paid-resource, hardware, or irreversible work.
+3. State observable completion evidence and how it could fail. If materially different conditions fit, settle them with the user rather than choosing one.
+4. Include tasks only when order or coverage would otherwise be ambiguous.
+5. Name validation only when it directly tests the completion evidence; do not prescribe generic checks.
+6. Add waves, backup, rollback, approval, or incident behavior only for actual destructive, stateful, deployment, external-mutation, secret, paid-resource, hardware, or irreversible work.
 
 ## Template
 
@@ -27,8 +28,9 @@ A goal prompt should state the outcome and constraints clearly enough for autono
 /goal Outcome: <specific end state>
 Scope: <important boundaries and constraints>
 Work: <tasks only when needed>
-Validation: <checks that directly test the outcome, or omit>
-Completion: Call goal_complete when complete, naming any real gap.
+Completion evidence: <observable pass condition and corresponding failure condition>
+Validation: <checks that directly test the completion evidence, or omit>
+Completion: Call goal_complete only after the completion evidence passes, naming any real gap.
 ```
 
 For actual stateful infrastructure, add the minimum safe rollout details: one independent target at a time, current backup or explicit no-prior-state evidence, restore action, rollback boundary, health check, and stop-on-failure behavior.

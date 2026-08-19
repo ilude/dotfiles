@@ -13,13 +13,10 @@ For technical comments, messages, procedures, or release notes, also read [Techn
 
 ## Editing pass
 
-1. Lead with the fact, decision, or action.
-2. Remove throat-clearing, repeated conclusions, and words that add no meaning.
-3. Replace jargon, stale metaphors, hype, and vague benefits with specific claims or delete them.
-4. Use concrete verbs. Name the actor when responsibility matters.
-5. Keep qualifiers and citations that prevent overclaiming. Mark or remove unsupported specifics.
-6. State the conclusion once. Later text must add evidence, limits, consequences, or action.
-7. Read the result for accuracy and natural sentence flow.
+1. Preserve the author's meaning, terminology, voice, and level of certainty.
+2. Apply the communication rules in `pi/AGENTS.md`.
+3. Remove the specific patterns below.
+4. Read the result for accuracy and natural sentence flow.
 
 ## Remove these patterns
 
