@@ -1,11 +1,13 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import {
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import persistentDefaults, {
 	enforcePinnedDefaults,
 	PINNED_DEFAULTS,
 } from "../extensions/persistent-defaults";
+import { createMockPi } from "./helpers/mock-pi";
 
 const tempDirs: string[] = [];
 
@@ -22,11 +24,11 @@ afterEach(() => {
 });
 
 describe("persistent defaults guard", () => {
-	it("pins GPT-5.6 Sol with high thinking", () => {
+	it("pins GPT-5.6 Sol with low thinking", () => {
 		expect(PINNED_DEFAULTS).toEqual({
 			defaultModel: "gpt-5.6-sol",
 			defaultProvider: "openai-codex",
-			defaultThinkingLevel: "high",
+			defaultThinkingLevel: "low",
 		});
 	});
 
@@ -63,5 +65,32 @@ describe("persistent defaults guard", () => {
 		);
 
 		expect(await enforcePinnedDefaults(settingsPath)).toBe(false);
+	});
+
+	it("restores pinned defaults before creating a new session", async () => {
+		const settingsPath = tempSettingsPath();
+		fs.writeFileSync(
+			settingsPath,
+			`${JSON.stringify(
+				{
+					defaultModel: "temporary-model",
+					defaultProvider: "temporary-provider",
+					defaultThinkingLevel: "high",
+				},
+				null,
+				2,
+			)}\n`,
+		);
+		const pi = Object.assign(createMockPi(), {
+			setModel: vi.fn(async () => true),
+			setThinkingLevel: vi.fn(),
+		});
+		persistentDefaults(pi as unknown as ExtensionAPI, settingsPath);
+
+		await pi._getHook("session_before_switch")[0].handler({ reason: "new" });
+
+		expect(JSON.parse(fs.readFileSync(settingsPath, "utf-8"))).toEqual(
+			PINNED_DEFAULTS,
+		);
 	});
 });

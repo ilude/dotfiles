@@ -17,7 +17,7 @@ import {
 export const PINNED_DEFAULTS = {
 	defaultModel: "gpt-5.6-sol",
 	defaultProvider: "openai-codex",
-	defaultThinkingLevel: "high",
+	defaultThinkingLevel: "low",
 } as const;
 
 export function getSettingsPath(): string {
@@ -40,40 +40,49 @@ function reportEnforcementError(error: unknown): void {
 	);
 }
 
-function scheduleEnforce(): void {
+function scheduleEnforce(settingsPath: string): void {
 	// Settings writes are queued by Pi internals; run once soon and once later to
 	// catch both synchronous writes and queued promise flushes.
 	const enforce = () => {
-		void enforcePinnedDefaults().catch(reportEnforcementError);
+		void enforcePinnedDefaults(settingsPath).catch(reportEnforcementError);
 	};
 	setTimeout(enforce, 25);
 	setTimeout(enforce, 250);
 }
 
-export default function persistentDefaults(pi: ExtensionAPI): void {
+export default function persistentDefaults(
+	pi: ExtensionAPI,
+	settingsPath = getSettingsPath(),
+): void {
 	pi.on("session_start", async () => {
-		await enforcePinnedDefaults();
-		scheduleEnforce();
+		await enforcePinnedDefaults(settingsPath);
+		scheduleEnforce(settingsPath);
+	});
+
+	pi.on("session_before_switch", async (event) => {
+		if (event.reason === "new") {
+			await enforcePinnedDefaults(settingsPath);
+		}
 	});
 
 	pi.on("model_select", async () => {
-		scheduleEnforce();
+		scheduleEnforce(settingsPath);
 	});
 
 	pi.on("thinking_level_select", async () => {
-		scheduleEnforce();
+		scheduleEnforce(settingsPath);
 	});
 
 	const originalSetModel = pi.setModel.bind(pi);
 	pi.setModel = async (model) => {
 		const result = await originalSetModel(model);
-		scheduleEnforce();
+		scheduleEnforce(settingsPath);
 		return result;
 	};
 
 	const originalSetThinkingLevel = pi.setThinkingLevel.bind(pi);
 	pi.setThinkingLevel = (level) => {
 		originalSetThinkingLevel(level);
-		scheduleEnforce();
+		scheduleEnforce(settingsPath);
 	};
 }

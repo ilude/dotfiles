@@ -1,7 +1,7 @@
 /**
  * Session Hooks Extension
  *
- * session_start: on reload, restores the configured default model; then runs
+ * session_start: on reload, restores the configured default model and thinking level; then runs
  *   git pre-flight checks (fetch + behind-count) for primary startup only.
  *   Notifies if branch is behind remote. Silently skips if not a git repo. Also runs an idempotent
  *   transcript retention sweep when the per-user transcript toggle is enabled
@@ -18,6 +18,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -126,7 +127,7 @@ async function notifyIfBranchBehind(
 }
 
 export default function (pi: ExtensionAPI) {
-	// -- session_start: restore default model on reload + git pre-flight -------
+	// -- session_start: restore default model and thinking on reload + git pre-flight -------
 	pi.on("session_start", async (event, ctx) => {
 		if (event.reason === "reload") {
 			try {
@@ -139,6 +140,7 @@ export default function (pi: ExtensionAPI) {
 				}) as {
 					defaultProvider?: string;
 					defaultModel?: string;
+					defaultThinkingLevel?: ThinkingLevel;
 				};
 				if (settings.defaultProvider && settings.defaultModel) {
 					const model = ctx.modelRegistry.find(
@@ -148,6 +150,9 @@ export default function (pi: ExtensionAPI) {
 					if (model) {
 						await pi.setModel(model);
 					}
+				}
+				if (settings.defaultThinkingLevel) {
+					pi.setThinkingLevel(settings.defaultThinkingLevel);
 				}
 			} catch {
 				// Silently skip -- invalid/missing settings should not break reload

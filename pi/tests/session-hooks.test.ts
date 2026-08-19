@@ -24,6 +24,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as transcriptRuntime from "../extensions/transcript-runtime";
+import * as settingsLoader from "../lib/settings-loader";
 import type { TranscriptSettings } from "../lib/transcript";
 import * as transcriptLib from "../lib/transcript";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi";
@@ -70,6 +71,7 @@ function makeSessionCtx(extra: Record<string, unknown> = {}) {
 function makeGitFriendlyPi() {
 	const pi = Object.assign(createMockPi(), {
 		setModel: vi.fn(async () => {}),
+		setThinkingLevel: vi.fn(),
 	});
 	// Default behavior: git fetch returns code 0; behind-count returns "0".
 	// This lets the session_start handler fall through to the transcript init
@@ -178,6 +180,34 @@ describe("session-hooks: session_start", () => {
 			expect.anything(),
 			expect.anything(),
 		);
+	});
+
+	it("restores the configured model and thinking level on reload", async () => {
+		const model = { provider: "openai-codex", id: "gpt-5.6-sol" };
+		vi.spyOn(settingsLoader, "readMergedSettings").mockReturnValue({
+			defaultProvider: model.provider,
+			defaultModel: model.id,
+			defaultThinkingLevel: "low",
+		});
+		const pi = makeGitFriendlyPi();
+		const mod = await import("../extensions/session-hooks");
+		mod.default(pi as unknown as ExtensionAPI);
+		const ctx = makeSessionCtx({
+			modelRegistry: {
+				find: vi.fn(() => model),
+			},
+		});
+
+		await pi
+			._getHook("session_start")[0]
+			.handler({ reason: "reload" }, ctx as unknown as ExtensionContext);
+
+		expect(ctx.modelRegistry.find).toHaveBeenCalledWith(
+			"openai-codex",
+			"gpt-5.6-sol",
+		);
+		expect(pi.setModel).toHaveBeenCalledWith(model);
+		expect(pi.setThinkingLevel).toHaveBeenCalledWith("low");
 	});
 
 	it("skips git preflight for no-session processes", async () => {
