@@ -247,7 +247,7 @@ no_delete_paths: []
 		});
 	});
 
-	it("keeps repo scratch cleanup interactive without same-command creation", async () => {
+	it("allows repo scratch cleanup without same-command creation", async () => {
 		await expect(
 			evaluateDangerousCommand(
 				"set -euo pipefail\nvalue=$(printf inspected)\nrm -f .tmp/kmis-local-claims.json",
@@ -258,7 +258,7 @@ no_delete_paths: []
 					astAnalysis: astConfig,
 				},
 			),
-		).resolves.toMatchObject({ block: true });
+		).resolves.toBeUndefined();
 	});
 
 	it("does not let one safe cleanup hide a later nested delete", async () => {

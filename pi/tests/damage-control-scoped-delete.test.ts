@@ -99,7 +99,7 @@ describe("scoped delete", () => {
 		expect(onAutoAllowed).toHaveBeenCalledOnce();
 	});
 
-	it("keeps compound scratch cleanup interactive without a configured root", async () => {
+	it("allows compound scratch cleanup without a configured root", async () => {
 		await expect(
 			evaluateDangerousCommand(
 				"rm -rf .tmp/support-war-classes && mkdir -p .tmp/support-war-classes",
@@ -111,7 +111,7 @@ describe("scoped delete", () => {
 					safeDeletePaths: [],
 				},
 			),
-		).resolves.toMatchObject({ block: true });
+		).resolves.toBeUndefined();
 	});
 
 	it.each([

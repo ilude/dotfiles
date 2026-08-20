@@ -1162,7 +1162,11 @@ export default function (pi: ExtensionAPI) {
 			return modeDecision;
 		}
 
-		const shellEdit = await analyzeUnsafeShellEdit(command, rules.astAnalysis);
+		const shellEdit = await analyzeUnsafeShellEdit(
+			command,
+			rules.astAnalysis,
+			ctx.cwd,
+		);
 		if (shellEdit) {
 			recordBlock(
 				"bash",

@@ -1988,13 +1988,13 @@ dangerous_commands:
   - pattern: "pwsh catastrophic recursive delete"
     tools:
       - "pwsh"
-    regex: "\\bRemove-Item\\b(?=[^|;&]*-(?:Recurse|r|rec))(?=[^|;&]*(?:[Cc]:[/\\\\]?(?:Windows|Users|Program Files|ProgramData|Boot|Recovery)?(?:\\s|$)|\\$HOME|\\$env:(?:USERPROFILE|SystemRoot|ProgramFiles|ProgramData|APPDATA|LOCALAPPDATA)))"
+    regex: "(?:^|[\\r\\n|;&]\\s*)Remove-Item\\b(?=[^|;&]*-(?:Recurse|r|rec)\\b)(?=[^|;&]*(?:[Cc]:[/\\\\]?(?:Windows|Users|Program Files|ProgramData|Boot|Recovery)?(?:\\s|$)|\\$HOME|\\$env:(?:USERPROFILE|SystemRoot|ProgramFiles|ProgramData|APPDATA|LOCALAPPDATA)))"
     reason: "PowerShell recursive deletion of a system or home path is catastrophic"
     action: "block"
   - pattern: "pwsh recursive delete"
     tools:
       - "pwsh"
-    regex: "\\b(?:Remove-Item|rm|ri|del|erase|rmdir|rd)\\b(?=[^|;&]*-(?:Recurse|r|rec))"
+    regex: "(?:^|[\\r\\n|;&]\\s*)(?:Remove-Item|rm|ri|del|erase|rmdir|rd)\\b(?=[^|;&]*-(?:Recurse|r|rec)\\b)"
     reason: "PowerShell recursive deletion can cause irreversible data loss"
     action: "ask"
   - pattern: "pwsh disk mutation"

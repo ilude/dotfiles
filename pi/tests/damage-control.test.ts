@@ -663,6 +663,14 @@ no_delete_paths: []
 					)
 				)?.block,
 			).toBe(true);
+
+		await expect(
+			mod.evaluateDangerousCommand(
+				"Set-Location C:/workspace; docker compose run --rm -T app true",
+				loaded.rules.dangerous_commands,
+				{ toolName: "pwsh" },
+			),
+		).resolves.toBeUndefined();
 	});
 
 	it("fails closed when the explicit policy override is missing", async () => {
@@ -1200,6 +1208,13 @@ describe("damage-control refactor hardening", () => {
 
 		await expect(
 			mod.evaluateDangerousCommand(
+				"docker run --rm alpine:3.21 true",
+				loaded.rules.dangerous_commands,
+				{ toolName: "bash", cwd: process.cwd() },
+			),
+		).resolves.toBeUndefined();
+		await expect(
+			mod.evaluateDangerousCommand(
 				[
 					"docker rm -f onramp-caddy onramp-joyride onramp-whoami",
 					"onramp-infisical onramp-infisical-db onramp-infisical-redis",
@@ -1223,6 +1238,25 @@ describe("damage-control refactor hardening", () => {
 				{ toolName: "bash", cwd: process.cwd() },
 			),
 		).resolves.toBeUndefined();
+		for (const command of [
+			"rm -rf .tmp/generated && mkdir -p .tmp/generated",
+			"rm -f /tmp/helper.py && printf done",
+		]) {
+			await expect(
+				mod.evaluateDangerousCommand(
+					command,
+					loaded.rules.dangerous_commands,
+					{ toolName: "bash", cwd: process.cwd() },
+				),
+			).resolves.toBeUndefined();
+		}
+		await expect(
+			mod.evaluateDangerousCommand(
+				"rm -rf .tmp/generated .git",
+				loaded.rules.dangerous_commands,
+				{ toolName: "bash", cwd: process.cwd() },
+			),
+		).resolves.toMatchObject({ block: true });
 	});
 
 	it("real tracked rules allow glab MR merge and approval without confirmation", async () => {

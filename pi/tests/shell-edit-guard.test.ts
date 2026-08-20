@@ -43,6 +43,30 @@ describe("damage-control shell edit guardrail", () => {
 		}
 	});
 
+	it("allows statically resolved scratch writes", async () => {
+		for (const command of [
+			"cat > .tmp/request.json <<'EOF'\n{}\nEOF",
+			"cat > /tmp/helper.py <<'PY'\nprint('ok')\nPY",
+			"python - <<'PY'\nfrom pathlib import Path\nPath('.tmp/result.json').write_text('{}')\nPY",
+			"python - <<'PY'\nfrom pathlib import Path\np = Path('/tmp/result.txt')\np.write_text('ok')\nPY",
+			"python - <<'PY'\nopen('.tmp/result.txt', 'w').write('ok')\nPY",
+		]) {
+			expect(await analyzeUnsafeShellEdit(command), command).toBeUndefined();
+		}
+	});
+
+	it("blocks non-scratch, mixed, dynamic, and traversing writes", async () => {
+		for (const command of [
+			"cat > src/generated.ts <<'EOF'\nexport {}\nEOF",
+			"cat > .tmp/../package.json <<'EOF'\n{}\nEOF",
+			"python - <<'PY'\nfrom pathlib import Path\nPath('.tmp/a').write_text('ok')\nPath('package.json').write_text('{}')\nPY",
+			"python - <<'PY'\nfrom pathlib import Path\np = Path(target)\np.write_text('ok')\nPY",
+			"cat > /tmp/cleanup.sh <<'SH'\nrm -rf /etc\nSH\nbash /tmp/cleanup.sh",
+		]) {
+			expect((await analyzeUnsafeShellEdit(command))?.block, command).toBe(true);
+		}
+	});
+
 	it("records blocks through the damage-control Bash handler", async () => {
 		type Handler = (
 			event: {

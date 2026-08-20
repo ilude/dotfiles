@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as TreeSitter from "web-tree-sitter";
 import {
@@ -724,49 +725,126 @@ function collectHeredocBodyText(node: TreeSitter.Node): string {
 	return node.children.map((child) => collectHeredocBodyText(child)).join("\n");
 }
 
-function isMutatingPythonHeredoc(
+function isScratchPath(target: string, cwd: string): boolean {
+	if (!target || /[\0*?`$]/.test(target)) return false;
+	const normalized = target.replaceAll("\\", "/");
+	if (normalized.split("/").includes("..")) return false;
+	if (normalized === ".tmp" || normalized.startsWith(".tmp/")) return true;
+	if (normalized === "/tmp" || normalized.startsWith("/tmp/")) return true;
+	const absolute = path.resolve(cwd, target);
+	const tempRoot = path.resolve(os.tmpdir());
+	return absolute === tempRoot || absolute.startsWith(tempRoot + path.sep);
+}
+
+function catRedirectTarget(node: TreeSitter.Node): string | undefined {
+	const match = nodeText(redirectScope(node)).match(
+		/(?<!>)>(?!>)\s*(?:"([^"]+)"|'([^']+)'|([^\s<]+))/,
+	);
+	return match?.[1] ?? match?.[2] ?? match?.[3];
+}
+
+function executesGeneratedShellTarget(command: string, target: string): boolean {
+	const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return new RegExp(
+		`\\b(?:bash|sh|zsh|ksh|dash)\\b[^\\r\\n;&|]*?(?:^|\\s)["']?${escaped}["']?(?=\\s|$|[;&|])`,
+		"m",
+	).test(command);
+}
+
+function pythonWriteTargets(script: string): string[] | undefined {
+	const variables = new Map<string, string>();
+	for (const match of script.matchAll(
+		/\b([A-Za-z_]\w*)\s*=\s*Path\(\s*(["'])([^"']+)\2\s*\)/g,
+	)) {
+		variables.set(match[1], match[3]);
+	}
+
+	const targets: string[] = [];
+	let resolvedWrites = 0;
+	for (const match of script.matchAll(
+		/Path\(\s*(["'])([^"']+)\1\s*\)\.write_text\s*\(/g,
+	)) {
+		targets.push(match[2]);
+		resolvedWrites += 1;
+	}
+	for (const match of script.matchAll(
+		/\b([A-Za-z_]\w*)\.write_text\s*\(/g,
+	)) {
+		const target = variables.get(match[1]);
+		if (!target) return undefined;
+		targets.push(target);
+		resolvedWrites += 1;
+	}
+	for (const match of script.matchAll(
+		/\bopen\s*\(\s*(["'])([^"']+)\1\s*,\s*(["'])w(?:[bt])?\3/g,
+	)) {
+		targets.push(match[2]);
+		resolvedWrites += 1;
+	}
+
+	const mutationCount =
+		(script.match(/\.write_text\s*\(/g)?.length ?? 0) +
+		(script.match(/\bopen\s*\([^\n)]*,\s*["']w(?:[bt])?["']/g)?.length ?? 0);
+	return mutationCount > 0 && resolvedWrites === mutationCount
+		? targets
+		: undefined;
+}
+
+function mutatingPythonScript(
 	node: TreeSitter.Node,
 	originalCommand: string,
-): boolean {
+): string | undefined {
 	const name = commandName(node);
-	if (!name || !/^python(?:\d+(?:\.\d+)*)?$/.test(name)) return false;
+	if (!name || !/^python(?:\d+(?:\.\d+)*)?$/.test(name)) return undefined;
 	if (!new RegExp(`\\b${name}\\s+-\\s*<<`).test(originalCommand))
-		return false;
+		return undefined;
 	const script = collectHeredocBodyText(redirectScope(node));
-	return (
-		/\.write_text\s*\(/.test(script) ||
-		/\bopen\s*\([^\n)]*,\s*["']w["']/.test(script)
-	);
+	return /\.write_text\s*\(/.test(script) ||
+		/\bopen\s*\([^\n)]*,\s*["']w(?:[bt])?["']/.test(script)
+		? script
+		: undefined;
 }
 
 function containsUnsafeShellEdit(
 	node: TreeSitter.Node,
 	originalCommand: string,
+	cwd: string,
 ): boolean {
-	if (
-		node.type === "command" &&
-		(isInPlaceSed(node) ||
-			isInPlacePerl(node) ||
-			isTruncatingCat(node) ||
-			isMutatingPythonHeredoc(node, originalCommand))
-	) {
-		return true;
+	if (node.type === "command") {
+		if (isInPlaceSed(node) || isInPlacePerl(node)) return true;
+		if (isTruncatingCat(node)) {
+			const target = catRedirectTarget(node);
+			if (
+				!target ||
+				!isScratchPath(target, cwd) ||
+				executesGeneratedShellTarget(originalCommand, target)
+			) {
+				return true;
+			}
+		}
+		const script = mutatingPythonScript(node, originalCommand);
+		if (script) {
+			const targets = pythonWriteTargets(script);
+			if (!targets || !targets.every((target) => isScratchPath(target, cwd)))
+				return true;
+		}
 	}
 	return node.children.some((child) =>
-		containsUnsafeShellEdit(child, originalCommand),
+		containsUnsafeShellEdit(child, originalCommand, cwd),
 	);
 }
 
 export async function analyzeUnsafeShellEdit(
 	command: string,
 	astConfig?: AstAnalysisConfig,
+	cwd = process.cwd(),
 ): Promise<{ block: true; reason: string } | undefined> {
 	if (!SHELL_EDIT_PREFILTER.test(command)) return undefined;
 	try {
 		const parser = await getParser();
 		const root = parse(parser, command);
 		const analysis = (async () =>
-			containsUnsafeShellEdit(root, command))();
+			containsUnsafeShellEdit(root, command, cwd))();
 		const matched =
 			astConfig?.timeoutMs && astConfig.timeoutMs > 0
 				? await withTimeout(analysis, astConfig.timeoutMs)

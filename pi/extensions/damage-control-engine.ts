@@ -642,6 +642,7 @@ function isScratchTarget(
 	cwd: string,
 ): boolean {
 	const raw = target.replaceAll("\\", "/");
+	if (raw === ".tmp" || raw.startsWith(".tmp/")) return true;
 	if (raw === "/tmp" || raw.startsWith("/tmp/")) return true;
 	const roots = [os.tmpdir(), process.env.TMPDIR].filter(
 		(value): value is string => Boolean(value),
@@ -688,6 +689,28 @@ function hasOnlyModelledScopedDeleteSyntax(command: string): boolean {
 	return !/[\\\\'"`$(){}<>|&;]/.test(command);
 }
 
+function isScratchOnlyDeleteCommand(
+	command: string,
+	cwd: string,
+	rules: ScopedDeleteRules,
+): boolean {
+	const targets = extractRmTargets(command);
+	return (
+		targets.length > 0 &&
+		targets.every((target) => {
+			if (hasUnsafeScopedDeleteSyntax(target) || hasSymlinkPrefix(target, cwd))
+				return false;
+			const result = canonicalizeOrBlock(target, cwd);
+			return (
+				"canonical" in result &&
+				!isScopedDeleteFloor(result.canonical, cwd) &&
+				!checkNoDeletePaths([target], rules.no_delete_paths, cwd) &&
+				isScratchTarget(target, result.canonical, cwd)
+			);
+		})
+	);
+}
+
 function hasSymlinkPrefix(target: string, cwd: string): boolean {
 	const absolute = path.resolve(cwd, target);
 	const root = path.parse(absolute).root;
@@ -720,7 +743,9 @@ export function evaluateScopedDelete(
 			quotedPayload ?? rmCommandAtMatch(command, rmMatch.index);
 		if (
 			!hasOnlyModelledScopedDeleteSyntax(rmCommand) ||
-			(!quotedPayload && !hasOnlyModelledScopedDeleteSyntax(command))
+			(!quotedPayload &&
+				!hasOnlyModelledScopedDeleteSyntax(command) &&
+				!isScratchOnlyDeleteCommand(rmCommand, cwd, rules))
 		) {
 			return "ask";
 		}
