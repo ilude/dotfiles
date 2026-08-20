@@ -30,7 +30,7 @@ export function formatSubagentActivityStatus(
 		failed > 0 ? `${failed} failed` : "",
 		cancelled > 0 ? `${cancelled} cancelled` : "",
 	].filter(Boolean);
-	return `subagents ${parts.join(", ")} (/subagents)`;
+	return `subagents ${parts.join(", ")}`;
 }
 
 export function reconcileSubagentDashboardSelection(

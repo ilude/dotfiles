@@ -140,16 +140,20 @@ describe("footer extension status placement", () => {
 			"Onclave[2]: \x1b[32mpi-01a0115194f6\x1b[0m";
 		const data = footerData({
 			"onclave-v2": onclave,
+			subagents: "subagents 11 running",
+			task: "tasks 2 (2 running)",
 			bedrock: "bedrock $71.64",
 			tps: "done - 42 tok/s",
 		});
-		const line = mod.formatExtensionStatusLine(data, 120);
+		const line = mod.formatExtensionStatusLine(data, 160);
 
 		const rendered = line ?? "";
 		expect(line).not.toBeNull();
-		expect(rendered).toContain(`${onclave} | done - 42 tok/s`);
+		expect(rendered).toContain(
+			`${onclave} | subagents 11 running | tasks 2 (2 running) | done - 42 tok/s`,
+		);
 		expect(rendered.endsWith("bedrock $71.64")).toBe(true);
-		expect(visibleWidth(rendered)).toBe(120);
+		expect(visibleWidth(rendered)).toBe(160);
 		expect(rendered.indexOf("done - 42 tok/s")).toBeGreaterThan(
 			rendered.indexOf(onclave),
 		);

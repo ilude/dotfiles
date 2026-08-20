@@ -40,9 +40,11 @@ const cachedStatusDirectories = new Map<string, string>();
 const FOOTER_STATUS_EXCLUDE_KEYS = new Set(["damage-control"]);
 const FOOTER_STATUS_PRIORITY = new Map([
 	["loop", 0],
-	["task", 10],
-	["elevated", 20],
-	["tps", 30],
+	["onclave-v2", 5],
+	["subagents", 10],
+	["task", 20],
+	["elevated", 30],
+	["tps", 40],
 	["bedrock", 100],
 ]);
 const reloadStatus = createReloadStatusState();

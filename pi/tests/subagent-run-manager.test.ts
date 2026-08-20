@@ -307,7 +307,7 @@ describe("subagent dashboard selection", () => {
 		expect(renderedViews[1]).toContain("[13:14:15] assistant:");
 	});
 
-	it("formats explicit footer counts and the dashboard affordance", () => {
+	it("formats explicit footer counts", () => {
 		expect(formatSubagentActivityStatus([])).toBeUndefined();
 		expect(
 			formatSubagentActivityStatus([
@@ -317,7 +317,7 @@ describe("subagent dashboard selection", () => {
 				{ status: "cancelled" },
 			]),
 		).toBe(
-			"subagents 1 running, 1 done, 1 failed, 1 cancelled (/subagents)",
+			"subagents 1 running, 1 done, 1 failed, 1 cancelled",
 		);
 	});
 
