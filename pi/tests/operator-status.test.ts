@@ -182,6 +182,17 @@ describe("formatPiStatusDirectory", () => {
 });
 
 describe("formatPiStatusLine", () => {
+	it.each([
+		["anthropic.claude-fable-5", "fable-5"],
+		["us.anthropic.claude-opus-5", "opus-5"],
+		["openai.gpt-5.6-luna", "gpt-5.6-luna"],
+		["anthropic/claude-sonnet-5", "sonnet-5"],
+		["gpt-5.6-sol", "gpt-5.6-sol"],
+	])("formats %s as concise model name %s", async (id, expected) => {
+		const mod = await import("../extensions/operator-status.ts");
+		expect(mod.formatModelName({ id })).toBe(expected);
+	});
+
 	it("omits reload suffix when reload is not needed", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const line = mod.formatPiStatusLine({

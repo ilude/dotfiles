@@ -169,10 +169,15 @@ export function rightAlign(text: string, width: number): string {
 	return gap > 0 ? `${" ".repeat(gap)}${text}` : text;
 }
 
-function formatModelName(
+export function formatModelName(
 	model: { id?: string; name?: string } | undefined,
 ): string {
-	return model?.id || model?.name || "no-model";
+	const name = model?.id || model?.name;
+	if (!name) return "no-model";
+	return name
+		.replace(/^(?:anthropic|openai)\//, "")
+		.replace(/^(?:(?:us|eu|global)\.)?(?:anthropic|openai)\./, "")
+		.replace(/^claude-/, "");
 }
 
 function compactTokens(tokens: number): string {
