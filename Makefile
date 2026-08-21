@@ -1,4 +1,4 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-zsh test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python lint-shell lint-shell-format format format-python check check-changed check-fast check-ci check-pi-ci check-pi-extensions pi-doctor install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all preflight ci-bootstrap test test-zsh test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest test-pi-fast test-pi-integration help lint lint-python lint-shell lint-shell-format format format-python check check-changed check-fast check-ci check-pi-ci check-pi-extensions pi-doctor install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install zsh/env.d/02-path.zsh scripts/ci-bootstrap scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/pi-doctor scripts/zsh-setup scripts/zsh-plugins wsl/packages
@@ -19,6 +19,8 @@ help:
 	@echo "  make test-pytest   - Run pytest tests only"
 	@echo "  make test-docker   - Run tests in Ubuntu 24.04 container (recommended)"
 	@echo "  make test-powershell - Run Pester tests for PowerShell code (Windows)"
+	@echo "  make test-pi-fast - Run Pi tests without process-heavy integration files"
+	@echo "  make test-pi-integration - Run process-heavy Pi tests with bounded workers"
 	@echo "  make test-quick    - Run only core tests locally"
 	@echo "  make lint          - Run shellcheck + ruff check"
 	@echo "  make lint-python   - Run ruff check on Python files"
@@ -80,7 +82,7 @@ test: preflight
 		claude/hooks/damage-control/tests/ \
 		claude/hooks/path-normalization/tests/ \
 		claude/hooks/session-history/tests/ \
-		-m "not zsh" -v --tb=short --durations=20 -n $(PYTEST_WORKERS) && \
+		-m "not zsh" -q --tb=short --durations=20 -n $(PYTEST_WORKERS) && \
 	echo "" && \
 	echo "=== All portable tests passed in $$(($$(date +%s) - start_time))s ==="
 
@@ -115,11 +117,19 @@ test-runtime: check-pi-extensions
 
 # Run only portable core tests (faster)
 test-quick: preflight
-	uv run pytest test/test_config_patterns.py -m "not zsh" -v --tb=short -x
+	uv run pytest test/test_config_patterns.py -m "not zsh" -q --tb=short -x
 
 # Run all portable pytest-discovered suites with bounded parallelism.
 test-parallel: preflight
-	uv run pytest test/ claude/hooks/*/tests/ -m "not zsh" -v --tb=short -n $(PYTEST_WORKERS)
+	uv run pytest test/ claude/hooks/*/tests/ -m "not zsh" -q --tb=short -n $(PYTEST_WORKERS)
+
+# Run the fast Pi feedback suite without reinstalling dependencies.
+test-pi-fast:
+	cd pi && pnpm run test:fast
+
+# Run Pi process, Git, socket, and concurrency tests with bounded workers.
+test-pi-integration:
+	cd pi && pnpm run test:integration
 
 # Run portable tests in an Ubuntu 24.04 container with read-only source.
 test-docker:
