@@ -1561,6 +1561,8 @@ describe("damage-control eval hasUI tracking", () => {
 		const previousOperatorDir = process.env.PI_OPERATOR_DIR;
 		const previousMetricsDir = process.env.PI_METRICS_DIR;
 		const previousPolicy = process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
+		const previousHerdrEnv = process.env.HERDR_ENV;
+		const previousHerdrPaneId = process.env.HERDR_PANE_ID;
 		const policyPath = path.join(root, "policy.json");
 		fs.writeFileSync(
 			policyPath,
@@ -1570,6 +1572,8 @@ describe("damage-control eval hasUI tracking", () => {
 		process.env.PI_OPERATOR_DIR = path.join(root, "operator");
 		process.env.PI_METRICS_DIR = path.join(root, "metrics");
 		process.env.PI_DAMAGE_CONTROL_POLICY_PATH = policyPath;
+		process.env.HERDR_ENV = "1";
+		process.env.HERDR_PANE_ID = "w1:p1";
 		try {
 			vi.resetModules();
 			const mod = await import("../extensions/damage-control.ts");
@@ -1593,7 +1597,9 @@ describe("damage-control eval hasUI tracking", () => {
 				},
 			) => Promise<unknown>;
 			const handlers: Handler[] = [];
+			const emit = vi.fn();
 			mod.default({
+				events: { emit },
 				on: vi.fn((name: string, handler: Handler) => {
 					if (name === "tool_call") handlers.push(handler);
 				}),
@@ -1636,6 +1642,13 @@ describe("damage-control eval hasUI tracking", () => {
 				},
 			);
 
+			expect(emit.mock.calls).toEqual([
+				[
+					"herdr:blocked",
+					{ active: true, label: "Confirm dangerous command" },
+				],
+				["herdr:blocked", { active: false }],
+			]);
 			expect(deferred).toMatchObject({ block: true });
 			const structured = JSON.parse(
 				(deferred as { reason: string }).reason,
@@ -1687,6 +1700,10 @@ describe("damage-control eval hasUI tracking", () => {
 			if (previousPolicy === undefined)
 				delete process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
 			else process.env.PI_DAMAGE_CONTROL_POLICY_PATH = previousPolicy;
+			if (previousHerdrEnv === undefined) delete process.env.HERDR_ENV;
+			else process.env.HERDR_ENV = previousHerdrEnv;
+			if (previousHerdrPaneId === undefined) delete process.env.HERDR_PANE_ID;
+			else process.env.HERDR_PANE_ID = previousHerdrPaneId;
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});

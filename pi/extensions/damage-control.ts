@@ -514,6 +514,7 @@ function safeRecordApprovedAsk(input: ApprovedAskRecord): void {
 }
 
 async function requestDamageControlApproval(
+	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	input: {
 		toolName: string;
@@ -548,16 +549,32 @@ async function requestDamageControlApproval(
 		category,
 		severity,
 	});
-	const approved = await showDamageControlPrompt(ctx, {
-		category,
-		title: input.title,
-		message: input.message,
-		reason: input.approval.reason,
-	});
-	return {
-		approved,
-		prompt: { promptId, category, severity },
-	};
+	const reportsHerdrState =
+		process.env.HERDR_ENV === "1" &&
+		Boolean(process.env.HERDR_PANE_ID) &&
+		Boolean(pi.events?.emit);
+	if (reportsHerdrState) {
+		pi.events.emit("herdr:blocked", {
+			active: true,
+			label: input.title,
+		});
+	}
+	try {
+		const approved = await showDamageControlPrompt(ctx, {
+			category,
+			title: input.title,
+			message: input.message,
+			reason: input.approval.reason,
+		});
+		return {
+			approved,
+			prompt: { promptId, category, severity },
+		};
+	} finally {
+		if (reportsHerdrState) {
+			pi.events.emit("herdr:blocked", { active: false });
+		}
+	}
 }
 
 function damageControlStatusMessage(state: DamageControlRuntimeState): string {
@@ -1105,7 +1122,7 @@ export default function (pi: ExtensionAPI) {
 					rule: sequenceDecision.name,
 					reason: sequenceDecision.reason,
 				};
-				const result = await requestDamageControlApproval(ctx, {
+				const result = await requestDamageControlApproval(pi, ctx, {
 					toolName: "bash",
 					rawAction: command,
 					approval,
@@ -1189,7 +1206,7 @@ export default function (pi: ExtensionAPI) {
 				ui: ctx.ui,
 				hasUI: ctx.hasUI,
 				confirmAsk: async (approval, title, message) => {
-					const result = await requestDamageControlApproval(ctx, {
+					const result = await requestDamageControlApproval(pi, ctx, {
 						toolName: "bash",
 						rawAction: command,
 						approval,
@@ -1344,7 +1361,7 @@ export default function (pi: ExtensionAPI) {
 				ui: ctx.ui,
 				hasUI: ctx.hasUI,
 				confirmAsk: async (approval, title, message) => {
-					const result = await requestDamageControlApproval(ctx, {
+					const result = await requestDamageControlApproval(pi, ctx, {
 						toolName: "pwsh",
 						rawAction: command,
 						approval,
@@ -1468,7 +1485,7 @@ export default function (pi: ExtensionAPI) {
 						ui: ctx.ui,
 						hasUI: ctx.hasUI,
 						confirmAsk: async (approval, title, message) => {
-							const result = await requestDamageControlApproval(ctx, {
+							const result = await requestDamageControlApproval(pi, ctx, {
 								toolName: event.toolName,
 								rawAction: rawPath,
 								approval,
@@ -1527,7 +1544,7 @@ export default function (pi: ExtensionAPI) {
 					rule: extractRulePattern(readConfirm.reason) ?? "protected read",
 					reason: readConfirm.reason,
 				};
-				const result = await requestDamageControlApproval(ctx, {
+				const result = await requestDamageControlApproval(pi, ctx, {
 					toolName: event.toolName,
 					rawAction: rawPath,
 					approval,
@@ -1625,7 +1642,7 @@ export default function (pi: ExtensionAPI) {
 					rule: extractRulePattern(writeConfirm.reason) ?? "protected write",
 					reason: writeConfirm.reason,
 				};
-				const result = await requestDamageControlApproval(ctx, {
+				const result = await requestDamageControlApproval(pi, ctx, {
 					toolName: event.toolName,
 					rawAction: rawPath,
 					approval,
