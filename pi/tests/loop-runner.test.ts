@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { initializeGitRepository } from "./helpers/git-fixture.ts";
 
 const temporaryDirectories: string[] = [];
 
@@ -14,12 +15,9 @@ function temporaryDirectory(): string {
 
 function initializeRepository(workspace: string): void {
 	fs.writeFileSync(path.join(workspace, "plan.md"), "# Plan\n");
-	execFileSync("git", ["init", "-q"], { cwd: workspace });
-	execFileSync("git", ["config", "user.email", "loop-runner@example.invalid"], {
-		cwd: workspace,
-	});
-	execFileSync("git", ["config", "user.name", "Loop Runner"], {
-		cwd: workspace,
+	initializeGitRepository(workspace, {
+		name: "Loop Runner",
+		email: "loop-runner@example.invalid",
 	});
 	execFileSync("git", ["add", "--", "plan.md"], { cwd: workspace });
 	execFileSync("git", ["commit", "-q", "-m", "test: initialize runner"], {

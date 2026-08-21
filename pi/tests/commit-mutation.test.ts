@@ -26,6 +26,7 @@ import {
 	SECRET_PATTERNS,
 } from "../extensions/workflow-commands.ts";
 import { timingSafeTokenEqual } from "../lib/commit/token.ts";
+import { initializeGitRepository } from "./helpers/git-fixture.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const repos: string[] = [];
@@ -37,9 +38,10 @@ function run(cwd: string, args: string[]) {
 function repo() {
 	const dir = mkdtempSync(join(tmpdir(), "pi-commit-mutation-"));
 	repos.push(dir);
-	run(dir, ["init"]);
-	run(dir, ["config", "user.email", "pi@example.invalid"]);
-	run(dir, ["config", "user.name", "Pi Test"]);
+	initializeGitRepository(dir, {
+		name: "Pi Test",
+		email: "pi@example.invalid",
+	});
 	return dir;
 }
 

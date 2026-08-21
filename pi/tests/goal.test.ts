@@ -16,6 +16,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 import goal, { goalTestApi } from "../extensions/goal.ts";
 import { readLoopJob, updateLoopJob } from "../extensions/loop.ts";
 import { getTask, transitionTask } from "../lib/task-registry.ts";
+import { initializeGitRepository } from "./helpers/git-fixture.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 function writeFile(filePath: string, content: string | Buffer) {
@@ -78,12 +79,9 @@ function readyPlan(
 }
 
 function initializeRepository(workspace: string): string {
-	execFileSync("git", ["init", "-q"], { cwd: workspace });
-	execFileSync("git", ["config", "user.email", "goal-test@example.invalid"], {
-		cwd: workspace,
-	});
-	execFileSync("git", ["config", "user.name", "Goal Test"], {
-		cwd: workspace,
+	initializeGitRepository(workspace, {
+		name: "Goal Test",
+		email: "goal-test@example.invalid",
 	});
 	execFileSync("git", ["add", "--", "."], { cwd: workspace });
 	execFileSync("git", ["commit", "-q", "-m", "test: initialize goal"], {

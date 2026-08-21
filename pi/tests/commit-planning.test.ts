@@ -18,6 +18,7 @@ import {
 	preflightGitStateAsync,
 } from "../lib/commit/plan.ts";
 import { changedFilesFromStatus } from "../lib/commit/status.ts";
+import { initializeGitRepository } from "./helpers/git-fixture.ts";
 
 const repos: string[] = [];
 function run(
@@ -33,9 +34,11 @@ function run(
 function repo() {
 	const dir = mkdtempSync(join(tmpdir(), "pi-commit-"));
 	repos.push(dir);
-	run(dir, ["init", "--initial-branch", "main"]);
-	run(dir, ["config", "user.email", "pi@example.invalid"]);
-	run(dir, ["config", "user.name", "Pi Test"]);
+	initializeGitRepository(
+		dir,
+		{ name: "Pi Test", email: "pi@example.invalid" },
+		{ initialBranch: "main" },
+	);
 	return dir;
 }
 
