@@ -800,7 +800,7 @@ Concurrent modifying workflow leaves require normalized, disjoint repository-rel
 
 Agent fields enumerate the current trust-aware catalog: user agents are always listed and project-agent names appear only after project trust is validated. To invoke a trusted project agent, set `agentScope` to `project` or `both` and provide its project-local name. A cwd or trust change rebuilds the catalog rather than falling back to raw project discovery; `/reload` also refreshes it. Every invocation validates all requested agents against `agentScope` before any worker starts or a background run is acknowledged.
 
-A root owns durable task creation, state transitions, validation, and closure. A coordinator may carry an existing running task ID for correlation, but leaves, retries, and workflow tools never create or transition task records. For durable work, the root selects a ready task, marks it `running`, passes its `taskId` to `subagent`, validates the result, and records terminal state. Disposable delegation remains task-free.
+A root owns durable task creation, state transitions, validation, and closure. One direct leaf or coordinator may carry an existing running task ID for correlation, but children, retries, and workflow tools never create or transition task records. For durable work, the root selects a ready task, marks it `running`, passes its `taskId` to `subagent`, validates the result, and records terminal state. Disposable delegation remains task-free.
 
 ### Agent configuration
 

@@ -54,23 +54,56 @@ afterAll(() => {
 });
 
 describe("task tools", () => {
-	it("reminds the agent about running workspace root tasks", async () => {
+	it("rejects durable task mutation from delegated child processes", async () => {
+		const pi = createMockPi();
+		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);
+		const tool = pi._getTool("task");
+		const previousRole = process.env.PI_SUBAGENT_TREE_ROLE;
+		process.env.PI_SUBAGENT_TREE_ROLE = "leaf";
+		try {
+			const result = await tool?.execute(
+				"child-create",
+				{ action: "create", summary: "must stay root-owned" },
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpRoot }),
+			);
+			expect(result.details.outcome).toBe("rejected");
+			expect(result.details.error).toContain("conversational root");
+			expect(listTasks()).toEqual([]);
+		} finally {
+			if (previousRole === undefined) delete process.env.PI_SUBAGENT_TREE_ROLE;
+			else process.env.PI_SUBAGENT_TREE_ROLE = previousRole;
+		}
+	});
+
+	it("reminds the agent only about running root tasks from its session", async () => {
 		const workspace = resolveTaskWorkspace(tmpRoot);
+		const sessionId = "current-session";
 		const first = createTask({
 			origin: "other",
 			summary: "Preserve the first outcome",
 			workspace,
+			sessionId,
 			notes: "Done when the first acceptance check passes.",
 		});
 		const second = createTask({
 			origin: "other",
 			summary: "Preserve the second outcome",
 			workspace,
+			sessionId,
 		});
 		const pending = createTask({
 			origin: "other",
 			summary: "Pending work",
 			workspace,
+			sessionId,
+		});
+		const otherSession = createTask({
+			origin: "other",
+			summary: "Other session work",
+			workspace,
+			sessionId: "other-session",
 		});
 		const otherRoot = path.join(tmpRoot, "other");
 		fs.mkdirSync(otherRoot, { recursive: true });
@@ -79,15 +112,19 @@ describe("task tools", () => {
 			summary: "Other workspace work",
 			workspace: resolveTaskWorkspace(otherRoot),
 		});
-		for (const record of [first, second, other])
+		for (const record of [first, second, otherSession, other])
 			transitionTask(record.id, "running");
 
 		const pi = createMockPi();
 		tasksExtension.default(pi as Parameters<typeof tasksExtension.default>[0]);
 		const beforeAgentStart = pi._getHook("before_agent_start")[0]?.handler;
+		const ctx = createMockCtx({
+			cwd: tmpRoot,
+			sessionManager: { getSessionId: () => sessionId },
+		});
 		const reminder = await beforeAgentStart?.(
 			{ systemPrompt: "base" },
-			createMockCtx({ cwd: tmpRoot }),
+			ctx,
 		);
 
 		expect(reminder?.systemPrompt).toContain(first.id);
@@ -96,15 +133,19 @@ describe("task tools", () => {
 			"If multiple tasks could own the request, do not choose silently.",
 		);
 		expect(reminder?.systemPrompt).not.toContain(pending.id);
+		expect(reminder?.systemPrompt).not.toContain(otherSession.id);
 		expect(reminder?.systemPrompt).not.toContain(other.id);
-
-		transitionTask(first.id, "completed");
-		transitionTask(second.id, "completed");
 		expect(
 			await beforeAgentStart?.(
 				{ systemPrompt: "base" },
 				createMockCtx({ cwd: tmpRoot }),
 			),
+		).toBeUndefined();
+
+		transitionTask(first.id, "completed");
+		transitionTask(second.id, "completed");
+		expect(
+			await beforeAgentStart?.({ systemPrompt: "base" }, ctx),
 		).toBeUndefined();
 	});
 
@@ -453,7 +494,7 @@ describe("task tools", () => {
 		);
 		expect(
 			new Set(all.details.records.map((record: { id: string }) => record.id)),
-		).toEqual(new Set([active.id, completed.id, unscoped.id, foreign.id]));
+		).toEqual(new Set([active.id, completed.id]));
 	});
 
 	it("scopes default lists to the current session", async () => {
@@ -517,6 +558,7 @@ describe("task tools", () => {
 			origin: "other",
 			state: "completed",
 			summary: "completed task",
+			workspace: resolveTaskWorkspace(tmpRoot),
 		});
 		const before = getTask(task.id);
 
@@ -542,7 +584,11 @@ describe("task tools", () => {
 		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);
 		const ctx = createMockCtx({ cwd: tmpRoot });
 		const tool = pi._getTool("task");
-		const task = createTask({ origin: "other", summary: "pending task" });
+		const task = createTask({
+			origin: "other",
+			summary: "pending task",
+			workspace: resolveTaskWorkspace(tmpRoot),
+		});
 		const before = getTask(task.id);
 
 		const oversizedNotes = await tool?.execute(
@@ -581,10 +627,16 @@ describe("task tools", () => {
 		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);
 		const ctx = createMockCtx({ cwd: tmpRoot });
 		const tool = pi._getTool("task");
-		const blocker = createTask({ origin: "other", summary: "blocker" });
+		const workspace = resolveTaskWorkspace(tmpRoot);
+		const blocker = createTask({
+			origin: "other",
+			summary: "blocker",
+			workspace,
+		});
 		const waiting = createTask({
 			origin: "other",
 			summary: "waiting",
+			workspace,
 			notes: "original",
 			blockedBy: [blocker.id],
 		});
@@ -613,11 +665,17 @@ describe("task tools", () => {
 		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);
 		const ctx = createMockCtx({ cwd: tmpRoot });
 		const tool = pi._getTool("task");
-		const skipped = createTask({ origin: "other", summary: "skip me" });
+		const workspace = resolveTaskWorkspace(tmpRoot);
+		const skipped = createTask({
+			origin: "other",
+			summary: "skip me",
+			workspace,
+		});
 		const failed = createTask({
 			origin: "other",
 			summary: "retry me",
 			state: "running",
+			workspace,
 		});
 		transitionTask(failed.id, "failed", { errorReason: "first failure" });
 

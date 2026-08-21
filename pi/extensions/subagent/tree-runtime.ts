@@ -98,6 +98,11 @@ export interface SubagentTreeController {
 export interface SubagentTreeRunSnapshot extends SubagentTreeMetadata {
 	readonly state: SubagentTreeRunState;
 	readonly pid?: number;
+	readonly cancellationPending?: boolean;
+	readonly scopeLease?: {
+		readonly repositoryRoot: string;
+		readonly scopes: readonly string[];
+	};
 }
 
 export interface SubagentTreeBrokerCredentials {
@@ -420,7 +425,7 @@ export class SubagentTreeBroker {
 					continue;
 				if (scopesOverlap(existing.scopeLease.scopes, scopeLease.scopes))
 					throw new SubagentTreeAdmissionError(
-						"Modification scope overlaps an active or queued descendant lease.",
+						`Modification scope overlaps an active or queued descendant lease held by run ${existing.metadata.runId} (${existing.state}) at ${existing.scopeLease.scopes.join(", ")}. Inspect that exact run and reconcile it only if its process is terminal or proven absent.`,
 					);
 			}
 		}
@@ -489,7 +494,7 @@ export class SubagentTreeBroker {
 		this.prune();
 	}
 
-	reconcile(runId: string): SubagentTreeRunSnapshot {
+	assertReconcileSafe(runId: string): void {
 		const node = this.nodes.get(runId);
 		if (!node) throw new SubagentTreeAdmissionError(`Run ${runId} is not registered.`);
 		if (node.metadata.role === "root")
@@ -524,6 +529,12 @@ export class SubagentTreeBroker {
 					);
 			}
 		}
+	}
+
+	reconcile(runId: string): SubagentTreeRunSnapshot {
+		this.assertReconcileSafe(runId);
+		const node = this.nodes.get(runId);
+		if (!node) throw new SubagentTreeAdmissionError(`Run ${runId} is not registered.`);
 		this.removeQueued(runId);
 		node.state = "settled";
 		node.cancellationPending = false;
@@ -557,6 +568,17 @@ export class SubagentTreeBroker {
 			...node.metadata,
 			state: node.state,
 			...(node.pid === undefined ? {} : { pid: node.pid }),
+			...(node.cancellationPending
+				? { cancellationPending: true }
+				: {}),
+			...(node.scopeLease
+				? {
+						scopeLease: {
+							repositoryRoot: node.scopeLease.repositoryRoot,
+							scopes: [...node.scopeLease.scopes],
+						},
+					}
+				: {}),
 		}));
 	}
 

@@ -5,6 +5,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { SubagentControlFacade } from "./control.js";
 import type {
 	SubagentRunManager,
 	SubagentRunSnapshot,
@@ -203,6 +204,7 @@ export async function openSubagentDashboard(
 	ctx: ExtensionCommandContext,
 	manager: SubagentRunManager,
 	filter: (run: SubagentRunSnapshot) => boolean = () => true,
+	control?: SubagentControlFacade,
 ): Promise<void> {
 	const selection: SubagentDashboardSelection = { index: 0 };
 	while (true) {
@@ -220,6 +222,7 @@ export async function openSubagentDashboard(
 					filter,
 					selection,
 					done,
+					control,
 				),
 			{
 				overlay: true,
@@ -232,7 +235,7 @@ export async function openSubagentDashboard(
 		);
 		if (!selected) return;
 		if (!manager.get(selected)) continue;
-		await openSubagentDetail(ctx, manager, selected);
+		await openSubagentDetail(ctx, manager, selected, control);
 	}
 }
 
@@ -240,10 +243,11 @@ async function openSubagentDetail(
 	ctx: ExtensionCommandContext,
 	manager: SubagentRunManager,
 	runId: string,
+	control?: SubagentControlFacade,
 ): Promise<void> {
 	await ctx.ui.custom<null>(
 		(tui, theme, keybindings, done) =>
-			new SubagentDetail(tui, theme, keybindings, manager, runId, done),
+			new SubagentDetail(tui, theme, keybindings, manager, runId, done, control),
 		{
 			overlay: true,
 			overlayOptions: {
@@ -257,6 +261,7 @@ async function openSubagentDetail(
 
 class SubagentDashboard implements Component {
 	private closed = false;
+	private controlError?: string;
 	private renderTimer?: ReturnType<typeof setTimeout>;
 	private readonly ticker: ReturnType<typeof setInterval>;
 	private readonly unsubscribe: () => void;
@@ -269,6 +274,7 @@ class SubagentDashboard implements Component {
 		private readonly filter: (run: SubagentRunSnapshot) => boolean,
 		private readonly selection: SubagentDashboardSelection,
 		private readonly done: (value: string | null) => void,
+		private readonly control?: SubagentControlFacade,
 	) {
 		this.ticker = setInterval(() => this.tui.requestRender(), 1000);
 		this.unsubscribe = manager.subscribe(() => this.scheduleRender());
@@ -310,7 +316,18 @@ class SubagentDashboard implements Component {
 		}
 		if (data === "x") {
 			const run = runs[this.selection.index];
-			if (run?.status === "running") this.manager.cancelTree(run.runId);
+			if (run?.status !== "running") return;
+			if (this.control)
+				void this.control
+					.execute({
+						action: "cancel",
+						selector: { type: "run", id: run.runId },
+					})
+					.catch((error) => {
+						this.controlError = error instanceof Error ? error.message : String(error);
+						this.tui.requestRender();
+					});
+			else this.manager.cancelTree(run.runId);
 		}
 	}
 
@@ -328,6 +345,10 @@ class SubagentDashboard implements Component {
 			),
 			this.theme.fg("border", "-".repeat(safeWidth)),
 		];
+		if (this.controlError)
+			lines.push(
+				truncateToWidth(this.theme.fg("error", this.controlError), safeWidth),
+			);
 		let start = 0;
 		if (runs.length > bodyHeight) {
 			start = Math.min(
@@ -349,10 +370,10 @@ class SubagentDashboard implements Component {
 				statusColor(run.status),
 				statusLabel(run.status).padEnd(6),
 			);
-			const identity = `${hierarchyPrefix(run)}${oneLine(run.agent)} ${run.runId.slice(0, 8)} ${oneLine(run.task)}`;
+			const identity = `${hierarchyPrefix(run)}${oneLine(run.agent)} ${run.runId} ${oneLine(run.task)}`;
 			const ownership =
 				run.owner === "task" && run.taskId
-					? `task ${run.taskId.slice(0, 8)}`
+					? `task ${run.taskId}`
 					: "direct";
 			const usage =
 				run.usage.contextPeakTokens > 0
@@ -414,6 +435,7 @@ const TRANSCRIPT_SCROLL_STEP = 6;
 
 class SubagentDetail implements Component {
 	private closed = false;
+	private controlError?: string;
 	private scrollOffset = 0;
 	private renderTimer?: ReturnType<typeof setTimeout>;
 	private readonly ticker: ReturnType<typeof setInterval>;
@@ -426,6 +448,7 @@ class SubagentDetail implements Component {
 		private readonly manager: SubagentRunManager,
 		private readonly runId: string,
 		private readonly done: (value: null) => void,
+		private readonly control?: SubagentControlFacade,
 	) {
 		this.ticker = setInterval(() => this.tui.requestRender(), 1000);
 		this.unsubscribe = manager.subscribeTo(runId, () => this.scheduleRender());
@@ -446,7 +469,17 @@ class SubagentDetail implements Component {
 			return;
 		}
 		if (data === "x") {
-			this.manager.cancelTree(this.runId);
+			if (this.control)
+				void this.control
+					.execute({
+						action: "cancel",
+						selector: { type: "run", id: this.runId },
+					})
+					.catch((error) => {
+						this.controlError = error instanceof Error ? error.message : String(error);
+						this.tui.requestRender();
+					});
+			else this.manager.cancelTree(this.runId);
 			return;
 		}
 		if (this.keybindings.matches(data, "tui.editor.cursorUp")) {
@@ -514,6 +547,14 @@ class SubagentDetail implements Component {
 			this.theme.fg(statusColor(run.status), header),
 			this.theme.fg("dim", metadata),
 			this.theme.fg("muted", task),
+			...(this.controlError
+				? [
+						truncateToWidth(
+							this.theme.fg("error", this.controlError),
+							safeWidth,
+						),
+					]
+				: []),
 			border,
 			...visible,
 		];

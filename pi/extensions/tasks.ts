@@ -512,11 +512,17 @@ function currentTaskSessionId(ctx: {
 	return ctx.sessionManager?.getSessionId?.();
 }
 
-export function activeRootTaskReminder(cwd: string): string | undefined {
+export function activeRootTaskReminder(
+	cwd: string,
+	sessionId: string | undefined,
+): string | undefined {
+	if (!sessionId) return undefined;
 	const workspace = resolveTaskWorkspace(cwd);
-	const running = listTasks({ workspace, states: ["running"] }).filter(
-		(record) => !record.parentId,
-	);
+	const running = listTasks({
+		workspace,
+		sessionId,
+		states: ["running"],
+	}).filter((record) => !record.parentId);
 	if (running.length === 0) return undefined;
 	const listed = running.slice(0, TASK_REMINDER_MAX_ITEMS);
 	return [
@@ -535,6 +541,16 @@ function isCurrentTask(
 	sessionId: string | undefined,
 ): boolean {
 	return record.workspace === workspace && record.sessionId === sessionId;
+}
+
+function isTaskInWorkspace(record: TaskRecordV1, workspace: string): boolean {
+	return record.workspace === workspace;
+}
+
+function isDelegatedTaskProcess(): boolean {
+	const role =
+		process.env.PI_SUBAGENT_TREE_ROLE ?? process.env.PI_SUBAGENT_ROLE;
+	return role === "coordinator" || role === "leaf";
 }
 
 function codePointPrefix(value: string, maxCodePoints: number): string {
@@ -766,6 +782,11 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			return new Text(theme.fg(failed ? "warning" : "dim", text), 0, 0);
 		},
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+			if (isDelegatedTaskProcess())
+				return toolResult({
+					outcome: "rejected",
+					error: "Only the conversational root may create or transition durable tasks.",
+				});
 			const input = asParams(params);
 			const action = input.action;
 			const retiredDiagnostic = retiredTaskDiagnostic(input);
@@ -841,12 +862,11 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			}
 			if (action === "list" || action === "ready") {
 				const allRecords = listTasks({ includeTombstones: false });
-				const scopedRecords =
+				const scopedRecords = allRecords.filter((record) =>
 					input.all === true
-						? allRecords
-						: allRecords.filter((record) =>
-								isCurrentTask(record, workspace, sessionId),
-							);
+						? isTaskInWorkspace(record, workspace)
+						: isCurrentTask(record, workspace, sessionId),
+				);
 				const selected =
 					action === "ready"
 						? partitionReadyTasks(scopedRecords).ready
@@ -868,13 +888,20 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				});
 			if (action === "get") {
 				const record = getTask(id);
+				const visible =
+					record && isTaskInWorkspace(record, workspace)
+						? record
+						: undefined;
 				return toolResult({
-					outcome: record ? "persisted" : "not_found",
-					record,
+					outcome: visible ? "persisted" : "not_found",
+					record: visible,
 				});
 			}
 			if (action === "remove") {
 				try {
+					const existing = getTask(id);
+					if (!existing || !isTaskInWorkspace(existing, workspace))
+						throw new Error(`task not found in current workspace: ${id}`);
 					return operationToolResult({
 						outcome: "persisted",
 						record: tombstoneTask(id),
@@ -888,10 +915,10 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			}
 			if (action === "update") {
 				const existing = getTask(id);
-				if (!existing)
+				if (!existing || !isTaskInWorkspace(existing, workspace))
 					return toolResult({
 						outcome: "not_found",
-						error: `task not found: ${id}`,
+						error: `task not found in current workspace: ${id}`,
 					});
 				let patch: UpdateTaskPatch;
 				let skipReason: string | undefined;
@@ -1121,7 +1148,7 @@ export default function (pi: ExtensionAPI) {
 	registerTaskTools(pi);
 	registerTasksCommand(pi);
 	pi.on("before_agent_start", (event, ctx) => {
-		const reminder = activeRootTaskReminder(ctx.cwd);
+		const reminder = activeRootTaskReminder(ctx.cwd, currentTaskSessionId(ctx));
 		if (!reminder) return undefined;
 		return { systemPrompt: `${event.systemPrompt}\n\n${reminder}` };
 	});

@@ -1027,6 +1027,10 @@ function currentSubagentIdentity(): SubagentExecutionIdentity {
 	};
 }
 
+function canonicalAgentName(agentName: string): string {
+	return agentName === "orchestrator" ? "teamlead" : agentName;
+}
+
 function resolveChildRole(
 	requestedRole: SubagentRole | undefined,
 	agentName: string,
@@ -1034,7 +1038,7 @@ function resolveChildRole(
 	const current = currentSubagentIdentity();
 	if (current.role === "leaf" || current.depth >= 2)
 		throw new Error("Leaf and depth-two subagents cannot delegate.");
-	const profileName = agentName === "orchestrator" ? "teamlead" : agentName;
+	const profileName = canonicalAgentName(agentName);
 	const role =
 		requestedRole ??
 		(current.role === "root" && profileName === "teamlead" ? "coordinator" : "leaf");
@@ -1067,7 +1071,8 @@ function containsMaxEffortSelection(value: unknown, agents: readonly AgentConfig
 		if (key === "effort" && item === "max") return true;
 		if (key === "model" && typeof item === "string" && isMaxEffortModelSelection(item)) return true;
 		if (key === "agent" && typeof item === "string") {
-			const agent = agents.find((candidate) => candidate.name === item);
+			const profileName = canonicalAgentName(item);
+			const agent = agents.find((candidate) => candidate.name === profileName);
 			if (agent?.effort === "max" || (agent?.model !== undefined && isMaxEffortModelSelection(agent.model))) return true;
 		}
 		if (containsMaxEffortSelection(item, agents)) return true;
@@ -1139,10 +1144,12 @@ function resolveChildToolAuthority(
 			: ["read", "bash"];
 	let tools = [...(agent.tools ?? defaults)];
 	if (options.role === "coordinator") {
-		tools = tools.filter((tool) => !DIRECT_FILE_MUTATION_TOOLS.has(tool));
+		const coordinatorTools = new Set(["read", "grep", "find", "ls", "subagent"]);
+		tools = tools.filter((tool) => coordinatorTools.has(tool));
 	} else {
 		tools = tools.filter(
-			(tool) => !DELEGATION_AND_WORKFLOW_TOOLS.has(tool),
+			(tool) =>
+				tool !== "task" && !DELEGATION_AND_WORKFLOW_TOOLS.has(tool),
 		);
 	}
 	if (options.workflowCapabilities) {
@@ -1197,7 +1204,7 @@ export async function runSingleAgent(
 	const turnLimit = runContext?.maxTurns ?? MAX_SUBAGENT_TURNS;
 	const readOnlyTimeoutMs =
 		runContext?.timeoutMs ?? READ_ONLY_SUBAGENT_TIMEOUT_MS;
-	const profileName = agentName === "orchestrator" ? "teamlead" : agentName;
+	const profileName = canonicalAgentName(agentName);
 	const agent = agents.find((a) => a.name === profileName);
 
 	if (!agent) {
@@ -1852,10 +1859,24 @@ export async function runSingleAgent(
 			Object.assign(err, { subagentResult: currentResult });
 		throw err;
 	} finally {
+		removeTreeCancelListener?.();
+		try {
+			await treePermit?.release();
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			currentResult.stopReason = "error";
+			currentResult.errorMessage = `Subagent process settled but broker cleanup failed: ${detail}`;
+			currentResult.exitCode = currentResult.exitCode || 1;
+		}
 		currentResult.durationMs = Date.now() - runStartedAt;
-		const classification = runController.signal.aborted
-			? "cancelled"
-			: classifySubagentResult(currentResult);
+		const cleanupFailed = currentResult.errorMessage?.startsWith(
+			"Subagent process settled but broker cleanup failed:",
+		);
+		const classification = cleanupFailed
+			? "failed"
+			: runController.signal.aborted
+				? "cancelled"
+				: classifySubagentResult(currentResult);
 		subagentRunManager.settle(runId, {
 			status:
 				classification === "cancelled"
@@ -1872,8 +1893,6 @@ export async function runSingleAgent(
 			finalText: getFinalOutput(currentResult.messages),
 			durationMs: currentResult.durationMs,
 		});
-		removeTreeCancelListener?.();
-		await treePermit?.release();
 		signal?.removeEventListener("abort", forwardAbort);
 		if (tmpPromptPath)
 			try {
@@ -1905,6 +1924,7 @@ type TaskParams = {
 	resolvedModel?: string;
 	resolvedEffort?: AgentEffort;
 	normalizedScopes?: string[];
+	repositoryRoot?: string;
 };
 
 type ChainParams = TaskParams;
@@ -2395,7 +2415,18 @@ export default function (pi: ExtensionAPI) {
 	const flushPendingBackgroundCompletions = () => {
 		deliveryScheduled = false;
 		if (!sessionOpen) return;
+		const activeSessionId = statusContext?.sessionManager?.getSessionId?.();
+		const activeWorkspaceId = statusContext
+			? process.platform === "win32"
+				? path.resolve(statusContext.cwd).toLowerCase()
+				: path.resolve(statusContext.cwd)
+			: undefined;
 		for (const completion of subagentRunManager.pendingBackgroundCompletions()) {
+			if (
+				completion.parentSessionId !== activeSessionId ||
+				completion.workspaceId !== activeWorkspaceId
+			)
+				continue;
 			try {
 				pi.sendMessage(
 					{
@@ -2429,6 +2460,7 @@ export default function (pi: ExtensionAPI) {
 	const queueBackgroundResult = (
 		orchestrationId: string,
 		mode: Exclude<SubagentRunMode, "task-execute">,
+		origin: { parentSessionId?: string; workspaceId: string },
 		result?: AgentToolResult<SubagentDetails>,
 		error?: unknown,
 	) => {
@@ -2457,6 +2489,7 @@ export default function (pi: ExtensionAPI) {
 		subagentRunManager.queueBackgroundCompletion({
 			orchestrationId,
 			mode,
+			...origin,
 			content: `Background subagent ${mode} ${orchestrationId} ${failed ? "finished with failures" : "finished"}.\n\n${bounded.content}${truncationNote}`,
 			failed,
 			taskIds:
@@ -2506,9 +2539,31 @@ export default function (pi: ExtensionAPI) {
 				const inspections = subagentRunManager
 					.list()
 					.map((run) => inspectSubagentStatus(run));
+				const trackedIds = new Set(
+					inspections.map((inspection) => inspection.run.runId),
+				);
+				const brokerOnly = getSubagentTreeBroker()
+					.list()
+					.filter(
+						(run) =>
+							run.role !== "root" &&
+							!trackedIds.has(run.runId) &&
+							(run.state !== "settled" || Boolean(run.scopeLease)),
+					);
+				const brokerText = brokerOnly.length
+					? `\nBroker-only boundaries:\n${brokerOnly
+							.map(
+								(run) =>
+									`${run.runId} | ${run.state}${run.pid ? ` | pid ${run.pid}` : ""}${run.scopeLease ? ` | scopes ${run.scopeLease.scopes.join(", ")}` : ""}`,
+							)
+							.join("\n")}`
+					: "";
 				return {
 					content: [
-						{ type: "text", text: formatSubagentStatusList(inspections) },
+						{
+							type: "text",
+							text: `${formatSubagentStatusList(inspections)}${brokerText}`,
+						},
 					],
 					details: {
 						runs: inspections.map((inspection) => ({
@@ -2521,11 +2576,25 @@ export default function (pi: ExtensionAPI) {
 							lastActivityKind: inspection.lastActivityKind,
 							quietForMs: inspection.quietForMs,
 						})),
+						brokerOnly,
 					},
 				};
 			}
 			const run = subagentRunManager.get(params.runId);
 			if (!run) {
+				const brokerRun = getSubagentTreeBroker()
+					.list()
+					.find((candidate) => candidate.runId === params.runId);
+				if (brokerRun)
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Broker boundary ${brokerRun.runId} is ${brokerRun.state}${brokerRun.pid ? ` with pid ${brokerRun.pid}` : ""}${brokerRun.scopeLease ? ` and holds scopes ${brokerRun.scopeLease.scopes.join(", ")}` : ""}. Use subagent_control reconcile only when the process is terminal or proven absent.`,
+							},
+						],
+						details: { found: true, brokerOnly: true, run: brokerRun },
+					};
 				const groupedRuns = subagentRunManager.getByOrchestrationId(
 					params.runId,
 				);
@@ -2590,6 +2659,11 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	const subagentControl = createSubagentControlFacade(
+		getSubagentTreeBroker(),
+		subagentRunManager,
+	);
+
 	pi.registerTool({
 		name: "subagent_control",
 		label: "Subagent Control",
@@ -2610,10 +2684,7 @@ export default function (pi: ExtensionAPI) {
 		execute: async (_toolCallId, params) => {
 			if (currentSubagentIdentity().role !== "root")
 				throw new Error("Only the root agent can control subagent boundaries.");
-			const result = await createSubagentControlFacade(
-				getSubagentTreeBroker(),
-				subagentRunManager,
-			).execute(params);
+			const result = await subagentControl.execute(params);
 			return {
 				content: [{ type: "text", text: JSON.stringify(result) }],
 				details: result,
@@ -2658,14 +2729,19 @@ export default function (pi: ExtensionAPI) {
 					: path.resolve(ctx.cwd);
 			const session = filters.get("session") ?? (all ? undefined : currentSession);
 			const workspace = filters.get("workspace") ?? (all ? undefined : currentWorkspace);
-			await openSubagentDashboard(ctx, subagentRunManager, (run) => {
-				if (session && run.parentSessionId !== session) return false;
-				if (workspace && run.workspaceId !== workspace) return false;
-				if (filters.get("orchestration") && run.orchestrationId !== filters.get("orchestration")) return false;
-				if (filters.get("task") && run.taskId !== filters.get("task") && run.coordinatorTaskId !== filters.get("task")) return false;
-				if (filters.get("state") && run.status !== filters.get("state")) return false;
-				return true;
-			});
+			await openSubagentDashboard(
+				ctx,
+				subagentRunManager,
+				(run) => {
+					if (session && run.parentSessionId !== session) return false;
+					if (workspace && run.workspaceId !== workspace) return false;
+					if (filters.get("orchestration") && run.orchestrationId !== filters.get("orchestration")) return false;
+					if (filters.get("task") && run.taskId !== filters.get("task") && run.coordinatorTaskId !== filters.get("task")) return false;
+					if (filters.get("state") && run.status !== filters.get("state")) return false;
+					return true;
+				},
+				subagentControl,
+			);
 		},
 	});
 
@@ -2752,7 +2828,7 @@ export default function (pi: ExtensionAPI) {
 			"Use agent and task for one worker or tasks for bounded parallel workers.",
 			"Modifying leaves require repository-relative scopes; active descendants share the root scheduler.",
 			"Foreground execution waits; background=true returns immediately and delivers a follow-up result.",
-			"Use taskId only to correlate a root-owned coordinator task. Advanced chain, continuation, fanout, and typed workflow tools are deferred.",
+			"Use taskId only to correlate an existing root-owned task with one direct child. The root remains responsible for every task transition. Advanced chain, continuation, fanout, and typed workflow tools are deferred.",
 		].join(" "),
 		promptSnippet:
 			"Delegate foreground or background work to isolated specialist agents",
@@ -2764,7 +2840,7 @@ export default function (pi: ExtensionAPI) {
 			"Give every modifying leaf a normalized repository-relative scope and keep concurrent scopes disjoint.",
 			"Use subagent with background=true for independent work, continue useful parent work, and consume the delivered follow-up instead of polling.",
 			"Use tool_search for deferred chain, continuation, fanout, and subagent_workflow capabilities.",
-			"For durable coordinated work, start a root-owned task, pass its taskId to the coordinator, validate the result, and close the task. Leaves remain transient.",
+			"For durable work, start a root-owned task, pass its taskId to the direct leaf or coordinator, validate the result, and close the task. The child never changes task state.",
 		],
 		parameters: InitialSubagentSchemas.legacy,
 
@@ -3133,9 +3209,7 @@ export default function (pi: ExtensionAPI) {
 					const suppliedContext = args[16] ?? {};
 					const treeClient = await getInvocationTreeClient();
 					const coordinatorTaskId =
-						suppliedContext.role === "coordinator"
-							? args[13]
-							: currentIdentity.coordinatorTaskId;
+						args[13] ?? currentIdentity.coordinatorTaskId;
 					args[16] = {
 						owner: args[13] ? "task" : "direct",
 						orchestrationId,
@@ -3379,11 +3453,14 @@ export default function (pi: ExtensionAPI) {
 				const resolved = resolveChildRole(requestedRole, item.agent);
 				item.resolvedRole = resolved.role;
 				item.resolvedDepth = resolved.depth;
+				const effectiveCwd = path.resolve(invocationCwd, item.cwd ?? ".");
+				item.cwd = effectiveCwd;
+				item.repositoryRoot = effectiveCwd;
 				item.normalizedScopes = normalizeRepositoryScopes(
 					item.scope ?? [],
-					invocationCwd,
+					effectiveCwd,
 				);
-				const profileName = item.agent === "orchestrator" ? "teamlead" : item.agent;
+				const profileName = canonicalAgentName(item.agent);
 				const agent = agents.find((candidate) => candidate.name === profileName);
 				if (!agent) throw new Error(`Unknown agent: ${item.agent}`);
 				if (resolved.role === "coordinator" && item.scope !== undefined)
@@ -3420,10 +3497,6 @@ export default function (pi: ExtensionAPI) {
 						modelSize,
 					);
 				}
-				if (item.taskId && resolved.role !== "coordinator")
-					throw new Error(
-						"taskId may correlate a root-owned coordinator invocation only.",
-					);
 			};
 			const chain = params.chain as unknown as TaskParams[] | undefined;
 			if (fanoutPlan) {
@@ -3440,8 +3513,9 @@ export default function (pi: ExtensionAPI) {
 
 			if (!fanoutAssignment && selectedTasks) {
 				const modifiers = (selectedTasks as TaskParams[]).filter((item) => {
+					const profileName = canonicalAgentName(item.agent);
 					const agent = agents.find(
-						(candidate) => candidate.name === item.agent,
+						(candidate) => candidate.name === profileName,
 					);
 					return agent
 						? resolveChildToolAuthority(agent, {
@@ -3452,13 +3526,23 @@ export default function (pi: ExtensionAPI) {
 						: false;
 				});
 				if (modifiers.length > 1) {
-					assertDisjointScopes(
-						modifiers.map((item, index) => ({
-							key: `${item.agent}[${index}]`,
-							scopes: item.normalizedScopes ?? [],
-						})),
-						invocationCwd,
-					);
+					const byRepository = new Map<string, TaskParams[]>();
+					for (const item of modifiers) {
+						const repositoryRoot = item.repositoryRoot ?? invocationCwd;
+						const group = byRepository.get(repositoryRoot) ?? [];
+						group.push(item);
+						byRepository.set(repositoryRoot, group);
+					}
+					for (const [repositoryRoot, group] of byRepository) {
+						if (group.length < 2) continue;
+						assertDisjointScopes(
+							group.map((item, index) => ({
+								key: `${item.agent}[${index}]`,
+								scopes: item.normalizedScopes ?? [],
+							})),
+							repositoryRoot,
+						);
+					}
 				}
 			}
 
@@ -3467,6 +3551,7 @@ export default function (pi: ExtensionAPI) {
 				confirmProjectAgents
 			) {
 				const projectAgentsRequested = Array.from(requestedAgentNames)
+					.map((name) => canonicalAgentName(name))
 					.map((name) => agents.find((a) => a.name === name))
 					.filter((a): a is AgentConfig => a?.source === "project");
 
@@ -3620,6 +3705,7 @@ export default function (pi: ExtensionAPI) {
 							role: step.resolvedRole,
 							depth: step.resolvedDepth,
 							scopes: step.normalizedScopes,
+							repositoryRoot: step.repositoryRoot,
 						},
 					);
 					finalizeOutput(
@@ -3755,6 +3841,7 @@ export default function (pi: ExtensionAPI) {
 									role: t.resolvedRole,
 									depth: t.resolvedDepth,
 									scopes: t.normalizedScopes,
+									repositoryRoot: t.repositoryRoot,
 								},
 							);
 							finalizeOutput(
@@ -3825,6 +3912,7 @@ export default function (pi: ExtensionAPI) {
 						role: selectedSingle.resolvedRole,
 						depth: selectedSingle.resolvedDepth,
 						scopes: selectedSingle.normalizedScopes,
+						repositoryRoot: selectedSingle.repositoryRoot,
 					},
 				);
 				finalizeOutput(
@@ -3893,14 +3981,27 @@ export default function (pi: ExtensionAPI) {
 				}
 			};
 			if (!background) return executeWithTreeSettlement();
+			const backgroundOrigin = {
+				parentSessionId,
+				workspaceId:
+					process.platform === "win32"
+						? path.resolve(invocationCwd).toLowerCase()
+						: path.resolve(invocationCwd),
+			};
 			void executeWithTreeSettlement()
 				.then((result) =>
-					queueBackgroundResult(orchestrationId, executionMode, result),
+					queueBackgroundResult(
+						orchestrationId,
+						executionMode,
+						backgroundOrigin,
+						result,
+					),
 				)
 				.catch((error) =>
 					queueBackgroundResult(
 						orchestrationId,
 						executionMode,
+						backgroundOrigin,
 						undefined,
 						error,
 					),

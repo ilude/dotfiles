@@ -20,6 +20,9 @@ describe("subagent live control", () => {
 		const sibling = await broker.acquire({ treeId: root.treeId, parentRunId: root.rootRunId, runId: "sibling", role: "leaf" });
 		const result = await control.execute({ action: "cancel", selector: { type: "run", id: "selected" } });
 		expect(result.selectedIds).toEqual(["selected"]);
+		expect(result.outcomes).toEqual([
+			{ runId: "selected", outcome: "cancelled" },
+		]);
 		expect(broker.list().find((run) => run.runId === "selected")?.state).toBe("cancelled");
 		expect(broker.list().find((run) => run.runId === "sibling")?.state).toBe("active");
 		await selected.release();
@@ -55,6 +58,35 @@ describe("subagent live control", () => {
 		});
 		expect(replacement.metadata.runId).toBe("replacement");
 		await replacement.release();
+	});
+
+	it("preflights tree reconciliation before releasing any boundary", async () => {
+		const { broker, root, control } = fixture();
+		await broker.acquire({
+			treeId: root.treeId,
+			parentRunId: root.rootRunId,
+			runId: "first",
+			role: "leaf",
+		});
+		await broker.acquire({
+			treeId: root.treeId,
+			parentRunId: root.rootRunId,
+			runId: "second",
+			role: "leaf",
+		});
+
+		await expect(
+			control.execute({
+				action: "reconcile",
+				selector: { type: "tree", id: root.treeId },
+			}),
+		).rejects.toThrow("ambiguous process liveness");
+		expect(
+			broker
+				.list()
+				.filter((run) => run.role === "leaf")
+				.map((run) => run.state),
+		).toEqual(["active", "active"]);
 	});
 
 	it("rejects reconciliation when process liveness is ambiguous", async () => {

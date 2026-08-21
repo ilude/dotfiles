@@ -44,6 +44,8 @@ export interface SubagentBackgroundCompletion {
 	readonly content: string;
 	readonly failed: boolean;
 	readonly taskIds: ReadonlyArray<string>;
+	readonly parentSessionId?: string;
+	readonly workspaceId: string;
 }
 
 export interface SubagentTranscriptItem {
