@@ -21,16 +21,7 @@ export function formatSubagentActivityStatus(
 ): string | undefined {
 	if (runs.length === 0) return undefined;
 	const running = runs.filter((run) => run.status === "running").length;
-	const completed = runs.filter((run) => run.status === "completed").length;
-	const failed = runs.filter((run) => run.status === "failed").length;
-	const cancelled = runs.filter((run) => run.status === "cancelled").length;
-	const parts = [
-		`${running} running`,
-		completed > 0 ? `${completed} done` : "",
-		failed > 0 ? `${failed} failed` : "",
-		cancelled > 0 ? `${cancelled} cancelled` : "",
-	].filter(Boolean);
-	return `subagents ${parts.join(", ")}`;
+	return running > 0 ? `subagents ${running}` : undefined;
 }
 
 export function reconcileSubagentDashboardSelection(
