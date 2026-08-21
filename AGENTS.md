@@ -56,6 +56,7 @@ The installer entrypoints and supporting paths are indexed in [`README.md#struct
 - Work SSH key priority is `id_ed25519-work`, then `id_ed25519-eagletg`; work must not fall back to generic `id_ed25519`.
 - [`.gitattributes`](.gitattributes) may route only `patches/msys2-runtime/*.dll` through Git LFS. If LFS hooks hang or git becomes slow, run [`scripts/git-lfs-health.ps1`](scripts/git-lfs-health.ps1) with `pwsh -File` before retrying. Do not remove or bypass hooks by default; bypass only after staged-diff and LFS health checks pass and the user approves.
 - Never force-push a submodule repository. Never amend or rebase an already-pushed submodule commit. Pull inside the submodule before updating the parent repository's pinned reference.
+- Treat every worktree as potentially shared. Never use `git restore`, `git checkout`, `git reset`, `git clean`, file deletion, or overwrite to discard a change unless the current task created it or the user explicitly authorizes its removal. This does not prohibit editing a file that already has unrelated changes; preserve those changes in the resulting file and diff.
 - If `git pull` fails on a submodule fetch, recover with:
 
 ```bash
@@ -71,7 +72,7 @@ git submodule update --init --recursive
 - In Onramp/Caddy stack variables, a service `port` is the container/service port reachable on the Docker Compose network. Do not reinterpret it as host publishing, split it into host/internal ports, or assume a host bind unless explicitly requested.
 - Use only tools, workflows, permissions, and memory/task systems available in the active harness. If a capability is absent, adapt instead of assuming or naming it.
 - Use deterministic code/tooling for routing, retries, transforms, status handling, install detection, and validation. Reserve model judgment for synthesis, review, classification, and ambiguous language.
-- Do not add try-catch wrappers, guard flags, or fallback logic unless requested. Solve the domain problem directly; missing data or dependencies must fail explicitly, never through silent defaults. Remove redundant paths rather than wrapping old logic in fallback flags. Do not bypass a failed supported entrypoint with an alternate host runtime or lower-level command when that changes the environment, behavior, or state; report the blocker instead.
+- Do not add try-catch wrappers, guard flags, or fallback logic unless requested. Solve the domain problem directly; missing data or dependencies must fail explicitly, never through silent defaults. Remove redundant paths rather than wrapping old logic in fallback flags.
 - Keep planning proportional: brief prose for complex work, none for simple work, and clarification only when ambiguity changes correctness or direction.
 - For lists or batches, track every item to completed, explicitly skipped with reason, or blocked before finalizing.
 - Stop research when the core question is answered and further retrieval is unlikely to change the conclusion; be exhaustive only when requested.
