@@ -18,7 +18,7 @@ Pi is installed automatically by the dotfiles installer:
 ~/.dotfiles/install.ps1
 ```
 
-On all platforms, this uses `pnpm --config.minimumReleaseAge=720 add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent@0.84.1` plus `pi-agent-core`, `pi-ai`, and `pi-tui` pinned to the same version and `typebox@1.3.7` on every installer run, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS) and `scripts/pi-deps-link-setup` (which links the pnpm-global Pi packages into `pi/node_modules`). The installers also initialize the pinned `modules/onclave` and `modules/homelab-infra` submodules and run Onclave's frozen pnpm workspace install because `pi/extensions/onclave-pi.ts` loads the v2 adapter from that checkout. Pi uses a 12-hour release-age window while the global pnpm default remains 3 days. Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
+On all platforms, this uses `pnpm --config.minimumReleaseAge=720 add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent@latest`. The package declares and resolves its Pi runtime dependencies; the installers remove obsolete direct global installs of those dependencies after a successful update. They then run `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS) and `scripts/pi-deps-link-setup` (which links the pnpm-global Pi packages into `pi/node_modules`). The installers also initialize the pinned `modules/onclave` and `modules/homelab-infra` submodules and run Onclave's frozen pnpm workspace install because `pi/extensions/onclave-pi.ts` loads the v2 adapter from that checkout. Pi uses a 12-hour release-age window while the global pnpm default remains 3 days. Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
 
 The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls). OpenAI and OpenRouter-hosted OpenAI prompt caching are automatic for eligible long prompts; provider-specific `cache_control` markers are only for models/providers that require Anthropic-style caching semantics.
 
@@ -159,7 +159,7 @@ Package-manager priority:
 Pi-specific package-manager boundaries:
 
 - `pi/` is pnpm-managed (`package.json` + `pnpm-lock.yaml`) and owns Pi TypeScript typecheck/test dependencies.
-- Pi runtime packages such as `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-tui`, and `typebox` are installed globally by pnpm and linked into `pi/node_modules` by `scripts/pi-deps-link-setup`.
+- `@earendil-works/pi-coding-agent` is installed globally by pnpm. Its declared runtime dependencies, including `pi-ai`, `pi-agent-core`, `pi-tui`, and `typebox`, are linked into `pi/node_modules` by `scripts/pi-deps-link-setup`.
 - Do **not** run `bun add` for Pi extension/runtime packages and do not recreate `pi/extensions/package.json`, `pi/extensions/pnpm-lock.yaml`, or `pi/tests/package.json`.
 - Type-check extensions with:
   ```bash
@@ -173,7 +173,7 @@ Pi-specific package-manager boundaries:
 
 The global `pi` package is installed with pnpm on every platform.
 
-Reason: bun's looser resolver let pi's transitive deps (`pi-agent-core`, `pi-ai`, `pi-tui`) drift to newer patch versions even when `pi-coding-agent` itself was pinned; for example, a pinned `pi-coding-agent@0.72.0` could still ship `pi-agent-core@0.72.1` in the TUI banner. pnpm's strict resolver respects the pin, its content-addressable global store keeps installs reproducible, and its explicit build-script approval model is satisfied by passing `--allow-build=koffi --allow-build=protobufjs` for the two native postinstall steps Pi requires. Bun previously also failed on transitive AWS SDK packages on Windows.
+pnpm resolves the dependency graph declared by `pi-coding-agent`, uses a content-addressable global store, and provides the explicit build-script approval model satisfied by passing `--allow-build=koffi --allow-build=protobufjs` for the two native postinstall steps Pi requires. Bun previously allowed Pi runtime packages to drift independently and also failed on transitive AWS SDK packages on Windows.
 
 Bun stays installed for other JS tooling in this repo (`pi/extensions/web-fetch`, ad-hoc `bun` scripts); this policy only applies to the global `pi` binary. pnpm is declared in `Brewfile` (macOS) and `winget/configuration/core.dsc.yaml` (Windows) alongside Node.js.
 
@@ -200,12 +200,9 @@ Current template example:
 
 ```bash
 # All platforms
-pnpm add -g --allow-build=koffi --allow-build=protobufjs \
-    @earendil-works/pi-coding-agent@0.84.1 \
-    @earendil-works/pi-agent-core@0.84.1 \
-    @earendil-works/pi-ai@0.84.1 \
-    @earendil-works/pi-tui@0.84.1 \
-    typebox@1.3.7
+pnpm --config.minimumReleaseAge=720 add -g \
+    --allow-build=koffi --allow-build=protobufjs \
+    @earendil-works/pi-coding-agent@latest
 ~/.dotfiles/scripts/pi-link-setup
 ~/.dotfiles/scripts/pi-deps-link-setup
 ```

@@ -1910,28 +1910,42 @@ try {
             }
         }
 
-        # Install or update Pi on every run. Keep the runtime package family on
-        # one version and use a shorter release-age window than the global default.
-        $piVersion = '0.84.1'
-        $piTypeboxVersion = '1.3.7'
+        # Install or update Pi on every run. Let pi-coding-agent declare and
+        # resolve its runtime package family, using a shorter release-age window
+        # than the global default.
         $piPnpmMinimumReleaseAge = 720
-        Write-Host "  Installing/updating pi-coding-agent $piVersion via pnpm (minimumReleaseAge=$piPnpmMinimumReleaseAge minutes)..." -ForegroundColor Cyan
+        Write-Host "  Installing/updating pi-coding-agent to latest via pnpm (minimumReleaseAge=$piPnpmMinimumReleaseAge minutes)..." -ForegroundColor Cyan
         $previousCi = $env:CI
         $previousPnpmAllowAllBuilds = $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS
         $env:CI = '1'
         $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = 'true'
         try {
             pnpm --config.minimumReleaseAge=$piPnpmMinimumReleaseAge add -g --allow-build=koffi --allow-build=protobufjs `
-                "@earendil-works/pi-coding-agent@${piVersion}" `
-                "@earendil-works/pi-agent-core@${piVersion}" `
-                "@earendil-works/pi-ai@${piVersion}" `
-                "@earendil-works/pi-tui@${piVersion}" `
-                "typebox@${piTypeboxVersion}"
+                '@earendil-works/pi-coding-agent@latest'
+            $piInstallExitCode = $LASTEXITCODE
         } finally {
             $env:CI = $previousCi
             $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = $previousPnpmAllowAllBuilds
         }
-        if ($LASTEXITCODE -eq 0) {
+        if ($piInstallExitCode -eq 0) {
+            $piGlobalState = @(pnpm list -g --json --depth -1 2>$null | ConvertFrom-Json)
+            $piGlobalDependencies = @(
+                $piGlobalState | ForEach-Object { $_.dependencies.PSObject.Properties.Name }
+            )
+            $piObsoleteGlobals = @(
+                '@earendil-works/pi-agent-core'
+                '@earendil-works/pi-ai'
+                '@earendil-works/pi-tui'
+                'typebox'
+            ) | Where-Object { $piGlobalDependencies -contains $_ }
+            if ($piObsoleteGlobals.Count -gt 0) {
+                Write-Host "  Removing obsolete direct Pi runtime dependencies..." -ForegroundColor DarkGray
+                pnpm remove -g $piObsoleteGlobals
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "Failed to remove obsolete direct Pi runtime dependencies"
+                }
+            }
+
             Write-Host "  pi-coding-agent: installed/updated successfully via pnpm" -ForegroundColor Green
 
             $piMarkdownPatch = Join-Path $BASEDIR 'install.d\50-pi-markdown-code-fence-fix.py'
