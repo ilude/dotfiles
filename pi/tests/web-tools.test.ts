@@ -28,6 +28,7 @@ describe("web-tools extension", () => {
   beforeEach(() => {
     mockPi = createMockPi();
     mockFetch.mockReset();
+    delete process.env.SEARXNG_URL;
   });
 
   describe("web_search", () => {
@@ -61,7 +62,16 @@ describe("web-tools extension", () => {
       mockSearchResponse([]);
       await search.execute("id", { query: "hello world" }, undefined, undefined, {});
       expect(mockFetch.mock.calls[0][0]).toBe(
-        "https://searxng.traefikturkey.icu/search?q=hello%20world&format=json&pageno=1",
+        "https://searxng.ilude.com/search?q=hello%20world&format=json&pageno=1",
+      );
+    });
+
+    it("uses the configured SearXNG endpoint", async () => {
+      process.env.SEARXNG_URL = "https://search.example.test/search/";
+      mockSearchResponse([]);
+      await search.execute("id", { query: "configured" }, undefined, undefined, {});
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        "https://search.example.test/search?q=configured&format=json&pageno=1",
       );
     });
 

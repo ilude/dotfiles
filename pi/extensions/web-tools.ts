@@ -28,7 +28,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
-const SEARXNG_URL = "https://searxng.traefikturkey.icu/search";
+const DEFAULT_SEARXNG_URL = "https://searxng.ilude.com/search";
 const WEB_FETCH_SCRIPT = path.join(os.homedir(), ".dotfiles", "pi", "extensions", "web-fetch", "fetch.js");
 const DEFAULT_WEB_FETCH_MAX_CHARS = 8000;
 const MAX_WEB_FETCH_CHARS = 50000;
@@ -185,7 +185,8 @@ export default function (pi: ExtensionAPI) {
 			const n = Math.min(search.num_results ?? search.count ?? 5, 20);
 			const composedQuery = buildSearxngQuery(search);
 
-			const url = `${SEARXNG_URL}?q=${encodeURIComponent(composedQuery)}&format=json&pageno=1`;
+			const searxngUrl = (process.env.SEARXNG_URL ?? DEFAULT_SEARXNG_URL).replace(/\/$/, "");
+			const url = `${searxngUrl}?q=${encodeURIComponent(composedQuery)}&format=json&pageno=1`;
 
 			const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
 			if (!resp.ok) {
