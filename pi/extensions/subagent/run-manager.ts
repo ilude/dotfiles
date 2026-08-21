@@ -82,6 +82,8 @@ export interface SubagentRunSnapshot {
 	readonly orchestrationId?: string;
 	readonly treeId?: string;
 	readonly parentRunId?: string;
+	readonly parentSessionId?: string;
+	readonly workspaceId?: string;
 	readonly depth?: number;
 	readonly role?: SubagentTreeRole;
 	readonly workflowPhase?: string;
@@ -123,6 +125,8 @@ interface MutableSubagentRunSnapshot {
 	orchestrationId?: string;
 	treeId?: string;
 	parentRunId?: string;
+	parentSessionId?: string;
+	workspaceId?: string;
 	depth?: number;
 	role?: SubagentTreeRole;
 	workflowPhase?: string;
@@ -165,6 +169,8 @@ export interface BeginSubagentRun {
 	orchestrationId?: string;
 	treeId?: string;
 	parentRunId?: string;
+	parentSessionId?: string;
+	workspaceId?: string;
 	depth?: number;
 	role?: SubagentTreeRole;
 	workflowPhase?: string;

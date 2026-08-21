@@ -21,7 +21,12 @@ export function formatSubagentActivityStatus(
 ): string | undefined {
 	if (runs.length === 0) return undefined;
 	const running = runs.filter((run) => run.status === "running").length;
-	return running > 0 ? `subagents ${running}` : undefined;
+	const failed = runs.filter((run) => run.status === "failed").length;
+	const parts = [
+		running > 0 ? `${running} running` : "",
+		failed > 0 ? `${failed} failed` : "",
+	].filter(Boolean);
+	return parts.length > 0 ? `subagents ${parts.join(", ")}` : undefined;
 }
 
 export function reconcileSubagentDashboardSelection(
@@ -197,10 +202,11 @@ function configuredKeys(
 export async function openSubagentDashboard(
 	ctx: ExtensionCommandContext,
 	manager: SubagentRunManager,
+	filter: (run: SubagentRunSnapshot) => boolean = () => true,
 ): Promise<void> {
 	const selection: SubagentDashboardSelection = { index: 0 };
 	while (true) {
-		if (manager.list().length === 0) {
+		if (manager.list().filter(filter).length === 0) {
 			ctx.ui.notify("No subagent runs are tracked in this process.", "info");
 			return;
 		}
@@ -211,6 +217,7 @@ export async function openSubagentDashboard(
 					theme,
 					keybindings,
 					manager,
+					filter,
 					selection,
 					done,
 				),
@@ -259,6 +266,7 @@ class SubagentDashboard implements Component {
 		private readonly theme: Theme,
 		private readonly keybindings: KeybindingsManager,
 		private readonly manager: SubagentRunManager,
+		private readonly filter: (run: SubagentRunSnapshot) => boolean,
 		private readonly selection: SubagentDashboardSelection,
 		private readonly done: (value: string | null) => void,
 	) {
@@ -273,7 +281,7 @@ class SubagentDashboard implements Component {
 	invalidate(): void {}
 
 	handleInput(data: string): void {
-		const runs = this.manager.list();
+		const runs = this.manager.list().filter(this.filter);
 		reconcileSubagentDashboardSelection(this.selection, runs);
 		if (this.keybindings.matches(data, "tui.select.cancel")) {
 			this.close(null);
@@ -308,7 +316,7 @@ class SubagentDashboard implements Component {
 
 	render(width: number): string[] {
 		const safeWidth = Math.max(1, width);
-		const runs = this.manager.list();
+		const runs = this.manager.list().filter(this.filter);
 		reconcileSubagentDashboardSelection(this.selection, runs);
 		const rows = this.tui.terminal.rows || 30;
 		const bodyHeight = Math.max(5, rows - 6);

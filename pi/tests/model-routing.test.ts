@@ -1,22 +1,135 @@
 import { describe, expect, it } from "vitest";
 import {
+	ADVISORY_SUBAGENT_ROUTING_POLICY_VERSION,
 	assignRoutingOutcomeExperiment,
+	classifyAdvisorySubagentRoute,
 	getCurrentModelHint,
 	isConfiguredPremiumCodex,
 	isPremiumCodexModel,
+	MODEL_ROUTING_POLICY,
 	preferredEffortForSize,
+	resolveAdvisorySubagentRouting,
 	resolveCommitPlanningModel,
 	resolveDynamicModel,
 	resolveExplicitModelPolicy,
 	resolveModelTierLabel,
 	resolveSampledDynamicModel,
+	ROUTING_OUTCOME_ARMS,
 	ROUTING_OUTCOME_EXPERIMENT_ID,
 } from "../lib/model-routing.ts";
+
+describe("advisory subagent routing policy", () => {
+	it("exposes the versioned policy and task recommendations", () => {
+		expect(ADVISORY_SUBAGENT_ROUTING_POLICY_VERSION).toBe(
+			"subagent-routing-v1",
+		);
+		expect(resolveAdvisorySubagentRouting("tool")).toMatchObject({
+			policyVersion: "subagent-routing-v1",
+			preferred: {
+				provider: "openai-codex",
+				modelId: "gpt-5.6-luna",
+				effort: "low",
+			},
+		});
+		expect(resolveAdvisorySubagentRouting("review").preferred).toEqual({
+			provider: "openai-codex",
+			modelId: "gpt-5.6-sol",
+			effort: "low",
+		});
+	});
+
+	it("returns only accepted alternatives for bounded planning and implementation", () => {
+		expect(resolveAdvisorySubagentRouting("planning").accepted).toEqual([
+			{
+				provider: "openai-codex",
+				modelId: "gpt-5.6-sol",
+				effort: "low",
+			},
+			{
+				provider: "openai-codex",
+				modelId: "gpt-5.6-luna",
+				effort: "high",
+			},
+		]);
+		expect(resolveAdvisorySubagentRouting("coordination").accepted).toEqual([
+			{
+				provider: "openai-codex",
+				modelId: "gpt-5.6-sol",
+				effort: "low",
+			},
+		]);
+		expect(
+			classifyAdvisorySubagentRoute("coordination", {
+				provider: "openai-codex",
+				modelId: "gpt-5.6-luna",
+				effort: "high",
+			}),
+		).toBe("mismatch");
+		expect(resolveAdvisorySubagentRouting("implementation").accepted).toEqual([
+			{
+				provider: "openai-codex",
+				modelId: "gpt-5.6-luna",
+				effort: "medium",
+			},
+			{
+				provider: "openai-codex",
+				modelId: "gpt-5.6-luna",
+				effort: "high",
+			},
+		]);
+	});
+
+	it("classifies preferred, accepted, and mismatched routes", () => {
+		const solLow = {
+			provider: "openai-codex",
+			modelId: "gpt-5.6-sol",
+			effort: "low" as const,
+		};
+		const lunaHigh = {
+			provider: "openai-codex",
+			modelId: "gpt-5.6-luna",
+			effort: "high" as const,
+		};
+		expect(classifyAdvisorySubagentRoute("planning", solLow)).toBe("preferred");
+		expect(classifyAdvisorySubagentRoute("planning", lunaHigh)).toBe(
+			"accepted-alternative",
+		);
+		expect(
+			classifyAdvisorySubagentRoute("planning", {
+				provider: "openai-codex",
+				modelId: "gpt-5.6-terra",
+				effort: "medium",
+			}),
+		).toBe("mismatch");
+		expect(
+			resolveAdvisorySubagentRouting("planning", lunaHigh).classification,
+		).toBe("accepted-alternative");
+	});
+
+	it("does not change dynamic resolution", () => {
+		const models = [
+			{ provider: "openai-codex", id: "gpt-5.6-luna" },
+			{ provider: "openai-codex", id: "gpt-5.6-sol" },
+		];
+		const before = resolveDynamicModel(models, models[1], "medium");
+		resolveAdvisorySubagentRouting("implementation");
+		expect(resolveDynamicModel(models, models[1], "medium")).toBe(before);
+	});
+
+	it("excludes Terra from automatic preferred IDs and experiment arms", () => {
+		const preferredIds = Object.values(MODEL_ROUTING_POLICY.preferredCodexIds)
+			.flat()
+			.join(" ");
+		expect(preferredIds).not.toContain("gpt-5.6-terra");
+		expect(
+			ROUTING_OUTCOME_ARMS.every((arm) => arm.modelId !== "gpt-5.6-terra"),
+		).toBe(true);
+	});
+});
 
 describe("routing outcome sampling", () => {
 	const models = [
 		{ provider: "openai-codex", id: "gpt-5.6-luna" },
-		{ provider: "openai-codex", id: "gpt-5.6-terra" },
 		{ provider: "openai-codex", id: "gpt-5.6-sol" },
 	];
 
@@ -28,7 +141,7 @@ describe("routing outcome sampling", () => {
 		expect(assignments.length).toBeGreaterThan(900);
 		expect(assignments.length).toBeLessThan(1_100);
 		expect(new Set(assignments.map((assignment) => assignment.id))).toEqual(
-			new Set(["terra-baseline", "luna-high", "sol-low"]),
+			new Set(["luna-high", "sol-low"]),
 		);
 		expect(
 			assignments.every(
@@ -41,13 +154,13 @@ describe("routing outcome sampling", () => {
 	it("returns the byte-identical policy model with sampling disabled", () => {
 		const expected = resolveDynamicModel(
 			models,
-			models[2],
+			models[1],
 			"medium",
 			"same-provider",
 		);
 		const result = resolveSampledDynamicModel(
 			models,
-			models[2],
+			models[1],
 			"medium",
 			"same-provider",
 			"disabled-run",
@@ -175,7 +288,7 @@ describe("resolveDynamicModel", () => {
 		).toEqual(models[2]);
 	});
 
-	it("maps the GPT-5.6 ladder to Luna high, Terra medium, and Sol low", () => {
+	it("maps the GPT-5.6 ladder to Luna and Sol without Terra", () => {
 		const models = [
 			{ provider: "openai-codex", id: "gpt-5.6-luna" },
 			{ provider: "openai-codex", id: "gpt-5.6-terra" },
@@ -187,7 +300,7 @@ describe("resolveDynamicModel", () => {
 		).toEqual(models[0]);
 		expect(
 			resolveDynamicModel(models, current, "medium", "same-family"),
-		).toEqual(models[1]);
+		).toEqual(models[0]);
 		expect(
 			resolveDynamicModel(models, current, "large", "same-family"),
 		).toEqual(models[2]);

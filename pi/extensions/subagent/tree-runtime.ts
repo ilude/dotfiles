@@ -28,6 +28,7 @@ export type SubagentTreeRole = "root" | "coordinator" | "leaf";
 export type SubagentTreeRunState =
 	| "queued"
 	| "active"
+	| "waiting"
 	| "settled"
 	| "cancelled";
 
@@ -398,9 +399,9 @@ export class SubagentTreeBroker {
 			throw new SubagentTreeAdmissionError(
 				`Parent run ${request.parentRunId} is not registered.`,
 			);
-		if (parent.state !== "active")
+		if (parent.state !== "active" && parent.state !== "waiting")
 			throw new SubagentTreeAdmissionError(
-				`Parent run ${request.parentRunId} is not active.`,
+				`Parent run ${request.parentRunId} cannot request children.`,
 			);
 		const metadata = validateChild(parent.metadata, request);
 		if (this.nodes.has(metadata.runId))
@@ -411,6 +412,7 @@ export class SubagentTreeBroker {
 				if (
 					(existing.state !== "queued" &&
 						existing.state !== "active" &&
+						existing.state !== "waiting" &&
 						!existing.cancellationPending) ||
 					!existing.scopeLease ||
 					existing.scopeLease.repositoryRoot !== scopeLease.repositoryRoot
@@ -430,6 +432,8 @@ export class SubagentTreeBroker {
 		};
 		this.nodes.set(metadata.runId, node);
 		this.queue.push(metadata.runId);
+		if (parent.metadata.role === "coordinator" && parent.state === "active")
+			parent.state = "waiting";
 		this.dispatch();
 		return new Promise<SubagentTreePermit>((resolve, reject) => {
 			node.resolvePermit = resolve;
@@ -480,8 +484,55 @@ export class SubagentTreeBroker {
 		} else {
 			node.state = "settled";
 		}
+		this.restoreWaitingParent(node.metadata.parentRunId);
 		this.dispatch();
 		this.prune();
+	}
+
+	reconcile(runId: string): SubagentTreeRunSnapshot {
+		const node = this.nodes.get(runId);
+		if (!node) throw new SubagentTreeAdmissionError(`Run ${runId} is not registered.`);
+		if (node.metadata.role === "root")
+			throw new SubagentTreeAdmissionError("Root broker boundaries cannot be reconciled.");
+		const liveDescendant = [...this.nodes.values()].find(
+			(candidate) =>
+				candidate.metadata.runId !== runId &&
+				this.isDescendantOf(candidate.metadata.runId, runId) &&
+				(candidate.state === "queued" ||
+					candidate.state === "active" ||
+					candidate.state === "waiting" ||
+					Boolean(candidate.cancellationPending)),
+		);
+		if (liveDescendant)
+			throw new SubagentTreeAdmissionError(
+				`Run ${runId} has live descendant ${liveDescendant.metadata.runId}.`,
+			);
+		if (node.state === "queued" || node.state === "active" || node.state === "waiting") {
+			if (!node.pid)
+				throw new SubagentTreeAdmissionError(
+					`Run ${runId} has ambiguous process liveness.`,
+				);
+			try {
+				process.kill(node.pid, 0);
+				throw new SubagentTreeAdmissionError(`Run ${runId} process is still live.`);
+			} catch (error) {
+				if (error instanceof SubagentTreeAdmissionError) throw error;
+				const code = (error as NodeJS.ErrnoException).code;
+				if (code !== "ESRCH")
+					throw new SubagentTreeAdmissionError(
+						`Run ${runId} process liveness is ambiguous.`,
+					);
+			}
+		}
+		this.removeQueued(runId);
+		node.state = "settled";
+		node.cancellationPending = false;
+		node.scopeLease = undefined;
+		node.pid = undefined;
+		node.cancel = undefined;
+		this.restoreWaitingParent(node.metadata.parentRunId);
+		this.dispatch();
+		return { ...node.metadata, state: node.state };
 	}
 
 	cancel(callerRunId: string, runId = callerRunId): string[] {
@@ -513,6 +564,7 @@ export class SubagentTreeBroker {
 		return [...this.nodes.values()].some(
 			(node) =>
 				node.state === "active" ||
+				node.state === "waiting" ||
 				node.state === "queued" ||
 				Boolean(node.cancellationPending),
 		);
@@ -557,7 +609,8 @@ export class SubagentTreeBroker {
 
 	async dispose(): Promise<void> {
 		for (const node of this.nodes.values()) {
-			if (node.state === "active" || node.state === "queued") this.cancel(node.metadata.runId);
+			if (node.state === "active" || node.state === "waiting" || node.state === "queued")
+				this.cancel(node.metadata.runId);
 		}
 		if (!this.server) return;
 		const server = this.server;
@@ -571,12 +624,25 @@ export class SubagentTreeBroker {
 
 	private dispatch(): void {
 		while (this.activeDescendantCount() < this.maxActiveDescendants) {
-			const runId = this.queue.shift();
-			if (!runId) return;
+			const leafIndex = this.queue.findIndex(
+				(runId) => this.nodes.get(runId)?.metadata.role === "leaf",
+			);
+			const queueIndex = leafIndex >= 0 ? leafIndex : 0;
+			const runId = this.queue.splice(queueIndex, 1)[0];
+			if (!runId) {
+				const waiting = [...this.nodes.values()].find(
+					(node) =>
+						node.state === "waiting" &&
+						!this.hasOutstandingDirectChildren(node.metadata.runId),
+				);
+				if (!waiting) return;
+				waiting.state = "active";
+				continue;
+			}
 			const node = this.nodes.get(runId);
 			if (!node || node.state !== "queued") continue;
 			if (!node.resolvePermit) {
-				this.queue.unshift(runId);
+				this.queue.splice(queueIndex, 0, runId);
 				return;
 			}
 			node.state = "active";
@@ -586,6 +652,27 @@ export class SubagentTreeBroker {
 			node.rejectPermit = undefined;
 			resolve(permit);
 		}
+	}
+
+	private hasOutstandingDirectChildren(parentRunId: string): boolean {
+		return [...this.nodes.values()].some(
+			(node) =>
+				node.metadata.parentRunId === parentRunId &&
+				(node.state === "queued" ||
+					node.state === "active" ||
+					Boolean(node.cancellationPending)),
+		);
+	}
+
+	private restoreWaitingParent(parentRunId: string | undefined): void {
+		if (!parentRunId) return;
+		const parent = this.nodes.get(parentRunId);
+		if (
+			parent?.state === "waiting" &&
+			!this.hasOutstandingDirectChildren(parentRunId) &&
+			this.activeDescendantCount() < this.maxActiveDescendants
+		)
+			parent.state = "active";
 	}
 
 	private makePermit(node: MutableTreeNode): SubagentTreePermit {
@@ -615,7 +702,7 @@ export class SubagentTreeBroker {
 	private cancelNode(node: MutableTreeNode, reason: string): boolean {
 		if (node.state === "settled" || node.state === "cancelled") return false;
 		const wasQueued = node.state === "queued";
-		node.cancellationPending = !wasQueued;
+		node.cancellationPending = !wasQueued && node.state !== "waiting";
 		node.state = "cancelled";
 		if (wasQueued) this.removeQueued(node.metadata.runId);
 		const reject = node.rejectPermit;
@@ -1320,7 +1407,12 @@ export function getSubagentTreeBroker(): SubagentTreeBroker {
 			? existing.broker.hasOutstandingWork()
 			: existing.broker
 					.list()
-					.some((run) => run.state === "active" || run.state === "queued");
+					.some(
+						(run) =>
+							run.state === "active" ||
+							run.state === "waiting" ||
+							run.state === "queued",
+					);
 	if (hasOutstandingWork)
 		throw new SubagentTreeAdmissionError(SUBAGENT_TREE_RESTART_REQUIRED);
 

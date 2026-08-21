@@ -84,6 +84,7 @@ export function createMockCtx(overrides: Record<string, any> = {}) {
 		cwd: "/test/dir",
 		abort: vi.fn(),
 		ui: {
+			theme: createMockTheme(),
 			notify: vi.fn(),
 			setStatus: vi.fn(),
 			confirm: vi.fn(async () => true),

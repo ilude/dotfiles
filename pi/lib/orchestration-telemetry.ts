@@ -81,6 +81,12 @@ export interface OrchestrationWorker {
 	taskId?: string;
 	agent: string;
 	resolvedModel?: string;
+	selectedEffort?: string;
+	advisoryPolicyVersion?: string;
+	advisoryTaskClass?: string;
+	advisoryRecommendedRoute?: string;
+	advisoryClassification?: string;
+	advisoryTopologyMismatch?: boolean;
 	experimentId?: string;
 	experimentArm?: string;
 	experimentTaskClass?: string;
@@ -370,6 +376,12 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 			"taskId",
 			"agent",
 			"resolvedModel",
+			"selectedEffort",
+			"advisoryPolicyVersion",
+			"advisoryTaskClass",
+			"advisoryRecommendedRoute",
+			"advisoryClassification",
+			"advisoryTopologyMismatch",
 			"experimentId",
 			"experimentArm",
 			"experimentTaskClass",
@@ -403,6 +415,12 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 	const coordinatorTaskId = metadataIdentifier(worker.coordinatorTaskId);
 	const taskId = metadataString(worker.taskId);
 	const resolvedModel = metadataString(worker.resolvedModel);
+	const selectedEffort = metadataString(worker.selectedEffort);
+	const advisoryPolicyVersion = metadataString(worker.advisoryPolicyVersion);
+	const advisoryTaskClass = metadataString(worker.advisoryTaskClass);
+	const advisoryRecommendedRoute = metadataString(worker.advisoryRecommendedRoute);
+	const advisoryClassification = metadataString(worker.advisoryClassification);
+	const advisoryTopologyMismatch = typeof worker.advisoryTopologyMismatch === "boolean" ? worker.advisoryTopologyMismatch : undefined;
 	const experimentId = metadataString(worker.experimentId);
 	const experimentArm = metadataString(worker.experimentArm);
 	const experimentTaskClass = metadataString(worker.experimentTaskClass);
@@ -425,6 +443,12 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 		return undefined;
 	if (worker.taskId !== undefined && !taskId) return undefined;
 	if (worker.resolvedModel !== undefined && !resolvedModel) return undefined;
+	if (worker.selectedEffort !== undefined && !selectedEffort) return undefined;
+	if (worker.advisoryPolicyVersion !== undefined && !advisoryPolicyVersion) return undefined;
+	if (worker.advisoryTaskClass !== undefined && !advisoryTaskClass) return undefined;
+	if (worker.advisoryRecommendedRoute !== undefined && !advisoryRecommendedRoute) return undefined;
+	if (worker.advisoryClassification !== undefined && !advisoryClassification) return undefined;
+	if (worker.advisoryTopologyMismatch !== undefined && advisoryTopologyMismatch === undefined) return undefined;
 	if (worker.experimentId !== undefined && !experimentId) return undefined;
 	if (worker.experimentArm !== undefined && !experimentArm) return undefined;
 	if (worker.experimentTaskClass !== undefined && !experimentTaskClass)
@@ -444,6 +468,12 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 	if (coordinatorTaskId) result.coordinatorTaskId = coordinatorTaskId;
 	if (taskId) result.taskId = taskId;
 	if (resolvedModel) result.resolvedModel = resolvedModel;
+	if (selectedEffort) result.selectedEffort = selectedEffort;
+	if (advisoryPolicyVersion) result.advisoryPolicyVersion = advisoryPolicyVersion;
+	if (advisoryTaskClass) result.advisoryTaskClass = advisoryTaskClass;
+	if (advisoryRecommendedRoute) result.advisoryRecommendedRoute = advisoryRecommendedRoute;
+	if (advisoryClassification) result.advisoryClassification = advisoryClassification;
+	if (advisoryTopologyMismatch !== undefined) result.advisoryTopologyMismatch = advisoryTopologyMismatch;
 	if (experimentId) result.experimentId = experimentId;
 	if (experimentArm) result.experimentArm = experimentArm;
 	if (experimentTaskClass) result.experimentTaskClass = experimentTaskClass;

@@ -627,14 +627,6 @@ function requiredHerdrEnvironment(
 	return value;
 }
 
-function herdrAgentName(paneId: string): string {
-	const suffix = paneId
-		.toLowerCase()
-		.replace(/[^a-z0-9_-]+/g, "-")
-		.replace(/^-+|-+$/g, "");
-	return `pi-${suffix || "agent"}`.slice(0, 32);
-}
-
 async function runHerdrCommand(
 	pi: ExtensionAPI,
 	args: string[],
@@ -709,20 +701,20 @@ async function createHerdrPiTab(
 	},
 ): Promise<void> {
 	const created = await createHerdrTab(pi, input);
-	const args = [
-		"agent",
-		"start",
-		herdrAgentName(created.paneId),
-		"--kind",
-		"pi",
-		"--pane",
-		created.paneId,
-	];
-	if (input.sessionFile)
-		args.push("--", ...buildPiResumeArgs(input.sessionFile));
+	const piArgs = input.sessionFile ? buildPiResumeArgs(input.sessionFile) : [];
+	const command =
+		process.platform === "win32"
+			? ["&", "pi", ...piArgs.map(quotePowerShellArg)].join(" ")
+			: buildShellPiCommand(piArgs);
 	const cwd =
 		process.platform === "win32" ? msysPathToWindows(input.cwd) : input.cwd;
-	await runHerdrCommand(pi, args, cwd, input.signal, 45_000);
+	await runHerdrCommand(
+		pi,
+		["pane", "run", created.paneId, command],
+		cwd,
+		input.signal,
+		15_000,
+	);
 }
 
 async function executeNewInstanceCommand(

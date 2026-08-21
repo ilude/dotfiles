@@ -509,7 +509,7 @@ describe("SubagentTreeBroker", () => {
 	});
 
 	it("recursively cancels active and queued descendants", async () => {
-		const broker = new SubagentTreeBroker({ maxActiveDescendants: 2 });
+		const broker = new SubagentTreeBroker({ maxActiveDescendants: 1 });
 		const root = broker.createTree();
 		const coordinator = await broker.acquire({
 			treeId: root.treeId,
@@ -839,6 +839,111 @@ describe("SubagentTreeBroker", () => {
 		await broker.dispose();
 	});
 
+	it("yields coordinator capacity while direct leaves run", async () => {
+		const broker = new SubagentTreeBroker({ maxActiveDescendants: 1 });
+		const root = broker.createTree();
+		const coordinator = await broker.acquire({
+			treeId: root.treeId,
+			parentRunId: root.rootRunId,
+			runId: "coordinator",
+			role: "coordinator",
+		});
+		const credentials = await broker.listen();
+		const client = new SubagentTreeClient(
+			credentials,
+			coordinator.metadata,
+			coordinator.ownerToken,
+		);
+
+		const first = await client.acquire({ runId: "leaf-1", role: "leaf" });
+		expect(broker.list().find((run) => run.runId === "coordinator")?.state).toBe(
+			"waiting",
+		);
+		const secondPending = client.acquire({ runId: "leaf-2", role: "leaf" });
+		await vi.waitFor(() =>
+			expect(broker.list().find((run) => run.runId === "leaf-2")?.state).toBe(
+				"queued",
+			),
+		);
+		await first.release();
+		const second = await secondPending;
+		await second.release();
+		expect(broker.list().find((run) => run.runId === "coordinator")?.state).toBe(
+			"active",
+		);
+		await coordinator.release();
+		await broker.dispose();
+	});
+
+	it("admits queued leaves before queued coordinators", async () => {
+		const broker = new SubagentTreeBroker({ maxActiveDescendants: 2 });
+		const root = broker.createTree();
+		const firstCoordinator = await broker.acquire({
+			treeId: root.treeId,
+			parentRunId: root.rootRunId,
+			runId: "coordinator-1",
+			role: "coordinator",
+		});
+		const blocker = await broker.acquire({
+			treeId: root.treeId,
+			parentRunId: root.rootRunId,
+			runId: "blocker",
+			role: "leaf",
+		});
+		const queuedCoordinator = broker.acquire({
+			treeId: root.treeId,
+			parentRunId: root.rootRunId,
+			runId: "coordinator-2",
+			role: "coordinator",
+		});
+		const leaf = broker.acquire({
+			treeId: root.treeId,
+			parentRunId: firstCoordinator.metadata.runId,
+			runId: "priority-leaf",
+			role: "leaf",
+		});
+
+		const admittedLeaf = await leaf;
+		expect(broker.list().find((run) => run.runId === "coordinator-2")?.state).toBe(
+			"queued",
+		);
+		await admittedLeaf.release();
+		await firstCoordinator.release();
+		const secondCoordinator = await queuedCoordinator;
+		await secondCoordinator.release();
+		await blocker.release();
+		await broker.dispose();
+	});
+
+	it("does not deadlock when every admitted coordinator requests a leaf", async () => {
+		const broker = new SubagentTreeBroker({ maxActiveDescendants: 8 });
+		const root = broker.createTree();
+		const credentials = await broker.listen();
+		const coordinators = await Promise.all(
+			Array.from({ length: 8 }, (_, index) =>
+				broker.acquire({
+					treeId: root.treeId,
+					parentRunId: root.rootRunId,
+					runId: `coordinator-${index}`,
+					role: "coordinator",
+				}),
+			),
+		);
+		const leaves = await Promise.all(
+			coordinators.map((coordinator, index) =>
+				new SubagentTreeClient(
+					credentials,
+					coordinator.metadata,
+					coordinator.ownerToken,
+				).acquire({ runId: `leaf-${index}`, role: "leaf" }),
+			),
+		);
+		expect(leaves).toHaveLength(8);
+		await Promise.all(leaves.map((leaf) => leaf.release()));
+		await Promise.all(coordinators.map((coordinator) => coordinator.release()));
+		await broker.dispose();
+	});
+
 	it("shares one descendant ceiling across coordinator clients", async () => {
 		const broker = new SubagentTreeBroker({ maxActiveDescendants: 3 });
 		const root = broker.createTree();
@@ -872,17 +977,16 @@ describe("SubagentTreeBroker", () => {
 			runId: "leaf-1",
 			role: "leaf",
 		});
-		const secondLeaf = secondClient.acquire({
+		const secondLeaf = await secondClient.acquire({
 			runId: "leaf-2",
 			role: "leaf",
 		});
-		await vi.waitFor(() =>
-			expect(
-				broker.list().find((run) => run.runId === "leaf-2")?.state,
-			).toBe("queued"),
-		);
+		expect(
+			broker.list().filter((run) => run.state === "active" && run.role !== "root"),
+		).toHaveLength(2);
 		await firstLeaf.release();
-		expect((await secondLeaf).metadata.runId).toBe("leaf-2");
+		expect(secondLeaf.metadata.runId).toBe("leaf-2");
+		await secondLeaf.release();
 		await firstCoordinator.release();
 		await secondCoordinator.release();
 		await broker.dispose();

@@ -28,24 +28,164 @@ export type ModelSize =
 export type ModelPolicy = "same-provider" | "same-family";
 export type RoutedEffort = "low" | "medium" | "high";
 
+export const ADVISORY_SUBAGENT_ROUTING_POLICY_VERSION =
+	"subagent-routing-v1" as const;
+
+export type AdvisorySubagentTaskClass =
+	| "tool"
+	| "exploration"
+	| "summarization"
+	| "validation"
+	| "planning"
+	| "bounded-planning"
+	| "coordination"
+	| "implementation"
+	| "review";
+
+export type AdvisorySubagentModelId =
+	| "gpt-5.6-luna"
+	| "gpt-5.6-sol";
+
+export interface AdvisorySubagentChoice {
+	provider: "openai-codex";
+	modelId: AdvisorySubagentModelId;
+	effort: RoutedEffort;
+}
+
+export type AdvisorySubagentRouteClassification =
+	| "preferred"
+	| "accepted-alternative"
+	| "mismatch";
+
+export interface AdvisorySubagentRouteInput {
+	provider: string;
+	modelId: string;
+	effort: RoutedEffort;
+}
+
+export interface AdvisorySubagentRecommendation {
+	policyVersion: typeof ADVISORY_SUBAGENT_ROUTING_POLICY_VERSION;
+	taskClass: AdvisorySubagentTaskClass;
+	preferred: AdvisorySubagentChoice;
+	accepted: readonly AdvisorySubagentChoice[];
+	preferredTopology: "leaf" | "coordinator";
+	classification?: AdvisorySubagentRouteClassification;
+}
+
+const ADVISORY_LUNA_LOW: AdvisorySubagentChoice = {
+	provider: "openai-codex",
+	modelId: "gpt-5.6-luna",
+	effort: "low",
+};
+const ADVISORY_LUNA_MEDIUM: AdvisorySubagentChoice = {
+	provider: "openai-codex",
+	modelId: "gpt-5.6-luna",
+	effort: "medium",
+};
+const ADVISORY_LUNA_HIGH: AdvisorySubagentChoice = {
+	provider: "openai-codex",
+	modelId: "gpt-5.6-luna",
+	effort: "high",
+};
+const ADVISORY_SOL_LOW: AdvisorySubagentChoice = {
+	provider: "openai-codex",
+	modelId: "gpt-5.6-sol",
+	effort: "low",
+};
+
+const ADVISORY_SUBAGENT_POLICY: Readonly<
+	Record<
+		AdvisorySubagentTaskClass,
+		{
+			preferred: AdvisorySubagentChoice;
+			accepted: readonly AdvisorySubagentChoice[];
+		}
+	>
+> = {
+	tool: { preferred: ADVISORY_LUNA_LOW, accepted: [ADVISORY_LUNA_LOW] },
+	exploration: {
+		preferred: ADVISORY_LUNA_LOW,
+		accepted: [ADVISORY_LUNA_LOW],
+	},
+	summarization: {
+		preferred: ADVISORY_LUNA_LOW,
+		accepted: [ADVISORY_LUNA_LOW],
+	},
+	validation: {
+		preferred: ADVISORY_LUNA_LOW,
+		accepted: [ADVISORY_LUNA_LOW],
+	},
+	planning: {
+		preferred: ADVISORY_SOL_LOW,
+		accepted: [ADVISORY_SOL_LOW, ADVISORY_LUNA_HIGH],
+	},
+	"bounded-planning": {
+		preferred: ADVISORY_SOL_LOW,
+		accepted: [ADVISORY_SOL_LOW, ADVISORY_LUNA_HIGH],
+	},
+	coordination: {
+		preferred: ADVISORY_SOL_LOW,
+		accepted: [ADVISORY_SOL_LOW],
+	},
+	implementation: {
+		preferred: ADVISORY_LUNA_MEDIUM,
+		accepted: [ADVISORY_LUNA_MEDIUM, ADVISORY_LUNA_HIGH],
+	},
+	review: { preferred: ADVISORY_SOL_LOW, accepted: [ADVISORY_SOL_LOW] },
+};
+
+function sameAdvisoryChoice(
+	left: AdvisorySubagentChoice,
+	right: AdvisorySubagentRouteInput,
+): boolean {
+	return (
+		left.provider === right.provider &&
+		left.modelId === right.modelId &&
+		left.effort === right.effort
+	);
+}
+
+export function classifyAdvisorySubagentRoute(
+	taskClass: AdvisorySubagentTaskClass,
+	route: AdvisorySubagentRouteInput,
+): AdvisorySubagentRouteClassification {
+	const policy = ADVISORY_SUBAGENT_POLICY[taskClass];
+	if (sameAdvisoryChoice(policy.preferred, route)) return "preferred";
+	if (policy.accepted.some((choice) => sameAdvisoryChoice(choice, route))) {
+		return "accepted-alternative";
+	}
+	return "mismatch";
+}
+
+export function resolveAdvisorySubagentRouting(
+	taskClass: AdvisorySubagentTaskClass,
+	route?: AdvisorySubagentRouteInput,
+): AdvisorySubagentRecommendation {
+	const policy = ADVISORY_SUBAGENT_POLICY[taskClass];
+	return {
+		policyVersion: ADVISORY_SUBAGENT_ROUTING_POLICY_VERSION,
+		taskClass,
+		preferred: { ...policy.preferred },
+		accepted: policy.accepted.map((choice) => ({ ...choice })),
+		preferredTopology: taskClass === "coordination" ? "coordinator" : "leaf",
+		...(route
+			? { classification: classifyAdvisorySubagentRoute(taskClass, route) }
+			: {}),
+	};
+}
+
 export const ROUTING_OUTCOME_EXPERIMENT_ID = "codex-routing-outcomes-v1";
 export const ROUTING_OUTCOME_SAMPLE_RATE = 0.1;
 export const ROUTING_OUTCOME_SAMPLE_RATE_ENV = "PI_ROUTING_OUTCOME_SAMPLE_RATE";
 
 export interface RoutingOutcomeArm {
-	id: "terra-baseline" | "luna-high" | "sol-low";
+	id: "luna-high" | "sol-low";
 	provider: "openai-codex";
-	modelId: "gpt-5.6-terra" | "gpt-5.6-luna" | "gpt-5.6-sol";
-	effort: "medium" | "high" | "low";
+	modelId: "gpt-5.6-luna" | "gpt-5.6-sol";
+	effort: "high" | "low";
 }
 
 export const ROUTING_OUTCOME_ARMS: readonly RoutingOutcomeArm[] = [
-	{
-		id: "terra-baseline",
-		provider: "openai-codex",
-		modelId: "gpt-5.6-terra",
-		effort: "medium",
-	},
 	{
 		id: "luna-high",
 		provider: "openai-codex",
@@ -123,11 +263,11 @@ export const MODEL_ROUTING_POLICY = {
 	preferredCodexIds: {
 		nano: ["gpt-5.6-luna", "gpt-5.4-nano", "gpt-5.4-mini"],
 		mini: ["gpt-5.6-luna", "gpt-5.4-mini"],
-		core: ["gpt-5.6-terra", "gpt-5.5", "gpt-5.3-codex"],
+		core: ["gpt-5.6-luna", "gpt-5.5", "gpt-5.3-codex"],
 		large: ["gpt-5.6-sol", "gpt-5.5", "gpt-5.3-codex"],
 		max: ["gpt-5.6-sol", "gpt-5.5", "gpt-5.3-codex"],
 		small: ["gpt-5.6-luna", "gpt-5.4-mini"],
-		medium: ["gpt-5.6-terra", "gpt-5.5", "gpt-5.3-codex"],
+		medium: ["gpt-5.6-luna", "gpt-5.5", "gpt-5.3-codex"],
 	},
 	explicitChoices: {
 		fable: "amazon-bedrock/us.anthropic.claude-fable-5",

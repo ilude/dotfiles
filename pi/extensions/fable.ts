@@ -27,13 +27,16 @@ const FOREMAN_INSTRUCTION = [
 const SUBSCRIPTION_ROOT_INSTRUCTION = [
 	"You are the root orchestrator and must not delegate orchestration to a coordinator.",
 	"Use only direct openai-codex subscription leaves or bounded workflows for investigation, implementation, validation, and other work.",
-	"Select modelSize small for bounded work (Luna high), medium for ordinary multi-file work (Terra medium), and large for complex cross-cutting work (Sol low).",
-	"Do not call direct work tools, tool_search, subagent_continue, or supply custom output paths.",
+	"Select modelSize small for bounded work (Luna high), medium for ordinary multi-file work (Luna medium), and large for complex cross-cutting work (Sol low).",
+	"You author plan, goal, and architecture artifacts directly under .specs; delegated leaves may investigate but must not make authorship decisions or write those artifacts.",
+	"Do not call other direct work tools, tool_search, subagent_continue, or supply custom output paths.",
 ].join(" ");
 const SUBSCRIPTION_VISIBILITY_KEY = "bedrock-claude-orchestrator";
 export const FABLE_CONTROL_TOOL_NAMES = [
 	"subagent",
 	"subagent_status",
+	"subagent_control",
+	"write",
 	"subagent_chain",
 	"subagent_fanout",
 	"subagent_workflow",
@@ -57,6 +60,8 @@ type DelegationRequest = {
 	agent?: unknown;
 	role?: unknown;
 	output?: unknown;
+	task?: unknown;
+	scope?: unknown;
 };
 
 type SubagentInput = DelegationRequest & {
@@ -127,10 +132,20 @@ function subscriptionDelegationViolation(
 	if (
 		requests.some(
 			(request) =>
-				request.agent === "orchestrator" && request.role === undefined,
+				request.agent === "teamlead" && request.role === undefined,
 		)
 	)
-		return `${SUBSCRIPTION_BOUNDARY}: the primary model owns orchestration. Specify role: "leaf" to run the orchestrator agent as a leaf.`;
+		return `${SUBSCRIPTION_BOUNDARY}: the primary model owns orchestration. Specify role: "leaf" to run a direct leaf instead.`;
+	if (
+		requests.some(
+			(request) =>
+				typeof request.task === "string" &&
+				/(?:author|draft|write|revise).{0,40}(?:plan|goal|architecture)|(?:plan|goal|architecture).{0,40}(?:author|draft|write|revise)/i.test(
+					request.task,
+				),
+		)
+	)
+		return `${SUBSCRIPTION_BOUNDARY}: plan, goal, and architecture authorship belongs to the selected root; delegated leaves may investigate only.`;
 	if (requests.some((request) => typeof request.output === "string"))
 		return `${SUBSCRIPTION_BOUNDARY}: caller-supplied output paths are not allowed; Pi generates private artifacts.`;
 	if (input.continue !== undefined)
@@ -150,6 +165,25 @@ function preservesRequestedAgentModels(
 		const model = agents.find((agent) => agent.name === name)?.model;
 		return typeof model === "string" && model.trim().length > 0;
 	});
+}
+
+export interface ProviderOrchestrationCapability {
+	readonly teamleadsAllowed: boolean;
+	readonly controlTools: readonly string[];
+}
+
+const ROOT_CONTROL_TOOLS = ["subagent_status", "subagent_control"] as const;
+
+export function providerOrchestrationCapability(model?: {
+	provider?: unknown;
+	id?: unknown;
+}): ProviderOrchestrationCapability {
+	const subscriptionBoundary =
+		model?.provider === "amazon-bedrock" || model?.provider === "bedrock-mantle";
+	return {
+		teamleadsAllowed: !subscriptionBoundary,
+		controlTools: ROOT_CONTROL_TOOLS,
+	};
 }
 
 export function isFableBedrockModel(model?: {
@@ -310,6 +344,16 @@ export default function fableCommand(pi: ExtensionAPI): void {
 
 	pi.on("tool_call", (event, ctx) => {
 		if (isSubscriptionOrchestratorModel(ctx.model)) {
+			if (event.toolName === "write") {
+				const input = event.input as { path?: unknown };
+				const target = typeof input.path === "string" ? input.path.replaceAll("\\", "/") : "";
+				if (!/^\.specs\/.+\/(?:plan|goal|architecture)[^/]*\.md$/i.test(target))
+					return {
+						block: true,
+						reason: `${SUBSCRIPTION_BOUNDARY}: root direct writes are limited to plan, goal, and architecture artifacts under .specs.`,
+					};
+				return undefined;
+			}
 			if (!FABLE_CONTROL_TOOLS.has(event.toolName)) {
 				return {
 					block: true,

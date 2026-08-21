@@ -15,19 +15,6 @@ interface DashboardSelection {
 	index: number;
 }
 
-export function formatBackgroundTerminalActivity(
-	terminals: readonly Pick<BackgroundTerminalSnapshot, "status">[],
-): string | undefined {
-	if (terminals.length === 0) return undefined;
-	const running = terminals.filter((item) => item.status === "running").length;
-	const failed = terminals.filter((item) => item.status === "failed").length;
-	const parts = [
-		`${running} running`,
-		failed > 0 ? `${failed} failed` : "",
-	].filter(Boolean);
-	return `background ${parts.join(", ")} (/ps)`;
-}
-
 export function reconcileBackgroundTerminalSelection(
 	selection: DashboardSelection,
 	terminals: readonly Pick<BackgroundTerminalSnapshot, "id">[],

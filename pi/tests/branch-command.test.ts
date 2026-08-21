@@ -175,16 +175,10 @@ describe("/branch", () => {
 			2,
 			"C:\\Herdr\\herdr.exe",
 			[
-				"agent",
-				"start",
-				"pi-w1-p2",
-				"--kind",
-				"pi",
-				"--pane",
+				"pane",
+				"run",
 				"w1:p2",
-				"--",
-				"--session",
-				"019df45a-c587-70ae-bf94-c74cd681715c",
+				"& pi '--session' '019df45a-c587-70ae-bf94-c74cd681715c'",
 			],
 			expect.objectContaining({ cwd: "C:\\Users\\me\\project" }),
 		);
@@ -330,15 +324,7 @@ describe("/branch", () => {
 		expect(pi.exec).toHaveBeenNthCalledWith(
 			2,
 			"herdr",
-			[
-				"agent",
-				"start",
-				"pi-w1-p3",
-				"--kind",
-				"pi",
-				"--pane",
-				"w1:p3",
-			],
+			["pane", "run", "w1:p3", "& pi"],
 			expect.any(Object),
 		);
 		expect(mockSpawnSync).not.toHaveBeenCalled();

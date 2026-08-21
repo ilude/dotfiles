@@ -71,7 +71,7 @@ describe("orchestration telemetry builders", () => {
 		});
 	});
 
-	it("records only safe optional tree metadata on version 2 workers", () => {
+	it("records safe tree and advisory metadata on version 2 workers", () => {
 		const result = buildOrchestrationRunEvent({
 			...runInput(),
 			workers: [
@@ -86,6 +86,14 @@ describe("orchestration telemetry builders", () => {
 					attempt: 2,
 					retryOrigin: "run-0",
 					coordinatorTaskId: "task-1",
+					resolvedModel: "openai-codex/gpt-5.6-luna",
+					selectedEffort: "medium",
+					advisoryPolicyVersion: "subagent-routing-v1",
+					advisoryTaskClass: "implementation",
+					advisoryRecommendedRoute:
+						"openai-codex/gpt-5.6-luna:medium or openai-codex/gpt-5.6-luna:high",
+					advisoryClassification: "preferred",
+					advisoryTopologyMismatch: false,
 				},
 			],
 		});
@@ -102,9 +110,38 @@ describe("orchestration telemetry builders", () => {
 					attempt: 2,
 					retryOrigin: "run-0",
 					coordinatorTaskId: "task-1",
+					resolvedModel: "openai-codex/gpt-5.6-luna",
+					selectedEffort: "medium",
+					advisoryPolicyVersion: "subagent-routing-v1",
+					advisoryTaskClass: "implementation",
+					advisoryRecommendedRoute:
+						"openai-codex/gpt-5.6-luna:medium or openai-codex/gpt-5.6-luna:high",
+					advisoryClassification: "preferred",
+					advisoryTopologyMismatch: false,
 				},
 			],
 		});
+		for (const field of [
+			"advisoryPolicyVersion",
+			"advisoryTaskClass",
+			"advisoryRecommendedRoute",
+			"advisoryClassification",
+			"resolvedModel",
+			"selectedEffort",
+		] as const) {
+			expect(
+				buildOrchestrationRunEvent({
+					...runInput(),
+					workers: [{ ...runInput().workers[0], [field]: "" }],
+				}),
+			).toBeNull();
+		}
+		expect(
+			buildOrchestrationRunEvent({
+				...runInput(),
+				workers: [{ ...runInput().workers[0], advisoryTopologyMismatch: "false" }],
+			} as never),
+		).toBeNull();
 		expect(
 			buildOrchestrationRunEvent({
 				...runInput(),

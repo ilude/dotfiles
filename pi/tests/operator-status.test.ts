@@ -247,6 +247,42 @@ describe("formatPiStatusLine", () => {
 		);
 	});
 
+	it("preserves context and provider quota before identity at narrow widths", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const pi = Object.assign(createMockPi(), { getThinkingLevel: () => "low" });
+		const line = mod.formatPiStatusLine({
+			cwd: tmpRoot,
+			branch: "feature/footer",
+			model: { id: "gpt-5.6-sol" },
+			pi: pi as any,
+			piVersion: "0.72.0",
+			contextUsage: { tokens: 84_000, contextWindow: 100_000, percent: 84 },
+			rightStatus: "codex wk 99%",
+			width: 40,
+		});
+
+		expect(line).toContain("84%");
+		expect(line).toContain("codex wk 99%");
+		expect(line).not.toContain("feature/footer");
+	});
+
+	it("preserves reload ahead of provider quota when both cannot fit", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const line = mod.formatPiStatusLine({
+			cwd: tmpRoot,
+			branch: "feature/footer",
+			model: { id: "gpt-5.6-sol" },
+			pi: createMockPi() as any,
+			piVersion: "0.72.0",
+			reloadNeeded: true,
+			rightStatus: "codex weekly 99%",
+			width: 10,
+		});
+
+		expect(line).toContain("reload");
+		expect(line).not.toContain("codex");
+	});
+
 	it("uses warning and error colors at context thresholds", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		expect(

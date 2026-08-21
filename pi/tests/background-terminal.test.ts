@@ -93,10 +93,7 @@ describe("background terminal extension", () => {
 			{ reason: "quit" },
 			ctx,
 		);
-		expect(ctx.ui.setWidget).toHaveBeenLastCalledWith(
-			"background-terminals",
-			undefined,
-		);
+		expect(ctx.ui.setWidget).not.toHaveBeenCalled();
 	});
 
 	it("survives session replacement and delivers completion to the next session", async () => {

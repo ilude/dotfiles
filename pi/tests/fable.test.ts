@@ -12,6 +12,7 @@ import fableCommand, {
 	improveFableBedrockError,
 	isFableBedrockModel,
 	isSubscriptionOrchestratorModel,
+	providerOrchestrationCapability,
 	sanitizeFableBedrockPayload,
 	subagentModelFor,
 } from "../extensions/fable.ts";
@@ -118,6 +119,17 @@ describe("Bedrock Claude orchestration policy", () => {
 			expect(isSubscriptionOrchestratorModel(model)).toBe(false);
 	});
 
+	it("publishes provider capability records for both Bedrock transports", () => {
+		for (const model of subscriptionOrchestratorModels)
+			expect(providerOrchestrationCapability(model)).toEqual({
+				teamleadsAllowed: false,
+				controlTools: ["subagent_status", "subagent_control"],
+			});
+		expect(
+			providerOrchestrationCapability({ provider: "openai-codex", id: "gpt-5.6-sol" }),
+		).toMatchObject({ teamleadsAllowed: true });
+	});
+
 	it("enforces subscription guidance in every runtime mode", () => {
 		const { beforeAgentStart } = hooks();
 		for (const model of subscriptionOrchestratorModels) {
@@ -160,6 +172,7 @@ describe("Bedrock Claude orchestration policy", () => {
 					"ask_user",
 					"plan_archive",
 					"subagent_status",
+					"subagent_control",
 				]) {
 					expect(tool({ toolName, input: {} }, ctx)).toBeUndefined();
 				}
@@ -176,9 +189,19 @@ describe("Bedrock Claude orchestration policy", () => {
 		}
 
 		const ctx = createMockCtx({ mode: "tui", model: fableModel });
+		expect(
+			tool(
+				{ toolName: "write", input: { path: ".specs/example/plan.md" } },
+				ctx,
+			),
+		).toBeUndefined();
+		expect(
+			tool({ toolName: "write", input: { path: "src/plan.md" } }, ctx),
+		).toMatchObject({ block: true });
 		for (const input of [
 			{ agent: "builder", task: "work", role: "coordinator" },
-			{ agent: "orchestrator", task: "work" },
+			{ agent: "teamlead", task: "work" },
+			{ agent: "builder", task: "write the architecture plan", role: "leaf" },
 			{ agent: "builder", task: "work", output: "result.md" },
 			{
 				tasks: [
@@ -225,7 +248,7 @@ describe("Bedrock Claude orchestration policy", () => {
 		const { tool } = hooks();
 		const cases = [
 			["small", "openai-codex/gpt-5.6-luna"],
-			["medium", "openai-codex/gpt-5.6-terra"],
+			["medium", "openai-codex/gpt-5.6-luna"],
 			["large", "openai-codex/gpt-5.6-sol"],
 		] as const;
 		for (const [modelSize, model] of cases) {
@@ -327,7 +350,7 @@ describe("Bedrock Claude orchestration policy", () => {
 			input: {
 				tasks: [
 					{ agent: "builder", task: "implementation" },
-					{ agent: "orchestrator", task: "coordination" },
+					{ agent: "teamlead", task: "coordination" },
 				],
 			},
 		};

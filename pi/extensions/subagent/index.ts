@@ -43,11 +43,15 @@ import {
 	schemaOutputInstruction,
 } from "../../lib/typed-agent.js";
 import {
+	ADVISORY_SUBAGENT_ROUTING_POLICY_VERSION,
+	type AdvisorySubagentTaskClass,
+	classifyAdvisorySubagentRoute,
 	type ModelLike,
 	type ModelPolicy,
 	type ModelSize,
 	parseProviderModelString,
 	preferredEffortForSize,
+	resolveAdvisorySubagentRouting,
 	resolveDynamicModel,
 	type RoutingOutcomeAssignment,
 	resolveSampledDynamicModelFromRegistry,
@@ -83,6 +87,7 @@ import {
 	discoverAgents,
 	resolveAgentSkillPaths,
 } from "./agents.js";
+import { createSubagentControlFacade } from "./control.js";
 import {
 	subagentRunManager,
 	type SubagentRunMode,
@@ -295,9 +300,41 @@ function formatModelEffort(
 	return `${model ?? "default"}[${effort ?? "default"}]`;
 }
 
+function advisoryTaskClassForAgent(agent: AgentConfig): AdvisorySubagentTaskClass {
+	if (agent.name === "planner") return "planning";
+	if (agent.name === "teamlead") return "coordination";
+	if (agent.name === "explorer") return "exploration";
+	if (agent.name === "summarizer") return "summarization";
+	if (agent.name === "validator") return "validation";
+	if (agent.name.includes("review")) return "review";
+	return "implementation";
+}
+
+function advisorySelection(
+	agent: AgentConfig,
+	model: string | undefined,
+	effort: AgentConfig["effort"] | "default" | undefined,
+	role: SubagentRole,
+): Pick<SingleResult, "advisoryPolicyVersion" | "advisoryTaskClass" | "advisoryRecommendedRoute" | "advisoryClassification" | "advisoryTopologyMismatch"> {
+	const taskClass = advisoryTaskClassForAgent(agent);
+	const recommendation = resolveAdvisorySubagentRouting(taskClass);
+	const parsed = model ? parseProviderModelString(modelSelectionBase(model)) : undefined;
+	const routableEffort = effort === "low" || effort === "medium" || effort === "high" ? effort : undefined;
+	const classification = parsed && routableEffort
+		? classifyAdvisorySubagentRoute(taskClass, { provider: parsed.provider, modelId: parsed.id, effort: routableEffort })
+		: "mismatch";
+	return {
+		advisoryPolicyVersion: ADVISORY_SUBAGENT_ROUTING_POLICY_VERSION,
+		advisoryTaskClass: taskClass,
+		advisoryRecommendedRoute: recommendation.accepted.map((choice) => `${choice.provider}/${choice.modelId}:${choice.effort}`).join(" or "),
+		advisoryClassification: classification,
+		advisoryTopologyMismatch: recommendation.preferredTopology !== role,
+	};
+}
+
 function formatAgentExecutionLabel(
-	r: Pick<SingleResult, "model" | "effort">,
-	themeFg: (color: "muted", text: string) => string,
+	r: Pick<SingleResult, "model" | "effort" | "advisoryClassification" | "advisoryTopologyMismatch" | "advisoryRecommendedRoute">,
+	themeFg: (color: "muted" | "warning", text: string) => string,
 ): string {
 	return themeFg("muted", ` ${formatModelEffort(r.model, r.effort)}`);
 }
@@ -452,6 +489,11 @@ export interface SingleResult {
 	structuredOutput?: unknown;
 	outputAttempts?: number;
 	routingExperiment?: RoutingOutcomeAssignment;
+	advisoryPolicyVersion?: string;
+	advisoryTaskClass?: AdvisorySubagentTaskClass;
+	advisoryRecommendedRoute?: string;
+	advisoryClassification?: "preferred" | "accepted-alternative" | "mismatch";
+	advisoryTopologyMismatch?: boolean;
 	treeId?: string;
 	parentRunId?: string;
 	depth?: number;
@@ -912,6 +954,8 @@ interface SubagentRunContext {
 	role?: SubagentRole;
 	depth?: number;
 	parentRunId?: string;
+	parentSessionId?: string;
+	workspaceId?: string;
 	treeId?: string;
 	repositoryRoot?: string;
 	scopes?: string[];
@@ -990,15 +1034,10 @@ function resolveChildRole(
 	const current = currentSubagentIdentity();
 	if (current.role === "leaf" || current.depth >= 2)
 		throw new Error("Leaf and depth-two subagents cannot delegate.");
-	if (
-		requestedRole === undefined &&
-		current.role === "root" &&
-		agentName === "orchestrator"
-	)
-		throw new Error(
-			'The primary model owns orchestration. Specify role: "leaf" to run the orchestrator agent as a leaf, or explicitly request role: "coordinator".',
-		);
-	const role = requestedRole ?? "leaf";
+	const profileName = agentName === "orchestrator" ? "teamlead" : agentName;
+	const role =
+		requestedRole ??
+		(current.role === "root" && profileName === "teamlead" ? "coordinator" : "leaf");
 	if (current.role === "coordinator" && role !== "leaf")
 		throw new Error("A coordinator may invoke leaf workers only.");
 	const depth = current.depth + 1;
@@ -1009,9 +1048,31 @@ function resolveChildRole(
 
 const THINKING_SUFFIX_RE =
 	/:(off|minimal|low|medium|high|xhigh|max)$/;
+function normalizeModelSelection(selection: string): string {
+	return selection.trim();
+}
 
 function modelSelectionBase(selection: string): string {
-	return selection.replace(THINKING_SUFFIX_RE, "");
+	return normalizeModelSelection(selection).replace(THINKING_SUFFIX_RE, "");
+}
+
+function isMaxEffortModelSelection(selection: string): boolean {
+	return normalizeModelSelection(selection).endsWith(":max");
+}
+
+function containsMaxEffortSelection(value: unknown, agents: readonly AgentConfig[]): boolean {
+	if (Array.isArray(value)) return value.some((item) => containsMaxEffortSelection(item, agents));
+	if (value === null || typeof value !== "object") return false;
+	for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+		if (key === "effort" && item === "max") return true;
+		if (key === "model" && typeof item === "string" && isMaxEffortModelSelection(item)) return true;
+		if (key === "agent" && typeof item === "string") {
+			const agent = agents.find((candidate) => candidate.name === item);
+			if (agent?.effort === "max" || (agent?.model !== undefined && isMaxEffortModelSelection(agent.model))) return true;
+		}
+		if (containsMaxEffortSelection(item, agents)) return true;
+	}
+	return false;
 }
 
 function resolveSubscriptionChildModel(
@@ -1136,7 +1197,8 @@ export async function runSingleAgent(
 	const turnLimit = runContext?.maxTurns ?? MAX_SUBAGENT_TURNS;
 	const readOnlyTimeoutMs =
 		runContext?.timeoutMs ?? READ_ONLY_SUBAGENT_TIMEOUT_MS;
-	const agent = agents.find((a) => a.name === agentName);
+	const profileName = agentName === "orchestrator" ? "teamlead" : agentName;
+	const agent = agents.find((a) => a.name === profileName);
 
 	if (!agent) {
 		const available = agents.map((a) => `"${a.name}"`).join(", ") || "none";
@@ -1176,6 +1238,15 @@ export async function runSingleAgent(
 		readOnly: runContext?.readOnly,
 		workflowCapabilities: runContext?.workflowCapabilities,
 	});
+	if (resolvedChild.role === "coordinator" && normalizedScopes.length > 0)
+		throw new Error("Coordinators may not declare repository-relative scopes.");
+	if (
+		resolvedChild.role === "coordinator" &&
+		!authority.tools.includes("subagent")
+	)
+		throw new Error(
+			`Coordinator agent ${agent.name} must have the subagent capability.`,
+		);
 	if (
 		resolvedChild.role === "leaf" &&
 		authority.canDirectlyMutate &&
@@ -1289,6 +1360,12 @@ export async function runSingleAgent(
 							runContext?.treeClient?.parent.runId ??
 							runContext?.parentRunId,
 					}
+				: {}),
+			...(runContext?.parentSessionId
+				? { parentSessionId: runContext.parentSessionId }
+				: {}),
+			...(runContext?.workspaceId
+				? { workspaceId: runContext.workspaceId }
 				: {}),
 			role: resolvedChild.role,
 			depth: resolvedChild.depth,
@@ -1826,6 +1903,7 @@ type TaskParams = {
 	resolvedRole?: SubagentRole;
 	resolvedDepth?: number;
 	resolvedModel?: string;
+	resolvedEffort?: AgentEffort;
 	normalizedScopes?: string[];
 };
 
@@ -2103,6 +2181,12 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 				default: false,
 			}),
 		),
+		modelOverrideReason: Type.Optional(
+			Type.String({
+				description:
+					"Operator-approved reason for selecting a non-Sol coordinator model.",
+			}),
+		),
 		confirmProjectAgents: Type.Optional(
 			Type.Boolean({
 				description:
@@ -2127,6 +2211,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		outputSchema: legacy.properties.outputSchema,
 		continuable: legacy.properties.continuable,
 		background: legacy.properties.background,
+		modelOverrideReason: legacy.properties.modelOverrideReason,
 		confirmProjectAgents: legacy.properties.confirmProjectAgents,
 	};
 	return {
@@ -2261,6 +2346,7 @@ const ADVANCED_SUBAGENT_TOOL_NAMES = [
 	"subagent_continue",
 	"subagent_fanout",
 ] as const;
+const acknowledgedFailureRunIds = new Set<string>();
 
 export default function (pi: ExtensionAPI) {
 	let sessionOpen = false;
@@ -2288,7 +2374,19 @@ export default function (pi: ExtensionAPI) {
 
 	const updateStatus = () => {
 		if (!statusContext) return;
-		const nextStatus = formatSubagentActivityStatus(subagentRunManager.list());
+		const visibleRuns = subagentRunManager
+			.list()
+			.filter(
+				(run) =>
+					run.status !== "failed" ||
+					!acknowledgedFailureRunIds.has(run.runId),
+			);
+		const rawStatus = formatSubagentActivityStatus(visibleRuns);
+		const hasFailure = visibleRuns.some((run) => run.status === "failed");
+		const nextStatus =
+			rawStatus && hasFailure
+				? statusContext.ui.theme.fg("error", rawStatus)
+				: rawStatus;
 		if (nextStatus === renderedStatus) return;
 		renderedStatus = nextStatus;
 		statusContext.ui.setStatus("subagents", nextStatus);
@@ -2492,14 +2590,82 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerTool({
+		name: "subagent_control",
+		label: "Subagent Control",
+		description:
+			"Cancel, force-terminate, or safely reconcile an exact live broker run or tree boundary.",
+		promptSnippet: "Control an exact subagent broker boundary",
+		promptGuidelines: [
+			"Use exact complete run or tree IDs. Prefixes and wildcard selectors are rejected.",
+			"Reconcile only terminal or proven-absent process boundaries; live or ambiguous boundaries are rejected.",
+		],
+		parameters: Type.Object({
+			action: StringEnum(["cancel", "force_terminate", "reconcile"] as const),
+			selector: Type.Object({
+				type: StringEnum(["run", "tree"] as const),
+				id: Type.String({ minLength: 1 }),
+			}),
+		}),
+		execute: async (_toolCallId, params) => {
+			if (currentSubagentIdentity().role !== "root")
+				throw new Error("Only the root agent can control subagent boundaries.");
+			const result = await createSubagentControlFacade(
+				getSubagentTreeBroker(),
+				subagentRunManager,
+			).execute(params);
+			return {
+				content: [{ type: "text", text: JSON.stringify(result) }],
+				details: result,
+			};
+		},
+	});
+
 	pi.registerCommand("subagents", {
-		description: "Inspect and manage process-local subagent runs",
-		handler: async (_args, ctx) => {
+		description:
+			"Inspect process-local runs. Filters: --session <id>, --workspace <path>, --orchestration <id>, --task <id>, --state <state>, --all.",
+		handler: async (args, ctx) => {
 			if (ctx.mode !== "tui") {
 				ctx.ui.notify("/subagents requires TUI mode.", "warning");
 				return;
 			}
-			await openSubagentDashboard(ctx, subagentRunManager);
+			const tokens = args.trim() ? args.trim().split(/\s+/) : [];
+			const filters = new Map<string, string>();
+			let all = false;
+			for (let index = 0; index < tokens.length; index += 1) {
+				const token = tokens[index];
+				if (token === "--all") {
+					all = true;
+					continue;
+				}
+				if (!token?.startsWith("--") || !tokens[index + 1]) {
+					ctx.ui.notify(`Invalid /subagents filter near ${token ?? "(empty)"}.`, "warning");
+					return;
+				}
+				filters.set(token.slice(2), tokens[index + 1] as string);
+				index += 1;
+			}
+			const known = new Set(["session", "workspace", "orchestration", "task", "state"]);
+			for (const key of filters.keys())
+				if (!known.has(key)) {
+					ctx.ui.notify(`Unknown /subagents filter --${key}.`, "warning");
+					return;
+				}
+			const currentSession = ctx.sessionManager?.getSessionId?.();
+			const currentWorkspace =
+				process.platform === "win32"
+					? path.resolve(ctx.cwd).toLowerCase()
+					: path.resolve(ctx.cwd);
+			const session = filters.get("session") ?? (all ? undefined : currentSession);
+			const workspace = filters.get("workspace") ?? (all ? undefined : currentWorkspace);
+			await openSubagentDashboard(ctx, subagentRunManager, (run) => {
+				if (session && run.parentSessionId !== session) return false;
+				if (workspace && run.workspaceId !== workspace) return false;
+				if (filters.get("orchestration") && run.orchestrationId !== filters.get("orchestration")) return false;
+				if (filters.get("task") && run.taskId !== filters.get("task") && run.coordinatorTaskId !== filters.get("task")) return false;
+				if (filters.get("state") && run.status !== filters.get("state")) return false;
+				return true;
+			});
 		},
 	});
 
@@ -2510,7 +2676,8 @@ export default function (pi: ExtensionAPI) {
 			process.env.PI_SUBAGENT_SCOPE_POLICY,
 		);
 		const identity = currentSubagentIdentity();
-		if (identity.role !== "root") deactivateTools(pi, ["subagent_status"]);
+		if (identity.role !== "root")
+			deactivateTools(pi, ["subagent_status", "subagent_control"]);
 		deactivateTools(
 			pi,
 			identity.role === "leaf" || identity.depth >= 2
@@ -2537,6 +2704,14 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_settled", () => {
 		if (subagentRunManager.pendingBackgroundCompletions().length > 0)
 			scheduleBackgroundCompletionDelivery();
+	});
+
+	pi.on("input", (event) => {
+		if (event.source !== "interactive") return;
+		for (const run of subagentRunManager.list()) {
+			if (run.status === "failed") acknowledgedFailureRunIds.add(run.runId);
+		}
+		updateStatus();
 	});
 
 	pi.on("tool_call", (event, ctx) => {
@@ -2582,7 +2757,8 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet:
 			"Delegate foreground or background work to isolated specialist agents",
 		promptGuidelines: [
-			"Delegate one narrow, single-phase deliverable per leaf. Use role=coordinator only for bounded decomposition and reduction.",
+			"Delegate one narrow, single-phase deliverable per leaf. Use role=coordinator only for one independently verifiable work package's bounded decomposition and reduction; the root retains program-level orchestration.",
+			"Routing guidance is advisory: prefer Luna low for tool-heavy inspection and summarization, Sol low or Luna high for bounded planning, Sol low for coordinators and subagent team managers, Luna medium or high for implementation, and Sol low for review. Useful overrides remain allowed and are tracked; max effort requires operator approval.",
 			"A coordinator may invoke leaves; leaves and every depth-two child cannot invoke delegation or workflow tools.",
 			"Each child is capped at 64 turns; explicitly read-only fanout leaves are also capped at eight minutes.",
 			"Give every modifying leaf a normalized repository-relative scope and keep concurrent scopes disjoint.",
@@ -2615,7 +2791,7 @@ export default function (pi: ExtensionAPI) {
 			const outputSchema = params.outputSchema as unknown as
 				| TSchema
 				| undefined;
-			const background = params.background === true;
+			const background = params.background ?? false;
 			const executionSignal = background ? undefined : signal;
 			const visibleUpdate = background ? undefined : onUpdate;
 			const fanoutPlan = params.readOnlyFanout as unknown as
@@ -2670,6 +2846,14 @@ export default function (pi: ExtensionAPI) {
 					: undefined);
 			const discovery = agentDiscoveryFor(ctx, agentScope);
 			const agents = discovery.agents;
+			if (containsMaxEffortSelection(params, agents) && process.env.PI_SUBAGENT_ALLOW_MAX !== "1") {
+				if (!ctx.hasUI) throw new Error("Subagent max effort requires explicit operator approval or PI_SUBAGENT_ALLOW_MAX=1.");
+				const approved = await ctx.ui.confirm(
+					"Approve max subagent effort",
+					"This dispatch requests max reasoning effort. Allow it for this invocation?",
+				);
+				if (!approved) throw new Error("Subagent max effort was not approved.");
+			}
 			const availableModels = subscriptionRoot
 				? (ctx.modelRegistry.getAvailable() as ModelLike[])
 				: [];
@@ -2832,6 +3016,12 @@ export default function (pi: ExtensionAPI) {
 						...(worker.taskId ? { taskId: worker.taskId } : {}),
 						agent: worker.agent,
 						...(worker.model ? { resolvedModel: worker.model } : {}),
+						...(worker.effort ? { selectedEffort: worker.effort } : {}),
+						...(worker.advisoryPolicyVersion ? { advisoryPolicyVersion: worker.advisoryPolicyVersion } : {}),
+						...(worker.advisoryTaskClass ? { advisoryTaskClass: worker.advisoryTaskClass } : {}),
+						...(worker.advisoryRecommendedRoute ? { advisoryRecommendedRoute: worker.advisoryRecommendedRoute } : {}),
+						...(worker.advisoryClassification ? { advisoryClassification: worker.advisoryClassification } : {}),
+						...(worker.advisoryTopologyMismatch === undefined ? {} : { advisoryTopologyMismatch: worker.advisoryTopologyMismatch }),
 						...(worker.routingExperiment
 							? {
 									experimentId: worker.routingExperiment.experimentId,
@@ -2953,6 +3143,11 @@ export default function (pi: ExtensionAPI) {
 						background,
 						treeId: currentIdentity.treeId ?? orchestrationId,
 						parentRunId: currentIdentity.runId,
+						parentSessionId,
+						workspaceId:
+							process.platform === "win32"
+								? path.resolve(invocationCwd).toLowerCase()
+								: path.resolve(invocationCwd),
 						repositoryRoot: invocationCwd,
 						treeClient,
 						...(coordinatorTaskId ? { coordinatorTaskId } : {}),
@@ -3133,6 +3328,8 @@ export default function (pi: ExtensionAPI) {
 				if (params.continue) requestedAgentNames.add(params.continue.agent);
 			}
 			const availableAgentNames = new Set(agents.map((agent) => agent.name));
+			if (availableAgentNames.has("teamlead"))
+				availableAgentNames.add("orchestrator");
 			if (params.taskId !== undefined && !selectedSingle)
 				throw new Error("taskId is only valid for single mode.");
 			if (selectedTasks)
@@ -3186,8 +3383,11 @@ export default function (pi: ExtensionAPI) {
 					item.scope ?? [],
 					invocationCwd,
 				);
-				const agent = agents.find((candidate) => candidate.name === item.agent);
+				const profileName = item.agent === "orchestrator" ? "teamlead" : item.agent;
+				const agent = agents.find((candidate) => candidate.name === profileName);
 				if (!agent) throw new Error(`Unknown agent: ${item.agent}`);
+				if (resolved.role === "coordinator" && item.scope !== undefined)
+					throw new Error("Coordinators may not declare repository-relative scopes.");
 				const authority = resolveChildToolAuthority(agent, {
 					role: resolved.role,
 					hasScopeLease: item.normalizedScopes.length > 0,
@@ -3196,6 +3396,13 @@ export default function (pi: ExtensionAPI) {
 						: internalWorkflowContext?.readOnly,
 					workflowCapabilities: internalWorkflowContext?.capabilities,
 				});
+				if (
+					resolved.role === "coordinator" &&
+					!authority.tools.includes("subagent")
+				)
+					throw new Error(
+						`Coordinator agent ${item.agent} must have the subagent capability.`,
+					);
 				if (
 					resolved.role === "leaf" &&
 					authority.canDirectlyMutate &&
@@ -3405,7 +3612,7 @@ export default function (pi: ExtensionAPI) {
 						step.resolvedModel ?? resolvedModelId,
 						modelSize,
 						modelPolicy,
-						step.effort ?? routedEffort,
+						step.resolvedEffort ?? step.effort ?? routedEffort,
 						undefined,
 						undefined,
 						{ continuable: params.continuable === true },
@@ -3490,7 +3697,11 @@ export default function (pi: ExtensionAPI) {
 						},
 						model: tasks[i].resolvedModel ?? resolvedModelId ?? agent?.model,
 						effort:
-							tasks[i].effort ?? routedEffort ?? agent?.effort ?? "default",
+							tasks[i].resolvedEffort ??
+							tasks[i].effort ??
+							routedEffort ??
+							agent?.effort ??
+							"default",
 					};
 				}
 
@@ -3536,7 +3747,7 @@ export default function (pi: ExtensionAPI) {
 								t.resolvedModel ?? resolvedModelId,
 								modelSize,
 								modelPolicy,
-								t.effort ?? routedEffort,
+								t.resolvedEffort ?? t.effort ?? routedEffort,
 								t.taskId,
 								undefined,
 								{ continuable: params.continuable === true },
@@ -3606,7 +3817,7 @@ export default function (pi: ExtensionAPI) {
 					selectedSingle.resolvedModel ?? resolvedModelId,
 					modelSize,
 					modelPolicy,
-					routedEffort,
+					selectedSingle.resolvedEffort ?? routedEffort,
 					selectedSingle.taskId,
 					undefined,
 					{ continuable: params.continuable === true },
@@ -3707,11 +3918,20 @@ export default function (pi: ExtensionAPI) {
 
 		renderCall(args, theme, _context) {
 			const scope: AgentScope = args.agentScope ?? "user";
-			const modelHint = args.model
-				? ` ${theme.fg("muted", `(model: ${args.model})`)}`
+			const configuredAgent = args.agent
+				? sessionAgentCatalog?.byScope[scope].agents.find((agent) => agent.name === args.agent)
+				: undefined;
+			const displayedModel = args.model ?? (args.modelSize ? undefined : configuredAgent?.model);
+			const modelEffort = displayedModel?.match(THINKING_SUFFIX_RE)?.[1];
+			const displayedEffort = args.effort ?? modelEffort ?? configuredAgent?.effort ?? (args.modelSize ? preferredEffortForSize(args.modelSize as ModelSize) : undefined);
+			const effortHint = displayedEffort ? `, effort: ${displayedEffort}` : "";
+			const modelHint = displayedModel
+				? ` ${theme.fg("muted", `(model: ${displayedModel}${effortHint})`)}`
 				: args.modelSize
-					? ` ${theme.fg("muted", `(${args.modelSize}${args.modelPolicy ? `, ${args.modelPolicy}` : ""})`)}`
-					: "";
+					? ` ${theme.fg("muted", `(${args.modelSize}${args.modelPolicy ? `, ${args.modelPolicy}` : ""}${effortHint})`)}`
+					: displayedEffort
+						? ` ${theme.fg("muted", `(effort: ${displayedEffort})`)}`
+						: "";
 			const backgroundHint = args.background
 				? ` ${theme.fg("warning", "(background)")}`
 				: "";

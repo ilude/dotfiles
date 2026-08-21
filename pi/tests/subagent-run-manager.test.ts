@@ -307,7 +307,7 @@ describe("subagent dashboard selection", () => {
 		expect(renderedViews[1]).toContain("[13:14:15] assistant:");
 	});
 
-	it("formats only running footer counts", () => {
+	it("formats actionable running and failed footer counts", () => {
 		expect(formatSubagentActivityStatus([])).toBeUndefined();
 		expect(
 			formatSubagentActivityStatus([
@@ -315,7 +315,7 @@ describe("subagent dashboard selection", () => {
 				{ status: "failed" },
 				{ status: "cancelled" },
 			]),
-		).toBeUndefined();
+		).toBe("subagents 1 failed");
 		expect(
 			formatSubagentActivityStatus([
 				{ status: "running" },
@@ -324,7 +324,7 @@ describe("subagent dashboard selection", () => {
 				{ status: "failed" },
 				{ status: "cancelled" },
 			]),
-		).toBe("subagents 2");
+		).toBe("subagents 2 running, 1 failed");
 	});
 
 	it("keeps selection on the same run while live ordering changes", () => {

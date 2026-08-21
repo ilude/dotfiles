@@ -7,10 +7,7 @@ import {
 	getBackgroundTerminalManager,
 	type BackgroundTerminalSnapshot,
 } from "./manager.js";
-import {
-	formatBackgroundTerminalActivity,
-	openBackgroundTerminalDashboard,
-} from "./ui.js";
+import { openBackgroundTerminalDashboard } from "./ui.js";
 
 const COMPLETION_MAX_BYTES = 32 * 1024;
 const BACKGROUND_CONTROL_TOOL_NAMES = [
@@ -81,19 +78,9 @@ function textResult(text: string, details?: Record<string, unknown>) {
 export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 	const manager = getBackgroundTerminalManager();
 	let sessionOpen = false;
-	let widgetContext:
-		| Parameters<Parameters<ExtensionAPI["on"]>[1]>[1]
-		| undefined;
-	let unsubscribeManager: (() => void) | undefined;
 	let unsubscribeSettled: (() => void) | undefined;
 	const pending = new Map<string, BackgroundTerminalSnapshot>();
 	let deliveryScheduled = false;
-
-	const updateWidget = () => {
-		if (!widgetContext) return;
-		const activity = formatBackgroundTerminalActivity(manager.list());
-		widgetContext.ui.setWidget("background-terminals", activity ? [activity] : undefined);
-	};
 
 	const flushPending = () => {
 		deliveryScheduled = false;
@@ -242,12 +229,9 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.on("session_start", (_event, ctx) => {
+	pi.on("session_start", (_event, _ctx) => {
 		sessionOpen = true;
-		widgetContext = ctx;
-		unsubscribeManager?.();
 		unsubscribeSettled?.();
-		unsubscribeManager = manager.subscribe(updateWidget);
 		unsubscribeSettled = manager.onSettled((snapshot, consumed) => {
 			if (consumed || !sessionOpen) return;
 			pending.set(snapshot.id, snapshot);
@@ -261,7 +245,6 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		} else {
 			deactivateTools(pi, BACKGROUND_CONTROL_TOOL_NAMES);
 		}
-		updateWidget();
 		if (pending.size > 0) scheduleDelivery();
 	});
 	pi.on("agent_settled", () => {
@@ -270,12 +253,8 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 	pi.on("session_shutdown", async (event) => {
 		sessionOpen = false;
 		pending.clear();
-		unsubscribeManager?.();
-		unsubscribeManager = undefined;
 		unsubscribeSettled?.();
 		unsubscribeSettled = undefined;
-		widgetContext?.ui.setWidget("background-terminals", undefined);
-		widgetContext = undefined;
 		if (event.reason === "quit") await manager.dispose();
 	});
 }

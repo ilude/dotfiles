@@ -314,7 +314,37 @@ export function formatPiStatusLine(options: {
 		const availableModelWidth = Math.max(0, options.width - nonModelWidth);
 		left = buildLeft(truncateToWidth(model, availableModelWidth));
 	}
-	const composed = rightAnchor(left, options.rightStatus, options.width);
+	let composed = rightAnchor(left, options.rightStatus, options.width);
+	if (options.rightStatus && composed === left) {
+		const reloadIndicator = formatReloadIndicator(Boolean(options.reloadNeeded));
+		const prioritySegments = [contextSegment, reloadIndicator].filter(Boolean);
+		const priorityLeft = prioritySegments.join(" | ");
+		const withPriority = rightAnchor(
+			priorityLeft,
+			options.rightStatus,
+			options.width,
+		);
+		if (withPriority !== priorityLeft) composed = withPriority;
+		else if (reloadIndicator) {
+			const withReload = rightAnchor(
+				reloadIndicator,
+				options.rightStatus,
+				options.width,
+			);
+			composed =
+				withReload !== reloadIndicator ? withReload : reloadIndicator;
+		} else if (contextSegment) {
+			const withContext = rightAnchor(
+				contextSegment,
+				options.rightStatus,
+				options.width,
+			);
+			composed =
+				withContext !== contextSegment
+					? withContext
+					: rightAlign(options.rightStatus, options.width);
+		} else composed = rightAlign(options.rightStatus, options.width);
+	}
 	return visibleWidth(composed) > options.width
 		? truncateToWidth(composed, options.width)
 		: composed;

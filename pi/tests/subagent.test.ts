@@ -244,7 +244,7 @@ name: tester
 description: Test agent
 model: anthropic/claude-sonnet-4-6
 effort: high
-tools: read, grep
+tools: read, grep, subagent
 skills:
   - ../skills/test-skill/SKILL.md
 ---
@@ -281,9 +281,10 @@ Run unpinned work.
 		await fs.promises.writeFile(
 			path.join(agentsDir, "orchestrator.md"),
 			`---
-name: orchestrator
+name: teamlead
 description: Orchestrator test agent
 model: openai-codex/gpt-5.6-sol
+effort: low
 tools: read, grep, subagent
 ---
 
@@ -915,6 +916,24 @@ Execute workflow items with admitted tools only.
 		expect(renderedLines[0]).toContain("subagent code-reviewer [both]");
 		expect(renderedTask).toBe(task);
 		expect(renderedTask).not.toContain(`${task.slice(0, 60)}...`);
+	});
+
+	it("renders resolved agent model and reasoning effort", async () => {
+		const { pi, tool } = await loadTool();
+		const ctx = createMockCtx({ cwd: tmpDir, isProjectTrusted: () => true });
+		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
+		if (!tool.renderCall) throw new Error("subagent renderCall not registered");
+
+		const component = tool.renderCall(
+			{ agent: "teamlead", agentScope: "project", role: "coordinator", task: "Coordinate one work package" },
+			createMockTheme(),
+			{},
+		);
+		const rendered = component.render(500).join("\n");
+
+		expect(rendered).toContain(
+			"subagent teamlead [project] (model: openai-codex/gpt-5.6-sol, effort: low)",
+		);
 	});
 
 	it("adds project agents to schemas only after trust validation", async () => {
@@ -1636,7 +1655,7 @@ name: tester
 description: Test agent
 model: anthropic/claude-sonnet-4-6
 effort: high
-tools: read, bash, edit, write
+tools: read, bash, edit, write, subagent
 ---
 
 You are a test agent.
@@ -2304,33 +2323,18 @@ You are a test agent.
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
-	it("requires explicit coordinator intent for the orchestrator agent", async () => {
+	it("defaults teamlead to coordinator and preserves the orchestrator alias", async () => {
 		mockSuccessfulSpawn();
 		const { tool } = await loadTool();
 		const ctx = createMockCtx({ cwd: tmpDir });
 
-		await expect(
-			tool.execute(
-				"implicit-orchestrator",
-				{
-					agent: "orchestrator",
-					task: "Coordinate work",
-					agentScope: "project",
-				},
-				undefined,
-				undefined,
-				ctx,
-			),
-		).rejects.toThrow("primary model owns orchestration");
-		expect(spawnMock).not.toHaveBeenCalled();
-
 		await tool.execute(
-			"explicit-orchestrator",
+			"implicit-teamlead",
 			{
-				agent: "orchestrator",
+				agent: "teamlead",
 				task: "Coordinate work",
-				role: "coordinator",
 				agentScope: "project",
+				background: false,
 			},
 			undefined,
 			undefined,
@@ -2338,6 +2342,23 @@ You are a test agent.
 		);
 		expect(spawnMock).toHaveBeenCalledTimes(1);
 		expect(spawnMock.mock.calls[0][2].env.PI_SUBAGENT_TREE_ROLE).toBe(
+			"coordinator",
+		);
+
+		const alias = await tool.execute(
+			"compatible-orchestrator",
+			{
+				agent: "orchestrator",
+				task: "Coordinate work",
+				agentScope: "project",
+				background: false,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(alias.isError).not.toBe(true);
+		expect(spawnMock.mock.calls[1][2].env.PI_SUBAGENT_TREE_ROLE).toBe(
 			"coordinator",
 		);
 	});
@@ -2352,7 +2373,7 @@ You are a test agent.
 			},
 			{
 				params: { agent: "unpinned", task: "Default" },
-				expected: "openai-codex/gpt-5.6-terra",
+				expected: "openai-codex/gpt-5.6-luna",
 			},
 			{
 				params: {
@@ -2446,7 +2467,7 @@ You are a test agent.
 				return args[args.indexOf("--model") + 1];
 			}),
 		).toEqual([
-			"openai-codex/gpt-5.6-terra",
+			"openai-codex/gpt-5.6-luna",
 			"openai-codex/gpt-5.6-terra:high",
 		]);
 
@@ -2505,7 +2526,7 @@ You are a test agent.
 		expect(newCalls).toHaveLength(1);
 		const workflowArgs = newCalls[0][1] as string[];
 		expect(workflowArgs[workflowArgs.indexOf("--model") + 1]).toBe(
-			"openai-codex/gpt-5.6-terra",
+			"openai-codex/gpt-5.6-luna",
 		);
 	});
 
@@ -2751,7 +2772,7 @@ You are a test agent.
 	);
 
 	it(
-		"applies Luna high, Terra medium, and Sol low to unsampled size routes",
+		"applies Luna high, Luna medium, and Sol low to unsampled size routes",
 		async () => {
 			process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "0";
 			mockSuccessfulSpawn();
@@ -2769,7 +2790,7 @@ You are a test agent.
 			});
 			const cases = [
 				["small", "openai-codex/gpt-5.6-luna", "high"],
-				["medium", "openai-codex/gpt-5.6-terra", "medium"],
+				["medium", "openai-codex/gpt-5.6-luna", "medium"],
 				["large", "openai-codex/gpt-5.6-sol", "low"],
 			] as const;
 
@@ -3084,6 +3105,7 @@ You are a test agent.
 					taskId: singleTask.id,
 					role: "coordinator",
 					agentScope: "project",
+					background: false,
 				},
 				undefined,
 				undefined,
@@ -3113,6 +3135,7 @@ You are a test agent.
 						},
 					],
 					agentScope: "project",
+					background: false,
 				},
 				undefined,
 				undefined,
@@ -3362,7 +3385,7 @@ You are a test agent.
 			});
 			expect(firstCtx.ui.setStatus).toHaveBeenLastCalledWith(
 				"subagents",
-				"subagents 1 running (/subagents)",
+				"subagents 1 running",
 			);
 
 			await firstPi
@@ -3386,7 +3409,7 @@ You are a test agent.
 			});
 			expect(secondCtx.ui.setStatus).toHaveBeenLastCalledWith(
 				"subagents",
-				"subagents 1 running (/subagents)",
+				"subagents 1 running",
 			);
 
 			proc.emit("close", 0);
@@ -3401,6 +3424,53 @@ You are a test agent.
 			);
 			expect(firstCtx.ui.setStatus).toHaveBeenCalledTimes(firstStatusCalls);
 			expect(firstPi.sendMessage).not.toHaveBeenCalled();
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"shows failed runs until the next interactive user turn",
+		async () => {
+			const proc = createMockProcess();
+			spawnMock.mockImplementation(() => proc);
+			const { pi, tool } = await loadTool();
+			const ctx = createMockCtx({ cwd: tmpDir });
+			await pi
+				._getHook("session_start")[0]
+				.handler({ reason: "startup" }, ctx);
+			await tool.execute(
+				"call-failed-status",
+				{
+					agent: "tester",
+					task: "Fail visibly",
+					agentScope: "project",
+					background: true,
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			proc.emit("error", new Error("synthetic failure"));
+			await vi.waitFor(
+				() =>
+					expect(ctx.ui.setStatus).toHaveBeenLastCalledWith(
+						"subagents",
+						"subagents 1 failed",
+					),
+				{ timeout: 5000 },
+			);
+
+			await pi._getHook("input")[0].handler(
+				{ source: "interactive", text: "continue", images: [] },
+				ctx,
+			);
+			expect(ctx.ui.setStatus).toHaveBeenLastCalledWith(
+				"subagents",
+				undefined,
+			);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -3813,6 +3883,7 @@ You are a test agent.
 					taskId: task.id,
 					role: "coordinator",
 					agentScope: "project",
+					background: false,
 					confirmProjectAgents: false,
 				},
 				controller.signal,

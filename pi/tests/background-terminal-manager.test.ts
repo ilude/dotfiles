@@ -14,10 +14,7 @@ import {
 	BackgroundTerminalManager,
 	type BackgroundTerminalSnapshot,
 } from "../extensions/background-terminal/manager.ts";
-import {
-	formatBackgroundTerminalActivity,
-	reconcileBackgroundTerminalSelection,
-} from "../extensions/background-terminal/ui.ts";
+import { reconcileBackgroundTerminalSelection } from "../extensions/background-terminal/ui.ts";
 
 const roots: string[] = [];
 
@@ -223,18 +220,12 @@ describe("BackgroundTerminalManager", () => {
 });
 
 describe("background terminal UI projections", () => {
-	it("keeps selection stable by terminal ID and summarizes activity", () => {
+	it("keeps dashboard selection stable by terminal ID", () => {
 		const selection = { id: "bg-2", index: 1 };
 		reconcileBackgroundTerminalSelection(selection, [
 			{ id: "bg-2" },
 			{ id: "bg-3" },
 		]);
 		expect(selection).toEqual({ id: "bg-2", index: 0 });
-		expect(
-			formatBackgroundTerminalActivity([
-				{ status: "running" },
-				{ status: "failed" },
-			]),
-		).toBe("background 1 running, 1 failed (/ps)");
 	});
 });
