@@ -13,6 +13,14 @@ def test_dispatches_ingest_arguments():
     ingest.assert_called_once_with(["dQw4w9WgXcQ", "--wait"])
 
 
+def test_dispatches_stats_arguments():
+    with patch("onclave_youtube.stats_main") as stats:
+        with patch.dict("onclave_youtube.COMMANDS", {"stats": stats}, clear=True):
+            main(["stats", "--json"])
+
+    stats.assert_called_once_with(["--json"])
+
+
 def test_rejects_unknown_command():
     try:
         main(["local-fetch"])

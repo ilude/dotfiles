@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -55,6 +56,11 @@ def run(args: argparse.Namespace) -> None:
         if args.from_local
         else {"url": f"https://youtube.com/watch?v={video_id}"}
     )
+    notify_agent_id = getattr(args, "notify_agent_id", None) or os.environ.get(
+        "ONCLAVE_AGENT_ID"
+    )
+    if notify_agent_id:
+        body_data["notify_agent_id"] = notify_agent_id
     client = OnclaveClient(timeout=180.0)
     print(f"Ingesting video: {video_id}")
     if args.from_local:
@@ -88,6 +94,11 @@ def main(argv: Optional[list[str]] = None) -> None:
         "--verbose", action="store_true", help="Show all fields when polling completes"
     )
     parser.add_argument("--test", action="store_true", help="Tag this video as test content")
+    parser.add_argument(
+        "--notify-agent",
+        dest="notify_agent_id",
+        help="Agent ID to notify when the job completes",
+    )
     parser.add_argument(
         "--from-local",
         action="store_true",

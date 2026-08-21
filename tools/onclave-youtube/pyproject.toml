@@ -33,6 +33,7 @@ py-modules = [
     "get_content",
     "ingest_video",
     "job_utils",
+    "job_stats",
     "list_videos",
     "onclave_client",
     "onclave_youtube",

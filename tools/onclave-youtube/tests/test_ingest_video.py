@@ -40,7 +40,10 @@ def test_ingest_posts_video_url_and_shows_job(capsys):
     client.post_json.return_value = response
     client.api_base = "https://onclave.example/api/v1"
 
-    with patch("ingest_video.OnclaveClient", return_value=client):
+    with (
+        patch.dict("ingest_video.os.environ", {}, clear=True),
+        patch("ingest_video.OnclaveClient", return_value=client),
+    ):
         run(
             argparse.Namespace(
                 video="dQw4w9WgXcQ", test=False, from_local=False, wait=False, verbose=False
@@ -61,6 +64,55 @@ def test_ingest_posts_video_url_and_shows_job(capsys):
         "Job ID: job_123\n"
         "\n"
     )
+
+
+def test_ingest_uses_notify_agent_override(capsys):
+    client = mock_onclave_client()
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"job_id": "job_123"}
+    client.post_json.return_value = response
+
+    with (
+        patch.dict(
+            "ingest_video.os.environ",
+            {"ONCLAVE_AGENT_ID": "environment-agent"},
+            clear=True,
+        ),
+        patch("ingest_video.OnclaveClient", return_value=client),
+    ):
+        main(["dQw4w9WgXcQ", "--notify-agent", "override-agent"])
+
+    client.post_json.assert_called_once_with(
+        "/ingest",
+        {
+            "url": "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "notify_agent_id": "override-agent",
+        },
+    )
+
+
+def test_ingest_uses_environment_notify_agent(capsys):
+    client = mock_onclave_client()
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"job_id": "job_123"}
+    client.post_json.return_value = response
+
+    with (
+        patch.dict("ingest_video.os.environ", {"ONCLAVE_AGENT_ID": "environment-agent"}),
+        patch("ingest_video.OnclaveClient", return_value=client),
+    ):
+        run(
+            argparse.Namespace(
+                video="dQw4w9WgXcQ",
+                test=False,
+                from_local=False,
+                wait=False,
+                verbose=False,
+                notify_agent_id=None,
+            )
+        )
+
+    assert client.post_json.call_args.args[1]["notify_agent_id"] == "environment-agent"
 
 
 def test_ingest_configuration_error_does_not_emit_progress(capsys):
