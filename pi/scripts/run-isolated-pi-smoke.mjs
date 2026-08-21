@@ -354,7 +354,7 @@ export async function runIsolatedPiSmoke(options = {}) {
 			"--extension",
 			extension("workflow-friction-review.ts"),
 			"--print",
-			"Use the subagent tool exactly once with agent orchestrator and role coordinator. Tell the coordinator to use subagent exactly once with agent explorer and role leaf, ask that leaf to reply exactly telemetry-worker-ok, and then reply exactly telemetry-coordinator-ok. After the coordinator completes, reply exactly orchestration-live-ok. Do not answer directly without completing this hierarchy.",
+			"Use the subagent tool exactly once with agent teamlead and role coordinator. Tell the coordinator to use subagent exactly once with agent explorer and role leaf, ask that leaf to reply exactly telemetry-worker-ok, and then reply exactly telemetry-coordinator-ok. After the coordinator completes, reply exactly orchestration-live-ok. Do not answer directly without completing this hierarchy.",
 		]);
 		invocations.push([
 			...commonArgs,

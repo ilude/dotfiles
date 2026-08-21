@@ -57,6 +57,8 @@
 ## Delegation
 
 - Give each worker one narrow phase. Keep concurrent write scopes separate. Do not delegate serial stages unless one subagent can own the complete sequence while other independent work continues.
+- Treat model and topology routing as versioned recommendations, not gates. Prefer Luna low for tool-heavy inspection, exploration, validation, and summarization; Sol low or Luna high for bounded planning; Sol low for coordinators and subagent team managers; Luna medium or high for implementation; and Sol low for review. The parent may override a recommendation and should preserve the reason in telemetry when available. Max effort requires explicit operator approval.
+- The root owns program decomposition. Prefer one coordinator per independently verifiable work package; do not hand an entire multi-deliverable program to one coordinator. Use Luna-low summaries or artifact references when raw child output would consume material parent context.
 
 ## Pi ownership
 

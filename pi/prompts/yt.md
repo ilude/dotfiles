@@ -19,14 +19,15 @@ Run Onclave operations from `~/.dotfiles/tools/onclave-youtube` with the `onclav
 2. Ingest it through Onclave:
 
 ```bash
-cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube ingest "{url_or_video_id}"
+cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube ingest "{url_or_video_id}" [--notify-agent {agent_id}]
 ```
 
-3. On success, report `title`, `content_id`, and `job_id`.
+3. On success, report `title`, `content_id`, and `job_id`. Use `--notify-agent {agent_id}` to override the completion notification recipient; otherwise `ONCLAVE_AGENT_ID` is used when set.
 
 ## Other subcommands
 
 - `channel <@handle_or_url>`: run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube channel "{handle_or_url}" --limit {n}` and render the results to the user. Supports `@name` and `https://www.youtube.com/@name`.
+- `stats`: run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube stats` and render total, completed, failed, cancelled, and average completion seconds. Use `--json` when structured output is requested.
 - `list [n]`: run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube list {n}` and render the results to the user.
 - `search <query>`: run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube search {query}` and render scores, IDs, and snippets.
 - `content <content_id>`: run `cd ~/.dotfiles/tools/onclave-youtube && unset VIRTUAL_ENV && uv run onclave-youtube content {content_id} --json`.

@@ -28,6 +28,7 @@ This index records stable public and normative semantics for Pi extensions and t
 - Render context usage after the model reasoning level as its own ` | `-delimited segment. Omit it when usage is unavailable.
 - One-line extension health belongs in `ctx.ui.setStatus()`, not a below-editor widget. The custom footer renders those statuses on a second line.
 - Render Onclave status as `Onclave[N]: <client>`, where `N` is the peer count. Color only the client name: green while connected and red otherwise.
+- At narrow widths, preserve reload, failure, context-pressure, and provider-quota feedback before model identity, Pi version, branch, or directory details. Extension failures sort ahead of routine task and throughput statuses.
 - Render token-throughput status after Onclave and the other left-side extension statuses.
 - Keep compact Bedrock spend right-aligned as the final second-line segment.
 - Reserve below-editor widgets for content that is not footer status.

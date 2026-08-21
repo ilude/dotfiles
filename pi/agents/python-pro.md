@@ -1,7 +1,7 @@
 ---
 name: python-pro
 description: Expert Python developer for autonomous multi-step tasks. Use for Python files, project tooling, tests, frameworks, and type-safe Python work.
-model: openai-codex/gpt-5.6-terra
+model: openai-codex/gpt-5.6-luna
 effort: medium
 skills:
   - python

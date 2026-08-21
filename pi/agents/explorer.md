@@ -1,7 +1,7 @@
 ---
 name: explorer
 description: Read-only codebase and technical-documentation exploration worker for locating files, tracing symbols and control flow, mapping existing architecture, and returning cited evidence. Use for discovery or focused investigation before implementation; not for editing, planning, code review, or acceptance validation.
-model: openai-codex/gpt-5.6-sol
+model: openai-codex/gpt-5.6-luna
 isolation: none
 memory: none
 effort: low

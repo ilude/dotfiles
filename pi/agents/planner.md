@@ -1,8 +1,8 @@
 ---
 name: planner
 description: "Plans tasks by breaking them into clear steps and success criteria before implementation. Not for writing final research, documentation, or implementation deliverables."
-model: openai-codex/gpt-5.6-luna
-effort: high
+model: openai-codex/gpt-5.6-sol
+effort: low
 skills:
   - planning
 tools: read, grep, find, ls

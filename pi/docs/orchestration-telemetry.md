@@ -84,9 +84,15 @@ Run and worker `status` values are `pending`, `running`, `completed`, `failed`,
 | `coordinatorTaskId` | no | Root-owned durable task ID carried by a coordinator. |
 | `taskId` | no | Durable task identity when this worker has one. |
 | `agent` | yes | Sanitized worker identity. |
-| `resolvedModel` | no | Sanitized resolved model identity. |
+| `resolvedModel` | no | Sanitized selected model identity. |
+| `selectedEffort` | no | Selected reasoning effort. |
+| `advisoryPolicyVersion` | no | Version of the advisory routing policy used at dispatch. |
+| `advisoryTaskClass` | no | Bounded task class used to select the recommendation. |
+| `advisoryRecommendedRoute` | no | Sanitized accepted model and effort choices. |
+| `advisoryClassification` | no | `preferred`, `accepted-alternative`, or `mismatch`. |
+| `advisoryTopologyMismatch` | no | Whether the selected leaf or coordinator role differs from the recommendation. |
 | `experimentId` | no | Fixed routing experiment identity for sampled policy dispatches. |
-| `experimentArm` | no | `terra-baseline`, `luna-high`, or `sol-low`. |
+| `experimentArm` | no | `luna-high` or `sol-low`. |
 | `experimentTaskClass` | no | Dispatch origin such as `subagent-single` or `task-execute-modelSize`. |
 | `validationOutcome` | no | `passed`, `failed`, or `unavailable` when the run is sampled. |
 | `status` | yes | Worker status. |

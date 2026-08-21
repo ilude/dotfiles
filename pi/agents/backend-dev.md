@@ -1,7 +1,7 @@
 ---
 name: backend-dev
 description: Implements assigned backend service, API, database, and data-access changes. Use for bounded backend work; not frontend UI or live infrastructure operations.
-model: openai-codex/gpt-5.6-terra
+model: openai-codex/gpt-5.6-luna
 effort: medium
 skills:
   - api-design
