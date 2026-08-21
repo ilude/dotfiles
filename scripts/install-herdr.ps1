@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-Installs the pinned Herdr Windows preview with PowerShell 7 and Pi sidebar defaults.
+Installs the pinned Herdr Windows release with PowerShell 7 and Pi sidebar defaults.
 
 .DESCRIPTION
 Performs a first-time, per-user Herdr installation on 64-bit Windows. The
@@ -18,17 +18,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$HerdrBuildId = '2026-08-04-d78e3d3b5126'
-$HerdrVersionIdentity = '0.8.0-preview.2026-08-04-d78e3d3b5126'
-$HerdrArchiveSha256 = 'b1d288118848ecd3ef33532a34506edc53a38a416057aee5b7fe1de4188a16fc'
-$HerdrArchiveUri = "https://github.com/herdrdev/herdr/releases/download/preview-$HerdrBuildId/herdr-windows-x86_64.zip"
+$HerdrBuildId = 'v0.8.2'
+$HerdrVersionIdentity = '0.8.2'
+$HerdrArchiveSha256 = '0ab3d0fe1434d55757997542b978c771d642987bb15a7130f4160f0db38821d5'
+$HerdrArchiveUri = "https://github.com/herdrdev/herdr/releases/download/$HerdrBuildId/herdr-windows-x86_64.zip"
 $HerdrTargetTriple = 'x86_64-pc-windows-msvc'
 $HerdrFileHashes = @{
     'conpty/arm64/OpenConsole.exe' = 'ed7622fd0d3bedc9ab9f122f5e58edf0def9e7999224f52dd395ba9f54edbe09'
     'conpty/conpty.dll' = '39fba2713e2495117b1591ae8c32a3b904bea7aa66069cf7815e2844c76d75d8'
     'conpty/herdr-conpty.json' = 'c8f499ad82c568e737d6bc7d0b583e3785d2f43af3d2c0cebb856076690533f5'
     'conpty/x64/OpenConsole.exe' = 'b7fd936c2668b87b9ecf7b3366dc6568afc1c6f981874cba3e955a1c35cf8160'
-    'herdr.exe' = '6f470da358d6713b6bebab922ffb1f5fe1d3d288cc6f374c7dca1b4a9837a542'
+    'herdr.exe' = '467682cdb5fa482c54897c6b9c96a5300a3516a72ef70ec3d009e16fadb131b3'
     'THIRD-PARTY-NOTICES/Microsoft.Windows.Console.ConPTY-LICENSE.txt' = '5d177f23ecfeb0ea8e050b6a5a16355e1ae9a0b286436ca8f83ed08b3795be6b'
     'THIRD-PARTY-NOTICES/Microsoft.Windows.Console.ConPTY-NOTICE.md' = 'e7fbaadee6ab20c28b87730a510ee5f5815d8fb4bd88d1d54d282dc2a74c0726'
 }
@@ -97,14 +97,32 @@ function Test-HerdrPackage {
     return $true
 }
 
+function Test-ManagedHerdrReleasePath {
+    param(
+        [Parameter(Mandatory)][string]$TargetPath,
+        [Parameter(Mandatory)][string]$ReleasesDirectory
+    )
+
+    $targetFullPath = [System.IO.Path]::GetFullPath($TargetPath).TrimEnd('\')
+    $releasesFullPath = [System.IO.Path]::GetFullPath($ReleasesDirectory).TrimEnd('\')
+    $targetParent = [System.IO.Path]::GetDirectoryName($targetFullPath)
+    return $null -ne $targetParent -and
+        $targetParent.Equals($releasesFullPath, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function New-HerdrJunction {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][string]$LinkPath,
-        [Parameter(Mandatory)][string]$TargetPath
+        [Parameter(Mandatory)][string]$TargetPath,
+        [Parameter(Mandatory)][string]$ManagedReleasesDirectory
     )
 
+    $junctionAlreadyApproved = $false
     $targetFullPath = [System.IO.Path]::GetFullPath($TargetPath).TrimEnd('\')
+    if (-not (Test-ManagedHerdrReleasePath -TargetPath $targetFullPath -ReleasesDirectory $ManagedReleasesDirectory)) {
+        throw "Refusing to create junction to a path outside the managed Herdr releases directory: $targetFullPath"
+    }
     $entry = Get-FileSystemEntry -Path $LinkPath
     if ($null -ne $entry) {
         if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $entry.LinkType -eq 'Junction') {
@@ -112,11 +130,20 @@ function New-HerdrJunction {
             if ($existingTarget.Equals($targetFullPath, [System.StringComparison]::OrdinalIgnoreCase)) {
                 return
             }
+            if (-not (Test-ManagedHerdrReleasePath -TargetPath $existingTarget -ReleasesDirectory $ManagedReleasesDirectory)) {
+                throw "Refusing to replace junction at $LinkPath because it does not target a managed Herdr release."
+            }
+            if (-not $PSCmdlet.ShouldProcess($LinkPath, "Move junction from $existingTarget to $targetFullPath")) {
+                return
+            }
+            Remove-Item -LiteralPath $LinkPath -Force
+            $junctionAlreadyApproved = $true
+        } else {
+            throw "Refusing to replace existing path at $LinkPath."
         }
-        throw "Refusing to replace existing path at $LinkPath."
     }
 
-    if (-not $PSCmdlet.ShouldProcess($LinkPath, "Create junction to $targetFullPath")) {
+    if (-not $junctionAlreadyApproved -and -not $PSCmdlet.ShouldProcess($LinkPath, "Create junction to $targetFullPath")) {
         return
     }
     New-Item -ItemType Directory -Path (Split-Path -Parent $LinkPath) -Force | Out-Null
@@ -281,7 +308,7 @@ if ($null -ne $releaseEntry -and -not (Test-HerdrPackage -PackageDirectory $rele
 $releaseReady = Test-HerdrPackage -PackageDirectory $releaseDirectory
 if (-not $releaseReady -and $PSCmdlet.ShouldProcess(
         $releaseDirectory,
-        "Install pinned Herdr preview $HerdrVersionIdentity"
+        "Install pinned Herdr release $HerdrVersionIdentity"
     )) {
     $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("herdr-download-" + [guid]::NewGuid().ToString('N'))
     $archivePath = Join-Path $tempDirectory 'herdr-windows-x86_64.zip'
@@ -290,7 +317,7 @@ if (-not $releaseReady -and $PSCmdlet.ShouldProcess(
 
     try {
         New-Item -ItemType Directory -Path $releasesDirectory -Force | Out-Null
-        Write-Output "Downloading pinned Herdr preview build $HerdrBuildId"
+        Write-Output "Downloading pinned Herdr release $HerdrBuildId"
         Invoke-WebRequest -Uri $HerdrArchiveUri -OutFile $archivePath
         $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($archiveHash -cne $HerdrArchiveSha256) {
@@ -310,8 +337,8 @@ if (-not $releaseReady -and $PSCmdlet.ShouldProcess(
 }
 
 if ($releaseReady) {
-    New-HerdrJunction -LinkPath $currentDirectory -TargetPath $releaseDirectory
-    New-HerdrJunction -LinkPath $visibleBinDirectory -TargetPath $releaseDirectory
+    New-HerdrJunction -LinkPath $currentDirectory -TargetPath $releaseDirectory -ManagedReleasesDirectory $releasesDirectory
+    New-HerdrJunction -LinkPath $visibleBinDirectory -TargetPath $releaseDirectory -ManagedReleasesDirectory $releasesDirectory
 }
 
 $herdrReady = (Test-HerdrPackage -PackageDirectory $currentDirectory) -and

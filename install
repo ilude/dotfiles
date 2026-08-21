@@ -399,13 +399,10 @@ fi
 completed_steps+=("just install")
 
 current_step="Pi coding agent install"
-# Pi installs via pnpm on all platforms. pnpm's strict resolver pins transitive
-# pi packages cleanly; bun's looser resolution let pi-agent-core/pi-ai/pi-tui
-# drift to newer patch versions even when pi-coding-agent itself was pinned.
+# Pi installs via pnpm on all platforms. Let pi-coding-agent declare and resolve
+# its runtime package family rather than duplicating those dependencies here.
 # Pi is updated frequently and intentionally uses a shorter release-age window
-# than the global pnpm default. Keep the runtime package family on one version.
-PI_VERSION=0.84.1
-PI_TYPEBOX_VERSION=1.3.7
+# than the global pnpm default.
 PI_PNPM_MINIMUM_RELEASE_AGE=720
 
 # Ensure PNPM_HOME is set before bootstrap so the installer knows where to put
@@ -469,13 +466,9 @@ if command -v pnpm &>/dev/null; then
     fi
 
     pi_pnpm_args=(add -g --allow-build=koffi --allow-build=protobufjs
-        "@earendil-works/pi-coding-agent@${PI_VERSION}"
-        "@earendil-works/pi-agent-core@${PI_VERSION}"
-        "@earendil-works/pi-ai@${PI_VERSION}"
-        "@earendil-works/pi-tui@${PI_VERSION}"
-        "typebox@${PI_TYPEBOX_VERSION}")
+        "@earendil-works/pi-coding-agent@latest")
 
-    echo "Installing/updating pi-coding-agent ${PI_VERSION} via pnpm (minimumReleaseAge=${PI_PNPM_MINIMUM_RELEASE_AGE} minutes)..."
+    echo "Installing/updating pi-coding-agent to latest via pnpm (minimumReleaseAge=${PI_PNPM_MINIMUM_RELEASE_AGE} minutes)..."
     # Transitive AWS SDK packages pin siblings to exact versions, and those
     # siblings are published on independent schedules. A parent can therefore
     # clear the release-age gate while its pinned child has not, leaving the
@@ -483,10 +476,30 @@ if command -v pnpm &>/dev/null; then
     # the wider global window usually selects an older parent whose pins are
     # also past the gate. A still-failing install must not abort the rest of
     # the script; the previously installed pi keeps working.
-    if ! pnpm --config.minimumReleaseAge="${PI_PNPM_MINIMUM_RELEASE_AGE}" "${pi_pnpm_args[@]}"; then
+    pi_install_succeeded=
+    if pnpm --config.minimumReleaseAge="${PI_PNPM_MINIMUM_RELEASE_AGE}" "${pi_pnpm_args[@]}"; then
+        pi_install_succeeded=1
+    else
         echo "Warning: pi install failed at minimumReleaseAge=${PI_PNPM_MINIMUM_RELEASE_AGE}; retrying with the global window..."
-        pnpm "${pi_pnpm_args[@]}" ||
+        if pnpm "${pi_pnpm_args[@]}"; then
+            pi_install_succeeded=1
+        else
             echo "Warning: pi-coding-agent install failed; keeping existing install ($(pi --version 2>/dev/null || echo none))"
+        fi
+    fi
+
+    if [[ -n "$pi_install_succeeded" ]]; then
+        pi_obsolete_globals=()
+        pi_global_list=$(pnpm list -g --depth -1 2>/dev/null || true)
+        for package in @earendil-works/pi-agent-core @earendil-works/pi-ai @earendil-works/pi-tui typebox; do
+            if grep -q "${package}@" <<<"$pi_global_list"; then
+                pi_obsolete_globals+=("$package")
+            fi
+        done
+        if ((${#pi_obsolete_globals[@]} > 0)); then
+            echo "Removing obsolete direct Pi runtime dependencies..."
+            pnpm remove -g "${pi_obsolete_globals[@]}"
+        fi
     fi
 
     pi_markdown_patch="${BASEDIR}/install.d/50-pi-markdown-code-fence-fix.py"
