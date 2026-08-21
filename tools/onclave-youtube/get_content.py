@@ -24,6 +24,11 @@ def _print_summary(data: dict, client: OnclaveClient, content_id: str) -> None:
         print(f"Video ID: {metadata['video_id']}")
     if data.get("summary"):
         print(f"\nSummary: {data['summary']}")
+    structured_summary = data.get("structured_summary")
+    if structured_summary is not None and structured_summary.get("version") == 1:
+        print(f"\nStructured Summary: {structured_summary['overview']}")
+        for point in structured_summary["key_points"]:
+            print(f"- {point}")
     print()
     transcript = fetch_transcript(client, content_id)
     print(transcript if transcript else "No transcript text available.")
