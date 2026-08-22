@@ -46,8 +46,9 @@ Update an existing contract only when the requested change would otherwise make 
 8. Custom tools must truncate large output and tell the caller when full output is saved elsewhere.
 9. Throw from tool `execute()` to mark a failed tool result. Returning `isError: true` in a result object does not signal failure.
 10. Preload and cache external autocomplete data, filter it locally, and run session-transition guards in `session_before_*` rather than render paths.
-11. Use `StringEnum` from `@earendil-works/pi-ai` for string enums.
-12. Strip a leading `@` from custom-tool path arguments and resolve extension-relative helpers from `import.meta.url`.
+11. Register every `session_start` handler with `onSessionStart(pi, import.meta.url, handler)` from `pi/lib/session-start-metrics.ts`, never with direct `pi.on("session_start", ...)`. The wrapper awaits the original handler, preserves thrown errors, derives the extension name from `import.meta.url`, measures monotonic duration, and defers an `extension_session_start` event to the existing metrics JSONL with session id, reason, duration, and status. It measures handler work only; module imports and extension factories remain Pi runtime timings.
+12. Use `StringEnum` from `@earendil-works/pi-ai` for string enums.
+13. Strip a leading `@` from custom-tool path arguments and resolve extension-relative helpers from `import.meta.url`.
 
 ## Shell-Out Rules
 
