@@ -339,7 +339,11 @@ A separate implementation effort is building an always-running Linux LXC as the 
 
 This could provide the first concrete continuity mechanism without requiring a generalized platform job model: Herdr owns terminals and agents, while Linux service supervision and the remote container engine own their respective workloads. It does not yet establish a unified status, cancellation, resource, or reboot-recovery contract across all three owners. Treat it as an active candidate slice whose observed behavior can inform the broader platform, not as an approved universal architecture.
 
-A separate instance is implementing and testing this initial Herdr remote-work spike now. Its resulting implementation will land in this repository and the applicable submodules. The new Onclave-managed remote-agent system must not begin implementation before that spike is complete and tested. Its observed interfaces, disconnect behavior, restart behavior, remote-container boundary, and operational friction are prerequisites for choosing the first-system acceptance gate and refining the integration contract. Do not duplicate or preempt that work in this PRD effort.
+The tracked Herdr remote-work spike landed in `modules/homelab-infra` at commit `e54b612` (`fix(herdr): complete remote host provisioning`). It provides the optional Debian 13 unprivileged, no-nesting LXC; non-root key-only operator access; pinned Herdr and Pi installation; bundled Pi integration; persistent operator home; and the restricted `herdr-onramp` Docker SSH stdio path to the existing rootless Podman socket. The transport private key remains only in the Herdr LXC, and the onramp public-key entry permits only the fixed Docker relay rather than a shell or forwarding.
+
+The focused source contract passes with the repository-pinned `python-hcl2 7.3.1`: 20 tests and 12 subtests passed across Herdr inventory, OpenTofu, runtime, and onramp relay tests. An unsupported local `python-hcl2 8.1.2` returned quoted HCL string literals and caused one false local failure; it is not the repository validation environment.
+
+The spike is not yet a live behavioral proof. Its execution record states that it did not run BWS mutation, OpenTofu plan or apply, Ansible, live SSH, Docker or Podman transport, Proxmox, LXC restart, workstation disconnect, Herdr reconnect, or Pi session restoration checks. Those remain the direct acceptance boundary for the persistent remote-work baseline. Do not claim that disconnect or restoration behavior is proven from source tests.
 
 ## Onclave orchestration role
 
