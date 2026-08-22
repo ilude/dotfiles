@@ -371,6 +371,8 @@ From the product perspective, Onclave provisions and configures managed infrastr
 
 Onclave owns orchestration intent, operation identity, policy transitions, progress, and outcome. It does not reimplement OpenTofu state reconciliation, Ansible convergence, or provider APIs. A later one-time migration of an existing stateful service uses that service's existing safety and rollback mechanisms; first-time provisioning has no backup prerequisite.
 
+When configuration selection, OpenTofu planning or apply, Ansible convergence, registration, or readiness verification fails, Onclave stops at that stage. It records the stage, exit result, bounded error summary, complete log or plan artifact reference, known resource references, adapter reachability, and whether mutation occurred or remains uncertain. It exposes explicit next operations such as inspect, re-plan, retry configuration, or delete. It does not automatically retry, roll back, continue downstream, or delete the partial environment.
+
 The source-code ownership boundary remains partly unresolved. The likely shape is that homelab-infra remains the provider- and site-specific execution subsystem managed through Onclave contracts, while Onclave owns the provider-neutral orchestration and private configuration API.
 
 ### Infrastructure coverage and sequencing
@@ -435,7 +437,11 @@ A specialized batch-job environment is not currently a separate first-class clas
 
 Central preservation of full Pi sessions and logs is not an initial platform requirement. Session and log content may remain local to the originating environment. If a working platform later demonstrates a need for central retention, deliberate export, backup, or replication can be designed from observed workflows and sensitivity constraints.
 
-The first version therefore does not require a central session catalog, automatic session archives, continuous replication, or a deletion-time retention policy. Deleting an ephemeral environment may also delete its local session history unless the user deliberately preserves it through an available general file or environment backup mechanism.
+The first version therefore does not require a central session catalog, automatic session archives, continuous replication, or a deletion-time retention policy. Deleting an ephemeral environment may also delete its local session history unless the user deliberately preserves it through an available general file mechanism.
+
+### Filesystem checkpoints excluded
+
+The initial platform has no filesystem checkpoint, checkpoint catalog, rollback, environment cloning, or automatic snapshot requirement. Persistent environments rely on their durable filesystem and Git. Risky or disposable work uses an ephemeral environment. Existing Proxmox snapshot tools may remain available to an operator, but they are not an Onclave product capability.
 
 ### Normal control boundary
 
@@ -448,11 +454,21 @@ Normal operation is divided by responsibility:
 
 Onclave does not need to replace ordinary shell and development tools, and routine environment lifecycle must not require the user to know internal hostnames, infrastructure commands, or provider topology.
 
-### Initial cleanup policy
+### Initial capacity and resource behavior
+
+The platform starts requested environments without admission control based on aggregate CPU or memory availability. Proxmox and Linux handle resource contention normally. The initial system does not reserve capacity, reject requests based on managed allocations, queue work for later placement, or implement priority and overcommit policy.
+
+Capacity contention is not expected to be a practical constraint for a long time. Scheduling and admission control are deferred until observed demand justifies them.
+
+Onclave initially retains only the lifecycle state needed to perform and report its own operations, such as whether a managed environment exists, whether its adapter is reachable, and whether provisioning or deletion completed. It does not collect or retain CPU, memory, disk, process, container, or historical utilization telemetry. Proxmox, Herdr, native container tools, and SSH provide diagnostic resource visibility when needed. Add Onclave resource observability only after a working system demonstrates a concrete blind spot.
+
+### Initial cleanup and deletion policy
 
 All environments require explicit deletion in the initial system. Persistent project, ephemeral project, and generic blank environments do not expire automatically. Ephemeral and blank describe intended use and disposability, not a time-triggered lifecycle.
 
-Automated expiry, inactivity cleanup, retention warnings, and class-specific deletion policy are deferred until a working system provides real usage evidence. Explicit deletion may remove environment-local sessions, logs, uncommitted changes, and artifacts; the eventual control experience must make the target and consequence visible, but no automatic preservation system is required.
+Automated expiry, inactivity cleanup, retention warnings, and class-specific deletion policy are deferred until a working system provides real usage evidence.
+
+An explicit deletion request against a stable environment identity is final. Onclave does not inspect for active agents, shell processes, services, containers, uncommitted changes, sessions, logs, or artifacts; it does not archive state, retain disks, or require a second platform confirmation. It removes the environment's publication routes and DNS intent, network attachments, runtime resources, and infrastructure resources. Known partial cleanup failures must be reported with the remaining resource references.
 
 ### Source and result handoff
 
@@ -460,9 +476,41 @@ Git remotes are the durable source and committed-change exchange path. Project e
 
 The platform must also support explicit retrieval of uncommitted changes, selected files, and artifact bundles from a remote environment. Retrieval must not silently overwrite unrelated local changes. Automatic bidirectional filesystem synchronization is not required. PR-first validation, branch policy, and automated merge behavior remain outside this PRD.
 
-### Initial operating-system scope
+### Project-owned environment setup
+
+A project may declare one optional repository-owned, idempotent setup procedure. The platform runs it after checkout when preparing a fresh project environment and exposes its output, exit result, and failure. Persistent project environments normally use it during initial preparation; ephemeral project environments use it for each fresh baseline; generic blank environments have no project setup procedure.
+
+The requirement defines one preparation capability without prescribing a filename, shell, image format, or client command. Direct compatibility with devcontainers, Nix, mise, Compose, or multiple competing setup standards is not initially required. Prepared images and snapshots may be added later if measured setup cost justifies them.
+
+The same repository-owned environment contract may describe publishable services, including a logical service name, protocol, backend port, and readiness information. The setup procedure may start those services, but it does not directly own shared DNS names, Caddy configuration, or certificate credentials.
+
+### Onclave-managed service publication
+
+Service publication is a platform capability controlled by Onclave. For a declared service, Onclave assigns a collision-free endpoint, authorizes its exposure policy, records the owning project and environment, manages DNS and route intent, and removes the publication when explicitly requested or when the owning environment is deleted.
+
+Caddy is the publication data plane. It obtains and renews Let's Encrypt certificates, terminates TLS, and proxies requests to the service backend described by the environment contract. Onclave manages desired publication and lifecycle; it does not replace Caddy's certificate automation or handle certificate private keys in ordinary orchestration.
+
+Technitium remains the homelab DNS authority. Joyride is a CoreDNS distribution with additional Docker- and Traefik-oriented discovery behavior. CoreDNS may serve Onclave-managed records through an appropriate supported data source, automatically reloaded zone source, or a future narrow integration. Joyride is not the publication control plane and does not itself provide proxying or TLS. The final division between direct Technitium records, a CoreDNS-backed dynamic zone, and Caddy route discovery remains an implementation detail subject to the selected exposure policy.
+
+Published services are initially private-network only. Caddy provides TLS and proxying, but the initial platform does not provide public sharing or an additional authentication gateway. Authentik or another Caddy-compatible identity layer may be evaluated later if private network identity and application authentication are insufficient.
+
+### Personal and work tailnet separation
+
+The operator must be able to reach Onclave, Herdr, and private published services while traveling through the operator's personal tailnet. Selected work projects may separately require their remote environments to reach resources available only through a work tailnet.
+
+Personal-tailnet management access and work-tailnet project access are distinct trust domains. The platform must not route or bridge traffic between them or make work-tailnet resources reachable from the personal tailnet. Work-tailnet membership or connectivity is granted only to the selected project or environment and is absent from personal and generic blank environments by default.
+
+A repository-owned setup declaration may request the project's network capability, but it must not contain or receive reusable tailnet enrollment authority. BWS holds the applicable project-specific credential or identity binding, and Onclave authorizes and attaches the capability.
+
+The initial work-tailnet design uses one shared controlled connector. Selected work project environments receive work-tailnet access through that connector; personal and generic blank environments do not. The connector must not route or expose work-tailnet resources to the personal tailnet. Onclave owns attachment policy and revocation, while BWS holds the connector's tailnet credential or identity binding.
+
+This choice accepts that the work tailnet sees the connector's identity rather than a distinct identity for every environment. If shared-connector policy cannot provide the required project isolation, auditability, protocol support, or revocation behavior, evaluate direct scoped work-tailnet membership per environment. Client-side multi-tailnet tools such as tailmix remain a separate candidate for the traveling Windows workstation.
+
+### Initial operating-system and accelerator scope
 
 The platform is Linux-only. Remote Windows environments, Windows-native workloads, and a future Windows-worker compatibility constraint are outside this PRD. The platform may define its environment, filesystem, shell, process, service, and container behavior using Linux semantics.
+
+The initial platform is CPU-only. It does not discover, place, pass through, share, or manage GPUs. Direct GPU access or a shared GPU-backed service requires a later named workload rather than speculative initial support.
 
 ### Initial acceptance workload
 
@@ -476,13 +524,17 @@ A parent agent may need to assign different leaves to different repositories or 
 
 Tool-level path checks can prevent common accidental escapes and runaway recursive searches, but they do not securely contain arbitrary programs launched through a shell. Strong containment would require an operating-system isolation boundary such as a container, restricted mount namespace, or microVM. This is a future isolation and concurrent-workload scenario, not a decision that the initial platform must use microVMs or implement a Pi `workspaceRoot` override.
 
-### Trust defaults by environment class
+### Trust defaults and initial containment
 
 Trust follows the environment class:
 
 - A persistent project environment is trusted for that project and may receive its project-specific credentials and durable state.
 - An ephemeral project environment is bounded to that project and receives only explicitly assigned credentials and resources.
 - A generic blank environment is untrusted and disposable by default and receives no credentials unless deliberately granted.
+
+Generic blank environments and applicable ephemeral project environments must contain unknown repositories, malicious package scripts, and arbitrary user-space programs. Code running as the assigned user must not be able to read host or sibling-environment files, obtain ungranted personal or work credentials, control sibling environments, reach Proxmox or Onclave administrative interfaces, or retain authority after deletion.
+
+The initial threat model does not promise resistance to new host-kernel or hypervisor escapes, hardware attacks, or sophisticated hostile-code analysis. Actively hostile sandboxing with restricted egress, syscall and device policy, and a stronger dedicated VM or microVM profile remains an explicit future exploration.
 
 ### Reduced ambient authority
 
@@ -516,95 +568,46 @@ Amp Orbs and exe.dev demonstrate two current product approaches:
 
 GitHub repository activity and stars were checked only as rough adoption signals, not security validation. Vault, Infisical, SOPS, OpenBao, External Secrets Operator, SPIRE, and setec were active on 2026-08-21. The relevant design conclusion is to prefer target-issued temporary authority, then brokered requests, then narrowly scoped injected secrets; broad static credentials should not be copied into agent environments.
 
-## Decisions intentionally left open
+## Remaining decision frontier
 
-- Named machine, project workspace, thread, or job as the primary object.
-- One persistent VM per server, one VM per project, or dynamically created VMs.
-- Direct SSH control versus a small API or CLI service.
-- Whether Onclave participates in control, notification, or neither.
-- Linux-only first version versus Windows worker support.
-- Direct process, container, LXC, KVM, or microVM execution profiles.
-- How repositories enter and leave the environment.
-- Whether checkpoints are required beyond normal backups and Git.
-- Whether service URLs need automatic TLS and wake-on-request.
-- Whether idle workspaces shut down automatically.
-- Whether project setup follows `.agents/setup`, devcontainer metadata, a repository script, an image, or several supported options.
-- How secrets are provided to work without placing broad credentials in images or snapshots.
-- Whether a web UI provides enough value beyond CLI, SSH, and existing Proxmox visibility.
+The independent functional checklist is settled. Do not add speculative platform capabilities merely to make this list longer.
 
-## `/grill-me` question set
+The remaining frontier depends on the separate tested Herdr remote-work spike:
 
-### User experience
+1. Inspect the landed implementation and direct test evidence without restarting discovery.
+2. Record the actual Herdr, Pi restoration, SSH, and remote-container contracts and limitations.
+3. Select the first-system acceptance gate using those observed capabilities.
+4. Choose runtime and placement mechanisms that satisfy the already settled environment classes and user-space containment requirement.
+5. Present one consolidated requirements summary for user confirmation.
+6. Draft the PRD only after that confirmation.
 
-- What should one command accomplish from a clean workstation?
-- Is the primary object a machine, project, agent thread, or job?
-- Which operations must work from Pi, and which can remain ordinary CLI or SSH operations?
-- Is interactive shell access central, or mainly a recovery and inspection path?
-- What should happen when the local workstation sleeps or loses network access?
-- What is the acceptable amount of repository setup per project?
+Implementation details intentionally remain open until then:
 
-### Persistence
+- exact VM, LXC, container, or microVM assignment by environment class;
+- exact API and CLI syntax;
+- the repository setup filename and manifest format;
+- CoreDNS, Technitium, and Caddy integration mechanics;
+- BWS secret materialization and credential-proxy mechanisms;
+- shared work-tailnet connector implementation;
+- physical source-code split between provider-neutral Onclave contracts and the homelab-infra execution subsystem.
 
-- Which state must survive stop, reboot, host maintenance, and deletion?
-- Are filesystem checkpoints needed, or are Git plus ordinary VM backups sufficient?
-- Should background processes survive a workspace pause, or only files?
-- How long should inactive workspaces remain?
+## Explicit initial non-goals
 
-### Execution
-
-- What are the first three real CPU-heavy workloads?
-- How many simultaneous workloads are expected?
-- Must one job saturate the server, or should capacity be shared?
-- Is GPU access relevant?
-- Are Windows-native workloads required in the first version?
-
-### Isolation and trust
-
-- Are repositories trusted, unknown, or actively hostile?
-- May jobs receive source-control or model-provider credentials?
-- Is isolation between two jobs important for a single user?
-- Which tasks justify a disposable VM or microVM instead of a persistent workspace?
-- Is outbound network control a real requirement or a future hardening option?
-
-### Operations
-
-- Is manually creating a project VM acceptable, or must creation be automatic?
-- What failure should be recoverable without opening Proxmox?
-- What is the minimum acceptable status and log interface?
-- Is patching one or two persistent worker VMs simpler than maintaining prepared environment images?
-- Which operations are frequent enough to deserve automation?
-
-### Integration
-
-- What concrete benefit would Onclave provide over SSH plus a process supervisor?
-- Should remote work be represented inside Pi, or should Pi invoke an independent CLI?
-- Is Forgejo the preferred source/result handoff, or is direct synchronization needed?
-- Are artifact uploads common enough to justify object-storage integration?
-- Which Orb-like feature would be painful to add later if omitted initially?
-
-### Scope control
-
-- What does an exe.dev-like MVP include?
-- Which Amp Orb features are valuable enough to include in that MVP?
-- Which features should be explicitly excluded until repeated use demonstrates demand?
-- What measurements decide whether the first slice should expand or be discarded?
-
-## PRD preparation checklist
-
-Before drafting the PRD, settle or bound:
-
-1. Primary user workflow and user-facing object.
-2. First real workload and completion evidence.
-3. Persistence expectation.
-4. Trust and isolation level.
-5. Linux and Windows scope.
-6. Minimum remote-control surface.
-7. Repository and artifact flow.
-8. Idle and cleanup behavior.
-9. Role, if any, for Onclave.
-10. Explicit non-goals.
-11. Operational budget: services, images, databases, and moving pieces the user is willing to maintain.
-12. Experiment exit criteria.
+- multi-user operation, high availability, consensus, or automatic failover;
+- Windows workers or Windows-native remote workloads;
+- GPU discovery, placement, passthrough, or shared GPU services;
+- capacity admission control, scheduling, queues, reservations, or priority;
+- automatic environment expiry, inactivity cleanup, or retention management;
+- Onclave CPU, memory, disk, process, container, or historical telemetry;
+- filesystem checkpoints, environment cloning, or automatic snapshots;
+- an Onclave backup or generalized migration-recovery subsystem;
+- centralized Pi session or log archival and replication;
+- public service sharing or an initial Authentik-style publication gateway;
+- full process-memory suspension and restoration;
+- automatic infrastructure retries, rollback, continuation, or failed-environment deletion;
+- an actively hostile sandbox profile resistant to new kernel or hypervisor escapes;
+- PR-first CI validation, repair, merge policy, or branch protection automation;
+- a required web UI before observed use demonstrates that Onclave, Herdr, and SSH are insufficient.
 
 ## Reference classification
 
