@@ -169,7 +169,6 @@ describe("Bedrock Claude orchestration policy", () => {
 
 				for (const toolName of [
 					"task",
-					"ask_user",
 					"plan_archive",
 					"subagent_status",
 					"subagent_control",
@@ -184,7 +183,7 @@ describe("Bedrock Claude orchestration policy", () => {
 						},
 						ctx,
 					),
-				).toBeUndefined();
+				).toMatchObject({ block: true });
 			}
 		}
 

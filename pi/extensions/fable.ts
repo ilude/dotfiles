@@ -33,15 +33,13 @@ const SUBSCRIPTION_ROOT_INSTRUCTION = [
 ].join(" ");
 const SUBSCRIPTION_VISIBILITY_KEY = "bedrock-claude-orchestrator";
 export const FABLE_CONTROL_TOOL_NAMES = [
-	"subagent",
+	"subagent_read",
+	"subagent_write",
+	"subagent_coordinate",
 	"subagent_status",
 	"subagent_control",
 	"write",
-	"subagent_chain",
-	"subagent_fanout",
-	"subagent_workflow",
 	"task",
-	"ask_user",
 	"goal_progress",
 	"plan_progress",
 	"plan_archive",
@@ -62,9 +60,11 @@ type DelegationRequest = {
 	output?: unknown;
 	task?: unknown;
 	scope?: unknown;
+	items?: unknown;
 };
 
 type SubagentInput = DelegationRequest & {
+	items?: unknown;
 	tasks?: unknown;
 	chain?: unknown;
 	steps?: unknown;
@@ -101,6 +101,9 @@ function requestedAgentNames(input: SubagentInput): string[] {
 	const chainAgents = agentNamesFrom(input.chain);
 	if (chainAgents.length > 0) return chainAgents;
 
+	const modernAgents = agentNamesFrom(input.items);
+	if (modernAgents.length > 0) return modernAgents;
+
 	const taskAgents = agentNamesFrom(input.tasks);
 	if (taskAgents.length > 0) return taskAgents;
 
@@ -108,7 +111,7 @@ function requestedAgentNames(input: SubagentInput): string[] {
 }
 
 function delegationRequests(input: SubagentInput): DelegationRequest[] {
-	const nested = [input.tasks, input.chain, input.steps].flatMap((value) =>
+	const nested = [input.items, input.tasks, input.chain, input.steps].flatMap((value) =>
 		Array.isArray(value)
 			? value.filter(
 					(item): item is DelegationRequest =>
@@ -358,6 +361,12 @@ export default function fableCommand(pi: ExtensionAPI): void {
 				return {
 					block: true,
 					reason: `${SUBSCRIPTION_BOUNDARY}: ${event.toolName} is not a permitted root control tool. Delegate the work to an openai-codex leaf.`,
+				};
+			}
+			if (event.toolName === "subagent_coordinate") {
+				return {
+					block: true,
+					reason: `${SUBSCRIPTION_BOUNDARY}: the selected Claude model is the root orchestrator and cannot request a coordinator.`,
 				};
 			}
 			if (event.toolName.startsWith("subagent")) {
