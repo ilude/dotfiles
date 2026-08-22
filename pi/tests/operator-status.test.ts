@@ -338,20 +338,8 @@ describe("formatPiStatusLine", () => {
 	});
 });
 
-describe("formatElevatedStatus", () => {
-	it("returns null when no approvals", async () => {
-		const mod = await import("../extensions/operator-status.ts");
-		expect(mod.formatElevatedStatus(0)).toBeNull();
-	});
-
-	it("formats count > 0", async () => {
-		const mod = await import("../extensions/operator-status.ts");
-		expect(mod.formatElevatedStatus(3)).toBe("elevated (3)");
-	});
-});
-
 describe("session_start hook", () => {
-	it("sets the pi version slot and clears task/elevated when registries are empty", async () => {
+	it("sets the pi version slot and clears task when registries are empty", async () => {
 		const pi = createMockPi();
 		const mod = await import("../extensions/operator-status.ts");
 		mod.default(pi as any);
@@ -368,9 +356,7 @@ describe("session_start hook", () => {
 		expect(value).toMatch(/^π v\d+\.\d+\.\d+/);
 
 		const taskCall = calls.find(([k]: string[]) => k === "task");
-		const elevatedCall = calls.find(([k]: string[]) => k === "elevated");
 		expect(taskCall?.[1]).toBe(""); // empty -- not displayed
-		expect(elevatedCall?.[1]).toBe("");
 	});
 
 	it("populates the task slot only for current-session running tasks", async () => {

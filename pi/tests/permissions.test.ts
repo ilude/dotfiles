@@ -34,11 +34,10 @@ describe("parsePermissionsArgs", () => {
 		expect(mod.parsePermissionsArgs("")).toEqual({ verb: "summary" });
 	});
 
-	it("recognizes allows / denies / reset", async () => {
+	it("recognizes allows / denies", async () => {
 		const mod = await import("../extensions/permissions.ts");
 		expect(mod.parsePermissionsArgs("allows")).toEqual({ verb: "allows" });
 		expect(mod.parsePermissionsArgs("denies")).toEqual({ verb: "denies" });
-		expect(mod.parsePermissionsArgs("reset")).toEqual({ verb: "reset" });
 	});
 
 	it("recognizes retry with id", async () => {
@@ -61,14 +60,12 @@ describe("/permissions summary", () => {
 		const ctx = createMockCtx();
 		await cmd.handler("", ctx);
 		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-		expect(text).toContain("session approvals (0)");
 		expect(text).toContain("recent allows (0)");
 		expect(text).toContain("recent denies (0)");
 	});
 
-	it("includes session approvals and recent denies", async () => {
-		const { addSessionApproval, recordDecision } = await import("../lib/permission-registry.ts");
-		addSessionApproval({ pattern: "Bash(git *)", reason: "session trust" });
+	it("includes recent denies", async () => {
+		const { recordDecision } = await import("../lib/permission-registry.ts");
 		recordDecision({
 			action: "Bash:rm -rf /",
 			outcome: "deny",
@@ -81,7 +78,6 @@ describe("/permissions summary", () => {
 		const ctx = createMockCtx();
 		await cmd.handler("", ctx);
 		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-		expect(text).toContain("Bash(git *)");
 		expect(text).toContain("[deny/rule]");
 		expect(text).toContain("Bash:rm -rf /");
 	});
@@ -120,25 +116,6 @@ describe("/permissions allows / denies", () => {
 		await cmd.handler("denies", ctx);
 		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
 		expect(text).toContain("No recent deny decisions");
-	});
-});
-
-describe("/permissions reset", () => {
-	it("clears session approvals", async () => {
-		const { addSessionApproval, listSessionApprovals } = await import(
-			"../lib/permission-registry.ts"
-		);
-		addSessionApproval({ pattern: "Bash(git *)" });
-		expect(listSessionApprovals().length).toBe(1);
-
-		const { cmd } = await loadPermissions();
-		const ctx = createMockCtx();
-		await cmd.handler("reset", ctx);
-
-		expect(listSessionApprovals()).toEqual([]);
-		expect((ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(
-			"Session approvals cleared",
-		);
 	});
 });
 

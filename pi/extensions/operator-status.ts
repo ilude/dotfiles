@@ -8,7 +8,6 @@ import { onSessionStart } from "../lib/session-start-metrics.js";
  * Status bar slots:
  *   - "pi" -- always shown, format: `pi vX.Y.Z`
  *   - "task" -- shown only when non-terminal tasks exist, e.g. `task 3 (1 blocked)`
- *   - "elevated" -- shown only when session approvals exist, e.g. `elevated (2)`
  *
  * Healthy default keeps the bar quiet (no `OK` token, no zero counters). The
  * other slots (model/provider/codex/effort) are owned by other extensions;
@@ -26,7 +25,6 @@ import type {
 	ReadonlyFooterDataProvider,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { listSessionApprovals } from "../lib/permission-registry.js";
 import {
 	createReloadStatusState,
 	needsPiReload,
@@ -44,7 +42,6 @@ const FOOTER_STATUS_PRIORITY = new Map([
 	["onclave-v2", 5],
 	["subagents", 10],
 	["task", 20],
-	["elevated", 30],
 	["tps", 40],
 	["bedrock", 100],
 ]);
@@ -482,11 +479,6 @@ export function formatTaskStatus(counts: TaskCounts): string | null {
 	return parts.join(" ");
 }
 
-export function formatElevatedStatus(approvalCount: number): string | null {
-	if (approvalCount === 0) return null;
-	return `elevated (${approvalCount})`;
-}
-
 function refreshOperatorStatus(ctx: {
 	ui?: { setStatus?: (key: string, value: string) => void };
 }): void {
@@ -497,13 +489,6 @@ function refreshOperatorStatus(ctx: {
 		);
 		const taskLabel = formatTaskStatus(counts);
 		ctx.ui.setStatus("task", taskLabel ?? "");
-	} catch {
-		// ignore
-	}
-	try {
-		const approvals = listSessionApprovals();
-		const elevatedLabel = formatElevatedStatus(approvals.length);
-		ctx.ui.setStatus("elevated", elevatedLabel ?? "");
 	} catch {
 		// ignore
 	}
@@ -535,7 +520,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_result", async (_event, ctx) => {
-		// Refresh task/elevated counts after each tool result. Cheap because
+		// Refresh task counts after each tool result. Cheap because
 		// listTasks just enumerates a single directory and registry I/O is
 		// already non-blocking from the producer side.
 		refreshOperatorStatus(ctx);

@@ -3,15 +3,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-	addSessionApproval,
 	getDecision,
 	listRecentDecisions,
-	listSessionApprovals,
 	PermissionRegistryError,
-	purgeSessionApprovalsFile,
 	recordDecision,
-	removeSessionApproval,
-	resetSessionApprovals,
 } from "../lib/permission-registry.js";
 
 let tmpRoot: string;
@@ -140,56 +135,10 @@ describe("getDecision", () => {
 	});
 });
 
-describe("session approvals", () => {
-	it("starts empty and lists what was added", () => {
-		expect(listSessionApprovals()).toEqual([]);
-		const a = addSessionApproval({ pattern: "Bash(git *)", reason: "session trust" });
-		expect(a.pattern).toBe("Bash(git *)");
-		expect(listSessionApprovals().length).toBe(1);
-	});
-
-	it("dedupes by pattern -- re-adding refreshes grantedAt", async () => {
-		const first = addSessionApproval({ pattern: "Bash(npm *)" });
-		await new Promise((r) => setTimeout(r, 5));
-		const second = addSessionApproval({ pattern: "Bash(npm *)" });
-		expect(listSessionApprovals().length).toBe(1);
-		expect(second.grantedAt > first.grantedAt).toBe(true);
-	});
-
-	it("removes by pattern", () => {
-		addSessionApproval({ pattern: "Read(*.ts)" });
-		expect(removeSessionApproval("Read(*.ts)")).toBe(true);
-		expect(removeSessionApproval("Read(*.ts)")).toBe(false);
-		expect(listSessionApprovals()).toEqual([]);
-	});
-
-	it("resets all approvals", () => {
-		addSessionApproval({ pattern: "Bash(git *)" });
-		addSessionApproval({ pattern: "Read(**/*.md)" });
-		resetSessionApprovals();
-		expect(listSessionApprovals()).toEqual([]);
-	});
-
-	it("rejects an empty pattern", () => {
-		expect(() => addSessionApproval({ pattern: "" })).toThrow(PermissionRegistryError);
-	});
-
-	it("purgeSessionApprovalsFile removes the on-disk file", () => {
-		addSessionApproval({ pattern: "Bash(git *)" });
-		const file = path.join(tmpRoot, "permissions", "session-approvals.json");
-		expect(fs.existsSync(file)).toBe(true);
-		purgeSessionApprovalsFile();
-		expect(fs.existsSync(file)).toBe(false);
-	});
-});
-
 describe("durable storage", () => {
 	it("does not depend on transcript parsing -- writes only to permissions/", () => {
 		recordDecision({ action: "Bash:ls", outcome: "allow", provenance: "rule" });
-		addSessionApproval({ pattern: "Bash(git *)" });
 		const decisionsFile = path.join(tmpRoot, "permissions", "decisions.jsonl");
-		const sessionFile = path.join(tmpRoot, "permissions", "session-approvals.json");
 		expect(fs.existsSync(decisionsFile)).toBe(true);
-		expect(fs.existsSync(sessionFile)).toBe(true);
 	});
 });

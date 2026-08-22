@@ -8,7 +8,6 @@ import {
 	getDecisionsLogPath,
 	getOperatorStateDir,
 	getPermissionsDir,
-	getSessionApprovalsPath,
 	getTasksDir,
 	isAllowedTransition,
 	TASK_STATES,
@@ -50,9 +49,6 @@ describe("path helpers", () => {
 		expect(getPermissionsDir()).toBe(path.join(tmpRoot, "permissions"));
 		expect(getDecisionsLogPath()).toBe(
 			path.join(tmpRoot, "permissions", "decisions.jsonl"),
-		);
-		expect(getSessionApprovalsPath()).toBe(
-			path.join(tmpRoot, "permissions", "session-approvals.json"),
 		);
 	});
 });

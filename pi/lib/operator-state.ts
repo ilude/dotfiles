@@ -88,10 +88,6 @@ export function getDecisionsLogPath(): string {
 	return path.join(getPermissionsDir(), "decisions.jsonl");
 }
 
-export function getSessionApprovalsPath(): string {
-	return path.join(getPermissionsDir(), "session-approvals.json");
-}
-
 /**
  * Idempotent mkdir. Safe to call from concurrent extensions on the same path.
  */

@@ -2,14 +2,13 @@
  * /permissions Operator Surface
  *
  * Reads the durable permission registry (pi/lib/permission-registry.ts) and
- * exposes a compact summary of session approvals plus recent allow/deny
- * decisions. Owned by .specs/pi-operator-layer-mvp/plan.md (T5).
+ * exposes a compact summary of recent allow/deny decisions. Owned by
+ * .specs/pi-operator-layer-mvp/plan.md (T5).
  *
  * Commands:
- *   /permissions              -- summary: session approvals + recent decisions
+ *   /permissions              -- summary: recent decisions
  *   /permissions allows       -- recent allow decisions only
  *   /permissions denies       -- recent deny decisions only
- *   /permissions reset        -- clear all session approvals
  *   /permissions retry <id>   -- replay a previously denied action when a
  *                                replayPayload was captured. Re-records the
  *                                replay attempt as a new decision so audit
@@ -21,11 +20,8 @@ import {
 	type DecisionOutcome,
 	getDecision,
 	listRecentDecisions,
-	listSessionApprovals,
 	type PermissionDecision,
 	recordDecision,
-	resetSessionApprovals,
-	type SessionApproval,
 } from "../lib/permission-registry.js";
 
 const RECENT_LIMIT = 20;
@@ -51,11 +47,6 @@ function truncate(text: string | undefined, max: number): string {
 	return text.length > max ? `${text.slice(0, max - 3)}...` : text;
 }
 
-export function formatSessionApprovalRow(a: SessionApproval): string {
-	const reason = a.reason ? ` -- ${truncate(a.reason, 60)}` : "";
-	return `  ${a.pattern}${reason}  -- ${relativeTime(a.grantedAt)}`;
-}
-
 export function formatDecisionRow(d: PermissionDecision): string {
 	const action = truncate(d.action, ACTION_TRUNCATE);
 	const summary = d.summary ? ` -- ${truncate(d.summary, SUMMARY_TRUNCATE)}` : "";
@@ -64,16 +55,9 @@ export function formatDecisionRow(d: PermissionDecision): string {
 }
 
 export function formatPermissionsSummary(opts: {
-	approvals: SessionApproval[];
 	recent: PermissionDecision[];
 }): string {
 	const lines: string[] = ["permissions:"];
-	lines.push(`  session approvals (${opts.approvals.length})`);
-	if (opts.approvals.length === 0) {
-		lines.push("    (none -- all rules come from damage-control-rules.yaml)");
-	} else {
-		for (const a of opts.approvals) lines.push(formatSessionApprovalRow(a));
-	}
 
 	const allows = opts.recent.filter((d) => d.outcome === "allow");
 	const denies = opts.recent.filter((d) => d.outcome === "deny");
@@ -92,7 +76,7 @@ export function formatPermissionsSummary(opts: {
 }
 
 interface ParsedSubcommand {
-	verb: "summary" | "allows" | "denies" | "reset" | "retry";
+	verb: "summary" | "allows" | "denies" | "retry";
 	idArg?: string;
 }
 
@@ -103,7 +87,6 @@ export function parsePermissionsArgs(args: string): ParsedSubcommand {
 	const head = parts[0].toLowerCase();
 	if (head === "allows" || head === "allow") return { verb: "allows" };
 	if (head === "denies" || head === "deny") return { verb: "denies" };
-	if (head === "reset") return { verb: "reset" };
 	if (head === "retry") return { verb: "retry", idArg: parts[1] };
 	return { verb: "summary" };
 }
@@ -118,24 +101,11 @@ function filterDecisionsByOutcome(
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("permissions", {
 		description:
-			"Show permission state -- session approvals + recent decisions. " +
+			"Show permission state -- recent decisions. " +
 			"Usage: /permissions | /permissions allows | /permissions denies | " +
-			"/permissions reset | /permissions retry <id>.",
+			"/permissions retry <id>.",
 		handler: async (args, ctx) => {
 			const parsed = parsePermissionsArgs(args);
-
-			if (parsed.verb === "reset") {
-				try {
-					resetSessionApprovals();
-					ctx.ui.notify("Session approvals cleared.", "info");
-				} catch (err) {
-					ctx.ui.notify(
-						`Reset failed: ${err instanceof Error ? err.message : String(err)}`,
-						"error",
-					);
-				}
-				return;
-			}
 
 			if (parsed.verb === "retry") {
 				if (!parsed.idArg) {
@@ -192,10 +162,8 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			let approvals: SessionApproval[];
 			let recent: PermissionDecision[];
 			try {
-				approvals = listSessionApprovals();
 				recent = listRecentDecisions({ limit: RECENT_LIMIT });
 			} catch (err) {
 				ctx.ui.notify(
@@ -225,7 +193,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			ctx.ui.notify(formatPermissionsSummary({ approvals, recent }), "info");
+			ctx.ui.notify(formatPermissionsSummary({ recent }), "info");
 		},
 	});
 }

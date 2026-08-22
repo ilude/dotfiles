@@ -1,16 +1,9 @@
 /**
- * Permission registry -- decision log + session approvals for the operator
- * layer. Owned by .specs/pi-operator-layer-mvp/plan.md (T1).
+ * Permission registry -- decision log for the operator layer. Owned by
+ * .specs/pi-operator-layer-mvp/plan.md (T1).
  *
- * Two storage surfaces:
- *
- *   1. decisions.jsonl -- append-only newline-delimited JSON. Each line is a
- *      PermissionDecision. Reads tail the file. This is the recent-history
- *      surface for /permissions and the audit trail.
- *
- *   2. session-approvals.json -- JSON object holding the current set of
- *      session-scoped approvals. Cleared explicitly by reset; consumers
- *      decide when (e.g., on session_shutdown).
+ * decisions.jsonl is an append-only newline-delimited JSON audit trail. Reads
+ * tail the file for the recent-history surface used by /permissions.
  *
  * Replayable denials are referenced by id; replay payload is stored in the
  * decision record itself when the producer chose to capture it. There is no
@@ -24,7 +17,6 @@ import {
 	ensureDirectory,
 	getDecisionsLogPath,
 	getPermissionsDir,
-	getSessionApprovalsPath,
 } from "./operator-state.ts";
 
 export type DecisionOutcome = "allow" | "deny";
@@ -59,23 +51,10 @@ export interface RecordDecisionInput {
 	metadata?: Record<string, unknown>;
 }
 
-export interface SessionApproval {
-	schemaVersion: 1;
-	pattern: string;
-	grantedAt: string;
-	reason?: string;
-	metadata?: Record<string, unknown>;
-}
-
 export interface ListDecisionsOptions {
 	limit?: number;
 	outcome?: DecisionOutcome;
 	provenance?: DecisionProvenance;
-}
-
-interface SessionApprovalFile {
-	schemaVersion: 1;
-	approvals: SessionApproval[];
 }
 
 export class PermissionRegistryError extends Error {
@@ -165,82 +144,4 @@ export function getDecision(id: string): PermissionDecision | null {
 		}
 	}
 	return null;
-}
-
-// ---------------------------------------------------------------------------
-// Session approvals
-// ---------------------------------------------------------------------------
-
-function readSessionFile(): SessionApprovalFile {
-	const file = getSessionApprovalsPath();
-	if (!fs.existsSync(file)) return { schemaVersion: 1, approvals: [] };
-	try {
-		const parsed = JSON.parse(fs.readFileSync(file, "utf-8")) as SessionApprovalFile;
-		if (parsed?.schemaVersion === 1 && Array.isArray(parsed.approvals)) return parsed;
-	} catch {
-		// Fall through to empty state -- a corrupted file should not block writes.
-	}
-	return { schemaVersion: 1, approvals: [] };
-}
-
-function writeSessionFile(state: SessionApprovalFile): void {
-	ensureDirectory(getPermissionsDir());
-	const file = getSessionApprovalsPath();
-	const tmp = `${file}.${process.pid}.tmp`;
-	fs.writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
-	fs.renameSync(tmp, file);
-}
-
-export function listSessionApprovals(): SessionApproval[] {
-	return readSessionFile().approvals.slice();
-}
-
-/**
- * Add a session approval. Patterns deduplicate -- the latest grantedAt wins
- * so callers can refresh an existing approval by re-adding it.
- */
-export function addSessionApproval(input: {
-	pattern: string;
-	reason?: string;
-	metadata?: Record<string, unknown>;
-}): SessionApproval {
-	if (!input.pattern || typeof input.pattern !== "string") {
-		throw new PermissionRegistryError("addSessionApproval: pattern is required");
-	}
-	const approval: SessionApproval = {
-		schemaVersion: 1,
-		pattern: input.pattern,
-		grantedAt: new Date().toISOString(),
-		reason: input.reason,
-		metadata: input.metadata,
-	};
-	const state = readSessionFile();
-	const existingIdx = state.approvals.findIndex((a) => a.pattern === approval.pattern);
-	if (existingIdx >= 0) state.approvals.splice(existingIdx, 1);
-	state.approvals.push(approval);
-	writeSessionFile(state);
-	return approval;
-}
-
-export function removeSessionApproval(pattern: string): boolean {
-	const state = readSessionFile();
-	const idx = state.approvals.findIndex((a) => a.pattern === pattern);
-	if (idx < 0) return false;
-	state.approvals.splice(idx, 1);
-	writeSessionFile(state);
-	return true;
-}
-
-export function resetSessionApprovals(): void {
-	writeSessionFile({ schemaVersion: 1, approvals: [] });
-}
-
-/**
- * Convenience: clear the in-memory file by removing it. This is equivalent
- * to resetSessionApprovals plus deleting the on-disk artifact, which is what
- * a session_shutdown hook typically wants.
- */
-export function purgeSessionApprovalsFile(): void {
-	const file = getSessionApprovalsPath();
-	if (fs.existsSync(file)) fs.rmSync(file, { force: true });
 }
