@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { recordEvent } from "../lib/metrics.js";
 import {
@@ -62,7 +63,7 @@ export default function registerToolVisibility(pi: ExtensionAPI): void {
 		lastToolsetId = toolsetId;
 	};
 
-	pi.on("session_start", (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		lastToolsetId = undefined;
 		deactivateTools(pi, DEFERRED_TOOL_NAMES);
 		recordToolsetExposure(ctx, "session_start");

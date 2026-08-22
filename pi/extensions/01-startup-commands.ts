@@ -1,8 +1,9 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { uiNotify } from "../lib/extension-utils";
 
 export default function registerStartupCommandsExtension(pi: ExtensionAPI) {
-	pi.on("session_start", async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		ctx.ui.setWidget("startup-commands", undefined);
 		setTimeout(() => {
 			const names = pi

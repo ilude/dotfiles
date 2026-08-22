@@ -1,3 +1,4 @@
+import { onSessionStart } from "../../lib/session-start-metrics.js";
 import fs from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -71,7 +72,7 @@ export default function (pi: ExtensionAPI) {
 		}
 	}
 
-	pi.on("session_start", (event, ctx) => {
+	onSessionStart(pi, import.meta.url, (event, ctx) => {
 		startedAt = Date.now();
 		append("pi_process_started", {
 			reason: event.reason,

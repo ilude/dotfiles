@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
@@ -1523,7 +1524,7 @@ export default function workflowFrictionExtension(
 	let pendingLearningDiscussion: PendingLearningDiscussion | null = null;
 	let improvementListSnapshot: string[] | null = null;
 
-	pi.on("session_start", async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		deactivateTools(pi, [
 			"learning_candidate_decide",
 			"workflow_friction_mark_change",

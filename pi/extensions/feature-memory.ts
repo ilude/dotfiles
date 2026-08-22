@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import * as path from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -60,7 +61,7 @@ async function registerFeatureMemoryExtension(
 	const injectedFeatureIds = new Set<string>();
 	const matchedFeatureIds = new Set<string>();
 
-	pi.on("session_start", () => {
+	onSessionStart(pi, import.meta.url, () => {
 		injectedFeatureIds.clear();
 		matchedFeatureIds.clear();
 		deactivateTools(pi, ["feature_memory_record"]);

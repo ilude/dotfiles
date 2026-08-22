@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	type ModelLike,
@@ -303,7 +304,7 @@ export default function fableCommand(pi: ExtensionAPI): void {
 			removeToolVisibilityRestriction(pi, SUBSCRIPTION_VISIBILITY_KEY);
 	};
 
-	pi.on("session_start", (_event, ctx) =>
+	onSessionStart(pi, import.meta.url, (_event, ctx) =>
 		updateSubscriptionVisibility(ctx.model),
 	);
 	pi.on("model_select", (event) =>

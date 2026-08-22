@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -27,7 +28,7 @@ function canPatchPayload(payload: unknown): payload is ProviderPayload {
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.on("session_start", (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		enabled = false;
 		refreshStatus(ctx, pi);
 	});

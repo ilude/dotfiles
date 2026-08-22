@@ -1,3 +1,4 @@
+import { onSessionStart } from "../../lib/session-start-metrics.js";
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -229,7 +230,7 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.on("session_start", (_event, _ctx) => {
+	onSessionStart(pi, import.meta.url, (_event, _ctx) => {
 		sessionOpen = true;
 		unsubscribeSettled?.();
 		unsubscribeSettled = manager.onSettled((snapshot, consumed) => {

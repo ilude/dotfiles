@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Usage } from "@earendil-works/pi-ai";
 import type {
@@ -80,7 +81,7 @@ function errorMessage(error: unknown): string {
 }
 
 export default function registerBedrockCostExtension(pi: ExtensionAPI) {
-	pi.on("session_start", async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		try {
 			await refreshStatus(ctx);
 		} catch (error) {

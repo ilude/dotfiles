@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import { createHash } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
@@ -376,7 +377,7 @@ export function registerSessionBudget(
 
 	if (!config?.enabled || configError) return;
 
-	pi.on("session_start", async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		try {
 			tracker = new SessionBudgetTracker(config as SessionBudgetConfig);
 			pendingCommands.clear();

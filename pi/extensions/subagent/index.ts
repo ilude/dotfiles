@@ -1,3 +1,4 @@
+import { onSessionStart } from "../../lib/session-start-metrics.js";
 /**
  * Subagent Tool - Delegate tasks to specialized agents
  *
@@ -3079,7 +3080,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.on("session_start", (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		sessionAgentCatalog = resolveSessionAgentCatalog(undefined, ctx);
 		refreshAgentTools(sessionAgentCatalog.agentNames);
 		const identity = currentSubagentIdentity();

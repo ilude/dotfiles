@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -535,7 +536,7 @@ export default function (pi: ExtensionAPI) {
 		};
 	});
 
-	pi.on("session_start", async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		clearInstructionState();
 		state.cwd = canonical(ctx.cwd);
 	});

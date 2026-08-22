@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import {
 	findCutPoint,
 	sessionEntryToContextMessages,
@@ -230,7 +231,7 @@ export function registerActiveTurnCompaction(
 		});
 	};
 
-	pi.on("session_start", (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		generation += 1;
 		policy = loadPolicy(ctx.cwd, ctx.isProjectTrusted());
 		compactionPending = false;

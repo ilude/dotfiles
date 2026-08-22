@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -631,7 +632,7 @@ export const loopTestApi = {
 
 export default function (pi: ExtensionAPI) {
 	let statusPoller: AsyncPoller | undefined;
-	pi.on("session_start", (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		statusPoller?.dispose();
 		statusPoller = undefined;
 		if (ctx.mode !== "tui") return;

@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -80,7 +81,7 @@ function validateFindings(findings: Finding[]): string | null {
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.on("session_start", () => {
+	onSessionStart(pi, import.meta.url, () => {
 		deactivateTools(pi, ["review_artifact_write"]);
 	});
 	pi.on("before_agent_start", (event) => {

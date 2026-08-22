@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 /**
  * Session Hooks Extension
  *
@@ -128,7 +129,7 @@ async function notifyIfBranchBehind(
 
 export default function (pi: ExtensionAPI) {
 	// -- session_start: restore default model and thinking on reload + git pre-flight -------
-	pi.on("session_start", async (event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (event, ctx) => {
 		if (event.reason === "reload") {
 			try {
 				// User-level only: model defaults belong to the user profile,

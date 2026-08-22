@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { uiNotify } from "../lib/extension-utils.js";
 
@@ -403,7 +404,7 @@ export async function applyProviderFilter(
 }
 
 export default function registerModelVisibilityExtension(pi: ExtensionAPI) {
-	pi.on("session_start", async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		const messages: string[] = [];
 		for (const provider of TARGET_PROVIDERS) {
 			const result = await applyProviderFilter(ctx, provider);

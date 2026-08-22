@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -141,7 +142,7 @@ export default function (pi: ExtensionAPI) {
 		});
 	}
 
-	pi.on("session_start", async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		if (ctx.mode !== "tui") return;
 		sessionId = ctx.sessionManager.getSessionId();
 		unsubscribeSubagents?.();

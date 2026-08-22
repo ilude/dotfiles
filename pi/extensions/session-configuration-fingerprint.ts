@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import { createHash } from "node:crypto";
 import {
 	VERSION,
@@ -126,7 +127,7 @@ export default function sessionConfigurationFingerprint(pi: ExtensionAPI): void 
 		initialSnapshot = next;
 	};
 
-	pi.on("session_start", () => {
+	onSessionStart(pi, import.meta.url, () => {
 		initialSnapshot = undefined;
 	});
 

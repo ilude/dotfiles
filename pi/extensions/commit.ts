@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import { randomUUID } from "node:crypto";
 import { type Static, Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -95,7 +96,7 @@ export function registerCommitTools(pi: ExtensionAPI) {
 			createConfirmationToken: string;
 		}
 	>();
-	pi.on("session_start", () => {
+	onSessionStart(pi, import.meta.url, () => {
 		plans.clear();
 		stages.clear();
 		deactivateTools(pi, COMMIT_TOOL_NAMES);

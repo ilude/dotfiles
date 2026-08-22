@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 /**
  * Operator Status Extension
  *
@@ -522,7 +523,7 @@ export function isOperatorReloadNeeded(
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.on("session_start", async (event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (event, ctx) => {
 		currentSessionId = ctx.sessionManager.getSessionId();
 		if (event.reason === "reload") resetOperatorReloadStatus();
 		const footerInstalled = installClaudeStyleFooter(ctx, pi);

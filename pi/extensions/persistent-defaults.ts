@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 // Keep repo-tracked Pi startup defaults stable.
 //
 // Pi's built-in model/thinking selectors currently persist every session change
@@ -54,7 +55,7 @@ export default function persistentDefaults(
 	pi: ExtensionAPI,
 	settingsPath = getSettingsPath(),
 ): void {
-	pi.on("session_start", async () => {
+	onSessionStart(pi, import.meta.url, async () => {
 		await enforcePinnedDefaults(settingsPath);
 		scheduleEnforce(settingsPath);
 	});

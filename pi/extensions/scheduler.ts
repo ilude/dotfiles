@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type {
@@ -275,7 +276,7 @@ function toolInput(value: unknown): ScheduleToolInput {
 export default function registerScheduler(pi: ExtensionAPI) {
 	let activeDelivery: ((job: { prompt: string }) => void) | undefined;
 
-	pi.on("session_start", (_event, _ctx) => {
+	onSessionStart(pi, import.meta.url, (_event, _ctx) => {
 		activeDelivery = (job) => {
 			sendBackgroundPrompt(pi, job.prompt);
 		};

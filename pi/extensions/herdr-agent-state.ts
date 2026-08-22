@@ -5,6 +5,7 @@
 // HERDR_INTEGRATION_VERSION=8
 // @ts-nocheck
 
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import net from "node:net";
 
 const HERDR_ENV = process.env.HERDR_ENV;
@@ -222,7 +223,7 @@ export default function (pi) {
     publishState();
   });
 
-  pi.on("session_start", async (event, ctx) => {
+  onSessionStart(pi, import.meta.url, async (event, ctx) => {
     // TUI only: RPC/JSON/print modes are headless (no PTY herdr can display),
     // and RPC still reports hasUI=true, so mode is the reliable gate.
     if (ctx?.mode !== "tui") {

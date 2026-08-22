@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 /**
  * Workflow Commands Extension
  *
@@ -2544,7 +2545,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.on("session_start", (_event, ctx) => restorePlanLifecycle(ctx));
+	onSessionStart(pi, import.meta.url, (_event, ctx) => restorePlanLifecycle(ctx));
 	pi.on("session_tree", (_event, ctx) => restorePlanLifecycle(ctx));
 
 	pi.registerTool({

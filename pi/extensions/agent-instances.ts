@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import { fileURLToPath } from "node:url";
 import type {
 	ExtensionAPI,
@@ -125,7 +126,7 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
-	pi.on("session_start", async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		if (process.env.PI_SUBAGENT_RUN_ID) return;
 		activeContext = ctx;
 		activeSessionId = sessionId(ctx);

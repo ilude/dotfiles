@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import type {
@@ -1039,7 +1040,7 @@ export default function (pi: ExtensionAPI) {
 		});
 	});
 
-	pi.on("session_start", async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		repeatedToolLoop.reset();
 		debugLog("session_start", { health: state.health });
 		ctx.ui.setStatus?.("damage-control", "damage-control: active");

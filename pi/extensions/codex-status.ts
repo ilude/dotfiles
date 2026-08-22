@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 // Idea source: this local Pi extension is inspired by Leonard Lin's
 // `pi-codex-status` project: https://github.com/lhl/pi-codex-status
 //
@@ -598,7 +599,7 @@ export function resetCodexStatusStateForTests(): void {
 }
 
 export default function registerCodexStatusCommand(pi: ExtensionAPI) {
-	pi.on("session_start", async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		startCodexFooterRefresh(ctx);
 	});
 
