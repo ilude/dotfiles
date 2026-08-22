@@ -29,13 +29,13 @@ Replace the one-file-per-task registry with a process-shared SQLite Goal Executi
 
 ## Tasks
 
-- [ ] **T1: Establish the SQLite store and reversible migration boundary**
+- [x] **T1: Establish the SQLite store and reversible migration boundary**
   - Files: `pi/lib/task-registry.ts`, `pi/lib/operator-state.ts`, new focused schema/store modules under `pi/lib/`, `pi/scripts/task-store-migrate.ts`, and focused registry, dependency, migration, and process-concurrency tests.
   - Change: Prove Node 22.19-compatible `node:sqlite` `DatabaseSync` open/close, explicit transactions, WAL, foreign keys, busy timeout, rollback, and two-process visibility using the exact production runtime command. Implement one process-held connection at `${PI_OPERATOR_DIR:-~/.pi/agent/operator}/tasks.sqlite3` with tasks, dependency edges, and schema/migration metadata. Keep lifecycle and cycle rules in the domain layer. Enforce the dependent-task foreign key while retaining missing or tombstoned prerequisite IDs during migration so currently recoverable records remain lossless. Make batch creation and tool-level update-plus-transition atomic; retain the existing batch failure shape with no persisted IDs after rollback. Add `import --operator-dir <path>` and `export --operator-dir <path>` migration modes with an inter-process lock, stable-snapshot checks, documented exit codes, transactional authority marker, staged semantic verification, and atomic legacy-directory replacement. Do not dual-write or silently fall back.
   - Done when: Import is idempotent and field-preserving; supported dangling dependencies remain diagnosable; invalid new dependencies and cycles remain rejected; failed batches and transitions leave no partial state; separate processes observe committed state; export represents every supported post-cutover record; and import/export refuse unstable, locked, duplicate, cyclic, unsupported, or unrepresentable state without changing the authoritative store.
   - Verify: Run the exact-runtime capability slice and focused Vitest files. Spawn real `process.execPath` children against one disposable database to prove simultaneous-writer serialization, committed visibility, no dirty reads, bounded lock failure, injected rollback, termination/reopen recovery, and Windows path handling. Run disposable JSON import -> query -> post-cutover mutation -> export -> legacy reopen and require semantic equality.
 
-- [ ] **T2: Route task consumers through one Dependency Graph projection**
+- [x] **T2: Route task consumers through one Dependency Graph projection**
   - Files: `pi/extensions/tasks.ts`, `pi/lib/task-registry.ts`, the new store/query modules, `pi/lib/task-renderer.ts`, `pi/extensions/operator-status.ts`, `pi/extensions/herdr-metadata.ts`, `pi/extensions/goal.ts`, `pi/extensions/subagent/`, `pi/lib/orchestration-telemetry.ts`, and their focused tests.
   - Change: Preserve every existing task action and accepted legacy argument while routing tools, status, reminders, pruning, goal materialization, subagent correlation, telemetry, and Herdr metadata through current committed SQLite state. Extend create, batch, and update schemas with optional `goalId`, `produces`, `consumes`, and `priority`. Keep default list ordering unchanged and apply the exact Dependency Graph comparator only to `task ready`. Queue nonessential initial status and Herdr projections after `session_start`; model-facing task operations must never observe partial initialization or a process cache requiring cross-process invalidation.
   - Done when: Summary-only calls retain current fields and behavior; `blockedBy` remains the only input creating hard prerequisites; optional metadata independently changes only ready-result order; shared and multiple prerequisites work; migrated dangling references remain repairable; exact ties are deterministic; separate processes observe commits; and no task path invokes or claims the behavior of Prompt Scheduling.
@@ -49,7 +49,7 @@ Replace the one-file-per-task registry with a process-shared SQLite Goal Executi
 
 ## Validation
 
-- [ ] Focused SQLite capability and migration checks pass on the exact supported Node runtime.
+- [x] Focused SQLite capability and migration checks pass on the exact supported Node runtime.
 - [ ] Focused and integration task, goal, subagent, status, Herdr, renderer, telemetry, resume, and real child-process tests pass.
 - [ ] `cd pi && pnpm run typecheck`, `cd pi && pnpm run biome:check`, and `git diff --check` pass with no new failures.
 - [ ] Quiescent live import and semantic comparison pass before SQLite becomes the mutable authority.
@@ -60,7 +60,7 @@ Keep incomplete work at `.specs/sqlite-goal-execution/plan.md`. After every task
 
 ## Execution Status
 
-- State: planned, not started
-- Blocker: none until the quiescent live-migration gate in T3
-- Next: T1
+- State: T1 and T2 complete; T3 in progress
+- Blocker: quiescent live-migration gate in T3
+- Next: T3 documentation, validation, and quiescent cutover
 - Resume: `/do-it .specs/sqlite-goal-execution/plan.md`

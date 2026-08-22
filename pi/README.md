@@ -662,8 +662,12 @@ and `PermissionDecision`. Only the `task` surface creates durable task
 records; `subagent` may correlate a child run with an existing running task but
 never creates or mutates the task record.
 
-Storage location: `~/.pi/agent/operator/{tasks,permissions}/`. Override
-with `PI_OPERATOR_DIR` (used by tests).
+Task storage is the process-shared SQLite database
+`~/.pi/agent/operator/tasks.sqlite3`. Permission decisions retain their
+separate registry under `~/.pi/agent/operator/permissions/`. Override the
+operator root with `PI_OPERATOR_DIR` (used by tests). See
+[`pi/docs/goal-execution-domain.md`](docs/goal-execution-domain.md) for the
+Goal Execution model, ordering, migration, and rollback contract.
 
 All child Pi processes register with the bounded process-local manager in
 `pi/extensions/subagent/run-manager.ts`. `/subagents` presents those transient
@@ -713,13 +717,14 @@ Commands:
 - `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
 
 Model-callable task surface:
-- The unified `task` tool owns durable todo and dependency state through `create`, `batch`, `update`, `remove`, `list`, `ready`, and `get`. Ordinary short workflows can remain prose; durable records are useful for requested todo lists, dependency graphs, and work that may span context compaction.
-- A graph-aware `batch` creates 1 through 16 todo items with required summaries, request-local keys, and dependency keys. Use returned aliases for later actions. Current tool schemas are action-specific and reject unrelated fields, while resumed legacy execution fields retain explicit retirement diagnostics.
-- Tasks are tagged with the creating Pi session and current repository workspace. `list` excludes other sessions plus unscoped, terminal, and foreign-workspace records unless `all: true` requests a global view; tombstones remain excluded. `ready` applies the same session/workspace boundary and returns only ready pending tasks. Collections return compact model-visible summaries; use `get` for one complete record.
-- The parent agent selects ready work, marks it `running`, passes its `taskId` when executing through `subagent` (or uses `bg_start` without linkage), validates the result, and then records the terminal state. Task never starts, waits for, stops, or captures output from those processes.
-- Optional worktree-relative `scope` paths or globs describe task boundaries for coordination. `blockedBy` is the persisted authority for dependency readiness; create, update, and batch reject missing, tombstoned, duplicate, or foreign-workspace dependencies. Reverse `blocks` detail is derived from current records rather than persisted as a second edge direction.
-- Batch graph validation occurs before writes, but batch publication is not transactional. On `write_failed`, inspect the returned persisted IDs, clear each persisted task's `blockedBy` in reverse request order through `update`, then tombstone it with `remove`; do not assume automatic rollback or retry.
-- Legacy `.pi/todo.json` entries are imported once per workspace. Startup cleanup removes pre-session, imported legacy, and retired execution-era records unless an active durable dependency still references them, plus terminal task graphs with no active dependents. Failed and other non-terminal session-owned records remain available only to their owning session or an explicit global view until updated or removed. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity.
+- The unified `task` tool owns durable Goal Execution state through `create`, `batch`, `update`, `remove`, `list`, `ready`, and `get`. A Task requires only `summary`. Ordinary short workflows can remain prose; durable records are useful for requested todo lists, Dependency Graphs, and work that may span context compaction.
+- A graph-aware `batch` creates 1 through 16 Tasks with request-local keys and dependency keys. Batch publication is atomic: a failed batch persists no generated IDs. Current tool schemas are action-specific and reject unrelated fields, while resumed legacy execution fields retain explicit retirement diagnostics.
+- Tasks are tagged with the creating Pi session and current repository workspace. Optional `goalId` associates a Task with a Goal. Optional `produces`, `consumes`, and numeric `priority` refine only `ready` ordering; metadata never creates a Dependency or changes readiness.
+- `list` excludes other sessions plus unscoped, terminal, and foreign-workspace records unless `all: true` requests a global view; tombstones remain excluded. Its newest-created-first order is unchanged. `ready` applies the same boundary and returns only pending Tasks with no incomplete hard Dependencies, ordered by priority, exact case-sensitive producer relationship, incomplete direct-dependent count, creation time, and Task ID.
+- The parent selects ready work, marks it `running`, passes its `taskId` when executing through `subagent` (or uses `bg_start` without linkage), validates the result, and then records the terminal state. Task never starts, waits for, stops, schedules, or captures output from those processes. Timed prompts belong to the separate `schedule` tool.
+- Optional worktree-relative `scope` paths or globs describe Task boundaries for coordination. `blockedBy` is the only persisted authority creating a hard Dependency; create, update, and batch reject missing, tombstoned, duplicate, cyclic, or foreign-workspace Dependencies. Reverse `blocks` detail is derived from current records rather than persisted as a second edge direction.
+- Task records and dependency edges are committed atomically in SQLite. Separate Pi processes observe committed state directly without a process cache. Legacy JSON import and rollback export require the quiescent migration workflow documented in [`pi/docs/goal-execution-domain.md`](docs/goal-execution-domain.md).
+- Legacy `.pi/todo.json` entries are imported once per workspace. Startup cleanup removes pre-session, imported legacy, and retired execution-era records unless an active durable Dependency still references them, plus terminal Task graphs with no active dependents. Failed and other non-terminal session-owned records remain available only to their owning session or an explicit global view until updated or removed. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity.
 
 Lifecycle (defined in `pi/lib/operator-state.ts`):
 ```
