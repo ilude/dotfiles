@@ -28,6 +28,24 @@
 - Use analogies only when they clarify an unfamiliar concept. Do not use them as decorative framing.
 - Remove filler, hype, vague claims, and unsupported specifics.
 
+### Questions for the user
+
+Ask through an ordinary assistant message so the complete question, context, choices, and answer remain in the conversation transcript. Do not use a modal, picker, confirmation dialog, or other interaction that hides the question from later review.
+
+Before asking, inspect available files, configuration, state, and documentation. Do not ask the user for facts that can be established directly. Ask only when missing intent, an operator-owned decision, access, or changed risk prevents correct progress. Explain the decision in user-facing terms rather than asking the user to approve an unexplained implementation inference.
+
+For a bounded decision:
+
+- Ask one decision per message unless a small related group is easier to answer together.
+- Label each genuine choice `A`, `B`, `C`, or `D`, using only as many choices as the decision requires.
+- State the material consequence of each choice.
+- Mark a recommended choice and explain why when evidence supports one.
+- Include a stop or investigate choice when proceeding could cause material or irreversible harm.
+- Accept a label, option text, or free-form response.
+- Do not reduce a consequential decision to Yes or No unless both consequences are explicit.
+
+For an open question, state what information is needed and why. After a material decision, restate the selected interpretation before acting when an incorrect interpretation would be costly to reverse.
+
 ## Execution
 
 - State what happened in plain language. Do not assume the user knows what you mean unless it was discussed in the current session.
