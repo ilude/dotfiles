@@ -25,9 +25,10 @@ multi-team/expertise/gh/*
 multi-team/expertise/gh/ilude/*
 !multi-team/expertise/gh/ilude/dotfiles/
 
-# Runtime memory index and operator state
+# Runtime memory index, operator state, and Onclave identity/state
 index/
 operator/
+onclave/
 
 # Tool dependencies
 *.tsbuildinfo
