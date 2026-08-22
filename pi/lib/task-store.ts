@@ -27,6 +27,12 @@ export class TaskMigrationError extends Error {
 	}
 }
 
+export function isTaskStoreUnavailable(error: unknown): boolean {
+	if (!error || typeof error !== "object" || !("code" in error)) return false;
+	const code = (error as { code?: unknown }).code;
+	return code === "not_authoritative" || code === "locked";
+}
+
 const connections = new Map<string, DatabaseSync>();
 const databaseDirectories = new WeakMap<DatabaseSync, string>();
 const migrationTransactions = new WeakSet<DatabaseSync>();

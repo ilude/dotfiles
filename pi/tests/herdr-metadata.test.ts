@@ -3,6 +3,7 @@ import herdrMetadata, {
 	isHerdrMetadataEnvironment,
 	normalizeHerdrMetadataValue,
 } from "../extensions/herdr-metadata.js";
+import { TaskMigrationError } from "../lib/task-store.js";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 
 const mockRuntime = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const mockRuntime = vi.hoisted(() => ({
 		sessionId: string;
 	}>,
 	unsubscribeCount: 0,
+	taskError: undefined as Error | undefined,
 }));
 
 vi.mock("../extensions/subagent/run-manager.js", () => ({
@@ -29,7 +31,10 @@ vi.mock("../extensions/subagent/run-manager.js", () => ({
 }));
 
 vi.mock("../lib/task-registry.js", () => ({
-	listTasks: vi.fn(() => mockRuntime.tasks),
+	listTasks: vi.fn(() => {
+		if (mockRuntime.taskError) throw mockRuntime.taskError;
+		return mockRuntime.tasks;
+	}),
 }));
 
 function metadataContext(
@@ -79,6 +84,7 @@ describe("Herdr metadata extension", () => {
 		mockRuntime.runs.length = 0;
 		mockRuntime.tasks.length = 0;
 		mockRuntime.unsubscribeCount = 0;
+		mockRuntime.taskError = undefined;
 	});
 
 	afterEach(() => {
@@ -198,6 +204,23 @@ describe("Herdr metadata extension", () => {
 			],
 			{ timeout: 5_000 },
 		);
+	});
+
+	it("omits task metadata while the SQLite authority is unavailable", async () => {
+		mockRuntime.taskError = new TaskMigrationError(
+			"not_authoritative",
+			"SQLite task store is not authoritative",
+		);
+		const pi = createMockPi();
+		herdrMetadata(pi as Parameters<typeof herdrMetadata>[0]);
+
+		await emitHook(pi, "session_start");
+		await emitHook(pi, "agent_settled");
+
+		expect(commandArgs(pi, 0)).toContain("--clear-token");
+		expect(commandArgs(pi, 0)).toContain("tasks");
+		expect(commandArgs(pi, 0)).not.toContain(expect.stringMatching(/^tasks=/));
+		expect(pi.exec).toHaveBeenCalledOnce();
 	});
 
 	it("deduplicates unchanged state and clears optional values", async () => {

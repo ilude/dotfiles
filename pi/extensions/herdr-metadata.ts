@@ -4,6 +4,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { listTasks } from "../lib/task-registry.js";
+import { isTaskStoreUnavailable } from "../lib/task-store.js";
 import {
 	filterCurrentSessionActiveTasks,
 	formatTaskStatus,
@@ -63,10 +64,15 @@ function formatSubagents(): string | undefined {
 }
 
 function formatTasks(sessionId: string): string | undefined {
-	const counts = summarizeTaskCounts(
-		filterCurrentSessionActiveTasks(listTasks(), sessionId),
-	);
-	return formatTaskStatus(counts) ?? undefined;
+	try {
+		const counts = summarizeTaskCounts(
+			filterCurrentSessionActiveTasks(listTasks(), sessionId),
+		);
+		return formatTaskStatus(counts) ?? undefined;
+	} catch (error) {
+		if (isTaskStoreUnavailable(error)) return undefined;
+		throw error;
+	}
 }
 
 function contextPatch(ctx: ExtensionContext): MetadataPatch {

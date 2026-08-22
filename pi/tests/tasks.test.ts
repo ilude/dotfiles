@@ -531,6 +531,26 @@ describe("/tasks command", () => {
 		expect(getTask(foreign.id)?.deletedAt).toBeUndefined();
 	});
 
+	it("does not warn while the SQLite authority is awaiting cutover", async () => {
+		const { pi } = await loadTasks();
+		closeTaskDatabase(tmpRoot);
+		for (const suffix of ["", "-wal", "-shm"])
+			fs.rmSync(path.join(tmpRoot, `tasks.sqlite3${suffix}`), { force: true });
+		const sessionStart = pi._getHook("session_start")[0];
+		const ctx = createMockCtx({
+			cwd: tmpRoot,
+			sessionManager: { getSessionId: () => "current-session" },
+		});
+
+		await sessionStart.handler({ reason: "startup" }, ctx);
+		const beforeAgentStart = pi._getHook("before_agent_start")[0];
+		expect(() =>
+			beforeAgentStart.handler({ systemPrompt: "base" }, ctx),
+		).not.toThrow();
+
+		expect(ctx.ui.notify).not.toHaveBeenCalled();
+	});
+
 	it("removes pre-session task records when a session starts", async () => {
 		const { createTask, getTask, resolveTaskWorkspace } = await import(
 			"../lib/task-registry.ts"

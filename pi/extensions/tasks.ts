@@ -49,6 +49,7 @@ import {
 	truncateTaskText,
 } from "../lib/task-renderer.js";
 import { sanitizeTaskValue } from "../lib/task-security.js";
+import { isTaskStoreUnavailable } from "../lib/task-store.js";
 import {
 	getTaskRenderMode,
 	isTaskRenderMode,
@@ -576,18 +577,23 @@ export function activeRootTaskReminder(
 	// An explicit ID is authoritative for lookup, including when its owner is a
 	// different session in the same workspace. Scoped discovery remains the
 	// default and supplements an explicit task when both are available.
-	if (activeRootTaskId) {
-		const explicit = getTask(activeRootTaskId.trim());
-		if (explicit && isActiveRootTask(explicit, workspace))
-			selected.set(explicit.id, explicit);
-	}
-	if (sessionId) {
-		for (const record of listTasks({
-			workspace,
-			sessionId,
-			states: ["running"],
-		}).filter((record) => !record.parentId))
-			selected.set(record.id, record);
+	try {
+		if (activeRootTaskId) {
+			const explicit = getTask(activeRootTaskId.trim());
+			if (explicit && isActiveRootTask(explicit, workspace))
+				selected.set(explicit.id, explicit);
+		}
+		if (sessionId) {
+			for (const record of listTasks({
+				workspace,
+				sessionId,
+				states: ["running"],
+			}).filter((record) => !record.parentId))
+				selected.set(record.id, record);
+		}
+	} catch (error) {
+		if (isTaskStoreUnavailable(error)) return undefined;
+		throw error;
 	}
 	const roots = [...selected.values()];
 	if (roots.length === 0) return undefined;
@@ -1231,6 +1237,10 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 	});
 }
 
+function isExpectedTaskStoreTransition(error: unknown): boolean {
+	return isTaskStoreUnavailable(error);
+}
+
 export default function (pi: ExtensionAPI) {
 	registerTaskTools(pi);
 	registerTasksCommand(pi);
@@ -1252,18 +1262,20 @@ export default function (pi: ExtensionAPI) {
 				sessionId,
 			);
 		} catch (error) {
-			ctx.ui.notify(
-				`Legacy task migration failed: ${error instanceof Error ? error.message : String(error)}`,
-				"warning",
-			);
+			if (!isExpectedTaskStoreTransition(error))
+				ctx.ui.notify(
+					`Legacy task migration failed: ${error instanceof Error ? error.message : String(error)}`,
+					"warning",
+				);
 		}
 		try {
 			pruneTaskRegistry({ removeUnowned: sessionId !== undefined });
 		} catch (error) {
-			ctx.ui.notify(
-				`Task cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
-				"warning",
-			);
+			if (!isExpectedTaskStoreTransition(error))
+				ctx.ui.notify(
+					`Task cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+					"warning",
+				);
 		}
 	});
 }
