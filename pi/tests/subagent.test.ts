@@ -1338,8 +1338,6 @@ Do not load this agent.
 			const { tool } = await loadTool();
 			const ctx = createMockCtx({ cwd: tmpDir });
 
-			const previousOnclaveCapability = process.env.PI_ONCLAVE_ROOT_CAPABILITY;
-			process.env.PI_ONCLAVE_ROOT_CAPABILITY = "root-only-test-capability";
 			const result = await tool.execute(
 				"call-project-default",
 				{
@@ -1377,12 +1375,6 @@ Do not load this agent.
 				path.resolve(tmpDir),
 			);
 			expect(Date.parse(spawnOptions.env.PI_SUBAGENT_STARTED_AT)).not.toBeNaN();
-			expect(spawnOptions.env.PI_ONCLAVE_ROOT_CAPABILITY).toBeUndefined();
-			expect(spawnOptions.env.PI_ONCLAVE_INELIGIBLE).toBe("1");
-			if (previousOnclaveCapability === undefined)
-				delete process.env.PI_ONCLAVE_ROOT_CAPABILITY;
-			else
-				process.env.PI_ONCLAVE_ROOT_CAPABILITY = previousOnclaveCapability;
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

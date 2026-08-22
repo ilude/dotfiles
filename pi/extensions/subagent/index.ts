@@ -1692,13 +1692,8 @@ export async function runSingleAgent(
 			// child Pi process carries the parent's trace and treats this
 			// subagent's span as its parent. Spread process.env first so all
 			// existing env vars (PATH, HOME, OAUTH tokens, etc.) are preserved.
-			const {
-				PI_ONCLAVE_ROOT_CAPABILITY: _onclaveRootCapability,
-				...inheritedChildEnv
-			} = process.env;
 			const childEnv = {
-				...inheritedChildEnv,
-				PI_ONCLAVE_INELIGIBLE: "1",
+				...process.env,
 				TRACEPARENT: buildSubagentTraceparent(),
 				PI_SUBAGENT_RUN_ID: runId,
 				PI_SUBAGENT_STARTED_AT: subagentStartedAt,

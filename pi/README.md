@@ -281,7 +281,7 @@ pi --no-extensions
 pi -e ~/.dotfiles/pi/extensions/damage-control.ts
 ```
 
-The Onclave communications extension uses the implementation in `modules/onclave/extensions/onclave-comms/`. A root Pi provisions a process capability before initialization. Every direct and broker child receives no root capability and carries `PI_ONCLAVE_INELIGIBLE=1`, so nested Pi processes remain ineligible even if ordinary subagent markers are removed. The loader in `pi/extensions/onclave-pi.ts` contains no adapter implementation.
+The Onclave extension uses the broker-backed adapter in `modules/onclave/extensions/onclave-pi/`. The adapter does not load in Pi subagents identified by `PI_SUBAGENT_RUN_ID` or `PI_SUBAGENT_TREE_RUN_ID`. The loader in `pi/extensions/onclave-pi.ts` contains no adapter implementation.
 
 ---
 

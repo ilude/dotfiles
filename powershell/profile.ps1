@@ -18,11 +18,6 @@ if (-not $env:PI_SKIP_VERSION_CHECK) {
   $env:PI_SKIP_VERSION_CHECK = '1'
 }
 
-# Root shell capability. The Pi subagent launcher removes it from child environments.
-if (-not $env:PI_ONCLAVE_ROOT_CAPABILITY) {
-  $env:PI_ONCLAVE_ROOT_CAPABILITY = [guid]::NewGuid().ToString()
-}
-
 #region Module Auto-Installation
 
 $script:RequiredModules = @(
