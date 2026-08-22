@@ -37,6 +37,7 @@ import {
 	tombstoneTask,
 	transitionTask,
 	type UpdateTaskPatch,
+	updateAndTransitionTask,
 	updateTask,
 } from "../lib/task-registry.js";
 import {
@@ -439,6 +440,20 @@ function validatedBlockers(value: unknown): string[] | undefined {
 	return value as string[];
 }
 
+function validatedResources(value: unknown, label: "produces" | "consumes"): string[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value) || value.some((item) => typeof item !== "string"))
+		throw new Error(`${label} must be an array of strings`);
+	return value as string[];
+}
+
+function validatedPriority(value: unknown): number | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "number" || !Number.isFinite(value))
+		throw new Error("priority must be a finite number");
+	return value;
+}
+
 function taskInputFrom(
 	input: Record<string, unknown>,
 	cwd: string,
@@ -492,6 +507,10 @@ function taskInputFrom(
 		blockedBy: batch
 			? (input.blockedBy as string[] | undefined)
 			: validatedBlockers(input.blockedBy),
+		goalId: typeof input.goalId === "string" ? input.goalId : undefined,
+		produces: validatedResources(input.produces, "produces"),
+		consumes: validatedResources(input.consumes, "consumes"),
+		priority: validatedPriority(input.priority),
 		...(batch && typeof key === "string" ? { key } : {}),
 		...(batch && Array.isArray(blockedByKeys)
 			? { blockedByKeys: blockedByKeys as string[] }
@@ -681,7 +700,6 @@ function prepareTaskArguments(args: unknown): unknown {
 }
 
 export function registerTaskTools(pi: ExtensionAPI): void {
-	const lifecycle = new TaskLifecycleService();
 	const summary = Type.String({
 		minLength: 1,
 		maxLength: TASK_SUMMARY_MAX_LENGTH,
@@ -702,7 +720,12 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 	const blockedBy = Type.Array(id, {
 		maxItems: TASK_BATCH_MAX_ITEMS,
 		uniqueItems: true,
+		description: "Explicit hard prerequisite task IDs. This is the only field that creates Dependencies.",
 	});
+	const goalId = Type.String({ minLength: 1, maxLength: 256, description: "Optional Goal association. It does not change readiness or lifecycle transitions." });
+	const produces = Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 16, uniqueItems: true, description: "Optional case-sensitive resources produced by this Task. Used only to order ready Tasks." });
+	const consumes = Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 16, uniqueItems: true, description: "Optional case-sensitive resources consumed by this Task. Used only to order ready Tasks." });
+	const priority = Type.Number({ description: "Optional ready-order priority. Higher values sort first; absence equals zero and never changes readiness." });
 	const taskItem = Type.Object(
 		{
 			summary,
@@ -710,6 +733,10 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			scope: Type.Optional(scope),
 			key: Type.Optional(Type.String({ pattern: "^[A-Za-z0-9_-]{1,32}$" })),
 			blockedBy: Type.Optional(blockedBy),
+			goalId: Type.Optional(goalId),
+			produces: Type.Optional(produces),
+			consumes: Type.Optional(consumes),
+			priority: Type.Optional(priority),
 			blockedByKeys: Type.Optional(
 				Type.Array(Type.String({ pattern: "^[A-Za-z0-9_-]{1,32}$" }), {
 					maxItems: TASK_BATCH_MAX_ITEMS,
@@ -731,6 +758,10 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				notes: Type.Optional(notes),
 				scope: Type.Optional(scope),
 				blockedBy: Type.Optional(blockedBy),
+				goalId: Type.Optional(goalId),
+				produces: Type.Optional(produces),
+				consumes: Type.Optional(consumes),
+				priority: Type.Optional(priority),
 			},
 			{ additionalProperties: false },
 		),
@@ -754,6 +785,10 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				state: Type.Optional(StringEnum(TASK_STATES)),
 				skipReason: Type.Optional(notes),
 				blockedBy: Type.Optional(blockedBy),
+				goalId: Type.Optional(goalId),
+				produces: Type.Optional(produces),
+				consumes: Type.Optional(consumes),
+				priority: Type.Optional(priority),
 			},
 			{ additionalProperties: false },
 		),
@@ -793,8 +828,8 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			"When a user correction changes the outcome, update the root task first and cancel or skip work that is no longer required.",
 			"Keep summary under 100 characters and notes under 500. Put detailed context in an artifact and reference its path.",
 			"Summary contains only the deliverable; notes contain only blockers, dependencies, or acceptance checks. Never copy conversation summaries, plans, diffs, or investigation narratives into task fields.",
-			"Use blockedBy for dependencies and ready to select runnable work. Mark selected work running before dispatching it with subagent or bg_start, then record its terminal state explicitly.",
-			"Task never starts, waits for, stops, or captures output from subagents or background processes.",
+			"Use blockedBy for explicit hard Dependencies and ready to select runnable work. Optional goalId, produces, consumes, and priority refine association or ready ordering only; they never create Dependencies or change readiness. Mark selected work running before dispatching it with subagent or bg_start, then record its terminal state explicitly.",
+			"Task never starts, waits for, stops, schedules, or captures output from subagents or background processes. Timed prompts belong to schedule.",
 		],
 		parameters,
 		prepareArguments(args): Static<typeof parameters> {
@@ -988,6 +1023,10 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 								: undefined,
 						scope: validatedScope(input.scope),
 						blockedBy: validatedBlockers(input.blockedBy),
+						goalId: typeof input.goalId === "string" ? input.goalId : undefined,
+						produces: validatedResources(input.produces, "produces"),
+						consumes: validatedResources(input.consumes, "consumes"),
+						priority: validatedPriority(input.priority),
 					};
 					skipReason =
 						typeof input.skipReason === "string"
@@ -1042,13 +1081,12 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 					}
 				}
 				try {
-					const record = updateTask(id, patch);
 					if (target) {
-						const transition = await lifecycle.transition(id, target, {
-							skipReason,
-						});
-						return operationToolResult(transition, id);
+						const record = updateAndTransitionTask(id, patch, target, { skipReason });
+						const readiness = target === "running" ? { ready: true, unmetBlockers: [] } : undefined;
+						return operationToolResult({ outcome: "persisted", record, ...(readiness ? { readiness } : {}) }, id);
 					}
+					const record = updateTask(id, patch);
 					return operationToolResult({ outcome: "persisted", record });
 				} catch (error) {
 					return toolResult({

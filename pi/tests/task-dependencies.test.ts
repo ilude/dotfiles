@@ -2,8 +2,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { closeTaskDatabase, initializeTaskStore, openTaskDatabase, readStoredTask, writeStoredTask } from "../lib/task-store.js";
 import {
 	createTask,
+	compareReadyTasks,
 	createTaskBatch,
 	getTask,
 	getUnmetBlockers,
@@ -27,9 +29,11 @@ beforeEach(() => {
 	tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-deps-"));
 	prevOperatorDir = process.env.PI_OPERATOR_DIR;
 	process.env.PI_OPERATOR_DIR = tmpRoot;
+	initializeTaskStore(tmpRoot);
 });
 
 afterEach(() => {
+	closeTaskDatabase(tmpRoot);
 	if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 	else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 	fs.rmSync(tmpRoot, { recursive: true, force: true });
@@ -55,7 +59,7 @@ describe("createTaskBatch validation and recovery", () => {
 			summary: "foreign",
 			workspace: "/foreign",
 		});
-		const before = fs.readdirSync(path.join(tmpRoot, "tasks")).sort();
+		const before = listTasks({ includeTombstones: true }).map((task) => task.id).sort();
 		const invalidBatches = [
 			[
 				{ origin: "other" as const, summary: "duplicate keys", key: "same" },
@@ -130,9 +134,7 @@ describe("createTaskBatch validation and recovery", () => {
 			expect(() => createTaskBatch(batch, workspace)).toThrow(
 				TaskRegistryError,
 			);
-			expect(fs.readdirSync(path.join(tmpRoot, "tasks")).sort()).toEqual(
-				before,
-			);
+			expect(listTasks({ includeTombstones: true }).map((task) => task.id).sort()).toEqual(before);
 			expect(getTask(existing.id)?.blocks).toEqual([]);
 		}
 	});
@@ -169,21 +171,12 @@ describe("createTaskBatch validation and recovery", () => {
 		expect(result).toMatchObject({
 			outcome: "write_failed",
 			failedPhase: "write_records",
-			persistedIds: [result.generated?.[0]?.id],
+			persistedIds: [],
 		});
 		if (result.outcome !== "write_failed") throw new Error("write should fail");
 		expect(result.operationId).toMatch(/^[A-Za-z0-9-]+$/);
-		const persistedId = result.persistedIds[0];
-		expect(persistedId).toBeDefined();
-		if (!persistedId) throw new Error("persisted id should exist");
-		expect(getTask(persistedId)?.blockedBy).toEqual([blocker.id]);
-
-		for (const id of [...result.persistedIds].reverse()) {
-			updateTask(id, { blockedBy: [] });
-			tombstoneTask(id);
-		}
-		expect(getTask(blocker.id)?.blocks).toEqual([]);
 		expect(listTasks()).toHaveLength(1);
+		expect(getTask(blocker.id)?.blocks).toEqual([]);
 	});
 
 	it("writes each batch record once and derives reverse edges from blockedBy", () => {
@@ -204,10 +197,7 @@ describe("createTaskBatch validation and recovery", () => {
 		if (!blockerId || !dependentId) throw new Error("records should exist");
 		expect(getTask(blockerId)?.blocks).toEqual([dependentId]);
 		for (const id of [blockerId, dependentId]) {
-			const stored = JSON.parse(
-				fs.readFileSync(path.join(tmpRoot, "tasks", `${id}.json`), "utf-8"),
-			) as Record<string, unknown>;
-			expect(stored).not.toHaveProperty("blocks");
+			expect(readStoredTask(id, openTaskDatabase(tmpRoot))).not.toHaveProperty("blocks");
 		}
 	});
 });
@@ -220,15 +210,7 @@ describe("task registry pruning", () => {
 			summary: "retired child",
 			blockedBy: [activeRoot.id],
 		});
-		const retiredPath = path.join(tmpRoot, "tasks", `${retired.id}.json`);
-		const retiredRecord = JSON.parse(
-			fs.readFileSync(retiredPath, "utf-8"),
-		) as Record<string, unknown>;
-		fs.writeFileSync(
-			retiredPath,
-			`${JSON.stringify({ ...retiredRecord, agentName: "builder", prompt: "old execution" }, null, 2)}\n`,
-			"utf-8",
-		);
+		writeStoredTask({ ...retired, agentName: "builder", prompt: "old execution" }, openTaskDatabase(tmpRoot));
 		const completedBlocker = transitionTask(
 			createTask({ origin: "other", summary: "completed blocker", state: "running" })
 				.id,
@@ -275,12 +257,7 @@ describe("task dependencies and tombstones", () => {
 		});
 		expect(getTask(dependent.id)?.blockedBy).toEqual([blocker.id]);
 		expect(getTask(blocker.id)?.blocks).toContain(dependent.id);
-		const storedBlocker = JSON.parse(
-			fs.readFileSync(
-				path.join(tmpRoot, "tasks", `${blocker.id}.json`),
-				"utf-8",
-			),
-		) as Record<string, unknown>;
+		const storedBlocker = readStoredTask(blocker.id, openTaskDatabase(tmpRoot));
 		expect(storedBlocker).not.toHaveProperty("blocks");
 	});
 
@@ -291,15 +268,7 @@ describe("task dependencies and tombstones", () => {
 			summary: "dependent",
 			blockedBy: [blocker.id],
 		});
-		const blockerPath = path.join(tmpRoot, "tasks", `${blocker.id}.json`);
-		const legacyBlocker = JSON.parse(
-			fs.readFileSync(blockerPath, "utf-8"),
-		) as Record<string, unknown>;
-		fs.writeFileSync(
-			blockerPath,
-			`${JSON.stringify({ ...legacyBlocker, blocks: ["stale-dependent"] }, null, 2)}\n`,
-			"utf-8",
-		);
+		writeStoredTask({ ...blocker, blocks: ["stale-dependent"] }, openTaskDatabase(tmpRoot));
 
 		const read = getTask(blocker.id);
 		expect(read?.blocks).toEqual([dependent.id]);
@@ -307,9 +276,7 @@ describe("task dependencies and tombstones", () => {
 		expect(formatTaskDetail(read)).toContain(`blocks: ${dependent.id}`);
 
 		updateTask(blocker.id, { notes: "migrated" });
-		const migrated = JSON.parse(
-			fs.readFileSync(blockerPath, "utf-8"),
-		) as Record<string, unknown>;
+		const migrated = readStoredTask(blocker.id, openTaskDatabase(tmpRoot));
 		expect(migrated).not.toHaveProperty("blocks");
 		expect(getTask(blocker.id)?.blocks).toEqual([dependent.id]);
 	});
@@ -333,6 +300,45 @@ describe("task dependencies and tombstones", () => {
 		expect(
 			listTasks({ includeTombstones: true }).map((item) => item.id),
 		).toContain(task.id);
+	});
+
+	it("normalizes optional metadata and orders only ready tasks by the graph projection", () => {
+		const producer = createTask({
+			origin: "other",
+			summary: "producer",
+			goalId: "goal-1",
+			produces: ["artifact"],
+			consumes: [],
+			priority: 2,
+		});
+		const consumer = createTask({
+			origin: "other",
+			summary: "consumer",
+			consumes: ["artifact"],
+			priority: 1,
+		});
+		const neutral = createTask({ origin: "other", summary: "neutral" });
+		expect(producer).toMatchObject({ goalId: "goal-1", produces: ["artifact"], priority: 2 });
+		expect(producer).not.toHaveProperty("consumes");
+		expect(partitionReadyTasks([consumer, producer, neutral]).ready.map((task) => task.id)).toEqual([
+			producer.id,
+			consumer.id,
+			neutral.id,
+		]);
+		expect(listTasks().map((task) => task.id)).toEqual([neutral.id, consumer.id, producer.id]);
+		const updated = updateTask(neutral.id, { produces: [], consumes: [], priority: 3 });
+		expect(updated).toMatchObject({ priority: 3 });
+		expect(updated).not.toHaveProperty("produces");
+		expect(updated).not.toHaveProperty("consumes");
+	});
+
+	it("uses deterministic dependent counts and ID ties after metadata ordering", () => {
+		const blocker = createTask({ origin: "other", summary: "blocker" });
+		const dependent = createTask({ origin: "other", summary: "dependent", blockedBy: [blocker.id] });
+		const peer = createTask({ origin: "other", summary: "peer" });
+		const all = [blocker, dependent, peer];
+		expect(compareReadyTasks(blocker, peer, all)).toBeLessThan(0);
+		expect(partitionReadyTasks(all).ready.map((task) => task.id)).toEqual([blocker.id, peer.id]);
 	});
 
 	it("classifies ready and waiting tasks from an in-memory snapshot", () => {
@@ -379,23 +385,9 @@ describe("task dependencies and tombstones", () => {
 			blockedBy: [tombstoned.id],
 		});
 		tombstoneTask(tombstoned.id);
-		const dependentPath = path.join(tmpRoot, "tasks", `${dependent.id}.json`);
-		const legacyDependent = JSON.parse(
-			fs.readFileSync(dependentPath, "utf-8"),
-		) as Record<string, unknown>;
-		fs.writeFileSync(
-			dependentPath,
-			`${JSON.stringify({ ...legacyDependent, blockedBy: ["missing-blocker", tombstoned.id] }, null, 2)}\n`,
-			"utf-8",
-		);
-		const before = new Map(
-			fs
-				.readdirSync(path.join(tmpRoot, "tasks"))
-				.map((file) => [
-					file,
-					fs.readFileSync(path.join(tmpRoot, "tasks", file), "utf-8"),
-				]),
-		);
+		const db = openTaskDatabase(tmpRoot);
+		writeStoredTask({ ...dependent, blockedBy: ["missing-blocker", tombstoned.id] }, db);
+		const before = JSON.stringify(readStoredTask(dependent.id, db));
 		const byId = tasksByIdSnapshot(listTasks({ includeTombstones: true }));
 		const migratedDependent = getTask(dependent.id);
 		if (!migratedDependent) throw new Error("dependent should exist");
@@ -410,14 +402,6 @@ describe("task dependencies and tombstones", () => {
 				{ id: "missing-blocker", status: "missing" },
 			],
 		});
-		const after = new Map(
-			fs
-				.readdirSync(path.join(tmpRoot, "tasks"))
-				.map((file) => [
-					file,
-					fs.readFileSync(path.join(tmpRoot, "tasks", file), "utf-8"),
-				]),
-		);
-		expect(after).toEqual(before);
+		expect(JSON.stringify(readStoredTask(dependent.id, db))).toBe(before);
 	});
 });

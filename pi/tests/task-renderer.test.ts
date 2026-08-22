@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTask, transitionTask } from "../lib/task-registry.js";
+import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.js";
 import {
 	formatTaskDetail,
 	formatTaskList,
@@ -17,9 +18,11 @@ beforeEach(() => {
 	tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-renderer-"));
 	prevOperatorDir = process.env.PI_OPERATOR_DIR;
 	process.env.PI_OPERATOR_DIR = tmpRoot;
+	initializeTaskStore(tmpRoot);
 });
 
 afterEach(() => {
+	closeTaskDatabase(tmpRoot);
 	if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 	else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 	fs.rmSync(tmpRoot, { recursive: true, force: true });

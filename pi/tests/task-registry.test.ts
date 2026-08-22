@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { closeTaskDatabase, initializeTaskStore, openTaskDatabase, readStoredTask } from "../lib/task-store.js";
 import {
 	createTask,
 	createTaskBatch,
@@ -23,9 +24,11 @@ beforeEach(() => {
 	tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-registry-"));
 	prevOverride = process.env.PI_OPERATOR_DIR;
 	process.env.PI_OPERATOR_DIR = tmpRoot;
+	initializeTaskStore(tmpRoot);
 });
 
 afterEach(() => {
+	closeTaskDatabase(tmpRoot);
 	if (prevOverride === undefined) delete process.env.PI_OPERATOR_DIR;
 	else process.env.PI_OPERATOR_DIR = prevOverride;
 	fs.rmSync(tmpRoot, { recursive: true, force: true });
@@ -500,12 +503,10 @@ describe("listTasks", () => {
 });
 
 describe("durable storage", () => {
-	it("does not parse transcripts -- registry only writes <state-dir>/tasks/<id>.json", () => {
+	it("does not parse transcripts -- registry stores records in SQLite", () => {
 		const task = createTask({ origin: "subagent", summary: "x" });
-		const expected = path.join(tmpRoot, "tasks", `${task.id}.json`);
-		expect(fs.existsSync(expected)).toBe(true);
-		const onDisk = JSON.parse(fs.readFileSync(expected, "utf-8"));
-		expect(onDisk.id).toBe(task.id);
-		expect(onDisk.schemaVersion).toBe(1);
+		const onDisk = readStoredTask(task.id, openTaskDatabase(tmpRoot));
+		expect(onDisk?.id).toBe(task.id);
+		expect(onDisk?.schemaVersion).toBe(1);
 	});
 });

@@ -311,6 +311,12 @@ export function formatTaskDetail(
 	if (task.preview)
 		lines.push(`  preview: ${truncateTaskText(task.preview, 200)}`);
 	if (task.notes) lines.push(`  notes: ${truncateTaskText(task.notes, 400)}`);
+	if (task.goalId) lines.push(`  goalId: ${truncateTaskText(task.goalId, 120)}`);
+	if (task.produces?.length)
+		lines.push(`  produces: ${task.produces.map((item) => truncateTaskText(item, 120)).join(", ")}`);
+	if (task.consumes?.length)
+		lines.push(`  consumes: ${task.consumes.map((item) => truncateTaskText(item, 120)).join(", ")}`);
+	if (task.priority !== undefined) lines.push(`  priority: ${task.priority}`);
 	if (task.execution) {
 		lines.push(`  execution: ${task.execution.status}`);
 		if (task.execution.outputPath)

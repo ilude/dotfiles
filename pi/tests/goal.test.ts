@@ -16,6 +16,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 import goal, { goalTestApi } from "../extensions/goal.ts";
 import { readLoopJob, updateLoopJob } from "../extensions/loop.ts";
 import { getTask, transitionTask } from "../lib/task-registry.ts";
+import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.ts";
 import { initializeGitRepository } from "./helpers/git-fixture.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -129,6 +130,7 @@ describe("goal extension", () => {
 		priorOperatorDir = process.env.PI_OPERATOR_DIR;
 		process.env.PI_LOOP_DIR = path.join(runtimeRoot, "loops");
 		process.env.PI_OPERATOR_DIR = path.join(runtimeRoot, "operator");
+		initializeTaskStore(process.env.PI_OPERATOR_DIR);
 		delete process.env.PI_GOAL_ID;
 	});
 
@@ -137,6 +139,7 @@ describe("goal extension", () => {
 		else process.env.PI_LOOP_DIR = priorLoopDir;
 		if (priorGoalId === undefined) delete process.env.PI_GOAL_ID;
 		else process.env.PI_GOAL_ID = priorGoalId;
+		closeTaskDatabase(path.join(runtimeRoot, "operator"));
 		if (priorOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 		else process.env.PI_OPERATOR_DIR = priorOperatorDir;
 		vi.clearAllMocks();

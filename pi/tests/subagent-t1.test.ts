@@ -16,6 +16,7 @@ import {
 } from "../extensions/subagent/legacy-adapter.ts";
 import { resolveChildToolAuthority } from "../extensions/subagent/index.ts";
 import { createTask, resolveTaskWorkspace } from "../lib/task-registry.ts";
+import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.ts";
 
 type SchemaObject = {
 	properties?: Record<string, SchemaObject>;
@@ -67,6 +68,10 @@ describe("subagent T1 execution contracts", () => {
 		const parent = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-parent-"));
 		const target = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-target-"));
 		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+		const previousOperatorDir = process.env.PI_OPERATOR_DIR;
+		const operatorDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-operator-"));
+		process.env.PI_OPERATOR_DIR = operatorDir;
+		initializeTaskStore(operatorDir);
 		const agentDir = path.join(parent, "agent");
 		const projectAgents = path.join(target, ".pi", "agents");
 		fs.mkdirSync(path.join(agentDir, "agents"), { recursive: true });
@@ -117,8 +122,12 @@ describe("subagent T1 execution contracts", () => {
 				),
 			).toThrow("escapes the assigned workspace");
 		} finally {
+			closeTaskDatabase(operatorDir);
 			if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 			else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			if (previousOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
+			else process.env.PI_OPERATOR_DIR = previousOperatorDir;
+			fs.rmSync(operatorDir, { recursive: true, force: true });
 			fs.rmSync(parent, { recursive: true, force: true });
 			fs.rmSync(target, { recursive: true, force: true });
 		}
@@ -128,7 +137,9 @@ describe("subagent T1 execution contracts", () => {
 		const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-tasks-"));
 		const otherWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-other-"));
 		const previousOperatorDir = process.env.PI_OPERATOR_DIR;
-		process.env.PI_OPERATOR_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-operator-"));
+		const operatorDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-operator-"));
+		process.env.PI_OPERATOR_DIR = operatorDir;
+		initializeTaskStore(operatorDir);
 		try {
 			const one = createTask({
 				origin: "other",
@@ -178,8 +189,10 @@ describe("subagent T1 execution contracts", () => {
 				reason: "task belongs to another workspace",
 			});
 		} finally {
+			closeTaskDatabase(operatorDir);
 			if (previousOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 			else process.env.PI_OPERATOR_DIR = previousOperatorDir;
+			fs.rmSync(operatorDir, { recursive: true, force: true });
 			fs.rmSync(workspace, { recursive: true, force: true });
 			fs.rmSync(otherWorkspace, { recursive: true, force: true });
 		}

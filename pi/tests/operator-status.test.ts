@@ -5,6 +5,7 @@ import * as path from "node:path";
 import type { ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 let tmpRoot: string;
@@ -14,9 +15,11 @@ beforeEach(() => {
 	tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-operator-status-"));
 	prevOperatorDir = process.env.PI_OPERATOR_DIR;
 	process.env.PI_OPERATOR_DIR = tmpRoot;
+	initializeTaskStore(tmpRoot);
 });
 
 afterEach(() => {
+	closeTaskDatabase(tmpRoot);
 	if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 	else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 	fs.rmSync(tmpRoot, { recursive: true, force: true });

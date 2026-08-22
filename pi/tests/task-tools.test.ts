@@ -9,6 +9,7 @@ import {
 	expect,
 	it,
 } from "vitest";
+import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const prevMetricsDir = process.env.PI_METRICS_DIR;
@@ -37,10 +38,12 @@ beforeEach(() => {
 	testMetricsDir = path.join(tmpRoot, "metrics");
 	prevOperatorDir = process.env.PI_OPERATOR_DIR;
 	process.env.PI_OPERATOR_DIR = tmpRoot;
+	initializeTaskStore(tmpRoot);
 	process.env.PI_METRICS_DIR = testMetricsDir;
 });
 
 afterEach(() => {
+	closeTaskDatabase(tmpRoot);
 	if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 	else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 	process.env.PI_METRICS_DIR = metricsRoot;

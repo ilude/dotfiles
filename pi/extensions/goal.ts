@@ -794,6 +794,7 @@ function materializePlanTasks(
 				notes: taskNotes(task),
 				workspace: taskWorkspace,
 				scope: ["."],
+				goalId,
 				metadata: {
 					goalId,
 					goalObjectiveHash: objectiveHash,
@@ -832,6 +833,7 @@ function materializePlanTasks(
 		updateTask(task.id, {
 			blockedBy,
 			notes: taskNotes(planTask),
+			goalId,
 			metadata: {
 				...(task.metadata ?? {}),
 				goalId,

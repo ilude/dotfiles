@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, type vi } from "vitest";
 import type { TaskState } from "../lib/task-registry.ts";
+import { closeTaskDatabase, initializeTaskStore, openTaskDatabase, readStoredTasks } from "../lib/task-store.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 let tmpRoot: string;
@@ -12,9 +13,11 @@ beforeEach(() => {
 	tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-tasks-cmd-"));
 	prevOperatorDir = process.env.PI_OPERATOR_DIR;
 	process.env.PI_OPERATOR_DIR = tmpRoot;
+	initializeTaskStore(tmpRoot);
 });
 
 afterEach(() => {
+	closeTaskDatabase(tmpRoot);
 	if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 	else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 	fs.rmSync(tmpRoot, { recursive: true, force: true });
@@ -408,26 +411,11 @@ describe("/tasks command", () => {
 			summary: "waiting work",
 			blockedBy: [blocker.id],
 		});
-		const taskDir = path.join(tmpRoot, "tasks");
-		const before = new Map(
-			fs
-				.readdirSync(taskDir)
-				.map((file) => [
-					file,
-					fs.readFileSync(path.join(taskDir, file), "utf-8"),
-				]),
-		);
+		const before = JSON.stringify(readStoredTasks(openTaskDatabase(tmpRoot)));
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
 		await cmd.handler(`start ${waiting.id}`, ctx);
-		const after = new Map(
-			fs
-				.readdirSync(taskDir)
-				.map((file) => [
-					file,
-					fs.readFileSync(path.join(taskDir, file), "utf-8"),
-				]),
-		);
+		const after = JSON.stringify(readStoredTasks(openTaskDatabase(tmpRoot)));
 		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
 			.calls[0][0] as string;
 		expect(text).toContain("Cannot start");

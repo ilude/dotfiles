@@ -4,19 +4,26 @@ import * as path from "node:path";
 
 import {
 	ALLOWED_TRANSITIONS,
-	ensureDirectory,
-	getTasksDir,
 	isAllowedTransition,
 	type TaskState,
 	TERMINAL_TASK_STATES,
 } from "./operator-state.ts";
 import { sanitizeTaskValue } from "./task-security.ts";
+import {
+	deleteStoredTask,
+	openTaskDatabase,
+	readStoredTasks,
+	withTaskTransaction,
+	writeStoredTask,
+} from "./task-store.ts";
 
 export type { TaskState } from "./operator-state.ts";
 
 export type TaskOrigin = "subagent" | "shell" | "other";
 const TASK_SCOPE_MAX_ITEMS = 16;
 const TASK_SCOPE_MAX_LENGTH = 256;
+const TASK_RESOURCE_MAX_ITEMS = 16;
+const TASK_RESOURCE_MAX_LENGTH = 256;
 
 export type TaskPersistenceOutcome =
 	| "persisted"
@@ -148,6 +155,10 @@ export interface TaskRecordV1 {
 	execution?: SubagentTaskExecution;
 	blockedBy?: string[];
 	blocks?: string[];
+	goalId?: string;
+	produces?: string[];
+	consumes?: string[];
+	priority?: number;
 	deletedAt?: string;
 }
 
@@ -164,6 +175,10 @@ export interface CreateTaskInput {
 	notes?: string;
 	metadata?: Record<string, unknown>;
 	blockedBy?: string[];
+	goalId?: string;
+	produces?: string[];
+	consumes?: string[];
+	priority?: number;
 }
 
 export interface CreateTaskBatchInput extends CreateTaskInput {
@@ -198,6 +213,10 @@ export interface UpdateTaskPatch {
 	scope?: string[];
 	notes?: string;
 	blockedBy?: string[];
+	goalId?: string;
+	produces?: string[];
+	consumes?: string[];
+	priority?: number;
 }
 
 export interface TransitionOptions {
@@ -265,6 +284,49 @@ export class TaskRegistryError extends Error {
 	}
 }
 
+function normalizeTaskResources(
+	resources: readonly string[] | undefined,
+	label: "produces" | "consumes",
+): string[] | undefined {
+	if (resources === undefined) return undefined;
+	if (resources.length > TASK_RESOURCE_MAX_ITEMS)
+		throw new TaskRegistryError(`${label} may contain at most ${TASK_RESOURCE_MAX_ITEMS} entries`);
+	const normalized = resources.map((resource) => {
+		if (typeof resource !== "string" || resource.length === 0 || resource.length > TASK_RESOURCE_MAX_LENGTH)
+			throw new TaskRegistryError(`${label} entries must contain between 1 and ${TASK_RESOURCE_MAX_LENGTH} characters`);
+		return resource;
+	});
+	if (new Set(normalized).size !== normalized.length)
+		throw new TaskRegistryError(`duplicate ${label} entry`);
+	return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeTaskPriority(priority: number | undefined): number | undefined {
+	if (priority === undefined) return undefined;
+	if (typeof priority !== "number" || !Number.isFinite(priority))
+		throw new TaskRegistryError("priority must be a finite number");
+	return priority;
+}
+
+function normalizeTaskMetadataFields(input: {
+	goalId?: string;
+	produces?: readonly string[];
+	consumes?: readonly string[];
+	priority?: number;
+}): Pick<TaskRecordV1, "goalId" | "produces" | "consumes" | "priority"> {
+	if (input.goalId !== undefined && (typeof input.goalId !== "string" || input.goalId.length === 0))
+		throw new TaskRegistryError("goalId must be a non-empty string");
+	const produces = normalizeTaskResources(input.produces, "produces");
+	const consumes = normalizeTaskResources(input.consumes, "consumes");
+	const priority = normalizeTaskPriority(input.priority);
+	return {
+		...(input.goalId !== undefined ? { goalId: input.goalId } : {}),
+		...(produces !== undefined ? { produces } : {}),
+		...(consumes !== undefined ? { consumes } : {}),
+		...(priority !== undefined ? { priority } : {}),
+	};
+}
+
 function normalizeWorkspacePath(workspace: string): string {
 	return process.platform === "win32" ? workspace.toLowerCase() : workspace;
 }
@@ -281,11 +343,6 @@ function findTaskWorkspaceRoot(cwd: string): string {
 
 export const resolveTaskWorkspace = (cwd: string): string =>
 	normalizeWorkspacePath(findTaskWorkspaceRoot(cwd));
-
-const taskFilePath = (id: string): string => {
-	if (!isValidId(id)) throw new TaskRegistryError(`invalid task id: ${id}`);
-	return path.join(getTasksDir(), `${id}.json`);
-};
 
 const isValidId = (id: string): boolean =>
 	typeof id === "string" &&
@@ -309,7 +366,7 @@ const normalizeTaskRecord = (
 ): TaskRecordV1 | null => {
 	if (typeof parsed.id !== "string" || !isValidId(parsed.id)) return null;
 	const now = new Date().toISOString();
-	return sanitizeTaskValue({
+	const normalized: Record<string, unknown> = {
 		...parsed,
 		schemaVersion: 1,
 		id: parsed.id,
@@ -321,7 +378,12 @@ const normalizeTaskRecord = (
 		retryCount: numberOrZero(parsed.retryCount),
 		blockedBy: normalizeIdList(parsed.blockedBy),
 		blocks: normalizeIdList(parsed.blocks),
-	}) as TaskRecordV1;
+	};
+	if (Array.isArray(normalized.produces) && normalized.produces.length === 0)
+		delete normalized.produces;
+	if (Array.isArray(normalized.consumes) && normalized.consumes.length === 0)
+		delete normalized.consumes;
+	return sanitizeTaskValue(normalized) as TaskRecordV1;
 };
 
 function isTaskOrigin(value: unknown): value is TaskOrigin {
@@ -334,27 +396,8 @@ function normalizeIdList(value: unknown): string[] {
 		: [];
 }
 
-function readTaskFile(file: string): TaskRecordV1 | null {
-	try {
-		const raw = fs.readFileSync(file, "utf-8");
-		const parsed = JSON.parse(raw) as unknown;
-		return parsed && typeof parsed === "object"
-			? normalizeTaskRecord(parsed as Record<string, unknown>)
-			: null;
-	} catch {
-		return null;
-	}
-}
-
-function writeTaskFile(record: TaskRecordV1): void {
-	ensureDirectory(getTasksDir());
-	const persisted = { ...record };
-	delete persisted.blocks;
-	const sanitized = sanitizeTaskValue(persisted);
-	const target = taskFilePath(sanitized.id);
-	const tmp = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
-	fs.writeFileSync(tmp, `${JSON.stringify(sanitized, null, 2)}\n`, "utf-8");
-	fs.renameSync(tmp, target);
+function writeTaskFile(record: TaskRecordV1, db = openTaskDatabase()): void {
+	writeStoredTask(sanitizeTaskValue(record) as TaskRecordV1, db);
 }
 
 const TASK_DEPENDENCY_MAX_ITEMS = 16;
@@ -474,6 +517,7 @@ function createTaskRecord(
 		notes: input.notes,
 		metadata: input.metadata,
 		blockedBy,
+		...normalizeTaskMetadataFields(input),
 	});
 	if (initialState === "running") record.startedAt = now;
 	return record;
@@ -481,11 +525,15 @@ function createTaskRecord(
 
 export function createTask(input: CreateTaskInput): TaskRecordV1 {
 	const id = crypto.randomUUID();
-	const dependencies = validateTaskDependencies([
-		{ id, blockedBy: input.blockedBy, workspace: input.workspace },
-	]);
-	const record = createTaskRecord(input, id, dependencies.get(id) ?? []);
-	writeTaskFile(record);
+	const db = openTaskDatabase();
+	let record!: TaskRecordV1;
+	withTaskTransaction(db, () => {
+		const dependencies = validateTaskDependencies([
+			{ id, blockedBy: input.blockedBy, workspace: input.workspace },
+		]);
+		record = createTaskRecord(input, id, dependencies.get(id) ?? []);
+		writeTaskFile(record, db);
+	});
 	return getTask(record.id) ?? record;
 }
 
@@ -560,23 +608,26 @@ export function createTaskBatch(
 	const records = inputs.map((input, index) =>
 		createBatchTaskRecord(input, index, generated, aliases, workspace),
 	);
-	const dependencies = validateTaskDependencies(records);
-	for (const record of records)
-		record.blockedBy = dependencies.get(record.id) ?? [];
 	const persistedIds: string[] = [];
 	try {
-		for (const record of records) {
-			options.beforeWrite?.();
-			writeTaskFile(record);
-			persistedIds.push(record.id);
-		}
+		const db = openTaskDatabase();
+		withTaskTransaction(db, () => {
+			const dependencies = validateTaskDependencies(records);
+			for (const record of records) {
+				record.blockedBy = dependencies.get(record.id) ?? [];
+				options.beforeWrite?.();
+				writeTaskFile(record, db);
+			}
+		});
+		persistedIds.push(...records.map((record) => record.id));
 	} catch (error) {
+		if (error instanceof TaskRegistryError) throw error;
 		return {
 			outcome: "write_failed",
 			operationId,
 			failedPhase: "write_records",
 			generated,
-			persistedIds,
+			persistedIds: [],
 			error: error instanceof Error ? error.message : String(error),
 		};
 	}
@@ -589,34 +640,42 @@ export function createTaskBatch(
 }
 
 export function updateTask(id: string, patch: UpdateTaskPatch): TaskRecordV1 {
-	const existing = getTask(id);
-	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
-	let nextBlockedBy = existing.blockedBy ?? [];
-	if (patch.blockedBy !== undefined || patch.workspace !== undefined) {
-		const dependencies = validateTaskDependencies([
-			{
+	const db = openTaskDatabase();
+	let updated!: TaskRecordV1;
+	withTaskTransaction(db, () => {
+		const existing = getTask(id);
+		if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
+		let nextBlockedBy = existing.blockedBy ?? [];
+		if (patch.blockedBy !== undefined || patch.workspace !== undefined) {
+			const dependencies = validateTaskDependencies([{
 				id,
 				blockedBy: patch.blockedBy ?? nextBlockedBy,
 				workspace: patch.workspace ?? existing.workspace,
-			},
-		]);
-		nextBlockedBy = dependencies.get(id) ?? [];
-	}
-	const updated: TaskRecordV1 = sanitizeTaskValue({
-		...existing,
-		...(patch.summary !== undefined ? { summary: patch.summary } : {}),
-		...(patch.preview !== undefined ? { preview: patch.preview } : {}),
-		...(patch.usage !== undefined ? { usage: patch.usage } : {}),
-		...(patch.metadata !== undefined ? { metadata: patch.metadata } : {}),
-		...(patch.workspace !== undefined ? { workspace: patch.workspace } : {}),
-		...(patch.scope !== undefined
-			? { scope: normalizeTaskScope(patch.scope) }
-			: {}),
-		...(patch.notes !== undefined ? { notes: patch.notes } : {}),
-		...(patch.blockedBy !== undefined ? { blockedBy: nextBlockedBy } : {}),
-		updatedAt: new Date().toISOString(),
+			}]);
+			nextBlockedBy = dependencies.get(id) ?? [];
+		}
+		updated = sanitizeTaskValue({
+			...existing,
+			...(patch.summary !== undefined ? { summary: patch.summary } : {}),
+			...(patch.preview !== undefined ? { preview: patch.preview } : {}),
+			...(patch.usage !== undefined ? { usage: patch.usage } : {}),
+			...(patch.metadata !== undefined ? { metadata: patch.metadata } : {}),
+			...(patch.workspace !== undefined ? { workspace: patch.workspace } : {}),
+			...(patch.scope !== undefined ? { scope: normalizeTaskScope(patch.scope) } : {}),
+			...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+			...(patch.blockedBy !== undefined ? { blockedBy: nextBlockedBy } : {}),
+			updatedAt: new Date().toISOString(),
+			...normalizeTaskMetadataFields({
+				goalId: patch.goalId !== undefined ? patch.goalId : existing.goalId,
+				produces: patch.produces !== undefined ? patch.produces : existing.produces,
+				consumes: patch.consumes !== undefined ? patch.consumes : existing.consumes,
+				priority: patch.priority !== undefined ? patch.priority : existing.priority,
+			}),
+		}) as TaskRecordV1;
+		if (patch.produces?.length === 0) delete updated.produces;
+		if (patch.consumes?.length === 0) delete updated.consumes;
+		writeTaskFile(updated, db);
 	});
-	writeTaskFile(updated);
 	return getTask(updated.id) ?? updated;
 }
 
@@ -624,6 +683,7 @@ const updateSameStateTask = (
 	existing: TaskRecordV1,
 	target: TaskState,
 	opts: TransitionOptions,
+	db: Parameters<typeof writeTaskFile>[1],
 ): TaskRecordV1 => {
 	if (target !== "skipped")
 		throw new TaskRegistryError(
@@ -635,7 +695,7 @@ const updateSameStateTask = (
 		skipReason: opts.skipReason,
 		updatedAt: new Date().toISOString(),
 	}) as TaskRecordV1;
-	writeTaskFile(updated);
+	writeTaskFile(updated, db);
 	return updated;
 };
 
@@ -691,32 +751,81 @@ const applyTransitionDetails = (
 	if (opts.usage) next.usage = opts.usage;
 };
 
+function transitionTaskInTransaction(
+	db: Parameters<typeof writeTaskFile>[1],
+	id: string,
+	target: TaskState,
+	opts: TransitionOptions,
+): TaskRecordV1 {
+	const existing = getTask(id);
+	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
+	if (existing.state === target) return updateSameStateTask(existing, target, opts, db);
+	if (!isAllowedTransition(existing.state, target)) {
+		const allowed = [...(ALLOWED_TRANSITIONS.get(existing.state) ?? [])].join(", ") || "(none)";
+		throw new TaskRegistryError(`invalid transition for ${id}: ${existing.state} -> ${target} (allowed: ${allowed})`);
+	}
+	const now = new Date().toISOString();
+	const next = sanitizeTaskValue({ ...existing, state: target, updatedAt: now }) as TaskRecordV1;
+	applyTransitionDetails(next, existing, target, opts, now);
+	writeTaskFile(next, db);
+	return next;
+}
+
 export function transitionTask(
 	id: string,
 	target: TaskState,
 	opts: TransitionOptions = {},
 ): TaskRecordV1 {
-	const existing = getTask(id);
-	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
-	if (existing.state === target)
-		return updateSameStateTask(existing, target, opts);
-	if (!isAllowedTransition(existing.state, target)) {
-		const allowed =
-			[...(ALLOWED_TRANSITIONS.get(existing.state) ?? [])].join(", ") ||
-			"(none)";
-		throw new TaskRegistryError(
-			`invalid transition for ${id}: ${existing.state} -> ${target} (allowed: ${allowed})`,
-		);
-	}
-	const now = new Date().toISOString();
-	const next: TaskRecordV1 = sanitizeTaskValue({
-		...existing,
-		state: target,
-		updatedAt: now,
+	const db = openTaskDatabase();
+	return withTaskTransaction(db, () => transitionTaskInTransaction(db, id, target, opts));
+}
+
+export function updateAndTransitionTask(
+	id: string,
+	patch: UpdateTaskPatch,
+	target: TaskState,
+	opts: TransitionOptions = {},
+): TaskRecordV1 {
+	const db = openTaskDatabase();
+	return withTaskTransaction(db, () => {
+		const existing = getTask(id);
+		if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
+		const updated = sanitizeTaskValue({
+			...existing,
+			...(patch.summary !== undefined ? { summary: patch.summary } : {}),
+			...(patch.preview !== undefined ? { preview: patch.preview } : {}),
+			...(patch.usage !== undefined ? { usage: patch.usage } : {}),
+			...(patch.metadata !== undefined ? { metadata: patch.metadata } : {}),
+			...(patch.workspace !== undefined ? { workspace: patch.workspace } : {}),
+			...(patch.scope !== undefined ? { scope: normalizeTaskScope(patch.scope) } : {}),
+			...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+			...(patch.blockedBy !== undefined ? { blockedBy: patch.blockedBy } : {}),
+			updatedAt: new Date().toISOString(),
+			...normalizeTaskMetadataFields({
+				goalId: patch.goalId !== undefined ? patch.goalId : existing.goalId,
+				produces: patch.produces !== undefined ? patch.produces : existing.produces,
+				consumes: patch.consumes !== undefined ? patch.consumes : existing.consumes,
+				priority: patch.priority !== undefined ? patch.priority : existing.priority,
+			}),
+		}) as TaskRecordV1;
+		if (patch.produces?.length === 0) delete updated.produces;
+		if (patch.consumes?.length === 0) delete updated.consumes;
+		if (patch.blockedBy !== undefined || patch.workspace !== undefined) {
+			const dependencies = validateTaskDependencies([{
+				id,
+				blockedBy: updated.blockedBy,
+				workspace: updated.workspace,
+			}]);
+			updated.blockedBy = dependencies.get(id) ?? [];
+		}
+		if (target === "running") {
+			const readiness = getTaskReadiness(updated, tasksByIdSnapshot(listTasks({ includeTombstones: true })));
+			if (!readiness.ready)
+				throw new TaskRegistryError(`task is waiting on ${readiness.unmetBlockers.map((item) => item.id).join(", ")}`);
+		}
+		writeTaskFile(updated, db);
+		return transitionTaskInTransaction(db, id, target, opts);
 	});
-	applyTransitionDetails(next, existing, target, opts, now);
-	writeTaskFile(next);
-	return next;
 }
 
 export function safeTransitionTask(
@@ -736,12 +845,8 @@ export function safeTransitionTask(
 }
 
 function readAllTaskRecords(): TaskRecordV1[] {
-	const dir = getTasksDir();
-	if (!fs.existsSync(dir)) return [];
-	return fs
-		.readdirSync(dir)
-		.filter((entry) => entry.endsWith(".json"))
-		.map((entry) => readTaskFile(path.join(dir, entry)))
+	return readStoredTasks()
+		.map((record) => normalizeTaskRecord(record))
 		.filter((record): record is TaskRecordV1 => record !== null);
 }
 
@@ -850,14 +955,9 @@ export function pruneTaskRegistry(
 				(options.removeUnowned === true && !record.sessionId)),
 	);
 	const removedIds = new Set(removable.map((record) => record.id));
-	for (const id of removedIds) {
-		try {
-			fs.unlinkSync(taskFilePath(id));
-		} catch (error) {
-			if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
-				throw error;
-		}
-	}
+	withTaskTransaction(openTaskDatabase(), () => {
+		for (const id of removedIds) deleteStoredTask(id);
+	});
 	return {
 		removedIds: [...removedIds],
 		retiredRemoved: removable.filter(isRetiredTaskRecord).length,
@@ -876,21 +976,23 @@ export function pruneTaskRegistry(
 }
 
 export function tombstoneTask(id: string, reason = "deleted"): TaskRecordV1 {
-	const existing = getTask(id);
-	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
-	const now = new Date().toISOString();
-	const state = TERMINAL_TASK_STATES.has(existing.state)
-		? existing.state
-		: "cancelled";
-	const tombstone = sanitizeTaskValue({
-		...existing,
-		state,
-		deletedAt: now,
-		endedAt: existing.endedAt ?? now,
-		updatedAt: now,
-		metadata: { ...(existing.metadata ?? {}), tombstoneReason: reason },
+	const db = openTaskDatabase();
+	let tombstone!: TaskRecordV1;
+	withTaskTransaction(db, () => {
+		const existing = getTask(id);
+		if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
+		const now = new Date().toISOString();
+		const state = TERMINAL_TASK_STATES.has(existing.state) ? existing.state : "cancelled";
+		tombstone = sanitizeTaskValue({
+			...existing,
+			state,
+			deletedAt: now,
+			endedAt: existing.endedAt ?? now,
+			updatedAt: now,
+			metadata: { ...(existing.metadata ?? {}), tombstoneReason: reason },
+		}) as TaskRecordV1;
+		writeTaskFile(tombstone, db);
 	});
-	writeTaskFile(tombstone);
 	return tombstone;
 }
 
@@ -963,22 +1065,25 @@ export function isTaskReady(
 }
 
 export function startTask(id: string): TaskOperationResult {
-	const record = getTask(id);
-	if (!record) return { outcome: "not_found", error: `task not found: ${id}` };
-	const readiness = getTaskReadiness(
-		record,
-		tasksByIdSnapshot(listTasks({ includeTombstones: true })),
-	);
-	if (!readiness.ready)
-		return {
-			outcome: "rejected",
-			record,
-			readiness,
-			error: `task is waiting on ${readiness.unmetBlockers
-				.map((item) => item.id)
-				.join(", ")}`,
-		};
-	return { ...safeTransitionTask(id, "running"), readiness };
+	const db = openTaskDatabase();
+	try {
+		return withTaskTransaction(db, () => {
+			const record = getTask(id);
+			if (!record) return { outcome: "not_found", error: `task not found: ${id}` };
+			const readiness = getTaskReadiness(record, tasksByIdSnapshot(listTasks({ includeTombstones: true })));
+			if (!readiness.ready)
+				return {
+					outcome: "rejected",
+					record,
+					readiness,
+					error: `task is waiting on ${readiness.unmetBlockers.map((item) => item.id).join(", ")}`,
+				};
+			return { outcome: "persisted", record: transitionTaskInTransaction(db, id, "running", {}), readiness };
+		});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { outcome: message.includes("not found") ? "not_found" : "rejected", error: message };
+	}
 }
 
 export function retryTask(id: string): TaskOperationResult {
@@ -993,14 +1098,50 @@ export function retryTask(id: string): TaskOperationResult {
 	return startTask(id);
 }
 
+function sharesResource(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
+	if (!left || !right) return false;
+	const rightResources = new Set(right);
+	return left.some((resource) => rightResources.has(resource));
+}
+
+function incompleteDirectDependents(
+	task: TaskRecordV1,
+	tasks: readonly TaskRecordV1[],
+): number {
+	return tasks.filter(
+		(candidate) =>
+			candidate.blockedBy?.includes(task.id) === true &&
+			!UNBLOCKING_STATES.has(candidate.state),
+	).length;
+}
+
+export function compareReadyTasks(
+	left: TaskRecordV1,
+	right: TaskRecordV1,
+	allTasks: readonly TaskRecordV1[] = [left, right],
+): number {
+	const priority = (right.priority ?? 0) - (left.priority ?? 0);
+	if (priority !== 0) return priority;
+	if (sharesResource(left.produces, right.consumes)) return -1;
+	if (sharesResource(right.produces, left.consumes)) return 1;
+	const dependents =
+		incompleteDirectDependents(right, allTasks) -
+		incompleteDirectDependents(left, allTasks);
+	if (dependents !== 0) return dependents;
+	const created = right.createdAt.localeCompare(left.createdAt);
+	return created !== 0 ? created : left.id.localeCompare(right.id);
+}
+
 export function partitionReadyTasks(tasks: readonly TaskRecordV1[]): {
 	ready: TaskRecordV1[];
 	waiting: TaskRecordV1[];
 	blocked: TaskRecordV1[];
 } {
 	const byId = tasksByIdSnapshot(tasks);
+	const ready = tasks.filter((task) => isTaskReady(task, byId));
+	ready.sort((left, right) => compareReadyTasks(left, right, tasks));
 	return {
-		ready: tasks.filter((task) => isTaskReady(task, byId)),
+		ready,
 		waiting: tasks.filter(
 			(task) =>
 				task.state === "pending" && getUnmetBlockers(task, byId).length > 0,
