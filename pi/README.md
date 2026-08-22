@@ -653,19 +653,6 @@ Behavior:
 - Limits the built-in Amazon Bedrock provider to configured `us.anthropic` Claude models; the curated `bedrock-mantle` provider selects current Claude and GPT models and resolves their Mantle or Runtime transport.
 - Applies provider-specific blocklists (including internal/legacy model IDs) before `/model` selection.
 
-### Worktree occupancy
-
-`agent-instances.ts` registers the primary Pi session in the worktree-local,
-Git-ignored `.agent-instances/` registry, releases it on clean shutdown, and
-excludes nested subagent processes. Lease scans verify process identity, so the
-extension does not spawn a Python heartbeat process every minute.
-
-The status line shows the active instance count. When another registered Pi
-session occupies the same worktree, Pi also appends a warning to session context
-that further modifying work should move to a separate Git worktree. Lease
-failures do not block the session; expired crashed-process leases are recovered
-by the shared helper in `scripts/agent_instance_lease.py`.
-
 ### Operator Layer
 
 Three companion extensions surface durable task and permission state for
@@ -688,13 +675,11 @@ so registry I/O failure never breaks the protected producer flow.
 
 #### `operator-status.ts`
 
-Adds three status bar slots and the `/doctor` command.
+Adds two status bar slots and the `/doctor` command.
 
 Slots:
 - `pi` -- always shown, format `pi vX.Y.Z`
 - `task` -- shown only when non-terminal tasks exist, format `task N (M blocked, K failed)`
-- `elevated` -- shown only when session approvals exist, format `elevated (N)`
-
 Healthy default keeps the bar quiet (no `OK` token, no zero counters). Slots
 populate at `session_start` and refresh after every `tool_result`.
 
@@ -750,14 +735,13 @@ completed, cancelled, skipped = terminal
 Operator surface for the permission registry.
 
 Commands:
-- `/permissions` -- summary (session approvals + last 20 allow/deny decisions)
+- `/permissions` -- summary (last 20 allow/deny decisions)
 - `/permissions allows` / `/permissions denies` -- filtered views
-- `/permissions reset` -- clear all session approvals
 - `/permissions retry <id>` -- replay attempt for a denied decision when a `replayPayload` was captured. Records the replay as a new `manual_once` decision linking back to the original via `metadata.replayOf`. Does not re-issue the underlying tool call -- replay through normal channels.
 
 Decision provenance categories: `rule` (config-driven, what damage-control
 emits today), `manual_once` (user one-shot approval/denial via `/permissions
-retry` or interactive confirm), `session` (session-scoped trust),
+retry` or interactive confirm), `session` (session-scoped decision),
 `unknown` (uninstrumented paths).
 
 ## Prompt-routing research artifacts

@@ -18,7 +18,7 @@ This document records observations and questions. A cited idea is not automatica
 
 ## Problem statement
 
-The primary need is to offload CPU-heavy and long-running development and agent work from the workstation to two existing Proxmox servers.
+The primary need is to offload CPU-heavy and long-running development and agent work from the Windows workstation. Remote work must continue independently of the local client connection. The operator must be able to inspect and control long-running progress directly from another machine without remote-desktoping into the Windows workstation. Tools such as AnyDesk are too slow and inefficient, and an ultrawide workstation desktop does not scale usefully to a small laptop display. Eventual phone access and monitoring increase the need for a native, compact remote interface. The platform begins on one Proxmox server and may later use additional Proxmox servers.
 
 The desired experience is closer to a remote computer than a short-lived code-execution API:
 
@@ -31,7 +31,7 @@ The desired experience is closer to a remote computer than a short-lived code-ex
 - Stop or discard work without manual cleanup across several systems.
 - Add stronger isolation only where the workload requires it.
 
-This is a single-user experimental system. High availability, multi-tenant billing, enterprise identity, and cluster consensus are not current drivers.
+This is a single-user experimental system. It is intended to operate across multiple Proxmox servers, but begins with one server. High availability, multi-tenant billing, enterprise identity, and cluster consensus are not current drivers.
 
 ## Desired product shape
 
@@ -119,18 +119,23 @@ Provider claims below describe their published interfaces. Low-level implementat
 Sources:
 
 - [exe.dev](https://exe.dev/)
-- [Running agents](https://exe.dev/docs/use-case-agent)
+- [How does exe.dev work?](https://exe.dev/docs/faq/how-exedev-works)
+- [Customizing VMs](https://exe.dev/docs/customization)
+- [API](https://exe.dev/docs/api)
+- [Shelley](https://exe.dev/docs/shelley/intro)
 - [Meet exe.dev, Modern VMs](https://blog.exe.dev/meet-exe.dev)
 
-Published characteristics:
+Published characteristics as of 2026-08-22:
 
 - Full remote VMs rather than a restricted code runner.
-- SSH-based creation and access.
-- Persistent disks.
-- Fast startup.
-- Private HTTP services with managed TLS and sharing controls.
-- Preinstalled coding agents and development tooling.
-- A machine can remain useful for long-lived development and agent work.
+- Bare-metal hosts run Cloud Hypervisor, which exe.dev identifies as a replaceable implementation detail.
+- A VM starts from an OCI container image attached as a bootable block device rather than a conventional cloud base image. exe.dev reports creation in about two seconds and accepts the trade-off that the provider controls the kernel.
+- The default `exeuntu` OCI image is Ubuntu 24.04 with systemd and a broad developer tool baseline. Custom OCI images and one-time setup scripts are supported.
+- Persistent disks provide normal filesystem behavior.
+- The primary programmatic API is exposed over SSH, with JSON output; an HTTPS endpoint wraps the same command model.
+- VMs receive routed SSH names rather than public IPs. exe.dev terminates HTTPS and proxies to VM services.
+- VM listing exposes machine identity, region, SSH destination, HTTPS URL, and running state. A separate stat surface reports vCPU, disk, I/O, and network history.
+- Shelley is a web- and mobile-accessible coding agent running inside the VM, while other agents remain supported.
 
 What appears valuable for this project:
 
@@ -140,12 +145,12 @@ What appears valuable for this project:
 - Managed service URLs reduce reverse-proxy and certificate work for each project.
 - The platform does not force one agent or one development workflow.
 
-Unknown or not yet verified:
+Unknown or not publicly established by the reviewed sources:
 
-- The underlying VMM and storage implementation.
+- The exact OCI-to-block-device construction, cache, copy-on-write, and persistent storage implementation.
 - Exact suspend and resume semantics.
-- How much orchestration is exposed beyond SSH and machine lifecycle.
-- Which parts remain useful at a two-server, single-user scale.
+- Control-plane placement, image distribution, and host scheduling internals.
+- Which parts remain useful at a small single-user Proxmox scale.
 
 ### Amp Orbs
 
@@ -351,6 +356,8 @@ Onclave is intended to become the central orchestration system for managed remot
 
 OpenTofu remains authoritative for the infrastructure resources and state it manages. That state can establish declared and applied resource identity, placement, addressing, and outputs, but it is not authoritative for guest services, Herdr panes, Pi processes, containers, or application health. Onclave must query the owning environment or service adapters for those live facts and route lifecycle actions back to the owning subsystem rather than duplicating all runtime state centrally.
 
+Provider- and runtime-specific tooling for retrieving current state, facts, and operational information quickly, efficiently, and deterministically is part of the owning Onclave or infrastructure subsystem. Those adapters and probes are created, maintained, and improved as observed workflows require them.
+
 ### Private infrastructure configuration service
 
 Onclave will be the exclusive normal interface for versioned private infrastructure configuration. S3-compatible storage will hold immutable configuration bundles and manifests. Each version must identify its parent, content digest, schema, author, validation result, and activation state. Normal reads, writes, comparison, validation, activation, and rollback go through authorized and audited Onclave APIs.
@@ -447,7 +454,7 @@ The first version therefore does not require a central session catalog, automati
 
 The initial platform has no filesystem checkpoint, checkpoint catalog, rollback, environment cloning, or automatic snapshot requirement. Persistent environments rely on their durable filesystem and Git. Risky or disposable work uses an ephemeral environment. Existing Proxmox snapshot tools may remain available to an operator, but they are not an Onclave product capability.
 
-### Normal control boundary
+### Normal control boundary and client roadmap
 
 Normal operation is divided by responsibility:
 
@@ -457,6 +464,25 @@ Normal operation is divided by responsibility:
 - SSH is a recovery and low-level inspection path when the normal surfaces are insufficient.
 
 Onclave does not need to replace ordinary shell and development tools, and routine environment lifecycle must not require the user to know internal hostnames, infrastructure commands, or provider topology.
+
+The client roadmap is intentionally staged:
+
+1. The MVP uses Herdr as the only normal remote interaction and monitoring interface. This addresses direct laptop access without streaming the Windows desktop.
+2. A deterministic Onclave API and CLI may follow once the MVP proves the underlying workflows.
+3. A small Onclave monitoring and lifecycle interface may then expose projects, environments, agents, bounded output, results, artifacts, service links, and actions.
+4. A complete exe.dev-like browser and mobile experience with terminal, conversation, files, diffs, and artifacts is a later possible stage.
+
+Phone access is an eventual requirement but not part of the Herdr MVP. Do not build the later client stages before the preceding stage demonstrates what information and actions are actually needed.
+
+The MVP uses one central Herdr service as the durable session gateway:
+
+- Work in the persistent Herdr project environment uses local Herdr panes.
+- Herdr panes enter isolated LXCs, VMs, or future microVMs over SSH or an equivalent native guest transport.
+- Herdr panes enter project containers through the restricted Docker-compatible transport and container exec behavior.
+- Pi runs inside the target whenever repository, filesystem, process, or credential isolation is required. Central Pi may control ordinary remote container workloads when Pi itself does not need that isolation.
+- Provisioning supplies stable environment identity, target alias, operator identity, verified host-key trust, working directory, and Pi resume information. Personal workstation private keys are not copied into Herdr.
+
+The landed spike does not prove that Herdr recognizes a Pi process beyond an SSH hop as a first-class agent. The MVP requires persistent terminal access regardless; richer remote-agent identity and lifecycle reporting are added only after a live executable test establishes the gap and viable integration boundary. Do not install a separate Herdr service in every environment initially.
 
 ### Initial capacity and resource behavior
 
@@ -492,7 +518,7 @@ The same repository-owned environment contract may describe publishable services
 
 Service publication is a platform capability controlled by Onclave. For a declared service, Onclave assigns a collision-free endpoint, authorizes its exposure policy, records the owning project and environment, manages DNS and route intent, and removes the publication when explicitly requested or when the owning environment is deleted.
 
-Caddy is the publication data plane. It obtains and renews Let's Encrypt certificates, terminates TLS, and proxies requests to the service backend described by the environment contract. Onclave manages desired publication and lifecycle; it does not replace Caddy's certificate automation or handle certificate private keys in ordinary orchestration.
+Caddy is the publication data plane. It obtains and renews Let's Encrypt certificates through Cloudflare DNS-01, terminates TLS, and proxies requests to the service backend described by the environment contract. Onclave manages desired publication and lifecycle; it does not replace Caddy's certificate automation or handle certificate private keys in ordinary orchestration.
 
 Technitium remains the homelab DNS authority. Joyride is a CoreDNS distribution with additional Docker- and Traefik-oriented discovery behavior. CoreDNS may serve Onclave-managed records through an appropriate supported data source, automatically reloaded zone source, or a future narrow integration. Joyride is not the publication control plane and does not itself provide proxying or TLS. The final division between direct Technitium records, a CoreDNS-backed dynamic zone, and Caddy route discovery remains an implementation detail subject to the selected exposure policy.
 
@@ -611,7 +637,7 @@ Implementation details intentionally remain open until then:
 - automatic infrastructure retries, rollback, continuation, or failed-environment deletion;
 - an actively hostile sandbox profile resistant to new kernel or hypervisor escapes;
 - PR-first CI validation, repair, merge policy, or branch protection automation;
-- a required web UI before observed use demonstrates that Onclave, Herdr, and SSH are insufficient.
+- a web or phone UI in the Herdr MVP; later client stages follow API/CLI and observed use.
 
 ## Reference classification
 
