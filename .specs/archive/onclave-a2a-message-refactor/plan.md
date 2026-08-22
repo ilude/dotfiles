@@ -1,6 +1,7 @@
 ---
-status: ready
+status: complete
 slug: onclave-a2a-message-refactor
+completed: 2026-08-22
 ---
 
 # Onclave A2A Message Refactor
@@ -29,21 +30,19 @@ Replace Onclave's custom performative, polling, and delegation-grant protocol wi
 
 ## Tasks
 
-- [ ] **T1: Replace the shared envelope and core conversation contract with the bounded A2A model**
+- [x] **T1: Replace the shared envelope and core conversation contract with the bounded A2A model**
   - Files: `packages/envelope/src/`, `packages/envelope/tests/`, `services/core/src/conversations.ts`, `services/core/src/rpc.ts`, `services/core/src/agent-delivery.ts`, `services/core/src/dead-letter.ts`, `services/core/src/service.ts`, core configuration/audit modules, and focused core tests.
   - Change: Define strict versioned `Message`, `Task`, `TaskStatus`, and status-event contracts with message, context, task, origin, destination, timestamps, hop/TTL, usage, schema, and trace fields required by retained behavior. Replace performatives, reply correlation, and delegation grants with deterministic task transitions and origin event routing. Map `ask` to wait-for-result behavior; make `request` return after durable publication, then require the receiving adapter to create a task and emit `submitted`; and keep `inform` outside the task lifecycle. Persist contexts, tasks, status, budget counters, and origin routing needed for restart-safe delivery in a new versioned state boundary that does not overwrite the legacy conversation store; make duplicate messages and repeated terminal events idempotent; reject illegal transitions, continuation of terminal tasks, and incompatible protocol versions. Remove unused delegation/action/scope contracts rather than preserving fallback paths. Reserve a versioned internal event classification seam for later authenticated webhook ingress without adding an endpoint.
   - Done when: The core can create and resume contexts, create tracked tasks, interrupt and resume nonterminal tasks, reject terminal continuation, create follow-up tasks in an existing context, route status events to the origin, enforce budgets and trust boundaries, and recover persisted nonterminal state after restart; legacy protocol peers fail with an explicit version mismatch and legacy state remains untouched because live cutover is out of scope.
   - Verify: Run focused envelope, AMQP mapping, task-state, conversation persistence, RPC, delivery, dead-letter, budget, audit, deduplication, incompatible-version, and restart tests. Use a table-driven transition test covering every allowed and rejected state edge, plus an executable broker slice proving duplicate-safe status delivery, origin routing, disconnect/reconnect retention, timeout without cancellation, and no dirty terminal resurrection.
 
-- [ ] **T2: Collapse the Pi adapter to instance discovery and one message tool**
-  - Depends on: T1.
+- [x] **T2: Collapse the Pi adapter to instance discovery and one message tool**
   - Files: `extensions/onclave-pi/src/onclave-pi.ts`, `extensions/onclave-pi/src/lib/`, `extensions/onclave-pi/tests/`, and parsed tool-schema fixtures.
   - Change: Rename `onclave_agents` to parameterless `onclave_instances` returning live registered Pi instances and evidence-backed status only. Replace `onclave_send`, `onclave_delegate`, `onclave_inform`, `onclave_get`, and `onclave_await` with `onclave_message` using `type: ask | request | inform`, `to`, `body`, and only the applicable optional `context_id`, `task_id`, and `timeout_ms`. Enforce conditional arguments in code with actionable errors. Automatically correlate Pi runs to inbound messages, emit task transitions and replies, deliver origin events without model polling, and trigger caller turns only for input-required or terminal outcomes. Preserve display-only inform delivery and cross-host confirmation. Remove delegation framing and use provenance framing that consistently names independent instances and peer authority limits.
   - Done when: Only the two agreed tools are registered; summaries and prompt guidance explain when each message type applies and that Onclave connects independent instances rather than subagents; ask waits once, request returns after durable publication without claiming receiver acceptance, inform never starts a turn, callbacks require no model action, interrupted tasks accept explicit continuation, terminal follow-ups create new tasks in the same context, and invalid field combinations fail without publishing.
   - Verify: Run parsed-schema and adapter tests for all message types, absent and invalid fields, direct and broadcast inform, ask direct response, ask timeout with later event delivery, asynchronous request lifecycle, input-required continuation, terminal refinement, duplicate events, unmatched Pi runs, remote confirmation accept/decline, budgets, reconnect, and malformed input. Add a focused model-tool fixture or deterministic schema example for each `type`; do not claim semantic model selection from schema validation alone.
 
-- [ ] **T3: Align documentation and prove the integrated protocol boundary**
-  - Depends on: T1 and T2.
+- [x] **T3: Align documentation and prove the integrated protocol boundary**
   - Files: `README.md`, `docs/extensions/onclave-pi/PRD.md`, `docs/extensions/onclave-pi/implementation-plan.md`, `docs/extensions/onclave-pi/status.md`, focused operator/development guidance, and broker integration tests.
   - Change: Document the bounded context, A2A-derived subset, task lifecycle, message-type behavior, transport-versus-application acknowledgement, authority boundary, protocol-version break, and removal of the six legacy tools. State that MCP remains tool/context integration, A2A semantics govern independent-instance communication, and Pi subagents remain local. Record authenticated webhook ingress for external events and future Hermes consumption as an evolution trigger, not delivered functionality. Update examples and status claims to match executable behavior.
   - Done when: Documentation and active tool prompts use `instance`, `message`, `context`, and `task` consistently; no active surface advertises grants, action arrays, scope, polling, stale-instance parameters, or Onclave workers; maintainers can trace the protocol break and future webhook-ingress seam; and the complete local core-plus-adapter workflow satisfies the Completion Evidence without a live deployment.
@@ -51,10 +50,10 @@ Replace Onclave's custom performative, polling, and delegation-grant protocol wi
 
 ## Validation
 
-- [ ] Focused shared-contract, state-machine, persistence, core, adapter, and schema tests pass.
-- [ ] Broker integration proves durable origin events, reconnect delivery, idempotence, budgets, and all three message types.
-- [ ] `just check`, `just test-integration`, package-script equivalents, and `git diff --check` pass in `modules/onclave/`.
-- [ ] Active tools and documentation contain only the agreed bounded context and explicitly retain the future authenticated webhook-ingress evolution seam.
+- [x] Focused shared-contract, state-machine, persistence, core, adapter, and schema tests pass.
+- [x] Broker integration proves durable origin events, reconnect delivery, idempotence, budgets, and all three message types.
+- [x] `just check`, `just test-integration`, package-script equivalents, and `git diff --check` pass in `modules/onclave/`.
+- [x] Active tools and documentation contain only the agreed bounded context and explicitly retain the future authenticated webhook-ingress evolution seam.
 
 ## Retention
 
@@ -62,7 +61,7 @@ Keep incomplete work at `.specs/onclave-a2a-message-refactor/plan.md`. After eve
 
 ## Execution Status
 
-- State: planned, not started
+- State: complete
+- Completed: 2026-08-22
 - Blocker: none
-- Next: T1
-- Resume: `/do-it .specs/onclave-a2a-message-refactor/plan.md`
+- Next: archive
