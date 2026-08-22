@@ -61,7 +61,6 @@ import {
 	createPlanLifecycleSnapshot,
 	isPlanLifecycleSnapshot,
 	PLAN_LIFECYCLE_ENTRY_TYPE,
-	type PlanDisposition,
 	registerPlanLifecycleController,
 	type PlanInspector,
 	type PlanLifecycleSnapshot,
@@ -2327,10 +2326,6 @@ interface PlanProgressParams {
 	concern?: string;
 	outcome?: PlanReviewOutcome;
 	strategy?: string;
-	dispositions?: Array<{
-		role: PlanReviewerRole;
-		disposition: PlanDisposition;
-	}>;
 }
 
 function requirePlanProgressValue<T>(
@@ -2365,25 +2360,11 @@ function planProgressInput(params: PlanProgressParams): PlanProgressInput {
 				outcome: requirePlanProgressValue(params.outcome, "outcome"),
 				strategy: requirePlanProgressValue(params.strategy, "strategy"),
 			};
-		case "adjudicate":
+		case "blocked":
 			return {
 				action: params.action,
-				dispositions: requirePlanProgressValue(
-					params.dispositions,
-					"dispositions",
-				),
+				concern: requirePlanProgressValue(params.concern, "concern"),
 			};
-		case "inspect":
-			return {
-				action: params.action,
-				inspectedBy: requirePlanProgressValue(
-					params.inspectedBy,
-					"inspectedBy",
-				),
-			};
-		case "settle_review":
-		case "repair":
-		case "accept":
 		case "ready":
 			return { action: params.action };
 	}
@@ -2465,11 +2446,7 @@ export default function (pi: ExtensionAPI) {
 						"draft",
 						"risk",
 						"review",
-						"settle_review",
-						"adjudicate",
-						"repair",
-						"accept",
-						"inspect",
+						"blocked",
 						"ready",
 					] as const,
 				),
@@ -2488,28 +2465,6 @@ export default function (pi: ExtensionAPI) {
 					),
 				),
 				strategy: Type.Optional(Type.String({ maxLength: 120 })),
-				dispositions: Type.Optional(
-					Type.Array(
-						Type.Object(
-							{
-								role: StringEnum(
-									["adversary", "proponent", "specialist"] as const,
-								),
-								disposition: StringEnum(
-									[
-										"required_repair",
-										"rejected",
-										"deferred",
-										"operator_decision",
-										"no_change",
-									] as const,
-								),
-							},
-							{ additionalProperties: false },
-						),
-						{ maxItems: 2 },
-					),
-				),
 			},
 			{ additionalProperties: false },
 		),

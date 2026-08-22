@@ -169,6 +169,7 @@ describe("workflow slash command dispatch", () => {
 			{ reason: "resume" },
 			{
 				sessionManager: {
+					getSessionId: () => "workflow-session",
 					getBranch: () => [
 						{
 							type: "custom",
@@ -186,10 +187,6 @@ describe("workflow slash command dispatch", () => {
 		for (const input of [
 			{ action: "draft", planPath: fixture.planPath },
 			{ action: "risk", risk: "low", inspectedBy: "primary" },
-			{ action: "settle_review" },
-			{ action: "adjudicate", dispositions: [] },
-			{ action: "accept" },
-			{ action: "inspect", inspectedBy: "primary" },
 			{ action: "ready" },
 		]) {
 			await tool.execute("progress", input, undefined, undefined, ctx);

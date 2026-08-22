@@ -57,7 +57,7 @@ Keep incomplete work at this path. After completion, /do-it archives this direct
 }
 
 describe("plan lifecycle", () => {
-	it("moves a low-risk plan through inspection and readiness without reviewers", () => {
+	it("keeps risk telemetry out of gating stages and reaches ready", () => {
 		let state = createPlanLifecycleSnapshot("invocation", "example");
 		state = transitionPlanLifecycle(state, {
 			action: "draft",
@@ -68,27 +68,13 @@ describe("plan lifecycle", () => {
 			risk: "low",
 			inspectedBy: "primary",
 		});
-		state = transitionPlanLifecycle(state, { action: "settle_review" });
-		state = transitionPlanLifecycle(state, {
-			action: "adjudicate",
-			dispositions: [],
-		});
-		state = transitionPlanLifecycle(state, { action: "accept" });
-		state = transitionPlanLifecycle(state, {
-			action: "inspect",
-			inspectedBy: "primary",
-		});
-		state = transitionPlanLifecycle(state, { action: "ready" });
 
-		expect(state).toMatchObject({
-			stage: "ready",
-			risk: "low",
-			reviewers: [],
-			repair: "none",
-		});
+		expect(state.stage).toBe("draft");
+		state = transitionPlanLifecycle(state, { action: "ready" });
+		expect(state).toMatchObject({ stage: "ready", risk: "low" });
 	});
 
-	it("bounds material review, retries only a failed perspective, and allows one repair", () => {
+	it("preserves bounded material review telemetry and supports one retry", () => {
 		let state = createPlanLifecycleSnapshot("invocation", "example");
 		state = transitionPlanLifecycle(state, {
 			action: "draft",
@@ -106,6 +92,14 @@ describe("plan lifecycle", () => {
 			outcome: "supported",
 			strategy: "trace the runtime path",
 		});
+		state = transitionPlanLifecycle(state, {
+			action: "review",
+			role: "specialist",
+			concern: "extension API",
+			outcome: "failed",
+			strategy: "inspect declarations",
+		});
+		expect(state.stage).toBe("draft");
 		expect(() =>
 			transitionPlanLifecycle(state, {
 				action: "review",
@@ -119,41 +113,37 @@ describe("plan lifecycle", () => {
 			action: "review",
 			role: "specialist",
 			concern: "extension API",
-			outcome: "failed",
-			strategy: "inspect declarations",
-		});
-		expect(() => transitionPlanLifecycle(state, { action: "settle_review" })).toThrow(
-			"failed perspective",
-		);
-		expect(() =>
-			transitionPlanLifecycle(state, {
-				action: "review",
-				role: "specialist",
-				concern: "extension API",
-				outcome: "covered",
-				strategy: "inspect installed source",
-			}),
-		).not.toThrow();
-		state = transitionPlanLifecycle(state, {
-			action: "review",
-			role: "specialist",
-			concern: "extension API",
 			outcome: "covered",
 			strategy: "inspect installed source",
 		});
-		state = transitionPlanLifecycle(state, { action: "settle_review" });
+		expect(state.reviewers).toHaveLength(3);
+		expect(state.stage).toBe("draft");
+	});
+
+	it("blocks with a concise concern and resumes from a restored legacy stage", () => {
+		let state = createPlanLifecycleSnapshot("invocation", "example");
 		state = transitionPlanLifecycle(state, {
-			action: "adjudicate",
-			dispositions: [
-				{ role: "adversary", disposition: "required_repair" },
-				{ role: "specialist", disposition: "no_change" },
-			],
+			action: "draft",
+			planPath: ".specs/example/plan.md",
 		});
-		state = transitionPlanLifecycle(state, { action: "repair" });
-		expect(() => transitionPlanLifecycle(state, { action: "repair" })).toThrow(
-			"invalid while",
+		state = transitionPlanLifecycle(state, {
+			action: "blocked",
+			concern: "Need the operator's deployment choice.",
+		});
+		expect(state).toMatchObject({
+			stage: "blocked",
+			blockedConcern: "Need the operator's deployment choice.",
+		});
+		state = transitionPlanLifecycle(state, { action: "ready" });
+		expect(state.stage).toBe("ready");
+
+		const restored = {
+			...state,
+			stage: "operator_decision" as const,
+		};
+		expect(transitionPlanLifecycle(restored, { action: "ready" }).stage).toBe(
+			"ready",
 		);
-		expect(state).toMatchObject({ stage: "repaired", repair: "applied" });
 	});
 
 	it("validates the executable plan contract", () => {

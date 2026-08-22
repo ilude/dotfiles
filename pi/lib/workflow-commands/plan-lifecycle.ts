@@ -17,6 +17,9 @@ export type PlanInspector = "primary" | "read_only_leaf";
 export type PlanLifecycleStage =
 	| "started"
 	| "draft"
+	| "blocked"
+	| "ready"
+	// Legacy stages are accepted when restoring existing snapshots only.
 	| "risk_selected"
 	| "reviewing"
 	| "review_settled"
@@ -24,8 +27,7 @@ export type PlanLifecycleStage =
 	| "operator_decision"
 	| "accepted"
 	| "repaired"
-	| "inspected"
-	| "ready";
+	| "inspected";
 
 export interface PlanReviewRecord {
 	role: PlanReviewerRole;
@@ -46,6 +48,7 @@ export interface PlanLifecycleSnapshot {
 	request: string;
 	stage: PlanLifecycleStage;
 	planPath?: string;
+	blockedConcern?: string;
 	risk?: PlanRisk;
 	draftInspectedBy?: PlanInspector;
 	finalInspectedBy?: PlanInspector;
@@ -64,11 +67,7 @@ export type PlanProgressInput =
 			outcome: PlanReviewOutcome;
 			strategy: string;
 		}
-	| { action: "settle_review" }
-	| { action: "adjudicate"; dispositions: PlanDispositionRecord[] }
-	| { action: "repair" }
-	| { action: "accept" }
-	| { action: "inspect"; inspectedBy: PlanInspector }
+	| { action: "blocked"; concern: string }
 	| { action: "ready" };
 
 type PlanLifecycleHost = object;
@@ -133,12 +132,6 @@ function requiredText(value: string, label: string): string {
 	return normalized;
 }
 
-function latestReviews(snapshot: PlanLifecycleSnapshot): Map<PlanReviewerRole, PlanReviewRecord> {
-	const latest = new Map<PlanReviewerRole, PlanReviewRecord>();
-	for (const review of snapshot.reviewers) latest.set(review.role, review);
-	return latest;
-}
-
 export function createPlanLifecycleSnapshot(
 	invocationId: string,
 	request: string,
@@ -154,6 +147,28 @@ export function createPlanLifecycleSnapshot(
 	};
 }
 
+const PLAN_LIFECYCLE_STAGES: readonly PlanLifecycleStage[] = [
+	"started",
+	"draft",
+	"blocked",
+	"ready",
+	"risk_selected",
+	"reviewing",
+	"review_settled",
+	"adjudicated",
+	"operator_decision",
+	"accepted",
+	"repaired",
+	"inspected",
+];
+
+function isPlanLifecycleStage(value: unknown): value is PlanLifecycleStage {
+	return (
+		typeof value === "string" &&
+		PLAN_LIFECYCLE_STAGES.includes(value as PlanLifecycleStage)
+	);
+}
+
 export function isPlanLifecycleSnapshot(
 	value: unknown,
 ): value is PlanLifecycleSnapshot {
@@ -163,7 +178,7 @@ export function isPlanLifecycleSnapshot(
 		candidate.version === PLAN_LIFECYCLE_VERSION &&
 		typeof candidate.invocationId === "string" &&
 		typeof candidate.request === "string" &&
-		typeof candidate.stage === "string" &&
+		isPlanLifecycleStage(candidate.stage) &&
 		Array.isArray(candidate.reviewers) &&
 		Array.isArray(candidate.dispositions) &&
 		(candidate.repair === "none" || candidate.repair === "applied")
@@ -196,10 +211,9 @@ export function transitionPlanLifecycle(
 				...snapshot,
 				risk: input.risk,
 				draftInspectedBy: input.inspectedBy,
-				stage: "risk_selected",
 			};
 		case "review": {
-			requireStage(snapshot, ["risk_selected", "reviewing"], input.action);
+			requireStage(snapshot, ["draft"], input.action);
 			if (snapshot.risk !== "material")
 				throw new Error("Low-risk plans cannot launch reviewers.");
 			const concern = requiredText(input.concern, "Reviewer concern");
@@ -210,9 +224,7 @@ export function transitionPlanLifecycle(
 			if (prior.length > 0) {
 				const previous = prior.at(-1);
 				if (prior.length >= 2 || previous?.outcome !== "failed")
-					throw new Error(
-						`The ${input.role} perspective cannot be run again.`,
-					);
+					throw new Error(`The ${input.role} perspective cannot be run again.`);
 				if (previous.strategy === strategy)
 					throw new Error(
 						"A failed perspective retry requires a materially different strategy.",
@@ -235,90 +247,13 @@ export function transitionPlanLifecycle(
 				strategy,
 				attempt: prior.length + 1,
 			});
-			return { ...snapshot, stage: "reviewing" };
+			return snapshot;
 		}
-		case "settle_review": {
-			requireStage(
-				snapshot,
-				["risk_selected", "reviewing"],
-				input.action,
-			);
-			if (snapshot.risk === "low") {
-				if (snapshot.reviewers.length > 0)
-					throw new Error("Low-risk review cannot contain reviewer records.");
-				return { ...snapshot, stage: "review_settled" };
-			}
-			const latest = latestReviews(snapshot);
-			if (
-				latest.size !== 2 ||
-				!latest.has("adversary") ||
-				(!latest.has("proponent") && !latest.has("specialist"))
-			)
-				throw new Error(
-					"Material-risk review requires one adversary and one proponent or specialist.",
-				);
-			if ([...latest.values()].some((review) => review.outcome === "failed"))
-				throw new Error(
-					"A failed perspective must be retried with a new strategy or marked covered by remaining evidence.",
-				);
-			return { ...snapshot, stage: "review_settled" };
-		}
-		case "adjudicate": {
-			requireStage(snapshot, ["review_settled"], input.action);
-			const latest = latestReviews(snapshot);
-			if (snapshot.risk === "low" && input.dispositions.length !== 0)
-				throw new Error("Low-risk plans have no reviewer claims to adjudicate.");
-			if (snapshot.risk === "material") {
-				const roles = input.dispositions.map((item) => item.role);
-				if (
-					roles.length !== latest.size ||
-					new Set(roles).size !== roles.length ||
-					roles.some((role) => !latest.has(role))
-				)
-					throw new Error(
-						"Adjudication must classify each settled reviewer perspective exactly once.",
-					);
-			}
-			const dispositions = input.dispositions.map((item) => ({ ...item }));
-			return {
-				...snapshot,
-				dispositions,
-				stage: dispositions.some(
-					(item) => item.disposition === "operator_decision",
-				)
-					? "operator_decision"
-					: "adjudicated",
-			};
-		}
-		case "repair":
-			requireStage(snapshot, ["adjudicated"], input.action);
-			if (
-				!snapshot.dispositions.some(
-					(item) => item.disposition === "required_repair",
-				)
-			)
-				throw new Error("No required repair was adjudicated.");
-			if (snapshot.repair === "applied")
-				throw new Error("Only one coherent repair pass is allowed.");
-			return { ...snapshot, repair: "applied", stage: "repaired" };
-		case "accept":
-			requireStage(snapshot, ["adjudicated"], input.action);
-			if (
-				snapshot.dispositions.some(
-					(item) => item.disposition === "required_repair",
-				)
-			)
-				throw new Error("Required repairs must be applied before inspection.");
-			return { ...snapshot, stage: "accepted" };
-		case "inspect":
-			requireStage(snapshot, ["accepted", "repaired"], input.action);
-			return {
-				...snapshot,
-				finalInspectedBy: input.inspectedBy,
-				stage: "inspected",
-			};
+		case "blocked":
+			requireStage(snapshot, ["draft", "blocked", "risk_selected", "reviewing", "review_settled", "adjudicated", "operator_decision", "accepted", "repaired", "inspected"], input.action);
+			return { ...snapshot, blockedConcern: requiredText(input.concern, "Blocker concern"), stage: "blocked" };
 		case "ready":
-			requireStage(snapshot, ["inspected"], input.action);
+			requireStage(snapshot, ["draft", "blocked", "risk_selected", "reviewing", "review_settled", "adjudicated", "operator_decision", "accepted", "repaired", "inspected"], input.action);
 			return { ...snapshot, stage: "ready" };
 	}
 }
