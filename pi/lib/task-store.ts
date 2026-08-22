@@ -293,6 +293,12 @@ function legacySnapshot(tasksDir: string): StoredTask[] {
 	const records: StoredTask[] = [];
 	const ids = new Set<string>();
 	for (const entry of entries) {
+		if (entry.isDirectory() && entry.name === "output") continue;
+		if (
+			entry.isFile() &&
+			/^[A-Za-z0-9_-]+\.json\.\d+(?:\.[A-Za-z0-9-]+)?\.tmp$/.test(entry.name)
+		)
+			continue;
 		if (!entry.isFile() || !entry.name.endsWith(".json"))
 			throw new TaskMigrationError("invalid", `unsupported legacy entry: ${entry.name}`);
 		const filenameId = entry.name.slice(0, -5);

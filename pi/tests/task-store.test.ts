@@ -57,6 +57,21 @@ describe("SQLite task store T1", () => {
 		expect(getTask(task.id)?.summary).toBe("before");
 	});
 
+	it("ignores known legacy atomic-write residue during import", () => {
+		operatorDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-store-"));
+		const tasksDir = path.join(operatorDir, "tasks");
+		fs.mkdirSync(path.join(tasksDir, "output"), { recursive: true });
+		const record = { id: "residue", createdAt: "2026-01-01T00:00:00.000Z", summary: "legacy" };
+		fs.writeFileSync(path.join(tasksDir, "residue.json"), `${JSON.stringify(record)}\n`, "utf8");
+		fs.writeFileSync(path.join(tasksDir, "residue.json.1234.tmp"), "partial", "utf8");
+		fs.writeFileSync(path.join(tasksDir, "residue.json.1234.abc-def.tmp"), "partial", "utf8");
+
+		expect(importLegacyTasks(operatorDir).imported).toBe(1);
+		expect(readStoredTasks(openTaskDatabase(operatorDir))).toEqual([record]);
+		expect(fs.existsSync(path.join(operatorDir, "tasks.legacy", "residue.json.1234.tmp"))).toBe(true);
+		expect(fs.existsSync(path.join(operatorDir, "tasks.legacy", "output"))).toBe(true);
+	});
+
 	it("preserves omitted blockedBy through import and export", () => {
 		operatorDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-store-"));
 		const tasksDir = path.join(operatorDir, "tasks");
