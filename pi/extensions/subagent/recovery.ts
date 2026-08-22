@@ -16,8 +16,17 @@ export interface InterruptToolRequest {
 export interface PreparedInterruptedRecovery {
 	readonly run: SubagentRunSnapshot;
 	readonly sessionPath: string;
+	readonly workspaceRoot: string;
+	readonly authorityTools: ReadonlyArray<string>;
 	readonly toolCallId: string;
 	readonly recoveryMessage: string;
+}
+
+export function assertInterruptedRecoverySucceeded(succeeded: boolean): void {
+	if (!succeeded)
+		throw new Error(
+			"Interrupted recovery replacement work failed; the resumed result was not acknowledged.",
+		);
 }
 
 export interface InterruptedRecoveryExecutor<T> {
@@ -67,6 +76,8 @@ export function prepareInterruptedRecovery(
 	return {
 		run,
 		sessionPath,
+		workspaceRoot: run.workspaceId ?? run.cwd,
+		authorityTools: run.authorityTools ? [...run.authorityTools] : [],
 		toolCallId: request.toolCallId,
 		recoveryMessage: INTERRUPTED_TOOL_RECOVERY_MESSAGE,
 	};

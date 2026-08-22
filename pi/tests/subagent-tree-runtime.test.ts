@@ -370,6 +370,9 @@ describe("SubagentTreeBroker", () => {
 		expect(
 			broker.list().find((run) => run.runId === "leaf")?.runtimePingAt,
 		).toEqual(expect.any(Number));
+		expect(
+			broker.list().find((run) => run.runId === "leaf")?.runtimePingCount,
+		).toBe(1);
 		await leaf.release();
 
 		const coordinator = await client.acquire({

@@ -458,6 +458,7 @@ function recursiveTargets(
 		}
 		const positional: StaticToken[] = [];
 		let filesMode = false;
+		let patternProvided = false;
 		for (let index = 0; index < args.length; index += 1) {
 			const token = args[index];
 			if (token.value === "--") {
@@ -471,14 +472,15 @@ function recursiveTargets(
 			if (token.value.startsWith("-") && !token.dynamic) {
 				if (["-e", "--regexp", "-g", "--glob", "-f", "--file"].includes(token.value)) {
 					const value = optionValue(args, index);
-					if (!value.value) return { dynamic: true };
+					if (!value.value || value.value.dynamic) return { dynamic: true };
+					if (token.value === "-e" || token.value === "--regexp") patternProvided = true;
 					index = value.nextIndex;
 				}
 				continue;
 			}
 			positional.push(token);
 		}
-		const targets = filesMode ? positional : positional.slice(1);
+		const targets = filesMode || patternProvided ? positional : positional.slice(1);
 		return {
 			recursive: true,
 			targets: targets.length > 0 ? targets : [{ value: ".", dynamic: false }],
@@ -494,6 +496,7 @@ function recursiveTargets(
 		);
 		if (!recursive) return { recursive: false };
 		const positional: StaticToken[] = [];
+		let patternProvided = false;
 		for (let index = 0; index < args.length; index += 1) {
 			const token = args[index];
 			if (token.value === "--") {
@@ -513,14 +516,15 @@ function recursiveTargets(
 					].includes(token.value)
 				) {
 					const value = optionValue(args, index);
-					if (!value.value) return { dynamic: true };
+					if (!value.value || value.value.dynamic) return { dynamic: true };
+					if (token.value === "-e" || token.value === "--regexp") patternProvided = true;
 					index = value.nextIndex;
 				}
 				continue;
 			}
 			positional.push(token);
 		}
-		const targets = positional.slice(1);
+		const targets = patternProvided ? positional : positional.slice(1);
 		return {
 			recursive: true,
 			targets: targets.length > 0 ? targets : [{ value: ".", dynamic: false }],

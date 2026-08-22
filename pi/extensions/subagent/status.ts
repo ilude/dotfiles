@@ -112,7 +112,10 @@ export function inspectSubagentStatus(
 	else if (
 		pingFresh &&
 		activeToolDurationMs !== undefined &&
-		activeToolDurationMs >= (options.stalledToolMs ?? 120_000)
+		activeToolOutputAgeMs !== undefined &&
+		activeToolDurationMs >= (options.stalledToolMs ?? 120_000) &&
+		activeToolOutputAgeMs >= (options.stalledToolMs ?? 120_000) &&
+		quietForMs >= (options.stalledToolMs ?? 120_000)
 	)
 		watchdogState = "stalled-tool";
 	else if (pingFresh && quietForMs >= (options.quietThresholdMs ?? 30_000))

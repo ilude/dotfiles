@@ -100,6 +100,7 @@ export interface SubagentTreeRunSnapshot extends SubagentTreeMetadata {
 	readonly pid?: number;
 	readonly cancellationPending?: boolean;
 	readonly runtimePingAt?: number;
+	readonly runtimePingCount?: number;
 	readonly scopeLease?: {
 		readonly repositoryRoot: string;
 		readonly scopes: readonly string[];
@@ -139,6 +140,7 @@ type MutableTreeNode = {
 	cancellation?: Promise<void>;
 	cancellationPending?: boolean;
 	runtimePingAt?: number;
+	runtimePingCount: number;
 	resolvePermit?: (permit: SubagentTreePermit) => void;
 	rejectPermit?: (error: Error) => void;
 };
@@ -396,6 +398,7 @@ export class SubagentTreeBroker {
 			metadata: { treeId, runId: rootRunId, role: "root", depth: 0 },
 			ownerToken,
 			state: "active",
+			runtimePingCount: 0,
 		});
 		this.prune();
 		return { treeId, rootRunId, ownerToken };
@@ -422,6 +425,7 @@ export class SubagentTreeBroker {
 			metadata,
 			ownerToken: randomBytes(32).toString("hex"),
 			state: "queued",
+			runtimePingCount: 0,
 			...(scopeLease ? { scopeLease } : {}),
 		};
 		this.nodes.set(metadata.runId, node);
@@ -563,6 +567,9 @@ export class SubagentTreeBroker {
 			...(node.runtimePingAt === undefined
 				? {}
 				: { runtimePingAt: node.runtimePingAt }),
+			...(node.runtimePingCount === 0
+				? {}
+				: { runtimePingCount: node.runtimePingCount }),
 			...(node.scopeLease
 				? {
 						scopeLease: {
@@ -882,6 +889,7 @@ export class SubagentTreeBroker {
 					if (!caller)
 						throw new SubagentTreeAdmissionError("Tree broker caller is not active.");
 					caller.runtimePingAt = Date.now();
+					caller.runtimePingCount += 1;
 					return { ok: true };
 				}
 				case "acquire": {

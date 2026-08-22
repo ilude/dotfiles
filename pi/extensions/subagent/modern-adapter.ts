@@ -19,6 +19,7 @@ type LegacyCompatibleItem = {
 	cwd?: string;
 	scope?: string[];
 	workBoundary?: string[];
+	maxWorkers?: number;
 };
 
 export type ModernExecutorInput = ModernInternalInput & {
@@ -31,6 +32,7 @@ export type ModernExecutorInput = ModernInternalInput & {
 	agentScope?: "user" | "project" | "both";
 	scope?: string[];
 	workBoundary?: string[];
+	maxWorkers?: number;
 	readOnlyFanout?: undefined;
 	continuable: true;
 };
@@ -53,7 +55,7 @@ export function modernRequestToExecutorInput(
 			task: item.task,
 			...(taskId ? { taskId } : {}),
 			role: request.kind === "coordinator" ? "coordinator" : "leaf",
-			cwd: preparedItem.workspaceRoot,
+			cwd: item.cwd ?? preparedItem.workspaceRoot,
 			...(workPaths ? { scope: workPaths } : {}),
 		};
 	});
@@ -70,6 +72,7 @@ export function modernRequestToExecutorInput(
 			...(coordinator.workBoundary
 				? { workBoundary: [...coordinator.workBoundary] }
 				: {}),
+			maxWorkers: coordinator.maxWorkers,
 		};
 	}
 	if (request.kind === "read") {

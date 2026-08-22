@@ -148,6 +148,29 @@ export interface CoordinatorBudget {
 	readonly softDeadlineMs: number;
 }
 
+export interface CoordinatorAdmission<T> {
+	readonly admitted: T[];
+	readonly gaps: readonly string[];
+}
+
+export function formatCoordinatorGaps(gaps: readonly string[]): string {
+	return gaps.length === 0
+		? ""
+		: `\n\nGaps:\n${gaps.map((gap) => `- ${gap}`).join("\n")}`;
+}
+
+export function admitCoordinatorDescendants<T>(
+	items: readonly T[],
+	maxWorkers: number | undefined,
+): CoordinatorAdmission<T> {
+	if (maxWorkers === undefined || items.length <= maxWorkers)
+		return { admitted: [...items], gaps: [] };
+	return {
+		admitted: items.slice(0, maxWorkers),
+		gaps: [`descendant worker budget exhausted: ${items.length - maxWorkers} worker(s) not admitted`],
+	};
+}
+
 export function coordinatorBudgetFor(
 	request: CoordinatorRequest,
 ): CoordinatorBudget {
@@ -327,13 +350,6 @@ export function prepareSubagentExecution(
 	});
 	if (workspace.outcome === "deny") throw new Error(workspace.reason);
 	const workspaceRoot = workspace.workspaceRoot;
-	if (request.kind === "coordinator") {
-		const budget = coordinatorBudgetFor(request);
-		if (request.items.length > budget.maxWorkers)
-			throw new Error(
-				`Coordinator request exceeds maxWorkers ${budget.maxWorkers}.`,
-			);
-	}
 	const projectTrusted = options.isWorkspaceTrusted?.(workspaceRoot) ?? true;
 	const agentScope = request.agentScope ?? options.agentScope ?? "user";
 	// Project-local agent files are governed by the selected workspace trust

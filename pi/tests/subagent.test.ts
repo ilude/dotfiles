@@ -1371,6 +1371,8 @@ Do not load this agent.
 				env: Record<string, string>;
 			};
 			expect(spawnOptions.env.PI_SUBAGENT_RUN_ID).toMatch(/^[0-9a-f-]+$/);
+			expect(spawnOptions.env.ONCLAVE_PI_SUBAGENT_INELIGIBLE).toBe("1");
+			expect(spawnOptions.env.ONCLAVE_PI_ROOT_CAPABILITY).toBeUndefined();
 			expect(spawnOptions.env.PI_SUBAGENT_WORKSPACE_ROOT).toBe(
 				path.resolve(tmpDir),
 			);

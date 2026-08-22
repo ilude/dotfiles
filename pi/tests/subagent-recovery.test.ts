@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	assertInterruptedRecoverySucceeded,
 	executeInterruptedRecovery,
 	INTERRUPTED_TOOL_RECOVERY_MESSAGE,
 	prepareInterruptedRecovery,
@@ -16,7 +17,9 @@ function liveRun(
 		mode: "single",
 		agent: "builder",
 		task: "work",
-		cwd: "/workspace",
+		cwd: "/workspace/child",
+		workspaceId: "/workspace",
+		authorityTools: ["read", "grep"],
 		background: false,
 		status: "running",
 		pid: 123,
@@ -55,6 +58,8 @@ describe("subagent interrupted-tool recovery", () => {
 		).toMatchObject({
 			sessionPath: "/sessions/run-1.jsonl",
 			toolCallId: "tool-1",
+			workspaceRoot: "/workspace",
+			authorityTools: ["read", "grep"],
 			recoveryMessage: INTERRUPTED_TOOL_RECOVERY_MESSAGE,
 		});
 		expect(() =>
@@ -126,6 +131,13 @@ describe("subagent interrupted-tool recovery", () => {
 			}),
 		).rejects.toThrow("did not settle");
 		expect(calls).toEqual(["terminate", "settle"]);
+	});
+
+	it("does not acknowledge a failed replacement", () => {
+		expect(() => assertInterruptedRecoverySucceeded(false)).toThrow(
+			"replacement work failed",
+		);
+		expect(() => assertInterruptedRecoverySucceeded(true)).not.toThrow();
 	});
 
 	it("marks interrupted output and side effects unknown", () => {

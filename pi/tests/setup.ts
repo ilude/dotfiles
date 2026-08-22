@@ -26,6 +26,8 @@ const subagentEnvironmentNames = [
 	"PI_SUBAGENT_TREE_PROTOCOL_VERSION",
 	"PI_SUBAGENT_TREE_RUNTIME_GENERATION",
 	"PI_SUBAGENT_SCOPE_POLICY",
+	"ONCLAVE_PI_ROOT_CAPABILITY",
+	"ONCLAVE_PI_SUBAGENT_INELIGIBLE",
 ] as const;
 const previousSubagentEnvironment = Object.fromEntries(
 	subagentEnvironmentNames.map((name) => [name, process.env[name]]),

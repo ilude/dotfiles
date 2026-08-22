@@ -1,7 +1,9 @@
 import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import {
+	admitCoordinatorDescendants,
 	coordinatorBudgetFor,
+	formatCoordinatorGaps,
 	DEFAULT_COORDINATOR_MAX_TURNS,
 	DEFAULT_COORDINATOR_MAX_WORKERS,
 	DEFAULT_COORDINATOR_SOFT_DEADLINE_MS,
@@ -39,5 +41,27 @@ describe("subagent T2 coordinator budgets", () => {
 				maxTurns: 65,
 			}),
 		).toBe(false);
+		// maxWorkers limits descendants, so a coordinator request itself may
+		// contain more root items than the descendant budget.
+		expect(
+			Value.Check(SubagentCoordinateSchema, {
+				items: [
+					{ agent: "teamlead", task: "one" },
+					{ agent: "teamlead", task: "two" },
+				],
+				maxWorkers: 1,
+			}),
+		).toBe(true);
+	});
+
+	it("admits only bounded descendants and returns parent-visible gaps", () => {
+		const admission = admitCoordinatorDescendants(["one", "two", "three"], 1);
+		expect(admission.admitted).toEqual(["one"]);
+		expect(admission.gaps).toEqual([
+			"descendant worker budget exhausted: 2 worker(s) not admitted",
+		]);
+		expect(formatCoordinatorGaps(admission.gaps)).toBe(
+			"\n\nGaps:\n- descendant worker budget exhausted: 2 worker(s) not admitted",
+		);
 	});
 });

@@ -143,6 +143,10 @@ describe("recognized recursive shell searches", () => {
 			outcome: "allow",
 			governed: true,
 		});
+		expect(checkWorkspaceShellCommand(policy, "grep -R -e needle /outside", root)).toMatchObject({
+			outcome: "deny",
+			code: "path_escape",
+		});
 		expect(checkWorkspaceShellCommand(policy, "find src -type f", root)).toMatchObject({
 			outcome: "allow",
 			governed: true,

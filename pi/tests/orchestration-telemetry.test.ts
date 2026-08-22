@@ -255,6 +255,22 @@ describe("orchestration telemetry builders", () => {
 		).toBeNull();
 	});
 
+	it("builds sparse intervention events for every required rejection boundary", () => {
+		for (const code of ["containment", "rejection", "task-link"] as const) {
+			const result = buildSubagentInterventionEvent({
+				orchestrationId: "orchestration-1",
+				runId: "run-1",
+				code,
+				outcome: "rejected",
+				acknowledged: false,
+			});
+			expect(result).toMatchObject({ data: { code, outcome: "rejected" } });
+			const serialized = JSON.stringify(result);
+			for (const forbidden of ["task", "command", "path", "output"])
+				expect(serialized).not.toContain(`"${forbidden}"`);
+		}
+	});
+
 	it("builds sparse intervention events without content-bearing fields", () => {
 		const result = buildSubagentInterventionEvent({
 			orchestrationId: "orchestration-1",

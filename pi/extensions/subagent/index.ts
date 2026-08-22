@@ -98,11 +98,14 @@ import {
 } from "./agents.js";
 import {
 	coordinatorBudgetFor,
+	admitCoordinatorDescendants,
+	formatCoordinatorGaps,
 	READ_TOOL_ALLOWLIST,
 	SubagentCoordinateSchema,
 	SubagentReadSchema,
 	SubagentWriteSchema,
 	type CoordinatorRequest,
+	type PreparedSubagentExecution,
 	type ReadRequest,
 	type SubagentExecutionRequest,
 	type WriteRequest,
@@ -118,6 +121,8 @@ import {
 	executeInterruptedRecovery,
 	INTERRUPTED_TOOL_RECOVERY_MESSAGE,
 	prepareInterruptedRecovery,
+	assertInterruptedRecoverySucceeded,
+	type PreparedInterruptedRecovery,
 } from "./recovery.js";
 import {
 	subagentRunManager,
@@ -203,6 +208,22 @@ function recordSubagentIntervention(input: {
 	});
 	if (event)
 		recordEvent(event as unknown as Parameters<typeof recordEvent>[0]);
+}
+
+function recordBoundaryRejection(error: unknown): void {
+	const message = error instanceof Error ? error.message : String(error);
+	const code = /task/i.test(message)
+		? "task-link"
+		: /workspace|path|contain/i.test(message)
+			? "containment"
+			: "rejection";
+	recordSubagentIntervention({
+		orchestrationId: randomUUID(),
+		runId: randomUUID(),
+		code,
+		outcome: "rejected",
+		acknowledged: false,
+	});
 }
 
 function legacyBranchForInput(params: Record<string, unknown>): LegacyAdapterBranch {
@@ -626,6 +647,7 @@ export interface SubagentDetails {
 	agentScope: AgentScope;
 	projectAgentsDir: string | null;
 	results: SingleResult[];
+	gaps?: readonly string[];
 	experiment?: ReadOnlyFanoutAssignment;
 }
 
@@ -1093,6 +1115,8 @@ interface SubagentRunContext {
 	retryOrigin?: string;
 	workflowCapabilities?: readonly string[];
 	workspaceRoot?: string;
+	authorityTools?: readonly string[];
+	maxWorkers?: number;
 	treeClient?: SubagentTreeController;
 	telemetryExecutionKind?: OrchestrationExecutionKind;
 	workspaceRootSource?: WorkspaceRootSource;
@@ -1400,13 +1424,16 @@ export async function runSingleAgent(
 		runContext?.role && runContext.depth
 			? { role: runContext.role, depth: runContext.depth }
 			: resolveChildRole(runContext?.role, agentName);
-	const authority = resolveChildToolAuthority(agent, {
+	const resolvedAuthority = resolveChildToolAuthority(agent, {
 		role: resolvedChild.role,
 		hasScopeLease: false,
 		readOnly: runContext?.readOnly,
 		executionKind: runContext?.executionKind,
 		workflowCapabilities: runContext?.workflowCapabilities,
 	});
+	const authority = runContext?.authorityTools
+		? { ...resolvedAuthority, tools: [...runContext.authorityTools] }
+		: resolvedAuthority;
 	if (
 		resolvedChild.role === "coordinator" &&
 		!authority.tools.includes("subagent") &&
@@ -1553,9 +1580,10 @@ export async function runSingleAgent(
 			...(runContext?.parentSessionId
 				? { parentSessionId: runContext.parentSessionId }
 				: {}),
-			...(runContext?.workspaceId
-				? { workspaceId: runContext.workspaceId }
+			...(runContext?.workspaceRoot || runContext?.workspaceId
+				? { workspaceId: runContext.workspaceRoot ?? runContext.workspaceId }
 				: {}),
+			authorityTools: [...authority.tools],
 			...(runContext?.workPaths
 				? { workPaths: [...runContext.workPaths] }
 				: {}),
@@ -1693,8 +1721,9 @@ export async function runSingleAgent(
 			// child Pi process carries the parent's trace and treats this
 			// subagent's span as its parent. Spread process.env first so all
 			// existing env vars (PATH, HOME, OAUTH tokens, etc.) are preserved.
-			const childEnv = {
+			const childEnv: NodeJS.ProcessEnv = {
 				...process.env,
+				ONCLAVE_PI_SUBAGENT_INELIGIBLE: "1",
 				TRACEPARENT: buildSubagentTraceparent(),
 				PI_SUBAGENT_RUN_ID: runId,
 				PI_SUBAGENT_STARTED_AT: subagentStartedAt,
@@ -1714,6 +1743,13 @@ export async function runSingleAgent(
 					: {}),
 				PI_SUBAGENT_WORKSPACE_ROOT:
 					runContext?.workspaceRoot ?? path.resolve(cwd ?? defaultCwd),
+				...(runContext?.maxWorkers === undefined
+					? {}
+					: { PI_SUBAGENT_MAX_WORKERS: String(runContext.maxWorkers) }),
+			};
+			delete childEnv.ONCLAVE_PI_ROOT_CAPABILITY;
+			const childEnvironment = {
+				...childEnv,
 				...(runContext?.treeClient && treePermit
 					? runContext.treeClient.childEnvironment(treePermit)
 					: {}),
@@ -1722,7 +1758,7 @@ export async function runSingleAgent(
 				cwd: cwd ?? defaultCwd,
 				shell: false,
 				stdio: ["ignore", "pipe", "pipe"],
-				env: childEnv,
+				env: childEnvironment,
 				windowsHide: true,
 				detached: process.platform !== "win32",
 			});
@@ -2163,6 +2199,7 @@ type ContinueParams = {
 	session: string;
 	task: string;
 	cwd?: string;
+	authorityTools?: readonly string[];
 	output?: string | boolean;
 	outputMode?: OutputMode;
 	effort?: AgentEffort;
@@ -2553,8 +2590,7 @@ export default function (pi: ExtensionAPI) {
 	let deliveryScheduled = false;
 	let resumeInterruptedSession:
 		| ((
-				run: SubagentRunSnapshot,
-				sessionPath: string,
+				recovery: PreparedInterruptedRecovery,
 				toolCallId: string,
 				signal: AbortSignal | undefined,
 				onUpdate: OnUpdateCallback | undefined,
@@ -2919,7 +2955,7 @@ export default function (pi: ExtensionAPI) {
 					runId: run.runId,
 					code: "interruption",
 					outcome: "interrupted",
-					acknowledged: true,
+					acknowledged: false,
 					session: ctx.sessionManager?.getSessionId?.(),
 				});
 				const resumeSession = resumeInterruptedSession;
@@ -2937,10 +2973,9 @@ export default function (pi: ExtensionAPI) {
 					},
 					waitForSettlement: (runId) =>
 						subagentRunManager.waitForSettlement(runId),
-					resume: () =>
+					resume: (prepared) =>
 						resumeSession(
-							run,
-							sessionPath,
+							prepared,
 							controlToolCallId,
 							signal,
 							onUpdate,
@@ -2958,14 +2993,21 @@ export default function (pi: ExtensionAPI) {
 					});
 					throw error;
 				}
+				const replacementResults = resumed.details?.results ?? [];
+				const replacementSucceeded =
+					replacementResults.length > 0 &&
+					replacementResults.every(
+						(result) => classifySubagentResult(result) === "completed",
+					);
 				recordSubagentIntervention({
 					orchestrationId: run.orchestrationId,
 					runId: run.runId,
 					code: "recovery",
-					outcome: "continued",
-					acknowledged: true,
+					outcome: replacementSucceeded ? "continued" : "failed",
+					acknowledged: replacementSucceeded,
 					session: ctx.sessionManager?.getSessionId?.(),
 				});
+				assertInterruptedRecoverySucceeded(replacementSucceeded);
 				return {
 					...resumed,
 					content: [
@@ -3407,6 +3449,12 @@ export default function (pi: ExtensionAPI) {
 				: selectedDirectInvocation?.mode ?? "single";
 			const executionMode: Exclude<SubagentRunMode, "task-execute"> =
 				hasContinue ? "continue" : originalMode;
+			const coordinatorGaps: string[] = [];
+			const descendantWorkerBudget =
+				currentIdentity.role === "coordinator"
+					? Number.parseInt(process.env.PI_SUBAGENT_MAX_WORKERS ?? "", 10)
+					: undefined;
+			const coordinatorGapText = () => formatCoordinatorGaps(coordinatorGaps);
 			const makeDetails =
 				(mode: "single" | "parallel" | "chain") =>
 				(results: SingleResult[]): SubagentDetails => ({
@@ -3414,6 +3462,7 @@ export default function (pi: ExtensionAPI) {
 					agentScope,
 					projectAgentsDir: discovery.projectAgentsDir,
 					results,
+					...(coordinatorGaps.length > 0 ? { gaps: [...coordinatorGaps] } : {}),
 					...(fanoutAssignment ? { experiment: fanoutAssignment } : {}),
 				});
 			const invocationStartedAt = Date.now();
@@ -3436,6 +3485,7 @@ export default function (pi: ExtensionAPI) {
 					(item) => item.type === "text",
 				)?.text;
 				const parentVisibleBytes = Buffer.byteLength(parentText ?? "", "utf-8");
+				const treeRuns = getSubagentTreeBroker().list();
 				const workers: OrchestrationWorker[] = results.map((worker, index) => {
 					const classification = classifySubagentResult(worker);
 					const outcomeCode = outcomeCodeForResult(worker);
@@ -3446,7 +3496,10 @@ export default function (pi: ExtensionAPI) {
 						boundaryCount: worker.workBoundary?.length ?? 0,
 						searchCount: collectSubagentSearchCount(worker.messages),
 						watchdogCount: outcomeCode === "timeout" ? 1 : 0,
-						pingCount: 0,
+						pingCount:
+							worker.telemetry?.pingCount ??
+							treeRuns.find((run) => run.runId === worker.runId)?.runtimePingCount ??
+							0,
 						interruptionCount: outcomeCode === "interrupted" ? 1 : 0,
 						recoveryCount: 0,
 						coordinatorBudgetOutcome: coordinatorBudget
@@ -3612,7 +3665,7 @@ export default function (pi: ExtensionAPI) {
 					boundaryCount: workers.reduce((sum, worker) => sum + (worker.boundaryCount ?? 0), 0),
 					searchCount: workers.reduce((sum, worker) => sum + (worker.searchCount ?? 0), 0),
 					watchdogCount: workers.reduce((sum, worker) => sum + (worker.watchdogCount ?? 0), 0),
-					pingCount: 0,
+					pingCount: workers.reduce((sum, worker) => sum + (worker.pingCount ?? 0), 0),
 					interruptionCount: workers.reduce((sum, worker) => sum + (worker.interruptionCount ?? 0), 0),
 					recoveryCount: workers.reduce((sum, worker) => sum + (worker.recoveryCount ?? 0), 0),
 					coordinatorBudgetOutcome: runBudgetOutcome,
@@ -3715,7 +3768,7 @@ export default function (pi: ExtensionAPI) {
 						boundaryCount: suppliedContext.telemetryBoundaryCount ?? 0,
 						searchCount: suppliedContext.searchCount ?? 0,
 						watchdogCount: suppliedContext.watchdogCount ?? 0,
-						pingCount: 0,
+						pingCount: suppliedContext.pingCount ?? 0,
 						interruptionCount: suppliedContext.interruptionCount ?? 0,
 						recoveryCount:
 							legacyAdapterBranch === "continue"
@@ -3902,17 +3955,25 @@ export default function (pi: ExtensionAPI) {
 			const availableAgentNames = new Set(agents.map((agent) => agent.name));
 			if (availableAgentNames.has("teamlead"))
 				availableAgentNames.add("orchestrator");
-			if (params.taskId !== undefined && !selectedSingle)
-				throw new Error("taskId is only valid for single mode.");
-			if (selectedTasks)
-				for (const task of selectedTasks)
-					validateLinkedTask(task.taskId, task.cwd, invocationCwd);
-			if (selectedSingle)
-				validateLinkedTask(
-					selectedSingle.taskId,
-					selectedSingle.cwd,
-					invocationCwd,
-				);
+			if (params.taskId !== undefined && !selectedSingle) {
+				const error = new Error("taskId is only valid for single mode.");
+				recordBoundaryRejection(error);
+				throw error;
+			}
+			try {
+				if (selectedTasks)
+					for (const task of selectedTasks)
+						validateLinkedTask(task.taskId, task.cwd, invocationCwd);
+				if (selectedSingle)
+					validateLinkedTask(
+						selectedSingle.taskId,
+						selectedSingle.cwd,
+						invocationCwd,
+					);
+			} catch (error) {
+				recordBoundaryRejection(error);
+				throw error;
+			}
 
 			const unknownAgentNames = Array.from(requestedAgentNames).filter(
 				(name) => !availableAgentNames.has(name),
@@ -3928,9 +3989,11 @@ export default function (pi: ExtensionAPI) {
 					.join(", ");
 				const available =
 					agents.map((agent) => `"${agent.name}"`).join(", ") || "none";
-				throw new Error(
+				const error = new Error(
 					`Unknown agent${unknownAgentNames.length === 1 ? "" : "s"}: ${unknown} for agentScope "${agentScope}". Available agents: ${available}.`,
 				);
+				recordBoundaryRejection(error);
+				throw error;
 			}
 
 			if (subscriptionRoot && hasContinue)
@@ -4008,17 +4071,22 @@ export default function (pi: ExtensionAPI) {
 				}
 			};
 			const chain = params.chain as unknown as TaskParams[] | undefined;
-			if (fanoutPlan) {
-				prepareChild(fanoutPlan.single as TaskParams, "leaf");
-				for (const item of fanoutPlan.parallel as TaskParams[])
-					prepareChild(item, "leaf");
-			} else {
-				if (selectedSingle) prepareChild(selectedSingle);
-				for (const item of (selectedTasks ?? []) as TaskParams[])
-					prepareChild(item);
+			try {
+				if (fanoutPlan) {
+					prepareChild(fanoutPlan.single as TaskParams, "leaf");
+					for (const item of fanoutPlan.parallel as TaskParams[])
+						prepareChild(item, "leaf");
+				} else {
+					if (selectedSingle) prepareChild(selectedSingle);
+					for (const item of (selectedTasks ?? []) as TaskParams[])
+						prepareChild(item);
+				}
+				for (const item of chain ?? []) prepareChild(item);
+				if (continueChild) prepareChild(continueChild, "leaf");
+			} catch (error) {
+				recordBoundaryRejection(error);
+				throw error;
 			}
-			for (const item of chain ?? []) prepareChild(item);
-			if (continueChild) prepareChild(continueChild, "leaf");
 
 			// Work markers are reported for coordination only. Overlap never rejects
 			// or queues modifying workers.
@@ -4112,6 +4180,7 @@ export default function (pi: ExtensionAPI) {
 						telemetryTaskLinkSource: followUp.telemetryTaskLinkSource,
 						telemetryMarkerCount: followUp.telemetryMarkerCount,
 						telemetryBoundaryCount: followUp.telemetryBoundaryCount,
+						authorityTools: followUp.authorityTools,
 					},
 				);
 				finalizeOutput(
@@ -4139,7 +4208,15 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (params.chain && params.chain.length > 0) {
-				const chain = params.chain as ChainParams[];
+				const requestedChain = params.chain as ChainParams[];
+				const chainAdmission = admitCoordinatorDescendants<ChainParams>(
+					requestedChain,
+					descendantWorkerBudget && descendantWorkerBudget > 0
+						? descendantWorkerBudget
+						: undefined,
+				);
+				const chain = chainAdmission.admitted;
+				coordinatorGaps.push(...chainAdmission.gaps);
 				const results: SingleResult[] = [];
 				let previousOutput = "";
 
@@ -4235,7 +4312,7 @@ export default function (pi: ExtensionAPI) {
 					content: [
 						{
 							type: "text",
-							text: getOutputForParent(finalResult) || "(no output)",
+							text: `${getOutputForParent(finalResult) || "(no output)"}${coordinatorGapText()}`,
 						},
 					],
 					details: makeDetails("chain")(results),
@@ -4243,7 +4320,15 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (selectedTasks && selectedTasks.length > 0) {
-				const tasks = selectedTasks;
+				const requestedTasks = selectedTasks;
+				const taskAdmission = admitCoordinatorDescendants<TaskParams>(
+					requestedTasks,
+					descendantWorkerBudget && descendantWorkerBudget > 0
+						? descendantWorkerBudget
+						: undefined,
+				);
+				const tasks = taskAdmission.admitted;
+				coordinatorGaps.push(...taskAdmission.gaps);
 
 				// Track all results for streaming updates
 				const allResults: SingleResult[] = new Array(tasks.length);
@@ -4375,7 +4460,7 @@ export default function (pi: ExtensionAPI) {
 					content: [
 						{
 							type: "text",
-							text: `Parallel: ${successCount}/${results.length} succeeded\n\n${aggregateParallelOutputs(results)}`,
+							text: `Parallel: ${successCount}/${results.length} succeeded\n\n${aggregateParallelOutputs(results)}${coordinatorGapText()}`,
 						},
 					],
 					details: makeDetails("parallel")(results),
@@ -4407,10 +4492,14 @@ export default function (pi: ExtensionAPI) {
 						workPaths: selectedSingle.scope,
 						workBoundary: internalParams.workBoundary,
 						repositoryRoot: selectedSingle.repositoryRoot,
+						workspaceRoot: invocationCwd,
 						telemetryWorkspaceRootSource: selectedSingle.telemetryWorkspaceRootSource,
 						telemetryTaskLinkSource: selectedSingle.telemetryTaskLinkSource,
 						telemetryMarkerCount: selectedSingle.telemetryMarkerCount,
 						telemetryBoundaryCount: selectedSingle.telemetryBoundaryCount,
+						...(coordinatorBudget
+							? { maxWorkers: coordinatorBudget.maxWorkers }
+							: {}),
 					},
 				);
 				finalizeOutput(
@@ -5031,8 +5120,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	resumeInterruptedSession = (
-		run,
-		sessionPath,
+		recovery,
 		toolCallId,
 		signal,
 		onUpdate,
@@ -5042,11 +5130,12 @@ export default function (pi: ExtensionAPI) {
 			`${toolCallId}-resume`,
 			{
 				continue: {
-					agent: run.agent,
-					session: sessionPath,
-					task: INTERRUPTED_TOOL_RECOVERY_MESSAGE,
-					cwd: run.cwd,
-					...(run.effort ? { effort: run.effort } : {}),
+					agent: recovery.run.agent,
+					session: recovery.sessionPath,
+					task: recovery.recoveryMessage,
+					cwd: recovery.workspaceRoot,
+					authorityTools: [...recovery.authorityTools],
+					...(recovery.run.effort ? { effort: recovery.run.effort } : {}),
 				},
 				agentScope: "both",
 				confirmProjectAgents: true,
@@ -5076,7 +5165,9 @@ export default function (pi: ExtensionAPI) {
 			ctx: ExtensionContext,
 		): Promise<AgentToolResult<SubagentDetails>> => {
 			const request = { kind, ...(params as Record<string, unknown>) } as unknown as SubagentExecutionRequest;
-			const prepared = prepareSubagentExecution(request, {
+			let prepared: PreparedSubagentExecution;
+			try {
+				prepared = prepareSubagentExecution(request, {
 				parentCwd: ctx.cwd,
 				parentSessionId: ctx.sessionManager?.getSessionId?.(),
 				allowExternalWorkspace: currentSubagentIdentity().role === "root",
@@ -5084,7 +5175,11 @@ export default function (pi: ExtensionAPI) {
 					path.resolve(workspaceRoot) === path.resolve(ctx.cwd)
 						? ctx.isProjectTrusted()
 						: new ProjectTrustStore(getAgentDir()).get(workspaceRoot) === true,
-			});
+				});
+			} catch (error) {
+				recordBoundaryRejection(error);
+				throw error;
+			}
 			const executorInput = modernRequestToExecutorInput(request, prepared);
 			return subagentExecutor.execute(
 				toolCallId,

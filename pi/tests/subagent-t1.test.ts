@@ -14,6 +14,8 @@ import {
 	adaptLegacySubagentInvocation,
 	HISTORICAL_SUBAGENT_TOOL_NAMES,
 } from "../extensions/subagent/legacy-adapter.ts";
+import { modernRequestToExecutorInput } from "../extensions/subagent/modern-adapter.ts";
+import type { PreparedSubagentExecution } from "../extensions/subagent/contracts.ts";
 import { resolveChildToolAuthority } from "../extensions/subagent/index.ts";
 import { createTask, resolveTaskWorkspace } from "../lib/task-registry.ts";
 import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.ts";
@@ -196,6 +198,26 @@ describe("subagent T1 execution contracts", () => {
 			fs.rmSync(workspace, { recursive: true, force: true });
 			fs.rmSync(otherWorkspace, { recursive: true, force: true });
 		}
+	});
+
+	it("passes each prepared item's canonical cwd to the executor adapter", () => {
+		const request = {
+			kind: "read" as const,
+			items: [{ agent: "reader", task: "inspect", cwd: "/prepared/item" }],
+		};
+		const prepared = {
+			items: [
+				{
+					request: request.items[0],
+					workspaceRoot: "/workspace/root",
+					taskLink: { outcome: "none" as const },
+				},
+			],
+		} as unknown as PreparedSubagentExecution;
+
+		expect(modernRequestToExecutorInput(request, prepared)).toMatchObject({
+			cwd: "/prepared/item",
+		});
 	});
 
 	it("translates every historical tool name through the compatibility adapter", () => {

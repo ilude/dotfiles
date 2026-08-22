@@ -206,6 +206,16 @@ describe("SubagentRunManager", () => {
 				watchdogState: "stalled-tool",
 				activeToolDurationMs: 130_000,
 			});
+
+			now.mockReturnValue(140_000);
+			manager.updateTool("watchdog", "tool", "fresh output");
+			expect(
+				inspectSubagentStatus(manager.get("watchdog")!, {
+					now: 150_000,
+					runtimePingAt: 149_000,
+					isProcessAlive: () => true,
+				}),
+			).toMatchObject({ watchdogState: "active" });
 			expect(
 				inspectSubagentStatus(toolRun, {
 					now: 150_000,
