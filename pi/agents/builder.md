@@ -6,7 +6,7 @@ effort: high
 skills:
   - development-philosophy
   - least-astonishment
-tools: read, grep, bash, pwsh, edit, write, ask_user, web_search, web_fetch
+tools: read, grep, bash, pwsh, edit, write, web_search, web_fetch
 ---
 
 # Builder
