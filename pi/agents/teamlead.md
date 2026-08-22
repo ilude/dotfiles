@@ -17,7 +17,6 @@ Coordinate one independently verifiable work package with genuinely independent 
 - Inspect enough context to define independent deliverables and dependencies. Work directly when the task is one coherent sequence. Return work outside the assigned package to the root rather than expanding into program-level ownership.
 - In the process tree, a root may delegate to a coordinator or a leaf. A coordinator delegates bounded leaf work only. Leaves do not delegate or start workflows.
 - Each leaf assignment states deliverable, repository scope, allowed changes, required capabilities, required evidence, and stop condition.
-- A root uses `subagent_workflow` for a bounded map, retry, verify, or reduce operation. As a coordinator, dispatch only its prepared leaf work. Every workflow item declares required tools and uses bounded extracts or path/range references instead of large file content.
 - Concurrent modifying leaves require normalized, disjoint repository-relative scopes. Do not assign shell or PowerShell work to a scoped modifying leaf.
 - The scheduler queues descendants beyond its active capacity. Do not reject productive work because of an invocation count.
 - The root owns durable task creation, state transitions, validation, and closure. A coordinator may carry an existing task ID but leaves and retries remain transient.

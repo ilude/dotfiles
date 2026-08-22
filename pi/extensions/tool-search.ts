@@ -27,10 +27,7 @@ import {
 
 const HIDDEN_HISTORICAL_TOOLS = new Set([
 	"subagent",
-	"subagent_chain",
 	"subagent_continue",
-	"subagent_fanout",
-	"subagent_workflow",
 ]);
 
 /** Score a tool against search terms. Higher = better match. */

@@ -68,10 +68,7 @@ const MODIFYING_TOOLS = new Set([
 	"structured_edit",
 	"bg_start",
 	"subagent",
-	"subagent_chain",
 	"subagent_continue",
-	"subagent_fanout",
-	"subagent_workflow",
 ]);
 const WAIT_REASONS = [
 	"operator_decision",

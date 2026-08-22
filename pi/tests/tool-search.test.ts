@@ -76,7 +76,7 @@ describe("tool-search extension", () => {
 		it("should list all tools when no query", async () => {
 			const result = await tool.execute("id", {}, undefined, undefined, {});
 			const text = result.content[0].text;
-			expect(text).toContain("6 available tools");
+			expect(text).toContain("5 available tools");
 			expect(text).toContain("bash");
 			expect(text).toContain("pwsh");
 			expect(text).toContain("web_search");
@@ -92,7 +92,7 @@ describe("tool-search extension", () => {
 				undefined,
 				{},
 			);
-			expect(result.content[0].text).toContain("6 available tools");
+			expect(result.content[0].text).toContain("5 available tools");
 		});
 
 		it("never activates tools from list mode", async () => {
@@ -134,7 +134,7 @@ describe("tool-search extension", () => {
 			expect(result.content[0].text).toContain("pwsh");
 		});
 
-		it("activates a deferred advanced subagent mode by capability", async () => {
+		it("does not discover hidden compatibility tools", async () => {
 			const result = await tool.execute(
 				"id",
 				{ query: "saved session continuation" },
@@ -142,8 +142,9 @@ describe("tool-search extension", () => {
 				undefined,
 				{},
 			);
-			expect(result.details.activated).toEqual(["subagent_continue"]);
-			expect(activeNames).toContain("subagent_continue");
+			expect(result.details.matched).toBe(0);
+			expect(result.details.activated).toBeUndefined();
+			expect(activeNames).not.toContain("subagent_continue");
 		});
 
 		it("does not activate matches when explicitly disabled", async () => {

@@ -76,9 +76,7 @@ describe("tool visibility", () => {
 			"plan_progress",
 			"review_artifact_write",
 			"workflow_friction_mark_change",
-			"subagent_chain",
 			"subagent_continue",
-			"subagent_fanout",
 		]);
 		expect(pi.getActiveTools()).toEqual([
 			"read",
@@ -102,22 +100,11 @@ describe("tool visibility", () => {
 
 	it("keeps desired owner state current under a keyed visibility restriction", () => {
 		const pi = createMockPi();
-		const fixed = [
-			"subagent",
-			"subagent_chain",
-			"subagent_fanout",
-			"subagent_workflow",
-			"task",
-		];
+		const fixed = ["subagent", "subagent_continue", "task"];
 		for (const name of ["read", ...fixed, "plan_archive", "goal_complete"])
 			registerTool(pi, name);
 
-		deactivateTools(pi, [
-			"subagent_chain",
-			"subagent_fanout",
-			"subagent_workflow",
-			"plan_archive",
-		]);
+		deactivateTools(pi, ["subagent_continue", "plan_archive"]);
 		setToolVisibilityRestriction(
 			pi,
 			"fable",

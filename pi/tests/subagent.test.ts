@@ -451,17 +451,11 @@ Execute workflow items with admitted tools only.
 		expect(manager.list()).toEqual([]);
 	});
 
-	it("enumerates trusted agents while deferring advanced mode tools", async () => {
+	it("enumerates trusted agents while exposing only current subagent tools", async () => {
 		const { pi } = await loadTool();
-		for (const name of [
-			"subagent_chain",
-			"subagent_continue",
-			"subagent_fanout",
-			"subagent_workflow",
-		]) {
-			expect(pi._getTool(name)).toBeDefined();
-			expect(pi.getActiveTools()).toContain(name);
-		}
+		for (const name of ["subagent_chain", "subagent_fanout", "subagent_workflow"])
+			expect(pi._getTool(name)).toBeUndefined();
+		expect(pi._getTool("subagent_continue")).toBeDefined();
 
 		await pi
 			._getHook("session_start")[0]
@@ -490,46 +484,7 @@ Execute workflow items with admitted tools only.
 			enum: ["coordinator", "leaf"],
 		});
 		expect(properties.scope).toMatchObject({ minItems: 1 });
-		expect(properties.tasks).toMatchObject({
-			minItems: 1,
-			maxItems: 8,
-			items: {
-				properties: {
-					agent: {
-						type: "string",
-						enum: expect.arrayContaining([
-							"builder",
-							"typescript-pro",
-							"tester",
-						]),
-					},
-					taskId: { type: "string" },
-					output: { type: "boolean" },
-				},
-			},
-		});
 		expect(properties.output).toMatchObject({ type: "boolean" });
-		expect(properties.effort).toMatchObject({
-			type: "string",
-			enum: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
-		});
-		expect(
-			(pi._getTool("subagent_chain")!.parameters as { properties: object })
-				.properties,
-		).toMatchObject({
-			steps: {
-				minItems: 1,
-				maxItems: 8,
-				items: {
-					properties: {
-						agent: {
-							enum: expect.arrayContaining(["builder"]),
-						},
-						output: { type: "boolean" },
-					},
-				},
-			},
-		});
 		expect(
 			(pi._getTool("subagent_continue")!.parameters as {
 				properties: object;
@@ -539,34 +494,7 @@ Execute workflow items with admitted tools only.
 			session: expect.any(Object),
 			output: { type: "boolean" },
 		});
-		const fanoutParameters = pi._getTool("subagent_fanout")!.parameters as {
-			properties: {
-				single: { properties: { agent: { enum: string[] } } };
-				parallel: {
-					maxItems: number;
-					items: { properties: { agent: { enum: string[] } } };
-				};
-			};
-			required: string[];
-		};
-		expect(fanoutParameters.required).toContain("outputSchema");
-		expect(fanoutParameters.properties.single.properties.agent.enum).toEqual(
-			expect.arrayContaining(["builder"]),
-		);
-		expect(fanoutParameters.properties.single.properties.agent.enum).toContain(
-			"tester",
-		);
-		expect(fanoutParameters.properties.parallel.maxItems).toBe(8);
-		expect(
-			fanoutParameters.properties.parallel.items.properties.agent.enum,
-		).toEqual(expect.arrayContaining(["builder"]));
-		expect(
-			fanoutParameters.properties.parallel.items.properties.agent.enum,
-		).toContain("tester");
-		expect(pi.getActiveTools()).not.toContain("subagent_chain");
 		expect(pi.getActiveTools()).not.toContain("subagent_continue");
-		expect(pi.getActiveTools()).not.toContain("subagent_fanout");
-		expect(pi.getActiveTools()).not.toContain("subagent_workflow");
 		expect(pi.getActiveTools()).not.toContain("subagent");
 		expect(pi.getActiveTools()).toEqual(
 			expect.arrayContaining([
@@ -576,10 +504,6 @@ Execute workflow items with admitted tools only.
 			]),
 		);
 		expect(pi.getActiveTools()).toContain("subagent_status");
-		const workflowParameters = pi._getTool("subagent_workflow")?.parameters as {
-			properties?: { items?: { maxItems?: number } };
-		};
-		expect(workflowParameters.properties?.items?.maxItems).toBe(256);
 	});
 
 	it("lets the root inspect liveness and compare observable progress", async () => {
@@ -669,247 +593,9 @@ Execute workflow items with admitted tools only.
 		);
 	});
 
-	it("preflights workflow capabilities without consuming an attempt", async () => {
-		const { pi } = await loadTool();
-		const workflow = pi._getTool("subagent_workflow");
-		if (!workflow) throw new Error("subagent_workflow tool not registered");
-		const result = await workflow.execute(
-			"workflow-capability",
-			{
-				id: "workflow-capability",
-				items: [
-					{
-						key: "needs-edit",
-						agent: "tester",
-						task: "Edit a file.",
-						capabilities: ["edit"],
-						input: { kind: "none" },
-						scope: ["src"],
-					},
-				],
-				agentScope: "project",
-			},
-			undefined,
-			undefined,
-			createMockCtx({ cwd: tmpDir }),
-		);
 
-		expect(spawnMock).not.toHaveBeenCalled();
-		expect(result.details.workflow.items[0]).toMatchObject({
-			status: "error",
-			attempts: 0,
-		});
-		expect(result.details.workflow.items[0].gaps[0]).toContain(
-			"missing tools: edit",
-		);
-	});
 
-	it("uses workflow capabilities as the runtime tool authority", async () => {
-		spawnMock.mockImplementation((_command: string, args: string[]) => {
-			const proc = createMockProcess();
-			const sessionDir = args[args.indexOf("--session-dir") + 1];
-			const sessionId = args[args.indexOf("--session-id") + 1];
-			fs.mkdirSync(sessionDir, { recursive: true });
-			fs.writeFileSync(
-				path.join(sessionDir, `2026-08-15T00-00-00-000Z_${sessionId}.jsonl`),
-				testSessionHeader(sessionId, tmpDir),
-				"utf8",
-			);
-			queueMicrotask(() => {
-				proc.stdout.emit(
-					"data",
-					`${JSON.stringify({
-						type: "message_end",
-						message: {
-							role: "assistant",
-							content: [
-								{
-									type: "text",
-									text: '{"status":"found","evidence":["bounded"]}',
-								},
-							],
-							stopReason: "end_turn",
-						},
-					})}\n`,
-				);
-				proc.emit("close", 0);
-			});
-			return proc;
-		});
-		const { pi } = await loadTool();
-		const workflow = pi._getTool("subagent_workflow");
-		if (!workflow) throw new Error("subagent_workflow tool not registered");
-		const result = await workflow.execute(
-			"workflow-authority",
-			{
-				id: "workflow-authority",
-				items: [
-					{
-						key: "read-only-item",
-						agent: "workflow-builder",
-						task: "Inspect without mutation.",
-						capabilities: ["read"],
-						input: { kind: "none" },
-					},
-				],
-				agentScope: "project",
-			},
-			undefined,
-			undefined,
-			createMockCtx({ cwd: tmpDir }),
-		);
 
-		expect(result.details.workflow.items[0]).toMatchObject({
-			status: "found",
-			attempts: 1,
-		});
-		const spawnArgs = spawnMock.mock.calls[0][1] as string[];
-		expect(spawnArgs[spawnArgs.indexOf("--tools") + 1]).toBe("read");
-
-		await expect(
-			workflow.execute(
-				"workflow-mutation-admission",
-				{
-					id: "workflow-mutation-admission",
-					items: [
-						{
-							key: "mutating-item",
-							agent: "workflow-builder",
-							task: "Edit without a lease.",
-							capabilities: ["edit"],
-							input: { kind: "none" },
-						},
-					],
-					agentScope: "project",
-				},
-				undefined,
-				undefined,
-				createMockCtx({ cwd: tmpDir }),
-			),
-		).rejects.toThrow("must declare a repository-relative scope");
-		expect(spawnMock).toHaveBeenCalledTimes(1);
-	});
-
-	it("rejects mutation tools in explicitly read-only workflow phases", async () => {
-		const { pi } = await loadTool();
-		const workflow = pi._getTool("subagent_workflow");
-		if (!workflow) throw new Error("subagent_workflow tool not registered");
-
-		await expect(
-			workflow.execute(
-				"workflow-read-only-verifier",
-				{
-					id: "workflow-read-only-verifier",
-					items: [
-						{
-							key: "item",
-							agent: "tester",
-							task: "Inspect.",
-							capabilities: ["read"],
-							input: { kind: "none" },
-						},
-					],
-					verify: {
-						agent: "reviewer",
-						task: "Verify.",
-						capabilities: ["bash"],
-					},
-					agentScope: "project",
-				},
-				undefined,
-				undefined,
-				createMockCtx({ cwd: tmpDir }),
-			),
-		).rejects.toThrow(
-			"Workflow verification capability preflight rejected; missing tools: bash",
-		);
-		expect(spawnMock).not.toHaveBeenCalled();
-	});
-
-	it("runs the deferred workflow through a tree-aware structured leaf", async () => {
-		spawnMock.mockImplementation((_command: string, args: string[]) => {
-			const proc = createMockProcess();
-			const sessionDir = args[args.indexOf("--session-dir") + 1];
-			const sessionId = args[args.indexOf("--session-id") + 1];
-			fs.mkdirSync(sessionDir, { recursive: true });
-			fs.writeFileSync(
-				path.join(sessionDir, `2026-08-15T00-00-00-000Z_${sessionId}.jsonl`),
-				testSessionHeader(sessionId, tmpDir),
-				"utf8",
-			);
-			queueMicrotask(() => {
-				proc.stdout.emit(
-					"data",
-					`${JSON.stringify({
-						type: "message_end",
-						message: {
-							role: "assistant",
-							content: [
-								{
-									type: "text",
-									text: '{"status":"found","evidence":["bounded"]}',
-								},
-							],
-							stopReason: "end_turn",
-						},
-					})}\n`,
-				);
-				proc.emit("close", 0);
-			});
-			return proc;
-		});
-		const { pi } = await loadTool();
-		const workflow = pi._getTool("subagent_workflow");
-		if (!workflow) throw new Error("subagent_workflow tool not registered");
-		const result = await workflow.execute(
-			"workflow-map",
-			{
-				id: "workflow-map",
-				items: [
-					{
-						key: "item-1",
-						agent: "tester",
-						task: "Inspect the bounded item.",
-						capabilities: ["read"],
-						input: { kind: "extract", content: "small input" },
-					},
-				],
-				agentScope: "project",
-			},
-			undefined,
-			undefined,
-			createMockCtx({ cwd: tmpDir }),
-		);
-
-		expect(result.details.workflow.items[0]).toMatchObject({
-			status: "found",
-			attempts: 1,
-			evidence: ["bounded"],
-		});
-		const environment = spawnMock.mock.calls[0][2].env as Record<string, string>;
-		expect(environment.PI_SUBAGENT_TREE_ROLE).toBe("leaf");
-		expect(environment.PI_SUBAGENT_TREE_DEPTH).toBe("1");
-		const { subagentRunManager } = await import(
-			"../extensions/subagent/run-manager.ts"
-		);
-		expect(subagentRunManager.list()[0]).toMatchObject({
-			workflowPhase: "map",
-			taskKey: "item-1",
-			attempt: 1,
-		});
-		const { getSubagentTreeBroker } = await import(
-			"../extensions/subagent/tree-runtime.ts"
-		);
-		expect(
-			getSubagentTreeBroker()
-				.list()
-				.find(
-					(node) =>
-						node.runId !== environment.PI_SUBAGENT_TREE_RUN_ID &&
-						node.treeId === environment.PI_SUBAGENT_TREE_ID,
-				),
-		).toMatchObject({ role: "root", state: "settled" });
-	});
 
 	it("renders the full single-agent task prompt", async () => {
 		const { tool } = await loadTool();
@@ -1260,29 +946,6 @@ Do not load this agent.
 		expect(spawnMock).not.toHaveBeenCalled();
 	});
 
-	it("maps the deferred chain surface to the legacy executor", async () => {
-		mockSuccessfulSpawn();
-		const { pi } = await loadTool();
-		const chainTool = pi._getTool("subagent_chain");
-		if (!chainTool) throw new Error("subagent_chain tool not registered");
-
-		const result = await chainTool.execute(
-			"call-deferred-chain",
-			{
-				steps: [
-					{ agent: "tester", task: "First" },
-					{ agent: "tester", task: "Use {previous}" },
-				],
-				agentScope: "project",
-			},
-			undefined,
-			undefined,
-			createMockCtx({ cwd: tmpDir }),
-		);
-
-		expect(spawnMock).toHaveBeenCalledTimes(2);
-		expect(result.details.mode).toBe("chain");
-	});
 
 	async function orchestrationRuns() {
 		const { readRecentEvents } = await import("../lib/metrics.ts");
@@ -1387,52 +1050,6 @@ Do not load this agent.
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
-	it("fails closed when requested project-agent confirmation has no UI", async () => {
-		const { pi, tool } = await loadTool();
-		const workflow = pi._getTool("subagent_workflow");
-		if (!workflow) throw new Error("subagent_workflow tool not registered");
-		const ctx = createMockCtx({ cwd: tmpDir, hasUI: false });
-
-		const direct = await tool.execute(
-			"project-confirm-no-ui",
-			{
-				agent: "tester",
-				task: "Do not run.",
-				agentScope: "project",
-				confirmProjectAgents: true,
-			},
-			undefined,
-			undefined,
-			ctx,
-		);
-		expect(direct.isError).toBe(true);
-		expect(direct.content[0].text).toContain("requires an interactive UI");
-
-		await expect(
-			workflow.execute(
-				"workflow-project-confirm-no-ui",
-				{
-					id: "workflow-project-confirm-no-ui",
-					items: [
-						{
-							key: "item",
-							agent: "tester",
-							task: "Do not run.",
-							capabilities: ["read"],
-							input: { kind: "none" },
-						},
-					],
-					agentScope: "project",
-					confirmProjectAgents: true,
-				},
-				undefined,
-				undefined,
-				ctx,
-			),
-		).rejects.toThrow("requires an interactive UI");
-		expect(ctx.ui.confirm).not.toHaveBeenCalled();
-		expect(spawnMock).not.toHaveBeenCalled();
-	});
 
 	it("keeps parallel siblings running when one child fails before launch", async () => {
 		await fs.promises.writeFile(
@@ -2460,180 +2077,7 @@ You are a test agent.
 		expect(result.details.results[0].role).toBe("leaf");
 	});
 
-	it("applies Fable routing to chain, fanout, and workflow leaves", async () => {
-		mockSuccessfulSpawn();
-		const { pi, tool } = await loadTool();
 
-		await tool.execute(
-			"fable-chain",
-			{
-				chain: [
-					{ agent: "unpinned", task: "First" },
-					{ agent: "subscription", task: "Use {previous}" },
-				],
-				agentScope: "project",
-			},
-			undefined,
-			undefined,
-			fableCtx(),
-		);
-		let newCalls = spawnMock.mock.calls.splice(0);
-		expect(newCalls).toHaveLength(2);
-		expect(
-			newCalls.map((call) => {
-				const args = call[1] as string[];
-				return args[args.indexOf("--model") + 1];
-			}),
-		).toEqual([
-			"openai-codex/gpt-5.6-luna",
-			"openai-codex/gpt-5.6-terra:high",
-		]);
-
-		mockSuccessfulSpawn('{"value":"done"}');
-		const fanout = pi._getTool("subagent_fanout");
-		if (!fanout) throw new Error("subagent_fanout tool not registered");
-		await fanout.execute(
-			"fable-fanout",
-			{
-				single: { agent: "unpinned", task: "Inspect all" },
-				parallel: [
-					{ agent: "subscription", task: "Inspect one" },
-					{ agent: "unpinned", task: "Inspect two" },
-				],
-				outputSchema,
-				agentScope: "project",
-			},
-			undefined,
-			undefined,
-			fableCtx(),
-		);
-		newCalls = spawnMock.mock.calls.splice(0);
-		expect(newCalls.length).toBeGreaterThan(0);
-		for (const call of newCalls) {
-			const args = call[1] as string[];
-			expect(args[args.indexOf("--model") + 1]).toMatch(
-				/^openai-codex\//,
-			);
-		}
-
-		mockSuccessfulSpawn(
-			'{"status":"found","evidence":["bounded"]}',
-		);
-		const workflow = pi._getTool("subagent_workflow");
-		if (!workflow) throw new Error("subagent_workflow tool not registered");
-		await workflow.execute(
-			"fable-workflow",
-			{
-				id: "fable-workflow",
-				items: [
-					{
-						key: "one",
-						agent: "unpinned",
-						task: "Inspect",
-						capabilities: ["read"],
-						input: { kind: "none" },
-					},
-				],
-				agentScope: "project",
-			},
-			undefined,
-			undefined,
-			fableCtx(),
-		);
-		newCalls = spawnMock.mock.calls.splice(0);
-		expect(newCalls).toHaveLength(1);
-		const workflowArgs = newCalls[0][1] as string[];
-		expect(workflowArgs[workflowArgs.indexOf("--model") + 1]).toBe(
-			"openai-codex/gpt-5.6-luna",
-		);
-	});
-
-	it("rejects invalid Fable batches atomically before spawn", async () => {
-		mockSuccessfulSpawn();
-		const { pi, tool } = await loadTool();
-		const invalid = [
-			{
-				tasks: [
-					{ agent: "subscription", task: "Valid" },
-					{ agent: "tester", task: "Metered pin" },
-				],
-			},
-			{
-				agent: "unpinned",
-				task: "Metered override",
-				model: "anthropic/claude-opus-4-6",
-			},
-			{
-				agent: "subscription",
-				task: "Coordinator",
-				role: "coordinator",
-			},
-			{
-				agent: "subscription",
-				task: "Custom artifact",
-				output: "result.md",
-			},
-		] as const;
-		for (const [index, params] of invalid.entries()) {
-			await expect(
-				tool.execute(
-					`fable-invalid-${index}`,
-					{ ...params, agentScope: "project" },
-					undefined,
-					undefined,
-					fableCtx(),
-				),
-			).rejects.toThrow("Bedrock Claude subscription-only orchestration");
-			expect(spawnMock).not.toHaveBeenCalled();
-		}
-
-		const workflow = pi._getTool("subagent_workflow");
-		if (!workflow) throw new Error("subagent_workflow tool not registered");
-		await expect(
-			workflow.execute(
-				"fable-invalid-workflow",
-				{
-					id: "fable-invalid-workflow",
-					items: [
-						{
-							key: "valid",
-							agent: "subscription",
-							task: "Valid",
-							capabilities: ["read"],
-							input: { kind: "none" },
-						},
-						{
-							key: "metered",
-							agent: "tester",
-							task: "Metered",
-							capabilities: ["read"],
-							input: { kind: "none" },
-						},
-					],
-					agentScope: "project",
-				},
-				undefined,
-				undefined,
-				fableCtx(),
-			),
-		).rejects.toThrow("Bedrock Claude subscription-only orchestration");
-		expect(spawnMock).not.toHaveBeenCalled();
-
-		await expect(
-			tool.execute(
-				"fable-missing-model",
-				{
-					agent: "unpinned",
-					task: "No subscription model",
-					agentScope: "project",
-				},
-				undefined,
-				undefined,
-				fableCtx([]),
-			),
-		).rejects.toThrow("none was found");
-		expect(spawnMock).not.toHaveBeenCalled();
-	});
 
 	it("joins every text block in the final assistant response", async () => {
 		spawnMock.mockImplementation(() => {
