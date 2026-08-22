@@ -164,11 +164,11 @@ export default function (pi: ExtensionAPI) {
 			void notifyIfBranchBehind(pi, ctx);
 		}
 
-		// Transcript retention sweep (opt-in via ~/.pi/agent/settings.json).
-		// Reads the runtime toggle from the per-user settings file ONLY --
-		// the repo-tracked pi/settings.json must NOT enable tracing.
+		// Load the per-user transcript settings once and reuse them for both the
+		// retention sweep and runtime initialization.
+		let transcriptSettings: ReturnType<typeof loadTranscriptSettings> | undefined;
 		try {
-			const transcriptSettings = loadTranscriptSettings();
+			transcriptSettings = loadTranscriptSettings();
 			if (transcriptSettings.enabled) {
 				await sweepTranscriptRetention(
 					transcriptSettings.path,
@@ -187,7 +187,7 @@ export default function (pi: ExtensionAPI) {
 		try {
 			const sessionId =
 				ctx.sessionManager.getSessionId() ?? `pi-${crypto.randomUUID()}`;
-			initializeTranscriptRuntime(sessionId);
+			initializeTranscriptRuntime(sessionId, transcriptSettings);
 			if (getTranscriptWriter()) {
 				await emitTranscript(
 					{ event_type: "session_start", turn_id: "turn-0" },

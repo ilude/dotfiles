@@ -4,6 +4,7 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import persistentDefaults, {
+	defaultsArePinned,
 	enforcePinnedDefaults,
 	PINNED_DEFAULTS,
 } from "../extensions/persistent-defaults";
@@ -55,6 +56,16 @@ describe("persistent defaults guard", () => {
 			...PINNED_DEFAULTS,
 			metrics: { enabled: false },
 		});
+	});
+
+	it("detects pinned defaults without entering the atomic update path", () => {
+		const settingsPath = tempSettingsPath();
+		fs.writeFileSync(
+			settingsPath,
+			`${JSON.stringify({ ...PINNED_DEFAULTS, metrics: { enabled: true } }, null, 2)}\n`,
+		);
+
+		expect(defaultsArePinned(settingsPath)).toBe(true);
 	});
 
 	it("does not rewrite when defaults are already pinned", async () => {

@@ -56,12 +56,6 @@ async function sendRequest(request: unknown): Promise<void> {
 
 type AgentState = "working" | "blocked" | "idle";
 
-type QueuedState = {
-  state: AgentState;
-  message?: string;
-  seq: number;
-};
-
 let reportSeq = Date.now() * 1000;
 let currentAgentSessionId: string | undefined;
 let currentAgentSessionPath: string | undefined;
@@ -143,34 +137,15 @@ function sendState(state: AgentState, message?: string, seq = nextReportSeq()): 
   });
 }
 
-let sendInFlight = false;
-let queuedState: QueuedState | undefined;
+let ipcChain = Promise.resolve();
 
-function queueState(state: AgentState, message?: string): void {
-  queuedState = { state, message, seq: nextReportSeq() };
-  if (!sendInFlight) {
-    void drainStateQueue();
-  }
+function queueIpc(operation: () => Promise<void>): void {
+  ipcChain = ipcChain.then(operation);
 }
 
-async function drainStateQueue(): Promise<void> {
-  if (sendInFlight) {
-    return;
-  }
-
-  sendInFlight = true;
-  try {
-    while (queuedState) {
-      const next = queuedState;
-      queuedState = undefined;
-      await sendState(next.state, next.message, next.seq);
-    }
-  } finally {
-    sendInFlight = false;
-    if (queuedState) {
-      void drainStateQueue();
-    }
-  }
+function queueState(state: AgentState, message?: string): void {
+  const seq = nextReportSeq();
+  queueIpc(() => sendState(state, message, seq));
 }
 
 export default function (pi) {
@@ -223,7 +198,7 @@ export default function (pi) {
     publishState();
   });
 
-  onSessionStart(pi, import.meta.url, async (event, ctx) => {
+  onSessionStart(pi, import.meta.url, (event, ctx) => {
     // TUI only: RPC/JSON/print modes are headless (no PTY herdr can display),
     // and RPC still reports hasUI=true, so mode is the reliable gate.
     if (ctx?.mode !== "tui") {
@@ -231,7 +206,7 @@ export default function (pi) {
     }
     rootSession = true;
     updateSessionRef(ctx);
-    await reportSession(event?.reason);
+    queueIpc(() => reportSession(event?.reason));
     // A reload can replace this extension mid-run without emitting another agent_start.
     agentActive = ctx?.isIdle?.() === false;
     publishState(true);
@@ -242,7 +217,7 @@ export default function (pi) {
       return;
     }
     updateSessionRef(ctx);
-    void reportSession();
+    queueIpc(() => reportSession());
     agentActive = true;
     publishState();
   });
@@ -254,5 +229,9 @@ export default function (pi) {
 
     agentActive = false;
     publishState();
+  });
+
+  pi.on("session_shutdown", async () => {
+    await ipcChain;
   });
 }

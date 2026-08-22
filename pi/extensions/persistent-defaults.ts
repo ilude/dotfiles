@@ -25,6 +25,21 @@ export function getSettingsPath(): string {
 	return getRuntimeSettingsPath();
 }
 
+export function defaultsArePinned(settingsPath = getSettingsPath()): boolean {
+	if (!fs.existsSync(settingsPath)) return false;
+	try {
+		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<
+			string,
+			unknown
+		>;
+		return Object.entries(PINNED_DEFAULTS).every(
+			([key, value]) => settings[key] === value,
+		);
+	} catch {
+		return false;
+	}
+}
+
 export async function enforcePinnedDefaults(
 	settingsPath = getSettingsPath(),
 ): Promise<boolean> {
@@ -56,7 +71,8 @@ export default function persistentDefaults(
 	settingsPath = getSettingsPath(),
 ): void {
 	onSessionStart(pi, import.meta.url, async () => {
-		await enforcePinnedDefaults(settingsPath);
+		if (!defaultsArePinned(settingsPath))
+			await enforcePinnedDefaults(settingsPath);
 		scheduleEnforce(settingsPath);
 	});
 

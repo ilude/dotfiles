@@ -255,7 +255,10 @@ describe("session-hooks: session_start", () => {
 		);
 
 		expect(initializeRuntimeSpy).toHaveBeenCalledTimes(1);
-		expect(initializeRuntimeSpy).toHaveBeenCalledWith("test-session-id");
+		expect(initializeRuntimeSpy).toHaveBeenCalledWith(
+			"test-session-id",
+			expect.objectContaining({ enabled: true, retentionDays: 7 }),
+		);
 
 		// Writer is active -- session_start trace event should have been emitted.
 		const sessionStartEmits = emitSpy.mock.calls.filter(
@@ -269,6 +272,7 @@ describe("session-hooks: session_start", () => {
 
 		// Sweep was triggered because settings.enabled is true.
 		expect(sweepRetentionSpy).toHaveBeenCalled();
+		expect(loadSettingsSpy).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not crash session_start when transcript is disabled", async () => {

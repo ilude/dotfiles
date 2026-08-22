@@ -87,34 +87,38 @@ export default function (pi: ExtensionAPI) {
 	let sessionId: string | undefined;
 	let unsubscribeSubagents: (() => void) | undefined;
 
-	function publish(patch: MetadataPatch, force = false): Promise<void> {
-		const changed: Array<[MetadataToken, string | undefined]> = [];
-		for (const token of TOKEN_ORDER) {
-			if (!(token in patch)) continue;
-			const value = normalizeHerdrMetadataValue(patch[token]);
-			if (!force && desired.has(token) && desired.get(token) === value)
-				continue;
-			desired.set(token, value);
-			changed.push([token, value]);
-		}
-		if (changed.length === 0) return Promise.resolve();
-
-		reportSeq += 1;
-		const args = [
-			"pane",
-			"report-metadata",
-			paneId,
-			"--source",
-			METADATA_SOURCE,
-			"--seq",
-			String(reportSeq),
-		];
-		for (const [token, value] of changed) {
-			if (value === undefined) args.push("--clear-token", token);
-			else args.push("--token", `${token}=${value}`);
-		}
-
+	function publish(
+			patch: MetadataPatch | (() => MetadataPatch),
+			force = false,
+		): Promise<void> {
 		const operation = writeChain.then(async () => {
+			const resolvedPatch = typeof patch === "function" ? patch() : patch;
+			const changed: Array<[MetadataToken, string | undefined]> = [];
+			for (const token of TOKEN_ORDER) {
+				if (!(token in resolvedPatch)) continue;
+				const value = normalizeHerdrMetadataValue(resolvedPatch[token]);
+				if (!force && desired.has(token) && desired.get(token) === value)
+					continue;
+				desired.set(token, value);
+				changed.push([token, value]);
+			}
+			if (changed.length === 0) return;
+
+			reportSeq += 1;
+			const args = [
+				"pane",
+				"report-metadata",
+				paneId,
+				"--source",
+				METADATA_SOURCE,
+				"--seq",
+				String(reportSeq),
+			];
+			for (const [token, value] of changed) {
+				if (value === undefined) args.push("--clear-token", token);
+				else args.push("--token", `${token}=${value}`);
+			}
+
 			const result = await pi.exec(executable, args, {
 				timeout: METADATA_TIMEOUT_MS,
 			});
@@ -142,9 +146,10 @@ export default function (pi: ExtensionAPI) {
 		});
 	}
 
-	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		if (ctx.mode !== "tui") return;
 		sessionId = ctx.sessionManager.getSessionId();
+		const startupSessionId = sessionId;
 		unsubscribeSubagents?.();
 		unsubscribeSubagents = subagentRunManager.subscribe(() => {
 			void publishSubagents().catch((error) => {
@@ -153,14 +158,18 @@ export default function (pi: ExtensionAPI) {
 				);
 			});
 		});
-		await publish(
-			{
+		void publish(
+			() => ({
 				...contextPatch(ctx),
 				subagents: formatSubagents(),
-				tasks: formatTasks(sessionId),
-			},
+				tasks: formatTasks(startupSessionId),
+			}),
 			true,
-		);
+		).catch((error) => {
+			console.error(
+				`Herdr metadata update failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		});
 	});
 
 	pi.on("model_select", async (_event, ctx) => {

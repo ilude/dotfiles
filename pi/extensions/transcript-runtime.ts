@@ -118,10 +118,13 @@ export function formatTraceparent(traceId: string, spanId: string): string {
  * Reads `TRACEPARENT` from `process.env` to inherit parent context when this
  * Pi was spawned as a subagent. When absent, generates a fresh trace id.
  */
-export function initializeRuntime(sessionId: string): TranscriptWriter | null {
+export function initializeRuntime(
+	sessionId: string,
+	settingsOverride?: TranscriptSettings,
+): TranscriptWriter | null {
 	if (state.writer && state.sessionId === sessionId) return state.writer;
 
-	const settings = loadSettings();
+	const settings = settingsOverride ?? loadSettings();
 	state.settings = settings;
 	state.sessionId = sessionId;
 

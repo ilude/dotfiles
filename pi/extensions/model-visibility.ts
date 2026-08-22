@@ -337,7 +337,7 @@ function getThinkingLevelMap(
 	return model.thinkingLevelMap ?? legacyMap;
 }
 
-function toProviderModelDef(model: ModelLike) {
+function toProviderModelDef(model: ModelLike): Record<string, unknown> {
 	return {
 		id: model.id,
 		name: model.name,
@@ -349,66 +349,112 @@ function toProviderModelDef(model: ModelLike) {
 		maxTokens: model.maxTokens,
 		headers: model.headers,
 		thinkingLevelMap: getThinkingLevelMap(model),
-		compat: compatWithoutReasoningEffortMap(model.compat) as any,
+		compat: compatWithoutReasoningEffortMap(model.compat),
 	};
 }
 
-export async function applyProviderFilter(
-	ctx: any,
-	provider: string,
-): Promise<{ before: number; after: number } | undefined> {
-	const models = (ctx.modelRegistry.getAll() as ModelLike[]).filter(
-		(model) => model.provider === provider,
+type ModelRegistryLike = {
+	getAll(): ModelLike[];
+	getApiKeyForProvider(provider: string): Promise<string | undefined>;
+	registerProvider(provider: string, definition: Record<string, unknown>): void;
+};
+
+type VisibilityContext = { modelRegistry: ModelRegistryLike };
+type FilterResult = { before: number; after: number };
+type ProviderPlan = {
+	provider: string;
+	models: ModelLike[];
+	filtered: ModelLike[];
+	credentialRequired: boolean;
+	apiKeyEnv: string | undefined;
+};
+
+function planProvider(models: ModelLike[], provider: string): ProviderPlan | undefined {
+	const providerModels = models.filter((model) => model.provider === provider);
+	if (providerModels.length === 0) return undefined;
+	const filtered = providerModels.filter((model) => !shouldHideModel(provider, model));
+	const changed = filtered.length !== providerModels.length;
+	return {
+		provider,
+		models: providerModels,
+		filtered,
+		credentialRequired:
+			changed &&
+			filtered.length > 0 &&
+			(provider === "github-copilot" ||
+				provider === "openai-codex" ||
+				provider === "amazon-bedrock"),
+		apiKeyEnv:
+			provider === "opencode" || provider === "opencode-go"
+				? "$OPENCODE_API_KEY"
+				: provider === "openrouter"
+					? "$OPENROUTER_API_KEY"
+					: undefined,
+	};
+}
+
+function planResult(plan: ProviderPlan): FilterResult {
+	return { before: plan.models.length, after: plan.filtered.length };
+}
+
+async function applyPlans(
+	ctx: VisibilityContext,
+	plans: ProviderPlan[],
+): Promise<Array<FilterResult | undefined>> {
+	const credentials = await Promise.all(
+		plans.map((plan) =>
+			plan.credentialRequired
+				? ctx.modelRegistry.getApiKeyForProvider(plan.provider)
+				: Promise.resolve("available"),
+		),
 	);
-	if (models.length === 0) return undefined;
-
-	const filtered = models.filter((model) => !shouldHideModel(provider, model));
-	if (filtered.length === models.length) {
-		return { before: models.length, after: filtered.length };
-	}
-	if (filtered.length === 0) {
-		return { before: models.length, after: 0 };
-	}
-
-	if (provider === "github-copilot" || provider === "openai-codex") {
-		// Re-registering an OAuth provider requires a stored credential. Leave
-		// unauthenticated providers with their original model list.
-		const oauthToken = await ctx.modelRegistry.getApiKeyForProvider(provider);
-		if (!oauthToken) return { before: models.length, after: models.length };
-		ctx.modelRegistry.registerProvider(provider, {
-			baseUrl: models[0].baseUrl,
-			models: filtered.map((model) => toProviderModelDef(model)),
-		});
-		return { before: models.length, after: filtered.length };
-	}
-
-	const apiKeyEnv =
-		provider === "opencode" || provider === "opencode-go"
-			? "$OPENCODE_API_KEY"
-			: provider === "openrouter"
-				? "$OPENROUTER_API_KEY"
-				: undefined;
-	if (!apiKeyEnv && provider !== "amazon-bedrock")
-		return { before: models.length, after: models.length };
-	if (provider === "amazon-bedrock") {
-		const apiKey = await ctx.modelRegistry.getApiKeyForProvider(provider);
-		if (!apiKey) return { before: models.length, after: models.length };
-	}
-	ctx.modelRegistry.registerProvider(provider, {
-		baseUrl: models[0].baseUrl,
-		apiKey: apiKeyEnv ?? "$AWS_BEARER_TOKEN_BEDROCK",
-		api: models[0].api as any,
-		models: filtered.map((model) => toProviderModelDef(model)),
+	return plans.map((plan, index) => {
+		if (plan.credentialRequired && !credentials[index])
+			return { before: plan.models.length, after: plan.models.length };
+		const result = planResult(plan);
+		if (result.after > 0 && result.after < result.before) {
+			const first = plan.models[0];
+			const definition: Record<string, unknown> = {
+				baseUrl: first.baseUrl,
+				models: plan.filtered.map(toProviderModelDef),
+			};
+			if (plan.apiKeyEnv || plan.provider === "amazon-bedrock") {
+				definition.apiKey = plan.apiKeyEnv ?? "$AWS_BEARER_TOKEN_BEDROCK";
+				definition.api = first.api;
+			}
+			ctx.modelRegistry.registerProvider(plan.provider, definition);
+		}
+		return result;
 	});
-	return { before: models.length, after: filtered.length };
+}
+
+export async function applyProviderFilter(
+	ctx: VisibilityContext,
+	provider: string,
+): Promise<FilterResult | undefined> {
+	const plan = planProvider(ctx.modelRegistry.getAll(), provider);
+	if (!plan) return undefined;
+	return (await applyPlans(ctx, [plan]))[0];
+}
+
+async function applyProviderFilters(
+	ctx: VisibilityContext,
+): Promise<Array<{ provider: string; result: FilterResult }>> {
+	const models = ctx.modelRegistry.getAll();
+	const plans = TARGET_PROVIDERS.map((provider) => planProvider(models, provider)).filter(
+		(plan): plan is ProviderPlan => plan !== undefined,
+	);
+	const results = await applyPlans(ctx, plans);
+	return plans.flatMap((plan, index) => {
+		const result = results[index];
+		return result ? [{ provider: plan.provider, result }] : [];
+	});
 }
 
 export default function registerModelVisibilityExtension(pi: ExtensionAPI) {
 	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		const messages: string[] = [];
-		for (const provider of TARGET_PROVIDERS) {
-			const result = await applyProviderFilter(ctx, provider);
-			if (!result) continue;
+		for (const { provider, result } of await applyProviderFilters(ctx)) {
 			if (result.after < result.before) {
 				messages.push(`${provider}: ${result.before} -> ${result.after}`);
 			}

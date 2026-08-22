@@ -133,6 +133,37 @@ describe("Herdr metadata extension", () => {
 		expect(mockRuntime.listeners.size).toBe(0);
 	});
 
+	it("does not await the initial metadata IPC during startup", async () => {
+		let release: (() => void) | undefined;
+		const pi = createMockPi();
+		pi.exec.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					release = () => resolve({ code: 0, stdout: "", stderr: "" });
+				}),
+		);
+		herdrMetadata(pi as Parameters<typeof herdrMetadata>[0]);
+
+		let startupSettled = false;
+		const startup = pi
+			._getHook("session_start")[0]
+			.handler(
+				{ type: "session_start", reason: "startup" },
+				metadataContext(),
+			)
+			.then(() => {
+				startupSettled = true;
+			});
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(pi.exec).toHaveBeenCalledOnce();
+		expect(startupSettled).toBe(true);
+		release?.();
+		await startup;
+		await emitHook(pi, "session_shutdown");
+	});
+
 	it("reports model, context, subagent, and current-session task metadata", async () => {
 		mockRuntime.runs.push({ status: "running" }, { status: "completed" });
 		mockRuntime.tasks.push(
