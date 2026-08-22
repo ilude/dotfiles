@@ -4,7 +4,6 @@ import { signalProcessTree } from "../../lib/process-tree.js";
 import {
 	canonicalizeRepositoryRoot,
 	normalizeRepositoryScopes,
-	scopesOverlap,
 } from "./scope-policy.js";
 
 export const DEFAULT_MAX_ACTIVE_TREE_DESCENDANTS = 8;
@@ -411,24 +410,10 @@ export class SubagentTreeBroker {
 		const metadata = validateChild(parent.metadata, request);
 		if (this.nodes.has(metadata.runId))
 			throw new SubagentTreeAdmissionError(`Run ID ${metadata.runId} is already registered.`);
+		// Scope markers are advisory. Keep the normalized marker on the broker
+		// boundary for status inspection, but never turn overlap into admission,
+		// queueing, or mutation authority.
 		const scopeLease = normalizeScopeLease(request.scopeLease);
-		if (scopeLease) {
-			for (const existing of this.nodes.values()) {
-				if (
-					(existing.state !== "queued" &&
-						existing.state !== "active" &&
-						existing.state !== "waiting" &&
-						!existing.cancellationPending) ||
-					!existing.scopeLease ||
-					existing.scopeLease.repositoryRoot !== scopeLease.repositoryRoot
-				)
-					continue;
-				if (scopesOverlap(existing.scopeLease.scopes, scopeLease.scopes))
-					throw new SubagentTreeAdmissionError(
-						`Modification scope overlaps an active or queued descendant lease held by run ${existing.metadata.runId} (${existing.state}) at ${existing.scopeLease.scopes.join(", ")}. Inspect that exact run and reconcile it only if its process is terminal or proven absent.`,
-					);
-			}
-		}
 		const node: MutableTreeNode = {
 			metadata,
 			ownerToken: randomBytes(32).toString("hex"),

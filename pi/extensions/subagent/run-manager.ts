@@ -86,6 +86,8 @@ export interface SubagentRunSnapshot {
 	readonly parentRunId?: string;
 	readonly parentSessionId?: string;
 	readonly workspaceId?: string;
+	readonly workPaths?: ReadonlyArray<string>;
+	readonly workBoundary?: ReadonlyArray<string>;
 	readonly depth?: number;
 	readonly role?: SubagentTreeRole;
 	readonly workflowPhase?: string;
@@ -129,6 +131,8 @@ interface MutableSubagentRunSnapshot {
 	parentRunId?: string;
 	parentSessionId?: string;
 	workspaceId?: string;
+	workPaths?: ReadonlyArray<string>;
+	workBoundary?: ReadonlyArray<string>;
 	depth?: number;
 	role?: SubagentTreeRole;
 	workflowPhase?: string;
@@ -173,6 +177,8 @@ export interface BeginSubagentRun {
 	parentRunId?: string;
 	parentSessionId?: string;
 	workspaceId?: string;
+	workPaths?: ReadonlyArray<string>;
+	workBoundary?: ReadonlyArray<string>;
 	depth?: number;
 	role?: SubagentTreeRole;
 	workflowPhase?: string;
@@ -357,6 +363,8 @@ export class SubagentRunManager {
 			agent: boundedTail(input.agent, MAX_METADATA_TEXT_BYTES),
 			task: boundedTail(input.task, MAX_TASK_TEXT_BYTES),
 			cwd: boundedTail(input.cwd, MAX_METADATA_TEXT_BYTES),
+			...(input.workPaths ? { workPaths: [...input.workPaths] } : {}),
+			...(input.workBoundary ? { workBoundary: [...input.workBoundary] } : {}),
 			model:
 				input.model === undefined
 					? undefined

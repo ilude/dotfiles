@@ -449,7 +449,7 @@ describe("SubagentTreeBroker", () => {
 		expect((await second).metadata.runId).toBe("second");
 	});
 
-	it("rejects overlapping modification leases atomically", async () => {
+	it("reports overlapping work markers without rejecting admission", async () => {
 		const broker = new SubagentTreeBroker();
 		const root = broker.createTree();
 		const first = await broker.acquire({
@@ -463,19 +463,20 @@ describe("SubagentTreeBroker", () => {
 			},
 		});
 
-		await expect(
-			broker.acquire({
-				treeId: root.treeId,
-				parentRunId: root.rootRunId,
-				runId: "overlap",
-				role: "leaf",
-				scopeLease: {
-					repositoryRoot: process.cwd(),
-					scopes: ["src"],
-				},
-			}),
-		).rejects.toThrow("overlaps an active or queued descendant lease");
-		expect(broker.list().some((run) => run.runId === "overlap")).toBe(false);
+		const overlap = await broker.acquire({
+			treeId: root.treeId,
+			parentRunId: root.rootRunId,
+			runId: "overlap",
+			role: "leaf",
+			scopeLease: {
+				repositoryRoot: process.cwd(),
+				scopes: ["src"],
+			},
+		});
+		expect(broker.list().find((run) => run.runId === "overlap")).toMatchObject({
+			state: "active",
+			scopeLease: { scopes: ["src"] },
+		});
 
 		const disjoint = await broker.acquire({
 			treeId: root.treeId,
@@ -489,6 +490,7 @@ describe("SubagentTreeBroker", () => {
 		});
 		expect(disjoint.metadata).not.toHaveProperty("scopeLease");
 		await first.release();
+		await overlap.release();
 		await disjoint.release();
 	});
 
@@ -668,18 +670,17 @@ describe("SubagentTreeBroker", () => {
 			},
 		});
 		broker.cancel(first.metadata.runId);
-		await expect(
-			broker.acquire({
-				treeId: root.treeId,
-				parentRunId: root.rootRunId,
-				runId: "premature-pre-registration-replacement",
-				role: "leaf",
-				scopeLease: {
-					repositoryRoot: process.cwd(),
-					scopes: ["src/pre-registration"],
-				},
-			}),
-		).rejects.toThrow("overlaps");
+		const earlyReplacement = await broker.acquire({
+			treeId: root.treeId,
+			parentRunId: root.rootRunId,
+			runId: "premature-pre-registration-replacement",
+			role: "leaf",
+			scopeLease: {
+				repositoryRoot: process.cwd(),
+				scopes: ["src/pre-registration"],
+			},
+		});
+		await earlyReplacement.release();
 		await first.release();
 		const replacement = await broker.acquire({
 			treeId: root.treeId,
@@ -716,18 +717,16 @@ describe("SubagentTreeBroker", () => {
 				}),
 		});
 		broker.cancel(first.metadata.runId);
-		await expect(
-			broker.acquire({
-				treeId: root.treeId,
-				parentRunId: root.rootRunId,
-				runId: "premature-replacement",
-				role: "leaf",
-				scopeLease: {
-					repositoryRoot: process.cwd(),
-					scopes: ["src/cancelled"],
-				},
-			}),
-		).rejects.toThrow("overlaps");
+		const overlap = await broker.acquire({
+			treeId: root.treeId,
+			parentRunId: root.rootRunId,
+			runId: "premature-replacement",
+			role: "leaf",
+			scopeLease: {
+				repositoryRoot: process.cwd(),
+				scopes: ["src/cancelled"],
+			},
+		});
 
 		let settled = false;
 		const settlement = first.release().then(() => {
@@ -737,6 +736,7 @@ describe("SubagentTreeBroker", () => {
 		expect(settled).toBe(false);
 		finishCancellation?.();
 		await settlement;
+		await overlap.release();
 		const replacement = await broker.acquire({
 			treeId: root.treeId,
 			parentRunId: root.rootRunId,

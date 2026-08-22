@@ -561,7 +561,14 @@ Execute workflow items with admitted tools only.
 		expect(pi.getActiveTools()).not.toContain("subagent_continue");
 		expect(pi.getActiveTools()).not.toContain("subagent_fanout");
 		expect(pi.getActiveTools()).not.toContain("subagent_workflow");
-		expect(pi.getActiveTools()).toContain("subagent");
+		expect(pi.getActiveTools()).not.toContain("subagent");
+		expect(pi.getActiveTools()).toEqual(
+			expect.arrayContaining([
+				"subagent_read",
+				"subagent_write",
+				"subagent_coordinate",
+			]),
+		);
 		expect(pi.getActiveTools()).toContain("subagent_status");
 		const workflowParameters = pi._getTool("subagent_workflow")?.parameters as {
 			properties?: { items?: { maxItems?: number } };

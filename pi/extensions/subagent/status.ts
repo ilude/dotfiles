@@ -141,6 +141,12 @@ export function formatSubagentStatus(
 			: inspection.progressedSince
 				? "yes"
 				: "no";
+		const markers = [
+			run.workPaths?.length ? `workPaths=${run.workPaths.join(",")}` : "",
+			run.workBoundary?.length
+				? `workBoundary=${run.workBoundary.join(",")}`
+				: "",
+		].filter(Boolean).join(" | ");
 	return [
 		`run: ${run.runId}`,
 		`agent: ${run.agent}`,
@@ -151,6 +157,7 @@ export function formatSubagentStatus(
 		`progress since supplied version: ${progress}`,
 		`usage: ${run.usage.turns} turns | ${tokens} tokens | context peak ${run.usage.contextPeakTokens} tokens | cost ${run.usage.cost === null ? "unknown" : `$${run.usage.cost.toFixed(4)}`}`,
 		`active tools: ${activeTools}`,
+		...(markers ? [`advisory markers: ${markers}`] : []),
 		`assessment: ${assessment(inspection)}`,
 	].join("\n");
 }
@@ -170,6 +177,12 @@ export function formatSubagentStatusList(
 				`quiet=${durationLabel(inspection.quietForMs)}`,
 				`version=${inspection.activityVersion}`,
 				`turns=${run.usage.turns}`,
+				...(run.workPaths?.length
+					? [`workPaths=${run.workPaths.join(",")}`]
+					: []),
+				...(run.workBoundary?.length
+					? [`workBoundary=${run.workBoundary.join(",")}`]
+					: []),
 			].join(" | ");
 		})
 		.join("\n");

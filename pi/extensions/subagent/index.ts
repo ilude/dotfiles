@@ -87,6 +87,22 @@ import {
 	discoverAgents,
 	resolveAgentSkillPaths,
 } from "./agents.js";
+import {
+	READ_TOOL_ALLOWLIST,
+	SubagentCoordinateSchema,
+	SubagentReadSchema,
+	SubagentWriteSchema,
+	type CoordinatorRequest,
+	type ReadRequest,
+	type SubagentExecutionRequest,
+	type WriteRequest,
+	prepareSubagentExecution,
+} from "./contracts.js";
+import { HISTORICAL_SUBAGENT_TOOL_NAMES } from "./legacy-adapter.js";
+import {
+	modernRequestToExecutorInput,
+	type ModernExecutorInput,
+} from "./modern-adapter.js";
 import { createSubagentControlFacade } from "./control.js";
 import {
 	subagentRunManager,
@@ -95,13 +111,9 @@ import {
 } from "./run-manager.js";
 import {
 	assertDisjointScopes,
-	decodeScopePolicyEnvironment,
 	COMMAND_MUTATION_TOOLS,
-	directMutationViolation,
 	DIRECT_FILE_MUTATION_TOOLS,
-	encodeScopePolicyEnvironment,
 	normalizeRepositoryScopes,
-	toolsForScopedModifier,
 } from "./scope-policy.js";
 import {
 	formatSubagentStatus,
@@ -483,6 +495,10 @@ export interface SingleResult {
 	saveError?: string;
 	runId?: string;
 	taskId?: string;
+	/** Advisory marker supplied by the parent; never an admission lease. */
+	workPaths?: readonly string[];
+	/** Advisory coordinator marker supplied by the parent. */
+	workBoundary?: readonly string[];
 	durationMs?: number;
 	activity?: SubagentActivityStats;
 	sessionPath?: string;
@@ -949,6 +965,7 @@ interface SubagentRunContext {
 	mode?: SubagentRunMode;
 	background?: boolean;
 	readOnly?: boolean;
+	executionKind?: "read" | "write" | "coordinator";
 	maxTurns?: number;
 	timeoutMs?: number;
 	role?: SubagentRole;
@@ -959,6 +976,8 @@ interface SubagentRunContext {
 	treeId?: string;
 	repositoryRoot?: string;
 	scopes?: string[];
+	workPaths?: readonly string[];
+	workBoundary?: readonly string[];
 	coordinatorTaskId?: string;
 	workflowPhase?: "map" | "retry" | "verify" | "reduce";
 	taskKey?: string;
@@ -1131,20 +1150,38 @@ interface ChildToolAuthorityOptions {
 	role: SubagentRole;
 	hasScopeLease: boolean;
 	readOnly?: boolean;
+	executionKind?: "read" | "write" | "coordinator";
 	workflowCapabilities?: readonly string[];
 }
 
-function resolveChildToolAuthority(
+export function resolveChildToolAuthority(
 	agent: AgentConfig,
 	options: ChildToolAuthorityOptions,
 ): ChildToolAuthority {
+	if (options.executionKind === "read") {
+		return {
+			tools: [...READ_TOOL_ALLOWLIST],
+			canDirectlyMutate: false,
+		};
+	}
 	const defaults =
-		options.role === "coordinator"
-			? ["read", "grep", "find", "ls", "subagent"]
+		options.executionKind === "coordinator" || options.role === "coordinator"
+			? ["read", "grep", "find", "ls", "subagent_read", "subagent_write"]
 			: ["read", "bash"];
 	let tools = [...(agent.tools ?? defaults)];
+	if (options.executionKind === "coordinator") {
+		tools = ["read", "grep", "find", "ls", "subagent_read", "subagent_write"];
+	}
 	if (options.role === "coordinator") {
-		const coordinatorTools = new Set(["read", "grep", "find", "ls", "subagent"]);
+		const coordinatorTools = new Set([
+			"read",
+			"grep",
+			"find",
+			"ls",
+			"subagent",
+			"subagent_read",
+			"subagent_write",
+		]);
 		tools = tools.filter((tool) => coordinatorTools.has(tool));
 	} else {
 		tools = tools.filter(
@@ -1164,7 +1201,8 @@ function resolveChildToolAuthority(
 				!DELEGATION_AND_WORKFLOW_TOOLS.has(tool),
 		);
 	}
-	if (options.hasScopeLease) tools = toolsForScopedModifier(tools);
+	// workPaths and workBoundary are advisory markers. They do not remove
+	// command tools, acquire a lease, or reject overlap.
 	tools = [...new Set(tools)];
 	return {
 		tools,
@@ -1235,33 +1273,23 @@ export async function runSingleAgent(
 		runContext?.role && runContext.depth
 			? { role: runContext.role, depth: runContext.depth }
 			: resolveChildRole(runContext?.role, agentName);
-	const normalizedScopes = normalizeRepositoryScopes(
-		runContext?.scopes ?? [],
-		runContext?.repositoryRoot ?? defaultCwd,
-	);
 	const authority = resolveChildToolAuthority(agent, {
 		role: resolvedChild.role,
-		hasScopeLease: normalizedScopes.length > 0,
+		hasScopeLease: false,
 		readOnly: runContext?.readOnly,
+		executionKind: runContext?.executionKind,
 		workflowCapabilities: runContext?.workflowCapabilities,
 	});
-	if (resolvedChild.role === "coordinator" && normalizedScopes.length > 0)
-		throw new Error("Coordinators may not declare repository-relative scopes.");
 	if (
 		resolvedChild.role === "coordinator" &&
-		!authority.tools.includes("subagent")
+		!authority.tools.includes("subagent") &&
+		!authority.tools.includes("subagent_write")
 	)
 		throw new Error(
-			`Coordinator agent ${agent.name} must have the subagent capability.`,
+			`Coordinator agent ${agent.name} must have a leaf delegation capability.`,
 		);
-	if (
-		resolvedChild.role === "leaf" &&
-		authority.canDirectlyMutate &&
-		normalizedScopes.length === 0
-	)
-		throw new Error(
-			`Modifying leaf ${agent.name} must declare a repository-relative scope.`,
-		);
+	// Modifying leaves may omit workPaths. Markers are advisory and do not
+	// grant or remove mutation authority.
 	const args: string[] = ["--mode", "json", "-p", "--no-skills"];
 	if (modelOverride) args.push("--model", modelOverride);
 	else if (agent.model) args.push("--model", agent.model);
@@ -1283,6 +1311,10 @@ export async function runSingleAgent(
 		agentSource: agent.source,
 		task,
 		exitCode: 0,
+		...(runContext?.workPaths ? { workPaths: [...runContext.workPaths] } : {}),
+		...(runContext?.workBoundary
+			? { workBoundary: [...runContext.workBoundary] }
+			: {}),
 		messages: [],
 		stderr: "",
 		usage: {
@@ -1374,6 +1406,12 @@ export async function runSingleAgent(
 			...(runContext?.workspaceId
 				? { workspaceId: runContext.workspaceId }
 				: {}),
+			...(runContext?.workPaths
+				? { workPaths: [...runContext.workPaths] }
+				: {}),
+			...(runContext?.workBoundary
+				? { workBoundary: [...runContext.workBoundary] }
+				: {}),
 			role: resolvedChild.role,
 			depth: resolvedChild.depth,
 			...(runContext?.coordinatorTaskId
@@ -1435,15 +1473,6 @@ export async function runSingleAgent(
 						taskKey: runContext.taskKey,
 						attempt: runContext.attempt,
 						retryOrigin: runContext.retryOrigin,
-						...(normalizedScopes.length > 0
-							? {
-									scopeLease: {
-										repositoryRoot:
-											runContext.repositoryRoot ?? defaultCwd,
-										scopes: normalizedScopes,
-									},
-								}
-							: {}),
 					},
 					runController.signal,
 				);
@@ -1531,15 +1560,6 @@ export async function runSingleAgent(
 					? {
 							PI_SUBAGENT_COORDINATOR_TASK_ID:
 								runContext.coordinatorTaskId,
-						}
-					: {}),
-				...(normalizedScopes.length > 0
-					? {
-							PI_SUBAGENT_SCOPE_POLICY: encodeScopePolicyEnvironment({
-								repositoryRoot:
-									runContext?.repositoryRoot ?? defaultCwd,
-								scopes: normalizedScopes,
-							}),
 						}
 					: {}),
 				...(runContext?.treeClient && treePermit
@@ -2361,11 +2381,6 @@ function resolveSessionAgentCatalog(
 	return createSessionAgentCatalog(ctx.cwd, projectTrusted);
 }
 
-const ADVANCED_SUBAGENT_TOOL_NAMES = [
-	"subagent_chain",
-	"subagent_continue",
-	"subagent_fanout",
-] as const;
 const acknowledgedFailureRunIds = new Set<string>();
 
 export default function (pi: ExtensionAPI) {
@@ -2377,9 +2392,6 @@ export default function (pi: ExtensionAPI) {
 	let renderedStatus: string | undefined;
 	let refreshAgentTools: (agentNames: readonly string[]) => void = () => {};
 	let deliveryScheduled = false;
-	let activeScopePolicy = decodeScopePolicyEnvironment(
-		process.env.PI_SUBAGENT_SCOPE_POLICY,
-	);
 
 	const agentDiscoveryFor = (
 		ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
@@ -2748,22 +2760,17 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", (_event, ctx) => {
 		sessionAgentCatalog = resolveSessionAgentCatalog(undefined, ctx);
 		refreshAgentTools(sessionAgentCatalog.agentNames);
-		activeScopePolicy = decodeScopePolicyEnvironment(
-			process.env.PI_SUBAGENT_SCOPE_POLICY,
-		);
 		const identity = currentSubagentIdentity();
 		if (identity.role !== "root")
 			deactivateTools(pi, ["subagent_status", "subagent_control"]);
-		deactivateTools(
-			pi,
+		const historicalTools = [...HISTORICAL_SUBAGENT_TOOL_NAMES];
+		const unavailableModernTools =
 			identity.role === "leaf" || identity.depth >= 2
-				? [
-						"subagent",
-						...ADVANCED_SUBAGENT_TOOL_NAMES,
-						"subagent_workflow",
-					]
-				: [...ADVANCED_SUBAGENT_TOOL_NAMES, "subagent_workflow"],
-		);
+				? ["subagent_read", "subagent_write", "subagent_coordinate"]
+				: identity.role === "coordinator"
+					? ["subagent_coordinate"]
+					: [];
+		deactivateTools(pi, [...historicalTools, ...unavailableModernTools]);
 		sessionOpen = true;
 		statusContext = ctx;
 		renderedStatus = undefined;
@@ -2788,17 +2795,6 @@ export default function (pi: ExtensionAPI) {
 			if (run.status === "failed") acknowledgedFailureRunIds.add(run.runId);
 		}
 		updateStatus();
-	});
-
-	pi.on("tool_call", (event, ctx) => {
-		if (!activeScopePolicy) return undefined;
-		const violation = directMutationViolation(
-			String(event.toolName ?? ""),
-			event.input,
-			ctx.cwd,
-			activeScopePolicy,
-		);
-		return violation ? { block: true, reason: violation } : undefined;
 	});
 
 	pi.on("session_shutdown", async (event) => {
@@ -2826,7 +2822,7 @@ export default function (pi: ExtensionAPI) {
 			"Delegate work to isolated specialist agents.",
 			"Root may launch a leaf or a coordinator; coordinators may launch leaves only.",
 			"Use agent and task for one worker or tasks for bounded parallel workers.",
-			"Modifying leaves require repository-relative scopes; active descendants share the root scheduler.",
+			"workPaths and workBoundary are advisory markers; overlap is reported but never rejects or queues a worker.",
 			"Foreground execution waits; background=true returns immediately and delivers a follow-up result.",
 			"Use taskId only to correlate an existing root-owned task with one direct child. The root remains responsible for every task transition. Advanced chain, continuation, fanout, and typed workflow tools are deferred.",
 		].join(" "),
@@ -2837,7 +2833,7 @@ export default function (pi: ExtensionAPI) {
 			"Routing guidance is advisory: prefer Luna low for tool-heavy inspection and summarization, Sol low or Luna high for bounded planning, Sol low for coordinators and subagent team managers, Luna medium or high for implementation, and Sol low for review. Useful overrides remain allowed and are tracked; max effort requires operator approval.",
 			"A coordinator may invoke leaves; leaves and every depth-two child cannot invoke delegation or workflow tools.",
 			"Each child is capped at 64 turns; explicitly read-only fanout leaves are also capped at eight minutes.",
-			"Give every modifying leaf a normalized repository-relative scope and keep concurrent scopes disjoint.",
+			"Add workPaths or workBoundary markers when they help coordinate parallel work; modifying workers do not require a path declaration.",
 			"Use subagent with background=true for independent work, continue useful parent work, and consume the delivered follow-up instead of polling.",
 			"Use tool_search for deferred chain, continuation, fanout, and subagent_workflow capabilities.",
 			"For durable work, start a root-owned task, pass its taskId to the direct leaf or coordinator, validate the result, and close the task. The child never changes task state.",
@@ -2845,12 +2841,14 @@ export default function (pi: ExtensionAPI) {
 		parameters: InitialSubagentSchemas.legacy,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+			const modernInput = params as typeof params & Partial<ModernExecutorInput>;
+			const prepared = modernInput.__modernPrepared;
 			const currentIdentity = currentSubagentIdentity();
 			const subscriptionRoot = isSubscriptionOrchestratorModel(ctx.model);
 			const internalWorkflowContext = internalWorkflowRuns.get(_toolCallId);
 			if (currentIdentity.role === "leaf" || currentIdentity.depth >= 2)
 				throw new Error("Leaf and depth-two subagents cannot delegate.");
-			const invocationCwd = ctx.cwd;
+			const invocationCwd = prepared?.workspaceRoot ?? ctx.cwd;
 			const parentSessionId = ctx.sessionManager?.getSessionId?.();
 			await compressDelegatedSessions().catch(() => []);
 			const agentScope =
@@ -2920,7 +2918,7 @@ export default function (pi: ExtensionAPI) {
 				(resolvedModel
 					? `${resolvedModel.provider}/${resolvedModel.id}`
 					: undefined);
-			const discovery = agentDiscoveryFor(ctx, agentScope);
+			const discovery = prepared?.discovery ?? agentDiscoveryFor(ctx, agentScope);
 			const agents = discovery.agents;
 			if (containsMaxEffortSelection(params, agents) && process.env.PI_SUBAGENT_ALLOW_MAX !== "1") {
 				if (!ctx.hasUI) throw new Error("Subagent max effort requires explicit operator approval or PI_SUBAGENT_ALLOW_MAX=1.");
@@ -3199,6 +3197,7 @@ export default function (pi: ExtensionAPI) {
 				}
 				return result;
 			};
+			const internalParams = modernInput;
 			const run = async (
 				...args: Parameters<typeof runSingleAgent>
 			): Promise<SingleResult> => {
@@ -3239,6 +3238,9 @@ export default function (pi: ExtensionAPI) {
 								}
 							: {}),
 						...suppliedContext,
+						...(internalParams.__modernRequest
+							? { executionKind: internalParams.__modernRequest.kind }
+							: {}),
 					};
 					if (outputSchema) {
 						args[3] = `${args[3]}\n\n${schemaOutputInstruction(outputSchema)}`;
@@ -3441,6 +3443,7 @@ export default function (pi: ExtensionAPI) {
 				);
 
 			const prepareChild = (item: TaskParams, forcedRole?: SubagentRole) => {
+				const executionKind = internalParams.__modernRequest?.kind;
 				const requestedRole = forcedRole ?? item.role;
 				if (subscriptionRoot && requestedRole === "coordinator")
 					throw new Error(
@@ -3456,38 +3459,34 @@ export default function (pi: ExtensionAPI) {
 				const effectiveCwd = path.resolve(invocationCwd, item.cwd ?? ".");
 				item.cwd = effectiveCwd;
 				item.repositoryRoot = effectiveCwd;
-				item.normalizedScopes = normalizeRepositoryScopes(
-					item.scope ?? [],
-					effectiveCwd,
-				);
+				// Historical scope values are now advisory work markers. Preserve
+				// them for status/results without turning them into admission or
+				// authority checks; governed tool containment is a separate boundary.
+				item.normalizedScopes = item.scope ? [...item.scope] : [];
 				const profileName = canonicalAgentName(item.agent);
 				const agent = agents.find((candidate) => candidate.name === profileName);
 				if (!agent) throw new Error(`Unknown agent: ${item.agent}`);
-				if (resolved.role === "coordinator" && item.scope !== undefined)
-					throw new Error("Coordinators may not declare repository-relative scopes.");
 				const authority = resolveChildToolAuthority(agent, {
 					role: resolved.role,
-					hasScopeLease: item.normalizedScopes.length > 0,
-					readOnly: fanoutAssignment
-						? true
-						: internalWorkflowContext?.readOnly,
+					hasScopeLease: false,
+					executionKind,
+					readOnly:
+						executionKind === "read"
+							? true
+							: fanoutAssignment
+								? true
+								: internalWorkflowContext?.readOnly,
 					workflowCapabilities: internalWorkflowContext?.capabilities,
 				});
 				if (
 					resolved.role === "coordinator" &&
+					!authority.tools.includes("subagent_write") &&
 					!authority.tools.includes("subagent")
 				)
 					throw new Error(
-						`Coordinator agent ${item.agent} must have the subagent capability.`,
+						`Coordinator agent ${item.agent} must have a leaf delegation capability.`,
 					);
-				if (
-					resolved.role === "leaf" &&
-					authority.canDirectlyMutate &&
-					item.normalizedScopes.length === 0
-				)
-					throw new Error(
-						`Modifying leaf ${item.agent} must declare a repository-relative scope.`,
-					);
+				// workPaths are advisory markers and are not required for writes.
 				if (subscriptionRoot) {
 					item.resolvedModel = resolveSubscriptionChildModel(
 						availableModels,
@@ -3511,40 +3510,8 @@ export default function (pi: ExtensionAPI) {
 			for (const item of chain ?? []) prepareChild(item);
 			if (continueChild) prepareChild(continueChild, "leaf");
 
-			if (!fanoutAssignment && selectedTasks) {
-				const modifiers = (selectedTasks as TaskParams[]).filter((item) => {
-					const profileName = canonicalAgentName(item.agent);
-					const agent = agents.find(
-						(candidate) => candidate.name === profileName,
-					);
-					return agent
-						? resolveChildToolAuthority(agent, {
-								role: item.resolvedRole ?? "leaf",
-								hasScopeLease:
-									(item.normalizedScopes?.length ?? 0) > 0,
-							}).canDirectlyMutate
-						: false;
-				});
-				if (modifiers.length > 1) {
-					const byRepository = new Map<string, TaskParams[]>();
-					for (const item of modifiers) {
-						const repositoryRoot = item.repositoryRoot ?? invocationCwd;
-						const group = byRepository.get(repositoryRoot) ?? [];
-						group.push(item);
-						byRepository.set(repositoryRoot, group);
-					}
-					for (const [repositoryRoot, group] of byRepository) {
-						if (group.length < 2) continue;
-						assertDisjointScopes(
-							group.map((item, index) => ({
-								key: `${item.agent}[${index}]`,
-								scopes: item.normalizedScopes ?? [],
-							})),
-							repositoryRoot,
-						);
-					}
-				}
-			}
+			// Work markers are reported for coordination only. Overlap never rejects
+			// or queues modifying workers.
 
 			if (
 				(agentScope === "project" || agentScope === "both") &&
@@ -3705,6 +3672,7 @@ export default function (pi: ExtensionAPI) {
 							role: step.resolvedRole,
 							depth: step.resolvedDepth,
 							scopes: step.normalizedScopes,
+							workPaths: step.scope,
 							repositoryRoot: step.repositoryRoot,
 						},
 					);
@@ -3841,7 +3809,9 @@ export default function (pi: ExtensionAPI) {
 									role: t.resolvedRole,
 									depth: t.resolvedDepth,
 									scopes: t.normalizedScopes,
+									workPaths: t.scope,
 									repositoryRoot: t.repositoryRoot,
+									workBoundary: internalParams.workBoundary,
 								},
 							);
 							finalizeOutput(
@@ -3912,6 +3882,8 @@ export default function (pi: ExtensionAPI) {
 						role: selectedSingle.resolvedRole,
 						depth: selectedSingle.resolvedDepth,
 						scopes: selectedSingle.normalizedScopes,
+						workPaths: selectedSingle.scope,
+						workBoundary: internalParams.workBoundary,
 						repositoryRoot: selectedSingle.repositoryRoot,
 					},
 				);
@@ -4535,6 +4507,68 @@ export default function (pi: ExtensionAPI) {
 	const registerSubagentTools = (
 		schemas: ReturnType<typeof createSubagentSchemas>,
 	) => {
+		const executeModern = async (
+			toolCallId: string,
+			kind: "read" | "write" | "coordinator",
+			params: unknown,
+			signal: AbortSignal | undefined,
+			onUpdate: OnUpdateCallback | undefined,
+			ctx: ExtensionContext,
+		): Promise<AgentToolResult<SubagentDetails>> => {
+			const request = { kind, ...(params as Record<string, unknown>) } as unknown as SubagentExecutionRequest;
+			const prepared = prepareSubagentExecution(request, {
+				parentCwd: ctx.cwd,
+				parentSessionId: ctx.sessionManager?.getSessionId?.(),
+				isWorkspaceTrusted: (workspaceRoot) => {
+					// Trust is evaluated for the selected workspace. The runtime
+					// context currently exposes a zero-argument method, while
+					// injected contexts may provide target-aware trust lookup.
+					const trustLookup = ctx.isProjectTrusted as unknown as
+						(workspace?: string) => boolean;
+					return trustLookup(workspaceRoot);
+				},
+			});
+			const executorInput = modernRequestToExecutorInput(request, prepared);
+			return subagentExecutor.execute(
+				toolCallId,
+				executorInput,
+				signal,
+				onUpdate,
+				ctx,
+			);
+		};
+
+		pi.registerTool({
+			name: "subagent_read",
+			label: "Subagent Read",
+			description: "Run one or more read-only subagent items using a closed positive read authority.",
+			parameters: SubagentReadSchema,
+			renderResult: subagentExecutor.renderResult,
+			execute(toolCallId, params, signal, onUpdate, ctx) {
+				return executeModern(toolCallId, "read", params, signal, onUpdate, ctx);
+			},
+		});
+		pi.registerTool({
+			name: "subagent_write",
+			label: "Subagent Write",
+			description: "Run one or more modifying subagent items. workPaths are advisory markers only.",
+			parameters: SubagentWriteSchema,
+			renderResult: subagentExecutor.renderResult,
+			execute(toolCallId, params, signal, onUpdate, ctx) {
+				return executeModern(toolCallId, "write", params, signal, onUpdate, ctx);
+			},
+		});
+		pi.registerTool({
+			name: "subagent_coordinate",
+			label: "Subagent Coordinate",
+			description: "Run coordinator items that may delegate only to leaf workers. workBoundary is advisory.",
+			parameters: SubagentCoordinateSchema,
+			renderResult: subagentExecutor.renderResult,
+			execute(toolCallId, params, signal, onUpdate, ctx) {
+				return executeModern(toolCallId, "coordinator", params, signal, onUpdate, ctx);
+			},
+		});
+
 		const {
 			parameters: _legacyParameters,
 			prepareArguments: _legacyPrepareArguments,
@@ -4543,6 +4577,9 @@ export default function (pi: ExtensionAPI) {
 		pi.registerTool({
 			...subagentTool,
 			parameters: schemas.subagent,
+			execute(toolCallId, params, signal, onUpdate, ctx) {
+				return subagentExecutor.execute(toolCallId, params, signal, onUpdate, ctx);
+			},
 		});
 
 		pi.registerTool({
