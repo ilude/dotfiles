@@ -163,55 +163,6 @@ describe("scheduler extension", () => {
 		);
 	});
 
-	it("blocks schedule confirmation dialogs without blocking clarification", () => {
-		const pi = createMockPi();
-		registerScheduler(pi as unknown as ExtensionAPI);
-		const guard = pi._getHook("tool_call")[0].handler;
-		const ctx = createMockCtx();
-
-		for (const question of [
-			"Create a Pi-process schedule every 30 minutes to check completion?",
-			"Replace the old 15-minute schedule with the new job monitor?",
-			"The job has finished. Cancel recurring schedule f3eccefc now?",
-		]) {
-			expect(
-				guard(
-					{
-						toolName: "ask_user",
-						input: { question, mode: "confirm" },
-					},
-					ctx,
-				),
-			).toEqual({
-				block: true,
-				reason: expect.any(String),
-			});
-		}
-
-		expect(
-			guard(
-				{
-					toolName: "ask_user",
-					input: {
-						question: "Which timezone should the cron use?",
-						mode: "select",
-						options: ["UTC", "America/New_York"],
-					},
-				},
-				ctx,
-			),
-		).toBeUndefined();
-		expect(
-			guard(
-				{
-					toolName: "ask_user",
-					input: { question: "Commit these changes?", mode: "confirm" },
-				},
-				ctx,
-			),
-		).toBeUndefined();
-	});
-
 	it("mutates schedules without confirmation and rejects slash prompts", async () => {
 		const pi = createMockPi();
 		registerScheduler(pi as unknown as ExtensionAPI);

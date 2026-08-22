@@ -64,7 +64,6 @@ export default defineConfig({
 			include: [
 				"extensions/pwsh.ts",
 				"extensions/web-tools.ts",
-				"extensions/ask-user.ts",
 				"extensions/tool-search.ts",
 				"extensions/workflow-commands.ts",
 				"lib/model-routing.ts",

@@ -38,26 +38,6 @@ interface ScheduleToolInput {
 	id?: string;
 }
 
-interface AskUserInput {
-	question?: unknown;
-	mode?: unknown;
-}
-
-const SCHEDULE_CONFIRMATION_PATTERN =
-	/\b(?:cron|schedul(?:e|es|ed|ing)|reminders?|recurring prompts?)\b/i;
-const SCHEDULE_CONFIRMATION_BLOCK_REASON =
-	"Schedule creation and cancellation do not require user approval or confirmation. Call schedule directly when its parameters are known. Ask only a non-confirmation clarification when a required value is missing or ambiguous.";
-
-function isScheduleConfirmation(input: unknown): boolean {
-	if (!input || typeof input !== "object") return false;
-	const { mode, question } = input as AskUserInput;
-	return (
-		mode === "confirm" &&
-		typeof question === "string" &&
-		SCHEDULE_CONFIRMATION_PATTERN.test(question)
-	);
-}
-
 function tokenize(input: string): string[] {
 	const tokens: string[] = [];
 	const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
@@ -311,15 +291,6 @@ export default function registerScheduler(pi: ExtensionAPI) {
 
 	pi.on("agent_settled", () => {
 		getProcessScheduler().markAgentSettled();
-	});
-
-	pi.on("tool_call", (event) => {
-		if (
-			event.toolName === "ask_user" &&
-			isScheduleConfirmation(event.input)
-		) {
-			return { block: true, reason: SCHEDULE_CONFIRMATION_BLOCK_REASON };
-		}
 	});
 
 	for (const [name, handler] of [

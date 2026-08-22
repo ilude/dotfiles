@@ -107,7 +107,6 @@ describe("tool visibility", () => {
 			"subagent_fanout",
 			"subagent_workflow",
 			"task",
-			"ask_user",
 		];
 		for (const name of ["read", ...fixed, "plan_archive", "goal_complete"])
 			registerTool(pi, name);
