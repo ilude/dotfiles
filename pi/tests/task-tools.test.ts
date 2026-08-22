@@ -149,6 +149,78 @@ describe("task tools", () => {
 		).toBeUndefined();
 	});
 
+	it("recovers an explicit cross-session root and supplements the current frontier", () => {
+		const workspace = resolveTaskWorkspace(tmpRoot);
+		const dependency = createTask({
+			origin: "other",
+			summary: "durable prerequisite",
+			workspace,
+			sessionId: "other-session",
+			state: "completed",
+		});
+		const root = createTask({
+			origin: "other",
+			summary: "Preserve the existing deliverable",
+			workspace,
+			sessionId: "other-session",
+			scope: ["src/**"],
+			notes: "Acceptance: focused checks pass.",
+			blockedBy: [dependency.id],
+			state: "running",
+		});
+
+		const reminder = tasksExtension.activeRootTaskReminder(
+			tmpRoot,
+			"current-session",
+			root.id,
+		);
+
+		expect(reminder).toContain(root.id);
+		expect(reminder).toContain(root.summary);
+		expect(reminder).toContain("Constraints: src/**");
+		expect(reminder).toContain(`Dependencies: ${dependency.id}`);
+		expect(reminder).toContain(
+			"Durable requirements and acceptance checks: Acceptance: focused checks pass.",
+		);
+		expect(reminder).toContain(
+			"supplements the current conversational frontier",
+		);
+		expect(reminder).not.toContain("conversation history");
+		expect(reminder).not.toContain("replacement task");
+	});
+
+	it("passes the explicitly propagated root task ID through the hook", async () => {
+		const workspace = resolveTaskWorkspace(tmpRoot);
+		const root = createTask({
+			origin: "other",
+			summary: "Recover this delegated root",
+			workspace,
+			sessionId: "other-session",
+			state: "running",
+		});
+		const previousTaskId = process.env.PI_SUBAGENT_COORDINATOR_TASK_ID;
+		process.env.PI_SUBAGENT_COORDINATOR_TASK_ID = root.id;
+		try {
+			const pi = createMockPi();
+			tasksExtension.default(pi as Parameters<typeof tasksExtension.default>[0]);
+			const beforeAgentStart = pi._getHook("before_agent_start")[0]?.handler;
+			const reminder = await beforeAgentStart?.(
+				{ systemPrompt: "base" },
+				createMockCtx({
+					cwd: tmpRoot,
+					sessionManager: { getSessionId: () => "current-session" },
+				}),
+			);
+
+			expect(reminder?.systemPrompt).toContain(root.id);
+			expect(reminder?.systemPrompt).toContain(root.summary);
+		} finally {
+			if (previousTaskId === undefined)
+				delete process.env.PI_SUBAGENT_COORDINATOR_TASK_ID;
+			else process.env.PI_SUBAGENT_COORDINATOR_TASK_ID = previousTaskId;
+		}
+	});
+
 	it("accepts additive write scopes on create, batch, and update", async () => {
 		const pi = createMockPi();
 		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);
@@ -536,6 +608,18 @@ describe("task tools", () => {
 		]);
 		expect(current.details.record.sessionId).toBe("current-session");
 		expect(other.details.record.sessionId).toBe("other-session");
+
+		const recovered = await tool?.execute(
+			"get-cross-session-task",
+			{ action: "get", id: other.details.record.id },
+			undefined,
+			undefined,
+			currentCtx,
+		);
+		expect(recovered.details).toMatchObject({
+			outcome: "persisted",
+			record: { id: other.details.record.id, sessionId: "other-session" },
+		});
 
 		const all = await tool?.execute(
 			"list-all-sessions",

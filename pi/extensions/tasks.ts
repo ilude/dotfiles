@@ -512,26 +512,74 @@ function currentTaskSessionId(ctx: {
 	return ctx.sessionManager?.getSessionId?.();
 }
 
+function currentExplicitActiveRootTaskId(): string | undefined {
+	const taskId = process.env.PI_SUBAGENT_COORDINATOR_TASK_ID?.trim();
+	return taskId || undefined;
+}
+
+function isActiveRootTask(
+	record: TaskRecordV1,
+	workspace: string,
+): boolean {
+	return (
+		record.workspace === workspace &&
+		!record.deletedAt &&
+		!record.parentId &&
+		!TERMINAL_TASK_STATES.has(record.state)
+	);
+}
+
+function activeRootTaskContext(record: TaskRecordV1): string[] {
+	return [
+		`- ${record.id}: ${record.summary} (${record.state})`,
+		...(record.scope?.length
+			? [`  Constraints: ${record.scope.join(", ")}`]
+			: []),
+		...(record.blockedBy?.length
+			? [`  Dependencies: ${record.blockedBy.join(", ")}`]
+			: []),
+		...(record.notes
+			? [`  Durable requirements and acceptance checks: ${record.notes}`]
+			: []),
+	];
+}
+
 export function activeRootTaskReminder(
 	cwd: string,
 	sessionId: string | undefined,
+	activeRootTaskId?: string,
 ): string | undefined {
-	if (!sessionId) return undefined;
+	if (!sessionId && !activeRootTaskId) return undefined;
 	const workspace = resolveTaskWorkspace(cwd);
-	const running = listTasks({
-		workspace,
-		sessionId,
-		states: ["running"],
-	}).filter((record) => !record.parentId);
-	if (running.length === 0) return undefined;
-	const listed = running.slice(0, TASK_REMINDER_MAX_ITEMS);
+	const selected = new Map<string, TaskRecordV1>();
+
+	// An explicit ID is authoritative for lookup, including when its owner is a
+	// different session in the same workspace. Scoped discovery remains the
+	// default and supplements an explicit task when both are available.
+	if (activeRootTaskId) {
+		const explicit = getTask(activeRootTaskId.trim());
+		if (explicit && isActiveRootTask(explicit, workspace))
+			selected.set(explicit.id, explicit);
+	}
+	if (sessionId) {
+		for (const record of listTasks({
+			workspace,
+			sessionId,
+			states: ["running"],
+		}).filter((record) => !record.parentId))
+			selected.set(record.id, record);
+	}
+	const roots = [...selected.values()];
+	if (roots.length === 0) return undefined;
+	const listed = roots.slice(0, TASK_REMINDER_MAX_ITEMS);
 	return [
-		`Active durable root task${running.length === 1 ? "" : "s"} in this workspace:`,
-		...listed.map((record) => `- ${record.id}: ${record.summary} (${record.state})`),
-		...(running.length > listed.length
-			? [`- ${running.length - listed.length} more; inspect the task list before selecting work.`]
+		`Active durable root task${roots.length === 1 ? "" : "s"} in this workspace:`,
+		...listed.flatMap(activeRootTaskContext),
+		...(roots.length > listed.length
+			? [`- ${roots.length - listed.length} more; inspect the task list before selecting work.`]
 			: []),
-		"Inspect the relevant task before substantive work. Treat its deliverable and acceptance checks as authoritative. If multiple tasks could own the request, do not choose silently.",
+		"Durable task context supplements the current conversational frontier; it does not replace the active request.",
+		"Inspect the relevant task before substantive work. Treat its deliverable, durable requirements, dependencies, constraints, and acceptance checks as authoritative. If multiple tasks could own the request, do not choose silently.",
 	].join("\n");
 }
 
@@ -739,7 +787,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 		promptSnippet: "Track durable todo items, dependencies, and workflow state",
 		promptGuidelines: [
 			"Use task for durable todo tracking, dependencies, and work that must survive context compaction; ordinary short workflows can remain prose.",
-			"After compaction or session resume, inspect the running root task before substantive work. Treat its deliverable and acceptance checks as authoritative.",
+			"After compaction or session resume, inspect the running root task before substantive work. Treat its durable deliverable and acceptance checks as authoritative task state while continuing the current conversational frontier.",
 			"Add another task only when it represents an independently verifiable deliverable required by the root completion checks.",
 			"When a user correction changes the outcome, update the root task first and cancel or skip work that is no longer required.",
 			"Keep summary under 100 characters and notes under 500. Put detailed context in an artifact and reference its path.",
@@ -1148,7 +1196,11 @@ export default function (pi: ExtensionAPI) {
 	registerTaskTools(pi);
 	registerTasksCommand(pi);
 	pi.on("before_agent_start", (event, ctx) => {
-		const reminder = activeRootTaskReminder(ctx.cwd, currentTaskSessionId(ctx));
+		const reminder = activeRootTaskReminder(
+			ctx.cwd,
+			currentTaskSessionId(ctx),
+			currentExplicitActiveRootTaskId(),
+		);
 		if (!reminder) return undefined;
 		return { systemPrompt: `${event.systemPrompt}\n\n${reminder}` };
 	});
