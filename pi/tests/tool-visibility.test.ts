@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const recordEvent = vi.hoisted(() => vi.fn());
-vi.mock("../lib/metrics.ts", () => ({ recordEvent }));
+const recordEvents = vi.hoisted(() => vi.fn());
+vi.mock("../lib/metrics.ts", () => ({ recordEvent, recordEvents }));
 
 import toolVisibility, {
 	DEFERRED_TOOL_NAMES,

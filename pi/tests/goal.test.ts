@@ -342,6 +342,7 @@ describe("goal extension", () => {
 			createMockCtx({
 				cwd: tmp,
 				sessionManager: {
+					getSessionId: () => "goal-session",
 					getBranch: () => [
 						{ customType: "local-goal-state", data: { goal: parsed.goal } },
 					],
