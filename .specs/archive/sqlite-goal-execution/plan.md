@@ -1,5 +1,6 @@
 ---
-status: ready
+status: completed
+completed: 2026-08-22
 slug: sqlite-goal-execution
 ---
 
@@ -50,7 +51,7 @@ Replace the one-file-per-task registry with a process-shared SQLite Goal Executi
 ## Validation
 
 - [x] Focused SQLite capability and migration checks pass on the exact supported Node runtime.
-- [ ] Focused and integration task, goal, subagent, status, Herdr, renderer, telemetry, resume, and real child-process tests pass.
+- [x] Focused and integration task, goal, subagent, status, Herdr, renderer, telemetry, resume, and real child-process tests pass.
 - [x] `cd pi && pnpm run typecheck`, `cd pi && pnpm run biome:check`, and `git diff --check` pass with no new failures.
 - [x] Quiescent live import and semantic comparison pass before SQLite becomes the mutable authority.
 
@@ -60,7 +61,7 @@ Keep incomplete work at `.specs/sqlite-goal-execution/plan.md`. After every task
 
 ## Execution Status
 
-- State: live cutover complete; final shared integration gate pending
-- Blocker: concurrent subagent work currently leaves the repository-wide subagent suite failing outside this task-system boundary
-- Next: rerun the shared integration gate after the subagent work settles, then archive this plan
+- State: complete
+- Blocker: none
+- Next: archive this completed plan
 - Resume: `/do-it .specs/sqlite-goal-execution/plan.md`

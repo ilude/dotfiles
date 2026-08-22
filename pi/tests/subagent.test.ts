@@ -14,6 +14,10 @@ import {
 } from "../extensions/subagent/scope-policy.ts";
 import { assignReadOnlyFanoutExperiment } from "../lib/orchestration-telemetry.js";
 import {
+	closeTaskDatabase,
+	initializeTaskStore,
+} from "../lib/task-store.js";
+import {
 	createMockCtx,
 	createMockPi,
 	createMockTheme,
@@ -323,6 +327,7 @@ Execute workflow items with admitted tools only.
 		process.env.PI_CODING_AGENT_DIR = isolatedAgentDir;
 		process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "0";
 		process.env.PI_OPERATOR_DIR = path.join(tmpDir, "operator");
+		initializeTaskStore(process.env.PI_OPERATOR_DIR);
 		process.env.PI_METRICS_DIR = path.join(tmpDir, "metrics");
 		const { getMetricsLogPath } = await import("../lib/metrics.ts");
 		expect(path.relative(tmpDir, getMetricsLogPath())).not.toMatch(/^\.\./);
@@ -335,6 +340,7 @@ Execute workflow items with admitted tools only.
 
 	afterEach(async () => {
 		vi.useRealTimers();
+		closeTaskDatabase(path.join(tmpDir, "operator"));
 		if (prevAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
 		if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;

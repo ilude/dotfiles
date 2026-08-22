@@ -66,7 +66,7 @@ export function onSessionStart(
 			);
 			enqueueEvent({
 				event: "extension_session_start",
-				session: ctx.sessionManager.getSessionId() ?? undefined,
+				session: ctx.sessionManager?.getSessionId?.() ?? undefined,
 				data: {
 					extension,
 					reason: event.reason,
