@@ -11,20 +11,22 @@ import { readMergedSettings } from "../lib/settings-loader.js";
 const DEFAULT_RESERVE_TOKENS = 16_384;
 const DEFAULT_KEEP_RECENT_TOKENS = 20_000;
 const CONTINUATION_TYPE = "active-turn-compaction.continue";
-const COMPACTION_HANDOFF_INSTRUCTIONS = `Preserve a durable handoff for the active request. Include:
+const COMPACTION_HANDOFF_INSTRUCTIONS = `Preserve a durable handoff for the active request. The compacted summary plus retained messages own the conversational frontier. Include:
 - requested outcome and settled observable completion evidence
 - the condition under which that evidence fails
-- latest user correction affecting scope or completion; omit superseded intent
+- latest user correction affecting scope or completion; omit superseded intent and let the newer retained correction take precedence
+- response owed to the user
+- pending question that must be answered or settled
 - canonical plan or goal artifact path when present
-- authoritative root task IDs, states, scopes, and acceptance checks
+- explicitly supplied active root task details only as supplemental durable requirements, constraints, dependencies, and acceptance checks
 - completed checks and first unmet completion check
 - changed files
 - validation run and results
 - blockers
 - exact next action
-Keep the handoff bounded and omit unrelated history.`;
+Keep the handoff bounded and omit unrelated history. Do not reconstruct the conversation from task state, create replacement tasks, or write conversation history into task notes.`;
 const CONTINUATION_INSTRUCTIONS =
-	"Continue from durable state, not reconstructed conversation context. First inspect active root tasks and any linked plan or goal artifact. Treat their completion evidence and latest recorded scope as authoritative. Resume from the first unmet completion check. Create only the minimal missing frontier when no usable task record exists; do not create replacement tasks for existing deliverables. Do not treat compaction as completion.";
+	"Continue from the compacted summary and retained messages. They are authoritative for the conversational frontier, including the latest user correction, response owed, pending question, and current request; a newer retained correction takes precedence over older summary or task information. An explicitly supplied active root task is supplemental only for durable requirements, constraints, dependencies, and acceptance checks. Do not reconstruct the conversation or current request from task state. Do not create replacement tasks during recovery or write conversation history into task notes. Do not treat compaction as completion.";
 
 export interface ActiveTurnCompactionPolicy {
 	enabled: boolean;
@@ -181,7 +183,8 @@ export function registerActiveTurnCompaction(
 	let attemptedAboveThreshold = false;
 	let failureCircuitOpen = false;
 
-	const resumeRequest = () => {
+	const resumeRequest = (ctx?: ExtensionContext) => {
+		if (ctx?.hasPendingMessages()) return;
 		pi.sendMessage(
 			{
 				customType: CONTINUATION_TYPE,
@@ -209,7 +212,7 @@ export function registerActiveTurnCompaction(
 				compactionPending = false;
 				compactionAbortArtifactPending = false;
 				manualCompactionStarted = false;
-				resumeRequest();
+				resumeRequest(ctx);
 			},
 			onError: (error) => {
 				if (generation !== triggerGeneration) return;
@@ -221,7 +224,7 @@ export function registerActiveTurnCompaction(
 					error.message !== "Compaction cancelled"
 				) {
 					failureCircuitOpen = true;
-					resumeRequest();
+					resumeRequest(ctx);
 				}
 			},
 		});
@@ -251,7 +254,7 @@ export function registerActiveTurnCompaction(
 		return undefined;
 	});
 
-	pi.on("session_compact", () => {
+	pi.on("session_compact", (event, ctx) => {
 		failureCircuitOpen = false;
 		attemptedAboveThreshold = false;
 		if (
@@ -263,7 +266,8 @@ export function registerActiveTurnCompaction(
 
 		compactionPending = false;
 		compactionAbortArtifactPending = false;
-		resumeRequest();
+		if (event.reason === "overflow" && event.willRetry) return;
+		resumeRequest(ctx);
 	});
 
 	pi.on("agent_settled", (_event, ctx) => {

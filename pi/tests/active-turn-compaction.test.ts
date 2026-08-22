@@ -40,13 +40,14 @@ function setup(
 ) {
 	const pi = createMockPi();
 	let currentUsage = initialUsage;
+	let pendingMessages = false;
 	let compactOptions: CompactOptions | undefined;
 	const compact = vi.fn((options?: CompactOptions) => {
 		compactOptions = options;
 	});
 	const ctx = createMockCtx({
 		isProjectTrusted: () => true,
-		hasPendingMessages: () => false,
+		hasPendingMessages: () => pendingMessages,
 		getContextUsage: vi.fn(() => currentUsage),
 		sessionManager: { getBranch: () => [] },
 		compact,
@@ -71,6 +72,9 @@ function setup(
 		},
 		setUsage(next: ContextUsage) {
 			currentUsage = next;
+		},
+		setPendingMessages(pending: boolean) {
+			pendingMessages = pending;
 		},
 		sessionStart: hook("session_start"),
 		sessionShutdown: hook("session_shutdown"),
@@ -232,10 +236,19 @@ describe("active-turn compaction", () => {
 			"settled observable completion evidence",
 		);
 		expect(runtime.compactOptions?.customInstructions).toContain(
-			"authoritative root task IDs, states, scopes, and acceptance checks",
+			"response owed to the user",
 		);
 		expect(runtime.compactOptions?.customInstructions).toContain(
-			"first unmet completion check",
+			"pending question that must be answered or settled",
+		);
+		expect(runtime.compactOptions?.customInstructions).toContain(
+			"supplemental durable requirements, constraints, dependencies, and acceptance checks",
+		);
+		expect(runtime.compactOptions?.customInstructions).toContain(
+			"Do not reconstruct the conversation from task state",
+		);
+		expect(runtime.compactOptions?.customInstructions).toContain(
+			"write conversation history into task notes",
 		);
 
 		runtime.compactOptions?.onComplete?.({} as never);
@@ -243,15 +256,90 @@ describe("active-turn compaction", () => {
 			expect.objectContaining({
 				customType: "active-turn-compaction.continue",
 				content: expect.stringMatching(
-					/inspect active root tasks[\s\S]*first unmet completion check/i,
+					/compacted summary and retained messages[\s\S]*latest user correction[\s\S]*response owed[\s\S]*pending question/i,
 				),
 				display: false,
 			}),
 			{ triggerTurn: true, deliverAs: "followUp" },
 		);
+		const continuation = runtime.pi.sendMessage.mock.calls[0]?.[0].content as string;
+		expect(continuation).not.toMatch(/inspect active root tasks/i);
+		expect(continuation).toMatch(
+			/Do not create replacement tasks during recovery/i,
+		);
 	});
 
-	it("lets native threshold compaction satisfy a pending request without cancellation noise", async () => {
+	it("recovers through threshold, manual, and overflow compaction without task-directed reconstruction", async () => {
+		for (const reason of ["threshold", "manual", "overflow"] as const) {
+			const runtime = setup(usage(360_000));
+			await runtime.sessionStart(
+				{ type: "session_start", reason: "startup" },
+				runtime.ctx,
+			);
+			await runtime.turnEnd(activeTurn(), runtime.ctx);
+
+			expect(
+				await runtime.sessionBeforeCompact(
+					{ type: "session_before_compact", reason },
+					runtime.ctx,
+				),
+			).toBeUndefined();
+			await runtime.sessionCompact(
+				{
+					type: "session_compact",
+					reason,
+					willRetry: false,
+				},
+				runtime.ctx,
+			);
+			await runtime.agentSettled(
+				{ type: "agent_settled" },
+				runtime.ctx,
+			);
+			expect(runtime.compact).not.toHaveBeenCalled();
+			expect(runtime.pi.sendMessage).toHaveBeenCalledTimes(1);
+		}
+	});
+
+	it("does not enqueue recovery behind a newer pending interaction", async () => {
+		for (const reason of ["threshold", "manual", "overflow"] as const) {
+			const runtime = setup(usage(360_000));
+			await runtime.sessionStart(
+				{ type: "session_start", reason: "startup" },
+				runtime.ctx,
+			);
+			await runtime.turnEnd(activeTurn(), runtime.ctx);
+			runtime.setPendingMessages(true);
+
+			await runtime.sessionCompact(
+				{
+					type: "session_compact",
+					reason,
+					willRetry: false,
+				},
+				runtime.ctx,
+			);
+
+			expect(runtime.pi.sendMessage).not.toHaveBeenCalled();
+		}
+	});
+
+	it("does not enqueue recovery behind a pending interaction after manual compaction", async () => {
+		const runtime = setup(usage(360_000));
+		await runtime.sessionStart(
+			{ type: "session_start", reason: "startup" },
+			runtime.ctx,
+		);
+		await runtime.turnEnd(activeTurn(), runtime.ctx);
+		await runtime.agentSettled({ type: "agent_settled" }, runtime.ctx);
+		runtime.setPendingMessages(true);
+
+		runtime.compactOptions?.onComplete?.({} as never);
+
+		expect(runtime.pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("leaves retryable overflow recovery to the native retry", async () => {
 		const runtime = setup(usage(360_000));
 		await runtime.sessionStart(
 			{ type: "session_start", reason: "startup" },
@@ -259,25 +347,18 @@ describe("active-turn compaction", () => {
 		);
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
 
-		for (const reason of ["threshold", "manual", "overflow"] as const) {
-			expect(
-				await runtime.sessionBeforeCompact(
-					{ type: "session_before_compact", reason },
-					runtime.ctx,
-				),
-			).toBeUndefined();
-		}
-
 		await runtime.sessionCompact(
-			{ type: "session_compact", reason: "threshold" },
+			{
+				type: "session_compact",
+				reason: "overflow",
+				willRetry: true,
+			},
 			runtime.ctx,
 		);
-		await runtime.agentSettled(
-			{ type: "agent_settled" },
-			runtime.ctx,
-		);
+
+		expect(runtime.pi.sendMessage).not.toHaveBeenCalled();
+		await runtime.agentSettled({ type: "agent_settled" }, runtime.ctx);
 		expect(runtime.compact).not.toHaveBeenCalled();
-		expect(runtime.pi.sendMessage).toHaveBeenCalledTimes(1);
 	});
 
 	it("attempts compaction only once while the same run remains above threshold", async () => {
