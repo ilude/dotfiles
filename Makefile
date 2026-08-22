@@ -1,7 +1,7 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all preflight ci-bootstrap test test-zsh test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest test-pi-fast test-pi-integration help lint lint-python lint-shell lint-shell-format format format-python check check-changed check-fast check-ci check-pi-ci check-pi-extensions pi-doctor install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all preflight ci-bootstrap test test-zsh test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest test-pi-fast test-pi-integration help lint lint-python lint-shell lint-shell-format format format-python check check-changed check-fast check-ci check-pi-ci check-pi-extensions install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
-SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install zsh/env.d/02-path.zsh scripts/ci-bootstrap scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/pi-doctor scripts/zsh-setup scripts/zsh-plugins wsl/packages
+SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install zsh/env.d/02-path.zsh scripts/ci-bootstrap scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins wsl/packages
 PYTEST_WORKERS ?= 4
 
 # Default target
@@ -33,7 +33,6 @@ help:
 	@echo "  make check-ci      - Run CI-safe lint + test contract"
 	@echo "  make check-pi-ci   - Run CI-safe Pi Vitest contract"
 	@echo "  make install-hooks - Install git pre-commit hook for testing"
-	@echo "  make pi-doctor     - Print Pi install health snapshot"
 
 # Shell environment validation (diagnostic)
 validate: validate-bash
@@ -258,7 +257,3 @@ install-hooks:
 	git config core.hooksPath hooks
 	chmod +x hooks/*
 	@echo "Git hooks installed. Commits will now run tests first."
-
-# Pi install health snapshot (diagnostic, read-only)
-pi-doctor:
-	@scripts/pi-doctor
