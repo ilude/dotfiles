@@ -85,25 +85,29 @@ function ensureDirectory(p: string): void {
  * when metrics are disabled / I/O fails. Failure is silent: producers should
  * never crash because metrics could not be written.
  */
-export function recordEvent(input: RecordEventInput): MetricsEvent | null {
+export function recordEvents(inputs: RecordEventInput[]): MetricsEvent[] {
 	const cfg = getMetricsConfig();
-	if (!cfg.enabled) return null;
-	if (!input.event || typeof input.event !== "string") return null;
-
-	const record: MetricsEvent = {
-		schemaVersion: 1,
-		id: crypto.randomUUID(),
-		ts: new Date().toISOString(),
-		event: input.event,
-	};
-	if (input.session) record.session = input.session;
-	if (input.data) record.data = input.data;
+	if (!cfg.enabled) return [];
+	const records = inputs
+		.filter((input) => input.event && typeof input.event === "string")
+		.map((input): MetricsEvent => ({
+			schemaVersion: 1,
+			id: crypto.randomUUID(),
+			ts: new Date().toISOString(),
+			event: input.event,
+			...(input.session ? { session: input.session } : {}),
+			...(input.data ? { data: input.data } : {}),
+		}));
+	if (records.length === 0) return [];
 
 	try {
 		ensureDirectory(getMetricsDir());
 		const logPath = getMetricsLogPath(new Date(), cfg);
-		const line = `${JSON.stringify(record)}\n`;
-		fs.appendFileSync(logPath, line, "utf-8");
+		fs.appendFileSync(
+			logPath,
+			records.map((record) => JSON.stringify(record)).join("\n") + "\n",
+			"utf-8",
+		);
 
 		// Soft cap: when a single file blows past maxFileBytes, append a
 		// rotation marker (the next call will continue appending). Hard
@@ -123,10 +127,14 @@ export function recordEvent(input: RecordEventInput): MetricsEvent | null {
 		} catch {
 			// ignore stat failures
 		}
-		return record;
+		return records;
 	} catch {
-		return null;
+		return [];
 	}
+}
+
+export function recordEvent(input: RecordEventInput): MetricsEvent | null {
+	return recordEvents([input])[0] ?? null;
 }
 
 /**

@@ -7,6 +7,7 @@ import {
 	getMetricsLogPath,
 	readRecentEvents,
 	recordEvent,
+	recordEvents,
 } from "../lib/metrics.js";
 import { invalidateSettingsCache } from "../lib/settings-loader.js";
 
@@ -82,6 +83,13 @@ describe("recordEvent", () => {
 		recordEvent({ event: "c" });
 		const lines = fs.readFileSync(getMetricsLogPath(), "utf-8").trim().split("\n");
 		expect(lines.length).toBe(3);
+	});
+
+	it("appends a batch as separate JSON-line events", () => {
+		const records = recordEvents([{ event: "a" }, { event: "b" }]);
+		expect(records.map((record) => record.event)).toEqual(["a", "b"]);
+		const lines = fs.readFileSync(getMetricsLogPath(), "utf-8").trim().split("\n");
+		expect(lines.map((line) => JSON.parse(line).event)).toEqual(["a", "b"]);
 	});
 
 	it("preserves session and data fields when supplied", () => {
