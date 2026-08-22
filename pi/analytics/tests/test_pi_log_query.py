@@ -276,6 +276,277 @@ def test_default_layout_honors_metrics_and_transcript_locations(
     assert resolved.trace_dir == traces.resolve()
 
 
+def test_subagent_views_flatten_mixed_versions_without_content_or_paths(
+    layout: SourceLayout,
+) -> None:
+    write_jsonl(
+        layout.agent_dir / "logs" / "metrics-orchestration.jsonl",
+        [
+            {
+                "schemaVersion": 1,
+                "id": "metric-run-v1",
+                "ts": "2026-07-01T00:01:00Z",
+                "event": "orchestration_run",
+                "session": "session-1",
+                "data": {
+                    "schemaVersion": 1,
+                    "orchestrationId": "orchestration-v1",
+                    "mode": "single",
+                    "status": "completed",
+                    "childTextBytes": 10,
+                    "parentVisibleBytes": 3,
+                    "workers": [
+                        {
+                            "runId": "worker-v1",
+                            "agent": "legacy",
+                            "status": "completed",
+                            "durationMs": 11,
+                            "task": "private task text",
+                            "command": "private command",
+                            "output": "private output",
+                            "workspace": "/private/workspace",
+                            "path": "/private/path",
+                        }
+                    ],
+                },
+            },
+            {
+                "schemaVersion": 1,
+                "id": "metric-run-v2",
+                "ts": "2026-07-01T00:02:00Z",
+                "event": "orchestration_run",
+                "data": {
+                    "schemaVersion": 2,
+                    "orchestrationId": "orchestration-v2",
+                    "mode": "parallel",
+                    "fanOut": 1,
+                    "status": "failed",
+                    "workers": [
+                        {
+                            "runId": "worker-v2",
+                            "treeId": "tree-v2",
+                            "role": "leaf",
+                            "agent": "legacy",
+                            "status": "failed",
+                        }
+                    ],
+                },
+            },
+            {
+                "schemaVersion": 1,
+                "id": "metric-run-v3",
+                "ts": "2026-07-01T00:03:00Z",
+                "event": "orchestration_run",
+                "session": "session-3",
+                "data": {
+                    "schemaVersion": 3,
+                    "orchestrationId": "orchestration-v3",
+                    "parentSessionId": "parent-3",
+                    "interactionId": "interaction-3",
+                    "mode": "parallel",
+                    "fanOut": 2,
+                    "status": "completed",
+                    "durationMs": 123,
+                    "childWorkMs": 98,
+                    "childTextBytes": 30,
+                    "parentVisibleBytes": 26,
+                    "artifactBytes": 4,
+                    "chainTransferBytes": 2,
+                    "inlineBytesNotReturned": 4,
+                    "executionKind": "coordinator",
+                    "outcomeCode": "partial",
+                    "workspaceRootSource": "override",
+                    "markerCount": 2,
+                    "boundaryCount": 1,
+                    "searchCount": 3,
+                    "watchdogCount": 4,
+                    "pingCount": 5,
+                    "interruptionCount": 1,
+                    "recoveryCount": 1,
+                    "coordinatorBudgetOutcome": "soft_deadline",
+                    "legacyAdapterBranch": "single",
+                    "legacyAdapterUse": True,
+                    "taskLinkSource": "auto",
+                    "onclaveEligible": False,
+                    "workers": [
+                        {
+                            "runId": "worker-v3",
+                            "treeId": "tree-v3",
+                            "parentRunId": "parent-worker",
+                            "depth": 1,
+                            "role": "leaf",
+                            "workflowPhase": "verify",
+                            "taskKey": "item-3",
+                            "attempt": 2,
+                            "retryOrigin": "worker-old",
+                            "coordinatorTaskId": "task-3",
+                            "taskId": "task-3-leaf",
+                            "agent": "specialist",
+                            "resolvedModel": "provider/model",
+                            "selectedEffort": "high",
+                            "advisoryPolicyVersion": "routing-v1",
+                            "advisoryTaskClass": "validation",
+                            "advisoryRecommendedRoute": "provider/model:high",
+                            "advisoryClassification": "preferred",
+                            "advisoryTopologyMismatch": False,
+                            "experimentId": "experiment-3",
+                            "experimentArm": "luna-high",
+                            "experimentTaskClass": "subagent-single",
+                            "validationOutcome": "passed",
+                            "status": "completed",
+                            "exitCode": 0,
+                            "durationMs": 49,
+                            "outputMode": "artifact",
+                            "childTextBytes": 30,
+                            "parentVisibleBytes": 26,
+                            "artifactBytes": 4,
+                            "chainTransferBytes": 2,
+                            "turns": 3,
+                            "usage": {
+                                "inputTokens": 10,
+                                "outputTokens": 20,
+                                "totalTokens": 30,
+                                "cacheCreationInputTokens": 1,
+                                "cacheReadInputTokens": 2,
+                                "processedTokens": 33,
+                                "contextPeakTokens": 40,
+                                "turns": 3,
+                                "costUsd": 0.25,
+                                "costSource": "pi-usage",
+                            },
+                            "executionKind": "write",
+                            "outcomeCode": "completed",
+                            "workspaceRootSource": "override",
+                            "markerCount": 1,
+                            "boundaryCount": 1,
+                            "searchCount": 2,
+                            "watchdogCount": 0,
+                            "pingCount": 1,
+                            "interruptionCount": 0,
+                            "recoveryCount": 0,
+                            "coordinatorBudgetOutcome": "not_applicable",
+                            "legacyAdapterBranch": "single",
+                            "legacyAdapterUse": False,
+                            "taskLinkSource": "explicit",
+                            "onclaveEligible": False,
+                            "command": "private command",
+                            "output": "private output",
+                            "workspace": "/private/workspace",
+                            "path": "/private/path",
+                        },
+                        {
+                            "runId": "worker-v3-2",
+                            "agent": "specialist",
+                            "status": "cancelled",
+                        },
+                    ],
+                },
+            },
+            {
+                "schemaVersion": 1,
+                "id": "metric-intervention-v1",
+                "ts": "2026-07-01T00:04:00Z",
+                "event": "subagent_intervention",
+                "session": "session-3",
+                "data": {
+                    "schemaVersion": 1,
+                    "orchestrationId": "orchestration-v3",
+                    "runId": "worker-v3",
+                    "code": "interruption",
+                    "outcome": "acknowledged",
+                    "acknowledged": True,
+                    "durationMs": 12,
+                    "activeToolDurationMs": 8,
+                    "activeToolOutputAgeMs": 7,
+                    "activityVersion": 4,
+                    "markerCount": 1,
+                    "boundaryCount": 1,
+                    "searchCount": 2,
+                    "watchdogCount": 1,
+                    "pingCount": 3,
+                    "interruptionCount": 1,
+                    "recoveryCount": 1,
+                },
+            },
+        ],
+    )
+
+    connection, _ = connect_with_views(layout, selected_sources=("metric_events",))
+    run_columns = [row[0] for row in connection.execute("DESCRIBE subagent_runs").fetchall()]
+    worker_columns = [row[0] for row in connection.execute("DESCRIBE subagent_workers").fetchall()]
+    intervention_columns = [
+        row[0] for row in connection.execute("DESCRIBE subagent_interventions").fetchall()
+    ]
+    view_names = {
+        row[0]
+        for row in connection.execute(
+            "SELECT table_name FROM information_schema.views WHERE table_schema = 'main'"
+        ).fetchall()
+    }
+    assert {name for name in view_names if name.startswith("subagent_")} == {
+        "subagent_runs",
+        "subagent_workers",
+        "subagent_interventions",
+    }
+    for columns in (run_columns, worker_columns, intervention_columns):
+        assert not {"task", "command", "output", "workspace", "path"} & set(columns)
+
+    runs = connection.execute(
+        """SELECT schema_version, orchestration_id, inline_bytes_not_returned,
+        execution_kind, marker_count, onclave_eligible, worker_count
+        FROM subagent_runs ORDER BY orchestration_id"""
+    ).fetchall()
+    assert runs == [
+        (1, "orchestration-v1", 7, None, None, None, 1),
+        (2, "orchestration-v2", 0, None, None, None, 1),
+        (3, "orchestration-v3", 4, "coordinator", 2, False, 2),
+    ]
+    assert connection.execute(
+        """SELECT typeof(schema_version), typeof(duration_ms), typeof(onclave_eligible)
+        FROM subagent_runs WHERE orchestration_id = 'orchestration-v3'"""
+    ).fetchone() == ("UBIGINT", "BIGINT", "BOOLEAN")
+
+    worker = connection.execute(
+        """SELECT schema_version, run_id, execution_kind, usage_processed_tokens,
+        usage_cost_usd, task_key, onclave_eligible
+        FROM subagent_workers WHERE run_id = 'worker-v3'"""
+    ).fetchone()
+    assert worker == (3, "worker-v3", "write", 33, 0.25, "item-3", False)
+    assert connection.execute("SELECT count(*) FROM subagent_workers").fetchone() == (4,)
+
+    intervention = connection.execute(
+        """SELECT schema_version, orchestration_id, run_id, code, outcome, acknowledged,
+        active_tool_duration_ms, recovery_count
+        FROM subagent_interventions"""
+    ).fetchone()
+    assert intervention == (
+        1,
+        "orchestration-v3",
+        "worker-v3",
+        "interruption",
+        "acknowledged",
+        True,
+        8,
+        1,
+    )
+
+    dataframe = connection.execute(
+        "SELECT orchestration_id, marker_count FROM subagent_runs ORDER BY orchestration_id"
+    ).df()
+    assert list(dataframe.columns) == ["orchestration_id", "marker_count"]
+    rendered = repr(runs) + repr(worker) + repr(intervention)
+    assert all(
+        value not in rendered
+        for value in (
+            "private task text",
+            "private command",
+            "private output",
+            "/private/workspace",
+            "/private/path",
+        )
+    )
+
+
 def test_query_runner_is_read_only_and_bounded(layout: SourceLayout) -> None:
     connection, _ = connect_with_views(layout)
 

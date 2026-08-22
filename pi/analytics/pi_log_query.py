@@ -505,6 +505,203 @@ SELECT event, count(*) AS event_count, min(try_cast(ts AS TIMESTAMPTZ)) AS first
   max(try_cast(ts AS TIMESTAMPTZ)) AS last_seen FROM metric_events GROUP BY event""",
     ),
     (
+        "subagent_runs",
+        ("metric_events",),
+        """CREATE VIEW subagent_runs AS
+WITH runs AS (
+  SELECT id AS metric_id, try_cast(ts AS TIMESTAMPTZ) AS occurred_at,
+    session AS session_id,
+    try_cast(json_extract_string(data, '$.schemaVersion') AS UBIGINT) AS schema_version,
+    data
+  FROM metric_events
+  WHERE event = 'orchestration_run'
+    AND try_cast(json_extract_string(data, '$.schemaVersion') AS UBIGINT) IN (1, 2, 3)
+)
+SELECT metric_id, occurred_at, session_id, schema_version,
+  json_extract_string(data, '$.orchestrationId') AS orchestration_id,
+  json_extract_string(data, '$.parentSessionId') AS parent_session_id,
+  json_extract_string(data, '$.interactionId') AS interaction_id,
+  json_extract_string(data, '$.mode') AS mode,
+  try_cast(json_extract_string(data, '$.fanOut') AS BIGINT) AS fan_out,
+  json_extract_string(data, '$.status') AS status,
+  try_cast(json_extract_string(data, '$.durationMs') AS BIGINT) AS duration_ms,
+  try_cast(json_extract_string(data, '$.childWorkMs') AS BIGINT) AS child_work_ms,
+  try_cast(json_extract_string(data, '$.childTextBytes') AS BIGINT) AS child_text_bytes,
+  try_cast(json_extract_string(data, '$.parentVisibleBytes') AS BIGINT) AS parent_visible_bytes,
+  try_cast(json_extract_string(data, '$.artifactBytes') AS BIGINT) AS artifact_bytes,
+  try_cast(json_extract_string(data, '$.chainTransferBytes') AS BIGINT) AS chain_transfer_bytes,
+  coalesce(
+    try_cast(json_extract_string(data, '$.inlineBytesNotReturned') AS BIGINT),
+    greatest(
+      0,
+      coalesce(try_cast(json_extract_string(data, '$.childTextBytes') AS BIGINT), 0)
+      - coalesce(try_cast(json_extract_string(data, '$.parentVisibleBytes') AS BIGINT), 0)
+    )
+  ) AS inline_bytes_not_returned,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(data, '$.executionKind') END AS execution_kind,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(data, '$.outcomeCode') END AS outcome_code,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(data, '$.workspaceRootSource') END AS workspace_root_source,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(data, '$.markerCount') AS BIGINT) END AS marker_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(data, '$.boundaryCount') AS BIGINT) END AS boundary_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(data, '$.searchCount') AS BIGINT) END AS search_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(data, '$.watchdogCount') AS BIGINT) END AS watchdog_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(data, '$.pingCount') AS BIGINT) END AS ping_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(data, '$.interruptionCount') AS BIGINT) END AS interruption_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(data, '$.recoveryCount') AS BIGINT) END AS recovery_count,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(data, '$.coordinatorBudgetOutcome') END AS coordinator_budget_outcome,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(data, '$.legacyAdapterBranch') END AS legacy_adapter_branch,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(data, '$.legacyAdapterUse') AS BOOLEAN) END AS legacy_adapter_use,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(data, '$.taskLinkSource') END AS task_link_source,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(data, '$.onclaveEligible') AS BOOLEAN) END AS onclave_eligible,
+  coalesce(try_cast(json_array_length(json_extract(data, '$.workers')) AS BIGINT), 0)
+    AS worker_count
+FROM runs""",
+    ),
+    (
+        "subagent_workers",
+        ("metric_events",),
+        """CREATE VIEW subagent_workers AS
+WITH runs AS (
+  SELECT id AS metric_id, try_cast(ts AS TIMESTAMPTZ) AS occurred_at,
+    session AS session_id,
+    try_cast(json_extract_string(data, '$.schemaVersion') AS UBIGINT) AS schema_version,
+    json_extract_string(data, '$.orchestrationId') AS orchestration_id,
+    data
+  FROM metric_events
+  WHERE event = 'orchestration_run'
+    AND try_cast(json_extract_string(data, '$.schemaVersion') AS UBIGINT) IN (1, 2, 3)
+), workers AS (
+  SELECT r.metric_id, r.occurred_at, r.session_id, r.schema_version,
+    r.orchestration_id, worker.value AS worker_data
+  FROM runs r
+  CROSS JOIN LATERAL json_each(r.data, '$.workers') AS worker
+  WHERE worker.type = 'OBJECT'
+)
+SELECT metric_id, occurred_at, session_id, schema_version, orchestration_id,
+  json_extract_string(worker_data, '$.runId') AS run_id,
+  json_extract_string(worker_data, '$.treeId') AS tree_id,
+  json_extract_string(worker_data, '$.parentRunId') AS parent_run_id,
+  try_cast(json_extract_string(worker_data, '$.depth') AS BIGINT) AS depth,
+  json_extract_string(worker_data, '$.role') AS role,
+  json_extract_string(worker_data, '$.workflowPhase') AS workflow_phase,
+  json_extract_string(worker_data, '$.taskKey') AS task_key,
+  try_cast(json_extract_string(worker_data, '$.attempt') AS BIGINT) AS attempt,
+  json_extract_string(worker_data, '$.retryOrigin') AS retry_origin,
+  json_extract_string(worker_data, '$.coordinatorTaskId') AS coordinator_task_id,
+  json_extract_string(worker_data, '$.taskId') AS task_id,
+  json_extract_string(worker_data, '$.agent') AS agent,
+  json_extract_string(worker_data, '$.resolvedModel') AS resolved_model,
+  json_extract_string(worker_data, '$.selectedEffort') AS selected_effort,
+  json_extract_string(worker_data, '$.advisoryPolicyVersion') AS advisory_policy_version,
+  json_extract_string(worker_data, '$.advisoryTaskClass') AS advisory_task_class,
+  json_extract_string(worker_data, '$.advisoryRecommendedRoute') AS advisory_recommended_route,
+  json_extract_string(worker_data, '$.advisoryClassification') AS advisory_classification,
+  try_cast(json_extract_string(worker_data, '$.advisoryTopologyMismatch') AS BOOLEAN)
+    AS advisory_topology_mismatch,
+  json_extract_string(worker_data, '$.experimentId') AS experiment_id,
+  json_extract_string(worker_data, '$.experimentArm') AS experiment_arm,
+  json_extract_string(worker_data, '$.experimentTaskClass') AS experiment_task_class,
+  json_extract_string(worker_data, '$.validationOutcome') AS validation_outcome,
+  json_extract_string(worker_data, '$.status') AS status,
+  try_cast(json_extract_string(worker_data, '$.exitCode') AS BIGINT) AS exit_code,
+  try_cast(json_extract_string(worker_data, '$.durationMs') AS BIGINT) AS duration_ms,
+  json_extract_string(worker_data, '$.outputMode') AS output_mode,
+  try_cast(json_extract_string(worker_data, '$.childTextBytes') AS BIGINT) AS child_text_bytes,
+  try_cast(json_extract_string(worker_data, '$.parentVisibleBytes') AS BIGINT) AS parent_visible_bytes,
+  try_cast(json_extract_string(worker_data, '$.artifactBytes') AS BIGINT) AS artifact_bytes,
+  try_cast(json_extract_string(worker_data, '$.chainTransferBytes') AS BIGINT) AS chain_transfer_bytes,
+  try_cast(json_extract_string(worker_data, '$.usage.inputTokens') AS BIGINT) AS usage_input_tokens,
+  try_cast(json_extract_string(worker_data, '$.usage.outputTokens') AS BIGINT) AS usage_output_tokens,
+  try_cast(json_extract_string(worker_data, '$.usage.totalTokens') AS BIGINT) AS usage_total_tokens,
+  try_cast(json_extract_string(worker_data, '$.usage.cacheCreationInputTokens') AS BIGINT)
+    AS usage_cache_creation_input_tokens,
+  try_cast(json_extract_string(worker_data, '$.usage.cacheReadInputTokens') AS BIGINT)
+    AS usage_cache_read_input_tokens,
+  try_cast(json_extract_string(worker_data, '$.usage.processedTokens') AS BIGINT)
+    AS usage_processed_tokens,
+  try_cast(json_extract_string(worker_data, '$.usage.contextPeakTokens') AS BIGINT)
+    AS usage_context_peak_tokens,
+  try_cast(json_extract_string(worker_data, '$.usage.turns') AS BIGINT) AS usage_turns,
+  try_cast(json_extract_string(worker_data, '$.usage.costUsd') AS DOUBLE) AS usage_cost_usd,
+  json_extract_string(worker_data, '$.usage.costSource') AS usage_cost_source,
+  try_cast(json_extract_string(worker_data, '$.turns') AS BIGINT) AS turns,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(worker_data, '$.executionKind') END AS execution_kind,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(worker_data, '$.outcomeCode') END AS outcome_code,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(worker_data, '$.workspaceRootSource') END AS workspace_root_source,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(worker_data, '$.markerCount') AS BIGINT) END AS marker_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(worker_data, '$.boundaryCount') AS BIGINT) END AS boundary_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(worker_data, '$.searchCount') AS BIGINT) END AS search_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(worker_data, '$.watchdogCount') AS BIGINT) END AS watchdog_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(worker_data, '$.pingCount') AS BIGINT) END AS ping_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(worker_data, '$.interruptionCount') AS BIGINT) END AS interruption_count,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(worker_data, '$.recoveryCount') AS BIGINT) END AS recovery_count,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(worker_data, '$.coordinatorBudgetOutcome') END AS coordinator_budget_outcome,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(worker_data, '$.legacyAdapterBranch') END AS legacy_adapter_branch,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(worker_data, '$.legacyAdapterUse') AS BOOLEAN) END AS legacy_adapter_use,
+  CASE WHEN schema_version = 3
+    THEN json_extract_string(worker_data, '$.taskLinkSource') END AS task_link_source,
+  CASE WHEN schema_version = 3
+    THEN try_cast(json_extract_string(worker_data, '$.onclaveEligible') AS BOOLEAN) END AS onclave_eligible
+FROM workers""",
+    ),
+    (
+        "subagent_interventions",
+        ("metric_events",),
+        """CREATE VIEW subagent_interventions AS
+SELECT id AS metric_id, try_cast(ts AS TIMESTAMPTZ) AS occurred_at,
+  session AS session_id,
+  try_cast(json_extract_string(data, '$.schemaVersion') AS UBIGINT) AS schema_version,
+  json_extract_string(data, '$.orchestrationId') AS orchestration_id,
+  json_extract_string(data, '$.runId') AS run_id,
+  json_extract_string(data, '$.code') AS code,
+  json_extract_string(data, '$.outcome') AS outcome,
+  try_cast(json_extract_string(data, '$.acknowledged') AS BOOLEAN) AS acknowledged,
+  try_cast(json_extract_string(data, '$.durationMs') AS BIGINT) AS duration_ms,
+  try_cast(json_extract_string(data, '$.activeToolDurationMs') AS BIGINT)
+    AS active_tool_duration_ms,
+  try_cast(json_extract_string(data, '$.activeToolOutputAgeMs') AS BIGINT)
+    AS active_tool_output_age_ms,
+  try_cast(json_extract_string(data, '$.activityVersion') AS BIGINT) AS activity_version,
+  try_cast(json_extract_string(data, '$.markerCount') AS BIGINT) AS marker_count,
+  try_cast(json_extract_string(data, '$.boundaryCount') AS BIGINT) AS boundary_count,
+  try_cast(json_extract_string(data, '$.searchCount') AS BIGINT) AS search_count,
+  try_cast(json_extract_string(data, '$.watchdogCount') AS BIGINT) AS watchdog_count,
+  try_cast(json_extract_string(data, '$.pingCount') AS BIGINT) AS ping_count,
+  try_cast(json_extract_string(data, '$.interruptionCount') AS BIGINT) AS interruption_count,
+  try_cast(json_extract_string(data, '$.recoveryCount') AS BIGINT) AS recovery_count
+FROM metric_events
+WHERE event = 'subagent_intervention'
+  AND try_cast(json_extract_string(data, '$.schemaVersion') AS UBIGINT) = 1""",
+    ),
+    (
         "tool_discovery_activity",
         ("metric_events",),
         """CREATE VIEW tool_discovery_activity AS
