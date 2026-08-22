@@ -9,6 +9,15 @@ export type SubagentProcessState =
 	| "alive"
 	| "exited-unsettled";
 
+export type SubagentWatchdogState =
+	| "settled"
+	| "starting"
+	| "active"
+	| "responsive-quiet"
+	| "stalled-tool"
+	| "unresponsive-runtime"
+	| "dead-process";
+
 export interface SubagentStatusInspection {
 	readonly run: SubagentRunSnapshot;
 	readonly processState: SubagentProcessState;
@@ -17,6 +26,11 @@ export interface SubagentStatusInspection {
 	readonly lastActivityKind: SubagentActivityKind | "unknown";
 	readonly activityVersion: number;
 	readonly quietForMs: number;
+	readonly runtimePingAt?: number;
+	readonly runtimePingAgeMs?: number;
+	readonly activeToolDurationMs?: number;
+	readonly activeToolOutputAgeMs?: number;
+	readonly watchdogState: SubagentWatchdogState;
 	readonly progressedSince?: boolean;
 }
 
@@ -24,6 +38,10 @@ export interface InspectSubagentStatusOptions {
 	readonly now?: number;
 	readonly sinceActivityVersion?: number;
 	readonly isProcessAlive?: (pid: number) => boolean;
+	readonly runtimePingAt?: number;
+	readonly runtimePingFreshMs?: number;
+	readonly quietThresholdMs?: number;
+	readonly stalledToolMs?: number;
 }
 
 export function isProcessAlive(pid: number): boolean {
@@ -57,6 +75,49 @@ export function inspectSubagentStatus(
 		processAlive = (options.isProcessAlive ?? isProcessAlive)(run.pid);
 		processState = processAlive ? "alive" : "exited-unsettled";
 	}
+	const quietForMs = Math.max(0, now - lastActivityAt);
+	const runtimePingAgeMs =
+		options.runtimePingAt === undefined
+			? undefined
+			: Math.max(0, now - options.runtimePingAt);
+	const activeToolStartedAt = run.liveTools.reduce<number | undefined>(
+		(oldest, tool) =>
+			oldest === undefined || tool.startedAt < oldest ? tool.startedAt : oldest,
+		undefined,
+	);
+	const activeToolDurationMs =
+		activeToolStartedAt === undefined
+			? undefined
+			: Math.max(0, now - activeToolStartedAt);
+	const activeToolOutputAt = run.liveTools.reduce<number | undefined>(
+		(latest, tool) => {
+			const candidate = tool.outputUpdatedAt ?? tool.startedAt;
+			return latest === undefined || candidate > latest ? candidate : latest;
+		},
+		undefined,
+	);
+	const activeToolOutputAgeMs =
+		activeToolOutputAt === undefined
+			? undefined
+			: Math.max(0, now - activeToolOutputAt);
+	const pingFresh =
+		runtimePingAgeMs !== undefined &&
+		runtimePingAgeMs <= (options.runtimePingFreshMs ?? 15_000);
+	let watchdogState: SubagentWatchdogState;
+	if (processState === "settled") watchdogState = "settled";
+	else if (processState === "waiting-to-start") watchdogState = "starting";
+	else if (processState === "exited-unsettled") watchdogState = "dead-process";
+	else if (!pingFresh && now - run.startedAt > (options.runtimePingFreshMs ?? 15_000))
+		watchdogState = "unresponsive-runtime";
+	else if (
+		pingFresh &&
+		activeToolDurationMs !== undefined &&
+		activeToolDurationMs >= (options.stalledToolMs ?? 120_000)
+	)
+		watchdogState = "stalled-tool";
+	else if (pingFresh && quietForMs >= (options.quietThresholdMs ?? 30_000))
+		watchdogState = "responsive-quiet";
+	else watchdogState = "active";
 	return {
 		run,
 		processState,
@@ -64,7 +125,14 @@ export function inspectSubagentStatus(
 		lastActivityAt,
 		lastActivityKind,
 		activityVersion,
-		quietForMs: Math.max(0, now - lastActivityAt),
+		quietForMs,
+		...(options.runtimePingAt === undefined
+			? {}
+			: { runtimePingAt: options.runtimePingAt }),
+		...(runtimePingAgeMs === undefined ? {} : { runtimePingAgeMs }),
+		...(activeToolDurationMs === undefined ? {} : { activeToolDurationMs }),
+		...(activeToolOutputAgeMs === undefined ? {} : { activeToolOutputAgeMs }),
+		watchdogState,
 		...(options.sinceActivityVersion === undefined
 			? {}
 			: {
@@ -157,6 +225,7 @@ export function formatSubagentStatus(
 		`progress since supplied version: ${progress}`,
 		`usage: ${run.usage.turns} turns | ${tokens} tokens | context peak ${run.usage.contextPeakTokens} tokens | cost ${run.usage.cost === null ? "unknown" : `$${run.usage.cost.toFixed(4)}`}`,
 		`active tools: ${activeTools}`,
+		`watchdog: ${inspection.watchdogState}${inspection.runtimePingAgeMs === undefined ? "" : ` | runtime ping ${durationLabel(inspection.runtimePingAgeMs)} ago`}${inspection.activeToolDurationMs === undefined ? "" : ` | active tool ${durationLabel(inspection.activeToolDurationMs)}`}`,
 		...(markers ? [`advisory markers: ${markers}`] : []),
 		`assessment: ${assessment(inspection)}`,
 	].join("\n");
@@ -176,6 +245,7 @@ export function formatSubagentStatusList(
 				`activity=${inspection.lastActivityKind}`,
 				`quiet=${durationLabel(inspection.quietForMs)}`,
 				`version=${inspection.activityVersion}`,
+				`watchdog=${inspection.watchdogState}`,
 				`turns=${run.usage.turns}`,
 				...(run.workPaths?.length
 					? [`workPaths=${run.workPaths.join(",")}`]

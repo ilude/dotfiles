@@ -106,6 +106,16 @@ describe("subagent T1 execution contracts", () => {
 			expect(trusted.items[0]?.agent.source).toBe("project");
 			expect(untrusted.projectTrusted).toBe(false);
 			expect(untrusted.items[0]?.agent.source).toBe("user");
+			expect(() =>
+				prepareSubagentExecution(
+					{
+						kind: "read",
+						items: [{ agent: "reader", task: "Inspect", cwd: parent }],
+						workspaceRoot: target,
+					},
+					{ parentCwd: parent, isWorkspaceTrusted: () => false },
+				),
+			).toThrow("escapes the assigned workspace");
 		} finally {
 			if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 			else process.env.PI_CODING_AGENT_DIR = previousAgentDir;

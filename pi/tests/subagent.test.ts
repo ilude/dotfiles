@@ -1338,6 +1338,8 @@ Do not load this agent.
 			const { tool } = await loadTool();
 			const ctx = createMockCtx({ cwd: tmpDir });
 
+			const previousOnclaveCapability = process.env.PI_ONCLAVE_ROOT_CAPABILITY;
+			process.env.PI_ONCLAVE_ROOT_CAPABILITY = "root-only-test-capability";
 			const result = await tool.execute(
 				"call-project-default",
 				{
@@ -1371,7 +1373,16 @@ Do not load this agent.
 				env: Record<string, string>;
 			};
 			expect(spawnOptions.env.PI_SUBAGENT_RUN_ID).toMatch(/^[0-9a-f-]+$/);
+			expect(spawnOptions.env.PI_SUBAGENT_WORKSPACE_ROOT).toBe(
+				path.resolve(tmpDir),
+			);
 			expect(Date.parse(spawnOptions.env.PI_SUBAGENT_STARTED_AT)).not.toBeNaN();
+			expect(spawnOptions.env.PI_ONCLAVE_ROOT_CAPABILITY).toBeUndefined();
+			expect(spawnOptions.env.PI_ONCLAVE_INELIGIBLE).toBe("1");
+			if (previousOnclaveCapability === undefined)
+				delete process.env.PI_ONCLAVE_ROOT_CAPABILITY;
+			else
+				process.env.PI_ONCLAVE_ROOT_CAPABILITY = previousOnclaveCapability;
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -4680,18 +4691,35 @@ You are a test agent.
 				runs.map((event) => [
 					(event.data as { mode: string }).mode,
 					event.data as {
+						schemaVersion: number;
 						status: string;
+						executionKind: string;
+						outcomeCode: string;
+						legacyAdapterUse: boolean;
+						legacyAdapterBranch: string;
+						onclaveEligible: boolean;
 						parentVisibleBytes: number;
 						workers: Array<{
 							chainTransferBytes?: number;
 							parentVisibleBytes: number;
 							durationMs: number;
+							executionKind: string;
+							outcomeCode: string;
+							onclaveEligible: boolean;
 							usage: { inputTokens: number; costSource: string };
 						}>;
 					},
 				]),
 			);
 			const parallel = byMode.get("parallel");
+			expect(parallel).toMatchObject({
+				schemaVersion: 3,
+				executionKind: "legacy",
+				outcomeCode: "completed",
+				legacyAdapterUse: true,
+				legacyAdapterBranch: "parallel",
+				onclaveEligible: false,
+			});
 			expect(parallel?.workers).toHaveLength(2);
 			expect(parallel?.parentVisibleBytes).toBeGreaterThan(0);
 			expect(
@@ -4701,7 +4729,13 @@ You are a test agent.
 				true,
 			);
 			expect(
-				parallel?.workers.every((worker) => worker.usage.inputTokens === 10),
+				parallel?.workers.every(
+					(worker) =>
+						worker.usage.inputTokens === 10 &&
+						worker.executionKind === "legacy" &&
+						worker.outcomeCode === "completed" &&
+						worker.onclaveEligible === false,
+				),
 			).toBe(true);
 			const chain = byMode.get("chain");
 			expect(chain?.workers[0]?.chainTransferBytes).toBeGreaterThan(0);
@@ -4710,7 +4744,10 @@ You are a test agent.
 				(event) => (event.data as { status: string }).status === "rejected",
 			)?.data as { status: string } | undefined;
 			expect(failure?.status).toBe("rejected");
-			expect(JSON.stringify(failure)).not.toContain("Unknown agent");
+			const serializedRuns = JSON.stringify(runs);
+			expect(serializedRuns).not.toContain("Unknown agent");
+			for (const forbidden of ["parallel one", "chain one", tmpDir])
+				expect(serializedRuns).not.toContain(forbidden);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

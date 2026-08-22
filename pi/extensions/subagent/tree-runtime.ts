@@ -9,7 +9,7 @@ import {
 export const DEFAULT_MAX_ACTIVE_TREE_DESCENDANTS = 8;
 export const MAX_ACTIVE_TREE_DESCENDANTS = 16;
 export const MAX_RETAINED_TREE_RUNS = 512;
-export const SUBAGENT_TREE_PROTOCOL_VERSION = 2;
+export const SUBAGENT_TREE_PROTOCOL_VERSION = 3;
 export const SUBAGENT_TREE_RESTART_REQUIRED =
 	"Subagent tree broker protocol or runtime generation does not match this Pi process. Restart Pi before starting new subagent work.";
 
@@ -86,6 +86,7 @@ export interface SubagentTreePermit {
 
 export interface SubagentTreeController {
 	readonly parent: SubagentTreeMetadata;
+	ping(): Promise<void>;
 	acquire(
 		request: Omit<RequestSubagentTreePermit, "treeId" | "parentRunId">,
 		signal?: AbortSignal,
@@ -98,6 +99,7 @@ export interface SubagentTreeRunSnapshot extends SubagentTreeMetadata {
 	readonly state: SubagentTreeRunState;
 	readonly pid?: number;
 	readonly cancellationPending?: boolean;
+	readonly runtimePingAt?: number;
 	readonly scopeLease?: {
 		readonly repositoryRoot: string;
 		readonly scopes: readonly string[];
@@ -136,12 +138,14 @@ type MutableTreeNode = {
 	cancel?: () => void | Promise<void>;
 	cancellation?: Promise<void>;
 	cancellationPending?: boolean;
+	runtimePingAt?: number;
 	resolvePermit?: (permit: SubagentTreePermit) => void;
 	rejectPermit?: (error: Error) => void;
 };
 
 type BrokerRequest =
 	| { readonly type: "handshake" }
+	| { readonly type: "ping" }
 	| { readonly type: "acquire"; readonly request: RequestSubagentTreePermit }
 	| { readonly type: "register"; readonly runId: string; readonly pid: number }
 	| { readonly type: "release"; readonly runId: string }
@@ -254,7 +258,7 @@ function isBrokerRequest(value: unknown): value is BrokerRequestWithCaller & {
 		typeof record.callerToken === "string" &&
 		typeof record.protocolVersion === "number" &&
 		typeof record.runtimeGeneration === "string" &&
-		["handshake", "acquire", "register", "release", "cancel"].includes(
+		["handshake", "ping", "acquire", "register", "release", "cancel"].includes(
 			typeof record.type === "string" ? record.type : "",
 		)
 	);
@@ -556,6 +560,9 @@ export class SubagentTreeBroker {
 			...(node.cancellationPending
 				? { cancellationPending: true }
 				: {}),
+			...(node.runtimePingAt === undefined
+				? {}
+				: { runtimePingAt: node.runtimePingAt }),
 			...(node.scopeLease
 				? {
 						scopeLease: {
@@ -870,6 +877,13 @@ export class SubagentTreeBroker {
 						protocolVersion: this.protocolVersion,
 						runtimeGeneration: this.runtimeGeneration,
 					};
+				case "ping": {
+					const caller = this.nodes.get(candidate.callerRunId);
+					if (!caller)
+						throw new SubagentTreeAdmissionError("Tree broker caller is not active.");
+					caller.runtimePingAt = Date.now();
+					return { ok: true };
+				}
 				case "acquire": {
 					if (candidate.request.parentRunId !== candidate.callerRunId)
 						throw new SubagentTreeAdmissionError(
@@ -969,6 +983,10 @@ export class SubagentTreeRootClient implements SubagentTreeController {
 		};
 	}
 
+	async ping(): Promise<void> {
+		return Promise.resolve();
+	}
+
 	async acquire(
 		request: Omit<RequestSubagentTreePermit, "treeId" | "parentRunId">,
 		signal?: AbortSignal,
@@ -992,13 +1010,11 @@ export class SubagentTreeRootClient implements SubagentTreeController {
 				await permit.release();
 				throw signal.reason ?? new Error("Tree permit request was cancelled.");
 			}
-			if (permit.metadata.role === "coordinator") {
-				try {
-					this.remoteCredentials = await this.broker.listen();
-				} catch (error) {
-					await permit.release();
-					throw error;
-				}
+			try {
+				this.remoteCredentials = await this.broker.listen();
+			} catch (error) {
+				await permit.release();
+				throw error;
 			}
 			return permit;
 		} finally {
@@ -1012,7 +1028,6 @@ export class SubagentTreeRootClient implements SubagentTreeController {
 
 	childEnvironment(permit: SubagentTreePermit): NodeJS.ProcessEnv {
 		const identity = identityEnvironment(permit);
-		if (permit.metadata.role !== "coordinator") return identity;
 		if (!this.remoteCredentials)
 			throw new Error("Coordinator process is missing tree broker credentials.");
 		return {
@@ -1037,6 +1052,11 @@ export class SubagentTreeClient implements SubagentTreeController {
 		readonly parent: SubagentTreeMetadata,
 		private readonly callerToken: string,
 	) {}
+
+	async ping(): Promise<void> {
+		await this.handshake();
+		await this.request({ type: "ping" });
+	}
 
 	async acquire(
 		request: Omit<RequestSubagentTreePermit, "treeId" | "parentRunId">,

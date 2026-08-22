@@ -28,6 +28,7 @@ import {
 	type ExtensionContext,
 	getAgentDir,
 	getMarkdownTheme,
+	ProjectTrustStore,
 	truncateTail,
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
@@ -62,8 +63,15 @@ import {
 	buildOrchestrationExperimentAssignmentEvent,
 	buildOrchestrationExperimentOutcomeEvent,
 	buildOrchestrationRunEvent,
+	buildSubagentInterventionEvent,
+	type CoordinatorBudgetOutcome,
+	type LegacyAdapterBranch,
+	type OrchestrationExecutionKind,
+	type OrchestrationOutcomeCode,
 	type OrchestrationWorker,
 	type ReadOnlyFanoutAssignment,
+	type TaskLinkSource,
+	type WorkspaceRootSource,
 } from "../../lib/orchestration-telemetry.js";
 import {
 	getTask,
@@ -88,6 +96,7 @@ import {
 	resolveAgentSkillPaths,
 } from "./agents.js";
 import {
+	coordinatorBudgetFor,
 	READ_TOOL_ALLOWLIST,
 	SubagentCoordinateSchema,
 	SubagentReadSchema,
@@ -105,8 +114,14 @@ import {
 } from "./modern-adapter.js";
 import { createSubagentControlFacade } from "./control.js";
 import {
+	executeInterruptedRecovery,
+	INTERRUPTED_TOOL_RECOVERY_MESSAGE,
+	prepareInterruptedRecovery,
+} from "./recovery.js";
+import {
 	subagentRunManager,
 	type SubagentRunMode,
+	type SubagentRunSnapshot,
 	type SubagentRunUsage,
 } from "./run-manager.js";
 import {
@@ -121,6 +136,10 @@ import {
 	formatSubagentStatusList,
 	inspectSubagentStatus,
 } from "./status.js";
+import {
+	checkWorkspaceTool,
+	type WorkspacePolicy,
+} from "./workspace-policy.js";
 import {
 	disposeInstalledSubagentTreeBroker,
 	getSubagentTreeBroker,
@@ -157,6 +176,67 @@ import {
 function buildSubagentTraceparent(): string {
 	const parentTraceId = getTraceId() || newTraceId();
 	return formatTraceparent(parentTraceId, newSpanId());
+}
+
+const LEGACY_ADAPTER_BRANCH_KEY = "__legacyAdapterBranch" as const;
+type InternalExecutorInput = Partial<ModernExecutorInput> & {
+	readonly [LEGACY_ADAPTER_BRANCH_KEY]?: LegacyAdapterBranch;
+};
+
+function recordSubagentIntervention(input: {
+	orchestrationId?: string;
+	runId?: string;
+	code: Parameters<typeof buildSubagentInterventionEvent>[0]["code"];
+	outcome: Parameters<typeof buildSubagentInterventionEvent>[0]["outcome"];
+	acknowledged: boolean;
+	session?: string;
+}): void {
+	if (!input.orchestrationId || !input.runId) return;
+	const event = buildSubagentInterventionEvent({
+		orchestrationId: input.orchestrationId,
+		runId: input.runId,
+		code: input.code,
+		outcome: input.outcome,
+		acknowledged: input.acknowledged,
+		...(input.session ? { session: input.session } : {}),
+	});
+	if (event)
+		recordEvent(event as unknown as Parameters<typeof recordEvent>[0]);
+}
+
+function legacyBranchForInput(params: Record<string, unknown>): LegacyAdapterBranch {
+	if (params.readOnlyFanout !== undefined) return "fanout";
+	if (params.continue !== undefined) return "continue";
+	if (Array.isArray(params.chain) && params.chain.length > 0) return "chain";
+	if (Array.isArray(params.tasks) && params.tasks.length > 0) return "parallel";
+	return "single";
+}
+
+function outcomeCodeForResult(
+	result: Pick<SingleResult, "exitCode" | "stopReason" | "errorMessage">,
+): OrchestrationOutcomeCode {
+	const classification = classifySubagentResult(result);
+	if (classification === "completed") return "completed";
+	if (classification === "cancelled") {
+		return /budget|deadline|wall-clock|turn/i.test(
+			`${result.stopReason ?? ""} ${result.errorMessage ?? ""}`,
+		)
+			? "timeout"
+			: "interrupted";
+	}
+	return "failed";
+}
+
+function coordinatorBudgetOutcomeForResult(
+	result: Pick<SingleResult, "usage" | "stopReason" | "errorMessage">,
+	budget: { maxTurns: number; softDeadlineMs: number } | undefined,
+): CoordinatorBudgetOutcome {
+	if (!budget) return "not_applicable";
+	const reason = `${result.stopReason ?? ""} ${result.errorMessage ?? ""}`;
+	if (/soft deadline|wall-clock budget/i.test(reason)) return "soft_deadline";
+	if (result.usage.turns >= budget.maxTurns || /turn budget/i.test(reason))
+		return "max_turns";
+	return "within_budget";
 }
 
 export const MAX_SUBAGENT_WORKERS_PER_WAVE = 8;
@@ -476,6 +556,23 @@ interface SavedOutputReference {
 	message: string;
 }
 
+interface SubagentTelemetryMetadata {
+	executionKind: OrchestrationExecutionKind;
+	workspaceRootSource: WorkspaceRootSource;
+	markerCount: number;
+	boundaryCount: number;
+	searchCount: number;
+	watchdogCount: number;
+	pingCount: number;
+	interruptionCount: number;
+	recoveryCount: number;
+	coordinatorBudgetOutcome: CoordinatorBudgetOutcome;
+	legacyAdapterUse: boolean;
+	legacyAdapterBranch?: LegacyAdapterBranch;
+	taskLinkSource: TaskLinkSource;
+	onclaveEligible: false;
+}
+
 export interface SingleResult {
 	agent: string;
 	agentSource: "user" | "project" | "unknown";
@@ -519,6 +616,8 @@ export interface SingleResult {
 	attempt?: number;
 	retryOrigin?: string;
 	coordinatorTaskId?: string;
+	/** Internal metadata used only when constructing the content-free closeout event. */
+	telemetry?: SubagentTelemetryMetadata;
 }
 
 export interface SubagentDetails {
@@ -890,6 +989,14 @@ function collectSubagentActivity(
 	};
 }
 
+function collectSubagentSearchCount(messages: Message[]): number {
+	return getDisplayItems(messages).filter(
+		(item) =>
+			item.type === "toolCall" &&
+			["grep", "find", "ls"].includes(item.name),
+	).length;
+}
+
 async function mapWithConcurrencyLimit<TIn, TOut>(
 	items: TIn[],
 	concurrency: number,
@@ -984,7 +1091,26 @@ interface SubagentRunContext {
 	attempt?: number;
 	retryOrigin?: string;
 	workflowCapabilities?: readonly string[];
+	workspaceRoot?: string;
 	treeClient?: SubagentTreeController;
+	telemetryExecutionKind?: OrchestrationExecutionKind;
+	workspaceRootSource?: WorkspaceRootSource;
+	markerCount?: number;
+	boundaryCount?: number;
+	searchCount?: number;
+	watchdogCount?: number;
+	pingCount?: number;
+	interruptionCount?: number;
+	recoveryCount?: number;
+	coordinatorBudgetOutcome?: CoordinatorBudgetOutcome;
+	legacyAdapterUse?: boolean;
+	legacyAdapterBranch?: LegacyAdapterBranch;
+	taskLinkSource?: TaskLinkSource;
+	onclaveEligible?: false;
+	telemetryWorkspaceRootSource?: WorkspaceRootSource;
+	telemetryTaskLinkSource?: TaskLinkSource;
+	telemetryMarkerCount?: number;
+	telemetryBoundaryCount?: number;
 }
 
 type CurrentSubagentRole = "root" | SubagentRole;
@@ -1331,6 +1457,29 @@ export async function runSingleAgent(
 		step,
 		runId,
 		...(taskId ? { taskId } : {}),
+		...(runContext?.telemetryExecutionKind
+			? {
+					telemetry: {
+						executionKind: runContext.telemetryExecutionKind,
+						workspaceRootSource: runContext.workspaceRootSource ?? "default",
+						markerCount: runContext.markerCount ?? 0,
+						boundaryCount: runContext.boundaryCount ?? 0,
+						searchCount: runContext.searchCount ?? 0,
+						watchdogCount: runContext.watchdogCount ?? 0,
+						pingCount: runContext.pingCount ?? 0,
+						interruptionCount: runContext.interruptionCount ?? 0,
+						recoveryCount: runContext.recoveryCount ?? 0,
+						coordinatorBudgetOutcome:
+							runContext.coordinatorBudgetOutcome ?? "not_applicable",
+						legacyAdapterUse: runContext.legacyAdapterUse ?? false,
+						...(runContext.legacyAdapterBranch
+							? { legacyAdapterBranch: runContext.legacyAdapterBranch }
+							: {}),
+						taskLinkSource: runContext.taskLinkSource ?? "none",
+						onclaveEligible: false,
+					},
+			  }
+			: {}),
 	};
 
 	const emitUpdate = () => {
@@ -1543,8 +1692,13 @@ export async function runSingleAgent(
 			// child Pi process carries the parent's trace and treats this
 			// subagent's span as its parent. Spread process.env first so all
 			// existing env vars (PATH, HOME, OAUTH tokens, etc.) are preserved.
+			const {
+				PI_ONCLAVE_ROOT_CAPABILITY: _onclaveRootCapability,
+				...inheritedChildEnv
+			} = process.env;
 			const childEnv = {
-				...process.env,
+				...inheritedChildEnv,
+				PI_ONCLAVE_INELIGIBLE: "1",
 				TRACEPARENT: buildSubagentTraceparent(),
 				PI_SUBAGENT_RUN_ID: runId,
 				PI_SUBAGENT_STARTED_AT: subagentStartedAt,
@@ -1562,6 +1716,8 @@ export async function runSingleAgent(
 								runContext.coordinatorTaskId,
 						}
 					: {}),
+				PI_SUBAGENT_WORKSPACE_ROOT:
+					runContext?.workspaceRoot ?? path.resolve(cwd ?? defaultCwd),
 				...(runContext?.treeClient && treePermit
 					? runContext.treeClient.childEnvironment(treePermit)
 					: {}),
@@ -1787,11 +1943,13 @@ export async function runSingleAgent(
 				removeAbortListener = () =>
 					runController.signal.removeEventListener("abort", killProc);
 			}
-			if (runContext?.readOnly) {
+			if (runContext?.readOnly || runContext?.timeoutMs !== undefined) {
 				readOnlyTimeoutTimer = setTimeout(
 					() =>
 						stopForBudget(
-							"Read-only subagent stopped at its wall-clock budget; output may be partial.",
+							runContext?.executionKind === "coordinator"
+								? "Coordinator stopped at its soft deadline; output and gaps may be partial."
+								: "Read-only subagent stopped at its wall-clock budget; output may be partial.",
 						),
 					readOnlyTimeoutMs,
 				);
@@ -1945,6 +2103,10 @@ type TaskParams = {
 	resolvedEffort?: AgentEffort;
 	normalizedScopes?: string[];
 	repositoryRoot?: string;
+	telemetryWorkspaceRootSource?: WorkspaceRootSource;
+	telemetryTaskLinkSource?: TaskLinkSource;
+	telemetryMarkerCount?: number;
+	telemetryBoundaryCount?: number;
 };
 
 type ChainParams = TaskParams;
@@ -2389,9 +2551,24 @@ export default function (pi: ExtensionAPI) {
 	let statusContext: ExtensionContext | undefined;
 	let unsubscribeStatus: (() => void) | undefined;
 	let unsubscribeBackgroundCompletion: (() => void) | undefined;
+	let runtimePingTimer: ReturnType<typeof setInterval> | undefined;
 	let renderedStatus: string | undefined;
 	let refreshAgentTools: (agentNames: readonly string[]) => void = () => {};
 	let deliveryScheduled = false;
+	let resumeInterruptedSession:
+		| ((
+				run: SubagentRunSnapshot,
+				sessionPath: string,
+				toolCallId: string,
+				signal: AbortSignal | undefined,
+				onUpdate: OnUpdateCallback | undefined,
+				ctx: ExtensionContext,
+			) => Promise<AgentToolResult<SubagentDetails>>)
+		| undefined;
+	const assignedWorkspaceRoot = process.env.PI_SUBAGENT_WORKSPACE_ROOT;
+	const activeWorkspacePolicy: WorkspacePolicy | undefined = assignedWorkspaceRoot
+		? Object.freeze({ workspaceRoot: assignedWorkspaceRoot })
+		: undefined;
 
 	const agentDiscoveryFor = (
 		ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
@@ -2511,6 +2688,21 @@ export default function (pi: ExtensionAPI) {
 		});
 	};
 
+	const inspectTrackedRun = (
+		run: SubagentRunSnapshot,
+		options: { readonly sinceActivityVersion?: number } = {},
+	) => {
+		const brokerRun = getSubagentTreeBroker()
+			.list()
+			.find((candidate) => candidate.runId === run.runId);
+		return inspectSubagentStatus(run, {
+			...options,
+			...(brokerRun?.runtimePingAt === undefined
+				? {}
+				: { runtimePingAt: brokerRun.runtimePingAt }),
+		});
+	};
+
 	pi.registerTool({
 		name: "subagent_status",
 		label: "Subagent Status",
@@ -2550,7 +2742,7 @@ export default function (pi: ExtensionAPI) {
 					);
 				const inspections = subagentRunManager
 					.list()
-					.map((run) => inspectSubagentStatus(run));
+					.map((run) => inspectTrackedRun(run));
 				const trackedIds = new Set(
 					inspections.map((inspection) => inspection.run.runId),
 				);
@@ -2625,7 +2817,7 @@ export default function (pi: ExtensionAPI) {
 						"sinceActivityVersion requires an exact run ID, not an orchestration ID.",
 					);
 				const inspections = groupedRuns.map((groupedRun) =>
-					inspectSubagentStatus(groupedRun),
+					inspectTrackedRun(groupedRun),
 				);
 				return {
 					content: [
@@ -2647,7 +2839,7 @@ export default function (pi: ExtensionAPI) {
 					},
 				};
 			}
-			const inspection = inspectSubagentStatus(run, {
+			const inspection = inspectTrackedRun(run, {
 				sinceActivityVersion: params.sinceActivityVersion,
 			});
 			return {
@@ -2663,6 +2855,11 @@ export default function (pi: ExtensionAPI) {
 					lastActivityAt: inspection.lastActivityAt,
 					lastActivityKind: inspection.lastActivityKind,
 					quietForMs: inspection.quietForMs,
+					watchdogState: inspection.watchdogState,
+					runtimePingAt: inspection.runtimePingAt,
+					runtimePingAgeMs: inspection.runtimePingAgeMs,
+					activeToolDurationMs: inspection.activeToolDurationMs,
+					activeToolOutputAgeMs: inspection.activeToolOutputAgeMs,
 					progressedSince: inspection.progressedSince,
 					usage: run.usage,
 					liveTools: run.liveTools.map((tool) => tool.name),
@@ -2680,23 +2877,153 @@ export default function (pi: ExtensionAPI) {
 		name: "subagent_control",
 		label: "Subagent Control",
 		description:
-			"Cancel, force-terminate, or safely reconcile an exact live broker run or tree boundary.",
+			"Cancel, force-terminate, recover an interrupted tool from its persisted child session, or safely reconcile an exact live broker boundary.",
 		promptSnippet: "Control an exact subagent broker boundary",
 		promptGuidelines: [
 			"Use exact complete run or tree IDs. Prefixes and wildcard selectors are rejected.",
 			"Reconcile only terminal or proven-absent process boundaries; live or ambiguous boundaries are rejected.",
 		],
 		parameters: Type.Object({
-			action: StringEnum(["cancel", "force_terminate", "reconcile"] as const),
+			action: StringEnum([
+				"cancel",
+				"force_terminate",
+				"interrupt_tool",
+				"reconcile",
+			] as const),
 			selector: Type.Object({
 				type: StringEnum(["run", "tree"] as const),
 				id: Type.String({ minLength: 1 }),
 			}),
+			toolCallId: Type.Optional(Type.String({ minLength: 1 })),
+			activityVersion: Type.Optional(Type.Integer({ minimum: 0 })),
 		}),
-		execute: async (_toolCallId, params) => {
+		execute: async (controlToolCallId, params, signal, onUpdate, ctx) => {
 			if (currentSubagentIdentity().role !== "root")
 				throw new Error("Only the root agent can control subagent boundaries.");
-			const result = await subagentControl.execute(params);
+			if (params.action === "interrupt_tool") {
+				if (params.selector.type !== "run")
+					throw new Error("interrupt_tool requires one exact run selector.");
+				if (!params.toolCallId || params.activityVersion === undefined)
+					throw new Error(
+						"interrupt_tool requires the active toolCallId and current activityVersion from subagent_status.",
+					);
+				const recovery = prepareInterruptedRecovery(
+					subagentRunManager.get(params.selector.id),
+					{
+						runId: params.selector.id,
+						toolCallId: params.toolCallId,
+						activityVersion: params.activityVersion,
+						parentSessionId: ctx.sessionManager?.getSessionId?.(),
+					},
+					(runId) => findDelegatedSession(getDelegatedSessionDir(), runId),
+				);
+				const { run, sessionPath } = recovery;
+				recordSubagentIntervention({
+					orchestrationId: run.orchestrationId,
+					runId: run.runId,
+					code: "interruption",
+					outcome: "interrupted",
+					acknowledged: true,
+					session: ctx.sessionManager?.getSessionId?.(),
+				});
+				const resumeSession = resumeInterruptedSession;
+				if (!resumeSession)
+					throw new Error("Subagent recovery is unavailable.");
+				let resumed: AgentToolResult<SubagentDetails>;
+				try {
+					resumed = await executeInterruptedRecovery(recovery, {
+					terminate: async () => {
+						const termination = await subagentControl.execute({
+							action: "force_terminate",
+							selector: params.selector,
+						});
+						return termination.finalState === "terminated";
+					},
+					waitForSettlement: (runId) =>
+						subagentRunManager.waitForSettlement(runId),
+					resume: () =>
+						resumeSession(
+							run,
+							sessionPath,
+							controlToolCallId,
+							signal,
+							onUpdate,
+							ctx,
+						),
+					});
+				} catch (error) {
+					recordSubagentIntervention({
+						orchestrationId: run.orchestrationId,
+						runId: run.runId,
+						code: "recovery",
+						outcome: "failed",
+						acknowledged: false,
+						session: ctx.sessionManager?.getSessionId?.(),
+					});
+					throw error;
+				}
+				recordSubagentIntervention({
+					orchestrationId: run.orchestrationId,
+					runId: run.runId,
+					code: "recovery",
+					outcome: "continued",
+					acknowledged: true,
+					session: ctx.sessionManager?.getSessionId?.(),
+				});
+				return {
+					...resumed,
+					content: [
+						{
+							type: "text",
+							text: `Interrupted ${params.toolCallId}, settled run ${run.runId}, and resumed ${sessionPath}. The interrupted tool outcome remains unknown.\n\n${resumed.content
+								.filter((item) => item.type === "text")
+								.map((item) => item.text)
+								.join("\n")}`,
+						},
+					],
+				};
+			}
+			const action =
+				params.action === "cancel"
+					? "cancel"
+					: params.action === "force_terminate"
+						? "force_terminate"
+						: "reconcile";
+			const selectedRuns = getSubagentTreeBroker()
+				.list()
+				.filter((run) =>
+					params.selector.type === "run"
+						? run.runId === params.selector.id
+						: run.treeId === params.selector.id,
+				);
+			const result = await subagentControl.execute({
+				action,
+				selector: params.selector,
+			});
+			for (const outcome of result.outcomes) {
+				const run = selectedRuns.find((candidate) => candidate.runId === outcome.runId);
+				if (!run) continue;
+				const failed = outcome.outcome === "failed";
+				recordSubagentIntervention({
+					orchestrationId: run.treeId,
+					runId: run.runId,
+					code:
+						action === "cancel"
+							? "interruption"
+							: action === "force_terminate"
+								? "containment"
+								: "boundary",
+					outcome: failed
+						? "failed"
+						: action === "cancel"
+							? "interrupted"
+							: action === "force_terminate"
+								? "contained"
+								: "completed",
+					acknowledged: !failed,
+					session: ctx.sessionManager?.getSessionId?.(),
+				});
+			}
 			return {
 				content: [{ type: "text", text: JSON.stringify(result) }],
 				details: result,
@@ -2761,8 +3088,25 @@ export default function (pi: ExtensionAPI) {
 		sessionAgentCatalog = resolveSessionAgentCatalog(undefined, ctx);
 		refreshAgentTools(sessionAgentCatalog.agentNames);
 		const identity = currentSubagentIdentity();
-		if (identity.role !== "root")
+		if (identity.role !== "root") {
 			deactivateTools(pi, ["subagent_status", "subagent_control"]);
+			const runtimeTreeClient = treeClientFromEnvironment(process.env);
+			if (runtimeTreeClient) {
+				let pingFailureReported = false;
+				const sendRuntimePing = () => {
+					void runtimeTreeClient.ping().catch((error: unknown) => {
+						if (pingFailureReported) return;
+						pingFailureReported = true;
+						process.stderr.write(
+							`Subagent runtime ping failed: ${error instanceof Error ? error.message : String(error)}\n`,
+						);
+					});
+				};
+				sendRuntimePing();
+				runtimePingTimer = setInterval(sendRuntimePing, 5_000);
+				runtimePingTimer.unref();
+			}
+		}
 		const historicalTools = [...HISTORICAL_SUBAGENT_TOOL_NAMES];
 		const unavailableModernTools =
 			identity.role === "leaf" || identity.depth >= 2
@@ -2784,6 +3128,28 @@ export default function (pi: ExtensionAPI) {
 		scheduleBackgroundCompletionDelivery();
 	});
 
+	pi.on("tool_call", (event, ctx) => {
+		if (!activeWorkspacePolicy) return undefined;
+		const result = checkWorkspaceTool(
+			activeWorkspacePolicy,
+			String(event.toolName ?? ""),
+			event.input,
+			ctx.cwd,
+		);
+		if (result.outcome === "deny")
+			return { block: true, reason: `${result.code}: ${result.reason}` };
+		if (
+			result.governed &&
+			(event.toolName === "bash" || event.toolName === "pwsh") &&
+			event.input &&
+			typeof event.input === "object"
+		) {
+			const shellInput = event.input as { timeout?: unknown };
+			if (shellInput.timeout === undefined) shellInput.timeout = 120;
+		}
+		return undefined;
+	});
+
 	pi.on("agent_settled", () => {
 		if (subagentRunManager.pendingBackgroundCompletions().length > 0)
 			scheduleBackgroundCompletionDelivery();
@@ -2799,6 +3165,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", async (event) => {
 		sessionOpen = false;
+		if (runtimePingTimer) clearInterval(runtimePingTimer);
+		runtimePingTimer = undefined;
 		unsubscribeStatus?.();
 		unsubscribeStatus = undefined;
 		unsubscribeBackgroundCompletion?.();
@@ -2842,13 +3210,28 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const modernInput = params as typeof params & Partial<ModernExecutorInput>;
-			const prepared = modernInput.__modernPrepared;
+			const internalParams = modernInput as typeof modernInput & InternalExecutorInput;
+			const prepared = internalParams.__modernPrepared;
+			const legacyAdapterBranch =
+				internalParams[LEGACY_ADAPTER_BRANCH_KEY] ??
+				(prepared
+					? undefined
+					: legacyBranchForInput(params as unknown as Record<string, unknown>));
+			const legacyAdapterUse = legacyAdapterBranch !== undefined;
 			const currentIdentity = currentSubagentIdentity();
 			const subscriptionRoot = isSubscriptionOrchestratorModel(ctx.model);
 			const internalWorkflowContext = internalWorkflowRuns.get(_toolCallId);
 			if (currentIdentity.role === "leaf" || currentIdentity.depth >= 2)
 				throw new Error("Leaf and depth-two subagents cannot delegate.");
 			const invocationCwd = prepared?.workspaceRoot ?? ctx.cwd;
+			const invocationTelemetryExecutionKind: OrchestrationExecutionKind =
+				internalParams.__modernRequest?.kind ??
+				(legacyAdapterUse ? "legacy" : "write");
+			const invocationWorkspaceRootSource: WorkspaceRootSource =
+				prepared?.request.workspaceRoot !== undefined ||
+				(!prepared && params.cwd !== undefined)
+					? "override"
+					: "default";
 			const parentSessionId = ctx.sessionManager?.getSessionId?.();
 			await compressDelegatedSessions().catch(() => []);
 			const agentScope =
@@ -3038,6 +3421,10 @@ export default function (pi: ExtensionAPI) {
 					...(fanoutAssignment ? { experiment: fanoutAssignment } : {}),
 				});
 			const invocationStartedAt = Date.now();
+			const coordinatorBudget =
+				internalParams.__modernRequest?.kind === "coordinator"
+					? coordinatorBudgetFor(internalParams.__modernRequest)
+					: undefined;
 			let orchestrationEmitted = false;
 			let experimentAssignmentEmitted = false;
 			const complete = <T extends AgentToolResult<SubagentDetails>>(
@@ -3055,6 +3442,29 @@ export default function (pi: ExtensionAPI) {
 				const parentVisibleBytes = Buffer.byteLength(parentText ?? "", "utf-8");
 				const workers: OrchestrationWorker[] = results.map((worker, index) => {
 					const classification = classifySubagentResult(worker);
+					const outcomeCode = outcomeCodeForResult(worker);
+					const fallbackTelemetry: SubagentTelemetryMetadata = {
+						executionKind: invocationTelemetryExecutionKind,
+						workspaceRootSource: invocationWorkspaceRootSource,
+						markerCount: worker.workPaths?.length ?? 0,
+						boundaryCount: worker.workBoundary?.length ?? 0,
+						searchCount: collectSubagentSearchCount(worker.messages),
+						watchdogCount: outcomeCode === "timeout" ? 1 : 0,
+						pingCount: 0,
+						interruptionCount: outcomeCode === "interrupted" ? 1 : 0,
+						recoveryCount: 0,
+						coordinatorBudgetOutcome: coordinatorBudget
+							? coordinatorBudgetOutcomeForResult(worker, coordinatorBudget)
+							: "not_applicable",
+						legacyAdapterUse,
+						...(legacyAdapterBranch ? { legacyAdapterBranch } : {}),
+						taskLinkSource: worker.taskId ? "explicit" : "none",
+						onclaveEligible: false,
+					};
+					const telemetry = worker.telemetry ?? fallbackTelemetry;
+					const workerBudgetOutcome = coordinatorBudget
+						? coordinatorBudgetOutcomeForResult(worker, coordinatorBudget)
+						: "not_applicable";
 					const isFinalChainWorker =
 						originalMode === "chain" && index === results.length - 1;
 					const childText = getResultOutput(worker);
@@ -3096,6 +3506,24 @@ export default function (pi: ExtensionAPI) {
 						...(worker.advisoryRecommendedRoute ? { advisoryRecommendedRoute: worker.advisoryRecommendedRoute } : {}),
 						...(worker.advisoryClassification ? { advisoryClassification: worker.advisoryClassification } : {}),
 						...(worker.advisoryTopologyMismatch === undefined ? {} : { advisoryTopologyMismatch: worker.advisoryTopologyMismatch }),
+						executionKind: telemetry.executionKind,
+						outcomeCode,
+						workspaceRootSource: telemetry.workspaceRootSource,
+						markerCount: telemetry.markerCount,
+						boundaryCount: telemetry.boundaryCount,
+						searchCount: collectSubagentSearchCount(worker.messages) || telemetry.searchCount,
+						watchdogCount: telemetry.watchdogCount || (outcomeCode === "timeout" ? 1 : 0),
+						pingCount: telemetry.pingCount,
+						interruptionCount:
+							telemetry.interruptionCount || (outcomeCode === "interrupted" ? 1 : 0),
+						recoveryCount: telemetry.recoveryCount,
+						coordinatorBudgetOutcome: workerBudgetOutcome,
+						legacyAdapterUse: telemetry.legacyAdapterUse,
+						...(telemetry.legacyAdapterBranch
+							? { legacyAdapterBranch: telemetry.legacyAdapterBranch }
+							: {}),
+						taskLinkSource: telemetry.taskLinkSource,
+						onclaveEligible: false,
 						...(worker.routingExperiment
 							? {
 									experimentId: worker.routingExperiment.experimentId,
@@ -3144,19 +3572,64 @@ export default function (pi: ExtensionAPI) {
 				const anyCancelled = workers.some(
 					(worker) => worker.status === "cancelled",
 				);
+				const runStatus = allCompleted
+					? "completed" as const
+					: anyCancelled
+						? "cancelled" as const
+						: results.length === 0
+							? "rejected" as const
+							: "failed" as const;
+				const runOutcomeCode: OrchestrationOutcomeCode =
+					runStatus === "completed"
+						? "completed"
+						: runStatus === "rejected"
+							? "rejected"
+							: anyCancelled
+								? workers.some((worker) => worker.outcomeCode === "timeout")
+									? "timeout"
+									: "interrupted"
+								: workers.some((worker) => worker.status === "completed")
+									? "partial"
+									: "failed";
+				const runBudgetOutcome: CoordinatorBudgetOutcome = coordinatorBudget
+					? workers.length > coordinatorBudget.maxWorkers
+						? "max_workers"
+						: workers.some((worker) => worker.coordinatorBudgetOutcome === "soft_deadline")
+							? "soft_deadline"
+							: workers.some((worker) => worker.coordinatorBudgetOutcome === "max_turns")
+								? "max_turns"
+								: "within_budget"
+					: "not_applicable";
+				const taskLinkSources = workers.map((worker) => worker.taskLinkSource);
+				const runTaskLinkSource: TaskLinkSource = taskLinkSources.includes("invalid")
+					? "invalid"
+					: taskLinkSources.includes("auto")
+						? "auto"
+						: taskLinkSources.includes("explicit")
+							? "explicit"
+							: "none";
 				const event = buildOrchestrationRunEvent({
+					executionKind: invocationTelemetryExecutionKind,
+					outcomeCode: runOutcomeCode,
+					workspaceRootSource: invocationWorkspaceRootSource,
+					markerCount: workers.reduce((sum, worker) => sum + (worker.markerCount ?? 0), 0),
+					boundaryCount: workers.reduce((sum, worker) => sum + (worker.boundaryCount ?? 0), 0),
+					searchCount: workers.reduce((sum, worker) => sum + (worker.searchCount ?? 0), 0),
+					watchdogCount: workers.reduce((sum, worker) => sum + (worker.watchdogCount ?? 0), 0),
+					pingCount: 0,
+					interruptionCount: workers.reduce((sum, worker) => sum + (worker.interruptionCount ?? 0), 0),
+					recoveryCount: workers.reduce((sum, worker) => sum + (worker.recoveryCount ?? 0), 0),
+					coordinatorBudgetOutcome: runBudgetOutcome,
+					legacyAdapterUse,
+					...(legacyAdapterBranch ? { legacyAdapterBranch } : {}),
+					taskLinkSource: runTaskLinkSource,
+					onclaveEligible: false,
 					orchestrationId,
 					...(interactionId ? { interactionId } : {}),
 					...(parentSessionId ? { parentSessionId } : {}),
 					mode: originalMode,
 					fanOut: results.length,
-					status: allCompleted
-						? "completed"
-						: anyCancelled
-							? "cancelled"
-							: results.length === 0
-								? "rejected"
-								: "failed",
+					status: runStatus,
 					durationMs: Date.now() - invocationStartedAt,
 					childWorkMs: workers.reduce(
 						(sum, worker) => sum + (worker.durationMs ?? 0),
@@ -3197,7 +3670,6 @@ export default function (pi: ExtensionAPI) {
 				}
 				return result;
 			};
-			const internalParams = modernInput;
 			const run = async (
 				...args: Parameters<typeof runSingleAgent>
 			): Promise<SingleResult> => {
@@ -3222,6 +3694,7 @@ export default function (pi: ExtensionAPI) {
 								? path.resolve(invocationCwd).toLowerCase()
 								: path.resolve(invocationCwd),
 						repositoryRoot: invocationCwd,
+						workspaceRoot: prepared?.workspaceRoot ?? invocationCwd,
 						treeClient,
 						...(coordinatorTaskId ? { coordinatorTaskId } : {}),
 						...(fanoutAssignment ? { readOnly: true } : {}),
@@ -3238,8 +3711,35 @@ export default function (pi: ExtensionAPI) {
 								}
 							: {}),
 						...suppliedContext,
+						telemetryExecutionKind: invocationTelemetryExecutionKind,
+						workspaceRootSource:
+							suppliedContext.telemetryWorkspaceRootSource ??
+							invocationWorkspaceRootSource,
+						markerCount: suppliedContext.telemetryMarkerCount ?? 0,
+						boundaryCount: suppliedContext.telemetryBoundaryCount ?? 0,
+						searchCount: suppliedContext.searchCount ?? 0,
+						watchdogCount: suppliedContext.watchdogCount ?? 0,
+						pingCount: 0,
+						interruptionCount: suppliedContext.interruptionCount ?? 0,
+						recoveryCount:
+							legacyAdapterBranch === "continue"
+								? 1
+								: suppliedContext.recoveryCount ?? 0,
+						coordinatorBudgetOutcome:
+							suppliedContext.coordinatorBudgetOutcome ??
+							(coordinatorBudget ? "within_budget" : "not_applicable"),
+						legacyAdapterUse,
+						...(legacyAdapterBranch ? { legacyAdapterBranch } : {}),
+						taskLinkSource: suppliedContext.telemetryTaskLinkSource ?? "none",
+						onclaveEligible: false,
 						...(internalParams.__modernRequest
 							? { executionKind: internalParams.__modernRequest.kind }
+							: {}),
+						...(coordinatorBudget
+							? {
+									maxTurns: coordinatorBudget.maxTurns,
+									timeoutMs: coordinatorBudget.softDeadlineMs,
+								}
 							: {}),
 					};
 					if (outputSchema) {
@@ -3442,8 +3942,22 @@ export default function (pi: ExtensionAPI) {
 					"Bedrock Claude subscription-only orchestration does not allow saved-session continuation.",
 				);
 
+			let preparedItemCursor = 0;
 			const prepareChild = (item: TaskParams, forcedRole?: SubagentRole) => {
 				const executionKind = internalParams.__modernRequest?.kind;
+				const preparedItem = prepared?.items[preparedItemCursor++];
+				const taskLinkSource: TaskLinkSource =
+					preparedItem?.taskLink.outcome ??
+					(item.taskId !== undefined ? "explicit" : "none");
+				item.telemetryTaskLinkSource = taskLinkSource;
+				item.telemetryWorkspaceRootSource =
+					prepared?.request.workspaceRoot !== undefined ||
+					preparedItem?.request.cwd !== undefined ||
+					(!prepared && item.cwd !== undefined)
+						? "override"
+						: "default";
+				item.telemetryMarkerCount = item.scope?.length ?? 0;
+				item.telemetryBoundaryCount = internalParams.workBoundary?.length ?? 0;
 				const requestedRole = forcedRole ?? item.role;
 				if (subscriptionRoot && requestedRole === "coordinator")
 					throw new Error(
@@ -3598,6 +4112,10 @@ export default function (pi: ExtensionAPI) {
 						role: followUp.resolvedRole,
 						depth: followUp.resolvedDepth,
 						scopes: followUp.normalizedScopes,
+						telemetryWorkspaceRootSource: followUp.telemetryWorkspaceRootSource,
+						telemetryTaskLinkSource: followUp.telemetryTaskLinkSource,
+						telemetryMarkerCount: followUp.telemetryMarkerCount,
+						telemetryBoundaryCount: followUp.telemetryBoundaryCount,
 					},
 				);
 				finalizeOutput(
@@ -3674,6 +4192,10 @@ export default function (pi: ExtensionAPI) {
 							scopes: step.normalizedScopes,
 							workPaths: step.scope,
 							repositoryRoot: step.repositoryRoot,
+							telemetryWorkspaceRootSource: step.telemetryWorkspaceRootSource,
+							telemetryTaskLinkSource: step.telemetryTaskLinkSource,
+							telemetryMarkerCount: step.telemetryMarkerCount,
+							telemetryBoundaryCount: step.telemetryBoundaryCount,
 						},
 					);
 					finalizeOutput(
@@ -3812,6 +4334,10 @@ export default function (pi: ExtensionAPI) {
 									workPaths: t.scope,
 									repositoryRoot: t.repositoryRoot,
 									workBoundary: internalParams.workBoundary,
+									telemetryWorkspaceRootSource: t.telemetryWorkspaceRootSource,
+									telemetryTaskLinkSource: t.telemetryTaskLinkSource,
+									telemetryMarkerCount: t.telemetryMarkerCount,
+									telemetryBoundaryCount: t.telemetryBoundaryCount,
 								},
 							);
 							finalizeOutput(
@@ -3885,6 +4411,10 @@ export default function (pi: ExtensionAPI) {
 						workPaths: selectedSingle.scope,
 						workBoundary: internalParams.workBoundary,
 						repositoryRoot: selectedSingle.repositoryRoot,
+						telemetryWorkspaceRootSource: selectedSingle.telemetryWorkspaceRootSource,
+						telemetryTaskLinkSource: selectedSingle.telemetryTaskLinkSource,
+						telemetryMarkerCount: selectedSingle.telemetryMarkerCount,
+						telemetryBoundaryCount: selectedSingle.telemetryBoundaryCount,
 					},
 				);
 				finalizeOutput(
@@ -4504,9 +5034,43 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	resumeInterruptedSession = (
+		run,
+		sessionPath,
+		toolCallId,
+		signal,
+		onUpdate,
+		ctx,
+	) =>
+		subagentExecutor.execute(
+			`${toolCallId}-resume`,
+			{
+				continue: {
+					agent: run.agent,
+					session: sessionPath,
+					task: INTERRUPTED_TOOL_RECOVERY_MESSAGE,
+					cwd: run.cwd,
+					...(run.effort ? { effort: run.effort } : {}),
+				},
+				agentScope: "both",
+				confirmProjectAgents: true,
+			},
+			signal,
+			onUpdate,
+			ctx,
+		);
+
 	const registerSubagentTools = (
 		schemas: ReturnType<typeof createSubagentSchemas>,
 	) => {
+		const withLegacyBranch = <T extends object>(
+			params: T,
+			branch: LegacyAdapterBranch,
+		): T & { readonly [LEGACY_ADAPTER_BRANCH_KEY]: LegacyAdapterBranch } => ({
+			...params,
+			[LEGACY_ADAPTER_BRANCH_KEY]: branch,
+		});
+
 		const executeModern = async (
 			toolCallId: string,
 			kind: "read" | "write" | "coordinator",
@@ -4519,14 +5083,11 @@ export default function (pi: ExtensionAPI) {
 			const prepared = prepareSubagentExecution(request, {
 				parentCwd: ctx.cwd,
 				parentSessionId: ctx.sessionManager?.getSessionId?.(),
-				isWorkspaceTrusted: (workspaceRoot) => {
-					// Trust is evaluated for the selected workspace. The runtime
-					// context currently exposes a zero-argument method, while
-					// injected contexts may provide target-aware trust lookup.
-					const trustLookup = ctx.isProjectTrusted as unknown as
-						(workspace?: string) => boolean;
-					return trustLookup(workspaceRoot);
-				},
+				allowExternalWorkspace: currentSubagentIdentity().role === "root",
+				isWorkspaceTrusted: (workspaceRoot) =>
+					path.resolve(workspaceRoot) === path.resolve(ctx.cwd)
+						? ctx.isProjectTrusted()
+						: new ProjectTrustStore(getAgentDir()).get(workspaceRoot) === true,
 			});
 			const executorInput = modernRequestToExecutorInput(request, prepared);
 			return subagentExecutor.execute(
@@ -4578,7 +5139,16 @@ export default function (pi: ExtensionAPI) {
 			...subagentTool,
 			parameters: schemas.subagent,
 			execute(toolCallId, params, signal, onUpdate, ctx) {
-				return subagentExecutor.execute(toolCallId, params, signal, onUpdate, ctx);
+				return subagentExecutor.execute(
+					toolCallId,
+					withLegacyBranch(
+						params,
+						legacyBranchForInput(params as unknown as Record<string, unknown>),
+					),
+					signal,
+					onUpdate,
+					ctx,
+				);
 			},
 		});
 
@@ -4593,7 +5163,7 @@ export default function (pi: ExtensionAPI) {
 				const { steps, ...common } = params;
 				return subagentExecutor.execute(
 					toolCallId,
-					{ ...common, chain: steps },
+					withLegacyBranch({ ...common, chain: steps }, "chain"),
 					signal,
 					onUpdate,
 					ctx,
@@ -4621,19 +5191,22 @@ export default function (pi: ExtensionAPI) {
 				} = params;
 				return subagentExecutor.execute(
 					toolCallId,
-					{
-						...common,
-						effort,
-						continue: {
-							agent,
-							session,
-							task,
+					withLegacyBranch(
+						{
+							...common,
 							effort,
-							cwd,
-							output,
-							outputMode,
+							continue: {
+								agent,
+								session,
+								task,
+								effort,
+								cwd,
+								output,
+								outputMode,
+							},
 						},
-					},
+						"continue",
+					),
 					signal,
 					onUpdate,
 					ctx,
@@ -4652,7 +5225,10 @@ export default function (pi: ExtensionAPI) {
 				const { single, parallel, ...common } = params;
 				return subagentExecutor.execute(
 					toolCallId,
-					{ ...common, readOnlyFanout: { single, parallel } },
+					withLegacyBranch(
+						{ ...common, readOnlyFanout: { single, parallel } },
+						"fanout",
+					),
 					signal,
 					onUpdate,
 					ctx,
@@ -4842,7 +5418,7 @@ export default function (pi: ExtensionAPI) {
 					try {
 						const result = await subagentExecutor.execute(
 							internalCallId,
-							{
+							withLegacyBranch({
 								agent: options.agent,
 								task: options.task,
 								role: "leaf",
@@ -4855,7 +5431,7 @@ export default function (pi: ExtensionAPI) {
 								outputSchema: options.outputSchema,
 								continuable: true,
 								confirmProjectAgents: false,
-							},
+							}, "workflow"),
 							options.phaseSignal,
 							onUpdate,
 							ctx,

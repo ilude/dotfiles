@@ -1,9 +1,11 @@
+import { spawn } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
 	createSubagentControlFacade,
 	SubagentControlError,
 } from "../extensions/subagent/control.ts";
 import { SubagentRunManager } from "../extensions/subagent/run-manager.ts";
+import { isProcessAlive } from "../extensions/subagent/status.ts";
 import { SubagentTreeBroker } from "../extensions/subagent/tree-runtime.ts";
 
 function fixture(limit = 2) {
@@ -88,6 +90,39 @@ describe("subagent live control", () => {
 				.map((run) => run.state),
 		).toEqual(["active", "active"]);
 	});
+
+	it(
+		"force-terminates and verifies settlement of a real cross-platform child process",
+		async () => {
+			const { broker, root, control } = fixture();
+			const permit = await broker.acquire({
+				treeId: root.treeId,
+				parentRunId: root.rootRunId,
+				runId: "real-process",
+				role: "leaf",
+			});
+			const child = spawn(process.execPath, [
+				"-e",
+				"setInterval(() => {}, 1000)",
+			], { stdio: "ignore" });
+			if (!child.pid) throw new Error("test child process did not start");
+			try {
+				await permit.registerProcess({ pid: child.pid });
+				const result = await control.execute({
+					action: "force_terminate",
+					selector: { type: "run", id: "real-process" },
+				});
+				expect(result).toMatchObject({
+					finalState: "terminated",
+					stoppedPids: [child.pid],
+				});
+				expect(isProcessAlive(child.pid)).toBe(false);
+			} finally {
+				if (isProcessAlive(child.pid)) child.kill("SIGKILL");
+			}
+		},
+		10_000,
+	);
 
 	it("rejects reconciliation when process liveness is ambiguous", async () => {
 		const { broker, root, control } = fixture();

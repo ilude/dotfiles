@@ -62,6 +62,7 @@ export interface SubagentLiveTool {
 	readonly startedAt: number;
 	readonly input?: string;
 	readonly output?: string;
+	readonly outputUpdatedAt?: number;
 }
 
 type SubagentLiveToolInput = Omit<SubagentLiveTool, "startedAt"> & {
@@ -530,9 +531,14 @@ export class SubagentRunManager {
 	updateTool(runId: string, toolId: string, output: string): void {
 		const snapshot = this.snapshots.get(runId);
 		if (!snapshot) return;
+		const outputUpdatedAt = Date.now();
 		snapshot.liveTools = snapshot.liveTools.map((tool) =>
 			tool.id === toolId
-				? { ...tool, output: boundedTail(output, MAX_TRANSCRIPT_TEXT_BYTES) }
+				? {
+						...tool,
+						output: boundedTail(output, MAX_TRANSCRIPT_TEXT_BYTES),
+						outputUpdatedAt,
+					}
 				: tool,
 		);
 		this.markActivity(snapshot, "tool-output");
@@ -566,6 +572,24 @@ export class SubagentRunManager {
 		this.prune();
 		this.notify(runId);
 		this.resolveSettlement(runId);
+	}
+
+	async waitForSettlement(runId: string, timeoutMs = 5_000): Promise<boolean> {
+		const snapshot = this.snapshots.get(runId);
+		if (!snapshot || snapshot.status !== "running") return true;
+		const settlement = this.settlements.get(runId);
+		if (!settlement) return snapshot.status !== "running";
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const timedOut = new Promise<false>((resolve) => {
+			timer = setTimeout(() => resolve(false), timeoutMs);
+			timer.unref();
+		});
+		const settled = settlement.promise.then(() => true as const);
+		try {
+			return await Promise.race([settled, timedOut]);
+		} finally {
+			if (timer) clearTimeout(timer);
+		}
 	}
 
 	cancel(runId: string): boolean {

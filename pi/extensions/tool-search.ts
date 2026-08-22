@@ -25,6 +25,14 @@ import {
 	toolsetFingerprint,
 } from "../lib/tool-activation.js";
 
+const HIDDEN_HISTORICAL_TOOLS = new Set([
+	"subagent",
+	"subagent_chain",
+	"subagent_continue",
+	"subagent_fanout",
+	"subagent_workflow",
+]);
+
 /** Score a tool against search terms. Higher = better match. */
 export function scoreTool(
 	tool: { name: string; description: string },
@@ -96,7 +104,9 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const allTools = pi.getAllTools();
+			const allTools = pi
+				.getAllTools()
+				.filter((tool) => !HIDDEN_HISTORICAL_TOOLS.has(tool.name));
 			const activeBefore = [...pi.getActiveTools()].sort();
 			const activeNames = new Set(activeBefore);
 			const includeParams = params.include_params ?? false;

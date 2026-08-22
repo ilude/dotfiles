@@ -1,5 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { Type, type TSchema } from "typebox";
 import {
 	getTask,
@@ -13,11 +11,19 @@ import {
 	type AgentDiscoveryResult,
 	type AgentScope,
 } from "./agents.js";
+import {
+	checkNativePathTool,
+	resolveWorkspaceRoot,
+} from "./workspace-policy.js";
 
 export const READ_TOOL_ALLOWLIST = ["read", "grep", "find", "ls"] as const;
 export type ReadToolName = (typeof READ_TOOL_ALLOWLIST)[number];
 
 export type ExecutionKind = "read" | "write" | "coordinator";
+
+export const DEFAULT_COORDINATOR_MAX_WORKERS = 6;
+export const DEFAULT_COORDINATOR_MAX_TURNS = 32;
+export const DEFAULT_COORDINATOR_SOFT_DEADLINE_MS = 15 * 60 * 1000;
 
 export interface SubagentItemBase {
 	readonly agent: string;
@@ -55,6 +61,9 @@ export interface CoordinatorRequest {
 	readonly kind: "coordinator";
 	readonly items: readonly CoordinatorItem[];
 	readonly workBoundary?: readonly string[];
+	readonly maxWorkers?: number;
+	readonly maxTurns?: number;
+	readonly softDeadlineMs?: number;
 	readonly workspaceRoot?: string;
 	readonly agentScope?: AgentScope;
 }
@@ -133,12 +142,30 @@ export type TaskLinkResolution =
 			readonly choices: readonly TaskRecordV1[];
 	  };
 
+export interface CoordinatorBudget {
+	readonly maxWorkers: number;
+	readonly maxTurns: number;
+	readonly softDeadlineMs: number;
+}
+
+export function coordinatorBudgetFor(
+	request: CoordinatorRequest,
+): CoordinatorBudget {
+	return {
+		maxWorkers: request.maxWorkers ?? DEFAULT_COORDINATOR_MAX_WORKERS,
+		maxTurns: request.maxTurns ?? DEFAULT_COORDINATOR_MAX_TURNS,
+		softDeadlineMs:
+			request.softDeadlineMs ?? DEFAULT_COORDINATOR_SOFT_DEADLINE_MS,
+	};
+}
+
 export interface PrepareSubagentOptions {
 	readonly parentCwd: string;
 	readonly parentSessionId?: string;
 	readonly isWorkspaceTrusted?: (workspaceRoot: string) => boolean;
 	readonly agentScope?: AgentScope;
 	readonly maxTaskChoices?: number;
+	readonly allowExternalWorkspace?: boolean;
 }
 
 export const DEFAULT_MAX_TASK_CHOICES = 8;
@@ -201,25 +228,17 @@ export const SubagentWriteSchema = Type.Object(
 
 export const SubagentCoordinateSchema = Type.Object(
 	{
-		items: Type.Array(CoordinatorItemSchema, { minItems: 1 }),
+		items: Type.Array(CoordinatorItemSchema, { minItems: 1, maxItems: 8 }),
 		workBoundary: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+		maxWorkers: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
+		maxTurns: Type.Optional(Type.Integer({ minimum: 1, maximum: 64 })),
+		softDeadlineMs: Type.Optional(Type.Integer({ minimum: 1 })),
 		...CommonRequestFields,
 	},
 	{ additionalProperties: false },
 );
 
 export const READ_AUTHORITY_SCHEMA: TSchema = READ_SCHEMA_TOOLS;
-
-function normalizeWorkspaceRoot(parentCwd: string, requested?: string): string {
-	const workspaceRoot = path.resolve(parentCwd, requested ?? ".");
-	const stat = fs.statSync(workspaceRoot);
-	if (!stat.isDirectory())
-		throw new Error("workspaceRoot must name an existing directory.");
-	const parsed = path.parse(workspaceRoot);
-	if (parsed.root === workspaceRoot)
-		throw new Error("workspaceRoot must not be a filesystem root.");
-	return workspaceRoot;
-}
 
 function policyFor(kind: ExecutionKind, agent: AgentConfig): ExecutionPolicy {
 	switch (kind) {
@@ -303,7 +322,18 @@ export function prepareSubagentExecution(
 	request: SubagentExecutionRequest,
 	options: PrepareSubagentOptions,
 ): PreparedSubagentExecution {
-	const workspaceRoot = normalizeWorkspaceRoot(options.parentCwd, request.workspaceRoot);
+	const workspace = resolveWorkspaceRoot(options.parentCwd, request.workspaceRoot, {
+		allowExternal: options.allowExternalWorkspace ?? true,
+	});
+	if (workspace.outcome === "deny") throw new Error(workspace.reason);
+	const workspaceRoot = workspace.workspaceRoot;
+	if (request.kind === "coordinator") {
+		const budget = coordinatorBudgetFor(request);
+		if (request.items.length > budget.maxWorkers)
+			throw new Error(
+				`Coordinator request exceeds maxWorkers ${budget.maxWorkers}.`,
+			);
+	}
 	const projectTrusted = options.isWorkspaceTrusted?.(workspaceRoot) ?? true;
 	const agentScope = request.agentScope ?? options.agentScope ?? "user";
 	// Project-local agent files are governed by the selected workspace trust
@@ -319,7 +349,14 @@ export function prepareSubagentExecution(
 		filePath: "",
 	});
 	const items = request.items.map((item) => {
-		const effectiveCwd = path.resolve(workspaceRoot, item.cwd ?? ".");
+		const cwdResult = checkNativePathTool(
+			{ workspaceRoot },
+			"read",
+			{ path: item.cwd ?? "." },
+			workspaceRoot,
+		);
+		if (cwdResult.outcome === "deny") throw new Error(cwdResult.reason);
+		const effectiveCwd = cwdResult.targets[0] ?? workspaceRoot;
 		const taskLink = resolveTaskLink(
 			item.taskId,
 			workspaceRoot,

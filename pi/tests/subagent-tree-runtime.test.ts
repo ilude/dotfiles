@@ -348,28 +348,35 @@ describe("SubagentTreeBroker", () => {
 		}
 	});
 
-	it("admits root leaves in process and listens only for coordinators", async () => {
+	it("gives every child authenticated broker access for runtime pings", async () => {
 		const broker = new SubagentTreeBroker();
 		const listen = vi.spyOn(broker, "listen");
 		const root = broker.createTree({ treeId: "tree", rootRunId: "root" });
 		const client = new SubagentTreeRootClient(broker, root);
 
 		const leaf = await client.acquire({ runId: "leaf", role: "leaf" });
-		expect(listen).not.toHaveBeenCalled();
-		expect(client.childEnvironment(leaf)).toMatchObject({
+		expect(listen).toHaveBeenCalledTimes(1);
+		const leafEnvironment = client.childEnvironment(leaf);
+		expect(leafEnvironment).toMatchObject({
 			PI_SUBAGENT_TREE_RUN_ID: "leaf",
 			PI_SUBAGENT_TREE_ROLE: "leaf",
+			PI_SUBAGENT_TREE_PROTOCOL_VERSION: String(
+				SUBAGENT_TREE_PROTOCOL_VERSION,
+			),
 		});
-		expect(client.childEnvironment(leaf)).not.toHaveProperty(
-			"PI_SUBAGENT_TREE_BROKER_PORT",
-		);
+		const leafClient = treeClientFromEnvironment(leafEnvironment);
+		expect(leafClient).toBeDefined();
+		await leafClient?.ping();
+		expect(
+			broker.list().find((run) => run.runId === "leaf")?.runtimePingAt,
+		).toEqual(expect.any(Number));
 		await leaf.release();
 
 		const coordinator = await client.acquire({
 			runId: "coordinator",
 			role: "coordinator",
 		});
-		expect(listen).toHaveBeenCalledTimes(1);
+		expect(listen).toHaveBeenCalledTimes(2);
 		expect(client.childEnvironment(coordinator)).toMatchObject({
 			PI_SUBAGENT_TREE_ROLE: "coordinator",
 			PI_SUBAGENT_TREE_PROTOCOL_VERSION: String(

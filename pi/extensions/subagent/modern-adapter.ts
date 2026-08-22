@@ -32,6 +32,7 @@ export type ModernExecutorInput = ModernInternalInput & {
 	scope?: string[];
 	workBoundary?: string[];
 	readOnlyFanout?: undefined;
+	continuable: true;
 };
 
 export function modernRequestToExecutorInput(
@@ -59,6 +60,7 @@ export function modernRequestToExecutorInput(
 	const common = {
 		__modernRequest: request,
 		__modernPrepared: prepared,
+		continuable: true as const,
 	};
 	if (request.kind === "coordinator") {
 		const coordinator = request as CoordinatorRequest;

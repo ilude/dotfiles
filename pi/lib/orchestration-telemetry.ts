@@ -11,7 +11,7 @@ import {
 } from "./task-registry.ts";
 import { sanitizeTaskValue } from "./task-security.ts";
 
-export const ORCHESTRATION_TELEMETRY_SCHEMA_VERSION = 2 as const;
+export const ORCHESTRATION_TELEMETRY_SCHEMA_VERSION = 3 as const;
 export const READ_ONLY_FANOUT_EXPERIMENT_ID = "read-only-fanout-v1";
 export const READ_ONLY_FANOUT_EXPERIMENT_VERSION = 1 as const;
 export const READ_ONLY_FANOUT_TASK_CLASS = "read-only-multi-item-analysis";
@@ -26,6 +26,8 @@ const MAX_FILES = 367;
 const MAX_LINE_BYTES = 8 * 1024 * 1024;
 const MAX_INPUT_BYTES = 256 * 1024 * 1024;
 const MAX_MALFORMED_LINES = 10_000;
+const MAX_TELEMETRY_COUNT = 1_000_000;
+const MAX_INTERVENTION_NUMERIC = 1_000_000_000;
 
 const MODES = new Set(["single", "parallel", "chain", "task-execute"]);
 const STATUSES = new Set([
@@ -44,6 +46,61 @@ const COST_SOURCES = new Set(["pi-usage", "unavailable"]);
 const VALIDATION_OUTCOMES = new Set(["passed", "failed", "unavailable"]);
 const TREE_ROLES = new Set(["root", "coordinator", "leaf"]);
 const WORKFLOW_PHASES = new Set(["map", "retry", "verify", "reduce"]);
+const EXECUTION_KINDS = new Set(["read", "write", "coordinator", "legacy"]);
+const OUTCOME_CODES = new Set([
+	"completed",
+	"failed",
+	"cancelled",
+	"rejected",
+	"timeout",
+	"interrupted",
+	"continued",
+	"partial",
+	"unknown",
+]);
+const WORKSPACE_ROOT_SOURCES = new Set(["default", "override"]);
+const COORDINATOR_BUDGET_OUTCOMES = new Set([
+	"not_applicable",
+	"within_budget",
+	"max_workers",
+	"max_turns",
+	"soft_deadline",
+]);
+const LEGACY_ADAPTER_BRANCHES = new Set([
+	"single",
+	"parallel",
+	"chain",
+	"continue",
+	"fanout",
+	"workflow",
+]);
+const TASK_LINK_SOURCES = new Set(["none", "explicit", "auto", "invalid"]);
+const INTERVENTION_CODES = new Set([
+	"rejection",
+	"containment",
+	"timeout",
+	"interruption",
+	"continuation",
+	"budget",
+	"task-link",
+	"legacy-adapter",
+	"boundary",
+	"watchdog",
+	"ping",
+	"recovery",
+]);
+const INTERVENTION_OUTCOMES = new Set([
+	"rejected",
+	"contained",
+	"timed_out",
+	"interrupted",
+	"continued",
+	"acknowledged",
+	"completed",
+	"failed",
+	"partial",
+	"unknown",
+]);
 const METADATA_VALUE = /^[A-Za-z0-9 ._\-/:@]+$/;
 const METADATA_IDENTIFIER = /^[A-Za-z0-9._:@-]+$/;
 const FORBIDDEN_METADATA =
@@ -62,12 +119,84 @@ type OrchestrationStatus =
 	| "rejected";
 type OutputMode = "inline" | "artifact" | "none";
 type CostSource = "pi-usage" | "unavailable";
+export type OrchestrationExecutionKind =
+	| "read"
+	| "write"
+	| "coordinator"
+	| "legacy";
+export type OrchestrationOutcomeCode =
+	| "completed"
+	| "failed"
+	| "cancelled"
+	| "rejected"
+	| "timeout"
+	| "interrupted"
+	| "continued"
+	| "partial"
+	| "unknown";
+export type WorkspaceRootSource = "default" | "override";
+export type CoordinatorBudgetOutcome =
+	| "not_applicable"
+	| "within_budget"
+	| "max_workers"
+	| "max_turns"
+	| "soft_deadline";
+export type LegacyAdapterBranch =
+	| "single"
+	| "parallel"
+	| "chain"
+	| "continue"
+	| "fanout"
+	| "workflow";
+export type TaskLinkSource = "none" | "explicit" | "auto" | "invalid";
+export type OrchestrationInterventionCode =
+	| "rejection"
+	| "containment"
+	| "timeout"
+	| "interruption"
+	| "continuation"
+	| "budget"
+	| "task-link"
+	| "legacy-adapter"
+	| "boundary"
+	| "watchdog"
+	| "ping"
+	| "recovery";
+export type OrchestrationInterventionOutcome =
+	| "rejected"
+	| "contained"
+	| "timed_out"
+	| "interrupted"
+	| "continued"
+	| "acknowledged"
+	| "completed"
+	| "failed"
+	| "partial"
+	| "unknown";
+export type { CostSource, OrchestrationMode, OrchestrationStatus, OutputMode };
+
+export interface OrchestrationTelemetryFields {
+	executionKind?: OrchestrationExecutionKind;
+	outcomeCode?: OrchestrationOutcomeCode;
+	workspaceRootSource?: WorkspaceRootSource;
+	markerCount?: number;
+	boundaryCount?: number;
+	searchCount?: number;
+	watchdogCount?: number;
+	pingCount?: number;
+	interruptionCount?: number;
+	recoveryCount?: number;
+	coordinatorBudgetOutcome?: CoordinatorBudgetOutcome;
+	legacyAdapterBranch?: LegacyAdapterBranch;
+	legacyAdapterUse?: boolean;
+	taskLinkSource?: TaskLinkSource;
+	onclaveEligible?: boolean;
+}
+
 export type OrchestrationTreeRole = "root" | "coordinator" | "leaf";
 export type OrchestrationWorkflowPhase = "map" | "retry" | "verify" | "reduce";
 
-export type { CostSource, OrchestrationMode, OrchestrationStatus, OutputMode };
-
-export interface OrchestrationWorker {
+export interface OrchestrationWorker extends OrchestrationTelemetryFields {
 	runId: string;
 	treeId?: string;
 	parentRunId?: string;
@@ -103,8 +232,8 @@ export interface OrchestrationWorker {
 	turns?: number;
 }
 
-export interface OrchestrationRunData {
-	schemaVersion: 2;
+export interface OrchestrationRunData extends OrchestrationTelemetryFields {
+	schemaVersion: 3;
 	orchestrationId: string;
 	parentSessionId?: string;
 	interactionId?: string;
@@ -133,8 +262,8 @@ export interface ParentUsageByModel {
 	costSource: CostSource;
 }
 
-export interface OrchestrationInteractionData {
-	schemaVersion: 2;
+export interface OrchestrationInteractionData extends OrchestrationTelemetryFields {
+	schemaVersion: 3;
 	interactionId: string;
 	orchestrationIds: string[];
 	parentUsageByModel: ParentUsageByModel[];
@@ -176,6 +305,31 @@ export interface OrchestrationExperimentOutcomeData {
 	checksPassed: number;
 }
 
+export interface SubagentInterventionData {
+	schemaVersion: 1;
+	orchestrationId: string;
+	runId: string;
+	code: OrchestrationInterventionCode;
+	outcome: OrchestrationInterventionOutcome;
+	acknowledged: boolean;
+	durationMs?: number;
+	activeToolDurationMs?: number;
+	activeToolOutputAgeMs?: number;
+	activityVersion?: number;
+	markerCount?: number;
+	boundaryCount?: number;
+	searchCount?: number;
+	watchdogCount?: number;
+	pingCount?: number;
+	interruptionCount?: number;
+	recoveryCount?: number;
+}
+
+export interface BuildSubagentInterventionInput
+	extends Omit<SubagentInterventionData, "schemaVersion"> {
+	session?: string;
+}
+
 export interface BuildOrchestrationRunInput
 	extends Omit<OrchestrationRunData, "schemaVersion" | "workers"> {
 	workers: OrchestrationWorker[];
@@ -198,6 +352,14 @@ export interface BuildOrchestrationExperimentOutcomeInput
 }
 
 type MetricsData<T extends object> = T & Record<string, unknown>;
+
+export type SubagentInterventionEventInput = Omit<
+	RecordEventInput,
+	"event" | "data"
+> & {
+	event: "subagent_intervention";
+	data: MetricsData<SubagentInterventionData>;
+};
 
 export type OrchestrationEventInput =
 	| (Omit<RecordEventInput, "event" | "data"> & {
@@ -247,6 +409,113 @@ function nonnegative(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) && value >= 0
 		? value
 		: undefined;
+}
+
+function boundedCount(value: unknown): number | undefined {
+	return typeof value === "number" &&
+		Number.isInteger(value) &&
+		value >= 0 &&
+		value <= MAX_TELEMETRY_COUNT
+		? value
+		: undefined;
+}
+
+function boundedInterventionNumber(value: unknown): number | undefined {
+	return typeof value === "number" &&
+		Number.isFinite(value) &&
+		value >= 0 &&
+		value <= MAX_INTERVENTION_NUMERIC
+		? value
+		: undefined;
+}
+
+const ORCHESTRATION_TELEMETRY_KEYS = [
+	"executionKind",
+	"outcomeCode",
+	"workspaceRootSource",
+	"markerCount",
+	"boundaryCount",
+	"searchCount",
+	"watchdogCount",
+	"pingCount",
+	"interruptionCount",
+	"recoveryCount",
+	"coordinatorBudgetOutcome",
+	"legacyAdapterBranch",
+	"legacyAdapterUse",
+	"taskLinkSource",
+	"onclaveEligible",
+] as const;
+
+function telemetryFields(
+	value: Record<string, unknown>,
+): OrchestrationTelemetryFields | undefined {
+	const executionKind =
+		typeof value.executionKind === "string" &&
+		EXECUTION_KINDS.has(value.executionKind)
+			? (value.executionKind as OrchestrationExecutionKind)
+			: undefined;
+	const outcomeCode =
+		typeof value.outcomeCode === "string" && OUTCOME_CODES.has(value.outcomeCode)
+			? (value.outcomeCode as OrchestrationOutcomeCode)
+			: undefined;
+	const workspaceRootSource =
+		typeof value.workspaceRootSource === "string" &&
+		WORKSPACE_ROOT_SOURCES.has(value.workspaceRootSource)
+			? (value.workspaceRootSource as WorkspaceRootSource)
+			: undefined;
+	const coordinatorBudgetOutcome =
+		typeof value.coordinatorBudgetOutcome === "string" &&
+		COORDINATOR_BUDGET_OUTCOMES.has(value.coordinatorBudgetOutcome)
+			? (value.coordinatorBudgetOutcome as CoordinatorBudgetOutcome)
+			: undefined;
+	const legacyAdapterBranch =
+		typeof value.legacyAdapterBranch === "string" &&
+		LEGACY_ADAPTER_BRANCHES.has(value.legacyAdapterBranch)
+			? (value.legacyAdapterBranch as LegacyAdapterBranch)
+			: undefined;
+	const taskLinkSource =
+		typeof value.taskLinkSource === "string" &&
+		TASK_LINK_SOURCES.has(value.taskLinkSource)
+			? (value.taskLinkSource as TaskLinkSource)
+			: undefined;
+	if (
+		(value.executionKind !== undefined && executionKind === undefined) ||
+		(value.outcomeCode !== undefined && outcomeCode === undefined) ||
+		(value.workspaceRootSource !== undefined && workspaceRootSource === undefined) ||
+		(value.coordinatorBudgetOutcome !== undefined && coordinatorBudgetOutcome === undefined) ||
+		(value.legacyAdapterBranch !== undefined && legacyAdapterBranch === undefined) ||
+		(value.taskLinkSource !== undefined && taskLinkSource === undefined) ||
+		(value.legacyAdapterUse !== undefined && typeof value.legacyAdapterUse !== "boolean") ||
+		(value.onclaveEligible !== undefined && typeof value.onclaveEligible !== "boolean")
+	)
+		return undefined;
+	const result: OrchestrationTelemetryFields = {};
+	if (executionKind) result.executionKind = executionKind;
+	if (outcomeCode) result.outcomeCode = outcomeCode;
+	if (workspaceRootSource) result.workspaceRootSource = workspaceRootSource;
+	if (coordinatorBudgetOutcome)
+		result.coordinatorBudgetOutcome = coordinatorBudgetOutcome;
+	if (legacyAdapterBranch) result.legacyAdapterBranch = legacyAdapterBranch;
+	if (taskLinkSource) result.taskLinkSource = taskLinkSource;
+	if (value.legacyAdapterUse !== undefined)
+		result.legacyAdapterUse = value.legacyAdapterUse as boolean;
+	if (value.onclaveEligible !== undefined)
+		result.onclaveEligible = value.onclaveEligible as boolean;
+	for (const key of [
+		"markerCount",
+		"boundaryCount",
+		"searchCount",
+		"watchdogCount",
+		"pingCount",
+		"interruptionCount",
+		"recoveryCount",
+	] as const) {
+		const count = boundedCount(value[key]);
+		if (value[key] !== undefined && count === undefined) return undefined;
+		if (count !== undefined) result[key] = count;
+	}
+	return result;
 }
 
 function treeDepth(value: unknown): number | undefined {
@@ -396,6 +665,7 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 			"chainTransferBytes",
 			"usage",
 			"turns",
+			...ORCHESTRATION_TELEMETRY_KEYS,
 		])
 	)
 		return undefined;
@@ -403,7 +673,6 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 	const agent = metadataString(worker.agent);
 	const workerStatus = status(worker.status);
 	if (!runId || !agent || !workerStatus) return undefined;
-	const result: OrchestrationWorker = { runId, agent, status: workerStatus };
 	const treeId = metadataIdentifier(worker.treeId);
 	const parentRunId = metadataIdentifier(worker.parentRunId);
 	const depth = treeDepth(worker.depth);
@@ -431,6 +700,14 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 			: undefined;
 	const workerOutputMode = outputMode(worker.outputMode);
 	const usage = normalizeUsage(worker.usage);
+	const fields = telemetryFields(worker);
+	if (!fields) return undefined;
+	const result: OrchestrationWorker = {
+		...fields,
+		runId,
+		agent,
+		status: workerStatus,
+	};
 	if (worker.treeId !== undefined && !treeId) return undefined;
 	if (worker.parentRunId !== undefined && !parentRunId) return undefined;
 	if (worker.depth !== undefined && depth === undefined) return undefined;
@@ -517,9 +794,12 @@ export function buildOrchestrationRunEvent(
 			"inlineBytesNotReturned",
 			"workers",
 			"session",
+			...ORCHESTRATION_TELEMETRY_KEYS,
 		])
 	)
 		return null;
+	const telemetry = telemetryFields(raw);
+	if (!telemetry) return null;
 	const orchestrationId = metadataString(input.orchestrationId);
 	const runMode = mode(input.mode);
 	const runStatus = status(input.status);
@@ -535,6 +815,7 @@ export function buildOrchestrationRunEvent(
 	if (workers.some((worker) => worker === undefined)) return null;
 	const data: MetricsData<OrchestrationRunData> = {
 		schemaVersion: ORCHESTRATION_TELEMETRY_SCHEMA_VERSION,
+		...telemetry,
 		orchestrationId,
 		mode: runMode,
 		status: runStatus,
@@ -646,9 +927,12 @@ export function buildOrchestrationInteractionEvent(
 			"durationMs",
 			"direct",
 			"session",
+			...ORCHESTRATION_TELEMETRY_KEYS,
 		])
 	)
 		return null;
+	const telemetry = telemetryFields(raw);
+	if (!telemetry) return null;
 	const interactionId = metadataString(input.interactionId);
 	if (
 		!interactionId ||
@@ -668,6 +952,7 @@ export function buildOrchestrationInteractionEvent(
 		return null;
 	const data: MetricsData<OrchestrationInteractionData> = {
 		schemaVersion: ORCHESTRATION_TELEMETRY_SCHEMA_VERSION,
+		...telemetry,
 		interactionId,
 		orchestrationIds: orchestrationIds as string[],
 		parentUsageByModel: parentUsageByModel as ParentUsageByModel[],
@@ -679,6 +964,80 @@ export function buildOrchestrationInteractionEvent(
 	if (input.session !== undefined && !session) return null;
 	return {
 		event: "orchestration_interaction",
+		...(session ? { session } : {}),
+		data,
+	};
+}
+
+const INTERVENTION_NUMERIC_KEYS = [
+	"durationMs",
+	"activeToolDurationMs",
+	"activeToolOutputAgeMs",
+	"activityVersion",
+	"markerCount",
+	"boundaryCount",
+	"searchCount",
+	"watchdogCount",
+	"pingCount",
+	"interruptionCount",
+	"recoveryCount",
+] as const;
+
+/** Builds the sparse, content-free intervention event. */
+export function buildSubagentInterventionEvent(
+	input: BuildSubagentInterventionInput,
+): SubagentInterventionEventInput | null {
+	const raw = input as unknown as Record<string, unknown>;
+	if (
+		!hasOnlyKeys(raw, [
+			"orchestrationId",
+			"runId",
+			"code",
+			"outcome",
+			"acknowledged",
+			...INTERVENTION_NUMERIC_KEYS,
+			"session",
+		])
+	)
+		return null;
+	const orchestrationId = metadataIdentifier(input.orchestrationId);
+	const runId = metadataIdentifier(input.runId);
+	const code =
+		typeof input.code === "string" && INTERVENTION_CODES.has(input.code)
+			? (input.code as OrchestrationInterventionCode)
+			: undefined;
+	const outcome =
+		typeof input.outcome === "string" && INTERVENTION_OUTCOMES.has(input.outcome)
+			? (input.outcome as OrchestrationInterventionOutcome)
+			: undefined;
+	if (
+		!orchestrationId ||
+		!runId ||
+		!code ||
+		!outcome ||
+		typeof input.acknowledged !== "boolean"
+	)
+		return null;
+	const data: MetricsData<SubagentInterventionData> = {
+		schemaVersion: 1,
+		orchestrationId,
+		runId,
+		code,
+		outcome,
+		acknowledged: input.acknowledged,
+	};
+	for (const key of INTERVENTION_NUMERIC_KEYS) {
+		const value =
+			key === "activityVersion" || key.endsWith("Count")
+				? boundedCount(input[key])
+				: boundedInterventionNumber(input[key]);
+		if (input[key] !== undefined && value === undefined) return null;
+		if (value !== undefined) data[key] = value;
+	}
+	const session = metadataString(input.session);
+	if (input.session !== undefined && !session) return null;
+	return {
+		event: "subagent_intervention",
 		...(session ? { session } : {}),
 		data,
 	};
@@ -927,6 +1286,7 @@ function normalizePayload(
 	if (
 		!data ||
 		(data.schemaVersion !== 1 &&
+			data.schemaVersion !== 2 &&
 			data.schemaVersion !== ORCHESTRATION_TELEMETRY_SCHEMA_VERSION)
 	)
 		return null;

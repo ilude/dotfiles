@@ -8,6 +8,7 @@ import {
 	buildOrchestrationExperimentOutcomeEvent,
 	buildOrchestrationInteractionEvent,
 	buildOrchestrationRunEvent,
+	buildSubagentInterventionEvent,
 	readOrchestrationEvents,
 } from "../lib/orchestration-telemetry.js";
 
@@ -66,7 +67,7 @@ describe("orchestration telemetry builders", () => {
 		const result = buildOrchestrationRunEvent(runInput());
 		expect(result).not.toBeNull();
 		expect(result?.data).toMatchObject({
-			schemaVersion: 2,
+			schemaVersion: 3,
 			inlineBytesNotReturned: 15,
 		});
 	});
@@ -98,7 +99,7 @@ describe("orchestration telemetry builders", () => {
 			],
 		});
 		expect(result?.data).toMatchObject({
-			schemaVersion: 2,
+			schemaVersion: 3,
 			workers: [
 				{
 					treeId: "tree-1",
@@ -154,6 +155,150 @@ describe("orchestration telemetry builders", () => {
 				workers: [{ ...runInput().workers[0], workflowPhase: "tool args" }],
 			} as never),
 		).toBeNull();
+	});
+
+	it("builds version 3 content-free telemetry fields and rejects invalid values", () => {
+		const result = buildOrchestrationRunEvent({
+			...runInput(),
+			executionKind: "coordinator",
+			outcomeCode: "partial",
+			workspaceRootSource: "override",
+			markerCount: 2,
+			boundaryCount: 1,
+			searchCount: 3,
+			watchdogCount: 4,
+			pingCount: 5,
+			interruptionCount: 1,
+			recoveryCount: 1,
+			coordinatorBudgetOutcome: "soft_deadline",
+			legacyAdapterBranch: "single",
+			legacyAdapterUse: true,
+			taskLinkSource: "auto",
+			onclaveEligible: false,
+			workers: [
+				{
+					...runInput().workers[0],
+					executionKind: "write",
+					workspaceRootSource: "default",
+					markerCount: 0,
+					boundaryCount: 0,
+					searchCount: 0,
+					watchdogCount: 0,
+					pingCount: 0,
+					interruptionCount: 0,
+					recoveryCount: 0,
+					coordinatorBudgetOutcome: "not_applicable",
+					legacyAdapterUse: false,
+					taskLinkSource: "explicit",
+					onclaveEligible: false,
+				},
+			],
+		});
+		expect(result?.data).toMatchObject({
+			schemaVersion: 3,
+			executionKind: "coordinator",
+			outcomeCode: "partial",
+			workspaceRootSource: "override",
+			markerCount: 2,
+			boundaryCount: 1,
+			searchCount: 3,
+			watchdogCount: 4,
+			pingCount: 5,
+			interruptionCount: 1,
+			recoveryCount: 1,
+			coordinatorBudgetOutcome: "soft_deadline",
+			legacyAdapterUse: true,
+			legacyAdapterBranch: "single",
+			taskLinkSource: "auto",
+			onclaveEligible: false,
+			workers: [
+				{
+					executionKind: "write",
+					workspaceRootSource: "default",
+					markerCount: 0,
+					boundaryCount: 0,
+					searchCount: 0,
+					watchdogCount: 0,
+					pingCount: 0,
+					interruptionCount: 0,
+					recoveryCount: 0,
+					coordinatorBudgetOutcome: "not_applicable",
+					legacyAdapterUse: false,
+					taskLinkSource: "explicit",
+					onclaveEligible: false,
+				},
+			],
+		});
+		const serialized = JSON.stringify(result);
+		for (const forbidden of ["task", "command", "output", "workspace", "workPaths", "path"]) {
+			expect(serialized).not.toContain(`"${forbidden}"`);
+		}
+		for (const [field, value] of [
+			["executionKind", "other"],
+			["outcomeCode", "not-a-code"],
+			["workspaceRootSource", "workspace"],
+			["coordinatorBudgetOutcome", "overrun"],
+			["taskLinkSource", "guessed"],
+		] as const) {
+			expect(
+				buildOrchestrationRunEvent({
+					...runInput(),
+					[field]: value,
+				} as never),
+			).toBeNull();
+		}
+		expect(
+			buildOrchestrationRunEvent({
+				...runInput(),
+				markerCount: 1.5,
+			} as never),
+		).toBeNull();
+	});
+
+	it("builds sparse intervention events without content-bearing fields", () => {
+		const result = buildSubagentInterventionEvent({
+			orchestrationId: "orchestration-1",
+			runId: "run-1",
+			code: "interruption",
+			outcome: "acknowledged",
+			acknowledged: true,
+			activityVersion: 4,
+			durationMs: 120,
+			interruptionCount: 1,
+		});
+		expect(result).toMatchObject({
+			event: "subagent_intervention",
+			data: {
+				schemaVersion: 1,
+				orchestrationId: "orchestration-1",
+				runId: "run-1",
+				code: "interruption",
+				outcome: "acknowledged",
+				acknowledged: true,
+			},
+		});
+		const serialized = JSON.stringify(result);
+		for (const forbidden of ["task", "command", "output", "path"]) {
+			expect(serialized).not.toContain(`"${forbidden}"`);
+		}
+		for (const input of [
+			{ code: "not-allowed" },
+			{ outcome: "not-allowed" },
+			{ acknowledged: "yes" },
+			{ durationMs: Number.MAX_SAFE_INTEGER },
+			{ task: "not retained" },
+		] as const) {
+			expect(
+				buildSubagentInterventionEvent({
+					orchestrationId: "orchestration-1",
+					runId: "run-1",
+					code: "interruption",
+					outcome: "acknowledged",
+					acknowledged: true,
+					...input,
+				} as never),
+			).toBeNull();
+		}
 	});
 
 	it("builds deterministic read-only fan-out assignment and outcome events", () => {
@@ -284,7 +429,7 @@ describe("orchestration telemetry builders", () => {
 				],
 				direct: false,
 			})?.data,
-		).toMatchObject({ schemaVersion: 2, direct: false });
+		).toMatchObject({ schemaVersion: 3, direct: false });
 		expect(
 			buildOrchestrationInteractionEvent({
 				interactionId: "interaction-1",
@@ -334,8 +479,9 @@ describe("readOrchestrationEvents", () => {
 		expect(result.diagnostics.duplicateLines).toBe(1);
 	});
 
-	it("normalizes version 1 telemetry without tree metadata", async () => {
+	it("normalizes coexisting version 1, version 2, and version 3 telemetry", async () => {
 		const legacyRun = { ...runInput(), schemaVersion: 1 };
+		const version2Run = { ...runInput(), schemaVersion: 2 };
 		const legacyInteraction = {
 			schemaVersion: 1,
 			interactionId: "interaction-1",
@@ -343,14 +489,28 @@ describe("readOrchestrationEvents", () => {
 			parentUsageByModel: [],
 			direct: false,
 		};
+		const currentInteraction = {
+			schemaVersion: 3,
+			interactionId: "interaction-3",
+			orchestrationIds: ["orchestration-1"],
+			parentUsageByModel: [],
+			direct: true,
+		};
 		fs.writeFileSync(
 			path.join(tmpRoot, "metrics-2026-07-10.jsonl"),
 			[
 				event("legacy-v1-run", "2026-07-10T10:00:00.000Z", legacyRun),
+				event("legacy-v2-run", "2026-07-10T10:00:01.000Z", version2Run),
 				event(
 					"legacy-v1-interaction",
-					"2026-07-10T10:00:00.000Z",
+					"2026-07-10T10:00:02.000Z",
 					legacyInteraction,
+					"orchestration_interaction",
+				),
+				event(
+					"current-v3-interaction",
+					"2026-07-10T10:00:03.000Z",
+					currentInteraction,
 					"orchestration_interaction",
 				),
 			].join("\n") + "\n",
@@ -361,14 +521,15 @@ describe("readOrchestrationEvents", () => {
 			days: 1,
 			now: new Date("2026-07-10T12:00:00.000Z"),
 		});
-		expect(result.events).toHaveLength(2);
+		expect(result.events).toHaveLength(4);
+		expect(result.events.every((entry) => entry.data.schemaVersion === 3)).toBe(true);
 		const run = result.events.find(
 			(entry) => entry.event === "orchestration_run",
 		);
 		if (!run || run.event !== "orchestration_run")
 			throw new Error("legacy run fixture must be readable");
 		expect(run.data).toMatchObject({
-			schemaVersion: 2,
+			schemaVersion: 3,
 			orchestrationId: "orchestration-1",
 		});
 		expect(run.data.workers[0]).not.toHaveProperty("treeId");
@@ -378,7 +539,7 @@ describe("readOrchestrationEvents", () => {
 		if (!interaction || interaction.event !== "orchestration_interaction")
 			throw new Error("legacy interaction fixture must be readable");
 		expect(interaction.data).toMatchObject({
-			schemaVersion: 2,
+			schemaVersion: 3,
 			interactionId: "interaction-1",
 		});
 	});

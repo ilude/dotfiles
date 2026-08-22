@@ -171,6 +171,59 @@ describe("SubagentRunManager", () => {
 		expect(exited.processState).toBe("exited-unsettled");
 	});
 
+	it("classifies responsive quiet, stalled-tool, unresponsive runtime, and dead process states", () => {
+		const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+		try {
+			const manager = new SubagentRunManager();
+			beginRun(manager, "watchdog");
+			manager.registerProcess("watchdog", 123);
+			now.mockReturnValue(10_000);
+			const run = manager.get("watchdog");
+			if (!run) throw new Error("watchdog run missing");
+			expect(
+				inspectSubagentStatus(run, {
+					now: 50_000,
+					runtimePingAt: 49_000,
+					isProcessAlive: () => true,
+				}),
+			).toMatchObject({ watchdogState: "responsive-quiet" });
+
+			now.mockReturnValue(20_000);
+			manager.startTool("watchdog", {
+				id: "tool",
+				name: "find",
+				startedAt: 20_000,
+			});
+			const toolRun = manager.get("watchdog");
+			if (!toolRun) throw new Error("tool run missing");
+			expect(
+				inspectSubagentStatus(toolRun, {
+					now: 150_000,
+					runtimePingAt: 149_000,
+					isProcessAlive: () => true,
+				}),
+			).toMatchObject({
+				watchdogState: "stalled-tool",
+				activeToolDurationMs: 130_000,
+			});
+			expect(
+				inspectSubagentStatus(toolRun, {
+					now: 150_000,
+					runtimePingAt: 100_000,
+					isProcessAlive: () => true,
+				}),
+			).toMatchObject({ watchdogState: "unresponsive-runtime" });
+			expect(
+				inspectSubagentStatus(toolRun, {
+					now: 150_000,
+					isProcessAlive: () => false,
+				}),
+			).toMatchObject({ watchdogState: "dead-process" });
+		} finally {
+			now.mockRestore();
+		}
+	});
+
 	it("bounds transcript items and tracked settled runs", () => {
 		const manager = new SubagentRunManager();
 		beginRun(manager, "transcript");
