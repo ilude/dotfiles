@@ -41,7 +41,7 @@ Replace the one-file-per-task registry with a process-shared SQLite Goal Executi
   - Done when: Summary-only calls retain current fields and behavior; `blockedBy` remains the only input creating hard prerequisites; optional metadata independently changes only ready-result order; shared and multiple prerequisites work; migrated dangling references remain repairable; exact ties are deterministic; separate processes observe commits; and no task path invokes or claims the behavior of Prompt Scheduling.
   - Verify: Run parsed-schema and handler tests plus focused task tool, dependency, registry, renderer, operator-status, Herdr, goal, subagent, telemetry, session-resume, and process tests. Cover existing empty arrays, omitted and empty new metadata, each optional field independently, absence neutrality, metadata never changing readiness or transitions, exact comparator ties, atomic failures, user correction, `/clear` filtering, and startup with `--session`.
 
-- [ ] **T3: Document the domain, validate, and perform the quiescent cutover**
+- [x] **T3: Document the domain, validate, and perform the quiescent cutover**
   - Files: new `pi/docs/goal-execution-domain.md`, `pi/README.md`, the `task` tool schema/description/prompt surfaces in `pi/extensions/tasks.ts`, migration/operator documentation, and `.specs/sqlite-goal-execution/`.
   - Change: Document the bounded context, terms, scenarios, invariants, Dependency Graph semantics, optional metadata, transaction boundary, migration, rollback, rejected alternatives, and evolution triggers. Keep model-operational rules in the task tool surface, detailed rationale in the domain document, and concise operation in the README. Stop before live import and ask the operator to close every other Pi process; freeze mutations in the executing process, import a stable snapshot, validate SQLite state, and retain legacy JSON through the verification boundary. Rollback after any SQLite mutation requires quiescence, successful export, semantic comparison, and prior-code restoration.
   - Done when: The active task tool makes summary-only creation, optional metadata, explicit hard dependencies, and non-executing behavior discoverable; maintainers can trace domain and rollback decisions without `pi/AGENTS.md`; current documentation never calls Goal Execution a scheduler; the quiescent import passes; and all completion evidence is satisfied.
@@ -51,8 +51,8 @@ Replace the one-file-per-task registry with a process-shared SQLite Goal Executi
 
 - [x] Focused SQLite capability and migration checks pass on the exact supported Node runtime.
 - [ ] Focused and integration task, goal, subagent, status, Herdr, renderer, telemetry, resume, and real child-process tests pass.
-- [ ] `cd pi && pnpm run typecheck`, `cd pi && pnpm run biome:check`, and `git diff --check` pass with no new failures.
-- [ ] Quiescent live import and semantic comparison pass before SQLite becomes the mutable authority.
+- [x] `cd pi && pnpm run typecheck`, `cd pi && pnpm run biome:check`, and `git diff --check` pass with no new failures.
+- [x] Quiescent live import and semantic comparison pass before SQLite becomes the mutable authority.
 
 ## Retention
 
@@ -60,7 +60,7 @@ Keep incomplete work at `.specs/sqlite-goal-execution/plan.md`. After every task
 
 ## Execution Status
 
-- State: T1 and T2 complete; T3 in progress
-- Blocker: quiescent live-migration gate in T3
-- Next: T3 documentation, validation, and quiescent cutover
+- State: live cutover complete; final shared integration gate pending
+- Blocker: concurrent subagent work currently leaves the repository-wide subagent suite failing outside this task-system boundary
+- Next: rerun the shared integration gate after the subagent work settles, then archive this plan
 - Resume: `/do-it .specs/sqlite-goal-execution/plan.md`
