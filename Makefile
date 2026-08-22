@@ -43,7 +43,7 @@ validate-bash:
 	@bash validate/validate-all.sh
 
 validate-pwsh:
-	@pwsh -NoProfile -ExecutionPolicy Bypass -File validate.ps1
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate.ps1
 
 validate-all: validate-bash validate-pwsh
 	@echo "Full validation complete (bash + PowerShell)."

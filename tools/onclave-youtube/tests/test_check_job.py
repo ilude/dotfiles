@@ -45,7 +45,9 @@ def test_detail_renders_known_stages_in_canonical_order(capsys):
 def test_stage_parser_is_additive_and_tolerates_missing_or_malformed_values():
     assert format_stages({"status": "completed"}) is None
     assert format_stages({"stages": {"parse": {"status": "completed"}, "bad": None}}) == "parse"
-    assert format_stages({"pipeline_stages": ["embedding", 3, {"stage": "chunking"}]}) == "chunking, embedding"
+    assert format_stages(
+        {"pipeline_stages": ["embedding", 3, {"stage": "chunking"}]}
+    ) == "chunking, embedding"
 
 
 def test_list_renders_stages_and_preserves_legacy_jobs(capsys):

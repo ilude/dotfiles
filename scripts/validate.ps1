@@ -9,7 +9,7 @@
     Reports pass/fail/warn status for each check.
 
 .EXAMPLE
-    pwsh -NoProfile -File validate.ps1
+    pwsh -NoProfile -File scripts/validate.ps1
 #>
 
 [CmdletBinding()]
