@@ -10,9 +10,9 @@ Provider-supported deferred tools may be searchable without changing the immedia
 
 ## Metrics and reporting
 
-The `openai-codex` request boundary records one metadata-only `prompt_cache_request` event per completed assistant response. It includes model, request-shape change flags, and normalized provider usage fields: `input`, `cacheRead`, and `cacheWrite`. A provider omission is recorded as `unavailable`, not zero. Metrics do not contain prompts, tool schemas, arguments, output, or quota attribution.
+The `openai-codex` request boundary records one metadata-only `prompt_cache_request` event per completed assistant response. It includes model, request-shape change flags, and normalized provider usage fields: `input`, `cacheRead`, and `cacheWrite`. The installed Codex adapter cannot distinguish an omitted raw cache-write field from an explicit zero, so normalized zero writes are recorded as `unavailable`; positive writes remain observable. Metrics do not contain prompts, tool schemas, arguments, output, or quota attribution.
 
-`/usage` reads a bounded recent metrics window directly and deduplicates by the existing event ID and session/message identity. It reports usage coverage, token totals, cache-read share as `cacheRead / (input + cacheRead + cacheWrite)` for complete usage records, stable/context-change/immediate-tool-change counts, and multiple models only when present. It does not scan raw transcripts, merge Codex CLI history, build an analytics database, or claim that a request caused subscription-limit changes.
+`/usage` reads a bounded recent metrics window directly and deduplicates by the existing event ID and session/message identity. It reports usage coverage, token totals, cache-read share as `cacheRead / (input + cacheRead)` for records where those observed fields are available, stable/context-change/immediate-tool-change counts, and multiple models only when present. Cache writes are reported separately and excluded from the share when the provider does not expose them. It does not scan raw transcripts, merge Codex CLI history, build an analytics database, or claim that a request caused subscription-limit changes.
 
 ## Compaction
 

@@ -438,15 +438,42 @@ describe("codex-status usage", () => {
 			input: 10,
 			cacheRead: 8,
 			cacheWrite: 2,
-			cacheReadShare: 0.4,
+			cacheReadShare: 8 / 18,
 			stable: 1,
 			contextChanges: 1,
 			immediateToolChanges: 1,
 		});
 		const text = formatCodexCacheUsageSection(summary);
-		expect(text).toContain("cache-read share of processed input: 40.0%");
+		expect(text).toContain("cache-read share of observed input: 44.4%");
 		expect(text).toContain("usage unavailable: 1");
 		expect(text).not.toContain("subscription");
+	});
+
+	it("does not collapse legacy unavailable message IDs within one session", () => {
+		const events = ["event-1", "event-2"].map((id) => ({
+			schemaVersion: 1 as const,
+			id,
+			ts: "2026-08-23T12:00:00.000Z",
+			session: "session-1",
+			event: "prompt_cache_request",
+			data: {
+				provider: "openai-codex",
+				model: "gpt-5.6-sol",
+				messageId: "unavailable",
+				input: 10,
+				cacheRead: 8,
+				cacheWrite: "unavailable",
+				contextChangedSincePreviousRequest: false,
+				immediateToolsChangedSincePreviousRequest: false,
+			},
+		}));
+
+		const summary = summarizeCodexCacheMetrics(events);
+		expect(summary).toMatchObject({
+			windowSize: 2,
+			withUsage: 2,
+			cacheWrite: "unavailable",
+		});
 	});
 
 	it("formats Bedrock month-to-date local estimates", () => {
@@ -466,17 +493,28 @@ describe("codex-status usage", () => {
 
 		const text = formatBedrockUsageSection({
 			month: "2026-07",
-			inputTokens: 3_614_498,
-			outputTokens: 146_348,
+			inputTokens: 3_614_504,
+			outputTokens: 174_925,
 			cacheReadTokens: 11_351_065,
-			cacheWriteTokens: 915_277,
-			costTotal: 66.2544,
-			requestCount: 2,
+			cacheWriteTokens: 946_491,
+			costTotal: 68.073485,
+			requestCount: 5,
 			unpricedRequestCount: 0,
 			models: [
 				{
 					provider: "amazon-bedrock",
 					model: "us.anthropic.claude-fable-5",
+					inputTokens: 6,
+					outputTokens: 28_577,
+					cacheReadTokens: 0,
+					cacheWriteTokens: 31_214,
+					costTotal: 1.819085,
+					requestCount: 3,
+					unpricedRequestCount: 0,
+				},
+				{
+					provider: "bedrock-mantle",
+					model: "anthropic.claude-fable-5",
 					inputTokens: 3_614_498,
 					outputTokens: 146_348,
 					cacheReadTokens: 11_351_065,
@@ -489,7 +527,7 @@ describe("codex-status usage", () => {
 		});
 
 		expect(text).toBe(
-			"Bedrock:\n  fable-5: $66.25 3.6M in, 146.3K out\n  Total:  $66.25",
+			"Bedrock:\n  fable-5: $68.07 3.6M in, 174.9K out\n  Total:  $68.07",
 		);
 	});
 

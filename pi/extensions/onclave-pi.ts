@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 function resolveOnclaveAdapter(): string {
-	let current = path.dirname(fileURLToPath(import.meta.url));
+	let current = path.dirname(fs.realpathSync(fileURLToPath(import.meta.url)));
 	for (;;) {
 		const candidate = path.join(
 			current,

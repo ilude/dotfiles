@@ -114,7 +114,14 @@ function normalizedUsage(usage: unknown): Record<string, number | typeof UNAVAIL
 		typeof value[key] === "number" && Number.isFinite(value[key]) && value[key] >= 0
 			? value[key] as number
 			: UNAVAILABLE;
-	return { input: number("input"), cacheRead: number("cacheRead"), cacheWrite: number("cacheWrite") };
+	const cacheWrite = number("cacheWrite");
+	return {
+		input: number("input"),
+		cacheRead: number("cacheRead"),
+		// The installed Codex adapter collapses an omitted raw field and an explicit
+		// zero to the same normalized value. Preserve only positive reported writes.
+		cacheWrite: cacheWrite === 0 ? UNAVAILABLE : cacheWrite,
+	};
 }
 
 function requiredString(value: unknown): AvailableString {
@@ -243,6 +250,9 @@ export default function sessionConfigurationFingerprint(pi: ExtensionAPI): void 
 		const request = pendingPromptCacheRequest;
 		const message = event.message as unknown as Record<string, unknown> | undefined;
 		if (!request || message?.role !== "assistant") return;
+		const messageId = typeof message.id === "string" && message.id.length > 0
+			? message.id
+			: undefined;
 		pendingPromptCacheRequest = undefined;
 		previousPromptCacheRequest = request;
 		recordEvent({
@@ -253,7 +263,7 @@ export default function sessionConfigurationFingerprint(pi: ExtensionAPI): void 
 				provider: request.provider,
 				model: request.model,
 				turnId: currentTurnIndex > 0 ? `turn-${currentTurnIndex}` : UNAVAILABLE,
-				messageId: typeof message.id === "string" ? message.id : UNAVAILABLE,
+				...(messageId ? { messageId } : {}),
 				instructionsSha256: request.instructionsSha256,
 				immediateToolNamesSha256: request.immediateToolNamesSha256,
 				dynamicContextSha256: request.dynamicContextSha256,

@@ -1,9 +1,18 @@
 ---
 created: 2026-08-21
-status: draft
+updated: 2026-08-23
+status: draft-proposal
 ---
 
 # PRD: Pi Contract, Execution, and Validation Workflow
+
+## Proposal status
+
+This PRD is the single open product proposal for future Pi workflow changes. It does not describe current command authority. Current behavior and consolidated research are recorded in `README.md` and `research.md`.
+
+As of 2026-08-23, `/goal`, `/plan-it`, and `/do-it` already implement persistent goal state, reviewed canonical plans, workflow-owned worktree isolation, bounded execution, validation, merge, and archive behavior. `/validate-it` and `/do-it --repair` do not exist. `/review-it` is retired from Pi registration, while `/prd-it` remains available for optional product-definition work.
+
+The central product question is whether independent validation and explicitly authorized repair require new public commands and a second durable artifact, or whether the existing plan and `/do-it` lifecycle can enforce the same authority separation with less ceremony.
 
 ## Problem
 
@@ -256,9 +265,13 @@ all required evidence passes -> complete and archive
 | Artifact state diverges from transcript or runtime | Unsafe resume behavior | Stable IDs, matching revisions, deterministic transition validation |
 | Retired workflows leave hidden tools or aliases | Multiple authority paths remain | Exact registration, discovery, documentation, and resume-compatibility inventory during planning |
 
+## PR-first CI extension
+
+A later phase may move broad repository gates to protected Forgejo pull requests while retaining focused local checks. Any repair flow must bind to the exact failed PR head, preserve required checks and branch protection, classify non-code failures before agent work, reject stale events, limit repeated attempts, and keep merge authority separate. The deterministic coordinator may authorize only the recorded repair scope on the PR branch. Full research and open decisions are in `research.md`.
+
 ## Dependencies
 
-- Existing Pi plan lifecycle, plan progress, archival, task, tool visibility, and workflow-command infrastructure.
+- Existing Pi plan lifecycle, plan progress, workflow-owned worktrees, merge and archival tools, task, tool visibility, and workflow-command infrastructure.
 - Current repository instructions governing shared worktrees, review passes, adjacent findings, and deterministic validation.
 - A later migration decision for active or archived artifacts created by retired workflows.
 
@@ -271,6 +284,8 @@ all required evidence passes -> complete and archive
 5. Which sections of `plan.md` may record execution progress without changing the accepted contract revision?
 
 ## Research Basis
+
+The complete source record, URLs, weekend session decisions, current implementation baseline, limitations, and PR-first CI research are consolidated in `research.md`.
 
 - OpenAI, "Auto-review of agent actions without synchronous human oversight," April 30, 2026: separate action review from the completion-driven executor and stop repeated denied trajectories.
 - Kim et al., "TeamBench: Evaluating Agent Coordination under Enforced Role Separation," May 2026: prompt-only roles produced more verifier mutation attempts, and verifier approval was not a reliable correctness signal.

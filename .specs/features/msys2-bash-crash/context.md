@@ -118,6 +118,22 @@ if it crashes, the DLL was overwritten). If reverted, either restore from
 it. This is the exact failure mode the original plan predicted for an
 unenforced pin, and it happened.
 
+## Current state (re-verified 2026-08-23)
+
+The installed Git for Windows runtime is the vendor build, not the stored custom patch:
+
+- Installed version: `3.6.9-b4195d69133078c498a1bf811c4fb0c61fc3c8af`
+- Installed SHA-256: `2EA49553E4C03055DCF1C4A2BEF54668081A07663FBA283F4B34CF70F2157191`
+- Stored patched DLL SHA-256: `FB8B077CAB708428D6FEFBFE80A8278313E8814C79DFF47F4C84B8D231EF5AB9`
+- A fresh 100-concurrent non-login Bash startup test completed with exit code 0.
+
+The custom DLL is therefore not currently installed and is not required for normal operation on this machine. Keep it as manual recovery material because the underlying upstream fix remains unmerged and the race may depend on startup timing or domain-controller latency. Do not install the stored DLL on the current runtime: it was built from 3.6.7 and is not a compatible replacement for 3.6.9.
+
+Live upstream status on 2026-08-23:
+
+- `msys2/msys2-runtime#333` is open, not merged, and last updated 2026-07-29: https://github.com/msys2/msys2-runtime/pull/333
+- `anthropics/claude-code#30165` is closed as resolved by automation, but its closure does not establish an MSYS2 runtime fix: https://github.com/anthropics/claude-code/issues/30165
+
 ## Matching upstream issues
 
 | Issue | Description |

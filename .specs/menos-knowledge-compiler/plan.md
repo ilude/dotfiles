@@ -9,7 +9,7 @@ completed:
 
 ## Decision status
 
-DECIDED 2026-08-12: Retrieval repair is Milestone 0. Fix relevance, score calibration, latency, and missing titles/metadata before compiler waves begin. Snapshot comparisons against the current baseline are not acceptance evidence until retrieval discriminates. See `.specs/menos-knowledge-compiler/eval-baseline-pre.md` and `.specs/ai-tooling-consolidation/future-view.md`, Section 6.
+DECIDED 2026-08-12: Retrieval repair is Milestone 0. Fix relevance, score calibration, latency, and missing titles/metadata before compiler waves begin. Snapshot comparisons against the current baseline are not acceptance evidence until retrieval discriminates. See `.specs/menos-knowledge-compiler/eval-baseline-pre.md` and `.specs/archive/ai-tooling-consolidation/future-view.md`, Section 6.
 
 ## Context & Motivation
 

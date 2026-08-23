@@ -58,7 +58,12 @@ describe("prompt cache request metrics", () => {
 				],
 			},
 		}, ctx);
-		await messageEnd({ message: { role: "assistant", id: "message-3", usage: { input: 12 } } }, ctx);
+		await messageEnd({
+			message: {
+				role: "assistant",
+				usage: { input: 12, cacheRead: 0, cacheWrite: 0 },
+			},
+		}, ctx);
 		await messageEnd({ message: { role: "assistant", id: "duplicate" } }, ctx);
 
 		expect(recordEvent).toHaveBeenCalledTimes(3);
@@ -88,9 +93,10 @@ describe("prompt cache request metrics", () => {
 			contextChangedSincePreviousRequest: true,
 			immediateToolsChangedSincePreviousRequest: true,
 			input: 12,
-			cacheRead: "unavailable",
+			cacheRead: 0,
 			cacheWrite: "unavailable",
 		});
+		expect(recordEvent.mock.calls[2][0].data).not.toHaveProperty("messageId");
 		expect(JSON.stringify(recordEvent.mock.calls)).not.toContain("private prompt");
 	});
 

@@ -398,7 +398,11 @@ function deduplicatePromptCacheMetrics(events: readonly MetricsEvent[]): PromptC
 	for (const event of events) {
 		if (!isPromptCacheMetric(event) || seenEventIds.has(event.id)) continue;
 		seenEventIds.add(event.id);
-		const messageId = typeof event.data.messageId === "string" ? event.data.messageId : undefined;
+		const messageId =
+			typeof event.data.messageId === "string" &&
+			event.data.messageId !== UNAVAILABLE
+				? event.data.messageId
+				: undefined;
 		const messageKey = messageId && event.session ? `${event.session}:${messageId}` : undefined;
 		if (messageKey && seenMessages.has(messageKey)) continue;
 		if (messageKey) seenMessages.add(messageKey);
@@ -420,7 +424,7 @@ export function summarizeCodexCacheMetrics(
 	let inputCount = 0;
 	let cacheReadCount = 0;
 	let cacheWriteCount = 0;
-	let cacheShareProcessedInput = 0;
+	let cacheShareObservedInput = 0;
 	let cacheShareRead = 0;
 	const modelCounts = new Map<string, number>();
 	for (const event of metrics) {
@@ -439,19 +443,9 @@ export function summarizeCodexCacheMetrics(
 			cacheWrite += eventCacheWrite;
 			cacheWriteCount += 1;
 		}
-		if (
-			eventInput !== undefined &&
-			eventCacheRead !== undefined &&
-			eventCacheWrite !== undefined
-		) {
+		if (eventInput !== undefined && eventCacheRead !== undefined) {
 			completeUsage += 1;
-		}
-		if (
-			eventInput !== undefined &&
-			eventCacheRead !== undefined &&
-			eventCacheWrite !== undefined
-		) {
-			cacheShareProcessedInput += eventInput + eventCacheRead + eventCacheWrite;
+			cacheShareObservedInput += eventInput + eventCacheRead;
 			cacheShareRead += eventCacheRead;
 		}
 		const model = typeof event.data.model === "string" ? event.data.model : undefined;
@@ -465,8 +459,8 @@ export function summarizeCodexCacheMetrics(
 		cacheRead: cacheReadCount > 0 ? cacheRead : UNAVAILABLE,
 		cacheWrite: cacheWriteCount > 0 ? cacheWrite : UNAVAILABLE,
 		cacheReadShare:
-			cacheShareProcessedInput > 0
-				? cacheShareRead / cacheShareProcessedInput
+			cacheShareObservedInput > 0
+				? cacheShareRead / cacheShareObservedInput
 				: UNAVAILABLE,
 		stable: metrics.filter((event) => event.data.contextChangedSincePreviousRequest === false && event.data.immediateToolsChangedSincePreviousRequest === false).length,
 		contextChanges: metrics.filter((event) => event.data.contextChangedSincePreviousRequest === true).length,
@@ -490,7 +484,7 @@ export function formatCodexCacheUsageSection(
 		`  input: ${formatCacheMetric(summary.input)}`,
 		`  cache read: ${formatCacheMetric(summary.cacheRead)}`,
 		`  cache write: ${formatCacheMetric(summary.cacheWrite)}`,
-		`  cache-read share of processed input: ${summary.cacheReadShare === UNAVAILABLE ? UNAVAILABLE : `${(summary.cacheReadShare * 100).toFixed(1)}%`}`,
+		`  cache-read share of observed input: ${summary.cacheReadShare === UNAVAILABLE ? UNAVAILABLE : `${(summary.cacheReadShare * 100).toFixed(1)}%`}`,
 		`  stable: ${summary.stable}`,
 		`  context changes: ${summary.contextChanges}`,
 		`  immediate-tool changes: ${summary.immediateToolChanges}`,
@@ -544,11 +538,35 @@ export function formatBedrockUsageSection(
 		return "Bedrock: no usage recorded this month.";
 	}
 
-	const lines = ["Bedrock:"];
+	const modelsByName = new Map<
+		string,
+		{
+			inputTokens: number;
+			outputTokens: number;
+			costTotal: number;
+			unpricedRequestCount: number;
+		}
+	>();
 	for (const model of summary.models) {
+		const name = shortBedrockModelName(model.model);
+		const totals = modelsByName.get(name) ?? {
+			inputTokens: 0,
+			outputTokens: 0,
+			costTotal: 0,
+			unpricedRequestCount: 0,
+		};
+		totals.inputTokens += model.inputTokens;
+		totals.outputTokens += model.outputTokens;
+		totals.costTotal += model.costTotal;
+		totals.unpricedRequestCount += model.unpricedRequestCount;
+		modelsByName.set(name, totals);
+	}
+
+	const lines = ["Bedrock:"];
+	for (const [name, model] of modelsByName) {
 		const partial = model.unpricedRequestCount > 0 ? ">= " : "";
 		lines.push(
-			`  ${shortBedrockModelName(model.model)}: ${partial}${formatCompactMoney(model.costTotal)} ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out`,
+			`  ${name}: ${partial}${formatCompactMoney(model.costTotal)} ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out`,
 		);
 	}
 	const partial = summary.unpricedRequestCount > 0 ? ">= " : "";

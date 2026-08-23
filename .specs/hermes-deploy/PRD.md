@@ -8,7 +8,7 @@ role-decided: 2026-08-12
 
 ## Decided role (2026-08-12)
 
-Hermes is the homelab front door -- it owns inbound webhooks, external triggers, and always-on automation. Pi remains the interactive dev agent; onclave-comms carries agent-to-agent messages; Herdr remains a Pi terminal presentation/control layer. Hermes' Kanban/task board must be reconciled with the Pi task registry before Hermes-driven work touches Pi-managed tasks. See `.specs/ai-tooling-consolidation/future-view.md`, Section 6.
+Hermes is the homelab front door -- it owns inbound webhooks, external triggers, and always-on automation. Pi remains the interactive dev agent; onclave-comms carries agent-to-agent messages; Herdr remains a Pi terminal presentation/control layer. Hermes' Kanban/task board must be reconciled with the Pi task registry before Hermes-driven work touches Pi-managed tasks. See `.specs/archive/ai-tooling-consolidation/future-view.md`, Section 6.
 
 ## Problem
 

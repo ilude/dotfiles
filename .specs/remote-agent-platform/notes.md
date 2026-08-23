@@ -412,7 +412,7 @@ This slice can begin with SSH and systemd or another existing supervisor. It doe
 
 PR-first remote validation and bounded CI repair is a separate follow-up topic:
 
-- [`.specs/pr-first-ci-repair/notes.md`](../pr-first-ci-repair/notes.md)
+- [Pi workflow lifecycle research](../pi-workflow-contract-lifecycle/research.md#pr-first-ci-validation-and-repair)
 
 A future CI repair system may consume remote workspaces, but this PRD will not define PR policy, branch protection, CI repair loops, or automated merge behavior.
 
