@@ -1,5 +1,13 @@
 # Aliases (interactive shells)
 
+# Provision Onclave authority only for an unmarked interactive root shell.
+if [[ -z ${ONCLAVE_PI_ROOT_CAPABILITY-} \
+        && -z ${PI_SUBAGENT_RUN_ID-} \
+        && -z ${PI_SUBAGENT_TREE_RUN_ID-} \
+        && -z ${ONCLAVE_PI_SUBAGENT_INELIGIBLE-} ]]; then
+    export ONCLAVE_PI_ROOT_CAPABILITY="$(command openssl rand -hex 16)"
+fi
+
 # Coding agent wrappers
 claude() { command claude "$@"; }
 opencode() { command opencode "$@"; }

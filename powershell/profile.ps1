@@ -8,6 +8,14 @@
 # See: https://github.com/anthropics/claude-code/issues/10375
 [Console]::Write("`e[?1003l`e[?1006l")
 
+# Provision Onclave authority only for an unmarked interactive root shell.
+if (-not $env:ONCLAVE_PI_ROOT_CAPABILITY -and
+    -not $env:PI_SUBAGENT_RUN_ID -and
+    -not $env:PI_SUBAGENT_TREE_RUN_ID -and
+    -not $env:ONCLAVE_PI_SUBAGENT_INELIGIBLE) {
+  $env:ONCLAVE_PI_ROOT_CAPABILITY = [guid]::NewGuid().ToString()
+}
+
 # Prefer extended provider prompt caching in pi when supported.
 if (-not $env:PI_CACHE_RETENTION) {
   $env:PI_CACHE_RETENTION = 'long'

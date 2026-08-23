@@ -4658,6 +4658,146 @@ You are a test agent.
 	);
 
 	it(
+		"emits exactly one closeout for each modern subagent tool",
+		async () => {
+			mockSuccessfulSpawn();
+			const { pi } = await loadTool();
+			const ctx = createMockCtx({ cwd: tmpDir });
+
+			for (const [toolName, item] of [
+				["subagent_read", { agent: "tester", instructions: "Inspect the package." }],
+				["subagent_write", { agent: "tester", instructions: "Update the package." }],
+				["subagent_teamlead", { agent: "teamlead", instructions: "Coordinate the package." }],
+			] as const) {
+				const tool = pi._getTool(toolName);
+				if (!tool) throw new Error(`${toolName} tool not registered`);
+				await tool.execute(
+					`modern-${toolName}`,
+					{ items: [item], agentScope: "project" },
+					undefined,
+					undefined,
+					ctx,
+				);
+			}
+
+			const runs = await orchestrationRuns();
+			expect(runs).toHaveLength(3);
+			expect(runs.map((event) => event.data.executionKind)).toEqual(
+				expect.arrayContaining(["read", "write", "coordinator"]),
+			);
+			for (const executionKind of ["read", "write", "coordinator"])
+				expect(
+					runs.filter((event) => event.data.executionKind === executionKind),
+				).toHaveLength(1);
+			expect(runs.every((event) => event.data.workers)).toBe(true);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"closes a partial coordinator budget once and does not duplicate it on continuation",
+		async () => {
+			let launch = 0;
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionIndex = args.indexOf("--session-id");
+				const sessionArgIndex = args.indexOf("--session");
+				const sessionId =
+					sessionIndex >= 0
+						? args[sessionIndex + 1]
+						: `budget-continuation-${launch}`;
+				const resumedSessionPath =
+					sessionArgIndex >= 0 ? args[sessionArgIndex + 1] : undefined;
+				const sessionPath =
+					resumedSessionPath ??
+					path.join(
+						sessionDir,
+						`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+					);
+				fs.mkdirSync(sessionDir, { recursive: true });
+				if (!fs.existsSync(sessionPath))
+					fs.writeFileSync(sessionPath, testSessionHeader(sessionId, tmpDir), "utf8");
+				queueMicrotask(() => {
+					if (launch === 0) {
+						for (let turn = 1; turn <= 32; turn += 1) {
+							proc.stdout.emit(
+								"data",
+								`${JSON.stringify({
+									type: "message_end",
+									message: {
+										role: "assistant",
+										content: [{ type: "text", text: `partial ${turn}` }],
+										stopReason: "toolUse",
+									},
+								})}\n${JSON.stringify({ type: "turn_end" })}\n`,
+							);
+						}
+					} else {
+						proc.stdout.emit(
+							"data",
+							`${JSON.stringify({
+								type: "message_end",
+								message: {
+									role: "assistant",
+									content: [{ type: "text", text: "continued" }],
+									stopReason: "end_turn",
+								},
+							})}\n`,
+						);
+					}
+					launch += 1;
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+
+			const { pi } = await loadTool();
+			const teamlead = pi._getTool("subagent_teamlead");
+			if (!teamlead) throw new Error("subagent_teamlead tool not registered");
+			const ctx = createMockCtx({ cwd: tmpDir });
+			const first = await teamlead.execute(
+				"modern-coordinator-budget",
+				{
+					items: [{ agent: "teamlead", instructions: "Coordinate until bounded." }],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+			const original = (await orchestrationRuns())[0];
+			expect(original).toMatchObject({
+				data: {
+					executionKind: "coordinator",
+					outcomeCode: "timeout",
+					coordinatorBudgetOutcome: "max_turns",
+				},
+			});
+			expect(first.details.results[0].completion?.status).toBe("partial");
+
+			const continuation = pi._getTool("subagent_continue");
+			if (!continuation) throw new Error("subagent_continue tool not registered");
+			await continuation.execute(
+				"modern-coordinator-continuation",
+				{
+					agent: "builder",
+					session: first.details.results[0].sessionPath,
+					task: "Continue the bounded coordination.",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const runs = await orchestrationRuns();
+			expect(runs).toHaveLength(2);
+			expect(runs.filter((event) => event.data.orchestrationId === original.data.orchestrationId)).toHaveLength(1);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
 		"emits exactly one content-free orchestration run for every subagent mode and failure path",
 		async () => {
 			mockSuccessfulSpawn();

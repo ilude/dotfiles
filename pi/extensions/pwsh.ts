@@ -111,10 +111,9 @@ function registerPwshTool(pi: ExtensionAPI) {
     description: `Execute PowerShell Core in the current working directory. Defaults to ${DEFAULT_TIMEOUT_SECONDS}s and returns stdout, stderr, and the PowerShell error stream, truncated to the last ${DEFAULT_MAX_LINES} lines or ${Math.round(DEFAULT_MAX_BYTES / 1024)}KB.`,
     promptSnippet: "Execute PowerShell Core (pwsh) commands for Windows-native tasks, .NET, and PowerShell modules",
     promptGuidelines: [
-      "On Windows, use pwsh for Windows-native cmdlets, .NET, registry, modules, and .ps1 scripts; use bash for git, Node, POSIX commands, and Unix-style pipelines. On Unix, use pwsh only when explicitly requested.",
-      "In pwsh, use cmdlet names (Get-Content, Write-Output) over aliases (cat, echo), and use $env:VAR for environment variables.",
-      "Keep -Command input short. For multiline logic, nested quoting, loops, regular expressions, or multiple pipelines, write a temporary .ps1 under .tmp/ and invoke it with pwsh -File.",
-      "Set a larger timeout before known network, module-import, package, or infrastructure operations; do not retry an unchanged timed-out command with the same timeout.",
+      "On Windows, use pwsh for cmdlets, .NET, registry, modules, and .ps1 files; use bash for Git, Node, and POSIX tools. On Unix, use pwsh only when requested.",
+      "Use full cmdlet names and $env:VAR. Put multiline or quoting-heavy logic in .tmp/*.ps1 and run it with -File.",
+      "Set an adequate timeout before network, module, package, or infrastructure work; do not repeat an unchanged timed-out command.",
     ],
     parameters: Type.Object({
       command: Type.String({ description: "PowerShell command to execute" }),

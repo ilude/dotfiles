@@ -541,10 +541,33 @@ def test_subagent_views_flatten_mixed_versions_without_content_or_paths(
         1,
     )
 
-    dataframe = connection.execute(
+    run_dataframe = connection.execute(
         "SELECT orchestration_id, marker_count FROM subagent_runs ORDER BY orchestration_id"
     ).df()
-    assert list(dataframe.columns) == ["orchestration_id", "marker_count"]
+    assert list(run_dataframe.columns) == ["orchestration_id", "marker_count"]
+    worker_dataframe = connection.execute(
+        """SELECT run_id, status, duration_ms, usage_processed_tokens, usage_cost_usd
+        FROM subagent_workers ORDER BY run_id"""
+    ).df()
+    assert list(worker_dataframe.columns) == [
+        "run_id",
+        "status",
+        "duration_ms",
+        "usage_processed_tokens",
+        "usage_cost_usd",
+    ]
+    intervention_dataframe = connection.execute(
+        """SELECT orchestration_id, run_id, code, outcome, acknowledged,
+        recovery_count FROM subagent_interventions"""
+    ).df()
+    assert list(intervention_dataframe.columns) == [
+        "orchestration_id",
+        "run_id",
+        "code",
+        "outcome",
+        "acknowledged",
+        "recovery_count",
+    ]
     rendered = repr(runs) + repr(worker) + repr(intervention)
     assert all(
         value not in rendered

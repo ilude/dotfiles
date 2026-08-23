@@ -1,7 +1,8 @@
 ---
 created: 2026-08-21
 revised: 2026-08-21
-status: ready
+status: complete
+completed: 2026-08-23
 ---
 
 # Plan: Simplify and Contain Pi Subagent Execution
@@ -46,7 +47,7 @@ Replace the overloaded Pi subagent role and write-lease interface with explicit 
   - **Done when:** The recovery slice passes; sibling, stale/replayed, wrong-run, wrong-tool, sessionless, and invalid-token controls are rejected; default and parent-overridden workspace roots work; governed escape attempts fail before access and remain visible to child and parent; filesystem roots and unresolved dynamic recursive targets are rejected; a deliberately stalled recursive search settles and a replacement child resumes the persisted context, acknowledges the interrupted tool as unknown, emits later activity, and completes another tool call; ping distinguishes responsive quiet, stalled-tool, unresponsive-runtime, and dead-process states without consuming a model turn; failed or unsettled recovery remains distinct from safe continuation; and an over-budget coordinator returns a partial result with gaps rather than hanging.
   - **Verify:** Focused Vitest scenarios use injected clocks/process controls and real bounded subprocess slices for one Unix-style and one Windows-compatible path/termination case; then `cd pi && pnpm test subagent.test.ts subagent-control.test.ts subagent-tree-runtime.test.ts subagent-run-manager.test.ts` and `cd pi && pnpm run typecheck` pass.
 
-- [ ] **T3: Persist analyzable outcomes, prove Onclave ownership, update contracts, and complete end-to-end validation**
+- [x] **T3: Persist analyzable outcomes, prove Onclave ownership, update contracts, and complete end-to-end validation**
   - **Depends on:** T1 and T2.
   - **Files:** `pi/lib/orchestration-telemetry.ts`, `pi/lib/observability.ts` only where existing span metadata must change, `pi/analytics/pi_log_query.py`, `pi/analytics/tests/test_pi_log_query.py`, subagent telemetry tests, `pi/README.md`, `pi/AGENTS.md`, `pi/skills/pi-extension/references/contracts/subagents-and-tasks.md`, `pi/skills/pi-extension/references/contracts/tool-discovery.md`, `modules/onclave/extensions/onclave-pi/src/onclave-pi.ts` only if testability requires a behavior-preserving seam, and `modules/onclave/extensions/onclave-pi/tests/extension.test.ts` or a focused sibling test.
   - **Change:** Version the allowlisted orchestration schema with stable execution-kind and outcome codes, workspace-root source, marker counts, boundary/search/watchdog/ping/interruption aggregates and acknowledgments, coordinator-budget outcome, legacy-adapter branch/use, task-link source, and `onclaveEligible`; add one sparse content-free intervention event; retain exact live details only process-locally; add only the flattened DuckDB views `subagent_runs`, `subagent_workers`, and `subagent_interventions`; test ingestion and schema-version coexistence; provision a root-only Onclave capability and strip it from every direct and broker child environment; test both child markers plus a nested Pi launched after removing them against the shared adapter initialization boundary; update operator and agent guidance to the new interface and explicit non-sandbox boundary.
@@ -55,7 +56,11 @@ Replace the overloaded Pi subagent role and write-lease interface with explicit 
 
 ## Validation
 
-T1-T3 collectively prove the completion evidence through focused schema, authority, containment, process recovery, telemetry, analytics, compatibility, and Onclave tests. Final validation is `uv run --project pi/analytics pytest pi/analytics/tests/test_pi_log_query.py`, `cd modules/onclave && just check`, `cd pi && pnpm test`, `cd pi && pnpm run typecheck`, `git diff --check`, and the bounded Pi smoke sequence in T3. Stop completion on any failed check or if a settled child cannot resume its persisted session with the interrupted tool outcome marked unknown.
+- [x] Focused Pi runtime sequence: `cd pi && pnpm test subagent.test.ts subagent-control.test.ts workspace-policy.test.ts orchestration-telemetry.test.ts` - 122 passed, covering selected workspaces, overlapping work, task linkage, coordinator delegation and bounded partial results, interruption and same-session continuation, status activity, legacy translation, and exact-once telemetry closeout.
+- [x] Analytics: `uv run --project pi/analytics pytest pi/analytics/tests/test_pi_log_query.py` - 26 passed, including all three DuckDB views and dataframe conversion.
+- [x] Onclave: `cd modules/onclave && just check` - typecheck passed; 218 tests passed and 1 skipped, including authorized roots and denied direct, broker, and marker-scrubbed nested children.
+- [x] Complete Pi gate: `cd pi && pnpm run typecheck && pnpm test` - typecheck passed; 1,609 tests passed and 1 skipped.
+- [x] Shell and repository checks: zsh syntax, PowerShell parser, and `git diff --check` passed.
 
 ## Execution Notes
 
@@ -69,9 +74,10 @@ Incomplete work remains at `.specs/subagent-execution-safety/plan.md`. Completio
 
 ## Execution Status
 
-- State: in progress
-- Completed: T1 - typed execution contracts, advisory markers, task correlation, workspace trust, and hidden legacy registration; 158 focused tests and TypeScript typecheck passed.
-- Completed: T2 - workspace containment, bounded recursive search, runtime heartbeat/watchdog classification, settled persisted-session recovery, and coordinator budgets; 159 focused tests and TypeScript typecheck passed.
+- State: complete
+- Completed: T1 - typed execution contracts, advisory markers, task correlation, workspace trust, and hidden legacy registration.
+- Completed: T2 - workspace containment, bounded recursive search, runtime heartbeat/watchdog classification, settled persisted-session recovery, and coordinator budgets.
+- Completed: T3 - private versioned telemetry, DuckDB views, documentation, root-only Onclave capability enforcement, direct/broker/nested child denial, and final validation.
 - Decision: T2 preserves context by settling the hung child and resuming its persisted session with the interrupted tool outcome marked unknown; exact process survival is not required.
-- Next task: T3
-- Resume: `/do-it .specs/subagent-execution-safety/plan.md`
+- Blocker: none
+- Next: none
