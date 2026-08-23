@@ -74,14 +74,20 @@ For an open question, state what information is needed and why. After a material
 
 ## Delegation
 
-- Give each worker one narrow phase. Use `subagent_read` for closed-authority inspection, `subagent_write` for modifying leaves, and `subagent_coordinate` for one bounded coordinator package. Add only the language, domain, and workflow skills required by that item. Dispatch-selected skills add guidance but never grant tools or mutation authority. `workPaths` and `workBoundary` are advisory trail markers: report intentional overlap, but do not treat them as exclusive leases. Do not delegate serial stages unless one subagent can own the complete sequence while other independent work continues.
-- Treat model and topology routing as versioned recommendations, not gates. Prefer Luna low for tool-heavy inspection, exploration, validation, and summarization; Sol low or Luna high for bounded planning; Sol low for coordinators and subagent team managers; Luna medium or high for implementation; and Sol low for review. The parent may override a recommendation and should preserve the reason in telemetry when available. Max effort requires explicit operator approval.
-- The root owns program decomposition. Prefer one coordinator per independently verifiable work package; do not hand an entire multi-deliverable program to one coordinator. Use Luna-low summaries or artifact references when raw child output would consume material parent context.
+- Give each subagent one narrow phase. Use `subagent_read` for closed-authority inspection, `subagent_write` for modifying subagents, and `subagent_teamlead` for one bounded Team Lead package. Add only the language, domain, and workflow skills required by that item. Dispatch-selected skills add guidance but never grant tools or mutation authority. `boundaryPaths` and `boundary` are advisory markers: report intentional overlap, but do not treat them as leases. Do not delegate serial stages unless one subagent can own the complete sequence while other independent work continues.
+- Treat model and topology routing as versioned recommendations, not gates. Prefer Luna low for tool-heavy inspection, exploration, validation, and summarization; Sol low or Luna high for bounded planning; Sol low for Team Leads and subagent team managers; Luna medium or high for implementation; and Sol low for review. The parent may override a recommendation and should preserve the reason in telemetry when available. Max effort requires explicit operator approval.
+- The root owns program decomposition. Prefer one Team Lead per independently verifiable work package; do not hand an entire multi-deliverable program to one Team Lead. Use Luna-low summaries or artifact references when raw child output would consume material parent context.
 
 ## Pi ownership
 
 - Pi runtime, workflow, safety, routing, status, and tools belong in `pi/` unless another client or cross-client support is requested.
 - Track curated Pi source and configuration. Do not commit generated sessions, histories, logs, caches, indexes, local events, or tool state.
+
+## Bound-before-work and composition
+
+- Before substantive work, state an observable completion condition. If stating it requires inventing a material decision or fact, return one level with the expected reading, material alternative, and one decision required.
+- Escalate one level at a time. After resolution, write the bound into the durable goal condition or Task Instructions before reassignment; each level validates that work below composes into its slice.
+- Stable instructions precede late runtime goal and task context; runtime context is supplemental and does not replace the bound.
 
 ## Repository files
 

@@ -14,7 +14,7 @@ Before substantial work, state the observable evidence that would prove the requ
 
 Inspect only enough repository state to establish scope, ownership, and relevant validation. Execute bounded work directly.
 
-For work likely to span compaction, delegation, or delayed continuation, create one root task after completion evidence is settled. Its summary names the deliverable and its notes record the completion checks. Do not create a task for short direct work.
+For work likely to span compaction, delegation, or delayed continuation, create one root task after completion evidence is settled. Its summary names the deliverable and its Task Instructions record the completion checks. Do not create a task for short direct work.
 
 Create a plan only when unresolved architecture, migration design, destructive or stateful rollout, or material ambiguity makes direct execution unsafe. Otherwise do the work without adding planning ceremony.
 

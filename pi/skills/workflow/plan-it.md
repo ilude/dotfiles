@@ -13,7 +13,7 @@ Create the smallest complete plan using the existing mechanism. Preserve supplie
 Use `plan_progress` for this invocation. Persisted lifecycle stages are only `started`, `draft`, `blocked`, and `ready`.
 
 1. Create one canonical plan, then record `draft` with its path.
-2. Reread the complete draft. Record `risk` as `low` or `material` and identify whether the primary or a read-only leaf performed the inspection.
+2. Reread the complete draft. Record `risk` as `low` or `material` and identify whether the primary or a read-only subagent performed the inspection.
 3. For material risk, optionally run one bounded review round: one adversary plus either one feasibility proponent or one domain specialist. Record each result with `review`. A failed perspective may be retried once only with a materially different strategy; never rerun a healthy perspective. Review records are telemetry and do not create lifecycle stages.
 4. Update the plan for supported findings. If an issue remains unresolved, call `blocked` with one concise concern and ask the operator. After the answer, update the plan.
 5. Reread the complete plan and call `ready`. The tool runs deterministic plan-file validation before recording readiness.
