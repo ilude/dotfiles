@@ -14,19 +14,19 @@ Before substantial work, state the observable evidence that would prove the requ
 
 Inspect only enough repository state to establish scope, ownership, and relevant validation. Execute bounded work directly.
 
-For work likely to span compaction, delegation, or delayed continuation, create one root task after completion evidence is settled. Its summary names the deliverable and its Task Instructions record the completion checks. Do not create a task for short direct work.
+Treat work as large only when it is expected to span compaction, delegation, or delayed continuation. For large raw work, after completion evidence and scope bounds settle, create exactly one root task whose summary names the deliverable and whose Task Instructions record the completion checks. Short direct work remains task-free. Do not create a root task before bounds settle.
 
 Create a plan only when unresolved architecture, migration design, destructive or stateful rollout, or material ambiguity makes direct execution unsafe. Otherwise do the work without adding planning ceremony.
 
 ## Plan Task
 
-Read the complete plan and resume from the first unchecked dependency-ready task. A usable plan needs an objective, boundaries, executable tasks, real dependencies, validation, and current status; equivalent structures are acceptable.
+When the argument is a canonical `.specs/{slug}/plan.md`, treat that plan as the sole ledger. Read the complete plan, validate its canonical syntax, dependency graph, readiness status, and archive prerequisites before implementation, then resume from the first unchecked dependency-ready task. Do not create a duplicate root task or mirror the plan checklist in the task registry. A usable plan needs an objective, boundaries, executable tasks, real dependencies, validation, retention/archive instructions, and current status; equivalent structures are acceptable.
 
 Treat checked work as complete when current repository state and its recorded result do not contradict it. Do not demand separate evidence files, gate IDs, wave narratives, or duplicate checklists.
 
 Treat the plan's `Completion Evidence`, requested acceptance, stated invariants, and safety boundaries as the closed execution contract. Preserve source requirement identifiers when supplied, but do not invent requirement IDs or additional contracts. Do not silently weaken, strengthen, or reinterpret the contract. If completion evidence is missing or repository evidence cannot resolve competing material interpretations, stop and ask for the product or design decision.
 
-Do not add tasks, follow-up work, full-suite checks, reviewer passes, telemetry, or documentation work unless the closed contract directly requires them. A reviewer finding is advisory unless it maps to requested acceptance, a stated invariant, or a safety boundary; reject or defer unmapped advice without editing for it.
+Do not add tasks, follow-up work, full-suite checks, reviewer passes, telemetry, or documentation work unless the closed contract directly requires them. A reviewer finding is advisory unless it maps to requested acceptance, a stated invariant, or a safety boundary; reject or defer unmapped advice without editing for it. For a canonical plan, record progress in the plan only; use the task registry only when the operator explicitly requests separate tracking or when this is raw large work.
 
 After a task's relevant check passes, mark its checkbox complete and save the plan. Record a concise result only when it is needed for resume, external mutation, or a required audit. A root task created for raw work remains authoritative across compaction and delegation; update it after a user correction and complete it only after its recorded checks pass.
 

@@ -78,7 +78,9 @@ describe("summarizeTaskCounts / formatTaskStatus", () => {
 			summary: "completed",
 			state: "assigned",
 		});
-		transitionTask(completed.id, "completed");
+		transitionTask(completed.id, "completed", {
+			outcome: { summary: "completed", evidence: ["focused status fixture"] },
+		});
 		void assigned;
 
 		const { listTasks } = await import("../lib/task-registry.ts");

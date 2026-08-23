@@ -192,8 +192,8 @@ describe("goal extension", () => {
 			expect.stringContaining("Use plan_progress"),
 		);
 		expect(pi.exec).not.toHaveBeenCalled();
-		expect(pi.getActiveTools()).toContain("goal_complete");
-		expect(pi.getActiveTools()).not.toContain("goal_progress");
+		expect(pi.getActiveTools()).not.toContain("goal_complete");
+		expect(pi.getActiveTools()).toContain("goal_progress");
 		const toolCall = pi._getHook("tool_call")[0]?.handler;
 		expect(
 			await toolCall?.({ toolName: "edit", input: { path: "fixture.txt" } }),
@@ -204,6 +204,60 @@ describe("goal extension", () => {
 		const rejected = goalTestApi.goalFromInline("x".repeat(15_001));
 		expect(rejected).toMatchObject({ ok: false });
 		if (!rejected.ok) expect(rejected.message).toContain("/goal <path>");
+	});
+
+	it("materializes one raw goal root task and keeps task outcome proof separate from goal condition evidence", async () => {
+		const pi = createMockPi();
+		goal(pi as unknown as ExtensionAPI);
+		const command = pi._commands.find((item) => item.name === "goal");
+		await command?.handler("Ship the bounded fixture", createMockCtx({ cwd: tmp }));
+		const progress = pi._getTool("goal_progress");
+		await progress?.execute("materialize", {
+			action: "materialize_goal",
+			conditions: ["The bounded fixture is shipped and observable."],
+		}, undefined, undefined, createMockCtx({ cwd: tmp }));
+
+		const state = pi.appendEntry.mock.calls.at(-1)?.[1] as any;
+		const rawGoal = state.goal;
+		expect(rawGoal).toMatchObject({
+			conditionMode: "structured",
+			conditions: [{ id: "G1", description: "The bounded fixture is shipped and observable." }],
+			items: { GOAL: { required: true } },
+		});
+		const task = getTask(rawGoal.items.GOAL.taskId);
+		expect(task).toMatchObject({
+			state: "unassigned",
+			goalId: rawGoal.id,
+			covers: ["G1"],
+			metadata: { goalId: rawGoal.id, goalItemKey: "GOAL" },
+		});
+
+		const complete = pi._getTool("goal_complete");
+		const conditionEvidence = {
+			conditionJudgments: [
+				{ id: "G1", evidence: "The fixture behavior is observed.", passed: true },
+			],
+			integrationJudgment: "The observed condition composes into the goal.",
+		};
+		const beforeTask = await complete?.execute("raw-before-task", {
+			summary: "Done",
+			...conditionEvidence,
+		});
+		expect(beforeTask.isError).toBe(true);
+		expect(beforeTask.content[0].text).toContain("durable root task is unassigned");
+
+		transitionTask(task.id, "assigned");
+		transitionTask(task.id, "completed", {
+			outcome: {
+				summary: "Completed the fixture",
+				evidence: "The fixture behavior is observed.",
+			},
+		});
+		const accepted = await complete?.execute("raw-after-task", {
+			summary: "Done",
+			...conditionEvidence,
+		});
+		expect(accepted.isError).not.toBe(true);
 	});
 
 	it("handles file-backed goals and compact reminders without repeating full file contents", async () => {
@@ -923,7 +977,12 @@ describe("goal extension", () => {
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		for (const linkedTask of [task, secondTask]) {
 			transitionTask(linkedTask.id, "assigned");
-			transitionTask(linkedTask.id, "completed");
+			transitionTask(linkedTask.id, "completed", {
+				outcome: {
+					summary: "Completed the fixture task",
+					evidence: "The fixture task passed its bounded check.",
+				},
+			});
 		}
 		const stale = await complete?.execute("complete-stale", {
 			summary: "Finished the verified item",

@@ -165,7 +165,9 @@ describe("task renderer/settings", () => {
 			summary: "done",
 			state: "assigned",
 		});
-		const done = transitionTask(task.id, "completed");
+		const done = transitionTask(task.id, "completed", {
+			outcome: { summary: "done", evidence: "renderer fixture" },
+		});
 		expect(formatTaskList([done], "compact")).toContain("terminal (1)");
 	});
 

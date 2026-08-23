@@ -26,6 +26,7 @@ describe("T6 current subagent naming", () => {
 		expect(readItem).toHaveProperty("boundaryPaths");
 		expect(readItem).not.toHaveProperty("task");
 		expect(teamlead).toHaveProperty("boundary");
+		expect(teamlead).toHaveProperty("hardDeadlineMs");
 		expect(teamlead).not.toHaveProperty("workBoundary");
 		expect(enforced.description).toContain("governed file tools");
 		expect(enforced.description).toContain("recursive-search tools");

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseLinkedPlan } from "../plan-state.js";
 
 export const PLAN_LIFECYCLE_ENTRY_TYPE = "workflow.plan-lifecycle";
 export const PLAN_LIFECYCLE_VERSION = 1;
@@ -111,8 +112,11 @@ export interface PlanContractValidation {
 	taskKeys: string[];
 }
 
+export type PlanValidationMode = "ready" | "execution-preflight";
+
 const PLAN_PATH_PATTERN = /^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/;
 const TASK_PATTERN = /^- \[[ x]\] \*\*(T[1-9][0-9]*): .+\*\*$/gm;
+const MAX_PLAN_DIAGNOSTICS = 8;
 
 function requireStage(
 	snapshot: PlanLifecycleSnapshot,
@@ -261,10 +265,16 @@ export function transitionPlanLifecycle(
 export function validatePlanContract(
 	content: string,
 	planPath: string,
+	mode: PlanValidationMode = "ready",
 ): PlanContractValidation {
 	const errors: string[] = [];
-	if (!PLAN_PATH_PATTERN.test(planPath.replace(/\\/g, "/")))
-		errors.push("Plan path is not canonical.");
+	const addError = (message: string): void => {
+		if (errors.length < MAX_PLAN_DIAGNOSTICS && !errors.includes(message))
+			errors.push(message);
+	};
+	const normalizedPath = planPath.replace(/\\/g, "/");
+	if (!PLAN_PATH_PATTERN.test(normalizedPath))
+		addError("Plan path is not canonical.");
 	for (const heading of [
 		"## Objective",
 		"## Completion Evidence",
@@ -274,21 +284,34 @@ export function validatePlanContract(
 		"## Retention",
 		"## Execution Status",
 	]) {
-		if (!content.includes(heading)) errors.push(`Missing ${heading}.`);
+		if (!content.includes(heading)) addError(`Missing ${heading}.`);
 	}
 	const completionSection =
 		content.split("## Completion Evidence", 2)[1]?.split(/^## /m, 1)[0] ?? "";
 	if (!/^\s*-\s+Evidence:\s*\S/im.test(completionSection))
-		errors.push("Completion Evidence is missing Evidence:.");
+		addError("Completion Evidence is missing Evidence:.");
 	if (!/^\s*-\s+Fails when:\s*\S/im.test(completionSection))
-		errors.push("Completion Evidence is missing Fails when:.");
-	if (!/^---\r?\n[\s\S]*?^status:\s*ready\s*$/m.test(content))
-		errors.push("Plan frontmatter status must be ready.");
+		addError("Completion Evidence is missing Fails when:.");
+	const allowedStatuses =
+		mode === "execution-preflight"
+			? "ready|in_progress|in-progress|complete|completed"
+			: "ready";
+	if (
+		!new RegExp(
+			`^---\\r?\\n[\\s\\S]*?^status:\\s*(?:${allowedStatuses})\\s*$`,
+			"m",
+		).test(content)
+	)
+		addError(
+			mode === "execution-preflight"
+				? "Plan frontmatter status must be ready, in_progress, in-progress, complete, or completed."
+				: "Plan frontmatter status must be ready.",
+		);
 	const taskKeys = [...content.matchAll(TASK_PATTERN)].map((match) => match[1]);
 	if (taskKeys.length < 1 || taskKeys.length > 16)
-		errors.push("Plan must contain one to sixteen executable tasks.");
+		addError("Plan must contain one to sixteen executable tasks.");
 	if (new Set(taskKeys).size !== taskKeys.length)
-		errors.push("Plan task keys must be unique.");
+		addError("Plan task keys must be unique.");
 	const taskSection = content.split("## Tasks", 2)[1]?.split(/^## /m, 1)[0] ?? "";
 	for (const key of taskKeys) {
 		const start = taskSection.indexOf(`**${key}:`);
@@ -298,30 +321,58 @@ export function validatePlanContract(
 			.sort((left, right) => left - right)[0];
 		const block = taskSection.slice(start, next ?? undefined);
 		for (const field of ["Files:", "Change:", "Done when:", "Verify:"])
-			if (!block.includes(field)) errors.push(`${key} is missing ${field}`);
+			if (!block.includes(field)) addError(`${key} is missing ${field}`);
 	}
-	if (!content.includes(`/do-it ${planPath}`))
-		errors.push("Execution Status must contain the canonical /do-it resume command.");
-	if (!content.includes(`.specs/archive/${planPath.split("/")[1]}/`))
-		errors.push("Retention must name the canonical archive directory.");
+	try {
+		parseLinkedPlan(normalizedPath, content);
+	} catch (error) {
+		addError(
+			error instanceof Error ? `Plan dependency syntax: ${error.message}` : String(error),
+		);
+	}
+	const validationSection =
+		content.split("## Validation", 2)[1]?.split(/^## /m, 1)[0] ?? "";
+	if (!/^\s*-\s+\[[ xX]\]\s+\S/im.test(validationSection))
+		addError("Validation must contain a checklist item.");
+	if (!/^\s*-\s+State:\s*\S/im.test(content.split("## Execution Status", 2)[1] ?? ""))
+		addError("Execution Status must declare State.");
+	if (!content.includes(`/do-it ${normalizedPath}`))
+		addError("Execution Status must contain the canonical /do-it resume command.");
+	if (!content.includes(`.specs/archive/${normalizedPath.split("/")[1]}/`))
+		addError("Retention must name the canonical archive directory.");
 	return { valid: errors.length === 0, errors, taskKeys };
 }
 
 export function validatePlanFile(
 	cwd: string,
 	planPath: string,
+	mode: PlanValidationMode = "ready",
 ): PlanContractValidation {
 	const normalizedPath = planPath.replace(/\\/g, "/");
-	const absolutePath = path.resolve(cwd, normalizedPath);
-	const repositoryRoot = fs.realpathSync(path.resolve(cwd));
-	const resolvedPlan = fs.realpathSync(absolutePath);
-	if (
-		resolvedPlan !== repositoryRoot &&
-		!resolvedPlan.startsWith(`${repositoryRoot}${path.sep}`)
-	)
-		return { valid: false, errors: ["Plan path escapes the workspace."], taskKeys: [] };
-	if (!fs.lstatSync(absolutePath).isFile())
-		return { valid: false, errors: ["Plan path is not a regular file."], taskKeys: [] };
-	const content = fs.readFileSync(absolutePath, "utf8");
-	return validatePlanContract(content, normalizedPath);
+	try {
+		const absolutePath = path.resolve(cwd, normalizedPath);
+		const repositoryRoot = fs.realpathSync(path.resolve(cwd));
+		const resolvedPlan = fs.realpathSync(absolutePath);
+		if (
+			resolvedPlan !== repositoryRoot &&
+			!resolvedPlan.startsWith(`${repositoryRoot}${path.sep}`)
+		)
+			return { valid: false, errors: ["Plan path escapes the workspace."], taskKeys: [] };
+		if (!fs.lstatSync(absolutePath).isFile())
+			return { valid: false, errors: ["Plan path is not a regular file."], taskKeys: [] };
+		return validatePlanContract(
+			fs.readFileSync(absolutePath, "utf8"),
+			normalizedPath,
+			mode,
+		);
+	} catch (error) {
+		return {
+			valid: false,
+			errors: [error instanceof Error ? error.message : String(error)].slice(
+				0,
+			MAX_PLAN_DIAGNOSTICS,
+			),
+			taskKeys: [],
+		};
+	}
 }

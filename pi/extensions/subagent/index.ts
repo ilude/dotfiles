@@ -99,7 +99,11 @@ import {
 } from "./agents.js";
 import {
 	coordinatorBudgetFor,
+	formatCoordinatorTask,
 	admitCoordinatorDescendants,
+	type ChildCompletion,
+	type ChildValidation,
+	type ChildContinuationRequest,
 	formatCoordinatorGaps,
 	READ_TOOL_ALLOWLIST,
 	SubagentCoordinateSchema,
@@ -610,6 +614,8 @@ export interface SingleResult {
 	activity?: SubagentActivityStats;
 	sessionPath?: string;
 	structuredOutput?: unknown;
+	completion?: ChildCompletion;
+	warnings?: string[];
 	outputAttempts?: number;
 	routingExperiment?: RoutingOutcomeAssignment;
 	advisoryPolicyVersion?: string;
@@ -685,6 +691,233 @@ function eventResultText(value: unknown): string {
 				: [],
 		)
 		.join("\n");
+}
+
+function validationForResult(result: SingleResult): ChildValidation {
+	if (result.outputAttempts === undefined) return { status: "not-run" };
+	return result.structuredOutput === undefined
+		? { status: "failed", reason: result.errorMessage ?? "Output validation failed." }
+		: { status: "passed" };
+}
+
+const MAX_COORDINATOR_CONTINUATION_MS = 5 * 60 * 1000;
+
+type CoordinatorCompletionEnvelope = {
+	status: "complete" | "partial" | "blocked";
+	completed: string[];
+	remaining: string[];
+	validation: ChildValidation;
+	requestedAdditionalTimeMs?: number;
+	expectedReading?: string;
+	materialAlternative?: string;
+	decision?: string;
+};
+
+function parseCoordinatorCompletionEnvelope(
+	text: string,
+): CoordinatorCompletionEnvelope | undefined {
+	const candidates = [text.trim()];
+	const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+	if (fenced) candidates.push(fenced);
+	for (const candidateText of candidates) {
+		let value: unknown;
+		try {
+			value = JSON.parse(candidateText);
+		} catch {
+			continue;
+		}
+		if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+		const candidate = value as Record<string, unknown>;
+		if (
+			(candidate.status !== "complete" &&
+				candidate.status !== "partial" &&
+				candidate.status !== "blocked") ||
+			!Array.isArray(candidate.completed) ||
+			!candidate.completed.every((item) => typeof item === "string") ||
+			!Array.isArray(candidate.remaining) ||
+			!candidate.remaining.every((item) => typeof item === "string")
+		)
+			continue;
+		const rawValidation = candidate.validation;
+		if (
+			!rawValidation ||
+			typeof rawValidation !== "object" ||
+			Array.isArray(rawValidation)
+		)
+			continue;
+		const validationCandidate = rawValidation as Record<string, unknown>;
+		if (
+			validationCandidate.status !== "passed" &&
+			validationCandidate.status !== "failed" &&
+			validationCandidate.status !== "not-run"
+		)
+			continue;
+		const validation: ChildValidation =
+			validationCandidate.status === "failed"
+				? {
+						status: "failed",
+						reason:
+							typeof validationCandidate.reason === "string"
+								? validationCandidate.reason
+								: "Team Lead validation failed.",
+					}
+				: {
+						status: validationCandidate.status,
+						...(typeof validationCandidate.reason === "string"
+							? { reason: validationCandidate.reason }
+							: {}),
+					};
+		const requestedAdditionalTimeMs = candidate.requestedAdditionalTimeMs;
+		if (
+			requestedAdditionalTimeMs !== undefined &&
+			(typeof requestedAdditionalTimeMs !== "number" ||
+				!Number.isSafeInteger(requestedAdditionalTimeMs) ||
+				requestedAdditionalTimeMs <= 0)
+		)
+			continue;
+		return {
+			status: candidate.status,
+			completed: candidate.completed as string[],
+			remaining: candidate.remaining as string[],
+			validation,
+			...(requestedAdditionalTimeMs === undefined
+				? {}
+				: { requestedAdditionalTimeMs }),
+			...(typeof candidate.expectedReading === "string"
+				? { expectedReading: candidate.expectedReading }
+				: {}),
+			...(typeof candidate.materialAlternative === "string"
+				? { materialAlternative: candidate.materialAlternative }
+				: {}),
+			...(typeof candidate.decision === "string"
+				? { decision: candidate.decision }
+				: {}),
+		};
+	}
+	return undefined;
+}
+
+function coordinatorChildCompletion(
+	result: SingleResult,
+): ChildCompletion | undefined {
+	if (result.role !== "coordinator") return undefined;
+	const envelope = parseCoordinatorCompletionEnvelope(
+		getFinalOutput(result.messages),
+	);
+	if (!envelope) return undefined;
+	if (
+		envelope.status === "blocked" &&
+		envelope.expectedReading !== undefined &&
+		envelope.materialAlternative !== undefined &&
+		envelope.decision !== undefined
+	)
+		return {
+			status: "blocked",
+			expectedReading: envelope.expectedReading,
+			materialAlternative: envelope.materialAlternative,
+			decision: envelope.decision,
+		};
+	if (
+		envelope.status === "complete" &&
+		envelope.validation.status !== "failed" &&
+		envelope.remaining.length === 0
+	)
+		return {
+			status: "complete",
+			completed: envelope.completed,
+			remaining: envelope.remaining,
+			validation: envelope.validation as Exclude<ChildValidation, { status: "failed" }>,
+		};
+	const additionalTimeMs = envelope.requestedAdditionalTimeMs;
+	return {
+		status: "partial",
+		completed: envelope.completed,
+		remaining: envelope.remaining,
+		validation: envelope.validation,
+		...(additionalTimeMs !== undefined && result.sessionPath
+			? {
+					continuation: {
+						sessionPath: result.sessionPath,
+						additionalTimeMs: Math.min(
+							additionalTimeMs,
+							MAX_COORDINATOR_CONTINUATION_MS,
+						),
+					},
+				}
+			: {}),
+	};
+}
+
+function structuredChildCompletion(
+	value: unknown,
+	validation: ChildValidation,
+): ChildCompletion | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const candidate = value as Record<string, unknown>;
+	if (candidate.status === "blocked" &&
+		typeof candidate.expectedReading === "string" &&
+		typeof candidate.materialAlternative === "string" &&
+		typeof candidate.decision === "string")
+		return {
+			status: "blocked",
+			expectedReading: candidate.expectedReading,
+			materialAlternative: candidate.materialAlternative,
+			decision: candidate.decision,
+		};
+	if (candidate.status !== "partial" && candidate.status !== "complete") return undefined;
+	const completed = Array.isArray(candidate.completed) && candidate.completed.every((item) => typeof item === "string")
+		? candidate.completed as string[]
+		: undefined;
+	const remaining = Array.isArray(candidate.remaining) && candidate.remaining.every((item) => typeof item === "string")
+		? candidate.remaining as string[]
+		: undefined;
+	if (!completed || !remaining) return undefined;
+	const rawContinuation = candidate.continuation;
+	const continuation =
+		rawContinuation &&
+		typeof rawContinuation === "object" &&
+		!Array.isArray(rawContinuation) &&
+		typeof (rawContinuation as { sessionPath?: unknown }).sessionPath === "string" &&
+		(rawContinuation as { sessionPath: string }).sessionPath.trim().length > 0 &&
+		Number.isSafeInteger((rawContinuation as { additionalTimeMs?: unknown }).additionalTimeMs) &&
+		((rawContinuation as { additionalTimeMs: number }).additionalTimeMs > 0)
+			? {
+					sessionPath: (rawContinuation as { sessionPath: string }).sessionPath,
+					additionalTimeMs: (rawContinuation as { additionalTimeMs: number }).additionalTimeMs,
+				}
+			: undefined;
+	if (candidate.status === "complete" && validation.status !== "failed")
+		return { status: "complete", completed, remaining, validation };
+	if (candidate.status === "partial")
+		return {
+			status: "partial",
+			completed,
+			remaining,
+			validation,
+			...(continuation ? { continuation } : {}),
+		};
+	return undefined;
+}
+
+function completionForResult(result: SingleResult): ChildCompletion {
+	if (result.completion) return result.completion;
+	const coordinator = coordinatorChildCompletion(result);
+	if (coordinator) return coordinator;
+	const validation = validationForResult(result);
+	const structured = structuredChildCompletion(result.structuredOutput, validation);
+	if (structured) return structured;
+	const completed = getFinalOutput(result.messages).trim()
+		? [getFinalOutput(result.messages).trim()]
+		: [];
+	return {
+		status: "partial",
+		completed,
+		remaining: [result.task],
+		validation,
+		...(result.warnings?.length && result.sessionPath
+			? { continuation: { sessionPath: result.sessionPath, additionalTimeMs: 10_000 } }
+			: {}),
+	};
 }
 
 function getResultOutput(result: SingleResult, pretty = false): string {
@@ -1086,6 +1319,7 @@ interface SubagentRunContext {
 	executionKind?: "read" | "write" | "coordinator";
 	maxTurns?: number;
 	timeoutMs?: number;
+	hardDeadlineMs?: number;
 	role?: SubagentRole;
 	depth?: number;
 	parentRunId?: string;
@@ -1674,8 +1908,17 @@ export async function runSingleAgent(
 		}
 		if (runController.signal.aborted) throw new SubagentAbortError();
 
+		const effectiveTask =
+			runContext?.executionKind === "coordinator" && runContext.timeoutMs !== undefined
+				? formatCoordinatorTask(task, {
+						maxWorkers: runContext.maxWorkers ?? 0,
+						maxTurns: turnLimit,
+						softDeadlineMs: runContext.timeoutMs,
+						hardDeadlineMs: runContext.hardDeadlineMs ?? runContext.timeoutMs * 2,
+					})
+				: task;
 		args.push(
-			`Task: ${runContext?.readOnly ? `${READ_ONLY_EXPERIMENT_INSTRUCTION}\n\n${task}` : task}`,
+			`Task: ${runContext?.readOnly ? `${READ_ONLY_EXPERIMENT_INSTRUCTION}\n\n${effectiveTask}` : effectiveTask}`,
 		);
 		let unparsedStdout = "";
 
@@ -1689,6 +1932,7 @@ export async function runSingleAgent(
 			let graceTimer: ReturnType<typeof setTimeout> | undefined;
 			let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
 			let readOnlyTimeoutTimer: ReturnType<typeof setTimeout> | undefined;
+			let hardDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
 			let proc: ReturnType<typeof spawn> | undefined;
 			let removeAbortListener: (() => void) | undefined;
 			let stopForBudget: (reason: string) => void = () => {};
@@ -1696,6 +1940,7 @@ export async function runSingleAgent(
 				if (graceTimer) clearTimeout(graceTimer);
 				if (deadlineTimer) clearTimeout(deadlineTimer);
 				if (readOnlyTimeoutTimer) clearTimeout(readOnlyTimeoutTimer);
+				if (hardDeadlineTimer) clearTimeout(hardDeadlineTimer);
 			};
 			const finish = (code: number) => {
 				if (resolved) return;
@@ -1964,14 +2209,23 @@ export async function runSingleAgent(
 				removeAbortListener = () =>
 					runController.signal.removeEventListener("abort", killProc);
 			}
-			if (runContext?.readOnly || runContext?.timeoutMs !== undefined) {
+			if (runContext?.executionKind === "coordinator" && runContext.timeoutMs !== undefined) {
+				readOnlyTimeoutTimer = setTimeout(() => {
+					currentResult.warnings ??= [];
+					currentResult.warnings.push(
+						"Parent notice: Team Lead reached its advisory soft deadline; it may return a bounded continuation request.",
+					);
+					emitUpdate();
+				}, readOnlyTimeoutMs);
+				readOnlyTimeoutTimer.unref();
+				hardDeadlineTimer = setTimeout(
+					() => stopForBudget("Team Lead exceeded its hard deadline; work was aborted."),
+					runContext.hardDeadlineMs ?? runContext.timeoutMs * 2,
+				);
+				hardDeadlineTimer.unref();
+			} else if (runContext?.readOnly || runContext?.timeoutMs !== undefined) {
 				readOnlyTimeoutTimer = setTimeout(
-					() =>
-						stopForBudget(
-							runContext?.executionKind === "coordinator"
-								? "Team Lead stopped at its soft deadline; output and gaps may be partial."
-								: "Read-only subagent stopped at its wall-clock budget; output may be partial.",
-						),
+					() => stopForBudget("Read-only subagent stopped at its wall-clock budget; output may be partial."),
 					readOnlyTimeoutMs,
 				);
 				readOnlyTimeoutTimer.unref();
@@ -2129,6 +2383,12 @@ type TaskParams = {
 	telemetryTaskLinkSource?: TaskLinkSource;
 	telemetryMarkerCount?: number;
 	telemetryBoundaryCount?: number;
+	resolvedAuthorityTools?: readonly string[];
+	continuationAuthority?: {
+		role: SubagentRole;
+		depth: number;
+		authorityTools?: readonly string[];
+	};
 };
 
 type ChainParams = TaskParams;
@@ -2205,11 +2465,35 @@ type ContinueParams = {
 	session: string;
 	task: string;
 	cwd?: string;
-	authorityTools?: readonly string[];
 	output?: string | boolean;
 	outputMode?: OutputMode;
 	effort?: AgentEffort;
 };
+
+function continuationAuthorityFor(sessionPath: string): TaskParams["continuationAuthority"] {
+	const snapshot = subagentRunManager
+		.list()
+		.find((run) => run.sessionPath === sessionPath);
+	if (
+		snapshot?.role === "coordinator" ||
+		snapshot?.role === "leaf"
+	) {
+		const snapshotDepth = snapshot.depth;
+		if (
+			typeof snapshotDepth === "number" &&
+			Number.isInteger(snapshotDepth) &&
+			snapshotDepth >= 1
+		)
+			return {
+				role: snapshot.role,
+				depth: snapshotDepth,
+				authorityTools: snapshot.authorityTools
+					? [...snapshot.authorityTools]
+					: [],
+			};
+	}
+	return { role: "leaf", depth: 1 };
+}
 
 function validateLegacyTaskReference(taskId: string | undefined): void {
 	if (taskId === undefined) return;
@@ -2355,6 +2639,9 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 				agent: agentName("Agent used to create the session"),
 				session: Type.String({ description: "Saved child session path" }),
 				task: Type.String({ description: "Follow-up message" }),
+				role: Type.Optional(SubagentRoleSchema),
+				depth: Type.Optional(Type.Integer({ minimum: 1, maximum: 2 })),
+				authorityTools: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
 				effort: Type.Optional(EffortSchema),
 				cwd: Type.Optional(Type.String({ description: "Working directory" })),
 				output: Type.Optional(LegacyOutputSchema),
@@ -3426,10 +3713,17 @@ export default function (pi: ExtensionAPI) {
 					? selectedDirectInvocation.items[0]
 					: undefined;
 			const continueChild = params.continue
-				? ({
-						...(params.continue as ContinueParams),
-						role: "leaf",
-					} as TaskParams & ContinueParams)
+				? (() => {
+						const continuation = params.continue as ContinueParams & {
+							continuationAuthority?: TaskParams["continuationAuthority"];
+						};
+						return {
+							...continuation,
+							continuationAuthority:
+								continuation.continuationAuthority ??
+								continuationAuthorityFor(continuation.session),
+						} as TaskParams & ContinueParams;
+					})()
 				: undefined;
 			const originalMode = hasChain
 				? "chain"
@@ -3466,8 +3760,10 @@ export default function (pi: ExtensionAPI) {
 				orchestrationEmitted = true;
 				const details = result.details;
 				const results = details?.results ?? [];
-				for (const worker of results)
+				for (const worker of results) {
+					worker.completion ??= completionForResult(worker);
 					worker.activity = collectSubagentActivity(worker.messages, 1);
+				}
 				const parentText = result.content.find(
 					(item) => item.type === "text",
 				)?.text;
@@ -3775,6 +4071,7 @@ export default function (pi: ExtensionAPI) {
 							? {
 									maxTurns: coordinatorBudget.maxTurns,
 									timeoutMs: coordinatorBudget.softDeadlineMs,
+									hardDeadlineMs: coordinatorBudget.hardDeadlineMs,
 								}
 							: {}),
 					};
@@ -3795,6 +4092,7 @@ export default function (pi: ExtensionAPI) {
 							getFinalOutput(result.messages),
 						);
 						result.outputAttempts = 1;
+						result.completion = completionForResult(result);
 						return result;
 					} catch (firstError) {
 						result.outputAttempts = 1;
@@ -3840,6 +4138,7 @@ export default function (pi: ExtensionAPI) {
 								outputSchema,
 								getFinalOutput(correction.messages),
 							);
+							result.completion = completionForResult(result);
 							return result;
 						} catch (secondError) {
 							throw new Error(
@@ -3858,6 +4157,7 @@ export default function (pi: ExtensionAPI) {
 						failedResult.stopReason = "error";
 						failedResult.errorMessage =
 							error instanceof Error ? error.message : String(error);
+						failedResult.completion = completionForResult(failedResult);
 					}
 					if (originalMode !== "parallel")
 						complete({
@@ -4004,8 +4304,8 @@ export default function (pi: ExtensionAPI) {
 						"Bedrock Claude subscription-only orchestration does not allow caller-supplied output paths.",
 					);
 				const resolved = resolveChildRole(requestedRole, item.agent);
-				item.resolvedRole = resolved.role;
-				item.resolvedDepth = resolved.depth;
+				item.resolvedRole = item.continuationAuthority?.role ?? resolved.role;
+				item.resolvedDepth = item.continuationAuthority?.depth ?? resolved.depth;
 				const effectiveCwd = path.resolve(invocationCwd, item.cwd ?? ".");
 				item.cwd = effectiveCwd;
 				item.repositoryRoot = effectiveCwd;
@@ -4028,10 +4328,13 @@ export default function (pi: ExtensionAPI) {
 								: internalWorkflowContext?.readOnly,
 					workflowCapabilities: internalWorkflowContext?.capabilities,
 				});
+				const effectiveAuthorityTools =
+					item.continuationAuthority?.authorityTools ?? authority.tools;
+				item.resolvedAuthorityTools = [...effectiveAuthorityTools];
 				if (
-					resolved.role === "coordinator" &&
-					!authority.tools.includes("subagent_write") &&
-					!authority.tools.includes("subagent")
+					item.resolvedRole === "coordinator" &&
+					!effectiveAuthorityTools.includes("subagent_write") &&
+					!effectiveAuthorityTools.includes("subagent")
 				)
 					throw new Error(
 						`Team Lead agent ${item.agent} must have a subagent delegation capability.`,
@@ -4059,7 +4362,8 @@ export default function (pi: ExtensionAPI) {
 						prepareChild(item);
 				}
 				for (const item of chain ?? []) prepareChild(item);
-				if (continueChild) prepareChild(continueChild, "leaf");
+				if (continueChild)
+					prepareChild(continueChild, continueChild.continuationAuthority?.role);
 			} catch (error) {
 				recordBoundaryRejection(error);
 				throw error;
@@ -4157,7 +4461,7 @@ export default function (pi: ExtensionAPI) {
 						telemetryTaskLinkSource: followUp.telemetryTaskLinkSource,
 						telemetryMarkerCount: followUp.telemetryMarkerCount,
 						telemetryBoundaryCount: followUp.telemetryBoundaryCount,
-						authorityTools: followUp.authorityTools,
+						authorityTools: followUp.resolvedAuthorityTools,
 					},
 				);
 				finalizeOutput(
@@ -5111,7 +5415,11 @@ export default function (pi: ExtensionAPI) {
 					session: recovery.sessionPath,
 					task: recovery.recoveryMessage,
 					cwd: recovery.workspaceRoot,
-					authorityTools: [...recovery.authorityTools],
+					continuationAuthority: {
+						role: recovery.run.role === "coordinator" ? "coordinator" : "leaf",
+						depth: recovery.run.depth ?? 1,
+						authorityTools: [...recovery.authorityTools],
+					},
 					...(recovery.run.effort ? { effort: recovery.run.effort } : {}),
 				},
 				agentScope: "both",
@@ -5280,6 +5588,13 @@ export default function (pi: ExtensionAPI) {
 			description:
 				"Continue a saved child-agent session with a follow-up task. This tool is deferred and requires the original agent name and saved session path.",
 			parameters: schemas.continue,
+			prepareArguments(args): any {
+				const input = args as Record<string, unknown>;
+				for (const field of ["role", "depth", "authorityTools"])
+					if (Object.hasOwn(input, field))
+						throw new Error(`subagent_continue does not accept ${field}.`);
+				return input;
+			},
 			renderResult: subagentExecutor.renderResult,
 			execute(toolCallId, params, signal, onUpdate, ctx) {
 				const {

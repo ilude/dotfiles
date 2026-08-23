@@ -300,7 +300,9 @@ describe("/tasks command", () => {
 			summary: "x",
 			state: "running",
 		});
-		transitionTask(t.id, "completed");
+		transitionTask(t.id, "completed", {
+			outcome: { summary: t.summary, evidence: "command fixture" },
+		});
 
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();

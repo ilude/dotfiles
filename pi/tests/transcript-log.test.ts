@@ -608,6 +608,11 @@ describe("routing decision schema and purge command", () => {
 		else process.env.USERPROFILE = originalUserProfile;
 	});
 
+	it("treats a bare transcript purge age as days", async () => {
+		const { parseAgeArgument } = await import("../extensions/transcript-purge.ts");
+		expect(parseAgeArgument("7")).toBe(7 * 24 * 60 * 60 * 1000);
+		expect(parseAgeArgument("1500ms")).toBe(1500);
+	});
 
 	it("rejects invalid /transcript-purge age without removing files", async () => {
 		const settingsPath = path.join(tmpHome, ".pi", "agent", "settings.json");

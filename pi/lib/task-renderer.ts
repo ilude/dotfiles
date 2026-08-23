@@ -298,6 +298,14 @@ export function formatTaskDetail(
 	if (task.consumes?.length)
 		lines.push(`  consumes: ${task.consumes.map((item) => truncateTaskText(item, 120)).join(", ")}`);
 	if (task.priority !== undefined) lines.push(`  priority: ${task.priority}`);
+	if (task.outcome) {
+		lines.push(`  outcome: ${truncateTaskText(task.outcome.summary, 160)}`);
+		lines.push(`  evidence: ${truncateTaskText(task.outcome.evidence.join("; "), 240)}`);
+		if (task.outcome.validation)
+			lines.push(`  validation (Task Instructions only): ${truncateTaskText(task.outcome.validation.join("; "), 160)}`);
+		if (task.outcome.gaps)
+			lines.push(`  gaps: ${truncateTaskText(task.outcome.gaps.join("; "), 160)}`);
+	}
 
 	lines.push(`  created: ${task.createdAt}`);
 	if (task.assignedAt) lines.push(`  assigned: ${task.assignedAt}`);

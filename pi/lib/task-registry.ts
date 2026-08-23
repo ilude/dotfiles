@@ -39,6 +39,22 @@ export type TaskPersistenceOutcome =
 	| "write_failed"
 	| "not_found";
 
+export const TASK_OUTCOME_SUMMARY_MAX_LENGTH = 256;
+export const TASK_OUTCOME_EVIDENCE_MAX_LENGTH = 2_000;
+export const TASK_OUTCOME_VALIDATION_MAX_LENGTH = 512;
+export const TASK_OUTCOME_GAPS_MAX_LENGTH = 512;
+export const TASK_OUTCOME_MAX_EVIDENCE_ITEMS = 8;
+export const TASK_OUTCOME_MAX_VALIDATION_ITEMS = 4;
+export const TASK_OUTCOME_MAX_GAPS_ITEMS = 4;
+
+export interface TaskOutcome {
+	summary: string;
+	evidence: string[];
+	validation?: string[];
+	gaps?: string[];
+	recordedAt?: string;
+}
+
 export interface TaskUsage {
 	inputTokens?: number;
 	outputTokens?: number;
@@ -123,6 +139,7 @@ export interface TaskRecordV1 {
 	/** Current model-facing names. */
 	boundary?: string[];
 	instructions?: string;
+	outcome?: TaskOutcome;
 	/** Historical reason fields remain readable during migration. */
 	blockReason?: string;
 	errorReason?: string;
@@ -208,6 +225,7 @@ export interface TransitionOptions {
 	errorReason?: string;
 	skipReason?: string;
 	usage?: TaskUsage;
+	outcome?: TaskOutcome;
 }
 
 export interface ListTasksOptions {
@@ -407,6 +425,7 @@ const normalizeTaskRecord = (
 		blocks: normalizeIdList(parsed.blocks),
 		...(instructions !== undefined ? { instructions } : {}),
 		...(boundary !== undefined ? { boundary } : {}),
+		...(normalizePersistedOutcome(parsed.outcome) ? { outcome: normalizePersistedOutcome(parsed.outcome) } : {}),
 	};
 	if (state === "unassigned" && parsed.state === "blocked" && typeof parsed.blockReason === "string")
 		normalized.instructions = mergeLegacyText(normalized.instructions, parsed.blockReason);
@@ -745,6 +764,7 @@ const applyAssignedTransition = (
 		next.retryCount = existing.retryCount + 1;
 		delete next.errorReason;
 		delete next.endedAt;
+		delete next.outcome;
 	}
 	if (!existing.assignedAt) next.assignedAt = now;
 };
@@ -766,9 +786,63 @@ const applyTerminalTransition = (
 ): void => {
 	if (target === "failed" || TERMINAL_TASK_STATES.has(target))
 		next.endedAt = now;
+	if (target === "completed" && !opts.outcome)
+		throw new TaskRegistryError("completed tasks require bounded outcome evidence");
+	if (TERMINAL_TASK_STATES.has(target) && opts.outcome)
+		next.outcome = normalizeTaskOutcome(opts.outcome, now);
 	if (target === "skipped")
 		next.skipReason = opts.skipReason ?? existing.skipReason;
 };
+
+function normalizeTaskOutcome(outcome: TaskOutcome, recordedAt?: string): TaskOutcome {
+	const evidence = Array.isArray(outcome.evidence) ? outcome.evidence : [outcome.evidence as unknown as string];
+	const normalized: TaskOutcome = {
+		summary: outcome.summary.trim(),
+		evidence: evidence.map((item) => item.trim()),
+		...(recordedAt ? { recordedAt } : outcome.recordedAt ? { recordedAt: outcome.recordedAt } : {}),
+	};
+	if (!normalized.summary)
+		throw new TaskRegistryError("completed tasks require outcome.summary");
+	if (!normalized.evidence.length || normalized.evidence.some((item) => !item))
+		throw new TaskRegistryError("completed tasks require outcome.evidence");
+	if (normalized.summary.length > TASK_OUTCOME_SUMMARY_MAX_LENGTH)
+		throw new TaskRegistryError(`outcome.summary must be at most ${TASK_OUTCOME_SUMMARY_MAX_LENGTH} characters`);
+	if (normalized.evidence.length > TASK_OUTCOME_MAX_EVIDENCE_ITEMS || normalized.evidence.some((item) => item.length > TASK_OUTCOME_EVIDENCE_MAX_LENGTH))
+		throw new TaskRegistryError("outcome.evidence exceeds its bounds");
+	for (const [field, maxItems, maxLength] of [["validation", TASK_OUTCOME_MAX_VALIDATION_ITEMS, TASK_OUTCOME_VALIDATION_MAX_LENGTH], ["gaps", TASK_OUTCOME_MAX_GAPS_ITEMS, TASK_OUTCOME_GAPS_MAX_LENGTH]] as const) {
+		const value = outcome[field] === undefined ? undefined : Array.isArray(outcome[field]) ? outcome[field] : [outcome[field] as unknown as string];
+		if (value === undefined) continue;
+		if (value.length > maxItems || value.some((item) => !item || item.length > maxLength))
+			throw new TaskRegistryError(`outcome.${field} exceeds its bounds`);
+		normalized[field] = value.map((item) => item.trim());
+	}
+	return normalized;
+}
+
+function normalizePersistedOutcome(value: unknown): TaskOutcome | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const input = value as Record<string, unknown>;
+	const text = (field: string, max: number): string | undefined => {
+		const raw = input[field];
+		return typeof raw === "string" ? raw.trim().slice(0, max) || undefined : undefined;
+	};
+	const items = (field: string, maxItems: number, maxLength: number): string[] | undefined => {
+		const raw = input[field];
+		const values = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+		const result = values.filter((item): item is string => typeof item === "string").map((item) => item.trim().slice(0, maxLength)).filter(Boolean).slice(0, maxItems);
+		return result.length ? result : undefined;
+	};
+	const summary = text("summary", TASK_OUTCOME_SUMMARY_MAX_LENGTH);
+	const evidence = items("evidence", TASK_OUTCOME_MAX_EVIDENCE_ITEMS, TASK_OUTCOME_EVIDENCE_MAX_LENGTH);
+	if (!summary && !evidence) return undefined;
+	return {
+		summary: summary ?? "",
+		evidence: evidence ?? [],
+		...(items("validation", TASK_OUTCOME_MAX_VALIDATION_ITEMS, TASK_OUTCOME_VALIDATION_MAX_LENGTH) ? { validation: items("validation", TASK_OUTCOME_MAX_VALIDATION_ITEMS, TASK_OUTCOME_VALIDATION_MAX_LENGTH) } : {}),
+		...(items("gaps", TASK_OUTCOME_MAX_GAPS_ITEMS, TASK_OUTCOME_GAPS_MAX_LENGTH) ? { gaps: items("gaps", TASK_OUTCOME_MAX_GAPS_ITEMS, TASK_OUTCOME_GAPS_MAX_LENGTH) } : {}),
+		...(typeof input.recordedAt === "string" ? { recordedAt: input.recordedAt } : {}),
+	};
+}
 
 const applyTransitionDetails = (
 	next: TaskRecordV1,

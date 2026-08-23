@@ -149,8 +149,12 @@ describe("task tools", () => {
 			),
 		).toBeUndefined();
 
-		transitionTask(first.id, "completed");
-		transitionTask(second.id, "completed");
+		transitionTask(first.id, "completed", {
+			outcome: { summary: first.summary, evidence: "reminder fixture" },
+		});
+		transitionTask(second.id, "completed", {
+			outcome: { summary: second.summary, evidence: "reminder fixture" },
+		});
 		expect(
 			await beforeAgentStart?.({ systemPrompt: "base" }, ctx),
 		).toBeUndefined();
@@ -342,7 +346,12 @@ describe("task tools", () => {
 		for (const state of ["assigned", "completed"]) {
 			const updated = await tool?.execute(
 				`workflow-${state}`,
-				{ action: "update", id: first.id, state },
+				{
+					action: "update",
+					id: first.id,
+					state,
+					...(state === "completed" ? { outcome: { summary: "done", evidence: ["tool fixture"] } } : {}),
+				},
 				undefined,
 				undefined,
 				ctx,
@@ -540,7 +549,9 @@ describe("task tools", () => {
 			workspace,
 			state: "running",
 		});
-		transitionTask(completed.id, "completed");
+		transitionTask(completed.id, "completed", {
+			outcome: { summary: completed.summary, evidence: "scope fixture" },
+		});
 		const unscoped = createTask({
 			origin: "other",
 			summary: "unscoped task",

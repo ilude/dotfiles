@@ -25,7 +25,7 @@ const UNIT_MS: Record<string, number> = {
 };
 
 /**
- * Parse `7d`, `24h`, `30m`, `1500ms`, or a bare number (ms). Returns null when
+ * Parse `7d`, `24h`, `30m`, `1500ms`, or a bare number (days). Returns null when
  * the input is empty and undefined when the input is invalid.
  */
 export function parseAgeArgument(raw: string): number | null | undefined {
@@ -35,7 +35,7 @@ export function parseAgeArgument(raw: string): number | null | undefined {
 	if (!match) return undefined;
 	const value = Number(match[1]);
 	if (!Number.isFinite(value) || value < 0) return undefined;
-	const unit = match[2] ?? "ms";
+	const unit = match[2] ?? "d";
 	const multiplier = UNIT_MS[unit];
 	if (!multiplier) return undefined;
 	return value * multiplier;

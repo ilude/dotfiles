@@ -256,35 +256,64 @@ describe("workflow slash command dispatch", () => {
 		});
 	});
 
-	it("/do-it plan files dispatch in the current session without preflight", async () => {
+	it("/do-it rejects an invalid canonical plan before archive activation or execution", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
-		const ctx = { newSession: vi.fn() };
-		const planPath = ".specs/workflow-fixture/plan.md";
+		const fixture = await createPlanFixture();
 		mockPi.setActiveTools([]);
 
-		await getHandler(mockPi, "do-it")(planPath, ctx);
+		await getHandler(mockPi, "do-it")(fixture.planPath, { cwd: fixture.root });
 
-		expect(mockPi.getActiveTools()).toEqual(["plan_archive"]);
-
+		expect(mockPi.getActiveTools()).not.toContain("plan_archive");
+		expect(mockPi.sendMessage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
+			expect.anything(),
+		);
 		expect(mockPi.sendMessage).toHaveBeenCalledWith({
-			customType: "slash-echo",
-			content: `/do-it ${planPath}`,
+			customType: "workflow.plan-preflight",
+			content: expect.stringContaining("Plan preflight failed"),
 			display: true,
 		});
-		expect(ctx.newSession).not.toHaveBeenCalled();
-		const friction = await import("../lib/workflow-friction");
-		const telemetry = await import("../lib/workflow-telemetry");
-		expect(friction.noteWorkflowSubmission).not.toHaveBeenCalled();
-		expect(telemetry.startWorkflowEpisode).not.toHaveBeenCalled();
+	});
+
+	it("/do-it dispatches a valid canonical plan after preflight", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(
+			path.join(fixture.root, fixture.planPath),
+			readyPlan(fixture.planPath),
+			"utf8",
+		);
+		mockPi.setActiveTools([]);
+
+		await getHandler(mockPi, "do-it")(fixture.planPath, { cwd: fixture.root });
+
+		expect(mockPi.getActiveTools()).toEqual(["plan_archive"]);
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
-				content: expect.stringContaining(planPath),
+				content: expect.stringContaining(fixture.planPath),
 				customType: "workflow.hiddenPrompt",
 				display: false,
 			}),
 			{ triggerTurn: true, deliverAs: "followUp" },
+		);
+	});
+
+	it("/do-it keeps raw task dispatch unchanged", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		mockPi.setActiveTools([]);
+
+		await getHandler(mockPi, "do-it")("fix the task", { cwd: "/missing" });
+
+		expect(mockPi.getActiveTools()).toEqual([]);
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
+			expect.anything(),
 		);
 	});
 });

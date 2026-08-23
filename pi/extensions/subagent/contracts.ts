@@ -25,6 +25,9 @@ export type ExecutionKind = "read" | "write" | "coordinator";
 export const DEFAULT_COORDINATOR_MAX_WORKERS = 6;
 export const DEFAULT_COORDINATOR_MAX_TURNS = 32;
 export const DEFAULT_COORDINATOR_SOFT_DEADLINE_MS = 15 * 60 * 1000;
+/** Retained for compatibility; coordinator defaults no longer use a short grace. */
+export const DEFAULT_COORDINATOR_HARD_DEADLINE_GRACE_MS =
+	DEFAULT_COORDINATOR_SOFT_DEADLINE_MS;
 
 export interface SubagentItemBase {
 	readonly agent: string;
@@ -83,6 +86,8 @@ export interface CoordinatorRequest {
 	readonly maxWorkers?: number;
 	readonly maxTurns?: number;
 	readonly softDeadlineMs?: number;
+	/** Optional containment deadline. It must be later than softDeadlineMs. */
+	readonly hardDeadlineMs?: number;
 	readonly agentScope?: AgentScope;
 }
 
@@ -91,10 +96,42 @@ export type SubagentExecutionRequest =
 	| WriteRequest
 	| CoordinatorRequest;
 
+export type ChildValidation =
+	| { readonly status: "passed" }
+	| { readonly status: "failed"; readonly reason: string }
+	| { readonly status: "not-run"; readonly reason?: string };
+
+export interface ChildContinuationRequest {
+	readonly sessionPath: string;
+	readonly additionalTimeMs: number;
+}
+
+export type ChildCompletion =
+	| {
+			readonly status: "complete";
+			readonly completed: readonly string[];
+			readonly remaining: readonly string[];
+			readonly validation: Exclude<ChildValidation, { readonly status: "failed" }>;
+	  }
+	| {
+			readonly status: "partial";
+			readonly completed: readonly string[];
+			readonly remaining: readonly string[];
+			readonly validation: ChildValidation;
+			readonly continuation?: ChildContinuationRequest;
+	  }
+	| {
+			readonly status: "blocked";
+			readonly expectedReading: string;
+			readonly materialAlternative: string;
+			readonly decision: string;
+	  };
+
 export interface SubagentItemResult {
 	readonly agent: string;
 	readonly taskId?: string;
 	readonly status: "completed" | "failed" | "cancelled";
+	readonly completion?: ChildCompletion;
 	readonly boundaryPaths?: readonly string[];
 	readonly boundary?: readonly string[];
 	readonly output?: string;
@@ -164,11 +201,19 @@ export interface CoordinatorBudget {
 	readonly maxWorkers: number;
 	readonly maxTurns: number;
 	readonly softDeadlineMs: number;
+	readonly hardDeadlineMs: number;
 }
 
 export interface CoordinatorAdmission<T> {
 	readonly admitted: T[];
 	readonly gaps: readonly string[];
+}
+
+export function formatCoordinatorTask(
+	task: string,
+	budget: CoordinatorBudget,
+): string {
+	return `${task}\n\nTeam Lead completion protocol:\n- Soft deadline: ${budget.softDeadlineMs} ms (advisory; use it to return a cooperative status report, not to stop work).\n- Hard deadline: ${budget.hardDeadlineMs} ms (enforced containment; work will be aborted and settled).\n- Before the hard deadline, return exactly one final JSON object, optionally fenced as \`\`\`json, with status complete, partial, or blocked.\n- Every status requires completed (string array), remaining (string array), and validation ({status: passed, failed, or not-run; include reason when useful}).\n- complete is valid only when validation is not failed and remaining is empty.\n- partial may include requestedAdditionalTimeMs (positive integer) and must not include a sessionPath; runtime supplies the saved sessionPath and bounds the time.\n- blocked should also include expectedReading, materialAlternative, and decision.\n- Ordinary prose is not durable completion proof. Do not claim complete without assigned validation evidence.`;
 }
 
 export function formatCoordinatorGaps(gaps: readonly string[]): string {
@@ -192,11 +237,16 @@ export function admitCoordinatorDescendants<T>(
 export function coordinatorBudgetFor(
 	request: CoordinatorRequest,
 ): CoordinatorBudget {
+	const softDeadlineMs =
+		request.softDeadlineMs ?? DEFAULT_COORDINATOR_SOFT_DEADLINE_MS;
+	const hardDeadlineMs = request.hardDeadlineMs ?? softDeadlineMs * 2;
+	if (hardDeadlineMs <= softDeadlineMs)
+		throw new Error("hardDeadlineMs must be greater than softDeadlineMs.");
 	return {
 		maxWorkers: request.maxWorkers ?? DEFAULT_COORDINATOR_MAX_WORKERS,
 		maxTurns: request.maxTurns ?? DEFAULT_COORDINATOR_MAX_TURNS,
-		softDeadlineMs:
-			request.softDeadlineMs ?? DEFAULT_COORDINATOR_SOFT_DEADLINE_MS,
+		softDeadlineMs,
+		hardDeadlineMs,
 	};
 }
 
@@ -327,7 +377,13 @@ export const SubagentTeamleadSchema = Type.Object(
 		softDeadlineMs: Type.Optional(
 			Type.Integer({
 				minimum: 1,
-				description: "Maximum elapsed time for this Team Lead package in milliseconds.",
+				description: "Advisory elapsed time for this Team Lead package in milliseconds.",
+			}),
+		),
+		hardDeadlineMs: Type.Optional(
+			Type.Integer({
+				minimum: 1,
+				description: "Hard containment deadline in milliseconds; must be greater than softDeadlineMs.",
 			}),
 		),
 		...CommonRequestFields,
@@ -357,6 +413,7 @@ export const SubagentCoordinateSchema = Type.Object(
 		maxWorkers: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
 		maxTurns: Type.Optional(Type.Integer({ minimum: 1, maximum: 64 })),
 		softDeadlineMs: Type.Optional(Type.Integer({ minimum: 1 })),
+		hardDeadlineMs: Type.Optional(Type.Integer({ minimum: 1 })),
 		agentScope: CommonRequestFields.agentScope,
 	},
 	{ additionalProperties: false },
@@ -421,7 +478,7 @@ export function resolveTaskLink(
 		if (task.sessionId !== undefined && parentSessionId !== undefined && task.sessionId !== parentSessionId)
 			return { outcome: "invalid", reason: "task is owned by another root session", choices };
 		if (task.state !== "assigned")
-			return { outcome: "invalid", reason: "task is not running", choices };
+			return { outcome: "invalid", reason: "task is not assigned", choices };
 		return { outcome: "explicit", task };
 	}
 	if (choices.length === 1) return { outcome: "auto", task: choices[0] as TaskRecordV1 };

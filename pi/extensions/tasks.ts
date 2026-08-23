@@ -20,6 +20,13 @@ import {
 	getTask,
 	getTaskReadiness,
 	getUnmetBlockers,
+	TASK_OUTCOME_EVIDENCE_MAX_LENGTH,
+	TASK_OUTCOME_GAPS_MAX_LENGTH,
+	TASK_OUTCOME_SUMMARY_MAX_LENGTH,
+	TASK_OUTCOME_VALIDATION_MAX_LENGTH,
+	TASK_OUTCOME_MAX_EVIDENCE_ITEMS,
+	TASK_OUTCOME_MAX_VALIDATION_ITEMS,
+	TASK_OUTCOME_MAX_GAPS_ITEMS,
 	listTasks,
 	normalizeTaskScope,
 	partitionReadyTasks,
@@ -29,6 +36,7 @@ import {
 	safeTransitionTask,
 	startTask,
 	type TaskOperationResult,
+	type TaskOutcome,
 	type TaskReadiness,
 	type TaskRecordV1,
 	type TaskState,
@@ -147,7 +155,7 @@ export function resolveTaskId(
 }
 
 function helpText(): string {
-	return "Usage: /tasks|/tasks list [--all]|ready|blocked|show <id>|create <summary>|assign <id>|complete <id>|skip <id> [reason]|retry <id>|clear completed|settings mode compact|full|hidden. Examples: /tasks ready (what can I consider next?), /tasks blocked (which Dependencies are unmet?). Retry/reopen does not execute work.";
+	return "Usage: /tasks|/tasks list [--all]|ready|blocked|show <id>|create <summary>|assign <id>|complete <id> <evidence>|skip <id> [reason]|retry <id>|clear completed|settings mode compact|full|hidden. Examples: /tasks ready (what can I consider next?), /tasks blocked (which Dependencies are unmet?). Retry/reopen does not execute work.";
 }
 
 function formatBlockedView(tasks: readonly TaskRecordV1[]): string {
@@ -396,6 +404,7 @@ export function importLegacyTodos(
 			notes: item.notes,
 			workspace,
 			sessionId,
+			state: item.status === "done" ? "completed" : item.status === "in_progress" ? "assigned" : "unassigned",
 			metadata: {
 				legacyTodoId: item.id,
 				legacyTodoWorkspace: workspace,
@@ -413,11 +422,7 @@ export function importLegacyTodos(
 			.map((id) => byLegacyId.get(id)?.id)
 			.filter((id): id is string => Boolean(id));
 		updateTask(record.id, { blockedBy });
-		if (item.status === "in_progress") transitionTask(record.id, "assigned");
-		if (item.status === "done") {
-			transitionTask(record.id, "assigned");
-			transitionTask(record.id, "completed");
-		}
+		// Legacy completed records intentionally have no fabricated outcome evidence.
 	}
 	const result = imported.map((record) => getTask(record.id) ?? record);
 	markLegacyTodosImported(workspace, filePath);
@@ -449,6 +454,35 @@ function validatedResources(value: unknown, label: "produces" | "consumes"): str
 	if (!Array.isArray(value) || value.some((item) => typeof item !== "string"))
 		throw new Error(`${label} must be an array of strings`);
 	return value as string[];
+}
+
+function validatedOutcome(value: unknown): TaskOutcome | undefined {
+	if (value === undefined) return undefined;
+	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("outcome must be an object");
+	const input = value as Record<string, unknown>;
+	const requiredText = (field: "summary"): string => {
+		if (typeof input[field] !== "string" || !(input[field] as string).trim()) throw new Error(`outcome.${field} is required`);
+		const result = (input[field] as string).trim();
+		if (result.length > TASK_OUTCOME_SUMMARY_MAX_LENGTH) throw new Error(`outcome.${field} exceeds its bound`);
+		return result;
+	};
+	const array = (field: "evidence" | "validation" | "gaps", maxItems: number, maxLength: number, required: boolean): string[] | undefined => {
+		if (input[field] === undefined) {
+			if (required) throw new Error(`outcome.${field} is required`);
+			return undefined;
+		}
+		if (!Array.isArray(input[field])) throw new Error(`outcome.${field} must be an array`);
+		const values = input[field] as unknown[];
+		if (required && values.length === 0) throw new Error(`outcome.${field} is required`);
+		if (values.length > maxItems || values.some((item) => typeof item !== "string" || !(item as string).trim() || (item as string).trim().length > maxLength)) throw new Error(`outcome.${field} exceeds its bound`);
+		return values.map((item) => (item as string).trim());
+	};
+	return {
+		summary: requiredText("summary"),
+		evidence: array("evidence", TASK_OUTCOME_MAX_EVIDENCE_ITEMS, TASK_OUTCOME_EVIDENCE_MAX_LENGTH, true)!,
+		...(array("validation", TASK_OUTCOME_MAX_VALIDATION_ITEMS, TASK_OUTCOME_VALIDATION_MAX_LENGTH, false) ? { validation: array("validation", TASK_OUTCOME_MAX_VALIDATION_ITEMS, TASK_OUTCOME_VALIDATION_MAX_LENGTH, false) } : {}),
+		...(array("gaps", TASK_OUTCOME_MAX_GAPS_ITEMS, TASK_OUTCOME_GAPS_MAX_LENGTH, false) ? { gaps: array("gaps", TASK_OUTCOME_MAX_GAPS_ITEMS, TASK_OUTCOME_GAPS_MAX_LENGTH, false) } : {}),
+	};
 }
 
 function validatedPriority(value: unknown): number | undefined {
@@ -628,7 +662,7 @@ export function activeRootTaskReminder(
 			? [`- ${roots.length - listed.length} more; inspect the task list before selecting work.`]
 			: []),
 		"Durable task context supplements the current conversational frontier; it does not replace the active request.",
-		"Treat the relevant task's deliverable, Instructions, goal coverage, dependencies, boundary, and acceptance checks as authoritative. If multiple tasks could own the request, do not choose silently.",
+		"Treat the relevant task's deliverable, Instructions, goal coverage, dependencies, boundary, and acceptance checks as authoritative. Validation is limited to the task Instructions. If multiple tasks could own the request, do not choose silently.",
 	].join("\n");
 }
 
@@ -760,6 +794,12 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 	const produces = Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 16, uniqueItems: true, description: "Optional case-sensitive resources produced by this Task. Used only to order ready Tasks." });
 	const consumes = Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 16, uniqueItems: true, description: "Optional case-sensitive resources consumed by this Task. Used only to order ready Tasks." });
 	const priority = Type.Number({ description: "Optional ready-order priority. Higher values sort first; absence equals zero and never changes readiness." });
+	const outcome = Type.Object({
+		summary: Type.String({ minLength: 1, maxLength: TASK_OUTCOME_SUMMARY_MAX_LENGTH }),
+		evidence: Type.Array(Type.String({ minLength: 1, maxLength: TASK_OUTCOME_EVIDENCE_MAX_LENGTH }), { minItems: 1, maxItems: TASK_OUTCOME_MAX_EVIDENCE_ITEMS }),
+		validation: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: TASK_OUTCOME_VALIDATION_MAX_LENGTH }), { maxItems: TASK_OUTCOME_MAX_VALIDATION_ITEMS })),
+		gaps: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: TASK_OUTCOME_GAPS_MAX_LENGTH }), { maxItems: TASK_OUTCOME_MAX_GAPS_ITEMS })),
+	}, { additionalProperties: false, description: "Bounded root-owned terminal outcome. Validation is limited to Task Instructions." });
 	const taskItem = Type.Object(
 		{
 			summary,
@@ -820,6 +860,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				boundary: Type.Optional(boundary),
 				covers: Type.Optional(covers),
 				state: Type.Optional(StringEnum(TASK_STATES)),
+				outcome: Type.Optional(outcome),
 				skipReason: Type.Optional(instructions),
 				blockedBy: Type.Optional(blockedBy),
 				goalId: Type.Optional(goalId),
@@ -861,7 +902,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			"Use task for work that must survive context compaction or represent an independently verifiable deliverable; ordinary short work can remain prose.",
 			"After compaction or resume, inspect the assigned task and keep its Instructions, coverage, dependencies, boundary, and acceptance checks supplemental to the current request.",
 			"When a user correction changes the outcome, update Instructions before continuing and omit work no longer required.",
-			"Use blockedBy for hard prerequisites. Use ready to select eligible unassigned work, then assign it and record its outcome explicitly.",
+			"Use blockedBy for hard prerequisites. Use ready to select eligible unassigned work, then assign it and record its bounded terminal outcome explicitly; validation is limited to Task Instructions.",
 			"Task records describe work and outcomes only. They do not execute, wait for, stop, schedule, or capture output from processes.",
 		],
 		parameters,
@@ -1116,7 +1157,10 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				}
 				try {
 					if (target) {
-						const record = updateAndTransitionTask(id, patch, target, { skipReason });
+						const record = updateAndTransitionTask(id, patch, target, {
+							skipReason,
+							outcome: validatedOutcome(input.outcome),
+						});
 						const readiness = target === "assigned" ? { ready: true, unmetBlockers: [] } : undefined;
 						return operationToolResult({ outcome: "persisted", record, ...(readiness ? { readiness } : {}) }, id);
 					}
@@ -1237,7 +1281,11 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 				return notifyOutcome(
 					ctx,
 					"Completed",
-					await lifecycle.transition(target.id, "completed"),
+					await lifecycle.transition(target.id, "completed", {
+						outcome: parsed.text
+							? { summary: target.summary, evidence: [parsed.text] }
+							: undefined,
+					}),
 				);
 			if (parsed.verb === "skip")
 				return notifyOutcome(

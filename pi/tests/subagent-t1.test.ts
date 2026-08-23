@@ -16,7 +16,10 @@ import {
 } from "../extensions/subagent/legacy-adapter.ts";
 import { modernRequestToExecutorInput } from "../extensions/subagent/modern-adapter.ts";
 import type { PreparedSubagentExecution } from "../extensions/subagent/contracts.ts";
-import { resolveChildToolAuthority } from "../extensions/subagent/index.ts";
+import {
+	classifySubagentResult,
+	resolveChildToolAuthority,
+} from "../extensions/subagent/index.ts";
 import { createTask, resolveTaskWorkspace } from "../lib/task-registry.ts";
 import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.ts";
 
@@ -52,6 +55,25 @@ describe("subagent T1 execution contracts", () => {
 		expect(readItem).toHaveProperty("skills");
 		expect(writeItem).toHaveProperty("skills");
 		expect(coordinatorItem).toHaveProperty("skills");
+	});
+
+	it("keeps completion, partial, and blocked worker states distinct", () => {
+		expect(
+			classifySubagentResult({ exitCode: 0 }),
+		).toBe("completed");
+		expect(
+			classifySubagentResult({
+				exitCode: 0,
+				stopReason: "aborted",
+				errorMessage: "soft deadline reached",
+			}),
+		).toBe("cancelled");
+		expect(
+			classifySubagentResult({
+				exitCode: 1,
+				errorMessage: "required validation is missing",
+			}),
+		).toBe("failed");
 	});
 
 	it("projects read authority from the closed positive allowlist", () => {
@@ -172,7 +194,7 @@ describe("subagent T1 execution contracts", () => {
 		}
 	});
 
-	it("distinguishes explicit, automatic, ambiguous, stale, and foreign task links", () => {
+	it("distinguishes explicit, automatic, ambiguous, non-assigned, and foreign task links", () => {
 		const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-tasks-"));
 		const otherWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-other-"));
 		const previousOperatorDir = process.env.PI_OPERATOR_DIR;
@@ -182,7 +204,7 @@ describe("subagent T1 execution contracts", () => {
 		try {
 			const one = createTask({
 				origin: "other",
-				state: "running",
+				state: "assigned",
 				summary: "one",
 				workspace: resolveTaskWorkspace(workspace),
 				sessionId: "root",
@@ -193,7 +215,7 @@ describe("subagent T1 execution contracts", () => {
 			});
 			const two = createTask({
 				origin: "other",
-				state: "running",
+				state: "assigned",
 				summary: "two",
 				workspace: resolveTaskWorkspace(workspace),
 				sessionId: "root",
@@ -215,11 +237,11 @@ describe("subagent T1 execution contracts", () => {
 			});
 			expect(resolveTaskLink(stale.id, workspace, "root")).toMatchObject({
 				outcome: "invalid",
-				reason: "task is not running",
+				reason: "task is not assigned",
 			});
 			const foreign = createTask({
 				origin: "other",
-				state: "running",
+				state: "assigned",
 				summary: "foreign",
 				workspace: resolveTaskWorkspace(otherWorkspace),
 			});

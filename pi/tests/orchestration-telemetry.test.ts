@@ -63,6 +63,22 @@ function event(
 }
 
 describe("orchestration telemetry builders", () => {
+	it("preserves complete, partial, and blocked-boundary outcomes", () => {
+		for (const outcomeCode of ["completed", "partial", "rejected"] as const) {
+			const result = buildOrchestrationRunEvent({
+				...runInput(),
+				outcomeCode,
+			});
+			expect(result?.data).toMatchObject({ outcomeCode });
+		}
+		expect(
+			buildOrchestrationRunEvent({
+				...runInput(),
+				outcomeCode: "blocked",
+			} as never),
+		).toBeNull();
+	});
+
 	it("builds closed run events and derives bytes not returned inline", () => {
 		const result = buildOrchestrationRunEvent(runInput());
 		expect(result).not.toBeNull();

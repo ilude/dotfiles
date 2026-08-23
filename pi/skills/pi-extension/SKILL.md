@@ -23,6 +23,17 @@ Pi docs, Pi examples, and local Pi source/types are authoritative for extension 
 Before changing public or normative Pi tooling behavior, load only its owning contract:
 
 - [Footer and extension status](references/tooling-contracts.md#footer-and-extension-status)
+- [Commit workflow](references/contracts/commit-workflow.md)
+- [Damage control](references/contracts/damage-control.md)
+- [Safe file mutation](references/contracts/safe-file-mutation.md)
+- [Quality gates and repair](references/contracts/quality-gates.md)
+- [Instruction and path context](references/contracts/instruction-context.md)
+- [Interactive workflow lifecycle](references/contracts/workflow-lifecycle.md)
+- [Goal and loop execution](references/contracts/goal-and-loop.md)
+- [Session lifecycle and compaction](references/contracts/session-lifecycle.md)
+- [Observability, transcripts, and usage](references/contracts/observability.md)
+- [Provider and model lifecycle](references/contracts/provider-model-lifecycle.md)
+- [Onclave integration](references/contracts/onclave.md)
 - [Subagents and durable tasks](references/contracts/subagents-and-tasks.md)
 - [Managed background terminals](references/contracts/background-terminals.md)
 - [Session export and summaries](references/contracts/session-export.md)

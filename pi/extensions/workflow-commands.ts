@@ -88,6 +88,8 @@ import { isOperatorReloadNeeded } from "./operator-status";
 
 const DOTFILES_PI_DIR = path.join(os.homedir(), ".dotfiles", "pi");
 const SKILLS_DIR = path.join(DOTFILES_PI_DIR, "skills", "workflow");
+const PLAN_PREFLIGHT_MESSAGE_TYPE = "workflow.plan-preflight";
+const MAX_PLAN_PREFLIGHT_CHARS = 2000;
 export const COMMIT_SECRETS_ATTRIBUTE = "commit-secrets";
 const COMMIT_RUNTIME_PATH_PATTERNS = [
 	{ label: "Pi runtime cache", regex: /^pi\/cache(?:\/|$)/ },
@@ -2804,10 +2806,30 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("do-it", {
 		description: "Execute a task or plan with proportional validation",
-		handler: async (args, _ctx) => {
+		handler: async (args, ctx) => {
 			const planPath = args.trim().replace(/^@/, "");
-			if (/^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(planPath))
+			if (/^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(planPath)) {
+				const validation = validatePlanFile(
+					ctx.cwd,
+					planPath,
+					"execution-preflight",
+				);
+				if (!validation.valid) {
+					const diagnostics = validation.errors.join("\n");
+					const message = `Plan preflight failed for ${planPath}:\n${diagnostics}`;
+					pi.sendMessage({
+						customType: PLAN_PREFLIGHT_MESSAGE_TYPE,
+						content:
+							message.length <= MAX_PLAN_PREFLIGHT_CHARS
+								? message
+								: `${message.slice(0, MAX_PLAN_PREFLIGHT_CHARS - 22)}\n... details truncated`,
+						display: true,
+					});
+					echoSlashCommand(pi, "do-it", args);
+					return;
+				}
 				activateTools(pi, ["plan_archive"]);
+			}
 			echoSlashCommand(pi, "do-it", args);
 			const template = loadSkill("do-it.md");
 			const prompt = buildSkillPrompt(template, args, {

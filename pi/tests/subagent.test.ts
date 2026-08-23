@@ -503,15 +503,29 @@ Execute workflow items with admitted tools only.
 		const controlSchema = pi._getTool("subagent_control")?.parameters as { properties: { selector: { anyOf: Array<{ properties: Record<string, unknown> }> } } };
 		expect(JSON.stringify(controlSchema)).toContain('"process"');
 		expect(JSON.stringify(controlSchema)).not.toContain('"run"');
-		expect(
-			(pi._getTool("subagent_continue")!.parameters as {
-				properties: object;
-			}).properties,
-		).toMatchObject({
+		const continueTool = pi._getTool("subagent_continue")!;
+		const continueProperties = (continueTool.parameters as {
+			properties: Record<string, unknown>;
+		}).properties;
+		expect(continueProperties).toMatchObject({
 			agent: { enum: expect.arrayContaining(["builder"]) },
 			session: expect.any(Object),
 			output: { type: "boolean" },
 		});
+		for (const field of ["role", "depth", "authorityTools"])
+			expect(continueProperties).not.toHaveProperty(field);
+		expect(JSON.stringify(continueTool.parameters)).not.toMatch(
+			/coordinator|leaf/,
+		);
+		for (const field of ["role", "depth", "authorityTools"])
+			expect(() =>
+				continueTool.prepareArguments?.({
+					agent: "builder",
+					session: "saved.jsonl",
+					task: "again",
+					[field]: field === "authorityTools" ? ["subagent_write"] : "coordinator",
+				}),
+			).toThrow(`does not accept ${field}`);
 		expect(pi.getActiveTools()).not.toContain("subagent_continue");
 		expect(pi.getActiveTools()).not.toContain("subagent");
 		expect(pi.getActiveTools()).toEqual(
@@ -583,6 +597,64 @@ Execute workflow items with admitted tools only.
 				),
 			).rejects.toThrow(/Unknown agent.*Available agents:.*builder/);
 		}
+	});
+
+	it("restores saved continuation authority and defaults unknown sessions to leaf", async () => {
+		mockSuccessfulSpawn();
+		const { pi } = await loadTool();
+		const sessionPath = path.join(tmpDir, "saved.jsonl");
+		fs.writeFileSync(sessionPath, testSessionHeader("saved", tmpDir));
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		const controller = new AbortController();
+		subagentRunManager.begin(
+			{
+				runId: "saved-teamlead",
+				owner: "direct",
+				mode: "single",
+				agent: "teamlead",
+				task: "lead",
+				cwd: tmpDir,
+				role: "coordinator",
+				depth: 1,
+				authorityTools: ["read", "subagent_write"],
+			},
+			controller,
+		);
+		subagentRunManager.update("saved-teamlead", { sessionPath });
+		const continuation = pi._getTool("subagent_continue");
+		if (!continuation) throw new Error("continuation tool not registered");
+		await continuation.execute(
+			"continue-teamlead",
+			{ agent: "builder", session: sessionPath, task: "continue" },
+			new AbortController().signal,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+		const resumed = subagentRunManager
+			.list()
+			.find((run) => run.runId !== "saved-teamlead" && run.sessionPath === sessionPath);
+		expect(resumed).toMatchObject({
+			role: "coordinator",
+			depth: 1,
+			authorityTools: ["read", "subagent_write"],
+		});
+
+		const unknownPath = path.join(tmpDir, "unknown.jsonl");
+		fs.writeFileSync(unknownPath, testSessionHeader("unknown", tmpDir));
+		await continuation.execute(
+			"continue-unknown",
+			{ agent: "builder", session: unknownPath, task: "continue" },
+			new AbortController().signal,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+		const unknown = subagentRunManager
+			.list()
+			.find((run) => run.sessionPath === unknownPath);
+		expect(unknown).toMatchObject({ role: "leaf", depth: 1 });
+		expect(unknown?.authorityTools ?? []).not.toContain("subagent_write");
 	});
 
 	it("lets the root inspect liveness and compare observable progress", async () => {
@@ -1272,6 +1344,106 @@ Implement the requested change.
 	);
 
 	it(
+		"parses modern Team Lead continuation envelopes and owns the session path",
+		async () => {
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				const sessionPath = path.join(
+					sessionDir,
+					`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+				);
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(sessionPath, testSessionHeader(sessionId, tmpDir), "utf8");
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{
+									type: "text",
+									text: "```json\n" +
+										JSON.stringify({
+											status: "partial",
+											completed: ["inspect"],
+											remaining: ["validate"],
+											validation: { status: "passed" },
+											requestedAdditionalTimeMs: 999_999,
+											continuation: { sessionPath: "attacker-path" },
+										}) +
+										"\n```",
+								}],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { pi } = await loadTool();
+			const teamlead = pi._getTool("subagent_teamlead");
+			if (!teamlead) throw new Error("Team Lead tool not registered");
+			const result = await teamlead.execute(
+				"modern-teamlead-continuation",
+				{
+					items: [{ agent: "teamlead", instructions: "Coordinate the package." }],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			const child = result.details.results[0];
+			expect(child.completion).toEqual({
+				status: "partial",
+				completed: ["inspect"],
+				remaining: ["validate"],
+				validation: { status: "passed" },
+				continuation: {
+					sessionPath: child.sessionPath,
+					additionalTimeMs: 300_000,
+				},
+			});
+			expect(child.sessionPath).toBeTruthy();
+		});
+
+	it(
+		"rejects failed Team Lead validation as complete",
+		async () => {
+			mockSuccessfulSpawn(JSON.stringify({
+				status: "complete",
+				completed: ["inspect"],
+				remaining: [],
+				validation: { status: "failed", reason: "tests failed" },
+			}));
+			const { pi } = await loadTool();
+			const teamlead = pi._getTool("subagent_teamlead");
+			if (!teamlead) throw new Error("Team Lead tool not registered");
+			const result = await teamlead.execute(
+				"modern-teamlead-failed-validation",
+				{
+					items: [{ agent: "teamlead", instructions: "Validate the package." }],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.details.results[0].completion).toMatchObject({
+				status: "partial",
+				completed: ["inspect"],
+				remaining: [],
+				validation: { status: "failed", reason: "tests failed" },
+			});
+		});
+
+	it(
 		"merges dispatch-selected skills with agent profile skills",
 		async () => {
 			mockSuccessfulSpawn();
@@ -1422,7 +1594,7 @@ This agent cannot launch.
 					continue: {
 						agent: "tester",
 						session: sessionPath,
-						task: "What fact did I give you?",
+						task: "What fact did I give you? Please spend 30 additional seconds validating it.",
 					},
 					agentScope: "project",
 				},
@@ -1439,6 +1611,9 @@ This agent cannot launch.
 				args.slice(args.indexOf("--session"), args.indexOf("--session") + 2),
 			).toEqual(["--session", sessionPath]);
 			expect(args[args.indexOf("--tools") + 1]).toBe("read,grep");
+			expect(args.join(" ")).toContain("30 additional seconds");
+			expect(spawnMock.mock.calls[0][2].env.PI_SUBAGENT_ROLE).toBe("leaf");
+			expect(spawnMock.mock.calls[0][2].env.PI_SUBAGENT_DEPTH).toBe("1");
 			const child = result.details.results[0];
 			expect(child.sessionPath).toBe(sessionPath);
 			const { subagentRunManager } = await import(
@@ -1954,6 +2129,137 @@ You are a test agent.
 				),
 			).rejects.toThrow("failed after one correction");
 			expect(spawnMock).toHaveBeenCalledTimes(2);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"round-trips a bounded structured continuation without executing it",
+		async () => {
+			const continuationSchema = {
+				type: "object",
+				properties: {
+					status: { type: "string", enum: ["partial"] },
+					completed: { type: "array", items: { type: "string" } },
+					remaining: { type: "array", items: { type: "string" } },
+					continuation: {
+						type: "object",
+						properties: {
+							sessionPath: { type: "string" },
+							additionalTimeMs: { type: "integer", minimum: 1 },
+						},
+						required: ["sessionPath", "additionalTimeMs"],
+						additionalProperties: false,
+					},
+				},
+				required: ["status", "completed", "remaining", "continuation"],
+				additionalProperties: false,
+			};
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				const sessionPath = path.join(
+					sessionDir,
+					`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+				);
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(sessionPath, testSessionHeader(sessionId, tmpDir), "utf8");
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{
+									type: "text",
+									text: JSON.stringify({
+										status: "partial",
+										completed: ["inspect"],
+										remaining: ["validate"],
+										continuation: { sessionPath, additionalTimeMs: 45_000 },
+									}),
+								}],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-bounded-continuation",
+				{
+					agent: "tester",
+					task: "Return bounded progress",
+					agentScope: "project",
+					continuable: true,
+					outputSchema: continuationSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(spawnMock).toHaveBeenCalledTimes(1);
+			expect(result.details.results[0].completion).toEqual({
+				status: "partial",
+				completed: ["inspect"],
+				remaining: ["validate"],
+				validation: { status: "passed" },
+				continuation: {
+					sessionPath: result.details.results[0].sessionPath,
+					additionalTimeMs: 45_000,
+				},
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"does not preserve malformed structured continuation requests",
+		async () => {
+			const continuationSchema = {
+				type: "object",
+				properties: {
+					status: { type: "string", enum: ["partial"] },
+					completed: { type: "array", items: { type: "string" } },
+					remaining: { type: "array", items: { type: "string" } },
+					continuation: { type: "object" },
+				},
+				required: ["status", "completed", "remaining", "continuation"],
+				additionalProperties: false,
+			};
+			mockSuccessfulSpawn(JSON.stringify({
+				status: "partial",
+				completed: ["inspect"],
+				remaining: ["validate"],
+				continuation: { sessionPath: "", additionalTimeMs: 0 },
+			}));
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-malformed-continuation",
+				{
+					agent: "tester",
+					task: "Return malformed bounded progress",
+					agentScope: "project",
+					outputSchema: continuationSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.details.results[0].completion).toEqual({
+				status: "partial",
+				completed: ["inspect"],
+				remaining: ["validate"],
+				validation: { status: "passed" },
+			});
+			expect(spawnMock).toHaveBeenCalledTimes(1);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -2790,11 +3096,11 @@ You are a test agent.
 			const nestedCwd = path.join(tmpDir, "nested-workspace");
 			await fs.promises.mkdir(nestedCwd);
 			const taskStates = [
-				"unassigned",
 				"assigned",
-				"completed",
-				"failed",
-				"skipped",
+				"assigned",
+				"assigned",
+				"assigned",
+				"assigned",
 			] as const;
 			const linkedTasks = taskStates.map((state, index) =>
 				createTask({

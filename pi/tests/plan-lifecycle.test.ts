@@ -146,6 +146,43 @@ describe("plan lifecycle", () => {
 		);
 	});
 
+	it("bounds diagnostics and validates dependency syntax before execution", () => {
+		const path = ".specs/example/plan.md";
+		const invalid = readyPlan(path).replace(
+			"  - Verify: `pnpm test example.test.ts`",
+			"  - Depends on: T2",
+		);
+		const validation = validatePlanContract(invalid, path);
+		expect(validation.valid).toBe(false);
+		expect(validation.errors).toContain(
+			"Plan dependency syntax: plan task T1 has missing dependency: T2",
+		);
+
+		const noisy = Array.from(
+			{ length: 40 },
+			(_, index) => `## Missing ${index}`,
+		).join("\n");
+		expect(
+			validatePlanContract(noisy, "plan.md").errors.length,
+		).toBeLessThanOrEqual(8);
+	});
+
+	it("keeps ready as the default status gate and widens only execution preflight", () => {
+		const path = ".specs/example/plan.md";
+		const statuses = ["ready", "in_progress", "in-progress", "complete", "completed"];
+		for (const status of statuses) {
+			const content = readyPlan(path).replace("status: ready", `status: ${status}`);
+			expect(validatePlanContract(content, path, "execution-preflight").valid).toBe(true);
+		}
+		expect(validatePlanContract(readyPlan(path).replace("status: ready", "status: complete"), path).errors).toContain(
+			"Plan frontmatter status must be ready.",
+		);
+		const invalid = readyPlan(path).replace("status: ready", "status: paused");
+		expect(validatePlanContract(invalid, path, "execution-preflight").errors).toContain(
+			"Plan frontmatter status must be ready, in_progress, in-progress, complete, or completed.",
+		);
+	});
+
 	it("validates the executable plan contract", () => {
 		const path = ".specs/example/plan.md";
 		expect(validatePlanContract(readyPlan(path), path)).toEqual({

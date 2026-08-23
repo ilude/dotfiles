@@ -4,6 +4,7 @@ import {
 	admitCoordinatorDescendants,
 	coordinatorBudgetFor,
 	formatCoordinatorGaps,
+	formatCoordinatorTask,
 	DEFAULT_COORDINATOR_MAX_TURNS,
 	DEFAULT_COORDINATOR_MAX_WORKERS,
 	DEFAULT_COORDINATOR_SOFT_DEADLINE_MS,
@@ -20,6 +21,7 @@ describe("subagent T2 coordinator budgets", () => {
 			maxWorkers: DEFAULT_COORDINATOR_MAX_WORKERS,
 			maxTurns: DEFAULT_COORDINATOR_MAX_TURNS,
 			softDeadlineMs: DEFAULT_COORDINATOR_SOFT_DEADLINE_MS,
+			hardDeadlineMs: DEFAULT_COORDINATOR_SOFT_DEADLINE_MS * 2,
 		});
 		expect(
 			coordinatorBudgetFor({
@@ -27,8 +29,20 @@ describe("subagent T2 coordinator budgets", () => {
 				maxWorkers: 2,
 				maxTurns: 12,
 				softDeadlineMs: 30_000,
+				hardDeadlineMs: 90_000,
 			}),
-		).toEqual({ maxWorkers: 2, maxTurns: 12, softDeadlineMs: 30_000 });
+		).toEqual({
+			maxWorkers: 2,
+			maxTurns: 12,
+			softDeadlineMs: 30_000,
+			hardDeadlineMs: 90_000,
+		});
+		expect(() =>
+			coordinatorBudgetFor({ ...request, softDeadlineMs: 30_000, hardDeadlineMs: 30_000 }),
+		).toThrow("hardDeadlineMs must be greater than softDeadlineMs");
+		expect(() =>
+			coordinatorBudgetFor({ ...request, softDeadlineMs: 30_000, hardDeadlineMs: 20_000 }),
+		).toThrow("hardDeadlineMs must be greater than softDeadlineMs");
 		expect(
 			Value.Check(SubagentCoordinateSchema, {
 				items: request.items,
@@ -39,6 +53,16 @@ describe("subagent T2 coordinator budgets", () => {
 			Value.Check(SubagentCoordinateSchema, {
 				items: request.items,
 				maxTurns: 65,
+			}),
+		).toBe(false);
+		expect(
+			Value.Check(SubagentCoordinateSchema, {
+				items: [{ agent: "teamlead" }],
+			}),
+		).toBe(false);
+		expect(
+			Value.Check(SubagentCoordinateSchema, {
+				items: [{ agent: "teamlead", instructions: "" }],
 			}),
 		).toBe(false);
 		// maxWorkers limits descendants, so a coordinator request itself may
@@ -52,6 +76,18 @@ describe("subagent T2 coordinator budgets", () => {
 				maxWorkers: 1,
 			}),
 		).toBe(true);
+	});
+
+	it("includes cooperative deadline and completion instructions", () => {
+		const instructions = formatCoordinatorTask("coordinate", {
+			maxWorkers: 2,
+			maxTurns: 12,
+			softDeadlineMs: 30_000,
+			hardDeadlineMs: 90_000,
+		});
+		expect(instructions).toContain("Soft deadline: 30000 ms (advisory");
+		expect(instructions).toContain("Hard deadline: 90000 ms (enforced containment");
+		expect(instructions).toContain("Every status requires completed (string array), remaining (string array), and validation");
 	});
 
 	it("admits only bounded descendants and returns parent-visible gaps", () => {

@@ -500,7 +500,7 @@ function startupPrompt(goal: ForegroundGoal): string {
 	return [
 		plan
 			? "Active goal started with a reviewed canonical plan. Execute its durable root-task dependency graph, prove the plan's Completion Evidence, and call goal_complete only after the plan and required tasks are complete."
-			: "Active foreground goal started. Use the settled observable pass/fail completion evidence. If materially different conditions fit, settle them with the operator instead of choosing one. Work interactively and directly in this session; create one root task only when compaction, delegation, or delayed continuation is likely, and record the settled checks in its Instructions.",
+			: "Active foreground goal started with one linked durable root task. Work interactively and directly in this session. Use the settled observable pass/fail completion evidence, record the task outcome as task-level proof, and call goal_complete only after separate condition judgments and the top-level integration judgment pass.",
 		...(plan
 			? [`Canonical plan: ${plan}`]
 			: [
@@ -820,6 +820,58 @@ function attachOrCreatePlan(parsed: ParsedGoal, cwd: string): string {
 
 function explicitlySuppliedPlan(parsed: ParsedGoal): boolean {
 	return path.basename(parsed.absolutePath ?? "").toLowerCase() === "plan.md";
+}
+
+function materializeRawGoalTask(
+	goal: ForegroundGoal,
+	conditionDescriptions: readonly string[],
+	workspace: string,
+): {
+	conditions: GoalCondition[];
+	items: Record<string, ReturnType<typeof createGoalWorkItem>>;
+} {
+	if (conditionDescriptions.length === 0 || conditionDescriptions.length > 8)
+		throw new Error("materialize_goal requires 1 to 8 settled condition descriptions");
+	const conditions = reconcileGoalConditions(goal.conditions, conditionDescriptions.map((description) => asciiBounded(description, 500)));
+	const taskWorkspace = resolveTaskWorkspace(workspace);
+	const existing = listTasks({ workspace: taskWorkspace }).find(
+		(task) =>
+			!task.parentId &&
+			task.metadata?.goalId === goal.id &&
+			task.metadata?.goalItemKey === "GOAL",
+	);
+	let task = existing;
+	if (!task) {
+		const created = createTaskBatch(
+			[
+				{
+					key: "GOAL",
+					origin: "other",
+					summary: goal.summary,
+					instructions: `Done when: ${conditions.map((condition) => condition.description).join("; ")} Verify: Record separate condition evidence and integration judgment in goal_complete.`,
+					workspace: taskWorkspace,
+					boundary: ["."],
+					goalId: goal.id,
+					covers: conditions.map((condition) => condition.id),
+					metadata: {
+						goalId: goal.id,
+						goalItemKey: "GOAL",
+					},
+				},
+			],
+			taskWorkspace,
+		);
+		if (created.outcome !== "persisted")
+			throw new Error(
+				`raw goal task creation failed during ${created.failedPhase}: ${created.error}`,
+			);
+		task = created.records[0];
+	}
+	if (!task) throw new Error("raw goal durable root task was not created");
+	return {
+		conditions,
+		items: { GOAL: createGoalWorkItem("GOAL", task.id) },
+	};
 }
 
 function planGoalConditions(workspace: string, planPath: string): GoalCondition[] {
@@ -1296,6 +1348,8 @@ async function verifyUnattendedCompletion(
 			blockers.push(`${item.key}: linked task is not a durable root task`);
 		else if (task.state !== "completed")
 			blockers.push(`${item.key}: linked task is ${task.state}, not completed`);
+		else if (!task.outcome?.summary || !task.outcome.evidence.length)
+			blockers.push(`${item.key}: completed task has no bounded outcome evidence`);
 		else if (task.endedAt && task.endedAt > latestRequiredTaskCompletion)
 			latestRequiredTaskCompletion = task.endedAt;
 		if (item.activeAttempt)
@@ -1626,10 +1680,10 @@ export default function (pi: ExtensionAPI) {
 						workspace,
 					};
 					unattendedJobId = null;
-					activateTools(pi, ["goal_complete"]);
-					deactivateTools(pi, ["goal_progress"]);
+					activateTools(pi, ["goal_progress"]);
+					deactivateTools(pi, ["goal_complete"]);
 					await appendState(pi, stateEntry(foregroundGoal));
-					await pi.sendUserMessage(startupPrompt(foregroundGoal));
+					await pi.sendUserMessage(`Raw goal recorded but not materialized. Work interactively and directly in this session. Preview: ${foregroundGoal.preview} Settle 1-8 observable condition descriptions, then call goal_progress with action materialize_goal.`);
 					return;
 				}
 				const attached = attachOrCreatePlanDetails(parsed.parsed, workspace);
@@ -1725,6 +1779,7 @@ export default function (pi: ExtensionAPI) {
 					"reconcile",
 					"wait",
 					"materialize_plan",
+					"materialize_goal",
 				] as const),
 				key: Type.Optional(Type.String()),
 				taskId: Type.Optional(Type.String()),
@@ -1754,6 +1809,7 @@ export default function (pi: ExtensionAPI) {
 				evidence: Type.Optional(Type.String()),
 				assumptions: Type.Optional(Type.String()),
 				message: Type.Optional(Type.String()),
+				conditions: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 500 }), { minItems: 1, maxItems: 8 })),
 				waitReason: Type.Optional(StringEnum(WAIT_REASONS)),
 				operatorAction: Type.Optional(Type.String({ maxLength: 500 })),
 				command: Type.Optional(Type.String()),
@@ -1767,6 +1823,24 @@ export default function (pi: ExtensionAPI) {
 			try {
 				const input = params as Record<string, unknown>;
 				const action = requiredString(input, "action");
+				if (action === "materialize_goal") {
+					if (!foregroundGoal) throw new Error("No raw foreground goal is active.");
+					if (foregroundGoal.plans?.length || foregroundGoal.items)
+						throw new Error("This goal is already materialized or plan-backed.");
+					if (!Array.isArray(input.conditions))
+						throw new Error("materialize_goal requires settled condition descriptions");
+					const pending = foregroundGoal;
+					const raw = materializeRawGoalTask(pending, input.conditions as string[], pending.workspace ?? ctx.cwd);
+					foregroundGoal = { ...pending, conditions: raw.conditions, conditionMode: "structured", items: raw.items, updatedAt: nowIso() };
+					await appendState(pi, stateEntry(foregroundGoal));
+					deactivateTools(pi, ["goal_progress"]);
+					activateTools(pi, ["goal_complete"]);
+					await pi.sendUserMessage(startupPrompt(foregroundGoal));
+					return {
+						content: [{ type: "text" as const, text: "Materialized one durable root task from settled goal conditions." }],
+						details: { goalId: foregroundGoal.id, state: "running", taskCount: 1 },
+					};
+				}
 				if (action === "materialize_plan") {
 					if (!foregroundGoal?.planning || foregroundGoal.plans?.length !== 1)
 						throw new Error("No /goal plan is awaiting materialization.");
@@ -2269,6 +2343,22 @@ export default function (pi: ExtensionAPI) {
 						`Goal completion rejected: ${error instanceof Error ? error.message : String(error)}`,
 					);
 				}
+				if (!foregroundGoal.plans?.length && foregroundGoal.items) {
+					const blockers: string[] = [];
+					for (const item of Object.values(foregroundGoal.items)) {
+						const record = getTask(item.taskId);
+						if (!record) blockers.push(`${item.key}: durable root task is missing`);
+						else if (record.state !== "completed")
+							blockers.push(`${item.key}: durable root task is ${record.state}, not completed`);
+						else if (!record.outcome?.summary || !record.outcome.evidence.length)
+							blockers.push(`${item.key}: completed task has no bounded outcome evidence`);
+					}
+					if (blockers.length > 0)
+						return formatToolError(
+							`Goal completion rejected:\n- ${blockers.join("\n- ")}`,
+							{ details: { blockers } },
+						);
+				}
 				if (
 					foregroundGoal.workspace &&
 					foregroundGoal.plans?.length === 1 &&
@@ -2288,6 +2378,13 @@ export default function (pi: ExtensionAPI) {
 						else if (!["completed", "skipped"].includes(record.state))
 							blockers.push(
 								`${task.key}: durable root task is ${record.state}`,
+							);
+						else if (
+							record.state === "completed" &&
+							(!record.outcome?.summary || !record.outcome.evidence.length)
+						)
+							blockers.push(
+								`${task.key}: completed task has no bounded outcome evidence`,
 							);
 					}
 					if (blockers.length > 0)

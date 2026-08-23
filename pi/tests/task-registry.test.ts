@@ -231,7 +231,9 @@ describe("transitionTask", () => {
 		expect(assigned.assignedAt).toBeDefined();
 		expect(assigned.endedAt).toBeUndefined();
 
-		const done = transitionTask(task.id, "completed");
+		const done = transitionTask(task.id, "completed", {
+			outcome: { summary: "x completed", evidence: "focused registry check" },
+		});
 		expect(done.state).toBe("completed");
 		expect(done.endedAt).toBeDefined();
 	});
@@ -287,7 +289,9 @@ describe("transitionTask", () => {
 			summary: "x",
 			state: "assigned",
 		});
-		transitionTask(task.id, "completed");
+		transitionTask(task.id, "completed", {
+			outcome: { summary: "x completed", evidence: "terminal transition check" },
+		});
 		expect(() => transitionTask(task.id, "assigned")).toThrow(TaskRegistryError);
 	});
 
@@ -305,6 +309,7 @@ describe("transitionTask", () => {
 		});
 		const done = transitionTask(task.id, "completed", {
 			usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+			outcome: { summary: "x completed", evidence: "usage transition check" },
 		});
 		expect(done.usage).toEqual({
 			inputTokens: 100,
@@ -336,6 +341,7 @@ describe("transitionTask", () => {
 				turns: 2,
 				costUsd: null,
 			}),
+			outcome: { summary: "x completed", evidence: "normalized usage check" },
 		});
 		expect(completed.usage).toEqual({
 			...legacyUsage,
