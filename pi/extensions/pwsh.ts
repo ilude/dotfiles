@@ -113,6 +113,8 @@ function registerPwshTool(pi: ExtensionAPI) {
     promptGuidelines: [
       "On Windows, use pwsh for Windows-native cmdlets, .NET, registry, modules, and .ps1 scripts; use bash for git, Node, POSIX commands, and Unix-style pipelines. On Unix, use pwsh only when explicitly requested.",
       "In pwsh, use cmdlet names (Get-Content, Write-Output) over aliases (cat, echo), and use $env:VAR for environment variables.",
+      "Keep -Command input short. For multiline logic, nested quoting, loops, regular expressions, or multiple pipelines, write a temporary .ps1 under .tmp/ and invoke it with pwsh -File.",
+      "Set a larger timeout before known network, module-import, package, or infrastructure operations; do not retry an unchanged timed-out command with the same timeout.",
     ],
     parameters: Type.Object({
       command: Type.String({ description: "PowerShell command to execute" }),

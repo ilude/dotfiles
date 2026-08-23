@@ -141,9 +141,18 @@ describe("web-tools extension", () => {
       expect(result.content[0].text).toBe('web_search("nothing")\nNo results found.');
     });
 
-    it("should throw on HTTP error", async () => {
+    it("reports the endpoint and HTTP failure category", async () => {
       mockFetch.mockResolvedValue({ ok: false, status: 503, statusText: "Service Unavailable" });
-      await expect(search.execute("id", { query: "test" }, undefined, undefined, {})).rejects.toThrow(/503/);
+      await expect(search.execute("id", { query: "test" }, undefined, undefined, {})).rejects.toThrow(
+        "SearXNG HTTP failure at searxng.ilude.com: 503 Service Unavailable",
+      );
+    });
+
+    it("reports the endpoint and network failure category", async () => {
+      mockFetch.mockRejectedValue(new TypeError("fetch failed", { cause: { code: "ENOTFOUND" } }));
+      await expect(search.execute("id", { query: "test" }, undefined, undefined, {})).rejects.toThrow(
+        "SearXNG dns failure at searxng.ilude.com: fetch failed",
+      );
     });
 
     it("should show '(no snippet)' when content is missing", async () => {

@@ -1,13 +1,13 @@
 ---
 name: shell
-description: "Shell/PowerShell: .sh, .bash, .zsh, .ps1, Makefile fragments, CLI scripts, quoting, exits, traps, or cross-platform behavior. Not for workflow UX or Justfile routing."
+description: "Bash/POSIX shell: .sh, .bash, .zsh, Makefile fragments, CLI scripts, quoting, exits, traps, or cross-platform shell behavior. Not for PowerShell; use powershell."
 ---
 
 # Shell Script Workflow
 
 ## Boundary
 
-Use `shell` for script implementation details. Use `workflow-design` for public command UX and `justfile` for Just recipes.
+Use `shell` for Bash, POSIX sh, and zsh implementation details. Use `powershell` for PowerShell commands and `.ps1` files, `workflow-design` for public command UX, and `justfile` for Just recipes.
 
 ## Core Principle
 
@@ -38,23 +38,6 @@ set -euo pipefail
 
 Use arrays for argument lists. Use `[[ ... ]]` in Bash-specific scripts; use POSIX `[` only for POSIX sh. In Bash on Windows, use `/dev/null` rather than `nul` and use forward slashes in paths.
 
-## PowerShell Defaults
-
-Use approved cmdlet names in scripts, `$env:NAME` for environment variables, and explicit error handling consistent with the existing file.
-
-For administrative mutation scripts, support `ShouldProcess`/`-WhatIf` through `[CmdletBinding(SupportsShouldProcess)]` and `ShouldProcess` guards around each mutation. When the user asks for preview mode, default to `-WhatIf` or an equivalent read-only dry run.
-
-Do not run newly written or generated PowerShell scripts unless the user explicitly asks to execute them. For legacy or on-prem Windows environments, target Windows PowerShell 5.1 compatibility unless the repo documents PowerShell 7+ as the runtime.
-
-For PowerShell readability, avoid dense or minified style:
-
-- Do not compress functions, loops, `if`/`else`, `try`/`catch`, or object construction onto one long line.
-- Prefer readable multiline hashtables and `[pscustomobject]` literals when there is more than one or two properties.
-- Keep comments/help concise and operator-focused: what the script does, what is read-only, what can mutate state, and what outputs are written.
-- Avoid filler wording such as "comprehensive", "robust", "seamless", or legacy/process commentary that does not help an operator run or review the script.
-- Use small helper functions for repeated path, output, auth, and comparison logic instead of copy-pasted dense blocks.
-- Before finishing, scan for very long lines and reflow any dense implementation line that would be hard to review in a diff.
-
 ## Anti-Patterns
 
 - Unquoted variables in paths or user input.
@@ -63,5 +46,3 @@ For PowerShell readability, avoid dense or minified style:
 - Mixing POSIX and Bash features accidentally.
 - Changing platform behavior without validation.
 - Running generated mutation scripts without explicit instruction.
-- PowerShell admin scripts that mutate state without `ShouldProcess`/`-WhatIf` support.
-- PowerShell slop: minified one-line functions/control flow, giant one-line apply blocks, vague boilerplate comments, or decorative comments that do not explain behavior.

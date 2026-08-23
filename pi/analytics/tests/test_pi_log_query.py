@@ -212,6 +212,33 @@ def layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SourceLayout:
     return SourceLayout(repo, agent, agent / "logs", agent / "traces", workflow)
 
 
+def test_schema_command_reports_exact_view_columns(
+    layout: SourceLayout, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert (
+        main(
+            [
+                "--repo-root",
+                str(layout.repo_root),
+                "--agent-dir",
+                str(layout.agent_dir),
+                "--metrics-dir",
+                str(layout.metrics_dir),
+                "--workflow-telemetry-dir",
+                str(layout.workflow_telemetry_dir),
+                "--source",
+                "session_entries",
+                "schema",
+                "session_inventory",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    assert "source_file" in output
+    assert "session_id" in output
+
+
 def test_registers_explicit_sources_and_metadata_views(layout: SourceLayout) -> None:
     connection, paths = connect_with_views(layout)
 

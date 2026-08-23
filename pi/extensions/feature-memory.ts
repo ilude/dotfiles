@@ -60,16 +60,28 @@ async function registerFeatureMemoryExtension(
 		featureMemoryEventsPath({ directory: eventsDirectory });
 	const injectedFeatureIds = new Set<string>();
 	const matchedFeatureIds = new Set<string>();
+	const matchedFeatureIdSchema = StringEnum([]) as unknown as ReturnType<
+		typeof Type.String
+	> & { enum: string[] };
+	const refreshMatchedFeatureIdSchema = () => {
+		matchedFeatureIdSchema.enum.splice(
+			0,
+			matchedFeatureIdSchema.enum.length,
+			...[...matchedFeatureIds].sort(),
+		);
+	};
 
 	onSessionStart(pi, import.meta.url, () => {
 		injectedFeatureIds.clear();
 		matchedFeatureIds.clear();
+		refreshMatchedFeatureIdSchema();
 		deactivateTools(pi, ["feature_memory_record"]);
 	});
 
 	pi.on("before_agent_start", async (event) => {
 		const matches = matchFeatureIds(registry, event.prompt ?? "");
 		for (const featureId of matches) matchedFeatureIds.add(featureId);
+		refreshMatchedFeatureIdSchema();
 		if (matches.length > 0) activateTools(pi, ["feature_memory_record"]);
 		const pending = matches.filter(
 			(featureId) => !injectedFeatureIds.has(featureId),
@@ -108,7 +120,7 @@ async function registerFeatureMemoryExtension(
 		],
 		parameters: Type.Object(
 			{
-				featureId: Type.String({ minLength: 1, maxLength: 80 }),
+				featureId: matchedFeatureIdSchema,
 				kind: FeatureEventKindSchema,
 				summary: Type.String({ minLength: 1, maxLength: 600 }),
 				sourcePaths: Type.Array(Type.String({ minLength: 1, maxLength: 240 }), {
@@ -119,7 +131,9 @@ async function registerFeatureMemoryExtension(
 		),
 		async execute(_toolCallId, params) {
 			if (!registry.features[params.featureId])
-				throw new Error(`Unknown feature ID: ${params.featureId}`);
+				throw new Error(
+					`Unknown feature ID: ${params.featureId}. Matched feature IDs in this session: ${[...matchedFeatureIds].sort().join(", ") || "none"}`,
+				);
 			if (!matchedFeatureIds.has(params.featureId))
 				throw new Error(
 					`Feature ${params.featureId} has not matched work in this session`,

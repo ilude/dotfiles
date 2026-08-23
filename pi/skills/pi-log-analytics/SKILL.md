@@ -31,9 +31,12 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
 
 If snapshot creation reports malformed JSONL, validate that source once to locate the malformed rows. Do not run a separate full validation before a successful snapshot.
 
-4. Reuse the snapshot for every query. Snapshot readers do not discover or parse the JSONL corpus:
+4. Reuse the snapshot for every query. Snapshot readers do not discover or parse the JSONL corpus. Before the first query against an unfamiliar source or derived view, inspect its columns with `schema <view>` rather than guessing field names:
 
 ```bash
+uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+  --snapshot-db .tmp/pi-log-analytics/pi-logs.duckdb \
+  --source session_entries schema session_inventory
 uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
   --snapshot-db .tmp/pi-log-analytics/pi-logs.duckdb \
   --source session_entries \
@@ -41,7 +44,7 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
 ```
 
 5. Put related `SELECT` statements in one SQL file and use `batch` so they share one connection. For parallel screening, compute the partition column once, export a bounded manifest, and give workers either the shared read-only snapshot or only their assigned files. Workers must not independently validate, snapshot, or rescan the complete corpus.
-6. If a live query or snapshot reports malformed JSONL, validate that source without printing records. Validation caches unchanged-file results under `.tmp/pi-log-analytics/` by default.
+6. If `--no-sync` reports a missing environment module, run `uv sync --project pi/analytics --locked` once and retry; do not install the module globally. If a live query or snapshot reports malformed JSONL, validate that source without printing records. Validation caches unchanged-file results under `.tmp/pi-log-analytics/` by default.
 7. Use `--ignore-malformed` only after validation when an incomplete exploratory result is acceptable. Report the omitted row count.
 8. Read [reference.md](reference.md) when source fields, snapshot operations, manifests, correlation rules, or query recipes are needed.
 9. Report the source views, time window, filters, row counts, and any missing or malformed source that limits the conclusion.

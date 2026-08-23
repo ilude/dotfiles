@@ -1361,6 +1361,10 @@ def build_parser() -> argparse.ArgumentParser:
     views = subparsers.add_parser("views", help="list source and derived views")
     views.add_argument("--format", choices=("table", "csv", "jsonl"), default="table")
 
+    schema = subparsers.add_parser("schema", help="show columns for one source or derived view")
+    schema.add_argument("view", help="exact source or derived view name")
+    schema.add_argument("--format", choices=("table", "csv", "jsonl"), default="table")
+
     query = subparsers.add_parser("query", help="run one bounded read-only SELECT")
     query.add_argument("sql", help="DuckDB SELECT statement")
     query.add_argument("--limit", type=int, default=50)
@@ -1493,6 +1497,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
             _emit_result(result, args.format)
             return 0
+        if args.command == "schema":
+            available = {
+                row[0]
+                for row in connection.execute(
+                    """SELECT table_name FROM information_schema.tables
+                    WHERE table_schema = 'main'"""
+                ).fetchall()
+            }
+            if args.view not in available:
+                print(f"schema error: unknown view: {args.view}", file=sys.stderr)
+                return 2
+            result = connection.execute(
+                """SELECT column_name, data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'main' AND table_name = ?
+                ORDER BY ordinal_position""",
+                [args.view],
+            )
+            _emit_result(result, args.format)
+            return 0
         try:
             if args.command == "query":
                 _emit_result(execute_bounded_query(connection, args.sql, args.limit), args.format)
@@ -1504,7 +1528,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         print(f"Result {index}:")
                     _emit_result(result, args.format)
         except (OSError, ValueError, duckdb.Error) as exc:
-            print(f"query error: {exc}", file=sys.stderr)
+            message = str(exc)
+            print(f"query error: {message}", file=sys.stderr)
+            if "Required module" in message and "failed to import" in message:
+                print(
+                    "environment error: synchronize the locked analytics environment with "
+                    "'uv sync --project pi/analytics --locked', then retry",
+                    file=sys.stderr,
+                )
             return 2
         return 0
     finally:

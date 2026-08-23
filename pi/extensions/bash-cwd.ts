@@ -4,8 +4,16 @@ import {
 	createBashToolDefinition,
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
+import path from "node:path";
 import { formatToolTiming } from "../lib/tool-timing.js";
+
+type BashParams = {
+	command: string;
+	cwd?: string;
+	timeout?: number;
+};
 
 type ToolTheme = {
 	bold(text: string): string;
@@ -16,8 +24,12 @@ function bashToolFor(cwd: string) {
 	return createBashToolDefinition(cwd);
 }
 
+function effectiveCwd(args: { cwd?: string }, sessionCwd: string): string {
+	return path.resolve(sessionCwd, args.cwd || sessionCwd);
+}
+
 function formatBashCall(
-	args: { command?: string; timeout?: number },
+	args: { command?: string; cwd?: string; timeout?: number },
 	cwd: string,
 	startedAt: number | undefined,
 	theme: ToolTheme,
@@ -54,15 +66,38 @@ export default function (pi: ExtensionAPI) {
 		label: initialTool.label,
 		description: initialTool.description,
 		promptSnippet: initialTool.promptSnippet,
-		promptGuidelines: initialTool.promptGuidelines,
-		parameters: initialTool.parameters,
+		promptGuidelines: [
+			...(initialTool.promptGuidelines ?? []),
+			"For repository-scoped commands, pass the owning repository as cwd; do not assume the session cwd or rely on a previous command changing directories.",
+		],
+		parameters: Type.Object({
+			...(initialTool.parameters as { properties: Record<string, unknown> }).properties,
+			cwd: Type.Optional(
+				Type.String({
+					description:
+						"Working directory for this command. Relative paths resolve from the session cwd.",
+				}),
+			),
+		}),
 		renderShell: initialTool.renderShell,
-		prepareArguments: initialTool.prepareArguments,
+		prepareArguments(args): BashParams {
+			const prepared = initialTool.prepareArguments?.(args) as Omit<
+				BashParams,
+				"cwd"
+			>;
+			const cwd = (args as { cwd?: unknown }).cwd;
+			return {
+				...prepared,
+				...(typeof cwd === "string" ? { cwd } : {}),
+			};
+		},
 		executionMode: initialTool.executionMode,
-		execute(toolCallId, params, signal, onUpdate, ctx) {
-			return getTool(ctx.cwd).execute(
+		execute(toolCallId, params: BashParams, signal, onUpdate, ctx) {
+			const cwd = effectiveCwd(params, ctx.cwd);
+			const { cwd: _cwd, ...toolParams } = params;
+			return getTool(cwd).execute(
 				toolCallId,
-				params,
+				toolParams,
 				signal,
 				onUpdate,
 				ctx,
@@ -78,17 +113,27 @@ export default function (pi: ExtensionAPI) {
 					? context.lastComponent
 					: new Text("", 0, 0);
 			text.setText(
-				formatBashCall(args, context.cwd, context.state.startedAt, theme),
+				formatBashCall(
+					args,
+					effectiveCwd(args, context.cwd),
+					context.state.startedAt,
+					theme,
+				),
 			);
 			return text;
 		},
 		renderResult(result, options, theme, context) {
 			return (
-				getTool(context.cwd).renderResult?.(
+				getTool(
+					effectiveCwd(
+						(result.details ?? {}) as { cwd?: string },
+						context.cwd,
+					),
+				).renderResult?.(
 					result as AgentToolResult<BashToolDetails | undefined>,
 					options,
 					theme,
-					context,
+					context as any,
 				) ?? new Text("", 0, 0)
 			);
 		},

@@ -17,7 +17,7 @@ description: "SKILL.md, skill frontmatter/descriptions, activation triggers, age
 
 Startup context reads skill metadata first. Treat descriptions and other always-loaded guidance as context pointers: name the material and the distinct conditions for reading it. Put the leading trigger first, collapse synonyms, and keep the pointer tight because every word costs context on every turn.
 
-Keep the body concise. Inline what every path needs; put branch-specific or bulky detail in a clearly named file and point to it where the branch starts.
+Keep the body concise. Inline what every path needs; put branch-specific or bulky detail in a clearly named file and point to it where the branch starts. A language or tool skill should not become a general reference manual; target observed failure patterns and the decisions needed to avoid them.
 
 ## Information Hierarchy
 

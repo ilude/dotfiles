@@ -8,12 +8,13 @@ Run from the dotfiles repository root:
 uv sync --project pi/analytics --locked
 uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py catalog
 uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py views
+uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py schema session_inventory
 uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py query "SELECT ..." --limit 50
 ```
 
 Run `uv sync --project pi/analytics --locked` when dependencies need installation or updating. Routine analytics commands use `uv run --no-sync` to avoid repeated environment resolution.
 
-The live-query default opens an in-memory DuckDB connection, registers explicit JSONL schemas, and runs exactly one read-only `SELECT`. Results default to 50 rows and cannot exceed 1,000 rows. Table cells are truncated for terminal safety; use `--format csv` or `--format jsonl` only when full selected values are required. DuckDB uses at most four threads by default; place `--threads N` before the subcommand to change the cap.
+The live-query default opens an in-memory DuckDB connection, registers explicit JSONL schemas, and runs exactly one read-only `SELECT`. Use `schema <view>` before querying an unfamiliar source or derived view. Results default to 50 rows and cannot exceed 1,000 rows. Table cells are truncated for terminal safety; use `--format csv` or `--format jsonl` only when full selected values are required. DuckDB uses at most four threads by default; place `--threads N` before the subcommand to change the cap.
 
 Restrict discovery whenever the question needs only some sources. Repeat `--source` for multiple sources:
 

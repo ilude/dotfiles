@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import bashCwd from "../extensions/bash-cwd.ts";
 import { createMockPi, createMockTheme } from "./helpers/mock-pi.js";
@@ -25,11 +26,32 @@ describe("bash cwd extension", () => {
 
 			expect(state.startedAt).toBe(startedAt);
 			expect(component?.render(300).join("\n")).toContain(
-				"cwd: C:/repo, started 11:29:30 local, timeout 90s at 11:31:00 local",
+				`cwd: ${path.resolve("C:/repo")}, started 11:29:30 local, timeout 90s at 11:31:00 local`,
 			);
 		} finally {
 			now.mockRestore();
 		}
+	});
+
+	it("renders an explicit command cwd resolved from the session cwd", () => {
+		const pi = createMockPi();
+		bashCwd(pi as any);
+		const tool = pi._getTool("bash")!;
+		const component = tool.renderCall?.(
+			{ command: "pnpm test", cwd: "packages/api" },
+			createMockTheme(),
+			{
+				cwd: "C:/repo",
+				executionStarted: false,
+				lastComponent: undefined,
+				state: {},
+			},
+		);
+
+		expect(tool.parameters.properties.cwd).toBeDefined();
+		expect(component?.render(300).join("\n")).toContain(
+			`cwd: ${path.resolve("C:/repo", "packages/api")}`,
+		);
 	});
 
 	it("shows the configured timeout before execution starts", () => {
@@ -48,7 +70,7 @@ describe("bash cwd extension", () => {
 		);
 
 		expect(component?.render(300).join("\n")).toContain(
-			"cwd: C:/repo, timeout 30s",
+			`cwd: ${path.resolve("C:/repo")}, timeout 30s`,
 		);
 		expect(component?.render(300).join("\n")).not.toContain("started");
 	});

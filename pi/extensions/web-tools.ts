@@ -150,6 +150,20 @@ function displayUrl(url: string | undefined): string {
 	return url.length > 120 ? `${url.slice(0, 117)}...` : url;
 }
 
+export function classifyWebSearchFailure(error: unknown): string {
+	if (error instanceof DOMException && error.name === "TimeoutError") return "timeout";
+	if (error instanceof Error && error.name === "AbortError") return "aborted";
+	const code =
+		error instanceof Error && "cause" in error
+			? String((error.cause as { code?: unknown } | undefined)?.code ?? "")
+			: "";
+	if (["ENOTFOUND", "EAI_AGAIN"].includes(code)) return "dns";
+	if (["ECONNREFUSED", "ECONNRESET", "EHOSTUNREACH", "ENETUNREACH"].includes(code))
+		return "connection";
+	if (error instanceof TypeError) return "network";
+	return "request";
+}
+
 export function normalizeWebFetchMaxChars(value: number | undefined): number {
 	if (value === undefined) return DEFAULT_WEB_FETCH_MAX_CHARS;
 	if (!Number.isFinite(value) || value <= 0)
@@ -188,9 +202,19 @@ export default function (pi: ExtensionAPI) {
 			const searxngUrl = (process.env.SEARXNG_URL ?? DEFAULT_SEARXNG_URL).replace(/\/$/, "");
 			const url = `${searxngUrl}?q=${encodeURIComponent(composedQuery)}&format=json&pageno=1`;
 
-			const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+			let resp: Response;
+			try {
+				resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+			} catch (error) {
+				throw new Error(
+					`SearXNG ${classifyWebSearchFailure(error)} failure at ${new URL(searxngUrl).hostname}: ${error instanceof Error ? error.message : String(error)}`,
+					{ cause: error },
+				);
+			}
 			if (!resp.ok) {
-				throw new Error(`SearXNG error: HTTP ${resp.status} ${resp.statusText}`);
+				throw new Error(
+					`SearXNG HTTP failure at ${new URL(searxngUrl).hostname}: ${resp.status} ${resp.statusText}`,
+				);
 			}
 
 			const data = (await resp.json()) as {
