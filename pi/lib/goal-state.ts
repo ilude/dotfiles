@@ -9,6 +9,63 @@ export const GOAL_PUBLIC_STATES = [
 export type GoalPublicState = (typeof GOAL_PUBLIC_STATES)[number];
 export type GoalMode = "inline" | "file";
 
+export type GoalCondition = {
+	id: string;
+	description: string;
+};
+
+export type GoalConditionMode = "structured" | "legacy_compatibility";
+
+export function reconcileGoalConditions(
+	existing: readonly GoalCondition[] | undefined,
+	descriptions: readonly string[],
+): GoalCondition[] {
+	const prior = existing ?? [];
+	const highest = prior.reduce((max, condition) => {
+		const match = /^G(\d+)$/.exec(condition.id);
+		return Math.max(max, match ? Number(match[1]) : 0);
+	}, 0);
+	let nextId = highest + 1;
+	const used = new Set<string>();
+	return descriptions.map((description, index) => {
+		const trimmed = description.trim();
+		if (!trimmed) throw new Error("goal condition description is required");
+		const exact = prior.find(
+			(condition) => !used.has(condition.id) && condition.description === trimmed,
+		);
+		const priorCondition = exact ?? prior.find((condition) => !used.has(condition.id) && prior.indexOf(condition) === index);
+		if (priorCondition) {
+			used.add(priorCondition.id);
+			return { ...priorCondition, description: trimmed };
+		}
+		return { id: `G${nextId++}`, description: trimmed };
+	});
+}
+
+export function validateGoalTaskCoverage(
+	conditions: readonly GoalCondition[],
+	tasks: readonly { goalId?: string; covers?: readonly string[] }[],
+	goalId: string,
+): void {
+	const current = new Set(conditions.map((condition) => condition.id));
+	if (current.size !== conditions.length)
+		throw new Error("goal conditions must have unique IDs");
+	const covered = new Set<string>();
+	for (const task of tasks) {
+		if (task.goalId !== goalId) continue;
+		if (!task.covers?.length)
+			throw new Error("goal-linked task must cover at least one current condition");
+		for (const id of task.covers) {
+			if (!current.has(id))
+				throw new Error(`goal-linked task references unknown condition: ${id}`);
+			covered.add(id);
+		}
+	}
+	for (const condition of conditions)
+		if (!covered.has(condition.id))
+			throw new Error(`goal condition ${condition.id} has no task coverage`);
+}
+
 export type GoalFailureOutcome =
 	| "error"
 	| "inconclusive"
@@ -112,6 +169,8 @@ export type UnattendedGoal = {
 	objectiveSizeBytes?: number;
 	plans: string[];
 	items: Record<string, GoalWorkItem>;
+	conditions: GoalCondition[];
+	conditionMode: GoalConditionMode;
 	completionContract: {
 		requireLinkedPlanTasks: true;
 		requireLinkedRootTasks: true;

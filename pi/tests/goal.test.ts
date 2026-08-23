@@ -231,6 +231,10 @@ describe("goal extension", () => {
 		expect(result.systemPrompt).toContain(
 			"File-backed goal: .specs/file-goal/goal.md",
 		);
+		expect(result.systemPrompt).toContain("<!-- pi-runtime-context:goal -->");
+		expect(result.systemPrompt.indexOf("base")).toBeLessThan(
+			result.systemPrompt.indexOf("<!-- pi-runtime-context:goal -->"),
+		);
 		expect(result.systemPrompt).toContain("sha256");
 		expect(result.systemPrompt).not.toContain(fileContent);
 		expect(result.systemPrompt.length).toBeLessThan(1200);
@@ -424,7 +428,7 @@ describe("goal extension", () => {
 		const dependent = getTask(first.items.T2.taskId);
 		expect(dependent?.blockedBy).toEqual([prerequisite?.id]);
 		expect(dependent).toMatchObject({
-			notes:
+			instructions:
 				"Done when: The fixture task is complete. Verify: Run the fixture check.",
 			metadata: {
 				goalId: first.id,
@@ -640,7 +644,7 @@ describe("goal extension", () => {
 			qualifyingFailures: 22,
 			phase: "needs_operator",
 		});
-		expect(getTask(first.id)?.state).toBe("blocked");
+		expect(getTask(first.id)?.state).toBe("assigned");
 		const blockedRetry = await progress.execute("blocked-retry", {
 			action: "begin_attempt",
 			key: "T1",
@@ -654,7 +658,7 @@ describe("goal extension", () => {
 			strategy: { agent: "builder" },
 		});
 		expect(independent.isError).not.toBe(true);
-		expect(getTask(second.id)?.state).toBe("running");
+		expect(getTask(second.id)?.state).toBe("assigned");
 	});
 
 	it("requires reconciliation before replaying a stale attempt", async () => {
@@ -699,7 +703,7 @@ describe("goal extension", () => {
 			strategy: { evidenceSource: "post-reconciliation evidence" },
 		});
 		expect(replay.isError).not.toBe(true);
-		expect(getTask(second.id)?.state).toBe("running");
+		expect(getTask(second.id)?.state).toBe("assigned");
 	});
 
 	it("preserves permission gates and exhausted recovery on resume", async () => {
@@ -722,7 +726,7 @@ describe("goal extension", () => {
 				},
 			],
 		});
-		expect(getTask(second.id)?.state).toBe("blocked");
+		expect(getTask(second.id)?.state).toBe("assigned");
 		expect(readLoopJob(jobId).goal).toMatchObject({
 			state: "waiting_for_operator",
 			items: {
@@ -769,8 +773,7 @@ describe("goal extension", () => {
 
 		const recoveryReason =
 			"recovery_exhausted: two materially different recovery attempts failed";
-		transitionTask(first.id, "running");
-		transitionTask(first.id, "blocked", { blockReason: recoveryReason });
+		// An assigned task remains assigned while recovery waits for the operator.
 		await updateLoopJob(jobId, (current) => ({
 			...current,
 			goal: current.goal
@@ -870,11 +873,24 @@ describe("goal extension", () => {
 		if (!task || !secondTask)
 			throw new Error("Required durable root tasks were not created.");
 		const complete = pi._getTool("goal_complete");
+		const completionEvidence = {
+			conditionJudgments: [
+				{
+					id: "G1",
+					evidence: "The fixture objective works through its supported entrypoint.",
+					passed: true,
+				},
+			],
+			integrationJudgment: "All current condition evidence composes into the goal.",
+		};
 		const rejected = await complete?.execute("complete-1", {
 			summary: "Finished the item",
 		});
+		expect(rejected.content[0].text).toContain(
+			"every current goal condition requires a judgment",
+		);
 		expect(rejected.isError).toBe(true);
-		expect(rejected.content[0].text).toContain("linked task is pending");
+		expect(rejected.content[0].text).toContain("linked task is unassigned");
 		expect(rejected.content[0].text).toContain("no relevant validation evidence");
 		expect(runningGoal.items.T2.required).toBe(true);
 		const replacement = await progress?.execute("replace-linked", {
@@ -906,11 +922,12 @@ describe("goal extension", () => {
 		});
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		for (const linkedTask of [task, secondTask]) {
-			transitionTask(linkedTask.id, "running");
+			transitionTask(linkedTask.id, "assigned");
 			transitionTask(linkedTask.id, "completed");
 		}
 		const stale = await complete?.execute("complete-stale", {
 			summary: "Finished the verified item",
+			...completionEvidence,
 		});
 		expect(stale.isError).toBe(true);
 		expect(stale.content[0].text).toContain(
@@ -930,6 +947,7 @@ describe("goal extension", () => {
 		const archived = await complete?.execute("complete-2", {
 			summary: "Finished the verified item",
 			knownGaps: "None",
+			...completionEvidence,
 		});
 		expect(archived.isError).not.toBe(true);
 		expect(archived.content[0].text).toContain(
@@ -950,6 +968,7 @@ describe("goal extension", () => {
 		const accepted = await complete?.execute("complete-3", {
 			summary: "Finished the verified item",
 			knownGaps: "None",
+			...completionEvidence,
 		});
 		expect(accepted.isError, accepted.content[0].text).not.toBe(true);
 		expect(accepted.content[0].text).toContain("Repository state:");

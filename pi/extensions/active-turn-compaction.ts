@@ -19,7 +19,7 @@ const COMPACTION_HANDOFF_INSTRUCTIONS = `Preserve a durable handoff for the acti
 - response owed to the user
 - pending question that must be answered or settled
 - canonical plan or goal artifact path when present
-- explicitly supplied active root task details only as supplemental durable requirements, constraints, dependencies, and acceptance checks
+- explicitly supplied active root task details as authoritative supplemental durable requirements, constraints, dependencies, and acceptance checks; their Instructions, goal coverage, and boundaries remain authoritative; task state does not replace the current request
 - completed checks and first unmet completion check
 - changed files
 - validation run and results
@@ -27,7 +27,7 @@ const COMPACTION_HANDOFF_INSTRUCTIONS = `Preserve a durable handoff for the acti
 - exact next action
 Keep the handoff bounded and omit unrelated history. Do not reconstruct the conversation from task state, create replacement tasks, or write conversation history into task notes.`;
 const CONTINUATION_INSTRUCTIONS =
-	"Continue from the compacted summary and retained messages. They are authoritative for the conversational frontier, including the latest user correction, response owed, pending question, and current request; a newer retained correction takes precedence over older summary or task information. An explicitly supplied active root task is supplemental only for durable requirements, constraints, dependencies, and acceptance checks. Do not reconstruct the conversation or current request from task state. Do not create replacement tasks during recovery or write conversation history into task notes. Do not treat compaction as completion.";
+	"Continue from the compacted summary and retained messages. They are authoritative for the conversational frontier, including the latest user correction, response owed, pending question, and current request; a newer retained correction takes precedence over older summary or task information. An explicitly supplied active root task is authoritative for its Instructions, goal coverage, dependencies, boundaries, and acceptance checks, but supplemental to the current request. Do not reconstruct the conversation or current request from task state. Do not create replacement tasks during recovery or write conversation history into task Instructions. Do not treat compaction as completion.";
 
 export interface ActiveTurnCompactionPolicy {
 	enabled: boolean;

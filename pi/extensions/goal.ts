@@ -9,6 +9,7 @@ import type {
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { formatToolError } from "../lib/extension-utils.js";
+import { appendRuntimeContext } from "../lib/runtime-context.js";
 import { archiveCompletedPlan } from "../lib/plan-archive.js";
 import {
 	beginGoalAttempt,
@@ -17,7 +18,11 @@ import {
 	type GoalMode,
 	type GoalStrategy,
 	type GoalWaitReason,
+	type GoalCondition,
+	type GoalConditionMode,
 	goalStrategiesMateriallyDiffer,
+	reconcileGoalConditions,
+	validateGoalTaskCoverage,
 	recordGoalOutcome,
 	recordGoalReEvaluation,
 	recordGoalWait,
@@ -34,7 +39,6 @@ import {
 	getTask,
 	listTasks,
 	resolveTaskWorkspace,
-	safeTransitionTask,
 	startTask,
 	updateTask,
 } from "../lib/task-registry.js";
@@ -109,6 +113,8 @@ export type ForegroundGoal = {
 	items?: Record<string, ReturnType<typeof createGoalWorkItem>>;
 	planning?: boolean;
 	requestedUnattended?: boolean;
+	conditions?: GoalCondition[];
+	conditionMode?: GoalConditionMode;
 	initialHead?: string;
 	archivedPlanPath?: string;
 	closeoutState?: "archived_pending_commit";
@@ -326,6 +332,8 @@ function goalFromInline(
 			summary: bounded(objective, SUMMARY_LIMIT),
 			preview: bounded(objective, PREVIEW_LIMIT),
 			hash: sha256(objective),
+			conditions: [],
+			conditionMode: "legacy_compatibility",
 		},
 	};
 }
@@ -345,6 +353,8 @@ function goalFromFile(filePath: string, cwd: string): ForegroundGoal {
 		hash: sha256(content),
 		path: displayPath(filePath, cwd),
 		sizeBytes: Buffer.byteLength(content, "utf8"),
+		conditions: [],
+		conditionMode: "legacy_compatibility",
 	};
 }
 
@@ -490,7 +500,7 @@ function startupPrompt(goal: ForegroundGoal): string {
 	return [
 		plan
 			? "Active goal started with a reviewed canonical plan. Execute its durable root-task dependency graph, prove the plan's Completion Evidence, and call goal_complete only after the plan and required tasks are complete."
-			: "Active foreground goal started. Before substantial work, state observable pass/fail completion evidence. If materially different conditions fit, settle them with the operator instead of choosing one. Work interactively and directly in this session; create one root task only when compaction, delegation, or delayed continuation is likely, and record the settled checks in its notes.",
+			: "Active foreground goal started. Use the settled observable pass/fail completion evidence. If materially different conditions fit, settle them with the operator instead of choosing one. Work interactively and directly in this session; create one root task only when compaction, delegation, or delayed continuation is likely, and record the settled checks in its Instructions.",
 		...(plan
 			? [`Canonical plan: ${plan}`]
 			: [
@@ -530,18 +540,76 @@ function unattendedReminder(goal: UnattendedGoal): string {
 	].join("\n");
 }
 
+type GoalConditionJudgment = {
+	id: string;
+	evidence: string;
+	passed: boolean;
+};
+
+function validateGoalCompletionEvidence(
+	conditions: readonly GoalCondition[] | undefined,
+	conditionMode: GoalConditionMode | undefined,
+	judgments: readonly GoalConditionJudgment[] | undefined,
+	integrationJudgment: string | undefined,
+	tasks: readonly { goalId?: string; covers?: readonly string[] }[],
+	goalId: string,
+): GoalConditionJudgment[] {
+	if (conditionMode !== "structured" || !conditions?.length) return [];
+	if (!judgments?.length)
+		throw new Error("every current goal condition requires a judgment");
+	const current = new Map(conditions.map((condition) => [condition.id, condition]));
+	const seen = new Set<string>();
+	for (const judgment of judgments) {
+		if (!current.has(judgment.id))
+			throw new Error(`condition judgment references unknown condition: ${judgment.id}`);
+		if (seen.has(judgment.id))
+			throw new Error(`condition judgment is duplicated: ${judgment.id}`);
+		seen.add(judgment.id);
+		if (!judgment.evidence.trim())
+			throw new Error(`condition ${judgment.id} is missing evidence`);
+		if (!judgment.passed)
+			throw new Error(`condition ${judgment.id} failed`);
+	}
+	for (const condition of conditions)
+		if (!seen.has(condition.id))
+			throw new Error(`condition ${condition.id} has no judgment`);
+	validateGoalTaskCoverage(conditions, tasks, goalId);
+	if (!integrationJudgment?.trim())
+		throw new Error("top-level integration judgment is required");
+	return judgments.map((judgment) => ({
+		id: judgment.id,
+		evidence: judgment.evidence.trim(),
+		passed: judgment.passed,
+	}));
+}
+
+function formatConditionEvidence(judgments: readonly GoalConditionJudgment[]): string {
+	return judgments.length === 0
+		? "None recorded (legacy goal without structured conditions)"
+		: judgments
+				.map(
+					(judgment) =>
+						`${judgment.id}: ${judgment.passed ? "passed" : "failed"} - ${judgment.evidence}`,
+				)
+				.join("; ");
+}
+
 function foregroundCloseout(
 	goal: ForegroundGoal,
 	summary: string,
 	validation: string,
 	gaps: string,
 	nextSteps: string,
+	conditionJudgments: readonly GoalConditionJudgment[],
+	integrationJudgment: string,
 ): string {
 	return [
 		"# Goal Closeout",
 		"",
 		`- Goal source: ${goal.mode === "file" ? goal.path : "inline objective"}`,
 		`- Goal hash: ${goal.hash}`,
+		`- Condition evidence: ${formatConditionEvidence(conditionJudgments)}`,
+		`- Integration judgment: ${integrationJudgment.trim() || "Not specified"}`,
 		`- Accomplished work: ${summary.trim() || "Not specified"}`,
 		`- Validation: ${validation.trim() || "Not specified"}`,
 		"- Current state: goal marked complete and active state cleared",
@@ -603,6 +671,13 @@ function foregroundTaskGraphError(goal: ForegroundGoal): string | undefined {
 }
 
 function assertGoalTaskGraphReady(goal: UnattendedGoal): void {
+	if (goal.conditionMode === "structured" && goal.conditions.length > 0) {
+		validateGoalTaskCoverage(
+			goal.conditions,
+			Object.values(goal.items).map((item) => getTask(item.taskId) ?? {}),
+			goal.id,
+		);
+	}
 	const planTasks = goal.plans.flatMap((plan) =>
 		readLinkedPlan(path.resolve(goal.workspace, plan)).tasks.map((task) => ({
 			plan,
@@ -747,13 +822,27 @@ function explicitlySuppliedPlan(parsed: ParsedGoal): boolean {
 	return path.basename(parsed.absolutePath ?? "").toLowerCase() === "plan.md";
 }
 
+function planGoalConditions(workspace: string, planPath: string): GoalCondition[] {
+	const content = fs.readFileSync(path.resolve(workspace, planPath), "utf8");
+	const section = content.split("## Completion Evidence", 2)[1]?.split(/^## /m, 1)[0] ?? "";
+	const descriptions = [...section.matchAll(/^\s*-\s+Evidence:\s*(\S.*)$/gim)].map(
+		(match) => match[1].trim(),
+	);
+	return reconcileGoalConditions(undefined, descriptions);
+}
+
 function materializePlanTasks(
 	goalId: string,
 	objectiveHash: string,
 	workspace: string,
 	planPath: string,
+	conditions: readonly GoalCondition[] = [],
 ): Record<string, ReturnType<typeof createGoalWorkItem>> {
 	const plan = readLinkedPlan(path.resolve(workspace, planPath));
+	const conditionIds = conditions.map((condition) => condition.id);
+	const linkedCoverage = plan.tasks.map(() => ({ goalId, covers: conditionIds }));
+	if (conditions.length > 0)
+		validateGoalTaskCoverage(conditions, linkedCoverage, goalId);
 	const taskNotes = (task: (typeof plan.tasks)[number]): string | undefined => {
 		const notes = [
 			task.doneWhen ? `Done when: ${task.doneWhen}` : "",
@@ -781,6 +870,15 @@ function materializePlanTasks(
 		byKey.set(key, task);
 	}
 	const missing = plan.tasks.filter((task) => !byKey.has(task.key));
+	if (conditions.length > 0)
+		validateGoalTaskCoverage(
+			conditions,
+			[
+				...candidates,
+				...missing.map(() => ({ goalId, covers: conditionIds })),
+			],
+			goalId,
+		);
 	if (missing.length > 0) {
 		const missingKeys = new Set(missing.map((task) => task.key));
 		const created = createTaskBatch(
@@ -791,7 +889,7 @@ function materializePlanTasks(
 				notes: taskNotes(task),
 				workspace: taskWorkspace,
 				scope: ["."],
-				goalId,
+				...(conditions.length > 0 ? { goalId, covers: conditionIds } : {}),
 				metadata: {
 					goalId,
 					goalObjectiveHash: objectiveHash,
@@ -830,7 +928,7 @@ function materializePlanTasks(
 		updateTask(task.id, {
 			blockedBy,
 			notes: taskNotes(planTask),
-			goalId,
+			...(conditions.length > 0 ? { goalId, covers: conditionIds } : {}),
 			metadata: {
 				...(task.metadata ?? {}),
 				goalId,
@@ -855,11 +953,13 @@ function createUnattendedGoal(
 	plan: string,
 ): UnattendedGoal {
 	const root = fs.realpathSync(cwd);
+	const conditions = planGoalConditions(root, plan);
 	const items = materializePlanTasks(
 		parsed.goal.id,
 		parsed.goal.hash,
 		root,
 		plan,
+		conditions,
 	);
 	return {
 		schemaVersion: 1,
@@ -881,6 +981,8 @@ function createUnattendedGoal(
 				}),
 		plans: [plan],
 		items,
+		conditions,
+		conditionMode: conditions.length > 0 ? "structured" : "legacy_compatibility",
 		completionContract: {
 			requireLinkedPlanTasks: true,
 			requireLinkedRootTasks: true,
@@ -1038,10 +1140,7 @@ async function reconcileForResume(
 				items[key] = settled;
 				continue;
 			}
-			if (task?.state === "running")
-				safeTransitionTask(item.taskId, "blocked", {
-					blockReason: "Interrupted attempt requires reconciliation before replay.",
-				});
+			// Assigned tasks remain assigned while interrupted work awaits reconciliation.
 			const interruptedReason = `Work item ${key} was interrupted and was not replayed automatically.`;
 			const settled = {
 				...item,
@@ -1284,6 +1383,8 @@ function unattendedCloseout(input: {
 	worktree: string;
 	gaps: string[];
 	nextSteps: string;
+	conditionJudgments: readonly GoalConditionJudgment[];
+	integrationJudgment: string;
 }): string {
 	const objective =
 		input.goal.mode === "file"
@@ -1293,6 +1394,8 @@ function unattendedCloseout(input: {
 		"# Goal Closeout",
 		"",
 		`- Objective: ${objective}`,
+		`- Condition evidence: ${formatConditionEvidence(input.conditionJudgments)}`,
+		`- Integration judgment: ${input.integrationJudgment.trim()}`,
 		`- Completed work: ${input.summary.trim()}`,
 		`- Changed artifacts: ${input.artifacts.length > 0 ? input.artifacts.join(", ") : "None"}`,
 		`- Validation: ${input.validation}`,
@@ -1329,7 +1432,11 @@ export default function (pi: ExtensionAPI) {
 		if (unattended) {
 			activateTools(pi, GOAL_TOOLS);
 			return {
-				systemPrompt: `${event.systemPrompt}\n\n${unattendedReminder(unattended)}`,
+				systemPrompt: appendRuntimeContext(
+					event.systemPrompt,
+					"goal",
+					unattendedReminder(unattended),
+				),
 			};
 		}
 		if (!foregroundGoal) return undefined;
@@ -1345,7 +1452,11 @@ export default function (pi: ExtensionAPI) {
 			updatedAt: nowIso(),
 		};
 		return {
-			systemPrompt: `${event.systemPrompt}\n\n${foregroundReminder(foregroundGoal)}`,
+			systemPrompt: appendRuntimeContext(
+				event.systemPrompt,
+				"goal",
+				foregroundReminder(foregroundGoal),
+			),
 		};
 	});
 
@@ -1392,10 +1503,7 @@ export default function (pi: ExtensionAPI) {
 		const active = goal && currentActiveItem(goal);
 		if (!job || !goal || !active) return undefined;
 		const blocker = `Permission decision ${decisionId} blocks ${active.key}.`;
-		if (getTask(active.taskId)?.state === "running")
-			safeTransitionTask(active.taskId, "blocked", {
-				blockReason: `Permission decision ${decisionId} requires operator approval.`,
-			});
+		// Assigned tasks remain assigned while permission approval is pending.
 		await updateLoopJob(job.id, (current) => {
 			if (!current.goal) return current;
 			const item = current.goal.items[active.key];
@@ -1558,14 +1666,14 @@ export default function (pi: ExtensionAPI) {
 					);
 					return;
 				}
-				const items = materializePlanTasks(
-					foregroundGoal.id,
-					foregroundGoal.hash,
-					workspace,
-					attached.plan,
-				);
-				foregroundGoal = { ...foregroundGoal, items, planning: false };
 				if (!unattended) {
+					const items = materializePlanTasks(
+						foregroundGoal.id,
+						foregroundGoal.hash,
+						workspace,
+						attached.plan,
+					);
+					foregroundGoal = { ...foregroundGoal, items, planning: false };
 					activateTools(pi, ["goal_complete"]);
 					deactivateTools(pi, ["goal_progress"]);
 					await appendState(pi, stateEntry(foregroundGoal));
@@ -1601,8 +1709,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "goal_progress",
 		label: "Goal Progress",
-		description:
-			"Internal /goal workflow protocol for reporting task attempts, recovery state, validation, artifacts, blockers, and gaps. The task registry remains authoritative for task requirements, dependencies, and outcomes.",
+		description: "Record progress and evidence for the active goal.",
 		parameters: Type.Object(
 			{
 				action: StringEnum([
@@ -1671,15 +1778,29 @@ export default function (pi: ExtensionAPI) {
 						);
 					const pending = foregroundGoal;
 					const workspace = pending.workspace ?? ctx.cwd;
+					const conditions = reconcileGoalConditions(
+						pending.conditions,
+						planGoalConditions(workspace, planPath).map((condition) => condition.description),
+					);
+					foregroundGoal = {
+						...pending,
+						conditions,
+						conditionMode: conditions.length > 0 ? "structured" : "legacy_compatibility",
+						updatedAt: nowIso(),
+					};
+					await appendState(pi, stateEntry(foregroundGoal));
 					const items = materializePlanTasks(
 						pending.id,
 						pending.hash,
 						workspace,
 						planPath,
+						conditions,
 					);
 					foregroundGoal = {
 						...pending,
 						items,
+						conditions,
+						conditionMode: conditions.length > 0 ? "structured" : "legacy_compatibility",
 						planning: false,
 						updatedAt: nowIso(),
 					};
@@ -1863,7 +1984,7 @@ export default function (pi: ExtensionAPI) {
 							startedAt: nowIso(),
 							strategy,
 						});
-						if (["pending", "blocked", "failed"].includes(task.state)) {
+						if (["unassigned", "failed"].includes(task.state)) {
 							const started = startTask(item.taskId);
 							if (started.outcome !== "persisted")
 								throw new Error(
@@ -1895,19 +2016,10 @@ export default function (pi: ExtensionAPI) {
 							);
 							delete next.approvalGate;
 						} else if (next.approvalGate?.saferAlternativeUsed) {
-							const task = getTask(next.taskId);
-							if (task?.state === "running")
-								safeTransitionTask(next.taskId, "blocked", {
-									blockReason:
-										"The one safer alternative did not resolve the approval-blocked item.",
-								});
+							// Assigned tasks remain assigned while approval is pending.
 						}
 						if (next.phase === "needs_operator") {
-							const task = getTask(next.taskId);
-							if (task?.state === "running")
-								safeTransitionTask(next.taskId, "blocked", {
-									blockReason: next.needsOperatorReason,
-								});
+							// Assigned tasks remain assigned while operator input is pending.
 							blockers = [
 								...new Set([
 									...blockers,
@@ -1959,11 +2071,7 @@ export default function (pi: ExtensionAPI) {
 							operatorAction: requiredString(input, "operatorAction"),
 							at: nowIso(),
 						});
-						const task = getTask(next.taskId);
-						if (task && ["pending", "running", "failed"].includes(task.state))
-							safeTransitionTask(next.taskId, "blocked", {
-								blockReason: next.needsOperatorReason,
-							});
+						// Assigned tasks remain assigned while operator input is pending.
 						return {
 							...current,
 							updatedAt: nowIso(),
@@ -2072,14 +2180,10 @@ export default function (pi: ExtensionAPI) {
 					const goal = await updateCurrentGoal((current) => {
 						const item = current.items[key];
 						if (!item) throw new Error(`goal work item not found: ${key}`);
-						const task = getTask(item.taskId);
 						if (!item.activeAttempt && !item.interruptedReason)
 							return current;
 						const reconciliationEvidence = requiredString(input, "message");
-						if (task?.state === "running")
-							safeTransitionTask(item.taskId, "blocked", {
-								blockReason: bounded(reconciliationEvidence, 500),
-							});
+						// Assigned tasks remain assigned during reconciliation.
 						const interruptedStrategy =
 							item.interruptedStrategy ?? item.activeAttempt?.strategy;
 						const settled = { ...item };
@@ -2114,17 +2218,27 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "goal_complete",
 		label: "Complete Goal",
-		description:
-			"Verify and complete the active /goal, returning an evidence-backed closeout report.",
-		promptSnippet:
-			"Verify and complete the active /goal with a structured closeout report.",
+		description: "Verify and complete the active goal with evidence.",
+		promptSnippet: "Verify and complete the active goal",
 		promptGuidelines: [
-			"Call goal_complete only after the requested outcome is complete and checks relevant to the changed contract have passed.",
+			"Call goal_complete only after every current goal condition has passed with observable evidence and the result composes into the requested outcome.",
 		],
 		parameters: Type.Object({
 			summary: Type.String({
 				description: "Concise summary of completed work",
 			}),
+			conditionJudgments: Type.Optional(
+				Type.Array(
+					Type.Object({
+						id: Type.String({ description: "Current goal condition ID" }),
+						evidence: Type.String({ description: "Observable evidence" }),
+						passed: Type.Boolean({ description: "Whether the condition passed" }),
+					}),
+				),
+			),
+			integrationJudgment: Type.Optional(
+				Type.String({ description: "Top-level judgment that the condition evidence composes into the goal" }),
+			),
 			validation: Type.Optional(
 				Type.String({
 					description: "Validation commands or checks that passed",
@@ -2139,6 +2253,22 @@ export default function (pi: ExtensionAPI) {
 		}),
 		async execute(_toolCallId, params) {
 			if (foregroundGoal) {
+				try {
+					validateGoalCompletionEvidence(
+						foregroundGoal.conditions,
+						foregroundGoal.conditionMode,
+						params.conditionJudgments,
+						params.integrationJudgment,
+						Object.values(foregroundGoal.items ?? {}).map(
+							(item) => getTask(item.taskId) ?? {},
+						),
+						foregroundGoal.id,
+					);
+				} catch (error) {
+					return formatToolError(
+						`Goal completion rejected: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
 				if (
 					foregroundGoal.workspace &&
 					foregroundGoal.plans?.length === 1 &&
@@ -2223,6 +2353,8 @@ export default function (pi: ExtensionAPI) {
 					params.validation ?? "",
 					params.knownGaps ?? "",
 					params.nextSteps ?? "",
+					params.conditionJudgments ?? [],
+					params.integrationJudgment ?? "",
 				);
 				foregroundGoal = null;
 				deactivateTools(pi, GOAL_TOOLS);
@@ -2242,13 +2374,35 @@ export default function (pi: ExtensionAPI) {
 			const job = goalJob();
 			if (!job?.goal)
 				return formatToolError("No active /goal is currently running.");
+			let conditionJudgments: GoalConditionJudgment[] = [];
+			let conditionError: string | undefined;
+			try {
+				conditionJudgments = validateGoalCompletionEvidence(
+					job.goal.conditions,
+					job.goal.conditionMode,
+					params.conditionJudgments,
+					params.integrationJudgment,
+					Object.values(job.goal.items).map(
+						(item) => getTask(item.taskId) ?? {},
+					),
+					job.goal.id,
+				);
+			} catch (error) {
+				conditionError = error instanceof Error ? error.message : String(error);
+			}
 			if (!job.goal.archivedPlanPath) {
 				const verification = await verifyUnattendedCompletion(pi, job);
-				if (!verification.ok)
+				if (!verification.ok) {
+					const blockers = conditionError
+						? [...verification.blockers, conditionError]
+						: verification.blockers;
 					return formatToolError(
-						`Goal completion rejected:\n- ${verification.blockers.join("\n- ")}`,
-						{ details: { blockers: verification.blockers } },
+						`Goal completion rejected:\n- ${blockers.join("\n- ")}`,
+						{ details: { blockers } },
 					);
+				}
+				if (conditionError)
+					return formatToolError(`Goal completion rejected: ${conditionError}`);
 				if (job.goal.plans.length !== 1)
 					return formatToolError(
 						"Goal completion requires exactly one canonical plan.",
@@ -2295,11 +2449,17 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 			const verification = await verifyUnattendedCompletion(pi, job);
-			if (!verification.ok)
+			if (!verification.ok) {
+				const blockers = conditionError
+					? [...verification.blockers, conditionError]
+					: verification.blockers;
 				return formatToolError(
-					`Goal completion rejected:\n- ${verification.blockers.join("\n- ")}`,
-					{ details: { blockers: verification.blockers } },
+					`Goal completion rejected:\n- ${blockers.join("\n- ")}`,
+					{ details: { blockers } },
 				);
+			}
+			if (conditionError)
+				return formatToolError(`Goal completion rejected: ${conditionError}`);
 			if (!verification.artifacts.includes(job.goal.archivedPlanPath))
 				return formatToolError(
 					`Goal completion rejected:\n- final HEAD does not contain the archived plan: ${job.goal.archivedPlanPath}`,
@@ -2319,6 +2479,8 @@ export default function (pi: ExtensionAPI) {
 				worktree: verification.worktree,
 				gaps: [...new Set(gaps)],
 				nextSteps: params.nextSteps ?? "",
+				conditionJudgments,
+				integrationJudgment: params.integrationJudgment ?? "",
 			});
 			await updateLoopJob(job.id, (current) => ({
 				...current,

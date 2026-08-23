@@ -120,7 +120,7 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use bg_start for long-lived servers, watchers, and concurrent shell work, not as a substitute for ordinary awaited bash commands.",
 			"Background terminal commands use Bash syntax on macOS and Windows and are evaluated by damage-control before execution; do not append &, nohup, or disown because bg_start already runs asynchronously.",
-			"Do not poll for completion. Completion is delivered automatically; use /ps when current output is needed.",
+			"Do not poll for completion. Completion is delivered automatically. /ps is operator-facing and is not a model tool.",
 		],
 		parameters: Type.Object({
 			command: Type.String({ description: "Bash command to run" }),
