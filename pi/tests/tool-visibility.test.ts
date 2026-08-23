@@ -70,8 +70,8 @@ describe("tool visibility", () => {
 			"goal_progress",
 			"plan_archive",
 			"plan_progress",
-			"review_artifact_write",
 			"subagent_continue",
+			"workflow_complete",
 		]);
 		expect(pi.getActiveTools()).toEqual([
 			"read",

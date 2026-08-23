@@ -44,12 +44,14 @@ export const FABLE_CONTROL_TOOL_NAMES = [
 	"goal_progress",
 	"plan_progress",
 	"plan_archive",
+	"workflow_complete",
 ] as const;
 const FABLE_ALWAYS_VISIBLE_TOOL_NAMES = FABLE_CONTROL_TOOL_NAMES.filter(
 	(name) =>
 		name !== "goal_progress" &&
 		name !== "plan_archive" &&
-		name !== "plan_progress",
+		name !== "plan_progress" &&
+		name !== "workflow_complete",
 );
 const FABLE_CONTROL_TOOLS = new Set<string>(FABLE_CONTROL_TOOL_NAMES);
 const SUBSCRIPTION_BOUNDARY =

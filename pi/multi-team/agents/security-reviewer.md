@@ -14,7 +14,7 @@ skills:
     use-when: Read at task start. Update after completing work.
   - path: .pi/multi-team/skills/precise-worker.md
     use-when: Always. Execute exactly what your lead assigned — no improvising.
-tools: read, grep, bash, review_artifact_write
+tools: read, grep, bash
 domain:
   - path: .pi/multi-team/
     read: true

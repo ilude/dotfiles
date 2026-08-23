@@ -43,9 +43,17 @@ import {
 	updateTask,
 } from "../lib/task-registry.js";
 import { activateTools, deactivateTools } from "../lib/tool-activation.js";
+import {
+	closeWorkflowWorktree,
+	ensureWorkflowWorktree,
+	readWorkflowOwnershipForWorktree,
+	readWorkflowOwnershipRecord,
+	workflowSlugFromPlan,
+} from "../lib/workflow-worktree.js";
 import { noteWorkflowSubmission } from "../lib/workflow-friction.js";
 import {
 	inspectLoopJob,
+	listLoopJobs,
 	listWorkspaceGoalJobs,
 	readLoopJob,
 	resumeLoopJob,
@@ -710,8 +718,20 @@ function assertGoalTaskGraphReady(goal: UnattendedGoal): void {
 	}
 }
 
+function goalJobsForWorkspace(cwd: string): LoopJob[] {
+	const direct = listWorkspaceGoalJobs(cwd);
+	const canonical = fs.realpathSync(cwd);
+	const owned = listLoopJobs().filter((job) => {
+		const workspace = job.goal?.workspace;
+		if (!workspace) return false;
+		const ownership = readWorkflowOwnershipForWorktree(workspace);
+		return ownership?.primaryWorktree === canonical;
+	});
+	return [...new Map([...direct, ...owned].map((job) => [job.id, job])).values()];
+}
+
 function selectWorkspaceGoalJob(cwd: string): LoopJob {
-	const jobs = listWorkspaceGoalJobs(cwd);
+	const jobs = goalJobsForWorkspace(cwd);
 	const active = jobs.filter((job) => job.goal?.state !== "completed");
 	const selected = (active.length > 0 ? active : jobs).at(-1);
 	if (!selected) throw new Error("No unattended goal exists in this workspace.");
@@ -1656,7 +1676,18 @@ export default function (pi: ExtensionAPI) {
 				const objective = unattended
 					? trimmed.slice("--unattended".length).trim()
 					: trimmed;
-				const parsed = parseGoal(objective, ctx.cwd ?? process.cwd());
+				const invocationWorkspace = ctx.cwd ?? process.cwd();
+				const suppliedPlan = objective.replace(/^@/, "").replace(/\\/g, "/");
+				const suppliedSlug = workflowSlugFromPlan(suppliedPlan);
+				const suppliedOwnership = suppliedSlug === "workflow"
+					? undefined
+					: readWorkflowOwnershipRecord(invocationWorkspace, suppliedSlug);
+				const parsed = parseGoal(
+					objective,
+					suppliedOwnership?.state === "active"
+						? suppliedOwnership.worktree
+						: invocationWorkspace,
+				);
 				if (!parsed.ok) {
 					ctx.ui.notify(parsed.message, "warning");
 					return;
@@ -1669,7 +1700,7 @@ export default function (pi: ExtensionAPI) {
 				if (unattended && ctx.mode !== "tui" && ctx.mode !== "rpc")
 					throw new Error("/goal --unattended requires TUI or RPC mode.");
 				if (unattended) {
-					const existing = listWorkspaceGoalJobs(ctx.cwd).find(
+					const existing = goalJobsForWorkspace(ctx.cwd).find(
 						(job) => job.goal?.state !== "completed",
 					);
 					if (existing)
@@ -1677,7 +1708,21 @@ export default function (pi: ExtensionAPI) {
 							`Goal ${existing.goal?.id ?? existing.id} already owns this workspace. Use /goal status, /goal stop, or /goal resume.`,
 						);
 				}
-				const workspace = fs.realpathSync(ctx.cwd);
+				let workspace = fs.realpathSync(ctx.cwd);
+				const ownerSlug = explicitlySuppliedPlan(parsed.parsed)
+					? workflowSlugFromPlan(parsed.parsed.goal.plans?.[0] ?? "")
+					: `goal-${parsed.parsed.goal.id.slice(0, 8)}`;
+				const owned = await ensureWorkflowWorktree({
+					cwd: workspace,
+					workflow: "goal",
+					workflowId: `goal:${parsed.parsed.goal.id}`,
+					slug: ownerSlug === "workflow" ? `goal-${parsed.parsed.goal.id.slice(0, 8)}` : ownerSlug,
+					runner: async (cwd, args) => {
+						const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
+						return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+					},
+				});
+				workspace = owned.ownership.worktree;
 				if (!unattended && !explicitlySuppliedPlan(parsed.parsed)) {
 					foregroundGoal = {
 						...parsed.parsed.goal,
@@ -2397,52 +2442,56 @@ export default function (pi: ExtensionAPI) {
 							`Goal completion rejected:\n- ${blockers.join("\n- ")}`,
 							{ details: { blockers } },
 						);
-					const status = await pi.exec("git", ["status", "--porcelain"], {
-						cwd: foregroundGoal.workspace,
-						timeout: 30_000,
-					});
-					if (status.code !== 0 || status.stdout.trim())
-						return formatToolError(
-							status.code !== 0
-								? status.stderr.trim() || "Unable to inspect repository state."
-								: "Goal completion requires a clean worktree before archival or final completion.",
-						);
+					let closeoutVerificationWorkspace = foregroundGoal.workspace;
 					if (!foregroundGoal.archivedPlanPath) {
-						const archived = archiveCompletedPlan(
-							foregroundGoal.workspace,
-							foregroundGoal.plans[0],
-						);
+						const slug = workflowSlugFromPlan(foregroundGoal.plans[0]);
+						const ownership = readWorkflowOwnershipRecord(path.dirname(path.dirname(foregroundGoal.workspace)), slug);
+						closeoutVerificationWorkspace = ownership?.primaryWorktree ?? foregroundGoal.workspace;
+						if (ownership?.state === "active") {
+							await closeWorkflowWorktree({
+									worktree: { ownership, resumed: true },
+									planPath: foregroundGoal.plans[0],
+									archivePlan: (cwd, planPath) => { archiveCompletedPlan(cwd, planPath); },
+									runner: async (cwd, args) => {
+										const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
+										return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+									},
+								});
+						} else {
+							archiveCompletedPlan(foregroundGoal.workspace, foregroundGoal.plans[0]);
+						}
+						const archivedPlan = `.specs/archive/${slug}/plan.md`;
 						foregroundGoal = {
 							...foregroundGoal,
-							plans: [archived.archivedPlan],
-							archivedPlanPath: archived.archivedPlan,
+							plans: [archivedPlan],
+							archivedPlanPath: archivedPlan,
 							closeoutState: "archived_pending_commit",
 							updatedAt: nowIso(),
 						};
 						await appendState(pi, stateEntry(foregroundGoal));
-						return {
-							content: [
-								{
-									type: "text" as const,
-									text: `Archived ${archived.sourcePlan} to ${archived.archivedPlan}. The foreground goal remains active. Commit the archive with the in-scope changes, then call goal_complete again.`,
-								},
-							],
-							details: {
-								goalId: foregroundGoal.id,
-								state: "archived_pending_commit",
-								archivedPlanPath: archived.archivedPlan,
-							},
-						};
 					}
+					if (!foregroundGoal) throw new Error("foreground goal disappeared during closeout");
 					const archivedInHead = await pi.exec(
 						"git",
 						["cat-file", "-e", `HEAD:${foregroundGoal.archivedPlanPath}`],
-						{ cwd: foregroundGoal.workspace, timeout: 30_000 },
+						{ cwd: closeoutVerificationWorkspace, timeout: 30_000 },
 					);
 					if (archivedInHead.code !== 0)
 						return formatToolError(
 							`Goal completion rejected: final HEAD does not contain ${foregroundGoal.archivedPlanPath}.`,
 						);
+				}
+				if (foregroundGoal.workspace) {
+					const ownership = readWorkflowOwnershipForWorktree(foregroundGoal.workspace);
+					if (ownership?.state === "active") {
+						await closeWorkflowWorktree({
+							worktree: { ownership, resumed: true },
+							runner: async (cwd, args) => {
+								const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
+								return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+							},
+						});
+					}
 				}
 				const completed = {
 					...foregroundGoal,
@@ -2509,46 +2558,80 @@ export default function (pi: ExtensionAPI) {
 					return formatToolError(
 						"Goal completion requires exactly one canonical plan.",
 					);
-				const archived = archiveCompletedPlan(
-					job.goal.workspace,
-					job.goal.plans[0],
-				);
-				const sourceDirectory = path.posix.dirname(archived.sourcePlan);
-				const archivedDirectory = path.posix.dirname(archived.archivedPlan);
+				const slug = workflowSlugFromPlan(job.goal.plans[0]);
+				const ownership = readWorkflowOwnershipForWorktree(job.goal.workspace);
+				if (!ownership || ownership.state !== "active")
+					return formatToolError("Goal completion requires its active owned workflow worktree.");
+				const sourcePlan = job.goal.plans[0];
+				const archivedPlan = `.specs/archive/${slug}/plan.md`;
+				const sourceDirectory = path.posix.dirname(sourcePlan);
+				const archivedDirectory = path.posix.dirname(archivedPlan);
 				const objectivePath = job.goal.objectivePath;
-				const archivedObjectivePath = objectivePath?.startsWith(
-					`${sourceDirectory}/`,
-				)
+				const archivedObjectivePath = objectivePath?.startsWith(`${sourceDirectory}/`)
 					? `${archivedDirectory}/${objectivePath.slice(sourceDirectory.length + 1)}`
 					: objectivePath;
+				const closed = await closeWorkflowWorktree({
+					worktree: { ownership, resumed: true },
+					planPath: sourcePlan,
+					archivePlan: (cwd, planPath) => { archiveCompletedPlan(cwd, planPath); },
+					runner: async (cwd, args) => {
+						const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
+						return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+					},
+				});
+				if (!closed.mergedHead)
+					return formatToolError("Goal closeout did not produce a verified merged HEAD.");
+				const diff = await pi.exec(
+					"git",
+					["diff", "--name-only", `${job.initialHead}..${closed.mergedHead}`],
+					{ cwd: closed.primaryWorktree, timeout: 30_000 },
+				);
+				if (diff.code !== 0)
+					return formatToolError("Goal closeout could not identify merged artifacts.");
+				const artifacts = diff.stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+				const suppliedGaps = (params.knownGaps ?? "").trim();
+				const gaps = [...job.goal.knownGaps];
+				if (suppliedGaps && !/^none(?: reported)?$/i.test(suppliedGaps)) gaps.push(suppliedGaps);
+				const completedAt = nowIso();
+				const completedGoal = {
+					...job.goal,
+					workspace: closed.primaryWorktree,
+					objectivePath: archivedObjectivePath,
+					plans: [archivedPlan],
+					archivedPlanPath: archivedPlan,
+					state: "completed" as const,
+					updatedAt: completedAt,
+					completedAt,
+					finalHead: closed.mergedHead,
+					finalBranch: closed.primaryBranch,
+					finalWorktree: "clean",
+					changedArtifacts: artifacts,
+					knownGaps: [...new Set(gaps)],
+					blockers: [],
+				};
+				const report = unattendedCloseout({
+					goal: completedGoal,
+					summary: params.summary,
+					artifacts,
+					validation: verification.validation,
+					head: closed.mergedHead,
+					branch: closed.primaryBranch,
+					worktree: "clean",
+					gaps: [...new Set(gaps)],
+					nextSteps: params.nextSteps ?? "",
+					conditionJudgments,
+					integrationJudgment: params.integrationJudgment ?? "",
+				});
 				await updateLoopJob(job.id, (current) => ({
 					...current,
 					objectivePath: archivedObjectivePath,
-					plans: [archived.archivedPlan],
-					goal: current.goal
-						? {
-								...current.goal,
-								objectivePath: archivedObjectivePath,
-								plans: [archived.archivedPlan],
-								archivedPlanPath: archived.archivedPlan,
-								closeoutState: "archived_pending_commit",
-								updatedAt: nowIso(),
-							}
-						: undefined,
+					plans: [archivedPlan],
+					goal: { ...completedGoal, closeout: report },
 				}));
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Archived ${archived.sourcePlan} to ${archived.archivedPlan}. The goal remains active. Commit the archive with the in-scope changes, then call goal_complete again so final HEAD and the clean worktree can be verified.`,
-						},
-					],
-					details: {
-						goalId: job.goal.id,
-						state: "archived_pending_commit",
-						archivedPlanPath: archived.archivedPlan,
-					},
-				};
+				unattendedJobId = null;
+				deactivateTools(pi, GOAL_TOOLS);
+				await appendState(pi, stateEntry(null, { completedAt, closeout: report }));
+				return { content: [{ type: "text" as const, text: report }], details: undefined };
 			}
 			const verification = await verifyUnattendedCompletion(pi, job);
 			if (!verification.ok) {

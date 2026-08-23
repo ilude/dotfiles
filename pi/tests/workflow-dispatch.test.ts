@@ -29,6 +29,31 @@ vi.mock("../lib/workflow-telemetry", () => ({
 	startWorkflowEpisode: vi.fn(),
 }));
 
+vi.mock("../lib/workflow-worktree", () => ({
+	ensureWorkflowWorktree: vi.fn(async (input: { cwd: string; workflow: string; workflowId: string; slug: string }) => ({
+		resumed: false,
+		ownership: {
+			version: 1,
+			workflow: input.workflow,
+			workflowId: input.workflowId,
+			repoRoot: input.cwd,
+			primaryWorktree: input.cwd,
+			primaryBranch: "main",
+			initialPrimaryHead: "initial-head",
+			branch: `workflow/${input.slug}`,
+			worktree: input.cwd,
+			createdAt: "2026-08-23T00:00:00.000Z",
+			updatedAt: "2026-08-23T00:00:00.000Z",
+			state: "active",
+		},
+	})),
+	closeWorkflowWorktree: vi.fn(),
+	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
+	readWorkflowOwnershipRecord: vi.fn(() => undefined),
+	workflowSlugFromPlan: (value: string) => value.match(/\.specs\/([^/]+)\/plan\.md/)?.[1] ?? "workflow",
+	workflowSlugFromRequest: (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "workflow",
+}));
+
 vi.mock("@earendil-works/pi-ai", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@earendil-works/pi-ai")>()),
 	completeSimple: vi.fn(),
@@ -119,6 +144,13 @@ describe("workflow slash command dispatch", () => {
 		fixtureRoots.clear();
 	});
 
+	it("does not register the retired /review-it command", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		expect(mockPi._commands.map((command) => command.name)).not.toContain("review-it");
+	});
+
 	it("/plan-it sends its hidden workflow prompt as a follow-up turn", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -201,39 +233,6 @@ describe("workflow slash command dispatch", () => {
 		expect(mockPi.getActiveTools()).not.toContain("plan_progress");
 	});
 
-	it("/review-it dispatches the plan path without opening a new session", async () => {
-		const mockPi = createMockPi();
-		const mod = await import("../extensions/workflow-commands.ts");
-		mod.default(mockPi as Parameters<typeof mod.default>[0]);
-		const fixture = await createPlanFixture();
-		const ctx = { cwd: fixture.root, newSession: vi.fn() };
-
-		try {
-			await getHandler(mockPi, "review-it")(fixture.planPath, ctx);
-
-			expect(mockPi.sendMessage).toHaveBeenCalledWith({
-				customType: "slash-echo",
-				content: `/review-it ${fixture.planPath}`,
-				display: true,
-			});
-			expect(mockPi.sendMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					content: expect.stringContaining(fixture.planPath),
-					customType: "workflow.hiddenPrompt",
-					display: false,
-				}),
-				{ triggerTurn: true, deliverAs: "followUp" },
-			);
-			expect(ctx.newSession).not.toHaveBeenCalled();
-			const friction = await import("../lib/workflow-friction");
-			const telemetry = await import("../lib/workflow-telemetry");
-			expect(friction.noteWorkflowSubmission).not.toHaveBeenCalled();
-			expect(telemetry.startWorkflowEpisode).not.toHaveBeenCalled();
-		} finally {
-			fs.rmSync(fixture.root, { recursive: true, force: true });
-		}
-	});
-
 	it("/prd-it sends its hidden workflow prompt as a follow-up turn", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -310,7 +309,7 @@ describe("workflow slash command dispatch", () => {
 
 		await getHandler(mockPi, "do-it")("fix the task", { cwd: "/missing" });
 
-		expect(mockPi.getActiveTools()).toEqual([]);
+		expect(mockPi.getActiveTools()).toEqual(["workflow_complete"]);
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
 			expect.anything(),

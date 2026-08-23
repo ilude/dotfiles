@@ -10,7 +10,6 @@ import { onSessionStart } from "../lib/session-start-metrics.js";
  *   /new-terminal  -- open a plain shell in this cwd in a new terminal
  *   /plan-it       -- crystallize conversation context into an executable plan
  *   /prd-it        -- refine fuzzy ideas into an optional PRD artifact
- *   /review-it     -- adversarial review of a plan file
  *   /do-it         -- smart task routing by complexity
  *   /exit          -- gracefully quit pi
  */
@@ -21,7 +20,7 @@ import { onSessionStart } from "../lib/session-start-metrics.js";
 //   that would be redundant since the user typed the slash command to trigger
 //   each flow.
 // Why shared helper is inappropriate: a `[workflow-commands]` prefix on every
-//   /commit / /plan-it / /review-it status line would echo back the slash
+//   /commit / /plan-it status line would echo back the slash
 //   command name and add visual noise to user-facing command output.
 
 import { spawn, spawnSync } from "node:child_process";
@@ -82,6 +81,15 @@ import {
 import { noteWorkflowSubmission } from "../lib/workflow-friction";
 import { sendHiddenWorkflowPrompt } from "../lib/workflow-prompt.js";
 import { startWorkflowEpisode } from "../lib/workflow-telemetry";
+import {
+	type WorkflowWorktree,
+	closeWorkflowWorktree,
+	ensureWorkflowWorktree,
+	readWorkflowOwnershipForWorktree,
+	readWorkflowOwnershipRecord,
+	workflowSlugFromPlan,
+	workflowSlugFromRequest,
+} from "../lib/workflow-worktree";
 import { activateTools, deactivateTools } from "../lib/tool-activation";
 import { formatConfiguredUsageReport } from "./codex-status";
 import { isOperatorReloadNeeded } from "./operator-status";
@@ -2394,7 +2402,13 @@ export const executeCommitCommand = createCommitCommandExecutor({
 });
 
 export default function (pi: ExtensionAPI) {
+	const workflowRunner = async (cwd: string, args: string[]) => {
+		const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
+		return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+	};
 	let activePlanLifecycle: PlanLifecycleSnapshot | undefined;
+	let activePlanningWorktree: WorkflowWorktree | undefined;
+	let activeRawWorkflow: WorkflowWorktree | undefined;
 
 	const persistPlanLifecycle = async (
 		snapshot: PlanLifecycleSnapshot,
@@ -2474,10 +2488,17 @@ export default function (pi: ExtensionAPI) {
 			if (!activePlanLifecycle)
 				throw new Error("No active /plan-it lifecycle exists in this session.");
 			const input = planProgressInput(params as PlanProgressParams);
+			if (input.action === "draft" && input.planPath && activePlanningWorktree) {
+				const expectedSlug = path.basename(activePlanningWorktree.ownership.worktree);
+				if (workflowSlugFromPlan(input.planPath) !== expectedSlug)
+					throw new Error(`Plan path must be .specs/${expectedSlug}/plan.md for the owned workflow worktree.`);
+			}
 			if (input.action === "ready") {
 				const planPath = activePlanLifecycle.planPath;
 				if (!planPath) throw new Error("The active lifecycle has no plan path.");
-				const validation = validatePlanFile(ctx.cwd, planPath);
+				const slug = workflowSlugFromPlan(planPath);
+				const ownership = readWorkflowOwnershipRecord(ctx.cwd, slug);
+				const validation = validatePlanFile(ownership?.worktree ?? ctx.cwd, planPath);
 				if (!validation.valid)
 					throw new Error(
 						`Plan contract validation failed: ${validation.errors.join(" ")}`,
@@ -2506,10 +2527,36 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_tree", (_event, ctx) => restorePlanLifecycle(ctx));
 
 	pi.registerTool({
+		name: "workflow_complete",
+		label: "Complete Isolated Workflow",
+		description:
+			"Commit an active raw /do-it workflow, merge it with --no-ff into its clean primary branch, verify the merge, and remove only the owned worktree and branch.",
+		parameters: Type.Object({}, { additionalProperties: false }),
+		async execute() {
+			try {
+				const worktree = activeRawWorkflow ?? (() => {
+					const ownership = readWorkflowOwnershipForWorktree(process.cwd());
+					return ownership ? { ownership, resumed: true } : undefined;
+				})();
+				if (!worktree) throw new Error("No active raw /do-it workflow worktree exists.");
+				const completed = await closeWorkflowWorktree({ worktree, runner: workflowRunner });
+				activeRawWorkflow = undefined;
+				deactivateTools(pi, ["workflow_complete"]);
+				return {
+					content: [{ type: "text" as const, text: JSON.stringify({ outcome: "completed", ...completed }) }],
+					details: completed,
+				};
+			} catch (error) {
+				return formatToolError(error instanceof Error ? error.message : String(error));
+			}
+		},
+	});
+
+	pi.registerTool({
 		name: "plan_archive",
 		label: "Archive Completed Plan",
 		description:
-			"Atomically move a completed .specs/{slug}/plan.md directory to .specs/archive/{slug}. Refuses incomplete plans, symlink traversal, and target collisions.",
+			"Archive a completed plan in its owned workflow worktree, commit in-scope artifacts, merge with --no-ff into the clean primary branch, verify merged HEAD, and remove only the owned worktree and branch.",
 		parameters: Type.Object(
 			{
 				path: Type.String({
@@ -2520,16 +2567,26 @@ export default function (pi: ExtensionAPI) {
 		),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			try {
-				const archived = archiveCompletedPlan(ctx.cwd, params.path);
+				const slug = workflowSlugFromPlan(params.path);
+				const ownership = readWorkflowOwnershipRecord(ctx.cwd, slug);
+				if (!ownership || ownership.state !== "active")
+					throw new Error("Plan closeout requires its active owned workflow worktree.");
+				const archived = {
+					sourcePlan: params.path,
+					archivedPlan: `.specs/archive/${slug}/plan.md`,
+					...(await closeWorkflowWorktree({
+						worktree: { ownership, resumed: true },
+						planPath: params.path,
+						archivePlan: (cwd, planPath) => { archiveCompletedPlan(cwd, planPath); },
+						runner: workflowRunner,
+					})),
+				};
 				deactivateTools(pi, ["plan_archive"]);
 				return {
 					content: [
 						{
 							type: "text" as const,
-							text: JSON.stringify({
-								outcome: "archived",
-								...archived,
-							}),
+							text: JSON.stringify({ outcome: "archived", ...archived }),
 						},
 					],
 					details: archived,
@@ -2726,11 +2783,31 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("plan-it", {
 		description:
-			"Crystallize conversation context into an executable plan document; pass worktree/wt to require isolated branch work",
-		handler: async (args, _ctx) => {
-			await persistPlanLifecycle(
-				createPlanLifecycleSnapshot(randomUUID(), args),
-			);
+			"Create or resume one owned workflow worktree and crystallize an executable plan",
+		handler: async (args, ctx) => {
+			const lifecycle = createPlanLifecycleSnapshot(randomUUID(), args);
+			let workspaceDirective = "";
+			if (ctx.cwd) {
+				try {
+					const requestedSlug = workflowSlugFromPlan(args);
+					const slug = requestedSlug === "workflow"
+						? (args.trim() ? workflowSlugFromRequest(args) : `plan-${lifecycle.invocationId.slice(0, 8)}`)
+						: requestedSlug;
+					const worktree = await ensureWorkflowWorktree({
+						cwd: ctx.cwd,
+						workflow: "plan-it",
+						workflowId: `plan-it:${slug}`,
+						slug,
+						runner: workflowRunner,
+					});
+					activePlanningWorktree = worktree;
+					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${worktree.ownership.worktree}\nWrite the canonical plan only at ${path.join(worktree.ownership.worktree, ".specs", slug, "plan.md")}. All plan files and subsequent modifications must use this worktree. Do not modify the primary worktree.`;
+				} catch (error) {
+					ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
+					return;
+				}
+			}
+			await persistPlanLifecycle(lifecycle);
 			activateTools(pi, ["plan_progress"]);
 			const planPath = args
 				.trim()
@@ -2758,7 +2835,7 @@ export default function (pi: ExtensionAPI) {
 				async () => {
 					echoSlashCommand(pi, "plan-it", args);
 					const template = loadSkill("plan-it.md");
-					sendHiddenWorkflowPrompt(pi, buildSkillPrompt(template, args));
+					sendHiddenWorkflowPrompt(pi, buildSkillPrompt(template, args) + workspaceDirective);
 				},
 			);
 		},
@@ -2791,26 +2868,35 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("review-it", {
-		description: "Review a plan or requirements artifact",
-		handler: async (args, _ctx) => {
-			activateTools(pi, ["review_artifact_write"]);
-			echoSlashCommand(pi, "review-it", args);
-			const template = loadSkill("review-it.md");
-			sendHiddenWorkflowPrompt(
-				pi,
-				buildSkillPrompt(template, args, { replaceArguments: true }),
-			);
-		},
-	});
-
 	pi.registerCommand("do-it", {
-		description: "Execute a task or plan with proportional validation",
+		description: "Execute work in one owned workflow worktree with proportional validation",
 		handler: async (args, ctx) => {
 			const planPath = args.trim().replace(/^@/, "");
+			let workspaceDirective = "";
+			let ownedWorkspace = ctx.cwd;
+			let ownedWorktree: WorkflowWorktree | undefined;
+			if (ctx.cwd) {
+				try {
+					const planSlug = workflowSlugFromPlan(planPath);
+					const slug = planSlug === "workflow" ? workflowSlugFromRequest(planPath) : planSlug;
+					const worktree = await ensureWorkflowWorktree({
+						cwd: ctx.cwd,
+						workflow: "do-it",
+						workflowId: `do-it:${slug}`,
+						slug,
+						runner: workflowRunner,
+					});
+					ownedWorktree = worktree;
+					ownedWorkspace = worktree.ownership.worktree;
+					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${worktree.ownership.worktree}\nConfine every read, write, validation, archive, and commit operation to this worktree. Preserve it for recovery on any dirty, unmerged, or conflict state.`;
+				} catch (error) {
+					ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
+					return;
+				}
+			}
 			if (/^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(planPath)) {
 				const validation = validatePlanFile(
-					ctx.cwd,
+					ownedWorkspace,
 					planPath,
 					"execution-preflight",
 				);
@@ -2829,13 +2915,16 @@ export default function (pi: ExtensionAPI) {
 					return;
 				}
 				activateTools(pi, ["plan_archive"]);
+			} else if (ownedWorktree) {
+				activeRawWorkflow = ownedWorktree;
+				activateTools(pi, ["workflow_complete"]);
 			}
 			echoSlashCommand(pi, "do-it", args);
 			const template = loadSkill("do-it.md");
 			const prompt = buildSkillPrompt(template, args, {
 				replaceArguments: true,
 			});
-			sendHiddenWorkflowPrompt(pi, prompt);
+			sendHiddenWorkflowPrompt(pi, prompt + workspaceDirective);
 		},
 	});
 
