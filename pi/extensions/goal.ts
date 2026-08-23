@@ -1602,7 +1602,7 @@ export default function (pi: ExtensionAPI) {
 		name: "goal_progress",
 		label: "Goal Progress",
 		description:
-			"Persist unattended goal task links, attempt outcomes, recovery state, validation, artifacts, blockers, and gaps.",
+			"Internal /goal workflow protocol for reporting task attempts, recovery state, validation, artifacts, blockers, and gaps. The task registry remains authoritative for task requirements, dependencies, and outcomes.",
 		parameters: Type.Object(
 			{
 				action: StringEnum([

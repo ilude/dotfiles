@@ -95,6 +95,7 @@ import {
 	type AgentScope,
 	discoverAgents,
 	resolveAgentSkillPaths,
+	withDispatchSkills,
 } from "./agents.js";
 import {
 	coordinatorBudgetFor,
@@ -131,10 +132,8 @@ import {
 	type SubagentRunUsage,
 } from "./run-manager.js";
 import {
-	assertDisjointScopes,
 	COMMAND_MUTATION_TOOLS,
 	DIRECT_FILE_MUTATION_TOOLS,
-	normalizeRepositoryScopes,
 } from "./scope-policy.js";
 import {
 	formatSubagentStatus,
@@ -155,18 +154,6 @@ import {
 	type SubagentTreeController,
 	type SubagentTreePermit,
 } from "./tree-runtime.js";
-import {
-	getSubagentWorkflowRuntime,
-	WorkflowLeafOutputSchema,
-	WorkflowReductionOutputSchema,
-	WorkflowSpecificationSchema,
-	WorkflowVerificationOutputSchema,
-	type WorkflowExecutionRequest,
-	type WorkflowInput,
-	type WorkflowReductionRequest,
-	type WorkflowResultEnvelope,
-	type WorkflowSpecification,
-} from "./workflow-runtime.js";
 import {
 	formatSubagentActivityStatus,
 	openSubagentDashboard,
@@ -2123,6 +2110,7 @@ type TaskParams = {
 	agent: string;
 	task: string;
 	taskId?: string;
+	skills?: string[];
 	role?: SubagentRole;
 	scope?: string[];
 	effort?: AgentEffort;
@@ -2147,6 +2135,7 @@ type DirectInvocationInput = {
 	agent?: string;
 	task?: string;
 	taskId?: string;
+	skills?: string[];
 	role?: SubagentRole;
 	scope?: string[];
 	cwd?: string;
@@ -2174,6 +2163,7 @@ function normalizeDirectInvocation(
 				agent: input.agent ?? "",
 				task: input.task ?? "",
 				taskId: input.taskId,
+				skills: input.skills,
 				role: input.role,
 				scope: input.scope,
 				cwd: input.cwd,
@@ -2182,6 +2172,20 @@ function normalizeDirectInvocation(
 			},
 		],
 	};
+}
+
+function agentsForTask(
+	agents: AgentConfig[],
+	item: Pick<TaskParams, "agent" | "skills">,
+): AgentConfig[] {
+	const dispatchSkills = item.skills ?? [];
+	if (dispatchSkills.length === 0) return agents;
+	const profileName = canonicalAgentName(item.agent);
+	return agents.map((agent) =>
+		agent.name === profileName
+			? withDispatchSkills(agent, dispatchSkills)
+			: agent,
+	);
 }
 
 type ReadOnlyFanoutTaskParams = TaskParams & {
@@ -2255,13 +2259,6 @@ const StructuredOutputSchema = Type.Record(Type.String(), Type.Unknown(), {
 		"JSON Schema for validated child output. Invalid output receives at most one continuation correction.",
 });
 
-function workflowInputInstruction(input: WorkflowInput): string {
-	if (input.kind === "none") return "";
-	if (input.kind === "extract")
-		return `\n\nBounded workflow extract:\n${input.content}`;
-	return `\n\nInspect repository-relative path ${input.path}, lines ${input.startLine}-${input.endLine}. Keep evidence compact and do not copy the complete range into the result.`;
-}
-
 const SubagentRoleSchema = StringEnum(["coordinator", "leaf"] as const, {
 	description:
 		"Execution role. Root may start a coordinator or leaf; coordinators may start leaves only.",
@@ -2272,6 +2269,12 @@ const ModificationScopeSchema = Type.Array(Type.String(), {
 	minItems: 1,
 	description:
 		"Normalized repository-relative paths leased to a modifying leaf.",
+});
+
+const DispatchSkillsSchema = Type.Array(Type.String({ minLength: 1 }), {
+	minItems: 1,
+	uniqueItems: true,
+	description: "Skills to add to this agent for the assigned work.",
 });
 
 const AdvertisedOutputSchema = Type.Boolean({
@@ -2297,6 +2300,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		taskId: Type.Optional(
 			Type.String({ description: "Existing running durable task ID" }),
 		),
+		skills: Type.Optional(DispatchSkillsSchema),
 		role: Type.Optional(SubagentRoleSchema),
 		scope: Type.Optional(ModificationScopeSchema),
 		effort: Type.Optional(EffortSchema),
@@ -2376,6 +2380,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		taskId: Type.Optional(
 			Type.String({ description: "Existing running durable task ID" }),
 		),
+		skills: Type.Optional(DispatchSkillsSchema),
 		role: Type.Optional(SubagentRoleSchema),
 		scope: Type.Optional(ModificationScopeSchema),
 		tasks: Type.Optional(
@@ -2455,6 +2460,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 			agent: legacy.properties.agent,
 			task: legacy.properties.task,
 			taskId: legacy.properties.taskId,
+			skills: legacy.properties.skills,
 			role: legacy.properties.role,
 			scope: legacy.properties.scope,
 			tasks: Type.Optional(
@@ -2468,15 +2474,6 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 			cwd: legacy.properties.cwd,
 			output: Type.Optional(AdvertisedOutputSchema),
 			outputMode: legacy.properties.outputMode,
-		}),
-		chain: Type.Object({
-			steps: Type.Array(chainItem, {
-				minItems: 1,
-				maxItems: MAX_SUBAGENT_WORKERS_PER_WAVE,
-				description:
-					"Sequential steps; each task may use {previous} from the prior result.",
-			}),
-			...common,
 		}),
 		continue: Type.Object({
 			agent: agentName("Agent used to create the saved session"),
@@ -2494,46 +2491,10 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 			background: legacy.properties.background,
 			confirmProjectAgents: legacy.properties.confirmProjectAgents,
 		}),
-		fanout: Type.Object({
-			single: readOnlyFanoutTaskItem,
-			parallel: Type.Array(readOnlyFanoutTaskItem, {
-				minItems: 2,
-				maxItems: MAX_READ_ONLY_FANOUT_TASKS,
-			}),
-			outputSchema: StructuredOutputSchema,
-			agentScope: legacy.properties.agentScope,
-			model: legacy.properties.model,
-			modelSize: legacy.properties.modelSize,
-			modelPolicy: legacy.properties.modelPolicy,
-			effort: legacy.properties.effort,
-			continuable: legacy.properties.continuable,
-			background: legacy.properties.background,
-			confirmProjectAgents: legacy.properties.confirmProjectAgents,
-		}),
 	};
 }
 
 const InitialSubagentSchemas = createSubagentSchemas();
-const WorkflowToolSchema = Type.Object(
-	{
-		...WorkflowSpecificationSchema.properties,
-		agentScope: Type.Optional(AgentScopeSchema),
-		model: Type.Optional(
-			Type.String({ description: "Exact provider/model override for workflow leaves" }),
-		),
-		modelSize: Type.Optional(ModelSizeSchema),
-		modelPolicy: Type.Optional(ModelPolicySchema),
-		effort: Type.Optional(EffortSchema),
-		confirmProjectAgents: Type.Optional(
-			Type.Boolean({
-				description: "Prompt before running project-local agents. Default: false.",
-				default: false,
-			}),
-		),
-	},
-	{ additionalProperties: false },
-);
-
 type SessionAgentCatalog = {
 	cwd: string;
 	projectTrusted: boolean;
@@ -3237,6 +3198,7 @@ export default function (pi: ExtensionAPI) {
 			"Delegate foreground or background work to isolated specialist agents",
 		promptGuidelines: [
 			"Delegate one narrow, single-phase deliverable per leaf. Use role=coordinator only for one independently verifiable work package's bounded decomposition and reduction; the root retains program-level orchestration.",
+			"For developer work, add only the language, domain, and workflow skills needed by that item; skills add guidance and never grant tools or mutation authority.",
 			"Routing guidance is advisory: prefer Luna low for tool-heavy inspection and summarization, Sol low or Luna high for bounded planning, Sol low for coordinators and subagent team managers, Luna medium or high for implementation, and Sol low for review. Useful overrides remain allowed and are tracked; max effort requires operator approval.",
 			"A coordinator may invoke leaves; leaves and every depth-two child cannot invoke delegation or workflow tools.",
 			"Each child is capped at 64 turns; explicitly read-only fanout leaves are also capped at eight minutes.",
@@ -3302,6 +3264,7 @@ export default function (pi: ExtensionAPI) {
 				agent: params.agent,
 				task: params.task,
 				taskId: params.taskId,
+				skills: params.skills,
 				role: params.role,
 				scope: params.scope,
 				cwd: params.cwd,
@@ -4158,7 +4121,7 @@ export default function (pi: ExtensionAPI) {
 				const followUp = continueChild;
 				const result = await run(
 					invocationCwd,
-					agents,
+					agentsForTask(agents, followUp),
 					followUp.agent,
 					followUp.task,
 					followUp.cwd,
@@ -4245,7 +4208,7 @@ export default function (pi: ExtensionAPI) {
 
 					const result = await run(
 						invocationCwd,
-						agents,
+						agentsForTask(agents, step),
 						step.agent,
 						taskWithContext,
 						step.cwd,
@@ -4388,7 +4351,7 @@ export default function (pi: ExtensionAPI) {
 						try {
 							const result = await run(
 								invocationCwd,
-								agents,
+								agentsForTask(agents, t),
 								t.agent,
 								t.task,
 								t.cwd,
@@ -4471,7 +4434,7 @@ export default function (pi: ExtensionAPI) {
 			if (selectedSingle) {
 				const result = await run(
 					invocationCwd,
-					agents,
+					agentsForTask(agents, selectedSingle),
 					selectedSingle.agent,
 					selectedSingle.task,
 					selectedSingle.cwd,

@@ -1,16 +1,6 @@
 {
   "schemaVersion": 1,
   "features": {
-    "pi-improve": {
-      "title": "Pi improve workflow",
-      "dossierPath": ".specs/features/pi-improve/context.md",
-      "promptTriggers": ["/improve", "improve workflow", "workflow friction", "learning candidate"],
-      "pathTriggers": [
-        "pi/extensions/workflow-friction-review.ts",
-        "pi/lib/workflow-friction.ts",
-        "pi/scripts/improvement-report.py"
-      ]
-    },
     "msys2-bash-crash": {
       "title": "MSYS2 bash crash",
       "dossierPath": ".specs/features/msys2-bash-crash/context.md",

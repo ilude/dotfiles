@@ -37,13 +37,11 @@ def layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SourceLayout:
         "PI_AGENT_DIR",
         "PI_METRICS_DIR",
         "PI_WORKFLOW_TELEMETRY_DIR",
-        "PI_COMS_LAN_DIR",
     ):
         monkeypatch.delenv(name, raising=False)
     repo = tmp_path / "repo"
     agent = tmp_path / "agent"
     workflow = tmp_path / "workflow-telemetry"
-    coms = tmp_path / "coms-lan"
 
     session_rows = [
         {
@@ -211,20 +209,7 @@ def layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SourceLayout:
             }
         ],
     )
-    write_jsonl(
-        coms / "node-1" / "audit.jsonl",
-        [
-            {
-                "schemaVersion": 1,
-                "id": "audit-1",
-                "ts": "2026-07-01T00:00:08Z",
-                "type": "outbound_message",
-                "nodeId": "node-1",
-                "result": "sent",
-            }
-        ],
-    )
-    return SourceLayout(repo, agent, agent / "logs", agent / "traces", workflow, coms)
+    return SourceLayout(repo, agent, agent / "logs", agent / "traces", workflow)
 
 
 def test_registers_explicit_sources_and_metadata_views(layout: SourceLayout) -> None:
@@ -254,7 +239,6 @@ def test_registers_explicit_sources_and_metadata_views(layout: SourceLayout) -> 
     ]
     assert connection.sql("SELECT event_count FROM workflow_episode_summary").fetchone() == (1,)
     assert connection.sql("SELECT count(*) FROM damage_control_judgments").fetchone() == (1,)
-    assert connection.sql("SELECT count(*) FROM coms_audit_events").fetchone() == (1,)
 
 
 def test_default_layout_honors_metrics_and_transcript_locations(
@@ -587,8 +571,6 @@ def test_catalog_does_not_scan_or_merge_session_corpora(
             str(layout.agent_dir),
             "--workflow-telemetry-dir",
             str(layout.workflow_telemetry_dir),
-            "--coms-lan-dir",
-            str(layout.coms_lan_dir),
             "catalog",
             "--format",
             "jsonl",
@@ -630,8 +612,6 @@ def test_malformed_jsonl_requires_validation_and_explicit_opt_in(
             str(layout.agent_dir),
             "--workflow-telemetry-dir",
             str(layout.workflow_telemetry_dir),
-            "--coms-lan-dir",
-            str(layout.coms_lan_dir),
             "validate",
             "usage_events",
             "--format",
@@ -652,8 +632,6 @@ def test_malformed_jsonl_requires_validation_and_explicit_opt_in(
             str(layout.agent_dir),
             "--workflow-telemetry-dir",
             str(layout.workflow_telemetry_dir),
-            "--coms-lan-dir",
-            str(layout.coms_lan_dir),
             "--ignore-malformed",
             "query",
             "SELECT count(event) AS parsed_events FROM usage_events",

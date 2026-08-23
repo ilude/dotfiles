@@ -47,6 +47,9 @@ describe("subagent T1 execution contracts", () => {
 		expect(coordinatorItem).not.toHaveProperty("scope");
 		expect(coordinatorItem).not.toHaveProperty("workPaths");
 		expect(coordinator).toHaveProperty("workBoundary");
+		expect(readItem).toHaveProperty("skills");
+		expect(writeItem).toHaveProperty("skills");
+		expect(coordinatorItem).toHaveProperty("skills");
 	});
 
 	it("projects read authority from the closed positive allowlist", () => {
@@ -113,6 +116,38 @@ describe("subagent T1 execution contracts", () => {
 			expect(trusted.items[0]?.agent.source).toBe("project");
 			expect(untrusted.projectTrusted).toBe(false);
 			expect(untrusted.items[0]?.agent.source).toBe("user");
+			expect(() =>
+				prepareSubagentExecution(
+					{
+						kind: "read",
+						items: [
+							{
+								agent: "reader",
+								task: "Inspect",
+								skills: ["definitely-missing-dispatch-skill"],
+							},
+						],
+						workspaceRoot: target,
+					},
+					{ parentCwd: parent, isWorkspaceTrusted: () => false },
+				),
+			).toThrow("references unknown skill");
+			expect(() =>
+				prepareSubagentExecution(
+					{
+						kind: "read",
+						items: [
+							{
+								agent: "reader",
+								task: "Inspect",
+								skills: ["../skills/untrusted.md"],
+							},
+						],
+						workspaceRoot: target,
+					},
+					{ parentCwd: parent, isWorkspaceTrusted: () => false },
+				),
+			).toThrow("must be a discovered skill name");
 			expect(() =>
 				prepareSubagentExecution(
 					{
@@ -200,10 +235,17 @@ describe("subagent T1 execution contracts", () => {
 		}
 	});
 
-	it("passes each prepared item's canonical cwd to the executor adapter", () => {
+	it("passes each prepared item's canonical cwd and dispatch skills to the executor adapter", () => {
 		const request = {
 			kind: "read" as const,
-			items: [{ agent: "reader", task: "inspect", cwd: "/prepared/item" }],
+			items: [
+				{
+					agent: "reader",
+					task: "inspect",
+					cwd: "/prepared/item",
+					skills: ["typescript"],
+				},
+			],
 		};
 		const prepared = {
 			items: [
@@ -217,6 +259,7 @@ describe("subagent T1 execution contracts", () => {
 
 		expect(modernRequestToExecutorInput(request, prepared)).toMatchObject({
 			cwd: "/prepared/item",
+			skills: ["typescript"],
 		});
 	});
 

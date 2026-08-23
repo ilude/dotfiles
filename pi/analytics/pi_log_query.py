@@ -40,7 +40,6 @@ class SourceLayout:
     metrics_dir: Path
     trace_dir: Path
     workflow_telemetry_dir: Path
-    coms_lan_dir: Path
 
     @property
     def workflow_friction_dir(self) -> Path:
@@ -132,7 +131,6 @@ def default_layout(
     metrics_dir: Optional[Path] = None,
     trace_dir: Optional[Path] = None,
     workflow_telemetry_dir: Optional[Path] = None,
-    coms_lan_dir: Optional[Path] = None,
 ) -> SourceLayout:
     home = Path.home()
     resolved_repo = (repo_root or _default_repo_root()).expanduser().resolve()
@@ -146,16 +144,12 @@ def default_layout(
     resolved_workflow = workflow_telemetry_dir or Path(
         os.environ.get("PI_WORKFLOW_TELEMETRY_DIR", home / ".pi" / "workflow-telemetry")
     )
-    resolved_coms = coms_lan_dir or Path(
-        os.environ.get("PI_COMS_LAN_DIR", home / ".pi" / "coms-lan")
-    )
     return SourceLayout(
         repo_root=resolved_repo,
         agent_dir=resolved_agent.resolve(),
         metrics_dir=resolved_metrics.expanduser().resolve(),
         trace_dir=resolved_trace.expanduser().resolve(),
         workflow_telemetry_dir=resolved_workflow.expanduser().resolve(),
-        coms_lan_dir=resolved_coms.expanduser().resolve(),
     )
 
 
@@ -374,23 +368,6 @@ SOURCES: tuple[SourceSpec, ...] = (
             ("recordedAt", "VARCHAR"),
         ),
         lambda layout: _one(layout.operator_dir / "damage-control" / "judge.jsonl"),
-    ),
-    SourceSpec(
-        "coms_audit_events",
-        "Coms LAN redacted audit records.",
-        "metadata",
-        (
-            ("schemaVersion", "UBIGINT"),
-            ("id", "VARCHAR"),
-            ("ts", "VARCHAR"),
-            ("type", "VARCHAR"),
-            ("nodeId", "VARCHAR"),
-            ("remoteNodeId", "VARCHAR"),
-            ("messageId", "VARCHAR"),
-            ("result", "VARCHAR"),
-            ("reason", "VARCHAR"),
-        ),
-        lambda layout: _files(layout.coms_lan_dir, "audit.jsonl", "audit.jsonl.*"),
     ),
 )
 
@@ -996,7 +973,6 @@ def _layout_from_args(args: argparse.Namespace) -> SourceLayout:
         metrics_dir=args.metrics_dir,
         trace_dir=args.trace_dir,
         workflow_telemetry_dir=args.workflow_telemetry_dir,
-        coms_lan_dir=args.coms_lan_dir,
     )
 
 
@@ -1358,7 +1334,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--metrics-dir", type=Path, help="structured metrics root")
     parser.add_argument("--trace-dir", type=Path, help="transcript trace root")
     parser.add_argument("--workflow-telemetry-dir", type=Path, help="workflow telemetry root")
-    parser.add_argument("--coms-lan-dir", type=Path, help="Coms LAN state root")
     parser.add_argument(
         "--source", dest="sources", action="append", choices=tuple(spec.name for spec in SOURCES)
     )

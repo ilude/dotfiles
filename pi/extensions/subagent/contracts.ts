@@ -7,6 +7,7 @@ import {
 } from "../../lib/task-registry.js";
 import {
 	discoverAgents,
+	withDispatchSkills,
 	type AgentConfig,
 	type AgentDiscoveryResult,
 	type AgentScope,
@@ -31,6 +32,7 @@ export interface SubagentItemBase {
 	readonly taskId?: string;
 	readonly cwd?: string;
 	readonly effort?: string;
+	readonly skills?: readonly string[];
 }
 
 export interface ReadItem extends SubagentItemBase {
@@ -203,6 +205,13 @@ const ItemFields = {
 	taskId: Type.Optional(Type.String({ minLength: 1 })),
 	cwd: Type.Optional(Type.String({ minLength: 1 })),
 	effort: Type.Optional(Type.String({ minLength: 1 })),
+	skills: Type.Optional(
+		Type.Array(Type.String({ minLength: 1 }), {
+			minItems: 1,
+			uniqueItems: true,
+			description: "Skills to add to this agent for the assigned work.",
+		}),
+	),
 };
 
 const ReadItemSchema = Type.Object(
@@ -380,11 +389,15 @@ export function prepareSubagentExecution(
 			options.maxTaskChoices,
 		);
 		assertTaskLink(taskLink, item);
+		const discoveredAgent = itemAgent(item, discovery);
+		const agent = item.skills
+			? withDispatchSkills(discoveredAgent, item.skills)
+			: discoveredAgent;
 		return {
 			request: { ...item, cwd: effectiveCwd },
 			workspaceRoot,
 			taskLink,
-			agent: itemAgent(item, discovery),
+			agent,
 			projectTrusted,
 			discovery,
 		};

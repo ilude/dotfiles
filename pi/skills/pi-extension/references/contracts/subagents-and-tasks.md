@@ -12,7 +12,7 @@
 
 ## Callable subagent behavior
 
-- `subagent_read` runs one or more read leaves with a closed positive tool allowlist and no raw `bash` or `pwsh`. `subagent_write` runs modifying leaves. `subagent_coordinate` runs bounded coordinators. All accept a parent-selected `workspaceRoot`; only a root may widen execution beyond its inherited workspace.
+- `subagent_read` runs one or more read leaves with a closed positive tool allowlist and no raw `bash` or `pwsh`. `subagent_write` runs modifying leaves. `subagent_coordinate` runs bounded coordinators. All accept a parent-selected `workspaceRoot`; only a root may widen execution beyond its inherited workspace. Each item may add validated skills by name; dispatch-selected skills are merged with the agent profile's skills and do not change tool authority.
 - `workPaths` and `workBoundary` are advisory markers shown in status and telemetry. Overlap is reported but never rejects or queues a worker.
 - Governed native file tools and recognized recursive `rg`, `grep`, and `find` targets must remain inside the effective workspace. Static `cd` targets are checked; dynamic or filesystem-root recursive targets reject. This governs known tool activity, not arbitrary programs launched by shell commands, and is not a general sandbox.
 - `subagent_status` is root-only and accepts either an exact process ID or the orchestration ID returned by background start. Exact-process status reports PID, liveness, latest observable activity, activity version, active tools, tool duration, output age, usage, and a ping-backed classification: `responsive-quiet`, `stalled-tool`, `unresponsive-runtime`, or `dead-process`. Models must never use status to poll work progress. They wait for pushed completion, timeout, or watchdog events and use status only for exceptional diagnosis after one of those signals or other direct evidence.
@@ -37,7 +37,7 @@
 
 ## Unattended goal recovery
 
-- `/goal --unattended` tracks outcomes per linked durable root task across loop invocations.
+- `/goal --unattended` tracks attempts and recovery per linked durable root task across loop invocations. The task registry is authoritative for task requirements, dependencies, and outcomes; goal state stores task IDs plus goal-specific attempt, recovery, validation, artifact, blocker, and gap evidence rather than a second task graph.
 - `error`, `inconclusive`, schema-invalid output, verifier contradiction, `not_found`, and infrastructure failure immediately suspend the affected ordinary attempt and require persisted re-evaluation. At most two materially different recovery attempts are allowed; two failures set only that item to a typed `recovery_exhausted` wait.
 - Every terminal wait records one allowed reason, bounded evidence, and the required operator action. Capability rejection and damage-control denial may use an authorized alternative but are never bypassed. Cancellation and the repeated identical tool-result guard remain independent.
 - `/goal --unattended` materializes one durable root task per canonical plan key with the parsed `Depends on` graph and task-level `Done when` and `Verify` checks before modification. Goal ID, objective hash, canonical plan path, and task key metadata make partial batches idempotently reconcilable; child-owned task records cannot satisfy the mapping. Ordinary foreground `/goal <objective>` remains direct and session-owned unless a reviewed plan is explicitly supplied or material risk or ambiguity requires one.

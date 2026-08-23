@@ -15,6 +15,7 @@ type LegacyCompatibleItem = {
 	agent: string;
 	task: string;
 	taskId?: string;
+	skills?: string[];
 	role?: "coordinator" | "leaf";
 	cwd?: string;
 	scope?: string[];
@@ -54,6 +55,7 @@ export function modernRequestToExecutorInput(
 			agent: item.agent,
 			task: item.task,
 			...(taskId ? { taskId } : {}),
+			...(item.skills ? { skills: [...item.skills] } : {}),
 			role: request.kind === "coordinator" ? "coordinator" : "leaf",
 			cwd: item.cwd ?? preparedItem.workspaceRoot,
 			...(workPaths ? { scope: workPaths } : {}),

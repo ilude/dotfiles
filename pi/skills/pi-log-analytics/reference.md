@@ -52,7 +52,7 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
   catalog
 ```
 
-Recognized environment overrides are `PI_AGENT_DIR`, `PI_METRICS_DIR`, `PI_WORKFLOW_TELEMETRY_DIR`, `PI_WORKFLOW_FRICTION_DIR`, `PI_OPERATOR_DIR`, and `PI_COMS_LAN_DIR`. The default trace root follows `transcript.path` in the agent `settings.json`; `--trace-dir` overrides it explicitly.
+Recognized environment overrides are `PI_AGENT_DIR`, `PI_METRICS_DIR`, `PI_WORKFLOW_TELEMETRY_DIR`, `PI_WORKFLOW_FRICTION_DIR`, and `PI_OPERATOR_DIR`. The default trace root follows `transcript.path` in the agent `settings.json`; `--trace-dir` overrides it explicitly.
 
 ## Snapshots and batches
 
@@ -115,7 +115,6 @@ A manifest contains one nonblank path per line or JSONL objects containing `sour
 | `friction_experiments` | `~/.pi/agent/workflow-friction/experiments.jsonl` | Medium | Experiment definitions |
 | `friction_learning_decisions` | `~/.pi/agent/workflow-friction/learning-decisions.jsonl` | High | Approved text and target paths |
 | `damage_control_judgments` | `~/.pi/agent/operator/damage-control/judge.jsonl` | Medium | Shadow-judge decisions |
-| `coms_audit_events` | `~/.pi/coms-lan/**/audit.jsonl*` | Medium | Redacted LAN audit records |
 
 A selected live source with no files still produces an empty view with a stable schema. Unselected source views do not exist. Malformed rows fail the query unless the caller explicitly uses `--ignore-malformed` after validation.
 

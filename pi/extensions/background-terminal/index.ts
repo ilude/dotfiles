@@ -3,7 +3,6 @@ import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { activateTools, deactivateTools } from "../../lib/tool-activation.js";
 import {
 	getBackgroundTerminalManager,
 	type BackgroundTerminalSnapshot,
@@ -11,12 +10,6 @@ import {
 import { openBackgroundTerminalDashboard } from "./ui.js";
 
 const COMPLETION_MAX_BYTES = 32 * 1024;
-const BACKGROUND_CONTROL_TOOL_NAMES = [
-	"bg_status",
-	"bg_list",
-	"bg_kill",
-] as const;
-
 function truncateUtf8Tail(text: string, maxBytes: number): string {
 	if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
 	let low = 0;
@@ -127,7 +120,7 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use bg_start for long-lived servers, watchers, and concurrent shell work, not as a substitute for ordinary awaited bash commands.",
 			"Background terminal commands use Bash syntax on macOS and Windows and are evaluated by damage-control before execution; do not append &, nohup, or disown because bg_start already runs asynchronously.",
-			"Do not poll bg_status in a loop. Completion is delivered automatically; use bg_status or /ps only when current output is needed.",
+			"Do not poll for completion. Completion is delivered automatically; use /ps when current output is needed.",
 		],
 		parameters: Type.Object({
 			command: Type.String({ description: "Bash command to run" }),
@@ -144,7 +137,6 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 				title: params.title,
 				cwd: resolveWorkingDirectory(ctx.cwd, params.working_dir),
 			});
-			activateTools(pi, BACKGROUND_CONTROL_TOOL_NAMES);
 			return textResult(
 				`Started ${snapshot.id} (pid ${snapshot.pid ?? "unknown"}): ${snapshot.title}\nCompletion will be delivered automatically. Use /ps for live output or bg_kill to stop it.`,
 				{ id: snapshot.id, pid: snapshot.pid, status: snapshot.status },
@@ -152,48 +144,6 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerTool({
-		name: "bg_status",
-		label: "Background Terminal Status",
-		description: "Inspect the latest bounded output for one background terminal.",
-		parameters: Type.Object({
-			id: Type.String({ description: "Background terminal ID, for example bg-1" }),
-		}),
-		execute: async (_toolCallId, params) => {
-			const snapshot = manager.get(params.id);
-			if (!snapshot) {
-				return textResult(`Background terminal not found: ${params.id}`, {
-					id: params.id,
-					found: false,
-				});
-			}
-			return textResult(formatTerminal(snapshot), {
-				id: snapshot.id,
-				status: snapshot.status,
-				exitCode: snapshot.exitCode,
-			});
-		},
-	});
-
-	pi.registerTool({
-		name: "bg_list",
-		label: "List Background Terminals",
-		description: "List managed background terminals and their current states.",
-		parameters: Type.Object({}),
-		execute: async () => {
-			const snapshots = manager.list();
-			if (snapshots.length === 0) return textResult("No background terminals are tracked.");
-			return textResult(
-				snapshots
-					.map(
-						(item) =>
-							`${item.id}\t${item.status}\tpid=${item.pid ?? "?"}\t${item.title}`,
-					)
-					.join("\n"),
-				{ count: snapshots.length },
-			);
-		},
-	});
 
 	pi.registerTool({
 		name: "bg_kill",
@@ -240,11 +190,6 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		});
 		for (const snapshot of manager.pendingCompletions()) {
 			pending.set(snapshot.id, snapshot);
-		}
-		if (manager.list().length > 0) {
-			activateTools(pi, BACKGROUND_CONTROL_TOOL_NAMES);
-		} else {
-			deactivateTools(pi, BACKGROUND_CONTROL_TOOL_NAMES);
 		}
 		if (pending.size > 0) scheduleDelivery();
 	});

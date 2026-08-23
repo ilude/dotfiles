@@ -37,7 +37,6 @@ Top-level `pi/extensions/*.ts` files are auto-loaded. Nested directories are imp
 - `codex-fast.ts`: toggles Codex priority service tier for the current session. [source: `pi/extensions/codex-fast.ts:29-61`]
 - `codex-status.ts`: reads Codex quota information using existing OAuth credentials and maintains quota status. [source: `pi/extensions/codex-status.ts:1-14`; `pi/extensions/codex-status.ts:599-614`]
 - `commit.ts`: provides state-bound planning, message validation, exact staging, commit creation, and explicitly authorized push tools. [source: `pi/extensions/README.md:228-247`]
-- `coms-lan.ts`: opt-in LAN discovery, Ed25519 trust, bounded messaging, and redacted audit logging. [source: `pi/extensions/coms-lan.ts:10-18`; `pi/extensions/coms-lan.ts:402-509`]
 - `context.ts`: reports provider context usage, component estimates, tool schema weight, session spend, and unattributed remainder. [source: `pi/README.md:505-516`]
 - `copy-all.ts`: copies conversation text to the clipboard with an explicit new-file fallback. [source: `pi/README.md:329-331`]
 - `damage-control.ts`: enforces shell, PowerShell, file, Git, AST, sequence, taint, repeated-call, and secret-output policy. [source: `pi/README.md:296-317`]
@@ -91,7 +90,6 @@ Top-level `pi/extensions/*.ts` files are auto-loaded. Nested directories are imp
 - `ask_user`: requests structured user input mid-turn. [source: `pi/extensions/ask-user.ts:18-20`]
 - `bg_start`, `bg_status`, `bg_list`, `bg_kill`: manage bounded background process trees. [source: `pi/extensions/background-terminal/index.ts:134-212`]
 - `commit_plan`, `commit_validate_message`, `commit_stage`, `commit_create`, `commit_push`: implement state-bound commit and explicit-push operations. [source: `pi/extensions/commit.ts:109-245`]
-- `coms_lan_trust_import`, `coms_lan_trust_list`, `coms_lan_trust_remove`: manage opt-in LAN trust keys. [source: `pi/extensions/coms-lan.ts:543-574`]
 - `feature_memory_record`: records a bounded decision, evidence item, question, or supersession for an active feature. [source: `pi/README.md:452`]
 - `goal_complete`: closes an active goal with validation, gaps, and next steps. [source: `pi/extensions/goal.ts:368-408`]
 - `pwsh`: executes PowerShell through the Pi extension boundary. [source: `pi/extensions/pwsh.ts:107-109`]
@@ -105,7 +103,6 @@ Top-level `pi/extensions/*.ts` files are auto-loaded. Nested directories are imp
 - `tool_search`: inspects or activates deferred tools. [source: `pi/README.md:335-337`]
 - `usage_report`: returns local token and cost tables. [source: `pi/extensions/usage.ts:402-420`]
 - `web_search`, `web_fetch`: search SearXNG and extract URL content. [source: `pi/extensions/web-tools.ts:162-238`]
-- `learning_candidate_decide`, `workflow_friction_mark_change`: gated improvement-decision and experiment-recording tools. [source: `pi/extensions/workflow-friction-review.ts:2018-2145`]
 
 ### Skills
 
@@ -167,7 +164,6 @@ Top-level `pi/extensions/*.ts` files are auto-loaded. Nested directories are imp
 - `/branch`, `/new-instance`, `/new-terminal`: create branched Pi, independent Pi, or shell terminal tabs, using Herdr when managed. [source: `pi/extensions/workflow-commands.ts:2420-2454`; `pi/extensions/workflow-commands.ts:717-750`]
 - `/loop`: starts, resumes, inspects, or stops durable plan-loop jobs. [source: `pi/README.md:388-393`]
 - `/goal`: starts a persistent local goal. [source: `pi/extensions/goal.ts:345-366`]
-- `/improve`: lists, discusses, reports, applies, edits, or skips evidence-backed workflow improvement candidates. [source: `pi/README.md:461-479`]
 - `/tasks`, `/permissions`, `/subagents`, `/ps`: inspect durable tasks, permission state, child runs, and background processes. [source: `pi/README.md:616-661`; `pi/extensions/background-terminal/index.ts:238-239`]
 - `/at`, `/cron`, `/schedule`: create and manage process-local scheduled prompts. [source: `pi/extensions/scheduler.ts:329-345`]
 - `/router-status`, `/router-explain`, `/router-reset`, `/router-off`, `/router-on`: inspect and control dynamic routing. [source: `pi/README.md:694-699`]
@@ -200,7 +196,6 @@ Top-level `pi/extensions/*.ts` files are auto-loaded. Nested directories are imp
 - Opt-in sidecar traces record provider requests and responses, visible assistant content, routing, models, tools, and session lifecycle. [source: `pi/README.md:868-881`]
 - Session and history JSONL provide the canonical conversation corpus and shutdown archives. [source: `pi/skills/pi-log-analytics/reference.md`, Source views]
 - Loop logs record supervisor and child lifecycle, durations, retries, output sizes, and terminal stop reason. [source: `pi/README.md:394-402`]
-- Coms LAN audit JSONL records trust, discovery, authentication, and message-envelope metadata. [source: `pi/extensions/coms-lan.ts:306-509`]
 - Bedrock and usage ledgers expose model token use, pricing, known cost, and unpriced request counts. [source: `pi/extensions/bedrock-cost.ts:72-106`; `pi/extensions/usage.ts:401-440`]
 
 ### Internal library surface
@@ -240,7 +235,6 @@ Relative migrations and newer schema markers are visible:
 - Trace schema 1.1 adds a unique top-level `event_id` while retaining schema 1.0 readability. [source: `pi/README.md:886`]
 - Router terminology now uses `nano`, `mini`, `core`, `large`, and `max`; older classifier labels and `router.policy.*` settings are compatibility or retired surfaces. [source: `pi/README.md:667-689`]
 - Expertise JSONL and its local index replaced legacy mental-model snapshots and agent-facing expertise tools. [source: `pi/README.md:840-845`; `pi/extensions/README.md:39-45`]
-- `/improve` replaced retired `/capture`, `/learning-review`, `/workflow-review`, and `/skill-review` commands. [source: `pi/README.md:473-479`]
 - Structured Pi commit tools are now canonical for Pi, while the older Python helper remains a compatibility reference. [source: `pi/extensions/README.md:228-237`]
 - Advanced subagent modes remain executable but are now deferred and discovered through `tool_search` rather than advertised in the default schema. [source: `pi/README.md:802-805`]
 
@@ -274,8 +268,7 @@ Relative migrations and newer schema markers are visible:
 - Routing classifier and trace events: raw versus applied route, effort, confidence, candidates, latency, policy rule, fallback, model switch, and prompt hash joined by `route_decision_id`. [source: `pi/prompt-routing/analytics.md:5-22`]
 - Sidecar traces: exact redacted provider payloads, visible assistant blocks, tool boundaries, model changes, and W3C-correlated child sessions. [source: `pi/README.md:868-881`; `pi/README.md:967-981`]
 - Usage and Bedrock cost: parent and worker tokens, cache tokens, turns, known cost, unavailable cost, and month-to-date Bedrock spend. [source: `pi/docs/orchestration-telemetry.md:89-99`; `pi/extensions/bedrock-cost.ts:72-106`]
-- Coms audit: LAN trust changes, discovery, authentication, inbound and outbound message metadata. [source: `pi/extensions/coms-lan.ts:306-509`]
-- DuckDB source views include sessions, history, metrics, traces, usage, classifier failures, workflow telemetry, friction, routing, damage-control judgments, and Coms audit. [source: `pi/skills/pi-log-analytics/reference.md`, Source views]
+- DuckDB source views include sessions, history, metrics, traces, usage, classifier failures, workflow telemetry, friction, routing, and damage-control judgments. [source: `pi/skills/pi-log-analytics/reference.md`, Source views]
 - Derived DuckDB views include `session_inventory`, `metric_event_summary`, `tool_discovery_activity`, `trace_event_summary`, `trace_routing_decisions`, `routing_decisions_joined`, and `workflow_episode_summary`. [source: `pi/skills/pi-log-analytics/reference.md`, Derived views]
 - `/usage-stats`, `/extension-stats`, `/router-stats`, `/skill-stats`, and `/orchestration-stats` provide deterministic operator-facing summaries without starting provider turns. [source: `pi/README.md:479`; `pi/extensions/usage.ts:423-440`; `pi/extensions/router-stats.ts:351-365`]
 
@@ -289,7 +282,6 @@ Relative migrations and newer schema markers are visible:
 - OpenAI Codex: OAuth-backed quota reporting, model catalog refresh, explicit fast service tier, routing profiles, and prompt caching are integrated. [source: `pi/extensions/codex-status.ts:1-14`; `pi/extensions/codex-fast.ts:29-61`; `pi/README.md:23`]
 - Other model providers: refresh support covers Anthropic, OpenAI Codex, GitHub Copilot, OpenRouter, OpenCode, and OpenCode Go. [source: `pi/README.md:537-552`]
 - Web services: `web_search` uses SearXNG and `web_fetch` uses a local Readability extraction client. [source: `pi/extensions/web-tools.ts:162-238`]
-- Coms LAN: opt-in UDP discovery, Ed25519 authorized keys, authenticated envelopes, TTL, and bounded audit records provide local peer communication. [source: `pi/extensions/coms-lan.ts:10-18`; `pi/extensions/coms-lan.ts:402-509`]
 - Git and hosting: workflow commands perform Git inspection, submodule-aware commits, branch/session launches, and prompt templates for GitLab tickets. [source: `pi/README.md:375-379`; `pi/prompts/gitlab-ticket.md:2-6`]
 
 ## 7. Gaps the docs themselves acknowledge

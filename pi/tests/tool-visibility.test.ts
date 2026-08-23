@@ -16,9 +16,6 @@ import {
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const GENERAL_TOOL_NAMES = [
-	"coms_lan_trust_import",
-	"coms_lan_trust_list",
-	"coms_lan_trust_remove",
 	"onclave_agents",
 	"onclave_send",
 	"onclave_delegate",
@@ -71,11 +68,9 @@ describe("tool visibility", () => {
 			"feature_memory_record",
 			"goal_complete",
 			"goal_progress",
-			"learning_candidate_decide",
 			"plan_archive",
 			"plan_progress",
 			"review_artifact_write",
-			"workflow_friction_mark_change",
 			"subagent_continue",
 		]);
 		expect(pi.getActiveTools()).toEqual([

@@ -115,6 +115,29 @@ function parseAgentFile(
 	return config;
 }
 
+export function withDispatchSkills(
+	agent: AgentConfig,
+	dispatchSkills: readonly string[],
+): AgentConfig {
+	for (const skill of dispatchSkills) {
+		if (
+			!skill.trim() ||
+			skill.includes("/") ||
+			skill.includes("\\") ||
+			skill.endsWith(".md")
+		)
+			throw new Error(
+				`Agent ${agent.name} dispatch skill must be a discovered skill name: ${skill}`,
+			);
+		if (!findSkillByName(skill))
+			throw new Error(`Agent ${agent.name} references unknown skill: ${skill}`);
+	}
+	return {
+		...agent,
+		skills: [...new Set([...(agent.skills ?? []), ...dispatchSkills])],
+	};
+}
+
 export function resolveAgentSkillPaths(agent: AgentConfig): string[] {
 	return (agent.skills ?? []).map((skill) => {
 		const isPath =

@@ -510,6 +510,12 @@ Execute workflow items with admitted tools only.
 		const { pi } = await loadTool();
 		const status = pi._getTool("subagent_status");
 		if (!status) throw new Error("subagent_status tool not registered");
+		expect(status.promptGuidelines).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("Never use subagent_status to poll"),
+				expect.stringContaining("timeout, watchdog event"),
+			]),
+		);
 		const { subagentRunManager } = await import(
 			"../extensions/subagent/run-manager.ts"
 		);
@@ -1050,6 +1056,37 @@ Do not load this agent.
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
+
+	it(
+		"merges dispatch-selected skills with agent profile skills",
+		async () => {
+			mockSuccessfulSpawn();
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-dispatch-skills",
+				{
+					agent: "tester",
+					task: "Check the thing",
+					agentScope: "project",
+					skills: ["typescript"],
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.isError).not.toBe(true);
+			const spawnArgs = spawnMock.mock.calls[0][1] as string[];
+			const skillPaths = spawnArgs.flatMap((arg, index) =>
+				arg === "--skill" ? [spawnArgs[index + 1]] : [],
+			);
+			expect(skillPaths).toContain(path.join(skillDir, "SKILL.md"));
+			expect(skillPaths.some((skillPath) =>
+				skillPath.endsWith(path.join("typescript", "SKILL.md")),
+			)).toBe(true);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
 
 	it("keeps parallel siblings running when one child fails before launch", async () => {
 		await fs.promises.writeFile(

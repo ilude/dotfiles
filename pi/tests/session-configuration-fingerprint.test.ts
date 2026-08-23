@@ -3,13 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const runtime = vi.hoisted(() => ({
 	recordEvent: vi.fn(),
+	recordEvents: vi.fn(),
 	settings: {
 		enabledModels: ["openai-codex/gpt-5.6-sol"],
 		metrics: { enabled: true },
 	},
 }));
 
-vi.mock("../lib/metrics.ts", () => ({ recordEvent: runtime.recordEvent }));
+vi.mock("../lib/metrics.ts", () => ({
+	recordEvent: runtime.recordEvent,
+	recordEvents: runtime.recordEvents,
+}));
 vi.mock("../lib/settings-loader.ts", () => ({
 	loadCascadedSettings: vi.fn(() => ({
 		merged: runtime.settings,

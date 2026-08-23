@@ -51,9 +51,7 @@ describe("background terminal extension", () => {
 
 		expect(pi._tools.map((tool) => tool.name).sort()).toEqual([
 			"bg_kill",
-			"bg_list",
 			"bg_start",
-			"bg_status",
 		]);
 		expect(pi._commands.some((command) => command.name === "ps")).toBe(true);
 		const ctx = context(cwd);
@@ -61,7 +59,7 @@ describe("background terminal extension", () => {
 			{ reason: "startup" },
 			ctx,
 		);
-		expect(pi.getActiveTools()).toEqual(["bg_start"]);
+		expect(pi.getActiveTools().sort()).toEqual(["bg_kill", "bg_start"]);
 
 		const start = pi._getTool("bg_start");
 		if (!start) throw new Error("bg_start was not registered");
@@ -73,12 +71,7 @@ describe("background terminal extension", () => {
 			ctx as never,
 		);
 		expect(result.content[0]?.text).toContain("Started bg-1");
-		expect(pi.getActiveTools().sort()).toEqual([
-			"bg_kill",
-			"bg_list",
-			"bg_start",
-			"bg_status",
-		]);
+		expect(pi.getActiveTools().sort()).toEqual(["bg_kill", "bg_start"]);
 		await waitFor(() => completionAttempts === 1);
 		expect(delivered).toEqual([]);
 
@@ -131,9 +124,7 @@ describe("background terminal extension", () => {
 			{ reason: "new" },
 			secondCtx,
 		);
-		expect(secondPi.getActiveTools()).toEqual(
-			expect.arrayContaining(["bg_status", "bg_list", "bg_kill"]),
-		);
+		expect(secondPi.getActiveTools().sort()).toEqual(["bg_kill", "bg_start"]);
 		await waitFor(() =>
 			secondPi.sendMessage.mock.calls.some(
 				([message]) => message.customType === "background-terminal-result",

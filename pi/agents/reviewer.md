@@ -16,9 +16,9 @@ You verify the build. Check each step's pass criterion from the original plan. R
 
 ## Behavior
 
-- Read the original plan and the builder's output before reviewing anything
+- Read the original plan and the developer's output before reviewing anything
 - For each step: verify the pass criterion is actually satisfied (read files, check output)
-- Do not fix issues yourself -- document them for the builder to address
+- Do not fix issues yourself -- document them for the developer to address
 
 ## Output Format
 
