@@ -182,16 +182,16 @@ function processLabel(inspection: SubagentStatusInspection): string {
 
 function assessment(inspection: SubagentStatusInspection): string {
 	if (inspection.processState === "settled")
-		return `run is ${inspection.run.status}`;
+		return `process is ${inspection.run.status}`;
 	if (inspection.processState === "waiting-to-start")
 		return "the child may be queued, or this Pi process predates process tracking";
 	if (inspection.processState === "exited-unsettled")
-		return "the child process is gone while the run is still marked running";
+		return "the child process is gone while the process is still marked running";
 	if (inspection.progressedSince === true)
 		return "child is alive and emitted new observable activity since the supplied version";
 	if (inspection.progressedSince === false)
 		return "child is alive but emitted no observable activity since the supplied version; it may still be waiting on a provider or a silent long-running tool";
-	return `child is alive; a later exact-run check may use sinceActivityVersion=${inspection.activityVersion} to compare observable progress`;
+	return `child is alive; a later exact-process check may use sinceActivityVersion=${inspection.activityVersion} to compare observable progress`;
 }
 
 export function formatSubagentStatus(
@@ -213,13 +213,13 @@ export function formatSubagentStatus(
 				? "yes"
 				: "no";
 		const markers = [
-			run.workPaths?.length ? `workPaths=${run.workPaths.join(",")}` : "",
+			run.workPaths?.length ? `boundaryPaths=${run.workPaths.join(",")}` : "",
 			run.workBoundary?.length
-				? `workBoundary=${run.workBoundary.join(",")}`
+				? `boundary=${run.workBoundary.join(",")}`
 				: "",
 		].filter(Boolean).join(" | ");
 	return [
-		`run: ${run.runId}`,
+		`processId: ${run.runId}`,
 		`agent: ${run.agent}`,
 		`status: ${run.status}`,
 		`process: ${processLabel(inspection)}`,
@@ -251,10 +251,10 @@ export function formatSubagentStatusList(
 				`watchdog=${inspection.watchdogState}`,
 				`turns=${run.usage.turns}`,
 				...(run.workPaths?.length
-					? [`workPaths=${run.workPaths.join(",")}`]
+					? [`boundaryPaths=${run.workPaths.join(",")}`]
 					: []),
 				...(run.workBoundary?.length
-					? [`workBoundary=${run.workBoundary.join(",")}`]
+					? [`boundary=${run.workBoundary.join(",")}`]
 					: []),
 			].join(" | ");
 		})

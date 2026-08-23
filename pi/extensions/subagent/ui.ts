@@ -64,7 +64,7 @@ function treeMetadata(run: SubagentRunSnapshot): string | undefined {
 		run.taskKey ? `key ${run.taskKey}` : "",
 		run.attempt === undefined ? "" : `attempt ${run.attempt}`,
 		run.retryOrigin ? `retry ${run.retryOrigin}` : "",
-		run.coordinatorTaskId ? `coordinator ${run.coordinatorTaskId}` : "",
+		run.coordinatorTaskId ? `Team Lead ${run.coordinatorTaskId}` : "",
 	].filter(Boolean);
 	return parts.join(" | ");
 }
@@ -321,7 +321,7 @@ class SubagentDashboard implements Component {
 				void this.control
 					.execute({
 						action: "cancel",
-						selector: { type: "run", id: run.runId },
+						selector: { type: "process", processId: run.runId },
 					})
 					.catch((error) => {
 						this.controlError = error instanceof Error ? error.message : String(error);
@@ -473,7 +473,7 @@ class SubagentDetail implements Component {
 				void this.control
 					.execute({
 						action: "cancel",
-						selector: { type: "run", id: this.runId },
+						selector: { type: "process", processId: this.runId }
 					})
 					.catch((error) => {
 						this.controlError = error instanceof Error ? error.message : String(error);

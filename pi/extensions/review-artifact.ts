@@ -93,14 +93,12 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "review_artifact_write",
 		label: "Review Artifact Write",
-		description:
-			"Write a constrained /review-it reviewer artifact under an assigned review directory. " +
-			"Use only for reviewer findings; validates path safety, schema, and size limits.",
+		description: "Write a constrained /review-it reviewer artifact under an assigned review directory.",
 		promptSnippet:
 			"Write bounded /review-it reviewer findings to the assigned artifact path",
 		promptGuidelines: [
 			"Use only when acting as a /review-it reviewer.",
-			"Write only to the artifact file assigned by the coordinator.",
+			"Write only to the artifact file assigned for this review.",
 			"Provide at most 5 findings with severity, evidence, and required_fix.",
 		],
 		parameters: Type.Object({

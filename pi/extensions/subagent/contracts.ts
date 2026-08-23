@@ -28,7 +28,9 @@ export const DEFAULT_COORDINATOR_SOFT_DEADLINE_MS = 15 * 60 * 1000;
 
 export interface SubagentItemBase {
 	readonly agent: string;
-	readonly task: string;
+	readonly instructions?: string;
+	/** Hidden compatibility alias for resumed sessions. */
+	readonly task?: string;
 	readonly taskId?: string;
 	readonly cwd?: string;
 	readonly effort?: string;
@@ -36,11 +38,13 @@ export interface SubagentItemBase {
 }
 
 export interface ReadItem extends SubagentItemBase {
-	readonly workPaths?: readonly string[];
+	/** Advisory paths supplied to coordinate the work; they do not grant authority. */
+	readonly boundaryPaths?: readonly string[];
 }
 
 export interface WriteItem extends SubagentItemBase {
-	readonly workPaths?: readonly string[];
+	/** Advisory paths supplied to coordinate the work; they do not grant authority. */
+	readonly boundaryPaths?: readonly string[];
 }
 
 export type CoordinatorItem = SubagentItemBase;
@@ -48,6 +52,9 @@ export type CoordinatorItem = SubagentItemBase;
 export interface ReadRequest {
 	readonly kind: "read";
 	readonly items: readonly ReadItem[];
+	/** The filesystem boundary enforced by governed file tools and recognized recursive-search tools. */
+	readonly enforcedBoundary?: string;
+	/** Hidden compatibility alias for resumed sessions. */
 	readonly workspaceRoot?: string;
 	readonly agentScope?: AgentScope;
 }
@@ -55,6 +62,9 @@ export interface ReadRequest {
 export interface WriteRequest {
 	readonly kind: "write";
 	readonly items: readonly WriteItem[];
+	/** The filesystem boundary enforced by governed file tools and recognized recursive-search tools. */
+	readonly enforcedBoundary?: string;
+	/** Hidden compatibility alias for resumed sessions. */
 	readonly workspaceRoot?: string;
 	readonly agentScope?: AgentScope;
 }
@@ -62,11 +72,17 @@ export interface WriteRequest {
 export interface CoordinatorRequest {
 	readonly kind: "coordinator";
 	readonly items: readonly CoordinatorItem[];
+	/** Advisory boundary for Team Lead coordination; it does not grant authority. */
+	readonly boundary?: readonly string[];
+	/** The filesystem boundary enforced by governed file tools and recognized recursive-search tools. */
+	readonly enforcedBoundary?: string;
+	/** Hidden compatibility alias for resumed sessions. */
+	readonly workspaceRoot?: string;
+	/** Hidden compatibility alias for resumed sessions. */
 	readonly workBoundary?: readonly string[];
 	readonly maxWorkers?: number;
 	readonly maxTurns?: number;
 	readonly softDeadlineMs?: number;
-	readonly workspaceRoot?: string;
 	readonly agentScope?: AgentScope;
 }
 
@@ -79,8 +95,8 @@ export interface SubagentItemResult {
 	readonly agent: string;
 	readonly taskId?: string;
 	readonly status: "completed" | "failed" | "cancelled";
-	readonly workPaths?: readonly string[];
-	readonly workBoundary?: readonly string[];
+	readonly boundaryPaths?: readonly string[];
+	readonly boundary?: readonly string[];
 	readonly output?: string;
 }
 
@@ -131,7 +147,7 @@ export interface PreparedSubagentExecution {
 	readonly projectTrusted: boolean;
 	readonly discovery: AgentDiscoveryResult;
 	readonly items: readonly PreparedSubagentItem<SubagentItemBase>[];
-	readonly workBoundary?: readonly string[];
+	readonly boundary?: readonly string[];
 }
 
 export type TaskLinkResolution =
@@ -169,7 +185,7 @@ export function admitCoordinatorDescendants<T>(
 		return { admitted: [...items], gaps: [] };
 	return {
 		admitted: items.slice(0, maxWorkers),
-		gaps: [`descendant worker budget exhausted: ${items.length - maxWorkers} worker(s) not admitted`],
+		gaps: [`subagent budget exhausted: ${items.length - maxWorkers} subagent(s) not admitted`],
 	};
 }
 
@@ -200,11 +216,32 @@ const READ_SCHEMA_TOOLS = Type.Array(
 );
 
 const ItemFields = {
-	agent: Type.String({ minLength: 1 }),
-	task: Type.String({ minLength: 1 }),
-	taskId: Type.Optional(Type.String({ minLength: 1 })),
-	cwd: Type.Optional(Type.String({ minLength: 1 })),
-	effort: Type.Optional(Type.String({ minLength: 1 })),
+	agent: Type.String({
+		minLength: 1,
+		description: "Discovered subagent assigned to this item.",
+	}),
+	instructions: Type.String({
+		minLength: 1,
+		description: "Required assigned work and its observable completion condition.",
+	}),
+	taskId: Type.Optional(
+		Type.String({
+			minLength: 1,
+			description: "Optional root-owned task reference for this assignment.",
+		}),
+	),
+	cwd: Type.Optional(
+		Type.String({
+			minLength: 1,
+			description: "Working directory for the assigned subagent.",
+		}),
+	),
+	effort: Type.Optional(
+		Type.String({
+			minLength: 1,
+			description: "Execution effort for the assigned subagent.",
+		}),
+	),
 	skills: Type.Optional(
 		Type.Array(Type.String({ minLength: 1 }), {
 			minItems: 1,
@@ -217,7 +254,11 @@ const ItemFields = {
 const ReadItemSchema = Type.Object(
 	{
 		...ItemFields,
-		workPaths: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+		boundaryPaths: Type.Optional(
+			Type.Array(Type.String({ minLength: 1 }), {
+				description: "Advisory paths for coordination; they do not grant authority.",
+			}),
+		),
 	},
 	{ additionalProperties: false },
 );
@@ -225,7 +266,11 @@ const ReadItemSchema = Type.Object(
 const WriteItemSchema = Type.Object(
 	{
 		...ItemFields,
-		workPaths: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+		boundaryPaths: Type.Optional(
+			Type.Array(Type.String({ minLength: 1 }), {
+				description: "Advisory paths for coordination; they do not grant authority.",
+			}),
+		),
 	},
 	{ additionalProperties: false },
 );
@@ -236,7 +281,13 @@ const CoordinatorItemSchema = Type.Object(
 );
 
 const CommonRequestFields = {
-	workspaceRoot: Type.Optional(Type.String({ minLength: 1 })),
+	enforcedBoundary: Type.Optional(
+		Type.String({
+			minLength: 1,
+			description:
+				"Enforced only for governed file tools and recognized recursive-search tools; not a general sandbox.",
+		}),
+	),
 	agentScope: Type.Optional(
 		Type.String({ enum: ["user", "project", "both"] }),
 	),
@@ -258,14 +309,55 @@ export const SubagentWriteSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-export const SubagentCoordinateSchema = Type.Object(
+export const SubagentTeamleadSchema = Type.Object(
 	{
 		items: Type.Array(CoordinatorItemSchema, { minItems: 1, maxItems: 8 }),
+		boundary: Type.Optional(
+			Type.Array(Type.String({ minLength: 1 }), {
+				description: "Advisory Team Lead boundary; it does not grant authority.",
+			}),
+		),
+		maxWorkers: Type.Optional(
+			Type.Integer({
+				minimum: 1,
+				maximum: 8,
+				description: "Maximum number of subagents admitted to this Team Lead package.",
+			}),
+		),
+		softDeadlineMs: Type.Optional(
+			Type.Integer({
+				minimum: 1,
+				description: "Maximum elapsed time for this Team Lead package in milliseconds.",
+			}),
+		),
+		...CommonRequestFields,
+	},
+	{ additionalProperties: false },
+);
+
+/** Hidden compatibility schema retained for resumed subagent_coordinate calls. */
+export const SubagentCoordinateSchema = Type.Object(
+	{
+		items: Type.Array(
+			Type.Object(
+				{
+					agent: ItemFields.agent,
+					task: Type.String({ minLength: 1 }),
+					taskId: ItemFields.taskId,
+					cwd: ItemFields.cwd,
+					effort: ItemFields.effort,
+					skills: ItemFields.skills,
+				},
+				{ additionalProperties: false },
+			),
+			{ minItems: 1, maxItems: 8 },
+		),
 		workBoundary: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+		workspaceRoot: Type.Optional(Type.String({ minLength: 1 })),
 		maxWorkers: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
 		maxTurns: Type.Optional(Type.Integer({ minimum: 1, maximum: 64 })),
 		softDeadlineMs: Type.Optional(Type.Integer({ minimum: 1 })),
-		...CommonRequestFields,
+		agentScope: CommonRequestFields.agentScope,
 	},
 	{ additionalProperties: false },
 );
@@ -306,7 +398,7 @@ function choicesFor(
 	maxChoices: number,
 ): TaskRecordV1[] {
 	return listTasks({
-		states: ["running"],
+		states: ["assigned"],
 		workspace: resolveTaskWorkspace(workspaceRoot),
 		sessionId: parentSessionId,
 		limit: maxChoices,
@@ -328,12 +420,21 @@ export function resolveTaskLink(
 			return { outcome: "invalid", reason: "task belongs to another workspace", choices };
 		if (task.sessionId !== undefined && parentSessionId !== undefined && task.sessionId !== parentSessionId)
 			return { outcome: "invalid", reason: "task is owned by another root session", choices };
-		if (task.state !== "running")
+		if (task.state !== "assigned")
 			return { outcome: "invalid", reason: "task is not running", choices };
 		return { outcome: "explicit", task };
 	}
 	if (choices.length === 1) return { outcome: "auto", task: choices[0] as TaskRecordV1 };
 	return { outcome: "none" };
+}
+
+/** Resolve the model-facing task reference without deriving identity from runtime context. */
+export function resolvePreparedTaskLink(taskId: string | undefined): TaskLinkResolution {
+	if (taskId === undefined) return { outcome: "none" };
+	const task = getTask(taskId);
+	return task && !task.deletedAt
+		? { outcome: "explicit", task }
+		: { outcome: "invalid", reason: "task was not found", choices: [] };
 }
 
 function assertTaskLink(link: TaskLinkResolution, item: SubagentItemBase): void {
@@ -354,9 +455,15 @@ export function prepareSubagentExecution(
 	request: SubagentExecutionRequest,
 	options: PrepareSubagentOptions,
 ): PreparedSubagentExecution {
-	const workspace = resolveWorkspaceRoot(options.parentCwd, request.workspaceRoot, {
-		allowExternal: options.allowExternalWorkspace ?? true,
-	});
+	const legacyRequest = request as SubagentExecutionRequest & {
+		readonly workspaceRoot?: string;
+		readonly workBoundary?: readonly string[];
+	};
+	const workspace = resolveWorkspaceRoot(
+		options.parentCwd,
+		request.enforcedBoundary ?? legacyRequest.workspaceRoot,
+		{ allowExternal: options.allowExternalWorkspace ?? true },
+	);
 	if (workspace.outcome === "deny") throw new Error(workspace.reason);
 	const workspaceRoot = workspace.workspaceRoot;
 	const projectTrusted = options.isWorkspaceTrusted?.(workspaceRoot) ?? true;
@@ -382,19 +489,16 @@ export function prepareSubagentExecution(
 		);
 		if (cwdResult.outcome === "deny") throw new Error(cwdResult.reason);
 		const effectiveCwd = cwdResult.targets[0] ?? workspaceRoot;
-		const taskLink = resolveTaskLink(
-			item.taskId,
-			workspaceRoot,
-			options.parentSessionId,
-			options.maxTaskChoices,
-		);
+		const instructions = item.instructions ?? item.task;
+		if (!instructions) throw new Error("Subagent items require instructions.");
+		const taskLink = resolvePreparedTaskLink(item.taskId);
 		assertTaskLink(taskLink, item);
 		const discoveredAgent = itemAgent(item, discovery);
 		const agent = item.skills
 			? withDispatchSkills(discoveredAgent, item.skills)
 			: discoveredAgent;
 		return {
-			request: { ...item, cwd: effectiveCwd },
+			request: { ...item, instructions, cwd: effectiveCwd },
 			workspaceRoot,
 			taskLink,
 			agent,
@@ -409,8 +513,8 @@ export function prepareSubagentExecution(
 		projectTrusted,
 		discovery,
 		items,
-		...(request.kind === "coordinator" && request.workBoundary
-			? { workBoundary: [...request.workBoundary] }
+		...(request.kind === "coordinator" && (request.boundary ?? legacyRequest.workBoundary)
+			? { boundary: [...(request.boundary ?? legacyRequest.workBoundary ?? [])] }
 			: {}),
 	};
 }

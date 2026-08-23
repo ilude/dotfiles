@@ -140,7 +140,7 @@ describe("Bedrock Claude orchestration policy", () => {
 				);
 				expect(result.systemPrompt).toContain("root orchestrator");
 				expect(result.systemPrompt).toContain(
-					"openai-codex subscription leaves",
+					"openai-codex subscription subagents",
 				);
 				expect(result.systemPrompt).toContain(
 					"small for bounded work (Luna high)",
@@ -159,6 +159,8 @@ describe("Bedrock Claude orchestration policy", () => {
 					"bash",
 					"tool_search",
 					"subagent_continue",
+					"subagent_coordinate",
+					"subagent_teamlead",
 				]) {
 					const blocked = tool({ toolName, input: {} }, ctx);
 					expect(blocked).toMatchObject({ block: true });

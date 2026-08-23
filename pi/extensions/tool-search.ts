@@ -28,6 +28,7 @@ import {
 const HIDDEN_HISTORICAL_TOOLS = new Set([
 	"subagent",
 	"subagent_continue",
+	"subagent_coordinate",
 ]);
 
 /** Score a tool against search terms. Higher = better match. */
@@ -71,15 +72,12 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "tool_search",
 		label: "Tool Search",
-		description:
-			"Search available tools by keyword and activate matching inactive tools. Returns tool names, descriptions, and optional parameter schemas.",
-		promptSnippet:
-			"Search available tools by keyword and activate matching inactive capabilities",
+		description: "Find available tools by capability keyword.",
+		promptSnippet: "Find tools by capability and activate matching inactive tools",
 		promptGuidelines: [
 			"Use tool_search when the needed capability is not currently available.",
-			"Search with descriptive capability keywords; all matching inactive tools are activated by default.",
-			"Deferred tools include advanced subagent modes, commit execution, feature-memory recording, goal completion, improvement decisions, workflow-change tracking, and review artifacts.",
-			"Use list mode without a query only to inspect all tools; it does not activate them.",
+			"Search with descriptive capability keywords; matching inactive tools are activated by default for a non-empty query.",
+			"Use list mode without a query only to inspect available tools; it does not activate them.",
 		],
 		parameters: Type.Object({
 			query: Type.Optional(

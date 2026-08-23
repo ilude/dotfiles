@@ -78,7 +78,6 @@ import {
 	getTask,
 	type NormalizedTaskUsage,
 	normalizeTaskUsage,
-	resolveTaskWorkspace,
 } from "../../lib/task-registry.js";
 import { registerOrchestrationInvocation } from "../../lib/workflow-friction.js";
 import { isSubscriptionOrchestratorModel } from "../fable.js";
@@ -95,6 +94,7 @@ import {
 	type AgentScope,
 	discoverAgents,
 	resolveAgentSkillPaths,
+	withAgentCatalog,
 	withDispatchSkills,
 } from "./agents.js";
 import {
@@ -104,6 +104,7 @@ import {
 	READ_TOOL_ALLOWLIST,
 	SubagentCoordinateSchema,
 	SubagentReadSchema,
+	SubagentTeamleadSchema,
 	SubagentWriteSchema,
 	type CoordinatorRequest,
 	type PreparedSubagentExecution,
@@ -1185,7 +1186,7 @@ function currentSubagentIdentity(): SubagentExecutionIdentity {
 }
 
 function canonicalAgentName(agentName: string): string {
-	return agentName === "orchestrator" ? "teamlead" : agentName;
+	return agentName;
 }
 
 function resolveChildRole(
@@ -1200,10 +1201,10 @@ function resolveChildRole(
 		requestedRole ??
 		(current.role === "root" && profileName === "teamlead" ? "coordinator" : "leaf");
 	if (current.role === "coordinator" && role !== "leaf")
-		throw new Error("A coordinator may invoke leaf workers only.");
+		throw new Error("A Team Lead may invoke subagents only.");
 	const depth = current.depth + 1;
 	if (role === "coordinator" && depth !== 1)
-		throw new Error("A coordinator may run only at depth one.");
+		throw new Error("A Team Lead may run only at depth one.");
 	return { role, depth };
 }
 
@@ -1427,7 +1428,7 @@ export async function runSingleAgent(
 		!authority.tools.includes("subagent_write")
 	)
 		throw new Error(
-			`Coordinator agent ${agent.name} must have a leaf delegation capability.`,
+			`Team Lead agent ${agent.name} must have a subagent delegation capability.`,
 		);
 	// Modifying leaves may omit workPaths. Markers are advisory and do not
 	// grant or remove mutation authority.
@@ -1710,6 +1711,7 @@ export async function runSingleAgent(
 			// existing env vars (PATH, HOME, OAUTH tokens, etc.) are preserved.
 			const childEnv: NodeJS.ProcessEnv = {
 				...process.env,
+				PI_CODING_AGENT_DIR: getAgentDir(),
 				ONCLAVE_PI_SUBAGENT_INELIGIBLE: "1",
 				TRACEPARENT: buildSubagentTraceparent(),
 				PI_SUBAGENT_RUN_ID: runId,
@@ -1967,7 +1969,7 @@ export async function runSingleAgent(
 					() =>
 						stopForBudget(
 							runContext?.executionKind === "coordinator"
-								? "Coordinator stopped at its soft deadline; output and gaps may be partial."
+								? "Team Lead stopped at its soft deadline; output and gaps may be partial."
 								: "Read-only subagent stopped at its wall-clock budget; output may be partial.",
 						),
 					readOnlyTimeoutMs,
@@ -2209,19 +2211,10 @@ type ContinueParams = {
 	effort?: AgentEffort;
 };
 
-function validateLinkedTask(
-	taskId: string | undefined,
-	runCwd: string | undefined,
-	defaultCwd: string,
-): void {
+function validateLegacyTaskReference(taskId: string | undefined): void {
 	if (taskId === undefined) return;
 	const task = getTask(taskId);
 	if (!task || task.deletedAt) throw new Error(`Task not found: ${taskId}`);
-	const workspace = resolveTaskWorkspace(runCwd ?? defaultCwd);
-	if (task.workspace !== workspace)
-		throw new Error(`Task ${taskId} belongs to a different workspace.`);
-	if (task.state !== "running")
-		throw new Error(`Task ${taskId} must be running before delegation.`);
 }
 
 const OutputModeSchema = StringEnum(["inline", "file-only"] as const, {
@@ -2260,8 +2253,7 @@ const StructuredOutputSchema = Type.Record(Type.String(), Type.Unknown(), {
 });
 
 const SubagentRoleSchema = StringEnum(["coordinator", "leaf"] as const, {
-	description:
-		"Execution role. Root may start a coordinator or leaf; coordinators may start leaves only.",
+	description: "Compatibility execution role for assigned work.",
 	default: "leaf",
 });
 
@@ -2295,10 +2287,10 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 				})
 			: Type.String({ description });
 	const taskItem = Type.Object({
-		agent: agentName("Name of the agent to invoke"),
-		task: Type.String({ description: "Task to delegate to the agent" }),
+		agent: agentName("Name of the subagent to invoke"),
+		task: Type.String({ description: "Assigned instructions for the subagent" }),
 		taskId: Type.Optional(
-			Type.String({ description: "Existing running durable task ID" }),
+			Type.String({ description: "Root-owned task reference for this assignment" }),
 		),
 		skills: Type.Optional(DispatchSkillsSchema),
 		role: Type.Optional(SubagentRoleSchema),
@@ -2313,7 +2305,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 	const readOnlyFanoutTaskItem = Type.Object(
 		{
 			agent: agentName("Name of the agent to invoke"),
-			task: Type.String({ description: "Read-only task to delegate" }),
+			task: Type.String({ description: "Assigned read-only instructions" }),
 			effort: Type.Optional(EffortSchema),
 			cwd: Type.Optional(
 				Type.String({ description: "Working directory for the agent process" }),
@@ -2340,7 +2332,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		role: Type.Optional(SubagentRoleSchema),
 		scope: Type.Optional(ModificationScopeSchema),
 		task: Type.String({
-			description: "Task with optional {previous} placeholder for prior output",
+			description: "Assigned instructions with optional {previous} placeholder for prior output",
 		}),
 		cwd: Type.Optional(
 			Type.String({ description: "Working directory for the agent process" }),
@@ -2424,7 +2416,7 @@ function createSubagentSchemas(agentNames?: readonly string[]) {
 		modelOverrideReason: Type.Optional(
 			Type.String({
 				description:
-					"Operator-approved reason for selecting a non-Sol coordinator model.",
+					"Operator-approved reason for selecting a model outside the default recommendation.",
 			}),
 		),
 		confirmProjectAgents: Type.Optional(
@@ -2501,6 +2493,15 @@ type SessionAgentCatalog = {
 	byScope: Record<AgentScope, AgentDiscoveryResult>;
 	agentNames: string[];
 };
+
+function createCatalogSubagentSchemas(agentNames: readonly string[]) {
+	return {
+		read: withAgentCatalog(SubagentReadSchema, agentNames),
+		write: withAgentCatalog(SubagentWriteSchema, agentNames),
+		teamlead: withAgentCatalog(SubagentTeamleadSchema, agentNames),
+		coordinate: withAgentCatalog(SubagentCoordinateSchema, agentNames),
+	};
+}
 
 function createSessionAgentCatalog(
 	cwd: string,
@@ -2700,7 +2701,7 @@ export default function (pi: ExtensionAPI) {
 		name: "subagent_status",
 		label: "Subagent Status",
 		description:
-			"Inspect process liveness, observable activity, and usage for process-local subagent runs. A returned background orchestration ID groups all matching child runs. Pass a prior activity version only with an exact run ID.",
+			"Inspect process liveness, observable activity, and usage for subagent processes. A returned background orchestration ID groups matching processes. Pass a prior activity version only with an exact process ID.",
 		promptSnippet:
 			"Inspect subagent process liveness, observable progress, and usage",
 		promptGuidelines: [
@@ -2709,10 +2710,10 @@ export default function (pi: ExtensionAPI) {
 			"Treat process liveness and observable activity as evidence, not proof of work progress; a quiet live child may be waiting on a provider or a silent long-running tool.",
 		],
 		parameters: Type.Object({
-			runId: Type.Optional(
+			processId: Type.Optional(
 				Type.String({
 					description:
-						"Exact run ID or returned background orchestration ID. Omit to list tracked runs.",
+						"Exact process ID or returned background orchestration ID. Omit to list tracked processes.",
 				}),
 			),
 			sinceActivityVersion: Type.Optional(
@@ -2723,16 +2724,23 @@ export default function (pi: ExtensionAPI) {
 				}),
 			),
 		}),
+		prepareArguments(args) {
+			const input = args as Record<string, unknown>;
+			return input.processId === undefined && typeof input.runId === "string"
+				? { ...input, processId: input.runId }
+				: input;
+		},
 		execute: async (
 			_toolCallId,
 			params,
 		): Promise<AgentToolResult<Record<string, unknown>>> => {
 			if (currentSubagentIdentity().role !== "root")
 				throw new Error("Only the root agent can inspect subagent status.");
-			if (!params.runId) {
+			const processId = params.processId;
+			if (!processId) {
 				if (params.sinceActivityVersion !== undefined)
 					throw new Error(
-						"runId is required when sinceActivityVersion is provided.",
+						"processId is required when sinceActivityVersion is provided.",
 					);
 				const inspections = subagentRunManager
 					.list()
@@ -2747,12 +2755,13 @@ export default function (pi: ExtensionAPI) {
 							run.role !== "root" &&
 							!trackedIds.has(run.runId) &&
 							(run.state !== "settled" || Boolean(run.scopeLease)),
-					);
+					)
+					.map(({ runId, ...run }) => ({ processId: runId, ...run }));
 				const brokerText = brokerOnly.length
 					? `\nBroker-only boundaries:\n${brokerOnly
 							.map(
 								(run) =>
-									`${run.runId} | ${run.state}${run.pid ? ` | pid ${run.pid}` : ""}${run.scopeLease ? ` | scopes ${run.scopeLease.scopes.join(", ")}` : ""}`,
+									`${run.processId} | ${run.state}${run.pid ? ` | pid ${run.pid}` : ""}${run.scopeLease ? ` | scopes ${run.scopeLease.scopes.join(", ")}` : ""}`,
 							)
 							.join("\n")}`
 					: "";
@@ -2765,7 +2774,7 @@ export default function (pi: ExtensionAPI) {
 					],
 					details: {
 						runs: inspections.map((inspection) => ({
-							runId: inspection.run.runId,
+								processId: inspection.run.runId,
 							status: inspection.run.status,
 							pid: inspection.run.pid,
 							processState: inspection.processState,
@@ -2778,12 +2787,13 @@ export default function (pi: ExtensionAPI) {
 					},
 				};
 			}
-			const run = subagentRunManager.get(params.runId);
+			const run = subagentRunManager.get(processId);
 			if (!run) {
 				const brokerRun = getSubagentTreeBroker()
 					.list()
-					.find((candidate) => candidate.runId === params.runId);
-				if (brokerRun)
+					.find((candidate) => candidate.runId === processId);
+				if (brokerRun) {
+					const { runId, ...brokerDetails } = brokerRun;
 					return {
 						content: [
 							{
@@ -2791,24 +2801,29 @@ export default function (pi: ExtensionAPI) {
 								text: `Broker boundary ${brokerRun.runId} is ${brokerRun.state}${brokerRun.pid ? ` with pid ${brokerRun.pid}` : ""}${brokerRun.scopeLease ? ` and holds scopes ${brokerRun.scopeLease.scopes.join(", ")}` : ""}. Use subagent_control reconcile only when the process is terminal or proven absent.`,
 							},
 						],
-						details: { found: true, brokerOnly: true, run: brokerRun },
+						details: {
+							found: true,
+							brokerOnly: true,
+								run: { processId: runId, ...brokerDetails },
+						},
 					};
+				}
 				const groupedRuns = subagentRunManager.getByOrchestrationId(
-					params.runId,
+					processId,
 				);
 				if (groupedRuns.length === 0)
 					return {
 						content: [
 							{
 								type: "text",
-								text: `Subagent run or orchestration not found: ${params.runId}`,
+								text: `Subagent process or orchestration not found: ${processId}`,
 							},
 						],
-						details: { runId: params.runId, found: false },
+						details: { processId, found: false },
 					};
 				if (params.sinceActivityVersion !== undefined)
 					throw new Error(
-						"sinceActivityVersion requires an exact run ID, not an orchestration ID.",
+						"sinceActivityVersion requires an exact process ID, not an orchestration ID.",
 					);
 				const inspections = groupedRuns.map((groupedRun) =>
 					inspectTrackedRun(groupedRun),
@@ -2817,14 +2832,14 @@ export default function (pi: ExtensionAPI) {
 					content: [
 						{
 							type: "text",
-							text: formatSubagentStatusGroup(params.runId, inspections),
+							text: formatSubagentStatusGroup(processId, inspections),
 						},
 					],
 					details: {
-						orchestrationId: params.runId,
+						orchestrationId: processId,
 						found: true,
 						runs: inspections.map((grouped) => ({
-							runId: grouped.run.runId,
+							processId: grouped.run.runId,
 							status: grouped.run.status,
 							pid: grouped.run.pid,
 							processState: grouped.processState,
@@ -2839,7 +2854,7 @@ export default function (pi: ExtensionAPI) {
 			return {
 				content: [{ type: "text", text: formatSubagentStatus(inspection) }],
 				details: {
-					runId: run.runId,
+					processId: run.runId,
 					found: true,
 					status: run.status,
 					pid: run.pid,
@@ -2874,7 +2889,7 @@ export default function (pi: ExtensionAPI) {
 			"Cancel, force-terminate, recover an interrupted tool from its persisted child session, or safely reconcile an exact live broker boundary.",
 		promptSnippet: "Control an exact subagent broker boundary",
 		promptGuidelines: [
-			"Use exact complete run or tree IDs. Prefixes and wildcard selectors are rejected.",
+			"Use exact complete process or tree IDs. Prefixes and wildcard selectors are rejected.",
 			"Reconcile only terminal or proven-absent process boundaries; live or ambiguous boundaries are rejected.",
 		],
 		parameters: Type.Object({
@@ -2884,27 +2899,47 @@ export default function (pi: ExtensionAPI) {
 				"interrupt_tool",
 				"reconcile",
 			] as const),
-			selector: Type.Object({
-				type: StringEnum(["run", "tree"] as const),
-				id: Type.String({ minLength: 1 }),
-			}),
+			selector: Type.Union([
+				Type.Object({
+					type: StringEnum(["process"] as const),
+					processId: Type.String({ minLength: 1 }),
+				}),
+				Type.Object({
+					type: StringEnum(["tree"] as const),
+					id: Type.String({ minLength: 1 }),
+				}),
+			]),
 			toolCallId: Type.Optional(Type.String({ minLength: 1 })),
 			activityVersion: Type.Optional(Type.Integer({ minimum: 0 })),
 		}),
+		prepareArguments(args) {
+			const input = args as Record<string, unknown>;
+			const selector = input.selector as Record<string, unknown> | undefined;
+			return (selector?.type === "run" && typeof selector.id === "string"
+				? { ...input, selector: { type: "process", processId: selector.id } }
+				: input) as {
+				action: "cancel" | "force_terminate" | "interrupt_tool" | "reconcile";
+				selector:
+					| { type: "process"; processId: string }
+					| { type: "tree"; id: string };
+				toolCallId?: string;
+				activityVersion?: number;
+			};
+		},
 		execute: async (controlToolCallId, params, signal, onUpdate, ctx) => {
 			if (currentSubagentIdentity().role !== "root")
 				throw new Error("Only the root agent can control subagent boundaries.");
 			if (params.action === "interrupt_tool") {
-				if (params.selector.type !== "run")
-					throw new Error("interrupt_tool requires one exact run selector.");
+				if (params.selector.type !== "process")
+					throw new Error("interrupt_tool requires one exact process selector.");
 				if (!params.toolCallId || params.activityVersion === undefined)
 					throw new Error(
 						"interrupt_tool requires the active toolCallId and current activityVersion from subagent_status.",
 					);
 				const recovery = prepareInterruptedRecovery(
-					subagentRunManager.get(params.selector.id),
+					subagentRunManager.get(params.selector.processId),
 					{
-						runId: params.selector.id,
+						runId: params.selector.processId,
 						toolCallId: params.toolCallId,
 						activityVersion: params.activityVersion,
 						parentSessionId: ctx.sessionManager?.getSessionId?.(),
@@ -2975,7 +3010,7 @@ export default function (pi: ExtensionAPI) {
 					content: [
 						{
 							type: "text",
-							text: `Interrupted ${params.toolCallId}, settled run ${run.runId}, and resumed ${sessionPath}. The interrupted tool outcome remains unknown.\n\n${resumed.content
+							text: `Interrupted ${params.toolCallId}, settled process ${run.runId}, and resumed ${sessionPath}. The interrupted tool outcome remains unknown.\n\n${resumed.content
 								.filter((item) => item.type === "text")
 								.map((item) => item.text)
 								.join("\n")}`,
@@ -2992,8 +3027,8 @@ export default function (pi: ExtensionAPI) {
 			const selectedRuns = getSubagentTreeBroker()
 				.list()
 				.filter((run) =>
-					params.selector.type === "run"
-						? run.runId === params.selector.id
+					params.selector.type === "process"
+						? run.runId === params.selector.processId
 						: run.treeId === params.selector.id,
 				);
 			const result = await subagentControl.execute({
@@ -3001,7 +3036,7 @@ export default function (pi: ExtensionAPI) {
 				selector: params.selector,
 			});
 			for (const outcome of result.outcomes) {
-				const run = selectedRuns.find((candidate) => candidate.runId === outcome.runId);
+				const run = selectedRuns.find((candidate) => candidate.runId === outcome.processId);
 				if (!run) continue;
 				const failed = outcome.outcome === "failed";
 				recordSubagentIntervention({
@@ -3087,6 +3122,7 @@ export default function (pi: ExtensionAPI) {
 	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		sessionAgentCatalog = resolveSessionAgentCatalog(undefined, ctx);
 		refreshAgentTools(sessionAgentCatalog.agentNames);
+		deactivateTools(pi, ["subagent_coordinate"]);
 		const identity = currentSubagentIdentity();
 		if (identity.role !== "root") {
 			deactivateTools(pi, ["subagent_status", "subagent_control"]);
@@ -3110,9 +3146,9 @@ export default function (pi: ExtensionAPI) {
 		const historicalTools = [...HISTORICAL_SUBAGENT_TOOL_NAMES];
 		const unavailableModernTools =
 			identity.role === "leaf" || identity.depth >= 2
-				? ["subagent_read", "subagent_write", "subagent_coordinate"]
+				? ["subagent_read", "subagent_write", "subagent_teamlead", "subagent_coordinate"]
 				: identity.role === "coordinator"
-					? ["subagent_coordinate"]
+					? ["subagent_teamlead", "subagent_coordinate"]
 					: [];
 		deactivateTools(pi, [...historicalTools, ...unavailableModernTools]);
 		sessionOpen = true;
@@ -3186,26 +3222,13 @@ export default function (pi: ExtensionAPI) {
 	const subagentExecutor = defineTool({
 		name: "subagent",
 		label: "Subagent",
-		description: [
-			"Delegate work to isolated specialist agents.",
-			"Root may launch a leaf or a coordinator; coordinators may launch leaves only.",
-			"Use agent and task for one worker or tasks for bounded parallel workers.",
-			"workPaths and workBoundary are advisory markers; overlap is reported but never rejects or queues a worker.",
-			"Foreground execution waits; background=true returns immediately and delivers a follow-up result.",
-			"Use taskId only to correlate an existing root-owned task with one direct child. The root remains responsible for every task transition. Advanced chain, continuation, fanout, and typed workflow tools are deferred.",
-		].join(" "),
+		description: "Delegate assigned work to isolated specialist subagents.",
 		promptSnippet:
 			"Delegate foreground or background work to isolated specialist agents",
 		promptGuidelines: [
-			"Delegate one narrow, single-phase deliverable per leaf. Use role=coordinator only for one independently verifiable work package's bounded decomposition and reduction; the root retains program-level orchestration.",
-			"For developer work, add only the language, domain, and workflow skills needed by that item; skills add guidance and never grant tools or mutation authority.",
-			"Routing guidance is advisory: prefer Luna low for tool-heavy inspection and summarization, Sol low or Luna high for bounded planning, Sol low for coordinators and subagent team managers, Luna medium or high for implementation, and Sol low for review. Useful overrides remain allowed and are tracked; max effort requires operator approval.",
-			"A coordinator may invoke leaves; leaves and every depth-two child cannot invoke delegation or workflow tools.",
-			"Each child is capped at 64 turns; explicitly read-only fanout leaves are also capped at eight minutes.",
-			"Add workPaths or workBoundary markers when they help coordinate parallel work; modifying workers do not require a path declaration.",
-			"Use subagent with background=true for independent work, continue useful parent work, and consume the delivered follow-up instead of polling.",
-			"Use tool_search for deferred subagent continuation when a saved child session must be resumed.",
-			"For durable work, start a root-owned task, pass its taskId to the direct leaf or coordinator, validate the result, and close the task. The child never changes task state.",
+			"Use one narrow, independently verifiable deliverable per assigned subagent; use a Team Lead for one bounded package that requires delegated subagent work.",
+			"Treat boundary markers as coordination information, not permission to mutate files or use tools.",
+			"Use background execution for independent assigned work and consume its delivered follow-up.",
 		],
 		parameters: InitialSubagentSchemas.legacy,
 
@@ -3336,7 +3359,7 @@ export default function (pi: ExtensionAPI) {
 						const client = treeClientFromEnvironment();
 						if (!client)
 							throw new Error(
-								"Coordinator process is missing tree broker credentials.",
+								"Team Lead process is missing tree broker credentials.",
 							);
 						return client;
 					}
@@ -3917,28 +3940,18 @@ export default function (pi: ExtensionAPI) {
 				if (params.continue) requestedAgentNames.add(params.continue.agent);
 			}
 			const availableAgentNames = new Set(agents.map((agent) => agent.name));
-			if (availableAgentNames.has("teamlead"))
-				availableAgentNames.add("orchestrator");
 			if (params.taskId !== undefined && !selectedSingle) {
 				const error = new Error("taskId is only valid for single mode.");
 				recordBoundaryRejection(error);
 				throw error;
 			}
-			try {
+			if (!internalParams.__modernRequest) {
 				if (selectedTasks)
 					for (const task of selectedTasks)
-						validateLinkedTask(task.taskId, task.cwd, invocationCwd);
+						validateLegacyTaskReference(task.taskId);
 				if (selectedSingle)
-					validateLinkedTask(
-						selectedSingle.taskId,
-						selectedSingle.cwd,
-						invocationCwd,
-					);
-			} catch (error) {
-				recordBoundaryRejection(error);
-				throw error;
+					validateLegacyTaskReference(selectedSingle.taskId);
 			}
-
 			const unknownAgentNames = Array.from(requestedAgentNames).filter(
 				(name) => !availableAgentNames.has(name),
 			);
@@ -3984,7 +3997,7 @@ export default function (pi: ExtensionAPI) {
 				const requestedRole = forcedRole ?? item.role;
 				if (subscriptionRoot && requestedRole === "coordinator")
 					throw new Error(
-						"Bedrock Claude subscription-only orchestration keeps the selected Claude model as the root and does not allow coordinators.",
+						"Bedrock Claude subscription-only orchestration keeps the selected Claude model as the root and does not allow Team Leads.",
 					);
 				if (subscriptionRoot && typeof item.output === "string")
 					throw new Error(
@@ -4021,7 +4034,7 @@ export default function (pi: ExtensionAPI) {
 					!authority.tools.includes("subagent")
 				)
 					throw new Error(
-						`Coordinator agent ${item.agent} must have a leaf delegation capability.`,
+						`Team Lead agent ${item.agent} must have a subagent delegation capability.`,
 					);
 				// workPaths are advisory markers and are not required for writes.
 				if (subscriptionRoot) {
@@ -5111,7 +5124,9 @@ export default function (pi: ExtensionAPI) {
 
 	const registerSubagentTools = (
 		schemas: ReturnType<typeof createSubagentSchemas>,
+		agentNames: readonly string[],
 	) => {
+		const catalogSchemas = createCatalogSubagentSchemas(agentNames);
 		const withLegacyBranch = <T extends object>(
 			params: T,
 			branch: LegacyAdapterBranch,
@@ -5129,6 +5144,16 @@ export default function (pi: ExtensionAPI) {
 			ctx: ExtensionContext,
 		): Promise<AgentToolResult<SubagentDetails>> => {
 			const request = { kind, ...(params as Record<string, unknown>) } as unknown as SubagentExecutionRequest;
+			const catalog = agentDiscoveryFor(ctx, request.agentScope ?? "user");
+			const available = catalog.agents.map((agent) => agent.name).sort();
+			const unknown = request.items
+				.map((item) => item.agent)
+				.filter((agent, index, items) => !available.includes(agent) && items.indexOf(agent) === index);
+			if (unknown.length > 0) {
+				throw new Error(
+					`Unknown agent${unknown.length === 1 ? "" : "s"}: ${unknown.map((name) => `"${name}"`).join(", ")}. Available agents: ${available.map((name) => `"${name}"`).join(", ") || "none"}.`,
+				);
+			}
 			let prepared: PreparedSubagentExecution;
 			try {
 				prepared = prepareSubagentExecution(request, {
@@ -5157,8 +5182,12 @@ export default function (pi: ExtensionAPI) {
 		pi.registerTool({
 			name: "subagent_read",
 			label: "Subagent Read",
-			description: "Run one or more read-only subagent items using a closed positive read authority.",
-			parameters: SubagentReadSchema,
+			description: "Run read-only subagent items with a closed read authority.",
+			promptGuidelines: [
+				"Use for bounded inspection with an explicit deliverable and completion condition.",
+				"Read subagents cannot modify files, delegate, or use raw shell tools.",
+			],
+			parameters: catalogSchemas.read,
 			renderResult: subagentExecutor.renderResult,
 			execute(toolCallId, params, signal, onUpdate, ctx) {
 				return executeModern(toolCallId, "read", params, signal, onUpdate, ctx);
@@ -5167,18 +5196,56 @@ export default function (pi: ExtensionAPI) {
 		pi.registerTool({
 			name: "subagent_write",
 			label: "Subagent Write",
-			description: "Run one or more modifying subagent items. workPaths are advisory markers only.",
-			parameters: SubagentWriteSchema,
+			description: "Run modifying subagent items within their configured authority.",
+			promptGuidelines: [
+				"Use for bounded changes with an explicit deliverable and completion condition.",
+				"boundaryPaths are advisory coordination markers and do not grant mutation authority.",
+			],
+			parameters: catalogSchemas.write,
 			renderResult: subagentExecutor.renderResult,
 			execute(toolCallId, params, signal, onUpdate, ctx) {
 				return executeModern(toolCallId, "write", params, signal, onUpdate, ctx);
 			},
 		});
 		pi.registerTool({
+			name: "subagent_teamlead",
+			label: "Subagent Team Lead",
+			description: "Run independent Team Lead packages in parallel.",
+			promptGuidelines: [
+				"Use multiple items only for independently verifiable packages whose results compose into the root deliverable.",
+				"Give parallel modifying packages disjoint mutation boundaries.",
+				"boundary is advisory; enforcedBoundary is the filesystem boundary for governed tools.",
+			],
+			parameters: catalogSchemas.teamlead,
+			renderResult: subagentExecutor.renderResult,
+			execute(toolCallId, params, signal, onUpdate, ctx) {
+				return executeModern(toolCallId, "coordinator", params, signal, onUpdate, ctx);
+			},
+		});
+		pi.registerTool({
 			name: "subagent_coordinate",
 			label: "Subagent Coordinate",
-			description: "Run coordinator items that may delegate only to leaf workers. workBoundary is advisory.",
-			parameters: SubagentCoordinateSchema,
+			description: "Compatibility alias for subagent_teamlead.",
+			parameters: catalogSchemas.coordinate,
+			prepareArguments(args): any {
+				const input = args as Record<string, unknown>;
+				const items = Array.isArray(input.items)
+					? input.items.map((item) => {
+							const record = item as Record<string, unknown>;
+							const { task, ...rest } = record;
+							return { ...rest, instructions: task };
+						})
+					: input.items;
+				const { workspaceRoot, workBoundary, ...rest } = input;
+				return {
+					...rest,
+					items,
+					...(workspaceRoot === undefined
+						? {}
+						: { enforcedBoundary: workspaceRoot }),
+					...(workBoundary === undefined ? {} : { boundary: workBoundary }),
+				};
+			},
 			renderResult: subagentExecutor.renderResult,
 			execute(toolCallId, params, signal, onUpdate, ctx) {
 				return executeModern(toolCallId, "coordinator", params, signal, onUpdate, ctx);
@@ -5252,7 +5319,7 @@ export default function (pi: ExtensionAPI) {
 
 	};
 
-	registerSubagentTools(InitialSubagentSchemas);
+	registerSubagentTools(InitialSubagentSchemas, []);
 	refreshAgentTools = (agentNames) =>
-		registerSubagentTools(createSubagentSchemas(agentNames));
+		registerSubagentTools(createSubagentSchemas(agentNames), agentNames);
 }

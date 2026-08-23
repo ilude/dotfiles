@@ -1037,7 +1037,7 @@ export class SubagentTreeRootClient implements SubagentTreeController {
 	childEnvironment(permit: SubagentTreePermit): NodeJS.ProcessEnv {
 		const identity = identityEnvironment(permit);
 		if (!this.remoteCredentials)
-			throw new Error("Coordinator process is missing tree broker credentials.");
+			throw new Error("Team Lead process is missing tree broker credentials.");
 		return {
 			...identity,
 			PI_SUBAGENT_TREE_BROKER_HOST: this.remoteCredentials.host,

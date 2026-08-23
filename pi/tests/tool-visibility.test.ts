@@ -95,11 +95,19 @@ describe("tool visibility", () => {
 
 	it("keeps desired owner state current under a keyed visibility restriction", () => {
 		const pi = createMockPi();
-		const fixed = ["subagent", "subagent_continue", "task"];
-		for (const name of ["read", ...fixed, "plan_archive", "goal_complete"])
+		const fixed = ["subagent_read", "subagent_write", "subagent_teamlead", "task"];
+		for (const name of [
+			"read",
+			...fixed,
+			"subagent",
+			"subagent_coordinate",
+			"subagent_continue",
+			"plan_archive",
+			"goal_complete",
+		])
 			registerTool(pi, name);
 
-		deactivateTools(pi, ["subagent_continue", "plan_archive"]);
+		deactivateTools(pi, ["subagent", "subagent_coordinate", "subagent_continue", "plan_archive"]);
 		setToolVisibilityRestriction(
 			pi,
 			"fable",

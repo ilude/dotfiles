@@ -26,8 +26,8 @@ const FOREMAN_INSTRUCTION = [
 	"Require tests that protect distinct user-visible contracts, regressions, edge cases, or safety properties; do not create tests that merely restate implementation details or add no decision-relevant confidence.",
 ].join(" ");
 const SUBSCRIPTION_ROOT_INSTRUCTION = [
-	"You are the root orchestrator and must not delegate orchestration to a coordinator.",
-	"Use only direct openai-codex subscription leaves or bounded workflows for investigation, implementation, validation, and other work.",
+	"You are the root orchestrator and must not delegate orchestration to a Team Lead package.",
+	"Use only direct openai-codex subscription subagents or bounded assignments for investigation, implementation, validation, and other work.",
 	"Select modelSize small for bounded work (Luna high), medium for ordinary multi-file work (Luna medium), and large for complex cross-cutting work (Sol low).",
 	"You author plan, goal, and architecture artifacts directly under .specs; delegated leaves may investigate but must not make authorship decisions or write those artifacts.",
 	"Do not call other direct work tools, tool_search, subagent_continue, or supply custom output paths.",
@@ -36,7 +36,7 @@ const SUBSCRIPTION_VISIBILITY_KEY = "bedrock-claude-orchestrator";
 export const FABLE_CONTROL_TOOL_NAMES = [
 	"subagent_read",
 	"subagent_write",
-	"subagent_coordinate",
+	"subagent_teamlead",
 	"subagent_status",
 	"subagent_control",
 	"write",
@@ -132,14 +132,14 @@ function subscriptionDelegationViolation(
 ): string | undefined {
 	const requests = delegationRequests(input);
 	if (requests.some((request) => request.role === "coordinator"))
-		return `${SUBSCRIPTION_BOUNDARY}: the selected Claude model is the root orchestrator and cannot request a coordinator.`;
+		return `${SUBSCRIPTION_BOUNDARY}: the selected Claude model is the root orchestrator and cannot request a Team Lead package.`;
 	if (
 		requests.some(
 			(request) =>
 				request.agent === "teamlead" && request.role === undefined,
 		)
 	)
-		return `${SUBSCRIPTION_BOUNDARY}: the primary model owns orchestration. Specify role: "leaf" to run a direct leaf instead.`;
+		return `${SUBSCRIPTION_BOUNDARY}: the primary model owns orchestration. Specify a direct subagent role instead.`;
 	if (
 		requests.some(
 			(request) =>
@@ -364,10 +364,10 @@ export default function fableCommand(pi: ExtensionAPI): void {
 					reason: `${SUBSCRIPTION_BOUNDARY}: ${event.toolName} is not a permitted root control tool. Delegate the work to an openai-codex leaf.`,
 				};
 			}
-			if (event.toolName === "subagent_coordinate") {
+			if (event.toolName === "subagent_teamlead") {
 				return {
 					block: true,
-					reason: `${SUBSCRIPTION_BOUNDARY}: the selected Claude model is the root orchestrator and cannot request a coordinator.`,
+					reason: `${SUBSCRIPTION_BOUNDARY}: the selected Claude model is the root orchestrator and cannot request a Team Lead package.`,
 				};
 			}
 			if (event.toolName.startsWith("subagent")) {

@@ -6,10 +6,9 @@ import type {
 	SubagentTreeRunSnapshot,
 } from "./tree-runtime.js";
 
-export type SubagentControlSelector = {
-	readonly type: "run" | "tree";
-	readonly id: string;
-};
+export type SubagentControlSelector =
+	| { readonly type: "process"; readonly processId: string }
+	| { readonly type: "tree"; readonly id: string };
 
 export type SubagentControlInput = {
 	readonly action: "cancel" | "force_terminate" | "reconcile";
@@ -17,7 +16,7 @@ export type SubagentControlInput = {
 };
 
 export interface SubagentControlTargetOutcome {
-	readonly runId: string;
+	readonly processId: string;
 	readonly pid?: number;
 	readonly outcome: "cancelled" | "terminated" | "reconciled" | "failed" | "skipped";
 	readonly message?: string;
@@ -25,10 +24,10 @@ export interface SubagentControlTargetOutcome {
 
 export interface SubagentControlResult {
 	readonly action: SubagentControlInput["action"];
-	readonly selectedIds: readonly string[];
+	readonly selectedProcessIds: readonly string[];
 	readonly finalState: "cancelled" | "terminated" | "reconciled" | "partial";
 	readonly stoppedPids: readonly number[];
-	readonly releasedRunIds: readonly string[];
+	readonly releasedProcessIds: readonly string[];
 	readonly outcomes: readonly SubagentControlTargetOutcome[];
 }
 
@@ -58,9 +57,9 @@ function selectRuns(
 	runs: readonly SubagentTreeRunSnapshot[],
 	selector: SubagentControlSelector,
 ): SubagentTreeRunSnapshot[] {
-	const id = exactId(selector.id);
+	const id = exactId(selector.type === "process" ? selector.processId : selector.id);
 	const selected = runs.filter((run) =>
-		selector.type === "run" ? run.runId === id : run.treeId === id,
+		selector.type === "process" ? run.runId === id : run.treeId === id,
 	);
 	if (selected.length === 0)
 		throw new SubagentControlError(`No live broker boundary matches ${selector.type} ${id}.`);
@@ -74,8 +73,8 @@ export class SubagentControlFacade {
 	) {}
 
 	async execute(input: SubagentControlInput): Promise<SubagentControlResult> {
-		if (!input?.selector || (input.selector.type !== "run" && input.selector.type !== "tree"))
-			throw new SubagentControlError("An exact run or tree selector is required.");
+		if (!input?.selector || (input.selector.type !== "process" && input.selector.type !== "tree"))
+			throw new SubagentControlError("An exact process or tree selector is required.");
 		const selected = selectRuns(this.broker.list(), input.selector);
 		if (input.action === "reconcile") {
 			const releasable = selected.filter((run) => run.role !== "root");
@@ -87,14 +86,14 @@ export class SubagentControlFacade {
 			}
 			return {
 				action: input.action,
-				selectedIds: selected.map((run) => run.runId),
+				selectedProcessIds: selected.map((run) => run.runId),
 				finalState: "reconciled",
 				stoppedPids: [],
-				releasedRunIds,
+				releasedProcessIds: releasedRunIds,
 				outcomes: selected.map((run) =>
 					run.role === "root"
-						? { runId: run.runId, outcome: "skipped", message: "Root boundaries are retained." }
-						: { runId: run.runId, outcome: "reconciled" },
+						? { processId: run.runId, outcome: "skipped", message: "Root boundaries are retained." }
+						: { processId: run.runId, outcome: "reconciled" },
 				),
 			};
 		}
@@ -142,16 +141,17 @@ export class SubagentControlFacade {
 		const outcomes: SubagentControlTargetOutcome[] = selected.map((run) => {
 			const failure = terminationFailures.get(run.runId);
 			if (failure)
-				return { runId: run.runId, pid: run.pid, outcome: "failed", message: failure };
+				return { processId: run.runId, pid: run.pid, outcome: "failed", message: failure };
 			return {
-				runId: run.runId,
+				processId: run.runId,
 				...(run.pid === undefined ? {} : { pid: run.pid }),
 				outcome: input.action === "cancel" ? "cancelled" : "terminated",
 			};
 		});
 		return {
 			action: input.action,
-			selectedIds: selected.map((run) => run.runId),
+			selectedProcessIds: selected.map((run) => run.runId),
+			releasedProcessIds: [],
 			finalState:
 				terminationFailures.size > 0
 					? "partial"
@@ -159,7 +159,6 @@ export class SubagentControlFacade {
 						? "cancelled"
 						: "terminated",
 			stoppedPids,
-			releasedRunIds: [],
 			outcomes,
 		};
 	}

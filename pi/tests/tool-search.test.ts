@@ -46,6 +46,12 @@ const MOCK_TOOLS = [
 		parameters: {},
 		sourceInfo: { source: "extension", origin: "top-level" },
 	},
+	{
+		name: "subagent_coordinate",
+		description: "Historical coordinator tool",
+		parameters: {},
+		sourceInfo: { source: "extension", origin: "top-level" },
+	},
 ];
 
 describe("tool-search extension", () => {
@@ -135,16 +141,19 @@ describe("tool-search extension", () => {
 		});
 
 		it("does not discover hidden compatibility tools", async () => {
-			const result = await tool.execute(
-				"id",
-				{ query: "saved session continuation" },
-				undefined,
-				undefined,
-				{},
-			);
-			expect(result.details.matched).toBe(0);
-			expect(result.details.activated).toBeUndefined();
+			for (const query of ["saved session continuation", "historical coordinator"]) {
+				const result = await tool.execute(
+					"id",
+					{ query },
+					undefined,
+					undefined,
+					{},
+				);
+				expect(result.details.matched).toBe(0);
+				expect(result.details.activated).toBeUndefined();
+			}
 			expect(activeNames).not.toContain("subagent_continue");
+			expect(activeNames).not.toContain("subagent_coordinate");
 		});
 
 		it("does not activate matches when explicitly disabled", async () => {

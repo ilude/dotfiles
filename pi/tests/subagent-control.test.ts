@@ -20,10 +20,10 @@ describe("subagent live control", () => {
 		const { broker, root, control } = fixture();
 		const selected = await broker.acquire({ treeId: root.treeId, parentRunId: root.rootRunId, runId: "selected", role: "leaf" });
 		const sibling = await broker.acquire({ treeId: root.treeId, parentRunId: root.rootRunId, runId: "sibling", role: "leaf" });
-		const result = await control.execute({ action: "cancel", selector: { type: "run", id: "selected" } });
-		expect(result.selectedIds).toEqual(["selected"]);
+		const result = await control.execute({ action: "cancel", selector: { type: "process", processId: "selected" } });
+		expect(result.selectedProcessIds).toEqual(["selected"]);
 		expect(result.outcomes).toEqual([
-			{ runId: "selected", outcome: "cancelled" },
+			{ processId: "selected", outcome: "cancelled" },
 		]);
 		expect(broker.list().find((run) => run.runId === "selected")?.state).toBe("cancelled");
 		expect(broker.list().find((run) => run.runId === "sibling")?.state).toBe("active");
@@ -34,8 +34,8 @@ describe("subagent live control", () => {
 	it("rejects prefixes and unknown exact selectors before mutation", async () => {
 		const { broker, root, control } = fixture();
 		const permit = await broker.acquire({ treeId: root.treeId, parentRunId: root.rootRunId, runId: "complete-run-id", role: "leaf" });
-		await expect(control.execute({ action: "cancel", selector: { type: "run", id: "complete*" } })).rejects.toBeInstanceOf(SubagentControlError);
-		await expect(control.execute({ action: "cancel", selector: { type: "run", id: "complete" } })).rejects.toThrow("No live broker boundary");
+		await expect(control.execute({ action: "cancel", selector: { type: "process", processId: "complete*" } })).rejects.toBeInstanceOf(SubagentControlError);
+		await expect(control.execute({ action: "cancel", selector: { type: "process", processId: "complete" } })).rejects.toThrow("No live broker boundary");
 		expect(broker.list().find((run) => run.runId === "complete-run-id")?.state).toBe("active");
 		await permit.release();
 	});
@@ -50,7 +50,7 @@ describe("subagent live control", () => {
 			scopeLease: { repositoryRoot: process.cwd(), scopes: ["src/reconcile"] },
 		});
 		broker.cancel(root.rootRunId, stale.metadata.runId);
-		await control.execute({ action: "reconcile", selector: { type: "run", id: "stale" } });
+		await control.execute({ action: "reconcile", selector: { type: "process", processId: "stale" } });
 		const replacement = await broker.acquire({
 			treeId: root.treeId,
 			parentRunId: root.rootRunId,
@@ -110,7 +110,7 @@ describe("subagent live control", () => {
 				await permit.registerProcess({ pid: child.pid });
 				const result = await control.execute({
 					action: "force_terminate",
-					selector: { type: "run", id: "real-process" },
+					selector: { type: "process", processId: "real-process" },
 				});
 				expect(result).toMatchObject({
 					finalState: "terminated",
@@ -127,7 +127,7 @@ describe("subagent live control", () => {
 	it("rejects reconciliation when process liveness is ambiguous", async () => {
 		const { broker, root, control } = fixture();
 		const live = await broker.acquire({ treeId: root.treeId, parentRunId: root.rootRunId, runId: "live", role: "leaf" });
-		await expect(control.execute({ action: "reconcile", selector: { type: "run", id: "live" } })).rejects.toThrow("ambiguous process liveness");
+		await expect(control.execute({ action: "reconcile", selector: { type: "process", processId: "live" } })).rejects.toThrow("ambiguous process liveness");
 		expect(broker.list().find((run) => run.runId === "live")?.state).toBe("active");
 		await live.release();
 	});

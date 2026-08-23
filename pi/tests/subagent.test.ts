@@ -485,6 +485,24 @@ Execute workflow items with admitted tools only.
 		});
 		expect(properties.scope).toMatchObject({ minItems: 1 });
 		expect(properties.output).toMatchObject({ type: "boolean" });
+		const assertCatalogSchemas = () => {
+			for (const name of ["subagent_read", "subagent_write", "subagent_teamlead"]) {
+				const schema = pi._getTool(name)?.parameters as {
+					properties: { items: { items: { properties: { agent: { enum: string[] } } } } };
+				};
+				expect(schema.properties.items.items.properties.agent.enum).toEqual(
+					expect.arrayContaining(["builder", "typescript-pro", "tester"]),
+				);
+				expect(schema.properties.items.items.properties.agent.enum).not.toContain("worker");
+			}
+		};
+		assertCatalogSchemas();
+		const statusSchema = pi._getTool("subagent_status")?.parameters as { properties: Record<string, unknown> };
+		expect(statusSchema.properties).toHaveProperty("processId");
+		expect(statusSchema.properties).not.toHaveProperty("runId");
+		const controlSchema = pi._getTool("subagent_control")?.parameters as { properties: { selector: { anyOf: Array<{ properties: Record<string, unknown> }> } } };
+		expect(JSON.stringify(controlSchema)).toContain('"process"');
+		expect(JSON.stringify(controlSchema)).not.toContain('"run"');
 		expect(
 			(pi._getTool("subagent_continue")!.parameters as {
 				properties: object;
@@ -500,10 +518,71 @@ Execute workflow items with admitted tools only.
 			expect.arrayContaining([
 				"subagent_read",
 				"subagent_write",
-				"subagent_coordinate",
+				"subagent_teamlead",
 			]),
 		);
+		expect(pi.getActiveTools()).not.toContain("subagent_coordinate");
+		const coordinate = pi._getTool("subagent_coordinate");
+		if (!coordinate?.prepareArguments)
+			throw new Error("coordinate compatibility preparation is not registered");
+		const coordinateSchema = coordinate.parameters as {
+			properties: Record<string, unknown>;
+		};
+		expect(coordinateSchema.properties).toHaveProperty("workspaceRoot");
+		expect(coordinateSchema.properties).toHaveProperty("workBoundary");
+		expect(coordinateSchema.properties).not.toHaveProperty("enforcedBoundary");
+		expect(coordinateSchema.properties).not.toHaveProperty("boundary");
+		expect(
+			coordinate.prepareArguments({
+				workspaceRoot: tmpDir,
+				workBoundary: ["pi/extensions/subagent"],
+				maxWorkers: 1,
+				items: [
+					{
+						agent: "teamlead",
+						task: "Coordinate the compatibility check.",
+						cwd: tmpDir,
+						effort: "medium",
+						skills: ["typescript"],
+					},
+				],
+			}),
+		).toEqual({
+			enforcedBoundary: tmpDir,
+			boundary: ["pi/extensions/subagent"],
+			maxWorkers: 1,
+			items: [
+				{
+					agent: "teamlead",
+					instructions: "Coordinate the compatibility check.",
+					cwd: tmpDir,
+					effort: "medium",
+					skills: ["typescript"],
+				},
+			],
+		});
 		expect(pi.getActiveTools()).toContain("subagent_status");
+		const status = pi._getTool("subagent_status");
+		if (!status?.prepareArguments) throw new Error("status compatibility preparation is not registered");
+		const statusPrepared = status.prepareArguments({ runId: "legacy-process" });
+		expect(statusPrepared).toEqual({ runId: "legacy-process", processId: "legacy-process" });
+		const control = pi._getTool("subagent_control");
+		if (!control?.prepareArguments) throw new Error("control compatibility preparation is not registered");
+		expect(control.prepareArguments({ action: "cancel", selector: { type: "run", id: "legacy-process" } })).toEqual({
+			action: "cancel",
+			selector: { type: "process", processId: "legacy-process" },
+		});
+		for (const name of ["subagent_read", "subagent_write", "subagent_teamlead"]) {
+			await expect(
+				pi._getTool(name)!.execute(
+					`unknown-${name}`,
+					{ items: [{ agent: "worker", task: "Should reject" }] },
+					undefined,
+					undefined,
+					createMockCtx({ cwd: tmpDir }),
+				),
+			).rejects.toThrow(/Unknown agent.*Available agents:.*builder/);
+		}
 	});
 
 	it("lets the root inspect liveness and compare observable progress", async () => {
@@ -536,7 +615,7 @@ Execute workflow items with admitted tools only.
 
 		const detail = await status.execute(
 			"status-detail",
-			{ runId: "status-run", sinceActivityVersion: 0 },
+			{ processId: "status-run", sinceActivityVersion: 0 },
 			undefined,
 			undefined,
 			createMockCtx({ cwd: tmpDir }),
@@ -577,7 +656,7 @@ Execute workflow items with admitted tools only.
 
 		const grouped = await status.execute(
 			"status-group",
-			{ runId: "orchestration-group" },
+			{ processId: "orchestration-group" },
 			undefined,
 			undefined,
 			createMockCtx({ cwd: tmpDir }),
@@ -593,8 +672,8 @@ Execute workflow items with admitted tools only.
 		});
 		expect(grouped.details.runs).toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ runId: "group-run-1" }),
-				expect.objectContaining({ runId: "group-run-2" }),
+				expect.objectContaining({ processId: "group-run-1" }),
+				expect.objectContaining({ processId: "group-run-2" }),
 			]),
 		);
 	});
@@ -644,10 +723,18 @@ Execute workflow items with admitted tools only.
 	it("adds project agents to schemas only after trust validation", async () => {
 		const { pi } = await loadTool();
 		const sessionStart = pi._getHook("session_start")[0].handler;
+		const assertCatalog = (agent: string, present: boolean) => {
+			for (const name of ["subagent_read", "subagent_write", "subagent_teamlead"]) {
+				const schema = pi._getTool(name)!.parameters as any;
+				const names = schema.properties.items.items.properties.agent.enum;
+				expect(names.includes(agent)).toBe(present);
+			}
+		};
 		await sessionStart(
 			{ reason: "startup" },
 			createMockCtx({ cwd: tmpDir, isProjectTrusted: () => false }),
 		);
+		assertCatalog("tester", false);
 		let properties = (
 			pi._getTool("subagent")!.parameters as {
 				properties: { agent: { enum: string[] } };
@@ -655,6 +742,8 @@ Execute workflow items with admitted tools only.
 		).properties;
 		expect(properties.agent.enum).toContain("builder");
 		expect(properties.agent.enum).not.toContain("tester");
+		for (const name of ["subagent_read", "subagent_write", "subagent_teamlead"])
+			expect((pi._getTool(name)!.parameters as any).properties.items.items.properties.agent.enum).not.toContain("tester");
 
 		await fs.promises.writeFile(
 			path.join(tmpDir, ".pi", "agents", "tester-two.md"),
@@ -684,6 +773,27 @@ You are another test agent.
 				"tester-two",
 			]),
 		);
+		assertCatalog("tester", true);
+		assertCatalog("tester-two", true);
+
+		const otherCwd = path.join(tmpDir, "catalog-cwd");
+		await fs.promises.mkdir(path.join(otherCwd, ".pi", "agents"), { recursive: true });
+		await fs.promises.writeFile(
+			path.join(otherCwd, ".pi", "agents", "cwd-agent.md"),
+			"---\nname: cwd-agent\ndescription: Cwd test agent\n---\n\nCwd test agent.\n",
+			"utf8",
+		);
+		await sessionStart(
+			{ reason: "cwd_change" },
+			createMockCtx({ cwd: otherCwd, isProjectTrusted: () => true }),
+		);
+		assertCatalog("cwd-agent", true);
+		assertCatalog("tester", false);
+		await sessionStart(
+			{ reason: "reload" },
+			createMockCtx({ cwd: otherCwd, isProjectTrusted: () => true }),
+		);
+		assertCatalog("cwd-agent", true);
 	});
 
 	it("supports project scopes while retaining a default-user schema", async () => {
@@ -1056,6 +1166,110 @@ Do not load this agent.
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
+	it(
+		"inherits a Team Lead agent directory for the child catalog",
+		async () => {
+			mockSuccessfulSpawn();
+			const { pi } = await loadTool();
+			const teamlead = pi._getTool("subagent_teamlead");
+			if (!teamlead) throw new Error("Team Lead tool not registered");
+			const result = await teamlead.execute(
+				"call-nested-catalog",
+				{
+					items: [
+						{
+							agent: "teamlead",
+							instructions: "Inspect the nested catalog.",
+						},
+					],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.isError).not.toBe(true);
+			const spawnOptions = spawnMock.mock.calls[0][2] as {
+				cwd: string;
+				env: NodeJS.ProcessEnv;
+			};
+			expect(spawnOptions.cwd).toBe(tmpDir);
+			const childAgentDir = spawnOptions.env.PI_CODING_AGENT_DIR;
+			expect(childAgentDir).toBe(path.join(tmpDir, "agent"));
+
+			await fs.promises.writeFile(
+				path.join(childAgentDir!, "agents", "developer.md"),
+				`---
+name: developer
+description: Child developer agent
+tools: read, write
+---
+
+Implement the requested change.
+`,
+				"utf8",
+			);
+
+			const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			process.env.PI_CODING_AGENT_DIR = childAgentDir;
+			try {
+				const childPi = createMockPi();
+				const childMod = await import("../extensions/subagent/index.ts");
+				childMod.default(childPi as Parameters<typeof childMod.default>[0]);
+				await childPi
+					._getHook("session_start")[0]
+					.handler({ reason: "startup" }, createMockCtx({ cwd: tmpDir }));
+
+				const childWrite = childPi._getTool("subagent_write");
+				if (!childWrite) throw new Error("child subagent_write tool not registered");
+				const childWriteSchema = childWrite.parameters as {
+					properties: {
+						items: { items: { properties: { agent: { enum: string[] } } } };
+					};
+				};
+				const childAgents =
+					childWriteSchema.properties.items.items.properties.agent.enum;
+				expect(childAgents).toContain("developer");
+
+				const childResult = await childWrite.execute(
+					"child-developer",
+					{
+						items: [
+							{
+								agent: "developer",
+								instructions: "Implement the child change.",
+							},
+						],
+						agentScope: "user",
+					},
+					undefined,
+					undefined,
+					createMockCtx({ cwd: tmpDir }),
+				);
+				expect(childResult.isError).not.toBe(true);
+
+				await expect(
+					childWrite.execute(
+						"child-unknown",
+						{
+							items: [
+								{ agent: "unknown-profile", instructions: "Reject this." },
+							],
+							agentScope: "user",
+						},
+						undefined,
+						undefined,
+						createMockCtx({ cwd: tmpDir }),
+					),
+				).rejects.toThrow(/Unknown agent.*Available agents:.*developer/);
+			} finally {
+				if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+				else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
 
 	it(
 		"merges dispatch-selected skills with agent profile skills",
@@ -1995,7 +2209,7 @@ You are a test agent.
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
-	it("defaults teamlead to coordinator and preserves the orchestrator alias", async () => {
+	it("defaults teamlead to coordinator and rejects unregistered role words", async () => {
 		mockSuccessfulSpawn();
 		const { tool } = await loadTool();
 		const ctx = createMockCtx({ cwd: tmpDir });
@@ -2017,22 +2231,21 @@ You are a test agent.
 			"coordinator",
 		);
 
-		const alias = await tool.execute(
-			"compatible-orchestrator",
-			{
-				agent: "orchestrator",
-				task: "Coordinate work",
-				agentScope: "project",
-				background: false,
-			},
-			undefined,
-			undefined,
-			ctx,
-		);
-		expect(alias.isError).not.toBe(true);
-		expect(spawnMock.mock.calls[1][2].env.PI_SUBAGENT_TREE_ROLE).toBe(
-			"coordinator",
-		);
+		await expect(
+			tool.execute(
+				"unregistered-orchestrator",
+				{
+					agent: "orchestrator",
+					task: "Coordinate work",
+					agentScope: "project",
+					background: false,
+				},
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow(/Unknown agent.*Available agents/);
+		expect(spawnMock).toHaveBeenCalledTimes(1);
 	});
 
 	it("resolves every Fable child to an available subscription model", async () => {
@@ -2563,7 +2776,7 @@ You are a test agent.
 	);
 
 	it(
-		"links foreground and parallel runs to existing running tasks without changing task state",
+		"links foreground and parallel runs to existing tasks without changing task state",
 		async () => {
 			mockSuccessfulSpawn();
 			const { tool } = await loadTool();
@@ -2576,24 +2789,27 @@ You are a test agent.
 			const workspace = resolveTaskWorkspace(tmpDir);
 			const nestedCwd = path.join(tmpDir, "nested-workspace");
 			await fs.promises.mkdir(nestedCwd);
-			const singleTask = createTask({
-				origin: "other",
-				state: "running",
-				summary: "single linked work",
-				workspace,
-			});
-			const firstParallelTask = createTask({
-				origin: "other",
-				state: "running",
-				summary: "first parallel work",
-				workspace: resolveTaskWorkspace(nestedCwd),
-			});
-			const secondParallelTask = createTask({
-				origin: "other",
-				state: "running",
-				summary: "second parallel work",
-				workspace,
-			});
+			const taskStates = [
+				"unassigned",
+				"assigned",
+				"completed",
+				"failed",
+				"skipped",
+			] as const;
+			const linkedTasks = taskStates.map((state, index) =>
+				createTask({
+					origin: "other",
+					state,
+					summary: `linked work ${index}`,
+					workspace:
+						index === 1
+							? resolveTaskWorkspace(path.join(tmpDir, "foreign"))
+							: workspace,
+					sessionId: `other-session-${index}`,
+				}),
+			);
+			const [singleTask, firstParallelTask, secondParallelTask, fourthTask, fifthTask] =
+				linkedTasks;
 			const ctx = createMockCtx({ cwd: tmpDir });
 
 			const single = await tool.execute(
@@ -2632,6 +2848,18 @@ You are a test agent.
 							taskId: secondParallelTask.id,
 							role: "coordinator",
 						},
+						{
+							agent: "tester",
+							task: "Check fourth part",
+							taskId: fourthTask.id,
+							role: "coordinator",
+						},
+						{
+							agent: "tester",
+							task: "Check fifth part",
+							taskId: fifthTask.id,
+							role: "coordinator",
+						},
 					],
 					agentScope: "project",
 					background: false,
@@ -2643,43 +2871,33 @@ You are a test agent.
 			expect(parallel.details.results.map((result) => result.taskId)).toEqual([
 				firstParallelTask.id,
 				secondParallelTask.id,
+				fourthTask.id,
+				fifthTask.id,
 			]);
-			for (const task of [singleTask, firstParallelTask, secondParallelTask])
-				expect(getTask(task.id)?.state).toBe("running");
+			expect(single.details.results[0].taskId).toBe(singleTask.id);
+			for (const [task, state] of linkedTasks.map((task, index) => [
+				[task, taskStates[index]],
+			] as const)) {
+				expect(getTask(task.id)?.state).toBe(state);
+			}
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
-	it("rejects invalid task links atomically before spawning", async () => {
+	it("rejects only missing and tombstoned task links before spawning", async () => {
 		const { tool } = await loadTool();
-		const {
-			createTask,
-			resolveTaskWorkspace,
-			tombstoneTask,
-		} = await import("../lib/task-registry.ts");
-		const workspace = resolveTaskWorkspace(tmpDir);
-		const pending = createTask({
-			origin: "other",
-			summary: "pending linked work",
-			workspace,
-		});
+		const { createTask, tombstoneTask, listTasks } = await import(
+			"../lib/task-registry.ts"
+		);
 		const deleted = createTask({
 			origin: "other",
-			state: "running",
+			state: "assigned",
 			summary: "deleted linked work",
-			workspace,
 		});
 		tombstoneTask(deleted.id);
-		const foreign = createTask({
-			origin: "other",
-			state: "running",
-			summary: "foreign linked work",
-			workspace: resolveTaskWorkspace(path.join(tmpDir, "foreign")),
-		});
 		const ctx = createMockCtx({ cwd: tmpDir });
-		const invalidIds = ["missing-task", pending.id, deleted.id, foreign.id];
 
-		for (const taskId of invalidIds) {
+		for (const taskId of ["missing-task", deleted.id]) {
 			await expect(
 				tool.execute(
 					`call-invalid-task-${taskId}`,
@@ -2693,8 +2911,11 @@ You are a test agent.
 					undefined,
 					ctx,
 				),
-			).rejects.toThrow(/Task (?:not found:|.*(?:different workspace|must be running))/);
+			).rejects.toThrow(/Task not found:/);
 		}
+		expect(
+			listTasks({ includeTombstones: true }).find((task) => task.id === deleted.id),
+		).toMatchObject({ state: "skipped", deletedAt: expect.any(String) });
 		expect(spawnMock).not.toHaveBeenCalled();
 	});
 
@@ -2753,7 +2974,7 @@ You are a test agent.
 			if (!status) throw new Error("subagent_status tool not registered");
 			const inspected = await status.execute(
 				"status-linked-background",
-				{ runId, sinceActivityVersion: 0 },
+				{ processId: runId, sinceActivityVersion: 0 },
 				undefined,
 				undefined,
 				ctx,
@@ -2772,7 +2993,7 @@ You are a test agent.
 				customType: "subagent-result",
 				details: { taskIds: [task.id], failed: true },
 			});
-			expect(getTask(task.id)?.state).toBe("running");
+			expect(getTask(task.id)?.state).toBe("assigned");
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -3419,7 +3640,7 @@ You are a test agent.
 					cost: null,
 				},
 			});
-			expect(getTask(task.id)?.state).toBe("running");
+			expect(getTask(task.id)?.state).toBe("assigned");
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

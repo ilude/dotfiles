@@ -21,6 +21,7 @@ export type HistoricalSubagentToolName =
 
 type LegacyItem = {
 	agent?: unknown;
+	instructions?: unknown;
 	task?: unknown;
 	prompt?: unknown;
 	session?: unknown;
@@ -28,6 +29,7 @@ type LegacyItem = {
 	role?: unknown;
 	scope?: unknown;
 	workPaths?: unknown;
+	boundaryPaths?: unknown;
 	cwd?: unknown;
 	effort?: unknown;
 	output?: unknown;
@@ -42,8 +44,10 @@ type LegacyInput = LegacyItem & {
 	readOnlyFanout?: unknown;
 	agentScope?: unknown;
 	workspaceRoot?: unknown;
+	enforcedBoundary?: unknown;
 	cwd?: unknown;
 	workBoundary?: unknown;
+	boundary?: unknown;
 	outputSchema?: unknown;
 	background?: unknown;
 	model?: unknown;
@@ -89,17 +93,17 @@ function stringArray(value: unknown): readonly string[] | undefined {
 
 function itemFromLegacy(item: LegacyItem): ReadItem | WriteItem | CoordinatorItem {
 	const agent = stringValue(item.agent);
-	const task = stringValue(item.task ?? item.prompt);
-	if (!agent || !task) throw new Error("Legacy subagent items require agent and task.");
+	const instructions = stringValue(item.instructions ?? item.task ?? item.prompt);
+	if (!agent || !instructions) throw new Error("Subagent items require an agent and instructions.");
 	const common = {
 		agent,
-		task,
+		instructions,
 		...(stringValue(item.taskId) ? { taskId: stringValue(item.taskId) } : {}),
 		...(stringValue(item.cwd) ? { cwd: stringValue(item.cwd) } : {}),
 		...(stringValue(item.effort) ? { effort: stringValue(item.effort) } : {}),
 	};
-	const workPaths = stringArray(item.workPaths ?? item.scope);
-	return workPaths ? { ...common, workPaths } : common;
+	const boundaryPaths = stringArray(item.boundaryPaths ?? item.workPaths ?? item.scope);
+	return boundaryPaths ? { ...common, boundaryPaths } : common;
 }
 
 function kindForItems(items: readonly LegacyItem[], topLevelRole: unknown): "read" | "write" | "coordinator" {
@@ -115,7 +119,7 @@ function requestFromItems(
 	role: unknown,
 ): SubagentExecutionRequest {
 	const kind = kindForItems(items, role);
-	const workspaceRoot = stringValue(input.workspaceRoot ?? input.cwd);
+	const workspaceRoot = stringValue(input.enforcedBoundary ?? input.workspaceRoot ?? input.cwd);
 	const agentScope = input.agentScope === "project" || input.agentScope === "both" || input.agentScope === "user"
 		? input.agentScope
 		: undefined;
@@ -124,7 +128,7 @@ function requestFromItems(
 			const base = itemFromLegacy(item);
 			return {
 				agent: base.agent,
-				task: base.task,
+				instructions: base.instructions,
 				...(base.taskId ? { taskId: base.taskId } : {}),
 				...(base.cwd ? { cwd: base.cwd } : {}),
 				...(base.effort ? { effort: base.effort } : {}),
@@ -133,10 +137,10 @@ function requestFromItems(
 		return {
 			kind,
 			items: coordinatorItems,
-			...(workspaceRoot ? { workspaceRoot } : {}),
+			...(workspaceRoot ? { enforcedBoundary: workspaceRoot } : {}),
 			...(agentScope ? { agentScope } : {}),
-			...(stringArray(input.workBoundary ?? input.scope)
-				? { workBoundary: stringArray(input.workBoundary ?? input.scope) }
+			...(stringArray(input.boundary ?? input.workBoundary ?? input.scope)
+				? { boundary: stringArray(input.boundary ?? input.workBoundary ?? input.scope) }
 				: {}),
 		};
 	}
@@ -144,7 +148,7 @@ function requestFromItems(
 	return {
 		kind,
 		items: mapped as ReadItem[] & WriteItem[],
-		...(workspaceRoot ? { workspaceRoot } : {}),
+		...(workspaceRoot ? { enforcedBoundary: workspaceRoot } : {}),
 		...(agentScope ? { agentScope } : {}),
 	};
 }

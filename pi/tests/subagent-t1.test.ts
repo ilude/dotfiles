@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	READ_TOOL_ALLOWLIST,
-	SubagentCoordinateSchema,
+	SubagentTeamleadSchema,
 	SubagentReadSchema,
 	SubagentWriteSchema,
 	prepareSubagentExecution,
@@ -34,7 +34,7 @@ describe("subagent T1 execution contracts", () => {
 	it("keeps role-specific fields out of the three modern schemas", () => {
 		const readItem = schemaProperties(schemaProperties(SubagentReadSchema).items?.items);
 		const writeItem = schemaProperties(schemaProperties(SubagentWriteSchema).items?.items);
-		const coordinator = schemaProperties(SubagentCoordinateSchema);
+		const coordinator = schemaProperties(SubagentTeamleadSchema);
 		const coordinatorItem = schemaProperties(coordinator.items?.items);
 
 		expect(readItem).not.toHaveProperty("role");
@@ -46,7 +46,9 @@ describe("subagent T1 execution contracts", () => {
 		expect(coordinatorItem).not.toHaveProperty("role");
 		expect(coordinatorItem).not.toHaveProperty("scope");
 		expect(coordinatorItem).not.toHaveProperty("workPaths");
-		expect(coordinator).toHaveProperty("workBoundary");
+		expect(coordinatorItem).toHaveProperty("instructions");
+		expect(coordinator).toHaveProperty("boundary");
+		expect(coordinator).not.toHaveProperty("workBoundary");
 		expect(readItem).toHaveProperty("skills");
 		expect(writeItem).toHaveProperty("skills");
 		expect(coordinatorItem).toHaveProperty("skills");
@@ -287,6 +289,10 @@ describe("subagent T1 execution contracts", () => {
 		const legacy = adaptLegacySubagentInvocation("subagent", fixtures.subagent);
 		if (!legacy.request || legacy.request.kind !== "write") throw new Error("legacy request missing");
 		expect(legacy.request.items[0]).not.toHaveProperty("role");
-		expect(legacy.request.items[0]).toMatchObject({ agent: "reader", task: "read", workPaths: ["src"] });
+		expect(legacy.request.items[0]).toMatchObject({
+			agent: "reader",
+			instructions: "read",
+			boundaryPaths: ["src"],
+		});
 	});
 });

@@ -6,6 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { findSkillByName } from "../../lib/skill-discovery.js";
+import type { TSchema } from "typebox";
 
 export type AgentScope = "user" | "project" | "both";
 
@@ -37,6 +38,42 @@ export interface AgentConfig {
 export interface AgentDiscoveryResult {
 	agents: AgentConfig[];
 	projectAgentsDir: string | null;
+}
+
+/** Add the current catalog choices to every model-facing agent property. */
+export function withAgentCatalog<T extends TSchema>(
+	schema: T,
+	agentNames: readonly string[],
+): T {
+	const visit = (value: unknown): unknown => {
+		if (Array.isArray(value)) return value.map(visit);
+		if (value === null || typeof value !== "object") return value;
+		const record = value as Record<string, unknown>;
+		const result: Record<string, unknown> = {};
+		for (const [key, child] of Object.entries(record)) {
+			if (key === "properties" && child && typeof child === "object") {
+				const properties: Record<string, unknown> = {};
+				for (const [propertyName, property] of Object.entries(
+					child as Record<string, unknown>,
+				)) {
+					const visitedProperty = visit(property);
+					properties[propertyName] =
+						propertyName === "agent" &&
+						property &&
+						typeof property === "object"
+							? {
+									...(visitedProperty as Record<string, unknown>),
+									enum: [...agentNames],
+									type: "string",
+							  }
+							: visitedProperty;
+				}
+				result[key] = properties;
+			} else result[key] = visit(child);
+		}
+		return result;
+	};
+	return visit(schema) as T;
 }
 
 function readDirEntries(dir: string): fs.Dirent[] {

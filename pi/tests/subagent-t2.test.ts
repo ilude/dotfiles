@@ -58,10 +58,10 @@ describe("subagent T2 coordinator budgets", () => {
 		const admission = admitCoordinatorDescendants(["one", "two", "three"], 1);
 		expect(admission.admitted).toEqual(["one"]);
 		expect(admission.gaps).toEqual([
-			"descendant worker budget exhausted: 2 worker(s) not admitted",
+			"subagent budget exhausted: 2 subagent(s) not admitted",
 		]);
 		expect(formatCoordinatorGaps(admission.gaps)).toBe(
-			"\n\nGaps:\n- descendant worker budget exhausted: 2 worker(s) not admitted",
+			"\n\nGaps:\n- subagent budget exhausted: 2 subagent(s) not admitted",
 		);
 	});
 });
