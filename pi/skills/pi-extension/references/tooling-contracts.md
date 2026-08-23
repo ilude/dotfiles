@@ -12,6 +12,17 @@ This index records stable public and normative semantics for Pi extensions and t
 ## Contract index
 
 - [Footer and extension status](#footer-and-extension-status)
+- [Commit workflow](contracts/commit-workflow.md)
+- [Damage control](contracts/damage-control.md)
+- [Safe file mutation](contracts/safe-file-mutation.md)
+- [Quality gates and repair](contracts/quality-gates.md)
+- [Instruction and path context](contracts/instruction-context.md)
+- [Interactive workflow lifecycle](contracts/workflow-lifecycle.md)
+- [Goal and loop execution](contracts/goal-and-loop.md)
+- [Session lifecycle and compaction](contracts/session-lifecycle.md)
+- [Observability, transcripts, and usage](contracts/observability.md)
+- [Provider and model lifecycle](contracts/provider-model-lifecycle.md)
+- [Onclave integration](contracts/onclave.md)
 - [Subagents and durable tasks](contracts/subagents-and-tasks.md)
 - [Managed background terminals](contracts/background-terminals.md)
 - [Session export and summaries](contracts/session-export.md)

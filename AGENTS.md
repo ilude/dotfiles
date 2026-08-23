@@ -107,3 +107,5 @@ Key paths:
 Windows packages live in `winget/configuration/{core,work,dev}.dsc.yaml`; edit the applicable file and preserve `id: <id>  # <Display Name>` with two spaces before `#` so `install.ps1 -ListPackages` continues to work.
 
 Current Pi expertise ownership and implementation notes live in [`pi/docs/expertise-layering.md`](pi/docs/expertise-layering.md); do not duplicate them here.
+
+Pi extension and tool contracts are indexed in [`pi/skills/pi-extension/references/tooling-contracts.md`](pi/skills/pi-extension/references/tooling-contracts.md). Before changing stable public, cross-cutting, or operator-facing Pi behavior, read the owning contract. When an explicit user decision changes that behavior, update the owning contract in the same change so it preserves the accepted current intent. Do not update contracts for implementation-only changes, transient session choices, or speculative future behavior; Git history preserves superseded decisions.
