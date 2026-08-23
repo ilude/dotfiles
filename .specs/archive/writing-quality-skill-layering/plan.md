@@ -1,7 +1,8 @@
 ---
 created: 2026-07-27
-status: draft
-completed:
+status: superseded
+superseded: 2026-08-23
+superseded_by: ../pi-workflow-contract-lifecycle/PRD.md
 ---
 
 # Plan: Layer Writing Quality into Existing Pi Skills
@@ -64,7 +65,8 @@ Pi uses the existing `no-ai-slop`, `planning`, `prd`, and `docs` skills as the s
 
 ## Execution Status
 
-- State: in progress
-- Blocker: exact slash-workflow checkpoint requires a reloaded interactive Pi session
-- Next: T3 manual `/prd-it -> /plan-it -> /review-it` checkpoint
-- Resume: `/do-it .specs/writing-quality-skill-layering/plan.md`
+- State: superseded
+- Completed: T1 and T2 writing and workflow ownership changes.
+- Retired: T3 depended on `/prd-it` and `/review-it`, which the successor PRD removes from the public workflow.
+- Successor: `.specs/pi-workflow-contract-lifecycle/PRD.md`
+- Remaining validation was not executed.

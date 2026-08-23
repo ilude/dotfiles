@@ -1,3 +1,8 @@
+---
+status: superseded
+superseded: 2026-08-23
+---
+
 # Plan: Rootless Podman Failure Hardening
 
 ## Goal
@@ -40,3 +45,10 @@ Replace the active rootless `podman-compose` systemd wrappers with Podman Quadle
   **Acceptance:** `searxng-onramp-app.service`, `onclave-rabbitmq.service`, and `onclave-core.service` cold-start cleanly and recover from a killed main process within 120 seconds; SearXNG behavior and Onclave state remain intact; Onclave discovers agents and completes a correlated request/reply; no migrated enabled service retains an active Compose wrapper/pod; `just validate` passes.  
   **Verification:** Run the targeted service apply and endpoint checks for SearXNG, then repeat for Onclave and check `/health`, `onclave_agents`, and one `onclave_send` exchange. Finish with `just validate` exactly once.  
   **Rollback and stop condition:** Roll back only the service currently being migrated using its previous role revision and verified restore path, then rerun its original endpoint/state checks. Any failed live mutation blocks later rollouts.
+
+## Execution Status
+
+- State: superseded
+- Reason: Standalone Menos was retired, Onclave now owns its state, and the current service and backup layout no longer matches this plan.
+- Remaining concern: Onclave and SearXNG still use Compose wrappers, but any supervision work requires a new current-state plan.
+- Remaining tasks were not executed.

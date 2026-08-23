@@ -1,7 +1,8 @@
 ---
 created: 2026-05-02
-status: draft
-completed:
+status: superseded
+superseded: 2026-08-23
+superseded_by: ../remote-agent-platform/PRD.md
 ---
 
 # Plan: Multipass + Infisical Pi/Claude YOLO Workflow User Stories
@@ -183,3 +184,10 @@ The plan succeeds when `.specs/multipass-yolo-workflows/` contains a complete de
 - Do not edit `.env` files while executing this plan.
 - Prefer documenting commands and safety boundaries over running privileged Multipass/Docker setup during this plan.
 - Later implementation should be reviewed before execution because it will touch VM provisioning, secrets, and possibly credential workflows.
+
+## Execution Status
+
+- State: superseded
+- Reason: The remote agent platform now uses Proxmox, Herdr, Onclave, and BWS instead of Multipass and Infisical.
+- Successor: `.specs/remote-agent-platform/PRD.md`
+- Remaining tasks were not executed.
