@@ -70,14 +70,10 @@ Add only when requested or needed by the product decision.
 
 ### Plan Handoff
 
-Add only when planning or review handoff is requested.
+Add only when a planning handoff is requested.
 
 - Recommended next command:
   ```bash
   /plan-it .specs/<slug>/PRD.md
-  ```
-- Review command:
-  ```bash
-  /review-it .specs/<slug>/PRD.md
   ```
 - Notes for planner:

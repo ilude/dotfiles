@@ -5,7 +5,7 @@ model: openai-codex/gpt-5.6-sol
 effort: low
 skills:
   - analysis-workflow
-tools: read, grep, review_artifact_write
+tools: read, grep
 ---
 
 # Reviewer

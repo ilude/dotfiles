@@ -1,6 +1,6 @@
 # Execute Requested Work
 
-Execute `$ARGUMENTS` as either a raw task or a plan path ending in `plan.md`.
+Execute `$ARGUMENTS` as either a raw task or a plan path ending in `plan.md` inside exactly one owned branch/worktree beneath repository-root `.worktrees/`. Raw work is retained only after ownership is established.
 
 If no input is provided, ask: "What should I do? Describe the task."
 
@@ -32,6 +32,10 @@ After a task's relevant check passes, mark its checkbox complete and save the pl
 
 Execute plan tasks directly. Delegate only when independent workstreams materially improve execution, and create durable tasks only when they add useful cross-turn or dependency tracking. Do not mirror the plan checklist into another tracking system by default.
 
+## Worktree lifecycle
+
+Before any read that may lead to mutation, establish or resume the single durable ownership record for the workflow branch and worktree. Confine every modification, validation, plan archive, and artifact operation to that worktree. Closeout archives the complete spec directory on the workflow branch, commits all in-scope artifacts, merges the branch with `--no-ff` into the primary worktree branch, verifies the merged HEAD, marks ownership complete, and removes the owned worktree and branch. Dirty, unmerged, merge-conflict, failed-merge, or failed-cleanup states stop and preserve the recovery worktree.
+
 ## Boundaries
 
 - Keep secrets and sensitive output out of plans and reports.
@@ -50,11 +54,11 @@ Run only checks that can establish whether the changed contract works.
 
 On failure, isolate the changed boundary, make the smallest in-scope repair, and rerun only the failing check and any directly dependent check. Stop when repair requires unavailable access, destructive action, user judgment, or scope expansion.
 
-Do not perform post-implementation review unless the closed contract explicitly requires one. When it does, perform one review pass, apply at most one coherent repair for mapped findings, then validate directly. Do not review the repair unless direct validation still fails; if it fails, limit further review to the failing boundary.
+Do not perform a second review path. For a canonical plan, use only the correctness review and subtractive gate already recorded by `/plan-it`; validate directly against the closed contract.
 
 ## Completion
 
-For a raw task, stop when the settled completion evidence passes. Complete any root task created for the work only after that evidence passes.
+For a raw task, after the settled completion evidence passes, call `workflow_complete`. Completion requires its verified commit, `--no-ff` merge, primary HEAD check, and owned worktree/branch cleanup. Complete any root task only after that tool succeeds.
 
 For an incomplete plan, keep it at its existing path and save the current status and exact next ready task.
 
@@ -63,9 +67,9 @@ For a canonical `.specs/{slug}/plan.md`, completion requires all of these steps:
 1. Finish every required task and prove the plan's `Completion Evidence` with relevant validation.
 2. Mark the required task checkboxes, validation checkboxes, frontmatter status, completion date, and execution status complete.
 3. Call `plan_archive` with the original plan path. Do not use shell commands or file edits to move the plan.
-4. Confirm the tool returned `.specs/archive/{slug}/plan.md` and report that archived path.
+4. Confirm the tool returned `.specs/archive/{slug}/plan.md`, committed the workflow branch, merged it with `--no-ff` into the clean primary branch, verified merged HEAD, and removed only the owned worktree and branch.
 
-The plan is not complete until `plan_archive` succeeds. The tool moves the entire spec directory so supporting artifacts remain with the plan, and it refuses incomplete plans, unsafe paths, and archive collisions rather than merging or overwriting. A plan already under `.specs/archive/` needs no further move.
+The plan is not complete until `plan_archive` succeeds. The tool archives the entire spec directory with its supporting artifacts, commits in-scope work, merges and verifies the primary branch, and performs owned cleanup. It refuses incomplete plans, unsafe paths, archive collisions, dirty primary state, branch changes, and unresolved merge conflicts. A plan already under `.specs/archive/` needs no further move.
 
 ## Report
 

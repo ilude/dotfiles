@@ -13,7 +13,33 @@ vi.mock("node:child_process", async (importOriginal) => {
 	return { ...actual, spawn: spawnMock };
 });
 
+vi.mock("../lib/workflow-worktree", () => ({
+	ensureWorkflowWorktree: vi.fn(async (input: { cwd: string; workflow: string; workflowId: string; slug: string }) => ({
+		resumed: false,
+		ownership: {
+			version: 1,
+			workflow: input.workflow,
+			workflowId: input.workflowId,
+			repoRoot: input.cwd,
+			primaryWorktree: input.cwd,
+			primaryBranch: "main",
+			initialPrimaryHead: "initial-head",
+			branch: `workflow/${input.slug}`,
+			worktree: input.cwd,
+			createdAt: "2026-08-23T00:00:00.000Z",
+			updatedAt: "2026-08-23T00:00:00.000Z",
+			state: "active",
+		},
+	})),
+	closeWorkflowWorktree: vi.fn(),
+	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
+	readWorkflowOwnershipRecord: vi.fn(() => undefined),
+	workflowSlugFromPlan: (value: string) => value.match(/\.specs\/([^/]+)\/plan\.md/)?.[1] ?? "workflow",
+	workflowSlugFromRequest: (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "workflow",
+}));
+
 import goal, { goalTestApi } from "../extensions/goal.ts";
+import * as workflowWorktree from "../lib/workflow-worktree.ts";
 import { readLoopJob, updateLoopJob } from "../extensions/loop.ts";
 import { getTask, transitionTask } from "../lib/task-registry.ts";
 import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.ts";
@@ -1003,28 +1029,27 @@ describe("goal extension", () => {
 		execFileSync("git", ["commit", "-q", "-m", "docs: complete plan"], {
 			cwd: tmp,
 		});
-		const archived = await complete?.execute("complete-2", {
-			summary: "Finished the verified item",
-			knownGaps: "None",
-			...completionEvidence,
+		const mergedHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: tmp, encoding: "utf8" }).trim();
+		vi.mocked(workflowWorktree.readWorkflowOwnershipForWorktree).mockReturnValue({
+			version: 1,
+			workflow: "goal",
+			workflowId: "goal:fixture",
+			repoRoot: tmp,
+			primaryWorktree: tmp,
+			primaryBranch: "master",
+			initialPrimaryHead: mergedHead,
+			branch: "workflow/demo",
+			worktree: tmp,
+			createdAt: "2026-08-23T00:00:00.000Z",
+			updatedAt: "2026-08-23T00:00:00.000Z",
+			state: "active",
 		});
-		expect(archived.isError).not.toBe(true);
-		expect(archived.content[0].text).toContain(
-			"Archived .specs/demo/plan.md to .specs/archive/demo/plan.md",
-		);
-		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
-		expect(readLoopJob(jobId).goal).toMatchObject({
-			state: "running",
-			closeoutState: "archived_pending_commit",
-			archivedPlanPath: ".specs/archive/demo/plan.md",
+		vi.mocked(workflowWorktree.closeWorkflowWorktree).mockResolvedValue({
+			...(workflowWorktree.readWorkflowOwnershipForWorktree(tmp) as any),
+			state: "complete",
+			mergedHead,
 		});
-		execFileSync("git", ["add", "--", ".specs/demo", ".specs/archive/demo"], {
-			cwd: tmp,
-		});
-		execFileSync("git", ["commit", "-q", "-m", "docs: archive completed plan"], {
-			cwd: tmp,
-		});
-		const accepted = await complete?.execute("complete-3", {
+		const accepted = await complete?.execute("complete-2", {
 			summary: "Finished the verified item",
 			knownGaps: "None",
 			...completionEvidence,
@@ -1032,9 +1057,11 @@ describe("goal extension", () => {
 		expect(accepted.isError, accepted.content[0].text).not.toBe(true);
 		expect(accepted.content[0].text).toContain("Repository state:");
 		expect(accepted.content[0].text).toContain("Exact next action:");
+		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
 		expect(readLoopJob(jobId).goal).toMatchObject({
 			state: "completed",
 			finalWorktree: "clean",
+			archivedPlanPath: ".specs/archive/demo/plan.md",
 		});
 		const immutable = await progress?.execute("after-complete", {
 			action: "validation",

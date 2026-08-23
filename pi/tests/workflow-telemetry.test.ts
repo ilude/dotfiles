@@ -58,7 +58,7 @@ describe("workflow telemetry", () => {
 
 	it("appends one runtime episode and one dispatch event as JSONL", () => {
 		const episode = startWorkflowEpisode({
-			command: "review-it",
+			command: "do-it",
 			args: ".specs/example/plan.md",
 			artifactPath: ".specs/example/plan.md",
 			repoRoot: "C:/repo",
@@ -67,8 +67,8 @@ describe("workflow telemetry", () => {
 
 		expect(episode).toEqual({
 			schema_version: 1,
-			episode_id: "2026-05-26T12-10-42-000Z-review-it-specs-example",
-			command: "review-it",
+			episode_id: "2026-05-26T12-10-42-000Z-do-it-specs-example",
+			command: "do-it",
 			artifact_path: ".specs/example/plan.md",
 			repo_root: "C:/repo",
 			started_at: "2026-05-26T12:10:42.000Z",
@@ -80,7 +80,7 @@ describe("workflow telemetry", () => {
 			workflowTelemetryDir,
 		);
 		expect(vi.mocked(fs.appendFileSync).mock.calls[0][1]).toContain(
-			'"command":"review-it"',
+			'"command":"do-it"',
 		);
 		expect(vi.mocked(fs.appendFileSync).mock.calls[1][1]).toContain(
 			'"event_type":"command"',

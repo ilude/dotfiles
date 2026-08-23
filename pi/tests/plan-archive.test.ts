@@ -1,10 +1,26 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import registerWorkflowCommands from "../extensions/workflow-commands.ts";
 import { archiveCompletedPlan } from "../lib/plan-archive.ts";
+import * as workflowWorktree from "../lib/workflow-worktree.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
+
+vi.mock("../lib/workflow-worktree", () => ({
+	ensureWorkflowWorktree: vi.fn(async (input: { cwd: string; workflow: string; workflowId: string; slug: string }) => ({
+		resumed: false,
+		ownership: { version: 1, workflow: input.workflow, workflowId: input.workflowId, repoRoot: input.cwd, primaryWorktree: input.cwd, primaryBranch: "main", initialPrimaryHead: "initial-head", branch: `workflow/${input.slug}`, worktree: input.cwd, createdAt: "2026-08-23T00:00:00.000Z", updatedAt: "2026-08-23T00:00:00.000Z", state: "active" },
+	})),
+	closeWorkflowWorktree: vi.fn(async (input: any) => {
+		await input.archivePlan?.(input.worktree.ownership.worktree, input.planPath);
+		return { ...input.worktree.ownership, state: "complete", mergedHead: "merged-head" };
+	}),
+	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
+	readWorkflowOwnershipRecord: vi.fn(() => undefined),
+	workflowSlugFromPlan: (value: string) => value.match(/\.specs\/([^/]+)\/plan\.md/)?.[1] ?? "workflow",
+	workflowSlugFromRequest: (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "workflow",
+}));
 
 const roots: string[] = [];
 
@@ -124,6 +140,20 @@ describe("completed plan archival", () => {
 		expect(pi.getActiveTools()).toEqual(["plan_archive"]);
 		const tool = pi._getTool("plan_archive");
 		if (!tool) throw new Error("plan_archive tool not registered");
+		vi.mocked(workflowWorktree.readWorkflowOwnershipRecord).mockReturnValue({
+			version: 1,
+			workflow: "do-it",
+			workflowId: "do-it:tool-fixture",
+			repoRoot: root,
+			primaryWorktree: root,
+			primaryBranch: "main",
+			initialPrimaryHead: "initial-head",
+			branch: "workflow/tool-fixture",
+			worktree: root,
+			createdAt: "2026-08-23T00:00:00.000Z",
+			updatedAt: "2026-08-23T00:00:00.000Z",
+			state: "active",
+		});
 		const result = await tool.execute(
 			"archive-1",
 			{ path: ".specs/tool-fixture/plan.md" },

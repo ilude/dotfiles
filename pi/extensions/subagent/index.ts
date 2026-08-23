@@ -1291,12 +1291,6 @@ function extractPlanPath(task: string): string | undefined {
 function inferWorkflow(task: string): string | undefined {
 	const normalized = task.toLowerCase();
 	if (
-		normalized.includes("/review-it") ||
-		(normalized.includes("review") && normalized.includes("plan.md"))
-	) {
-		return "review-it";
-	}
-	if (
 		normalized.includes("/plan-it") ||
 		normalized.includes("plan crystallizer")
 	)
@@ -1852,7 +1846,6 @@ export async function runSingleAgent(
 			workflow,
 			phase: step ? "chain-step" : "run",
 			planPath,
-			reviewer: workflow === "review-it" ? agentName : undefined,
 		},
 	});
 	let timingFinished = false;

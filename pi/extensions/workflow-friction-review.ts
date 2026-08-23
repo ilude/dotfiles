@@ -440,7 +440,7 @@ function resultText(result: unknown): string {
 }
 
 function modeForInput(text: string): WorkflowMode {
-	if (/^\/(?:plan-it|review-it|do-it)\b/i.test(text.trim())) return "engineer";
+	if (/^\/(?:plan-it|do-it)\b/i.test(text.trim())) return "engineer";
 	return "explore";
 }
 

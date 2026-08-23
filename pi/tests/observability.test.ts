@@ -58,7 +58,7 @@ describe("TimingSpan", () => {
 
 	it("records thrown errors without swallowing them", async () => {
 		await expect(
-			withTimingSpan({ name: "slash.review-it", category: "command", clock: fakeClock([0, 3]) }, async () => {
+			withTimingSpan({ name: "slash.do-it", category: "command", clock: fakeClock([0, 3]) }, async () => {
 				throw new TypeError("boom");
 			}),
 		).rejects.toThrow("boom");
@@ -78,11 +78,11 @@ describe("sanitizeTimingMetadata", () => {
 	it("allow-lists metadata and truncates long safe strings", () => {
 		const sanitized = sanitizeTimingMetadata({
 			agent: "a".repeat(140),
-			command: "review-it",
+			command: "do-it",
 			apiKey: "secret",
 			output: "private",
 		});
-		expect(sanitized?.command).toBe("review-it");
+		expect(sanitized?.command).toBe("do-it");
 		expect(String(sanitized?.agent).length).toBeLessThanOrEqual(120);
 		expect(sanitized).not.toHaveProperty("apiKey");
 		expect(sanitized).not.toHaveProperty("output");

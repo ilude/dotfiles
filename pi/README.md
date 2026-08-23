@@ -85,7 +85,7 @@ env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE -u AWS_REGION -u AWS_DEFAULT_REGION \
 
 ### Bedrock Claude subscription-only orchestration
 
-When the resolved primary model is Claude Fable or Opus on either `amazon-bedrock` or `bedrock-mantle`, that selected Claude model remains the root orchestrator in TUI, RPC, JSON, and print modes. Its provider-visible control plane is limited to the applicable `subagent_read`, `subagent_write`, `subagent_teamlead`, `subagent_status`, `subagent_control`, and `task` tools plus root-authored plan, goal, and architecture writes under `.specs/`. An active `/plan-it` lifecycle may expose `plan_progress`, and the existing `/do-it` state gate may expose `plan_archive`; the restricted root cannot expose these tools independently. Historical subagent names, saved-session continuation, other direct inspection or mutation, validation, shell, web, and commit tools are blocked before execution. Switching to another model reveals the current tool state, including owner changes made while the restriction was active, rather than restoring a stale snapshot.
+When the resolved primary model is Claude Fable or Opus on either `amazon-bedrock` or `bedrock-mantle`, that selected Claude model remains the root orchestrator in TUI, RPC, JSON, and print modes. Its provider-visible control plane is limited to the applicable `subagent_read`, `subagent_write`, `subagent_teamlead`, `subagent_status`, `subagent_control`, and `task` tools plus root-authored plan, goal, and architecture writes under `.specs/`, with state-gated workflow closeout tools. An active `/plan-it` lifecycle may expose `plan_progress`, and the existing `/do-it` state gate may expose `plan_archive`; the restricted root cannot expose these tools independently. Historical subagent names, saved-session continuation, other direct inspection or mutation, validation, shell, web, and commit tools are blocked before execution. Switching to another model reveals the current tool state, including owner changes made while the restriction was active, rather than restoring a stale snapshot.
 
 The restricted Claude root dispatches direct subagents and bounded workflows, not Team Leads. After trusted agent discovery, every requested child model is resolved before any child starts. Explicit models and agent pins must name an available `openai-codex` model; omitted and size-based selections resolve from available `openai-codex` models only. The default size ladder is Luna high for bounded work, Luna medium for ordinary multi-file work, and Sol low for complex cross-cutting work. One invalid member rejects the complete batch or workflow before spawn. Caller-supplied output paths are rejected. Provider-visible foreground results are limited to 50 KB or 2000 lines, with complete output written to a runtime-generated private temporary artifact when truncation is required.
 
@@ -367,9 +367,8 @@ Registers shared skill-backed slash commands:
 
 ```
 /commit        # smart git commit with LLM-adjudicated secret review
-/plan-it       # crystallize conversation context into an executable plan
-/review-it     # focused readiness review for a plan or requirements artifact
-/do-it         # direct task or plan execution with proportional validation
+/plan-it       # create or resume one owned worktree and an executable plan
+/do-it         # execute one owned worktree with proportional validation
 ```
 
 Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`. The extension-backed `/summarize [focus]` workflow adds bounded session evidence before requesting the recap. Prompt-only commands use Pi-native templates under `~/.dotfiles/pi/prompts/`:
@@ -379,9 +378,8 @@ Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`. T
 ```
 
 Workflow highlights:
-- `/plan-it` writes standalone plans with evidence, dependencies, validation, durable execution state, and mandatory completion archival.
-- `/review-it` reviews artifact readiness directly and applies supported must-fix and necessary clarity repairs by default; explicit review-only requests remain non-mutating. Delegation remains optional.
-- `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` in the current session. It does not require plan linting or duplicate task tracking. After all tasks and validation pass, its deferred `plan_archive` tool atomically moves the completed spec directory to `.specs/archive/*` and refuses unsafe paths or collisions.
+- `/plan-it` creates or resumes exactly one owned branch/worktree beneath repository-root `.worktrees/`, writes the canonical plan there, includes correctness review, and ends with a subtractive overengineering/gold-plating/churn gate.
+- `/do-it` establishes ownership before raw work or canonical-plan execution, confines modifications to the owned worktree, and closes out by archiving artifacts, committing, merging `--no-ff` into the primary branch, verifying merged HEAD, and removing only its owned worktree and branch.
 - `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. The slash workflow and structured commit tools share porcelain-v2 status, preflight, and exact-path staging primitives; each planning pass reuses one status snapshot. Before the parent commit, each dirty direct submodule must be on an attached branch with an upstream, is updated with a fast-forward-only pull, and runs the same commit workflow; `/commit push` pushes each resulting submodule commit before the parent, while `--no-submodules` leaves dirty submodule worktrees untouched. Nested submodules are not processed automatically. Ignored files are omitted. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
 ### `loop.ts`
@@ -490,14 +488,15 @@ For an unattended goal, `goal_complete` keeps the goal active unless every
 required plan item has a required durable root task and both are complete, the
 latest relevant validation evidence comes from an observed successful shell
 result after task completion, and recorded artifacts match the final Git diff.
-The first successful closeout step archives the canonical spec directory and
-persists `archived_pending_commit`; the goal remains active. After the archive
-is in an identifiable in-scope commit, a second call verifies final HEAD and a
-clean worktree before completion clears active state. Its report names the
+Successful closeout archives the canonical spec directory in the owned
+workflow worktree, commits all in-scope artifacts, merges the workflow branch
+with `--no-ff` into the currently checked-out clean primary branch, verifies merged HEAD,
+and removes only the owned worktree and branch before completion clears active
+state. Legacy `archived_pending_commit` jobs remain resumable for recovery. Its report names the
 objective, completed work, artifacts, validation, repository state, gaps, and
-exact next action. Ordinary foreground completion remains session-owned and
-reports the supplied completion evidence without unattended archival or commit
-requirements.
+exact next action. Ordinary foreground completion remains session-owned but
+uses the same owned-worktree commit, merge, verification, and cleanup boundary;
+plan-backed foreground goals also archive their canonical spec before merging.
 
 Unattended goal identity, recovery state, validation evidence, and completion
 state persist in the loop job under the normal loop state root. Continued Pi
@@ -552,7 +551,7 @@ Measures each interaction from submission through `agent_settled` and records me
 
 Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content. Reviewed interaction packets remain local in `reviews.jsonl`. Set `PI_WORKFLOW_FRICTION_DIR` to use a separate local directory. At interaction settlement, the extension also emits a metadata-only `orchestration_interaction` metrics event for direct and delegated interactions.
 
-Interaction capture and background review are internal stages. `/review-it` remains separate because it reviews a supplied plan or PRD, while `/usage`, `/usage-stats`, `/extension-stats`, `/skill-stats`, and `/orchestration-stats` remain read-only diagnostics. `/usage-stats` renders its deterministic report without starting a provider turn.
+Interaction capture and background review are internal stages. `/usage`, `/usage-stats`, `/extension-stats`, `/skill-stats`, and `/orchestration-stats` remain read-only diagnostics. `/usage-stats` renders its deterministic report without starting a provider turn.
 
 ### `orchestration-stats.ts`
 
