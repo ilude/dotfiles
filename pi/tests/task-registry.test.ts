@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeTaskDatabase, initializeTaskStore, openTaskDatabase, readStoredTask } from "../lib/task-store.js";
+import { closeTaskDatabase, initializeTaskStore, openTaskDatabase, readStoredTask, writeStoredTask } from "../lib/task-store.js";
 import {
 	createTask,
 	createTaskBatch,
@@ -14,6 +14,7 @@ import {
 	TaskRegistryError,
 	tombstoneTask,
 	transitionTask,
+	updateAndTransitionTask,
 	updateTask,
 } from "../lib/task-registry.js";
 
@@ -35,10 +36,10 @@ afterEach(() => {
 });
 
 describe("createTask", () => {
-	it("creates a pending task by default and persists it to disk", () => {
+	it("creates an unassigned task by default and persists it to disk", () => {
 		const task = createTask({ origin: "subagent", summary: "explore repo" });
 		expect(task.schemaVersion).toBe(1);
-		expect(task.state).toBe("pending");
+		expect(task.state).toBe("unassigned");
 		expect(task.retryCount).toBe(0);
 		expect(task.summary).toBe("explore repo");
 		expect(task.createdAt).toBe(task.updatedAt);
@@ -49,14 +50,14 @@ describe("createTask", () => {
 		expect(reread?.id).toBe(task.id);
 	});
 
-	it("sets startedAt when initial state is running", () => {
+	it("sets assignedAt when initial state is assigned", () => {
 		const task = createTask({
 			origin: "other",
 			summary: "build feature",
-			state: "running",
+			state: "assigned",
 		});
-		expect(task.state).toBe("running");
-		expect(task.startedAt).toBeDefined();
+		expect(task.state).toBe("assigned");
+		expect(task.assignedAt).toBeDefined();
 	});
 
 	it("preserves optional fields including workspace and notes", () => {
@@ -72,7 +73,7 @@ describe("createTask", () => {
 		expect(task.parentId).toBe("parent-123");
 		expect(task.repoSlug).toBe("gh/owner/repo");
 		expect(task.workspace).toBe("/work/repo");
-		expect(task.notes).toBe("run after deploy");
+		expect(task.instructions).toBe("run after deploy");
 		expect(task.metadata).toEqual({ ticket: "OPS-42" });
 	});
 
@@ -82,11 +83,11 @@ describe("createTask", () => {
 			summary: "scoped worker",
 			scope: ["./src/**", "test\\focused.test.ts"],
 		});
-		expect(task.scope).toEqual(["src/**", "test/focused.test.ts"]);
-		expect(getTask(task.id)?.scope).toEqual(task.scope);
+		expect(task.boundary).toEqual(["src/**", "test/focused.test.ts"]);
+		expect(getTask(task.id)?.boundary).toEqual(task.boundary);
 
 		const updated = updateTask(task.id, { scope: ["docs/**"] });
-		expect(updated.scope).toEqual(["docs/**"]);
+		expect(updated.boundary).toEqual(["docs/**"]);
 	});
 
 	it("rejects unsafe or duplicate write scopes", () => {
@@ -203,7 +204,7 @@ describe("createTaskBatch", () => {
 			expect(worker?.blockedBy).toEqual([manual?.id]);
 			expect(getTask(existing.id)?.blocks).toContain(manual?.id);
 			expect(manual?.blocks).toEqual([worker?.id]);
-			expect(worker?.scope).toEqual(["src/**"]);
+			expect(worker?.boundary).toEqual(["src/**"]);
 		}
 	});
 });
@@ -218,41 +219,45 @@ describe("transitionTask", () => {
 
 	it("rejects a no-op transition to the same state", () => {
 		const task = createTask({ origin: "subagent", summary: "x" });
-		expect(() => transitionTask(task.id, "pending")).toThrow(
+		expect(() => transitionTask(task.id, "unassigned")).toThrow(
 			/already in state/,
 		);
 	});
 
-	it("walks pending -> running -> completed and stamps timestamps", () => {
+	it("walks unassigned -> assigned -> completed and stamps timestamps", () => {
 		const task = createTask({ origin: "subagent", summary: "x" });
-		const running = transitionTask(task.id, "running");
-		expect(running.state).toBe("running");
-		expect(running.startedAt).toBeDefined();
-		expect(running.endedAt).toBeUndefined();
+		const assigned = transitionTask(task.id, "assigned");
+		expect(assigned.state).toBe("assigned");
+		expect(assigned.assignedAt).toBeDefined();
+		expect(assigned.endedAt).toBeUndefined();
 
 		const done = transitionTask(task.id, "completed");
 		expect(done.state).toBe("completed");
 		expect(done.endedAt).toBeDefined();
 	});
 
-	it("captures blockReason when transitioning to blocked", () => {
-		const task = createTask({
-			origin: "subagent",
-			summary: "x",
-			state: "running",
-		});
-		const blocked = transitionTask(task.id, "blocked", {
-			blockReason: "needs creds",
-		});
-		expect(blocked.state).toBe("blocked");
-		expect(blocked.blockReason).toBe("needs creds");
+	it("rejects legacy transition targets instead of remapping them", () => {
+		const task = createTask({ origin: "subagent", summary: "x" });
+		for (const target of ["pending", "running", "blocked", "cancelled"] as const)
+			expect(() => transitionTask(task.id, target)).toThrow(
+				/unsupported current task state/,
+			);
+		expect(getTask(task.id)?.state).toBe("unassigned");
+	});
+
+	it("rejects legacy targets in update-and-transition without applying the patch", () => {
+		const task = createTask({ origin: "other", summary: "before" });
+		expect(() => updateAndTransitionTask(task.id, { summary: "after" }, "running")).toThrow(
+			/unsupported current task state/,
+		);
+		expect(getTask(task.id)?.summary).toBe("before");
 	});
 
 	it("captures errorReason when transitioning to failed", () => {
 		const task = createTask({
 			origin: "subagent",
 			summary: "x",
-			state: "running",
+			state: "assigned",
 		});
 		const failed = transitionTask(task.id, "failed", {
 			errorReason: "subprocess exit 1",
@@ -262,15 +267,15 @@ describe("transitionTask", () => {
 		expect(failed.endedAt).toBeDefined();
 	});
 
-	it("retry path: failed -> running increments retryCount and clears errorReason", () => {
+	it("retry path: failed -> assigned increments retryCount and clears errorReason", () => {
 		const task = createTask({
 			origin: "subagent",
 			summary: "x",
-			state: "running",
+			state: "assigned",
 		});
 		transitionTask(task.id, "failed", { errorReason: "first attempt failed" });
-		const retried = transitionTask(task.id, "running");
-		expect(retried.state).toBe("running");
+		const retried = transitionTask(task.id, "assigned");
+		expect(retried.state).toBe("assigned");
 		expect(retried.retryCount).toBe(1);
 		expect(retried.errorReason).toBeUndefined();
 		expect(retried.endedAt).toBeUndefined();
@@ -280,23 +285,23 @@ describe("transitionTask", () => {
 		const task = createTask({
 			origin: "subagent",
 			summary: "x",
-			state: "running",
+			state: "assigned",
 		});
 		transitionTask(task.id, "completed");
-		expect(() => transitionTask(task.id, "running")).toThrow(TaskRegistryError);
+		expect(() => transitionTask(task.id, "assigned")).toThrow(TaskRegistryError);
 	});
 
-	it("rejects transition from cancelled (terminal)", () => {
+	it("rejects transition from skipped (terminal)", () => {
 		const task = createTask({ origin: "subagent", summary: "x" });
-		transitionTask(task.id, "cancelled");
-		expect(() => transitionTask(task.id, "running")).toThrow(TaskRegistryError);
+		transitionTask(task.id, "skipped");
+		expect(() => transitionTask(task.id, "assigned")).toThrow(TaskRegistryError);
 	});
 
 	it("preserves usage when supplied on transition", () => {
 		const task = createTask({
 			origin: "subagent",
 			summary: "x",
-			state: "running",
+			state: "assigned",
 		});
 		const done = transitionTask(task.id, "completed", {
 			usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
@@ -312,7 +317,7 @@ describe("transitionTask", () => {
 		const task = createTask({
 			origin: "subagent",
 			summary: "x",
-			state: "running",
+			state: "assigned",
 		});
 		const legacyUsage = {
 			inputTokens: 100,
@@ -397,7 +402,7 @@ describe("updateTask", () => {
 		});
 		expect(updated.summary).toBe("x v2");
 		expect(updated.preview).toBe("first line");
-		expect(updated.state).toBe("pending");
+		expect(updated.state).toBe("unassigned");
 		expect(updated.updatedAt >= task.updatedAt).toBe(true);
 	});
 
@@ -435,11 +440,11 @@ describe("listTasks", () => {
 		const b = createTask({
 			origin: "subagent",
 			summary: "b",
-			state: "running",
+			state: "assigned",
 		});
 		void a;
-		const running = listTasks({ states: ["running"] });
-		expect(running.map((t) => t.id)).toEqual([b.id]);
+		const assigned = listTasks({ states: ["assigned"] });
+		expect(assigned.map((t) => t.id)).toEqual([b.id]);
 	});
 
 	it("filters by origin", () => {
@@ -499,6 +504,44 @@ describe("listTasks", () => {
 		expect(getTask(unownedBlocker.id)).toBeNull();
 		expect(getTask(unownedDependent.id)).toBeNull();
 		expect(getTask(owned.id)?.sessionId).toBe("session-1");
+	});
+});
+
+describe("legacy normalization", () => {
+	it("normalizes every legacy state and preserves notes, scope, and reasons", () => {
+		const legacy = [
+			["pending", "unassigned"],
+			["running", "assigned"],
+			["blocked", "unassigned"],
+			["cancelled", "skipped"],
+		] as const;
+		for (const [index, [state, currentState]] of legacy.entries()) {
+			const id = `legacy-${index}`;
+			writeStoredTask({
+				schemaVersion: 1,
+				id,
+				origin: "other",
+				state,
+				summary: `legacy ${state}`,
+				createdAt: "2026-01-01T00:00:00.000Z",
+				updatedAt: "2026-01-01T00:00:00.000Z",
+				retryCount: 0,
+				notes: "preserved note",
+				scope: ["src/**"],
+				...(state === "blocked" || state === "cancelled" ? { blockReason: "preserved reason" } : {}),
+			}, openTaskDatabase(tmpRoot));
+			const normalized = getTask(id);
+			expect(normalized).toMatchObject({
+				id,
+				state: currentState,
+				boundary: ["src/**"],
+			});
+			if (state === "blocked") expect(normalized?.instructions).toBe("preserved note\n\npreserved reason");
+			else expect(normalized?.instructions).toBe("preserved note");
+			if (state === "cancelled") expect(normalized?.skipReason).toBe("preserved reason");
+			expect(normalized).not.toHaveProperty("notes");
+			expect(normalized).not.toHaveProperty("scope");
+		}
 	});
 });
 

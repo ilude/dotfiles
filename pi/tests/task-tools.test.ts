@@ -80,7 +80,7 @@ describe("task tools", () => {
 		}
 	});
 
-	it("reminds the agent only about running root tasks from its session", async () => {
+	it("reminds the agent only about assigned root tasks from its session", async () => {
 		const workspace = resolveTaskWorkspace(tmpRoot);
 		const sessionId = "current-session";
 		const first = createTask({
@@ -116,7 +116,7 @@ describe("task tools", () => {
 			workspace: resolveTaskWorkspace(otherRoot),
 		});
 		for (const record of [first, second, otherSession, other])
-			transitionTask(record.id, "running");
+			transitionTask(record.id, "assigned");
 
 		const pi = createMockPi();
 		tasksExtension.default(pi as Parameters<typeof tasksExtension.default>[0]);
@@ -132,6 +132,10 @@ describe("task tools", () => {
 
 		expect(reminder?.systemPrompt).toContain(first.id);
 		expect(reminder?.systemPrompt).toContain(second.id);
+		expect(reminder?.systemPrompt).toContain("<!-- pi-runtime-context:tasks -->");
+		expect(reminder?.systemPrompt.indexOf("base")).toBeLessThan(
+			reminder?.systemPrompt.indexOf("<!-- pi-runtime-context:tasks -->") ?? -1,
+		);
 		expect(reminder?.systemPrompt).toContain(
 			"If multiple tasks could own the request, do not choose silently.",
 		);
@@ -180,10 +184,10 @@ describe("task tools", () => {
 
 		expect(reminder).toContain(root.id);
 		expect(reminder).toContain(root.summary);
-		expect(reminder).toContain("Constraints: src/**");
+		expect(reminder).toContain("Boundary: src/**");
 		expect(reminder).toContain(`Dependencies: ${dependency.id}`);
 		expect(reminder).toContain(
-			"Durable requirements and acceptance checks: Acceptance: focused checks pass.",
+			"Instructions and acceptance checks: Acceptance: focused checks pass.",
 		);
 		expect(reminder).toContain(
 			"supplements the current conversational frontier",
@@ -237,7 +241,7 @@ describe("task tools", () => {
 			ctx,
 		);
 		const id = created.details.record.id as string;
-		expect(created.details.record.scope).toEqual(["src/**"]);
+		expect(created.details.record.boundary).toEqual(["src/**"]);
 
 		const updated = await tool?.execute(
 			"scoped-update",
@@ -246,7 +250,7 @@ describe("task tools", () => {
 			undefined,
 			ctx,
 		);
-		expect(updated.details.record.scope).toEqual(["docs/**"]);
+		expect(updated.details.record.boundary).toEqual(["docs/**"]);
 
 		const batch = await tool?.execute(
 			"scoped-batch",
@@ -264,7 +268,7 @@ describe("task tools", () => {
 			undefined,
 			ctx,
 		);
-		expect(batch.details.records[0].scope).toEqual(["test/**"]);
+		expect(batch.details.records[0].boundary).toEqual(["test/**"]);
 	});
 
 	it("uses one registry for planning dependencies and readiness", async () => {
@@ -294,7 +298,7 @@ describe("task tools", () => {
 			undefined,
 			ctx,
 		);
-		expect(blocker.details.record.notes).toBe("planning note");
+		expect(blocker.details.record.instructions).toBe("planning note");
 		expect(waiting.details.record.blockedBy).toEqual([blockerId]);
 		expect(
 			ready.details.records.map((record: { id: string }) => record.id),
@@ -335,7 +339,7 @@ describe("task tools", () => {
 		expect(initiallyReady.details.records.map((item: { id: string }) => item.id)).toEqual([
 			first.id,
 		]);
-		for (const state of ["running", "completed"]) {
+		for (const state of ["assigned", "completed"]) {
 			const updated = await tool?.execute(
 				`workflow-${state}`,
 				{ action: "update", id: first.id, state },
@@ -431,7 +435,7 @@ describe("task tools", () => {
 				error: expect.stringContaining("retired"),
 			});
 		}
-		expect(getTask(task.id)?.state).toBe("pending");
+		expect(getTask(task.id)?.state).toBe("unassigned");
 		expect(listTasks()).toHaveLength(1);
 	});
 
@@ -456,9 +460,9 @@ describe("task tools", () => {
 		expect(createVisible).toEqual({
 			outcome: "persisted",
 			id,
-			state: "pending",
+			state: "unassigned",
 		});
-		expect(created.details.record.notes).toContain("complete durable");
+		expect(created.details.record.instructions).toContain("complete durable");
 		const persistedShape = JSON.parse(JSON.stringify(created.details.record));
 		expect(persistedShape).not.toHaveProperty("prompt");
 		expect(persistedShape).not.toHaveProperty("execution");
@@ -473,9 +477,9 @@ describe("task tools", () => {
 		expect(JSON.parse(updated.content[0].text)).toEqual({
 			outcome: "persisted",
 			id,
-			state: "pending",
+			state: "unassigned",
 		});
-		expect(updated.details.record.notes).toBe("Updated acceptance check.");
+		expect(updated.details.record.instructions).toBe("Updated acceptance check.");
 
 		const listed = await tool?.execute(
 			"compact-list",
@@ -488,7 +492,7 @@ describe("task tools", () => {
 		expect(listVisible).toEqual({
 			outcome: "persisted",
 			count: 1,
-			tasks: [{ id, state: "pending", summary: "durable work" }],
+			tasks: [{ id, state: "unassigned", summary: "durable work" }],
 		});
 		expect(listed.details.records[0]).toHaveProperty("createdAt");
 		expect(listed.content[0].text.length).toBeLessThan(500);
@@ -501,7 +505,7 @@ describe("task tools", () => {
 			ctx,
 		);
 		expect(JSON.parse(ready.content[0].text).tasks).toEqual([
-			{ id, state: "pending", summary: "durable work" },
+			{ id, state: "unassigned", summary: "durable work" },
 		]);
 
 		const full = await tool?.execute(
@@ -514,7 +518,7 @@ describe("task tools", () => {
 		const fullVisible = JSON.parse(full.content[0].text);
 		expect(fullVisible.record).toMatchObject({
 			id,
-			notes: "Updated acceptance check.",
+			instructions: "Updated acceptance check.",
 		});
 		expect(fullVisible.record).not.toHaveProperty("prompt");
 		expect(fullVisible.record).not.toHaveProperty("execution");
@@ -743,8 +747,8 @@ describe("task tools", () => {
 
 		expect(result.details.outcome).toBe("rejected");
 		expect(result.details.error).toContain(blocker.id.slice(0, 8));
-		expect(getTask(waiting.id)?.state).toBe("pending");
-		expect(getTask(waiting.id)?.notes).toBe("original");
+		expect(getTask(waiting.id)?.state).toBe("unassigned");
+		expect(getTask(waiting.id)?.instructions).toBe("original");
 	});
 
 	it("persists skip reasons and retry counts through update", async () => {
@@ -866,7 +870,7 @@ describe("task tools", () => {
 			(record) => record.metadata?.legacyTodoId === "old-2",
 		);
 		expect(first?.state).toBe("completed");
-		expect(second?.notes).toBe("keep this");
+		expect(second?.instructions).toBe("keep this");
 		expect(second?.blockedBy).toEqual([first?.id]);
 
 		pruneTaskRegistry();

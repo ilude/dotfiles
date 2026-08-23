@@ -50,6 +50,7 @@ import {
 } from "../lib/task-renderer.js";
 import { sanitizeTaskValue } from "../lib/task-security.js";
 import { isTaskStoreUnavailable } from "../lib/task-store.js";
+import { appendRuntimeContext } from "../lib/runtime-context.js";
 import {
 	getTaskRenderMode,
 	isTaskRenderMode,
@@ -58,7 +59,7 @@ import {
 export { formatTaskDetail, formatTaskList, groupTasksByUrgency };
 
 const TASK_SUMMARY_MAX_LENGTH = 100;
-const TASK_NOTES_MAX_LENGTH = 500;
+const TASK_INSTRUCTIONS_MAX_LENGTH = 500;
 const TASK_LIST_MODEL_MAX_ITEMS = 50;
 const TASK_LIST_BLOCKER_MAX_ITEMS = 5;
 const TASK_BATCH_MAX_ITEMS = 16;
@@ -70,7 +71,7 @@ const TASK_REMINDER_MAX_ITEMS = 8;
 const TASK_BATCH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 
 function validateTaskText(
-	label: "summary" | "notes" | "skipReason",
+	label: "summary" | "instructions" | "skipReason",
 	value: string,
 	maxLength: number,
 	oneLine = false,
@@ -92,7 +93,7 @@ interface ParsedSubcommand {
 		| "blocked"
 		| "show"
 		| "create"
-		| "start"
+		| "assign"
 		| "complete"
 		| "skip"
 		| "cancel"
@@ -117,7 +118,7 @@ export function parseTasksArgs(args: string): ParsedSubcommand {
 	if (head === "show" && parts[1]) return { verb: "show", idArg: parts[1] };
 	if (head === "create")
 		return { verb: "create", text: trimmed.slice("create".length).trim() };
-	if (head === "start" && parts[1]) return { verb: "start", idArg: parts[1] };
+	if ((head === "assign" || head === "start") && parts[1]) return { verb: "assign", idArg: parts[1] };
 	if (head === "complete" && parts[1])
 		return { verb: "complete", idArg: parts[1] };
 	if (head === "skip" && parts[1])
@@ -146,7 +147,7 @@ export function resolveTaskId(
 }
 
 function helpText(): string {
-	return "Usage: /tasks|/tasks list [--all]|ready|blocked|show <id>|create <summary>|start <id>|complete <id>|skip <id> [reason]|cancel <id>|retry <id>|reopen <id>|clear completed|settings mode compact|full|hidden. Examples: /tasks ready (what can I work on now?), /tasks blocked (why can't this start?). Retry/reopen does not execute work.";
+	return "Usage: /tasks|/tasks list [--all]|ready|blocked|show <id>|create <summary>|assign <id>|complete <id>|skip <id> [reason]|retry <id>|clear completed|settings mode compact|full|hidden. Examples: /tasks ready (what can I consider next?), /tasks blocked (which Dependencies are unmet?). Retry/reopen does not execute work.";
 }
 
 function formatBlockedView(tasks: readonly TaskRecordV1[]): string {
@@ -190,7 +191,7 @@ function formatStartBlockedMessage(
 		blocker.status === "missing" || blocker.status === "tombstoned"
 			? " Recovery: use task update to replace blockedBy without the stale dependency."
 			: "";
-	return `Cannot start ${shortTaskId(task.id)}: waiting on ${shortTaskId(blocker.id)} (${blocker.status})${summary}. Next: /tasks show ${shortTaskId(blocker.id)} or /tasks blocked.${recovery}`;
+	return `Cannot assign ${shortTaskId(task.id)}: waiting on ${shortTaskId(blocker.id)} (${blocker.status})${summary}. Next: /tasks show ${shortTaskId(blocker.id)} or /tasks blocked.${recovery}`;
 }
 
 function notifyOutcome(
@@ -234,27 +235,22 @@ export class TaskLifecycleService {
 
 	async cancel(id: string): Promise<TaskOperationResult> {
 		const task = getTask(id);
-		if (!task) return { outcome: "not_found", error: `task not found: ${id}` };
-		if (
-			task.state === "completed" ||
-			task.state === "cancelled" ||
-			task.state === "skipped"
-		)
+		if (task?.state === "completed")
 			return {
 				outcome: "rejected",
 				record: task,
-				error: `task is already ${task.state}`,
+				error: "task is already completed",
 			};
-		return safeTransitionTask(id, "cancelled");
+		return this.skip(id);
 	}
 
 	async transition(
 		id: string,
-		target: TaskState,
+		target: TaskState | "running" | "cancelled",
 		opts: TransitionOptions = {},
 	): Promise<TaskOperationResult> {
-		if (target === "running") return this.start(id);
-		if (target === "cancelled") return this.cancel(id);
+		if (target === "running") return this.start(id); // hidden compatibility alias
+		if (target === "cancelled") return this.cancel(id); // hidden compatibility alias
 		if (target === "skipped") return this.skip(id, opts.skipReason);
 		return safeTransitionTask(id, target, opts);
 	}
@@ -417,9 +413,9 @@ export function importLegacyTodos(
 			.map((id) => byLegacyId.get(id)?.id)
 			.filter((id): id is string => Boolean(id));
 		updateTask(record.id, { blockedBy });
-		if (item.status === "in_progress") transitionTask(record.id, "running");
+		if (item.status === "in_progress") transitionTask(record.id, "assigned");
 		if (item.status === "done") {
-			transitionTask(record.id, "running");
+			transitionTask(record.id, "assigned");
 			transitionTask(record.id, "completed");
 		}
 	}
@@ -428,10 +424,17 @@ export function importLegacyTodos(
 	return result;
 }
 
-function validatedScope(value: unknown): string[] | undefined {
+function validatedBoundary(value: unknown): string[] | undefined {
 	if (value === undefined) return undefined;
-	if (!Array.isArray(value)) throw new Error("scope must be an array");
+	if (!Array.isArray(value)) throw new Error("boundary must be an array");
 	return normalizeTaskScope(value as string[]);
+}
+
+function validatedCovers(value: unknown): string[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value) || value.some((item) => typeof item !== "string"))
+		throw new Error("covers must be an array of strings");
+	return [...new Set(value as string[])];
 }
 
 function validatedBlockers(value: unknown): string[] | undefined {
@@ -455,12 +458,28 @@ function validatedPriority(value: unknown): number | undefined {
 	return value;
 }
 
+function prepareCurrentTaskArguments(input: Record<string, unknown>): Record<string, unknown> {
+	const prepared = { ...input };
+	if (prepared.instructions === undefined && typeof prepared.notes === "string")
+		prepared.instructions = prepared.notes;
+	if (prepared.boundary === undefined && Array.isArray(prepared.scope))
+		prepared.boundary = prepared.scope;
+	delete prepared.notes;
+	delete prepared.scope;
+	if (prepared.state === "pending") prepared.state = "unassigned";
+	if (prepared.state === "running") prepared.state = "assigned";
+	if (prepared.state === "blocked") prepared.state = "unassigned";
+	if (prepared.state === "cancelled") prepared.state = "skipped";
+	return prepared;
+}
+
 function taskInputFrom(
 	input: Record<string, unknown>,
 	cwd: string,
 	sessionId: string | undefined,
 	batch = false,
 ): CreateTaskBatchInput {
+	input = prepareCurrentTaskArguments(input);
 	if (typeof input.summary !== "string")
 		throw new Error("summary is required.");
 	const summary = validateTaskText(
@@ -469,9 +488,9 @@ function taskInputFrom(
 		TASK_SUMMARY_MAX_LENGTH,
 		true,
 	);
-	const notes =
-		typeof input.notes === "string"
-			? validateTaskText("notes", input.notes, TASK_NOTES_MAX_LENGTH)
+	const instructions =
+		typeof input.instructions === "string"
+			? validateTaskText("instructions", input.instructions, TASK_INSTRUCTIONS_MAX_LENGTH)
 			: undefined;
 	const key = input.key;
 	const blockedByKeys = input.blockedByKeys;
@@ -503,8 +522,9 @@ function taskInputFrom(
 		summary,
 		workspace: resolveTaskWorkspace(cwd),
 		sessionId,
-		scope: validatedScope(input.scope),
-		notes,
+		boundary: validatedBoundary(input.boundary),
+		instructions,
+		covers: validatedCovers(input.covers),
 		blockedBy: batch
 			? (input.blockedBy as string[] | undefined)
 			: validatedBlockers(input.blockedBy),
@@ -553,14 +573,17 @@ function isActiveRootTask(
 function activeRootTaskContext(record: TaskRecordV1): string[] {
 	return [
 		`- ${record.id}: ${record.summary} (${record.state})`,
-		...(record.scope?.length
-			? [`  Constraints: ${record.scope.join(", ")}`]
+		...(record.boundary?.length
+			? [`  Boundary: ${record.boundary.join(", ")}`]
 			: []),
 		...(record.blockedBy?.length
 			? [`  Dependencies: ${record.blockedBy.join(", ")}`]
 			: []),
-		...(record.notes
-			? [`  Durable requirements and acceptance checks: ${record.notes}`]
+		...(record.instructions
+			? [`  Instructions and acceptance checks: ${record.instructions}`]
+			: []),
+		...(record.covers?.length
+			? [`  Goal coverage: ${record.covers.join(", ")}`]
 			: []),
 	];
 }
@@ -587,7 +610,7 @@ export function activeRootTaskReminder(
 			for (const record of listTasks({
 				workspace,
 				sessionId,
-				states: ["running"],
+				states: ["assigned"],
 			}).filter((record) => !record.parentId))
 				selected.set(record.id, record);
 		}
@@ -599,13 +622,13 @@ export function activeRootTaskReminder(
 	if (roots.length === 0) return undefined;
 	const listed = roots.slice(0, TASK_REMINDER_MAX_ITEMS);
 	return [
-		`Active durable root task${roots.length === 1 ? "" : "s"} in this workspace:`,
+		`Active durable root task${roots.length === 1 ? "" : "s"} in this workspace (assigned work, not process activity):`,
 		...listed.flatMap(activeRootTaskContext),
 		...(roots.length > listed.length
 			? [`- ${roots.length - listed.length} more; inspect the task list before selecting work.`]
 			: []),
 		"Durable task context supplements the current conversational frontier; it does not replace the active request.",
-		"Inspect the relevant task before substantive work. Treat its deliverable, durable requirements, dependencies, constraints, and acceptance checks as authoritative. If multiple tasks could own the request, do not choose silently.",
+		"Treat the relevant task's deliverable, Instructions, goal coverage, dependencies, boundary, and acceptance checks as authoritative. If multiple tasks could own the request, do not choose silently.",
 	].join("\n");
 }
 
@@ -709,15 +732,19 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 	const summary = Type.String({
 		minLength: 1,
 		maxLength: TASK_SUMMARY_MAX_LENGTH,
+		description: "The durable deliverable, not a procedure or conversation summary.",
 	});
-	const notes = Type.String({ maxLength: TASK_NOTES_MAX_LENGTH });
+	const instructions = Type.String({
+		maxLength: TASK_INSTRUCTIONS_MAX_LENGTH,
+		description: "Required work, observable completion evidence, constraints, and out-of-scope items.",
+	});
 	const id = Type.String({
 		minLength: 1,
 		maxLength: 64,
 		pattern: "^[A-Za-z0-9_-]+$",
 	});
-	const scope = Type.Array(
-		Type.String({ minLength: 1, maxLength: TASK_SCOPE_MAX_LENGTH }),
+	const boundary = Type.Array(
+		Type.String({ minLength: 1, maxLength: TASK_SCOPE_MAX_LENGTH, description: "Governed path or boundary marker." }),
 		{
 			maxItems: TASK_SCOPE_MAX_ITEMS,
 			uniqueItems: true,
@@ -729,14 +756,16 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 		description: "Explicit hard prerequisite task IDs. This is the only field that creates Dependencies.",
 	});
 	const goalId = Type.String({ minLength: 1, maxLength: 256, description: "Optional Goal association. It does not change readiness or lifecycle transitions." });
+	const covers = Type.Array(Type.String({ minLength: 1, maxLength: 64 }), { maxItems: 16, uniqueItems: true, description: "Current goal condition IDs covered by this task." });
 	const produces = Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 16, uniqueItems: true, description: "Optional case-sensitive resources produced by this Task. Used only to order ready Tasks." });
 	const consumes = Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 16, uniqueItems: true, description: "Optional case-sensitive resources consumed by this Task. Used only to order ready Tasks." });
 	const priority = Type.Number({ description: "Optional ready-order priority. Higher values sort first; absence equals zero and never changes readiness." });
 	const taskItem = Type.Object(
 		{
 			summary,
-			notes: Type.Optional(notes),
-			scope: Type.Optional(scope),
+			instructions: Type.Optional(instructions),
+			boundary: Type.Optional(boundary),
+			covers: Type.Optional(covers),
 			key: Type.Optional(Type.String({ pattern: "^[A-Za-z0-9_-]{1,32}$" })),
 			blockedBy: Type.Optional(blockedBy),
 			goalId: Type.Optional(goalId),
@@ -761,8 +790,9 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			{
 				action: StringEnum(["create"] as const),
 				summary,
-				notes: Type.Optional(notes),
-				scope: Type.Optional(scope),
+				instructions: Type.Optional(instructions),
+				boundary: Type.Optional(boundary),
+				covers: Type.Optional(covers),
 				blockedBy: Type.Optional(blockedBy),
 				goalId: Type.Optional(goalId),
 				produces: Type.Optional(produces),
@@ -786,10 +816,11 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				action: StringEnum(["update"] as const),
 				id,
 				summary: Type.Optional(summary),
-				notes: Type.Optional(notes),
-				scope: Type.Optional(scope),
+				instructions: Type.Optional(instructions),
+				boundary: Type.Optional(boundary),
+				covers: Type.Optional(covers),
 				state: Type.Optional(StringEnum(TASK_STATES)),
-				skipReason: Type.Optional(notes),
+				skipReason: Type.Optional(instructions),
 				blockedBy: Type.Optional(blockedBy),
 				goalId: Type.Optional(goalId),
 				produces: Type.Optional(produces),
@@ -824,18 +855,14 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "task",
 		label: "Task",
-		description:
-			"Durable todo and dependency tracking for long or large workflows that may span context compaction. Task records track work; they do not execute it.",
-		promptSnippet: "Track durable todo items, dependencies, and workflow state",
+		description: "Record durable tasks and their dependencies; task records never execute work.",
+		promptSnippet: "Record durable tasks and dependencies",
 		promptGuidelines: [
-			"Use task for durable todo tracking, dependencies, and work that must survive context compaction; ordinary short workflows can remain prose.",
-			"After compaction or session resume, inspect the running root task before substantive work. Treat its durable deliverable and acceptance checks as authoritative task state while continuing the current conversational frontier.",
-			"Add another task only when it represents an independently verifiable deliverable required by the root completion checks.",
-			"When a user correction changes the outcome, update the root task first and cancel or skip work that is no longer required.",
-			"Keep summary under 100 characters and notes under 500. Put detailed context in an artifact and reference its path.",
-			"Summary contains only the deliverable; notes contain only blockers, dependencies, or acceptance checks. Never copy conversation summaries, plans, diffs, or investigation narratives into task fields.",
-			"Use blockedBy for explicit hard Dependencies and ready to select runnable work. Optional goalId, produces, consumes, and priority refine association or ready ordering only; they never create Dependencies or change readiness. Mark selected work running before dispatching it with subagent or bg_start, then record its terminal state explicitly.",
-			"Task never starts, waits for, stops, schedules, or captures output from subagents or background processes. Timed prompts belong to schedule.",
+			"Use task for work that must survive context compaction or represent an independently verifiable deliverable; ordinary short work can remain prose.",
+			"After compaction or resume, inspect the assigned task and keep its Instructions, coverage, dependencies, boundary, and acceptance checks supplemental to the current request.",
+			"When a user correction changes the outcome, update Instructions before continuing and omit work no longer required.",
+			"Use blockedBy for hard prerequisites. Use ready to select eligible unassigned work, then assign it and record its outcome explicitly.",
+			"Task records describe work and outcomes only. They do not execute, wait for, stop, schedule, or capture output from processes.",
 		],
 		parameters,
 		prepareArguments(args): Static<typeof parameters> {
@@ -877,20 +904,20 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 					outcome: "rejected",
 					error: "Only the conversational root may create or transition durable tasks.",
 				});
-			const input = asParams(params);
+			const input = prepareCurrentTaskArguments(asParams(params));
 			const action = input.action;
 			const retiredDiagnostic = retiredTaskDiagnostic(input);
 			if (retiredDiagnostic?.kind === "action")
 				return toolResult({
 					outcome: "rejected",
 					error:
-						`task action ${retiredDiagnostic.value} is retired. Mark ready work running, execute it with subagent or bg_start, then update the task terminal state.`,
+						`task action ${retiredDiagnostic.value} is retired. Assign ready work, perform the work through the appropriate tool, then update the task terminal state.`,
 				});
 			if (retiredDiagnostic?.kind === "field")
 				return toolResult({
 					outcome: "rejected",
 					error:
-						`task field ${retiredDiagnostic.value} is retired. Store todo state in task and execute work separately with subagent or bg_start.`,
+						`task field ${retiredDiagnostic.value} is retired. Store Instructions and task state in task; perform work separately through the appropriate tool.`,
 				});
 			const workspace = resolveTaskWorkspace(ctx.cwd);
 			const sessionId = currentTaskSessionId(ctx);
@@ -1023,11 +1050,12 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 										true,
 									)
 								: undefined,
-						notes:
-							typeof input.notes === "string"
-								? validateTaskText("notes", input.notes, TASK_NOTES_MAX_LENGTH)
+						instructions:
+							typeof input.instructions === "string"
+								? validateTaskText("instructions", input.instructions, TASK_INSTRUCTIONS_MAX_LENGTH)
 								: undefined,
-						scope: validatedScope(input.scope),
+						boundary: validatedBoundary(input.boundary),
+						covers: validatedCovers(input.covers),
 						blockedBy: validatedBlockers(input.blockedBy),
 						goalId: typeof input.goalId === "string" ? input.goalId : undefined,
 						produces: validatedResources(input.produces, "produces"),
@@ -1039,7 +1067,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 							? validateTaskText(
 									"skipReason",
 									input.skipReason,
-									TASK_NOTES_MAX_LENGTH,
+									TASK_INSTRUCTIONS_MAX_LENGTH,
 								)
 							: undefined;
 				} catch (error) {
@@ -1067,7 +1095,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 							outcome: "rejected",
 							error: `invalid transition for ${id}: ${existing.state} -> ${input.state}`,
 						});
-					if (target === "running") {
+					if (target === "assigned") {
 						const candidate = {
 							...existing,
 							blockedBy: patch.blockedBy ?? existing.blockedBy,
@@ -1089,7 +1117,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				try {
 					if (target) {
 						const record = updateAndTransitionTask(id, patch, target, { skipReason });
-						const readiness = target === "running" ? { ready: true, unmetBlockers: [] } : undefined;
+						const readiness = target === "assigned" ? { ready: true, unmetBlockers: [] } : undefined;
 						return operationToolResult({ outcome: "persisted", record, ...(readiness ? { readiness } : {}) }, id);
 					}
 					const record = updateTask(id, patch);
@@ -1153,7 +1181,7 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 				return ctx.ui.notify(
 					ready.length > 0
 						? formatTaskList(ready, getTaskRenderMode())
-						: "No ready pending tasks.",
+						: "No ready unassigned tasks.",
 					"info",
 				);
 			}
@@ -1203,8 +1231,8 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 					),
 					"info",
 				);
-			if (parsed.verb === "start")
-				return notifyOutcome(ctx, "Started", lifecycle.start(target.id));
+			if (parsed.verb === "assign")
+				return notifyOutcome(ctx, "Assigned", lifecycle.start(target.id));
 			if (parsed.verb === "complete")
 				return notifyOutcome(
 					ctx,
@@ -1218,11 +1246,7 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 					lifecycle.skip(target.id, parsed.text),
 				);
 			if (parsed.verb === "cancel")
-				return notifyOutcome(
-					ctx,
-					"Cancelled",
-					await lifecycle.cancel(target.id),
-				);
+				return notifyOutcome(ctx, "Skipped", await lifecycle.cancel(target.id));
 			if (parsed.verb === "retry") {
 				const result = lifecycle.retry(target.id);
 				return ctx.ui.notify(
@@ -1251,7 +1275,9 @@ export default function (pi: ExtensionAPI) {
 			currentExplicitActiveRootTaskId(),
 		);
 		if (!reminder) return undefined;
-		return { systemPrompt: `${event.systemPrompt}\n\n${reminder}` };
+		return {
+			systemPrompt: appendRuntimeContext(event.systemPrompt, "tasks", reminder),
+		};
 	});
 	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		const sessionId = currentTaskSessionId(ctx);

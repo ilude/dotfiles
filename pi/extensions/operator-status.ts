@@ -424,35 +424,28 @@ export function resolvePiVersion(): string | null {
 }
 
 interface TaskCounts {
-	pending: number;
-	running: number;
-	blocked: number;
+	unassigned: number;
+	assigned: number;
 	failed: number;
 	completed: number;
-	cancelled: number;
 	skipped: number;
 	nonTerminal: number;
-	urgent: number; // blocked + failed
+	urgent: number;
 }
 
 export function summarizeTaskCounts(records: TaskRecordV1[]): TaskCounts {
 	const counts: TaskCounts = {
-		pending: 0,
-		running: 0,
-		blocked: 0,
+		unassigned: 0,
+		assigned: 0,
 		failed: 0,
 		completed: 0,
-		cancelled: 0,
 		skipped: 0,
 		nonTerminal: 0,
 		urgent: 0,
 	};
-	for (const t of records) {
-		counts[t.state]++;
-	}
-	counts.nonTerminal =
-		counts.pending + counts.running + counts.blocked + counts.failed;
-	counts.urgent = counts.blocked + counts.failed;
+	for (const task of records) counts[task.state]++;
+	counts.nonTerminal = counts.unassigned + counts.assigned + counts.failed;
+	counts.urgent = counts.failed;
 	return counts;
 }
 
@@ -462,21 +455,13 @@ export function filterCurrentSessionActiveTasks(
 ): TaskRecordV1[] {
 	if (!sessionId) return [];
 	return records.filter(
-		(task) =>
-			(task.state === "running" || task.state === "blocked") &&
-			task.sessionId === sessionId,
+		(task) => task.state === "assigned" && task.sessionId === sessionId,
 	);
 }
 
 export function formatTaskStatus(counts: TaskCounts): string | null {
-	const active = counts.running + counts.blocked;
-	if (active === 0) return null;
-	const parts: string[] = [`tasks ${active}`];
-	const flags: string[] = [];
-	if (counts.running > 0) flags.push(`${counts.running} running`);
-	if (counts.blocked > 0) flags.push(`${counts.blocked} blocked`);
-	if (flags.length > 0) parts.push(`(${flags.join(", ")})`);
-	return parts.join(" ");
+	if (counts.assigned === 0) return null;
+	return `tasks ${counts.assigned} (${counts.assigned} assigned)`;
 }
 
 function refreshOperatorStatus(ctx: {

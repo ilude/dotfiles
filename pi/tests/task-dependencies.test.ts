@@ -212,7 +212,7 @@ describe("task registry pruning", () => {
 		});
 		writeStoredTask({ ...retired, agentName: "builder", prompt: "old execution" }, openTaskDatabase(tmpRoot));
 		const completedBlocker = transitionTask(
-			createTask({ origin: "other", summary: "completed blocker", state: "running" })
+			createTask({ origin: "other", summary: "completed blocker", state: "assigned" })
 				.id,
 			"completed",
 		);
@@ -238,7 +238,7 @@ describe("task registry pruning", () => {
 		expect(getTask(completedBlocker.id)).not.toBeNull();
 		expect(getTask(activeRoot.id)?.blocks).toEqual([]);
 
-		transitionTask(pending.id, "running");
+		transitionTask(pending.id, "assigned");
 		transitionTask(pending.id, "completed");
 		const second = pruneTaskRegistry();
 		expect(second.removedIds).toEqual(
@@ -307,6 +307,7 @@ describe("task dependencies and tombstones", () => {
 			origin: "other",
 			summary: "producer",
 			goalId: "goal-1",
+			covers: ["condition-1"],
 			produces: ["artifact"],
 			consumes: [],
 			priority: 2,
@@ -318,7 +319,12 @@ describe("task dependencies and tombstones", () => {
 			priority: 1,
 		});
 		const neutral = createTask({ origin: "other", summary: "neutral" });
-		expect(producer).toMatchObject({ goalId: "goal-1", produces: ["artifact"], priority: 2 });
+		expect(producer).toMatchObject({
+			goalId: "goal-1",
+			covers: ["condition-1"],
+			produces: ["artifact"],
+			priority: 2,
+		});
 		expect(producer).not.toHaveProperty("consumes");
 		expect(partitionReadyTasks([consumer, producer, neutral]).ready.map((task) => task.id)).toEqual([
 			producer.id,
@@ -344,7 +350,7 @@ describe("task dependencies and tombstones", () => {
 	it("classifies ready and waiting tasks from an in-memory snapshot", () => {
 		const pending = createTask({ origin: "other", summary: "pending blocker" });
 		const done = transitionTask(
-			createTask({ origin: "other", summary: "done", state: "running" }).id,
+			createTask({ origin: "other", summary: "done", state: "assigned" }).id,
 			"completed",
 		);
 		const skipped = createTask({
@@ -368,7 +374,7 @@ describe("task dependencies and tombstones", () => {
 		expect(isTaskReady(unblocked, byId)).toBe(true);
 		expect(isTaskReady(waiting, byId)).toBe(false);
 		expect(getUnmetBlockers(waiting, byId)).toEqual([
-			expect.objectContaining({ id: pending.id, status: "pending" }),
+			expect.objectContaining({ id: pending.id, status: "unassigned" }),
 		]);
 		const partitioned = partitionReadyTasks(
 			listTasks({ includeTombstones: true }),

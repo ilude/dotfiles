@@ -10,18 +10,16 @@ import { redactTaskText } from "./task-security.ts";
 import type { TaskRenderMode } from "./task-settings.ts";
 
 const URGENCY_ORDER: TaskState[] = [
-	"blocked",
+	"assigned",
 	"failed",
-	"running",
-	"pending",
+	"unassigned",
 	"completed",
-	"cancelled",
 	"skipped",
 ];
 const COMPACT_PREVIEW_LEN = 60;
 const TOOL_RESULT_COMPACT_MAX_BYTES = 4_096;
 const TOOL_RESULT_EXPANDED_MAX_BYTES = 16_384;
-const TERMINAL = new Set<TaskState>(["completed", "cancelled", "skipped"]);
+const TERMINAL = new Set<TaskState>(["completed", "skipped"]);
 
 export interface TaskGroup {
 	state: TaskState;
@@ -111,7 +109,7 @@ export function formatCompactRow(
 	const retry = task.retryCount > 0 ? ` (retry x${task.retryCount})` : "";
 	const unmet = getUnmetBlockers(task, tasksById);
 	const readiness =
-		task.state === "pending"
+		task.state === "unassigned"
 			? unmet.length > 0
 				? ` [waiting: ${unmet.map((item) => shortTaskId(item.id)).join(", ")}]`
 				: " [ready]"
@@ -183,26 +181,7 @@ function formatMultiTaskToolResult(
 		const state = typeof item.state === "string" ? ` (${item.state})` : "";
 		return `${id} ${classification}${state}`;
 	});
-	const outputIndexes = result.results.flatMap((item, index) =>
-		item.record?.execution?.outputPath ? [index] : [],
-	);
-	if (outputIndexes.length > 0) {
-		const marker = " -- output: ";
-		const markerBytes =
-			Buffer.byteLength(marker, "utf8") * outputIndexes.length;
-		const available =
-			maxBytes - Buffer.byteLength(lines.join("\n"), "utf8") - markerBytes;
-		const valueBudget = Math.max(
-			3,
-			Math.floor(available / outputIndexes.length),
-		);
-		for (const index of outputIndexes) {
-			const outputPath = result.results[index]?.record?.execution?.outputPath;
-			if (outputPath)
-				lines[index] +=
-					`${marker}${truncateRendererValue(outputPath, valueBudget)}`;
-		}
-	}
+	void maxBytes;
 	if (expanded) {
 		for (const item of result.results) {
 			if (!item.record) continue;
@@ -304,32 +283,24 @@ export function formatTaskDetail(
 		lines.push(`  workspace: ${truncateTaskText(task.workspace, 240)}`);
 	if (task.summary)
 		lines.push(`  summary: ${truncateTaskText(task.summary, 200)}`);
-	if (task.scope?.length)
-		lines.push(`  scope: ${task.scope.map((item) => truncateTaskText(item, 120)).join(", ")}`);
+	if (task.boundary?.length)
+		lines.push(`  boundary: ${task.boundary.map((item) => truncateTaskText(item, 120)).join(", ")}`);
 	if (task.prompt)
 		lines.push(`  prompt: ${truncateTaskText(task.prompt, 200)}`);
 	if (task.preview)
 		lines.push(`  preview: ${truncateTaskText(task.preview, 200)}`);
-	if (task.notes) lines.push(`  notes: ${truncateTaskText(task.notes, 400)}`);
+	if (task.instructions) lines.push(`  instructions: ${truncateTaskText(task.instructions, 400)}`);
+	if (task.covers?.length)
+		lines.push(`  covers: ${task.covers.map((item) => truncateTaskText(item, 120)).join(", ")}`);
 	if (task.goalId) lines.push(`  goalId: ${truncateTaskText(task.goalId, 120)}`);
 	if (task.produces?.length)
 		lines.push(`  produces: ${task.produces.map((item) => truncateTaskText(item, 120)).join(", ")}`);
 	if (task.consumes?.length)
 		lines.push(`  consumes: ${task.consumes.map((item) => truncateTaskText(item, 120)).join(", ")}`);
 	if (task.priority !== undefined) lines.push(`  priority: ${task.priority}`);
-	if (task.execution) {
-		lines.push(`  execution: ${task.execution.status}`);
-		if (task.execution.outputPath)
-			lines.push(
-				`  output: ${truncateTaskText(task.execution.outputPath, 240)}`,
-			);
-		if (task.execution.outputError)
-			lines.push(
-				`  output error: ${truncateTaskText(task.execution.outputError, 200)}`,
-			);
-	}
+
 	lines.push(`  created: ${task.createdAt}`);
-	if (task.startedAt) lines.push(`  started: ${task.startedAt}`);
+	if (task.assignedAt) lines.push(`  assigned: ${task.assignedAt}`);
 	if (task.endedAt) lines.push(`  ended: ${task.endedAt}`);
 	if (task.retryCount > 0) lines.push(`  retries: ${task.retryCount}`);
 	if (task.blockReason)

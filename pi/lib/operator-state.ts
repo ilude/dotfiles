@@ -11,17 +11,12 @@ import * as path from "node:path";
 
 import { getAgentDir } from "./extension-utils.ts";
 
-/**
- * Six-state task lifecycle. Order is significant for urgency-ordered listing
- * surfaces (blocked > failed > running > pending > completed > cancelled).
- */
+/** Current task lifecycle. Order is significant for urgency-ordered listings. */
 export const TASK_STATES = [
-	"pending",
-	"running",
-	"blocked",
+	"unassigned",
+	"assigned",
 	"completed",
 	"failed",
-	"cancelled",
 	"skipped",
 ] as const;
 
@@ -29,38 +24,21 @@ export type TaskState = (typeof TASK_STATES)[number];
 
 export const TERMINAL_TASK_STATES: ReadonlySet<TaskState> = new Set([
 	"completed",
-	"cancelled",
 	"skipped",
 ]);
 
-/**
- * Allowed state transitions. Source state -> set of valid target states.
- *
- * - pending -> running (started), cancelled (never ran), failed (failed validation)
- * - running -> blocked (waiting), completed, failed, cancelled
- * - blocked -> running (resumed), failed, cancelled
- * - failed -> running (retry only; preserves retryCount + prior errorReason)
- * - completed and cancelled are terminal.
- */
+/** Explicitly supported task transitions. Tasks do not represent processes. */
 export const ALLOWED_TRANSITIONS: ReadonlyMap<
 	TaskState,
 	ReadonlySet<TaskState>
 > = new Map([
+	["unassigned", new Set<TaskState>(["assigned", "skipped"])],
 	[
-		"pending",
-		new Set<TaskState>(["running", "cancelled", "failed", "skipped"]),
+		"assigned",
+		new Set<TaskState>(["unassigned", "completed", "failed", "skipped"]),
 	],
-	[
-		"running",
-		new Set<TaskState>(["blocked", "completed", "failed", "cancelled"]),
-	],
-	[
-		"blocked",
-		new Set<TaskState>(["running", "failed", "cancelled", "skipped"]),
-	],
-	["failed", new Set<TaskState>(["running", "skipped"])],
 	["completed", new Set<TaskState>()],
-	["cancelled", new Set<TaskState>()],
+	["failed", new Set<TaskState>(["assigned", "skipped"])],
 	["skipped", new Set<TaskState>()],
 ]);
 

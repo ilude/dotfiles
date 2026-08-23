@@ -69,60 +69,61 @@ describe("ensureDirectory", () => {
 });
 
 describe("TASK_STATES", () => {
-	it("includes the seven canonical lifecycle states", () => {
-		expect(new Set(TASK_STATES)).toEqual(
-			new Set([
-				"pending",
-				"running",
-				"blocked",
-				"completed",
-				"failed",
-				"cancelled",
-				"skipped",
-			]),
-		);
+	it("lists the five canonical lifecycle states", () => {
+		expect(TASK_STATES).toEqual([
+			"unassigned",
+			"assigned",
+			"completed",
+			"failed",
+			"skipped",
+		]);
 	});
 
 	it("identifies terminal states", () => {
-		expect(TERMINAL_TASK_STATES.has("completed")).toBe(true);
-		expect(TERMINAL_TASK_STATES.has("cancelled")).toBe(true);
-		expect(TERMINAL_TASK_STATES.has("skipped")).toBe(true);
-		expect(TERMINAL_TASK_STATES.has("failed")).toBe(false); // failed is retryable
-		expect(TERMINAL_TASK_STATES.has("running")).toBe(false);
+		expect(TERMINAL_TASK_STATES).toEqual(new Set(["completed", "skipped"]));
+		expect(TERMINAL_TASK_STATES.has("failed")).toBe(false);
 	});
 });
 
 describe("ALLOWED_TRANSITIONS / isAllowedTransition", () => {
-	const cases: Array<[TaskState, TaskState, boolean]> = [
-		["pending", "running", true],
-		["pending", "cancelled", true],
-		["pending", "failed", true],
-		["pending", "completed", false],
-		["pending", "blocked", false],
-		["running", "blocked", true],
-		["running", "completed", true],
-		["running", "failed", true],
-		["running", "cancelled", true],
-		["running", "pending", false],
-		["blocked", "running", true],
-		["blocked", "failed", true],
-		["blocked", "cancelled", true],
-		["blocked", "completed", false],
-		["failed", "running", true],
-		["failed", "completed", false],
-		["failed", "cancelled", false],
-		["completed", "running", false],
-		["completed", "failed", false],
-		["cancelled", "running", false],
+	const allowedTransitions: Array<[TaskState, TaskState]> = [
+		["unassigned", "assigned"],
+		["unassigned", "skipped"],
+		["assigned", "unassigned"],
+		["assigned", "completed"],
+		["assigned", "failed"],
+		["assigned", "skipped"],
+		["failed", "assigned"],
+		["failed", "skipped"],
 	];
-	for (const [from, to, expected] of cases) {
-		it(`${from} -> ${to} is ${expected ? "allowed" : "rejected"}`, () => {
-			expect(isAllowedTransition(from, to)).toBe(expected);
+
+	it("matches every allowed transition from the plan", () => {
+		for (const [from, to] of allowedTransitions) {
+			expect(ALLOWED_TRANSITIONS.get(from)?.has(to)).toBe(true);
+			expect(isAllowedTransition(from, to)).toBe(true);
+		}
+	});
+
+	it("allows failed -> assigned as the retry transition", () => {
+		expect(isAllowedTransition("failed", "assigned")).toBe(true);
+	});
+
+	const rejectedTransitions: Array<[TaskState, TaskState]> = [
+		["unassigned", "completed"],
+		["assigned", "assigned"],
+		["failed", "completed"],
+		["completed", "assigned"],
+		["skipped", "assigned"],
+	];
+	for (const [from, to] of rejectedTransitions) {
+		it(`${from} -> ${to} is rejected`, () => {
+			expect(isAllowedTransition(from, to)).toBe(false);
 		});
 	}
 
 	it("terminal states have no outgoing transitions", () => {
-		expect(ALLOWED_TRANSITIONS.get("completed")?.size).toBe(0);
-		expect(ALLOWED_TRANSITIONS.get("cancelled")?.size).toBe(0);
+		for (const state of TERMINAL_TASK_STATES) {
+			expect(ALLOWED_TRANSITIONS.get(state)).toEqual(new Set());
+		}
 	});
 });

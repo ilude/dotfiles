@@ -173,9 +173,9 @@ describe("Herdr metadata extension", () => {
 	it("reports model, context, subagent, and current-session task metadata", async () => {
 		mockRuntime.runs.push({ status: "running" }, { status: "completed" });
 		mockRuntime.tasks.push(
-			{ state: "running", sessionId: "current-session" },
-			{ state: "blocked", sessionId: "current-session" },
-			{ state: "running", sessionId: "other-session" },
+			{ state: "assigned", sessionId: "current-session" },
+			{ state: "assigned", sessionId: "current-session" },
+			{ state: "assigned", sessionId: "other-session" },
 		);
 		const pi = createMockPi();
 		herdrMetadata(pi as Parameters<typeof herdrMetadata>[0]);
@@ -200,7 +200,7 @@ describe("Herdr metadata extension", () => {
 				"--token",
 				"subagents=subagents 1",
 				"--token",
-				"tasks=tasks 2 (1 running, 1 blocked)",
+				"tasks=tasks 2 (2 assigned)",
 			],
 			{ timeout: 5_000 },
 		);
@@ -226,7 +226,7 @@ describe("Herdr metadata extension", () => {
 	it("deduplicates unchanged state and clears optional values", async () => {
 		mockRuntime.runs.push({ status: "running" });
 		mockRuntime.tasks.push({
-			state: "running",
+			state: "assigned",
 			sessionId: "current-session",
 		});
 		const pi = createMockPi();

@@ -34,19 +34,19 @@ function ctxWithStatus() {
 }
 
 describe("summarizeTaskCounts / formatTaskStatus", () => {
-	it("filters status bar tasks to running/blocked tasks from current session", async () => {
+	it("filters status bar tasks to assigned tasks from the current session", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const sessionId = "current-session";
 		const records = [
 			{ state: "failed", sessionId },
 			{ state: "completed", sessionId },
-			{ state: "running", sessionId: "other-session" },
-			{ state: "running", sessionId },
-			{ state: "blocked", sessionId },
+			{ state: "assigned", sessionId: "other-session" },
+			{ state: "assigned", sessionId },
+			{ state: "unassigned", sessionId },
 		] as any[];
 
 		const filtered = mod.filterCurrentSessionActiveTasks(records, sessionId);
-		expect(filtered.map((t) => t.state)).toEqual(["running", "blocked"]);
+		expect(filtered.map((task) => task.state)).toEqual(["assigned"]);
 	});
 
 	it("returns null label when nothing is in flight", async () => {
@@ -56,42 +56,41 @@ describe("summarizeTaskCounts / formatTaskStatus", () => {
 		expect(mod.formatTaskStatus(counts)).toBeNull();
 	});
 
-	it("counts only non-terminal states toward the active total", async () => {
+	it("counts current non-terminal states and renders assigned work", async () => {
 		const { createTask, transitionTask } = await import(
 			"../lib/task-registry.ts"
 		);
 		const mod = await import("../extensions/operator-status.ts");
-		const a = createTask({
+		createTask({ origin: "subagent", summary: "unassigned" });
+		const assigned = createTask({
 			origin: "subagent",
-			summary: "a",
-			state: "running",
+			summary: "assigned",
+			state: "assigned",
 		});
-		const b = createTask({
+		const failed = createTask({
 			origin: "subagent",
-			summary: "b",
-			state: "running",
+			summary: "failed",
+			state: "assigned",
 		});
-		transitionTask(b.id, "blocked", { blockReason: "needs creds" });
-		const c = createTask({
+		transitionTask(failed.id, "failed", { errorReason: "failed check" });
+		const completed = createTask({
 			origin: "subagent",
-			summary: "c",
-			state: "running",
+			summary: "completed",
+			state: "assigned",
 		});
-		transitionTask(c.id, "completed");
-		void a;
+		transitionTask(completed.id, "completed");
+		void assigned;
 
 		const { listTasks } = await import("../lib/task-registry.ts");
 		const counts = mod.summarizeTaskCounts(listTasks());
-		expect(counts.running).toBe(1);
-		expect(counts.blocked).toBe(1);
+		expect(counts.unassigned).toBe(1);
+		expect(counts.assigned).toBe(1);
+		expect(counts.failed).toBe(1);
 		expect(counts.completed).toBe(1);
-		expect(counts.nonTerminal).toBe(2);
+		expect(counts.nonTerminal).toBe(3);
 		expect(counts.urgent).toBe(1);
 
-		const label = mod.formatTaskStatus(counts);
-		expect(label).toContain("tasks 2");
-		expect(label).toContain("1 running");
-		expect(label).toContain("1 blocked");
+		expect(mod.formatTaskStatus(counts)).toBe("tasks 1 (1 assigned)");
 	});
 });
 

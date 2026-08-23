@@ -34,7 +34,7 @@ describe("formatTaskToolResult", () => {
 		const result = formatTaskToolResult({ outcome: "persisted", record });
 
 		expect(result.failed).toBe(false);
-		expect(result.text).toMatch(/^ok pending\n {2}[A-Za-z0-9]/);
+		expect(result.text).toMatch(/^ok unassigned\n {2}[A-Za-z0-9]/);
 		expect(result.text).toContain("compact task");
 	});
 
@@ -47,15 +47,15 @@ describe("formatTaskToolResult", () => {
 	});
 
 	it("renders record lists grouped by state", () => {
-		const pending = createTask({ origin: "other", summary: "pending task" });
-		const running = transitionTask(pending.id, "running");
+		const unassigned = createTask({ origin: "other", summary: "unassigned task" });
+		const assigned = transitionTask(unassigned.id, "assigned");
 		const result = formatTaskToolResult({
 			outcome: "persisted",
-			records: [running],
+			records: [assigned],
 		});
 
-		expect(result.text).toContain("running (1)");
-		expect(result.text).toContain("pending task");
+		expect(result.text).toContain("assigned (1)");
+		expect(result.text).toContain("unassigned task");
 	});
 
 	it("renders failed outcomes with their error", () => {
@@ -112,7 +112,7 @@ describe("formatTaskToolResult", () => {
 				results: group.map((classification, index) => ({
 					id: `${classification}-${index}`,
 					classification,
-					state: "running",
+					state: "assigned",
 				})),
 			});
 			for (const classification of group)
@@ -145,7 +145,7 @@ describe("formatTaskToolResult", () => {
 		};
 		for (const expanded of [false, true]) {
 			const result = formatTaskToolResult(details, expanded);
-			expect(result.text.match(/output:/g)).toHaveLength(8);
+			expect(result.text).not.toContain("output:");
 			expect(Buffer.byteLength(result.text, "utf8")).toBeLessThanOrEqual(
 				expanded ? 16_384 : 4_096,
 			);
@@ -163,13 +163,13 @@ describe("task renderer/settings", () => {
 		const task = createTask({
 			origin: "other",
 			summary: "done",
-			state: "running",
+			state: "assigned",
 		});
 		const done = transitionTask(task.id, "completed");
 		expect(formatTaskList([done], "compact")).toContain("terminal (1)");
 	});
 
-	it("labels pending tasks as ready or waiting", () => {
+	it("labels unassigned tasks as ready or waiting", () => {
 		const blocker = createTask({ origin: "other", summary: "blocker" });
 		const ready = createTask({ origin: "other", summary: "ready task" });
 		const waiting = createTask({
@@ -188,7 +188,7 @@ describe("task renderer/settings", () => {
 		const task = createTask({
 			origin: "subagent",
 			summary: "orchestrator",
-			state: "running",
+			state: "assigned",
 			metadata: { model: "anthropic/claude-sonnet-4-6", effort: "high" },
 		});
 
@@ -201,24 +201,16 @@ describe("task renderer/settings", () => {
 		);
 	});
 
-	it("shows legacy execution status and output artifact", () => {
-		const task = {
-			...createTask({
-				origin: "other",
-				summary: "legacy task",
-			}),
-			execution: {
-				kind: "subagent" as const,
-				agent: "builder",
-				task: "Read one file",
-				status: "completed" as const,
-				outputPath: "C:/tmp/task-output.md",
-			},
-		};
-
+	it("renders current instructions and boundary names", () => {
+		const task = createTask({
+			origin: "other",
+			summary: "current task",
+			instructions: "Read one file",
+			boundary: ["src/**"],
+		});
 		const text = formatTaskDetail(task);
-		expect(text).toContain("execution: completed");
-		expect(text).toContain("output: C:/tmp/task-output.md");
+		expect(text).toContain("instructions: Read one file");
+		expect(text).toContain("boundary: src/**");
 	});
 
 	it("renders sorted dependency detail with redaction and skipped unblocking", () => {

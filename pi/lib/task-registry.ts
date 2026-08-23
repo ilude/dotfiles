@@ -5,6 +5,7 @@ import * as path from "node:path";
 import {
 	ALLOWED_TRANSITIONS,
 	isAllowedTransition,
+	TASK_STATES,
 	type TaskState,
 	TERMINAL_TASK_STATES,
 } from "./operator-state.ts";
@@ -18,6 +19,11 @@ import {
 } from "./task-store.ts";
 
 export type { TaskState } from "./operator-state.ts";
+import type { TaskState as CurrentTaskState } from "./operator-state.ts";
+
+export type LegacyTaskState = "pending" | "running" | "blocked" | "cancelled";
+/** @deprecated Legacy values are accepted only when normalizing persisted records and create/update input. */
+export type TaskStateInput = CurrentTaskState | LegacyTaskState;
 
 export type TaskOrigin = "subagent" | "shell" | "other";
 const TASK_SCOPE_MAX_ITEMS = 16;
@@ -94,38 +100,6 @@ export function normalizeTaskUsage(usage: TaskUsage): NormalizedTaskUsage {
 	};
 }
 
-export type TaskExecutionStatus =
-	| "pending"
-	| "running"
-	| "stop_requested"
-	| "stopped"
-	| "completed"
-	| "failed"
-	| "failed_to_stop"
-	| "orphaned";
-
-export interface SubagentTaskExecution {
-	kind: "subagent";
-	agent: string;
-	task: string;
-	cwd?: string;
-	agentScope?: "user" | "project" | "both";
-	model?: string;
-	modelSize?: "small" | "medium" | "large";
-	experimentId?: string;
-	experimentArm?: string;
-	experimentTaskClass?: string;
-	experimentEffort?: "medium" | "high" | "low";
-	status: TaskExecutionStatus;
-	ownerPid?: number;
-	runId?: string;
-	orchestrationId?: string;
-	interactionId?: string;
-	startedAt?: string;
-	outputPath?: string;
-	outputError?: string;
-}
-
 export interface TaskRecordV1 {
 	[key: string]: unknown;
 	schemaVersion: 1;
@@ -136,6 +110,7 @@ export interface TaskRecordV1 {
 	createdAt: string;
 	updatedAt: string;
 	startedAt?: string;
+	assignedAt?: string;
 	endedAt?: string;
 	retryCount: number;
 	parentId?: string;
@@ -145,17 +120,19 @@ export interface TaskRecordV1 {
 	repoSlug?: string;
 	workspace?: string;
 	sessionId?: string;
-	scope?: string[];
-	notes?: string;
+	/** Current model-facing names. */
+	boundary?: string[];
+	instructions?: string;
+	/** Historical reason fields remain readable during migration. */
 	blockReason?: string;
 	errorReason?: string;
 	skipReason?: string;
 	usage?: TaskUsage;
 	metadata?: Record<string, unknown>;
-	execution?: SubagentTaskExecution;
 	blockedBy?: string[];
 	blocks?: string[];
 	goalId?: string;
+	covers?: string[];
 	produces?: string[];
 	consumes?: string[];
 	priority?: number;
@@ -165,17 +142,21 @@ export interface TaskRecordV1 {
 export interface CreateTaskInput {
 	origin: TaskOrigin;
 	summary: string;
-	state?: TaskState;
+	state?: TaskStateInput;
 	parentId?: string;
 	preview?: string;
 	repoSlug?: string;
 	workspace?: string;
 	sessionId?: string;
+	boundary?: string[];
+	instructions?: string;
+	/** @deprecated Compatibility input; normalized to current names. */
 	scope?: string[];
 	notes?: string;
 	metadata?: Record<string, unknown>;
 	blockedBy?: string[];
 	goalId?: string;
+	covers?: string[];
 	produces?: string[];
 	consumes?: string[];
 	priority?: number;
@@ -210,17 +191,20 @@ export interface UpdateTaskPatch {
 	usage?: TaskUsage;
 	metadata?: Record<string, unknown>;
 	workspace?: string;
+	boundary?: string[];
+	instructions?: string;
+	/** @deprecated Compatibility input; normalized to current names. */
 	scope?: string[];
 	notes?: string;
 	blockedBy?: string[];
 	goalId?: string;
+	covers?: string[];
 	produces?: string[];
 	consumes?: string[];
 	priority?: number;
 }
 
 export interface TransitionOptions {
-	blockReason?: string;
 	errorReason?: string;
 	skipReason?: string;
 	usage?: TaskUsage;
@@ -252,6 +236,12 @@ export interface TaskPruneResult {
 
 export interface TaskPruneOptions {
 	removeUnowned?: boolean;
+}
+
+export function normalizeTaskBoundary(
+	boundary: readonly string[] | undefined,
+): string[] | undefined {
+	return normalizeTaskScope(boundary);
 }
 
 export function normalizeTaskScope(
@@ -286,7 +276,7 @@ export class TaskRegistryError extends Error {
 
 function normalizeTaskResources(
 	resources: readonly string[] | undefined,
-	label: "produces" | "consumes",
+	label: "covers" | "produces" | "consumes",
 ): string[] | undefined {
 	if (resources === undefined) return undefined;
 	if (resources.length > TASK_RESOURCE_MAX_ITEMS)
@@ -310,17 +300,22 @@ function normalizeTaskPriority(priority: number | undefined): number | undefined
 
 function normalizeTaskMetadataFields(input: {
 	goalId?: string;
+	covers?: readonly string[];
 	produces?: readonly string[];
 	consumes?: readonly string[];
 	priority?: number;
-}): Pick<TaskRecordV1, "goalId" | "produces" | "consumes" | "priority"> {
+}): Pick<TaskRecordV1, "goalId" | "covers" | "produces" | "consumes" | "priority"> {
 	if (input.goalId !== undefined && (typeof input.goalId !== "string" || input.goalId.length === 0))
 		throw new TaskRegistryError("goalId must be a non-empty string");
+	const covers = input.covers === undefined ? undefined : normalizeTaskResources(input.covers, "covers");
+	if (input.goalId !== undefined && !covers?.length)
+		throw new TaskRegistryError("goal-linked task must cover at least one current condition");
 	const produces = normalizeTaskResources(input.produces, "produces");
 	const consumes = normalizeTaskResources(input.consumes, "consumes");
 	const priority = normalizeTaskPriority(input.priority);
 	return {
 		...(input.goalId !== undefined ? { goalId: input.goalId } : {}),
+		...(covers !== undefined ? { covers } : {}),
 		...(produces !== undefined ? { produces } : {}),
 		...(consumes !== undefined ? { consumes } : {}),
 		...(priority !== undefined ? { priority } : {}),
@@ -350,10 +345,39 @@ const isValidId = (id: string): boolean =>
 	id.length > 0 &&
 	id.length <= 64;
 
-const normalizedTaskState = (value: unknown): TaskState =>
-	typeof value === "string" && ALLOWED_TRANSITIONS.has(value as TaskState)
-		? (value as TaskState)
-		: "pending";
+const LEGACY_STATE_MAP: Readonly<Record<string, TaskState>> = {
+	unassigned: "unassigned",
+	assigned: "assigned",
+	pending: "unassigned",
+	running: "assigned",
+	blocked: "unassigned",
+	completed: "completed",
+	failed: "failed",
+	cancelled: "skipped",
+	skipped: "skipped",
+};
+
+export function normalizeTaskState(value: unknown): TaskState {
+	return typeof value === "string" && LEGACY_STATE_MAP[value]
+		? LEGACY_STATE_MAP[value]
+		: "unassigned";
+}
+
+function mergeLegacyText(current: unknown, legacy: unknown): string | undefined {
+	const currentText = typeof current === "string" ? current : undefined;
+	const legacyText = typeof legacy === "string" ? legacy : undefined;
+	if (!currentText) return legacyText;
+	if (!legacyText || legacyText === currentText) return currentText;
+	return `${currentText}\n\n${legacyText}`;
+}
+
+function mergeLegacyBoundary(current: unknown, legacy: unknown): string[] | undefined {
+	const values = [
+		...(Array.isArray(current) ? current : []),
+		...(Array.isArray(legacy) ? legacy : []),
+	].filter((value): value is string => typeof value === "string");
+	return values.length > 0 ? [...new Set(values)] : undefined;
+}
 
 const stringOr = (value: unknown, fallback: string): string =>
 	typeof value === "string" ? value : fallback;
@@ -366,19 +390,30 @@ const normalizeTaskRecord = (
 ): TaskRecordV1 | null => {
 	if (typeof parsed.id !== "string" || !isValidId(parsed.id)) return null;
 	const now = new Date().toISOString();
+	const state = normalizeTaskState(parsed.state);
+	const instructions = mergeLegacyText(parsed.instructions, parsed.notes);
+	const boundary = mergeLegacyBoundary(parsed.boundary, parsed.scope);
 	const normalized: Record<string, unknown> = {
 		...parsed,
 		schemaVersion: 1,
 		id: parsed.id,
 		origin: isTaskOrigin(parsed.origin) ? parsed.origin : "other",
-		state: normalizedTaskState(parsed.state),
+		state,
 		summary: stringOr(parsed.summary, "untitled task"),
 		createdAt: stringOr(parsed.createdAt, now),
 		updatedAt: stringOr(parsed.updatedAt, now),
 		retryCount: numberOrZero(parsed.retryCount),
 		blockedBy: normalizeIdList(parsed.blockedBy),
 		blocks: normalizeIdList(parsed.blocks),
+		...(instructions !== undefined ? { instructions } : {}),
+		...(boundary !== undefined ? { boundary } : {}),
 	};
+	if (state === "unassigned" && parsed.state === "blocked" && typeof parsed.blockReason === "string")
+		normalized.instructions = mergeLegacyText(normalized.instructions, parsed.blockReason);
+	if (state === "skipped" && parsed.state === "cancelled" && normalized.skipReason === undefined && typeof parsed.blockReason === "string")
+		normalized.skipReason = parsed.blockReason;
+	delete normalized.notes;
+	delete normalized.scope;
 	if (Array.isArray(normalized.produces) && normalized.produces.length === 0)
 		delete normalized.produces;
 	if (Array.isArray(normalized.consumes) && normalized.consumes.length === 0)
@@ -498,7 +533,7 @@ function createTaskRecord(
 	blockedBy: string[],
 ): TaskRecordV1 {
 	const now = new Date().toISOString();
-	const initialState: TaskState = input.state ?? "pending";
+	const initialState: TaskState = normalizeTaskState(input.state);
 	const record: TaskRecordV1 = sanitizeTaskValue({
 		schemaVersion: 1,
 		id,
@@ -513,13 +548,13 @@ function createTaskRecord(
 		repoSlug: input.repoSlug,
 		workspace: input.workspace,
 		sessionId: input.sessionId,
-		scope: normalizeTaskScope(input.scope),
-		notes: input.notes,
+		boundary: normalizeTaskScope(input.boundary ?? input.scope),
+		instructions: mergeLegacyText(input.instructions, input.notes),
 		metadata: input.metadata,
 		blockedBy,
 		...normalizeTaskMetadataFields(input),
 	});
-	if (initialState === "running") record.startedAt = now;
+	if (initialState === "assigned") record.assignedAt = now;
 	return record;
 }
 
@@ -661,12 +696,14 @@ export function updateTask(id: string, patch: UpdateTaskPatch): TaskRecordV1 {
 			...(patch.usage !== undefined ? { usage: patch.usage } : {}),
 			...(patch.metadata !== undefined ? { metadata: patch.metadata } : {}),
 			...(patch.workspace !== undefined ? { workspace: patch.workspace } : {}),
-			...(patch.scope !== undefined ? { scope: normalizeTaskScope(patch.scope) } : {}),
-			...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+			...(patch.boundary !== undefined || patch.scope !== undefined ? { boundary: normalizeTaskScope(patch.boundary ?? patch.scope) } : {}),
+			...(patch.instructions !== undefined || patch.notes !== undefined ? { instructions: mergeLegacyText(patch.instructions, patch.notes) } : {}),
 			...(patch.blockedBy !== undefined ? { blockedBy: nextBlockedBy } : {}),
+			...(patch.covers !== undefined ? { covers: patch.covers } : {}),
 			updatedAt: new Date().toISOString(),
 			...normalizeTaskMetadataFields({
 				goalId: patch.goalId !== undefined ? patch.goalId : existing.goalId,
+				covers: patch.covers !== undefined ? patch.covers : existing.covers,
 				produces: patch.produces !== undefined ? patch.produces : existing.produces,
 				consumes: patch.consumes !== undefined ? patch.consumes : existing.consumes,
 				priority: patch.priority !== undefined ? patch.priority : existing.priority,
@@ -699,7 +736,7 @@ const updateSameStateTask = (
 	return updated;
 };
 
-const applyRunningTransition = (
+const applyAssignedTransition = (
 	next: TaskRecordV1,
 	existing: TaskRecordV1,
 	now: string,
@@ -709,20 +746,15 @@ const applyRunningTransition = (
 		delete next.errorReason;
 		delete next.endedAt;
 	}
-	if (!existing.startedAt) next.startedAt = now;
-	delete next.blockReason;
+	if (!existing.assignedAt) next.assignedAt = now;
 };
 
-const applyBlockedOrFailedTransition = (
+const applyFailedTransition = (
 	next: TaskRecordV1,
 	existing: TaskRecordV1,
-	target: TaskState,
 	opts: TransitionOptions,
 ): void => {
-	if (target === "blocked")
-		next.blockReason = opts.blockReason ?? existing.blockReason;
-	if (target === "failed")
-		next.errorReason = opts.errorReason ?? existing.errorReason;
+	next.errorReason = opts.errorReason ?? existing.errorReason;
 };
 
 const applyTerminalTransition = (
@@ -745,35 +777,42 @@ const applyTransitionDetails = (
 	opts: TransitionOptions,
 	now: string,
 ): void => {
-	if (target === "running") applyRunningTransition(next, existing, now);
-	applyBlockedOrFailedTransition(next, existing, target, opts);
+	if (target === "assigned") applyAssignedTransition(next, existing, now);
+	if (target === "failed") applyFailedTransition(next, existing, opts);
 	applyTerminalTransition(next, existing, target, opts, now);
 	if (opts.usage) next.usage = opts.usage;
 };
 
+function assertCurrentTransitionTarget(target: TaskStateInput): asserts target is TaskState {
+	if (!TASK_STATES.includes(target as TaskState))
+		throw new TaskRegistryError(`unsupported current task state: ${String(target)}`);
+}
+
 function transitionTaskInTransaction(
 	db: Parameters<typeof writeTaskFile>[1],
 	id: string,
-	target: TaskState,
+	target: TaskStateInput,
 	opts: TransitionOptions,
 ): TaskRecordV1 {
+	assertCurrentTransitionTarget(target);
+	const normalizedTarget = target;
 	const existing = getTask(id);
 	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
-	if (existing.state === target) return updateSameStateTask(existing, target, opts, db);
-	if (!isAllowedTransition(existing.state, target)) {
+	if (existing.state === normalizedTarget) return updateSameStateTask(existing, normalizedTarget, opts, db);
+	if (!isAllowedTransition(existing.state, normalizedTarget)) {
 		const allowed = [...(ALLOWED_TRANSITIONS.get(existing.state) ?? [])].join(", ") || "(none)";
-		throw new TaskRegistryError(`invalid transition for ${id}: ${existing.state} -> ${target} (allowed: ${allowed})`);
+		throw new TaskRegistryError(`invalid transition for ${id}: ${existing.state} -> ${normalizedTarget} (allowed: ${allowed})`);
 	}
 	const now = new Date().toISOString();
-	const next = sanitizeTaskValue({ ...existing, state: target, updatedAt: now }) as TaskRecordV1;
-	applyTransitionDetails(next, existing, target, opts, now);
+	const next = sanitizeTaskValue({ ...existing, state: normalizedTarget, updatedAt: now }) as TaskRecordV1;
+	applyTransitionDetails(next, existing, normalizedTarget, opts, now);
 	writeTaskFile(next, db);
 	return next;
 }
 
 export function transitionTask(
 	id: string,
-	target: TaskState,
+	target: TaskStateInput,
 	opts: TransitionOptions = {},
 ): TaskRecordV1 {
 	const db = openTaskDatabase();
@@ -783,7 +822,7 @@ export function transitionTask(
 export function updateAndTransitionTask(
 	id: string,
 	patch: UpdateTaskPatch,
-	target: TaskState,
+	target: TaskStateInput,
 	opts: TransitionOptions = {},
 ): TaskRecordV1 {
 	const db = openTaskDatabase();
@@ -797,12 +836,14 @@ export function updateAndTransitionTask(
 			...(patch.usage !== undefined ? { usage: patch.usage } : {}),
 			...(patch.metadata !== undefined ? { metadata: patch.metadata } : {}),
 			...(patch.workspace !== undefined ? { workspace: patch.workspace } : {}),
-			...(patch.scope !== undefined ? { scope: normalizeTaskScope(patch.scope) } : {}),
-			...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+			...(patch.boundary !== undefined || patch.scope !== undefined ? { boundary: normalizeTaskScope(patch.boundary ?? patch.scope) } : {}),
+			...(patch.instructions !== undefined || patch.notes !== undefined ? { instructions: mergeLegacyText(patch.instructions, patch.notes) } : {}),
 			...(patch.blockedBy !== undefined ? { blockedBy: patch.blockedBy } : {}),
+			...(patch.covers !== undefined ? { covers: patch.covers } : {}),
 			updatedAt: new Date().toISOString(),
 			...normalizeTaskMetadataFields({
 				goalId: patch.goalId !== undefined ? patch.goalId : existing.goalId,
+				covers: patch.covers !== undefined ? patch.covers : existing.covers,
 				produces: patch.produces !== undefined ? patch.produces : existing.produces,
 				consumes: patch.consumes !== undefined ? patch.consumes : existing.consumes,
 				priority: patch.priority !== undefined ? patch.priority : existing.priority,
@@ -818,7 +859,8 @@ export function updateAndTransitionTask(
 			}]);
 			updated.blockedBy = dependencies.get(id) ?? [];
 		}
-		if (target === "running") {
+			assertCurrentTransitionTarget(target);
+		if (target === "assigned") {
 			const readiness = getTaskReadiness(updated, tasksByIdSnapshot(listTasks({ includeTombstones: true })));
 			if (!readiness.ready)
 				throw new TaskRegistryError(`task is waiting on ${readiness.unmetBlockers.map((item) => item.id).join(", ")}`);
@@ -830,7 +872,7 @@ export function updateAndTransitionTask(
 
 export function safeTransitionTask(
 	id: string,
-	target: TaskState,
+	target: TaskStateInput,
 	opts: TransitionOptions = {},
 ): TaskOperationResult {
 	try {
@@ -982,7 +1024,7 @@ export function tombstoneTask(id: string, reason = "deleted"): TaskRecordV1 {
 		const existing = getTask(id);
 		if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
 		const now = new Date().toISOString();
-		const state = TERMINAL_TASK_STATES.has(existing.state) ? existing.state : "cancelled";
+		const state = TERMINAL_TASK_STATES.has(existing.state) ? existing.state : "skipped";
 		tombstone = sanitizeTaskValue({
 			...existing,
 			state,
@@ -999,11 +1041,7 @@ export function tombstoneTask(id: string, reason = "deleted"): TaskRecordV1 {
 export type BlockerStatus =
 	| "missing"
 	| "tombstoned"
-	| "pending"
-	| "running"
-	| "blocked"
-	| "failed"
-	| "cancelled";
+	| TaskState;
 
 export interface UnmetBlocker {
 	id: string;
@@ -1061,7 +1099,7 @@ export function isTaskReady(
 	task: TaskRecordV1,
 	tasksById: ReadonlyMap<string, TaskRecordV1>,
 ): boolean {
-	return task.state === "pending" && getTaskReadiness(task, tasksById).ready;
+	return task.state === "unassigned" && getTaskReadiness(task, tasksById).ready;
 }
 
 export function startTask(id: string): TaskOperationResult {
@@ -1078,7 +1116,7 @@ export function startTask(id: string): TaskOperationResult {
 					readiness,
 					error: `task is waiting on ${readiness.unmetBlockers.map((item) => item.id).join(", ")}`,
 				};
-			return { outcome: "persisted", record: transitionTaskInTransaction(db, id, "running", {}), readiness };
+			return { outcome: "persisted", record: transitionTaskInTransaction(db, id, "assigned", {}), readiness };
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -1144,9 +1182,9 @@ export function partitionReadyTasks(tasks: readonly TaskRecordV1[]): {
 		ready,
 		waiting: tasks.filter(
 			(task) =>
-				task.state === "pending" && getUnmetBlockers(task, byId).length > 0,
+				task.state === "unassigned" && getUnmetBlockers(task, byId).length > 0,
 		),
-		blocked: tasks.filter((task) => task.state === "blocked"),
+		blocked: [],
 	};
 }
 

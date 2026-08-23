@@ -71,12 +71,10 @@ describe("task tool schema", () => {
 		expect(update?.properties.state).toMatchObject({
 			type: "string",
 			enum: [
-				"pending",
-				"running",
-				"blocked",
+				"unassigned",
+				"assigned",
 				"completed",
 				"failed",
-				"cancelled",
 				"skipped",
 			],
 		});
@@ -123,7 +121,7 @@ describe("parseTasksArgs", () => {
 });
 
 describe("groupTasksByUrgency", () => {
-	it("orders blocked > failed > running > pending > completed > cancelled", async () => {
+	it("orders assigned > failed > unassigned > completed > skipped", async () => {
 		const mod = await import("../extensions/tasks.ts");
 		const fake = (state: string, id: string) => ({
 			schemaVersion: 1 as const,
@@ -137,20 +135,19 @@ describe("groupTasksByUrgency", () => {
 		});
 		const tasks = [
 			fake("completed", "c1"),
-			fake("blocked", "b1"),
-			fake("running", "r1"),
-			fake("pending", "p1"),
+			fake("assigned", "b1"),
+			fake("assigned", "r1"),
+			fake("unassigned", "p1"),
 			fake("failed", "f1"),
-			fake("cancelled", "x1"),
+			fake("skipped", "x1"),
 		];
 		const groups = mod.groupTasksByUrgency(tasks);
 		expect(groups.map((g) => g.state)).toEqual([
-			"blocked",
+			"assigned",
 			"failed",
-			"running",
-			"pending",
+			"unassigned",
 			"completed",
-			"cancelled",
+			"skipped",
 		]);
 	});
 });
@@ -189,7 +186,7 @@ describe("/tasks command", () => {
 			state: "running",
 			workspace,
 		});
-		transitionTask(blocked.id, "blocked", { blockReason: "no creds" });
+		transitionTask(blocked.id, "failed", { errorReason: "no creds" });
 		createTask({
 			origin: "subagent",
 			summary: "running 1",
@@ -202,8 +199,8 @@ describe("/tasks command", () => {
 		await cmd.handler("", ctx);
 		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
 			.calls[0][0] as string;
-		// blocked must come before running in the output
-		expect(text.indexOf("blocked")).toBeLessThan(text.indexOf("running"));
+		// assigned must be listed before failed in the output
+		expect(text.indexOf("assigned")).toBeLessThan(text.indexOf("failed"));
 	});
 
 	it("show by id-prefix returns the detail view", async () => {
@@ -221,7 +218,7 @@ describe("/tasks command", () => {
 			.calls[0][0] as string;
 		expect(text).toContain(t.id);
 		expect(text).toContain("summary: hello");
-		expect(text).toContain("scope: src/**");
+		expect(text).toContain("boundary: src/**");
 	});
 
 	it("cancel transitions a running task to cancelled", async () => {
@@ -237,7 +234,7 @@ describe("/tasks command", () => {
 		await cmd.handler(`cancel ${t.id}`, ctx);
 
 		const after = getTask(t.id);
-		expect(after?.state).toBe("cancelled");
+		expect(after?.state).toBe("skipped");
 		expect(after?.summary).toBe("long-runner"); // summary preserved
 	});
 
@@ -269,7 +266,7 @@ describe("/tasks command", () => {
 		await cmd.handler(`retry ${t.id}`, ctx);
 
 		const after = getTask(t.id);
-		expect(after?.state).toBe("running");
+		expect(after?.state).toBe("assigned");
 		expect(after?.retryCount).toBe(1);
 		expect(after?.errorReason).toBeUndefined();
 		expect(after?.endedAt).toBeUndefined();
@@ -376,7 +373,7 @@ describe("/tasks command", () => {
 			.calls[0][0] as string;
 		expect(text).toContain(waiting.id.slice(0, 8));
 		expect(text).toContain(blocker.id.slice(0, 8));
-		expect(text).toContain("pending");
+		expect(text).toContain("unassigned");
 		expect(text).toContain("Next: /tasks show");
 		expect(text).not.toContain("token=abc");
 	});
@@ -418,10 +415,10 @@ describe("/tasks command", () => {
 		const after = JSON.stringify(readStoredTasks(openTaskDatabase(tmpRoot)));
 		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
 			.calls[0][0] as string;
-		expect(text).toContain("Cannot start");
+		expect(text).toContain("Cannot assign");
 		expect(text).toContain(blocker.id.slice(0, 8));
 		expect(text).toContain("Next: /tasks show");
-		expect(getTask(waiting.id)?.state).toBe("pending");
+		expect(getTask(waiting.id)?.state).toBe("unassigned");
 		expect(after).toEqual(before);
 	});
 
@@ -585,9 +582,9 @@ describe("/tasks command", () => {
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
 		await cmd.handler(`start ${ready.id}`, ctx);
-		expect(getTask(ready.id)?.state).toBe("running");
+		expect(getTask(ready.id)?.state).toBe("assigned");
 		expect(
 			(ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0],
-		).toContain("Started");
+		).toContain("Assigned");
 	});
 });
