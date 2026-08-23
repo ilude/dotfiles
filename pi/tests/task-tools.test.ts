@@ -125,23 +125,20 @@ describe("task tools", () => {
 			cwd: tmpRoot,
 			sessionManager: { getSessionId: () => sessionId },
 		});
-		const reminder = await beforeAgentStart?.(
-			{ systemPrompt: "base" },
-			ctx,
-		);
+		await beforeAgentStart?.({ systemPrompt: "base" }, ctx);
+		const contextHook = pi._getHook("context")[0]?.handler;
+		const reminder = await contextHook?.({ messages: [] }, ctx);
+		const content = reminder?.messages[0]?.content as string;
 
-		expect(reminder?.systemPrompt).toContain(first.id);
-		expect(reminder?.systemPrompt).toContain(second.id);
-		expect(reminder?.systemPrompt).toContain("<!-- pi-runtime-context:tasks -->");
-		expect(reminder?.systemPrompt.indexOf("base")).toBeLessThan(
-			reminder?.systemPrompt.indexOf("<!-- pi-runtime-context:tasks -->") ?? -1,
-		);
-		expect(reminder?.systemPrompt).toContain(
+		expect(content).toContain(first.id);
+		expect(content).toContain(second.id);
+		expect(content).toContain("<!-- pi-runtime-context:tasks -->");
+		expect(content).toContain(
 			"If multiple tasks could own the request, do not choose silently.",
 		);
-		expect(reminder?.systemPrompt).not.toContain(pending.id);
-		expect(reminder?.systemPrompt).not.toContain(otherSession.id);
-		expect(reminder?.systemPrompt).not.toContain(other.id);
+		expect(content).not.toContain(pending.id);
+		expect(content).not.toContain(otherSession.id);
+		expect(content).not.toContain(other.id);
 		expect(
 			await beforeAgentStart?.(
 				{ systemPrompt: "base" },
@@ -215,16 +212,23 @@ describe("task tools", () => {
 			const pi = createMockPi();
 			tasksExtension.default(pi as Parameters<typeof tasksExtension.default>[0]);
 			const beforeAgentStart = pi._getHook("before_agent_start")[0]?.handler;
-			const reminder = await beforeAgentStart?.(
+			await beforeAgentStart?.(
 				{ systemPrompt: "base" },
 				createMockCtx({
 					cwd: tmpRoot,
 					sessionManager: { getSessionId: () => "current-session" },
 				}),
 			);
+			const reminder = await pi._getHook("context")[0]?.handler(
+				{ messages: [] },
+				createMockCtx({
+					cwd: tmpRoot,
+					sessionManager: { getSessionId: () => "current-session" },
+				}),
+			);
 
-			expect(reminder?.systemPrompt).toContain(root.id);
-			expect(reminder?.systemPrompt).toContain(root.summary);
+			expect(reminder?.messages[0]?.content).toContain(root.id);
+			expect(reminder?.messages[0]?.content).toContain(root.summary);
 		} finally {
 			if (previousTaskId === undefined)
 				delete process.env.PI_SUBAGENT_COORDINATOR_TASK_ID;

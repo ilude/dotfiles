@@ -274,24 +274,22 @@ describe("goal extension", () => {
 			.find((item) => item.name === "goal")
 			?.handler(".specs/file-goal/goal.md", createMockCtx({ cwd: tmp }));
 		const beforeHook = pi._getHook("before_agent_start")[0].handler;
-		const result = await beforeHook(
-			{ systemPrompt: "base" },
-			createMockCtx({ cwd: tmp }),
-		);
+		await beforeHook({ systemPrompt: "base" }, createMockCtx({ cwd: tmp }));
+		const contextHook = pi._getHook("context")[0].handler;
+		const result = await contextHook({ messages: [] }, createMockCtx({ cwd: tmp }));
+		const message = result.messages[0];
 
 		expect(pi.sendUserMessage).toHaveBeenCalledWith(
 			expect.stringContaining("Preview:"),
 		);
-		expect(result.systemPrompt).toContain(
+		expect(message.customType).toBe("pi-runtime-context");
+		expect(message.content).toContain(
 			"File-backed goal: .specs/file-goal/goal.md",
 		);
-		expect(result.systemPrompt).toContain("<!-- pi-runtime-context:goal -->");
-		expect(result.systemPrompt.indexOf("base")).toBeLessThan(
-			result.systemPrompt.indexOf("<!-- pi-runtime-context:goal -->"),
-		);
-		expect(result.systemPrompt).toContain("sha256");
-		expect(result.systemPrompt).not.toContain(fileContent);
-		expect(result.systemPrompt.length).toBeLessThan(1200);
+		expect(message.content).toContain("<!-- pi-runtime-context:goal -->");
+		expect(message.content).toContain("sha256");
+		expect(message.content).not.toContain(fileContent);
+		expect(message.content.length).toBeLessThan(1200);
 	});
 
 	it("rejects unsafe or ambiguous file path inputs", () => {
@@ -412,9 +410,11 @@ describe("goal extension", () => {
 		);
 		expect(pi.getActiveTools()).toContain("goal_complete");
 		const beforeHook = pi._getHook("before_agent_start")[0].handler;
+		await beforeHook({ systemPrompt: "base" }, createMockCtx({ cwd: tmp }));
+		const contextHook = pi._getHook("context")[0].handler;
 		expect(
-			(await beforeHook({ systemPrompt: "base" }, createMockCtx({ cwd: tmp })))
-				.systemPrompt,
+			(await contextHook({ messages: [] }, createMockCtx({ cwd: tmp }))).messages[0]
+				.content,
 		).toContain("Active /goal reminder");
 
 		const tool = pi._getTool("goal_complete");
@@ -446,8 +446,8 @@ describe("goal extension", () => {
 		);
 		expect(pi.getActiveTools()).not.toContain("goal_complete");
 		expect(
-			await beforeHook({ systemPrompt: "base" }, createMockCtx({ cwd: tmp })),
-		).toBeUndefined();
+			(await contextHook({ messages: [], }, createMockCtx({ cwd: tmp }))).messages,
+		).toEqual([]);
 	});
 
 	it("materializes and idempotently reconciles the canonical task dependency graph", () => {

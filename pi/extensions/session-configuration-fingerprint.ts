@@ -8,6 +8,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { recordEvent } from "../lib/metrics.js";
 import { loadCascadedSettings } from "../lib/settings-loader.js";
+import { orderedToolsetFingerprint } from "../lib/tool-activation.js";
 
 const UNAVAILABLE = "unavailable";
 
@@ -25,6 +26,95 @@ type InitialSnapshot = ConfigurationIdentity;
 
 function sha256(value: string): string {
 	return createHash("sha256").update(value).digest("hex");
+}
+
+type PromptCacheRequest = {
+	provider: string;
+	model: string;
+	instructionsSha256: string;
+	immediateToolNamesSha256: string;
+	dynamicContextSha256: string;
+	contextChangedSincePreviousRequest: boolean;
+	immediateToolsChangedSincePreviousRequest: boolean;
+};
+
+function boundedHash(value: unknown): string {
+	if (typeof value !== "string") return UNAVAILABLE;
+	return sha256(value).slice(0, 16);
+}
+
+function immediateToolNames(payload: unknown): string[] | undefined {
+	if (!payload || typeof payload !== "object") return undefined;
+	const tools = (payload as Record<string, unknown>).tools;
+	if (!Array.isArray(tools)) return undefined;
+	const names: string[] = [];
+	for (const tool of tools) {
+		const name =
+			typeof tool === "string"
+				? tool
+				: tool && typeof tool === "object" && typeof (tool as Record<string, unknown>).name === "string"
+					? (tool as Record<string, unknown>).name
+					: undefined;
+		if (typeof name === "string" && !names.includes(name)) names.push(name);
+	}
+	return names;
+}
+
+function dynamicRuntimeContextHash(payload: Record<string, unknown>): string {
+	const contexts: string[] = [];
+	const seen = new Set<object>();
+	const visit = (value: unknown): void => {
+		if (typeof value === "string") {
+			if (value.includes("<!-- pi-runtime-context:")) contexts.push(value);
+			return;
+		}
+		if (!value || typeof value !== "object" || seen.has(value)) return;
+		seen.add(value);
+		if (Array.isArray(value)) {
+			for (const item of value) visit(item);
+			return;
+		}
+		for (const item of Object.values(value as Record<string, unknown>)) visit(item);
+	};
+	visit(payload.input);
+	return orderedToolsetFingerprint(contexts);
+}
+
+function promptCacheRequest(
+	payload: unknown,
+	ctx: ExtensionContext,
+	previous: PromptCacheRequest | undefined,
+): PromptCacheRequest | undefined {
+	if (ctx.model?.provider !== "openai-codex") return undefined;
+	if (!payload || typeof payload !== "object") return undefined;
+	const request = payload as Record<string, unknown>;
+	const tools = immediateToolNames(payload);
+	const instructionsSha256 = boundedHash(request.instructions);
+	const immediateToolNamesSha256 =
+		tools === undefined ? UNAVAILABLE : orderedToolsetFingerprint(tools);
+	const dynamicContextSha256 = dynamicRuntimeContextHash(request);
+	return {
+		provider: "openai-codex",
+		model: requiredString(ctx.model.id),
+		instructionsSha256,
+		immediateToolNamesSha256,
+		dynamicContextSha256,
+		contextChangedSincePreviousRequest:
+			previous !== undefined &&
+			(previous.instructionsSha256 !== instructionsSha256 ||
+				previous.dynamicContextSha256 !== dynamicContextSha256),
+		immediateToolsChangedSincePreviousRequest:
+			previous !== undefined && previous.immediateToolNamesSha256 !== immediateToolNamesSha256,
+	};
+}
+
+function normalizedUsage(usage: unknown): Record<string, number | typeof UNAVAILABLE> {
+	const value = usage && typeof usage === "object" ? (usage as Record<string, unknown>) : {};
+	const number = (key: string): number | typeof UNAVAILABLE =>
+		typeof value[key] === "number" && Number.isFinite(value[key]) && value[key] >= 0
+			? value[key] as number
+			: UNAVAILABLE;
+	return { input: number("input"), cacheRead: number("cacheRead"), cacheWrite: number("cacheWrite") };
 }
 
 function requiredString(value: unknown): AvailableString {
@@ -109,6 +199,9 @@ function sameIdentity(
 
 export default function sessionConfigurationFingerprint(pi: ExtensionAPI): void {
 	let initialSnapshot: InitialSnapshot | undefined;
+	let previousPromptCacheRequest: PromptCacheRequest | undefined;
+	let pendingPromptCacheRequest: PromptCacheRequest | undefined;
+	let currentTurnIndex = 0;
 
 	const recordChange = (next: ConfigurationIdentity, ctx: ExtensionContext): void => {
 		if (!initialSnapshot || sameIdentity(initialSnapshot, next)) return;
@@ -129,6 +222,46 @@ export default function sessionConfigurationFingerprint(pi: ExtensionAPI): void 
 
 	onSessionStart(pi, import.meta.url, () => {
 		initialSnapshot = undefined;
+		previousPromptCacheRequest = undefined;
+		pendingPromptCacheRequest = undefined;
+		currentTurnIndex = 0;
+	});
+
+	pi.on("turn_start", () => {
+		currentTurnIndex += 1;
+	});
+
+	pi.on("before_provider_request", (event, ctx) => {
+		pendingPromptCacheRequest = promptCacheRequest(
+			event.payload,
+			ctx,
+			previousPromptCacheRequest,
+		);
+	});
+
+	pi.on("message_end", (event, ctx) => {
+		const request = pendingPromptCacheRequest;
+		const message = event.message as unknown as Record<string, unknown> | undefined;
+		if (!request || message?.role !== "assistant") return;
+		pendingPromptCacheRequest = undefined;
+		previousPromptCacheRequest = request;
+		recordEvent({
+			event: "prompt_cache_request",
+			session: sessionId(ctx),
+			data: {
+				schemaVersion: 1,
+				provider: request.provider,
+				model: request.model,
+				turnId: currentTurnIndex > 0 ? `turn-${currentTurnIndex}` : UNAVAILABLE,
+				messageId: typeof message.id === "string" ? message.id : UNAVAILABLE,
+				instructionsSha256: request.instructionsSha256,
+				immediateToolNamesSha256: request.immediateToolNamesSha256,
+				dynamicContextSha256: request.dynamicContextSha256,
+				contextChangedSincePreviousRequest: request.contextChangedSincePreviousRequest,
+				immediateToolsChangedSincePreviousRequest: request.immediateToolsChangedSincePreviousRequest,
+				...normalizedUsage(message.usage),
+			},
+		});
 	});
 
 	pi.on("before_agent_start", (event, ctx) => {

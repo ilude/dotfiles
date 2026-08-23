@@ -7,8 +7,10 @@ import registerCodexStatusCommand, {
 	accountIdFromToken,
 	fetchCodexUsage,
 	formatBedrockUsageSection,
+	formatCodexCacheUsageSection,
 	formatCodexFooterStatus,
 	formatUsage,
+	summarizeCodexCacheMetrics,
 	isBedrockProviderConfigured,
 	resetCodexStatusStateForTests,
 	resolveAuth,
@@ -374,6 +376,77 @@ describe("codex-status usage", () => {
 				{ color: true },
 			),
 		).toContain("5h \u001b[31m50%\u001b[0m");
+	});
+
+	it("reports bounded Codex cache metrics without zero-filling unavailable usage", () => {
+		const events = [
+			{
+				schemaVersion: 1 as const,
+				id: "event-1",
+				ts: "2026-08-23T12:00:00.000Z",
+				session: "session-1",
+				event: "prompt_cache_request",
+				data: {
+					provider: "openai-codex",
+					model: "gpt-5.6-sol",
+					messageId: "message-1",
+					input: 10,
+					cacheRead: 8,
+					cacheWrite: 2,
+					contextChangedSincePreviousRequest: false,
+					immediateToolsChangedSincePreviousRequest: false,
+				},
+			},
+			{
+				schemaVersion: 1 as const,
+				id: "event-duplicate",
+				ts: "2026-08-23T12:01:00.000Z",
+				session: "session-1",
+				event: "prompt_cache_request",
+				data: {
+					provider: "openai-codex",
+					model: "gpt-5.6-sol",
+					messageId: "message-1",
+					input: 10,
+					cacheRead: 8,
+					cacheWrite: 2,
+				},
+			},
+			{
+				schemaVersion: 1 as const,
+				id: "event-2",
+				ts: "2026-08-23T12:02:00.000Z",
+				session: "session-1",
+				event: "prompt_cache_request",
+				data: {
+					provider: "openai-codex",
+					model: "gpt-5.6-sol",
+					messageId: "message-2",
+					input: "unavailable",
+					cacheRead: "unavailable",
+					cacheWrite: "unavailable",
+					contextChangedSincePreviousRequest: true,
+					immediateToolsChangedSincePreviousRequest: true,
+				},
+			},
+		] as const;
+		const summary = summarizeCodexCacheMetrics(events);
+		expect(summary).toMatchObject({
+			windowSize: 2,
+			withUsage: 1,
+			unavailableUsage: 1,
+			input: 10,
+			cacheRead: 8,
+			cacheWrite: 2,
+			cacheReadShare: 0.4,
+			stable: 1,
+			contextChanges: 1,
+			immediateToolChanges: 1,
+		});
+		const text = formatCodexCacheUsageSection(summary);
+		expect(text).toContain("cache-read share of processed input: 40.0%");
+		expect(text).toContain("usage unavailable: 1");
+		expect(text).not.toContain("subscription");
 	});
 
 	it("formats Bedrock month-to-date local estimates", () => {

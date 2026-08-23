@@ -44,9 +44,13 @@ const tool = {
 
 function context(goalReminder: string): Context {
 	return {
-		systemPrompt: `Stable system instructions.\nGoal reminder: ${goalReminder}`,
+		systemPrompt: "Stable system instructions.",
 		messages: [
 			{ role: "user", content: "Use the fixed lookup input.", timestamp: 0 },
+			{
+				role: "user",
+				content: `<!-- pi-runtime-context:goal -->\n${goalReminder}`,
+			},
 		],
 		tools: [tool],
 	};
@@ -145,11 +149,12 @@ describe("installed OpenAI Codex request adapter prompt-cache measurement", () =
 		expect(JSON.stringify(captures[0])).toBe(JSON.stringify(captures[1]));
 		expect(captures[0].model).toBe(captures[2].model);
 		expect(captures[0].reasoning).toEqual(captures[2].reasoning);
-		expect(captures[0].input).toEqual(captures[2].input);
+		expect(captures[0].input).not.toEqual(captures[2].input);
 		expect(captures[0].tools).toEqual(captures[2].tools);
-		expect(captures[0].instructions).not.toBe(captures[2].instructions);
-		expect(captures[0].instructions.replace("Keep the primary goal visible.", "<REMINDER>"))
-			.toBe(captures[2].instructions.replace("Use the alternate reminder wording.", "<REMINDER>"));
+		expect(captures[0].instructions).toBe(captures[2].instructions);
+		expect(captures[0].input).not.toEqual(captures[2].input);
+		expect(JSON.stringify(captures[0].input)).toContain("pi-runtime-context:goal");
+		expect(JSON.stringify(captures[2].input)).toContain("pi-runtime-context:goal");
 
 		expect(firstUsage).toMatchObject({ input: 33, cacheRead: 60, cacheWrite: 7, output: 11 });
 		expect(secondUsage).toMatchObject({ input: 33, cacheRead: 60, cacheWrite: 7, output: 11 });

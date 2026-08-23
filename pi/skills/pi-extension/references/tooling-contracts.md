@@ -12,6 +12,7 @@ This index records stable public and normative semantics for Pi extensions and t
 ## Contract index
 
 - [Footer and extension status](#footer-and-extension-status)
+- [Cache-friendly extension context](contracts/cache-friendly-extension.md)
 - [Commit workflow](contracts/commit-workflow.md)
 - [Damage control](contracts/damage-control.md)
 - [Safe file mutation](contracts/safe-file-mutation.md)
@@ -31,6 +32,15 @@ This index records stable public and normative semantics for Pi extensions and t
 - [Feature memory](contracts/feature-memory.md)
 - [PowerShell](contracts/powershell.md)
 - [Scheduler](contracts/scheduler.md)
+
+## Cache-friendly extension context
+
+- Stable provider system instructions and the deterministic immediate-tool prefix are the default cache-friendly boundary for ordinary requests.
+- Goal, task, and nested instruction context is trailing, bounded, hidden custom context with one replaceable message per owner. Replacement is semantic and removes stale content.
+- Provider-supported deferred tools may remain discoverable without changing the immediate prefix. Authority and workflow state gates are exceptions: an unauthorized or inactive tool must remain invisible even when that creates a cache boundary.
+- The `openai-codex` extension records one metadata-only `prompt_cache_request` event per completed provider response. It joins provider-reported `input`, `cacheRead`, and `cacheWrite` values with model and request-shape change flags; missing values remain `unavailable`.
+- `/usage` reads only a bounded recent metrics window, deduplicates event IDs and existing session/message identity, and reports observed local cache reads and writes. It does not read raw transcripts or attribute account quota changes to individual requests.
+- Compaction, resume, reload, fork, cwd or instruction invalidation, and authority transitions are expected cache boundaries. After compaction or reconstruction, current context is injected once rather than accumulated.
 
 ## Footer and extension status
 

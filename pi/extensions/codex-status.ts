@@ -16,6 +16,7 @@ import { onSessionStart } from "../lib/session-start-metrics.js";
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { readRecentEvents, type MetricsEvent } from "../lib/metrics.js";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -72,8 +73,40 @@ const CODEX_FOOTER_FETCH_TIMEOUT_MS = 15 * 1000;
 const CODEX_FOOTER_FAILURE_THRESHOLD = 3;
 const FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60;
 const WEEKLY_WINDOW_SECONDS = 7 * 24 * 60 * 60;
+const CODEX_CACHE_METRICS_LIMIT = 100;
+const UNAVAILABLE = "unavailable";
 
 type CodexUsageResponse = { auth: AuthInfo; usage: ApiUsage };
+
+type CacheMetricValue = number | typeof UNAVAILABLE;
+
+type PromptCacheMetric = MetricsEvent & {
+	event: "prompt_cache_request";
+	data: Record<string, unknown> & {
+		provider?: unknown;
+		model?: unknown;
+		messageId?: unknown;
+		input?: CacheMetricValue;
+		cacheRead?: CacheMetricValue;
+		cacheWrite?: CacheMetricValue;
+		contextChangedSincePreviousRequest?: unknown;
+		immediateToolsChangedSincePreviousRequest?: unknown;
+	};
+};
+
+export type CodexCacheSummary = {
+	windowSize: number;
+	withUsage: number;
+	unavailableUsage: number;
+	input: number | typeof UNAVAILABLE;
+	cacheRead: number | typeof UNAVAILABLE;
+	cacheWrite: number | typeof UNAVAILABLE;
+	cacheReadShare: number | typeof UNAVAILABLE;
+	stable: number;
+	contextChanges: number;
+	immediateToolChanges: number;
+	models: Array<{ model: string; requests: number }>;
+};
 
 let codexFooterTimer: ReturnType<typeof setTimeout> | null = null;
 let codexFooterRefreshEpoch = 0;
@@ -348,6 +381,126 @@ function formatLimit(
 	return lines;
 }
 
+function isPromptCacheMetric(event: MetricsEvent): event is PromptCacheMetric {
+	return event.event === "prompt_cache_request" && event.data !== undefined;
+}
+
+function metricNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0
+		? value
+		: undefined;
+}
+
+function deduplicatePromptCacheMetrics(events: readonly MetricsEvent[]): PromptCacheMetric[] {
+	const seenEventIds = new Set<string>();
+	const seenMessages = new Set<string>();
+	const result: PromptCacheMetric[] = [];
+	for (const event of events) {
+		if (!isPromptCacheMetric(event) || seenEventIds.has(event.id)) continue;
+		seenEventIds.add(event.id);
+		const messageId = typeof event.data.messageId === "string" ? event.data.messageId : undefined;
+		const messageKey = messageId && event.session ? `${event.session}:${messageId}` : undefined;
+		if (messageKey && seenMessages.has(messageKey)) continue;
+		if (messageKey) seenMessages.add(messageKey);
+		result.push(event);
+	}
+	return result;
+}
+
+export function summarizeCodexCacheMetrics(
+	events: readonly MetricsEvent[] = readRecentEvents(CODEX_CACHE_METRICS_LIMIT),
+): CodexCacheSummary {
+	const metrics = deduplicatePromptCacheMetrics(events)
+		.filter((event) => event.data.provider === "openai-codex")
+		.slice(0, CODEX_CACHE_METRICS_LIMIT);
+	let input = 0;
+	let cacheRead = 0;
+	let cacheWrite = 0;
+	let completeUsage = 0;
+	let inputCount = 0;
+	let cacheReadCount = 0;
+	let cacheWriteCount = 0;
+	let cacheShareProcessedInput = 0;
+	let cacheShareRead = 0;
+	const modelCounts = new Map<string, number>();
+	for (const event of metrics) {
+		const eventInput = metricNumber(event.data.input);
+		const eventCacheRead = metricNumber(event.data.cacheRead);
+		const eventCacheWrite = metricNumber(event.data.cacheWrite);
+		if (eventInput !== undefined) {
+			input += eventInput;
+			inputCount += 1;
+		}
+		if (eventCacheRead !== undefined) {
+			cacheRead += eventCacheRead;
+			cacheReadCount += 1;
+		}
+		if (eventCacheWrite !== undefined) {
+			cacheWrite += eventCacheWrite;
+			cacheWriteCount += 1;
+		}
+		if (
+			eventInput !== undefined &&
+			eventCacheRead !== undefined &&
+			eventCacheWrite !== undefined
+		) {
+			completeUsage += 1;
+		}
+		if (
+			eventInput !== undefined &&
+			eventCacheRead !== undefined &&
+			eventCacheWrite !== undefined
+		) {
+			cacheShareProcessedInput += eventInput + eventCacheRead + eventCacheWrite;
+			cacheShareRead += eventCacheRead;
+		}
+		const model = typeof event.data.model === "string" ? event.data.model : undefined;
+		if (model) modelCounts.set(model, (modelCounts.get(model) ?? 0) + 1);
+	}
+	return {
+		windowSize: metrics.length,
+		withUsage: completeUsage,
+		unavailableUsage: metrics.length - completeUsage,
+		input: inputCount > 0 ? input : UNAVAILABLE,
+		cacheRead: cacheReadCount > 0 ? cacheRead : UNAVAILABLE,
+		cacheWrite: cacheWriteCount > 0 ? cacheWrite : UNAVAILABLE,
+		cacheReadShare:
+			cacheShareProcessedInput > 0
+				? cacheShareRead / cacheShareProcessedInput
+				: UNAVAILABLE,
+		stable: metrics.filter((event) => event.data.contextChangedSincePreviousRequest === false && event.data.immediateToolsChangedSincePreviousRequest === false).length,
+		contextChanges: metrics.filter((event) => event.data.contextChangedSincePreviousRequest === true).length,
+		immediateToolChanges: metrics.filter((event) => event.data.immediateToolsChangedSincePreviousRequest === true).length,
+		models: [...modelCounts].map(([model, requests]) => ({ model, requests })),
+	};
+}
+
+function formatCacheMetric(value: number | typeof UNAVAILABLE): string {
+	return value === UNAVAILABLE ? UNAVAILABLE : formatCompactTokenCount(value);
+}
+
+export function formatCodexCacheUsageSection(
+	summary: CodexCacheSummary = summarizeCodexCacheMetrics(),
+): string {
+	const lines = ["OpenAI Codex cache (recent requests):"];
+	if (summary.windowSize === 0) return `${lines[0]} unavailable`;
+	lines.push(
+		`  requests with usage: ${summary.withUsage}`,
+		`  usage unavailable: ${summary.unavailableUsage}`,
+		`  input: ${formatCacheMetric(summary.input)}`,
+		`  cache read: ${formatCacheMetric(summary.cacheRead)}`,
+		`  cache write: ${formatCacheMetric(summary.cacheWrite)}`,
+		`  cache-read share of processed input: ${summary.cacheReadShare === UNAVAILABLE ? UNAVAILABLE : `${(summary.cacheReadShare * 100).toFixed(1)}%`}`,
+		`  stable: ${summary.stable}`,
+		`  context changes: ${summary.contextChanges}`,
+		`  immediate-tool changes: ${summary.immediateToolChanges}`,
+	);
+	if (summary.models.length > 1) {
+		lines.push(`  models: ${summary.models.map(({ model, requests }) => `${model} (${requests})`).join(", ")}`);
+	}
+	return lines.join("\n");
+}
+
 export function formatUsage(
 	usage: ApiUsage,
 	_auth: AuthInfo,
@@ -504,7 +657,10 @@ export async function formatConfiguredUsageReport(
 	options: { forceRefresh?: boolean } = {},
 ): Promise<string> {
 	const { auth, usage } = await getCachedCodexUsage(options);
-	const sections = [formatUsage(usage, auth, { color: true })];
+	const sections = [
+		formatUsage(usage, auth, { color: true }),
+		formatCodexCacheUsageSection(),
+	];
 	const bedrock = await formatConfiguredBedrockUsageSection();
 	if (bedrock) sections.push(bedrock);
 	return sections.join("\n\n");

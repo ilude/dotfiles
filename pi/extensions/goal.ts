@@ -9,7 +9,7 @@ import type {
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { formatToolError } from "../lib/extension-utils.js";
-import { appendRuntimeContext } from "../lib/runtime-context.js";
+import { replaceRuntimeContext } from "../lib/runtime-context.js";
 import { archiveCompletedPlan } from "../lib/plan-archive.js";
 import {
 	beginGoalAttempt,
@@ -1481,17 +1481,11 @@ export default function (pi: ExtensionAPI) {
 		else deactivateTools(pi, ["goal_progress"]);
 	});
 
-	pi.on("before_agent_start", async (event) => {
+	pi.on("before_agent_start", async () => {
 		const unattended = goalJob()?.goal;
 		if (unattended) {
 			activateTools(pi, GOAL_TOOLS);
-			return {
-				systemPrompt: appendRuntimeContext(
-					event.systemPrompt,
-					"goal",
-					unattendedReminder(unattended),
-				),
-			};
+			return undefined;
 		}
 		if (!foregroundGoal) return undefined;
 		activateTools(
@@ -1505,13 +1499,24 @@ export default function (pi: ExtensionAPI) {
 			iterationCount: foregroundGoal.iterationCount + 1,
 			updatedAt: nowIso(),
 		};
-		return {
-			systemPrompt: appendRuntimeContext(
-				event.systemPrompt,
-				"goal",
-				foregroundReminder(foregroundGoal),
-			),
-		};
+		return undefined;
+	});
+
+	const registerContextHook = pi.on as unknown as (
+		event: "context",
+		handler: (
+			event: { messages: Array<Record<string, unknown>> },
+			ctx: { cwd: string },
+		) => Promise<{ messages: Array<Record<string, unknown>> }>,
+	) => void;
+	registerContextHook("context", async (event) => {
+		const unattended = goalJob()?.goal;
+		const context = unattended
+			? unattendedReminder(unattended)
+			: foregroundGoal
+				? foregroundReminder(foregroundGoal)
+				: undefined;
+		return { messages: replaceRuntimeContext(event.messages, "goal", context) };
 	});
 
 	pi.on("tool_call", (event) => {

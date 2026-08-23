@@ -58,7 +58,7 @@ import {
 } from "../lib/task-renderer.js";
 import { sanitizeTaskValue } from "../lib/task-security.js";
 import { isTaskStoreUnavailable } from "../lib/task-store.js";
-import { appendRuntimeContext } from "../lib/runtime-context.js";
+import { replaceRuntimeContext } from "../lib/runtime-context.js";
 import {
 	getTaskRenderMode,
 	isTaskRenderMode,
@@ -1316,17 +1316,30 @@ function isExpectedTaskStoreTransition(error: unknown): boolean {
 export default function (pi: ExtensionAPI) {
 	registerTaskTools(pi);
 	registerTasksCommand(pi);
-	pi.on("before_agent_start", (event, ctx) => {
-		const reminder = activeRootTaskReminder(
+	const runtimeTaskContext = (ctx: {
+		cwd: string;
+		sessionManager?: { getSessionId?: () => string };
+	}): string | undefined =>
+		activeRootTaskReminder(
 			ctx.cwd,
 			currentTaskSessionId(ctx),
 			currentExplicitActiveRootTaskId(),
 		);
-		if (!reminder) return undefined;
-		return {
-			systemPrompt: appendRuntimeContext(event.systemPrompt, "tasks", reminder),
-		};
-	});
+
+	const registerContextHook = pi.on as unknown as (
+		event: "context",
+		handler: (
+			event: { messages: Array<Record<string, unknown>> },
+			ctx: { cwd: string; sessionManager?: { getSessionId?: () => string } },
+		) => Promise<{ messages: Array<Record<string, unknown>> }>,
+	) => void;
+	registerContextHook("context", async (event, ctx) => ({
+		messages: replaceRuntimeContext(
+			event.messages,
+			"tasks",
+			runtimeTaskContext(ctx),
+		),
+	}));
 	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		const sessionId = currentTaskSessionId(ctx);
 		try {

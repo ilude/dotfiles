@@ -65,6 +65,14 @@ export function toolsetFingerprint(toolNames: readonly string[]): string {
 		.slice(0, 16);
 }
 
+/** Fingerprint an ordered provider-visible tool list without reordering it. */
+export function orderedToolsetFingerprint(toolNames: readonly string[]): string {
+	return createHash("sha256")
+		.update(JSON.stringify([...new Set(toolNames)]))
+		.digest("hex")
+		.slice(0, 16);
+}
+
 export function setToolsActive(
 	pi: ToolActivationApi,
 	toolNames: readonly string[],

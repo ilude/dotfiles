@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { replaceRuntimeContext } from "../lib/runtime-context.js";
 
 const PRIMARY_INSTRUCTION_NAME = "AGENTS.md";
 const OVERRIDE_INSTRUCTION_NAME = "AGENTS.override.md";
@@ -30,7 +31,6 @@ const MAX_FILES = 32;
 const MAX_BYTES_PER_FILE = 24 * 1024;
 const MAX_TOTAL_BYTES = 96 * 1024;
 const MAX_CACHED_FILES = 128;
-const REPORT_TYPE = "agents-context-report";
 
 type ToolCallResult = { block: true; reason: string } | undefined;
 
@@ -502,15 +502,11 @@ export default function (pi: ExtensionAPI) {
 	) => void;
 	registerContextHook("context", async (event, ctx) => {
 		resetForCwd(ctx.cwd);
-		const messages = event.messages.filter(
-			(message) =>
-				!(message.role === "custom" && message.customType === REPORT_TYPE),
-		);
 		const targetFiles = [...state.loaded.values()];
-		if (!targetFiles.length) return { messages };
-		const payload = instructionPayload(targetFiles);
 		const identity = activeInstructionIdentity();
-		if (!identity || !state.activeInstructionScope) return { messages };
+		if (!targetFiles.length || !identity || !state.activeInstructionScope)
+			return { messages: replaceRuntimeContext(event.messages, "agents", undefined) };
+		const payload = instructionPayload(targetFiles);
 		const content =
 			state.retryRequestedFor === identity
 				? `${payload}\n\nApply these instructions, then retry the deferred mutating tool call.`
@@ -523,16 +519,7 @@ export default function (pi: ExtensionAPI) {
 			state.retryRequestedFor = undefined;
 		}
 		return {
-			messages: [
-				...messages,
-				{
-					role: "custom" as const,
-					customType: REPORT_TYPE,
-					display: false,
-					content,
-					timestamp: Date.now(),
-				},
-			],
+			messages: replaceRuntimeContext(event.messages, "agents", content),
 		};
 	});
 

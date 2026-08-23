@@ -542,10 +542,10 @@ describe("/tasks command", () => {
 		});
 
 		await sessionStart.handler({ reason: "startup" }, ctx);
-		const beforeAgentStart = pi._getHook("before_agent_start")[0];
-		expect(() =>
-			beforeAgentStart.handler({ systemPrompt: "base" }, ctx),
-		).not.toThrow();
+		const contextHook = pi._getHook("context")[0];
+		await expect(
+			contextHook.handler({ messages: [] }, ctx),
+		).resolves.toEqual({ messages: [] });
 
 		expect(ctx.ui.notify).not.toHaveBeenCalled();
 	});

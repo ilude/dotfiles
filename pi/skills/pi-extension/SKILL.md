@@ -83,6 +83,17 @@ Update an existing contract only when the requested change would otherwise make 
 4. Command-only methods such as `ctx.reload()`, `ctx.newSession()`, `ctx.fork()`, and `ctx.switchSession()` belong in command handlers. From tools or events, queue a follow-up command with `pi.sendUserMessage()`.
 5. Check model existence and the boolean result from `pi.setModel()` before reporting success.
 
+## Cache-friendly extension context
+
+When an extension contributes context to provider requests:
+
+- Keep stable system instructions and the stable top-level tool prefix unchanged across ordinary turns.
+- Put semantic goal, task, and instruction changes in one bounded trailing custom context message per owning type. Replace stale context instead of accumulating copies.
+- Serialize immediate tools in deterministic order. Use provider-supported deferred discoverability for optional tools, but do not keep a tool visible when authority or workflow state requires it to be inactive.
+- Treat authority transitions, state-gated visibility changes, compaction, resume, reload, fork, and instruction invalidation as legitimate cache boundaries. Reinject current context once after compaction or session reconstruction.
+- Record metadata-only request-shape and provider usage metrics at the request completion boundary. Keep input, cache-read, and cache-write values unavailable when the provider did not report them; never infer quota attribution or cache savings from missing data.
+- Keep `/usage` views bounded and local. Read prompt-cache metrics directly, deduplicate by existing event and session/message identity, and do not read raw transcripts for cache reporting.
+
 ## Validation
 
 Choose only the checks affected by the change; these commands are not a required sequence:

@@ -391,7 +391,7 @@ describe("agents-context discovery", () => {
 		);
 		const reports = result.messages.filter(
 			(message: Record<string, unknown>) =>
-				message.customType === "agents-context-report",
+				message.customType === "pi-runtime-context",
 		);
 		expect(reports).toHaveLength(1);
 		expect(reports[0].content).toContain("test agents");
@@ -529,7 +529,7 @@ describe("agents-context mutation deferral", () => {
 		);
 		const reports = returnedContext.messages.filter(
 			(message: Record<string, unknown>) =>
-				message.customType === "agents-context-report",
+				message.customType === "pi-runtime-context",
 		);
 		expect(reports).toHaveLength(1);
 		expect(reports[0].content).toContain("repo a src agents");
