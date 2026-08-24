@@ -7,6 +7,6 @@
 - Metrics: metrics are best-effort, append-only operational metadata. Producers must not include prompts, tool arguments, terminal output, response content, secrets, or unbounded free text.
 - Failure: disabled or failed observability must not break the primary tool, workflow, or session operation. Record gaps rather than inventing missing evidence.
 - Interpretation: metrics and traces are observational. They do not by themselves prove correctness, completion, quality, causality, or savings. Missing pricing is unknown cost, not zero cost.
-- Diagnostics: usage, extension, skill, routing, and orchestration reports are read-only bounded views over local data and must not start an unnecessary provider turn.
+- Diagnostics: usage, extension, skill, routing, orchestration, and tool-failure reports are read-only bounded views over local data and must not start an unnecessary provider turn. `/find-fails` incrementally refreshes the local `session_entries` snapshot, runs the privacy-bounded tool-failure scan, and displays only new, changed, regressed, or due-for-review candidates plus resolved/skipped counts. It does not make ledger decisions.
 - Retention boundary: metrics currently have no built-in retention guarantee. Do not promise automatic deletion, permanent retention, or cross-machine synchronization without an explicit policy.
 - Storage: generated sessions, histories, traces, metrics, workflow-friction records, caches, and indexes remain local runtime state and are not tracked repository source.

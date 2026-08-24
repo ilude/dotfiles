@@ -57,7 +57,9 @@ Recognized environment overrides are `PI_AGENT_DIR`, `PI_METRICS_DIR`, `PI_WORKF
 
 ## Tool-failure triage
 
-Create or retain a frozen `session_entries` snapshot, then scan it without refreshing the source:
+Run `/find-fails` in Pi for the normal operator workflow. It incrementally refreshes `.tmp/pi-log-analytics/tool-failures.duckdb`, writes the sanitized scan to `.tmp/pi-log-analytics/tool-failure-scan.json`, and displays the actionable report without starting a provider turn. It does not make addressed or skipped decisions.
+
+For direct analytics use, create or retain a frozen `session_entries` snapshot, then scan it without refreshing the source:
 
 ```bash
 uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
