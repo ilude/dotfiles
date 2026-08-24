@@ -1,3 +1,5 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import bashCwd from "../extensions/bash-cwd.ts";
@@ -52,6 +54,63 @@ describe("bash cwd extension", () => {
 		expect(component?.render(300).join("\n")).toContain(
 			`cwd: ${path.resolve("C:/repo", "packages/api")}`,
 		);
+	});
+
+	it("preserves command, timeout, and selected cwd through execution", async () => {
+		const pi = createMockPi();
+		bashCwd(pi as any);
+		const tool = pi._getTool("bash")! as any;
+		const sessionCwd = await mkdtemp(path.join(os.tmpdir(), "pi-bash-cwd-"));
+		const selectedCwd = await mkdtemp(path.join(os.tmpdir(), "pi-bash-cwd-"));
+		const command = 'node -e "process.stdout.write(process.cwd())"';
+
+		try {
+			const withCwd = tool.prepareArguments({
+				command,
+				timeout: 7,
+				cwd: selectedCwd,
+			});
+			expect(withCwd).toMatchObject({ command, timeout: 7, cwd: selectedCwd });
+			const selectedResult = await tool.execute(
+				"selected-cwd",
+				withCwd,
+				undefined,
+				undefined,
+				{
+					cwd: sessionCwd,
+					sessionManager: {
+						getSessionId: () => "test",
+						getSessionFile: () => undefined,
+					},
+				},
+			);
+			expect(selectedResult.content[0].text.trim()).toBe(
+				path.resolve(selectedCwd),
+			);
+
+			const withoutCwd = tool.prepareArguments({ command, timeout: 7 });
+			expect(withoutCwd).toMatchObject({ command, timeout: 7 });
+			expect(withoutCwd.cwd).toBeUndefined();
+			const sessionResult = await tool.execute(
+				"session-cwd",
+				withoutCwd,
+				undefined,
+				undefined,
+				{
+					cwd: sessionCwd,
+					sessionManager: {
+						getSessionId: () => "test",
+						getSessionFile: () => undefined,
+					},
+				},
+			);
+			expect(sessionResult.content[0].text.trim()).toBe(path.resolve(sessionCwd));
+		} finally {
+			await Promise.all([
+				rm(sessionCwd, { recursive: true, force: true }),
+				rm(selectedCwd, { recursive: true, force: true }),
+			]);
+		}
 	});
 
 	it("shows the configured timeout before execution starts", () => {

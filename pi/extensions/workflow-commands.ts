@@ -2494,7 +2494,7 @@ export default function (pi: ExtensionAPI) {
 						["supported", "no_finding", "failed", "covered"] as const,
 					),
 				),
-				strategy: Type.Optional(Type.String({ maxLength: 120 })),
+				strategy: Type.Optional(Type.String()),
 			},
 			{ additionalProperties: false },
 		),

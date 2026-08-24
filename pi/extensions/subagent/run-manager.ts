@@ -935,13 +935,14 @@ export function resolveTaskSessionAffinity(
 	return { outcome: "resolved", run: latest[0] as SubagentRunSnapshot };
 }
 
-const SUBAGENT_RUN_MANAGER_VERSION = 1;
+export const SUBAGENT_RUN_MANAGER_ABI =
+	"dotfiles.pi.subagent-run-manager.v1" as const;
 const SUBAGENT_RUN_MANAGER_KEY = Symbol.for(
 	"dotfiles.pi.subagent-run-manager",
 );
 
 type SubagentRunManagerGlobal = {
-	version: number;
+	abi: string;
 	manager: SubagentRunManager;
 };
 
@@ -949,19 +950,41 @@ function managerGlobals(): typeof globalThis & Record<symbol, unknown> {
 	return globalThis as typeof globalThis & Record<symbol, unknown>;
 }
 
+function hasManagerShape(value: unknown): value is SubagentRunManager {
+	if (!value || typeof value !== "object") return false;
+	const candidate = value as Record<string, unknown>;
+	return typeof candidate.list === "function" &&
+		typeof candidate.pendingBackgroundCompletions === "function";
+}
+
+function hasObservableLiveState(value: unknown): boolean {
+	if (!hasManagerShape(value)) return true;
+	try {
+		const runs = value.list();
+		const completions = value.pendingBackgroundCompletions();
+		if (!Array.isArray(runs) || !Array.isArray(completions)) return true;
+		return runs.some((run) => run?.status === "running") || completions.length > 0;
+	} catch {
+		return true;
+	}
+}
+
 export function getSubagentRunManager(): SubagentRunManager {
 	const globals = managerGlobals();
 	const existing = globals[
 		SUBAGENT_RUN_MANAGER_KEY
 	] as SubagentRunManagerGlobal | undefined;
-	if (existing?.version === SUBAGENT_RUN_MANAGER_VERSION) {
+	if (existing?.abi === SUBAGENT_RUN_MANAGER_ABI && hasManagerShape(existing.manager))
 		return existing.manager;
-	}
+	if (existing && hasObservableLiveState(existing.manager))
+		throw new Error(
+			"Cannot reload an incompatible subagent run manager while live runs or completions are observable.",
+		);
 	const manager = new SubagentRunManager();
 	globals[SUBAGENT_RUN_MANAGER_KEY] = {
-		version: SUBAGENT_RUN_MANAGER_VERSION,
+		abi: SUBAGENT_RUN_MANAGER_ABI,
 		manager,
-	} satisfies SubagentRunManagerGlobal;
+	};
 	return manager;
 }
 

@@ -112,6 +112,33 @@ describe("governed native path tools", () => {
 		expect(result).toMatchObject({ outcome: "deny", code: "path_escape" });
 	});
 
+	it("allows only exact selected skill reads outside the workspace", () => {
+		const root = temporaryDirectory("pi-workspace-policy-skill-");
+		const skillDir = temporaryDirectory("pi-workspace-policy-global-skill-");
+		const selected = path.join(skillDir, "SKILL.md");
+		const neighbor = path.join(skillDir, "neighbor.md");
+		fs.writeFileSync(selected, "selected");
+		fs.writeFileSync(neighbor, "neighbor");
+		const policy = { ...policyFor(root), selectedSkillFiles: [selected] };
+
+		expect(checkWorkspaceTool(policy, "read", { path: selected }, root)).toMatchObject({
+			outcome: "allow",
+			governed: true,
+		});
+		expect(checkWorkspaceTool(policy, "read", { path: neighbor }, root)).toMatchObject({
+			outcome: "deny",
+			code: "path_escape",
+		});
+		expect(checkWorkspaceTool(policy, "ls", { path: skillDir }, root)).toMatchObject({
+			outcome: "deny",
+			code: "path_escape",
+		});
+		expect(checkWorkspaceTool(policy, "write", { path: selected }, root)).toMatchObject({
+			outcome: "deny",
+			code: "path_escape",
+		});
+	});
+
 	it("rejects filesystem-root native targets and preserves outside-policy tools", () => {
 		const root = temporaryDirectory("pi-workspace-policy-native-");
 		const policy = policyFor(root);

@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi.js";
 
@@ -280,15 +281,31 @@ describe("workflow slash command dispatch", () => {
 		const tool = mockPi._getTool("plan_progress");
 		if (!tool) throw new Error("plan_progress tool not registered");
 		const ctx = { cwd: fixture.root };
-		for (const input of [
+		const inputs = [
 			{ action: "draft", planPath: fixture.planPath },
 			{ action: "review", role: "adversary", concern: "runtime behavior", outcome: "covered" },
-			{ action: "review", role: "specialist", concern: "extension contract", outcome: "covered" },
+			{
+				action: "review",
+				role: "specialist",
+				concern: "extension contract",
+				outcome: "covered",
+				strategy: "x".repeat(121),
+			},
 			{ action: "review", role: "subtractive", concern: "overengineering and churn", outcome: "no_finding" },
 			{ action: "ready" },
-		]) {
+		];
+		for (const input of inputs) {
+			expect(Value.Check(tool.parameters, input)).toBe(true);
 			await tool.execute("progress", input, undefined, undefined, ctx);
 		}
+		const persisted = mockPi.appendEntry.mock.calls.at(-1)?.[1];
+		expect(persisted).toBeDefined();
+		expect(persisted.reviewers[0]).toMatchObject({
+			strategy: "adversary review of runtime behavior",
+		});
+		expect(persisted.reviewers[1]).toMatchObject({
+			strategy: "x".repeat(120),
+		});
 		expect(mockPi.appendEntry).toHaveBeenLastCalledWith(
 			"workflow.plan-lifecycle",
 			expect.objectContaining({

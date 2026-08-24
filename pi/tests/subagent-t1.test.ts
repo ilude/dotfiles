@@ -21,6 +21,10 @@ import {
 	resolveChildToolAuthority,
 } from "../extensions/subagent/index.ts";
 import {
+	diagnoseAgentAvailability,
+	formatAgentAvailabilityDiagnostic,
+} from "../extensions/subagent/agents.ts";
+import {
 	resolveTaskSessionAffinity,
 	SubagentRunManager,
 	type SubagentExecutionFingerprint,
@@ -194,6 +198,30 @@ describe("subagent T1 execution contracts", () => {
 			release();
 			fs.rmSync(directory, { recursive: true, force: true });
 		}
+	});
+
+	it("diagnoses unavailable agents against the effective scope before spawn", () => {
+		const diagnostic = diagnoseAgentAvailability(
+			["missing", "reader"],
+			[
+				{
+					name: "reader",
+					description: "reader",
+					systemPrompt: "",
+					source: "user",
+					filePath: "reader.md",
+				},
+			],
+			"user",
+		);
+		expect(diagnostic).toEqual({
+			rejected: ["missing"],
+			agentScope: "user",
+			alternatives: ["reader"],
+		});
+		expect(formatAgentAvailabilityDiagnostic(diagnostic!)).toContain(
+			'Usable alternatives: "reader"',
+		);
 	});
 
 	it("keeps completion, partial, and blocked worker states distinct", () => {
