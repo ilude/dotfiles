@@ -49,17 +49,18 @@ Update an existing contract only when the requested change would otherwise make 
 
 1. Keep the extension factory for registration only: `pi.on`, `pi.registerTool`, `pi.registerCommand`, `pi.registerShortcut`, `pi.registerFlag`, `pi.registerProvider`, and renderers. Runtime actions such as `pi.sendMessage()` belong in handlers, tools, or commands after Pi binds the session runtime.
 2. Keep tool-specific model instructions in the owning `registerTool()` definition: use `description` and `parameters` for the callable contract, `promptSnippet` for one-line discovery, and `promptGuidelines` for behavioral guidance. Enforce mandatory behavior in `execute()` or `tool_call`; do not duplicate tool instructions in `pi/AGENTS.md`.
-3. Use `ctx.signal` for nested async work during active turn events such as `tool_call`, `tool_result`, `message_update`, and `turn_end`.
-4. Clean up timers, intervals, file watchers, background work, and long-running subprocesses in `session_shutdown` or component disposal paths.
-5. Use `ctx.hasUI` and `ctx.mode` before dialogs or TUI-only behavior. `ctx.hasUI` includes RPC; guard direct TUI components with `ctx.mode === "tui"`.
-6. For footer/status UI, prefer `footerData`, `ctx`, and cached state over fresh discovery.
-7. For custom tools that mutate files, use `withFileMutationQueue()` around the full read-modify-write window.
-8. Custom tools must truncate large output and tell the caller when full output is saved elsewhere.
-9. Throw from tool `execute()` to mark a failed tool result. Returning `isError: true` in a result object does not signal failure.
-10. Preload and cache external autocomplete data, filter it locally, and run session-transition guards in `session_before_*` rather than render paths.
-11. Register every `session_start` handler with `onSessionStart(pi, import.meta.url, handler)` from `pi/lib/session-start-metrics.ts`, never with direct `pi.on("session_start", ...)`. The wrapper awaits the original handler, preserves thrown errors, derives the extension name from `import.meta.url`, measures monotonic duration, and defers an `extension_session_start` event to the existing metrics JSONL with session id, reason, duration, and status. It measures handler work only; module imports and extension factories remain Pi runtime timings.
-12. Use `StringEnum` from `@earendil-works/pi-ai` for string enums.
-13. Strip a leading `@` from custom-tool path arguments and resolve extension-relative helpers from `import.meta.url`.
+3. Every `registerCommand()` handler must produce immediate visible acknowledgement before its first potentially slow `await` or synchronous operation. Echo the submitted slash command for chat-dispatch workflows; use a status, loader, notification, or dialog when that better represents the command. Clear transient status in `finally`. Do not wait for repository discovery, Git, filesystem scans, subprocesses, network calls, model calls, session settling, or report generation before showing feedback.
+4. Use `ctx.signal` for nested async work during active turn events such as `tool_call`, `tool_result`, `message_update`, and `turn_end`.
+5. Clean up timers, intervals, file watchers, background work, and long-running subprocesses in `session_shutdown` or component disposal paths.
+6. Use `ctx.hasUI` and `ctx.mode` before dialogs or TUI-only behavior. `ctx.hasUI` includes RPC; guard direct TUI components with `ctx.mode === "tui"`.
+7. For footer/status UI, prefer `footerData`, `ctx`, and cached state over fresh discovery.
+8. For custom tools that mutate files, use `withFileMutationQueue()` around the full read-modify-write window.
+9. Custom tools must truncate large output and tell the caller when full output is saved elsewhere.
+10. Throw from tool `execute()` to mark a failed tool result. Returning `isError: true` in a result object does not signal failure.
+11. Preload and cache external autocomplete data, filter it locally, and run session-transition guards in `session_before_*` rather than render paths.
+12. Register every `session_start` handler with `onSessionStart(pi, import.meta.url, handler)` from `pi/lib/session-start-metrics.ts`, never with direct `pi.on("session_start", ...)`. The wrapper awaits the original handler, preserves thrown errors, derives the extension name from `import.meta.url`, measures monotonic duration, and defers an `extension_session_start` event to the existing metrics JSONL with session id, reason, duration, and status. It measures handler work only; module imports and extension factories remain Pi runtime timings.
+13. Use `StringEnum` from `@earendil-works/pi-ai` for string enums.
+14. Strip a leading `@` from custom-tool path arguments and resolve extension-relative helpers from `import.meta.url`.
 
 ## Shell-Out Rules
 

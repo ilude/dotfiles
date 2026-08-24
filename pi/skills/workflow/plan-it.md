@@ -14,14 +14,12 @@ The command writes the plan directly under the primary repository's `.specs/` di
 
 Use `plan_progress` for this invocation. Persisted lifecycle stages are only `started`, `draft`, `blocked`, and `ready`.
 
-1. Create one canonical plan, then record `draft` with its path.
-2. Reread the complete draft. Record `risk` as `low` or `material` and identify whether the primary or a read-only subagent performed the inspection.
-3. Establish real dependencies, mutation boundaries, and the first dependency-ready work. Keep independent dependency-ready work parallel where that improves execution; never invent scheduler state to represent the plan.
-4. If a shared TypeScript contract is changed, run an early typecheck before implementation expands. Do not make typecheck a universal planning gate for isolated prose, tests, or unrelated implementation.
-5. If a shared mechanism is unproven, specify one representative executable slice that can falsify it before expanding the implementation. Keep the slice bounded and do not add scheduler state merely to support the experiment.
-6. Perform one correctness review of the complete plan, using one adversarial perspective and, only for material risk, one distinct feasibility or domain perspective. Record mapped findings and do not create a duplicate review path.
-7. Apply only findings that affect the objective, completion evidence, dependencies, safety, or validation. If an issue remains unresolved, call `blocked` with one concise concern and ask the operator. After the answer, update the plan.
-8. Run one final parent-owned subtractive gate after correctness repair. Do not delegate another review. For every task, mechanism, state field, telemetry field, abstraction, and validation step, ask:
+1. Create one canonical complete plan, establish real dependencies and mutation boundaries, then record `draft` with its path.
+2. Select 2-4 independent subject-matter experts whose domains match the plan's actual risks. Delegate their adversarial reviews in parallel when possible. Each expert reads the entire draft, challenges correctness and feasibility from its assigned domain, and returns findings mapped to the objective, completion evidence, tasks, safety, or validation. Do not reuse one generic reviewer under several labels.
+3. Apply every supported finding that affects the objective, completion evidence, dependencies, safety, executability, or validation. Reject findings that are irrelevant or unsupported. Record each subject-matter review with `plan_progress review` after disposition: use `covered` when supported findings have been repaired and `no_finding` when no repair was needed. Use `supported` only while a finding remains unresolved; it must later be recorded as `covered` after repair. Use `adversary`, `specialist`, or `proponent` for the perspective. `strategy` is optional telemetry, not a workflow prerequisite.
+4. If a genuine operator-owned decision remains unresolved, call `blocked` and ask the operator. Git state, worktree state, transfer mechanics, commit state, and anticipated merge state are never `/plan-it` blockers; record them as `/do-it` execution context instead.
+5. After correctness repairs, spawn one fresh subagent that did not participate in the subject-matter reviews. Give it only the revised complete plan and ask exclusively for overengineering, gold-plating, unnecessary abstraction, duplicate state, excessive validation, and churn risks.
+6. Apply necessary subtractive findings, then record the final review with role `subtractive`: use `covered` after repairing supported findings or `no_finding` when no repair was needed. An unresolved `supported` result cannot reach readiness. For every task, mechanism, state field, telemetry field, abstraction, and validation step, ask:
    - Is it required to prove `Completion Evidence` or preserve a stated safety boundary?
    - Does the first task test one assumption with the smallest representative slice?
    - Does it build for an unobserved failure, future provider/client, or unrequested scale?
@@ -29,9 +27,11 @@ Use `plan_progress` for this invocation. Persisted lifecycle stages are only `st
    - Can fewer files, modes, checks, or mutations answer the question?
    - Can later work become conditional and be skipped when the first slice finds no signal?
    Remove or defer anything that fails this necessity test. A factually valid reviewer concern is not a required repair unless it blocks completion evidence.
-9. Reread the reduced complete plan and call `ready`. The tool runs deterministic plan-file validation before recording readiness.
+7. Reread the reduced complete plan and call `ready`. Readiness requires at least two completed subject-matter reviews followed by one completed subtractive review. The tool then runs deterministic plan-file validation.
 
-A restored snapshot may contain a legacy post-draft stage. Treat it as compatibility telemetry only: it may proceed to `ready` after the same deterministic validation. Do not emit duplicate review paths or the removed `settle_review`, `adjudicate`, `repair`, `accept`, or `inspect` actions.
+If a shared TypeScript contract is changed, include an early typecheck before implementation expands. If a shared mechanism is unproven, specify one representative executable slice that can falsify it before expansion. Do not make typecheck a universal gate or add scheduler state for an experiment.
+
+A restored snapshot may contain a legacy post-draft stage. Treat it as compatibility telemetry only. Complete the current subject-matter and subtractive reviews before `ready`. Do not emit the removed `settle_review`, `adjudicate`, `repair`, `accept`, or `inspect` actions.
 
 ## Plan Contract
 
