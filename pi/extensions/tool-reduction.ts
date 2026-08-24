@@ -54,7 +54,7 @@ function getReduceScriptPath(): string {
 
 const TIMEOUT_MS = 3000;
 const MIN_REDUCER_INPUT_BYTES = 240;
-const INGESTION_REDUCTION_MIN_BYTES = 64 * 1024;
+const INGESTION_REDUCTION_MIN_BYTES = 16 * 1024;
 const RETROACTIVE_CONTEXT_THRESHOLD_PERCENT = 50;
 const RETROACTIVE_KEEP_LAST_RESULTS = 5;
 const RETROACTIVE_MIN_RECLAIM_TOKENS = 5000;
@@ -168,6 +168,14 @@ function splitArgv(command: string): string[] {
 	// Shell-tokenize using whitespace split as a best-effort approximation.
 	// The reducer uses this for rule classification only, not re-execution.
 	return command.trim().split(/\s+/).filter(Boolean);
+}
+
+function isCommandToolResult(event: ToolResultEvent): boolean {
+	return isBashToolResult(event) || event.toolName === "pwsh";
+}
+
+function getCommand(event: ToolResultEvent): string {
+	return (event.input as { command?: string }).command ?? "";
 }
 
 function extractTextContent(content: ToolResultEvent["content"]): string {
@@ -449,22 +457,25 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_result", async (event: ToolResultEvent) => {
 		if (process.env.PI_TOOL_REDUCTION?.toLowerCase() === "off") return undefined;
 		const stdout = extractTextContent(event.content);
-		const command = isBashToolResult(event)
-			? (event.input as { command?: string }).command ?? ""
-			: event.toolName;
+		const command = isCommandToolResult(event) ? getCommand(event) : event.toolName;
 		const metadata: ReduceRequestMetadata = {
-			argv: isBashToolResult(event) ? splitArgv(command) : [event.toolName],
+			argv: isCommandToolResult(event) ? splitArgv(command) : [event.toolName],
 			exit_code: event.isError ? 1 : 0,
 		};
 		requests.set(event.toolCallId, metadata);
 
-		if (!isBashToolResult(event) || !shouldReduceAtIngestion(stdout)) {
+		if (
+			!isCommandToolResult(event) ||
+			!shouldReduceAtIngestion(stdout) ||
+			stdout.includes("[tool-reduction]")
+		) {
 			return undefined;
 		}
 		const result = await worker.reduce({ ...metadata, stdout });
 		if (result === null || !result.reduction_applied) return undefined;
 
-		let rawPath = event.details?.fullOutputPath;
+		let rawPath = (event.details as { fullOutputPath?: string } | undefined)
+			?.fullOutputPath;
 		if (!rawPath) {
 			try {
 				rawPath = await saveRawOutput(event.toolCallId, stdout);

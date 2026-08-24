@@ -1,6 +1,7 @@
 ---
 created: 2026-08-24
-status: ready
+completed: 2026-08-24
+status: complete
 ---
 
 # Prevent Subagent Polling and Context Pollution
@@ -25,13 +26,13 @@ Prevent repeated `subagent_status` polling and bound exceptional subagent and sh
 
 ## Tasks
 
-- [ ] **T1: Stop semantic status polling and bound exceptional subagent results**
+- [x] **T1: Stop semantic status polling and bound exceptional subagent results**
   - Files: `pi/extensions/subagent/index.ts`, `pi/tests/subagent.test.ts`, and the affected status/result sections of `pi/skills/pi-extension/references/contracts/subagents-and-tasks.md`. Leave `pi/extensions/subagent/run-manager.ts`, broker code, completion storage, and unrelated contracts untouched unless the representative slice proves the existing hook-local state cannot implement the guard.
   - Change: First dispatch one exact-process status observation through the `tool_call` hook, follow it with an unchanged attempt, and prove the second attempt is blocked before `subagent_status.execute`. Generalize that hook-local semantic guard to orchestration IDs; key progress by current run status plus `activityVersion`; reject model-facing no-target listing in favor of `/subagents`; reset on interactive input or real activity; and terminate the repeated model run through existing `ctx.abort()` behavior. Do not add proactive watchdog delivery. Then replace the 50 KB ordinary provider-visible subagent boundary with one 16 KiB aggregate boundary for single, parallel, and background results: leave smaller and explicit `file-only` results unchanged, save complete oversized final text through the existing private artifact mechanism, and return deterministic bounded content plus the artifact reference. If artifact saving fails, preserve the existing 50 KB/2000-line fallback with an explicit error rather than discard evidence.
   - Done when: A hook-integrated 50-attempt simulation performs one status inspection, blocks the next unchanged attempt, and calls `ctx.abort()` once; activity-version or terminal-status change permits another inspection; model-facing no-target status is rejected while `/subagents` remains unchanged; no timer or normal-progress follow-up is introduced; representative oversized single, parallel, and background results remain at or below 16 KiB with byte-accurate readable artifacts; and small inline, explicit `file-only`, structured, failed, completion-delivery, and artifact-save-failure behavior remains compatible.
   - Verify: Run `cd pi && pnpm test subagent.test.ts` after the status-guard slice. Then run `cd pi && pnpm run typecheck` before expanding to output bounding. Run the focused test again after output changes and inspect for leaked timers, duplicate completion delivery, and incorrect artifact or parent-visible byte accounting.
 
-- [ ] **T2: Eagerly reduce large Bash and `pwsh` results**
+- [x] **T2: Eagerly reduce large Bash and `pwsh` results**
   - Files: `pi/extensions/tool-reduction.ts`, `pi/tests/tool-reduction.test.ts`, and existing rules under `pi/tool-reduction/rules/` only if the representative command lacks a deterministic rule. Leave native `read`, web/subagent results, retrospective thresholds, corpus retention, and telemetry schemas untouched.
   - Change: Extend eager reduction from Bash to `pwsh` by deriving command argv from each tool's existing input. At or above a 16 KiB candidate threshold, invoke the existing local reducer and rewrite the first `tool_result` only when it returns `reduction_applied`; do not duplicate rule matching in TypeScript. Reuse `details.fullOutputPath` or the existing private raw-output writer. Preserve complete failures, relevant evidence, counts, and the result tail in the representative slice before applying the path to both shells.
   - Done when: Matching large Bash and `pwsh` results are reduced before their first provider request, contain the reduction marker and full-output locator, and are not reduced again; candidate-sized unmatched results pass through byte-for-byte after local reducer evaluation; small results bypass the reducer; reducer timeout/error and artifact-save failure return the original result; and source reads never enter eager command reduction.
@@ -41,10 +42,10 @@ The tasks have no hard dependency and own separate mechanisms. T1 starts with th
 
 ## Validation
 
-- [ ] T1 status-loop, activity-reset, listing rejection, output-bound, artifact, and compatibility assertions pass.
-- [ ] T2 Bash/`pwsh` ingestion, passthrough, recovery, and source-read exclusion assertions pass.
-- [ ] Early and final `cd pi && pnpm run typecheck` checks pass at their stated barriers.
-- [ ] `git diff --check` passes and the workflow diff excludes unrelated cache-telemetry files.
+- [x] T1 status-loop, activity-reset, listing rejection, output-bound, artifact, and compatibility assertions pass.
+- [x] T2 Bash/`pwsh` ingestion, passthrough, recovery, and source-read exclusion assertions pass.
+- [x] Early and final `cd pi && pnpm run typecheck` checks pass at their stated barriers.
+- [x] `git diff --check` passes and the workflow diff excludes unrelated cache-telemetry files.
 
 ## Retention
 
@@ -52,6 +53,6 @@ Keep this canonical plan at primary `.specs/subagent-polling-context-reduction/p
 
 ## Execution Status
 
-- State: ready
+- State: complete
 - Blockers: none
-- Resume: `/do-it .specs/subagent-polling-context-reduction/plan.md`
+- Resume: complete

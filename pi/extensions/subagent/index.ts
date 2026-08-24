@@ -260,8 +260,10 @@ export const READ_ONLY_SUBAGENT_TIMEOUT_MS = 8 * 60 * 1000;
 const COLLAPSED_ITEM_COUNT = 10;
 const STRUCTURED_CHAIN_ARTIFACT_BYTES = 8_000;
 const DELEGATED_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-const BACKGROUND_RESULT_MAX_BYTES = 48 * 1024;
-const BACKGROUND_RESULT_MAX_LINES = 1000;
+const SUBAGENT_RESULT_MAX_BYTES = 16 * 1024;
+const SUBAGENT_RESULT_MAX_LINES = 2_000;
+const FALLBACK_RESULT_MAX_BYTES = 50 * 1024;
+const FALLBACK_RESULT_MAX_LINES = 2_000;
 export const SUBAGENT_TERMINATION_GRACE_MS = 5_000;
 export const SUBAGENT_TERMINATION_DEADLINE_MS = 10_000;
 const READ_ONLY_EXPERIMENT_INSTRUCTION =
@@ -1048,6 +1050,14 @@ function saveOutputArtifact(
 function boundProviderVisibleResult<
 	T extends { content: Array<{ type: string; text?: string }> },
 >(result: T, label: string, boundary: "subscription" | "provider-visible"): T {
+	const details = (result as T & {
+		details?: { results?: Array<{ outputMode?: OutputMode }> };
+	}).details;
+	if (
+		details?.results?.length &&
+		details.results.every((worker) => worker.outputMode === "file-only")
+	)
+		return result;
 	const fullOutput = result.content
 		.filter(
 			(item): item is { type: string; text: string } =>
@@ -1056,8 +1066,8 @@ function boundProviderVisibleResult<
 		.map((item) => item.text)
 		.join("\n");
 	const initial = truncateTail(fullOutput, {
-		maxBytes: DEFAULT_MAX_BYTES,
-		maxLines: DEFAULT_MAX_LINES,
+		maxBytes: SUBAGENT_RESULT_MAX_BYTES,
+		maxLines: SUBAGENT_RESULT_MAX_LINES,
 	});
 	if (!initial.truncated) return result;
 
@@ -1072,8 +1082,20 @@ function boundProviderVisibleResult<
 		`Full result artifact could not be saved: ${saved.error ?? "unknown error"}`;
 	const visible = truncateTail(
 		`${fullOutput}\n\n[Result truncated at the ${boundary} foreground boundary. ${reference}]`,
-		{ maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES },
+		{ maxBytes: SUBAGENT_RESULT_MAX_BYTES, maxLines: SUBAGENT_RESULT_MAX_LINES },
 	);
+	if (saved.reference === undefined) {
+		const fallbackNote = `\n\n[Result truncation artifact unavailable: ${saved.error ?? "unknown error"}]`;
+		const fallback = truncateTail(fullOutput, {
+			maxBytes: FALLBACK_RESULT_MAX_BYTES - Buffer.byteLength(fallbackNote, "utf8"),
+			maxLines: FALLBACK_RESULT_MAX_LINES,
+		});
+		result.content = [{
+			type: "text",
+			text: `${fallback.content}${fallbackNote}`,
+		}];
+		return result;
+	}
 	result.content = [{ type: "text", text: visible.content }];
 	return result;
 }
@@ -1384,6 +1406,32 @@ interface InternalWorkflowRunContext {
 }
 
 const internalWorkflowRuns = new Map<string, InternalWorkflowRunContext>();
+
+type StatusInspectionGuard = {
+	fingerprint: string;
+	aborted: boolean;
+};
+
+const statusInspectionGuards = new Map<string, StatusInspectionGuard>();
+
+function statusInspectionFingerprint(processId: string): string {
+	const run = subagentRunManager.get(processId);
+	if (run)
+		return `${run.status}:${run.activityVersion}`;
+	const grouped = subagentRunManager.getByOrchestrationId(processId);
+	if (grouped.length > 0)
+		return grouped
+			.map((candidate) => `${candidate.runId}:${candidate.status}:${candidate.activityVersion}`)
+			.sort()
+			.join("|");
+	const broker = getSubagentTreeBroker()
+		.list()
+		.filter((candidate) => candidate.runId === processId)
+		.map((candidate) => `${candidate.runId}:${candidate.state}`)
+		.sort()
+		.join("|");
+	return broker || "missing";
+}
 
 function currentSubagentIdentity(): SubagentExecutionIdentity {
 	const treeRunId = process.env.PI_SUBAGENT_TREE_RUN_ID?.trim() || undefined;
@@ -2936,9 +2984,19 @@ export default function (pi: ExtensionAPI) {
 				? error.message
 				: String(error ?? "Background subagent failed without an error message.");
 		const bounded = truncateTail(rawText, {
-			maxBytes: BACKGROUND_RESULT_MAX_BYTES,
-			maxLines: BACKGROUND_RESULT_MAX_LINES,
+			maxBytes: SUBAGENT_RESULT_MAX_BYTES,
+			maxLines: SUBAGENT_RESULT_MAX_LINES,
 		});
+		const artifact = bounded.truncated
+			? saveOutputArtifact(
+					getDefaultArtifactPath(`background-${orchestrationId}`, 0),
+					rawText,
+				)
+			: {};
+		const artifactReference = artifact.reference?.message ??
+			(bounded.truncated
+				? `Full background result artifact could not be saved: ${artifact.error ?? "unknown error"}`
+				: undefined);
 		const failed =
 			Boolean(error) ||
 			Boolean(
@@ -2947,13 +3005,23 @@ export default function (pi: ExtensionAPI) {
 				),
 			);
 		const truncationNote = bounded.truncated
-			? "\n\n[Result truncated. Inspect the recent run with /subagents.]"
+			? `\n\n[Result truncated. Inspect the recent run with /subagents.${artifactReference ? ` ${artifactReference}` : ""}]`
 			: "";
+		const backgroundHeader = `Background subagent ${mode} ${orchestrationId} ${failed ? "finished with failures" : "finished"}.\n\n`;
+		const backgroundBudget = Math.max(
+			0,
+			SUBAGENT_RESULT_MAX_BYTES -
+				Buffer.byteLength(backgroundHeader + truncationNote, "utf8"),
+		);
+		const backgroundContent = `${backgroundHeader}${truncateTail(rawText, {
+			maxBytes: backgroundBudget,
+			maxLines: SUBAGENT_RESULT_MAX_LINES,
+		}).content}${truncationNote}`;
 		subagentRunManager.queueBackgroundCompletion({
 			orchestrationId,
 			mode,
 			...origin,
-			content: `Background subagent ${mode} ${orchestrationId} ${failed ? "finished with failures" : "finished"}.\n\n${bounded.content}${truncationNote}`,
+			content: backgroundContent,
 			failed,
 			taskIds:
 				result?.details?.results.flatMap((worker) =>
@@ -3018,6 +3086,7 @@ export default function (pi: ExtensionAPI) {
 				throw new Error("Only the root agent can inspect subagent status.");
 			const processId = params.processId;
 			if (!processId) {
+				throw new Error("processId is required; use /subagents to list tracked processes.");
 				if (params.sinceActivityVersion !== undefined)
 					throw new Error(
 						"processId is required when sinceActivityVersion is provided.",
@@ -3445,6 +3514,28 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", (event, ctx) => {
+		if (event.toolName === "subagent_status") {
+			const input = event.input as Record<string, unknown> | undefined;
+			const processId = typeof input?.processId === "string" ? input.processId : undefined;
+			if (!processId)
+				return {
+					block: true,
+					reason: "processId is required; use /subagents to list tracked processes.",
+				};
+			const fingerprint = statusInspectionFingerprint(processId);
+			const previous = statusInspectionGuards.get(processId);
+			if (previous?.fingerprint === fingerprint) {
+				if (!previous.aborted) {
+					previous.aborted = true;
+					ctx.abort();
+				}
+				return {
+					block: true,
+					reason: "Repeated unchanged subagent status inspection is blocked; wait for activity or completion.",
+				};
+			}
+			statusInspectionGuards.set(processId, { fingerprint, aborted: false });
+		}
 		if (!activeWorkspacePolicy) return undefined;
 		const result = checkWorkspaceTool(
 			activeWorkspacePolicy,
@@ -3473,6 +3564,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("input", (event) => {
 		if (event.source !== "interactive") return;
+		statusInspectionGuards.clear();
 		for (const run of subagentRunManager.list()) {
 			if (run.status === "failed") acknowledgedFailureRunIds.add(run.runId);
 		}
