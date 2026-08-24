@@ -64,10 +64,21 @@ describe("workflow worktree lifecycle", () => {
 		expect(resumed.resumed).toBe(true);
 	});
 
-	it("rejects a dirty primary when creating new work", async () => {
+	it("creates plan work from a dirty primary without changing the dirty state", async () => {
+		const root = repo();
+		fs.writeFileSync(path.join(root, "README.md"), "dirty\n");
+		fs.writeFileSync(path.join(root, "untracked.txt"), "keep\n");
+		const status = git(root, ["status", "--porcelain=v1"]);
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "plan-it", workflowId: "plan-it:fixture", slug: "fixture", runner });
+		expect(worktree.resumed).toBe(false);
+		expect(git(root, ["status", "--porcelain=v1"])).toBe(status);
+		expect(git(worktree.ownership.worktree, ["show", "HEAD:README.md"])).toBe("initial");
+	});
+
+	it.each(["do-it", "goal"] as const)("rejects a dirty primary when creating new %s work", async (workflow) => {
 		const root = repo();
 		fs.writeFileSync(path.join(root, "dirty.txt"), "keep\n");
-		await expect(ensureWorkflowWorktree({ cwd: root, workflow: "goal", workflowId: "goal:fixture", slug: "fixture", runner })).rejects.toThrow(/primary worktree is dirty/);
+		await expect(ensureWorkflowWorktree({ cwd: root, workflow, workflowId: `${workflow}:fixture`, slug: "fixture", runner })).rejects.toThrow(/primary worktree is dirty/);
 	});
 
 	it("merges with --no-ff when the clean primary branch advances", async () => {

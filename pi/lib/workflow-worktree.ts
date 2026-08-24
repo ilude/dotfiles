@@ -131,14 +131,14 @@ async function listWorktrees(root: string, git: WorkflowGitRunner): Promise<List
 	return parseWorktreeListPorcelain(result.stdout);
 }
 
-async function primaryState(root: string, git: WorkflowGitRunner): Promise<{ worktree: string; branch: string; head: string }> {
+async function primaryState(root: string, git: WorkflowGitRunner, requireClean = true): Promise<{ worktree: string; branch: string; head: string }> {
 	const commonDir = path.resolve(root, parseLine(await git(root, ["rev-parse", "--git-common-dir"]), "resolve common Git directory"));
 	const primaryCandidate = path.basename(commonDir) === ".git" ? path.dirname(commonDir) : undefined;
 	const primary = (await listWorktrees(root, git)).find((entry) => primaryCandidate && normalize(entry.path) === normalize(primaryCandidate));
 	if (!primary?.branch) throw new Error("could not identify the primary worktree and checked-out branch");
 	const status = await git(primary.path, ["status", "--porcelain=v1"]);
 	if (status.code !== 0) throw new Error(`inspect primary worktree: ${status.stderr.trim()}`);
-	if (status.stdout.trim()) throw new Error("primary worktree is dirty; clean it before creating or merging a workflow worktree");
+	if (requireClean && status.stdout.trim()) throw new Error("primary worktree is dirty; clean it before creating or merging a workflow worktree");
 	const unmerged = await git(primary.path, ["diff", "--name-only", "--diff-filter=U"]);
 	if (unmerged.code !== 0) throw new Error(`inspect unmerged paths: ${unmerged.stderr.trim()}`);
 	if (unmerged.stdout.trim()) throw new Error("primary worktree has unmerged paths");
@@ -170,7 +170,7 @@ export async function ensureWorkflowWorktree(input: { cwd: string; workflow: Wor
 		if (transferred !== existing) writeOwnership(metadataPath, transferred);
 		return { ownership: transferred, resumed: true };
 	}
-	const primary = await primaryState(root, input.runner);
+	const primary = await primaryState(root, input.runner, input.workflow !== "plan-it");
 	const worktree = path.join(root, ".worktrees", slug);
 	const branch = `workflow/${slug}`;
 	if (fs.existsSync(worktree)) throw new Error(`workflow worktree path already exists: ${worktree}`);

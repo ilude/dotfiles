@@ -10,7 +10,7 @@ Create the smallest complete plan using the existing mechanism. Preserve supplie
 
 ## Lifecycle
 
-The command owns exactly one branch/worktree beneath repository-root `.worktrees/`. Create it before writing the plan, record its ownership, and resume that same record on continuation. All reads, writes, plan artifacts, and validation must target that worktree. Dirty, unmerged, or conflicting state stops the workflow and preserves the recovery worktree.
+The command owns exactly one branch/worktree beneath repository-root `.worktrees/`. Create it before writing the plan, record its ownership, and resume that same record on continuation. All reads, writes, plan artifacts, and validation must target that worktree. Unrelated tracked or untracked changes in the primary worktree do not block `/plan-it` and must remain untouched. Unmerged or conflicting state stops the workflow and preserves the recovery worktree.
 
 Use `plan_progress` for this invocation. Persisted lifecycle stages are only `started`, `draft`, `blocked`, and `ready`.
 
