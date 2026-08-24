@@ -2179,15 +2179,6 @@ try {
     $null = Ensure-WindowsTerminalShiftEnter
 
     # ========================================================================
-    # Patched msys-2.0.dll (manual only)
-    # ========================================================================
-    # The runtime patch is kept for manual recovery/testing, but the installer
-    # must not replace Git for Windows' bundled msys-2.0.dll automatically.
-    # To apply it explicitly:
-    #   pwsh -File patches\msys2-runtime\install-patched-runtime.ps1
-    Write-Host "  Patched msys-2.0.dll: auto-install disabled" -ForegroundColor DarkGray
-
-    # ========================================================================
     # Windows Defender Exclusion for Git MSYS2 runtime (requires admin)
     # ========================================================================
     # Defender scanning msys-2.0.dll during rapid bash spawning can delay

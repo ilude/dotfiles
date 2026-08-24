@@ -25,6 +25,5 @@ zsh-setup text eol=lf
 *.ico binary
 .dolos/artifacts/*.tar.gz.age binary -diff -merge
 .dolos/authorized_keys text
-patches/msys2-runtime/*.dll filter=lfs diff=lfs merge=lfs -text
 # Normalize JSON key order to prevent phantom diffs from serializer churn
 claude/settings.json filter=json-sort

@@ -49,12 +49,11 @@ The installer entrypoints and supporting paths are indexed in [`README.md#struct
 - On Windows with MSYS2, `nsswitch.conf` must resolve HOME with `db_home: env windows cygwin desc`.
 - Before changing files under `zsh/`, read and follow `zsh/AGENTS.md`; standalone scripts may redefine platform detection only to remain self-contained.
 
-### Git identity, LFS, and submodules
+### Git identity and submodules
 
 - Git identity switches by directory and remote URL; see the [Git identity system](README.md#git-identity-system), and keep machine-specific SSH config in gitignored local files managed by [`scripts/git-ssh-setup`](scripts/git-ssh-setup).
 - Personal SSH key priority is `id_ed25519-personal`, then generic `id_ed25519`.
 - Work SSH key priority is `id_ed25519-work`, then `id_ed25519-eagletg`; work must not fall back to generic `id_ed25519`.
-- [`.gitattributes`](.gitattributes) may route only `patches/msys2-runtime/*.dll` through Git LFS. If LFS hooks hang or git becomes slow, run [`scripts/git-lfs-health.ps1`](scripts/git-lfs-health.ps1) with `pwsh -File` before retrying. Do not remove or bypass hooks by default; bypass only after staged-diff and LFS health checks pass and the user approves.
 - Never force-push a submodule repository. Never amend or rebase an already-pushed submodule commit. Pull inside the submodule before updating the parent repository's pinned reference.
 - Treat every worktree as potentially shared. Never use `git restore`, `git checkout`, `git reset`, `git clean`, file deletion, or overwrite to discard a change unless the current task created it or the user explicitly authorizes its removal. This does not prohibit editing a file that already has unrelated changes; preserve those changes in the resulting file and diff.
 - If `git pull` fails on a submodule fetch, recover with:

@@ -1,17 +1,19 @@
 ---
 title: MSYS2 Bash Crash (add_item Race Condition)
-status: fixed-locally-verify-on-recurrence
+status: archived-custom-patch-retired
 primary_issue: https://github.com/anthropics/claude-code/issues/30165
-last_checked: 2026-07-17
+last_checked: 2026-08-23
 ---
 
 ## MSYS2 Bash Crash: add_item Race Condition on Windows
 
-Full investigation, root cause, fix, source patch, and current-state
-verification now live in one consolidated dossier shared with Pi's
-feature-memory system:
+The historical investigation and retirement evidence are archived at:
 
-**`.specs/features/msys2-bash-crash/context.md`**
+**`.specs/archive/msys2-bash-crash/context.md`**
+
+The custom DLL and installer were removed after the vendor runtime passed a
+100-concurrent-Bash startup test without the patch. The upstream pull request
+remains unmerged, so consult the archived evidence if the failure recurs.
 
 Read that file for the error signature, root cause, the March 2026 trigger,
 fix-verification details, and - most importantly - the Current State table:

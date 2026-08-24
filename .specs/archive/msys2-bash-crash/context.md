@@ -1,6 +1,8 @@
 # MSYS2 Bash Crash Dossier
 
-Status: Curated feature dossier
+Status: Archived 2026-08-23 - custom patch retired
+
+Retirement: The installed vendor runtime passed a 100-concurrent-Bash startup test without the custom DLL. The stored DLL, source patch, installer, LFS rule, and active feature-memory registration were removed. Upstream PR #333 remains historical context if the failure recurs.
 Last reviewed: 2026-07-17
 Feature ID: `msys2-bash-crash`
 
