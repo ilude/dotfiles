@@ -139,6 +139,7 @@ export default function (pi: ExtensionAPI) {
 					);
 					return;
 				}
+				ctx.ui.notify(`Retrying permission decision ${shortId(target.id)}...`, "info");
 				const original = getDecision(target.id);
 				try {
 					recordDecision({

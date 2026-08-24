@@ -789,6 +789,7 @@ export default function registerCodexStatusCommand(pi: ExtensionAPI) {
 		description:
 			"Show ChatGPT Codex quota status using existing Pi/Codex OAuth credentials",
 		handler: async (_args, ctx) => {
+			ctx.ui.notify("Usage refresh started.", "info");
 			await showCodexStatus(ctx);
 		},
 	});

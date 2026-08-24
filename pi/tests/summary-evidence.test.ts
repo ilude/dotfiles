@@ -180,6 +180,10 @@ describe("summarize command", () => {
 			| { handler: (args: string, ctx: Record<string, unknown>) => Promise<void> }
 			| undefined;
 		const sendMessage = vi.fn();
+		let releaseIdle!: () => void;
+		const idle = new Promise<void>((resolve) => {
+			releaseIdle = resolve;
+		});
 		const pi = {
 			registerCommand: vi.fn((name: string, definition) => {
 				if (name === "summarize") command = definition;
@@ -189,21 +193,35 @@ describe("summarize command", () => {
 		summarizeExtension(pi as never);
 		if (!command) throw new Error("summarize command was not registered");
 
-		await command.handler("focus on validation", {
-			waitForIdle: vi.fn(async () => {}),
+		const pending = command.handler("focus on validation", {
+			waitForIdle: vi.fn(() => idle),
 			sessionManager: { getBranch: () => sessionEntries() },
 		});
 
 		expect(sendMessage).toHaveBeenCalledOnce();
-		expect(sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				customType: "workflow.hiddenPrompt",
-				display: false,
-				content: expect.stringContaining("<session_evidence>"),
-			}),
-			{ triggerTurn: true, deliverAs: "followUp" },
+		expect(sendMessage).toHaveBeenNthCalledWith(
+		1,
+		expect.objectContaining({
+			customType: "slash-echo",
+			content: "/summarize focus on validation",
+			display: true,
+		}),
+		{ triggerTurn: false },
 		);
-		expect(sendMessage.mock.calls[0]?.[0].content).toContain(
+		releaseIdle();
+		await pending;
+
+		expect(sendMessage).toHaveBeenCalledTimes(2);
+		expect(sendMessage).toHaveBeenNthCalledWith(
+		2,
+		expect.objectContaining({
+			customType: "workflow.hiddenPrompt",
+			display: false,
+			content: expect.stringContaining("<session_evidence>"),
+		}),
+		{ triggerTurn: true, deliverAs: "followUp" },
+		);
+		expect(sendMessage.mock.calls[1]?.[0].content).toContain(
 			"Additional focus: focus on validation",
 		);
 	});

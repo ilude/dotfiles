@@ -671,7 +671,6 @@ export default function registerContextCommand(pi: ExtensionAPI) {
 			return matches.length > 0 ? matches.map((value) => ({ value, label: value })) : null;
 		},
 		handler: async (args, ctx) => {
-			await ctx.waitForIdle();
 			const trimmed = args.trim().toLowerCase();
 			if (trimmed === "clear" || trimmed === "hide") {
 				ctx.ui.setWidget("context", undefined);
@@ -679,6 +678,8 @@ export default function registerContextCommand(pi: ExtensionAPI) {
 				return;
 			}
 
+			ctx.ui.notify("Context report started.", "info");
+			await ctx.waitForIdle();
 			const report = buildReport(pi, ctx);
 			if (trimmed === "widget") {
 				ctx.ui.setWidget("context", report, { placement: "aboveEditor" });

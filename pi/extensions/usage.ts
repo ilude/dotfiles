@@ -425,6 +425,7 @@ export default function (pi: ExtensionAPI) {
 			"Summarize Pi/Codex token usage and cost for the last 1, 7, 30, and 90 days",
 		handler: async (args, ctx) => {
 			const refreshPricing = args.trim() === "--refresh-pricing";
+			ctx.ui.notify("Usage report started.", "info");
 			const markdown = await buildUsageReport(
 				refreshPricing,
 				ctx.sessionManager.getSessionDir(),

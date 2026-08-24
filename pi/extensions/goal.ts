@@ -1647,6 +1647,7 @@ export default function (pi: ExtensionAPI) {
 					const job = selectWorkspaceGoalJob(ctx.cwd);
 					if (job.goal?.state === "completed")
 						throw new Error("A completed goal cannot be stopped.");
+					ctx.ui.notify("Stopping goal...", "info");
 					await stopLoopJob(pi, job, true);
 					showGoal(pi, `Goal ${job.goal?.id ?? job.id}: stopped`);
 					return;
@@ -1657,6 +1658,7 @@ export default function (pi: ExtensionAPI) {
 						throw new Error("A completed goal cannot be resumed.");
 					if (inspectLoopJob(prior).alive)
 						throw new Error(`Goal ${prior.goal?.id ?? prior.id} is already running.`);
+					ctx.ui.notify("Resuming goal...", "info");
 					const reconciliation = await reconcileForResume(pi, prior);
 					if (!reconciliation.ok) throw new Error(reconciliation.message);
 					const started = await resumeLoopJob(reconciliation.job);
@@ -1692,6 +1694,7 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.notify(parsed.message, "warning");
 					return;
 				}
+				ctx.ui.notify(unattended ? "Starting unattended goal..." : "Starting goal...", "info");
 				noteWorkflowSubmission(
 					args.trim() ? `/goal ${args.trim()}` : "/goal",
 					"explore",

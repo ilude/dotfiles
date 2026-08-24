@@ -56,6 +56,7 @@ export default function (pi: ExtensionAPI) {
 				);
 				return;
 			}
+			ctx.ui.notify("Transcript purge started.", "info");
 			const settings = loadSettings();
 			const result = await sweepRetention(
 				settings.path,

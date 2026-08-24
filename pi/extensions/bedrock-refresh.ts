@@ -410,6 +410,8 @@ export default function bedrockRefresh(
 				return;
 			}
 
+			ctx.ui.notify("Bedrock refresh started.", "info");
+
 			try {
 				const poll = await runPoll(parsed, ctx, executeAws);
 				const summary = formatPollSummary(poll);

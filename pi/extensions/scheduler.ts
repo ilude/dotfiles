@@ -216,9 +216,10 @@ function scheduleCron(
 async function handleAt(
 	pi: ExtensionAPI,
 	args: string,
-	_ctx: ExtensionCommandContext,
+	ctx: ExtensionCommandContext,
 ): Promise<void> {
 	const definition = splitDefinition(args);
+	ctx.ui.notify("Scheduling one-shot prompt.", "info");
 	const scheduler = getProcessScheduler();
 	const job = scheduleAt(scheduler, definition.header, definition.prompt);
 	show(pi, creationMessage(job, scheduler.list()));
@@ -227,10 +228,11 @@ async function handleAt(
 async function handleCron(
 	pi: ExtensionAPI,
 	args: string,
-	_ctx: ExtensionCommandContext,
+	ctx: ExtensionCommandContext,
 ): Promise<void> {
 	const definition = splitDefinition(args);
 	const parsed = parseCronHeader(definition.header);
+	ctx.ui.notify("Scheduling recurring prompt.", "info");
 	const scheduler = getProcessScheduler();
 	const job = scheduleCron(
 		scheduler,
@@ -244,7 +246,7 @@ async function handleCron(
 async function handleSchedule(
 	pi: ExtensionAPI,
 	args: string,
-	_ctx: ExtensionCommandContext,
+	ctx: ExtensionCommandContext,
 ): Promise<void> {
 	const tokens = tokenize(args.trim());
 	const action = tokens[0]?.toLowerCase() ?? "list";
@@ -255,6 +257,7 @@ async function handleSchedule(
 	}
 	if (action === "cancel") {
 		if (!tokens[1]) throw new Error("Provide a schedule id to cancel");
+		ctx.ui.notify("Cancelling scheduled prompt.", "info");
 		const cancelled = scheduler.cancel(tokens[1]);
 		show(
 			pi,

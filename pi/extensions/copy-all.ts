@@ -59,6 +59,7 @@ export default function copyAllExtension(pi: ExtensionAPI): void {
 		description:
 			"Copy user and assistant messages to the clipboard; optional fallback file",
 		handler: async (args, ctx) => {
+			ctx.ui.notify("Copying conversation.", "info");
 			await ctx.waitForIdle();
 			const { text, messageCount } = serializeConversationForClipboard(
 				ctx.sessionManager.getBranch(),

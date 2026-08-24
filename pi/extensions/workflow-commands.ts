@@ -605,6 +605,10 @@ function buildWindowsTerminalLaunchPlan(input: {
 	};
 }
 
+async function yieldForLauncherFeedback() {
+	await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 export function launchBranch(plan: BranchLaunchPlan): {
 	launched: boolean;
 	error?: string;
@@ -736,6 +740,12 @@ async function executeNewInstanceCommand(
 ) {
 	const cwd = ctx.cwd ?? process.cwd();
 	const title = args.trim() || defaultBranchTitle(cwd);
+	ctx.ui.notify(
+		isHerdrManagedEnvironment()
+			? `Opening new Pi instance in a Herdr tab: ${title}`
+			: `Opening new Pi instance in a new terminal tab: ${title}`,
+		"info",
+	);
 	if (isHerdrManagedEnvironment()) {
 		await createHerdrPiTab(pi, { cwd, title, signal: ctx.signal });
 		return ctx.ui.notify(
@@ -744,6 +754,7 @@ async function executeNewInstanceCommand(
 		);
 	}
 	const plan = buildNewInstanceLaunchPlan({ cwd, title });
+	if (plan.executable) await yieldForLauncherFeedback();
 	const launched = launchBranch(plan);
 	if (launched.launched) {
 		return ctx.ui.notify(
@@ -767,11 +778,18 @@ async function executeNewTerminalCommand(
 ) {
 	const cwd = ctx.cwd ?? process.cwd();
 	const title = args.trim() || defaultBranchTitle(cwd);
+	ctx.ui.notify(
+		isHerdrManagedEnvironment()
+			? `Opening new Herdr tab in this cwd: ${title}`
+			: `Opening new terminal in this cwd: ${title}`,
+		"info",
+	);
 	if (isHerdrManagedEnvironment()) {
 		await createHerdrTab(pi, { cwd, title, signal: ctx.signal });
 		return ctx.ui.notify(`Opened new Herdr tab in this cwd: ${title}`, "info");
 	}
 	const plan = buildNewTerminalLaunchPlan({ cwd, title });
+	if (plan.executable) await yieldForLauncherFeedback();
 	const launched = launchBranch(plan);
 	if (launched.launched) {
 		return ctx.ui.notify(`Opened new terminal in this cwd: ${title}`, "info");
@@ -798,6 +816,14 @@ async function executeBranchCommand(
 			"error",
 		);
 	}
+	const cwd = ctx.cwd ?? process.cwd();
+	const title = args.trim() || defaultBranchTitle(cwd);
+	ctx.ui.notify(
+		isHerdrManagedEnvironment()
+			? `Opening branched Pi session in a Herdr tab: ${title}`
+			: `Opening branched Pi session in a new terminal tab: ${title}`,
+		"info",
+	);
 	const branchSessionFile = sessionManager.createBranchedSession(leafId);
 	if (!branchSessionFile) {
 		return ctx.ui.notify(
@@ -805,8 +831,6 @@ async function executeBranchCommand(
 			"error",
 		);
 	}
-	const cwd = ctx.cwd ?? process.cwd();
-	const title = args.trim() || defaultBranchTitle(cwd);
 	if (isHerdrManagedEnvironment()) {
 		await createHerdrPiTab(pi, {
 			cwd,
@@ -824,6 +848,7 @@ async function executeBranchCommand(
 		title,
 		sessionFile: branchSessionFile,
 	});
+	if (plan.executable) await yieldForLauncherFeedback();
 	const launched = launchBranch(plan);
 	if (launched.launched) {
 		return ctx.ui.notify(
@@ -2686,6 +2711,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			try {
 				if (ctx.mode !== "tui") {
+					ctx.ui.notify("Running /commit...", "info");
 					await executeCommitCommand(pi, args, ctx);
 					return;
 				}
@@ -2931,6 +2957,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("clear", {
 		description: "Alias to /new",
 		handler: async (_args, ctx) => {
+			ctx.ui.notify("Clearing session...", "info");
 			const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
 			await newSessionWithReloadIfNeeded(ctx, {
 				setup: async (sessionManager) => {

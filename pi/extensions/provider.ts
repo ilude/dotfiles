@@ -301,6 +301,7 @@ export default function registerProviderCommand(pi: ExtensionAPI) {
 					ctx.ui.notify(`Unknown provider: ${command.provider}`, "error");
 					return;
 				}
+				ctx.ui.notify(`Setting credentials for ${command.provider}...`, "info");
 				await handleSet(ctx, provider);
 				return;
 			}
@@ -310,6 +311,7 @@ export default function registerProviderCommand(pi: ExtensionAPI) {
 				ctx.ui.notify(`Unknown provider: ${command.provider}`, "error");
 				return;
 			}
+			ctx.ui.notify(`Removing credentials for ${command.provider}...`, "info");
 			await handleRemove(ctx, provider);
 		},
 	});

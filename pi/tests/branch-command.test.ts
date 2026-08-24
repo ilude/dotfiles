@@ -85,11 +85,14 @@ describe("/branch", () => {
 		const command = pi._commands.find((entry) => entry.name === "branch");
 		expect(command).toBeTruthy();
 		if (!command) throw new Error("branch command not registered");
-		const notify = vi.fn();
-		const createBranchedSession = vi.fn(
-			() =>
-				"C:/Users/me/.pi/agent/sessions/project/2026-05-04T18-58-02-760Z_019df45a-c587-70ae-bf94-c74cd681715c.jsonl",
-		);
+		const order: string[] = [];
+		const notify = vi.fn((message: string) => {
+			if (message.startsWith("Opening branched")) order.push("ack");
+		});
+		const createBranchedSession = vi.fn(() => {
+			order.push("session");
+			return "C:/Users/me/.pi/agent/sessions/project/2026-05-04T18-58-02-760Z_019df45a-c587-70ae-bf94-c74cd681715c.jsonl";
+		});
 
 		await command.handler("custom title", {
 			cwd: "/c/Users/me/project dir",
@@ -101,6 +104,8 @@ describe("/branch", () => {
 		});
 
 		expect(createBranchedSession).toHaveBeenCalledWith("leaf-1");
+		expect(order).toEqual(["ack", "session"]);
+		expect(notify.mock.calls.filter(([message]) => message.startsWith("Opening branched"))).toHaveLength(1);
 		expect(mockSpawnSync).toHaveBeenCalledWith(
 			"wt",
 			expect.arrayContaining([
