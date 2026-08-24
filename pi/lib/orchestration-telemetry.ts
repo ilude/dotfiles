@@ -124,6 +124,7 @@ export type OrchestrationExecutionKind =
 	| "write"
 	| "coordinator"
 	| "legacy";
+export type ContinuationStatus = "fresh" | "continued";
 export type OrchestrationOutcomeCode =
 	| "completed"
 	| "failed"
@@ -208,6 +209,7 @@ export interface OrchestrationWorker extends OrchestrationTelemetryFields {
 	retryOrigin?: string;
 	coordinatorTaskId?: string;
 	taskId?: string;
+	continuationStatus?: ContinuationStatus;
 	agent: string;
 	resolvedModel?: string;
 	selectedEffort?: string;
@@ -643,6 +645,7 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 			"retryOrigin",
 			"coordinatorTaskId",
 			"taskId",
+			"continuationStatus",
 			"agent",
 			"resolvedModel",
 			"selectedEffort",
@@ -683,6 +686,10 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 	const retryOrigin = metadataIdentifier(worker.retryOrigin);
 	const coordinatorTaskId = metadataIdentifier(worker.coordinatorTaskId);
 	const taskId = metadataString(worker.taskId);
+	const continuationStatus =
+		worker.continuationStatus === "fresh" || worker.continuationStatus === "continued"
+			? worker.continuationStatus
+			: undefined;
 	const resolvedModel = metadataString(worker.resolvedModel);
 	const selectedEffort = metadataString(worker.selectedEffort);
 	const advisoryPolicyVersion = metadataString(worker.advisoryPolicyVersion);
@@ -719,6 +726,8 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 	if (worker.coordinatorTaskId !== undefined && !coordinatorTaskId)
 		return undefined;
 	if (worker.taskId !== undefined && !taskId) return undefined;
+	if (worker.continuationStatus !== undefined && continuationStatus === undefined)
+		return undefined;
 	if (worker.resolvedModel !== undefined && !resolvedModel) return undefined;
 	if (worker.selectedEffort !== undefined && !selectedEffort) return undefined;
 	if (worker.advisoryPolicyVersion !== undefined && !advisoryPolicyVersion) return undefined;
@@ -744,6 +753,7 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 	if (retryOrigin) result.retryOrigin = retryOrigin;
 	if (coordinatorTaskId) result.coordinatorTaskId = coordinatorTaskId;
 	if (taskId) result.taskId = taskId;
+	if (continuationStatus) result.continuationStatus = continuationStatus;
 	if (resolvedModel) result.resolvedModel = resolvedModel;
 	if (selectedEffort) result.selectedEffort = selectedEffort;
 	if (advisoryPolicyVersion) result.advisoryPolicyVersion = advisoryPolicyVersion;

@@ -135,6 +135,8 @@ import {
 	type SubagentRunMode,
 	type SubagentRunSnapshot,
 	type SubagentRunUsage,
+	type SubagentExecutionFingerprint,
+	resolveTaskSessionAffinity,
 } from "./run-manager.js";
 import {
 	COMMAND_MUTATION_TOOLS,
@@ -634,6 +636,8 @@ export interface SingleResult {
 	attempt?: number;
 	retryOrigin?: string;
 	coordinatorTaskId?: string;
+	/** Cache attribution state for this child execution. */
+	continuationStatus?: "fresh" | "continued";
 	/** Internal metadata used only when constructing the content-free closeout event. */
 	telemetry?: SubagentTelemetryMetadata;
 }
@@ -1369,6 +1373,8 @@ interface SubagentRunContext {
 	legacyAdapterUse?: boolean;
 	legacyAdapterBranch?: LegacyAdapterBranch;
 	taskLinkSource?: TaskLinkSource;
+	executionFingerprint?: import("./run-manager.js").SubagentExecutionFingerprint;
+	affinitySessionPath?: string;
 	onclaveEligible?: false;
 	telemetryWorkspaceRootSource?: WorkspaceRootSource;
 	telemetryTaskLinkSource?: TaskLinkSource;
@@ -1463,6 +1469,10 @@ function currentSubagentIdentity(): SubagentExecutionIdentity {
 
 function canonicalAgentName(agentName: string): string {
 	return agentName;
+}
+
+function normalizeFingerprintValues(values: readonly string[]): string[] {
+	return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
 }
 
 function resolveChildRole(
@@ -1650,7 +1660,12 @@ export async function runSingleAgent(
 	effortOverride: AgentEffort | undefined,
 	existingTaskId?: string,
 	executionAttemptRunId?: string,
-	sessionOptions?: { continuable?: boolean; sessionPath?: string },
+	sessionOptions?: {
+		continuable?: boolean;
+		sessionPath?: string;
+		leaseSessionPath?: string;
+		continuationStatus?: "fresh" | "continued";
+	},
 	runContext?: SubagentRunContext,
 ): Promise<SingleResult> {
 	const runStartedAt = Date.now();
@@ -1749,6 +1764,9 @@ export async function runSingleAgent(
 		step,
 		runId,
 		...(taskId ? { taskId } : {}),
+		...(sessionOptions?.continuationStatus
+			? { continuationStatus: sessionOptions.continuationStatus }
+			: {}),
 		...(runContext?.telemetryExecutionKind
 			? {
 					telemetry: {
@@ -1816,6 +1834,12 @@ export async function runSingleAgent(
 		args.push("--no-session");
 	}
 	const runController = new AbortController();
+	let releaseSessionLease: (() => void) | undefined;
+	if (sessionOptions?.leaseSessionPath)
+		releaseSessionLease = subagentRunManager.acquireSessionLease(
+			sessionOptions.leaseSessionPath,
+			runId,
+		);
 	let treePermit: SubagentTreePermit | undefined;
 	let removeTreeCancelListener: (() => void) | undefined;
 	const forwardAbort = () => runController.abort(signal?.reason);
@@ -1875,6 +1899,7 @@ export async function runSingleAgent(
 			model: currentResult.model,
 			effort: currentResult.effort,
 			background: runContext?.background,
+			executionFingerprint: runContext?.executionFingerprint,
 		},
 		runController,
 	);
@@ -2001,6 +2026,10 @@ export async function runSingleAgent(
 				ONCLAVE_PI_SUBAGENT_INELIGIBLE: "1",
 				TRACEPARENT: buildSubagentTraceparent(),
 				PI_SUBAGENT_RUN_ID: runId,
+				...(taskId ? { PI_SUBAGENT_TASK_ID: taskId } : {}),
+				...(sessionOptions?.continuationStatus
+					? { PI_SUBAGENT_CONTINUATION_STATUS: sessionOptions.continuationStatus }
+					: {}),
 				PI_SUBAGENT_STARTED_AT: subagentStartedAt,
 				PI_SUBAGENT_ROLE: resolvedChild.role,
 				PI_SUBAGENT_DEPTH: String(resolvedChild.depth),
@@ -2387,6 +2416,7 @@ export async function runSingleAgent(
 			finalText: getFinalOutput(currentResult.messages),
 			durationMs: currentResult.durationMs,
 		});
+		releaseSessionLease?.();
 		signal?.removeEventListener("abort", forwardAbort);
 		if (tmpPromptPath)
 			try {
@@ -2430,6 +2460,8 @@ type TaskParams = {
 		depth: number;
 		authorityTools?: readonly string[];
 	};
+	affinitySessionPath?: string;
+	affinityFingerprint?: SubagentExecutionFingerprint;
 };
 
 type ChainParams = TaskParams;
@@ -3620,6 +3652,7 @@ export default function (pi: ExtensionAPI) {
 			if (currentIdentity.role === "leaf" || currentIdentity.depth >= 2)
 				throw new Error("Leaf and depth-two subagents cannot delegate.");
 			const invocationCwd = prepared?.workspaceRoot ?? ctx.cwd;
+			const effectiveWorkspaceIdentity = prepared?.workspaceRoot ?? path.resolve(ctx.cwd);
 			const invocationTelemetryExecutionKind: OrchestrationExecutionKind =
 				internalParams.__modernRequest?.kind ??
 				(legacyAdapterUse ? "legacy" : "write");
@@ -3915,6 +3948,9 @@ export default function (pi: ExtensionAPI) {
 							? { coordinatorTaskId: worker.coordinatorTaskId }
 							: {}),
 						...(worker.taskId ? { taskId: worker.taskId } : {}),
+						...(worker.continuationStatus
+							? { continuationStatus: worker.continuationStatus }
+							: {}),
 						agent: worker.agent,
 						...(worker.model ? { resolvedModel: worker.model } : {}),
 						...(worker.effort ? { selectedEffort: worker.effort } : {}),
@@ -4106,10 +4142,7 @@ export default function (pi: ExtensionAPI) {
 						treeId: currentIdentity.treeId ?? orchestrationId,
 						parentRunId: currentIdentity.runId,
 						parentSessionId,
-						workspaceId:
-							process.platform === "win32"
-								? path.resolve(invocationCwd).toLowerCase()
-								: path.resolve(invocationCwd),
+						workspaceId: effectiveWorkspaceIdentity,
 						repositoryRoot: invocationCwd,
 						workspaceRoot: prepared?.workspaceRoot ?? invocationCwd,
 						treeClient,
@@ -4399,8 +4432,11 @@ export default function (pi: ExtensionAPI) {
 				// authority checks; governed tool containment is a separate boundary.
 				item.normalizedScopes = item.scope ? [...item.scope] : [];
 				const profileName = canonicalAgentName(item.agent);
-				const agent = agents.find((candidate) => candidate.name === profileName);
-				if (!agent) throw new Error(`Unknown agent: ${item.agent}`);
+				const baseAgent = agents.find((candidate) => candidate.name === profileName);
+				if (!baseAgent) throw new Error(`Unknown agent: ${item.agent}`);
+				const agent = item.skills
+					? withDispatchSkills(baseAgent, item.skills)
+					: baseAgent;
 				const authority = resolveChildToolAuthority(agent, {
 					role: resolved.role,
 					hasScopeLease: false,
@@ -4434,6 +4470,15 @@ export default function (pi: ExtensionAPI) {
 						modelSize,
 					);
 				}
+				item.affinityFingerprint = {
+					agent: agent.name,
+					skills: normalizeFingerprintValues(agent.skills ?? []),
+					role: item.resolvedRole,
+					depth: item.resolvedDepth,
+					model: item.resolvedModel ?? resolvedModelId ?? agent.model ?? "",
+					effort: item.resolvedEffort ?? item.effort ?? routedEffort ?? agent.effort ?? "default",
+					authorityTools: normalizeFingerprintValues(effectiveAuthorityTools),
+				};
 			};
 			const chain = params.chain as unknown as TaskParams[] | undefined;
 			try {
@@ -4452,6 +4497,27 @@ export default function (pi: ExtensionAPI) {
 			} catch (error) {
 				recordBoundaryRejection(error);
 				throw error;
+			}
+			const affinityTaskId = internalParams.__modernRequest &&
+				internalParams.__modernRequest.kind !== "coordinator"
+				? internalParams.__modernRequest.affinityTaskId
+				: undefined;
+			if (affinityTaskId && selectedSingle?.affinityFingerprint) {
+				const affinity = resolveTaskSessionAffinity(
+					subagentRunManager.list(),
+					affinityTaskId,
+					{
+						parentSessionId,
+						workspaceId: effectiveWorkspaceIdentity,
+						fingerprint: selectedSingle.affinityFingerprint,
+					},
+				);
+				if (affinity.outcome === "rejected") {
+					const error = new Error(`Task session affinity rejected: ${affinity.reason}`);
+					recordBoundaryRejection(error);
+					throw error;
+				}
+				selectedSingle.affinitySessionPath = affinity.run.sessionPath!;
 			}
 
 			// Work markers are reported for coordination only. Overlap never rejects
@@ -4624,7 +4690,7 @@ export default function (pi: ExtensionAPI) {
 						step.resolvedEffort ?? step.effort ?? routedEffort,
 						undefined,
 						undefined,
-						{ continuable: params.continuable === true },
+						{ continuable: params.continuable === true, continuationStatus: "fresh" },
 						{
 							role: step.resolvedRole,
 							depth: step.resolvedDepth,
@@ -4773,7 +4839,7 @@ export default function (pi: ExtensionAPI) {
 								t.resolvedEffort ?? t.effort ?? routedEffort,
 								t.taskId,
 								undefined,
-								{ continuable: params.continuable === true },
+								{ continuable: params.continuable === true, continuationStatus: "fresh" },
 								{
 									role: t.resolvedRole,
 									depth: t.resolvedDepth,
@@ -4850,8 +4916,15 @@ export default function (pi: ExtensionAPI) {
 					selectedSingle.resolvedEffort ?? routedEffort,
 					selectedSingle.taskId,
 					undefined,
-					{ continuable: params.continuable === true },
 					{
+						continuable: params.continuable === true,
+						continuationStatus: selectedSingle.affinitySessionPath ? "continued" : "fresh",
+						...(selectedSingle.affinitySessionPath
+							? { sessionPath: selectedSingle.affinitySessionPath, leaseSessionPath: selectedSingle.affinitySessionPath }
+							: {}),
+					},
+					{
+						executionFingerprint: selectedSingle.affinityFingerprint,
 						role: selectedSingle.resolvedRole,
 						depth: selectedSingle.resolvedDepth,
 						scopes: selectedSingle.normalizedScopes,
@@ -4936,10 +5009,7 @@ export default function (pi: ExtensionAPI) {
 			if (!background) return executeWithTreeSettlement();
 			const backgroundOrigin = {
 				parentSessionId,
-				workspaceId:
-					process.platform === "win32"
-						? path.resolve(invocationCwd).toLowerCase()
-						: path.resolve(invocationCwd),
+				workspaceId: effectiveWorkspaceIdentity,
 			};
 			void executeWithTreeSettlement()
 				.then((result) =>

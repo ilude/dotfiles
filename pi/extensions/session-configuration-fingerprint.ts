@@ -31,6 +31,10 @@ function sha256(value: string): string {
 type PromptCacheRequest = {
 	provider: string;
 	model: string;
+	runId?: string;
+	taskId?: string;
+	continuationStatus?: "fresh" | "continued";
+	providerRequestOrdinal: number;
 	instructionsSha256: string;
 	immediateToolNamesSha256: string;
 	dynamicContextSha256: string;
@@ -96,6 +100,17 @@ function promptCacheRequest(
 	return {
 		provider: "openai-codex",
 		model: requiredString(ctx.model.id),
+		...(process.env.PI_SUBAGENT_RUN_ID
+			? { runId: process.env.PI_SUBAGENT_RUN_ID }
+			: {}),
+		...(process.env.PI_SUBAGENT_TASK_ID
+			? { taskId: process.env.PI_SUBAGENT_TASK_ID }
+			: {}),
+		...(process.env.PI_SUBAGENT_CONTINUATION_STATUS === "fresh" ||
+		process.env.PI_SUBAGENT_CONTINUATION_STATUS === "continued"
+			? { continuationStatus: process.env.PI_SUBAGENT_CONTINUATION_STATUS }
+			: {}),
+		providerRequestOrdinal: 0,
 		instructionsSha256,
 		immediateToolNamesSha256,
 		dynamicContextSha256,
@@ -209,6 +224,7 @@ export default function sessionConfigurationFingerprint(pi: ExtensionAPI): void 
 	let previousPromptCacheRequest: PromptCacheRequest | undefined;
 	let pendingPromptCacheRequest: PromptCacheRequest | undefined;
 	let currentTurnIndex = 0;
+	let providerRequestOrdinal = 0;
 
 	const recordChange = (next: ConfigurationIdentity, ctx: ExtensionContext): void => {
 		if (!initialSnapshot || sameIdentity(initialSnapshot, next)) return;
@@ -232,6 +248,7 @@ export default function sessionConfigurationFingerprint(pi: ExtensionAPI): void 
 		previousPromptCacheRequest = undefined;
 		pendingPromptCacheRequest = undefined;
 		currentTurnIndex = 0;
+		providerRequestOrdinal = 0;
 	});
 
 	pi.on("turn_start", () => {
@@ -239,11 +256,14 @@ export default function sessionConfigurationFingerprint(pi: ExtensionAPI): void 
 	});
 
 	pi.on("before_provider_request", (event, ctx) => {
+		providerRequestOrdinal += 1;
 		pendingPromptCacheRequest = promptCacheRequest(
 			event.payload,
 			ctx,
 			previousPromptCacheRequest,
 		);
+		if (pendingPromptCacheRequest)
+			pendingPromptCacheRequest.providerRequestOrdinal = providerRequestOrdinal;
 	});
 
 	pi.on("message_end", (event, ctx) => {
@@ -262,6 +282,12 @@ export default function sessionConfigurationFingerprint(pi: ExtensionAPI): void 
 				schemaVersion: 1,
 				provider: request.provider,
 				model: request.model,
+				...(request.runId ? { runId: request.runId } : {}),
+				...(request.taskId ? { taskId: request.taskId } : {}),
+				...(request.continuationStatus
+					? { continuationStatus: request.continuationStatus }
+					: {}),
+				providerRequestOrdinal: request.providerRequestOrdinal,
 				turnId: currentTurnIndex > 0 ? `turn-${currentTurnIndex}` : UNAVAILABLE,
 				...(messageId ? { messageId } : {}),
 				instructionsSha256: request.instructionsSha256,
