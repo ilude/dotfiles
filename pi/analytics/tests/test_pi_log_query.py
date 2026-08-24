@@ -1201,3 +1201,27 @@ def test_tool_failure_report_cli_can_include_expected(
     diagnostic = json.loads(capsys.readouterr().out)
     assert diagnostic["actionable"][0]["status"] == "expected"
     assert diagnostic["summary"]["expectedSuppressed"] == 0
+
+
+def test_tool_failure_report_has_bounded_pool_and_independent_recovery_flags(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    scan = tmp_path / "scan.json"
+    scan.write_text(json.dumps({
+        "timestampOmissions": 2,
+        "candidates": [{
+            "candidateId": "expected", "fingerprintVersion": 1,
+            "classification": "expected", "errorClass": "instruction-deferred",
+            "tool": "edit", "lastObserved": "2026-08-20T00:00:00Z",
+        }]
+    }), encoding="utf-8")
+    agent = tmp_path / "agent"
+    assert main([
+        "--agent-dir", str(agent), "tool-failure-report", str(scan),
+        "--include-expected", "--include-observed", "--include-overflow",
+    ]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["cards"] == []
+    assert len(report["observed"]) == 1
+    assert report["poolSummary"]["timestamp"] == 2
+    assert "private" not in json.dumps(report)

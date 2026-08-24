@@ -394,3 +394,163 @@ def test_decisions_reject_unknown_invalid_and_sensitive_content(tmp_path: Path):
         with pytest.raises(ValueError, match="prohibited"):
             append_decision(ledger, scan, "tf-one", "skipped", unsafe)
     assert not ledger.exists()
+
+
+def _failure_rows(timestamps: list[str], text: str = "this.broker.reconcile is not a function"):
+    rows = []
+    for index, timestamp in enumerate(timestamps):
+        call_id = f"call-{index}"
+        rows.extend(
+            [
+                ("/session.jsonl", f"call-entry-{index}", timestamp, json.dumps({
+                    "role": "assistant", "content": [{"type": "toolCall", "id": call_id, "name": "subagent_control"}]
+                })),
+                ("/session.jsonl", f"result-entry-{index}", timestamp, json.dumps({
+                    "role": "toolResult", "toolCallId": call_id, "isError": True,
+                    "content": [{"type": "text", "text": text}],
+                })),
+            ]
+        )
+    return rows
+
+
+def test_scan_uses_inclusive_utc_windows_and_rejects_untrusted_timestamps():
+    rows = _failure_rows([
+        "2026-08-24T00:00:00-04:00",  # exactly asOf
+        "2026-08-17T04:00:00Z",       # exactly seven days
+        "2026-08-16T23:59:59Z",       # outside seven days
+        "not-a-timestamp",
+        "2026-08-25T00:00:00Z",
+    ])
+    scan = scan_connection(connection_for(rows), as_of="2026-08-24T04:00:00Z")
+    candidate = scan["candidates"][0]
+    assert candidate["occurrences7d"] == 2
+    assert candidate["sessions7d"] == 1
+    assert candidate["occurrences14d"] == 3
+    assert candidate["occurrences30d"] == 3
+    assert candidate["firstObserved"] == "2026-08-16T23:59:59Z"
+    assert candidate["lastObserved"] == "2026-08-24T04:00:00Z"
+    assert scan["timestampDiagnostics"] == {"missing": 0, "malformed": 1, "future": 1}
+    assert scan["timestampOmissions"] == 2
+
+
+def test_recent_gate_thresholds_and_staleness_do_not_use_lifetime_volume():
+    scan = {
+        "candidates": [
+            {"candidateId": "internal", "fingerprintVersion": 1, "errorClass": "internal-missing-method", "classification": "candidate", "occurrences": 99, "occurrences14d": 0, "sessions14d": 0, "occurrences30d": 1, "lastObserved": "2026-08-24T00:00:00Z"},
+            {"candidateId": "unknown", "fingerprintVersion": 1, "errorClass": "unclassified-error", "classification": "unclassified", "occurrences14d": 0, "sessions14d": 0, "occurrences30d": 1, "lastObserved": "2026-08-24T00:00:00Z"},
+            {"candidateId": "stale", "fingerprintVersion": 1, "errorClass": "external-service-failure", "classification": "candidate", "occurrences": 99, "occurrences30d": 0, "lastObserved": None},
+        ]
+    }
+    report = build_report(scan, [])
+    assert [item["candidateId"] for item in report["actionable"]] == ["unknown"]
+    assert report["actionable"][0]["gate"] == "unclassified-review"
+
+
+@pytest.mark.parametrize(
+    ("error_class", "classification", "counts", "expected_gate"),
+    [
+        ("internal-missing-method", "candidate", {"occurrences14d": 0, "occurrences30d": 1}, "below-threshold"),
+        ("internal-missing-method", "candidate", {"occurrences14d": 1, "occurrences30d": 1}, "internal-contract-defect"),
+        ("required-runtime-unavailable", "candidate", {"sessions14d": 1, "occurrences30d": 1}, "below-threshold"),
+        ("required-runtime-unavailable", "candidate", {"sessions14d": 2, "occurrences30d": 2}, "runtime-unavailable"),
+        ("external-service-failure", "candidate", {"sessions7d": 3, "occurrences30d": 3}, "external-failure"),
+        ("external-service-failure", "candidate", {"sessions7d": 2, "sessions30d": 9, "occurrences30d": 9}, "below-threshold"),
+        ("external-service-failure", "candidate", {"sessions7d": 2, "sessions30d": 10, "occurrences30d": 10}, "external-failure"),
+        ("other-classified", "candidate", {"occurrences14d": 3, "sessions14d": 1, "occurrences30d": 3}, "below-threshold"),
+        ("other-classified", "candidate", {"occurrences14d": 3, "sessions14d": 2, "occurrences30d": 3}, "classified-recurrence"),
+        ("unclassified-error", "unclassified", {"occurrences30d": 1}, "unclassified-review"),
+    ],
+)
+def test_recent_gate_edges(error_class, classification, counts, expected_gate):
+    candidate = {
+        "candidateId": "edge", "errorClass": error_class,
+        "classification": classification, "occurrences7d": 0, "sessions7d": 0,
+        "occurrences14d": 0, "sessions14d": 0, "occurrences30d": 0,
+        "sessions30d": 0, **counts,
+    }
+    assert triage._gate_reason(candidate, "undecided") == expected_gate
+
+
+def test_investigation_pool_has_allowlisted_bounded_cards_and_reserved_tiers():
+    candidates = []
+    for index in range(12):
+        candidates.append({
+            "candidateId": f"candidate-{index:02d}", "fingerprintVersion": 1,
+            "tool": "subagent_control", "errorClass": "internal-missing-method",
+            "classification": "candidate", "status": "undecided", "lastObserved": "2026-08-24T00:00:00Z",
+            "occurrences14d": 2, "sessions14d": 2, "occurrences30d": 2,
+        })
+    report = {"actionable": candidates, "summary": {}, "timestampOmissions": 0}
+    pool = triage.build_investigation_pool(report, include_overflow=True)
+    assert len(pool["cards"]) == 10
+    assert len(pool["overflow"]) == 2
+    assert set(pool["cards"][0]) == {
+        "candidateId", "tool", "structuralLabel", "reasonCode", "lastObserved",
+        "gateWindow", "occurrences", "sessions", "explanation",
+    }
+    assert all(len(card["explanation"]) <= 160 for card in pool["cards"])
+
+
+def test_investigation_pool_reserves_capacity_across_all_tiers():
+    candidates = []
+    cases = [
+        ("ledger", "internal-missing-method", "changed", 0, 1, 1),
+        ("internal", "internal-missing-method", "undecided", 0, 1, 1),
+        ("friction", "missing-required-parameter", "undecided", 0, 3, 3),
+        ("external", "external-service-failure", "undecided", 3, 3, 3),
+    ]
+    for prefix, error_class, status, sessions7d, sessions14d, occurrences14d in cases:
+        for index in range(5):
+            candidates.append({
+                "candidateId": f"{prefix}-{index}", "tool": "tool",
+                "errorClass": error_class, "classification": "candidate", "status": status,
+                "lastObserved": "2026-08-24T00:00:00Z", "occurrences7d": sessions7d,
+                "sessions7d": sessions7d, "occurrences14d": occurrences14d,
+                "sessions14d": sessions14d, "occurrences30d": max(occurrences14d, 1),
+                "sessions30d": max(sessions14d, 1),
+            })
+    pool = triage.build_investigation_pool({"actionable": candidates, "summary": {}})
+    prefixes = [card["candidateId"].split("-")[0] for card in pool["cards"]]
+    assert prefixes.count("ledger") == 3
+    assert prefixes.count("internal") == 3
+    assert prefixes.count("friction") == 2
+    assert prefixes.count("external") == 2
+    assert prefixes == sorted(prefixes, key=["ledger", "internal", "friction", "external"].index)
+    assert pool["summary"]["omittedByCardLimit"] == 10
+
+
+def test_expected_recurring_friction_enters_pool_without_include_expected():
+    candidate = {
+        "candidateId": "friction", "fingerprintVersion": 1, "tool": "edit",
+        "errorClass": "exact-match-miss", "classification": "expected",
+        "lastObserved": "2026-08-24T00:00:00Z", "occurrences14d": 4,
+        "sessions14d": 3, "occurrences30d": 4, "sessions30d": 3,
+    }
+    report = build_report({"candidates": [candidate]}, [])
+
+    assert report["actionable"] == []
+    assert report["summary"]["expectedSuppressed"] == 1
+    pool = triage.build_investigation_pool(report)
+    assert [(card["candidateId"], card["reasonCode"]) for card in pool["cards"]] == [
+        ("friction", "retry-ceremony")
+    ]
+
+
+def test_observed_recovery_is_neutral_and_excludes_coordinates():
+    candidate = {
+        "candidateId": "stale", "fingerprintVersion": 1, "tool": "bash",
+        "errorClass": "external-service-failure", "classification": "candidate",
+        "lastObserved": "2026-01-01T00:00:00Z", "occurrences30d": 0,
+        "sessions30d": 0, "coordinates": ["private-coordinate"],
+    }
+    report = build_report({"candidates": [candidate]}, [])
+    pool = triage.build_investigation_pool(report, include_observed=True)
+
+    assert pool["cards"] == []
+    assert pool["observed"] == [{
+        "candidateId": "stale", "tool": "bash",
+        "structuralLabel": "external-service-failure",
+        "lastObserved": "2026-01-01T00:00:00Z",
+        "observationReason": "stale", "occurrences30d": 0, "sessions30d": 0,
+    }]

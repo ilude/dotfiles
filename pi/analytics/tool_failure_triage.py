@@ -10,7 +10,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator, Optional, Sequence
 
@@ -19,6 +19,8 @@ LEDGER_SCHEMA_VERSION = 1
 LOCK_TIMEOUT_SECONDS = 5.0
 MAX_REASON_CHARS = 240
 MAX_COORDINATES = 3
+MAX_TIMESTAMP_DIAGNOSTICS = 1000
+MAX_INVESTIGATION_CARDS = 10
 
 _SECRET = re.compile(r"(?i)(?:password|passwd|token|secret|api[_-]?key|authorization)\s*[:=]")
 _HOME = re.compile(r"(?i)(?:[a-z]:\\users\\[^\\\s]+|/(?:home|users)/[^/\s]+)")
@@ -130,7 +132,43 @@ def _candidate_id(tool: str, error_class: str, contract: str) -> str:
     return f"tf-v{FINGERPRINT_VERSION}-{hashlib.sha256(material.encode()).hexdigest()[:20]}"
 
 
-def scan_connection(connection: object, malformed_omissions: int = 0) -> dict[str, object]:
+def _accepted_timestamp(value: object, as_of: datetime) -> Optional[str]:
+    if not isinstance(value, str) or not value:
+        return None
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    parsed = parsed.astimezone(timezone.utc)
+    if parsed > as_of:
+        return None
+    return parsed.isoformat().replace("+00:00", "Z")
+
+
+def _scan_as_of(value: Optional[object]) -> datetime:
+    if value is None:
+        return datetime.now(timezone.utc)
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+    else:
+        raise ValueError("as_of must be a datetime or ISO timestamp")
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def scan_connection(
+    connection: object,
+    malformed_omissions: int = 0,
+    as_of: Optional[object] = None,
+) -> dict[str, object]:
+    trusted_as_of = _scan_as_of(as_of)
+    as_of_text = trusted_as_of.isoformat().replace("+00:00", "Z")
     rows = connection.execute(
         "SELECT filename, id, timestamp, message FROM session_entries WHERE type = 'message'"
     ).fetchall()
@@ -160,6 +198,7 @@ def scan_connection(connection: object, malformed_omissions: int = 0) -> dict[st
                 scanned_results += 1
     unmatched = 0
     observations: list[Observation] = []
+    timestamp_diagnostics = {"missing": 0, "malformed": 0, "future": 0}
     for filename, call_id, timestamp, result in results:
         if result.get("isError") is not True:
             continue
@@ -176,9 +215,25 @@ def scan_connection(connection: object, malformed_omissions: int = 0) -> dict[st
         error_class, contract, classification = _classify(tool, text)
         session_key = hashlib.sha256(str(filename).encode()).hexdigest()[:12]
         coordinate = hashlib.sha256(f"{call_entry}\0{call_id}".encode()).hexdigest()[:12]
+        accepted = _accepted_timestamp(timestamp, trusted_as_of)
+        if accepted is None:
+            key = "missing" if timestamp in (None, "") else "malformed"
+            if isinstance(timestamp, str) and timestamp:
+                normalized = timestamp[:-1] + "+00:00" if timestamp.endswith("Z") else timestamp
+                try:
+                    parsed_timestamp = datetime.fromisoformat(normalized)
+                    if parsed_timestamp.tzinfo is None:
+                        parsed_timestamp = parsed_timestamp.replace(tzinfo=timezone.utc)
+                    if parsed_timestamp.astimezone(timezone.utc) > trusted_as_of:
+                        key = "future"
+                except ValueError:
+                    pass
+            timestamp_diagnostics[key] = min(
+                MAX_TIMESTAMP_DIAGNOSTICS, timestamp_diagnostics[key] + 1
+            )
         observations.append(
             Observation(
-                tool, error_class, contract, classification, timestamp, session_key, coordinate
+                tool, error_class, contract, classification, accepted, session_key, coordinate
             )
         )
     grouped: dict[str, list[Observation]] = {}
@@ -190,6 +245,17 @@ def scan_connection(connection: object, malformed_omissions: int = 0) -> dict[st
     for candidate_id in sorted(grouped):
         group = grouped[candidate_id]
         timestamps = sorted(item.occurred_at for item in group if item.occurred_at)
+        recent = {}
+        for days in (7, 14, 30):
+            cutoff = trusted_as_of - timedelta(days=days)
+            window = [
+                item for item in group if item.occurred_at and
+                cutoff <= datetime.fromisoformat(item.occurred_at[:-1] + "+00:00") <= trusted_as_of
+            ]
+            recent[days] = {
+                "occurrences": len(window),
+                "sessions": len({item.session_key for item in window}),
+            }
         candidates.append(
             {
                 "candidateId": candidate_id,
@@ -203,6 +269,12 @@ def scan_connection(connection: object, malformed_omissions: int = 0) -> dict[st
                 "firstObserved": timestamps[0] if timestamps else None,
                 "lastObserved": timestamps[-1] if timestamps else None,
                 "coordinates": sorted({item.coordinate for item in group})[:MAX_COORDINATES],
+                "occurrences7d": recent[7]["occurrences"],
+                "sessions7d": recent[7]["sessions"],
+                "occurrences14d": recent[14]["occurrences"],
+                "sessions14d": recent[14]["sessions"],
+                "occurrences30d": recent[30]["occurrences"],
+                "sessions30d": recent[30]["sessions"],
             }
         )
     digest_material = [
@@ -210,6 +282,9 @@ def scan_connection(connection: object, malformed_omissions: int = 0) -> dict[st
     ]
     return {
         "schemaVersion": 1,
+        "asOf": as_of_text,
+        "timestampDiagnostics": timestamp_diagnostics,
+        "timestampOmissions": sum(timestamp_diagnostics.values()),
         "manifestDigest": hashlib.sha256(
             json.dumps(digest_material, separators=(",", ":")).encode()
         ).hexdigest(),
@@ -349,6 +424,33 @@ def append_decision(
     return record
 
 
+def _gate_reason(candidate: dict[str, object], status: str) -> Optional[str]:
+    if status == "changed":
+        return "ledger-changed"
+    if status == "regression":
+        return "ledger-regression"
+    if status == "revisit-due":
+        return "ledger-revisit"
+    if "occurrences30d" not in candidate:
+        return None
+    if candidate.get("occurrences30d", 0) == 0:
+        return "stale"
+    error_class = candidate.get("errorClass")
+    if error_class == "internal-missing-method" and candidate.get("occurrences14d", 0) >= 1:
+        return "internal-contract-defect"
+    if error_class == "required-runtime-unavailable" and candidate.get("sessions14d", 0) >= 2:
+        return "runtime-unavailable"
+    if error_class == "external-service-failure" and (
+        candidate.get("sessions7d", 0) >= 3 or candidate.get("sessions30d", 0) >= 10
+    ):
+        return "external-failure"
+    if candidate.get("classification") == "unclassified" and candidate.get("occurrences30d", 0) >= 1:
+        return "unclassified-review"
+    if candidate.get("occurrences14d", 0) >= 3 and candidate.get("sessions14d", 0) >= 2:
+        return "classified-recurrence"
+    return "below-threshold"
+
+
 def build_report(
     scan: dict[str, object],
     records: Sequence[dict[str, object]],
@@ -360,6 +462,8 @@ def build_report(
     for record in records:
         latest[str(record.get("candidateId"))] = record
     actionable = []
+    observed_candidates = []
+    gate_summary = {"stale": 0, "belowThreshold": 0}
     summary = {"unchangedSkipped": 0, "resolved": 0, "expectedSuppressed": 0}
     for candidate in scan.get("candidates", []):
         candidate_id = str(candidate["candidateId"])
@@ -383,10 +487,190 @@ def build_report(
                 else:
                     summary["resolved"] += 1
                     continue
+        gate = _gate_reason(candidate, status)
         if status == "undecided" and candidate.get("classification") == "expected":
             if not include_expected:
                 summary["expectedSuppressed"] += 1
+                observed_candidates.append({**candidate, "status": "expected", "observationReason": gate})
                 continue
             status = "expected"
-        actionable.append({**candidate, "status": status})
-    return {"schemaVersion": 1, "actionable": actionable, "summary": summary}
+        if gate in {"stale", "below-threshold"}:
+            gate_summary["stale" if gate == "stale" else "belowThreshold"] += 1
+            observed_candidates.append({**candidate, "status": status, "observationReason": gate})
+            continue
+        actionable.append({**candidate, "status": status, **({"gate": gate} if gate else {})})
+    return {
+        "schemaVersion": 1,
+        "actionable": actionable,
+        "summary": summary,
+        "timestampDiagnostics": scan.get("timestampDiagnostics", {}),
+        "timestampOmissions": scan.get("timestampOmissions", 0),
+        "observedCandidates": observed_candidates,
+        "gateSummary": gate_summary,
+        "joinDiagnostics": {
+            "unmatchedResults": scan.get("unmatchedResults", 0),
+            "duplicateCalls": scan.get("duplicateCalls", 0),
+            "malformedOmissions": scan.get("malformedOmissions", 0),
+        },
+    }
+
+
+_REASON_TEMPLATES = {
+    "ledger-changed": "A changed fingerprint is an investigation opportunity; review the current contract evidence.",
+    "ledger-regression": "A post-effective-date observation is an investigation opportunity; compare current evidence.",
+    "ledger-revisit": "A scheduled revisit is an investigation opportunity; reassess the bounded evidence.",
+    "internal-contract-defect": "Recent internal contract evidence is an investigation opportunity, not proof of cause or severity.",
+    "runtime-unavailable": "Recent runtime availability evidence is an investigation opportunity, not proof of impact or fixability.",
+    "model-contract-friction": "Recent model-tool contract friction is an investigation opportunity, not proof of a defect.",
+    "retry-ceremony": "Repeated retry ceremony is an investigation opportunity, not proof of cause or fixability.",
+    "external-failure": "Recent external failure evidence is an investigation opportunity, not proof of service cause.",
+    "classified-recurrence": "Recent classified recurrence is an investigation opportunity, not proof of severity or cause.",
+    "unclassified-review": "A recent unclassified observation is an investigation opportunity, not proof of severity or cause.",
+}
+
+
+_MODEL_CONTRACT_ERRORS = {
+    "missing-required-parameter",
+    "governed-path-rejection",
+    "stale-manager-contract",
+}
+_RETRY_CEREMONY_ERRORS = {
+    "instruction-deferred",
+    "exact-match-miss",
+    "nonunique-match",
+    "invalid-caller-contract",
+}
+
+
+def _card_reason(candidate: dict[str, object], status: str) -> Optional[str]:
+    ledger_reason = _gate_reason(candidate, status)
+    if ledger_reason in {"ledger-changed", "ledger-regression", "ledger-revisit"}:
+        return ledger_reason
+    error_class = candidate.get("errorClass")
+    if error_class in _MODEL_CONTRACT_ERRORS | _RETRY_CEREMONY_ERRORS:
+        if candidate.get("occurrences14d", 0) < 3 or candidate.get("sessions14d", 0) < 3:
+            return None
+        return (
+            "model-contract-friction"
+            if error_class in _MODEL_CONTRACT_ERRORS
+            else "retry-ceremony"
+        )
+    if ledger_reason in {
+        "internal-contract-defect",
+        "runtime-unavailable",
+        "external-failure",
+        "unclassified-review",
+        "classified-recurrence",
+    }:
+        return ledger_reason
+    return None
+
+
+def _card_window(candidate: dict[str, object], reason: str) -> str:
+    if reason == "external-failure":
+        return "7d" if candidate.get("sessions7d", 0) >= 3 else "30d"
+    if reason.startswith("ledger-") or reason == "unclassified-review":
+        return "30d"
+    return "14d"
+
+
+def _ranking_key(
+    item: tuple[int, dict[str, object], str],
+) -> tuple[int, int, str]:
+    _, candidate, reason = item
+    window = _card_window(candidate, reason)
+    return (
+        -int(candidate.get(f"sessions{window}", 0)),
+        -int(candidate.get(f"occurrences{window}", 0)),
+        str(candidate.get("candidateId", "")),
+    )
+
+
+def build_investigation_pool(
+    report: dict[str, object],
+    include_observed: bool = False,
+    include_overflow: bool = False,
+) -> dict[str, object]:
+    candidates = report.get("actionable", [])
+    if not isinstance(candidates, list):
+        raise ValueError("report actionable must be a list")
+    eligible: list[tuple[int, dict[str, object], str]] = []
+    observed: list[dict[str, object]] = []
+    observed_candidates = report.get("observedCandidates", [])
+    if not isinstance(observed_candidates, list):
+        raise ValueError("report observedCandidates must be a list")
+    for candidate in [*candidates, *observed_candidates]:
+        if not isinstance(candidate, dict):
+            continue
+        status = str(candidate.get("status", "undecided"))
+        reason = _card_reason(candidate, status)
+        if reason is None:
+            if include_observed:
+                observed.append(candidate)
+            continue
+        if reason.startswith("ledger-"):
+            tier = 0
+        elif reason in {"internal-contract-defect", "runtime-unavailable"}:
+            tier = 1
+        elif reason in {"model-contract-friction", "retry-ceremony"}:
+            tier = 2
+        else:
+            tier = 3
+        eligible.append((tier, candidate, reason))
+    capacities = {0: 3, 1: 3, 2: 2, 3: 2}
+    selected: list[tuple[int, dict[str, object], str]] = []
+    remaining: list[tuple[int, dict[str, object], str]] = []
+    for tier in range(4):
+        items = sorted((item for item in eligible if item[0] == tier), key=_ranking_key)
+        selected.extend(items[: capacities[tier]])
+        remaining.extend(items[capacities[tier] :])
+    remaining.sort(key=lambda item: (item[0], *_ranking_key(item)))
+    open_slots = max(0, MAX_INVESTIGATION_CARDS - len(selected))
+    selected.extend(remaining[:open_slots])
+    selected.sort(key=lambda item: (item[0], *_ranking_key(item)))
+    overflow = sorted(remaining[open_slots:], key=lambda item: (item[0], *_ranking_key(item)))
+    cards = [_card(candidate, reason) for _, candidate, reason in selected[:MAX_INVESTIGATION_CARDS]]
+    result: dict[str, object] = {
+        "schemaVersion": 1,
+        "cards": cards,
+        "summary": {
+            "expected": report.get("summary", {}).get("expectedSuppressed", 0),
+            "stale": report.get("gateSummary", {}).get("stale", 0),
+            "belowThreshold": report.get("gateSummary", {}).get("belowThreshold", 0),
+            "omittedByCardLimit": len(overflow),
+            "timestamp": report.get("timestampOmissions", 0),
+            "joinDiagnostics": report.get("joinDiagnostics", {}),
+        },
+    }
+    if include_observed:
+        result["observed"] = [_observed(candidate) for candidate in observed]
+    if include_overflow:
+        result["overflow"] = [_card(candidate, reason) for _, candidate, reason in overflow]
+    return result
+
+
+def _observed(candidate: dict[str, object]) -> dict[str, object]:
+    return {
+        "candidateId": candidate["candidateId"],
+        "tool": candidate.get("tool", ""),
+        "structuralLabel": candidate.get("errorClass", "unclassified-error"),
+        "lastObserved": candidate.get("lastObserved"),
+        "observationReason": candidate.get("observationReason", "not-selected"),
+        "occurrences30d": candidate.get("occurrences30d", 0),
+        "sessions30d": candidate.get("sessions30d", 0),
+    }
+
+
+def _card(candidate: dict[str, object], reason: str) -> dict[str, object]:
+    window = _card_window(candidate, reason)
+    return {
+        "candidateId": candidate["candidateId"],
+        "tool": candidate.get("tool", ""),
+        "structuralLabel": candidate.get("errorClass", "unclassified-error"),
+        "reasonCode": reason,
+        "lastObserved": candidate.get("lastObserved"),
+        "gateWindow": window,
+        "occurrences": candidate.get(f"occurrences{window}", 0),
+        "sessions": candidate.get(f"sessions{window}", 0),
+        "explanation": _REASON_TEMPLATES[reason][:160],
+    }
