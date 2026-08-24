@@ -673,17 +673,15 @@ Execute workflow items with admitted tools only.
 		beginManagedRun(subagentRunManager, "status-run");
 		subagentRunManager.registerProcess("status-run", process.pid);
 
-		const listing = await status.execute(
-			"status-list",
-			{},
-			undefined,
-			undefined,
-			createMockCtx({ cwd: tmpDir }),
-		);
-		expect(listing.content[0]).toMatchObject({
-			type: "text",
-			text: expect.stringContaining("status-run | running | process=alive"),
-		});
+		await expect(
+			status.execute(
+				"status-list",
+				{},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			),
+		).rejects.toThrow("use /subagents to list tracked processes");
 
 		const detail = await status.execute(
 			"status-detail",
@@ -702,6 +700,36 @@ Execute workflow items with admitted tools only.
 			type: "text",
 			text: expect.stringContaining("activity version: 1"),
 		});
+	});
+
+	it("blocks unchanged status polling in the tool-call hook", async () => {
+		const { pi } = await loadTool();
+		const sessionStart = pi._getHook("session_start")[0].handler;
+		const ctx = createMockCtx({ cwd: tmpDir });
+		await sessionStart({ reason: "startup" }, ctx);
+		const { subagentRunManager } = await import(
+			"../extensions/subagent/run-manager.ts"
+		);
+		beginManagedRun(subagentRunManager, "guard-run");
+		subagentRunManager.registerProcess("guard-run", process.pid);
+		const hook = pi._getHook("tool_call")[0].handler;
+		const event = { toolName: "subagent_status", input: { processId: "guard-run" } };
+
+		expect(await hook(event, ctx)).toBeUndefined();
+		const status = pi._getTool("subagent_status");
+		if (!status) throw new Error("subagent_status tool not registered");
+		await status.execute("guard-first", event.input, undefined, undefined, ctx);
+		const blocked = await hook(event, ctx);
+		expect(blocked).toMatchObject({ block: true });
+		for (let attempt = 0; attempt < 50; attempt++)
+			expect(await hook(event, ctx)).toMatchObject({ block: true });
+		expect(ctx.abort).toHaveBeenCalledTimes(1);
+
+		subagentRunManager.appendMessage("guard-run", {
+			role: "assistant",
+			content: [{ type: "text", text: "activity" }],
+		} as any);
+		expect(await hook(event, ctx)).toBeUndefined();
 	});
 
 	it("groups status checks by a returned orchestration ID", async () => {
@@ -2694,7 +2722,7 @@ You are a test agent.
 			}),
 		);
 		const visible = result.content[0].text;
-		expect(Buffer.byteLength(visible, "utf8")).toBeLessThanOrEqual(50 * 1024);
+		expect(Buffer.byteLength(visible, "utf8")).toBeLessThanOrEqual(16 * 1024);
 		expect(visible.split(/\r\n|\r|\n/).length).toBeLessThanOrEqual(2_000);
 		expect(visible).toContain(
 			"Result truncated at the provider-visible foreground boundary",
@@ -2724,7 +2752,7 @@ You are a test agent.
 			fableCtx(),
 		);
 		const visible = result.content[0].text;
-		expect(Buffer.byteLength(visible, "utf8")).toBeLessThanOrEqual(50 * 1024);
+		expect(Buffer.byteLength(visible, "utf8")).toBeLessThanOrEqual(16 * 1024);
 		expect(visible.split(/\r\n|\r|\n/).length).toBeLessThanOrEqual(2_000);
 		expect(visible).toContain("Result truncated at the subscription foreground boundary");
 
@@ -3379,7 +3407,13 @@ You are a test agent.
 			);
 			const delivered = pi.sendMessage.mock.calls[0][0].content as string;
 			expect(delivered).toContain("[Result truncated.");
-			expect(Buffer.byteLength(delivered, "utf8")).toBeLessThan(50 * 1024);
+			expect(Buffer.byteLength(delivered, "utf8")).toBeLessThanOrEqual(16 * 1024);
+			const artifactMatch = delivered.match(/Output saved to: (.+?) \(/);
+			expect(artifactMatch?.[1]).toBeDefined();
+			if (artifactMatch?.[1]) {
+				expect(await fs.promises.readFile(artifactMatch[1], "utf8")).toContain("background done");
+				await fs.promises.rm(artifactMatch[1], { force: true });
+			}
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

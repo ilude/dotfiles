@@ -89,6 +89,28 @@ function makeBashResultEvent(
 	};
 }
 
+function makePwshResultEvent(stdout: string) {
+	return {
+		type: "tool_result" as const,
+		toolName: "pwsh" as const,
+		toolCallId: "pwsh-call-id",
+		input: { command: "git status" },
+		content: [{ type: "text" as const, text: stdout }],
+		isError: false,
+	};
+}
+
+function makeReadResultEvent(stdout: string) {
+	return {
+		type: "tool_result" as const,
+		toolName: "read" as const,
+		toolCallId: "read-call-id",
+		input: { path: "output.txt" },
+		content: [{ type: "text" as const, text: stdout }],
+		isError: false,
+	};
+}
+
 function createMockChild(pid = 123): import("node:child_process").ChildProcess {
 	const child = new EventEmitter();
 	Object.assign(child, {
@@ -253,6 +275,38 @@ afterEach(() => {
 			expect(rawPath).toBeDefined();
 			expect(fs.readFileSync(rawPath ?? "", "utf-8")).toBe(fixtureText);
 		}, 30000);
+	});
+
+	describe("eager shell reduction", () => {
+		it("reduces a large pwsh result once and skips its reduction marker", async () => {
+			const { spawn } = await import("node:child_process");
+			const child = createMockChild();
+			attachRequestAwareReducer(child);
+			spawnBehavior = () => child;
+
+			const mod = await import("../extensions/tool-reduction.ts");
+			mod.default(mockPi as unknown as ExtensionAPI);
+			const [hook] = mockPi._getHook("tool_result");
+			const raw = extremeOutput("pwsh evidence\n");
+			const first = await hook.handler(makePwshResultEvent(raw));
+			if (!first) throw new Error("expected reduced pwsh result");
+
+			const reduced = (first.content[0] as TextBlock).text;
+			expect(reduced).toContain("[tool-reduction]");
+			expect(reduced).toContain("raw=");
+			expect(await hook.handler(makePwshResultEvent(reduced))).toBeUndefined();
+			expect(spawn).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not eagerly reduce native read results", async () => {
+			const { spawn } = await import("node:child_process");
+			const mod = await import("../extensions/tool-reduction.ts");
+			mod.default(mockPi as unknown as ExtensionAPI);
+			const [hook] = mockPi._getHook("tool_result");
+
+			expect(await hook.handler(makeReadResultEvent(extremeOutput("source\n")))).toBeUndefined();
+			expect(spawn).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("recovery markers", () => {
