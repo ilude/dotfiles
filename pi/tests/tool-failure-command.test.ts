@@ -9,6 +9,7 @@ vi.mock("../lib/typed-agent.ts", () => ({
 }));
 
 import toolFailureTriageExtension, {
+	plainIssueName,
 	renderToolFailureReport,
 	resolveRepositoryRoot,
 	validateScopeOutput,
@@ -127,6 +128,7 @@ describe("find-fails command", () => {
 				{
 					candidateId: "tf-v1-example",
 					tool: "subagent_control",
+					issueName: "required internal method is missing",
 					structuralLabel: "internal-missing-method",
 					reasonCode: "internal-contract-defect",
 					gateWindow: "14d",
@@ -144,10 +146,16 @@ describe("find-fails command", () => {
 			expect.objectContaining({
 				customType: "tool-failure-scope-recommendation",
 				content: expect.stringContaining(
-					"Reply with the candidate IDs you accept",
+					"- subagent_control - required internal method is missing",
 				),
 			}),
 			{ triggerTurn: false },
+		);
+		expect(pi.sendMessage.mock.calls[1][0].content).toContain(
+			"Candidate ID: tf-v1-example",
+		);
+		expect(pi.sendMessage.mock.calls[1][0].content).toContain(
+			"Reply with the tool - issue names you accept",
 		);
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith(
 			"find-fails",
@@ -279,10 +287,31 @@ describe("tool failure report rendering", () => {
 		expect(rendered.indexOf("## Model-tool friction")).toBeLessThan(
 			rendered.indexOf("## Other recurrence"),
 		);
+		expect(rendered).toContain(
+			"- subagent_control - required internal method is missing",
+		);
+		expect(rendered).toContain("Candidate ID: ledger");
+		expect(rendered.indexOf("required internal method is missing")).toBeLessThan(
+			rendered.indexOf("Candidate ID: ledger"),
+		);
 		expect(rendered).toContain("--include-overflow");
 		expect(rendered).toContain("--include-observed");
 		expect(rendered).toContain("--include-expected");
 		expect(rendered).toContain("active model provider");
+	});
+});
+
+describe("plain issue names", () => {
+	it("uses deterministic operator names for the investigated edit issues", () => {
+		expect(plainIssueName("exact-match-miss")).toBe(
+			"exact text does not match",
+		);
+		expect(plainIssueName("nonunique-match")).toBe(
+			"target text matches multiple locations",
+		);
+		expect(plainIssueName("instruction-deferred")).toBe(
+			"path instructions must load before mutation",
+		);
 	});
 });
 
