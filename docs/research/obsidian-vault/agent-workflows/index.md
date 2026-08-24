@@ -59,6 +59,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [workflow-ideas/menos-knowledge-compiler](workflow-ideas/menos-knowledge-compiler.md) - persona-scoped session capture, concept compilation, previews, lint, and digests on menos.
 - [workflow-ideas/multipass-yolo-sandboxes](workflow-ideas/multipass-yolo-sandboxes.md) - Multipass + Infisical design for safer YOLO/bypass-permissions agent runs.
 - [workflow-ideas/x-research-pipeline](workflow-ideas/x-research-pipeline.md) - X.com read-only research graph pipeline using twscrape/Webshare/menos.
+- [workflow-ideas/flaresolverr-content-acquisition](workflow-ideas/flaresolverr-content-acquisition.md) - historical FlareSolverr MCP design and its bounded role as a content-acquisition fallback.
 - [workflow-ideas/agents-md-init-command](workflow-ideas/agents-md-init-command.md) - conservative generation and updating of repository `AGENTS.md` guidance.
 - [workflow-ideas/damage-control-temp-cleanup](workflow-ideas/damage-control-temp-cleanup.md) - deterministic provenance checks for low-noise temporary-file cleanup.
 - [projects/zellij-windows-cockpit](projects/zellij-windows-cockpit.md) - Windows-native terminal cockpit for one project, one Pi pane, and repo-managed Zellij layout.

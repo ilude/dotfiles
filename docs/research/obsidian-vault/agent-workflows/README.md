@@ -26,6 +26,7 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [workflow-ideas/menos-knowledge-compiler](workflow-ideas/menos-knowledge-compiler.md) - persona-scoped agent session memory on menos
 - [workflow-ideas/multipass-yolo-sandboxes](workflow-ideas/multipass-yolo-sandboxes.md) - Multipass + Infisical YOLO sandbox design
 - [workflow-ideas/x-research-pipeline](workflow-ideas/x-research-pipeline.md) - X.com research graph pipeline backed by menos
+- [workflow-ideas/flaresolverr-content-acquisition](workflow-ideas/flaresolverr-content-acquisition.md) - historical FlareSolverr MCP design for a bounded content-acquisition fallback
 - [projects/zellij-windows-cockpit](projects/zellij-windows-cockpit.md) - Windows terminal cockpit for Pi workflows
 - [projects/menos](projects/menos.md) - self-hosted content vault and semantic search backend
 - [claude_prompts](claude_prompts.md) - extracted Claude Code system-prompt text from downloaded source
