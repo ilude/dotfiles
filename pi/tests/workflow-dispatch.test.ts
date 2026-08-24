@@ -207,6 +207,27 @@ describe("workflow slash command dispatch", () => {
 		await dispatched;
 	});
 
+	it("/plan-it continues from cwd when repository discovery fails", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		vi.mocked(worktrees.resolveWorkflowRepoRoot).mockRejectedValueOnce(new Error("git unavailable"));
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const root = path.resolve("/repo");
+
+		await getHandler(mockPi, "plan-it")("build the thing", { cwd: root, ui: { notify: vi.fn() } });
+
+		const hiddenPromptCall = mockPi.sendMessage.mock.calls.find(
+			([message]) => message.customType === "workflow.hiddenPrompt",
+		);
+		expect(hiddenPromptCall?.[0].content).toContain(`PRIMARY REPOSITORY (mandatory): ${root}`);
+		expect(hiddenPromptCall?.[0].content).toContain("repository-discovery failures never block planning");
+		expect(mockPi.appendEntry).toHaveBeenCalledWith(
+			"workflow.plan-lifecycle",
+			expect.objectContaining({ stage: "started" }),
+		);
+	});
+
 	it("bare /plan-it derives its plan name in the planning turn", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -261,7 +282,9 @@ describe("workflow slash command dispatch", () => {
 		const ctx = { cwd: fixture.root };
 		for (const input of [
 			{ action: "draft", planPath: fixture.planPath },
-			{ action: "risk", risk: "low", inspectedBy: "primary" },
+			{ action: "review", role: "adversary", concern: "runtime behavior", outcome: "covered" },
+			{ action: "review", role: "specialist", concern: "extension contract", outcome: "covered" },
+			{ action: "review", role: "subtractive", concern: "overengineering and churn", outcome: "no_finding" },
 			{ action: "ready" },
 		]) {
 			await tool.execute("progress", input, undefined, undefined, ctx);

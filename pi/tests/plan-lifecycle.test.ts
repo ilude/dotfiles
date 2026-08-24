@@ -56,35 +56,36 @@ Keep incomplete work at this path. After completion, /do-it archives this direct
 `;
 }
 
-describe("plan lifecycle", () => {
-	it("keeps risk telemetry out of gating stages and reaches ready", () => {
-		let state = createPlanLifecycleSnapshot("invocation", "example");
-		state = transitionPlanLifecycle(state, {
-			action: "draft",
-			planPath: ".specs/example/plan.md",
-		});
-		state = transitionPlanLifecycle(state, {
-			action: "risk",
-			risk: "low",
-			inspectedBy: "primary",
-		});
-
-		expect(state.stage).toBe("draft");
-		state = transitionPlanLifecycle(state, { action: "ready" });
-		expect(state).toMatchObject({ stage: "ready", risk: "low" });
+function reviewedDraft() {
+	let state = createPlanLifecycleSnapshot("invocation", "example");
+	state = transitionPlanLifecycle(state, {
+		action: "draft",
+		planPath: ".specs/example/plan.md",
 	});
+	for (const review of [
+		{ role: "adversary" as const, concern: "runtime boundary", strategy: "trace the runtime path" },
+		{ role: "specialist" as const, concern: "extension API", strategy: "inspect installed declarations" },
+		{ role: "subtractive" as const, concern: "overengineering and churn", strategy: "review the repaired plan cold" },
+	]) {
+		state = transitionPlanLifecycle(state, {
+			action: "review",
+			...review,
+			outcome: "covered",
+		});
+	}
+	return state;
+}
 
-	it("preserves bounded material review telemetry and supports one retry", () => {
+describe("plan lifecycle", () => {
+	it("requires multiple subject-matter reviews followed by one subtractive review", () => {
 		let state = createPlanLifecycleSnapshot("invocation", "example");
 		state = transitionPlanLifecycle(state, {
 			action: "draft",
 			planPath: ".specs/example/plan.md",
 		});
-		state = transitionPlanLifecycle(state, {
-			action: "risk",
-			risk: "material",
-			inspectedBy: "primary",
-		});
+		expect(() => transitionPlanLifecycle(state, { action: "ready" })).toThrow(
+			"at least two completed subject-matter reviews",
+		);
 		state = transitionPlanLifecycle(state, {
 			action: "review",
 			role: "adversary",
@@ -92,40 +93,94 @@ describe("plan lifecycle", () => {
 			outcome: "supported",
 			strategy: "trace the runtime path",
 		});
-		state = transitionPlanLifecycle(state, {
+		expect(() => transitionPlanLifecycle(state, {
 			action: "review",
-			role: "specialist",
-			concern: "extension API",
-			outcome: "failed",
-			strategy: "inspect declarations",
-		});
-		expect(state.stage).toBe("draft");
-		expect(() =>
-			transitionPlanLifecycle(state, {
-				action: "review",
-				role: "adversary",
-				concern: "runtime boundary",
-				outcome: "supported",
-				strategy: "repeat the runtime path",
-			}),
-		).toThrow("cannot be run again");
-		state = transitionPlanLifecycle(state, {
-			action: "review",
-			role: "specialist",
-			concern: "extension API",
+			role: "subtractive",
+			concern: "overengineering",
 			outcome: "covered",
-			strategy: "inspect installed source",
-		});
+			strategy: "review the plan cold",
+		})).toThrow("at least two completed subject-matter reviews");
+
+		state = reviewedDraft();
+		expect(transitionPlanLifecycle(state, { action: "ready" }).stage).toBe("ready");
+	});
+
+	it("allows distinct subject-matter experts and closes review after the subtractive pass", () => {
+		const state = reviewedDraft();
 		expect(state.reviewers).toHaveLength(3);
-		expect(state.stage).toBe("draft");
+		expect(() => transitionPlanLifecycle(state, {
+			action: "review",
+			role: "specialist",
+			concern: "test architecture",
+			outcome: "covered",
+			strategy: "inspect test seams",
+		})).toThrow("cannot continue after the final subtractive review");
+	});
+
+	it("requires supported findings to be repaired and bounds subject-matter review at four perspectives", () => {
+		let state = createPlanLifecycleSnapshot("invocation", "example");
+		state = transitionPlanLifecycle(state, { action: "draft", planPath: ".specs/example/plan.md" });
+		state = transitionPlanLifecycle(state, {
+			action: "review",
+			role: "adversary",
+			concern: "runtime boundary",
+			outcome: "supported",
+			strategy: "trace runtime",
+		});
+		for (const [concern, role] of [
+			["extension API", "specialist"],
+			["validation", "adversary"],
+			["operator behavior", "proponent"],
+		] as const) {
+			state = transitionPlanLifecycle(state, {
+				action: "review",
+				role,
+				concern,
+				outcome: "covered",
+				strategy: `review ${concern}`,
+			});
+		}
+		expect(() => transitionPlanLifecycle(state, {
+			action: "review",
+			role: "specialist",
+			concern: "fifth domain",
+			outcome: "covered",
+			strategy: "review fifth domain",
+		})).toThrow("cannot exceed four perspectives");
+		expect(() => transitionPlanLifecycle(state, {
+			action: "review",
+			role: "subtractive",
+			concern: "overengineering",
+			outcome: "covered",
+			strategy: "review cold",
+		})).toThrow("must be repaired");
+		state = transitionPlanLifecycle(state, {
+			action: "review",
+			role: "adversary",
+			concern: "runtime boundary",
+			outcome: "covered",
+			strategy: "verify runtime repair",
+		});
+		state = transitionPlanLifecycle(state, {
+			action: "review",
+			role: "subtractive",
+			concern: "overengineering",
+			outcome: "supported",
+			strategy: "review cold",
+		});
+		expect(() => transitionPlanLifecycle(state, { action: "ready" })).toThrow("must be repaired");
+		state = transitionPlanLifecycle(state, {
+			action: "review",
+			role: "subtractive",
+			concern: "overengineering",
+			outcome: "covered",
+			strategy: "verify subtractive repair",
+		});
+		expect(transitionPlanLifecycle(state, { action: "ready" }).stage).toBe("ready");
 	});
 
 	it("blocks with a concise concern and resumes from a restored legacy stage", () => {
-		let state = createPlanLifecycleSnapshot("invocation", "example");
-		state = transitionPlanLifecycle(state, {
-			action: "draft",
-			planPath: ".specs/example/plan.md",
-		});
+		let state = reviewedDraft();
 		state = transitionPlanLifecycle(state, {
 			action: "blocked",
 			concern: "Need the operator's deployment choice.",

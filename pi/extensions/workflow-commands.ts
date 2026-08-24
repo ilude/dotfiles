@@ -61,7 +61,6 @@ import {
 	isPlanLifecycleSnapshot,
 	PLAN_LIFECYCLE_ENTRY_TYPE,
 	registerPlanLifecycleController,
-	type PlanInspector,
 	type PlanLifecycleSnapshot,
 	type PlanProgressInput,
 	type PlanReviewerRole,
@@ -2332,8 +2331,6 @@ async function prepareCommitSelection(
 interface PlanProgressParams {
 	action: PlanProgressInput["action"];
 	planPath?: string;
-	risk?: "low" | "material";
-	inspectedBy?: PlanInspector;
 	role?: PlanReviewerRole;
 	concern?: string;
 	outcome?: PlanReviewOutcome;
@@ -2355,23 +2352,17 @@ function planProgressInput(params: PlanProgressParams): PlanProgressInput {
 				action: params.action,
 				planPath: requirePlanProgressValue(params.planPath, "planPath"),
 			};
-		case "risk":
+		case "review": {
+			const role = requirePlanProgressValue(params.role, "role");
+			const concern = requirePlanProgressValue(params.concern, "concern");
 			return {
 				action: params.action,
-				risk: requirePlanProgressValue(params.risk, "risk"),
-				inspectedBy: requirePlanProgressValue(
-					params.inspectedBy,
-					"inspectedBy",
-				),
-			};
-		case "review":
-			return {
-				action: params.action,
-				role: requirePlanProgressValue(params.role, "role"),
-				concern: requirePlanProgressValue(params.concern, "concern"),
+				role,
+				concern,
 				outcome: requirePlanProgressValue(params.outcome, "outcome"),
-				strategy: requirePlanProgressValue(params.strategy, "strategy"),
+				strategy: (params.strategy?.trim() || `${role} review of ${concern}`).slice(0, 120),
 			};
+		}
 		case "blocked":
 			return {
 				action: params.action,
@@ -2462,19 +2453,14 @@ export default function (pi: ExtensionAPI) {
 				action: StringEnum(
 					[
 						"draft",
-						"risk",
 						"review",
 						"blocked",
 						"ready",
 					] as const,
 				),
 				planPath: Type.Optional(Type.String()),
-				risk: Type.Optional(StringEnum(["low", "material"] as const)),
-				inspectedBy: Type.Optional(
-					StringEnum(["primary", "read_only_leaf"] as const),
-				),
 				role: Type.Optional(
-					StringEnum(["adversary", "proponent", "specialist"] as const),
+					StringEnum(["adversary", "proponent", "specialist", "subtractive"] as const),
 				),
 				concern: Type.Optional(Type.String({ maxLength: 120 })),
 				outcome: Type.Optional(
@@ -2803,11 +2789,14 @@ export default function (pi: ExtensionAPI) {
 			if (ctx.cwd) {
 				try {
 					activePlanningRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
-					workspaceDirective = `\n\nPRIMARY REPOSITORY (mandatory): ${activePlanningRoot}\nWrite the canonical plan directly under ${path.join(activePlanningRoot, ".specs", "<meaningful-slug>", "plan.md")}. Choose a concise kebab-case slug from the requested outcome and conversation context; never use an invocation ID or generic plan name. Do not create a planning worktree. The plan must require /do-it to perform implementation, validation, archive, commit, and merge in its owned worktree.`;
 				} catch (error) {
-					ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
-					return;
+					activePlanningRoot = path.resolve(ctx.cwd);
+					ctx.ui?.notify?.(
+						`Repository discovery did not complete; planning continues in ${activePlanningRoot}: ${error instanceof Error ? error.message : String(error)}`,
+						"warning",
+					);
 				}
+				workspaceDirective = `\n\nPRIMARY REPOSITORY (mandatory): ${activePlanningRoot}\nWrite the canonical plan directly under ${path.join(activePlanningRoot, ".specs", "<meaningful-slug>", "plan.md")}. Choose a concise kebab-case slug from the requested outcome and conversation context; never use an invocation ID or generic plan name. Do not create a planning worktree. Git state and repository-discovery failures never block planning; record relevant execution constraints in the plan for /do-it. The plan must require /do-it to perform implementation, validation, archive, commit, and merge in its owned worktree.`;
 			}
 			await persistPlanLifecycle(lifecycle);
 			activateTools(pi, ["plan_progress"]);
