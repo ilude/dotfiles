@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -22,10 +23,17 @@ interface ToolFailureReport {
 	};
 }
 
-const repositoryRoot = path.resolve(
-	path.dirname(fileURLToPath(import.meta.url)),
-	"../..",
-);
+export function resolveRepositoryRoot(
+	extensionUrl: string,
+	resolveRealPath: (filePath: string) => string = realpathSync,
+): string {
+	return path.resolve(
+		path.dirname(resolveRealPath(fileURLToPath(extensionUrl))),
+		"../..",
+	);
+}
+
+const repositoryRoot = resolveRepositoryRoot(import.meta.url);
 const analyticsScript = path.join("pi", "analytics", "pi_log_query.py");
 const scratchRoot = path.join(".tmp", "pi-log-analytics");
 const snapshotPath = path.join(scratchRoot, "tool-failures.duckdb");

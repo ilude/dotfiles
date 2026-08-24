@@ -1,6 +1,9 @@
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import toolFailureTriageExtension, {
 	renderToolFailureReport,
+	resolveRepositoryRoot,
 } from "../extensions/tool-failure-triage.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 
@@ -11,6 +14,24 @@ function commandHandler(pi: ReturnType<typeof createMockPi>) {
 }
 
 describe("find-fails command", () => {
+	it("resolves the repository through the installed Pi link", () => {
+		const installedExtension = path.resolve(
+			".pi/agent/extensions/tool-failure-triage.ts",
+		);
+		const repositoryExtension = path.resolve(
+			"pi/extensions/tool-failure-triage.ts",
+		);
+		const resolveRealPath = vi.fn(() => repositoryExtension);
+
+		expect(
+			resolveRepositoryRoot(
+				pathToFileURL(installedExtension).href,
+				resolveRealPath,
+			),
+		).toBe(path.resolve("."));
+		expect(resolveRealPath).toHaveBeenCalledWith(installedExtension);
+	});
+
 	it("refreshes the snapshot, scans it, and renders the actionable report", async () => {
 		const pi = createMockPi();
 		const ctx = createMockCtx();
