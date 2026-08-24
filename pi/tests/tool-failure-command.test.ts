@@ -1,9 +1,17 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { scopeAgentRun } = vi.hoisted(() => ({ scopeAgentRun: vi.fn() }));
+
+vi.mock("../lib/typed-agent.ts", () => ({
+	defineAgent: vi.fn(() => ({ run: scopeAgentRun })),
+}));
+
 import toolFailureTriageExtension, {
 	renderToolFailureReport,
 	resolveRepositoryRoot,
+	validateScopeOutput,
 } from "../extensions/tool-failure-triage.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 
@@ -13,7 +21,74 @@ function commandHandler(pi: ReturnType<typeof createMockPi>) {
 	return command.handler;
 }
 
+function card(
+	candidateId: string,
+	reasonCode:
+		| "ledger-regression"
+		| "internal-contract-defect"
+		| "model-contract-friction"
+		| "external-failure" = "internal-contract-defect",
+) {
+	return {
+		candidateId,
+		tool: "subagent_control",
+		structuralLabel: "internal-missing-method",
+		reasonCode,
+		lastObserved: "2026-08-24T00:00:00Z",
+		gateWindow: "14d" as const,
+		occurrences: 4,
+		sessions: 3,
+		explanation: "Structural evidence is an investigation opportunity, not proof of cause.",
+	};
+}
+
+function report(cards = [card("tf-v1-example")]) {
+	return {
+		cards,
+		poolSummary: {
+			expected: 6,
+			stale: 2,
+			belowThreshold: 3,
+			omittedByCardLimit: 1,
+			timestamp: 1,
+			joinDiagnostics: {
+				unmatchedResults: 0,
+				duplicateCalls: 0,
+				malformedOmissions: 0,
+			},
+		},
+		summary: { unchangedSkipped: 4, resolved: 5, expectedSuppressed: 6 },
+	};
+}
+
+function successfulAnalytics(pi: ReturnType<typeof createMockPi>, value = report()) {
+	pi.exec
+		.mockResolvedValueOnce({ code: 0, stdout: "snapshot", stderr: "" })
+		.mockResolvedValueOnce({ code: 0, stdout: "scan", stderr: "" })
+		.mockResolvedValueOnce({
+			code: 0,
+			stdout: JSON.stringify(value),
+			stderr: "",
+		});
+}
+
 describe("find-fails command", () => {
+	beforeEach(() => {
+		scopeAgentRun.mockReset();
+		scopeAgentRun.mockResolvedValue({
+			output: {
+				recommendations: [
+					{
+						candidateId: "tf-v1-example",
+						investigationValue: "May remove recurring tool ceremony.",
+						evidenceLimits: "Structural metadata does not establish a cause.",
+					},
+				],
+			},
+			attempts: 1,
+		});
+	});
+
 	it("resolves the repository through the installed Pi link", () => {
 		const installedExtension = path.resolve(
 			".pi/agent/extensions/tool-failure-triage.ts",
@@ -32,29 +107,10 @@ describe("find-fails command", () => {
 		expect(resolveRealPath).toHaveBeenCalledWith(installedExtension);
 	});
 
-	it("refreshes the snapshot, scans it, and renders the actionable report", async () => {
+	it("renders the shortlist and requests one isolated scope recommendation", async () => {
 		const pi = createMockPi();
-		const ctx = createMockCtx();
-		pi.exec
-			.mockResolvedValueOnce({ code: 0, stdout: "snapshot", stderr: "" })
-			.mockResolvedValueOnce({ code: 0, stdout: "scan", stderr: "" })
-			.mockResolvedValueOnce({
-				code: 0,
-				stdout: JSON.stringify({
-					actionable: [
-						{
-							candidateId: "tf-v1-example",
-							tool: "bash",
-							errorClass: "missing-required-parameter",
-							occurrences: 3,
-							sessions: 2,
-							status: "regression",
-						},
-					],
-					summary: { unchangedSkipped: 4, resolved: 5, expectedSuppressed: 6 },
-				}),
-				stderr: "",
-			});
+		const ctx = createMockCtx({ model: { provider: "test", id: "model" } });
+		successfulAnalytics(pi);
 		toolFailureTriageExtension(pi as never);
 
 		await commandHandler(pi)("", ctx);
@@ -64,16 +120,32 @@ describe("find-fails command", () => {
 			"info",
 		);
 		expect(pi.exec).toHaveBeenCalledTimes(3);
-		expect(pi.exec.mock.calls[0][1]).toContain("snapshot");
-		expect(pi.exec.mock.calls[1][1]).toContain("tool-failure-scan");
-		expect(pi.exec.mock.calls[2][1]).toContain("tool-failure-report");
-		expect(pi.sendMessage).toHaveBeenCalledWith(
+		expect(scopeAgentRun).toHaveBeenCalledTimes(1);
+		const input = scopeAgentRun.mock.calls[0][0];
+		expect(input).toEqual({
+			candidates: [
+				{
+					candidateId: "tf-v1-example",
+					tool: "subagent_control",
+					structuralLabel: "internal-missing-method",
+					reasonCode: "internal-contract-defect",
+					gateWindow: "14d",
+					occurrences: 4,
+					sessions: 3,
+					lastObserved: "2026-08-24T00:00:00Z",
+				},
+			],
+		});
+		expect(JSON.stringify(input)).not.toMatch(
+			/coordinates|arguments|output|transcript|explanation|sessionMessages|path/i,
+		);
+		expect(pi.sendMessage).toHaveBeenCalledTimes(2);
+		expect(pi.sendMessage).toHaveBeenLastCalledWith(
 			expect.objectContaining({
-				customType: "tool-failure-triage",
+				customType: "tool-failure-scope-recommendation",
 				content: expect.stringContaining(
-					"[regression] bash: missing-required-parameter",
+					"Reply with the candidate IDs you accept",
 				),
-				display: true,
 			}),
 			{ triggerTurn: false },
 		);
@@ -83,32 +155,44 @@ describe("find-fails command", () => {
 		);
 	});
 
-	it("rejects a report without the expected-suppressed summary", async () => {
+	it("renders an empty pool without invoking the model", async () => {
 		const pi = createMockPi();
 		const ctx = createMockCtx();
-		pi.exec
-			.mockResolvedValueOnce({ code: 0, stdout: "snapshot", stderr: "" })
-			.mockResolvedValueOnce({ code: 0, stdout: "scan", stderr: "" })
-			.mockResolvedValueOnce({
-				code: 0,
-				stdout: JSON.stringify({
-					actionable: [],
-					summary: { unchangedSkipped: 0, resolved: 0 },
-				}),
-				stderr: "",
-			});
+		successfulAnalytics(pi, report([]));
+		toolFailureTriageExtension(pi as never);
+
+		await commandHandler(pi)("", ctx);
+
+		expect(scopeAgentRun).not.toHaveBeenCalled();
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		expect(pi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining("No model recommendation was requested"),
+			}),
+			{ triggerTurn: false },
+		);
+	});
+
+	it("rejects a malformed report before model work", async () => {
+		const pi = createMockPi();
+		const ctx = createMockCtx();
+		successfulAnalytics(pi, {
+			cards: [{ candidateId: "missing-fields" }],
+			poolSummary: {},
+			summary: {},
+		} as never);
 		toolFailureTriageExtension(pi as never);
 
 		await commandHandler(pi)("", ctx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"Tool-failure scan failed: tool-failure report returned an invalid result",
+			"Tool-failure shortlist report failed: tool-failure report returned an invalid result. Retry with /find-fails.",
 			"error",
 		);
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		expect(scopeAgentRun).not.toHaveBeenCalled();
 	});
 
-	it("reports a bounded failure and does not continue the pipeline", async () => {
+	it("names a failed pipeline stage and stops", async () => {
 		const pi = createMockPi();
 		const ctx = createMockCtx();
 		pi.exec.mockResolvedValueOnce({
@@ -122,10 +206,41 @@ describe("find-fails command", () => {
 
 		expect(pi.exec).toHaveBeenCalledTimes(1);
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"Tool-failure scan failed: snapshot failed",
+			"Tool-failure snapshot refresh failed: snapshot failed. Retry with /find-fails.",
 			"error",
 		);
+		expect(scopeAgentRun).not.toHaveBeenCalled();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("rejects an out-of-pool model result and starts no follow-up turn", async () => {
+		const pi = createMockPi();
+		const ctx = createMockCtx();
+		successfulAnalytics(pi);
+		scopeAgentRun.mockResolvedValueOnce({
+			output: {
+				recommendations: [
+					{
+						candidateId: "unknown",
+						investigationValue: "value",
+						evidenceLimits: "limits",
+					},
+				],
+			},
+			attempts: 1,
+		});
+		toolFailureTriageExtension(pi as never);
+
+		await commandHandler(pi)("", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("unknown candidate: unknown"),
+			"error",
+		);
+		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+		expect(pi.sendMessage.mock.calls.every((call) => call[1]?.triggerTurn === false)).toBe(
+			true,
+		);
 	});
 
 	it("rejects unsupported arguments before starting work", async () => {
@@ -144,12 +259,51 @@ describe("find-fails command", () => {
 });
 
 describe("tool failure report rendering", () => {
-	it("renders an empty actionable queue", () => {
-		expect(
-			renderToolFailureReport({
-				actionable: [],
-				summary: { unchangedSkipped: 2, resolved: 7, expectedSuppressed: 3 },
-			}),
-		).toContain("expected suppressed: 3");
+	it("renders ten bounded cards in the required group order with recovery commands", () => {
+		const cards = [
+			card("ledger", "ledger-regression"),
+			card("internal", "internal-contract-defect"),
+			card("friction", "model-contract-friction"),
+			...Array.from({ length: 7 }, (_, index) =>
+				card(`external-${index}`, "external-failure"),
+			),
+		];
+		const rendered = renderToolFailureReport(report(cards));
+
+		expect(rendered.indexOf("## Ledger attention")).toBeLessThan(
+			rendered.indexOf("## Internal and runtime"),
+		);
+		expect(rendered.indexOf("## Internal and runtime")).toBeLessThan(
+			rendered.indexOf("## Model-tool friction"),
+		);
+		expect(rendered.indexOf("## Model-tool friction")).toBeLessThan(
+			rendered.indexOf("## Other recurrence"),
+		);
+		expect(rendered).toContain("--include-overflow");
+		expect(rendered).toContain("--include-observed");
+		expect(rendered).toContain("--include-expected");
+		expect(rendered).toContain("active model provider");
+	});
+});
+
+describe("scope output validation", () => {
+	it("rejects duplicate and unknown candidate IDs", () => {
+		const item = {
+			candidateId: "one",
+			investigationValue: "value",
+			evidenceLimits: "limits",
+		};
+		expect(() =>
+			validateScopeOutput(
+				{ recommendations: [item, item] },
+				new Set(["one"]),
+			),
+		).toThrow("duplicate candidate");
+		expect(() =>
+			validateScopeOutput(
+				{ recommendations: [{ ...item, candidateId: "two" }] },
+				new Set(["one"]),
+			),
+		).toThrow("unknown candidate");
 	});
 });

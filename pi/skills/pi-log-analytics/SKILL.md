@@ -48,7 +48,7 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
 7. Use `--ignore-malformed` only after validation when an incomplete exploratory result is acceptable. Report the omitted row count.
 8. Read [reference.md](reference.md) when source fields, snapshot operations, manifests, correlation rules, or query recipes are needed.
 9. Report the source views, time window, filters, row counts, and any missing or malformed source that limits the conclusion.
-10. For recurring tool failures, scan only a frozen `session_entries` snapshot with `tool-failure-scan`. Use `tool-failure-decide` for human addressed or skipped decisions and `tool-failure-report` for the actionable queue. The default report suppresses deterministically expected candidates and counts them separately; use the diagnostic option documented in [reference.md](reference.md) when they must be inspected. The dedicated ledger is separate from workflow-friction decisions.
+10. For recurring tool failures, run `/find-fails`. It scans a frozen `session_entries` snapshot, renders a bounded deterministic investigation pool, and uses an isolated tool-free model stage to recommend 1-3 candidate IDs. Review that recommendation, then respond normally to accept or refine the scope before any transcript evidence is loaded. Use the direct scan, report, and decision commands documented in [reference.md](reference.md) only for diagnostics or human ledger decisions.
 
 ## Safety
 

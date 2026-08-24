@@ -20,7 +20,13 @@ from typing import Callable, Iterator, Mapping, Optional, Sequence
 
 import duckdb
 
-from tool_failure_triage import append_decision, build_report, load_ledger, scan_connection
+from tool_failure_triage import (
+    append_decision,
+    build_investigation_pool,
+    build_report,
+    load_ledger,
+    scan_connection,
+)
 
 MAX_QUERY_ROWS = 1_000
 MAX_VALIDATION_ISSUES = 100
@@ -1466,6 +1472,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="include otherwise-suppressed expected candidates",
     )
+    failure_report.add_argument(
+        "--include-observed",
+        action="store_true",
+        help="include neutral observed candidates omitted from the actionable pool",
+    )
+    failure_report.add_argument(
+        "--include-overflow",
+        action="store_true",
+        help="include qualifying cards omitted by the ten-card limit",
+    )
     return parser
 
 
@@ -1535,6 +1551,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             else:
                 records, diagnostics = load_ledger(ledger)
                 report = build_report(scan, records, include_expected=args.include_expected)
+                pool = build_investigation_pool(
+                    report,
+                    include_observed=args.include_observed,
+                    include_overflow=args.include_overflow,
+                )
+                report["cards"] = pool["cards"]
+                report["poolSummary"] = pool["summary"]
+                if "observed" in pool:
+                    report["observed"] = pool["observed"]
+                if "overflow" in pool:
+                    report["overflow"] = pool["overflow"]
                 report["ledgerDiagnostics"] = diagnostics
                 print(json.dumps(report, sort_keys=True, ensure_ascii=True))
             return 0

@@ -57,7 +57,7 @@ Recognized environment overrides are `PI_AGENT_DIR`, `PI_METRICS_DIR`, `PI_WORKF
 
 ## Tool-failure triage
 
-Run `/find-fails` in Pi for the normal operator workflow. It incrementally refreshes `.tmp/pi-log-analytics/tool-failures.duckdb`, writes the sanitized scan to `.tmp/pi-log-analytics/tool-failure-scan.json`, and displays the actionable report without starting a provider turn. It does not make addressed or skipped decisions.
+Run `/find-fails` in Pi for the normal operator workflow. It incrementally refreshes `.tmp/pi-log-analytics/tool-failures.duckdb`, writes the sanitized scan to `.tmp/pi-log-analytics/tool-failure-scan.json`, and displays at most 10 prioritized investigation cards. For a nonempty pool it discloses the provider boundary, sends only bounded structural card fields to the active model in an isolated tool-free session, validates a recommendation of 1-3 supplied IDs, and stops for operator acceptance or refinement. It does not load transcript evidence or make addressed or skipped decisions.
 
 For direct analytics use, create or retain a frozen `session_entries` snapshot, then scan it without refreshing the source:
 
@@ -68,7 +68,7 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
   --output .tmp/pi-log-analytics/tool-failure-scan.json
 ```
 
-The scan joins tool results to calls by source file and tool-call ID, but candidate IDs use only the fingerprint version, tool name, normalized error class, and approved structural contract. Output contains safe aggregates, hashed coordinates, a path-free digest, source window, and join diagnostics. It does not contain prompts, arguments, tool output, source paths, or session filenames. An error-marked result is a screening input, not proof of a defect.
+The scan joins tool results to calls by source file and tool-call ID, but candidate IDs use only the fingerprint version, tool name, normalized error class, and approved structural contract. It captures one UTC `asOf` boundary and records occurrence and distinct-session counts for inclusive 7, 14, and 30-day windows. Missing, malformed, and future timestamps contribute only to lifetime totals and bounded diagnostics. Output contains safe aggregates, hashed coordinates, a path-free digest, source window, and join diagnostics. It does not contain prompts, arguments, tool output, source paths, or session filenames. An error-marked result is a screening input, not proof of a defect.
 
 Append a human decision to the dedicated local-private ledger, which defaults to `~/.pi/agent/tool-failures/decisions.jsonl`:
 
@@ -85,22 +85,32 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
 
 Skipped decisions require a sanitized reason. Addressed decisions require typed evidence and an effective date. The writer rejects credentials, raw multiline content, and absolute home paths. Records are appended under an exclusive lock; latest state follows physical append order. This preserves best-effort history among cooperating writers, not tamper-proof audit integrity.
 
-Render only undecided, changed, regressed, or due-for-review candidates. Deterministically expected candidates are omitted and counted as candidate groups in `summary.expectedSuppressed`:
+Render the deterministic investigation pool:
 
 ```bash
 uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
   tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json
 ```
 
-For direct diagnostics, include otherwise-suppressed undecided expected candidates with status `expected`. Normal ledger filtering still applies, and `summary.expectedSuppressed` is zero because those groups are present:
+Fingerprint changes, due revisits, and post-effective-date regressions qualify first. Otherwise, `internal-missing-method` requires one 14-day occurrence; `required-runtime-unavailable` requires two 14-day sessions; `external-service-failure` requires three 7-day sessions or ten 30-day sessions; other classified candidates require three 14-day occurrences across two sessions; and unclassified candidates require one 30-day observation. Zero 30-day observations are stale. Recurring model-contract and retry-ceremony classes require three 14-day occurrences across three sessions and may enter the pool while remaining counted as expected-suppressed evidence.
+
+Cards use the closed reason set `ledger-changed`, `ledger-regression`, `ledger-revisit`, `internal-contract-defect`, `runtime-unavailable`, `model-contract-friction`, `retry-ceremony`, `external-failure`, `classified-recurrence`, and `unclassified-review`. The 10-card pool reserves three places for ledger attention, three for internal/runtime evidence, two for model-tool friction, and two for other recurrence, then backfills unused capacity in stable tier order. Within a tier, the gate-driving session count, occurrence count, and candidate ID determine order. Card explanations describe investigation opportunities, not proven severity, cause, or fixability.
+
+Use independent diagnostic views when the bounded default omits needed metadata:
 
 ```bash
+uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+  tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json \
+  --include-overflow
+uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+  tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json \
+  --include-observed
 uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
   tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json \
   --include-expected
 ```
 
-The report separately counts expected suppressed groups, unchanged skipped candidates, and resolved candidates, and reports malformed or unsupported ledger records. Changed, revisit-due, and post-effective-date regression states take precedence over expected classification.
+`--include-overflow` returns qualifying cards beyond the limit. `--include-observed` returns neutral stale, below-threshold, and nonqualifying expected observations. `--include-expected` preserves the earlier direct expected-candidate report behavior. The flags compose. The report separately counts expected-suppressed, stale, below-threshold, overflow, timestamp, join, unchanged-skipped, and resolved groups. Ledger overrides take precedence over expected classification and unchanged safety-block suppression.
 
 ## Snapshots and batches
 
