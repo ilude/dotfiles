@@ -1,6 +1,7 @@
 ---
 created: 2026-08-24
-status: ready
+status: completed
+completed: 2026-08-24
 ---
 
 # Build Repeatable Tool-Failure Triage
@@ -23,13 +24,13 @@ Provide a deterministic, privacy-bounded Pi analytics workflow that finds recurr
 
 ## Tasks
 
-- [ ] **T1: Define and prove deterministic failure-candidate screening**
+- [x] **T1: Define and prove deterministic failure-candidate screening**
   - Files: `pi/analytics/pi_log_query.py`, one focused tool-failure analysis module under `pi/analytics/`, `pi/analytics/tests/`, and `pi/skills/pi-log-analytics/reference.md`.
   - Change: Add a bounded direct Python scan over a selected `session_entries` snapshot that joins tool results to their originating calls by `(filename, toolCallId)`, derives a versioned candidate fingerprint from tool name plus a normalized error class and approved stable structural attributes, and retains only safe aggregates and minimized source coordinates for manual verification. Separate expected outcomes from candidates only through deterministic rules with tests; never infer a defect from counts alone. Report a path-free manifest/snapshot-input digest, source window, scanned result count, unmatched and duplicate join counts, malformed omissions, first/last observation, occurrence and session counts, and representative sanitized coordinates. Do not route the full scan through the query command's 1,000-row result limit or refresh a frozen snapshot during a read-only rerun.
   - Done when: A frozen fixture representing the August 14-24 cases yields stable distinct candidates for missing Bash `command`, governed selected-skill path escape, and stale manager ABI; expected nonzero tests and safety blocks remain explicitly unclassified or expected rather than defects; unmatched or duplicate call IDs are diagnosed; changing timestamps, session filenames, absolute home prefixes, or occurrence order does not change candidate identity; and materially changing the normalized error contract creates a new versioned candidate.
   - Verify: From the repository root, run `uv run --no-sync --project pi/analytics pytest pi/analytics/tests -k tool_failure`; run one read-only snapshot-backed scan against the retained local August 14-24 manifest digest and compare only candidate IDs, counts, diagnostics, and sanitized classifications with the reviewed findings.
 
-- [ ] **T2: Add an append-only decision ledger and actionable report**
+- [x] **T2: Add an append-only decision ledger and actionable report**
   - Depends on: T1
   - Files: the T1 analytics module and tests, a focused JSONL ledger module under `pi/analytics/` or the owning Pi state library, `pi/analytics/pi_log_query.py`, `pi/analytics/tests/`, `pi/skills/pi-log-analytics/SKILL.md`, `pi/skills/pi-log-analytics/reference.md`, and the stable observability/tooling contract if public semantics require it.
   - Change: Add explicit `decide` and `report` operations backed by locked append-only JSONL. Store this ledger in a dedicated local-private tool-failure root, separate from workflow-friction learning decisions and statuses; it is the sole disposition authority for tool-failure candidate IDs. Each decision records schema version, record ID, candidate ID and fingerprint version, `decidedAt`, disposition (`addressed` or `skipped`), a bounded sanitized reason, typed evidence references, and optional fix commit/effective-after or revisit-after values. Derive current disposition by physical append order under the same exclusive lock rather than duplicating order in a sequence field. The default actionable report includes undecided and changed candidates, post-effective-date recurrence of addressed candidates as regressions, and skipped candidates whose explicit revisit date is due; it summarizes unchanged skipped and resolved candidates separately rather than hiding their counts. Claim best-effort append history among cooperating writers, not tamper-proof audit integrity.
@@ -38,11 +39,11 @@ Provide a deterministic, privacy-bounded Pi analytics workflow that finds recurr
 
 ## Validation
 
-- [ ] The frozen fixture and snapshot-backed smoke produce stable candidate IDs for the three confirmed historical failure families without classifying every error-marked result as a defect.
-- [ ] Reordering events and changing session identity, timestamps, or sanitized path prefixes leaves fingerprints unchanged; a material normalized contract change creates a new candidate version.
-- [ ] The dedicated append-only ledger preserves addressed and skipped history, derives latest state from locked physical append order, rejects invalid decisions, survives concurrent writers, and reports malformed or unsupported records without silently dropping them or conflicting with workflow-friction dispositions.
-- [ ] Unchanged skipped candidates stay out of the actionable queue, addressed post-fix recurrences reopen as regressions, and explicit revisit dates or fingerprint changes reopen candidates deterministically.
-- [ ] A byte-level privacy inspection confirms the ledger and reports contain no raw prompts, tool arguments, tool output, credentials, absolute home paths, or copied session content; canonical session JSONL and its snapshot remain the only raw event source.
+- [x] The frozen fixture and snapshot-backed smoke produce stable candidate IDs for the three confirmed historical failure families without classifying every error-marked result as a defect.
+- [x] Reordering events and changing session identity, timestamps, or sanitized path prefixes leaves fingerprints unchanged; a material normalized contract change creates a new candidate version.
+- [x] The dedicated append-only ledger preserves addressed and skipped history, derives latest state from locked physical append order, rejects invalid decisions, survives concurrent writers, and reports malformed or unsupported records without silently dropping them or conflicting with workflow-friction dispositions.
+- [x] Unchanged skipped candidates stay out of the actionable queue, addressed post-fix recurrences reopen as regressions, and explicit revisit dates or fingerprint changes reopen candidates deterministically.
+- [x] A byte-level privacy inspection confirms the ledger and reports contain no raw prompts, tool arguments, tool output, credentials, absolute home paths, or copied session content; canonical session JSONL and its snapshot remain the only raw event source.
 
 ## Retention
 
@@ -50,7 +51,7 @@ Keep incomplete work at `.specs/tool-failure-triage/plan.md`. After completion, 
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
+- State: Complete.
+- Result: Focused and full analytics tests passed; the frozen snapshot-backed scan reproduced all three candidate families with digest `59f6fc443641f23b06ee790c647ecf75ec32a41379bee46be0aa666b69645f01`, and the disposable scan/decide/report privacy smoke passed.
 - Blocker: None.
-- Next: T1.
-- Resume: `/do-it .specs/tool-failure-triage/plan.md`
+- Next: Archive.
