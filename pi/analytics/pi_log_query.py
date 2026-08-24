@@ -20,6 +20,8 @@ from typing import Callable, Iterator, Mapping, Optional, Sequence
 
 import duckdb
 
+from tool_failure_triage import append_decision, build_report, load_ledger, scan_connection
+
 MAX_QUERY_ROWS = 1_000
 MAX_VALIDATION_ISSUES = 100
 TABLE_CELL_CHARS = 120
@@ -50,6 +52,11 @@ class SourceLayout:
     def operator_dir(self) -> Path:
         override = os.environ.get("PI_OPERATOR_DIR")
         return Path(override).expanduser() if override else self.agent_dir / "operator"
+
+    @property
+    def tool_failure_dir(self) -> Path:
+        override = os.environ.get("PI_TOOL_FAILURE_DIR")
+        return Path(override).expanduser() if override else self.agent_dir / "tool-failures"
 
 
 @dataclass(frozen=True)
@@ -351,6 +358,24 @@ SOURCES: tuple[SourceSpec, ...] = (
             ("experimentId", "VARCHAR"),
         ),
         lambda layout: _one(layout.workflow_friction_dir / "learning-decisions.jsonl"),
+    ),
+    SourceSpec(
+        "tool_failure_decisions",
+        "Append-only tool-failure candidate decisions.",
+        "metadata",
+        (
+            ("schemaVersion", "UBIGINT"),
+            ("recordId", "VARCHAR"),
+            ("candidateId", "VARCHAR"),
+            ("fingerprintVersion", "UBIGINT"),
+            ("decidedAt", "VARCHAR"),
+            ("disposition", "VARCHAR"),
+            ("reason", "VARCHAR"),
+            ("evidence", "JSON"),
+            ("effectiveAfter", "VARCHAR"),
+            ("revisitAfter", "VARCHAR"),
+        ),
+        lambda layout: _one(layout.tool_failure_dir / "decisions.jsonl"),
     ),
     SourceSpec(
         "damage_control_judgments",
@@ -1379,6 +1404,29 @@ def build_parser() -> argparse.ArgumentParser:
 
     snapshot = subparsers.add_parser("snapshot", help="incrementally materialize selected sources")
     snapshot.add_argument("--format", choices=("table", "csv", "jsonl"), default="table")
+
+    failure_scan = subparsers.add_parser(
+        "tool-failure-scan", help="screen a selected session snapshot for failure candidates"
+    )
+    failure_scan.add_argument("--output", type=Path, help="write the sanitized scan as JSON")
+
+    failure_decide = subparsers.add_parser(
+        "tool-failure-decide", help="append an addressed or skipped candidate decision"
+    )
+    failure_decide.add_argument("scan_file", type=Path)
+    failure_decide.add_argument("candidate_id")
+    failure_decide.add_argument("disposition", choices=("addressed", "skipped"))
+    failure_decide.add_argument("--reason", required=True)
+    failure_decide.add_argument("--evidence", action="append", default=[])
+    failure_decide.add_argument("--effective-after")
+    failure_decide.add_argument("--revisit-after")
+    failure_decide.add_argument("--ledger", type=Path)
+
+    failure_report = subparsers.add_parser(
+        "tool-failure-report", help="render the actionable candidate queue"
+    )
+    failure_report.add_argument("scan_file", type=Path)
+    failure_report.add_argument("--ledger", type=Path)
     return parser
 
 
@@ -1427,6 +1475,33 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             file=sys.stderr,
         )
         return 1 if malformed else 0
+
+    ledger_default = layout.agent_dir / "tool-failures" / "decisions.jsonl"
+    if args.command in {"tool-failure-decide", "tool-failure-report"}:
+        try:
+            scan = json.loads(args.scan_file.read_text(encoding="utf-8"))
+            ledger = (args.ledger or ledger_default).expanduser().resolve()
+            if args.command == "tool-failure-decide":
+                record = append_decision(
+                    ledger,
+                    scan,
+                    args.candidate_id,
+                    args.disposition,
+                    args.reason,
+                    args.evidence,
+                    args.effective_after,
+                    args.revisit_after,
+                )
+                print(json.dumps(record, sort_keys=True, ensure_ascii=True))
+            else:
+                records, diagnostics = load_ledger(ledger)
+                report = build_report(scan, records)
+                report["ledgerDiagnostics"] = diagnostics
+                print(json.dumps(report, sort_keys=True, ensure_ascii=True))
+            return 0
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"tool failure error: {exc}", file=sys.stderr)
+            return 2
 
     snapshot_path = args.snapshot_db.expanduser().resolve() if args.snapshot_db else None
     if args.command == "catalog" and snapshot_path is None:
@@ -1489,6 +1564,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _snapshot_catalog(connection, selected_sources),
                 args.format,
             )
+            return 0
+        if args.command == "tool-failure-scan":
+            if snapshot_path is None:
+                print("tool failure error: --snapshot-db is required", file=sys.stderr)
+                return 2
+            if selected_sources != ("session_entries",):
+                print("tool failure error: select only --source session_entries", file=sys.stderr)
+                return 2
+            scan = scan_connection(connection)
+            rendered = json.dumps(scan, sort_keys=True, indent=2, ensure_ascii=True) + "\n"
+            if args.output:
+                output = args.output.expanduser().resolve()
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text(rendered, encoding="utf-8", newline="\n")
+            print(rendered, end="")
             return 0
         if args.command == "views":
             result = connection.sql(

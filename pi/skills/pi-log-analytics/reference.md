@@ -53,7 +53,44 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
   catalog
 ```
 
-Recognized environment overrides are `PI_AGENT_DIR`, `PI_METRICS_DIR`, `PI_WORKFLOW_TELEMETRY_DIR`, `PI_WORKFLOW_FRICTION_DIR`, and `PI_OPERATOR_DIR`. The default trace root follows `transcript.path` in the agent `settings.json`; `--trace-dir` overrides it explicitly.
+Recognized environment overrides are `PI_AGENT_DIR`, `PI_METRICS_DIR`, `PI_WORKFLOW_TELEMETRY_DIR`, `PI_WORKFLOW_FRICTION_DIR`, `PI_TOOL_FAILURE_DIR`, and `PI_OPERATOR_DIR`. The default trace root follows `transcript.path` in the agent `settings.json`; `--trace-dir` overrides it explicitly.
+
+## Tool-failure triage
+
+Create or retain a frozen `session_entries` snapshot, then scan it without refreshing the source:
+
+```bash
+uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+  --snapshot-db .tmp/pi-log-analytics/august.duckdb \
+  --source session_entries tool-failure-scan \
+  --output .tmp/pi-log-analytics/tool-failure-scan.json
+```
+
+The scan joins tool results to calls by source file and tool-call ID, but candidate IDs use only the fingerprint version, tool name, normalized error class, and approved structural contract. Output contains safe aggregates, hashed coordinates, a path-free digest, source window, and join diagnostics. It does not contain prompts, arguments, tool output, source paths, or session filenames. An error-marked result is a screening input, not proof of a defect.
+
+Append a human decision to the dedicated local-private ledger, which defaults to `~/.pi/agent/tool-failures/decisions.jsonl`:
+
+```bash
+uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+  tool-failure-decide .tmp/pi-log-analytics/tool-failure-scan.json CANDIDATE_ID skipped \
+  --reason "Expected safety rejection" --revisit-after 2026-09-30
+
+uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+  tool-failure-decide .tmp/pi-log-analytics/tool-failure-scan.json CANDIDATE_ID addressed \
+  --reason "Validated corrected call contract" --evidence commit:REV \
+  --effective-after 2026-08-24
+```
+
+Skipped decisions require a sanitized reason. Addressed decisions require typed evidence and an effective date. The writer rejects credentials, raw multiline content, and absolute home paths. Records are appended under an exclusive lock; latest state follows physical append order. This preserves best-effort history among cooperating writers, not tamper-proof audit integrity.
+
+Render only undecided, changed, regressed, or due-for-review candidates:
+
+```bash
+uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+  tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json
+```
+
+The report separately counts unchanged skipped and resolved candidates and reports malformed or unsupported ledger records.
 
 ## Snapshots and batches
 
@@ -115,6 +152,7 @@ A manifest contains one nonblank path per line or JSONL objects containing `sour
 | `friction_reviews` | `~/.pi/agent/workflow-friction/reviews.jsonl` | Medium | Review outcomes |
 | `friction_experiments` | `~/.pi/agent/workflow-friction/experiments.jsonl` | Medium | Experiment definitions |
 | `friction_learning_decisions` | `~/.pi/agent/workflow-friction/learning-decisions.jsonl` | High | Approved text and target paths |
+| `tool_failure_decisions` | `~/.pi/agent/tool-failures/decisions.jsonl` | Medium | Addressed or skipped tool-failure candidates; separate from workflow-friction decisions |
 | `damage_control_judgments` | `~/.pi/agent/operator/damage-control/judge.jsonl` | Medium | Shadow-judge decisions |
 
 A selected live source with no files still produces an empty view with a stable schema. Unselected source views do not exist. Malformed rows fail the query unless the caller explicitly uses `--ignore-malformed` after validation.
