@@ -93,6 +93,8 @@ import {
 	type AgentEffort,
 	type AgentScope,
 	discoverAgents,
+	diagnoseAgentAvailability,
+	formatAgentAvailabilityDiagnostic,
 	resolveAgentSkillPaths,
 	withAgentCatalog,
 	withDispatchSkills,
@@ -1716,7 +1718,8 @@ export async function runSingleAgent(
 	if (authority.tools.length > 0)
 		args.push("--tools", authority.tools.join(","));
 	else args.push("--no-tools");
-	for (const skillPath of resolveAgentSkillPaths(agent))
+	const selectedSkillFiles = resolveAgentSkillPaths(agent);
+	for (const skillPath of selectedSkillFiles)
 		args.push("--skill", skillPath);
 
 	let tmpPromptDir: string | null = null;
@@ -2018,6 +2021,7 @@ export async function runSingleAgent(
 					: {}),
 				PI_SUBAGENT_WORKSPACE_ROOT:
 					runContext?.workspaceRoot ?? path.resolve(cwd ?? defaultCwd),
+				PI_SUBAGENT_SELECTED_SKILL_FILES: JSON.stringify(selectedSkillFiles),
 				...(runContext?.maxWorkers === undefined
 					? {}
 					: { PI_SUBAGENT_MAX_WORKERS: String(runContext.maxWorkers) }),
@@ -2888,8 +2892,16 @@ export default function (pi: ExtensionAPI) {
 			) => Promise<AgentToolResult<SubagentDetails>>)
 		| undefined;
 	const assignedWorkspaceRoot = process.env.PI_SUBAGENT_WORKSPACE_ROOT;
+	let selectedSkillFiles: readonly string[] = [];
+	try {
+		const parsed = JSON.parse(process.env.PI_SUBAGENT_SELECTED_SKILL_FILES ?? "[]");
+		if (Array.isArray(parsed) && parsed.every((file) => typeof file === "string"))
+			selectedSkillFiles = Object.freeze(parsed.map((file) => path.resolve(file)));
+	} catch {
+		selectedSkillFiles = [];
+	}
 	const activeWorkspacePolicy: WorkspacePolicy | undefined = assignedWorkspaceRoot
-		? Object.freeze({ workspaceRoot: assignedWorkspaceRoot })
+		? Object.freeze({ workspaceRoot: assignedWorkspaceRoot, selectedSkillFiles })
 		: undefined;
 
 	const agentDiscoveryFor = (
@@ -4324,7 +4336,6 @@ export default function (pi: ExtensionAPI) {
 				if (selectedSingle) requestedAgentNames.add(selectedSingle.agent);
 				if (params.continue) requestedAgentNames.add(params.continue.agent);
 			}
-			const availableAgentNames = new Set(agents.map((agent) => agent.name));
 			if (params.taskId !== undefined && !selectedSingle) {
 				const error = new Error("taskId is only valid for single mode.");
 				recordBoundaryRejection(error);
@@ -4337,23 +4348,18 @@ export default function (pi: ExtensionAPI) {
 				if (selectedSingle)
 					validateLegacyTaskReference(selectedSingle.taskId);
 			}
-			const unknownAgentNames = Array.from(requestedAgentNames).filter(
-				(name) => !availableAgentNames.has(name),
+			const availability = diagnoseAgentAvailability(
+				[...requestedAgentNames],
+				agents,
+				agentScope,
 			);
-			if (unknownAgentNames.length > 0) {
+			if (availability) {
 				complete({
 					content: [],
 					details: makeDetails(originalMode)([]),
 					isError: true,
 				});
-				const unknown = unknownAgentNames
-					.map((name) => `"${name}"`)
-					.join(", ");
-				const available =
-					agents.map((agent) => `"${agent.name}"`).join(", ") || "none";
-				const error = new Error(
-					`Unknown agent${unknownAgentNames.length === 1 ? "" : "s"}: ${unknown} for agentScope "${agentScope}". Available agents: ${available}.`,
-				);
+				const error = new Error(formatAgentAvailabilityDiagnostic(availability));
 				recordBoundaryRejection(error);
 				throw error;
 			}
@@ -5538,15 +5544,13 @@ export default function (pi: ExtensionAPI) {
 		): Promise<AgentToolResult<SubagentDetails>> => {
 			const request = { kind, ...(params as Record<string, unknown>) } as unknown as SubagentExecutionRequest;
 			const catalog = agentDiscoveryFor(ctx, request.agentScope ?? "user");
-			const available = catalog.agents.map((agent) => agent.name).sort();
-			const unknown = request.items
-				.map((item) => item.agent)
-				.filter((agent, index, items) => !available.includes(agent) && items.indexOf(agent) === index);
-			if (unknown.length > 0) {
-				throw new Error(
-					`Unknown agent${unknown.length === 1 ? "" : "s"}: ${unknown.map((name) => `"${name}"`).join(", ")}. Available agents: ${available.map((name) => `"${name}"`).join(", ") || "none"}.`,
-				);
-			}
+			const availability = diagnoseAgentAvailability(
+				request.items.map((item) => item.agent),
+				catalog.agents,
+				request.agentScope ?? "user",
+			);
+			if (availability)
+				throw new Error(formatAgentAvailabilityDiagnostic(availability));
 			let prepared: PreparedSubagentExecution;
 			try {
 				prepared = prepareSubagentExecution(request, {

@@ -40,6 +40,35 @@ export interface AgentDiscoveryResult {
 	projectAgentsDir: string | null;
 }
 
+export interface AgentAvailabilityDiagnostic {
+	readonly rejected: readonly string[];
+	readonly agentScope: AgentScope;
+	readonly alternatives: readonly string[];
+}
+
+export function diagnoseAgentAvailability(
+	agentNames: readonly string[],
+	agents: readonly AgentConfig[],
+	agentScope: AgentScope,
+): AgentAvailabilityDiagnostic | undefined {
+	const available = new Set(agents.map((agent) => agent.name));
+	const rejected = [...new Set(agentNames)].filter((name) => !available.has(name));
+	if (rejected.length === 0) return undefined;
+	return {
+		rejected,
+		agentScope,
+		alternatives: agents.map((agent) => agent.name).sort(),
+	};
+}
+
+export function formatAgentAvailabilityDiagnostic(
+	diagnostic: AgentAvailabilityDiagnostic,
+): string {
+	const rejected = diagnostic.rejected.map((name) => `"${name}"`).join(", ");
+	const alternatives = diagnostic.alternatives.map((name) => `"${name}"`).join(", ") || "none";
+	return `Unknown agent: ${rejected}. Available agents: ${alternatives}. Rejected agent selection: ${rejected} for agentScope "${diagnostic.agentScope}". Effective agentScope "${diagnostic.agentScope}". Usable alternatives: ${alternatives}.`;
+}
+
 /** Add the current catalog choices to every model-facing agent property. */
 export function withAgentCatalog<T extends TSchema>(
 	schema: T,
@@ -186,13 +215,13 @@ export function resolveAgentSkillPaths(agent: AgentConfig): string[] {
 					`Agent ${agent.name} references missing skill: ${skill}`,
 				);
 			}
-			return resolved;
+			return fs.realpathSync.native(resolved);
 		}
 
 		const record = findSkillByName(skill);
 		if (!record)
 			throw new Error(`Agent ${agent.name} references unknown skill: ${skill}`);
-		return record.filePath;
+		return fs.realpathSync.native(record.filePath);
 	});
 }
 

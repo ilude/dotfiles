@@ -27,6 +27,7 @@ export type WorkspacePolicyDenyCode =
 
 export interface WorkspacePolicy {
 	readonly workspaceRoot: string;
+	readonly selectedSkillFiles?: readonly string[];
 }
 
 export interface WorkspaceAllow {
@@ -273,8 +274,10 @@ function checkCanonicalTargets(
 	workspaceRoot: string,
 	targets: readonly string[],
 	cwd: string,
+	options: { readonly readOnlyFiles?: readonly string[] } = {},
 ): WorkspacePolicyResult {
 	const canonicalTargets: string[] = [];
+	const readOnlyFiles = new Set(options.readOnlyFiles ?? []);
 	for (const target of targets) {
 		if (!target || target.includes("\0")) {
 			return denyPath(
@@ -304,6 +307,10 @@ function checkCanonicalTargets(
 			);
 		}
 		if (!isInside(workspaceRoot, resolved.canonical)) {
+			if (readOnlyFiles.has(resolved.canonical)) {
+				canonicalTargets.push(resolved.canonical);
+				continue;
+			}
 			return denyPath(
 				workspaceRoot,
 				"path_escape",
@@ -339,10 +346,21 @@ export function checkNativePathTool(
 	const root = policyRoot(policy);
 	if (!root.ok) return root.result;
 	const targets = pathValues(input);
+	const selectedSkillFiles =
+		toolName === "read"
+			? (policy.selectedSkillFiles ?? []).map((file) => {
+				try {
+					return fs.realpathSync.native(path.resolve(file));
+				} catch {
+					return path.resolve(file);
+				}
+			})
+			: [];
 	return checkCanonicalTargets(
 		root.canonical,
 		targets.length > 0 ? targets : ["."],
 		cwd,
+		{ readOnlyFiles: selectedSkillFiles },
 	);
 }
 

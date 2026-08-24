@@ -6,7 +6,9 @@ import {
 	MAX_SUBAGENT_TRANSCRIPT_BYTES,
 	MAX_SUBAGENT_TRANSCRIPT_ITEMS,
 	MAX_TRACKED_SUBAGENT_RUNS,
+	SUBAGENT_RUN_MANAGER_ABI,
 	SubagentRunManager,
+	getSubagentRunManager,
 } from "../extensions/subagent/run-manager.ts";
 import {
 	inspectSubagentStatus,
@@ -39,6 +41,32 @@ function beginRun(
 }
 
 describe("SubagentRunManager", () => {
+	it("reuses compatible state and handles incompatible reloads safely", () => {
+		const key = Symbol.for("dotfiles.pi.subagent-run-manager");
+		const globals = globalThis as typeof globalThis & Record<symbol, unknown>;
+		const original = globals[key];
+		try {
+			const compatible = new SubagentRunManager();
+			globals[key] = { abi: SUBAGENT_RUN_MANAGER_ABI, manager: compatible };
+			expect(getSubagentRunManager()).toBe(compatible);
+
+			const incompatibleQuiescent = new SubagentRunManager();
+			globals[key] = { abi: "old", manager: incompatibleQuiescent };
+			const replacement = getSubagentRunManager();
+			expect(replacement).not.toBe(incompatibleQuiescent);
+
+			const live = new SubagentRunManager();
+			beginRun(live, "reload-live");
+			globals[key] = { abi: "old", manager: live };
+			expect(() => getSubagentRunManager()).toThrow(
+				"incompatible subagent run manager",
+			);
+		} finally {
+			if (original === undefined) delete globals[key];
+			else globals[key] = original;
+		}
+	});
+
 	it("owns recursive cancellation and exposes linked tree metadata", () => {
 		const manager = new SubagentRunManager();
 		const controller = new AbortController();

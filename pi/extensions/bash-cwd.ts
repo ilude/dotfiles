@@ -81,15 +81,16 @@ export default function (pi: ExtensionAPI) {
 		}),
 		renderShell: initialTool.renderShell,
 		prepareArguments(args): BashParams {
-			const prepared = initialTool.prepareArguments?.(args) as Omit<
-				BashParams,
-				"cwd"
-			>;
-			const cwd = (args as { cwd?: unknown }).cwd;
+			const original = args as Record<string, unknown>;
+			const prepared = initialTool.prepareArguments
+				? (initialTool.prepareArguments(args) as Record<string, unknown>)
+				: original;
+			const cwd = original.cwd;
 			return {
+				...original,
 				...prepared,
 				...(typeof cwd === "string" ? { cwd } : {}),
-			};
+			} as BashParams;
 		},
 		executionMode: initialTool.executionMode,
 		execute(toolCallId, params: BashParams, signal, onUpdate, ctx) {
