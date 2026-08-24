@@ -17,6 +17,22 @@ Developer experience is becoming agent experience: docs, APIs, rules, plugins, a
 - MCP or CLI access to live platform state.
 - Hooks for validation and code generation.
 
+## Request-scoped remote tools
+
+The [MCP 2026 stateless protocol](../projects/mcp-2026-stateless-protocol.md)
+removes the assumption that remote MCP requires hidden protocol sessions. For a
+remote tool surface:
+
+- prefer request-scoped operations;
+- keep application state explicit and owned by the domain service;
+- expose stable method and tool identity for policy and telemetry;
+- require caller, argument, and resource checks beyond header admission;
+- use current authorization and protocol versions;
+- retain a simple CLI or direct HTTP adapter when cross-client interoperability
+  does not justify MCP.
+
+MCP remains an adapter surface, not the source of truth for platform state.
+
 ## KISS version for our repos
 
 For each platform/tool we use often, create a small package of guidance:
@@ -35,4 +51,9 @@ Only add automation after the rules stabilize.
 
 - Adding integrations before documenting expected behavior.
 - Making one giant “platform expert” prompt.
-- Depending on remote MCP state when a simple CLI command is enough.
+- Depending on hidden remote state when a request-scoped API or simple CLI command is enough.
+
+## Related notes
+
+- [MCP 2026 stateless protocol](../projects/mcp-2026-stateless-protocol.md)
+- [Convex agent plugins](../projects/convex-agent-plugins.md)

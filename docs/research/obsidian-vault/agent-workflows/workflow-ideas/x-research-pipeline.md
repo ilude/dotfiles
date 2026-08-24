@@ -68,6 +68,24 @@ Client surfaces:
 - Pi: thin Python client module or command wrapper
 - Deployment: Ansible/Docker on the menos host
 
+### MCP compatibility if this design is revived
+
+The [MCP 2026 stateless protocol](../projects/mcp-2026-stateless-protocol.md)
+changes the assumptions behind the proposed Claude adapter:
+
+- target MCP `2026-07-28` or later;
+- use stateless Streamable HTTP rather than legacy sessions or HTTP+SSE;
+- keep X account, proxy, retrieval, and ingestion state in the FastAPI service,
+  not in MCP transport state;
+- prefer pre-registered clients or Client ID Metadata Documents;
+- bind access tokens to the canonical MCP server resource;
+- expose only the read-only methods required by this workflow;
+- preserve the Pi Python client over the same backend rather than requiring MCP
+  for every caller.
+
+MCP remains a client adapter. The FastAPI service and menos remain the
+application contracts and sources of truth.
+
 ## Safety and policy notes
 
 - Credentials come from Infisical at startup/rotation time.
@@ -78,4 +96,9 @@ Client surfaces:
 
 ## KISS recommendation
 
-Prototype the provider protocol, mocked service, and menos persistence before live scraping. Treat account health and proxy binding as first-class v1 requirements, because scraper reliability is mostly operational rather than architectural.
+Prototype the provider protocol, mocked service, and menos persistence before live scraping. Treat account health and proxy binding as first-class v1 requirements, because scraper reliability is mostly operational rather than architectural. Add an MCP adapter only after a supported client needs it, and use the current stateless protocol rather than reviving the older sessionful design.
+
+## Related notes
+
+- [MCP 2026 stateless protocol](../projects/mcp-2026-stateless-protocol.md)
+- [Menos](../projects/menos.md)

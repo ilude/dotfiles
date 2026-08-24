@@ -239,12 +239,35 @@ Your system is **uniquely strong** on tool-level enforcement (no other system do
 
 ---
 
+## MCP 2026 trust-boundary questions
+
+The [MCP 2026 stateless protocol](mcp-2026-stateless-protocol.md) makes remote
+operations visible to ordinary HTTP infrastructure through `Mcp-Method` and
+`Mcp-Name`, but header-level admission cannot prove that arguments, caller
+identity, resource scope, or returned content are safe. If Pi later exposes an
+MCP client boundary, research should answer:
+
+1. Which methods and tool names can policy admit or reject before body parsing?
+2. Which operations still require argument, content, and destination inspection?
+3. Does the access token audience match the canonical MCP server resource?
+4. Are authorization responses bound to the expected issuer?
+5. Is MRTR `requestState` integrity-protected, principal-bound, request-bound,
+   and short-lived before it affects authorization or behavior?
+6. Can a cached tool catalog change invalidate an earlier permission decision?
+7. Are `public` and `private` catalog or resource caches isolated correctly?
+8. Which deprecated protocol versions, transports, and registration modes should
+   a new integration reject?
+
+These are research questions, not a reason to add an MCP policy layer before a
+real client boundary exists. Sources: [MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization),
+[Multi Round-Trip Requests](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr),
+and [MCP caching](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching).
+
 ## Follow-up Questions
-1. MCP server trust boundaries — should damage-control validate MCP server configs?
-2. Agent-to-agent trust — do subagents inherit the same hook protection?
-3. WebFetch content scanning — should fetched web content go through injection detection before entering context?
-4. Rate limiting — should there be a ceiling on tool calls per minute to slow multi-step attacks?
-5. Audit log analysis — automated review of blocked patterns to surface new attack variants?
+1. Agent-to-agent trust — do subagents inherit the same hook protection?
+2. WebFetch content scanning — should fetched web content go through injection detection before entering context?
+3. Rate limiting — should there be a ceiling on tool calls per minute to slow multi-step attacks?
+4. Audit log analysis — automated review of blocked patterns to surface new attack variants?
 
 ## KISS recommendation
 
