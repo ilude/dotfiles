@@ -123,6 +123,19 @@ describe("readRecentEvents", () => {
 		expect(readRecentEvents(3).length).toBe(3);
 	});
 
+	it("applies the limit after filtering matching events", () => {
+		for (let i = 0; i < 4; i++) {
+			recordEvent({ event: "prompt_cache_request", data: { index: i } });
+		}
+		for (let i = 0; i < 10; i++) recordEvent({ event: "unrelated" });
+
+		const events = readRecentEvents(
+			3,
+			(event) => event.event === "prompt_cache_request",
+		);
+		expect(events.map((event) => event.data?.index)).toEqual([3, 2, 1]);
+	});
+
 	it("skips malformed lines instead of poisoning the read", () => {
 		const logPath = getMetricsLogPath();
 		fs.mkdirSync(path.dirname(logPath), { recursive: true });

@@ -412,7 +412,11 @@ function deduplicatePromptCacheMetrics(events: readonly MetricsEvent[]): PromptC
 }
 
 export function summarizeCodexCacheMetrics(
-	events: readonly MetricsEvent[] = readRecentEvents(CODEX_CACHE_METRICS_LIMIT),
+	events: readonly MetricsEvent[] = readRecentEvents(
+		CODEX_CACHE_METRICS_LIMIT,
+		(event) =>
+			isPromptCacheMetric(event) && event.data.provider === "openai-codex",
+	),
 ): CodexCacheSummary {
 	const metrics = deduplicatePromptCacheMetrics(events)
 		.filter((event) => event.data.provider === "openai-codex")

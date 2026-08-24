@@ -141,7 +141,10 @@ export function recordEvent(input: RecordEventInput): MetricsEvent | null {
  * Read recent events from the active daily log. Tail-slice; intended for
  * /doctor and other diagnostics, not bulk analytics.
  */
-export function readRecentEvents(limit: number = 100): MetricsEvent[] {
+export function readRecentEvents(
+	limit: number = 100,
+	matches: (event: MetricsEvent) => boolean = () => true,
+): MetricsEvent[] {
 	try {
 		const logPath = getMetricsLogPath();
 		if (!fs.existsSync(logPath)) return [];
@@ -152,7 +155,11 @@ export function readRecentEvents(limit: number = 100): MetricsEvent[] {
 			if (!trimmed) continue;
 			try {
 				const parsed = JSON.parse(trimmed) as MetricsEvent;
-				if (parsed?.schemaVersion === 1 && typeof parsed.id === "string") {
+				if (
+					parsed?.schemaVersion === 1 &&
+					typeof parsed.id === "string" &&
+					matches(parsed)
+				) {
 					events.push(parsed);
 				}
 			} catch {
