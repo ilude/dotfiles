@@ -1565,6 +1565,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     report,
                     include_observed=args.include_observed,
                     include_overflow=args.include_overflow,
+                    include_expected=args.include_expected,
                 )
                 report["cards"] = pool["cards"]
                 report["poolSummary"] = pool["summary"]

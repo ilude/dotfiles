@@ -191,6 +191,62 @@ def test_tool_failure_scan_is_deterministic_private_and_diagnoses_joins():
         (
             "bash",
             "Command timed out after 30 seconds",
+            "command-timeout",
+            "command:timeout",
+            "expected",
+        ),
+        (
+            "bash",
+            "Blocked unsafe shell edit (matched unsafe_shell_edit)",
+            "safety-block",
+            "policy:block",
+            "expected",
+        ),
+        (
+            "bash",
+            '{"outcome":"needs_approval","message":"Operator approval is required"}',
+            "approval-required",
+            "policy:approval",
+            "expected",
+        ),
+        (
+            "bash",
+            "partial command output\nCommand aborted",
+            "command-aborted",
+            "command:aborted",
+            "expected",
+        ),
+        (
+            "bash",
+            "Working directory does not exist: C:/missing. Cannot execute bash commands.",
+            "path-not-found",
+            "filesystem:path-missing",
+            "expected",
+        ),
+        (
+            "bash",
+            "Tool bash not found",
+            "required-runtime-unavailable",
+            "runtime:availability",
+            "candidate",
+        ),
+        (
+            "bash",
+            "TypeError: ctx.sessionManager.getSessionId is not a function\nCommand exited with code 1",
+            "command-nonzero",
+            "command:nonzero",
+            "expected",
+        ),
+        (
+            "pwsh",
+            "pwsh exited with code 1: getSessionFile is not a function",
+            "command-nonzero",
+            "command:nonzero",
+            "expected",
+        ),
+        (
+            "bash",
+            "ctx.sessionManager.getSessionId is not a function",
             "unclassified-error",
             "manual-review",
             "unclassified",
@@ -663,6 +719,38 @@ def test_expected_recurring_friction_enters_pool_without_include_expected():
     assert [(card["candidateId"], card["reasonCode"]) for card in pool["cards"]] == [
         ("friction", "retry-ceremony")
     ]
+
+
+def test_expected_normal_shell_outcomes_do_not_enter_default_pool():
+    candidates = []
+    for index, error_class in enumerate(
+        (
+            "command-nonzero",
+            "nonzero-test",
+            "command-timeout",
+            "command-aborted",
+            "approval-required",
+            "safety-block",
+            "path-not-found",
+        )
+    ):
+        candidates.append(
+            {
+                "candidateId": f"normal-{index}",
+                "tool": "bash",
+                "errorClass": error_class,
+                "classification": "expected",
+                "lastObserved": "2026-08-24T00:00:00Z",
+                "occurrences14d": 100,
+                "sessions14d": 50,
+                "occurrences30d": 100,
+                "sessions30d": 50,
+            }
+        )
+    report = build_report({"candidates": candidates}, [])
+
+    assert triage.build_investigation_pool(report)["cards"] == []
+    assert len(triage.build_investigation_pool(report, include_expected=True)["cards"]) == 7
 
 
 def test_tool_filter_excludes_builtins_before_ranking_and_summary():

@@ -183,7 +183,10 @@ function groupTitle(reason: InvestigationCard["reasonCode"]): string {
 }
 
 const ISSUE_NAMES: Readonly<Record<string, string>> = {
+	"approval-required": "operator approval is required",
+	"command-aborted": "command was aborted",
 	"command-nonzero": "command exited unsuccessfully",
+	"command-timeout": "command timed out",
 	"exact-match-miss": "exact text does not match",
 	"external-service-failure": "external service request failed",
 	"governed-path-rejection": "path is outside the allowed boundary",

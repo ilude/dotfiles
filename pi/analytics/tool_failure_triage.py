@@ -76,16 +76,47 @@ def _classify(tool: str, text: str) -> tuple[str, str, str]:
         phrase in lowered for phrase in ("unknown agent", "available agents", "abi", "manager")
     ):
         return "stale-manager-contract", "subagent-manager:availability", "candidate"
-    if " is not a function" in lowered:
-        return "internal-missing-method", "runtime:missing-method", "candidate"
     if normalized_tool == "web_search" and (
         lowered.strip() == "fetch failed" or "operation was aborted due to timeout" in lowered
     ):
         return "external-service-failure", "web-search:request", "candidate"
-    if "pi cli entrypoint is unavailable" in lowered or "available agents: none" in lowered:
+    if (
+        "pi cli entrypoint is unavailable" in lowered
+        or "available agents: none" in lowered
+        or re.search(r"^tool (?:bash|pwsh) not found$", lowered.strip())
+    ):
         return "required-runtime-unavailable", "runtime:availability", "candidate"
-    if any(phrase in lowered for phrase in ("damage control", "blocked by policy")):
+    if any(
+        phrase in lowered
+        for phrase in (
+            "damage control",
+            "blocked by policy",
+            "blocked unsafe shell edit",
+            "blocked dangerous command",
+            "blocked unmanaged shell backgrounding",
+            "prefer pi safe edit",
+            "path_escape:",
+            "interactive orchestrator parents must delegate",
+            "repeated_tool_loop:",
+            "dynamic_recursive_target:",
+        )
+    ):
         return "safety-block", "policy:block", "expected"
+    if any(
+        phrase in lowered
+        for phrase in (
+            "operator approval is required",
+            "confirmation required for dangerous command",
+            '"outcome":"needs_approval"',
+        )
+    ):
+        return "approval-required", "policy:approval", "expected"
+    if re.search(r"command timed out after \d+ seconds", lowered):
+        return "command-timeout", "command:timeout", "expected"
+    if lowered.strip() in {"command aborted", "operation aborted"} or lowered.rstrip().endswith(
+        "command aborted"
+    ):
+        return "command-aborted", "command:aborted", "expected"
     if any(phrase in lowered for phrase in ("tests failed", "test failed", "exit code 1")):
         return "nonzero-test", "command:test-nonzero", "expected"
     if (
@@ -105,6 +136,7 @@ def _classify(tool: str, text: str) -> tuple[str, str, str]:
         or "no valid search paths given" in lowered
         or "system cannot find the file specified" in lowered
         or "system cannot find the path specified" in lowered
+        or "working directory does not exist:" in lowered
     ):
         return "path-not-found", "filesystem:path-missing", "expected"
     if "offset " in lowered and " is beyond end of file" in lowered:
@@ -115,6 +147,11 @@ def _classify(tool: str, text: str) -> tuple[str, str, str]:
         or "command failed with exit code " in lowered
     ):
         return "command-nonzero", "command:nonzero", "expected"
+    if (
+        normalized_tool not in {"bash", "functions.bash", "pwsh", "functions.pwsh"}
+        and " is not a function" in lowered
+    ):
+        return "internal-missing-method", "runtime:missing-method", "candidate"
     if "secret scan blocked the commit" in lowered:
         return "secret-scan-block", "commit:secret-scan", "expected"
     if (
@@ -553,13 +590,27 @@ _RETRY_CEREMONY_ERRORS = {
     "nonunique-match",
     "invalid-caller-contract",
 }
+_NORMAL_OPERATION_ERRORS = {
+    "approval-required",
+    "command-aborted",
+    "command-nonzero",
+    "command-timeout",
+    "nonzero-test",
+    "path-not-found",
+    "safety-block",
+    "secret-scan-block",
+}
 
 
-def _card_reason(candidate: dict[str, object], status: str) -> Optional[str]:
+def _card_reason(
+    candidate: dict[str, object], status: str, include_expected: bool = False
+) -> Optional[str]:
     ledger_reason = _gate_reason(candidate, status)
     if ledger_reason in {"ledger-changed", "ledger-regression", "ledger-revisit"}:
         return ledger_reason
     error_class = candidate.get("errorClass")
+    if status == "expected" and error_class in _NORMAL_OPERATION_ERRORS and not include_expected:
+        return None
     if error_class in _MODEL_CONTRACT_ERRORS | _RETRY_CEREMONY_ERRORS:
         if candidate.get("occurrences14d", 0) < 3 or candidate.get("sessions14d", 0) < 3:
             return None
@@ -601,6 +652,7 @@ def build_investigation_pool(
     report: dict[str, object],
     include_observed: bool = False,
     include_overflow: bool = False,
+    include_expected: bool = False,
 ) -> dict[str, object]:
     candidates = report.get("actionable", [])
     if not isinstance(candidates, list):
@@ -614,7 +666,7 @@ def build_investigation_pool(
         if not isinstance(candidate, dict):
             continue
         status = str(candidate.get("status", "undecided"))
-        reason = _card_reason(candidate, status)
+        reason = _card_reason(candidate, status, include_expected)
         if reason is None:
             if include_observed:
                 observed.append(candidate)

@@ -375,7 +375,12 @@ describe("tool failure report rendering", () => {
 });
 
 describe("plain issue names", () => {
-	it("uses deterministic operator names for the investigated edit issues", () => {
+	it("uses deterministic operator names for known failure classes", () => {
+		expect(plainIssueName("approval-required")).toBe(
+			"operator approval is required",
+		);
+		expect(plainIssueName("command-aborted")).toBe("command was aborted");
+		expect(plainIssueName("command-timeout")).toBe("command timed out");
 		expect(plainIssueName("exact-match-miss")).toBe(
 			"exact text does not match",
 		);
