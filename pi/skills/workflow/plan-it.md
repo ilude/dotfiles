@@ -35,11 +35,61 @@ A restored snapshot may contain a legacy post-draft stage. Treat it as compatibi
 
 ## Plan Contract
 
-Include `## Completion Evidence` after the objective with concise `Evidence:` and `Fails when:` statements settled from the request or operator discussion. This is the scope and stopping boundary.
+Write the canonical plan from this exact structural contract rather than inferring its format from archived plans. Replace every placeholder with plan-specific content and omit optional bullets that do not apply:
+
+```markdown
+---
+created: YYYY-MM-DD
+status: ready
+---
+
+# <Outcome title>
+
+## Objective
+
+<One falsifiable outcome.>
+
+## Completion Evidence
+
+- Evidence: <Observable proof that the objective is complete.>
+- Fails when: <Observable condition that disproves completion.>
+
+## Boundaries
+
+- In scope: <Owned behavior, files, or state.>
+- Out of scope: <Adjacent work that remains untouched.>
+- Preserve: <Existing interfaces, behavior, and safety controls.>
+- Assumptions: <Only execution-changing assumptions, or None.>
+
+## Tasks
+
+- [ ] **T1: <Executable task name>**
+  - Files: `<Exact files or targets>`
+  - Change: <Bounded mutation and mechanism.>
+  - Done when: <Observable task acceptance condition.>
+  - Verify: `<Direct check or command>`
+
+## Validation
+
+- [ ] <Direct completion-evidence check and expected result.>
+
+## Retention
+
+Keep incomplete work at `.specs/<slug>/plan.md`. After completion, `/do-it` archives this directory to `.specs/archive/<slug>/`.
+
+## Execution Status
+
+- State: Ready; implementation has not started.
+- Blocker: None.
+- Next: T1.
+- Resume: `/do-it .specs/<slug>/plan.md`
+```
+
+Before calling `ready`, verify mechanically against the structure above: frontmatter says exactly `status: ready`; every required `##` heading exists; `Completion Evidence` has separate `- Evidence:` and `- Fails when:` bullets; `Validation` contains at least one checkbox; `Execution Status` contains `- State:` and the canonical resume command; and `Retention` names the canonical archive directory.
 
 State mutation boundaries explicitly: name the files or state owned by each task, what may be changed, and what remains untouched. Dependencies must identify actual prerequisites, not merely preferred order. A task is ready only when every required dependency is complete; independent ready tasks may proceed in parallel without adding scheduler records.
 
-Use one checkbox list with 1-3 tasks. Each task names affected files or targets, dependencies only when present, the action, observable acceptance, and relevant verification. Task-level `Done when` and `Verify` clauses must collectively prove the completion evidence.
+Use one checkbox list with 1-3 tasks. Use sequential unique keys `T1` through `T3`. Every task must use the exact field labels `Files:`, `Change:`, `Done when:`, and `Verify:`. Add `Depends on: T1` only when an actual prerequisite exists. Task-level `Done when` and `Verify` clauses must collectively prove the completion evidence.
 
 Include only context, boundaries, assumptions, safety, current status, or blockers that change execution. For shared or live state, name the target, stop condition, and concise rollback required by active instructions.
 
