@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { closeWorkflowWorktree, ensureWorkflowWorktree, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain } from "../lib/workflow-worktree.js";
+import { closeWorkflowWorktree, ensureWorkflowWorktree, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain, readWorkflowOwnershipRecord } from "../lib/workflow-worktree.js";
 
 const roots: string[] = [];
 
@@ -137,6 +137,87 @@ describe("workflow worktree lifecycle", () => {
 		await expect(materializePlanInWorkflowWorktree({ worktree, planPath, runner })).rejects.toThrow(/unsupported tracked or mixed changes/);
 		expect(fs.readFileSync(path.join(root, planPath), "utf8")).toBe("staged\n");
 		expect(fs.readFileSync(path.join(worktree.ownership.worktree, planPath), "utf8")).toBe("tracked\n");
+	});
+
+	it("rejects a plan path that differs from canonical ownership", async () => {
+		const root = repo();
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", planPath: ".specs/fixture/plan.md", runner });
+		await expect(materializePlanInWorkflowWorktree({ worktree, planPath: ".specs/other/plan.md", runner })).rejects.toThrow(/does not match/);
+	});
+
+	it("restores a legacy ownership record without planPath", async () => {
+		const root = repo();
+		fs.mkdirSync(path.join(root, ".worktrees"), { recursive: true });
+		fs.writeFileSync(path.join(root, ".worktrees", "legacy.workflow.json"), JSON.stringify({
+			version: 1, workflow: "do-it", workflowId: "do-it:legacy", repoRoot: root,
+			primaryWorktree: root, primaryBranch: "main", initialPrimaryHead: git(root, ["rev-parse", "HEAD"]),
+			branch: "workflow/legacy", worktree: path.join(root, ".worktrees", "legacy"),
+			createdAt: "2026-08-23T00:00:00.000Z", updatedAt: "2026-08-23T00:00:00.000Z", state: "active",
+		}));
+		expect(readWorkflowOwnershipRecord(root, "legacy")).not.toHaveProperty("planPath");
+	});
+
+	it("resumes after archive and commit failures without repeating archive", async () => {
+		const root = repo();
+		const planPath = ".specs/fixture/plan.md";
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", planPath, runner });
+		fs.mkdirSync(path.join(worktree.ownership.worktree, ".specs", "fixture"), { recursive: true });
+		fs.writeFileSync(path.join(worktree.ownership.worktree, planPath), "complete\n");
+		let archiveCalls = 0;
+		let failCommit = true;
+		const flakyRunner = async (cwd: string, args: string[]) => {
+			if (args[0] === "commit" && failCommit) { failCommit = false; return { code: 1, stdout: "", stderr: "commit failed" }; }
+			return runner(cwd, args);
+		};
+		const archivePlan = async (cwd: string, requested: string) => {
+			archiveCalls += 1;
+			if (archiveCalls === 1) throw new Error("archive hook failed");
+			fs.mkdirSync(path.join(cwd, ".specs", "archive"), { recursive: true });
+			fs.renameSync(path.join(cwd, ".specs", "fixture"), path.join(cwd, ".specs", "archive", "fixture"));
+		};
+		await expect(closeWorkflowWorktree({ worktree, planPath, archivePlan, runner: flakyRunner })).rejects.toThrow(/archive hook failed/);
+		let resumed = readWorkflowOwnershipRecord(root, "fixture");
+		if (!resumed) throw new Error("missing persisted closeout ownership");
+		await expect(closeWorkflowWorktree({ worktree: { ownership: resumed, resumed: true }, planPath, archivePlan, runner: flakyRunner })).rejects.toThrow(/commit workflow closeout/);
+		resumed = readWorkflowOwnershipRecord(root, "fixture");
+		if (!resumed) throw new Error("missing persisted closeout ownership after commit failure");
+		await closeWorkflowWorktree({ worktree: { ownership: resumed, resumed: true }, planPath, archivePlan, runner });
+		expect(archiveCalls).toBe(2);
+	});
+
+	it("resumes merged closeout after cleanup failure", async () => {
+		const root = repo();
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner });
+		fs.writeFileSync(path.join(worktree.ownership.worktree, "result.txt"), "done\n");
+		let failRemove = true;
+		const flakyRunner = async (cwd: string, args: string[]) => {
+			if (args[0] === "worktree" && args[1] === "remove" && failRemove) { failRemove = false; return { code: 1, stdout: "", stderr: "remove failed" }; }
+			return runner(cwd, args);
+		};
+		await expect(closeWorkflowWorktree({ worktree, runner: flakyRunner })).rejects.toThrow(/remove workflow worktree/);
+		const resumed = readWorkflowOwnershipRecord(root, "fixture");
+		if (!resumed) throw new Error("missing merged closeout ownership");
+		expect(resumed.closeoutStage).toBe("merged");
+		await closeWorkflowWorktree({ worktree: { ownership: resumed, resumed: true }, runner });
+		expect(fs.existsSync(path.join(root, ".worktrees", "fixture.workflow.json"))).toBe(false);
+	});
+
+	it("removes a deregistered residual worktree directory after Git reports failure", async () => {
+		const root = repo();
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner });
+		fs.writeFileSync(path.join(worktree.ownership.worktree, "result.txt"), "done\n");
+		const residualRunner = async (cwd: string, args: string[]) => {
+			if (args[0] === "worktree" && args[1] === "remove") {
+				const removed = await runner(cwd, args);
+				fs.mkdirSync(worktree.ownership.worktree, { recursive: true });
+				return { ...removed, code: 1, stderr: "Windows path cleanup failed" };
+			}
+			return runner(cwd, args);
+		};
+		const completed = await closeWorkflowWorktree({ worktree, runner: residualRunner });
+		expect(completed.state).toBe("complete");
+		expect(fs.existsSync(worktree.ownership.worktree)).toBe(false);
+		expect(fs.existsSync(path.join(root, ".worktrees", "fixture.workflow.json"))).toBe(false);
 	});
 
 	it("merges with --no-ff when the clean primary branch advances", async () => {

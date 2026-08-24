@@ -114,6 +114,13 @@ export interface PlanContractValidation {
 export type PlanValidationMode = "ready" | "execution-preflight";
 
 const PLAN_PATH_PATTERN = /^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/;
+
+export function canonicalPlanPathFromInput(value: string): string | undefined {
+	const normalized = value.trim().replace(/\\/g, "/");
+	const match = normalized.match(/^@?(\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md)[.,!?;:)]{0,4}$/);
+	return match?.[1];
+}
+
 const TASK_PATTERN = /^- \[[ x]\] \*\*(T[1-9][0-9]*): .+\*\*$/gm;
 const MAX_PLAN_DIAGNOSTICS = 8;
 

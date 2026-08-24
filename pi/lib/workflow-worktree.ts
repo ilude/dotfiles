@@ -5,6 +5,7 @@ const OWNERSHIP_VERSION = 1;
 
 export type WorkflowOwner = "plan-it" | "do-it" | "goal";
 export type WorkflowWorktreeState = "active" | "complete";
+export type WorkflowCloseoutStage = "active" | "archived" | "committed" | "merged";
 
 export interface WorkflowWorktreeOwnership {
 	version: 1;
@@ -19,6 +20,9 @@ export interface WorkflowWorktreeOwnership {
 	createdAt: string;
 	updatedAt: string;
 	state: WorkflowWorktreeState;
+	// Optional for v1 records created before canonical plan ownership.
+	planPath?: string;
+	closeoutStage?: WorkflowCloseoutStage;
 	mergedHead?: string;
 }
 
@@ -71,7 +75,7 @@ function writeOwnership(filePath: string, ownership: WorkflowWorktreeOwnership):
 function readOwnership(filePath: string): WorkflowWorktreeOwnership | undefined {
 	if (!fs.existsSync(filePath)) return undefined;
 	const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as Partial<WorkflowWorktreeOwnership>;
-	if (parsed.version !== OWNERSHIP_VERSION || !["plan-it", "do-it", "goal"].includes(parsed.workflow ?? "") || typeof parsed.workflowId !== "string" || typeof parsed.repoRoot !== "string" || typeof parsed.primaryWorktree !== "string" || typeof parsed.primaryBranch !== "string" || typeof parsed.initialPrimaryHead !== "string" || typeof parsed.branch !== "string" || typeof parsed.worktree !== "string" || (parsed.state !== "active" && parsed.state !== "complete"))
+	if (parsed.version !== OWNERSHIP_VERSION || !["plan-it", "do-it", "goal"].includes(parsed.workflow ?? "") || typeof parsed.workflowId !== "string" || typeof parsed.repoRoot !== "string" || typeof parsed.primaryWorktree !== "string" || typeof parsed.primaryBranch !== "string" || typeof parsed.initialPrimaryHead !== "string" || typeof parsed.branch !== "string" || typeof parsed.worktree !== "string" || (parsed.state !== "active" && parsed.state !== "complete") || (parsed.planPath !== undefined && !/^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(parsed.planPath)) || (parsed.closeoutStage !== undefined && !["active", "archived", "committed", "merged"].includes(parsed.closeoutStage)))
 		throw new Error(`Invalid workflow ownership record: ${filePath}`);
 	return parsed as WorkflowWorktreeOwnership;
 }
@@ -146,7 +150,7 @@ async function primaryState(root: string, git: WorkflowGitRunner, requireClean =
 	return { worktree: primary.path, branch: primary.branch, head };
 }
 
-function assertOwned(ownership: WorkflowWorktreeOwnership, root: string, workflow: WorkflowOwner, workflowId: string): void {
+function assertOwned(ownership: WorkflowWorktreeOwnership, root: string, workflow: WorkflowOwner, workflowId: string, planPath?: string): void {
 	if (ownership.repoRoot !== root) throw new Error("workflow ownership belongs to another repository");
 	if (ownership.workflow !== workflow && !(ownership.workflow === "plan-it" && (workflow === "do-it" || workflow === "goal")))
 		throw new Error("workflow worktree is owned by another workflow invocation");
@@ -154,19 +158,23 @@ function assertOwned(ownership: WorkflowWorktreeOwnership, root: string, workflo
 		throw new Error("workflow worktree is outside repository-root .worktrees");
 	if (ownership.workflow === workflow && ownership.workflowId !== workflowId)
 		throw new Error("workflow worktree is owned by another invocation");
+	if (ownership.planPath && planPath && ownership.planPath !== planPath)
+		throw new Error("workflow ownership plan path does not match the requested canonical plan");
 }
 
-export async function ensureWorkflowWorktree(input: { cwd: string; workflow: WorkflowOwner; workflowId: string; slug: string; runner: WorkflowGitRunner; allowDirtyPrimary?: boolean }): Promise<WorkflowWorktree> {
+export async function ensureWorkflowWorktree(input: { cwd: string; workflow: WorkflowOwner; workflowId: string; slug: string; planPath?: string; runner: WorkflowGitRunner; allowDirtyPrimary?: boolean }): Promise<WorkflowWorktree> {
 	const root = await resolveWorkflowRepoRoot(input.cwd, input.runner);
 	const slug = assertSafeSlug(input.slug);
 	const metadataPath = ownershipPath(root, slug);
 	const existing = readOwnership(metadataPath);
 	if (existing) {
-		assertOwned(existing, root, input.workflow, input.workflowId);
+		assertOwned(existing, root, input.workflow, input.workflowId, input.planPath);
 		if (!fs.existsSync(existing.worktree)) throw new Error("owned workflow worktree is missing; preserve the ownership record for recovery");
 		const listed = await listWorktrees(root, input.runner);
 		if (!listed.some((entry) => normalize(entry.path) === normalize(existing.worktree))) throw new Error("owned workflow worktree is not registered with Git");
-		const transferred = existing.workflow === input.workflow && existing.workflowId === input.workflowId ? existing : { ...existing, workflow: input.workflow, workflowId: input.workflowId, updatedAt: new Date().toISOString() };
+		const transferred = existing.workflow === input.workflow && existing.workflowId === input.workflowId && (!input.planPath || existing.planPath === input.planPath)
+			? existing
+			: { ...existing, workflow: input.workflow, workflowId: input.workflowId, ...(input.planPath ? { planPath: input.planPath } : {}), updatedAt: new Date().toISOString() };
 		if (transferred !== existing) writeOwnership(metadataPath, transferred);
 		return { ownership: transferred, resumed: true };
 	}
@@ -177,7 +185,7 @@ export async function ensureWorkflowWorktree(input: { cwd: string; workflow: Wor
 	const added = await input.runner(primary.worktree, ["worktree", "add", "-b", branch, worktree, primary.branch]);
 	if (added.code !== 0) throw new Error(`create workflow worktree: ${added.stderr.trim() || added.stdout.trim()}`);
 	const now = new Date().toISOString();
-	const ownership: WorkflowWorktreeOwnership = { version: 1, workflow: input.workflow, workflowId: input.workflowId, repoRoot: root, primaryWorktree: primary.worktree, primaryBranch: primary.branch, initialPrimaryHead: primary.head, branch, worktree: normalize(worktree), createdAt: now, updatedAt: now, state: "active" };
+	const ownership: WorkflowWorktreeOwnership = { version: 1, workflow: input.workflow, workflowId: input.workflowId, repoRoot: root, primaryWorktree: primary.worktree, primaryBranch: primary.branch, initialPrimaryHead: primary.head, branch, worktree: normalize(worktree), createdAt: now, updatedAt: now, state: "active", ...(input.planPath ? { planPath: input.planPath } : {}) };
 	writeOwnership(metadataPath, ownership);
 	return { ownership, resumed: false };
 }
@@ -189,14 +197,17 @@ export async function materializePlanInWorkflowWorktree(input: {
 	planPath: string;
 	runner: WorkflowGitRunner;
 }): Promise<PlanMaterialization> {
-	const slug = workflowSlugFromPlan(input.planPath);
+	const planPath = input.planPath.replace(/^@/, "").replace(/\\/g, "/");
+	const slug = workflowSlugFromPlan(planPath);
 	if (slug === "workflow" || path.basename(input.worktree.ownership.worktree) !== slug)
 		throw new Error("plan path does not match the owned workflow worktree");
-	const relativeSpecDir = path.posix.dirname(input.planPath.replace(/\\/g, "/"));
+	if (input.worktree.ownership.planPath && input.worktree.ownership.planPath !== planPath)
+		throw new Error("plan path does not match the owned canonical plan");
+	const relativeSpecDir = path.posix.dirname(planPath);
 	const sourceDir = path.join(input.worktree.ownership.primaryWorktree, relativeSpecDir);
-	const sourcePlan = path.join(input.worktree.ownership.primaryWorktree, input.planPath);
+	const sourcePlan = path.join(input.worktree.ownership.primaryWorktree, planPath);
 	const targetDir = path.join(input.worktree.ownership.worktree, relativeSpecDir);
-	const targetPlan = path.join(input.worktree.ownership.worktree, input.planPath);
+	const targetPlan = path.join(input.worktree.ownership.worktree, planPath);
 	if (!fs.existsSync(sourcePlan)) {
 		if (fs.existsSync(targetPlan)) return "resumed";
 		throw new Error(`canonical plan does not exist in the primary repository: ${input.planPath}`);
@@ -232,7 +243,7 @@ export async function materializePlanInWorkflowWorktree(input: {
 			throw new Error("clean tracked plan is missing from the implementation worktree");
 		return "tracked";
 	}
-	const normalizedPlanPath = input.planPath.replace(/\\/g, "/");
+	const normalizedPlanPath = planPath;
 	const modifiedPlanOnly = entries.length === 1
 		&& entries[0].startsWith("M ")
 		&& entries[0].slice(2).replace(/\\/g, "/") === normalizedPlanPath;
@@ -264,42 +275,91 @@ export async function materializePlanInWorkflowWorktree(input: {
 	return "transferred";
 }
 
+function removeOwnedResidualWorktree(ownership: WorkflowWorktreeOwnership): void {
+	const residual = path.resolve(ownership.worktree);
+	const expected = path.resolve(ownership.repoRoot, ".worktrees", path.basename(residual));
+	if (normalize(residual) !== normalize(expected))
+		throw new Error("workflow worktree residual is outside repository-root .worktrees");
+	if (!fs.existsSync(residual)) return;
+	const stat = fs.lstatSync(residual);
+	if (!stat.isDirectory() || stat.isSymbolicLink())
+		throw new Error("workflow worktree residual is not a removable owned directory");
+	const removablePath = process.platform === "win32" ? path.toNamespacedPath(residual) : residual;
+	fs.rmSync(removablePath, { recursive: true, force: true });
+	if (fs.existsSync(residual))
+		throw new Error("remove workflow worktree residual directory failed");
+}
+
 export async function closeWorkflowWorktree(input: { worktree: WorkflowWorktree; planPath?: string; archivePlan?: (cwd: string, planPath: string) => Promise<void> | void; runner: WorkflowGitRunner }): Promise<WorkflowWorktreeOwnership> {
-	const ownership = input.worktree.ownership;
-	if (ownership.state !== "active") throw new Error("workflow worktree is already complete");
-	const worktreeStatus = await input.runner(ownership.worktree, ["status", "--porcelain=v1"]);
-	if (worktreeStatus.code !== 0) throw new Error(`inspect workflow worktree: ${worktreeStatus.stderr.trim()}`);
-	const unmerged = await input.runner(ownership.worktree, ["diff", "--name-only", "--diff-filter=U"]);
-	if (unmerged.code !== 0 || unmerged.stdout.trim()) throw new Error("workflow worktree has unmerged paths; recovery worktree preserved");
-	if (input.planPath) {
+	const original = input.worktree.ownership;
+	if (original.state !== "active") throw new Error("workflow worktree is already complete");
+	const planPath = input.planPath?.replace(/^@/, "").replace(/\\/g, "/");
+	if (original.planPath && planPath && original.planPath !== planPath)
+		throw new Error("workflow closeout plan path does not match ownership");
+	let ownership: WorkflowWorktreeOwnership = planPath && !original.planPath
+		? { ...original, planPath }
+		: original;
+	const metadata = ownershipPath(ownership.repoRoot, path.basename(ownership.worktree));
+	const stage = ownership.closeoutStage ?? "active";
+	if (planPath && stage === "active") {
 		if (!input.archivePlan) throw new Error("archivePlan is required for plan closeout");
-		await input.archivePlan(ownership.worktree, input.planPath);
+		const slug = workflowSlugFromPlan(planPath);
+		const sourcePlan = path.join(ownership.worktree, planPath);
+		const archivePlan = path.join(ownership.worktree, ".specs", "archive", slug, "plan.md");
+		if (fs.existsSync(sourcePlan)) await input.archivePlan(ownership.worktree, planPath);
+		else if (!fs.existsSync(archivePlan)) throw new Error("workflow plan is missing before archival; recovery worktree preserved");
+		ownership = { ...ownership, planPath, closeoutStage: "archived", updatedAt: new Date().toISOString() };
+		writeOwnership(metadata, ownership);
 	}
-	const finalStatus = await input.runner(ownership.worktree, ["status", "--porcelain=v1"]);
-	if (finalStatus.code !== 0) throw new Error(`inspect workflow artifacts: ${finalStatus.stderr.trim()}`);
-	if (finalStatus.stdout.trim()) {
-		const checked = await input.runner(ownership.worktree, ["diff", "--check"]);
-		if (checked.code !== 0) throw new Error(`workflow diff check failed: ${checked.stderr.trim() || checked.stdout.trim()}`);
-		for (const args of [["add", "-A"], ["commit", "-m", `chore(workflow): close ${ownership.workflowId}`]] as string[][]) {
-			const result = await input.runner(ownership.worktree, args);
-			if (result.code !== 0) throw new Error(`${args[0]} workflow closeout: ${result.stderr.trim() || result.stdout.trim()}`);
+	if (stage === "active" || stage === "archived") {
+		if (!fs.existsSync(ownership.worktree)) throw new Error("workflow worktree is missing; preserve the ownership record for recovery");
+		const worktreeStatus = await input.runner(ownership.worktree, ["status", "--porcelain=v1"]);
+		if (worktreeStatus.code !== 0) throw new Error(`inspect workflow worktree: ${worktreeStatus.stderr.trim()}`);
+		const unmerged = await input.runner(ownership.worktree, ["diff", "--name-only", "--diff-filter=U"]);
+		if (unmerged.code !== 0 || unmerged.stdout.trim()) throw new Error("workflow worktree has unmerged paths; recovery worktree preserved");
+		if (worktreeStatus.stdout.trim()) {
+			const checked = await input.runner(ownership.worktree, ["diff", "--check"]);
+			if (checked.code !== 0) throw new Error(`workflow diff check failed: ${checked.stderr.trim() || checked.stdout.trim()}`);
+			for (const args of [["add", "-A"], ["commit", "-m", `chore(workflow): close ${ownership.workflowId}`]] as string[][]) {
+				const result = await input.runner(ownership.worktree, args);
+				if (result.code !== 0) throw new Error(`${args[0]} workflow closeout: ${result.stderr.trim() || result.stdout.trim()}`);
+			}
 		}
+		ownership = { ...ownership, closeoutStage: "committed", updatedAt: new Date().toISOString() };
+		writeOwnership(metadata, ownership);
 	}
 	const primary = await primaryState(ownership.primaryWorktree, input.runner);
 	if (primary.branch !== ownership.primaryBranch) throw new Error("primary branch changed; recovery worktree preserved");
-	const merged = await input.runner(primary.worktree, ["merge", "--no-ff", ownership.branch, "-m", `Merge ${ownership.branch}`]);
-	if (merged.code !== 0) throw new Error(`merge workflow branch failed; recovery worktree preserved: ${merged.stderr.trim() || merged.stdout.trim()}`);
-	const ancestor = await input.runner(primary.worktree, ["merge-base", "--is-ancestor", ownership.branch, "HEAD"]);
-	if (ancestor.code !== 0) throw new Error("merged HEAD does not contain the workflow branch; recovery worktree preserved");
-	const mergedHead = parseLine(await input.runner(primary.worktree, ["rev-parse", "HEAD"]), "verify merged HEAD");
-	const updated: WorkflowWorktreeOwnership = { ...ownership, updatedAt: new Date().toISOString(), state: "complete", mergedHead };
-	writeOwnership(ownershipPath(ownership.repoRoot, path.basename(ownership.worktree)), updated);
-	const removed = await input.runner(primary.worktree, ["worktree", "remove", ownership.worktree]);
-	if (removed.code !== 0) throw new Error(`remove workflow worktree after merge: ${removed.stderr.trim()}`);
-	const deleted = await input.runner(primary.worktree, ["branch", "-d", ownership.branch]);
-	if (deleted.code !== 0) throw new Error(`remove workflow branch after merge: ${deleted.stderr.trim()}`);
-	fs.unlinkSync(ownershipPath(ownership.repoRoot, path.basename(ownership.worktree)));
-	return updated;
+	let mergedHead = ownership.mergedHead;
+	if ((ownership.closeoutStage ?? "active") !== "merged") {
+		const ancestor = await input.runner(primary.worktree, ["merge-base", "--is-ancestor", ownership.branch, "HEAD"]);
+		if (ancestor.code !== 0) {
+			const merged = await input.runner(primary.worktree, ["merge", "--no-ff", ownership.branch, "-m", `Merge ${ownership.branch}`]);
+			if (merged.code !== 0) throw new Error(`merge workflow branch failed; recovery worktree preserved: ${merged.stderr.trim() || merged.stdout.trim()}`);
+		}
+		const verified = await input.runner(primary.worktree, ["merge-base", "--is-ancestor", ownership.branch, "HEAD"]);
+		if (verified.code !== 0) throw new Error("merged HEAD does not contain the workflow branch; recovery worktree preserved");
+		mergedHead = parseLine(await input.runner(primary.worktree, ["rev-parse", "HEAD"]), "verify merged HEAD");
+		ownership = { ...ownership, closeoutStage: "merged", mergedHead, updatedAt: new Date().toISOString() };
+		writeOwnership(metadata, ownership);
+	}
+	let listed = await listWorktrees(primary.worktree, input.runner);
+	if (listed.some((entry) => normalize(entry.path) === normalize(ownership.worktree))) {
+		const removed = await input.runner(primary.worktree, ["worktree", "remove", ownership.worktree]);
+		listed = await listWorktrees(primary.worktree, input.runner);
+		if (listed.some((entry) => normalize(entry.path) === normalize(ownership.worktree)))
+			throw new Error(`remove workflow worktree after merge: ${removed.stderr.trim() || removed.stdout.trim() || "worktree remains registered"}`);
+	}
+	removeOwnedResidualWorktree(ownership);
+	const branch = await input.runner(primary.worktree, ["show-ref", "--verify", "--quiet", `refs/heads/${ownership.branch}`]);
+	if (branch.code === 0) {
+		const deleted = await input.runner(primary.worktree, ["branch", "-d", ownership.branch]);
+		if (deleted.code !== 0) throw new Error(`remove workflow branch after merge: ${deleted.stderr.trim() || deleted.stdout.trim()}`);
+	} else if (branch.code !== 1) {
+		throw new Error(`inspect workflow branch after merge: ${branch.stderr.trim() || branch.stdout.trim()}`);
+	}
+	fs.rmSync(metadata, { force: true });
+	return { ...ownership, state: "complete", mergedHead };
 }
 
 export function workflowSlugFromPlan(planPath: string): string {

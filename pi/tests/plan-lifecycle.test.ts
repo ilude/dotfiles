@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	canonicalPlanPathFromInput,
 	createPlanLifecycleSnapshot,
 	transitionPlanLifecycle,
 	validatePlanContract,
@@ -77,6 +78,14 @@ function reviewedDraft() {
 }
 
 describe("plan lifecycle", () => {
+	it("accepts only a canonical path with optional leading @ and bounded punctuation", () => {
+		expect(canonicalPlanPathFromInput("@.specs/workflow-fixture/plan.md.")).toBe(".specs/workflow-fixture/plan.md");
+		expect(canonicalPlanPathFromInput(".specs/workflow-fixture/plan.md!  ")).toBe(".specs/workflow-fixture/plan.md");
+		expect(canonicalPlanPathFromInput("please execute .specs/workflow-fixture/plan.md!")).toBeUndefined();
+		expect(canonicalPlanPathFromInput("@.specs/workflow-fixture/plan.md extra")).toBeUndefined();
+		expect(canonicalPlanPathFromInput("@.specs/workflow-fixture/plan.md.....")).toBeUndefined();
+	});
+
 	it("requires multiple subject-matter reviews followed by one subtractive review", () => {
 		let state = createPlanLifecycleSnapshot("invocation", "example");
 		state = transitionPlanLifecycle(state, {

@@ -388,6 +388,36 @@ describe("workflow slash command dispatch", () => {
 		);
 	});
 
+	it("/do-it canonicalizes trailing punctuation before ownership and validation", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(path.join(fixture.root, fixture.planPath), readyPlan(fixture.planPath), "utf8");
+		mockPi.setActiveTools([]);
+
+		await getHandler(mockPi, "do-it")(`${fixture.planPath}.`, { cwd: fixture.root });
+
+		expect(worktrees.ensureWorkflowWorktree).toHaveBeenCalledWith(expect.objectContaining({
+			planPath: fixture.planPath,
+		}));
+		expect(mockPi.getActiveTools()).toEqual(["plan_archive"]);
+	});
+
+	it("/do-it keeps prose containing a plan path on the raw route", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		mockPi.setActiveTools([]);
+
+		await getHandler(mockPi, "do-it")("please execute .specs/workflow-fixture/plan.md!", { cwd: "/repo" });
+
+		expect(worktrees.ensureWorkflowWorktree).toHaveBeenCalledWith(expect.objectContaining({ planPath: undefined }));
+		expect(mockPi.getActiveTools()).toEqual(["workflow_complete"]);
+	});
+
 	it("/do-it keeps raw task dispatch unchanged", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
