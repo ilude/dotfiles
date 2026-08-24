@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { closeWorkflowWorktree, ensureWorkflowWorktree, parseWorktreeListPorcelain } from "../lib/workflow-worktree.js";
+import { closeWorkflowWorktree, ensureWorkflowWorktree, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain } from "../lib/workflow-worktree.js";
 
 const roots: string[] = [];
 
@@ -79,6 +79,47 @@ describe("workflow worktree lifecycle", () => {
 		const root = repo();
 		fs.writeFileSync(path.join(root, "dirty.txt"), "keep\n");
 		await expect(ensureWorkflowWorktree({ cwd: root, workflow, workflowId: `${workflow}:fixture`, slug: "fixture", runner })).rejects.toThrow(/primary worktree is dirty/);
+	});
+
+	it("transfers an untracked canonical spec while preserving unrelated primary changes", async () => {
+		const root = repo();
+		const planPath = ".specs/fixture/plan.md";
+		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });
+		fs.writeFileSync(path.join(root, planPath), "plan\n");
+		fs.writeFileSync(path.join(root, "unrelated.txt"), "keep\n");
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner, allowDirtyPrimary: true });
+		expect(await materializePlanInWorkflowWorktree({ worktree, planPath, runner })).toBe("transferred");
+		expect(fs.existsSync(path.join(root, planPath))).toBe(false);
+		expect(fs.readFileSync(path.join(worktree.ownership.worktree, planPath), "utf8")).toBe("plan\n");
+		expect(fs.readFileSync(path.join(root, "unrelated.txt"), "utf8")).toBe("keep\n");
+	});
+
+	it("copies an ignored canonical spec without removing or tracking the primary copy", async () => {
+		const root = repo();
+		fs.writeFileSync(path.join(root, ".gitignore"), ".specs/\n");
+		git(root, ["add", ".gitignore"]);
+		git(root, ["commit", "-q", "-m", "test: ignore specs"]);
+		const planPath = ".specs/fixture/plan.md";
+		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });
+		fs.writeFileSync(path.join(root, planPath), "ignored plan\n");
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner, allowDirtyPrimary: true });
+		expect(await materializePlanInWorkflowWorktree({ worktree, planPath, runner })).toBe("ignored");
+		expect(fs.readFileSync(path.join(root, planPath), "utf8")).toBe("ignored plan\n");
+		expect(fs.readFileSync(path.join(worktree.ownership.worktree, planPath), "utf8")).toBe("ignored plan\n");
+		expect(git(root, ["status", "--porcelain=v1", "--", ".specs"])).toBe("");
+	});
+
+	it("rejects modified tracked plan state without removing the source", async () => {
+		const root = repo();
+		const planPath = ".specs/fixture/plan.md";
+		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });
+		fs.writeFileSync(path.join(root, planPath), "tracked\n");
+		git(root, ["add", planPath]);
+		git(root, ["commit", "-q", "-m", "test: track plan"]);
+		fs.writeFileSync(path.join(root, planPath), "modified\n");
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner, allowDirtyPrimary: true });
+		await expect(materializePlanInWorkflowWorktree({ worktree, planPath, runner })).rejects.toThrow(/tracked or mixed changes/);
+		expect(fs.readFileSync(path.join(root, planPath), "utf8")).toBe("modified\n");
 	});
 
 	it("merges with --no-ff when the clean primary branch advances", async () => {

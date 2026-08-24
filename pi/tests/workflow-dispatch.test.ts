@@ -48,6 +48,8 @@ vi.mock("../lib/workflow-worktree", () => ({
 		},
 	})),
 	closeWorkflowWorktree: vi.fn(),
+	materializePlanInWorkflowWorktree: vi.fn(async () => "transferred"),
+	resolveWorkflowRepoRoot: vi.fn(async (cwd: string) => cwd),
 	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
 	readWorkflowOwnershipRecord: vi.fn(() => undefined),
 	workflowSlugFromPlan: (value: string) => value.match(/\.specs\/([^/]+)\/plan\.md/)?.[1] ?? "workflow",
@@ -151,12 +153,14 @@ describe("workflow slash command dispatch", () => {
 		expect(mockPi._commands.map((command) => command.name)).not.toContain("review-it");
 	});
 
-	it("/plan-it sends its hidden workflow prompt as a follow-up turn", async () => {
+	it("/plan-it sends its hidden workflow prompt as a follow-up turn without creating a worktree", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const root = path.resolve("/repo");
 
-		await getHandler(mockPi, "plan-it")("build the thing", {});
+		await getHandler(mockPi, "plan-it")("build the thing", { cwd: root });
 
 		expect(mockPi.sendMessage).toHaveBeenCalledWith({
 			customType: "slash-echo",
@@ -167,6 +171,10 @@ describe("workflow slash command dispatch", () => {
 			([message]) => message.customType === "workflow.hiddenPrompt",
 		);
 		expect(hiddenPromptCall?.[0].content).toContain("build the thing");
+		expect(hiddenPromptCall?.[0].content).toContain("PRIMARY REPOSITORY (mandatory)");
+		expect(hiddenPromptCall?.[0].content).toContain("<meaningful-slug>");
+		expect(hiddenPromptCall?.[0].content).not.toMatch(/plan-[a-f0-9]{8}/);
+		expect(worktrees.ensureWorkflowWorktree).not.toHaveBeenCalled();
 		expect(hiddenPromptCall?.[1]).toEqual({
 			triggerTurn: true,
 			deliverAs: "followUp",
@@ -176,6 +184,20 @@ describe("workflow slash command dispatch", () => {
 			"workflow.plan-lifecycle",
 			expect.objectContaining({ stage: "started", request: "build the thing" }),
 		);
+	});
+
+	it("bare /plan-it derives its plan name in the planning turn", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		await getHandler(mockPi, "plan-it")("", { cwd: path.resolve("/repo") });
+		const hiddenPromptCall = mockPi.sendMessage.mock.calls.find(
+			([message]) => message.customType === "workflow.hiddenPrompt",
+		);
+		expect(hiddenPromptCall?.[0].content).toContain("conversation context");
+		expect(hiddenPromptCall?.[0].content).toContain("never use an invocation ID");
+		expect(worktrees.ensureWorkflowWorktree).not.toHaveBeenCalled();
 	});
 
 	it("restores and completes the compact plan lifecycle from session entries", async () => {

@@ -85,8 +85,10 @@ import {
 	type WorkflowWorktree,
 	closeWorkflowWorktree,
 	ensureWorkflowWorktree,
+	materializePlanInWorkflowWorktree,
 	readWorkflowOwnershipForWorktree,
 	readWorkflowOwnershipRecord,
+	resolveWorkflowRepoRoot,
 	workflowSlugFromPlan,
 	workflowSlugFromRequest,
 } from "../lib/workflow-worktree";
@@ -2407,7 +2409,7 @@ export default function (pi: ExtensionAPI) {
 		return { code: result.code, stdout: result.stdout, stderr: result.stderr };
 	};
 	let activePlanLifecycle: PlanLifecycleSnapshot | undefined;
-	let activePlanningWorktree: WorkflowWorktree | undefined;
+	let activePlanningRoot: string | undefined;
 	let activeRawWorkflow: WorkflowWorktree | undefined;
 
 	const persistPlanLifecycle = async (
@@ -2488,17 +2490,11 @@ export default function (pi: ExtensionAPI) {
 			if (!activePlanLifecycle)
 				throw new Error("No active /plan-it lifecycle exists in this session.");
 			const input = planProgressInput(params as PlanProgressParams);
-			if (input.action === "draft" && input.planPath && activePlanningWorktree) {
-				const expectedSlug = path.basename(activePlanningWorktree.ownership.worktree);
-				if (workflowSlugFromPlan(input.planPath) !== expectedSlug)
-					throw new Error(`Plan path must be .specs/${expectedSlug}/plan.md for the owned workflow worktree.`);
-			}
 			if (input.action === "ready") {
 				const planPath = activePlanLifecycle.planPath;
 				if (!planPath) throw new Error("The active lifecycle has no plan path.");
-				const slug = workflowSlugFromPlan(planPath);
-				const ownership = readWorkflowOwnershipRecord(ctx.cwd, slug);
-				const validation = validatePlanFile(ownership?.worktree ?? ctx.cwd, planPath);
+				const planningRoot = activePlanningRoot ?? await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
+				const validation = validatePlanFile(planningRoot, planPath);
 				if (!validation.valid)
 					throw new Error(
 						`Plan contract validation failed: ${validation.errors.join(" ")}`,
@@ -2571,16 +2567,32 @@ export default function (pi: ExtensionAPI) {
 				const ownership = readWorkflowOwnershipRecord(ctx.cwd, slug);
 				if (!ownership || ownership.state !== "active")
 					throw new Error("Plan closeout requires its active owned workflow worktree.");
+				const primarySourceDir = path.join(ownership.primaryWorktree, ".specs", slug);
+				const primarySourcePlan = path.join(primarySourceDir, "plan.md");
+				const ignoredCheck = await workflowRunner(ownership.primaryWorktree, ["check-ignore", "-q", "--", params.path]);
+				const ignoredLocalPlan = ignoredCheck.code === 0 && fs.existsSync(primarySourcePlan);
+				if (ignoredCheck.code !== 0 && ignoredCheck.code !== 1)
+					throw new Error(`inspect plan ignore policy: ${ignoredCheck.stderr.trim() || ignoredCheck.stdout.trim()}`);
+				const archivedPlan = `.specs/archive/${slug}/plan.md`;
 				const archived = {
 					sourcePlan: params.path,
-					archivedPlan: `.specs/archive/${slug}/plan.md`,
+					archivedPlan,
 					...(await closeWorkflowWorktree({
 						worktree: { ownership, resumed: true },
 						planPath: params.path,
-						archivePlan: (cwd, planPath) => { archiveCompletedPlan(cwd, planPath); },
+						archivePlan: (cwd, planPath) => {
+							archiveCompletedPlan(cwd, planPath);
+							if (ignoredLocalPlan) {
+								const worktreeArchiveDir = path.join(cwd, ".specs", "archive", slug);
+								const primaryArchiveDir = path.join(ownership.primaryWorktree, ".specs", "archive", slug);
+								fs.mkdirSync(path.dirname(primaryArchiveDir), { recursive: true });
+								fs.cpSync(worktreeArchiveDir, primaryArchiveDir, { recursive: true, force: true });
+							}
+						},
 						runner: workflowRunner,
 					})),
 				};
+				if (ignoredLocalPlan) fs.rmSync(primarySourceDir, { recursive: true });
 				deactivateTools(pi, ["plan_archive"]);
 				return {
 					content: [
@@ -2783,25 +2795,14 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("plan-it", {
 		description:
-			"Create or resume one owned workflow worktree and crystallize an executable plan",
+			"Crystallize an executable plan in the primary repository",
 		handler: async (args, ctx) => {
 			const lifecycle = createPlanLifecycleSnapshot(randomUUID(), args);
 			let workspaceDirective = "";
 			if (ctx.cwd) {
 				try {
-					const requestedSlug = workflowSlugFromPlan(args);
-					const slug = requestedSlug === "workflow"
-						? (args.trim() ? workflowSlugFromRequest(args) : `plan-${lifecycle.invocationId.slice(0, 8)}`)
-						: requestedSlug;
-					const worktree = await ensureWorkflowWorktree({
-						cwd: ctx.cwd,
-						workflow: "plan-it",
-						workflowId: `plan-it:${slug}`,
-						slug,
-						runner: workflowRunner,
-					});
-					activePlanningWorktree = worktree;
-					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${worktree.ownership.worktree}\nWrite the canonical plan only at ${path.join(worktree.ownership.worktree, ".specs", slug, "plan.md")}. All plan files and subsequent modifications must use this worktree. Do not modify the primary worktree.`;
+					activePlanningRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
+					workspaceDirective = `\n\nPRIMARY REPOSITORY (mandatory): ${activePlanningRoot}\nWrite the canonical plan directly under ${path.join(activePlanningRoot, ".specs", "<meaningful-slug>", "plan.md")}. Choose a concise kebab-case slug from the requested outcome and conversation context; never use an invocation ID or generic plan name. Do not create a planning worktree. The plan must require /do-it to perform implementation, validation, archive, commit, and merge in its owned worktree.`;
 				} catch (error) {
 					ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
 					return;
@@ -2872,48 +2873,52 @@ export default function (pi: ExtensionAPI) {
 		description: "Execute work in one owned workflow worktree with proportional validation",
 		handler: async (args, ctx) => {
 			const planPath = args.trim().replace(/^@/, "");
+			const canonicalPlan = /^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(planPath);
 			let workspaceDirective = "";
 			let ownedWorkspace = ctx.cwd;
 			let ownedWorktree: WorkflowWorktree | undefined;
 			if (ctx.cwd) {
 				try {
+					const primaryRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
+					if (canonicalPlan) {
+						const sourceValidation = validatePlanFile(primaryRoot, planPath, "execution-preflight");
+						if (!sourceValidation.valid) {
+							const diagnostics = sourceValidation.errors.join("\n");
+							const message = `Plan preflight failed for ${planPath}:\n${diagnostics}`;
+							pi.sendMessage({
+								customType: PLAN_PREFLIGHT_MESSAGE_TYPE,
+								content: message.length <= MAX_PLAN_PREFLIGHT_CHARS
+									? message
+									: `${message.slice(0, MAX_PLAN_PREFLIGHT_CHARS - 22)}\n... details truncated`,
+								display: true,
+							});
+							echoSlashCommand(pi, "do-it", args);
+							return;
+						}
+					}
 					const planSlug = workflowSlugFromPlan(planPath);
 					const slug = planSlug === "workflow" ? workflowSlugFromRequest(planPath) : planSlug;
 					const worktree = await ensureWorkflowWorktree({
-						cwd: ctx.cwd,
+						cwd: primaryRoot,
 						workflow: "do-it",
 						workflowId: `do-it:${slug}`,
 						slug,
 						runner: workflowRunner,
+						allowDirtyPrimary: canonicalPlan,
 					});
+					if (canonicalPlan)
+						await materializePlanInWorkflowWorktree({ worktree, planPath, runner: workflowRunner });
 					ownedWorktree = worktree;
 					ownedWorkspace = worktree.ownership.worktree;
-					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${worktree.ownership.worktree}\nConfine every read, write, validation, archive, and commit operation to this worktree. Preserve it for recovery on any dirty, unmerged, or conflict state.`;
+					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${worktree.ownership.worktree}\nConfine every implementation read, write, validation, archive, and commit operation to this worktree. Preserve it for recovery on any dirty, unmerged, or conflict state.`;
 				} catch (error) {
 					ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
 					return;
 				}
 			}
-			if (/^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(planPath)) {
-				const validation = validatePlanFile(
-					ownedWorkspace,
-					planPath,
-					"execution-preflight",
-				);
-				if (!validation.valid) {
-					const diagnostics = validation.errors.join("\n");
-					const message = `Plan preflight failed for ${planPath}:\n${diagnostics}`;
-					pi.sendMessage({
-						customType: PLAN_PREFLIGHT_MESSAGE_TYPE,
-						content:
-							message.length <= MAX_PLAN_PREFLIGHT_CHARS
-								? message
-								: `${message.slice(0, MAX_PLAN_PREFLIGHT_CHARS - 22)}\n... details truncated`,
-						display: true,
-					});
-					echoSlashCommand(pi, "do-it", args);
-					return;
-				}
+			if (canonicalPlan) {
+				const validation = validatePlanFile(ownedWorkspace, planPath, "execution-preflight");
+				if (!validation.valid) throw new Error(`Materialized plan failed validation: ${validation.errors.join(" ")}`);
 				activateTools(pi, ["plan_archive"]);
 			} else if (ownedWorktree) {
 				activeRawWorkflow = ownedWorktree;

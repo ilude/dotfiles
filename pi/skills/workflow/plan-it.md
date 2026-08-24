@@ -1,6 +1,6 @@
 # Plan an Executable Change
 
-Turn `$ARGUMENTS` and relevant conversation context into `.specs/{slug}/plan.md` inside the one owned workflow worktree. Do not implement the plan. Use the latest stated goal and constraints as authoritative.
+Turn `$ARGUMENTS` and relevant conversation context into `.specs/{slug}/plan.md` in the primary repository. Do not implement the plan. Use the latest stated goal and constraints as authoritative.
 
 ## Method
 
@@ -10,7 +10,7 @@ Create the smallest complete plan using the existing mechanism. Preserve supplie
 
 ## Lifecycle
 
-The command owns exactly one branch/worktree beneath repository-root `.worktrees/`. Create it before writing the plan, record its ownership, and resume that same record on continuation. All reads, writes, plan artifacts, and validation must target that worktree. Unrelated tracked or untracked changes in the primary worktree do not block `/plan-it` and must remain untouched. Unmerged or conflicting state stops the workflow and preserves the recovery worktree.
+The command writes the plan directly under the primary repository's `.specs/` directory and does not create a planning branch or worktree. Choose a concise kebab-case slug from the requested outcome and conversation context; never use an invocation ID or a generic `plan-*` fallback. Unrelated tracked or untracked primary changes do not block `/plan-it` and must remain untouched. The plan must require `/do-it` to create and own the implementation worktree before implementation begins.
 
 Use `plan_progress` for this invocation. Persisted lifecycle stages are only `started`, `draft`, `blocked`, and `ready`.
 
@@ -43,7 +43,7 @@ Use one checkbox list with 1-3 tasks. Each task names affected files or targets,
 
 Include only context, boundaries, assumptions, safety, current status, or blockers that change execution. For shared or live state, name the target, stop condition, and concise rollback required by active instructions.
 
-Every canonical plan retains incomplete work at `.specs/{slug}/plan.md` in the owned worktree and requires `/do-it` to archive the entire completed spec directory to `.specs/archive/{slug}/`, commit the workflow branch, merge it with `--no-ff` into the primary branch, verify merged HEAD, then remove only the owned worktree and branch. Any dirty, unmerged, or conflict state preserves the recovery worktree.
+Every canonical plan retains incomplete work at primary `.specs/{slug}/plan.md`. It requires `/do-it` to materialize the spec in its owned implementation worktree, archive the completed spec to `.specs/archive/{slug}/`, commit the workflow branch, merge it with `--no-ff` into the primary branch, verify merged HEAD, then remove only the owned worktree and branch. Ignored specs remain untracked and return to the primary local archive after a successful merge; no workflow may force-add an ignored plan. Any dirty, unmerged, or conflict state preserves the implementation worktree and recoverable plan.
 
 ## Report
 

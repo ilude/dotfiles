@@ -76,7 +76,7 @@ function readOwnership(filePath: string): WorkflowWorktreeOwnership | undefined 
 	return parsed as WorkflowWorktreeOwnership;
 }
 
-async function repoRoot(cwd: string, git: WorkflowGitRunner): Promise<string> {
+export async function resolveWorkflowRepoRoot(cwd: string, git: WorkflowGitRunner): Promise<string> {
 	const commonDir = path.resolve(cwd, parseLine(await git(cwd, ["rev-parse", "--git-common-dir"]), "resolve common Git directory"));
 	if (path.basename(commonDir) !== ".git") throw new Error("workflow worktrees require a non-bare Git repository");
 	return normalize(path.dirname(commonDir));
@@ -156,8 +156,8 @@ function assertOwned(ownership: WorkflowWorktreeOwnership, root: string, workflo
 		throw new Error("workflow worktree is owned by another invocation");
 }
 
-export async function ensureWorkflowWorktree(input: { cwd: string; workflow: WorkflowOwner; workflowId: string; slug: string; runner: WorkflowGitRunner }): Promise<WorkflowWorktree> {
-	const root = await repoRoot(input.cwd, input.runner);
+export async function ensureWorkflowWorktree(input: { cwd: string; workflow: WorkflowOwner; workflowId: string; slug: string; runner: WorkflowGitRunner; allowDirtyPrimary?: boolean }): Promise<WorkflowWorktree> {
+	const root = await resolveWorkflowRepoRoot(input.cwd, input.runner);
 	const slug = assertSafeSlug(input.slug);
 	const metadataPath = ownershipPath(root, slug);
 	const existing = readOwnership(metadataPath);
@@ -170,7 +170,7 @@ export async function ensureWorkflowWorktree(input: { cwd: string; workflow: Wor
 		if (transferred !== existing) writeOwnership(metadataPath, transferred);
 		return { ownership: transferred, resumed: true };
 	}
-	const primary = await primaryState(root, input.runner, input.workflow !== "plan-it");
+	const primary = await primaryState(root, input.runner, input.workflow !== "plan-it" && !input.allowDirtyPrimary);
 	const worktree = path.join(root, ".worktrees", slug);
 	const branch = `workflow/${slug}`;
 	if (fs.existsSync(worktree)) throw new Error(`workflow worktree path already exists: ${worktree}`);
@@ -180,6 +180,66 @@ export async function ensureWorkflowWorktree(input: { cwd: string; workflow: Wor
 	const ownership: WorkflowWorktreeOwnership = { version: 1, workflow: input.workflow, workflowId: input.workflowId, repoRoot: root, primaryWorktree: primary.worktree, primaryBranch: primary.branch, initialPrimaryHead: primary.head, branch, worktree: normalize(worktree), createdAt: now, updatedAt: now, state: "active" };
 	writeOwnership(metadataPath, ownership);
 	return { ownership, resumed: false };
+}
+
+export type PlanMaterialization = "transferred" | "ignored" | "tracked" | "resumed";
+
+export async function materializePlanInWorkflowWorktree(input: {
+	worktree: WorkflowWorktree;
+	planPath: string;
+	runner: WorkflowGitRunner;
+}): Promise<PlanMaterialization> {
+	const slug = workflowSlugFromPlan(input.planPath);
+	if (slug === "workflow" || path.basename(input.worktree.ownership.worktree) !== slug)
+		throw new Error("plan path does not match the owned workflow worktree");
+	const relativeSpecDir = path.posix.dirname(input.planPath.replace(/\\/g, "/"));
+	const sourceDir = path.join(input.worktree.ownership.primaryWorktree, relativeSpecDir);
+	const sourcePlan = path.join(input.worktree.ownership.primaryWorktree, input.planPath);
+	const targetDir = path.join(input.worktree.ownership.worktree, relativeSpecDir);
+	const targetPlan = path.join(input.worktree.ownership.worktree, input.planPath);
+	if (!fs.existsSync(sourcePlan)) {
+		if (fs.existsSync(targetPlan)) return "resumed";
+		throw new Error(`canonical plan does not exist in the primary repository: ${input.planPath}`);
+	}
+	const ignored = await input.runner(input.worktree.ownership.primaryWorktree, [
+		"check-ignore",
+		"-q",
+		"--",
+		input.planPath,
+	]);
+	if (ignored.code === 0) {
+		if (!fs.existsSync(targetPlan)) {
+			fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+			fs.cpSync(sourceDir, targetDir, { recursive: true, errorOnExist: true, force: false });
+		}
+		if (fs.readFileSync(targetPlan, "utf8") !== fs.readFileSync(sourcePlan, "utf8"))
+			throw new Error("copied ignored plan verification failed; primary spec preserved");
+		return "ignored";
+	}
+	if (ignored.code !== 1)
+		throw new Error(`inspect plan ignore policy: ${ignored.stderr.trim() || ignored.stdout.trim()}`);
+	const status = await input.runner(input.worktree.ownership.primaryWorktree, [
+		"status",
+		"--porcelain=v1",
+		"--",
+		relativeSpecDir,
+	]);
+	if (status.code !== 0)
+		throw new Error(`inspect canonical plan state: ${status.stderr.trim() || status.stdout.trim()}`);
+	const entries = status.stdout.split(/\r?\n/).filter(Boolean);
+	if (entries.length === 0) {
+		if (!fs.existsSync(targetPlan))
+			throw new Error("clean tracked plan is missing from the implementation worktree");
+		return "tracked";
+	}
+	if (!entries.every((entry) => entry.startsWith("?? ")))
+		throw new Error("canonical spec has tracked or mixed changes; commit or restore them before /do-it");
+	fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+	fs.cpSync(sourceDir, targetDir, { recursive: true, errorOnExist: true, force: false });
+	if (!fs.existsSync(targetPlan) || fs.readFileSync(targetPlan, "utf8") !== fs.readFileSync(sourcePlan, "utf8"))
+		throw new Error("copied plan verification failed; primary spec preserved");
+	fs.rmSync(sourceDir, { recursive: true });
+	return "transferred";
 }
 
 export async function closeWorkflowWorktree(input: { worktree: WorkflowWorktree; planPath?: string; archivePlan?: (cwd: string, planPath: string) => Promise<void> | void; runner: WorkflowGitRunner }): Promise<WorkflowWorktreeOwnership> {

@@ -367,7 +367,7 @@ Registers shared skill-backed slash commands:
 
 ```
 /commit        # smart git commit with LLM-adjudicated secret review
-/plan-it       # create or resume one owned worktree and an executable plan
+/plan-it       # write an executable plan in primary .specs/
 /do-it         # execute one owned worktree with proportional validation
 ```
 
@@ -378,7 +378,7 @@ Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`. T
 ```
 
 Workflow highlights:
-- `/plan-it` creates or resumes exactly one owned branch/worktree beneath repository-root `.worktrees/`, writes the canonical plan there, includes correctness review, and ends with a subtractive overengineering/gold-plating/churn gate.
+- `/plan-it` writes the canonical plan directly to primary `.specs/{meaningful-slug}/plan.md`, creates no worktree, includes correctness review, and ends with a subtractive overengineering/gold-plating/churn gate. `/do-it` materializes that spec in its owned implementation worktree; ignored specs are never force-added and return to the primary local archive only after a successful merge.
 - `/do-it` establishes ownership before raw work or canonical-plan execution, confines modifications to the owned worktree, and closes out by archiving artifacts, committing, merging `--no-ff` into the primary branch, verifying merged HEAD, and removing only its owned worktree and branch.
 - `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. The slash workflow and structured commit tools share porcelain-v2 status, preflight, and exact-path staging primitives; each planning pass reuses one status snapshot. Before the parent commit, each dirty direct submodule must be on an attached branch with an upstream, is updated with a fast-forward-only pull, and runs the same commit workflow; `/commit push` pushes each resulting submodule commit before the parent, while `--no-submodules` leaves dirty submodule worktrees untouched. Nested submodules are not processed automatically. Ignored files are omitted. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
