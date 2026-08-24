@@ -51,7 +51,7 @@ describe("find-fails command", () => {
 							status: "regression",
 						},
 					],
-					summary: { unchangedSkipped: 4, resolved: 5 },
+					summary: { unchangedSkipped: 4, resolved: 5, expectedSuppressed: 6 },
 				}),
 				stderr: "",
 			});
@@ -81,6 +81,31 @@ describe("find-fails command", () => {
 			"find-fails",
 			undefined,
 		);
+	});
+
+	it("rejects a report without the expected-suppressed summary", async () => {
+		const pi = createMockPi();
+		const ctx = createMockCtx();
+		pi.exec
+			.mockResolvedValueOnce({ code: 0, stdout: "snapshot", stderr: "" })
+			.mockResolvedValueOnce({ code: 0, stdout: "scan", stderr: "" })
+			.mockResolvedValueOnce({
+				code: 0,
+				stdout: JSON.stringify({
+					actionable: [],
+					summary: { unchangedSkipped: 0, resolved: 0 },
+				}),
+				stderr: "",
+			});
+		toolFailureTriageExtension(pi as never);
+
+		await commandHandler(pi)("", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Tool-failure scan failed: tool-failure report returned an invalid result",
+			"error",
+		);
+		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
 	it("reports a bounded failure and does not continue the pipeline", async () => {
@@ -123,8 +148,8 @@ describe("tool failure report rendering", () => {
 		expect(
 			renderToolFailureReport({
 				actionable: [],
-				summary: { unchangedSkipped: 2, resolved: 7 },
+				summary: { unchangedSkipped: 2, resolved: 7, expectedSuppressed: 3 },
 			}),
-		).toContain("No new, changed, regressed, or due-for-review");
+		).toContain("expected suppressed: 3");
 	});
 });

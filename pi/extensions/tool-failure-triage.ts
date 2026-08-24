@@ -20,6 +20,7 @@ interface ToolFailureReport {
 	summary: {
 		unchangedSkipped: number;
 		resolved: number;
+		expectedSuppressed: number;
 	};
 }
 
@@ -53,7 +54,8 @@ function parseReport(value: string): ToolFailureReport {
 		!Array.isArray(parsed.actionable) ||
 		!parsed.summary ||
 		typeof parsed.summary.unchangedSkipped !== "number" ||
-		typeof parsed.summary.resolved !== "number"
+		typeof parsed.summary.resolved !== "number" ||
+		typeof parsed.summary.expectedSuppressed !== "number"
 	)
 		throw new Error("tool-failure report returned an invalid result");
 	return parsed as ToolFailureReport;
@@ -63,7 +65,7 @@ export function renderToolFailureReport(report: ToolFailureReport): string {
 	const lines = [
 		"# Tool Failure Triage",
 		"",
-		`Actionable: ${report.actionable.length}; unchanged skipped: ${report.summary.unchangedSkipped}; resolved: ${report.summary.resolved}.`,
+		`Actionable: ${report.actionable.length}; expected suppressed: ${report.summary.expectedSuppressed}; unchanged skipped: ${report.summary.unchangedSkipped}; resolved: ${report.summary.resolved}.`,
 	];
 	if (report.actionable.length === 0) {
 		lines.push("", "No new, changed, regressed, or due-for-review failure candidates.");

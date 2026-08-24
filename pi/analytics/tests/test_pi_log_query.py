@@ -1158,3 +1158,46 @@ def test_snapshot_rejects_incompatible_filename_schema_before_refresh(
 
     with pytest.raises(ValueError, match="snapshot schema mismatch for session_entries"):
         pi_log_query.refresh_snapshot(snapshot, layout, selected_sources=("session_entries",))
+
+
+def test_tool_failure_report_cli_can_include_expected(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    scan = tmp_path / "scan.json"
+    scan.write_text(
+        json.dumps(
+            {
+                "candidates": [
+                    {
+                        "candidateId": "expected",
+                        "fingerprintVersion": 1,
+                        "classification": "expected",
+                        "lastObserved": "2026-08-20T00:00:00Z",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    agent = tmp_path / "agent"
+
+    assert main(["--agent-dir", str(agent), "tool-failure-report", str(scan)]) == 0
+    default = json.loads(capsys.readouterr().out)
+    assert default["actionable"] == []
+    assert default["summary"]["expectedSuppressed"] == 1
+
+    assert (
+        main(
+            [
+                "--agent-dir",
+                str(agent),
+                "tool-failure-report",
+                str(scan),
+                "--include-expected",
+            ]
+        )
+        == 0
+    )
+    diagnostic = json.loads(capsys.readouterr().out)
+    assert diagnostic["actionable"][0]["status"] == "expected"
+    assert diagnostic["summary"]["expectedSuppressed"] == 0

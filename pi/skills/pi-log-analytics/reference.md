@@ -85,14 +85,22 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
 
 Skipped decisions require a sanitized reason. Addressed decisions require typed evidence and an effective date. The writer rejects credentials, raw multiline content, and absolute home paths. Records are appended under an exclusive lock; latest state follows physical append order. This preserves best-effort history among cooperating writers, not tamper-proof audit integrity.
 
-Render only undecided, changed, regressed, or due-for-review candidates:
+Render only undecided, changed, regressed, or due-for-review candidates. Deterministically expected candidates are omitted and counted as candidate groups in `summary.expectedSuppressed`:
 
 ```bash
 uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
   tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json
 ```
 
-The report separately counts unchanged skipped and resolved candidates and reports malformed or unsupported ledger records.
+For direct diagnostics, include otherwise-suppressed undecided expected candidates with status `expected`. Normal ledger filtering still applies, and `summary.expectedSuppressed` is zero because those groups are present:
+
+```bash
+uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+  tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json \
+  --include-expected
+```
+
+The report separately counts expected suppressed groups, unchanged skipped candidates, and resolved candidates, and reports malformed or unsupported ledger records. Changed, revisit-due, and post-effective-date regression states take precedence over expected classification.
 
 ## Snapshots and batches
 
