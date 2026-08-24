@@ -1,10 +1,14 @@
 ---
 created: 2026-08-23
-status: ready
-completed:
+status: decided-against
+completed: 2026-08-24
 ---
 
 # Plan: Stage Podman supervision with a SearXNG Quadlet canary
+
+## Disposition
+
+Decided against doing on 2026-08-24. No implementation or live service mutation was performed. The unchecked tasks are retained as historical design context, not pending work.
 
 ## Objective
 
@@ -64,8 +68,8 @@ Keep incomplete work at `.specs/podman-supervision-hybrid/plan.md`. After every 
 
 ## Execution Status
 
-- State: ready
-- Completed: none
+- State: closed - decided against doing
+- Completed: no implementation tasks
 - Blocker: none
-- Next task: T1
-- Resume: `/do-it .specs/podman-supervision-hybrid/plan.md`
+- Next task: none
+- Resume: not applicable
