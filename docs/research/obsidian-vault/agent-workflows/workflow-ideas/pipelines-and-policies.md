@@ -177,3 +177,9 @@ Candidate first plan slug:
 - Should `/review-it` be mandatory before `/do-it` for high-risk plans?
 - Should policy checks be implemented as scripts, command instructions, or both?
 - Should Pi eventually expose a `/pipeline-status` command for active/archived runs?
+
+## Related notes
+
+- [Agent workflow benchmark loops](agent-workflow-benchmark-loops.md)
+- [Pi Coding Agent deep dive](../projects/pi-coding-agent-deep-dive.md)
+- [Adaptive plan review telemetry](adaptive-plan-review-telemetry.md)

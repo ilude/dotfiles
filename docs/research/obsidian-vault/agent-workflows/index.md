@@ -20,6 +20,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [agent-skills-ecosystem](projects/agent-skills-ecosystem.md) - skill standards, repositories, validators, and meta-skill patterns.
 - [Claude Code worktrees](projects/claude-code-worktrees.md) - built-in worktree behavior, isolation, cleanup, and known failure modes.
 - [Pi damage-control gap analysis](projects/pi-damage-control-gap-analysis.md) - security coverage compared with demonstrated coding-agent attack paths.
+- [Pi Coding Agent deep dive](projects/pi-coding-agent-deep-dive.md) - transcript-reviewed Pi architecture source, evidence cautions, and workflow implications.
 - [Menos research storage](projects/menos-research-storage.md) - superseded research-ingestion proposal retained as historical context.
 
 ## Strongest signals
@@ -51,6 +52,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [workflow-ideas/pipelines-and-policies](workflow-ideas/pipelines-and-policies.md) - run ledgers, first-class artifacts, resumability, and policy-as-code gates.
 - [workflow-ideas/code-intelligence](workflow-ideas/code-intelligence.md) - Graphify/SCIP/code-intel ideas for semantic navigation and architecture orientation.
 - [workflow-ideas/duckdb-for-pi-usage-analytics](workflow-ideas/duckdb-for-pi-usage-analytics.md) - optional DuckDB backend idea for Pi usage/session analytics.
+- [workflow-ideas/agent-workflow-benchmark-loops](workflow-ideas/agent-workflow-benchmark-loops.md) - controlled hard-task fixtures for testing routing, prompt, tool, and review changes without building a benchmark platform.
 - [workflow-ideas/adaptive-plan-review-telemetry](workflow-ideas/adaptive-plan-review-telemetry.md) -- data model for learning when `/review-it` can be embedded into `/plan-it` with adaptive reviewer counts.
 - [workflow-ideas/goal-closeout-handoff](workflow-ideas/goal-closeout-handoff.md) -- automatic `/goal` completion closeout so goal endings preserve outcome, validation, state, and next steps.
 - [workflow-ideas/durable-task-dependency-systems](workflow-ideas/durable-task-dependency-systems.md) -- session evidence, academic and workflow-system sources, and incremental designs for durable task DAGs with Pi subagents.

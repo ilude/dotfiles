@@ -101,6 +101,7 @@ be safely reviewed automatically and how many reviewers they need.
 
 ## Related notes
 
+- [Agent workflow benchmark loops](agent-workflow-benchmark-loops.md)
 - [DuckDB for Pi usage analytics](duckdb-for-pi-usage-analytics.md)
 - [Pipelines and policies](pipelines-and-policies.md)
 - [Specs workflow trajectory](specs-workflow-trajectory.md)

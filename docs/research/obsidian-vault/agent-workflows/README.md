@@ -19,6 +19,7 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [workflow-ideas/pipelines-and-policies](workflow-ideas/pipelines-and-policies.md) - run ledgers, artifacts, resumability, and policy gates
 - [workflow-ideas/code-intelligence](workflow-ideas/code-intelligence.md) - Graphify/SCIP/code-intel ideas
 - [workflow-ideas/duckdb-for-pi-usage-analytics](workflow-ideas/duckdb-for-pi-usage-analytics.md) - optional DuckDB backend idea for Pi usage/session analytics
+- [workflow-ideas/agent-workflow-benchmark-loops](workflow-ideas/agent-workflow-benchmark-loops.md) - research-stage hard-task fixtures for controlled workflow comparisons
 - [workflow-ideas/adaptive-plan-review-telemetry](workflow-ideas/adaptive-plan-review-telemetry.md) -- telemetry signals for embedding `/review-it` into `/plan-it` later
 - [workflow-ideas/goal-closeout-handoff](workflow-ideas/goal-closeout-handoff.md) -- automatic closeout reports for `/goal` completion
 - [workflow-ideas/durable-task-dependency-systems](workflow-ideas/durable-task-dependency-systems.md) -- sourced designs for durable task DAGs, recovery, provenance, and Pi subagent integration
@@ -56,5 +57,6 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [projects/openclaw](projects/openclaw.md)
 - [projects/daytona](projects/daytona.md)
 - [projects/convex-agent-plugins](projects/convex-agent-plugins.md)
+- [projects/pi-coding-agent-deep-dive](projects/pi-coding-agent-deep-dive.md)
 - [projects/menos](projects/menos.md)
 - [projects/zellij-windows-cockpit](projects/zellij-windows-cockpit.md)

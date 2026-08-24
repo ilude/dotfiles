@@ -36,5 +36,6 @@ Do not build this yet. If usage analysis outgrows fixed reports, first prototype
 
 ## Related notes
 
+- [Agent workflow benchmark loops](agent-workflow-benchmark-loops.md)
 - [pipelines-and-policies](pipelines-and-policies.md)
 - [pi-observability-timing](../patterns/pi-observability-timing.md)
