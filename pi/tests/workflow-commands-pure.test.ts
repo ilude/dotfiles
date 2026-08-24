@@ -20,6 +20,7 @@ import {
 	isBlockingSecretReviewClassification,
 	normalizeCommitSubject,
 	parseCommitPlan,
+	parsePlanItArgs,
 	parseCommitSecretsAllowedPaths,
 	parseSecretReviewResult,
 	parseUntrackedClassifierResult,
@@ -27,6 +28,20 @@ import {
 	validateCommitPlan,
 	validateSecretReviewCoverage,
 } from "../extensions/workflow-commands.ts";
+
+describe("plan command arguments", () => {
+	it("selects quick mode only from the leading mode token", () => {
+		expect(parsePlanItArgs("quick add a focused regression test")).toEqual({
+			mode: "quick",
+			request: "add a focused regression test",
+		});
+		expect(parsePlanItArgs("quick")).toEqual({ mode: "quick", request: "" });
+		expect(parsePlanItArgs("plan a quick migration")).toEqual({
+			mode: "standard",
+			request: "plan a quick migration",
+		});
+	});
+});
 
 describe("commit planner warnings", () => {
 	it("sanitizes and bounds the fallback reason", () => {

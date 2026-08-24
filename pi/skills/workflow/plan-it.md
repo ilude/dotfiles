@@ -10,6 +10,8 @@ Create the smallest complete plan using the existing mechanism. Preserve supplie
 
 ## Lifecycle
 
+When invoked as `/plan-it quick [request]`, treat `quick` as the mode selector rather than part of the requested outcome. Quick mode is for operator-selected small work sets: create and mechanically validate the same complete canonical plan, but skip all delegated subject-matter reviews and the final overengineering, gold-plating, and churn review. After recording `draft`, resolve any operator-owned blocker, reread the plan, and call `ready` directly. Do not call `plan_progress review` or delegate reviewers in quick mode.
+
 The command writes the plan directly under the primary repository's `.specs/` directory and does not create a planning branch or worktree. Choose a concise kebab-case slug from the requested outcome and conversation context; never use an invocation ID or a generic `plan-*` fallback. Unrelated tracked or untracked primary changes do not block `/plan-it` and must remain untouched. The plan must require `/do-it` to create and own the implementation worktree before implementation begins.
 
 Use `plan_progress` for this invocation. Persisted lifecycle stages are only `started`, `draft`, `blocked`, and `ready`.
@@ -27,7 +29,7 @@ Use `plan_progress` for this invocation. Persisted lifecycle stages are only `st
    - Can fewer files, modes, checks, or mutations answer the question?
    - Can later work become conditional and be skipped when the first slice finds no signal?
    Remove or defer anything that fails this necessity test. A factually valid reviewer concern is not a required repair unless it blocks completion evidence.
-7. Reread the reduced complete plan and call `ready`. Readiness requires at least two completed subject-matter reviews followed by one completed subtractive review. The tool then runs deterministic plan-file validation.
+7. Reread the reduced complete plan and call `ready`. In standard mode, readiness requires at least two completed subject-matter reviews followed by one completed subtractive review. In quick mode, readiness requires the draft and deterministic plan-file validation but no reviews. The tool then runs deterministic plan-file validation.
 
 If a shared TypeScript contract is changed, include an early typecheck before implementation expands. If a shared mechanism is unproven, specify one representative executable slice that can falsify it before expansion. Do not make typecheck a universal gate or add scheduler state for an experiment.
 

@@ -114,6 +114,16 @@ describe("plan lifecycle", () => {
 		expect(transitionPlanLifecycle(state, { action: "ready" }).stage).toBe("ready");
 	});
 
+	it("allows quick plans to become ready without review gates", () => {
+		let state = createPlanLifecycleSnapshot("invocation", "small change", "quick");
+		state = transitionPlanLifecycle(state, {
+			action: "draft",
+			planPath: ".specs/example/plan.md",
+		});
+		const ready = transitionPlanLifecycle(state, { action: "ready" });
+		expect(ready).toMatchObject({ mode: "quick", stage: "ready", reviewers: [] });
+	});
+
 	it("allows distinct subject-matter experts and closes review after the subtractive pass", () => {
 		const state = reviewedDraft();
 		expect(state.reviewers).toHaveLength(3);

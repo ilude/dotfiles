@@ -100,6 +100,18 @@ const DOTFILES_PI_DIR = path.join(os.homedir(), ".dotfiles", "pi");
 const SKILLS_DIR = path.join(DOTFILES_PI_DIR, "skills", "workflow");
 const PLAN_PREFLIGHT_MESSAGE_TYPE = "workflow.plan-preflight";
 const MAX_PLAN_PREFLIGHT_CHARS = 2000;
+
+export function parsePlanItArgs(args: string): {
+	mode: "standard" | "quick";
+	request: string;
+} {
+	const trimmed = args.trim();
+	const quick = trimmed.match(/^quick(?:\s+([\s\S]*))?$/i);
+	return quick
+		? { mode: "quick", request: (quick[1] ?? "").trim() }
+		: { mode: "standard", request: trimmed };
+}
+
 export const COMMIT_SECRETS_ATTRIBUTE = "commit-secrets";
 const COMMIT_RUNTIME_PATH_PATTERNS = [
 	{ label: "Pi runtime cache", regex: /^pi\/cache(?:\/|$)/ },
@@ -2815,7 +2827,12 @@ export default function (pi: ExtensionAPI) {
 			"Crystallize an executable plan in the primary repository",
 		handler: async (args, ctx) => {
 			echoSlashCommand(pi, "plan-it", args);
-			const lifecycle = createPlanLifecycleSnapshot(randomUUID(), args);
+			const planRequest = parsePlanItArgs(args);
+			const lifecycle = createPlanLifecycleSnapshot(
+				randomUUID(),
+				planRequest.request,
+				planRequest.mode,
+			);
 			let workspaceDirective = "";
 			if (ctx.cwd) {
 				try {
@@ -2831,8 +2848,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			await persistPlanLifecycle(lifecycle);
 			activateTools(pi, ["plan_progress"]);
-			const planPath = args
-				.trim()
+			const planPath = planRequest.request
 				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
 			noteWorkflowSubmission(
 				args.trim() ? `/plan-it ${args.trim()}` : "/plan-it",
@@ -2840,7 +2856,7 @@ export default function (pi: ExtensionAPI) {
 			);
 			startWorkflowEpisode({
 				command: "plan-it",
-				args,
+				args: planRequest.request,
 				artifactPath: planPath,
 			});
 			await withTimingSpan(
@@ -2856,7 +2872,16 @@ export default function (pi: ExtensionAPI) {
 				},
 				async () => {
 					const template = loadSkill("plan-it.md");
-					sendHiddenWorkflowPrompt(pi, buildSkillPrompt(template, args) + workspaceDirective);
+					const modeDirective =
+						planRequest.mode === "quick"
+							? "\n\nQUICK MODE (mandatory): This is a small-work-set plan. Skip all subject-matter adversarial reviews and the final overengineering, gold-plating, and churn review. After writing and mechanically checking the complete plan, call plan_progress ready directly. Do not call plan_progress review or delegate reviewers."
+							: "";
+					sendHiddenWorkflowPrompt(
+						pi,
+						buildSkillPrompt(template, planRequest.request) +
+							workspaceDirective +
+							modeDirective,
+					);
 				},
 			);
 		},

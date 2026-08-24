@@ -6,6 +6,7 @@ export const PLAN_LIFECYCLE_ENTRY_TYPE = "workflow.plan-lifecycle";
 export const PLAN_LIFECYCLE_VERSION = 1;
 
 export type PlanRisk = "low" | "material";
+export type PlanMode = "standard" | "quick";
 export type PlanReviewerRole = "adversary" | "proponent" | "specialist" | "subtractive";
 export type PlanReviewOutcome = "supported" | "no_finding" | "failed" | "covered";
 export type PlanDisposition =
@@ -47,6 +48,7 @@ export interface PlanLifecycleSnapshot {
 	version: 1;
 	invocationId: string;
 	request: string;
+	mode?: PlanMode;
 	stage: PlanLifecycleStage;
 	planPath?: string;
 	blockedConcern?: string;
@@ -145,11 +147,13 @@ function requiredText(value: string, label: string): string {
 export function createPlanLifecycleSnapshot(
 	invocationId: string,
 	request: string,
+	mode: PlanMode = "standard",
 ): PlanLifecycleSnapshot {
 	return {
 		version: PLAN_LIFECYCLE_VERSION,
 		invocationId,
 		request: request.trim().slice(0, 500),
+		mode,
 		stage: "started",
 		reviewers: [],
 		dispositions: [],
@@ -188,6 +192,9 @@ export function isPlanLifecycleSnapshot(
 		candidate.version === PLAN_LIFECYCLE_VERSION &&
 		typeof candidate.invocationId === "string" &&
 		typeof candidate.request === "string" &&
+		(candidate.mode === undefined ||
+			candidate.mode === "standard" ||
+			candidate.mode === "quick") &&
 		isPlanLifecycleStage(candidate.stage) &&
 		Array.isArray(candidate.reviewers) &&
 		Array.isArray(candidate.dispositions) &&
@@ -273,6 +280,11 @@ export function transitionPlanLifecycle(
 			return { ...snapshot, blockedConcern: requiredText(input.concern, "Blocker concern"), stage: "blocked" };
 		case "ready": {
 			requireStage(snapshot, ["draft", "blocked", "risk_selected", "reviewing", "review_settled", "adjudicated", "operator_decision", "accepted", "repaired", "inspected"], input.action);
+			if (snapshot.mode === "quick") {
+				if (unresolvedSupportedReviews(snapshot.reviewers).length > 0)
+					throw new Error("Supported review findings must be repaired before plan readiness.");
+				return { ...snapshot, stage: "ready" };
+			}
 			const completedAdversarial = snapshot.reviewers.filter(
 				(review) => review.role !== "subtractive" && (review.outcome === "covered" || review.outcome === "no_finding"),
 			);
