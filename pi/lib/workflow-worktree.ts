@@ -182,7 +182,7 @@ export async function ensureWorkflowWorktree(input: { cwd: string; workflow: Wor
 	return { ownership, resumed: false };
 }
 
-export type PlanMaterialization = "transferred" | "ignored" | "tracked" | "resumed";
+export type PlanMaterialization = "transferred" | "ignored" | "tracked" | "updated" | "resumed";
 
 export async function materializePlanInWorkflowWorktree(input: {
 	worktree: WorkflowWorktree;
@@ -232,8 +232,30 @@ export async function materializePlanInWorkflowWorktree(input: {
 			throw new Error("clean tracked plan is missing from the implementation worktree");
 		return "tracked";
 	}
+	const normalizedPlanPath = input.planPath.replace(/\\/g, "/");
+	const modifiedPlanOnly = entries.length === 1
+		&& entries[0].startsWith("M ")
+		&& entries[0].slice(2).replace(/\\/g, "/") === normalizedPlanPath;
+	if (modifiedPlanOnly) {
+		if (!fs.existsSync(targetPlan))
+			throw new Error("modified tracked plan is missing from the implementation worktree");
+		const committedPlan = fs.readFileSync(targetPlan);
+		fs.copyFileSync(sourcePlan, targetPlan);
+		if (fs.readFileSync(targetPlan, "utf8") !== fs.readFileSync(sourcePlan, "utf8"))
+			throw new Error("modified tracked plan transfer verification failed; primary spec preserved");
+		fs.writeFileSync(sourcePlan, committedPlan);
+		const restored = await input.runner(input.worktree.ownership.primaryWorktree, [
+			"status",
+			"--porcelain=v1",
+			"--",
+			input.planPath,
+		]);
+		if (restored.code !== 0 || restored.stdout.trim())
+			throw new Error("modified tracked plan transferred but primary plan cleanup failed");
+		return "updated";
+	}
 	if (!entries.every((entry) => entry.startsWith("?? ")))
-		throw new Error("canonical spec has tracked or mixed changes; commit or restore them before /do-it");
+		throw new Error("canonical spec has unsupported tracked or mixed changes; commit or restore them before /do-it");
 	fs.mkdirSync(path.dirname(targetDir), { recursive: true });
 	fs.cpSync(sourceDir, targetDir, { recursive: true, errorOnExist: true, force: false });
 	if (!fs.existsSync(targetPlan) || fs.readFileSync(targetPlan, "utf8") !== fs.readFileSync(sourcePlan, "utf8"))

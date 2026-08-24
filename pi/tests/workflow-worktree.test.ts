@@ -109,7 +109,7 @@ describe("workflow worktree lifecycle", () => {
 		expect(git(root, ["status", "--porcelain=v1", "--", ".specs"])).toBe("");
 	});
 
-	it("rejects modified tracked plan state without removing the source", async () => {
+	it("transfers an unstaged modified tracked plan and cleans the primary copy", async () => {
 		const root = repo();
 		const planPath = ".specs/fixture/plan.md";
 		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });
@@ -118,8 +118,25 @@ describe("workflow worktree lifecycle", () => {
 		git(root, ["commit", "-q", "-m", "test: track plan"]);
 		fs.writeFileSync(path.join(root, planPath), "modified\n");
 		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner, allowDirtyPrimary: true });
-		await expect(materializePlanInWorkflowWorktree({ worktree, planPath, runner })).rejects.toThrow(/tracked or mixed changes/);
-		expect(fs.readFileSync(path.join(root, planPath), "utf8")).toBe("modified\n");
+		expect(await materializePlanInWorkflowWorktree({ worktree, planPath, runner })).toBe("updated");
+		expect(fs.readFileSync(path.join(worktree.ownership.worktree, planPath), "utf8")).toBe("modified\n");
+		expect(fs.readFileSync(path.join(root, planPath), "utf8")).toBe("tracked\n");
+		expect(git(root, ["status", "--porcelain=v1", "--", planPath])).toBe("");
+	});
+
+	it("rejects staged tracked plan changes without altering either copy", async () => {
+		const root = repo();
+		const planPath = ".specs/fixture/plan.md";
+		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });
+		fs.writeFileSync(path.join(root, planPath), "tracked\n");
+		git(root, ["add", planPath]);
+		git(root, ["commit", "-q", "-m", "test: track plan"]);
+		fs.writeFileSync(path.join(root, planPath), "staged\n");
+		git(root, ["add", planPath]);
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner, allowDirtyPrimary: true });
+		await expect(materializePlanInWorkflowWorktree({ worktree, planPath, runner })).rejects.toThrow(/unsupported tracked or mixed changes/);
+		expect(fs.readFileSync(path.join(root, planPath), "utf8")).toBe("staged\n");
+		expect(fs.readFileSync(path.join(worktree.ownership.worktree, planPath), "utf8")).toBe("tracked\n");
 	});
 
 	it("merges with --no-ff when the clean primary branch advances", async () => {
