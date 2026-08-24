@@ -108,6 +108,125 @@ def test_tool_failure_scan_is_deterministic_private_and_diagnoses_joins():
     assert "C:\\Users" not in rendered
 
 
+@pytest.mark.parametrize(
+    ("tool", "text", "expected_class", "expected_contract", "classification"),
+    [
+        (
+            "edit",
+            "Loaded 2 AGENTS context file(s). Retry this edit call.",
+            "instruction-deferred",
+            "mutation:instruction-discovery",
+            "expected",
+        ),
+        (
+            "edit",
+            "Could not find edits[0]. The oldText must match exactly.",
+            "exact-match-miss",
+            "mutation:exact-match",
+            "expected",
+        ),
+        (
+            "edit",
+            "Found 3 occurrences of edits[0]. Each oldText must be unique.",
+            "nonunique-match",
+            "mutation:unique-match",
+            "expected",
+        ),
+        (
+            "read",
+            "ENOENT: no such file or directory, access '/home/person/missing'",
+            "path-not-found",
+            "filesystem:path-missing",
+            "expected",
+        ),
+        (
+            "read",
+            "Offset 20 is beyond end of file (10 lines total)",
+            "invalid-offset",
+            "read:offset-range",
+            "expected",
+        ),
+        (
+            "pwsh",
+            "pwsh exited with code 2",
+            "command-nonzero",
+            "command:nonzero",
+            "expected",
+        ),
+        (
+            "commit_create",
+            "Secret scan blocked the commit: private-key.",
+            "secret-scan-block",
+            "commit:secret-scan",
+            "expected",
+        ),
+        (
+            "task",
+            "Validation failed for tool task: summary is required",
+            "invalid-caller-contract",
+            "caller:validation",
+            "expected",
+        ),
+        (
+            "subagent_control",
+            "this.broker.reconcile is not a function",
+            "internal-missing-method",
+            "runtime:missing-method",
+            "candidate",
+        ),
+        (
+            "web_search",
+            "fetch failed",
+            "external-service-failure",
+            "web-search:request",
+            "candidate",
+        ),
+        (
+            "subagent",
+            "Cannot launch subagent: Pi CLI entrypoint is unavailable (missing)",
+            "required-runtime-unavailable",
+            "runtime:availability",
+            "candidate",
+        ),
+        (
+            "bash",
+            "Command timed out after 30 seconds",
+            "unclassified-error",
+            "manual-review",
+            "unclassified",
+        ),
+        (
+            "subagent",
+            "Subagent was aborted",
+            "unclassified-error",
+            "manual-review",
+            "unclassified",
+        ),
+        (
+            "task",
+            "Valid runtime entered an impossible lifecycle state",
+            "unclassified-error",
+            "manual-review",
+            "unclassified",
+        ),
+    ],
+)
+def test_classifies_only_exact_structural_contracts(
+    tool, text, expected_class, expected_contract, classification
+):
+    assert triage._classify(tool, text) == (
+        expected_class,
+        expected_contract,
+        classification,
+    )
+
+
+def test_materially_distinct_contracts_have_distinct_private_ids():
+    exact = triage._candidate_id("edit", "exact-match-miss", "mutation:exact-match")
+    nonunique = triage._candidate_id("edit", "nonunique-match", "mutation:unique-match")
+    assert exact != nonunique
+
+
 def test_material_fingerprint_version_change_creates_new_ids(monkeypatch):
     first = scan_connection(connection_for(messages()))
     monkeypatch.setattr(triage, "FINGERPRINT_VERSION", 2)
@@ -175,9 +294,68 @@ def test_append_only_decisions_latest_physical_order_and_actionable_states(tmp_p
     unchanged = candidate_scan(last="2026-08-19T00:00:00Z")
     suppressed = build_report(unchanged, records, today=date(2026, 7, 24))
     assert suppressed["actionable"] == []
-    assert suppressed["summary"] == {"unchangedSkipped": 1, "resolved": 1}
+    assert suppressed["summary"] == {
+        "unchangedSkipped": 1,
+        "resolved": 1,
+        "expectedSuppressed": 0,
+    }
     changed = build_report(candidate_scan(version=2), records, today=date(2026, 7, 24))
     assert changed["actionable"][0]["status"] == "changed"
+
+
+def test_expected_candidates_are_suppressed_but_diagnosable():
+    scan = {
+        "candidates": [
+            {
+                "candidateId": "expected",
+                "fingerprintVersion": 1,
+                "lastObserved": "2026-08-20T00:00:00Z",
+                "classification": "expected",
+            },
+            {
+                "candidateId": "internal",
+                "fingerprintVersion": 1,
+                "lastObserved": "2026-08-20T00:00:00Z",
+                "classification": "candidate",
+            },
+        ]
+    }
+    default = build_report(scan, [])
+    assert [item["candidateId"] for item in default["actionable"]] == ["internal"]
+    assert default["summary"] == {
+        "unchangedSkipped": 0,
+        "resolved": 0,
+        "expectedSuppressed": 1,
+    }
+
+    diagnostic = build_report(scan, [], include_expected=True)
+    assert [(item["candidateId"], item["status"]) for item in diagnostic["actionable"]] == [
+        ("expected", "expected"),
+        ("internal", "undecided"),
+    ]
+    assert diagnostic["summary"]["expectedSuppressed"] == 0
+
+
+def test_regression_precedes_expected_suppression():
+    scan = {
+        "candidates": [
+            {
+                "candidateId": "expected",
+                "fingerprintVersion": 1,
+                "lastObserved": "2026-08-21T00:00:00Z",
+                "classification": "expected",
+            }
+        ]
+    }
+    decision = {
+        "candidateId": "expected",
+        "fingerprintVersion": 1,
+        "disposition": "addressed",
+        "effectiveAfter": "2026-08-20",
+    }
+    report = build_report(scan, [decision])
+    assert report["actionable"][0]["status"] == "regression"
+    assert report["summary"]["expectedSuppressed"] == 0
 
 
 def test_ledger_concurrent_writers_preserve_records_and_diagnose_bad_rows(tmp_path: Path):

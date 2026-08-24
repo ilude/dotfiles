@@ -59,26 +59,69 @@ def _content_items(message: dict[str, object]) -> list[dict[str, object]]:
 
 
 def _classify(tool: str, text: str) -> tuple[str, str, str]:
+    normalized_tool = tool.lower()
     lowered = text.lower()
-    if tool.lower() in {"bash", "functions.bash"} and (
+    if normalized_tool in {"bash", "functions.bash"} and (
         "required properties command" in lowered or "'command' is a required property" in lowered
     ):
         return "missing-required-parameter", "required:command", "candidate"
-    if tool.lower() in {"read", "functions.read"} and any(
+    if normalized_tool in {"read", "functions.read"} and any(
         phrase in lowered
         for phrase in ("outside", "path escape", "boundary", "not within", "governed")
     ):
         return "governed-path-rejection", "selected-skill-read:path-boundary", "candidate"
-    if "subagent" in tool.lower() and any(
+    if "subagent" in normalized_tool and any(
         phrase in lowered for phrase in ("unknown agent", "available agents", "abi", "manager")
     ):
         return "stale-manager-contract", "subagent-manager:availability", "candidate"
-    if any(
-        phrase in lowered for phrase in ("damage control", "blocked by policy", "not permitted")
+    if " is not a function" in lowered:
+        return "internal-missing-method", "runtime:missing-method", "candidate"
+    if normalized_tool == "web_search" and (
+        lowered.strip() == "fetch failed" or "operation was aborted due to timeout" in lowered
     ):
+        return "external-service-failure", "web-search:request", "candidate"
+    if "pi cli entrypoint is unavailable" in lowered or "available agents: none" in lowered:
+        return "required-runtime-unavailable", "runtime:availability", "candidate"
+    if any(phrase in lowered for phrase in ("damage control", "blocked by policy")):
         return "safety-block", "policy:block", "expected"
     if any(phrase in lowered for phrase in ("tests failed", "test failed", "exit code 1")):
         return "nonzero-test", "command:test-nonzero", "expected"
+    if (
+        re.search(r"loaded \d+ (?:target-specific )?agents context file", lowered)
+        or "loaded path-specific instructions" in lowered
+        or "deferred while loading path-specific instructions" in lowered
+        or "successfully before modifying it" in lowered
+    ):
+        return "instruction-deferred", "mutation:instruction-discovery", "expected"
+    if "could not find edits[" in lowered or "oldtext must match exactly" in lowered:
+        return "exact-match-miss", "mutation:exact-match", "expected"
+    if "found " in lowered and " occurrences of edits[" in lowered:
+        return "nonunique-match", "mutation:unique-match", "expected"
+    if (
+        "enoent: no such file or directory" in lowered
+        or lowered.startswith("path not found:")
+        or "no valid search paths given" in lowered
+        or "system cannot find the file specified" in lowered
+        or "system cannot find the path specified" in lowered
+    ):
+        return "path-not-found", "filesystem:path-missing", "expected"
+    if "offset " in lowered and " is beyond end of file" in lowered:
+        return "invalid-offset", "read:offset-range", "expected"
+    if normalized_tool in {"bash", "functions.bash", "pwsh", "functions.pwsh"} and (
+        "command exited with code " in lowered
+        or lowered.startswith("pwsh exited with code ")
+        or "command failed with exit code " in lowered
+    ):
+        return "command-nonzero", "command:nonzero", "expected"
+    if "secret scan blocked the commit" in lowered:
+        return "secret-scan-block", "commit:secret-scan", "expected"
+    if (
+        lowered.startswith("validation failed for tool")
+        or "no active plan lifecycle exists" in lowered
+        or "plan contract validation failed:" in lowered
+        or "scope entries must be worktree-relative" in lowered
+    ):
+        return "invalid-caller-contract", "caller:validation", "expected"
     return "unclassified-error", "manual-review", "unclassified"
 
 
@@ -307,14 +350,17 @@ def append_decision(
 
 
 def build_report(
-    scan: dict[str, object], records: Sequence[dict[str, object]], today: Optional[date] = None
+    scan: dict[str, object],
+    records: Sequence[dict[str, object]],
+    today: Optional[date] = None,
+    include_expected: bool = False,
 ) -> dict[str, object]:
     today = today or date.today()
     latest: dict[str, dict[str, object]] = {}
     for record in records:
         latest[str(record.get("candidateId"))] = record
     actionable = []
-    summary = {"unchangedSkipped": 0, "resolved": 0}
+    summary = {"unchangedSkipped": 0, "resolved": 0, "expectedSuppressed": 0}
     for candidate in scan.get("candidates", []):
         candidate_id = str(candidate["candidateId"])
         decision = latest.get(candidate_id)
@@ -337,5 +383,10 @@ def build_report(
                 else:
                     summary["resolved"] += 1
                     continue
+        if status == "undecided" and candidate.get("classification") == "expected":
+            if not include_expected:
+                summary["expectedSuppressed"] += 1
+                continue
+            status = "expected"
         actionable.append({**candidate, "status": status})
     return {"schemaVersion": 1, "actionable": actionable, "summary": summary}

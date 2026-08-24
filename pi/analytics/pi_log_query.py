@@ -1461,6 +1461,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     failure_report.add_argument("scan_file", type=Path)
     failure_report.add_argument("--ledger", type=Path)
+    failure_report.add_argument(
+        "--include-expected",
+        action="store_true",
+        help="include otherwise-suppressed expected candidates",
+    )
     return parser
 
 
@@ -1529,7 +1534,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 print(json.dumps(record, sort_keys=True, ensure_ascii=True))
             else:
                 records, diagnostics = load_ledger(ledger)
-                report = build_report(scan, records)
+                report = build_report(scan, records, include_expected=args.include_expected)
                 report["ledgerDiagnostics"] = diagnostics
                 print(json.dumps(report, sort_keys=True, ensure_ascii=True))
             return 0
