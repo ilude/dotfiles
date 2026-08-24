@@ -45,6 +45,7 @@ function card(
 
 function report(cards = [card("tf-v1-example")]) {
 	return {
+		toolFilter: [...new Set(cards.map((item) => item.tool))].sort(),
 		cards,
 		poolSummary: {
 			expected: 6,
@@ -63,6 +64,16 @@ function report(cards = [card("tf-v1-example")]) {
 }
 
 function successfulAnalytics(pi: ReturnType<typeof createMockPi>, value = report()) {
+	if (pi.getAllTools().length === 0) {
+		pi.getAllTools.mockReturnValue([
+			{
+				name: "subagent_control",
+				description: "Custom tool",
+				parameters: {},
+				sourceInfo: { source: "local" },
+			},
+		]);
+	}
 	pi.exec
 		.mockResolvedValueOnce({ code: 0, stdout: "snapshot", stderr: "" })
 		.mockResolvedValueOnce({ code: 0, stdout: "scan", stderr: "" })
@@ -117,10 +128,14 @@ describe("find-fails command", () => {
 		await commandHandler(pi)("", ctx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"Tool-failure scan started.",
+			"Finding tool failures...",
 			"info",
 		);
 		expect(pi.exec).toHaveBeenCalledTimes(3);
+		expect(pi.exec.mock.calls[2][1]).toEqual(
+			expect.arrayContaining(["--tools", "subagent_control"]),
+		);
+		expect(pi.exec.mock.calls[2][1]).not.toContain("edit");
 		expect(scopeAgentRun).toHaveBeenCalledTimes(1);
 		const input = scopeAgentRun.mock.calls[0][0];
 		expect(input).toEqual({
@@ -157,10 +172,64 @@ describe("find-fails command", () => {
 		expect(pi.sendMessage.mock.calls[1][0].content).toContain(
 			"Reply with the tool - issue names you accept",
 		);
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith(
-			"find-fails",
-			undefined,
+	});
+
+	it("shows a high-contrast spinner while running in TUI mode", async () => {
+		const pi = createMockPi();
+		const ctx = createMockCtx({ mode: "tui" });
+		let rendered: string[] = [];
+		ctx.ui.custom = vi.fn(async (factory) =>
+			new Promise((resolve) => {
+				const tui = { requestRender: vi.fn() };
+				let component: { render: (width: number) => string[]; dispose?: () => void };
+				component = factory(
+					tui,
+					ctx.ui.theme,
+					{},
+					(value: unknown) => {
+						component.dispose?.();
+						resolve(value);
+					},
+				);
+				rendered = component.render(80);
+			}),
 		);
+		successfulAnalytics(pi);
+		toolFailureTriageExtension(pi as never);
+
+		await commandHandler(pi)("", ctx);
+
+		expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
+		expect(rendered.join("\n")).toContain("Finding tool failures...");
+		expect(ctx.ui.theme.fg).toHaveBeenCalledWith("accent", expect.any(String));
+		expect(ctx.ui.theme.fg).toHaveBeenCalledWith("text", expect.any(String));
+	});
+
+	it("filters built-in tools before requesting the ranked report", async () => {
+		const pi = createMockPi();
+		const ctx = createMockCtx();
+		pi.getAllTools.mockReturnValue([
+			{
+				name: "edit",
+				description: "Built-in edit",
+				parameters: {},
+				sourceInfo: { source: "builtin" },
+			},
+			{
+				name: "subagent_control",
+				description: "Custom tool",
+				parameters: {},
+				sourceInfo: { source: "local" },
+			},
+		]);
+		successfulAnalytics(pi);
+		toolFailureTriageExtension(pi as never);
+
+		await commandHandler(pi)("", ctx);
+
+		const reportArgs = pi.exec.mock.calls[2][1];
+		expect(reportArgs).toContain("subagent_control");
+		expect(reportArgs).not.toContain("edit");
 	});
 
 	it("renders an empty pool without invoking the model", async () => {
@@ -293,6 +362,10 @@ describe("tool failure report rendering", () => {
 		expect(rendered).toContain("Candidate ID: ledger");
 		expect(rendered.indexOf("required internal method is missing")).toBeLessThan(
 			rendered.indexOf("Candidate ID: ledger"),
+		);
+		expect(rendered.match(/Counts prioritize investigation/g)).toHaveLength(1);
+		expect(rendered).not.toContain(
+			"Structural evidence is an investigation opportunity",
 		);
 		expect(rendered).toContain("--include-overflow");
 		expect(rendered).toContain("--include-observed");

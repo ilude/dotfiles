@@ -249,8 +249,12 @@ def scan_connection(
         for days in (7, 14, 30):
             cutoff = trusted_as_of - timedelta(days=days)
             window = [
-                item for item in group if item.occurred_at and
-                cutoff <= datetime.fromisoformat(item.occurred_at[:-1] + "+00:00") <= trusted_as_of
+                item
+                for item in group
+                if item.occurred_at
+                and cutoff
+                <= datetime.fromisoformat(item.occurred_at[:-1] + "+00:00")
+                <= trusted_as_of
             ]
             recent[days] = {
                 "occurrences": len(window),
@@ -444,7 +448,10 @@ def _gate_reason(candidate: dict[str, object], status: str) -> Optional[str]:
         candidate.get("sessions7d", 0) >= 3 or candidate.get("sessions30d", 0) >= 10
     ):
         return "external-failure"
-    if candidate.get("classification") == "unclassified" and candidate.get("occurrences30d", 0) >= 1:
+    if (
+        candidate.get("classification") == "unclassified"
+        and candidate.get("occurrences30d", 0) >= 1
+    ):
         return "unclassified-review"
     if candidate.get("occurrences14d", 0) >= 3 and candidate.get("sessions14d", 0) >= 2:
         return "classified-recurrence"
@@ -456,6 +463,7 @@ def build_report(
     records: Sequence[dict[str, object]],
     today: Optional[date] = None,
     include_expected: bool = False,
+    tool_names: Optional[set[str]] = None,
 ) -> dict[str, object]:
     today = today or date.today()
     latest: dict[str, dict[str, object]] = {}
@@ -466,6 +474,8 @@ def build_report(
     gate_summary = {"stale": 0, "belowThreshold": 0}
     summary = {"unchangedSkipped": 0, "resolved": 0, "expectedSuppressed": 0}
     for candidate in scan.get("candidates", []):
+        if tool_names is not None and candidate.get("tool") not in tool_names:
+            continue
         candidate_id = str(candidate["candidateId"])
         decision = latest.get(candidate_id)
         status = "undecided"
@@ -491,7 +501,9 @@ def build_report(
         if status == "undecided" and candidate.get("classification") == "expected":
             if not include_expected:
                 summary["expectedSuppressed"] += 1
-                observed_candidates.append({**candidate, "status": "expected", "observationReason": gate})
+                observed_candidates.append(
+                    {**candidate, "status": "expected", "observationReason": gate}
+                )
                 continue
             status = "expected"
         if gate in {"stale", "below-threshold"}:
@@ -501,6 +513,7 @@ def build_report(
         actionable.append({**candidate, "status": status, **({"gate": gate} if gate else {})})
     return {
         "schemaVersion": 1,
+        "toolFilter": sorted(tool_names) if tool_names is not None else None,
         "actionable": actionable,
         "summary": summary,
         "timestampDiagnostics": scan.get("timestampDiagnostics", {}),
@@ -551,9 +564,7 @@ def _card_reason(candidate: dict[str, object], status: str) -> Optional[str]:
         if candidate.get("occurrences14d", 0) < 3 or candidate.get("sessions14d", 0) < 3:
             return None
         return (
-            "model-contract-friction"
-            if error_class in _MODEL_CONTRACT_ERRORS
-            else "retry-ceremony"
+            "model-contract-friction" if error_class in _MODEL_CONTRACT_ERRORS else "retry-ceremony"
         )
     if ledger_reason in {
         "internal-contract-defect",
@@ -629,7 +640,9 @@ def build_investigation_pool(
     selected.extend(remaining[:open_slots])
     selected.sort(key=lambda item: (item[0], *_ranking_key(item)))
     overflow = sorted(remaining[open_slots:], key=lambda item: (item[0], *_ranking_key(item)))
-    cards = [_card(candidate, reason) for _, candidate, reason in selected[:MAX_INVESTIGATION_CARDS]]
+    cards = [
+        _card(candidate, reason) for _, candidate, reason in selected[:MAX_INVESTIGATION_CARDS]
+    ]
     result: dict[str, object] = {
         "schemaVersion": 1,
         "cards": cards,

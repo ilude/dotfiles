@@ -85,16 +85,17 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
 
 Skipped decisions require a sanitized reason. Addressed decisions require typed evidence and an effective date. The writer rejects credentials, raw multiline content, and absolute home paths. Records are appended under an exclusive lock; latest state follows physical append order. This preserves best-effort history among cooperating writers, not tamper-proof audit integrity.
 
-Render the deterministic investigation pool:
+Render the deterministic investigation pool. `/find-fails` passes the current custom-extension tool names through `--tools`; built-in and SDK-supplied tools are excluded before ranking and summary counts. Direct diagnostics omit the filter unless it is supplied explicitly:
 
 ```bash
 uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json
+  tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json \
+  --tools subagent subagent_control web_search
 ```
 
 Fingerprint changes, due revisits, and post-effective-date regressions qualify first. Otherwise, `internal-missing-method` requires one 14-day occurrence; `required-runtime-unavailable` requires two 14-day sessions; `external-service-failure` requires three 7-day sessions or ten 30-day sessions; other classified candidates require three 14-day occurrences across two sessions; and unclassified candidates require one 30-day observation. Zero 30-day observations are stale. Recurring model-contract and retry-ceremony classes require three 14-day occurrences across three sessions and may enter the pool while remaining counted as expected-suppressed evidence.
 
-Cards use deterministic `tool - plain issue name` headings, with candidate IDs retained only as secondary correlation and ledger metadata. Plain issue names come from structural error classes rather than model wording. Cards use the closed reason set `ledger-changed`, `ledger-regression`, `ledger-revisit`, `internal-contract-defect`, `runtime-unavailable`, `model-contract-friction`, `retry-ceremony`, `external-failure`, `classified-recurrence`, and `unclassified-review`. The 10-card pool reserves three places for ledger attention, three for internal/runtime evidence, two for model-tool friction, and two for other recurrence, then backfills unused capacity in stable tier order. Within a tier, the gate-driving session count, occurrence count, and candidate ID determine order. Card explanations describe investigation opportunities, not proven severity, cause, or fixability.
+Cards use deterministic `tool - plain issue name` headings, with candidate IDs retained only as secondary correlation and ledger metadata. Plain issue names come from structural error classes rather than model wording. Cards use the closed reason set `ledger-changed`, `ledger-regression`, `ledger-revisit`, `internal-contract-defect`, `runtime-unavailable`, `model-contract-friction`, `retry-ceremony`, `external-failure`, `classified-recurrence`, and `unclassified-review`. The 10-card pool reserves three places for ledger attention, three for internal/runtime evidence, two for model-tool friction, and two for other recurrence, then backfills unused capacity in stable tier order. Within a tier, the gate-driving session count, occurrence count, and candidate ID determine order. One report-level caveat states that counts prioritize investigation rather than proving severity, cause, or fixability; cards do not repeat that boilerplate.
 
 Use independent diagnostic views when the bounded default omits needed metadata:
 

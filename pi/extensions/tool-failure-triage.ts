@@ -5,6 +5,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { CancellableLoader } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
 import { Assert } from "typebox/value";
 import {
@@ -55,6 +56,10 @@ const PoolSummarySchema = Type.Object({
 });
 
 const ToolFailureReportSchema = Type.Object({
+	toolFilter: Type.Union([
+		Type.Array(Type.String({ maxLength: 128 })),
+		Type.Null(),
+	]),
 	cards: Type.Array(InvestigationCardSchema, { maxItems: 10 }),
 	poolSummary: PoolSummarySchema,
 	summary: Type.Object({
@@ -142,6 +147,22 @@ const commandPrefix = [
 ];
 const reportCommand = `uv ${commandPrefix.join(" ")} tool-failure-report ${scanPath}`;
 
+function customExtensionToolNames(pi: ExtensionAPI): string[] {
+	return pi
+		.getAllTools()
+		.filter(
+			(tool) =>
+				tool.sourceInfo?.source !== "builtin" && tool.sourceInfo?.source !== "sdk",
+		)
+		.map((tool) => tool.name)
+		.sort();
+}
+
+function diagnosticCommand(report: ToolFailureReport, flag: string): string {
+	const toolFilter = report.toolFilter ?? [];
+	return `${reportCommand} --tools ${toolFilter.join(" ")} ${flag}`;
+}
+
 function parseReport(value: string): ToolFailureReport {
 	const parsed: unknown = JSON.parse(value);
 	try {
@@ -192,13 +213,14 @@ export function renderToolFailureReport(report: ToolFailureReport): string {
 		"",
 		`Recommended pool: ${report.cards.length}; overflow: ${summary.omittedByCardLimit}; expected suppressed: ${summary.expected}; stale: ${summary.stale}; below threshold: ${summary.belowThreshold}.`,
 		`Data quality: ${summary.timestamp} timestamp omissions; ${summary.joinDiagnostics.unmatchedResults} unmatched results; ${summary.joinDiagnostics.duplicateCalls} duplicate calls; ${summary.joinDiagnostics.malformedOmissions} malformed rows.`,
+		"Counts prioritize investigation; they do not prove cause, severity, or fixability.",
 	];
 	if (report.cards.length === 0) {
 		lines.push(
 			"",
 			"No current candidate met the investigation-pool rules. No model recommendation was requested.",
-			`Inspect observed candidates: ${reportCommand} --include-observed`,
-			`Inspect expected candidates: ${reportCommand} --include-expected`,
+			`Inspect observed candidates: ${diagnosticCommand(report, "--include-observed")}`,
+			`Inspect expected candidates: ${diagnosticCommand(report, "--include-expected")}`,
 		);
 		return lines.join("\n");
 	}
@@ -212,14 +234,14 @@ export function renderToolFailureReport(report: ToolFailureReport): string {
 		lines.push(
 			`- ${card.tool} - ${plainIssueName(card.structuralLabel)}`,
 			`  Candidate ID: ${card.candidateId}; reason: ${card.reasonCode}`,
-			`  ${card.sessions} sessions / ${card.occurrences} occurrences in ${card.gateWindow}; last ${card.lastObserved ?? "unknown"}. ${card.explanation}`,
+			`  ${card.sessions} sessions / ${card.occurrences} occurrences in ${card.gateWindow}; last ${card.lastObserved ?? "unknown"}.`,
 		);
 	}
 	lines.push(
 		"",
-		`Inspect omitted qualifying candidates: ${reportCommand} --include-overflow`,
-		`Inspect observed candidates: ${reportCommand} --include-observed`,
-		`Inspect expected candidates: ${reportCommand} --include-expected`,
+		`Inspect omitted qualifying candidates: ${diagnosticCommand(report, "--include-overflow")}`,
+		`Inspect observed candidates: ${diagnosticCommand(report, "--include-observed")}`,
+		`Inspect expected candidates: ${diagnosticCommand(report, "--include-expected")}`,
 		"Scope recommendation sends only the displayed structural candidate fields to the active model provider in an isolated tool-free session.",
 	);
 	return lines.join("\n");
@@ -296,10 +318,15 @@ function renderScopeRecommendation(
 	return lines.join("\n");
 }
 
-async function runAnalytics(pi: ExtensionAPI, args: string[]): Promise<string> {
+async function runAnalytics(
+	pi: ExtensionAPI,
+	args: string[],
+	signal?: AbortSignal,
+): Promise<string> {
 	const result = await pi.exec("uv", [...commandPrefix, ...args], {
 		cwd: repositoryRoot,
 		timeout: 300_000,
+		signal,
 	});
 	if (result.code !== 0) {
 		const detail =
@@ -307,6 +334,141 @@ async function runAnalytics(pi: ExtensionAPI, args: string[]): Promise<string> {
 		throw new Error(detail.slice(0, 1_000));
 	}
 	return result.stdout;
+}
+
+function notifyWorking(ctx: ExtensionContext, message: string): void {
+	ctx.ui.notify(
+		ctx.mode === "tui"
+			? ctx.ui.theme.fg("accent", ctx.ui.theme.bold(message))
+			: message,
+		"info",
+	);
+}
+
+async function executeFindFails(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	signal: AbortSignal | undefined,
+	setProgress: (message: string) => void,
+): Promise<void> {
+	let stage = "snapshot refresh";
+	try {
+		await runAnalytics(
+			pi,
+			[
+				"--snapshot-db",
+				snapshotPath,
+				"--source",
+				"session_entries",
+				"snapshot",
+			],
+			signal,
+		);
+		stage = "failure scan";
+		setProgress("Scanning tool-failure evidence...");
+		await runAnalytics(
+			pi,
+			[
+				"--snapshot-db",
+				snapshotPath,
+				"--source",
+				"session_entries",
+				"tool-failure-scan",
+				"--output",
+				scanPath,
+			],
+			signal,
+		);
+		stage = "shortlist report";
+		setProgress("Building the investigation shortlist...");
+		const customTools = customExtensionToolNames(pi);
+		const output = await runAnalytics(
+			pi,
+			["tool-failure-report", scanPath, "--tools", ...customTools],
+			signal,
+		);
+		const report = parseReport(output);
+		pi.sendMessage(
+			{
+				customType: "tool-failure-triage",
+				content: renderToolFailureReport(report),
+				display: true,
+			},
+			{ triggerTurn: false },
+		);
+		if (report.cards.length === 0) return;
+		stage = "scope recommendation";
+		setProgress("Recommending an investigation scope...");
+		notifyWorking(
+			ctx,
+			"Sending structural candidate metadata to the active model provider.",
+		);
+		const { output: recommendation } = await scopeRecommendationAgent.run(
+			scopeInput(report.cards),
+			{
+				cwd: ctx.cwd,
+				model: ctx.model,
+				modelRegistry: ctx.modelRegistry,
+				signal,
+			},
+		);
+		validateScopeOutput(
+			recommendation,
+			new Set(report.cards.map((card) => card.candidateId)),
+		);
+		pi.sendMessage(
+			{
+				customType: "tool-failure-scope-recommendation",
+				content: renderScopeRecommendation(recommendation, report.cards),
+				display: true,
+			},
+			{ triggerTurn: false },
+		);
+	} catch (error) {
+		if (signal?.aborted) throw error;
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(
+			`Tool-failure ${stage} failed: ${message}. Retry with /find-fails.`,
+		);
+	}
+}
+
+async function runWithTuiProgress(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+): Promise<"completed" | "cancelled"> {
+	return ctx.ui.custom<"completed" | "cancelled">(
+		(tui, theme, _keybindings, done) => {
+			const loader = new CancellableLoader(
+				tui,
+				(text) => theme.fg("accent", text),
+				(text) => theme.fg("text", theme.bold(text)),
+				"Finding tool failures...",
+			);
+			let finished = false;
+			const finish = (result: "completed" | "cancelled") => {
+				if (finished) return;
+				finished = true;
+				done(result);
+			};
+			loader.onAbort = () => finish("cancelled");
+			executeFindFails(pi, ctx, loader.signal, (message) => {
+				loader.setMessage(message);
+				tui.requestRender();
+			})
+				.then(() => finish("completed"))
+				.catch((error) => {
+					if (loader.signal.aborted) {
+						finish("cancelled");
+						return;
+					}
+					const message = error instanceof Error ? error.message : String(error);
+					ctx.ui.notify(message, "error");
+					finish("completed");
+				});
+			return loader;
+		},
+	);
 }
 
 export default function toolFailureTriageExtension(pi: ExtensionAPI) {
@@ -317,72 +479,18 @@ export default function toolFailureTriageExtension(pi: ExtensionAPI) {
 				ctx.ui.notify("Usage: /find-fails", "warning");
 				return;
 			}
-			ctx.ui.notify("Tool-failure scan started.", "info");
-			ctx.ui.setStatus("find-fails", "find-fails: scanning");
-			let stage = "snapshot refresh";
+			notifyWorking(ctx, "Finding tool failures...");
+			if (ctx.mode === "tui") {
+				const result = await runWithTuiProgress(pi, ctx);
+				if (result === "cancelled")
+					ctx.ui.notify("Tool-failure scan cancelled.", "info");
+				return;
+			}
 			try {
-				await runAnalytics(pi, [
-					"--snapshot-db",
-					snapshotPath,
-					"--source",
-					"session_entries",
-					"snapshot",
-				]);
-				stage = "failure scan";
-				await runAnalytics(pi, [
-					"--snapshot-db",
-					snapshotPath,
-					"--source",
-					"session_entries",
-					"tool-failure-scan",
-					"--output",
-					scanPath,
-				]);
-				stage = "shortlist report";
-				const output = await runAnalytics(pi, [
-					"tool-failure-report",
-					scanPath,
-				]);
-				const report = parseReport(output);
-				pi.sendMessage(
-					{
-						customType: "tool-failure-triage",
-						content: renderToolFailureReport(report),
-						display: true,
-					},
-					{ triggerTurn: false },
-				);
-				if (report.cards.length === 0) return;
-				stage = "scope recommendation";
-				ctx.ui.setStatus("find-fails", "find-fails: recommending scope");
-				ctx.ui.notify(
-					"Sending structural candidate metadata to the active model provider.",
-					"info",
-				);
-				const { output: recommendation } = await scopeRecommendationAgent.run(
-					scopeInput(report.cards),
-					ctx,
-				);
-				validateScopeOutput(
-					recommendation,
-					new Set(report.cards.map((card) => card.candidateId)),
-				);
-				pi.sendMessage(
-					{
-						customType: "tool-failure-scope-recommendation",
-						content: renderScopeRecommendation(recommendation, report.cards),
-						display: true,
-					},
-					{ triggerTurn: false },
-				);
+				await executeFindFails(pi, ctx, ctx.signal, () => {});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				ctx.ui.notify(
-					`Tool-failure ${stage} failed: ${message}. Retry with /find-fails.`,
-					"error",
-				);
-			} finally {
-				ctx.ui.setStatus("find-fails", undefined);
+				ctx.ui.notify(message, "error");
 			}
 		},
 	});
