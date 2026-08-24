@@ -935,11 +935,12 @@ def test_snapshot_batches_initial_files_and_replaces_only_changed_file(
         return TrackingConnection(original_connect(*args, **kwargs))
 
     monkeypatch.setattr(pi_log_query.duckdb, "connect", tracking_connect)
+    monkeypatch.setattr(pi_log_query, "SNAPSHOT_BATCH_MAX_FILES", 1)
     overrides = {"session_entries": [first, second]}
     pi_log_query.refresh_snapshot(
         snapshot, layout, selected_sources=("session_entries",), source_overrides=overrides
     )
-    assert read_calls == [[str(first.resolve()), str(second.resolve())]]
+    assert read_calls == [[str(first.resolve())], [str(second.resolve())]]
 
     with first.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"type": "message", "id": "replacement-message"}) + "\n")
@@ -947,7 +948,8 @@ def test_snapshot_batches_initial_files_and_replaces_only_changed_file(
         snapshot, layout, selected_sources=("session_entries",), source_overrides=overrides
     )
     assert read_calls == [
-        [str(first.resolve()), str(second.resolve())],
+        [str(first.resolve())],
+        [str(second.resolve())],
         [str(first.resolve())],
     ]
 

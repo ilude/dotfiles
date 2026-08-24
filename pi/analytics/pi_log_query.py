@@ -30,6 +30,9 @@ VALIDATION_CACHE_LOCK_TIMEOUT_SECONDS = 5.0
 VALIDATION_CACHE_LOCK_POLL_SECONDS = 0.05
 SNAPSHOT_FORMAT_VERSION = 1
 SNAPSHOT_STABILIZATION_ATTEMPTS = 3
+SNAPSHOT_BATCH_MAX_FILES = 32
+SNAPSHOT_BATCH_MAX_BYTES = 128 * 1024 * 1024
+SNAPSHOT_MEMORY_LIMIT = "2GB"
 
 Columns = tuple[tuple[str, str], ...]
 PathResolver = Callable[["SourceLayout"], list[Path]]
@@ -447,6 +450,18 @@ def _configure_connection(connection: duckdb.DuckDBPyConnection, threads: Option
         raise ValueError("threads must be at least 1")
     connection.execute(f"SET threads TO {configured_threads}")
     connection.execute("PRAGMA disable_progress_bar")
+
+
+def _configure_snapshot_connection(
+    connection: duckdb.DuckDBPyConnection,
+    threads: Optional[int],
+    snapshot_path: Path,
+) -> None:
+    _configure_connection(connection, threads)
+    temp_directory = snapshot_path.parent / f".{snapshot_path.name}.tmp"
+    temp_directory.mkdir(parents=True, exist_ok=True)
+    connection.execute("SET memory_limit = ?", [SNAPSHOT_MEMORY_LIMIT])
+    connection.execute("SET temp_directory = ?", [str(temp_directory)])
 
 
 def register_source_views(
@@ -1193,6 +1208,25 @@ def _ensure_snapshot_source_schema(connection: duckdb.DuckDBPyConnection, spec: 
     )
 
 
+def _snapshot_refresh_batches(
+    paths: Sequence[str], signatures: Mapping[str, tuple[int, int]]
+) -> Iterator[list[str]]:
+    batch: list[str] = []
+    batch_bytes = 0
+    for path in paths:
+        size = signatures[path][0]
+        if batch and (
+            len(batch) >= SNAPSHOT_BATCH_MAX_FILES or batch_bytes + size > SNAPSHOT_BATCH_MAX_BYTES
+        ):
+            yield batch
+            batch = []
+            batch_bytes = 0
+        batch.append(path)
+        batch_bytes += size
+    if batch:
+        yield batch
+
+
 def refresh_snapshot(
     snapshot_path: Path,
     layout: SourceLayout,
@@ -1208,7 +1242,7 @@ def refresh_snapshot(
     connection = duckdb.connect(database=str(snapshot_path))
     transaction_started = False
     try:
-        _configure_connection(connection, threads)
+        _configure_snapshot_connection(connection, threads, snapshot_path)
         connection.execute("BEGIN")
         transaction_started = True
         table_names = _snapshot_table_names(connection)
@@ -1263,9 +1297,9 @@ def refresh_snapshot(
                         [spec.name],
                     )
                     connection.execute("DELETE FROM pi_log_snapshot_refresh_paths")
-                if refresh_paths:
+                for refresh_batch in _snapshot_refresh_batches(refresh_paths, current):
                     relation = connection.read_json(
-                        refresh_paths,
+                        refresh_batch,
                         columns=dict(spec.columns),
                         format="newline_delimited",
                         filename=True,
@@ -1278,7 +1312,7 @@ def refresh_snapshot(
                         VALUES (?, ?, ?, ?, ?)""",
                         [
                             (spec.name, path, *current[path], ignore_errors)
-                            for path in refresh_paths
+                            for path in refresh_batch
                         ],
                     )
             after_paths = _source_paths(layout, specs, source_overrides)
