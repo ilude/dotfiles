@@ -20,6 +20,12 @@ import {
 	classifySubagentResult,
 	resolveChildToolAuthority,
 } from "../extensions/subagent/index.ts";
+import {
+	resolveTaskSessionAffinity,
+	SubagentRunManager,
+	type SubagentExecutionFingerprint,
+	type SubagentRunSnapshot,
+} from "../extensions/subagent/run-manager.ts";
 import { createTask, resolveTaskWorkspace } from "../lib/task-registry.ts";
 import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.ts";
 
@@ -55,6 +61,139 @@ describe("subagent T1 execution contracts", () => {
 		expect(readItem).toHaveProperty("skills");
 		expect(writeItem).toHaveProperty("skills");
 		expect(coordinatorItem).toHaveProperty("skills");
+	});
+
+	it("accepts affinity only for correlated single modern requests", () => {
+		const read = schemaProperties(SubagentReadSchema);
+		const write = schemaProperties(SubagentWriteSchema);
+		expect(read).toHaveProperty("affinityTaskId");
+		expect(write).toHaveProperty("affinityTaskId");
+		expect(() =>
+			prepareSubagentExecution(
+				{
+					kind: "read",
+					affinityTaskId: "task-a",
+					items: [
+						{ agent: "reader", task: "one", taskId: "task-b" },
+						{ agent: "reader", task: "two", taskId: "task-b" },
+					],
+				},
+				{ parentCwd: process.cwd() },
+			),
+		).toThrow("single-item");
+	});
+
+	it("selects the latest eligible Luna generation and rejects every affinity boundary mismatch", () => {
+		const fingerprint: SubagentExecutionFingerprint = {
+			agent: "builder",
+			skills: ["typescript"],
+			role: "leaf",
+			depth: 1,
+			model: "openai-codex/gpt-5.6-luna",
+			effort: "medium",
+			authorityTools: ["read", "bash"],
+		};
+		const base = {
+			runId: "run-a",
+			taskId: "task-a",
+			parentSessionId: "root",
+			workspaceId: "/repo",
+			model: fingerprint.model,
+			sessionPath: "session-a.jsonl",
+			status: "completed",
+			settledAt: 1,
+			settlementOrder: 1,
+			executionFingerprint: fingerprint,
+		} as unknown as SubagentRunSnapshot;
+		const latest = { ...base, runId: "run-b", sessionPath: "session-b.jsonl", settlementOrder: 2 };
+		const identity = { parentSessionId: "root", workspaceId: "/repo", fingerprint };
+		expect(resolveTaskSessionAffinity([base, latest], "task-a", identity)).toMatchObject({
+			outcome: "resolved",
+			run: { runId: "run-b" },
+		});
+		const rejected = [
+			["missing session", { sessionPath: undefined }],
+			["missing root identity", { parentSessionId: undefined }],
+			["missing workspace identity", { workspaceId: undefined }],
+			["failed", { status: "failed" }],
+			["active", { status: "running" }],
+			["wrong root", { parentSessionId: "other" }],
+			["wrong workspace", { workspaceId: "/other" }],
+			["non-Luna", { model: "openai-codex/gpt-5.6-sol" }],
+			["changed model", { executionFingerprint: { ...fingerprint, model: "openai-codex/gpt-5.6-sol" } }],
+			["changed effort", { executionFingerprint: { ...fingerprint, effort: "high" } }],
+			["changed profile", { executionFingerprint: { ...fingerprint, agent: "reviewer" } }],
+			["changed role", { executionFingerprint: { ...fingerprint, role: "coordinator" } }],
+			["changed depth", { executionFingerprint: { ...fingerprint, depth: 2 } }],
+			["changed authority", { executionFingerprint: { ...fingerprint, authorityTools: ["read"] } }],
+			["changed skills", { executionFingerprint: { ...fingerprint, skills: ["python"] } }],
+		] as const;
+		for (const [, patch] of rejected) {
+			const candidate = { ...base, ...patch } as unknown as SubagentRunSnapshot;
+			expect(resolveTaskSessionAffinity([candidate], "task-a", identity).outcome).toBe("rejected");
+		}
+		const ambiguous = [
+			{ ...base, runId: "run-c", sessionPath: "session-c.jsonl", settlementOrder: 3 },
+			{ ...base, runId: "run-d", sessionPath: "session-d.jsonl", settlementOrder: 3 },
+		];
+		expect(resolveTaskSessionAffinity(ambiguous, "task-a", identity).outcome).toBe("rejected");
+	});
+
+	it("scans alias generations of the canonical session and preserves task-B correlation", () => {
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-session-"));
+		const session = path.join(directory, "session.jsonl");
+		fs.writeFileSync(session, "");
+		const fingerprint: SubagentExecutionFingerprint = {
+			agent: "builder",
+			skills: ["typescript", "dispatch"],
+			role: "leaf",
+			depth: 1,
+			model: "openai-codex/gpt-5.6-luna",
+			effort: "medium",
+			authorityTools: ["bash", "read"],
+		};
+		const makeRun = (runId: string, taskId: string, sessionPath: string, order: number) => ({
+			runId,
+			taskId,
+			parentSessionId: "root",
+			workspaceId: directory,
+			model: fingerprint.model,
+			sessionPath,
+			status: "completed",
+			settledAt: order,
+			settlementOrder: order,
+			executionFingerprint: fingerprint,
+		}) as unknown as SubagentRunSnapshot;
+		try {
+			const result = resolveTaskSessionAffinity(
+				[
+					makeRun("run-a", "task-a", session, 1),
+					makeRun("run-b", "task-b", path.join(directory, ".", "session.jsonl"), 2),
+				],
+				"task-a",
+				{ parentSessionId: "root", workspaceId: path.join(directory, "."), fingerprint },
+			);
+			expect(result).toMatchObject({ outcome: "resolved", run: { runId: "run-b", taskId: "task-b" } });
+		} finally {
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("holds a canonical-session lease through settlement and path aliases", () => {
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-t1-lease-"));
+		const session = path.join(directory, "canonical.jsonl");
+		fs.writeFileSync(session, "");
+		const manager = new SubagentRunManager();
+		const release = manager.acquireSessionLease(session, "run-a");
+		try {
+			expect(() => manager.acquireSessionLease(path.join(directory, ".", "canonical.jsonl"), "run-b")).toThrow("already active");
+			manager.begin({ runId: "run-a", owner: "task", mode: "task-execute", agent: "builder", task: "work", cwd: "/repo" }, new AbortController());
+			manager.settle("run-a", { status: "completed", sessionPath: session });
+			expect(() => manager.acquireSessionLease(path.join(directory, "missing", "..", "canonical.jsonl"), "run-b")).toThrow("already active");
+		} finally {
+			release();
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
 	});
 
 	it("keeps completion, partial, and blocked worker states distinct", () => {

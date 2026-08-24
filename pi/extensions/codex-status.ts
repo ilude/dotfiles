@@ -94,6 +94,15 @@ type PromptCacheMetric = MetricsEvent & {
 	};
 };
 
+export type CodexCacheGroupSummary = {
+	requests: number;
+	withUsage: number;
+	unavailableUsage: number;
+	input: number | typeof UNAVAILABLE;
+	cacheRead: number | typeof UNAVAILABLE;
+	cacheReadShare: number | typeof UNAVAILABLE;
+};
+
 export type CodexCacheSummary = {
 	windowSize: number;
 	withUsage: number;
@@ -106,6 +115,11 @@ export type CodexCacheSummary = {
 	contextChanges: number;
 	immediateToolChanges: number;
 	models: Array<{ model: string; requests: number }>;
+	firstRequestGroups: {
+		root: CodexCacheGroupSummary;
+		freshChild: CodexCacheGroupSummary;
+		continuedChild: CodexCacheGroupSummary;
+	};
 };
 
 let codexFooterTimer: ReturnType<typeof setTimeout> | null = null;
@@ -391,6 +405,93 @@ function metricNumber(value: unknown): number | undefined {
 		: undefined;
 }
 
+function emptyCacheGroup(): CodexCacheGroupSummary {
+	return {
+		requests: 0,
+		withUsage: 0,
+		unavailableUsage: 0,
+		input: UNAVAILABLE,
+		cacheRead: UNAVAILABLE,
+		cacheReadShare: UNAVAILABLE,
+	};
+}
+
+function summarizeCacheGroup(events: readonly PromptCacheMetric[]): CodexCacheGroupSummary {
+	let input = 0;
+	let cacheRead = 0;
+	let inputCount = 0;
+	let cacheReadCount = 0;
+	let withUsage = 0;
+	let denominator = 0;
+	let read = 0;
+	for (const event of events) {
+		const eventInput = metricNumber(event.data.input);
+		const eventCacheRead = metricNumber(event.data.cacheRead);
+		if (eventInput !== undefined) {
+			input += eventInput;
+			inputCount += 1;
+		}
+		if (eventCacheRead !== undefined) {
+			cacheRead += eventCacheRead;
+			cacheReadCount += 1;
+		}
+		if (eventInput !== undefined && eventCacheRead !== undefined) {
+			withUsage += 1;
+			denominator += eventInput + eventCacheRead;
+			read += eventCacheRead;
+		}
+	}
+	return {
+		requests: events.length,
+		withUsage,
+		unavailableUsage: events.length - withUsage,
+		input: inputCount > 0 ? input : UNAVAILABLE,
+		cacheRead: cacheReadCount > 0 ? cacheRead : UNAVAILABLE,
+		cacheReadShare: denominator > 0 ? read / denominator : UNAVAILABLE,
+	};
+}
+
+function firstRequestGroups(events: readonly MetricsEvent[]): CodexCacheSummary["firstRequestGroups"] {
+	const workers = new Map<string, "fresh" | "continued" | undefined>();
+	for (const event of events) {
+		if (event.event !== "orchestration_run" || !event.data) continue;
+		const rawWorkers = event.data.workers;
+		if (!Array.isArray(rawWorkers)) continue;
+		for (const rawWorker of rawWorkers) {
+			if (!rawWorker || typeof rawWorker !== "object") continue;
+			const worker = rawWorker as Record<string, unknown>;
+			if (typeof worker.runId !== "string" || worker.runId.length === 0) continue;
+			const status = worker.continuationStatus;
+			const next = status === "fresh" || status === "continued" ? status : undefined;
+			if (!workers.has(worker.runId)) workers.set(worker.runId, next);
+			else if (workers.get(worker.runId) !== next) workers.set(worker.runId, undefined);
+		}
+	}
+	const groups = {
+		root: [] as PromptCacheMetric[],
+		freshChild: [] as PromptCacheMetric[],
+		continuedChild: [] as PromptCacheMetric[],
+	};
+	for (const event of deduplicatePromptCacheMetrics(events)) {
+		if (event.data.provider !== "openai-codex") continue;
+		const ordinal = metricNumber(event.data.providerRequestOrdinal);
+		const runId = typeof event.data.runId === "string" ? event.data.runId : undefined;
+		if (!runId) {
+			if (ordinal === undefined || ordinal === 1) groups.root.push(event);
+		} else {
+			if (ordinal !== 1) continue;
+			const status = workers.get(runId);
+			if (status === "fresh") groups.freshChild.push(event);
+			else if (status === "continued") groups.continuedChild.push(event);
+		}
+	}
+	return {
+		root: summarizeCacheGroup(groups.root),
+		freshChild: summarizeCacheGroup(groups.freshChild),
+		continuedChild: summarizeCacheGroup(groups.continuedChild),
+	};
+}
+
 function deduplicatePromptCacheMetrics(events: readonly MetricsEvent[]): PromptCacheMetric[] {
 	const seenEventIds = new Set<string>();
 	const seenMessages = new Set<string>();
@@ -470,6 +571,7 @@ export function summarizeCodexCacheMetrics(
 		contextChanges: metrics.filter((event) => event.data.contextChangedSincePreviousRequest === true).length,
 		immediateToolChanges: metrics.filter((event) => event.data.immediateToolsChangedSincePreviousRequest === true).length,
 		models: [...modelCounts].map(([model, requests]) => ({ model, requests })),
+		firstRequestGroups: firstRequestGroups(events),
 	};
 }
 
@@ -482,7 +584,13 @@ export function formatCodexCacheUsageSection(
 ): string {
 	const lines = ["OpenAI Codex cache (recent requests):"];
 	if (summary.windowSize === 0) return `${lines[0]} unavailable`;
+	const first = summary.firstRequestGroups;
+	const formatGroup = (name: string, group: CodexCacheGroupSummary): string =>
+		`  ${name} first requests: ${group.requests} (${group.cacheReadShare === UNAVAILABLE ? UNAVAILABLE : `${(group.cacheReadShare * 100).toFixed(1)}%`} cache-read share)`;
 	lines.push(
+		formatGroup("root", first.root),
+		formatGroup("fresh child", first.freshChild),
+		formatGroup("continued child", first.continuedChild),
 		`  requests with usage: ${summary.withUsage}`,
 		`  usage unavailable: ${summary.unavailableUsage}`,
 		`  input: ${formatCacheMetric(summary.input)}`,

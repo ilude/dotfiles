@@ -1,6 +1,7 @@
 ---
 created: 2026-08-24
-status: ready
+status: completed
+completed: 2026-08-24
 ---
 
 # Task-Linked Subagent Session Affinity
@@ -30,13 +31,13 @@ Allow the root to explicitly continue a completed Luna subagent session for a la
 
 ## Tasks
 
-- [ ] **T1: Implement and prove explicit affinity continuation**
+- [x] **T1: Implement and prove explicit affinity continuation**
   - Files: `pi/extensions/subagent/contracts.ts`, `pi/extensions/subagent/modern-adapter.ts`, `pi/extensions/subagent/run-manager.ts`, the existing continuation-resolution path in `pi/extensions/subagent/index.ts`, focused subagent contract/runtime tests, and `pi/skills/pi-extension/references/contracts/subagents-and-tasks.md`.
   - Change: Add a separately named optional affinity-source task ID to single-item modern read/write requests. Record the minimal canonical execution fingerprint and settlement information required by the eligibility rules. Resolve the source by scanning process-local runs and reuse the existing saved-session executor while carrying task B's `taskId`. Add one canonical-session lease map in the run manager; do not create a second executor or persistent affinity store.
   - Done when: A focused test continues one successful Luna leaf from task A while assigning and recording task B. Parameterized eligibility tests prove latest-session selection and reject missing session/identity, failed or active run, ambiguous selection, non-Luna or changed model/effort, wrong root/workspace, changed profile/skills/role/authority, and multi-item or Team Lead use before spawn. One canonical-session race test proves aliases cannot resume concurrently and that the lease lasts through settlement.
   - Verify: From `pi/`, run the narrow subagent test file(s), then `pnpm run typecheck` because the shared modern request contract changes. Stop expansion and document the blocker if the existing continuation executor cannot preserve every named boundary.
 
-- [ ] **T2: Attribute cache behavior and finalize the bounded workflow**
+- [x] **T2: Attribute cache behavior and finalize the bounded workflow**
   - Dependencies: T1.
   - Files: `pi/extensions/session-configuration-fingerprint.ts`, the child launch environment and orchestration telemetry schema where needed for the direct run join, `pi/extensions/codex-status.ts` or its bounded cache-summary helper, focused telemetry/status tests, `pi/docs/orchestration-telemetry.md`, and modern subagent field documentation.
   - Change: Propagate the minimum cache attribution metadata: child `runId`, current `taskId`, continuation status, and provider-request ordinal. A missing child run ID identifies a root request. Define the first request as ordinal 1 for a child run and its cache-read share as `cacheRead / (input + cacheRead)`; retain reported zero and exclude and count unavailable input/cache-read pairs. Join child cache requests to orchestration records only by `runId`, never time, agent, or model. Extend the bounded report to separate root, fresh-child, and continued-child first requests without recording prompts, paths, tool arguments, or output.
@@ -45,9 +46,9 @@ Allow the root to explicitly continue a completed Luna subagent session for a la
 
 ## Validation
 
-- [ ] T1 proves task-B correlation, deterministic eligibility, exact authority checks, and canonical-session lease exclusion through focused tests and typecheck.
-- [ ] T2 proves direct cache attribution, fresh/continued first-request grouping, and the representative serial workflow through focused tests, typecheck, and direct task validation.
-- [ ] The final implementation adds no automatic routing, durable affinity state, path scoring, task lifecycle mutation, or cross-process session registry.
+- [x] T1 proves task-B correlation, deterministic eligibility, exact authority checks, and canonical-session lease exclusion through focused tests and typecheck.
+- [x] T2 proves direct cache attribution, fresh/continued first-request grouping, and the representative serial workflow through focused tests, typecheck, and direct task validation.
+- [x] The final implementation adds no automatic routing, durable affinity state, path scoring, task lifecycle mutation, or cross-process session registry.
 
 ## Retention
 
@@ -59,4 +60,6 @@ Keep this plan at `.specs/task-session-affinity/plan.md` while work remains. Aft
 
 ## Execution Status
 
-- State: Ready; implementation has not started. Resume with `/do-it .specs/task-session-affinity/plan.md`.
+- State: complete
+- Blocker: none
+- Result: Focused affinity, cache attribution, telemetry, status, and registered modern serial-workflow tests passed with Pi typecheck.

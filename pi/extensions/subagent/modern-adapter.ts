@@ -27,6 +27,7 @@ export type ModernExecutorInput = ModernInternalInput & {
 	agent?: string;
 	task?: string;
 	taskId?: string;
+	affinityTaskId?: string;
 	role?: "coordinator" | "leaf";
 	tasks?: LegacyCompatibleItem[];
 	cwd?: string;
@@ -66,6 +67,9 @@ export function modernRequestToExecutorInput(
 	const common = {
 		__modernRequest: request,
 		__modernPrepared: prepared,
+		...(request.kind !== "coordinator" && request.affinityTaskId
+			? { affinityTaskId: request.affinityTaskId }
+			: {}),
 		continuable: true as const,
 		...(request.enforcedBoundary ? { workspaceRoot: request.enforcedBoundary } : {}),
 	};

@@ -55,6 +55,8 @@ export type CoordinatorItem = SubagentItemBase;
 export interface ReadRequest {
 	readonly kind: "read";
 	readonly items: readonly ReadItem[];
+	/** Explicit task A whose settled Luna session may continue task B. Single-item only. */
+	readonly affinityTaskId?: string;
 	/** The filesystem boundary enforced by governed file tools and recognized recursive-search tools. */
 	readonly enforcedBoundary?: string;
 	/** Hidden compatibility alias for resumed sessions. */
@@ -65,6 +67,8 @@ export interface ReadRequest {
 export interface WriteRequest {
 	readonly kind: "write";
 	readonly items: readonly WriteItem[];
+	/** Explicit task A whose settled Luna session may continue task B. Single-item only. */
+	readonly affinityTaskId?: string;
 	/** The filesystem boundary enforced by governed file tools and recognized recursive-search tools. */
 	readonly enforcedBoundary?: string;
 	/** Hidden compatibility alias for resumed sessions. */
@@ -331,6 +335,12 @@ const CoordinatorItemSchema = Type.Object(
 );
 
 const CommonRequestFields = {
+	affinityTaskId: Type.Optional(
+		Type.String({
+			minLength: 1,
+			description: "Explicit prior task ID for serial Luna session affinity; single-item read/write only.",
+		}),
+	),
 	enforcedBoundary: Type.Optional(
 		Type.String({
 			minLength: 1,
@@ -523,6 +533,12 @@ export function prepareSubagentExecution(
 	);
 	if (workspace.outcome === "deny") throw new Error(workspace.reason);
 	const workspaceRoot = workspace.workspaceRoot;
+	if (request.kind === "coordinator" && "affinityTaskId" in request)
+		throw new Error("affinityTaskId is only valid for a single-item modern read or write request.");
+	if (request.kind !== "coordinator" && request.affinityTaskId !== undefined && request.items.length !== 1)
+		throw new Error("affinityTaskId is only valid for a single-item modern read or write request.");
+	if (request.kind !== "coordinator" && request.affinityTaskId !== undefined && request.items[0]?.taskId === undefined)
+		throw new Error("affinityTaskId requires the current taskId for correlation.");
 	const projectTrusted = options.isWorkspaceTrusted?.(workspaceRoot) ?? true;
 	const agentScope = request.agentScope ?? options.agentScope ?? "user";
 	// Project-local agent files are governed by the selected workspace trust

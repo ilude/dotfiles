@@ -449,6 +449,57 @@ describe("codex-status usage", () => {
 		expect(text).not.toContain("subscription");
 	});
 
+	it("groups unique first child requests by direct run join and preserves zero usage", () => {
+		const events = [
+			{
+				schemaVersion: 1 as const,
+				id: "run-event",
+				ts: "2026-08-23T12:00:00.000Z",
+				event: "orchestration_run",
+				data: {
+					workers: [
+						{ runId: "fresh-run", taskId: "task-a", continuationStatus: "fresh" },
+						{ runId: "continued-run", taskId: "task-b", continuationStatus: "continued" },
+					],
+				},
+			},
+			{
+				schemaVersion: 1 as const,
+				id: "root-cache",
+				ts: "2026-08-23T12:01:00.000Z",
+				event: "prompt_cache_request",
+				data: { provider: "openai-codex", providerRequestOrdinal: 1, input: 0, cacheRead: 0 },
+			},
+			{
+				schemaVersion: 1 as const,
+				id: "fresh-cache",
+				ts: "2026-08-23T12:02:00.000Z",
+				event: "prompt_cache_request",
+				data: { provider: "openai-codex", runId: "fresh-run", taskId: "task-a", continuationStatus: "fresh", providerRequestOrdinal: 1, input: 2, cacheRead: 8 },
+			},
+			{
+				schemaVersion: 1 as const,
+				id: "continued-cache",
+				ts: "2026-08-23T12:03:00.000Z",
+				event: "prompt_cache_request",
+				data: { provider: "openai-codex", runId: "continued-run", taskId: "task-b", continuationStatus: "continued", providerRequestOrdinal: 1, input: "unavailable", cacheRead: "unavailable" },
+			},
+			{
+				schemaVersion: 1 as const,
+				id: "continued-second",
+				ts: "2026-08-23T12:04:00.000Z",
+				event: "prompt_cache_request",
+				data: { provider: "openai-codex", runId: "continued-run", providerRequestOrdinal: 2, input: 1, cacheRead: 9 },
+			},
+		] as const;
+		const summary = summarizeCodexCacheMetrics(events);
+		expect(summary.firstRequestGroups).toEqual({
+			root: expect.objectContaining({ requests: 1, withUsage: 1, input: 0, cacheRead: 0, cacheReadShare: "unavailable" }),
+			freshChild: expect.objectContaining({ requests: 1, withUsage: 1, input: 2, cacheRead: 8, cacheReadShare: 0.8 }),
+			continuedChild: expect.objectContaining({ requests: 1, withUsage: 0, unavailableUsage: 1 }),
+		});
+	});
+
 	it("does not collapse legacy unavailable message IDs within one session", () => {
 		const events = ["event-1", "event-2"].map((id) => ({
 			schemaVersion: 1 as const,

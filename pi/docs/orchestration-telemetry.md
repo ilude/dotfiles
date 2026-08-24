@@ -83,6 +83,7 @@ Run and worker `status` values are `pending`, `running`, `completed`, `failed`,
 | `retryOrigin` | no | Metadata identifier for the retry source. |
 | `coordinatorTaskId` | no | Root-owned durable task ID carried by a coordinator. |
 | `taskId` | no | Durable task identity when this worker has one. |
+| `continuationStatus` | no | `fresh` or `continued` child execution status. |
 | `agent` | yes | Sanitized worker identity. |
 | `resolvedModel` | no | Sanitized selected model identity. |
 | `selectedEffort` | no | Selected reasoning effort. |
@@ -105,6 +106,17 @@ Run and worker `status` values are `pending`, `running`, `completed`, `failed`,
 | `chainTransferBytes` | no | Worker text byte count forwarded to a chain step. |
 | `usage` | no | Normalized worker usage record. |
 | `turns` | no | Worker turn count. |
+
+Child `prompt_cache_request` events carry only the attribution metadata needed
+for bounded cache reporting: `runId`, `taskId`, `continuationStatus`, and
+`providerRequestOrdinal`. A missing `runId` identifies a root request. The
+ordinal starts at 1 for each child run. The first-request cache-read share is
+`cacheRead / (input + cacheRead)`; zero is reported zero, while a missing input
+or cache-read value is unavailable and excluded from that share. Child cache
+requests join orchestration workers only by unique `runId`, never by time,
+agent, or model. Reports group first requests as root, fresh child, or
+continued child and retain task correlation without prompts, paths, tool
+arguments, or output.
 
 The normalized `usage` record has these fields: `inputTokens`, `outputTokens`,
 `totalTokens`, `cacheCreationInputTokens`, `cacheReadInputTokens`,

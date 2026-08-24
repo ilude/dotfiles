@@ -79,6 +79,9 @@ describe("session configuration fingerprint", () => {
 			enabledModels: ["openai-codex/gpt-5.6-sol"],
 			metrics: { enabled: true },
 		};
+		delete process.env.PI_SUBAGENT_RUN_ID;
+		delete process.env.PI_SUBAGENT_TASK_ID;
+		delete process.env.PI_SUBAGENT_CONTINUATION_STATUS;
 	});
 
 	it("emits one complete initial fingerprint without raw configuration content", async () => {
@@ -195,6 +198,31 @@ describe("session configuration fingerprint", () => {
 				previousModelId: "claude-sonnet-5",
 				previousThinkingLevel: "high",
 			}),
+		]);
+	});
+	it("attributes child cache requests and resets the provider ordinal per session", async () => {
+		process.env.PI_SUBAGENT_RUN_ID = "run-b";
+		process.env.PI_SUBAGENT_TASK_ID = "task-b";
+		process.env.PI_SUBAGENT_CONTINUATION_STATUS = "continued";
+		const pi = createMockPi();
+		sessionConfigurationFingerprint(
+			pi as Parameters<typeof sessionConfigurationFingerprint>[0],
+		);
+		const ctx = createContext();
+		const beforeRequest = hook(pi, "before_provider_request");
+		const messageEnd = hook(pi, "message_end");
+		const payload = { instructions: "bounded", tools: [] };
+		await beforeRequest({ type: "before_provider_request", payload }, ctx);
+		await messageEnd({ type: "message_end", message: { role: "assistant", id: "m1", usage: { input: 0, cacheRead: 0 } } }, ctx);
+		await beforeRequest({ type: "before_provider_request", payload }, ctx);
+		await messageEnd({ type: "message_end", message: { role: "assistant", id: "m2", usage: { input: 2, cacheRead: 8 } } }, ctx);
+		const cacheRecords = runtime.recordEvent.mock.calls
+			.map(([record]) => record)
+			.filter((record) => record.event === "prompt_cache_request");
+		expect(cacheRecords).toHaveLength(2);
+		expect(cacheRecords.map((record) => record.data)).toEqual([
+			expect.objectContaining({ runId: "run-b", taskId: "task-b", continuationStatus: "continued", providerRequestOrdinal: 1, input: 0, cacheRead: 0 }),
+			expect.objectContaining({ providerRequestOrdinal: 2, input: 2, cacheRead: 8 }),
 		]);
 	});
 });

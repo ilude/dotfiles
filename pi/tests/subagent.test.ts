@@ -271,6 +271,19 @@ Run subscription work.
 			"utf8",
 		);
 		await fs.promises.writeFile(
+			path.join(agentsDir, "luna.md"),
+			`---
+name: luna
+description: Luna continuation test agent
+model: openai-codex/gpt-5.6-luna:high
+tools: read, grep, bash
+---
+
+Run Luna continuation work.
+`,
+			"utf8",
+		);
+		await fs.promises.writeFile(
 			path.join(agentsDir, "unpinned.md"),
 			`---
 name: unpinned
@@ -4687,6 +4700,140 @@ You are a test agent.
 					delete process.env.PI_SUBAGENT_RUN_ID;
 				else process.env.PI_SUBAGENT_RUN_ID = previousSubagentRunId;
 			}
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"continues a task-affined Luna session through the registered modern write tool",
+		async () => {
+			let launch = 0;
+			let savedSessionPath: string | undefined;
+			const childInvocations: Array<{
+				args: string[];
+				env: NodeJS.ProcessEnv;
+			}> = [];
+			spawnMock.mockImplementation((_command: string, args: string[], options: { env: NodeJS.ProcessEnv }) => {
+				const proc = createMockProcess();
+				childInvocations.push({ args: [...args], env: options.env });
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				const resumedSession = args.indexOf("--session") >= 0
+					? args[args.indexOf("--session") + 1]
+					: undefined;
+				const sessionPath =
+					resumedSession ??
+					path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`);
+				fs.mkdirSync(sessionDir, { recursive: true });
+				if (!resumedSession) {
+					savedSessionPath = sessionPath;
+					fs.writeFileSync(sessionPath, testSessionHeader(sessionId, tmpDir), "utf8");
+				}
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: launch++ === 0 ? "task A" : "task B" }],
+								usage: { input: 10, output: 5, cacheRead: 2, cacheWrite: 0, cost: { total: 0.01 }, totalTokens: 15 },
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+
+			const { pi } = await loadTool();
+			const modernWrite = pi._getTool("subagent_write");
+			if (!modernWrite) throw new Error("subagent_write tool not registered");
+			const { createTask, resolveTaskWorkspace } = await import("../lib/task-registry.ts");
+			const workspace = resolveTaskWorkspace(tmpDir);
+			const taskA = createTask({
+				origin: "other",
+				state: "assigned",
+				summary: "Task A",
+				workspace,
+				sessionId: "modern-affinity-parent",
+			});
+			const taskB = createTask({
+				origin: "other",
+				state: "assigned",
+				summary: "Task B",
+				workspace,
+				sessionId: "modern-affinity-parent",
+			});
+			const ctx = createMockCtx({
+				cwd: tmpDir,
+				sessionManager: {
+					getSessionId: () => "modern-affinity-parent",
+					getEntries: () => [],
+				},
+			});
+
+			const first = await modernWrite.execute(
+				"modern-affinity-task-a",
+				{ items: [{ agent: "luna", instructions: "Complete task A.", taskId: taskA.id }], agentScope: "project" },
+				undefined,
+				undefined,
+				ctx,
+			);
+			const firstSessionPath = first.details.results[0]?.sessionPath;
+			expect(firstSessionPath).toBeDefined();
+			expect(path.normalize(firstSessionPath!).toLowerCase()).toBe(
+				path.normalize(savedSessionPath!).toLowerCase(),
+			);
+			const second = await modernWrite.execute(
+				"modern-affinity-task-b",
+				{
+					affinityTaskId: taskA.id,
+					items: [{ agent: "luna", instructions: "Continue as task B.", taskId: taskB.id }],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			expect(first.details.results[0]).toMatchObject({
+				taskId: taskA.id,
+				continuationStatus: "fresh",
+			});
+			const secondSessionPath = second.details.results[0]?.sessionPath;
+			expect(second.details.results[0]).toMatchObject({
+				taskId: taskB.id,
+				continuationStatus: "continued",
+			});
+			expect(path.normalize(secondSessionPath!).toLowerCase()).toBe(
+				path.normalize(firstSessionPath!).toLowerCase(),
+			);
+			expect(childInvocations).toHaveLength(2);
+			expect(childInvocations[0]?.args).toEqual(expect.arrayContaining(["--session-id", expect.any(String)]));
+			expect(childInvocations[1]?.args).toEqual(
+				expect.arrayContaining(["--session", secondSessionPath]),
+			);
+			expect(childInvocations[0]?.env).toMatchObject({
+				PI_SUBAGENT_TASK_ID: taskA.id,
+				PI_SUBAGENT_CONTINUATION_STATUS: "fresh",
+			});
+			expect(childInvocations[1]?.env).toMatchObject({
+				PI_SUBAGENT_TASK_ID: taskB.id,
+				PI_SUBAGENT_CONTINUATION_STATUS: "continued",
+			});
+
+			const runs = await orchestrationRuns();
+			expect(runs).toHaveLength(2);
+			const workers = runs.flatMap((event) => event.data.workers);
+			expect(workers).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ taskId: taskA.id, continuationStatus: "fresh" }),
+					expect.objectContaining({ taskId: taskB.id, continuationStatus: "continued" }),
+				]),
+			);
+			expect(runs.every((event) => event.data.executionKind === "write")).toBe(true);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

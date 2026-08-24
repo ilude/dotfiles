@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { Message } from "@earendil-works/pi-ai";
 import type { SubagentTreeRole } from "./tree-runtime.js";
 
@@ -79,6 +81,16 @@ export interface SubagentRunUsage {
 	readonly cost: number | null;
 }
 
+export interface SubagentExecutionFingerprint {
+	readonly agent: string;
+	readonly skills: ReadonlyArray<string>;
+	readonly role: SubagentTreeRole;
+	readonly depth: number;
+	readonly model: string;
+	readonly effort: string;
+	readonly authorityTools: ReadonlyArray<string>;
+}
+
 export interface SubagentRunSnapshot {
 	readonly runId: string;
 	readonly taskId?: string;
@@ -123,6 +135,8 @@ export interface SubagentRunSnapshot {
 	readonly liveTextUpdatedAt?: number;
 	readonly liveTools: ReadonlyArray<SubagentLiveTool>;
 	readonly finalText: string;
+	readonly executionFingerprint?: SubagentExecutionFingerprint;
+	readonly settlementOrder?: number;
 }
 
 interface MutableSubagentRunSnapshot {
@@ -170,6 +184,8 @@ interface MutableSubagentRunSnapshot {
 	liveTextUpdatedAt?: number;
 	liveTools: SubagentLiveTool[];
 	finalText: string;
+	executionFingerprint?: SubagentExecutionFingerprint;
+	settlementOrder?: number;
 }
 
 export interface BeginSubagentRun {
@@ -198,6 +214,7 @@ export interface BeginSubagentRun {
 	model?: string;
 	effort?: string;
 	background?: boolean;
+	executionFingerprint?: SubagentExecutionFingerprint;
 }
 
 export interface UpdateSubagentRun {
@@ -218,6 +235,33 @@ export interface SettleSubagentRun extends UpdateSubagentRun {
 interface RunSettlement {
 	promise: Promise<void>;
 	resolve: () => void;
+}
+
+export function canonicalizeSavedSessionPath(sessionPath: string): string {
+	const absolute = path.resolve(sessionPath);
+	let canonical = absolute;
+	try {
+		canonical = fs.realpathSync.native(absolute);
+	} catch {
+		// A newly-created continuation may not exist when its lease is acquired.
+	}
+	return process.platform === "win32" ? canonical.toLowerCase() : canonical;
+}
+
+export const canonicalizeWorkspaceIdentity = canonicalizeSavedSessionPath;
+
+function normalizeFingerprintValues(values: ReadonlyArray<string>): string[] {
+	return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
+}
+
+function normalizeExecutionFingerprint(
+	fingerprint: SubagentExecutionFingerprint,
+): SubagentExecutionFingerprint {
+	return {
+		...fingerprint,
+		skills: normalizeFingerprintValues(fingerprint.skills),
+		authorityTools: normalizeFingerprintValues(fingerprint.authorityTools),
+	};
 }
 
 function boundedTail(value: string, maxBytes: number): string {
@@ -277,6 +321,8 @@ export class SubagentRunManager {
 		(completion: SubagentBackgroundCompletion) => void
 	>();
 	private readonly settlements = new Map<string, RunSettlement>();
+	private readonly sessionLeases = new Map<string, string>();
+	private settlementSequence = 0;
 	private acceptBackgroundCompletions = true;
 	private disposalStarted = false;
 	private disposalComplete = false;
@@ -356,6 +402,18 @@ export class SubagentRunManager {
 		}
 	}
 
+	acquireSessionLease(sessionPath: string, runId: string): () => void {
+		const key = canonicalizeSavedSessionPath(sessionPath);
+		const holder = this.sessionLeases.get(key);
+		if (holder !== undefined)
+			throw new Error(`Saved subagent session is already active: ${sessionPath}`);
+		this.sessionLeases.set(key, runId);
+		return () => {
+			if (this.sessionLeases.get(key) === runId)
+				this.sessionLeases.delete(key);
+		};
+	}
+
 	begin(input: BeginSubagentRun, controller: AbortController): void {
 		if (this.disposalStarted)
 			throw new Error("Subagent run manager is disposing.");
@@ -379,6 +437,9 @@ export class SubagentRunManager {
 					? undefined
 					: boundedTail(input.effort, MAX_METADATA_TEXT_BYTES),
 			background: input.background === true,
+			executionFingerprint: input.executionFingerprint
+				? normalizeExecutionFingerprint(input.executionFingerprint)
+				: undefined,
 			status: "running",
 			startedAt,
 			lastActivityAt: startedAt,
@@ -428,7 +489,7 @@ export class SubagentRunManager {
 			);
 		if (patch.sessionPath !== undefined)
 			snapshot.sessionPath = boundedTail(
-				patch.sessionPath,
+				canonicalizeSavedSessionPath(patch.sessionPath),
 				MAX_METADATA_TEXT_BYTES,
 			);
 		if (patch.usage !== undefined) snapshot.usage = { ...patch.usage };
@@ -568,6 +629,7 @@ export class SubagentRunManager {
 		this.update(runId, result);
 		snapshot.status = result.status;
 		snapshot.settledAt = Date.now();
+		snapshot.settlementOrder = ++this.settlementSequence;
 		snapshot.durationMs ??= snapshot.settledAt - snapshot.startedAt;
 		snapshot.liveText = "";
 		snapshot.liveTextUpdatedAt = undefined;
@@ -778,6 +840,99 @@ export class SubagentRunManager {
 			}
 		}
 	}
+}
+
+export type AffinityResolution =
+	| { readonly outcome: "resolved"; readonly run: SubagentRunSnapshot }
+	| { readonly outcome: "rejected"; readonly reason: string };
+
+function sameValues(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
+	return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function matchesAffinityIdentity(
+	run: SubagentRunSnapshot,
+	identity: {
+		readonly parentSessionId: string | undefined;
+		readonly workspaceId: string;
+		readonly fingerprint: SubagentExecutionFingerprint;
+	},
+): boolean {
+	if (
+		run.status !== "completed" ||
+		!run.sessionPath ||
+		typeof run.settledAt !== "number" ||
+		typeof run.settlementOrder !== "number"
+	)
+		return false;
+	if (!run.parentSessionId || run.parentSessionId !== identity.parentSessionId)
+		return false;
+	if (
+		!run.workspaceId ||
+		canonicalizeWorkspaceIdentity(run.workspaceId) !==
+			canonicalizeWorkspaceIdentity(identity.workspaceId)
+	)
+		return false;
+	if (!run.model?.toLowerCase().includes("openai-codex") || !run.model.toLowerCase().includes("luna"))
+		return false;
+	const fingerprint = run.executionFingerprint;
+	return Boolean(
+		fingerprint &&
+		fingerprint.agent === identity.fingerprint.agent &&
+		fingerprint.role === identity.fingerprint.role &&
+		fingerprint.depth === identity.fingerprint.depth &&
+		fingerprint.model === identity.fingerprint.model &&
+		fingerprint.effort === identity.fingerprint.effort &&
+		sameValues(
+				normalizeFingerprintValues(fingerprint.skills),
+				normalizeFingerprintValues(identity.fingerprint.skills),
+			) &&
+			sameValues(
+				normalizeFingerprintValues(fingerprint.authorityTools),
+				normalizeFingerprintValues(identity.fingerprint.authorityTools),
+			),
+	);
+}
+
+export function resolveTaskSessionAffinity(
+	runs: ReadonlyArray<SubagentRunSnapshot>,
+	affinityTaskId: string,
+	identity: {
+		readonly parentSessionId: string | undefined;
+		readonly workspaceId: string;
+		readonly fingerprint: SubagentExecutionFingerprint;
+	},
+): AffinityResolution {
+	const references = runs.filter(
+		(run) => run.taskId === affinityTaskId && matchesAffinityIdentity(run, identity),
+	);
+	if (references.length === 0)
+		return { outcome: "rejected", reason: "no eligible settled Luna session found" };
+	const latestReferenceOrder = Math.max(
+		...references.map((run) => run.settlementOrder as number),
+	);
+	const referenceSessions = new Set(
+		references
+			.filter((run) => run.settlementOrder === latestReferenceOrder)
+			.map((run) => canonicalizeSavedSessionPath(run.sessionPath as string)),
+	);
+	if (referenceSessions.size !== 1)
+		return { outcome: "rejected", reason: "ambiguous eligible sessions" };
+	const sessionKey = [...referenceSessions][0] as string;
+	const generations = runs.filter(
+		(run) =>
+			matchesAffinityIdentity(run, identity) &&
+			canonicalizeSavedSessionPath(run.sessionPath as string) === sessionKey,
+	);
+	if (generations.length === 0)
+		return { outcome: "rejected", reason: "no eligible settled Luna session found" };
+	const latestOrder = Math.max(
+		...generations.map((run) => run.settlementOrder as number),
+	);
+	const latest = generations.filter((run) => run.settlementOrder === latestOrder);
+	if (latest.length !== 1)
+		return { outcome: "rejected", reason: "ambiguous eligible sessions" };
+	return { outcome: "resolved", run: latest[0] as SubagentRunSnapshot };
 }
 
 const SUBAGENT_RUN_MANAGER_VERSION = 1;
