@@ -12,6 +12,7 @@ it needs more specific guidance.
 - [AGENTS](AGENTS.md) — vault-wide guidance for agents
 - [agent-workflows/index](agent-workflows/index.md) — agent workflow research and Pi/dotfiles ideas
 - [prompt-router/index](prompt-router/index.md) — prompt-router curation, experiments, datasets, and routing policy research
+- [osint/index](osint/index.md) - OSINT directories, agent integrations, reading, and collection-accountability research
 
 ## Current topics
 
@@ -19,6 +20,8 @@ it needs more specific guidance.
   small Pi/dotfiles adaptation ideas.
 - `prompt-router/` — prompt-router curation, experiments, datasets, deployment
   candidates, and user-effort override policy.
+- `osint/` - OSINT resource directories, agent-assisted investigation sources,
+  and provenance-preserving collection guidance.
 
 ## Adding a topic
 
