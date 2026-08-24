@@ -2797,6 +2797,7 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Crystallize an executable plan in the primary repository",
 		handler: async (args, ctx) => {
+			echoSlashCommand(pi, "plan-it", args);
 			const lifecycle = createPlanLifecycleSnapshot(randomUUID(), args);
 			let workspaceDirective = "";
 			if (ctx.cwd) {
@@ -2834,7 +2835,6 @@ export default function (pi: ExtensionAPI) {
 					},
 				},
 				async () => {
-					echoSlashCommand(pi, "plan-it", args);
 					const template = loadSkill("plan-it.md");
 					sendHiddenWorkflowPrompt(pi, buildSkillPrompt(template, args) + workspaceDirective);
 				},
@@ -2872,6 +2872,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("do-it", {
 		description: "Execute work in one owned workflow worktree with proportional validation",
 		handler: async (args, ctx) => {
+			echoSlashCommand(pi, "do-it", args);
 			const planPath = args.trim().replace(/^@/, "");
 			const canonicalPlan = /^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(planPath);
 			let workspaceDirective = "";
@@ -2892,7 +2893,6 @@ export default function (pi: ExtensionAPI) {
 									: `${message.slice(0, MAX_PLAN_PREFLIGHT_CHARS - 22)}\n... details truncated`,
 								display: true,
 							});
-							echoSlashCommand(pi, "do-it", args);
 							return;
 						}
 					}
@@ -2924,7 +2924,6 @@ export default function (pi: ExtensionAPI) {
 				activeRawWorkflow = ownedWorktree;
 				activateTools(pi, ["workflow_complete"]);
 			}
-			echoSlashCommand(pi, "do-it", args);
 			const template = loadSkill("do-it.md");
 			const prompt = buildSkillPrompt(template, args, {
 				replaceArguments: true,

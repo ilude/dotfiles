@@ -186,6 +186,27 @@ describe("workflow slash command dispatch", () => {
 		);
 	});
 
+	it("/plan-it echoes before repository resolution completes", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		let resolveRoot: ((root: string) => void) | undefined;
+		vi.mocked(worktrees.resolveWorkflowRepoRoot).mockImplementationOnce(() => new Promise((resolve) => {
+			resolveRoot = resolve;
+		}));
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+
+		const dispatched = getHandler(mockPi, "plan-it")("build the thing", { cwd: "/repo" });
+
+		expect(mockPi.sendMessage).toHaveBeenCalledWith({
+			customType: "slash-echo",
+			content: "/plan-it build the thing",
+			display: true,
+		});
+		resolveRoot?.("/repo");
+		await dispatched;
+	});
+
 	it("bare /plan-it derives its plan name in the planning turn", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -275,6 +296,27 @@ describe("workflow slash command dispatch", () => {
 			triggerTurn: true,
 			deliverAs: "followUp",
 		});
+	});
+
+	it("/do-it echoes before repository resolution completes", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		let resolveRoot: ((root: string) => void) | undefined;
+		vi.mocked(worktrees.resolveWorkflowRepoRoot).mockImplementationOnce(() => new Promise((resolve) => {
+			resolveRoot = resolve;
+		}));
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+
+		const dispatched = getHandler(mockPi, "do-it")("fix the task", { cwd: "/repo" });
+
+		expect(mockPi.sendMessage).toHaveBeenCalledWith({
+			customType: "slash-echo",
+			content: "/do-it fix the task",
+			display: true,
+		});
+		resolveRoot?.("/repo");
+		await dispatched;
 	});
 
 	it("/do-it rejects an invalid canonical plan before archive activation or execution", async () => {
