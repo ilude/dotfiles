@@ -601,17 +601,20 @@ async function handleLoop(
 	}
 	if (request.action === "stop") {
 		const job = selectJob(request.values, ctx.cwd);
+		ctx.ui.notify("Stopping loop...", "info");
 		await stopLoopJob(pi, job);
 		show(pi, `Stopped loop ${job.id}.`);
 		return;
 	}
 	if (request.action === "resume") {
 		const prior = selectJob(request.values, ctx.cwd);
+		ctx.ui.notify("Resuming loop...", "info");
 		const started = await resumeLoopJob(prior);
 		show(pi, `Resumed loop ${started.id} (PID ${started.pid}).`);
 		return;
 	}
 
+	ctx.ui.notify("Starting loop...", "info");
 	const started = await startLoopJob(pi, ctx, request.values);
 	show(
 		pi,

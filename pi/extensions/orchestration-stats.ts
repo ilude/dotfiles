@@ -318,6 +318,7 @@ export default function orchestrationStatsExtension(pi: ExtensionAPI) {
 				ctx.ui.notify("Usage: /orchestration-stats [days 1-365]", "warning");
 				return;
 			}
+			ctx.ui.notify("Orchestration report started.", "info");
 			pi.sendMessage(
 				{
 					customType: "orchestration-stats",

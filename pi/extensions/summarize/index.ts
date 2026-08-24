@@ -5,6 +5,7 @@ import {
 	buildSummaryEvidenceFallback,
 	serializeSummaryEvidence,
 } from "./evidence.js";
+import { SLASH_COMMAND_ECHO_TYPE } from "../../lib/slash-command-echo.js";
 
 const TEMPLATE = readFileSync(
 	new URL("../../skills/workflow/summarize.md", import.meta.url),
@@ -16,6 +17,11 @@ export default function summarizeExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("summarize", {
 		description: "Create a compact, evidence-backed handoff for this session",
 		handler: async (args, ctx) => {
+			const text = args.trim() ? `/summarize ${args.trim()}` : "/summarize";
+			pi.sendMessage(
+				{ customType: SLASH_COMMAND_ECHO_TYPE, content: text, display: true },
+				{ triggerTurn: false },
+			);
 			await ctx.waitForIdle();
 			const branch = ctx.sessionManager.getBranch();
 			let evidence: string;

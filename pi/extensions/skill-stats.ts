@@ -616,6 +616,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("skill-stats", {
 		description: "Show best-effort skill usage from Pi session logs.",
 		handler: async (args: string, ctx: ExtensionContext) => {
+			ctx.ui.notify("Skill usage report started.", "info");
 			const { result, errorMarkdown } = await collectSkillStats(args, {
 				cwd: ctx.cwd,
 				sessionRoot: ctx.sessionManager.getSessionDir(),

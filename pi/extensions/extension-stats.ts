@@ -1216,6 +1216,7 @@ export default function extensionStatsExtension(pi: ExtensionAPI) {
 			"Dump last 1/7/30 days of ~/.pi session tool/command usage; pass 60, 90, or all to include longer windows",
 		handler: async (args, ctx: ExtensionContext) => {
 			const reportDays = parseReportDays(args);
+			ctx.ui.notify("Extension usage report started.", "info");
 			const data = await computeBreakdown(
 				pi,
 				ctx.cwd,

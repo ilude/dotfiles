@@ -69,6 +69,28 @@ describe("copy-all", () => {
 		});
 	});
 
+	it("acknowledges before pending idle work and only once", async () => {
+		copyToClipboardMock.mockResolvedValue(undefined);
+		const { command } = setup();
+		const notify = vi.fn();
+		let release!: () => void;
+		const idle = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const pending = command.handler("", {
+			cwd: process.cwd(),
+			waitForIdle: () => idle,
+			sessionManager: { getBranch: () => branch() },
+			ui: { notify },
+		});
+
+		expect(notify).toHaveBeenCalledTimes(1);
+		expect(notify).toHaveBeenCalledWith("Copying conversation.", "info");
+		release();
+		await pending;
+		expect(notify.mock.calls.filter(([message]) => message === "Copying conversation.")).toHaveLength(1);
+	});
+
 	it("copies through Pi's clipboard helper and reports bytes", async () => {
 		copyToClipboardMock.mockResolvedValue(undefined);
 		const { command, sendMessage } = setup();

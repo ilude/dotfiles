@@ -1,7 +1,7 @@
 ---
 created: 2026-08-24
-status: ready
-completed:
+status: completed
+completed: 2026-08-24
 ---
 
 # Plan: Immediate Extension Command Feedback
@@ -24,13 +24,13 @@ Ensure Pi extension commands provide immediate visible acknowledgement before po
 
 ## Tasks
 
-- [ ] **T1: Audit and classify extension command feedback**
+- [x] **T1: Audit and classify extension command feedback**
   - Files: `pi/extensions/**/*.ts`; existing command-registration test helpers or a throwaway inventory script; `.specs/extension-command-feedback/command-audit.md`
   - Change: Capture the runtime command names produced by every registration site, including loop registrations and aliases, and reconcile that deterministic inventory against `command-audit.md`. For each command name, record registration site/shared handler, argument branches that materially differ, first potentially slow or blocking operation, existing intermediate and terminal output, and classification. Record the chosen single pre-work acknowledgement and expected behavior only in modes that command supports. Treat invoked helpers as part of the path; UI setup counts only when control can return for rendering before blocking work.
   - Done when: Every runtime extension command name and materially different branch has one reproducible evidence-backed classification, and the mutation list contains only commands that can otherwise appear inert.
   - Verify: Generate and save the deterministic runtime-name inventory during the audit, reconcile it once against `command-audit.md`, and use source `rg` only as a secondary call-site check. Do not add a permanent test that parses policy prose.
 
-- [ ] **T2: Implement and verify immediate feedback**
+- [x] **T2: Implement and verify immediate feedback**
   - Depends on: T1
   - Files: Only the `pi/extensions/**/*.ts` handlers classified as needing change; their focused `pi/tests/**/*.test.ts` files; shared slash-echo code if reuse requires it; `pi/skills/pi-extension/SKILL.md` only if the implemented contract needs clarification
   - Change: Emit exactly one command-appropriate acknowledgement before the first potentially slow operation. Prefer asynchronous work; when unavoidable synchronous blocking work follows, yield after scheduling feedback so the applicable frontend can emit or render it first. Chat-dispatch workflows must reuse the display-only slash-echo type without triggering an additional model turn. Other handlers use command-owned status keys, loaders, notifications, or dialogs guarded for their supported mode. Only handlers using disposable or shared transient UI require `try/finally`; they restore prior shared status or dispose command-owned UI on success, error, and cancellation without emitting false success or generic cancellation errors.
@@ -39,15 +39,15 @@ Ensure Pi extension commands provide immediate visible acknowledgement before po
 
 ## Validation
 
-- [ ] Runtime inventory reconciliation.
+- [x] Runtime inventory reconciliation.
   - Expected: Every registered command name and alias appears exactly once in `command-audit.md`; dynamic registrations and materially different argument paths are represented.
-- [ ] Ordering and frontend/protocol observation for each distinct changed feedback mechanism.
+- [x] Ordering and frontend/protocol observation for each distinct changed feedback mechanism.
   - Expected: One representative integration slice observes acknowledgement while asynchronous work remains pending or before synchronous blocking work begins; focused unit tests cover command-specific mode guards; slash echo is display-only and triggers no model turn.
-- [ ] Cleanup and preservation checks.
+- [x] Cleanup and preservation checks.
   - Expected: Success, one representative error path, and cancellation clean up only disposable command-owned transient UI, preserve prior/shared status and existing terminal output, and emit no duplicate acknowledgement or false completion.
-- [ ] Focused Pi tests and typecheck.
+- [x] Focused Pi tests and typecheck.
   - Expected: Changed command tests and representative integration slices pass, and `pnpm run typecheck` exits successfully.
-- [ ] Diff hygiene: `git diff --check`.
+- [x] Diff hygiene: `git diff --check`.
   - Expected: No whitespace errors; unrelated primary changes remain intact.
 
 ## Retention
@@ -56,7 +56,7 @@ Keep incomplete work at `.specs/extension-command-feedback/plan.md`. `/do-it` mu
 
 ## Execution Status
 
-- State: planned, not started
+- State: completed
 - Blocker: none
-- Next: T1
-- Resume: `/do-it .specs/extension-command-feedback/plan.md`
+- Next: archive and merge
+- Result: Reconciled 37 runtime command names; changed only handlers that lacked renderable pre-work feedback. Focused command tests passed (196 tests), the affected orchestration command test passed separately, typecheck passed, and `git diff --check` passed.
