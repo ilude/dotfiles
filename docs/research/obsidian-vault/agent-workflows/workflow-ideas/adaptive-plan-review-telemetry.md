@@ -101,6 +101,7 @@ be safely reviewed automatically and how many reviewers they need.
 
 ## Related notes
 
+- [Cloudflare and Astro issue triage](../projects/cloudflare-astro-issue-triage.md)
 - [Agent workflow benchmark loops](agent-workflow-benchmark-loops.md)
 - [DuckDB for Pi usage analytics](duckdb-for-pi-usage-analytics.md)
 - [Pipelines and policies](pipelines-and-policies.md)

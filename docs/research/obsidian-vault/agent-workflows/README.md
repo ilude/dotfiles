@@ -58,6 +58,7 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [projects/openclaw](projects/openclaw.md)
 - [projects/daytona](projects/daytona.md)
 - [projects/convex-agent-plugins](projects/convex-agent-plugins.md)
+- [projects/cloudflare-astro-issue-triage](projects/cloudflare-astro-issue-triage.md)
 - [projects/pi-coding-agent-deep-dive](projects/pi-coding-agent-deep-dive.md)
 - [projects/menos](projects/menos.md)
 - [projects/zellij-windows-cockpit](projects/zellij-windows-cockpit.md)

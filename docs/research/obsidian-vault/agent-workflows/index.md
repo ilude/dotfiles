@@ -20,6 +20,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [agent-skills-ecosystem](projects/agent-skills-ecosystem.md) - skill standards, repositories, validators, and meta-skill patterns.
 - [Claude Code worktrees](projects/claude-code-worktrees.md) - built-in worktree behavior, isolation, cleanup, and known failure modes.
 - [Pi damage-control gap analysis](projects/pi-damage-control-gap-analysis.md) - security coverage compared with demonstrated coding-agent attack paths.
+- [Cloudflare and Astro issue triage](projects/cloudflare-astro-issue-triage.md) - production case study in staged triage, artifact handoffs, visible state, and external verification.
 - [Pi Coding Agent deep dive](projects/pi-coding-agent-deep-dive.md) - transcript-reviewed Pi architecture source, evidence cautions, and workflow implications.
 - [Menos research storage](projects/menos-research-storage.md) - superseded research-ingestion proposal retained as historical context.
 

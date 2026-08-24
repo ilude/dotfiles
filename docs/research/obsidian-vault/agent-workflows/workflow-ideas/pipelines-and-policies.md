@@ -132,6 +132,29 @@ Start with:
 
 Only add planning, parallelism, TDD loops, governance dashboards, or branch/worktree isolation after a measured failure mode justifies it.
 
+The [Cloudflare and Astro issue triage](../projects/cloudflare-astro-issue-triage.md)
+case shows when a more specific serial split may earn its cost:
+
+```text
+reproduce -> diagnose -> classify -> fix -> external verification
+```
+
+Each transition needs a bounded report, including failed or inconclusive stages.
+Diagnosis must not assume reproduction succeeded, fixing must not begin before
+classification establishes a defect, and only the fix stage needs mutation
+authority. This targets the observed bias toward forcing a solution rather than
+adding generic agent stages.
+
+### Existing host artifacts can carry workflow state
+
+GitHub labels, issue comments, reports, logs, and preview releases can form a
+visible state machine for issue triage. The workflow can reconstruct progress
+from host-owned artifacts instead of adding a hidden orchestration database.
+This is useful only when the host surface represents every required transition.
+It does not replace Pi goals and tasks for dependencies, cancellation,
+cross-process execution, or repository-local lifecycle state. See the
+[Cloudflare case study](https://blog.cloudflare.com/astro-issue-triage/).
+
 ### Local memory and tool boundaries matter
 
 Applied to Pi:
@@ -180,6 +203,7 @@ Candidate first plan slug:
 
 ## Related notes
 
+- [Cloudflare and Astro issue triage](../projects/cloudflare-astro-issue-triage.md)
 - [Agent workflow benchmark loops](agent-workflow-benchmark-loops.md)
 - [Pi Coding Agent deep dive](../projects/pi-coding-agent-deep-dive.md)
 - [Adaptive plan review telemetry](adaptive-plan-review-telemetry.md)

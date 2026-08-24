@@ -33,6 +33,29 @@ review misses, operator corrections, or tasks that required several failed
 approaches. Candidate discovery is not automatic benchmark admission. Each case
 must be minimized, redacted, and proven to reproduce the intended difficulty.
 
+### Failure-to-fixture promotion
+
+The [Cloudflare and Astro issue triage](../projects/cloudflare-astro-issue-triage.md)
+case adds a useful promotion sequence:
+
+```text
+observed failure
+  -> establish recurrence
+  -> classify the failure
+  -> minimize and redact it
+  -> create a disposable reproduction
+  -> encode the missing invariant
+  -> add an independent validator
+  -> replay under controlled conditions
+```
+
+Classification should happen before choosing a stronger model or changing the
+workflow. A failure may indicate a model or route limitation, a missing tool,
+an invalid report, an ambiguous architecture boundary, missing implementation
+rationale, insufficient regression coverage, or an external behavior that only
+the affected user can verify. The benchmark should encode the missing invariant
+rather than preserve the raw session that exposed it.
+
 A first fixture could use this shape:
 
 ```text
@@ -79,6 +102,24 @@ Existing work supplies pieces rather than a complete benchmark loop:
 Menos could preserve source references or candidate records later, but raw
 session ingestion should not decide benchmark truth or acceptance.
 
+### Layered acceptance
+
+A case may need several distinct gates:
+
+1. **Reproduction** - prove the reported behavior exists.
+2. **Classification** - establish that the behavior is defective rather than
+   intended, unsupported, or inconclusive.
+3. **Repository validation** - pass focused tests and relevant regressions.
+4. **External workflow verification** - ask the original consumer to verify a
+   preview when repository checks cannot prove the external boundary.
+5. **Promotion** - review the complete evidence before accepting a runtime,
+   routing, prompt, tool, or policy change.
+
+Cloudflare's Astro workflow uses a reporter-tested preview before opening a pull
+request, illustrating why repository validation and external verification are
+not interchangeable. See the
+[Cloudflare case study](https://blog.cloudflare.com/astro-issue-triage/).
+
 ## Research questions
 
 1. Which recurring failure is small enough to reproduce without production or
@@ -116,6 +157,7 @@ measured improvement changes runtime policy.
 
 ## Related notes
 
+- [Cloudflare and Astro issue triage](../projects/cloudflare-astro-issue-triage.md)
 - [Pi Coding Agent deep dive](../projects/pi-coding-agent-deep-dive.md)
 - [Adaptive plan review telemetry](adaptive-plan-review-telemetry.md)
 - [DuckDB for Pi usage analytics](duckdb-for-pi-usage-analytics.md)
