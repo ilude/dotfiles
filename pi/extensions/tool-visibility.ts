@@ -11,7 +11,6 @@ export const DEFERRED_TOOL_NAMES = [
 	"commit_validate_message",
 	"commit_stage",
 	"commit_create",
-	"feature_memory_record",
 	"goal_complete",
 	"goal_progress",
 	"plan_archive",

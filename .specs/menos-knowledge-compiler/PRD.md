@@ -173,7 +173,7 @@ Contradiction detection requires both scope overlap and time overlap checks. A t
 
 ## Dependencies
 
-- Existing Pi session-export and feature-memory contracts and local session sources.
+- Existing Pi session-export contract and local session sources.
 - A stable machine identity source and repository registry/marker configuration.
 - The maintained evaluation query set and pre-capture baseline.
 - Approved minimum sensitive-category policy, any extensions and matching rules, and deletion authority.
@@ -204,6 +204,6 @@ Implementation may proceed only after the open provider, privacy, schema, identi
 ## Sources
 
 - `research.md`
-- Existing Pi feature-memory and session-export contracts listed in `research.md`
+- Existing Pi session-export contract and local expertise sources listed in `research.md`
 - Existing evaluation artifacts: `eval-queries.yaml` and `eval-baseline-pre.md`
 - OpenBrain/OB1 provenance patterns, Hermes bounded active memory and recovery comparison, OpenClaw memory comparison, Letta context/archive separation, Mem0 privacy warning, and W3C PROV as cited in `research.md`

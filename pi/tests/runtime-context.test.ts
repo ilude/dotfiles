@@ -31,10 +31,10 @@ describe("dynamic runtime context assembly", () => {
 		expect(assembled?.content.length).toBeLessThan(9_000);
 	});
 
-	it("keeps independently keyed context and feature memory composed", () => {
+	it("keeps independently keyed custom context composed", () => {
 		const assembled = replaceRuntimeContext(
 			replaceRuntimeContext(
-				[{ role: "custom", customType: "feature-memory", content: "memory" }],
+				[{ role: "custom", customType: "test-context", content: "memory" }],
 				"tasks",
 				"task context",
 			),
@@ -51,11 +51,11 @@ describe("dynamic runtime context assembly", () => {
 	it("removes a cleared context without disturbing other custom messages", () => {
 		const messages = replaceRuntimeContext([], "goal", "current goal");
 		const cleared = replaceRuntimeContext(
-			[...messages, { role: "custom", customType: "feature-memory", content: "memory" }],
+			[...messages, { role: "custom", customType: "test-context", content: "memory" }],
 			"goal",
 			undefined,
 		);
 		expect(cleared).toHaveLength(1);
-		expect(cleared[0].customType).toBe("feature-memory");
+		expect(cleared[0].customType).toBe("test-context");
 	});
 });

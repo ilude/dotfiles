@@ -39,7 +39,6 @@ Before changing public or normative Pi tooling behavior, load only its owning co
 - [Session export and summaries](references/contracts/session-export.md)
 - [Slash command context](references/contracts/slash-command-context.md)
 - [Tool visibility and discovery](references/contracts/tool-discovery.md)
-- [Feature memory](references/contracts/feature-memory.md)
 - [PowerShell](references/contracts/powershell.md)
 - [Scheduler](references/contracts/scheduler.md)
 

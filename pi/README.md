@@ -230,8 +230,7 @@ For live smoke tests, restart/reload Pi so extension modules and policy files re
 This repository keeps curated Pi source/config trackable and leaves generated runtime
 state local. Commit changes to maintained config such as `pi/agents/`,
 `pi/multi-team/skills/`, `pi/skills/`, `pi/extensions/`,
-`pi/lib/`, `pi/tests/`, `pi/settings.json`, `pi/feature-memory.json`, tracked
-feature dossiers under `.specs/features/`, retired prompt-routing research
+`pi/lib/`, `pi/tests/`, `pi/settings.json`, retired prompt-routing research
 code/docs/data/models that remain intentionally versioned, and lockfiles such
 as `pi/prompt-routing/uv.lock`.
 
@@ -330,7 +329,7 @@ Provides bounded process-local management for long-lived Bash commands through `
 
 ### `tool-visibility.ts` and `tool-search.ts`
 
-Keeps workflow-state-gated tools out of the default provider schema until they are valid: commit execution, feature-memory recording, goal completion/progress, improvement decisions, plan archival, workflow-change tracking, and review-artifact writing. Their owning extensions activate them from deterministic command or prompt state. Current roots see the role-specific subagent tools permitted by their authority. Historical subagent names remain registered but hidden for resumed-session compatibility. General and specialized callable tools, including root-only Onclave, usage-report, web, PowerShell, and scheduler tools, remain active when their authority permits them.
+Keeps workflow-state-gated tools out of the default provider schema until they are valid: commit execution, goal completion/progress, improvement decisions, plan archival, workflow-change tracking, and review-artifact writing. Their owning extensions activate them from deterministic command or prompt state. Current roots see the role-specific subagent tools permitted by their authority. Historical subagent names remain registered but hidden for resumed-session compatibility. General and specialized callable tools, including root-only Onclave, usage-report, web, PowerShell, and scheduler tools, remain active when their authority permits them.
 
 `tool_search` remains active as a fallback and activates all matching inactive tools by default for a non-empty capability query, except hidden historical subagent names. Listing all tools without a query remains inspection-only. Metadata-only `toolset_exposure`, `tool_search_decision`, and `tool_use` metrics record the visible toolset, hashed searches, activation results, and later use without raw queries, arguments, descriptions, or output. The `tool_discovery_activity` DuckDB view exposes those events for local review.
 
@@ -534,16 +533,6 @@ end the model turn. When a scheduled follow-up is the intended next step and no
 useful work remains before it runs, the model ends the turn so the follow-up can
 be delivered when due; otherwise it continues useful work. Schedule lifecycle
 metrics contain job IDs and timing metadata, not prompt text.
-
-### `feature-memory.ts`
-
-Feature memory provides bounded, feature-specific context across sessions. The tracked `pi/feature-memory.json` registry maps stable feature IDs to a title, a tracked dossier, bounded case-insensitive prompt triggers, and repo-relative path triggers. Trigger matching enforces identifier boundaries so longer unrelated words do not activate a feature. On the first matching prompt in a session, `before_agent_start` injects one hidden, non-authoritative custom message containing the curated dossier and recent local events. Injected context is capped at 16,000 characters with explicit truncation markers. A feature is injected only once per session; a new session or `/reload` resets that in-memory boundary.
-
-Curated dossiers and local events have different owners. A feature dossier is reviewed, tracked repository context. Runtime events are append-only observations in `events.<writer-id>.jsonl` under `PI_FEATURE_MEMORY_DIR` when set, otherwise under `~/.pi/agent/feature-memory/`. `PI_FEATURE_MEMORY_WRITER_ID` provides a stable writer ID; the sanitized hostname is the default. Each writer appends only to its own shard. The reader scans the configured directory, includes the legacy `events.jsonl` file, merges events by recording time, and deduplicates them by event ID. Event shards remain untracked and never modify a dossier automatically.
-
-The model-callable `feature_memory_record` tool is available only as a narrow capture boundary during work that matched a registered feature. It records explicit user decisions, validated evidence, open questions, or supersessions. It must not record raw transcripts, general summaries, secrets, speculative conclusions, or unbounded tool output. Each event contains only its schema version, event ID, recording time, feature ID, kind, bounded summary, and supporting repository paths. Retrieval is bounded to recent events. Treat local events as potentially stale: later `supersession` events and current repository evidence take precedence, while promotion into a dossier requires an explicit tracked edit.
-
-Keep the event directory outside the tracked dotfiles repository. A private synchronized directory is supported because writers use separate shards; do not place event shards in a public or shared Git worktree. Rollback: remove or disable `pi/extensions/feature-memory.ts` and reload Pi to stop retrieval and capture. Removing the registry, loader, tests, and tracked dossiers completes a source rollback. Local events may be retained because tracked behavior does not depend on them. To remove local events, first stop Pi writers, verify the exact configured directory, and remove only the inspected feature-memory event shards.
 
 ### `workflow-friction-review.ts`
 

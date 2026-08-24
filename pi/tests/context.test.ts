@@ -367,7 +367,7 @@ describe("context extension: buildContextBuckets", () => {
 		const entries = [
 			{
 				type: "custom_message",
-				customType: "feature-memory",
+				customType: "test-context",
 				content: "custom-message-secret",
 			},
 		];
@@ -406,7 +406,7 @@ describe("context extension: buildContextBuckets", () => {
 		const report = pi.sendMessage.mock.calls[0][0].content as string;
 		expect(report).toMatch(/Context file detail\nC:\/repo\/AGENTS\.md/);
 		expect(report).toMatch(/Skill prompt detail\nNames/);
-		expect(report).toMatch(/Injected context detail\nfeature-memory/);
+		expect(report).toMatch(/Injected context detail\ntest-context/);
 		expect(report).not.toContain("file-body-secret");
 		expect(report).not.toContain("custom-message-secret");
 		expect(report).not.toContain("skill-description-secret");

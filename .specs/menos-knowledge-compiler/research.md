@@ -20,7 +20,7 @@ The first release should be a manually invoked, reusable batch pipeline. It shou
 
 The persona scopes are `work`, `workflow`, `hobby`, and `shared`; personal memory is the umbrella for non-work scopes, not a fifth persona. Persona routing uses explicit selection, then a repository registry, repository marker, path rule, repository remote and metadata, and finally model suggestion with user confirmation when confidence is not high. Machine identity is provenance, not persona evidence. Work-memory model calls use an OpenAI allowlist and a dedicated approved model after its exact identifier and retention policy are confirmed.
 
-The primary local gap is not another vector index. Pi has useful repo-aware feature memory and bounded session-export contracts, but it lacks an end-to-end session capture path, persona policy, claim-level conflict handling, provider policy, review workflow, and validated retrieval surface for Menos.
+The primary local gap is not another vector index. Pi has useful repo-aware local expertise and a bounded session-export contract, but it lacks an end-to-end session capture path, persona policy, claim-level conflict handling, provider policy, review workflow, and validated retrieval surface for Menos.
 
 ## 2. Evidence status
 
@@ -143,27 +143,25 @@ A direct user claim may be treated as confirmed only when the user made it direc
 
 ## 5. Current local capability and gap
 
-### Pi feature memory: available
+### Pi local expertise and session sources
 
 Checked-in local artifacts include:
 
-- `pi/extensions/feature-memory.ts`
-- `pi/lib/feature-memory-store.ts`
 - `pi/lib/memory-index.ts`
 - `pi/lib/memory-retrieve.ts`
 - `pi/lib/memory-promote.ts`
 - `pi/lib/memory-snapshot-archive.ts`
 - `pi/docs/expertise-layering.md`
-- `pi/skills/pi-extension/references/contracts/feature-memory.md`
 - `pi/skills/pi-extension/references/contracts/session-export.md`
 
-The local implementation provides JSONL source records with source locations, timestamps, agent identity, repository identity, and stable identifiers. Index metadata includes schema, embedding model, model hash, dimensions, dtype, chunker, and embedder versions. Index rebuild from JSONL is possible. Retrieval combines local hashed-vector similarity with lexical overlap, is repository-scoped by default, and filters superseded records. Focused retrieval, privacy, promotion, and archive tests exist.
+The local expertise implementation provides JSONL source records and disposable indexes. Index metadata includes schema, embedding model, model hash, dimensions, dtype, chunker, and embedder versions. Index rebuild from JSONL is possible. Retrieval combines local hashed-vector similarity with lexical overlap and is repository-scoped by default.
 
-### Pi feature memory: missing for Menos
+The separate feature-memory registry and capture extension were retired on 2026-08-23 after their final registered dossier was archived. Menos must use bounded session-export and approved source records rather than depend on that retired mechanism.
 
-- JSONL is mutable local storage, not a cryptographically append-only record.
+### Local gaps for Menos
+
+- Local JSONL is mutable storage, not a cryptographically append-only record.
 - There is no complete claim-level contradiction state.
-- `superseded_by` is not an unresolved conflict model.
 - No verified session-to-Menos capture path exists.
 - Persona, provider, consent, and retention metadata are incomplete.
 - Automatic trust and cross-project generalization are not the requested policy.
@@ -184,7 +182,7 @@ Relevant local paths include `modules/onclave/extensions/onclave-pi/src/` and it
 
 ### Gap statement
 
-The current local system can store and retrieve some repo-scoped feature records. It cannot yet reliably answer: what was observed, by which machine and persona, under which provider policy, what was derived from it, whether it is current or contradicted, what may be shared across projects, and why a result was shown. That is the Menos boundary.
+The current local system can store and retrieve some repo-scoped expertise records. It cannot yet reliably answer: what was observed, by which machine and persona, under which provider policy, what was derived from it, whether it is current or contradicted, what may be shared across projects, and why a result was shown. That is the Menos boundary.
 
 ## 6. Recommended architecture
 
@@ -338,7 +336,7 @@ Mem0's official warning against secrets and PII reinforces this boundary: https:
 
 ### Input
 
-Accept selected Pi sessions or feature-memory records, with persona, repository, time, path, category, and opt-out filters. Use existing session references rather than creating a second transcript authority.
+Accept selected Pi sessions and explicitly approved source records, with persona, repository, time, path, category, and opt-out filters. Use existing session references rather than creating a second transcript authority.
 
 ### Preview
 
@@ -531,13 +529,10 @@ Send only approved redacted fixtures to a selected external system. Compare loca
 
 ### Local evidence
 
-- `pi/extensions/feature-memory.ts`
-- `pi/lib/feature-memory-store.ts`
 - `pi/lib/memory-index.ts`
 - `pi/lib/memory-retrieve.ts`
 - `pi/lib/memory-promote.ts`
 - `pi/lib/memory-snapshot-archive.ts`
-- `pi/skills/pi-extension/references/contracts/feature-memory.md`
 - `pi/skills/pi-extension/references/contracts/session-export.md`
 - `pi/tests/memory-retrieve.test.ts`
 - `pi/tests/memory-promote-scan.test.ts`

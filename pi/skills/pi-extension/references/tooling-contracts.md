@@ -29,7 +29,6 @@ This index records stable public and normative semantics for Pi extensions and t
 - [Session export and summaries](contracts/session-export.md)
 - [Slash command context](contracts/slash-command-context.md)
 - [Tool visibility and discovery](contracts/tool-discovery.md)
-- [Feature memory](contracts/feature-memory.md)
 - [PowerShell](contracts/powershell.md)
 - [Scheduler](contracts/scheduler.md)
 
