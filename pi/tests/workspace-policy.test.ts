@@ -110,6 +110,12 @@ describe("governed native path tools", () => {
 			root,
 		);
 		expect(result).toMatchObject({ outcome: "deny", code: "path_escape" });
+		if (result.outcome !== "deny") throw new Error("Expected path escape denial");
+		expect(result.reason).toContain(`Assigned workspace: ${JSON.stringify(root)}`);
+		expect(result.reason).toContain('Supplied path: "escape/missing/file.ts"');
+		expect(result.reason).toContain(
+			`Resolved path: ${JSON.stringify(path.join(outside, "missing", "file.ts"))}`,
+		);
 	});
 
 	it("allows only exact selected skill reads outside the workspace", () => {

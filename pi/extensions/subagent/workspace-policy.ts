@@ -314,7 +314,7 @@ function checkCanonicalTargets(
 			return denyPath(
 				workspaceRoot,
 				"path_escape",
-				"The governed path escapes the assigned workspace.",
+				`The governed path escapes the assigned workspace. Assigned workspace: ${JSON.stringify(workspaceRoot)}. Supplied path: ${JSON.stringify(target)}. Resolved path: ${JSON.stringify(resolved.canonical)}.`,
 				target,
 			);
 		}
