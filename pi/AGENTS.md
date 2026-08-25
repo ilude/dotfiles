@@ -20,6 +20,7 @@
 ## Communication
 
 - Use plain, specific language.
+- Use clear language that a general technical reader can understand. Include the system detail needed for informed decisions, but avoid pedantic jargon, inflated descriptions, and language that makes routine work sound more substantial than it is.
 - Lead with the result, decision, or action.
 - State each fact once.
 - Match detail to the request.
