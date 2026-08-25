@@ -1,13 +1,13 @@
 ---
 name: prd
-description: "Use for /prd-it or to draft, refine, or review a Product Requirements Document. Not for acceptance criteria, planning, or Pi /goal prompts."
+description: "Use to draft, refine, or review a Product Requirements Document. Not for acceptance criteria, planning, or Pi /goal prompts."
 ---
 
 # PRD Workflow
 
 ## Boundary
 
-Use `prd` only for an explicit request to draft, refine, or review a PRD, including `/prd-it`. A PRD is optional and is not a prerequisite for planning or implementation. Use `planning` for standalone requirements or acceptance criteria and `pi-goal` for executable Pi goal prompts.
+Use `prd` only for an explicit request to draft, refine, or review a PRD. A PRD is optional and is not a prerequisite for planning or implementation. Use `planning` for standalone requirements or acceptance criteria and `pi-goal` for executable Pi goal prompts.
 
 ## Core Principle
 

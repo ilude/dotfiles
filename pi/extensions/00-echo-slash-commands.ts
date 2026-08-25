@@ -6,19 +6,22 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { SLASH_COMMAND_ECHO_TYPE } from "../lib/slash-command-echo.js";
+import {
+	SLASH_COMMAND_ECHO_TYPE,
+	type SlashCommandEchoEntry,
+} from "../lib/slash-command-echo.js";
 
 export default function (pi: ExtensionAPI) {
-	pi.registerMessageRenderer(
+	pi.registerEntryRenderer<SlashCommandEchoEntry>(
 		SLASH_COMMAND_ECHO_TYPE,
-		(message, _options, theme) => {
-			const text =
-				typeof message.content === "string"
-					? message.content
-					: String(message.content ?? "");
+		(entry, _options, theme) => {
+			const data = entry.data;
+			if (!data) return undefined;
+			const prefix = data.kind === "next-command" ? "next: " : "> ";
+			const color = data.kind === "next-command" ? "accent" : "text";
 			return new Text(
-				theme.bold(theme.fg("success", "> ")) +
-					theme.bold(theme.fg("text", text)),
+				theme.bold(theme.fg("success", prefix)) +
+					theme.bold(theme.fg(color, data.text)),
 				0,
 				0,
 			);

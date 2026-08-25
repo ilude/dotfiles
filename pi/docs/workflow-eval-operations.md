@@ -4,7 +4,7 @@ This document covers the mechanically recorded dispatch data described in `pi/do
 
 ## Current scope
 
-`pi/lib/workflow-telemetry.ts` appends one episode and one dispatch event when `/plan-it`, `/prd-it`, or `/do-it` runs. It does not infer whether implementation, validation, review, manual gates, or archiving later completed.
+`pi/lib/workflow-telemetry.ts` appends one episode and one dispatch event when `/plan-it` or `/do-it` runs. It does not infer whether implementation, validation, review, manual gates, or archiving later completed.
 
 Plans and workflow prompts record ordinary bounded evidence in their checklist and Execution Status. They do not emit telemetry-shaped prose.
 

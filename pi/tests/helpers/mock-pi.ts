@@ -60,6 +60,7 @@ export function createMockPi() {
 		sendUserMessage: vi.fn(async (_msg: string) => {}),
 		sendMessage: vi.fn((_message: any, _options?: any) => {}),
 		appendEntry: vi.fn(async (_customType: string, _data?: unknown) => {}),
+		registerEntryRenderer: vi.fn(),
 		getAllTools: vi.fn(() => [...tools]),
 		getActiveTools: vi.fn(() => [...activeToolNames]),
 		setActiveTools: vi.fn((names: string[]) => {

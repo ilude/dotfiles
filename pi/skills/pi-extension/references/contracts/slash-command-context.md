@@ -1,6 +1,8 @@
 # Slash Command Context
 
-- Extension commands are handled before model input and remain TUI-only by default. The shared echo wrapper requires an explicit command-name allowlist.
+- Extension commands are handled before model input. TUI transcript acknowledgements are opt-in through the shared command acknowledgement helper; they do not enter model context or trigger a turn.
 - Add an invocation to model context only when its semantic content or result is needed by the current conversation.
-- Keep control-plane, diagnostic, configuration, terminal, and process launch commands TUI-only. In particular, do not echo `/branch`, `/new-instance`, or `/new-terminal` through a custom message.
+- Keep control-plane, diagnostic, configuration, terminal, and process launch commands TUI-only by default. Do not echo these commands as model-visible messages; use bounded notifications or results instead.
 - Do not use a raw invocation echo as a substitute for persisting command output that the model needs. Persist a bounded result or faithful summary instead.
+- Preserve interactive dashboards, selectors, confirmations, and cancellable loaders when user input or in-component cancellation is required.
+- RPC, JSON, and print modes retain their existing result and error behavior and do not receive the TUI-only acknowledgement row.

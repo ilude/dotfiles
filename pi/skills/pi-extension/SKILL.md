@@ -49,6 +49,7 @@ Update an existing contract only when the requested change would otherwise make 
 1. Keep the extension factory for registration only: `pi.on`, `pi.registerTool`, `pi.registerCommand`, `pi.registerShortcut`, `pi.registerFlag`, `pi.registerProvider`, and renderers. Runtime actions such as `pi.sendMessage()` belong in handlers, tools, or commands after Pi binds the session runtime.
 2. Keep tool-specific model instructions in the owning `registerTool()` definition: use `description` and `parameters` for the callable contract, `promptSnippet` for one-line discovery, and `promptGuidelines` for behavioral guidance. Enforce mandatory behavior in `execute()` or `tool_call`; do not duplicate tool instructions in `pi/AGENTS.md`.
 3. Every `registerCommand()` handler must produce immediate visible acknowledgement before its first potentially slow `await` or synchronous operation. Echo the submitted slash command for chat-dispatch workflows; use a status, loader, notification, or dialog when that better represents the command. Clear transient status in `finally`. Do not wait for repository discovery, Git, filesystem scans, subprocesses, network calls, model calls, session settling, or report generation before showing feedback.
+
 4. Use `ctx.signal` for nested async work during active turn events such as `tool_call`, `tool_result`, `message_update`, and `turn_end`.
 5. Clean up timers, intervals, file watchers, background work, and long-running subprocesses in `session_shutdown` or component disposal paths.
 6. Use `ctx.hasUI` and `ctx.mode` before dialogs or TUI-only behavior. `ctx.hasUI` includes RPC; guard direct TUI components with `ctx.mode === "tui"`.
@@ -60,6 +61,32 @@ Update an existing contract only when the requested change would otherwise make 
 12. Register every `session_start` handler with `onSessionStart(pi, import.meta.url, handler)` from `pi/lib/session-start-metrics.ts`, never with direct `pi.on("session_start", ...)`. The wrapper awaits the original handler, preserves thrown errors, derives the extension name from `import.meta.url`, measures monotonic duration, and defers an `extension_session_start` event to the existing metrics JSONL with session id, reason, duration, and status. It measures handler work only; module imports and extension factories remain Pi runtime timings.
 13. Use `StringEnum` from `@earendil-works/pi-ai` for string enums.
 14. Strip a leading `@` from custom-tool path arguments and resolve extension-relative helpers from `import.meta.url`.
+
+## Command output decisions
+
+| Command shape | Immediate surface | Completion surface |
+| --- | --- | --- |
+| Immediate report or control-plane action | Bounded notification or result | Bounded notification/result; no editor replacement |
+| Noticeable background work | `appendSlashCommandAcknowledgement()` in TUI, optionally a footer status | Bounded result or terminal notification; clear status in `finally` |
+| Genuine interaction or cancellation | `ctx.ui.custom()` loader, selector, confirmation, or dashboard | The component's result and cancellation state |
+| Non-TUI invocation | Existing result/error path; no TUI transcript row | Existing result/error path |
+
+Use the shared helper when a TUI transcript acknowledgement represents submitted work:
+
+```ts
+appendSlashCommandAcknowledgement(pi, ctx, "command", args);
+```
+
+The helper appends a TUI-only custom transcript entry. It does not call `sendMessage`, trigger a turn, or alter the editor. Do not use `ctx.ui.custom()` merely to show progress. Retain it when the user must navigate, confirm, select, or cancel inside the component. Keep reports and notifications bounded, and preserve model-context boundaries. Put transient status cleanup in `finally`, including failure and early-return paths.
+
+### Command checklist
+
+- Classify the command as immediate report, background work, interactive UI, or control-plane/session action.
+- Acknowledge before slow work starts, using the smallest appropriate surface.
+- Use the shared helper only for TUI transcript acknowledgement; preserve non-TUI behavior.
+- Bound results and notifications.
+- Clear every transient footer status in `finally`.
+- Use custom UI only for genuine interaction or cancellation.
 
 ## Shell-Out Rules
 

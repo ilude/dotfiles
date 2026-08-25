@@ -9,7 +9,6 @@ import { onSessionStart } from "../lib/session-start-metrics.js";
  *   /commit        -- smart git commit with submodule handling and secret scanning
  *   /new-terminal  -- open a plain shell in this cwd in a new terminal
  *   /plan-it       -- crystallize conversation context into an executable plan
- *   /prd-it        -- refine fuzzy ideas into an optional PRD artifact
  *   /do-it         -- smart task routing by complexity
  *   /exit          -- gracefully quit pi
  */
@@ -30,6 +29,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
 	BorderedLoader,
+	copyToClipboard,
 	type ContextUsage,
 	type ExtensionAPI,
 	type ExtensionCommandContext,
@@ -70,7 +70,11 @@ import {
 	validatePlanFile,
 } from "../lib/workflow-commands/plan-lifecycle";
 import { scanSecrets } from "../lib/secret-scan";
-import { SLASH_COMMAND_ECHO_TYPE } from "../lib/slash-command-echo.js";
+import {
+	appendNextCommand,
+	appendSlashCommandAcknowledgement,
+	stripTrailingNextCommandContent,
+} from "../lib/slash-command-echo.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent";
 import {
 	createCommitCommandExecutor,
@@ -2110,18 +2114,6 @@ function emitCommitReport(
 	ctx.ui.notify(content, "info");
 }
 
-function echoSlashCommand(pi: ExtensionAPI, command: string, args: string) {
-	const text = args.trim() ? `/${command} ${args.trim()}` : `/${command}`;
-	if (typeof pi.sendMessage === "function") {
-		pi.sendMessage({
-			customType: SLASH_COMMAND_ECHO_TYPE,
-			content: text,
-			display: true,
-		});
-	}
-	return text;
-}
-
 const MAX_COMMIT_ACTIVITY_CHARS = 2000;
 
 function boundedCommitActivity(content: string): string {
@@ -2446,6 +2438,7 @@ export default function (pi: ExtensionAPI) {
 	};
 	let activePlanLifecycle: PlanLifecycleSnapshot | undefined;
 	let activePlanningRoot: string | undefined;
+	let pendingNextPlanCommand: string | undefined;
 	let activeRawWorkflow: WorkflowWorktree | undefined;
 
 	const persistPlanLifecycle = async (
@@ -2533,7 +2526,11 @@ export default function (pi: ExtensionAPI) {
 			}
 			const next = transitionPlanLifecycle(activePlanLifecycle, input);
 			await persistPlanLifecycle(next);
-			if (next.stage === "ready") deactivateTools(pi, ["plan_progress"]);
+			if (next.stage === "ready") {
+				deactivateTools(pi, ["plan_progress"]);
+				if (ctx.mode === "tui")
+					pendingNextPlanCommand = `/do-it ${next.planPath}`;
+			}
 			return {
 				content: [
 					{
@@ -2552,6 +2549,34 @@ export default function (pi: ExtensionAPI) {
 
 	onSessionStart(pi, import.meta.url, (_event, ctx) => restorePlanLifecycle(ctx));
 	pi.on("session_tree", (_event, ctx) => restorePlanLifecycle(ctx));
+	pi.on("session_shutdown", () => {
+		pendingNextPlanCommand = undefined;
+	});
+	pi.on("message_end", (event, ctx) => {
+		const command = pendingNextPlanCommand;
+		if (
+			!command ||
+			ctx.mode !== "tui" ||
+			event.message.role !== "assistant" ||
+			event.message.stopReason !== "stop" ||
+			!Array.isArray(event.message.content)
+		)
+			return;
+		const content = stripTrailingNextCommandContent(event.message.content, command);
+		if (content === event.message.content) return;
+		return { message: { ...event.message, content } };
+	});
+	pi.on("agent_end", async (_event, ctx) => {
+		const command = pendingNextPlanCommand;
+		pendingNextPlanCommand = undefined;
+		if (!command || ctx.mode !== "tui") return;
+		try {
+			await copyToClipboard(command);
+			appendNextCommand(pi, ctx, command);
+		} catch {
+			ctx.ui.notify("Could not copy the next command to the clipboard.", "warning");
+		}
+	});
 
 	pi.registerTool({
 		name: "workflow_complete",
@@ -2830,11 +2855,16 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Crystallize an executable plan in the primary repository",
 		handler: async (args, ctx) => {
-			echoSlashCommand(pi, "plan-it", args);
-			const planRequest = parsePlanItArgs(args);
-			const lifecycle = createPlanLifecycleSnapshot(
-				randomUUID(),
-				planRequest.request,
+			pendingNextPlanCommand = undefined;
+			if (ctx.mode === "tui") {
+				ctx.ui.setStatus?.("plan-it", "planning...");
+			}
+			try {
+				appendSlashCommandAcknowledgement(pi, ctx, "plan-it", args);
+				const planRequest = parsePlanItArgs(args);
+				const lifecycle = createPlanLifecycleSnapshot(
+					randomUUID(),
+					planRequest.request,
 				planRequest.mode,
 			);
 			let workspaceDirective = "";
@@ -2887,41 +2917,17 @@ export default function (pi: ExtensionAPI) {
 							modeDirective,
 					);
 				},
-			);
-		},
-	});
-
-	pi.registerCommand("prd-it", {
-		description:
-			"Refine a fuzzy product/workflow idea into an optional PRD artifact",
-		handler: async (args, _ctx) => {
-			startWorkflowEpisode({ command: "prd-it", args });
-			await withTimingSpan(
-				{
-					name: "slash.prd-it",
-					category: "command",
-					metadata: {
-						command: "prd-it",
-						workflow: "prd-it",
-						phase: "dispatch",
-					},
-				},
-				async () => {
-					echoSlashCommand(pi, "prd-it", args);
-					const template = loadSkill("prd-it.md");
-					sendHiddenWorkflowPrompt(
-						pi,
-						buildSkillPrompt(template, args, { replaceArguments: true }),
-					);
-				},
-			);
+				);
+			} finally {
+				if (ctx.mode === "tui") ctx.ui.setStatus?.("plan-it", undefined);
+			}
 		},
 	});
 
 	pi.registerCommand("do-it", {
 		description: "Execute work in one owned workflow worktree with proportional validation",
 		handler: async (args, ctx) => {
-			echoSlashCommand(pi, "do-it", args);
+			appendSlashCommandAcknowledgement(pi, ctx, "do-it", args);
 			const requestedPlanPath = args.trim().replace(/^@/, "");
 			const canonicalPlanPath = canonicalPlanPathFromInput(requestedPlanPath);
 			const canonicalPlan = canonicalPlanPath !== undefined;
