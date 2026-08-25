@@ -16,6 +16,10 @@ The command writes the plan directly under the primary repository's `.specs/` di
 
 Use `plan_progress` for this invocation. Persisted lifecycle stages are only `started`, `draft`, `blocked`, and `ready`.
 
+## Final Report
+
+After `plan_progress ready` succeeds, explain the plan in human terms and assess all four of these dimensions in the final assistant response: whether it follows good coding standards, whether it uses appropriate design patterns, whether it over-engineers the outcome, and whether it introduces unnecessary churn risk. The final assistant response must not contain `/do-it`, a next-command heading, a command block, or any other command presentation. Do not repeat the plan's Resume value. The command finalizer separately copies and renders the next command after the assistant response.
+
 1. Create one canonical complete plan, establish real dependencies and mutation boundaries, then record `draft` with its path.
 2. Select 0-4 subject-matter reviews according to the plan's actual risks. Use reviews when their domains add useful evidence; do not require them for low-risk plans. Each review reads the entire draft, challenges correctness and feasibility from its assigned domain, and returns findings mapped to the objective, completion evidence, tasks, safety, or validation. Review strategy and concern are optional telemetry. Do not reuse one generic reviewer under several labels.
 3. Apply every supported finding that affects the objective, completion evidence, dependencies, safety, executability, or validation. Reject findings that are irrelevant or unsupported. Record each subject-matter review with `plan_progress review` after disposition: use `covered` when supported findings have been repaired and `no_finding` when no repair was needed. Use `supported` only while a finding remains unresolved; it must later be recorded as `covered` after repair. Use `adversary`, `specialist`, or `proponent` for the perspective. `strategy` is optional telemetry, not a workflow prerequisite.

@@ -5,6 +5,12 @@ import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi.js";
 
+const copyToClipboardMock = vi.hoisted(() => vi.fn());
+vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
+	copyToClipboard: copyToClipboardMock,
+}));
+
 vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
 	return {
@@ -135,9 +141,33 @@ async function createPlanFixture(): Promise<{
 	return { root, planPath };
 }
 
+async function prepareReadyInteractivePlan(mockPi: ReturnType<typeof createMockPi>, fixture: { root: string; planPath: string }) {
+	const mod = await import("../extensions/workflow-commands.ts");
+	const lifecycle = await import("../lib/workflow-commands/plan-lifecycle.ts");
+	mod.default(mockPi as Parameters<typeof mod.default>[0]);
+	const sessionStart = mockPi._getHook("session_start")[0]?.handler;
+	if (!sessionStart) throw new Error("session_start hook not registered");
+	const started = lifecycle.createPlanLifecycleSnapshot("interactive-invocation", "fixture");
+	await sessionStart({ reason: "resume" }, {
+		sessionManager: { getSessionId: () => "workflow-session", getBranch: () => [
+			{ type: "custom", customType: lifecycle.PLAN_LIFECYCLE_ENTRY_TYPE, data: started },
+		] },
+	});
+	const tool = mockPi._getTool("plan_progress");
+	if (!tool) throw new Error("plan_progress tool not registered");
+	const ctx = { cwd: fixture.root, mode: "tui", ui: { notify: vi.fn() } };
+	for (const input of [
+		{ action: "draft", planPath: fixture.planPath },
+		{ action: "review", role: "subtractive", concern: "churn", outcome: "no_finding" },
+		{ action: "ready" },
+	]) await tool.execute("progress", input, undefined, undefined, ctx);
+	return { ctx };
+}
+
 describe("workflow slash command dispatch", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		copyToClipboardMock.mockReset();
 	});
 
 	afterEach(() => {
@@ -172,6 +202,7 @@ describe("workflow slash command dispatch", () => {
 		expect(setStatus).toHaveBeenLastCalledWith("plan-it", undefined);
 
 		expect(mockPi.appendEntry).toHaveBeenCalledWith("slash-echo", {
+			kind: "submitted",
 			text: "/plan-it build the thing",
 		});
 		expect(mockPi.sendMessage).not.toHaveBeenCalledWith({
@@ -215,6 +246,7 @@ describe("workflow slash command dispatch", () => {
 		});
 
 		expect(mockPi.appendEntry).toHaveBeenCalledWith("slash-echo", {
+			kind: "submitted",
 			text: "/plan-it build the thing",
 		});
 		resolveRoot?.("/repo");
@@ -312,7 +344,9 @@ describe("workflow slash command dispatch", () => {
 		expect(mockPi.getActiveTools()).toContain("plan_progress");
 		const tool = mockPi._getTool("plan_progress");
 		if (!tool) throw new Error("plan_progress tool not registered");
-		const ctx = { cwd: fixture.root };
+		const notify = vi.fn();
+		const ctx = { cwd: fixture.root, mode: "tui", ui: { notify } };
+		copyToClipboardMock.mockResolvedValue(undefined);
 		const inputs = [
 			{ action: "draft", planPath: fixture.planPath },
 			{ action: "review", role: "adversary", concern: "runtime behavior", outcome: "covered" },
@@ -344,6 +378,72 @@ describe("workflow slash command dispatch", () => {
 			}),
 		);
 		expect(mockPi.getActiveTools()).not.toContain("plan_progress");
+		const messageEnd = mockPi._getHook("message_end")[0]?.handler;
+		if (!messageEnd) throw new Error("message_end hook not registered");
+		const response = {
+			role: "assistant",
+			stopReason: "stop",
+			content: [{
+				type: "text",
+				text: [
+					"The design follows good coding standards and avoids unnecessary churn.",
+					"",
+					"Next command:",
+					"```bash",
+					"/do-it .specs/workflow-fixture/plan.md",
+					"```",
+				].join("\n"),
+			}],
+		};
+		const replacement = await messageEnd({ message: response }, ctx);
+		expect(replacement.message.content[0].text).toBe(
+			"The design follows good coding standards and avoids unnecessary churn.",
+		);
+
+		const agentEnd = mockPi._getHook("agent_end")[0]?.handler;
+		if (!agentEnd) throw new Error("agent_end hook not registered");
+		await agentEnd({ messages: [] }, ctx);
+		expect(copyToClipboardMock).toHaveBeenCalledOnce();
+		expect(copyToClipboardMock).toHaveBeenCalledWith("/do-it .specs/workflow-fixture/plan.md");
+		expect(mockPi.appendEntry.mock.calls.filter(
+			([type, data]) => type === "slash-echo" && data?.kind === "next-command",
+		)).toHaveLength(1);
+		expect(mockPi.appendEntry).toHaveBeenLastCalledWith("slash-echo", {
+			kind: "next-command",
+			text: "/do-it .specs/workflow-fixture/plan.md",
+		});
+		expect(copyToClipboardMock.mock.invocationCallOrder[0]).toBeLessThan(
+			mockPi.appendEntry.mock.invocationCallOrder.at(-1)!,
+		);
+		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it("does not emit a stale command after another plan-it starts", async () => {
+		const mockPi = createMockPi();
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(path.join(fixture.root, fixture.planPath), readyPlan(fixture.planPath), "utf8");
+		await prepareReadyInteractivePlan(mockPi, fixture);
+		const planIt = getHandler(mockPi, "plan-it");
+		await planIt("replacement", { cwd: fixture.root, mode: "tui", ui: { setStatus: vi.fn() } });
+		const agentEnd = mockPi._getHook("agent_end").at(-1)?.handler;
+		if (!agentEnd) throw new Error("agent_end hook not registered");
+		await agentEnd({ messages: [] }, { cwd: fixture.root, mode: "tui", ui: { notify: vi.fn() } });
+		expect(copyToClipboardMock).not.toHaveBeenCalled();
+		expect(mockPi.appendEntry).not.toHaveBeenLastCalledWith("slash-echo", expect.objectContaining({ kind: "next-command" }));
+	});
+
+	it("reports clipboard failure without changing the plan result", async () => {
+		const mockPi = createMockPi();
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(path.join(fixture.root, fixture.planPath), readyPlan(fixture.planPath), "utf8");
+		const { ctx } = await prepareReadyInteractivePlan(mockPi, fixture);
+		copyToClipboardMock.mockRejectedValueOnce(new Error("clipboard unavailable"));
+		const agentEnd = mockPi._getHook("agent_end")[0]?.handler;
+		if (!agentEnd) throw new Error("agent_end hook not registered");
+		await agentEnd({ messages: [] }, ctx);
+		expect(copyToClipboardMock).toHaveBeenCalledOnce();
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Could not copy the next command to the clipboard.", "warning");
+		expect(mockPi.appendEntry).not.toHaveBeenLastCalledWith("slash-echo", expect.objectContaining({ kind: "next-command" }));
 	});
 
 	it("/do-it echoes before repository resolution completes", async () => {
@@ -363,6 +463,7 @@ describe("workflow slash command dispatch", () => {
 		});
 
 		expect(mockPi.appendEntry).toHaveBeenCalledWith("slash-echo", {
+			kind: "submitted",
 			text: "/do-it fix the task",
 		});
 		resolveRoot?.("/repo");

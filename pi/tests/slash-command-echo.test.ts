@@ -9,13 +9,38 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import echoSlashCommands from "../extensions/00-echo-slash-commands";
 import {
+	appendNextCommand,
 	appendSlashCommandAcknowledgement,
+	stripTrailingNextCommand,
 	SLASH_COMMAND_ECHO_TYPE,
 } from "../lib/slash-command-echo";
 
 type EntryRenderer = Parameters<ExtensionAPI["registerEntryRenderer"]>[1];
 
 describe("slash command echo renderer", () => {
+	it("strips only a trailing matching next-command section", () => {
+		const command = "/do-it .specs/build/plan.md";
+		const text = [
+			"The design is appropriately scoped and avoids unnecessary churn.",
+			"",
+			"Next command:",
+			"```bash",
+			command,
+			"```",
+		].join("\n");
+
+		expect(stripTrailingNextCommand(text, command)).toBe(
+			"The design is appropriately scoped and avoids unnecessary churn.",
+		);
+		expect(stripTrailingNextCommand(text, "/do-it .specs/other/plan.md")).toBe(text);
+		expect(
+			stripTrailingNextCommand(
+				"The design mentions Next command: in its assessment.",
+				command,
+			),
+		).toBe("The design mentions Next command: in its assessment.");
+	});
+
 	it("renders visible slash echoes", () => {
 		const registerEntryRenderer = vi.fn();
 		echoSlashCommands({
@@ -31,7 +56,7 @@ describe("slash command echo renderer", () => {
 			{
 				type: "custom",
 				customType: SLASH_COMMAND_ECHO_TYPE,
-				data: { text: "/plan-it build the thing" },
+				data: { kind: "submitted", text: "/plan-it build the thing" },
 			} as Parameters<EntryRenderer>[0],
 			{ expanded: false },
 			{
@@ -50,11 +75,16 @@ describe("slash command echo renderer", () => {
 
 		appendSlashCommandAcknowledgement(pi, tuiCtx, "plan-it", "build the thing");
 		appendSlashCommandAcknowledgement(pi, rpcCtx, "plan-it", "build the other thing");
+		appendNextCommand(pi, tuiCtx, "/do-it .specs/build/plan.md");
 
-		expect(appendEntry).toHaveBeenCalledTimes(1);
+		expect(appendEntry).toHaveBeenCalledTimes(2);
 		const [customType, data] = appendEntry.mock.calls[0];
 		expect(customType).toBe(SLASH_COMMAND_ECHO_TYPE);
-		expect(data).toEqual({ text: "/plan-it build the thing" });
+		expect(data).toEqual({ kind: "submitted", text: "/plan-it build the thing" });
+		expect(appendEntry.mock.calls[1][1]).toEqual({
+			kind: "next-command",
+			text: "/do-it .specs/build/plan.md",
+		});
 
 		const restoredEntry = {
 			type: "custom",
@@ -85,5 +115,14 @@ describe("slash command echo renderer", () => {
 			} as Parameters<EntryRenderer>[2],
 		);
 		expect(component?.render(80)[0]?.trim()).toBe("> /plan-it build the thing");
+		const nextComponent = renderer(
+			{ ...restoredEntry, data: { kind: "next-command", text: "/do-it .specs/build/plan.md" } },
+			{ expanded: false },
+			{
+				bold: (text: string) => text,
+				fg: (_color: string, text: string) => text,
+			} as Parameters<EntryRenderer>[2],
+		);
+		expect(nextComponent?.render(80)[0]?.trim()).toBe("next: /do-it .specs/build/plan.md");
 	});
 });

@@ -29,6 +29,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
 	BorderedLoader,
+	copyToClipboard,
 	type ContextUsage,
 	type ExtensionAPI,
 	type ExtensionCommandContext,
@@ -69,7 +70,11 @@ import {
 	validatePlanFile,
 } from "../lib/workflow-commands/plan-lifecycle";
 import { scanSecrets } from "../lib/secret-scan";
-import { appendSlashCommandAcknowledgement } from "../lib/slash-command-echo.js";
+import {
+	appendNextCommand,
+	appendSlashCommandAcknowledgement,
+	stripTrailingNextCommandContent,
+} from "../lib/slash-command-echo.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent";
 import {
 	createCommitCommandExecutor,
@@ -2433,6 +2438,7 @@ export default function (pi: ExtensionAPI) {
 	};
 	let activePlanLifecycle: PlanLifecycleSnapshot | undefined;
 	let activePlanningRoot: string | undefined;
+	let pendingNextPlanCommand: string | undefined;
 	let activeRawWorkflow: WorkflowWorktree | undefined;
 
 	const persistPlanLifecycle = async (
@@ -2520,7 +2526,11 @@ export default function (pi: ExtensionAPI) {
 			}
 			const next = transitionPlanLifecycle(activePlanLifecycle, input);
 			await persistPlanLifecycle(next);
-			if (next.stage === "ready") deactivateTools(pi, ["plan_progress"]);
+			if (next.stage === "ready") {
+				deactivateTools(pi, ["plan_progress"]);
+				if (ctx.mode === "tui")
+					pendingNextPlanCommand = `/do-it ${next.planPath}`;
+			}
 			return {
 				content: [
 					{
@@ -2539,6 +2549,34 @@ export default function (pi: ExtensionAPI) {
 
 	onSessionStart(pi, import.meta.url, (_event, ctx) => restorePlanLifecycle(ctx));
 	pi.on("session_tree", (_event, ctx) => restorePlanLifecycle(ctx));
+	pi.on("session_shutdown", () => {
+		pendingNextPlanCommand = undefined;
+	});
+	pi.on("message_end", (event, ctx) => {
+		const command = pendingNextPlanCommand;
+		if (
+			!command ||
+			ctx.mode !== "tui" ||
+			event.message.role !== "assistant" ||
+			event.message.stopReason !== "stop" ||
+			!Array.isArray(event.message.content)
+		)
+			return;
+		const content = stripTrailingNextCommandContent(event.message.content, command);
+		if (content === event.message.content) return;
+		return { message: { ...event.message, content } };
+	});
+	pi.on("agent_end", async (_event, ctx) => {
+		const command = pendingNextPlanCommand;
+		pendingNextPlanCommand = undefined;
+		if (!command || ctx.mode !== "tui") return;
+		try {
+			await copyToClipboard(command);
+			appendNextCommand(pi, ctx, command);
+		} catch {
+			ctx.ui.notify("Could not copy the next command to the clipboard.", "warning");
+		}
+	});
 
 	pi.registerTool({
 		name: "workflow_complete",
@@ -2817,6 +2855,7 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Crystallize an executable plan in the primary repository",
 		handler: async (args, ctx) => {
+			pendingNextPlanCommand = undefined;
 			if (ctx.mode === "tui") {
 				ctx.ui.setStatus?.("plan-it", "planning...");
 			}
