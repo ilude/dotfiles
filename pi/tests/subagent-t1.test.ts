@@ -134,7 +134,12 @@ describe("subagent T1 execution contracts", () => {
 		] as const;
 		for (const [, patch] of rejected) {
 			const candidate = { ...base, ...patch } as unknown as SubagentRunSnapshot;
-			expect(resolveTaskSessionAffinity([candidate], "task-a", identity).outcome).toBe("rejected");
+			const result = resolveTaskSessionAffinity([candidate], "task-a", identity);
+			expect(result.outcome).toBe("rejected");
+			if (result.outcome === "rejected") {
+				expect(result.reason).toContain("affinityTaskId=task-a");
+				expect(result.reason).toContain("bounded eligible candidate count=");
+			}
 		}
 		const ambiguous = [
 			{ ...base, runId: "run-c", sessionPath: "session-c.jsonl", settlementOrder: 3 },

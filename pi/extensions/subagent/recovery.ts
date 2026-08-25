@@ -50,28 +50,40 @@ export async function executeInterruptedRecovery<T>(
 	return executor.resume(prepared);
 }
 
+function activeToolDiagnostic(run: SubagentRunSnapshot): string {
+	const tools = run.liveTools
+		.slice(0, 8)
+		.map((tool) => `${tool.id}:${tool.name}`)
+		.join(", ");
+	return `active tools for run ${run.runId} (bounded to 8): ${tools || "<none>"}`;
+}
+
 export function prepareInterruptedRecovery(
 	run: SubagentRunSnapshot | undefined,
 	request: InterruptToolRequest,
 	findSessionPath: (runId: string) => string | undefined,
 ): PreparedInterruptedRecovery {
 	if (!run || run.status !== "running")
-		throw new Error(`Subagent run is not live: ${request.runId}`);
+		throw new Error(`Subagent run is not live: ${request.runId} (requested tool: ${request.toolCallId})`);
 	if (
 		run.parentSessionId &&
 		run.parentSessionId !== request.parentSessionId
 	)
-		throw new Error("The selected run belongs to another root session.");
+		throw new Error(
+			`The selected run ${request.runId} for tool ${request.toolCallId} belongs to another root session.`,
+		);
 	if (run.activityVersion !== request.activityVersion)
 		throw new Error(
-			`Stale interruption request: activity advanced from ${request.activityVersion} to ${run.activityVersion}.`,
+			`Stale interruption request for run ${request.runId}, tool ${request.toolCallId}: activity advanced from ${request.activityVersion} to ${run.activityVersion}; ${activeToolDiagnostic(run)}.`,
 		);
 	if (!run.liveTools.some((tool) => tool.id === request.toolCallId))
-		throw new Error("The requested tool call is not active on the selected run.");
+		throw new Error(
+			`The requested tool call ${request.toolCallId} is not active on selected run ${request.runId}; ${activeToolDiagnostic(run)}.`,
+		);
 	const sessionPath = run.sessionPath ?? findSessionPath(run.runId);
 	if (!sessionPath)
 		throw new Error(
-			"The selected run has no persisted child session and cannot be recovered safely.",
+			`The selected run ${request.runId} for tool ${request.toolCallId} has no persisted child session and cannot be recovered safely.`,
 		);
 	return {
 		run,

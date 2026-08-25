@@ -44,6 +44,7 @@ export interface WorkspaceDeny {
 	readonly governed: true;
 	readonly workspaceRoot?: string;
 	readonly target?: string;
+	readonly resolvedTarget?: string;
 	readonly reason: string;
 }
 
@@ -61,6 +62,9 @@ export type WorkspaceRootResult =
 				| "workspace_root_invalid"
 				| "workspace_root_filesystem_root"
 				| "workspace_root_widened";
+			readonly parentWorkspaceRoot: string;
+			readonly suppliedWorkspaceRoot?: string;
+			readonly resolvedWorkspaceRoot?: string;
 			readonly reason: string;
 		};
 
@@ -161,8 +165,18 @@ type WorkspaceRootDenyCode =
 function rootDeny(
 	code: WorkspaceRootDenyCode,
 	reason: string,
+	parentWorkspaceRoot: string,
+	suppliedWorkspaceRoot: string | undefined,
+	resolvedWorkspaceRoot?: string,
 ): WorkspaceRootResult {
-	return { outcome: "deny", code, reason };
+	return {
+		outcome: "deny",
+		code,
+		parentWorkspaceRoot,
+		...(suppliedWorkspaceRoot !== undefined ? { suppliedWorkspaceRoot } : {}),
+		...(resolvedWorkspaceRoot !== undefined ? { resolvedWorkspaceRoot } : {}),
+		reason: `${reason} (parent workspace: ${parentWorkspaceRoot}; supplied workspace: ${suppliedWorkspaceRoot ?? "<default>"}; resolved workspace: ${resolvedWorkspaceRoot ?? "<unresolved>"})`,
+	};
 }
 
 export function resolveWorkspaceRoot(
@@ -171,11 +185,14 @@ export function resolveWorkspaceRoot(
 	options: { readonly allowExternal?: boolean } = {},
 ): WorkspaceRootResult {
 	const parent = canonicalExistingDirectory(parentWorkspaceRoot);
-	if (!parent.ok) return rootDeny("workspace_root_invalid", parent.reason);
+	if (!parent.ok) return rootDeny("workspace_root_invalid", parent.reason, parentWorkspaceRoot, requestedWorkspaceRoot);
 	if (isFilesystemRoot(parent.canonical)) {
 		return rootDeny(
 			"workspace_root_filesystem_root",
 			"A filesystem root cannot be used as a workspace root.",
+			parentWorkspaceRoot,
+			requestedWorkspaceRoot,
+			parent.canonical,
 		);
 	}
 
@@ -184,17 +201,23 @@ export function resolveWorkspaceRoot(
 		? requested
 		: path.resolve(parent.canonical, requested);
 	const child = canonicalExistingDirectory(requestedAbsolute);
-	if (!child.ok) return rootDeny("workspace_root_invalid", child.reason);
+	if (!child.ok) return rootDeny("workspace_root_invalid", child.reason, parentWorkspaceRoot, requestedWorkspaceRoot);
 	if (isFilesystemRoot(child.canonical)) {
 		return rootDeny(
 			"workspace_root_filesystem_root",
 			"A filesystem root cannot be used as a workspace root.",
+			parentWorkspaceRoot,
+			requestedWorkspaceRoot,
+			child.canonical,
 		);
 	}
 	if (options.allowExternal !== true && !isInside(parent.canonical, child.canonical)) {
 		return rootDeny(
 			"workspace_root_widened",
 			"A child cannot widen its assigned workspace root.",
+			parentWorkspaceRoot,
+			requestedWorkspaceRoot,
+			child.canonical,
 		);
 	}
 	return {
@@ -259,6 +282,7 @@ function denyPath(
 	code: WorkspacePolicyDenyCode,
 	reason: string,
 	target?: string,
+	resolvedTarget?: string,
 ): WorkspaceDeny {
 	return {
 		outcome: "deny",
@@ -266,7 +290,8 @@ function denyPath(
 		governed: true,
 		workspaceRoot,
 		target,
-		reason,
+		resolvedTarget,
+		reason: `${reason} (workspace: ${workspaceRoot}; supplied target: ${target ?? "<none>"}; resolved target: ${resolvedTarget ?? "<unresolved>"})`,
 	};
 }
 
@@ -304,6 +329,7 @@ function checkCanonicalTargets(
 				"filesystem_root_target",
 				"A filesystem root cannot be accessed by a governed workspace tool.",
 				target,
+				resolved.canonical,
 			);
 		}
 		if (!isInside(workspaceRoot, resolved.canonical)) {
@@ -316,6 +342,7 @@ function checkCanonicalTargets(
 				"path_escape",
 				`The governed path escapes the assigned workspace. Assigned workspace: ${JSON.stringify(workspaceRoot)}. Supplied path: ${JSON.stringify(target)}. Resolved path: ${JSON.stringify(resolved.canonical)}.`,
 				target,
+				resolved.canonical,
 			);
 		}
 		canonicalTargets.push(resolved.canonical);

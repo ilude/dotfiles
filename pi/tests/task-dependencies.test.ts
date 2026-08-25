@@ -139,6 +139,18 @@ describe("createTaskBatch validation and recovery", () => {
 		}
 	});
 
+	it("reports only authorized dependency cycle members", () => {
+		expect(() =>
+			createTaskBatch(
+				[
+					{ origin: "other", summary: "a", key: "a", blockedByKeys: ["b"] },
+					{ origin: "other", summary: "b", key: "b", blockedByKeys: ["a"] },
+				],
+				workspace,
+			),
+		).toThrow(/dependency cycle rejected: .*a.*b/);
+	});
+
 	it("reports partial writes and supports ordered public recovery", () => {
 		const blocker = createTask({
 			origin: "other",

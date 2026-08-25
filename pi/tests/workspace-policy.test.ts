@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { normalizeRepositoryScopes } from "../extensions/subagent/scope-policy.ts";
 import {
 	checkNativePathTool,
 	checkWorkspaceShellCommand,
@@ -60,10 +61,19 @@ describe("workspace root resolution", () => {
 			outcome: "allow",
 			workspaceRoot: fs.realpathSync.native(outside),
 		});
-		expect(resolveWorkspaceRoot(parent, outside)).toMatchObject({
+		const denied = resolveWorkspaceRoot(parent, outside);
+		expect(denied).toMatchObject({
 			outcome: "deny",
 			code: "workspace_root_widened",
+			parentWorkspaceRoot: parent,
+			suppliedWorkspaceRoot: outside,
+			resolvedWorkspaceRoot: fs.realpathSync.native(outside),
 		});
+		if (denied.outcome === "deny") {
+			expect(denied.reason).toContain(`parent workspace: ${parent}`);
+			expect(denied.reason).toContain(`supplied workspace: ${outside}`);
+			expect(denied.reason).toContain(`resolved workspace: ${fs.realpathSync.native(outside)}`);
+		}
 	});
 
 	it("rejects filesystem roots as parent or requested workspaces", () => {
@@ -77,6 +87,23 @@ describe("workspace root resolution", () => {
 			outcome: "deny",
 			code: "workspace_root_filesystem_root",
 		});
+	});
+});
+
+describe("repository modification scopes", () => {
+	it("reports the repository root, supplied scope, and resolved escape target", () => {
+		const root = temporaryDirectory("pi-scope-policy-root-");
+		const outside = temporaryDirectory("pi-scope-policy-outside-");
+		const escape = path.join(root, "escape");
+		fs.symlinkSync(outside, escape, process.platform === "win32" ? "junction" : "dir");
+
+		expect(() => normalizeRepositoryScopes(["escape/missing.ts"], root)).toThrow(
+			new RegExp(
+				["repository root:", root, "supplied scope: escape/missing.ts", "resolved target:", path.join(outside, "missing.ts")]
+					.map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+					.join(".*"),
+			),
+		);
 	});
 });
 
@@ -109,12 +136,18 @@ describe("governed native path tools", () => {
 			{ path: "escape/missing/file.ts" },
 			root,
 		);
-		expect(result).toMatchObject({ outcome: "deny", code: "path_escape" });
+		expect(result).toMatchObject({
+			outcome: "deny",
+			code: "path_escape",
+			workspaceRoot: root,
+			target: "escape/missing/file.ts",
+			resolvedTarget: path.join(outside, "missing", "file.ts"),
+		});
 		if (result.outcome !== "deny") throw new Error("Expected path escape denial");
-		expect(result.reason).toContain(`Assigned workspace: ${JSON.stringify(root)}`);
-		expect(result.reason).toContain('Supplied path: "escape/missing/file.ts"');
+		expect(result.reason).toContain(`workspace: ${root}`);
+		expect(result.reason).toContain("supplied target: escape/missing/file.ts");
 		expect(result.reason).toContain(
-			`Resolved path: ${JSON.stringify(path.join(outside, "missing", "file.ts"))}`,
+			`resolved target: ${path.join(outside, "missing", "file.ts")}`,
 		);
 	});
 

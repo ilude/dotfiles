@@ -75,17 +75,24 @@ describe("subagent interrupted-tool recovery", () => {
 				request,
 				() => "/sessions/run-1.jsonl",
 			),
-		).toThrow("another root session");
-		expect(() =>
+		).toThrow(/run-1.*tool-1.*another root session/);
+		let rejection: unknown;
+		try {
 			prepareInterruptedRecovery(
 				liveRun(),
 				{ ...request, toolCallId: "wrong-tool" },
 				() => "/sessions/run-1.jsonl",
-			),
-		).toThrow("not active");
+			);
+		} catch (error) {
+			rejection = error;
+		}
+		expect(String(rejection)).toContain("wrong-tool");
+		expect(String(rejection)).toContain("run-1");
+		expect(String(rejection)).toContain("tool-1:find");
+		expect(String(rejection)).not.toContain("/sessions/run-1.jsonl");
 		expect(() =>
 			prepareInterruptedRecovery(liveRun(), request, () => undefined),
-		).toThrow("no persisted child session");
+		).toThrow(/run-1.*tool-1.*no persisted child session/);
 	});
 
 	it("settles before resuming the persisted session and never resumes after failure", async () => {
