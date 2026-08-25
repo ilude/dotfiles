@@ -657,6 +657,11 @@ describe("goal extension", () => {
 			strategy: { agent: "builder" },
 		});
 		expect(started.isError).not.toBe(true);
+		expect(started.content[0].text).toContain('\n  "command": "goal_progress"');
+		expect(JSON.parse(started.content[0].text)).toMatchObject({
+			outcome: "persisted",
+			command: "goal_progress",
+		});
 		await progress.execute("outcome", {
 			action: "record_outcome",
 			key: "T1",

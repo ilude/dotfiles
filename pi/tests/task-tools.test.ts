@@ -469,6 +469,7 @@ describe("task tools", () => {
 			ctx,
 		);
 		const id = created.details.record.id as string;
+		expect(created.content[0].text).toContain('\n  "outcome": "persisted"');
 		const createVisible = JSON.parse(created.content[0].text);
 		expect(createVisible).toEqual({
 			outcome: "persisted",
@@ -1009,6 +1010,7 @@ describe("task tools", () => {
 			undefined,
 			ctx,
 		);
+		expect(result.content[0].text).toContain('\n  "tasks": [');
 		const visible = JSON.parse(result.content[0].text);
 		expect(visible.tasks.map((item: { key: string }) => item.key)).toEqual([
 			"downstream",

@@ -1,6 +1,7 @@
 ---
 created: 2026-08-25
-status: ready
+status: complete
+completed: 2026-08-25
 ---
 
 # Make structured Pi tool results readable
@@ -23,23 +24,29 @@ Replace compact one-line JSON in the six identified custom-tool result surfaces 
 
 ## Tasks
 
-- [ ] **T1: Render friendly workflow closeout summaries**
+- [x] **T1: Render friendly workflow closeout summaries**
   - Files: `pi/extensions/workflow-commands.ts`, `pi/tests/plan-archive.test.ts`, `pi/tests/workflow-dispatch.test.ts`, `pi/skills/pi-extension/references/contracts/workflow-lifecycle.md`
   - Change: Replace successful compact JSON content from `plan_archive` with `Plan archived:\nfrom: <sourcePlan> to: <archivedPlan>\n<branch> committed and merged into <primaryBranch> and cleaned up.` and from `workflow_complete` with `Workflow completed.\n<branch> committed and merged into <primaryBranch> and cleaned up.` Substitute current result values at execution time; never print placeholders. Preserve each existing `details` object and all closeout behavior. Update the owning lifecycle contract with only this accepted presentation rule.
   - Done when: Focused tool executions assert exact output using non-hard-coded fixture values, preserve structured details, and retain existing archive, commit, merge, cleanup, and tool-deactivation assertions.
   - Verify: `cd pi && pnpm test plan-archive.test.ts workflow-dispatch.test.ts`
 
-- [ ] **T2: Pretty-print the remaining structured tool results**
+- [x] **T2: Pretty-print the remaining structured tool results**
   - Files: `pi/extensions/workflow-commands.ts`, `pi/extensions/goal.ts`, `pi/extensions/tasks.ts`, `pi/extensions/subagent/index.ts`, `pi/tests/workflow-dispatch.test.ts`, `pi/tests/goal.test.ts`, `pi/tests/task-tools.test.ts`, `pi/tests/subagent.test.ts`
   - Change: Use `JSON.stringify(value, null, 2)` for successful and rejected model-visible JSON content owned by `plan_progress`, `goal_progress`, `task`, and `subagent_control`, including task batch success and bounded batch failure results. Do not introduce a shared formatter or custom renderer. Keep parsed values, `details`, existing byte-budget enforcement, schemas, and error paths unchanged.
   - Done when: Each affected tool has a focused assertion for line breaks and two-space indentation plus parse-equivalence to its prior structured value; task rejection and batch-failure output sites are covered; and task batch budget tests still pass without increasing any configured limit.
   - Verify: `cd pi && pnpm test workflow-dispatch.test.ts goal.test.ts task-tools.test.ts subagent.test.ts`
 
+- [x] **T3: Repair Windows subagent path identity blockers**
+  - Files: `pi/extensions/subagent/index.ts`, `pi/tests/subagent.test.ts`
+  - Change: Canonicalize workspace identity before storing background completion ownership, canonicalize saved-session lookup for continuation authority, and align Windows path assertions with the existing canonical path contract.
+  - Done when: The previously blocked subagent lifecycle tests and the complete focused subagent test file pass without changing their lifecycle expectations.
+  - Verify: `cd pi && pnpm test subagent.test.ts`
+
 ## Validation
 
-- [ ] Both focused test commands pass and directly exercise all six affected tool-result surfaces.
-- [ ] `cd pi && pnpm run typecheck` passes, and scoped diff inspection confirms only presentation text, focused assertions, and the closeout contract changed.
-- [ ] `git diff --check -- pi/extensions/workflow-commands.ts pi/extensions/goal.ts pi/extensions/tasks.ts pi/extensions/subagent/index.ts pi/tests/plan-archive.test.ts pi/tests/workflow-dispatch.test.ts pi/tests/goal.test.ts pi/tests/task-tools.test.ts pi/tests/subagent.test.ts pi/skills/pi-extension/references/contracts/workflow-lifecycle.md` reports no whitespace errors.
+- [x] Both focused test commands pass and directly exercise all six affected tool-result surfaces.
+- [x] `cd pi && pnpm run typecheck` passes, and scoped diff inspection confirms only presentation text, focused assertions, the closeout contract, and the requested Windows path-identity blocker repairs changed.
+- [x] `git diff --check -- pi/extensions/workflow-commands.ts pi/extensions/goal.ts pi/extensions/tasks.ts pi/extensions/subagent/index.ts pi/tests/plan-archive.test.ts pi/tests/workflow-dispatch.test.ts pi/tests/goal.test.ts pi/tests/task-tools.test.ts pi/tests/subagent.test.ts pi/skills/pi-extension/references/contracts/workflow-lifecycle.md` reports no whitespace errors.
 
 ## Retention
 
@@ -47,7 +54,7 @@ Keep incomplete work at `.specs/structured-tool-output-formatting/plan.md`. Afte
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
+- State: Complete.
 - Blocker: None.
-- Next: T1.
+- Next: Archive, commit, merge, and verify closeout.
 - Resume: `/do-it .specs/structured-tool-output-formatting/plan.md`

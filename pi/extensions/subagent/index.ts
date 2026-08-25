@@ -134,6 +134,8 @@ import {
 	type PreparedInterruptedRecovery,
 } from "./recovery.js";
 import {
+	canonicalizeSavedSessionPath,
+	canonicalizeWorkspaceIdentity,
 	subagentRunManager,
 	type SubagentRunMode,
 	type SubagentRunSnapshot,
@@ -2547,9 +2549,10 @@ type ContinueParams = {
 };
 
 function continuationAuthorityFor(sessionPath: string): TaskParams["continuationAuthority"] {
+	const canonicalSessionPath = canonicalizeSavedSessionPath(sessionPath);
 	const snapshot = subagentRunManager
 		.list()
-		.find((run) => run.sessionPath === sessionPath);
+		.find((run) => run.sessionPath === canonicalSessionPath);
 	if (
 		snapshot?.role === "coordinator" ||
 		snapshot?.role === "leaf"
@@ -3446,7 +3449,7 @@ export default function (pi: ExtensionAPI) {
 				});
 			}
 			return {
-				content: [{ type: "text", text: JSON.stringify(result) }],
+				content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
 				details: result,
 			};
 		},
@@ -3657,7 +3660,9 @@ export default function (pi: ExtensionAPI) {
 			if (currentIdentity.role === "leaf" || currentIdentity.depth >= 2)
 				throw new Error("Leaf and depth-two subagents cannot delegate.");
 			const invocationCwd = prepared?.workspaceRoot ?? ctx.cwd;
-			const effectiveWorkspaceIdentity = prepared?.workspaceRoot ?? path.resolve(ctx.cwd);
+			const effectiveWorkspaceIdentity = canonicalizeWorkspaceIdentity(
+				prepared?.workspaceRoot ?? ctx.cwd,
+			);
 			const invocationTelemetryExecutionKind: OrchestrationExecutionKind =
 				internalParams.__modernRequest?.kind ??
 				(legacyAdapterUse ? "legacy" : "write");

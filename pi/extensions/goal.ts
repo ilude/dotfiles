@@ -1285,7 +1285,7 @@ function goalProgressResult(goal: UnattendedGoal, message: string) {
 		nextAction,
 	};
 	return {
-		content: [{ type: "text" as const, text: JSON.stringify(report) }],
+		content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
 		details: { goalId: goal.id, state: goal.state, ...report },
 	};
 }

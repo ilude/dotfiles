@@ -165,9 +165,14 @@ describe("completed plan archival", () => {
 			createMockCtx({ cwd: root }),
 		);
 
-		expect(JSON.parse(result.content[0].text)).toMatchObject({
-			outcome: "verified",
+		expect(result.content[0].text).toBe(
+			"Plan archived:\nfrom: .specs/tool-fixture/plan.md to: .specs/archive/tool-fixture/plan.md\nworkflow/tool-fixture committed and merged into main and cleaned up.",
+		);
+		expect(result.details).toMatchObject({
+			sourcePlan: ".specs/tool-fixture/plan.md",
 			archivedPlan: ".specs/archive/tool-fixture/plan.md",
+			branch: "workflow/tool-fixture",
+			primaryBranch: "main",
 		});
 		expect(pi.getActiveTools()).toEqual([]);
 	});

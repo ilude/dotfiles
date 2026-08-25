@@ -55,6 +55,11 @@ vi.mock("../lib/workflow-worktree", () => ({
 		},
 	})),
 	closeWorkflowWorktree: vi.fn(),
+	verifyAndCleanupWorkflowWorktree: vi.fn(async (input: any) => ({
+		...input.worktree.ownership,
+		state: "complete",
+		mergedHead: "merged-head",
+	})),
 	materializePlanInWorkflowWorktree: vi.fn(async () => "transferred"),
 	resolveWorkflowRepoRoot: vi.fn(async (cwd: string) => cwd),
 	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
@@ -362,7 +367,12 @@ describe("workflow slash command dispatch", () => {
 		];
 		for (const input of inputs) {
 			expect(Value.Check(tool.parameters, input)).toBe(true);
-			await tool.execute("progress", input, undefined, undefined, ctx);
+			const result = await tool.execute("progress", input, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain('\n  "outcome": "recorded"');
+			expect(JSON.parse(result.content[0].text)).toMatchObject({
+				outcome: "recorded",
+				planPath: fixture.planPath,
+			});
 		}
 		const persisted = mockPi.appendEntry.mock.calls.at(-1)?.[1];
 		expect(persisted).toBeDefined();
@@ -604,5 +614,42 @@ describe("workflow slash command dispatch", () => {
 			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
 			expect.anything(),
 		);
+	});
+
+	it("renders a dynamic workflow completion summary and preserves details", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		const ownership = {
+			version: 1,
+			workflow: "do-it",
+			workflowId: "do-it:raw-fixture",
+			repoRoot: "/repo",
+			primaryWorktree: "/repo",
+			primaryBranch: "trunk",
+			initialPrimaryHead: "initial-head",
+			branch: "workflow/raw-fixture",
+			worktree: "/repo/.worktrees/raw-fixture",
+			createdAt: "2026-08-23T00:00:00.000Z",
+			updatedAt: "2026-08-23T00:00:00.000Z",
+			state: "active",
+		};
+		vi.mocked(worktrees.readWorkflowOwnershipForWorktree).mockReturnValueOnce(ownership as any);
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		mockPi.setActiveTools(["workflow_complete"]);
+		const tool = mockPi._getTool("workflow_complete");
+		if (!tool) throw new Error("workflow_complete tool not registered");
+
+		const result = await tool.execute("complete", {}, undefined, undefined, {});
+
+		expect(result.content[0].text).toBe(
+			"Workflow completed.\nworkflow/raw-fixture committed and merged into trunk and cleaned up.",
+		);
+		expect(result.details).toMatchObject({
+			branch: "workflow/raw-fixture",
+			primaryBranch: "trunk",
+			state: "complete",
+		});
+		expect(mockPi.getActiveTools()).toEqual([]);
 	});
 });
