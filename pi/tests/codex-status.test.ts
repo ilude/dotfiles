@@ -420,7 +420,7 @@ describe("codex-status usage", () => {
 				event: "prompt_cache_request",
 				data: {
 					provider: "openai-codex",
-					model: "gpt-5.6-sol",
+					model: "gpt-5.6-luna",
 					messageId: "message-2",
 					input: "unavailable",
 					cacheRead: "unavailable",
@@ -444,9 +444,13 @@ describe("codex-status usage", () => {
 			immediateToolChanges: 1,
 		});
 		const text = formatCodexCacheUsageSection(summary);
-		expect(text).toContain("cache-read share of observed input: 44.4%");
-		expect(text).toContain("usage unavailable: 1");
-		expect(text).not.toContain("subscription");
+		expect(text).toBe(
+			"OpenAI Codex cache (last 2 requests):\n" +
+				"  cache-read: 44.4%\n" +
+				"  model request mix:\n" +
+				"    gpt-5.6-sol: 50%\n" +
+				"    gpt-5.6-luna: 50%",
+		);
 	});
 
 	it("groups unique first child requests by direct run join and preserves zero usage", () => {

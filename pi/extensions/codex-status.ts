@@ -575,34 +575,25 @@ export function summarizeCodexCacheMetrics(
 	};
 }
 
-function formatCacheMetric(value: number | typeof UNAVAILABLE): string {
-	return value === UNAVAILABLE ? UNAVAILABLE : formatCompactTokenCount(value);
-}
-
 export function formatCodexCacheUsageSection(
 	summary: CodexCacheSummary = summarizeCodexCacheMetrics(),
 ): string {
-	const lines = ["OpenAI Codex cache (recent requests):"];
-	if (summary.windowSize === 0) return `${lines[0]} unavailable`;
-	const first = summary.firstRequestGroups;
-	const formatGroup = (name: string, group: CodexCacheGroupSummary): string =>
-		`  ${name} first requests: ${group.requests} (${group.cacheReadShare === UNAVAILABLE ? UNAVAILABLE : `${(group.cacheReadShare * 100).toFixed(1)}%`} cache-read share)`;
-	lines.push(
-		formatGroup("root", first.root),
-		formatGroup("fresh child", first.freshChild),
-		formatGroup("continued child", first.continuedChild),
-		`  requests with usage: ${summary.withUsage}`,
-		`  usage unavailable: ${summary.unavailableUsage}`,
-		`  input: ${formatCacheMetric(summary.input)}`,
-		`  cache read: ${formatCacheMetric(summary.cacheRead)}`,
-		`  cache write: ${formatCacheMetric(summary.cacheWrite)}`,
-		`  cache-read share of observed input: ${summary.cacheReadShare === UNAVAILABLE ? UNAVAILABLE : `${(summary.cacheReadShare * 100).toFixed(1)}%`}`,
-		`  stable: ${summary.stable}`,
-		`  context changes: ${summary.contextChanges}`,
-		`  immediate-tool changes: ${summary.immediateToolChanges}`,
-	);
-	if (summary.models.length > 1) {
-		lines.push(`  models: ${summary.models.map(({ model, requests }) => `${model} (${requests})`).join(", ")}`);
+	const heading = `OpenAI Codex cache (last ${summary.windowSize} requests):`;
+	if (summary.windowSize === 0) return `${heading} unavailable`;
+	const cacheReadShare =
+		summary.cacheReadShare === UNAVAILABLE
+			? UNAVAILABLE
+			: `${(summary.cacheReadShare * 100).toFixed(1)}%`;
+	const lines = [heading, `  cache-read: ${cacheReadShare}`];
+	const modelRequests = summary.models.reduce((total, { requests }) => total + requests, 0);
+	if (modelRequests > 0) {
+		lines.push(
+			"  model request mix:",
+			...summary.models.map(
+				({ model, requests }) =>
+					`    ${model}: ${Number(((requests / modelRequests) * 100).toFixed(1))}%`,
+			),
+		);
 	}
 	return lines.join("\n");
 }
