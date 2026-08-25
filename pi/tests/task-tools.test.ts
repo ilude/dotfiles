@@ -685,6 +685,37 @@ describe("task tools", () => {
 		expect(getTask(task.id)).toEqual(before);
 	});
 
+	it("accepts a bounded terminal outcome with eight validation checks", async () => {
+		const pi = createMockPi();
+		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+		const task = createTask({
+			origin: "other",
+			summary: "validate the completed work",
+			workspace: resolveTaskWorkspace(tmpRoot),
+		});
+		transitionTask(task.id, "assigned");
+		const result = await tool?.execute(
+			"complete-with-validation",
+			{
+				action: "update",
+				id: task.id,
+				state: "completed",
+				outcome: {
+					summary: "done",
+					evidence: ["observed result"],
+					validation: Array.from({ length: 8 }, (_, index) => `check ${index + 1}`),
+				},
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(result.details.outcome).toBe("persisted");
+		expect(result.details.record.outcome.validation).toHaveLength(8);
+	});
+
 	it("rejects invalid notes or blockers without patching or transitioning", async () => {
 		const pi = createMockPi();
 		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);

@@ -338,18 +338,21 @@ const CommonRequestFields = {
 	affinityTaskId: Type.Optional(
 		Type.String({
 			minLength: 1,
-			description: "Explicit prior task ID for serial Luna session affinity; single-item read/write only.",
+			description: "Explicit prior task ID for serial Luna session affinity; single-item read/write only and requires the current item taskId.",
 		}),
 	),
 	enforcedBoundary: Type.Optional(
 		Type.String({
 			minLength: 1,
 			description:
-				"Enforced only for governed file tools and recognized recursive-search tools; not a general sandbox.",
+				"Enforced only for governed file tools and recognized recursive-search tools; every item cwd must be inside it. Omit it to use the parent workspace; not a general sandbox.",
 		}),
 	),
 	agentScope: Type.Optional(
-		Type.String({ enum: ["user", "project", "both"] }),
+		Type.String({
+			enum: ["user", "project", "both"],
+			description: "Agent catalog source. Omit or use user for installed agents; project selects only trusted repository-local .pi/agents; both combines them.",
+		}),
 	),
 };
 

@@ -220,15 +220,19 @@ export function transitionPlanLifecycle(
 		dispositions: current.dispositions.map((item) => ({ ...item })),
 	};
 
+	if (snapshot.stage === "ready") return snapshot;
+
 	switch (input.action) {
 		case "draft": {
-			requireStage(snapshot, ["started"], input.action);
+			requireStage(snapshot, ["started", "blocked"], input.action);
 			const planPath = input.planPath.replace(/^@/, "").replace(/\\/g, "/");
 			if (!PLAN_PATH_PATTERN.test(planPath))
 				throw new Error(
 					"plan_progress requires a canonical .specs/{slug}/plan.md path.",
 				);
-			return { ...snapshot, planPath, stage: "draft" };
+			if (snapshot.planPath && snapshot.planPath !== planPath)
+				throw new Error("A blocked plan lifecycle cannot resume with a different plan path.");
+			return { ...snapshot, planPath, stage: "draft", blockedConcern: undefined };
 		}
 		case "review": {
 			requireStage(snapshot, ["draft"], input.action);

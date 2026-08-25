@@ -217,6 +217,38 @@ describe("plan lifecycle", () => {
 		);
 	});
 
+	it("resumes a blocked draft and keeps ready transitions idempotent", () => {
+		let state = createPlanLifecycleSnapshot("invocation", "example");
+		state = transitionPlanLifecycle(state, {
+			action: "draft",
+			planPath: ".specs/example/plan.md",
+		});
+		state = transitionPlanLifecycle(state, {
+			action: "blocked",
+			concern: "Need an operator decision.",
+		});
+		expect(() => transitionPlanLifecycle(state, {
+			action: "draft",
+			planPath: ".specs/other/plan.md",
+		})).toThrow("cannot resume with a different plan path");
+		state = transitionPlanLifecycle(state, {
+			action: "draft",
+			planPath: ".specs/example/plan.md",
+		});
+		expect(state).toMatchObject({ stage: "draft", blockedConcern: undefined });
+		state = transitionPlanLifecycle(state, {
+			action: "review",
+			role: "subtractive",
+			outcome: "no_finding",
+		});
+		const ready = transitionPlanLifecycle(state, { action: "ready" });
+		expect(transitionPlanLifecycle(ready, { action: "ready" })).toEqual(ready);
+		expect(transitionPlanLifecycle(ready, {
+			action: "draft",
+			planPath: ".specs/example/plan.md",
+		})).toEqual(ready);
+	});
+
 	it("bounds diagnostics and validates dependency syntax before execution", () => {
 		const path = ".specs/example/plan.md";
 		const invalid = readyPlan(path).replace(
