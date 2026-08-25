@@ -332,6 +332,91 @@ export function createCommitCommandExecutor(
 		return Boolean(status);
 	}
 
+	async function pushUnpublishedDirectSubmodules(
+		cwd: string,
+		activity: SlashCommitActivity,
+		signal?: AbortSignal,
+	): Promise<void> {
+		const root = await dependencies.gitOrThrowAsync(
+			cwd,
+			["rev-parse", "--show-toplevel"],
+			activity,
+			signal,
+		);
+		const config = await dependencies.runGitAsync(
+			root,
+			[
+				"config",
+				"-z",
+				"--file",
+				".gitmodules",
+				"--get-regexp",
+				"^submodule\\..*\\.path$",
+			],
+			activity,
+			signal,
+		);
+		if (config.code === 1 && !config.stdout && !config.stderr) return;
+		if (config.code !== 0) {
+			throw new Error(
+				(config.stderr || config.stdout).trim() ||
+					"Failed to read direct submodule paths",
+			);
+		}
+		for (const submodulePath of parseDirectSubmodulePaths(config.stdout)) {
+			const submoduleCwd = path.resolve(root, submodulePath);
+			if (!fs.existsSync(submoduleCwd)) continue;
+			const gitlink = await dependencies.gitOrThrowAsync(
+				root,
+				["rev-parse", `HEAD:${submodulePath}`],
+				activity,
+				signal,
+			);
+			const submoduleHead = await dependencies.gitOrThrowAsync(
+				submoduleCwd,
+				["rev-parse", "HEAD"],
+				activity,
+				signal,
+			);
+			if (submoduleHead !== gitlink) {
+				throw new Error(
+					`Submodule ${submodulePath} HEAD does not match the parent gitlink; refusing to push an ambiguous child commit`,
+				);
+			}
+			const unpublished = await dependencies.gitOrThrowAsync(
+				submoduleCwd,
+				["rev-list", "-n", "1", gitlink, "--not", "--remotes"],
+				activity,
+				signal,
+			);
+			if (!unpublished) continue;
+			await dependencies.gitOrThrowAsync(
+				submoduleCwd,
+				["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+				activity,
+				signal,
+			);
+			activity.setPhase(`pushing submodule ${submodulePath}`);
+			activity.logInfo(`Pushing unpublished submodule commit: ${submodulePath}`);
+			await dependencies.pushCurrentBranchAsync(
+				submoduleCwd,
+				activity,
+				signal,
+			);
+			const remaining = await dependencies.gitOrThrowAsync(
+				submoduleCwd,
+				["rev-list", "-n", "1", gitlink, "--not", "--remotes"],
+				activity,
+				signal,
+			);
+			if (remaining) {
+				throw new Error(
+					`Submodule ${submodulePath} commit ${gitlink} is still unavailable from its remotes after push`,
+				);
+			}
+		}
+	}
+
 	async function commitDirtyDirectSubmodules(
 		pi: ExtensionAPI,
 		ctx: SlashCommitContext,
@@ -567,6 +652,11 @@ export function createCommitCommandExecutor(
 			}
 			if (prepared.parsedArgs.push) {
 				failurePhase = "Push";
+				await pushUnpublishedDirectSubmodules(
+					ctx.cwd,
+					activity,
+					ctx.signal,
+				);
 				activity.setPhase("pushing");
 				await dependencies.pushCurrentBranchAsync(
 					ctx.cwd,

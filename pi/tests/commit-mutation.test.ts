@@ -249,11 +249,12 @@ describe("commit mutation safety", () => {
 		);
 	}, REAL_GIT_TEST_TIMEOUT_MS);
 
-	it("pushes a clean submodule commit referenced by an earlier local parent commit", async () => {
+	it("pushes a clean submodule commit when its branch differs from the parent", async () => {
 		const child = repo();
 		writeFileSync(join(child, "child.txt"), "base\n");
 		run(child, ["add", "--", "child.txt"]);
 		run(child, ["commit", "-m", "chore: seed child"]);
+		run(child, ["branch", "-m", "feature/child"]);
 		const childBranch = run(child, ["branch", "--show-current"]).trim();
 		const childRemote = bareRepo();
 		run(child, ["remote", "add", "origin", childRemote]);
