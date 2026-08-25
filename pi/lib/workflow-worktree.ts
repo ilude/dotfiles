@@ -136,14 +136,20 @@ async function listWorktrees(root: string, git: WorkflowGitRunner): Promise<List
 	return parseWorktreeListPorcelain(result.stdout);
 }
 
-async function primaryState(root: string, git: WorkflowGitRunner, requireClean = true): Promise<{ worktree: string; branch: string; head: string }> {
+function hasBlockingPrimaryChanges(status: string, allowUntrackedCanonicalPlans: boolean): boolean {
+	return status.split(/\r?\n/).filter(Boolean).some((line) =>
+		!allowUntrackedCanonicalPlans || !/^\?\? \.specs\/[^/]+\/plan\.md$/.test(line),
+	);
+}
+
+async function primaryState(root: string, git: WorkflowGitRunner, requireClean = true, allowUntrackedCanonicalPlans = false): Promise<{ worktree: string; branch: string; head: string }> {
 	const commonDir = path.resolve(root, parseLine(await git(root, ["rev-parse", "--git-common-dir"]), "resolve common Git directory"));
 	const primaryCandidate = path.basename(commonDir) === ".git" ? path.dirname(commonDir) : undefined;
 	const primary = (await listWorktrees(root, git)).find((entry) => primaryCandidate && normalize(entry.path) === normalize(primaryCandidate));
 	if (!primary?.branch) throw new Error("could not identify the primary worktree and checked-out branch");
-	const status = await git(primary.path, ["status", "--porcelain=v1"]);
+	const status = await git(primary.path, ["status", "--porcelain=v1", "--untracked-files=all"]);
 	if (status.code !== 0) throw new Error(`inspect primary worktree: ${status.stderr.trim()}`);
-	if (requireClean && status.stdout.trim()) throw new Error("primary worktree is dirty; clean it before creating or merging a workflow worktree");
+	if (requireClean && hasBlockingPrimaryChanges(status.stdout, allowUntrackedCanonicalPlans)) throw new Error("primary worktree is dirty; clean it before creating or merging a workflow worktree");
 	const unmerged = await git(primary.path, ["diff", "--name-only", "--diff-filter=U"]);
 	if (unmerged.code !== 0) throw new Error(`inspect unmerged paths: ${unmerged.stderr.trim()}`);
 	if (unmerged.stdout.trim()) throw new Error("primary worktree has unmerged paths");
@@ -318,7 +324,7 @@ export async function verifyAndCleanupWorkflowWorktree(input: {
 	if (status.stdout.trim()) throw new Error("workflow worktree is not clean after model closeout; recovery worktree preserved");
 	const unmerged = await input.runner(ownership.worktree, ["diff", "--name-only", "--diff-filter=U"]);
 	if (unmerged.code !== 0 || unmerged.stdout.trim()) throw new Error("workflow worktree has unmerged paths; recovery worktree preserved");
-	const primary = await primaryState(ownership.primaryWorktree, input.runner);
+	const primary = await primaryState(ownership.primaryWorktree, input.runner, true, true);
 	if (primary.branch !== ownership.primaryBranch) throw new Error("primary branch changed; recovery worktree preserved");
 	const branchHead = parseLine(await input.runner(primary.worktree, ["rev-parse", ownership.branch]), "resolve workflow branch before closeout");
 	const merged = await input.runner(primary.worktree, ["merge-base", "--is-ancestor", ownership.branch, "HEAD"]);
@@ -393,7 +399,7 @@ export async function closeWorkflowWorktree(input: { worktree: WorkflowWorktree;
 		ownership = { ...ownership, closeoutStage: "committed", updatedAt: new Date().toISOString() };
 		writeOwnership(metadata, ownership);
 	}
-	const primary = await primaryState(ownership.primaryWorktree, input.runner);
+	const primary = await primaryState(ownership.primaryWorktree, input.runner, true, true);
 	if (primary.branch !== ownership.primaryBranch) throw new Error("primary branch changed; recovery worktree preserved");
 	let mergedHead = ownership.mergedHead;
 	if ((ownership.closeoutStage ?? "active") !== "merged") {
