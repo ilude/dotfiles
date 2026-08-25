@@ -1,6 +1,7 @@
 ---
 created: 2026-08-25
-status: ready
+status: completed
+completed: 2026-08-25
 ---
 
 # Reduce workflow ceremony while preserving real controls
@@ -23,19 +24,19 @@ Integrate the audited task-boundary change and simplify plan and subagent workfl
 
 ## Tasks
 
-- [ ] **T1: Integrate task boundary metadata simplification**
+- [x] **T1: Integrate task boundary metadata simplification**
   - Files: `pi/extensions/tasks.ts`, `pi/lib/task-registry.ts`, `pi/tests/task-registry.test.ts`, `pi/skills/pi-extension/references/contracts/subagents-and-tasks.md`
   - Change: Integrate the audited worktree change so bounded absolute and parent-relative task boundary strings survive slash normalization while type, count, length, empty-entry, and duplicate validation remain unchanged; reconcile it with current `main` rather than merging the existing worktree directly.
   - Done when: Representative absolute, parent-relative, relative, and symbolic boundary entries persist deterministically, while malformed, empty, oversized, excessive, and duplicate entries remain rejected.
   - Verify: `cd pi && pnpm test task-registry.test.ts task-tools.test.ts tasks.test.ts && pnpm run typecheck`
 
-- [ ] **T2: Make plan review ceremony proportional**
+- [x] **T2: Make plan review ceremony proportional**
   - Files: `pi/lib/workflow-commands/plan-lifecycle.ts`, `pi/extensions/workflow-commands.ts`, `pi/tests/plan-lifecycle.test.ts`, `pi/tests/workflow-dispatch.test.ts`, `pi/skills/workflow/plan-it.md`, `pi/skills/pi-extension/references/contracts/workflow-lifecycle.md`
   - Change: Make `strategy` and `concern` optional telemetry rather than transition prerequisites or exact-text independence gates; allow zero to four subject-matter reviews according to actual plan risk instead of requiring two universally; retain unresolved-supported finding blocks and one final standard-mode necessity review record, without claiming delegated freshness; keep quick mode review-free and preserve active lifecycle persistence and deterministic ready validation.
   - Done when: Focused tests prove omitted review prose and a low-risk standard plan without subject-matter reviews can progress through one final necessity check to ready, material plans can still record and resolve bounded reviews, unresolved supported findings cannot reach ready, quick mode remains review-free, and lifecycle restoration and tool deactivation remain intact.
   - Verify: `cd pi && pnpm test plan-lifecycle.test.ts workflow-dispatch.test.ts`
 
-- [ ] **T3: Consolidate subagent orchestration semantics**
+- [x] **T3: Consolidate subagent orchestration semantics**
   - Depends on: T1
   - Files: `pi/extensions/subagent/contracts.ts`, `pi/extensions/subagent/index.ts`, `pi/extensions/subagent/legacy-adapter.ts`, `pi/extensions/subagent/scope-policy.ts`, `pi/tests/subagent-t1.test.ts`, `pi/tests/subagent.test.ts`, `pi/tests/subagent-tree-runtime.test.ts`, `pi/skills/orchestration/SKILL.md`, `pi/skills/pi-extension/references/contracts/subagents-and-tasks.md`
   - Change: Route modern and legacy task links through one workspace, root-session, deletion, and assigned-state validator; treat coordinator scope/boundary markers as advisory while preserving no-direct-mutation authority and `enforcedBoundary`; remove or retire production-dead overlap-rejection code and conflicting disjoint-scope policy without weakening containment; normalize legacy top-level `taskId` once into per-item correlation while preserving modern per-item IDs and single-item read/write affinity rules.
@@ -44,10 +45,10 @@ Integrate the audited task-boundary change and simplify plan and subagent workfl
 
 ## Validation
 
-- [ ] Run `cd pi && pnpm test task-registry.test.ts task-tools.test.ts tasks.test.ts plan-lifecycle.test.ts workflow-dispatch.test.ts subagent-t1.test.ts subagent-tree-runtime.test.ts subagent.test.ts`; all focused tests pass, with unrelated pre-existing failures reported rather than disguised.
-- [ ] Run `cd pi && pnpm run typecheck`; shared TypeScript contracts compile before implementation expands and at final validation.
-- [ ] Run targeted Biome checks for changed files and `git diff --check`; changed files pass and no whitespace errors remain.
-- [ ] Inspect the final diff and focused tests to confirm no Team Lead mutation authority, governed containment, canonical plan validation, task lifecycle mutation, provider routing, or unrelated continuation behavior changed.
+- [x] Run `cd pi && pnpm test task-registry.test.ts task-tools.test.ts tasks.test.ts plan-lifecycle.test.ts workflow-dispatch.test.ts subagent-t1.test.ts subagent-tree-runtime.test.ts subagent.test.ts`; changed-contract tests pass. The full `subagent.test.ts` run retained nine unrelated pre-existing continuation/background failures, while its two task-link contract tests passed.
+- [x] Run `cd pi && pnpm run typecheck`; shared TypeScript contracts compile before implementation expands and at final validation.
+- [x] Run targeted Biome checks for changed files and `git diff --check`; eight changed files pass, and `index.ts` plus `legacy-adapter.ts` retain documented pre-existing Biome diagnostics outside the changed lines.
+- [x] Inspect the final diff and focused tests to confirm no Team Lead mutation authority, governed containment, canonical plan validation, task lifecycle mutation, provider routing, or unrelated continuation behavior changed.
 
 ## Retention
 
@@ -55,7 +56,8 @@ Keep incomplete work at `.specs/reduce-workflow-ceremony/plan.md`. After complet
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
+- State: Completed
 - Blocker: None.
-- Next: T1 and T2 may begin independently; T3 begins after T1 updates the shared task/subagent contract.
+- Next: Archive and merge through `plan_archive`.
+- Result: T1 passed 76 focused tests; T2 passed 23; T3 passed 42 contract/runtime tests plus two task-link integration tests; final typecheck and targeted Biome checks passed with documented pre-existing diagnostics.
 - Resume: `/do-it .specs/reduce-workflow-ceremony/plan.md`

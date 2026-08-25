@@ -472,36 +472,47 @@ function choicesFor(
 	}).filter((task) => !task.deletedAt);
 }
 
+function validateTaskReference(
+	taskId: string | undefined,
+	workspaceRoot: string,
+	parentSessionId: string | undefined,
+	maxChoices: number,
+): TaskLinkResolution {
+	const choices = choicesFor(workspaceRoot, parentSessionId, maxChoices);
+	if (taskId === undefined) return { outcome: "none" };
+	const task = getTask(taskId);
+	if (!task || task.deletedAt)
+		return { outcome: "invalid", reason: "task was not found", choices };
+	if (task.workspace !== resolveTaskWorkspace(workspaceRoot))
+		return { outcome: "invalid", reason: "task belongs to another workspace", choices };
+	if (task.state !== "assigned")
+		return { outcome: "invalid", reason: "task is not assigned", choices };
+	if (parentSessionId !== undefined && task.sessionId !== parentSessionId)
+		return { outcome: "invalid", reason: "task is owned by another root session", choices };
+	return { outcome: "explicit", task };
+}
+
+/** Validate a model-facing task reference before any child process is spawned. */
+export function validateTaskLink(
+	taskId: string | undefined,
+	workspaceRoot: string,
+	parentSessionId?: string,
+	maxChoices = DEFAULT_MAX_TASK_CHOICES,
+): TaskLinkResolution {
+	return validateTaskReference(taskId, workspaceRoot, parentSessionId, maxChoices);
+}
+
 export function resolveTaskLink(
 	taskId: string | undefined,
 	workspaceRoot: string,
 	parentSessionId?: string,
 	maxChoices = DEFAULT_MAX_TASK_CHOICES,
 ): TaskLinkResolution {
+	const link = validateTaskReference(taskId, workspaceRoot, parentSessionId, maxChoices);
+	if (link.outcome !== "none") return link;
 	const choices = choicesFor(workspaceRoot, parentSessionId, maxChoices);
-	if (taskId !== undefined) {
-		const task = getTask(taskId);
-		if (!task || task.deletedAt)
-			return { outcome: "invalid", reason: "task was not found", choices };
-		if (task.workspace !== resolveTaskWorkspace(workspaceRoot))
-			return { outcome: "invalid", reason: "task belongs to another workspace", choices };
-		if (task.sessionId !== undefined && parentSessionId !== undefined && task.sessionId !== parentSessionId)
-			return { outcome: "invalid", reason: "task is owned by another root session", choices };
-		if (task.state !== "assigned")
-			return { outcome: "invalid", reason: "task is not assigned", choices };
-		return { outcome: "explicit", task };
-	}
 	if (choices.length === 1) return { outcome: "auto", task: choices[0] as TaskRecordV1 };
 	return { outcome: "none" };
-}
-
-/** Resolve the model-facing task reference without deriving identity from runtime context. */
-export function resolvePreparedTaskLink(taskId: string | undefined): TaskLinkResolution {
-	if (taskId === undefined) return { outcome: "none" };
-	const task = getTask(taskId);
-	return task && !task.deletedAt
-		? { outcome: "explicit", task }
-		: { outcome: "invalid", reason: "task was not found", choices: [] };
 }
 
 function assertTaskLink(link: TaskLinkResolution, item: SubagentItemBase): void {
@@ -564,7 +575,12 @@ export function prepareSubagentExecution(
 		const effectiveCwd = cwdResult.targets[0] ?? workspaceRoot;
 		const instructions = item.instructions ?? item.task;
 		if (!instructions) throw new Error("Subagent items require instructions.");
-		const taskLink = resolvePreparedTaskLink(item.taskId);
+		const taskLink = validateTaskLink(
+			item.taskId,
+			workspaceRoot,
+			options.parentSessionId,
+			options.maxTaskChoices,
+		);
 		assertTaskLink(taskLink, item);
 		const discoveredAgent = itemAgent(item, discovery);
 		const agent = item.skills

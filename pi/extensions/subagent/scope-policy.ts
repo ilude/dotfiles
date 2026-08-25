@@ -163,47 +163,6 @@ export function normalizeRepositoryScopes(
 	return [...normalized].sort();
 }
 
-export function scopesOverlap(
-	left: readonly string[],
-	right: readonly string[],
-): boolean {
-	for (const leftScope of left) {
-		for (const rightScope of right) {
-			if (
-				leftScope === rightScope ||
-				leftScope.startsWith(`${rightScope}/`) ||
-				rightScope.startsWith(`${leftScope}/`)
-			)
-				return true;
-		}
-	}
-	return false;
-}
-
-export function assertDisjointScopes(
-	items: readonly { key: string; scopes: readonly string[] }[],
-	repositoryRoot?: string,
-): void {
-	const normalizedItems = items.map((item) => ({
-		key: item.key,
-		scopes: normalizeRepositoryScopes(item.scopes, repositoryRoot),
-	}));
-	for (let leftIndex = 0; leftIndex < normalizedItems.length; leftIndex += 1) {
-		for (
-			let rightIndex = leftIndex + 1;
-			rightIndex < normalizedItems.length;
-			rightIndex += 1
-		) {
-			const left = normalizedItems[leftIndex];
-			const right = normalizedItems[rightIndex];
-			if (scopesOverlap(left.scopes, right.scopes))
-				throw new ScopeContainmentError(
-					`Modification scopes overlap between ${left.key} and ${right.key}.`,
-				);
-		}
-	}
-}
-
 function canonicalizePolicy(policy: ScopePolicyEnvironment): ScopePolicyEnvironment {
 	const repositoryRoot = canonicalizeRepositoryRoot(policy.repositoryRoot);
 	return {

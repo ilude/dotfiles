@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension from "../extensions/workflow-friction-review.js";
 import { SubagentRunManager } from "../extensions/subagent/run-manager.ts";
 import {
-	assertDisjointScopes,
 	directMutationViolation,
 	normalizeRepositoryScopes,
 	toolsForScopedModifier,
@@ -93,19 +92,8 @@ describe("subagent modification scopes", () => {
 		);
 	});
 
-	it("rejects overlapping scopes before dispatch", () => {
-		expect(() =>
-			assertDisjointScopes([
-				{ key: "first", scopes: ["src"] },
-				{ key: "second", scopes: ["src/api"] },
-			]),
-		).toThrow("overlap between first and second");
-		expect(() =>
-			assertDisjointScopes([
-				{ key: "first", scopes: ["src/api"] },
-				{ key: "second", scopes: ["tests/api"] },
-			]),
-		).not.toThrow();
+	it("retains overlapping work markers without weakening containment", () => {
+		expect(normalizeRepositoryScopes(["src", "src/api"])).toEqual(["src", "src/api"]);
 	});
 
 	it("blocks direct out-of-scope mutation and removes command tools", () => {
@@ -163,15 +151,6 @@ describe("subagent modification scopes", () => {
 			expect(() =>
 				normalizeRepositoryScopes(["escape/new/file.ts"], repositoryRoot),
 			).toThrow("symlink or junction");
-			expect(() =>
-				assertDisjointScopes(
-					[
-						{ key: "source", scopes: ["src/api"] },
-						{ key: "linked", scopes: ["api-link"] },
-					],
-					repositoryRoot,
-				),
-			).toThrow("overlap between source and linked");
 			expect(
 				directMutationViolation(
 					"write",
@@ -3148,11 +3127,8 @@ You are a test agent.
 					origin: "other",
 					state,
 					summary: `linked work ${index}`,
-					workspace:
-						index === 1
-							? resolveTaskWorkspace(path.join(tmpDir, "foreign"))
-							: workspace,
-					sessionId: `other-session-${index}`,
+					workspace,
+					sessionId: undefined,
 				}),
 			);
 			const [singleTask, firstParallelTask, secondParallelTask, fourthTask, fifthTask] =
@@ -3231,20 +3207,54 @@ You are a test agent.
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
-	it("rejects only missing and tombstoned task links before spawning", async () => {
+	it("rejects invalid task links before spawning", async () => {
 		const { tool } = await loadTool();
-		const { createTask, tombstoneTask, listTasks } = await import(
+		const { createTask, tombstoneTask, listTasks, resolveTaskWorkspace } = await import(
 			"../lib/task-registry.ts"
 		);
+		const workspace = resolveTaskWorkspace(tmpDir);
 		const deleted = createTask({
 			origin: "other",
 			state: "assigned",
 			summary: "deleted linked work",
+			workspace,
+			sessionId: "parent-session",
 		});
 		tombstoneTask(deleted.id);
-		const ctx = createMockCtx({ cwd: tmpDir });
+		const foreign = createTask({
+			origin: "other",
+			state: "assigned",
+			summary: "foreign linked work",
+			workspace: resolveTaskWorkspace(path.join(tmpDir, "foreign")),
+			sessionId: "parent-session",
+		});
+		const unassigned = createTask({
+			origin: "other",
+			state: "unassigned",
+			summary: "unassigned linked work",
+			workspace,
+			sessionId: "parent-session",
+		});
+		const wrongSession = createTask({
+			origin: "other",
+			state: "assigned",
+			summary: "other session linked work",
+			workspace,
+			sessionId: "other-session",
+		});
+		const ctx = createMockCtx({
+			cwd: tmpDir,
+			sessionManager: { getSessionId: vi.fn(() => "parent-session") },
+		});
+		const invalidCases = [
+			["missing-task", /task was not found/],
+			[deleted.id, /task was not found/],
+			[foreign.id, /another workspace/],
+			[unassigned.id, /not assigned/],
+			[wrongSession.id, /another root session/],
+		] as const;
 
-		for (const taskId of ["missing-task", deleted.id]) {
+		for (const [taskId, expected] of invalidCases) {
 			await expect(
 				tool.execute(
 					`call-invalid-task-${taskId}`,
@@ -3258,7 +3268,7 @@ You are a test agent.
 					undefined,
 					ctx,
 				),
-			).rejects.toThrow(/Task not found:/);
+			).rejects.toThrow(expected);
 		}
 		expect(
 			listTasks({ includeTombstones: true }).find((task) => task.id === deleted.id),
@@ -3281,7 +3291,7 @@ You are a test agent.
 			);
 			const task = createTask({
 				origin: "other",
-				state: "running",
+				state: "assigned",
 				summary: "background linked work",
 				workspace: resolveTaskWorkspace(tmpDir),
 			});
@@ -3943,7 +3953,7 @@ You are a test agent.
 			);
 			const task = createTask({
 				origin: "other",
-				state: "running",
+				state: "assigned",
 				summary: "cancelled linked work",
 				workspace: resolveTaskWorkspace(tmpDir),
 			});
