@@ -266,7 +266,7 @@ export class TaskLifecycleService {
 
 function toolResult(details: unknown, modelVisible: unknown = details) {
 	return {
-		content: [{ type: "text" as const, text: JSON.stringify(modelVisible) }],
+		content: [{ type: "text" as const, text: JSON.stringify(modelVisible, null, 2) }],
 		details,
 	};
 }
@@ -993,7 +993,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 							TASK_BATCH_ERROR_MAX_CODE_POINTS,
 						),
 					};
-					const text = JSON.stringify(visible);
+					const text = JSON.stringify(visible, null, 2);
 					if (Buffer.byteLength(text, "utf8") > TASK_BATCH_RESULT_MAX_BYTES)
 						throw new Error("batch failure result exceeds content budget");
 					return {
@@ -1010,7 +1010,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 						state: record.state,
 					})),
 				};
-				const text = JSON.stringify(visible);
+				const text = JSON.stringify(visible, null, 2);
 				if (Buffer.byteLength(text, "utf8") > TASK_BATCH_RESULT_MAX_BYTES)
 					throw new Error("batch result exceeds content budget");
 				return {

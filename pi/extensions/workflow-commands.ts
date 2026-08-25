@@ -2541,7 +2541,7 @@ export default function (pi: ExtensionAPI) {
 							outcome: "recorded",
 							planPath: next.planPath,
 							stage: next.stage,
-						}),
+						}, null, 2),
 					},
 				],
 				details: next,
@@ -2597,7 +2597,10 @@ export default function (pi: ExtensionAPI) {
 				activeRawWorkflow = undefined;
 				deactivateTools(pi, ["workflow_complete"]);
 				return {
-					content: [{ type: "text" as const, text: JSON.stringify({ outcome: "completed", ...completed }) }],
+					content: [{
+						type: "text" as const,
+						text: `Workflow completed.\n${completed.branch} committed and merged into ${completed.primaryBranch} and cleaned up.`,
+					}],
 					details: completed,
 				};
 			} catch (error) {
@@ -2645,7 +2648,7 @@ export default function (pi: ExtensionAPI) {
 					content: [
 						{
 							type: "text" as const,
-							text: JSON.stringify({ outcome: "verified", ...archived }),
+							text: `Plan archived:\nfrom: ${archived.sourcePlan} to: ${archived.archivedPlan}\n${archived.branch} committed and merged into ${archived.primaryBranch} and cleaned up.`,
 						},
 					],
 					details: archived,

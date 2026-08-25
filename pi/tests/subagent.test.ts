@@ -5,7 +5,10 @@ import * as path from "node:path";
 import * as zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension from "../extensions/workflow-friction-review.js";
-import { SubagentRunManager } from "../extensions/subagent/run-manager.ts";
+import {
+	canonicalizeSavedSessionPath,
+	SubagentRunManager,
+} from "../extensions/subagent/run-manager.ts";
 import {
 	directMutationViolation,
 	normalizeRepositoryScopes,
@@ -626,7 +629,10 @@ Execute workflow items with admitted tools only.
 		);
 		const resumed = subagentRunManager
 			.list()
-			.find((run) => run.runId !== "saved-teamlead" && run.sessionPath === sessionPath);
+			.find((run) =>
+				run.runId !== "saved-teamlead" &&
+				run.sessionPath === canonicalizeSavedSessionPath(sessionPath),
+			);
 		expect(resumed).toMatchObject({
 			role: "coordinator",
 			depth: 1,
@@ -644,7 +650,7 @@ Execute workflow items with admitted tools only.
 		);
 		const unknown = subagentRunManager
 			.list()
-			.find((run) => run.sessionPath === unknownPath);
+			.find((run) => run.sessionPath === canonicalizeSavedSessionPath(unknownPath));
 		expect(unknown).toMatchObject({ role: "leaf", depth: 1 });
 		expect(unknown?.authorityTools ?? []).not.toContain("subagent_write");
 	});
@@ -1585,7 +1591,7 @@ This agent cannot launch.
 			expect(subagentRunManager.get(child.runId as string)).toMatchObject({
 				owner: "direct",
 				status: "completed",
-				sessionPath: child.sessionPath,
+				sessionPath: canonicalizeSavedSessionPath(child.sessionPath as string),
 			});
 			expect(child.taskId).toBeUndefined();
 			const args = spawnMock.mock.calls[0][1] as string[];
@@ -5150,4 +5156,26 @@ You are a test agent.
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
+
+	it("pretty-prints subagent control results without changing details", async () => {
+		const { pi } = await loadTool();
+		const { getSubagentTreeBroker } = await import("../extensions/subagent/tree-runtime.ts");
+		getSubagentTreeBroker().createTree({
+			treeId: "formatting-tree",
+			rootRunId: "formatting-root",
+		});
+		const control = pi._getTool("subagent_control");
+		if (!control) throw new Error("subagent_control tool not registered");
+
+		const controlled = await control.execute(
+			"control-formatting",
+			{ action: "cancel", selector: { type: "process", processId: "formatting-root" } },
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+
+		expect(controlled.content[0].text).toContain('\n  "action": "cancel"');
+		expect(JSON.parse(controlled.content[0].text)).toEqual(controlled.details);
+	});
 });
