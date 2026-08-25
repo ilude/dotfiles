@@ -168,6 +168,48 @@ def test_tool_failure_scan_is_deterministic_private_and_diagnoses_joins():
             "expected",
         ),
         (
+            "task",
+            "scope entries must be worktree-relative",
+            "task-boundary-rejected",
+            "task:boundary-path",
+            "expected",
+        ),
+        (
+            "task",
+            "Validation failed for tool task: instructions: must not have more than 500 characters",
+            "task-instructions-too-long",
+            "task:instructions-length",
+            "expected",
+        ),
+        (
+            "plan_progress",
+            "Plan contract validation failed: Missing Validation",
+            "plan-not-ready",
+            "plan:readiness",
+            "expected",
+        ),
+        (
+            "subagent",
+            "Validation failed for tool subagent: agent: must be equal to one of the allowed values",
+            "requested-agent-unavailable",
+            "subagent:agent-availability",
+            "expected",
+        ),
+        (
+            "subagent",
+            "Subagent was aborted",
+            "operation-aborted",
+            "subagent:aborted",
+            "expected",
+        ),
+        (
+            "subagent",
+            "Agent failed: Error: Failed to load extension x: ParseError",
+            "extension-load-failure",
+            "subagent:extension-load",
+            "candidate",
+        ),
+        (
             "subagent_control",
             "this.broker.reconcile is not a function",
             "internal-missing-method",
@@ -191,6 +233,13 @@ def test_tool_failure_scan_is_deterministic_private_and_diagnoses_joins():
         (
             "bash",
             "Command timed out after 30 seconds",
+            "command-timeout",
+            "command:timeout",
+            "expected",
+        ),
+        (
+            "pwsh",
+            "Command timed out after 30s",
             "command-timeout",
             "command:timeout",
             "expected",
@@ -247,13 +296,6 @@ def test_tool_failure_scan_is_deterministic_private_and_diagnoses_joins():
         (
             "bash",
             "ctx.sessionManager.getSessionId is not a function",
-            "unclassified-error",
-            "manual-review",
-            "unclassified",
-        ),
-        (
-            "subagent",
-            "Subagent was aborted",
             "unclassified-error",
             "manual-review",
             "unclassified",
@@ -719,6 +761,24 @@ def test_expected_recurring_friction_enters_pool_without_include_expected():
     assert [(card["candidateId"], card["reasonCode"]) for card in pool["cards"]] == [
         ("friction", "retry-ceremony")
     ]
+
+
+def test_instruction_discovery_does_not_enter_default_pool():
+    candidate = {
+        "candidateId": "instruction-discovery",
+        "fingerprintVersion": 1,
+        "tool": "text_edit",
+        "errorClass": "instruction-deferred",
+        "classification": "expected",
+        "lastObserved": "2026-08-24T00:00:00Z",
+        "occurrences14d": 12,
+        "sessions14d": 8,
+        "occurrences30d": 12,
+        "sessions30d": 8,
+    }
+    report = build_report({"candidates": [candidate]}, [])
+
+    assert triage.build_investigation_pool(report)["cards"] == []
 
 
 def test_expected_normal_shell_outcomes_do_not_enter_default_pool():

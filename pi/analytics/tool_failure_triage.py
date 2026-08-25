@@ -80,6 +80,15 @@ def _classify(tool: str, text: str) -> tuple[str, str, str]:
         lowered.strip() == "fetch failed" or "operation was aborted due to timeout" in lowered
     ):
         return "external-service-failure", "web-search:request", "candidate"
+    if "subagent" in normalized_tool and "subagent was aborted" in lowered:
+        return "operation-aborted", "subagent:aborted", "expected"
+    if "subagent" in normalized_tool and "failed to load extension" in lowered:
+        return "extension-load-failure", "subagent:extension-load", "candidate"
+    if (
+        "subagent" in normalized_tool
+        and "agent: must be equal to one of the allowed values" in lowered
+    ):
+        return "requested-agent-unavailable", "subagent:agent-availability", "expected"
     if (
         "pi cli entrypoint is unavailable" in lowered
         or "available agents: none" in lowered
@@ -111,7 +120,7 @@ def _classify(tool: str, text: str) -> tuple[str, str, str]:
         )
     ):
         return "approval-required", "policy:approval", "expected"
-    if re.search(r"command timed out after \d+ seconds", lowered):
+    if re.search(r"command timed out after \d+(?:s| seconds)", lowered):
         return "command-timeout", "command:timeout", "expected"
     if lowered.strip() in {"command aborted", "operation aborted"} or lowered.rstrip().endswith(
         "command aborted"
@@ -141,6 +150,15 @@ def _classify(tool: str, text: str) -> tuple[str, str, str]:
         return "path-not-found", "filesystem:path-missing", "expected"
     if "offset " in lowered and " is beyond end of file" in lowered:
         return "invalid-offset", "read:offset-range", "expected"
+    if normalized_tool == "task" and "scope entries must be worktree-relative" in lowered:
+        return "task-boundary-rejected", "task:boundary-path", "expected"
+    if (
+        normalized_tool == "task"
+        and "instructions: must not have more than 500 characters" in lowered
+    ):
+        return "task-instructions-too-long", "task:instructions-length", "expected"
+    if normalized_tool == "plan_progress" and "plan contract validation failed:" in lowered:
+        return "plan-not-ready", "plan:readiness", "expected"
     if normalized_tool in {"bash", "functions.bash", "pwsh", "functions.pwsh"} and (
         "command exited with code " in lowered
         or lowered.startswith("pwsh exited with code ")
@@ -585,16 +603,21 @@ _MODEL_CONTRACT_ERRORS = {
     "stale-manager-contract",
 }
 _RETRY_CEREMONY_ERRORS = {
-    "instruction-deferred",
     "exact-match-miss",
     "nonunique-match",
     "invalid-caller-contract",
+    "plan-not-ready",
+    "requested-agent-unavailable",
+    "task-boundary-rejected",
+    "task-instructions-too-long",
 }
 _NORMAL_OPERATION_ERRORS = {
     "approval-required",
     "command-aborted",
     "command-nonzero",
     "command-timeout",
+    "instruction-deferred",
+    "operation-aborted",
     "nonzero-test",
     "path-not-found",
     "safety-block",

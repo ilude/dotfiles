@@ -188,6 +188,7 @@ const ISSUE_NAMES: Readonly<Record<string, string>> = {
 	"command-nonzero": "command exited unsuccessfully",
 	"command-timeout": "command timed out",
 	"exact-match-miss": "exact text does not match",
+	"extension-load-failure": "extension failed to load",
 	"external-service-failure": "external service request failed",
 	"governed-path-rejection": "path is outside the allowed boundary",
 	"instruction-deferred": "path instructions must load before mutation",
@@ -197,11 +198,16 @@ const ISSUE_NAMES: Readonly<Record<string, string>> = {
 	"missing-required-parameter": "required parameter is missing",
 	"nonunique-match": "target text matches multiple locations",
 	"nonzero-test": "test command reported a failure",
+	"operation-aborted": "operation was aborted",
 	"path-not-found": "requested path does not exist",
+	"plan-not-ready": "plan is not ready",
+	"requested-agent-unavailable": "requested agent is unavailable",
 	"required-runtime-unavailable": "required runtime is unavailable",
 	"safety-block": "operation was blocked by safety policy",
 	"secret-scan-block": "secret scanning blocked the operation",
 	"stale-manager-contract": "manager contract is no longer current",
+	"task-boundary-rejected": "task boundary path was rejected",
+	"task-instructions-too-long": "task instructions are too long",
 	"unclassified-error": "unclassified error requires review",
 };
 
@@ -228,14 +234,14 @@ export function renderToolFailureReport(report: ToolFailureReport): string {
 		return lines.join("\n");
 	}
 	let currentGroup = "";
-	for (const card of report.cards) {
+	for (const [index, card] of report.cards.entries()) {
 		const group = groupTitle(card.reasonCode);
 		if (group !== currentGroup) {
 			lines.push("", `## ${group}`);
 			currentGroup = group;
 		}
 		lines.push(
-			`- ${card.tool} - ${plainIssueName(card.structuralLabel)}`,
+			`- I${index + 1}: ${card.tool} - ${plainIssueName(card.structuralLabel)}`,
 			`  Candidate ID: ${card.candidateId}; reason: ${card.reasonCode}`,
 			`  ${card.sessions} sessions / ${card.occurrences} occurrences in ${card.gateWindow}; last ${card.lastObserved ?? "unknown"}.`,
 		);
@@ -301,14 +307,20 @@ function renderScopeRecommendation(
 	output: ScopeOutput,
 	cards: InvestigationCard[],
 ): string {
-	const cardsById = new Map(cards.map((card) => [card.candidateId, card]));
+	const cardsById = new Map(
+		cards.map((card, index) => [
+			card.candidateId,
+			{ card, identifier: `I${index + 1}` },
+		]),
+	);
 	const lines = ["# Recommended Investigation Scope"];
 	for (const item of output.recommendations) {
-		const card = cardsById.get(item.candidateId);
-		if (!card) throw new Error(`missing card for recommendation: ${item.candidateId}`);
+		const entry = cardsById.get(item.candidateId);
+		if (!entry) throw new Error(`missing card for recommendation: ${item.candidateId}`);
+		const { card, identifier } = entry;
 		lines.push(
 			"",
-			`- ${card.tool} - ${plainIssueName(card.structuralLabel)}`,
+			`- ${identifier}: ${card.tool} - ${plainIssueName(card.structuralLabel)}`,
 			`  Candidate ID: ${item.candidateId}`,
 			`  Investigation value: ${item.investigationValue}`,
 			`  Evidence limits: ${item.evidenceLimits}`,
@@ -316,7 +328,7 @@ function renderScopeRecommendation(
 	}
 	lines.push(
 		"",
-		"Reply with the tool - issue names you accept, or refine the scope before any transcript evidence is loaded. Candidate IDs remain available for exact ledger operations.",
+		"Reply with the I-number identifiers you accept (for example, I1 I3), or refine the scope before any transcript evidence is loaded. Candidate IDs remain available for exact ledger operations.",
 	);
 	return lines.join("\n");
 }

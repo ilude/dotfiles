@@ -161,7 +161,7 @@ describe("find-fails command", () => {
 			expect.objectContaining({
 				customType: "tool-failure-scope-recommendation",
 				content: expect.stringContaining(
-					"- subagent_control - required internal method is missing",
+					"- I1: subagent_control - required internal method is missing",
 				),
 			}),
 			{ triggerTurn: false },
@@ -170,7 +170,7 @@ describe("find-fails command", () => {
 			"Candidate ID: tf-v1-example",
 		);
 		expect(pi.sendMessage.mock.calls[1][0].content).toContain(
-			"Reply with the tool - issue names you accept",
+			"Reply with the I-number identifiers you accept (for example, I1 I3)",
 		);
 	});
 
@@ -357,7 +357,10 @@ describe("tool failure report rendering", () => {
 			rendered.indexOf("## Other recurrence"),
 		);
 		expect(rendered).toContain(
-			"- subagent_control - required internal method is missing",
+			"- I1: subagent_control - required internal method is missing",
+		);
+		expect(rendered).toContain(
+			"- I2: subagent_control - required internal method is missing",
 		);
 		expect(rendered).toContain("Candidate ID: ledger");
 		expect(rendered.indexOf("required internal method is missing")).toBeLessThan(
@@ -381,6 +384,13 @@ describe("plain issue names", () => {
 		);
 		expect(plainIssueName("command-aborted")).toBe("command was aborted");
 		expect(plainIssueName("command-timeout")).toBe("command timed out");
+		expect(plainIssueName("plan-not-ready")).toBe("plan is not ready");
+		expect(plainIssueName("requested-agent-unavailable")).toBe(
+			"requested agent is unavailable",
+		);
+		expect(plainIssueName("task-boundary-rejected")).toBe(
+			"task boundary path was rejected",
+		);
 		expect(plainIssueName("exact-match-miss")).toBe(
 			"exact text does not match",
 		);
