@@ -86,32 +86,29 @@ describe("plan lifecycle", () => {
 		expect(canonicalPlanPathFromInput("@.specs/workflow-fixture/plan.md.....")).toBeUndefined();
 	});
 
-	it("requires multiple subject-matter reviews followed by one subtractive review", () => {
+	it("allows a low-risk standard plan with only the final necessity review", () => {
 		let state = createPlanLifecycleSnapshot("invocation", "example");
 		state = transitionPlanLifecycle(state, {
 			action: "draft",
 			planPath: ".specs/example/plan.md",
 		});
-		expect(() => transitionPlanLifecycle(state, { action: "ready" })).toThrow(
-			"at least two completed subject-matter reviews",
-		);
 		state = transitionPlanLifecycle(state, {
 			action: "review",
-			role: "adversary",
-			concern: "runtime boundary",
-			outcome: "supported",
-			strategy: "trace the runtime path",
-		});
-		expect(() => transitionPlanLifecycle(state, {
-			action: "review",
 			role: "subtractive",
-			concern: "overengineering",
-			outcome: "covered",
-			strategy: "review the plan cold",
-		})).toThrow("at least two completed subject-matter reviews");
-
-		state = reviewedDraft();
+			outcome: "no_finding",
+		});
 		expect(transitionPlanLifecycle(state, { action: "ready" }).stage).toBe("ready");
+	});
+
+	it("allows optional review telemetry and does not require exact-text independence", () => {
+		let state = createPlanLifecycleSnapshot("invocation", "example");
+		state = transitionPlanLifecycle(state, { action: "draft", planPath: ".specs/example/plan.md" });
+		for (const role of ["adversary", "specialist", "proponent", "adversary"] as const) {
+			state = transitionPlanLifecycle(state, { action: "review", role, outcome: "no_finding" });
+		}
+		expect(() => transitionPlanLifecycle(state, {
+			action: "review", role: "specialist", outcome: "no_finding",
+		})).toThrow("four records");
 	});
 
 	it("allows quick plans to become ready without review gates", () => {
@@ -165,7 +162,7 @@ describe("plan lifecycle", () => {
 			concern: "fifth domain",
 			outcome: "covered",
 			strategy: "review fifth domain",
-		})).toThrow("cannot exceed four perspectives");
+		})).toThrow("cannot exceed four records");
 		expect(() => transitionPlanLifecycle(state, {
 			action: "review",
 			role: "subtractive",

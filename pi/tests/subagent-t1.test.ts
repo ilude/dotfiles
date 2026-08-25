@@ -488,5 +488,20 @@ describe("subagent T1 execution contracts", () => {
 			instructions: "read",
 			boundaryPaths: ["src"],
 		});
+		const correlated = adaptLegacySubagentInvocation("subagent", {
+			agent: "reader",
+			task: "read",
+			taskId: "task-root",
+		});
+		expect(correlated.request?.items[0]).toMatchObject({ taskId: "task-root" });
+		expect(() =>
+			adaptLegacySubagentInvocation("subagent", {
+				taskId: "task-root",
+				tasks: [
+					{ agent: "reader", task: "one" },
+					{ agent: "reader", task: "two" },
+				],
+			}),
+		).toThrow("only valid for a single item");
 	});
 });

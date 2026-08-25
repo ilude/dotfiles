@@ -118,13 +118,19 @@ function requestFromItems(
 	input: LegacyInput,
 	role: unknown,
 ): SubagentExecutionRequest {
-	const kind = kindForItems(items, role);
+	const topLevelTaskId = stringValue(input.taskId);
+	if (topLevelTaskId && items.length !== 1)
+		throw new Error("Legacy top-level taskId is only valid for a single item.");
+	const normalizedItems = topLevelTaskId
+		? [{ ...items[0], taskId: stringValue(items[0]?.taskId) ?? topLevelTaskId }]
+		: items;
+	const kind = kindForItems(normalizedItems, role);
 	const workspaceRoot = stringValue(input.enforcedBoundary ?? input.workspaceRoot ?? input.cwd);
 	const agentScope = input.agentScope === "project" || input.agentScope === "both" || input.agentScope === "user"
 		? input.agentScope
 		: undefined;
 	if (kind === "coordinator") {
-		const coordinatorItems: CoordinatorItem[] = items.map((item) => {
+		const coordinatorItems: CoordinatorItem[] = normalizedItems.map((item) => {
 			const base = itemFromLegacy(item);
 			return {
 				agent: base.agent,
@@ -144,7 +150,7 @@ function requestFromItems(
 				: {}),
 		};
 	}
-	const mapped = items.map((item) => itemFromLegacy(item));
+	const mapped = normalizedItems.map((item) => itemFromLegacy(item));
 	return {
 		kind,
 		items: mapped as ReadItem[] & WriteItem[],

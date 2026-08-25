@@ -75,7 +75,7 @@ import {
 	type WorkspaceRootSource,
 } from "../../lib/orchestration-telemetry.js";
 import {
-	getTask,
+	resolveTaskWorkspace,
 	type NormalizedTaskUsage,
 	normalizeTaskUsage,
 } from "../../lib/task-registry.js";
@@ -118,6 +118,7 @@ import {
 	type SubagentExecutionRequest,
 	type WriteRequest,
 	prepareSubagentExecution,
+	validateTaskLink,
 } from "./contracts.js";
 import { HISTORICAL_SUBAGENT_TOOL_NAMES } from "./legacy-adapter.js";
 import {
@@ -2572,12 +2573,6 @@ function continuationAuthorityFor(sessionPath: string): TaskParams["continuation
 	return { role: "leaf", depth: 1 };
 }
 
-function validateLegacyTaskReference(taskId: string | undefined): void {
-	if (taskId === undefined) return;
-	const task = getTask(taskId);
-	if (!task || task.deletedAt) throw new Error(`Task not found: ${taskId}`);
-}
-
 const OutputModeSchema = StringEnum(["inline", "file-only"] as const, {
 	description:
 		'Output preservation policy. "inline" returns full child output in the parent result. "file-only" saves full output to an artifact and returns an explicit file reference.',
@@ -4374,13 +4369,6 @@ export default function (pi: ExtensionAPI) {
 				recordBoundaryRejection(error);
 				throw error;
 			}
-			if (!internalParams.__modernRequest) {
-				if (selectedTasks)
-					for (const task of selectedTasks)
-						validateLegacyTaskReference(task.taskId);
-				if (selectedSingle)
-					validateLegacyTaskReference(selectedSingle.taskId);
-			}
 			const availability = diagnoseAgentAvailability(
 				[...requestedAgentNames],
 				agents,
@@ -4406,6 +4394,19 @@ export default function (pi: ExtensionAPI) {
 			const prepareChild = (item: TaskParams, forcedRole?: SubagentRole) => {
 				const executionKind = internalParams.__modernRequest?.kind;
 				const preparedItem = prepared?.items[preparedItemCursor++];
+				if (!preparedItem) {
+					const taskLink = validateTaskLink(
+						item.taskId,
+						resolveTaskWorkspace(invocationCwd),
+						parentSessionId,
+					);
+					if (taskLink.outcome === "invalid") {
+						const choiceText = taskLink.choices.map((task) => task.id).join(", ") || "none";
+						throw new Error(
+							`Invalid taskId for ${item.agent}: ${taskLink.reason}. Current choices: ${choiceText}.`,
+						);
+					}
+				}
 				const taskLinkSource: TaskLinkSource =
 					preparedItem?.taskLink.outcome ??
 					(item.taskId !== undefined ? "explicit" : "none");
@@ -5680,7 +5681,7 @@ export default function (pi: ExtensionAPI) {
 			description: "Run independent Team Lead packages in parallel.",
 			promptGuidelines: [
 				"Use multiple items only for independently verifiable packages whose results compose into the root deliverable.",
-				"Give parallel modifying packages disjoint mutation boundaries.",
+				"Use work markers for coordination; enforcedBoundary remains the containment control for governed tools.",
 				"boundary is advisory; enforcedBoundary is the filesystem boundary for governed tools.",
 			],
 			parameters: catalogSchemas.teamlead,

@@ -300,9 +300,7 @@ describe("workflow slash command dispatch", () => {
 		}
 		const persisted = mockPi.appendEntry.mock.calls.at(-1)?.[1];
 		expect(persisted).toBeDefined();
-		expect(persisted.reviewers[0]).toMatchObject({
-			strategy: "adversary review of runtime behavior",
-		});
+		expect(persisted.reviewers[0]).not.toHaveProperty("strategy");
 		expect(persisted.reviewers[1]).toMatchObject({
 			strategy: "x".repeat(120),
 		});

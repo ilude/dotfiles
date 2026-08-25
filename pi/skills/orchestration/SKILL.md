@@ -23,7 +23,7 @@ Cancelling a Team Lead cancels its queued and active descendants. Process-tree s
 
 ## Mutation and tasks
 
-- Concurrent modifying leaves require normalized, disjoint repository-relative scopes. Scoped leaves cannot mutate outside their lease.
+- Concurrent modifying leaves may carry normalized repository-relative work markers. Markers are advisory; governed workspace and tool-target containment remains enforced.
 - The root owns durable task creation, state changes, validation, and closure. Team Leads may carry an assigned task ID. Subagents do not change task records.
 - Reduce or summarize worker output before returning it. Prefer a Luna-low reduction when raw output would consume material parent context. The root must validate the requested outcome.
 - Recommendation overrides remain allowed and should be recorded for later routing analysis. Max effort requires explicit operator approval.

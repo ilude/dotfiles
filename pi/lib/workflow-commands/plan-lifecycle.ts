@@ -33,9 +33,9 @@ export type PlanLifecycleStage =
 
 export interface PlanReviewRecord {
 	role: PlanReviewerRole;
-	concern: string;
+	concern?: string;
 	outcome: PlanReviewOutcome;
-	strategy: string;
+	strategy?: string;
 	attempt: number;
 }
 
@@ -65,9 +65,9 @@ export type PlanProgressInput =
 	| {
 			action: "review";
 			role: PlanReviewerRole;
-			concern: string;
+			concern?: string;
 			outcome: PlanReviewOutcome;
-			strategy: string;
+			strategy?: string;
 		}
 	| { action: "blocked"; concern: string }
 	| { action: "ready" };
@@ -232,45 +232,36 @@ export function transitionPlanLifecycle(
 		}
 		case "review": {
 			requireStage(snapshot, ["draft"], input.action);
-			const concern = requiredText(input.concern, "Reviewer concern");
-			const strategy = requiredText(input.strategy, "Reviewer strategy");
-			const completedAdversarial = snapshot.reviewers.filter(
-				(review) => review.role !== "subtractive" && (review.outcome === "covered" || review.outcome === "no_finding"),
-			);
+			const concern = input.concern?.trim() || undefined;
+			const strategy = input.strategy?.trim() || undefined;
 			const pendingSupported = unresolvedSupportedReviews(snapshot.reviewers);
 			const subtractive = snapshot.reviewers.filter(
 				(review) => review.role === "subtractive",
 			);
 			if (input.role === "subtractive") {
-				if (completedAdversarial.length < 2)
-					throw new Error("The final subtractive review requires at least two completed subject-matter reviews.");
 				if (pendingSupported.some((review) => review.role !== "subtractive"))
 					throw new Error("Supported subject-matter findings must be repaired before the final subtractive review.");
 				const previous = subtractive.at(-1);
 				if (previous && previous.outcome !== "failed" && !(previous.outcome === "supported" && input.outcome === "covered"))
 					throw new Error("The final subtractive review is already complete.");
-				if (previous?.outcome === "failed" && previous.strategy === strategy)
-					throw new Error("A failed subtractive review retry requires a different strategy.");
-			} else {
+						} else {
 				if (subtractive.length > 0)
 					throw new Error("Subject-matter review cannot continue after the final subtractive review starts.");
-				const previousConcern = [...snapshot.reviewers].reverse().find(
-					(review) => review.role !== "subtractive" && review.concern === concern,
+				const subjectMatterReviews = snapshot.reviewers.filter(
+					(review) => review.role !== "subtractive",
 				);
-				if (previousConcern && !(previousConcern.outcome === "supported" && input.outcome === "covered"))
-					throw new Error("Subject-matter reviews must cover distinct concerns.");
-				const distinctConcerns = new Set(
-					snapshot.reviewers.filter((review) => review.role !== "subtractive").map((review) => review.concern),
+				const resolvesSupportedFinding = input.outcome === "covered" && snapshot.reviewers.some(
+					(review) => review.role === input.role && review.concern === concern && review.outcome === "supported",
 				);
-				if (!distinctConcerns.has(concern) && distinctConcerns.size >= 4)
-					throw new Error("Subject-matter review cannot exceed four perspectives.");
+				if (subjectMatterReviews.length >= 4 && !resolvesSupportedFinding)
+					throw new Error("Subject-matter review cannot exceed four records.");
 			}
 			const prior = snapshot.reviewers.filter((review) => review.role === input.role);
 			snapshot.reviewers.push({
 				role: input.role,
-				concern,
+				...(concern ? { concern } : {}),
 				outcome: input.outcome,
-				strategy,
+				...(strategy ? { strategy } : {}),
 				attempt: prior.length + 1,
 			});
 			return snapshot;
@@ -285,15 +276,10 @@ export function transitionPlanLifecycle(
 					throw new Error("Supported review findings must be repaired before plan readiness.");
 				return { ...snapshot, stage: "ready" };
 			}
-			const completedAdversarial = snapshot.reviewers.filter(
-				(review) => review.role !== "subtractive" && (review.outcome === "covered" || review.outcome === "no_finding"),
-			);
 			const pendingSupported = unresolvedSupportedReviews(snapshot.reviewers);
 			const completedSubtractive = snapshot.reviewers.filter(
 				(review) => review.role === "subtractive" && (review.outcome === "covered" || review.outcome === "no_finding"),
 			);
-			if (completedAdversarial.length < 2)
-				throw new Error("Plan readiness requires at least two completed subject-matter reviews.");
 			if (pendingSupported.length > 0)
 				throw new Error("Supported review findings must be repaired before plan readiness.");
 			if (completedSubtractive.length !== 1 || snapshot.reviewers.at(-1)?.role !== "subtractive")

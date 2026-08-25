@@ -2392,13 +2392,12 @@ function planProgressInput(params: PlanProgressParams): PlanProgressInput {
 			};
 		case "review": {
 			const role = requirePlanProgressValue(params.role, "role");
-			const concern = requirePlanProgressValue(params.concern, "concern");
 			return {
 				action: params.action,
 				role,
-				concern,
+				...(params.concern?.trim() ? { concern: params.concern.trim() } : {}),
 				outcome: requirePlanProgressValue(params.outcome, "outcome"),
-				strategy: (params.strategy?.trim() || `${role} review of ${concern}`).slice(0, 120),
+				...(params.strategy?.trim() ? { strategy: params.strategy.trim().slice(0, 120) } : {}),
 			};
 		}
 		case "blocked":
