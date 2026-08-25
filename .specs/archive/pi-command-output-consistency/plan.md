@@ -1,6 +1,7 @@
 ---
 created: 2026-08-25
-status: ready
+completed: 2026-08-25
+status: complete
 ---
 
 # Make Pi extension command output consistent
@@ -23,13 +24,13 @@ Give custom Pi extension commands a consistent, readable UI lifecycle that does 
 
 ## Tasks
 
-- [ ] **T1: Establish and prove the shared command-output pattern**
+- [x] **T1: Establish and prove the shared command-output pattern**
   - Files: `pi/lib/slash-command-echo.ts`, `pi/extensions/00-echo-slash-commands.ts`, `pi/tests/slash-command-echo.test.ts`, one existing session-entry integration test file, and one representative existing long-running command test file selected from the audited commands
   - Change: Replace the context-bearing slash echo with one shared helper that uses `pi.appendEntry()` plus `pi.registerEntryRenderer()` to format the submitted command as a compact TUI transcript row without calling `sendMessage`, changing editor contents, or triggering a model turn. First prove through the actual session-entry path that the entry is visible after TUI restoration but absent from built model context; stop and revise the mechanism if Pi 0.84.2 cannot provide both properties. Apply the proven helper to one representative command, with optional footer progress cleared in `finally`, before broader migration. Keep RPC, JSON, and print behavior unchanged apart from the absence of the TUI-only row. Reuse Pi APIs and existing renderer components rather than adding a UI framework or new persistent state beyond the transcript entry itself.
   - Done when: The actual session-entry slice proves TUI visibility and model-context exclusion, and the representative command acknowledges before its slow boundary, leaves the editor unchanged, clears transient status after success and failure, and one representative non-TUI path retains its existing result or error.
   - Verify: `cd pi && pnpm test slash-command-echo.test.ts <session-entry-test-file>.test.ts <representative-test-file>.test.ts && pnpm run typecheck`
 
-- [ ] **T2: Normalize audited commands, remove `/prd-it`, and preserve the rules**
+- [x] **T2: Normalize audited commands, remove `/prd-it`, and preserve the rules**
   - Depends on: T1
   - Files: Only `pi/extensions/**/*.ts` command handlers that scoped inspection confirms violate the accepted pattern; their existing focused tests when behavior changes; `pi/extensions/workflow-commands.ts`; `pi/tests/workflow-dispatch.test.ts`; `pi/docs/workflow-eval-operations.md`; `pi/skills/prd/SKILL.md`; `pi/skills/pi-extension/SKILL.md`; and `pi/skills/pi-extension/references/contracts/slash-command-context.md` only if needed to keep the stable operator-facing contract accurate
   - Change: Classify every registered custom command as immediate report, background work, interactive UI, or control-plane/session action. Migrate only inconsistent handlers to the shared acknowledgement, transient footer, bounded result, or terminal notification pattern; remove editor-replacing loaders only when they provide neither required input nor in-component cancellation, while retaining dashboards, selectors, confirmations, and cancellable loaders that genuinely need `ctx.ui.custom()`. Clear transient status in `finally`. Remove the `/prd-it` registration, dispatch code, command-specific test, and inaccurate operator or skill claims that it remains available; keep the general PRD skill and historical/internal vocabulary that does not expose an invokable command. Update the Pi extension skill with a concise decision table, shared helper example, cleanup and non-TUI rules, and a checklist future extension commands must follow. Do not create command-by-command acknowledgement tests; update existing tests only for changed contracts and use scoped inspection for the complete inventory.
@@ -38,11 +39,11 @@ Give custom Pi extension commands a consistent, readable UI lifecycle that does 
 
 ## Validation
 
-- [ ] Shared acknowledgement check: an actual session-entry integration test proves the row survives TUI transcript restoration but is excluded from built model context; focused tests also prove it appears before representative slow work, does not call `sendMessage` or trigger a turn, does not mutate or replace the editor, and leaves one representative non-TUI result or error unchanged.
-- [ ] UI lifecycle check: scoped inspection of every `registerCommand()` confirms that non-interactive work uses transcript acknowledgement plus optional cleared footer status, terminal notifications/results are bounded, and `ctx.ui.custom()` is retained only for genuine interaction or cancellation.
-- [ ] Removal check: `rg -n 'registerCommand\("prd-it"' pi/extensions` returns no matches, workflow dispatch tests no longer expect the command, and current operator and PRD-skill wording no longer presents `/prd-it` as available; the general PRD skill remains available.
-- [ ] Focused regression check: only tests for the shared mechanism, the representative lifecycle, `/prd-it` removal, and already-covered changed command behavior are added or updated; focused Vitest files and `pnpm run typecheck` pass.
-- [ ] Diff hygiene: `git diff --check` reports no whitespace errors and scoped diff inspection finds no unrelated command behavior, tool rendering, footer redesign, or theme changes.
+- [x] Shared acknowledgement check: `slash-command-echo.test.ts` proves TUI transcript restoration and model-context exclusion; focused tests prove acknowledgement before representative slow work, no `sendMessage` turn, no editor mutation, and unchanged non-TUI behavior.
+- [x] UI lifecycle check: the complete `registerCommand()` inventory is reconciled to immediate report, background work, interactive UI, or control-plane/session action; non-interactive handlers use bounded notifications/results or the shared acknowledgement, and `/ps` and `/subagents` retain dashboards.
+- [x] Removal check: `rg -n 'registerCommand\("prd-it"' pi/extensions` returns no matches, workflow dispatch tests no longer expect the command, current Pi operator and PRD-skill wording no longer presents `/prd-it`, and the general PRD skill remains available.
+- [x] Focused regression check: only the shared mechanism, representative lifecycle, removal, and changed dispatch tests are covered; focused Vitest files and `pnpm run typecheck` pass.
+- [x] Diff hygiene: `git diff --check` reports no whitespace errors and scoped diff inspection finds no unrelated command behavior, tool rendering, footer redesign, or theme changes.
 
 ## Retention
 
@@ -50,7 +51,7 @@ Keep incomplete work at `.specs/pi-command-output-consistency/plan.md`. After co
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
+- State: complete
 - Blocker: None.
-- Next: T1.
-- Resume: `/do-it .specs/pi-command-output-consistency/plan.md`
+- Checks: `pnpm test slash-command-echo.test.ts workflow-dispatch.test.ts` (15 passed); `pnpm run typecheck`; removal search; complete command inventory reconciliation; `git diff --check`.
+- Completion: T1 and T2 implementation and validation evidence are complete.

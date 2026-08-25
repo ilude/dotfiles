@@ -1,29 +1,88 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
+import {
+	buildContextEntries,
+	sessionEntryToContextMessages,
+} from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import echoSlashCommands from "../extensions/00-echo-slash-commands";
-import { SLASH_COMMAND_ECHO_TYPE } from "../lib/slash-command-echo";
+import {
+	appendSlashCommandAcknowledgement,
+	SLASH_COMMAND_ECHO_TYPE,
+} from "../lib/slash-command-echo";
 
-type MessageRenderer = Parameters<ExtensionAPI["registerMessageRenderer"]>[1];
+type EntryRenderer = Parameters<ExtensionAPI["registerEntryRenderer"]>[1];
 
 describe("slash command echo renderer", () => {
 	it("renders visible slash echoes", () => {
-		const registerMessageRenderer = vi.fn();
+		const registerEntryRenderer = vi.fn();
 		echoSlashCommands({
-			registerMessageRenderer,
+			registerEntryRenderer,
 		} as unknown as ExtensionAPI);
 
-		const renderer = registerMessageRenderer.mock.calls.find(
+		const renderer = registerEntryRenderer.mock.calls.find(
 			([type]) => type === SLASH_COMMAND_ECHO_TYPE,
-		)?.[1] as MessageRenderer | undefined;
+		)?.[1] as EntryRenderer | undefined;
 		expect(renderer).toBeDefined();
 
 		const component = renderer?.(
-			{ content: "/plan-it build the thing" } as Parameters<MessageRenderer>[0],
-			undefined as Parameters<MessageRenderer>[1],
+			{
+				type: "custom",
+				customType: SLASH_COMMAND_ECHO_TYPE,
+				data: { text: "/plan-it build the thing" },
+			} as Parameters<EntryRenderer>[0],
+			{ expanded: false },
 			{
 				bold: (text: string) => text,
 				fg: (_color: string, text: string) => text,
-			} as Parameters<MessageRenderer>[2],
+			} as Parameters<EntryRenderer>[2],
+		);
+		expect(component?.render(80)[0]?.trim()).toBe("> /plan-it build the thing");
+	});
+
+	it("appends a TUI-only entry that restores visibly without entering model context", () => {
+		const appendEntry = vi.fn();
+		const pi = { appendEntry } as Pick<ExtensionAPI, "appendEntry">;
+		const tuiCtx = { mode: "tui" } as Pick<ExtensionCommandContext, "mode">;
+		const rpcCtx = { mode: "rpc" } as Pick<ExtensionCommandContext, "mode">;
+
+		appendSlashCommandAcknowledgement(pi, tuiCtx, "plan-it", "build the thing");
+		appendSlashCommandAcknowledgement(pi, rpcCtx, "plan-it", "build the other thing");
+
+		expect(appendEntry).toHaveBeenCalledTimes(1);
+		const [customType, data] = appendEntry.mock.calls[0];
+		expect(customType).toBe(SLASH_COMMAND_ECHO_TYPE);
+		expect(data).toEqual({ text: "/plan-it build the thing" });
+
+		const restoredEntry = {
+			type: "custom",
+			id: "entry-1",
+			parentId: null,
+			timestamp: Date.now(),
+			customType,
+			data,
+		};
+		expect(
+			buildContextEntries(
+				[restoredEntry] as never,
+				"entry-1",
+				new Map([["entry-1", restoredEntry]]),
+			),
+		).toEqual([restoredEntry]);
+		expect(sessionEntryToContextMessages(restoredEntry as never)).toEqual([]);
+
+		const registerEntryRenderer = vi.fn();
+		echoSlashCommands({ registerEntryRenderer } as unknown as ExtensionAPI);
+		const renderer = registerEntryRenderer.mock.calls[0][1] as EntryRenderer;
+		const component = renderer(
+			restoredEntry as Parameters<EntryRenderer>[0],
+			{ expanded: false },
+			{
+				bold: (text: string) => text,
+				fg: (_color: string, text: string) => text,
+			} as Parameters<EntryRenderer>[2],
 		);
 		expect(component?.render(80)[0]?.trim()).toBe("> /plan-it build the thing");
 	});

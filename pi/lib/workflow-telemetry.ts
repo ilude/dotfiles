@@ -4,7 +4,6 @@ import * as path from "node:path";
 
 export type WorkflowCommandName =
 	| "plan-it"
-	| "prd-it"
 	| "do-it"
 	| "summarize"
 	| string;

@@ -160,10 +160,21 @@ describe("workflow slash command dispatch", () => {
 		const worktrees = await import("../lib/workflow-worktree.ts");
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
 		const root = path.resolve("/repo");
+		const setStatus = vi.fn();
 
-		await getHandler(mockPi, "plan-it")("build the thing", { cwd: root });
+		await getHandler(mockPi, "plan-it")("build the thing", {
+			cwd: root,
+			mode: "tui",
+			ui: { setStatus },
+		});
 
-		expect(mockPi.sendMessage).toHaveBeenCalledWith({
+		expect(setStatus).toHaveBeenNthCalledWith(1, "plan-it", "planning...");
+		expect(setStatus).toHaveBeenLastCalledWith("plan-it", undefined);
+
+		expect(mockPi.appendEntry).toHaveBeenCalledWith("slash-echo", {
+			text: "/plan-it build the thing",
+		});
+		expect(mockPi.sendMessage).not.toHaveBeenCalledWith({
 			customType: "slash-echo",
 			content: "/plan-it build the thing",
 			display: true,
@@ -197,15 +208,36 @@ describe("workflow slash command dispatch", () => {
 		}));
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
 
-		const dispatched = getHandler(mockPi, "plan-it")("build the thing", { cwd: "/repo" });
+		const dispatched = getHandler(mockPi, "plan-it")("build the thing", {
+			cwd: "/repo",
+			mode: "tui",
+			ui: { setStatus: vi.fn() },
+		});
 
-		expect(mockPi.sendMessage).toHaveBeenCalledWith({
-			customType: "slash-echo",
-			content: "/plan-it build the thing",
-			display: true,
+		expect(mockPi.appendEntry).toHaveBeenCalledWith("slash-echo", {
+			text: "/plan-it build the thing",
 		});
 		resolveRoot?.("/repo");
 		await dispatched;
+	});
+
+	it("clears plan status when acknowledgement workflow fails", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const setStatus = vi.fn();
+		mockPi.appendEntry.mockImplementationOnce(() => {
+			throw new Error("session write failed");
+		});
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+
+		await expect(
+			getHandler(mockPi, "plan-it")("build the thing", {
+				cwd: "/repo",
+				mode: "tui",
+				ui: { setStatus },
+			}),
+		).rejects.toThrow("session write failed");
+		expect(setStatus).toHaveBeenLastCalledWith("plan-it", undefined);
 	});
 
 	it("/plan-it continues from cwd when repository discovery fails", async () => {
@@ -314,28 +346,6 @@ describe("workflow slash command dispatch", () => {
 		expect(mockPi.getActiveTools()).not.toContain("plan_progress");
 	});
 
-	it("/prd-it sends its hidden workflow prompt as a follow-up turn", async () => {
-		const mockPi = createMockPi();
-		const mod = await import("../extensions/workflow-commands.ts");
-		mod.default(mockPi as Parameters<typeof mod.default>[0]);
-
-		await getHandler(mockPi, "prd-it")("fuzzy idea", {});
-
-		expect(mockPi.sendMessage).toHaveBeenCalledWith({
-			customType: "slash-echo",
-			content: "/prd-it fuzzy idea",
-			display: true,
-		});
-		const hiddenPromptCall = mockPi.sendMessage.mock.calls.find(
-			([message]) => message.customType === "workflow.hiddenPrompt",
-		);
-		expect(hiddenPromptCall?.[0].content).toContain("fuzzy idea");
-		expect(hiddenPromptCall?.[1]).toEqual({
-			triggerTurn: true,
-			deliverAs: "followUp",
-		});
-	});
-
 	it("/do-it echoes before repository resolution completes", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -346,12 +356,14 @@ describe("workflow slash command dispatch", () => {
 		}));
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
 
-		const dispatched = getHandler(mockPi, "do-it")("fix the task", { cwd: "/repo" });
+		const dispatched = getHandler(mockPi, "do-it")("fix the task", {
+			cwd: "/repo",
+			mode: "tui",
+			ui: { setStatus: vi.fn() },
+		});
 
-		expect(mockPi.sendMessage).toHaveBeenCalledWith({
-			customType: "slash-echo",
-			content: "/do-it fix the task",
-			display: true,
+		expect(mockPi.appendEntry).toHaveBeenCalledWith("slash-echo", {
+			text: "/do-it fix the task",
 		});
 		resolveRoot?.("/repo");
 		await dispatched;
