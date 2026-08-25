@@ -77,24 +77,43 @@ describe("createTask", () => {
 		expect(task.metadata).toEqual({ ticket: "OPS-42" });
 	});
 
-	it("normalizes and persists optional write scopes", () => {
+	it("normalizes and persists bounded boundary metadata", () => {
 		const task = createTask({
 			origin: "subagent",
 			summary: "scoped worker",
-			scope: ["./src/**", "test\\focused.test.ts"],
+			scope: [
+				"./src/**",
+				"test\\focused.test.ts",
+				"/absolute\\path/task.ts",
+				"../shared\\path/**",
+			],
 		});
-		expect(task.boundary).toEqual(["src/**", "test/focused.test.ts"]);
+		expect(task.boundary).toEqual([
+			"src/**",
+			"test/focused.test.ts",
+			"/absolute/path/task.ts",
+			"../shared/path/**",
+		]);
 		expect(getTask(task.id)?.boundary).toEqual(task.boundary);
 
-		const updated = updateTask(task.id, { scope: ["docs/**"] });
+		const updated = updateTask(task.id, { scope: ["docs\\**"] });
 		expect(updated.boundary).toEqual(["docs/**"]);
 	});
 
-	it("rejects unsafe or duplicate write scopes", () => {
-		expect(() => normalizeTaskScope(["../outside"])).toThrow(
-			/worktree-relative/,
+	it("rejects malformed and duplicate boundary entries", () => {
+		expect(() => normalizeTaskScope(Array(17).fill("src/**"))).toThrow(
+			/at most 16/,
 		);
-		expect(() => normalizeTaskScope(["src/**", "src/**"])).toThrow(
+		expect(() => normalizeTaskScope([123 as unknown as string])).toThrow(
+			/must be strings/,
+		);
+		expect(() => normalizeTaskScope(["x".repeat(257)])).toThrow(
+			/between 1 and 256/,
+		);
+		expect(() => normalizeTaskScope([" "])).toThrow(
+			/between 1 and 256/,
+		);
+		expect(() => normalizeTaskScope(["src/**", "src\\**"])).toThrow(
 			/duplicate scope/,
 		);
 	});

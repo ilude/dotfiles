@@ -276,8 +276,6 @@ export function normalizeTaskScope(
 			throw new TaskRegistryError(
 				`scope entries must contain between 1 and ${TASK_SCOPE_MAX_LENGTH} characters`,
 			);
-		if (path.isAbsolute(value) || value.split("/").includes(".."))
-			throw new TaskRegistryError("scope entries must be worktree-relative");
 		return value;
 	});
 	if (new Set(normalized).size !== normalized.length)

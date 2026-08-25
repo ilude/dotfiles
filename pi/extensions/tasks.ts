@@ -778,7 +778,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 		pattern: "^[A-Za-z0-9_-]+$",
 	});
 	const boundary = Type.Array(
-		Type.String({ minLength: 1, maxLength: TASK_SCOPE_MAX_LENGTH, description: "Governed path or boundary marker." }),
+		Type.String({ minLength: 1, maxLength: TASK_SCOPE_MAX_LENGTH, description: "Path or boundary marker retained as task metadata; it does not grant or enforce tool authority." }),
 		{
 			maxItems: TASK_SCOPE_MAX_ITEMS,
 			uniqueItems: true,
