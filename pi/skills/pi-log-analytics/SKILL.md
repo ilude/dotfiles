@@ -48,7 +48,7 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
 7. Use `--ignore-malformed` only after validation when an incomplete exploratory result is acceptable. Report the omitted row count.
 8. Read [reference.md](reference.md) when source fields, snapshot operations, manifests, correlation rules, or query recipes are needed.
 9. Report the source views, time window, filters, row counts, and any missing or malformed source that limits the conclusion.
-10. For recurring custom-extension tool failures, run `/find-fails`. It scans a frozen `session_entries` snapshot, filters to tools registered by custom extensions in the current runtime, renders a bounded deterministic investigation pool, and uses an isolated tool-free model stage to recommend 1-3 candidates. Review that recommendation, then respond normally to accept or refine the scope before any transcript evidence is loaded. Use the direct scan, report, and decision commands documented in [reference.md](reference.md) only for diagnostics or human ledger decisions.
+10. For recurring custom-extension tool failures, run `/find-fails`. Its TypeScript authority refreshes the local read model, filters custom tools, selects at most three candidates, and starts exactly one normal active-session diagnostic turn. The active model performs only bounded selected-coordinate inspection and may use the narrow decision writer when current inspected proof qualifies. It owns decisions and the plain-language report under the observability contract; do not invoke a separate analytics command, isolated model call, shortlist message, or approval stage.
 
 ## Safety
 

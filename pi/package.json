@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@aws/bedrock-token-generator": "1.1.0",
+    "@duckdb/node-api": "1.5.5-r.4",
     "@mozilla/readability": "^0.5.0",
     "croner": "10.0.1",
     "jsdom": "^25.0.1",

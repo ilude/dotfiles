@@ -6,10 +6,10 @@ Run from the dotfiles repository root:
 
 ```bash
 uv sync --project pi/analytics --locked
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py catalog
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py views
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py schema session_inventory
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py query "SELECT ..." --limit 50
+uv run --no-sync --project pi/analytics python -m pi_log_query catalog
+uv run --no-sync --project pi/analytics python -m pi_log_query views
+uv run --no-sync --project pi/analytics python -m pi_log_query schema session_inventory
+uv run --no-sync --project pi/analytics python -m pi_log_query query "SELECT ..." --limit 50
 ```
 
 Run `uv sync --project pi/analytics --locked` when dependencies need installation or updating. Routine analytics commands use `uv run --no-sync` to avoid repeated environment resolution.
@@ -19,7 +19,7 @@ The live-query default opens an in-memory DuckDB connection, registers explicit 
 Restrict discovery whenever the question needs only some sources. Repeat `--source` for multiple sources:
 
 ```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+uv run --no-sync --project pi/analytics python -m pi_log_query \
   --source session_entries \
   query "SELECT count(*) FROM session_inventory"
 ```
@@ -29,13 +29,13 @@ Unselected source views do not exist, so accidental references fail explicitly.
 Malformed JSONL fails by default. Diagnose a source without printing record content:
 
 ```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py validate metric_events
+uv run --no-sync --project pi/analytics python -m pi_log_query validate metric_events
 ```
 
 If an incomplete exploratory result is acceptable, place the explicit opt-in before the subcommand:
 
 ```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+uv run --no-sync --project pi/analytics python -m pi_log_query \
   --ignore-malformed \
   query "SELECT count(*) FROM metric_events"
 ```
@@ -45,7 +45,7 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
 Path overrides must precede the subcommand:
 
 ```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+uv run --no-sync --project pi/analytics python -m pi_log_query \
   --agent-dir /path/to/agent \
   --metrics-dir /path/to/metrics \
   --trace-dir /path/to/traces \
@@ -53,82 +53,30 @@ uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
   catalog
 ```
 
-Recognized environment overrides are `PI_AGENT_DIR`, `PI_METRICS_DIR`, `PI_WORKFLOW_TELEMETRY_DIR`, `PI_WORKFLOW_FRICTION_DIR`, `PI_TOOL_FAILURE_DIR`, and `PI_OPERATOR_DIR`. The default trace root follows `transcript.path` in the agent `settings.json`; `--trace-dir` overrides it explicitly.
+Recognized environment overrides are `PI_AGENT_DIR`, `PI_METRICS_DIR`, `PI_WORKFLOW_TELEMETRY_DIR`, `PI_WORKFLOW_FRICTION_DIR`, and `PI_OPERATOR_DIR`. The default trace root follows `transcript.path` in the agent `settings.json`; `--trace-dir` overrides it explicitly.
 
 ## Tool-failure triage
 
-Run `/find-fails` in Pi for the normal operator workflow. It incrementally refreshes `.tmp/pi-log-analytics/tool-failures.duckdb`, writes the sanitized scan to `.tmp/pi-log-analytics/tool-failure-scan.json`, and displays at most 10 prioritized investigation cards. For a nonempty pool it discloses the provider boundary, sends only bounded structural card fields to the active model in an isolated tool-free session, validates a recommendation of 1-3 supplied IDs, and stops for operator acceptance or refinement. It does not load transcript evidence or make addressed or skipped decisions.
+`/find-fails` is the operator entry point. Its TypeScript authority in `pi/lib/tool-failure-classifier.ts`, `pi/lib/tool-failure-decisions.ts`, and `pi/lib/tool-failure-store.ts` refreshes the local DuckDB read model, filters custom-extension tools, selects at most three candidates in stable priority order, and retrieves only selected bounded evidence. Session JSONL remains authoritative and unchanged. The observability contract is normative for automatic decisions, provider disclosure, bounded inspection, and report behavior. This reference documents only the surrounding read-only analytics commands; it does not provide a competing scan, report, or decision path.
 
-For direct analytics use, create or retain a frozen `session_entries` snapshot, then scan it without refreshing the source:
-
-```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  --snapshot-db .tmp/pi-log-analytics/august.duckdb \
-  --source session_entries tool-failure-scan \
-  --output .tmp/pi-log-analytics/tool-failure-scan.json
-```
-
-The scan joins tool results to calls by source file and tool-call ID, but candidate IDs use only the fingerprint version, tool name, normalized error class, and approved structural contract. Task boundary rejection, task instruction length, plan readiness, unavailable subagent names, subagent cancellation, and subagent extension-load failure retain distinct fingerprints instead of collapsing into generic validation or unclassified candidates. Shell nonzero exits, test failures, timeouts, aborts, approval requirements, missing paths, known policy controls, and mutation deferrals that load path-specific instructions are expected outcomes and do not enter the default investigation pool; direct diagnostics can still request them with `--include-expected`. Arbitrary Bash and PowerShell subprocess output cannot establish an internal missing-method defect; only non-shell tool failures use that structural class. It captures one UTC `asOf` boundary and records occurrence and distinct-session counts for inclusive 7, 14, and 30-day windows. Missing, malformed, and future timestamps contribute only to lifetime totals and bounded diagnostics. Output contains safe aggregates, hashed coordinates, a path-free digest, source window, and join diagnostics. It does not contain prompts, arguments, tool output, source paths, or session filenames. An error-marked result is a screening input, not proof of a defect.
-
-Append a human decision to the dedicated local-private ledger, which defaults to `~/.pi/agent/tool-failures/decisions.jsonl`:
-
-```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  tool-failure-decide .tmp/pi-log-analytics/tool-failure-scan.json CANDIDATE_ID skipped \
-  --reason "Expected safety rejection" --revisit-after 2026-09-30
-
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  tool-failure-decide .tmp/pi-log-analytics/tool-failure-scan.json CANDIDATE_ID addressed \
-  --reason "Validated corrected call contract" --evidence commit:REV \
-  --effective-after 2026-08-24
-```
-
-Skipped decisions require a sanitized reason. Addressed decisions require typed evidence and an effective date. The writer rejects credentials, raw multiline content, and absolute home paths. Records are appended under an exclusive lock; latest state follows physical append order. This preserves best-effort history among cooperating writers, not tamper-proof audit integrity.
-
-Render the deterministic investigation pool. `/find-fails` passes the current custom-extension tool names through `--tools`; built-in and SDK-supplied tools are excluded before ranking and summary counts. Direct diagnostics omit the filter unless it is supplied explicitly:
-
-```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json \
-  --tools subagent subagent_control web_search
-```
-
-Fingerprint changes, due revisits, and post-effective-date regressions qualify first. Otherwise, `internal-missing-method` requires one 14-day occurrence; `required-runtime-unavailable` requires two 14-day sessions; `external-service-failure` requires three 7-day sessions or ten 30-day sessions; other classified candidates require three 14-day occurrences across two sessions; and unclassified candidates require one 30-day observation. Zero 30-day observations are stale. Recurring model-contract and retry-ceremony classes require three 14-day occurrences across three sessions and may enter the pool while remaining counted as expected-suppressed evidence.
-
-Cards use deterministic `I-number: tool - plain issue name` headings. I-numbers are assigned from shortlist order and preserved in the recommendation so operators can type concise scope replies; candidate IDs remain secondary correlation and ledger metadata. Plain issue names come from structural error classes rather than model wording. Cards use the closed reason set `ledger-changed`, `ledger-regression`, `ledger-revisit`, `internal-contract-defect`, `runtime-unavailable`, `model-contract-friction`, `retry-ceremony`, `external-failure`, `classified-recurrence`, and `unclassified-review`. The 10-card pool reserves three places for ledger attention, three for internal/runtime evidence, two for model-tool friction, and two for other recurrence, then backfills unused capacity in stable tier order. Within a tier, the gate-driving session count, occurrence count, and candidate ID determine order. One report-level caveat states that counts prioritize investigation rather than proving severity, cause, or fixability; cards do not repeat that boilerplate.
-
-Use independent diagnostic views when the bounded default omits needed metadata:
-
-```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json \
-  --include-overflow
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json \
-  --include-observed
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  tool-failure-report .tmp/pi-log-analytics/tool-failure-scan.json \
-  --include-expected
-```
-
-`--include-overflow` returns qualifying cards beyond the limit. `--include-observed` returns neutral stale, below-threshold, and nonqualifying expected observations. `--include-expected` preserves the earlier direct expected-candidate report behavior. The flags compose. The report separately counts expected-suppressed, stale, below-threshold, overflow, timestamp, join, unchanged-skipped, and resolved groups. Ledger overrides take precedence over expected classification and unchanged safety-block suppression.
+Candidate IDs are versioned fingerprints of normalized tool, error class, and structural contract. Thresholds, ledger precedence, revisit and regression behavior, append locking, durability, interrupted trailing-record handling, and the five authorized evidence categories are defined by the observability contract and TypeScript authority.
 
 ## Snapshots and batches
 
 For repeated queries or parallel analysis, materialize each needed source once. The default path is `.tmp/pi-log-analytics/pi-logs.duckdb`:
 
 ```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+uv run --no-sync --project pi/analytics python -m pi_log_query \
   --source session_entries snapshot
 ```
 
 Later commands must name the snapshot explicitly. They use its metadata and tables without discovering or parsing live JSONL:
 
 ```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+uv run --no-sync --project pi/analytics python -m pi_log_query \
   --snapshot-db .tmp/pi-log-analytics/pi-logs.duckdb \
   --source session_entries catalog
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+uv run --no-sync --project pi/analytics python -m pi_log_query \
   --snapshot-db .tmp/pi-log-analytics/pi-logs.duckdb \
   --source session_entries \
   query "SELECT count(*) FROM session_inventory"
@@ -139,7 +87,7 @@ Running `snapshot` again inserts new files, replaces changed files, and removes 
 Put multiple read-only statements in a SQL file to avoid one process and connection per query:
 
 ```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+uv run --no-sync --project pi/analytics python -m pi_log_query \
   --snapshot-db .tmp/pi-log-analytics/pi-logs.duckdb \
   --source session_entries \
   batch .tmp/pi-log-analytics/screening.sql --format jsonl --limit 1000
@@ -150,7 +98,7 @@ Every batch statement must be a `SELECT`, and the row limit applies to each resu
 For file-level sharding without a snapshot, pass one or more manifests before the subcommand:
 
 ```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
+uv run --no-sync --project pi/analytics python -m pi_log_query \
   --source session_entries \
   --files-from session_entries=.tmp/pi-log-analytics/shard-1.jsonl \
   query "SELECT count(*) FROM session_entries"
@@ -173,7 +121,6 @@ A manifest contains one nonblank path per line or JSONL objects containing `sour
 | `friction_reviews` | `~/.pi/agent/workflow-friction/reviews.jsonl` | Medium | Review outcomes |
 | `friction_experiments` | `~/.pi/agent/workflow-friction/experiments.jsonl` | Medium | Experiment definitions |
 | `friction_learning_decisions` | `~/.pi/agent/workflow-friction/learning-decisions.jsonl` | High | Approved text and target paths |
-| `tool_failure_decisions` | `~/.pi/agent/tool-failures/decisions.jsonl` | Medium | Addressed or skipped tool-failure candidates; separate from workflow-friction decisions |
 | `damage_control_judgments` | `~/.pi/agent/operator/damage-control/judge.jsonl` | Medium | Shadow-judge decisions |
 
 A selected live source with no files still produces an empty view with a stable schema. Unselected source views do not exist. Malformed rows fail the query unless the caller explicitly uses `--ignore-malformed` after validation.

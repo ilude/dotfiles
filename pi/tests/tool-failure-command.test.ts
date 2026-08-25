@@ -1,446 +1,69 @@
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const { scopeAgentRun } = vi.hoisted(() => ({ scopeAgentRun: vi.fn() }));
-
-vi.mock("../lib/typed-agent.ts", () => ({
-	defineAgent: vi.fn(() => ({ run: scopeAgentRun })),
-}));
-
-import toolFailureTriageExtension, {
-	plainIssueName,
-	renderToolFailureReport,
-	resolveRepositoryRoot,
-	validateScopeOutput,
-} from "../extensions/tool-failure-triage.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import toolFailureTriageExtension from "../extensions/tool-failure-triage.ts";
+import { DIAGNOSTIC_DECISION_TOOL_NAME, DIAGNOSTIC_INSPECTION_TOOL_NAME } from "../lib/tool-failure-diagnostic-turn.ts";
+import { ToolFailureStore } from "../lib/tool-failure-store.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 
-function commandHandler(pi: ReturnType<typeof createMockPi>) {
+function handler(pi: ReturnType<typeof createMockPi>) {
 	const command = pi._commands.find((item) => item.name === "find-fails");
 	if (!command) throw new Error("find-fails command not registered");
 	return command.handler;
 }
 
-function card(
-	candidateId: string,
-	reasonCode:
-		| "ledger-regression"
-		| "internal-contract-defect"
-		| "model-contract-friction"
-		| "external-failure" = "internal-contract-defect",
-) {
+const roots: string[] = [];
+afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
+async function context() {
+	const root = await fs.mkdtemp(path.join(os.tmpdir(), "tool-failure-command-")); roots.push(root);
+	return createMockCtx({ cwd: root, sessionManager: { getSessionDir: () => root, getSessionId: () => "session-1" } });
+}
+
+function selectedScan() {
 	return {
-		candidateId,
-		tool: "subagent_control",
-		structuralLabel: "internal-missing-method",
-		reasonCode,
-		lastObserved: "2026-08-24T00:00:00Z",
-		gateWindow: "14d" as const,
-		occurrences: 4,
-		sessions: 3,
-		explanation: "Structural evidence is an investigation opportunity, not proof of cause.",
-	};
+		schemaVersion: 1, asOf: "2026-08-25T00:00:00Z", timestampDiagnostics: { missing: 0, malformed: 0, future: 0 }, timestampOmissions: 0,
+		manifestDigest: "scan-digest", sourceWindow: { first: "2026-08-20T00:00:00Z", last: "2026-08-20T00:00:00Z" }, scannedResults: 1, unmatchedResults: 0, duplicateCalls: 0, malformedOmissions: 0,
+		candidates: [{ candidateId: "candidate-1", fingerprintVersion: 1, tool: "custom", errorClass: "internal-missing-method", contract: "runtime:missing-method", classification: "candidate", occurrences: 1, sessions: 1, firstObserved: "2026-08-20T00:00:00Z", lastObserved: "2026-08-20T00:00:00Z", coordinates: ["opaque-token"], occurrences7d: 1, sessions7d: 1, occurrences14d: 1, sessions14d: 1, occurrences30d: 1, sessions30d: 1 }],
+	} as any;
 }
 
-function report(cards = [card("tf-v1-example")]) {
-	return {
-		toolFilter: [...new Set(cards.map((item) => item.tool))].sort(),
-		cards,
-		poolSummary: {
-			expected: 6,
-			stale: 2,
-			belowThreshold: 3,
-			omittedByCardLimit: 1,
-			timestamp: 1,
-			joinDiagnostics: {
-				unmatchedResults: 0,
-				duplicateCalls: 0,
-				malformedOmissions: 0,
-			},
-		},
-		summary: { unchangedSkipped: 4, resolved: 5, expectedSuppressed: 6 },
-	};
-}
-
-function successfulAnalytics(pi: ReturnType<typeof createMockPi>, value = report()) {
-	if (pi.getAllTools().length === 0) {
-		pi.getAllTools.mockReturnValue([
-			{
-				name: "subagent_control",
-				description: "Custom tool",
-				parameters: {},
-				sourceInfo: { source: "local" },
-			},
-		]);
-	}
-	pi.exec
-		.mockResolvedValueOnce({ code: 0, stdout: "snapshot", stderr: "" })
-		.mockResolvedValueOnce({ code: 0, stdout: "scan", stderr: "" })
-		.mockResolvedValueOnce({
-			code: 0,
-			stdout: JSON.stringify(value),
-			stderr: "",
-		});
-}
-
-describe("find-fails command", () => {
-	beforeEach(() => {
-		scopeAgentRun.mockReset();
-		scopeAgentRun.mockResolvedValue({
-			output: {
-				recommendations: [
-					{
-						candidateId: "tf-v1-example",
-						investigationValue: "May remove recurring tool ceremony.",
-						evidenceLimits: "Structural metadata does not establish a cause.",
-					},
-				],
-			},
-			attempts: 1,
-		});
-	});
-
-	it("resolves the repository through the installed Pi link", () => {
-		const installedExtension = path.resolve(
-			".pi/agent/extensions/tool-failure-triage.ts",
-		);
-		const repositoryExtension = path.resolve(
-			"pi/extensions/tool-failure-triage.ts",
-		);
-		const resolveRealPath = vi.fn(() => repositoryExtension);
-
-		expect(
-			resolveRepositoryRoot(
-				pathToFileURL(installedExtension).href,
-				resolveRealPath,
-			),
-		).toBe(path.resolve("."));
-		expect(resolveRealPath).toHaveBeenCalledWith(installedExtension);
-	});
-
-	it("renders the shortlist and requests one isolated scope recommendation", async () => {
-		const pi = createMockPi();
-		const ctx = createMockCtx({ model: { provider: "test", id: "model" } });
-		successfulAnalytics(pi);
-		toolFailureTriageExtension(pi as never);
-
-		await commandHandler(pi)("", ctx);
-
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"Finding tool failures...",
-			"info",
-		);
-		expect(pi.exec).toHaveBeenCalledTimes(3);
-		expect(pi.exec.mock.calls[2][1]).toEqual(
-			expect.arrayContaining(["--tools", "subagent_control"]),
-		);
-		expect(pi.exec.mock.calls[2][1]).not.toContain("edit");
-		expect(scopeAgentRun).toHaveBeenCalledTimes(1);
-		const input = scopeAgentRun.mock.calls[0][0];
-		expect(input).toEqual({
-			candidates: [
-				{
-					candidateId: "tf-v1-example",
-					tool: "subagent_control",
-					issueName: "required internal method is missing",
-					structuralLabel: "internal-missing-method",
-					reasonCode: "internal-contract-defect",
-					gateWindow: "14d",
-					occurrences: 4,
-					sessions: 3,
-					lastObserved: "2026-08-24T00:00:00Z",
-				},
-			],
-		});
-		expect(JSON.stringify(input)).not.toMatch(
-			/coordinates|arguments|output|transcript|explanation|sessionMessages|path/i,
-		);
-		expect(pi.sendMessage).toHaveBeenCalledTimes(2);
-		expect(pi.sendMessage).toHaveBeenLastCalledWith(
-			expect.objectContaining({
-				customType: "tool-failure-scope-recommendation",
-				content: expect.stringContaining(
-					"- I1: subagent_control - required internal method is missing",
-				),
-			}),
-			{ triggerTurn: false },
-		);
-		expect(pi.sendMessage.mock.calls[1][0].content).toContain(
-			"Candidate ID: tf-v1-example",
-		);
-		expect(pi.sendMessage.mock.calls[1][0].content).toContain(
-			"Reply with the I-number identifiers you accept (for example, I1 I3)",
-		);
-	});
-
-	it("shows a high-contrast spinner while running in TUI mode", async () => {
-		const pi = createMockPi();
-		const ctx = createMockCtx({ mode: "tui" });
-		let rendered: string[] = [];
-		ctx.ui.custom = vi.fn(async (factory) =>
-			new Promise((resolve) => {
-				const tui = { requestRender: vi.fn() };
-				let component: { render: (width: number) => string[]; dispose?: () => void };
-				component = factory(
-					tui,
-					ctx.ui.theme,
-					{},
-					(value: unknown) => {
-						component.dispose?.();
-						resolve(value);
-					},
-				);
-				rendered = component.render(80);
-			}),
-		);
-		successfulAnalytics(pi);
-		toolFailureTriageExtension(pi as never);
-
-		await commandHandler(pi)("", ctx);
-
-		expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
-		expect(rendered.join("\n")).toContain("Finding tool failures...");
-		expect(ctx.ui.theme.fg).toHaveBeenCalledWith("accent", expect.any(String));
-		expect(ctx.ui.theme.fg).toHaveBeenCalledWith("text", expect.any(String));
-	});
-
-	it("filters built-in tools before requesting the ranked report", async () => {
-		const pi = createMockPi();
-		const ctx = createMockCtx();
-		pi.getAllTools.mockReturnValue([
-			{
-				name: "edit",
-				description: "Built-in edit",
-				parameters: {},
-				sourceInfo: { source: "builtin" },
-			},
-			{
-				name: "subagent_control",
-				description: "Custom tool",
-				parameters: {},
-				sourceInfo: { source: "local" },
-			},
-		]);
-		successfulAnalytics(pi);
-		toolFailureTriageExtension(pi as never);
-
-		await commandHandler(pi)("", ctx);
-
-		const reportArgs = pi.exec.mock.calls[2][1];
-		expect(reportArgs).toContain("subagent_control");
-		expect(reportArgs).not.toContain("edit");
-	});
-
-	it("renders an empty pool without invoking the model", async () => {
-		const pi = createMockPi();
-		const ctx = createMockCtx();
-		successfulAnalytics(pi, report([]));
-		toolFailureTriageExtension(pi as never);
-
-		await commandHandler(pi)("", ctx);
-
-		expect(scopeAgentRun).not.toHaveBeenCalled();
-		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-		expect(pi.sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				content: expect.stringContaining("No model recommendation was requested"),
-			}),
-			{ triggerTurn: false },
-		);
-	});
-
-	it("rejects a malformed report before model work", async () => {
-		const pi = createMockPi();
-		const ctx = createMockCtx();
-		successfulAnalytics(pi, {
-			cards: [{ candidateId: "missing-fields" }],
-			poolSummary: {},
-			summary: {},
-		} as never);
-		toolFailureTriageExtension(pi as never);
-
-		await commandHandler(pi)("", ctx);
-
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"Tool-failure shortlist report failed: tool-failure report returned an invalid result. Retry with /find-fails.",
-			"error",
-		);
-		expect(scopeAgentRun).not.toHaveBeenCalled();
-	});
-
-	it("names a failed pipeline stage and stops", async () => {
-		const pi = createMockPi();
-		const ctx = createMockCtx();
-		pi.exec.mockResolvedValueOnce({
-			code: 2,
-			stdout: "",
-			stderr: "snapshot failed",
-		});
-		toolFailureTriageExtension(pi as never);
-
-		await commandHandler(pi)("", ctx);
-
-		expect(pi.exec).toHaveBeenCalledTimes(1);
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"Tool-failure snapshot refresh failed: snapshot failed. Retry with /find-fails.",
-			"error",
-		);
-		expect(scopeAgentRun).not.toHaveBeenCalled();
-		expect(pi.sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({ customType: "workflow.recoverable-local-failure" }),
-		expect.objectContaining({ triggerTurn: true, deliverAs: "followUp" }),
-	);
-	});
-
-	it("does not start recovery after a non-TUI abort", async () => {
-		const pi = createMockPi();
-		const controller = new AbortController();
-		controller.abort();
-		const ctx = createMockCtx({ mode: "print", signal: controller.signal });
-		pi.exec.mockRejectedValueOnce(new Error("This operation was aborted"));
-		toolFailureTriageExtension(pi as never);
-
-		await commandHandler(pi)("", ctx);
-
-		expect(pi.sendMessage).not.toHaveBeenCalledWith(
-			expect.objectContaining({ customType: "workflow.recoverable-local-failure" }),
-			expect.anything(),
-		);
-	});
-
-	it("rejects an out-of-pool model result and starts no follow-up turn", async () => {
-		const pi = createMockPi();
-		const ctx = createMockCtx();
-		successfulAnalytics(pi);
-		scopeAgentRun.mockResolvedValueOnce({
-			output: {
-				recommendations: [
-					{
-						candidateId: "unknown",
-						investigationValue: "value",
-						evidenceLimits: "limits",
-					},
-				],
-			},
-			attempts: 1,
-		});
-		toolFailureTriageExtension(pi as never);
-
-		await commandHandler(pi)("", ctx);
-
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("unknown candidate: unknown"),
-			"error",
-		);
-		expect(pi.sendMessage).toHaveBeenCalledTimes(2);
-		expect(pi.sendMessage.mock.calls[0]?.[1]?.triggerTurn).toBe(false);
-		expect(pi.sendMessage.mock.calls[1]?.[0]).toEqual(
-		expect.objectContaining({ customType: "workflow.recoverable-local-failure" }),
-	);
-	});
-
-	it("rejects unsupported arguments before starting work", async () => {
-		const pi = createMockPi();
-		const ctx = createMockCtx();
-		toolFailureTriageExtension(pi as never);
-
-		await commandHandler(pi)("30", ctx);
-
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"Usage: /find-fails",
-			"warning",
-		);
+describe("find-fails TypeScript authority", () => {
+	it("returns a bounded no-findings outcome without starting a provider turn", async () => {
+		const pi = createMockPi(); const ctx = await context(); toolFailureTriageExtension(pi as never);
+		await handler(pi)("", ctx);
 		expect(pi.exec).not.toHaveBeenCalled();
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+		expect(pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(ctx.ui.notify).toHaveBeenCalledWith("No tool-failure findings are currently due for inspection.", "info");
 	});
-});
-
-describe("tool failure report rendering", () => {
-	it("renders ten bounded cards in the required group order with recovery commands", () => {
-		const cards = [
-			card("ledger", "ledger-regression"),
-			card("internal", "internal-contract-defect"),
-			card("friction", "model-contract-friction"),
-			...Array.from({ length: 7 }, (_, index) =>
-				card(`external-${index}`, "external-failure"),
-			),
-		];
-		const rendered = renderToolFailureReport(report(cards));
-
-		expect(rendered.indexOf("## Ledger attention")).toBeLessThan(
-			rendered.indexOf("## Internal and runtime"),
-		);
-		expect(rendered.indexOf("## Internal and runtime")).toBeLessThan(
-			rendered.indexOf("## Model-tool friction"),
-		);
-		expect(rendered.indexOf("## Model-tool friction")).toBeLessThan(
-			rendered.indexOf("## Other recurrence"),
-		);
-		expect(rendered).toContain(
-			"- I1: subagent_control - required internal method is missing",
-		);
-		expect(rendered).toContain(
-			"- I2: subagent_control - required internal method is missing",
-		);
-		expect(rendered).toContain("Candidate ID: ledger");
-		expect(rendered.indexOf("required internal method is missing")).toBeLessThan(
-			rendered.indexOf("Candidate ID: ledger"),
-		);
-		expect(rendered.match(/Counts prioritize investigation/g)).toHaveLength(1);
-		expect(rendered).not.toContain(
-			"Structural evidence is an investigation opportunity",
-		);
-		expect(rendered).toContain("--include-overflow");
-		expect(rendered).toContain("--include-observed");
-		expect(rendered).toContain("--include-expected");
-		expect(rendered).toContain("active model provider");
+	it("rejects arguments without mutating the authority", async () => {
+		const pi = createMockPi(); const ctx = await context(); toolFailureTriageExtension(pi as never);
+		await handler(pi)("extra", ctx);
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Usage: /find-fails", "warning");
+		expect(pi.sendUserMessage).not.toHaveBeenCalled();
 	});
-});
-
-describe("plain issue names", () => {
-	it("uses deterministic operator names for known failure classes", () => {
-		expect(plainIssueName("approval-required")).toBe(
-			"operator approval is required",
-		);
-		expect(plainIssueName("command-aborted")).toBe("command was aborted");
-		expect(plainIssueName("command-timeout")).toBe("command timed out");
-		expect(plainIssueName("plan-not-ready")).toBe("plan is not ready");
-		expect(plainIssueName("requested-agent-unavailable")).toBe(
-			"requested agent is unavailable",
-		);
-		expect(plainIssueName("task-boundary-rejected")).toBe(
-			"task boundary path was rejected",
-		);
-		expect(plainIssueName("exact-match-miss")).toBe(
-			"exact text does not match",
-		);
-		expect(plainIssueName("nonunique-match")).toBe(
-			"target text matches multiple locations",
-		);
-		expect(plainIssueName("instruction-deferred")).toBe(
-			"path instructions must load before mutation",
-		);
-	});
-});
-
-describe("scope output validation", () => {
-	it("rejects duplicate and unknown candidate IDs", () => {
-		const item = {
-			candidateId: "one",
-			investigationValue: "value",
-			evidenceLimits: "limits",
-		};
-		expect(() =>
-			validateScopeOutput(
-				{ recommendations: [item, item] },
-				new Set(["one"]),
-			),
-		).toThrow("duplicate candidate");
-		expect(() =>
-			validateScopeOutput(
-				{ recommendations: [{ ...item, candidateId: "two" }] },
-				new Set(["one"]),
-			),
-		).toThrow("unknown candidate");
+	it("keeps the run and restriction active after dispatch for inspect and decide, then clears both on agent end", async () => {
+		const pi = createMockPi(); const ctx = await context(); const evidencePath = path.join(ctx.cwd, "session.jsonl");
+		await fs.writeFile(evidencePath, "tool failure evidence\n");
+		pi.registerTool({ name: "custom", description: "custom", parameters: {}, sourceInfo: { source: "local" }, execute: async () => ({ content: [] }) });
+		const scan = selectedScan();
+		vi.spyOn(ToolFailureStore, "open").mockResolvedValue({ refreshSessionCorpus: vi.fn(), scan: vi.fn(async () => scan), saveScan: vi.fn(), selectedCoordinates: vi.fn(async () => new Map([["candidate-1", [{ filePath: evidencePath, line: 1, token: "opaque-token" }]]])), close: vi.fn() } as any);
+		const priorAgentDir = process.env.PI_AGENT_DIR; process.env.PI_AGENT_DIR = ctx.cwd;
+		try {
+			toolFailureTriageExtension(pi as never);
+			await handler(pi)("", ctx);
+			expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+			expect(pi.getActiveTools()).toEqual([DIAGNOSTIC_INSPECTION_TOOL_NAME, DIAGNOSTIC_DECISION_TOOL_NAME]);
+			const inspect = pi._getTool(DIAGNOSTIC_INSPECTION_TOOL_NAME)!;
+			const decide = pi._getTool(DIAGNOSTIC_DECISION_TOOL_NAME)!;
+			expect((await inspect.execute("call-1", { coordinate: "opaque-token" })).content[0].text).toBe("tool failure evidence");
+			await decide.execute("call-2", { candidateId: "candidate-1", disposition: "safety-rejection", reason: "documented safety rule", evidence: [] });
+			expect((await fs.readFile(path.join(ctx.cwd, "tool-failures", "decisions.jsonl"), "utf8"))).toContain('"disposition":"expected"');
+			pi._getHook("agent_end")[0].handler();
+			expect(pi.getActiveTools()).toContain("custom");
+			await expect(inspect.execute("call-3", { coordinate: "opaque-token" })).rejects.toThrow("no diagnostic inspection");
+			await expect(decide.execute("call-4", { candidateId: "candidate-1", disposition: "external", reason: "external", evidence: [], revisitAfter: "2026-09-01" })).rejects.toThrow("no diagnostic decision");
+		} finally { if (priorAgentDir === undefined) delete process.env.PI_AGENT_DIR; else process.env.PI_AGENT_DIR = priorAgentDir; }
 	});
 });
