@@ -7,6 +7,7 @@ import registerCodexStatusCommand, {
 	accountIdFromToken,
 	fetchCodexUsage,
 	formatBedrockUsageSection,
+	formatCodexCacheDiagnostic,
 	formatCodexCacheUsageSection,
 	formatCodexFooterStatus,
 	formatUsage,
@@ -442,6 +443,7 @@ describe("codex-status usage", () => {
 			stable: 1,
 			contextChanges: 1,
 			immediateToolChanges: 1,
+			shapeFlagsUnavailable: 0,
 		});
 		const text = formatCodexCacheUsageSection(summary);
 		expect(text).toBe(
@@ -451,6 +453,83 @@ describe("codex-status usage", () => {
 				"    gpt-5.6-sol: 50%\n" +
 				"    gpt-5.6-luna: 50%",
 		);
+	});
+
+	it("formats bounded observational cache diagnostics with overlapping and missing flags", () => {
+		const events = [
+			{ id: "stable", input: 10, cacheRead: 90, context: false, tools: false },
+			{ id: "context", input: 10, cacheRead: 0, context: true, tools: false },
+			{ id: "tools", input: 10, cacheRead: 0, context: false, tools: true },
+			{ id: "both", input: 10, cacheRead: 0, context: true, tools: true },
+			{ id: "missing", input: "unavailable", cacheRead: "unavailable" },
+		].map((item) => ({
+			schemaVersion: 1 as const,
+			id: item.id,
+			ts: "2026-08-23T12:00:00.000Z",
+			session: "session-1",
+			event: "prompt_cache_request",
+			data: {
+				provider: "openai-codex",
+				model: "gpt-5.6-sol",
+				messageId: item.id,
+				input: item.input,
+				cacheRead: item.cacheRead,
+				contextChangedSincePreviousRequest: item.context,
+				immediateToolsChangedSincePreviousRequest: item.tools,
+			},
+		}));
+		const summary = summarizeCodexCacheMetrics([...events, events[0]]);
+
+		expect(summary).toMatchObject({
+			windowSize: 5,
+			withUsage: 4,
+			unavailableUsage: 1,
+			cacheReadShare: 90 / 130,
+			stable: 1,
+			contextChanges: 2,
+			immediateToolChanges: 2,
+			shapeFlagsUnavailable: 1,
+		});
+		expect(formatCodexCacheDiagnostic(summary)).toBe(
+			"OpenAI Codex cache doctor (last 5 requests):\n" +
+				"  cache-read: 69.2%\n" +
+				"  request shape observations:\n" +
+				"    stable: 1\n" +
+				"    runtime context changed: 2\n" +
+				"    immediate tools changed: 2\n" +
+				"    shape flags unavailable: 1\n" +
+				"  Change categories can overlap and cover only observed flags.\n" +
+				"  These observations show correlation, not cause or cache savings.",
+		);
+	});
+
+	it("reports an empty diagnostic window without zero-filling cache usage", () => {
+		const text = formatCodexCacheDiagnostic(summarizeCodexCacheMetrics([]));
+		expect(text).toContain("last 0 requests");
+		expect(text).toContain("cache-read: unavailable");
+		expect(text).toContain("shape flags unavailable: 0");
+	});
+
+	it("bounds cache diagnostics to the existing 100-request window", () => {
+		const events = Array.from({ length: 101 }, (_, index) => ({
+			schemaVersion: 1 as const,
+			id: `event-${index}`,
+			ts: "2026-08-23T12:00:00.000Z",
+			event: "prompt_cache_request",
+			data: {
+				provider: "openai-codex",
+				messageId: `message-${index}`,
+				input: 1,
+				cacheRead: 1,
+				contextChangedSincePreviousRequest: false,
+				immediateToolsChangedSincePreviousRequest: false,
+			},
+		}));
+
+		expect(summarizeCodexCacheMetrics(events)).toMatchObject({
+			windowSize: 100,
+			stable: 100,
+		});
 	});
 
 	it("groups unique first child requests by direct run join and preserves zero usage", () => {
@@ -622,6 +701,37 @@ describe("codex-status usage", () => {
 				}),
 			}),
 		);
+	});
+});
+
+describe("/cache-doctor command", () => {
+	it("displays a TUI-only local report without a provider request or session message", async () => {
+		tempHome();
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const mockPi = createMockPi();
+		registerCodexStatusCommand(
+			mockPi as Parameters<typeof registerCodexStatusCommand>[0],
+		);
+		const command = mockPi._commands.find(({ name }) => name === "cache-doctor");
+		const ctx = createMockCtx();
+
+		await command?.handler("", ctx);
+
+		expect(command).toBeDefined();
+		expect(ctx.ui.notify).toHaveBeenNthCalledWith(
+			1,
+			"Cache diagnosis started.",
+			"info",
+		);
+		expect(ctx.ui.notify).toHaveBeenNthCalledWith(
+			2,
+			expect.stringContaining("OpenAI Codex cache doctor"),
+			"info",
+		);
+		expect(mockPi.sendMessage).not.toHaveBeenCalled();
+		expect(mockPi.sendUserMessage).not.toHaveBeenCalled();
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });
 

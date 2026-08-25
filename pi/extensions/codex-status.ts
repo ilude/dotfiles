@@ -114,6 +114,7 @@ export type CodexCacheSummary = {
 	stable: number;
 	contextChanges: number;
 	immediateToolChanges: number;
+	shapeFlagsUnavailable: number;
 	models: Array<{ model: string; requests: number }>;
 	firstRequestGroups: {
 		root: CodexCacheGroupSummary;
@@ -570,6 +571,11 @@ export function summarizeCodexCacheMetrics(
 		stable: metrics.filter((event) => event.data.contextChangedSincePreviousRequest === false && event.data.immediateToolsChangedSincePreviousRequest === false).length,
 		contextChanges: metrics.filter((event) => event.data.contextChangedSincePreviousRequest === true).length,
 		immediateToolChanges: metrics.filter((event) => event.data.immediateToolsChangedSincePreviousRequest === true).length,
+		shapeFlagsUnavailable: metrics.filter(
+			(event) =>
+				typeof event.data.contextChangedSincePreviousRequest !== "boolean" ||
+				typeof event.data.immediateToolsChangedSincePreviousRequest !== "boolean",
+		).length,
 		models: [...modelCounts].map(([model, requests]) => ({ model, requests })),
 		firstRequestGroups: firstRequestGroups(events),
 	};
@@ -596,6 +602,26 @@ export function formatCodexCacheUsageSection(
 		);
 	}
 	return lines.join("\n");
+}
+
+export function formatCodexCacheDiagnostic(
+	summary: CodexCacheSummary = summarizeCodexCacheMetrics(),
+): string {
+	const cacheReadShare =
+		summary.cacheReadShare === UNAVAILABLE
+			? UNAVAILABLE
+			: `${(summary.cacheReadShare * 100).toFixed(1)}%`;
+	return [
+		`OpenAI Codex cache doctor (last ${summary.windowSize} requests):`,
+		`  cache-read: ${cacheReadShare}`,
+		"  request shape observations:",
+		`    stable: ${summary.stable}`,
+		`    runtime context changed: ${summary.contextChanges}`,
+		`    immediate tools changed: ${summary.immediateToolChanges}`,
+		`    shape flags unavailable: ${summary.shapeFlagsUnavailable}`,
+		"  Change categories can overlap and cover only observed flags.",
+		"  These observations show correlation, not cause or cache savings.",
+	].join("\n");
 }
 
 export function formatUsage(
@@ -890,6 +916,14 @@ export default function registerCodexStatusCommand(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Usage refresh started.", "info");
 			await showCodexStatus(ctx);
+		},
+	});
+
+	pi.registerCommand("cache-doctor", {
+		description: "Explain observed Codex prompt-cache request-shape changes",
+		handler: async (_args, ctx) => {
+			ctx.ui.notify("Cache diagnosis started.", "info");
+			ctx.ui.notify(formatCodexCacheDiagnostic(), "info");
 		},
 	});
 }

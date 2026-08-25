@@ -1,6 +1,7 @@
 ---
 created: 2026-08-25
-status: ready
+status: completed
+completed: 2026-08-25
 ---
 
 # Explain observed Codex cache misses
@@ -23,7 +24,7 @@ Add an opt-in `/cache-doctor` command that uses the existing bounded, metadata-o
 
 ## Tasks
 
-- [ ] **T1: Add the bounded Codex cache diagnostic**
+- [x] **T1: Add the bounded Codex cache diagnostic**
   - Files: `pi/extensions/codex-status.ts`, `pi/tests/codex-status.test.ts`, `pi/skills/pi-extension/references/contracts/cache-friendly-extension.md`
   - Change: Extend the existing Codex cache summary with a deterministic diagnostic formatter and register `/cache-doctor` beside `/usage`. Reuse `readRecentEvents`, the existing 100-request bound, and existing deduplication rather than adding storage or another metrics reader. The report must show the observed cache-read share and request counts classified independently as stable, runtime-context changed, and immediate tools changed; count a record under `shape flags unavailable` when either request-shape flag is not a boolean. Explicitly state that categories can overlap, counts cover only observed flags where applicable, and observations do not establish causality. For empty or provider-incomplete windows, report unavailable values without zero-filling. The handler must issue an immediate acknowledgement before the local metrics read, perform no quota refresh or other network call, and display the bounded result through `ctx.ui.notify` only, without `pi.sendMessage` or other session-context insertion. Update the owning contract only with these accepted operator-facing semantics. Keep all prompt, provider, model, footer, and `/usage` behavior untouched.
   - Done when: Focused tests cover deterministic formatting for stable requests, context changes, tool changes, a request carrying both change flags, missing shape flags, unavailable usage, an empty window, duplicate event/message records, and command registration/output; tests also prove no session message or provider turn is requested and the existing `/usage` formatter remains unchanged. Direct inspection confirms the acknowledgement precedes the metrics read; no test-only injection seam or ordering test is added.
@@ -31,9 +32,9 @@ Add an opt-in `/cache-doctor` command that uses the existing bounded, metadata-o
 
 ## Validation
 
-- [ ] `cd pi && pnpm test codex-status.test.ts` passes.
-- [ ] `cd pi && pnpm run typecheck` passes.
-- [ ] `git diff --check -- pi/extensions/codex-status.ts pi/tests/codex-status.test.ts pi/skills/pi-extension/references/contracts/cache-friendly-extension.md` reports no whitespace errors; scoped diff inspection finds no prompt rewriting, provider/model mutation, new persistence, or unrelated `/usage` changes.
+- [x] `cd pi && pnpm test codex-status.test.ts` passes.
+- [x] `cd pi && pnpm run typecheck` passes.
+- [x] `git diff --check -- pi/extensions/codex-status.ts pi/tests/codex-status.test.ts pi/skills/pi-extension/references/contracts/cache-friendly-extension.md` reports no whitespace errors; scoped diff inspection finds no prompt rewriting, provider/model mutation, new persistence, or unrelated `/usage` changes.
 
 ## Retention
 
@@ -41,7 +42,7 @@ Keep incomplete work at `.specs/cache-doctor/plan.md`. After completion, `/do-it
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
+- State: complete
 - Blocker: None.
-- Next: T1.
+- Next: Archive and merge through the owned workflow.
 - Resume: `/do-it .specs/cache-doctor/plan.md`

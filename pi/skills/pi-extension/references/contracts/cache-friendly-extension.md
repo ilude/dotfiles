@@ -14,6 +14,8 @@ The `openai-codex` request boundary records one metadata-only `prompt_cache_requ
 
 `/usage` reads a bounded recent metrics window directly and deduplicates by the existing event ID and session/message identity. Its default cache section reports only the aggregate cache-read share as `cacheRead / (input + cacheRead)` for records where those observed fields are available and a clearly labeled request percentage for each observed model. It omits raw token totals, usage coverage, cache-write availability, request-shape diagnostics, and first-request groups from the default view. It does not scan raw transcripts, merge Codex CLI history, build an analytics database, or claim that a request caused subscription-limit changes.
 
+`/cache-doctor` is a TUI-only, read-only diagnostic over the same bounded and deduplicated metrics window. It reports observed cache-read share and independent counts for stable request shape, runtime-context changes, immediate-tool changes, and unavailable request-shape flags. Change categories may overlap. The report describes correlation only, does not claim cause or savings, does not enter session context, and does not trigger a provider request or network refresh.
+
 ## Compaction
 
 Compaction and session reconstruction must restore current replaceable context once. They may produce a cache miss because the request shape changed; the extension must not preserve stale context merely to avoid that boundary.
