@@ -53,8 +53,9 @@ import {
 	uniqueGitPaths,
 } from "../lib/commit/status";
 import { emitTerminalBell, formatToolError } from "../lib/extension-utils";
+import { handoffRecoverableLocalFailure } from "../lib/recovery-handoff.js";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
-import { archiveCompletedPlan } from "../lib/plan-archive";
+import { parsePersistedPlanRoutingState } from "../lib/plan-state.js";
 import { withTimingSpan } from "../lib/observability";
 import {
 	canonicalPlanPathFromInput,
@@ -91,6 +92,7 @@ import { startWorkflowEpisode } from "../lib/workflow-telemetry";
 import {
 	type WorkflowWorktree,
 	closeWorkflowWorktree,
+	verifyAndCleanupWorkflowWorktree,
 	ensureWorkflowWorktree,
 	materializePlanInWorkflowWorktree,
 	readWorkflowOwnershipForWorktree,
@@ -2591,7 +2593,7 @@ export default function (pi: ExtensionAPI) {
 					return ownership ? { ownership, resumed: true } : undefined;
 				})();
 				if (!worktree) throw new Error("No active raw /do-it workflow worktree exists.");
-				const completed = await closeWorkflowWorktree({ worktree, runner: workflowRunner });
+				const completed = await verifyAndCleanupWorkflowWorktree({ worktree, runner: workflowRunner });
 				activeRawWorkflow = undefined;
 				deactivateTools(pi, ["workflow_complete"]);
 				return {
@@ -2606,9 +2608,9 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "plan_archive",
-		label: "Archive Completed Plan",
+		label: "Verify Completed Plan Closeout",
 		description:
-			"Archive a completed plan in its owned workflow worktree, commit in-scope artifacts, merge with --no-ff into the clean primary branch, verify merged HEAD, and remove only the owned worktree and branch.",
+			"Verify that the model archived the completed plan, committed the workflow branch, and merged it with --no-ff; then remove only the verified owned worktree and branch.",
 		parameters: Type.Object(
 			{
 				path: Type.String({
@@ -2627,38 +2629,23 @@ export default function (pi: ExtensionAPI) {
 					throw new Error("Plan closeout requires its active owned workflow worktree.");
 				if (ownership.planPath && ownership.planPath !== planPath)
 					throw new Error("Plan archive path does not match workflow ownership.");
-				const primarySourceDir = path.join(ownership.primaryWorktree, ".specs", slug);
-				const primarySourcePlan = path.join(primarySourceDir, "plan.md");
-				const ignoredCheck = await workflowRunner(ownership.primaryWorktree, ["check-ignore", "-q", "--", planPath]);
-				const ignoredLocalPlan = ignoredCheck.code === 0 && fs.existsSync(primarySourcePlan);
-				if (ignoredCheck.code !== 0 && ignoredCheck.code !== 1)
-					throw new Error(`inspect plan ignore policy: ${ignoredCheck.stderr.trim() || ignoredCheck.stdout.trim()}`);
 				const archivedPlan = `.specs/archive/${slug}/plan.md`;
+				const verified = await verifyAndCleanupWorkflowWorktree({
+					worktree: { ownership, resumed: true },
+					planPath,
+					runner: workflowRunner,
+				});
 				const archived = {
 					sourcePlan: planPath,
 					archivedPlan,
-					...(await closeWorkflowWorktree({
-						worktree: { ownership, resumed: true },
-						planPath,
-						archivePlan: (cwd, planPath) => {
-							archiveCompletedPlan(cwd, planPath);
-							if (ignoredLocalPlan) {
-								const worktreeArchiveDir = path.join(cwd, ".specs", "archive", slug);
-								const primaryArchiveDir = path.join(ownership.primaryWorktree, ".specs", "archive", slug);
-								fs.mkdirSync(path.dirname(primaryArchiveDir), { recursive: true });
-								fs.cpSync(worktreeArchiveDir, primaryArchiveDir, { recursive: true, force: true });
-							}
-						},
-						runner: workflowRunner,
-					})),
+					...verified,
 				};
-				if (ignoredLocalPlan) fs.rmSync(primarySourceDir, { recursive: true });
 				deactivateTools(pi, ["plan_archive"]);
 				return {
 					content: [
 						{
 							type: "text" as const,
-							text: JSON.stringify({ outcome: "archived", ...archived }),
+							text: JSON.stringify({ outcome: "verified", ...archived }),
 						},
 					],
 					details: archived,
@@ -2789,7 +2776,14 @@ export default function (pi: ExtensionAPI) {
 				}
 				await commitPromise;
 			} catch (err) {
-				ctx.ui.notify(formatCommitWorkflowFailure(err), "error");
+				const message = formatCommitWorkflowFailure(err);
+				handoffRecoverableLocalFailure(pi, {
+					command: `/commit${args.trim() ? ` ${args.trim()}` : ""}`,
+					failure: message,
+					cwd: ctx.cwd,
+					context: "The commit workflow preserved its current worktree and index state.",
+				});
+				ctx.ui.notify(message, "error");
 			}
 		},
 	});
@@ -2934,6 +2928,8 @@ export default function (pi: ExtensionAPI) {
 			let workspaceDirective = "";
 			let ownedWorkspace = ctx.cwd;
 			let ownedWorktree: WorkflowWorktree | undefined;
+			let completedPlan = false;
+			let planNeedsReconciliation = false;
 			if (ctx.cwd) {
 				try {
 					const primaryRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
@@ -2951,6 +2947,22 @@ export default function (pi: ExtensionAPI) {
 							});
 							return;
 						}
+						const routingState = parsePersistedPlanRoutingState(
+							fs.readFileSync(path.resolve(primaryRoot, canonicalPlanPath), "utf8"),
+						);
+						completedPlan = routingState.complete;
+						planNeedsReconciliation = routingState.needsReconciliation;
+						if (completedPlan || planNeedsReconciliation) {
+							const existing = readWorkflowOwnershipRecord(primaryRoot, workflowSlugFromPlan(canonicalPlanPath));
+							if (!existing) {
+								const recovery = planNeedsReconciliation
+									? `Canonical plan ${canonicalPlanPath} has conflicting persisted state and requires reconciliation. Do not run implementation or validation. Explain the conflict clearly and inspect repository evidence before proposing recovery. No owned workflow worktree or branch exists to recover.`
+									: `Canonical plan ${canonicalPlanPath} is already complete. Do not rerun implementation or validation. Report it as already complete; no owned workflow worktree or branch exists to recover. Do not recommend this plan as new work.`;
+								ctx.ui?.notify?.(recovery, "info");
+								sendHiddenWorkflowPrompt(pi, recovery);
+								return;
+							}
+						}
 					}
 					const planSlug = workflowSlugFromPlan(canonicalPlanPath ?? requestedPlanPath);
 					const slug = planSlug === "workflow" ? workflowSlugFromRequest(requestedPlanPath) : planSlug;
@@ -2963,19 +2975,24 @@ export default function (pi: ExtensionAPI) {
 						runner: workflowRunner,
 						allowDirtyPrimary: canonicalPlan,
 					});
-					if (canonicalPlan)
+					if (canonicalPlan && !completedPlan && !worktree.resumed)
 						await materializePlanInWorkflowWorktree({ worktree, planPath: canonicalPlanPath, runner: workflowRunner });
 					ownedWorktree = worktree;
 					ownedWorkspace = worktree.ownership.worktree;
-					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${worktree.ownership.worktree}\nConfine every implementation read, write, validation, archive, and commit operation to this worktree. Preserve it for recovery on any dirty, unmerged, or conflict state.`;
+					const closeoutWork = canonicalPlan
+						? "archive the completed spec, stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff"
+						: "stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff";
+					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${worktree.ownership.worktree}\nConfine implementation and validation to this worktree. When the requested work is complete, ${closeoutWork} yourself, then call the workflow closeout verifier; the verifier only checks exact final state and cleans the owned branch/worktree. Preserve the worktree for recovery on any dirty, unmerged, or conflict state.${completedPlan || planNeedsReconciliation ? `\n\nRECOVERY ONLY: The canonical plan ${canonicalPlanPath} is complete or has conflicting persisted state. Do not rerun implementation or validation. Inspect the active/archive paths, branch, primary HEAD, and ownership record; finish only recoverable closeout work, then call the closeout verifier.` : ""}`;
 				} catch (error) {
 					ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
 					return;
 				}
 			}
 			if (canonicalPlan) {
-				const validation = validatePlanFile(ownedWorkspace, canonicalPlanPath, "execution-preflight");
-				if (!validation.valid) throw new Error(`Materialized plan failed validation: ${validation.errors.join(" ")}`);
+				if (!completedPlan && !planNeedsReconciliation) {
+					const validation = validatePlanFile(ownedWorkspace, canonicalPlanPath, "execution-preflight");
+					if (!validation.valid) throw new Error(`Materialized plan failed validation: ${validation.errors.join(" ")}`);
+				}
 				activateTools(pi, ["plan_archive"]);
 			} else if (ownedWorktree) {
 				activeRawWorkflow = ownedWorktree;

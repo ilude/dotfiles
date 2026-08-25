@@ -121,6 +121,12 @@ When an extension contributes context to provider requests:
 - Record metadata-only request-shape and provider usage metrics at the request completion boundary. Keep input, cache-read, and cache-write values unavailable when the provider did not report them; never infer quota attribution or cache savings from missing data.
 - Keep `/usage` views bounded and local. Read prompt-cache metrics directly, deduplicate by existing event and session/message identity, and do not read raw transcripts for cache reporting.
 
+## Recovery and workflow closeout
+
+Build deterministic extension paths for normal operations, safety boundaries, and final verification - not for every unusual recovery sequence. When a local reversible operation fails, preserve its state and use the shared bounded recovery handoff to give the active model redacted facts and require fresh inspection before retry. Do not add a command-specific recovery state machine when Git, files, or another owning system already expose the current state. In-process state may coordinate transient UI but is never authoritative for durable routing or recovery.
+
+A recovery handoff never authorizes replay, safety bypass, credential disclosure, or changes to ownership, submodules, destructive, or production boundaries. Cancellation, abort, secrets, credentials, permissions, approvals, blocked safety decisions, and production mutations do not trigger automatic recovery turns. For `/do-it`, the model performs archive, commit, and merge work in the owned context; the deterministic closeout verifier checks exact final state and cleans only the owned branch and worktree. Canonical persisted plan status controls normal routing, while conflicting repository evidence routes to reconciliation rather than implementation replay.
+
 ## Validation
 
 Choose only the checks affected by the change; these commands are not a required sequence:

@@ -1,3 +1,6 @@
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import summarizeExtension from "../extensions/summarize/index.ts";
 import {
@@ -175,6 +178,24 @@ describe("summary evidence", () => {
 });
 
 describe("summarize command", () => {
+	it("does not recommend a completed canonical plan", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "pi-summary-plan-"));
+		try {
+			mkdirSync(join(cwd, ".specs", "finished"), { recursive: true });
+			writeFileSync(join(cwd, ".specs", "finished", "plan.md"), "---\nstatus: completed\n---\n", "utf8");
+			let command: { handler: (args: string, ctx: Record<string, unknown>) => Promise<void> } | undefined;
+			const sendMessage = vi.fn();
+			const pi = { registerCommand: vi.fn((name: string, definition) => { if (name === "summarize") command = definition; }), sendMessage };
+			summarizeExtension(pi as never);
+			if (!command) throw new Error("summarize command was not registered");
+			await command.handler("", { waitForIdle: vi.fn(async () => undefined), sessionManager: { getBranch: () => [] }, cwd });
+			expect(sendMessage.mock.calls[1]?.[0].content).toContain("already complete");
+			expect(sendMessage.mock.calls[1]?.[0].content).toContain(".specs/finished/plan.md");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("injects bounded evidence into a hidden prompt for the active turn", async () => {
 		let command:
 			| { handler: (args: string, ctx: Record<string, unknown>) => Promise<void> }

@@ -546,6 +546,51 @@ describe("workflow slash command dispatch", () => {
 		expect(mockPi.getActiveTools()).toEqual(["workflow_complete"]);
 	});
 
+	it("reports a completed canonical plan without rerunning implementation", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(
+			path.join(fixture.root, fixture.planPath),
+			readyPlan(fixture.planPath).replace("status: ready", "status: complete").replace("State: planned, not started", "State: complete"),
+			"utf8",
+		);
+		await getHandler(mockPi, "do-it")(fixture.planPath, { cwd: fixture.root, ui: { notify: vi.fn() } });
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+			customType: "workflow.hiddenPrompt",
+			content: expect.stringContaining("already complete"),
+		}),
+		expect.objectContaining({ triggerTurn: true, deliverAs: "followUp" }),
+		);
+	});
+
+	it("routes conflicting persisted plan state to reconciliation without implementation", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(
+			path.join(fixture.root, fixture.planPath),
+			readyPlan(fixture.planPath).replace("State: planned, not started", "State: complete"),
+			"utf8",
+		);
+
+		await getHandler(mockPi, "do-it")(fixture.planPath, {
+			cwd: fixture.root,
+			ui: { notify: vi.fn() },
+		});
+
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "workflow.hiddenPrompt",
+				content: expect.stringContaining("conflicting persisted state"),
+			}),
+			expect.objectContaining({ triggerTurn: true, deliverAs: "followUp" }),
+		);
+	});
+
 	it("/do-it keeps raw task dispatch unchanged", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");

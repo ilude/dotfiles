@@ -803,6 +803,10 @@ describe("workflow command dispatch", () => {
 			expect.anything(),
 		);
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow.recoverable-local-failure" }),
+			expect.objectContaining({ triggerTurn: true, deliverAs: "followUp" }),
+		);
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow-commit-activity",
 				content: "Commit failed: fatal: not a git repository",

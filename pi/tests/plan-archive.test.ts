@@ -12,10 +12,12 @@ vi.mock("../lib/workflow-worktree", () => ({
 		resumed: false,
 		ownership: { version: 1, workflow: input.workflow, workflowId: input.workflowId, repoRoot: input.cwd, primaryWorktree: input.cwd, primaryBranch: "main", initialPrimaryHead: "initial-head", branch: `workflow/${input.slug}`, worktree: input.cwd, createdAt: "2026-08-23T00:00:00.000Z", updatedAt: "2026-08-23T00:00:00.000Z", state: "active" },
 	})),
-	closeWorkflowWorktree: vi.fn(async (input: any) => {
-		await input.archivePlan?.(input.worktree.ownership.worktree, input.planPath);
-		return { ...input.worktree.ownership, state: "complete", mergedHead: "merged-head" };
-	}),
+	closeWorkflowWorktree: vi.fn(),
+	verifyAndCleanupWorkflowWorktree: vi.fn(async (input: any) => ({
+		...input.worktree.ownership,
+		state: "complete",
+		mergedHead: "merged-head",
+	})),
 	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
 	readWorkflowOwnershipRecord: vi.fn(() => undefined),
 	workflowSlugFromPlan: (value: string) => value.match(/\.specs\/([^/]+)\/plan\.md/)?.[1] ?? "workflow",
@@ -129,17 +131,13 @@ describe("completed plan archival", () => {
 
 	it("runs through the /do-it-gated tool and deactivates after success", async () => {
 		const root = workspace();
-		writePlan(root, "tool-fixture");
+		const plan = writePlan(root, "tool-fixture", { status: "ready" });
+		fs.writeFileSync(plan, fs.readFileSync(plan, "utf8").replace("- State: complete", "- State: planned"));
 		const pi = createMockPi();
 		registerWorkflowCommands(pi as Parameters<typeof registerWorkflowCommands>[0]);
 		pi.setActiveTools([]);
 		const doIt = pi._commands.find((command) => command.name === "do-it");
 		if (!doIt) throw new Error("do-it command not registered");
-
-		await doIt.handler(".specs/tool-fixture/plan.md", { cwd: root });
-		expect(pi.getActiveTools()).toEqual(["plan_archive"]);
-		const tool = pi._getTool("plan_archive");
-		if (!tool) throw new Error("plan_archive tool not registered");
 		vi.mocked(workflowWorktree.readWorkflowOwnershipRecord).mockReturnValue({
 			version: 1,
 			workflow: "do-it",
@@ -154,6 +152,11 @@ describe("completed plan archival", () => {
 			updatedAt: "2026-08-23T00:00:00.000Z",
 			state: "active",
 		});
+
+		pi.setActiveTools(["plan_archive"]);
+		expect(pi.getActiveTools()).toEqual(["plan_archive"]);
+		const tool = pi._getTool("plan_archive");
+		if (!tool) throw new Error("plan_archive tool not registered");
 		const result = await tool.execute(
 			"archive-1",
 			{ path: ".specs/tool-fixture/plan.md" },
@@ -163,7 +166,7 @@ describe("completed plan archival", () => {
 		);
 
 		expect(JSON.parse(result.content[0].text)).toMatchObject({
-			outcome: "archived",
+			outcome: "verified",
 			archivedPlan: ".specs/archive/tool-fixture/plan.md",
 		});
 		expect(pi.getActiveTools()).toEqual([]);

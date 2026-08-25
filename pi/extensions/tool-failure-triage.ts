@@ -12,6 +12,7 @@ import {
 	defineAgent,
 	type TypedAgentRunContext,
 } from "../lib/typed-agent.js";
+import { handoffRecoverableLocalFailure } from "../lib/recovery-handoff.js";
 
 const ReasonCodeSchema = Type.Union([
 	Type.Literal("ledger-changed"),
@@ -478,6 +479,12 @@ async function runWithTuiProgress(
 						return;
 					}
 					const message = error instanceof Error ? error.message : String(error);
+					handoffRecoverableLocalFailure(pi, {
+						command: "/find-fails",
+						failure: message,
+						cwd: ctx.cwd,
+						context: "The local analytics pipeline stopped before producing its report.",
+					});
 					ctx.ui.notify(message, "error");
 					finish("completed");
 				});
@@ -505,6 +512,12 @@ export default function toolFailureTriageExtension(pi: ExtensionAPI) {
 				await executeFindFails(pi, ctx, ctx.signal, () => {});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
+				handoffRecoverableLocalFailure(pi, {
+					command: "/find-fails",
+					failure: message,
+					cwd: ctx.cwd,
+					context: "The local analytics pipeline stopped before producing its report.",
+				});
 				ctx.ui.notify(message, "error");
 			}
 		},

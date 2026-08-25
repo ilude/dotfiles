@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { closeWorkflowWorktree, ensureWorkflowWorktree, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain, readWorkflowOwnershipRecord } from "../lib/workflow-worktree.js";
+import { closeWorkflowWorktree, ensureWorkflowWorktree, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain, readWorkflowOwnershipRecord, verifyAndCleanupWorkflowWorktree } from "../lib/workflow-worktree.js";
 
 const roots: string[] = [];
 
@@ -18,6 +18,24 @@ async function runner(cwd: string, args: string[]) {
 		const failure = error as { status?: number; stdout?: Buffer | string; stderr?: Buffer | string };
 		return { code: failure.status ?? 1, stdout: String(failure.stdout ?? ""), stderr: String(failure.stderr ?? "") };
 	}
+}
+
+function completePlan(): string {
+	return [
+		"---",
+		"status: complete",
+		"---",
+		"",
+		"## Tasks",
+		"",
+		"- [x] **T1: Finish work**",
+		"  - State: completed",
+		"",
+		"## Execution Status",
+		"",
+		"- State: complete",
+		"",
+	].join("\n");
 }
 
 function repo(): string {
@@ -232,6 +250,71 @@ describe("workflow worktree lifecycle", () => {
 		expect(git(root, ["show", "HEAD:primary.txt"])).toBe("advanced");
 		expect(git(root, ["show", "HEAD:result.txt"])).toBe("done");
 		expect(git(root, ["rev-list", "--parents", "-n", "1", "HEAD"]).split(" ")).toHaveLength(3);
+	});
+
+	it("verifies model-managed commit and merge, then cleans only owned resources", async () => {
+		const root = repo();
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner });
+		fs.writeFileSync(path.join(worktree.ownership.worktree, "result.txt"), "done\n");
+		git(worktree.ownership.worktree, ["add", "--", "result.txt"]);
+		git(worktree.ownership.worktree, ["commit", "-q", "-m", "feat: model closeout"]);
+		git(root, ["merge", "--no-ff", "workflow/fixture", "-m", "Merge workflow/fixture"]);
+		const completed = await verifyAndCleanupWorkflowWorktree({ worktree, runner });
+		expect(completed.state).toBe("complete");
+		expect(fs.existsSync(worktree.ownership.worktree)).toBe(false);
+		expect(fs.existsSync(path.join(root, ".worktrees", "fixture.workflow.json"))).toBe(false);
+		expect(git(root, ["show", "HEAD:result.txt"])).toBe("done");
+	});
+
+	it("rejects cleanup when merged primary state does not contain the exact archive", async () => {
+		const root = repo();
+		const planPath = ".specs/fixture/plan.md";
+		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });
+		fs.writeFileSync(path.join(root, planPath), completePlan());
+		git(root, ["add", "--", planPath]);
+		git(root, ["commit", "-q", "-m", "test: add plan"]);
+		const worktree = await ensureWorkflowWorktree({
+			cwd: root,
+			workflow: "do-it",
+			workflowId: "do-it:fixture",
+			slug: "fixture",
+			planPath,
+			runner,
+		});
+		fs.mkdirSync(path.join(worktree.ownership.worktree, ".specs", "archive"), { recursive: true });
+		fs.renameSync(
+			path.join(worktree.ownership.worktree, ".specs", "fixture"),
+			path.join(worktree.ownership.worktree, ".specs", "archive", "fixture"),
+		);
+		git(worktree.ownership.worktree, ["add", "-A"]);
+		git(worktree.ownership.worktree, ["commit", "-q", "-m", "chore: archive plan"]);
+		git(root, ["merge", "--no-ff", "workflow/fixture", "-m", "Merge workflow/fixture"]);
+		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });
+		fs.renameSync(
+			path.join(root, ".specs", "archive", "fixture", "plan.md"),
+			path.join(root, planPath),
+		);
+		fs.rmSync(path.join(root, ".specs", "archive", "fixture"), { recursive: true, force: true });
+		git(root, ["add", "-A"]);
+		git(root, ["commit", "--amend", "--no-edit"]);
+
+		await expect(verifyAndCleanupWorkflowWorktree({ worktree, planPath, runner })).rejects.toThrow(
+			"required archived plan state",
+		);
+		expect(fs.existsSync(worktree.ownership.worktree)).toBe(true);
+		expect(readWorkflowOwnershipRecord(root, "fixture")?.state).toBe("active");
+	});
+
+	it("rejects a fast-forward closeout and preserves owned recovery state", async () => {
+		const root = repo();
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner });
+		fs.writeFileSync(path.join(worktree.ownership.worktree, "result.txt"), "done\n");
+		git(worktree.ownership.worktree, ["add", "--", "result.txt"]);
+		git(worktree.ownership.worktree, ["commit", "-q", "-m", "feat: model closeout"]);
+		git(root, ["merge", "--ff-only", "workflow/fixture"]);
+		await expect(verifyAndCleanupWorkflowWorktree({ worktree, runner })).rejects.toThrow("--no-ff");
+		expect(fs.existsSync(worktree.ownership.worktree)).toBe(true);
+		expect(readWorkflowOwnershipRecord(root, "fixture")?.state).toBe("active");
 	});
 
 	it("commits, merges, verifies, and removes only the owned worktree", async () => {

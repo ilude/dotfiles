@@ -34,7 +34,7 @@ Execute plan tasks directly. Delegate only when independent workstreams material
 
 ## Worktree lifecycle
 
-Before any read that may lead to mutation, establish or resume the single durable ownership record for the workflow branch and worktree. Confine every modification, validation, plan archive, and artifact operation to that worktree. Closeout archives the complete spec directory on the workflow branch, commits all in-scope artifacts, merges the branch with `--no-ff` into the primary worktree branch, verifies the merged HEAD, marks ownership complete, and removes the owned worktree and branch. Dirty, unmerged, merge-conflict, failed-merge, or failed-cleanup states stop and preserve the recovery worktree.
+Before any read that may lead to mutation, establish or resume the single durable ownership record for the workflow branch and worktree. Confine implementation and validation to that worktree. After validation, perform the recoverable Git closeout directly: archive a completed spec in the workflow worktree, commit in-scope artifacts, and merge the workflow branch with `--no-ff` into the primary branch. Inspect current Git state and repair only the failed boundary when archive, commit, or merge work fails; never abort, reset, replay, or clean up blindly. The closeout tool is only a verifier and cleanup authority. It removes the owned worktree and branch after exact archive, commit, merge, cleanliness, and ownership checks pass. Dirty, unmerged, merge-conflict, failed-merge, or failed-cleanup states preserve the recovery worktree.
 
 ## Boundaries
 
@@ -58,7 +58,7 @@ Do not perform a second review path. For a canonical plan, use only the correctn
 
 ## Completion
 
-For a raw task, after the settled completion evidence passes, call `workflow_complete`. Completion requires its verified commit, `--no-ff` merge, primary HEAD check, and owned worktree/branch cleanup. Complete any root task only after that tool succeeds.
+For a raw task, after the settled completion evidence passes, stage and commit the in-scope work on the workflow branch, merge it with `--no-ff` into the primary branch, then call `workflow_complete`. The tool verifies the commit, merge, primary HEAD, cleanliness, and ownership before removing the owned worktree and branch. Complete any root task only after that verification succeeds.
 
 For an incomplete plan, keep it at its existing path and save the current status and exact next ready task.
 
@@ -66,10 +66,10 @@ For a canonical `.specs/{slug}/plan.md`, completion requires all of these steps:
 
 1. Finish every required task and prove the plan's `Completion Evidence` with relevant validation.
 2. Mark the required task checkboxes, validation checkboxes, frontmatter status, completion date, and execution status complete.
-3. Call `plan_archive` with the original plan path. Do not use shell commands or file edits to move the plan.
-4. Confirm the tool returned `.specs/archive/{slug}/plan.md`, committed the workflow branch, merged it with `--no-ff` into the clean primary branch, verified merged HEAD, and removed only the owned worktree and branch.
+3. Move the complete spec directory to `.specs/archive/{slug}/` in the workflow worktree, stage and commit all in-scope artifacts, and merge the workflow branch with `--no-ff` into the primary branch.
+4. Call `plan_archive` with the original plan path. The tool verifies the exact archive, source absence, completed plan, clean workflow and primary state, required merge commit, and ownership before removing only the owned worktree and branch.
 
-The plan is not complete until `plan_archive` succeeds. The tool archives the entire spec directory with its supporting artifacts, commits in-scope work, merges and verifies the primary branch, and performs owned cleanup. It refuses incomplete plans, unsafe paths, archive collisions, dirty primary state, branch changes, and unresolved merge conflicts. A plan already under `.specs/archive/` needs no further move.
+The plan is not complete until `plan_archive` verifies closeout. The tool does not archive, commit, merge, abort, reset, or resolve conflicts. On failure, inspect the reported current state, repair only that recoverable boundary, and call it again. It refuses incomplete plans, unsafe paths, archive mismatches, dirty state, branch changes, non-`--no-ff` merges, and unresolved conflicts. A plan already under `.specs/archive/` needs no further move.
 
 ## Report
 

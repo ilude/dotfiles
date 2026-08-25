@@ -19,6 +19,37 @@ export type LinkedPlanState = {
 	blockers: string[];
 };
 
+export type PersistedPlanRoutingState = {
+	status?: string;
+	executionState?: string;
+	complete: boolean;
+	needsReconciliation: boolean;
+};
+
+function persistedValue(value: string): string {
+	return value.replace(/\s+#.*$/, "").trim().replace(/^(["'])(.*)\1$/, "$2").toLowerCase();
+}
+
+export function parsePersistedPlanRoutingState(content: string): PersistedPlanRoutingState {
+	const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	const status = frontmatter?.[1].match(/^status:\s*(\S.*)$/im)?.[1];
+	const execution = content.split("## Execution Status", 2)[1] ?? "";
+	const executionState = execution.match(/^\s*-\s+State:\s*(\S.*)$/im)?.[1];
+	const normalizedStatus = status === undefined ? undefined : persistedValue(status);
+	const normalizedExecutionState = executionState === undefined ? undefined : persistedValue(executionState);
+	const statusComplete = normalizedStatus === "complete" || normalizedStatus === "completed";
+	const executionComplete = normalizedExecutionState === "complete" || normalizedExecutionState === "completed";
+	return {
+		status: normalizedStatus,
+		executionState: normalizedExecutionState,
+		complete: normalizedStatus === undefined ? executionComplete : statusComplete,
+		needsReconciliation:
+			normalizedStatus !== undefined &&
+			normalizedExecutionState !== undefined &&
+			statusComplete !== executionComplete,
+	};
+}
+
 const TASK_PATTERN = /^\s*- \[([ xX])\]\s+\*\*([A-Za-z][A-Za-z0-9_-]*):\s*([^*]+)\*\*/;
 const STATE_PATTERN = /^\s*-\s+State:\s*(\S.*)$/i;
 const OPTIONAL_PATTERN = /^\s*-\s+(?:Required:\s*false|Optional:\s*true)\s*$/i;

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readLinkedPlan } from "./plan-state.js";
 
 const OWNERSHIP_VERSION = 1;
 
@@ -288,6 +289,70 @@ function removeOwnedResidualWorktree(ownership: WorkflowWorktreeOwnership): void
 	fs.rmSync(removablePath, { recursive: true, force: true });
 	if (fs.existsSync(residual))
 		throw new Error("remove workflow worktree residual directory failed");
+}
+
+export async function verifyAndCleanupWorkflowWorktree(input: {
+	worktree: WorkflowWorktree;
+	planPath?: string;
+	runner: WorkflowGitRunner;
+}): Promise<WorkflowWorktreeOwnership> {
+	const ownership = input.worktree.ownership;
+	if (ownership.state !== "active") throw new Error("workflow worktree is already complete");
+	if (!fs.existsSync(ownership.worktree)) throw new Error("workflow worktree is missing; recovery worktree preserved");
+	const planPath = input.planPath?.replace(/^@/, "").replace(/\\/g, "/");
+	if (ownership.planPath && planPath && ownership.planPath !== planPath)
+		throw new Error("workflow closeout plan path does not match ownership");
+	let expectedArchivedPlan: string | undefined;
+	if (planPath) {
+		const slug = workflowSlugFromPlan(planPath);
+		const source = path.join(ownership.worktree, planPath);
+		const archived = path.join(ownership.worktree, ".specs", "archive", slug, "plan.md");
+		if (fs.existsSync(source) || !fs.existsSync(archived))
+			throw new Error("completed plan was not archived in the workflow worktree; recovery worktree preserved");
+		const plan = readLinkedPlan(archived);
+		if (!plan.complete) throw new Error(`archived plan is not complete: ${plan.blockers.join("; ")}`);
+		expectedArchivedPlan = fs.readFileSync(archived, "utf8");
+	}
+	const status = await input.runner(ownership.worktree, ["status", "--porcelain=v1"]);
+	if (status.code !== 0) throw new Error(`inspect workflow worktree: ${status.stderr.trim()}`);
+	if (status.stdout.trim()) throw new Error("workflow worktree is not clean after model closeout; recovery worktree preserved");
+	const unmerged = await input.runner(ownership.worktree, ["diff", "--name-only", "--diff-filter=U"]);
+	if (unmerged.code !== 0 || unmerged.stdout.trim()) throw new Error("workflow worktree has unmerged paths; recovery worktree preserved");
+	const primary = await primaryState(ownership.primaryWorktree, input.runner);
+	if (primary.branch !== ownership.primaryBranch) throw new Error("primary branch changed; recovery worktree preserved");
+	const branchHead = parseLine(await input.runner(primary.worktree, ["rev-parse", ownership.branch]), "resolve workflow branch before closeout");
+	const merged = await input.runner(primary.worktree, ["merge-base", "--is-ancestor", ownership.branch, "HEAD"]);
+	if (merged.code !== 0) throw new Error("workflow branch is not merged into the primary branch; recovery worktree preserved");
+	const mergedHead = parseLine(await input.runner(primary.worktree, ["rev-parse", "HEAD"]), "verify merged HEAD");
+	const parents = parseLine(await input.runner(primary.worktree, ["rev-list", "--parents", "-n", "1", "HEAD"]), "verify merge commit").split(/\s+/).slice(1);
+	if (parents.length < 2 || !parents.includes(branchHead))
+		throw new Error("primary HEAD is not the required --no-ff merge of the workflow branch; recovery worktree preserved");
+	if (planPath && expectedArchivedPlan !== undefined) {
+		const slug = workflowSlugFromPlan(planPath);
+		const primarySource = path.join(ownership.primaryWorktree, planPath);
+		const primaryArchive = path.join(ownership.primaryWorktree, ".specs", "archive", slug, "plan.md");
+		if (fs.existsSync(primarySource) || !fs.existsSync(primaryArchive))
+			throw new Error("merged primary tree does not contain the required archived plan state; recovery worktree preserved");
+		if (fs.readFileSync(primaryArchive, "utf8") !== expectedArchivedPlan)
+			throw new Error("merged primary archive does not match the completed workflow plan; recovery worktree preserved");
+	}
+	let listed = await listWorktrees(primary.worktree, input.runner);
+	if (listed.some((entry) => normalize(entry.path) === normalize(ownership.worktree))) {
+		const removed = await input.runner(primary.worktree, ["worktree", "remove", ownership.worktree]);
+		listed = await listWorktrees(primary.worktree, input.runner);
+		if (listed.some((entry) => normalize(entry.path) === normalize(ownership.worktree)))
+			throw new Error(`remove workflow worktree after verified closeout: ${removed.stderr.trim() || removed.stdout.trim() || "worktree remains registered"}`);
+	}
+	removeOwnedResidualWorktree(ownership);
+	const branch = await input.runner(primary.worktree, ["show-ref", "--verify", "--quiet", `refs/heads/${ownership.branch}`]);
+	if (branch.code === 0) {
+		const deleted = await input.runner(primary.worktree, ["branch", "-d", ownership.branch]);
+		if (deleted.code !== 0) throw new Error(`remove workflow branch after verified closeout: ${deleted.stderr.trim() || deleted.stdout.trim()}`);
+	} else if (branch.code !== 1) {
+		throw new Error(`inspect workflow branch after verified closeout: ${branch.stderr.trim() || branch.stdout.trim()}`);
+	}
+	fs.rmSync(ownershipPath(ownership.repoRoot, path.basename(ownership.worktree)), { force: true });
+	return { ...ownership, state: "complete", closeoutStage: "merged", mergedHead };
 }
 
 export async function closeWorkflowWorktree(input: { worktree: WorkflowWorktree; planPath?: string; archivePlan?: (cwd: string, planPath: string) => Promise<void> | void; runner: WorkflowGitRunner }): Promise<WorkflowWorktreeOwnership> {

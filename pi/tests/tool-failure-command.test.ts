@@ -287,7 +287,26 @@ describe("find-fails command", () => {
 			"error",
 		);
 		expect(scopeAgentRun).not.toHaveBeenCalled();
-		expect(pi.sendMessage).not.toHaveBeenCalled();
+		expect(pi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow.recoverable-local-failure" }),
+		expect.objectContaining({ triggerTurn: true, deliverAs: "followUp" }),
+	);
+	});
+
+	it("does not start recovery after a non-TUI abort", async () => {
+		const pi = createMockPi();
+		const controller = new AbortController();
+		controller.abort();
+		const ctx = createMockCtx({ mode: "print", signal: controller.signal });
+		pi.exec.mockRejectedValueOnce(new Error("This operation was aborted"));
+		toolFailureTriageExtension(pi as never);
+
+		await commandHandler(pi)("", ctx);
+
+		expect(pi.sendMessage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow.recoverable-local-failure" }),
+			expect.anything(),
+		);
 	});
 
 	it("rejects an out-of-pool model result and starts no follow-up turn", async () => {
@@ -314,10 +333,11 @@ describe("find-fails command", () => {
 			expect.stringContaining("unknown candidate: unknown"),
 			"error",
 		);
-		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-		expect(pi.sendMessage.mock.calls.every((call) => call[1]?.triggerTurn === false)).toBe(
-			true,
-		);
+		expect(pi.sendMessage).toHaveBeenCalledTimes(2);
+		expect(pi.sendMessage.mock.calls[0]?.[1]?.triggerTurn).toBe(false);
+		expect(pi.sendMessage.mock.calls[1]?.[0]).toEqual(
+		expect.objectContaining({ customType: "workflow.recoverable-local-failure" }),
+	);
 	});
 
 	it("rejects unsupported arguments before starting work", async () => {
