@@ -252,17 +252,21 @@ describe("workflow worktree lifecycle", () => {
 		expect(git(root, ["rev-list", "--parents", "-n", "1", "HEAD"]).split(" ")).toHaveLength(3);
 	});
 
-	it("verifies model-managed commit and merge, then cleans only owned resources", async () => {
+	it("verifies model-managed commit and merge while preserving another untracked canonical plan", async () => {
 		const root = repo();
 		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner });
 		fs.writeFileSync(path.join(worktree.ownership.worktree, "result.txt"), "done\n");
 		git(worktree.ownership.worktree, ["add", "--", "result.txt"]);
 		git(worktree.ownership.worktree, ["commit", "-q", "-m", "feat: model closeout"]);
 		git(root, ["merge", "--no-ff", "workflow/fixture", "-m", "Merge workflow/fixture"]);
+		const otherPlan = path.join(root, ".specs", "other", "plan.md");
+		fs.mkdirSync(path.dirname(otherPlan), { recursive: true });
+		fs.writeFileSync(otherPlan, "other plan\n");
 		const completed = await verifyAndCleanupWorkflowWorktree({ worktree, runner });
 		expect(completed.state).toBe("complete");
 		expect(fs.existsSync(worktree.ownership.worktree)).toBe(false);
 		expect(fs.existsSync(path.join(root, ".worktrees", "fixture.workflow.json"))).toBe(false);
+		expect(fs.readFileSync(otherPlan, "utf8")).toBe("other plan\n");
 		expect(git(root, ["show", "HEAD:result.txt"])).toBe("done");
 	});
 
@@ -317,14 +321,18 @@ describe("workflow worktree lifecycle", () => {
 		expect(readWorkflowOwnershipRecord(root, "fixture")?.state).toBe("active");
 	});
 
-	it("commits, merges, verifies, and removes only the owned worktree", async () => {
+	it("commits, merges, and cleans up while preserving another untracked canonical plan", async () => {
 		const root = repo();
 		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner });
 		fs.writeFileSync(path.join(worktree.ownership.worktree, "result.txt"), "done\n");
+		const otherPlan = path.join(root, ".specs", "other", "plan.md");
+		fs.mkdirSync(path.dirname(otherPlan), { recursive: true });
+		fs.writeFileSync(otherPlan, "other plan\n");
 		const completed = await closeWorkflowWorktree({ worktree, runner });
 		expect(completed.state).toBe("complete");
 		expect(fs.existsSync(worktree.ownership.worktree)).toBe(false);
 		expect(fs.existsSync(path.join(root, ".worktrees", "fixture.workflow.json"))).toBe(false);
+		expect(fs.readFileSync(otherPlan, "utf8")).toBe("other plan\n");
 		expect(git(root, ["show", "HEAD:result.txt"])).toBe("done");
 		expect(git(root, ["branch", "--list", "workflow/fixture"])).toBe("");
 	});
