@@ -16,6 +16,7 @@ Evidence rules:
 - Treat the available session context, including any compaction summaries, as the source of truth for session scope.
 - Before drafting, inventory the distinct work phases in that context so earlier work is not displaced by recent activity.
 - Use Git status and history only to corroborate implementation and current state. Do not infer session scope from nearby commits.
+- Do not mention a plan, PRD, commit, or unrelated work merely because it appears in current Git status or recent history. Include it only when the active session context or supplied session evidence shows this session created, modified, reviewed, executed, or intentionally adopted it.
 - If compaction left insufficient detail, state that coverage is limited instead of reconstructing missing work from Git history.
 - Current repository state may update the final status, but it must not erase work completed earlier in the session.
 
