@@ -1,7 +1,7 @@
 # Onclave Integration
 
 - Ownership: `modules/onclave/` owns the protocol, core service, adapter implementation, and provider-neutral contracts. Dotfiles owns only the Pi loader and local integration.
-- Eligibility: initialize Onclave only in an eligible root Pi process. Subagents and nested worker processes do not register Onclave tools, reserve an identity, or become independent Onclave instances.
+- Eligibility: initialize Onclave unless `PI_SUBAGENT_RUN_ID` or `PI_SUBAGENT_TREE_RUN_ID` identifies the process as a Pi subagent. Do not add an Onclave-specific environment marker or root capability. Subagents do not register Onclave tools, reserve an identity, or become independent Onclave instances.
 - Availability: keep `onclave_instances` and `onclave_message` inactive until registration succeeds. Hide them immediately on disconnect and shutdown; connection state must match provider-visible capability.
 - Discovery: `onclave_instances` lists independently registered live instances. Pi-local subagents are not peers.
 - Messages: use the flat `ask`, `request`, and `inform` schema. `ask` waits once for a direct result, `request` publishes tracked asynchronous work, and `inform` remains inert and does not trigger a turn.

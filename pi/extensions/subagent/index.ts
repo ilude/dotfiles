@@ -2027,7 +2027,6 @@ export async function runSingleAgent(
 			const childEnv: NodeJS.ProcessEnv = {
 				...process.env,
 				PI_CODING_AGENT_DIR: getAgentDir(),
-				ONCLAVE_PI_SUBAGENT_INELIGIBLE: "1",
 				TRACEPARENT: buildSubagentTraceparent(),
 				PI_SUBAGENT_RUN_ID: runId,
 				...(taskId ? { PI_SUBAGENT_TASK_ID: taskId } : {}),
@@ -2056,7 +2055,6 @@ export async function runSingleAgent(
 					? {}
 					: { PI_SUBAGENT_MAX_WORKERS: String(runContext.maxWorkers) }),
 			};
-			delete childEnv.ONCLAVE_PI_ROOT_CAPABILITY;
 			const childEnvironment = {
 				...childEnv,
 				...(runContext?.treeClient && treePermit

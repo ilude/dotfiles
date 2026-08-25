@@ -280,7 +280,7 @@ pi --no-extensions
 pi -e ~/.dotfiles/pi/extensions/damage-control.ts
 ```
 
-The Onclave extension uses the broker-backed adapter in `modules/onclave/extensions/onclave-pi/`. The zsh and PowerShell profiles provision a fresh process-local `ONCLAVE_PI_ROOT_CAPABILITY` only for an unmarked interactive root shell. Pi child launch strips that capability and sets `PI_SUBAGENT_RUN_ID`, `PI_SUBAGENT_TREE_RUN_ID`, or `ONCLAVE_PI_SUBAGENT_INELIGIBLE`, so recognized child shells do not provision authority from profile startup. The `pi` shell wrapper does not provision authority, so a marker-scrubbed nested invocation in the existing shell cannot regain it either. The adapter does not load in recognized Pi children. The loader in `pi/extensions/onclave-pi.ts` contains no adapter implementation.
+The Onclave extension uses the broker-backed adapter in `modules/onclave/extensions/onclave-pi/`. The adapter does not load in Pi subagents identified by `PI_SUBAGENT_RUN_ID` or `PI_SUBAGENT_TREE_RUN_ID`. Normal Pi processes need no Onclave-specific environment setup. The loader in `pi/extensions/onclave-pi.ts` contains no adapter implementation.
 
 ---
 
