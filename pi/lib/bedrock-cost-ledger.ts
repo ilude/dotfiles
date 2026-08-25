@@ -202,17 +202,64 @@ export async function recordBedrockUsage(
 	month.models[key] = totals;
 	addUsage(totals, normalized);
 	await writeLedgerAtomic(filePath, ledger);
+	cacheMonthSummary(filePath, normalized.month, summarizeMonth(ledger, normalized.month));
 	return ledger;
+}
+
+const SUMMARY_CACHE_KEY = Symbol.for("dotfiles.pi.bedrock-summary-cache.v1");
+type SummaryCache = Map<string, Promise<BedrockMonthSummary>>;
+
+function summaryCache(): SummaryCache {
+	const root = globalThis as typeof globalThis & {
+		[SUMMARY_CACHE_KEY]?: SummaryCache;
+	};
+	const existing = root[SUMMARY_CACHE_KEY];
+	if (existing) return existing;
+	const created: SummaryCache = new Map();
+	root[SUMMARY_CACHE_KEY] = created;
+	return created;
+}
+
+function summaryCacheKey(filePath: string, month: string): string {
+	return `${filePath}\0${month}`;
+}
+
+function cacheMonthSummary(
+	filePath: string,
+	month: string,
+	summary: BedrockMonthSummary,
+): void {
+	summaryCache().set(summaryCacheKey(filePath, month), Promise.resolve(summary));
+}
+
+export function invalidateBedrockSummaryCache(
+	options: BedrockCostLedgerOptions = {},
+	date: Date = new Date(),
+): void {
+	summaryCache().delete(
+		summaryCacheKey(getBedrockCostLedgerPath(options), currentMonthKey(date)),
+	);
 }
 
 export async function getCurrentBedrockMonthSummary(
 	options: BedrockCostLedgerOptions = {},
 	date: Date = new Date(),
 ): Promise<BedrockMonthSummary> {
-	return summarizeMonth(
-		await readBedrockCostLedger(options),
-		currentMonthKey(date),
-	);
+	const filePath = getBedrockCostLedgerPath(options);
+	const month = currentMonthKey(date);
+	const key = summaryCacheKey(filePath, month);
+	const cache = summaryCache();
+	let pending = cache.get(key);
+	if (!pending) {
+		pending = readBedrockCostLedger(options).then((ledger) =>
+			summarizeMonth(ledger, month),
+		);
+		cache.set(key, pending);
+		void pending.catch(() => {
+			if (cache.get(key) === pending) cache.delete(key);
+		});
+	}
+	return pending;
 }
 
 function emptyLedger(): BedrockCostLedger {

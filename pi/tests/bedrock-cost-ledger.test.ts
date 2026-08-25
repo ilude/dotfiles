@@ -214,6 +214,27 @@ describe("recordBedrockUsage", () => {
 });
 
 describe("getCurrentBedrockMonthSummary", () => {
+	it("reuses the cached summary and refreshes it after recording usage", async () => {
+		const filePath = path.join(tmpRoot, "cached-summary.json");
+		const date = new Date(2026, 5, 15);
+		const empty = await getCurrentBedrockMonthSummary({ filePath }, date);
+		expect(await getCurrentBedrockMonthSummary({ filePath }, date)).toBe(empty);
+
+		await recordBedrockUsage(
+			{
+				model: "anthropic.claude-1",
+				usage: { input: 10, output: 5, cost: { total: 0.01 } },
+				date,
+			},
+			{ filePath },
+		);
+
+		const refreshed = await getCurrentBedrockMonthSummary({ filePath }, date);
+		expect(refreshed).not.toBe(empty);
+		expect(refreshed.requestCount).toBe(1);
+		expect(await getCurrentBedrockMonthSummary({ filePath }, date)).toBe(refreshed);
+	});
+
 	it("summarizes the selected month from isolated storage", async () => {
 		const filePath = path.join(tmpRoot, "month-summary.json");
 		await recordBedrockUsage(
