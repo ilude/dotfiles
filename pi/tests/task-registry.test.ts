@@ -217,6 +217,45 @@ describe("transitionTask", () => {
 		);
 	});
 
+	it("reports attempted and allowed transition states", () => {
+		const task = createTask({ origin: "subagent", summary: "x" });
+		try {
+			transitionTask(task.id, "completed");
+		} catch (error) {
+			expect(String(error)).toContain(`invalid transition for ${task.id}`);
+			expect(String(error)).toContain("unassigned -> completed");
+			expect(String(error)).toContain("allowed:");
+			expect(String(error)).toContain("attempted state: completed");
+		}
+	});
+
+	it("reports outcome bounds without rendering bounded content", () => {
+		const task = createTask({ origin: "subagent", summary: "x" });
+		transitionTask(task.id, "assigned");
+		const secret = "do-not-render-this";
+		expect(() =>
+			transitionTask(task.id, "completed", {
+				outcome: { summary: "x", evidence: Array.from({ length: 9 }, (_, index) => `${index}-${secret}`) },
+			}),
+		).toThrow(/outcome\.evidence exceeds its bounds: count 9, maximum 8, offending index 8/);
+		try {
+			transitionTask(task.id, "completed", {
+				outcome: { summary: "x", evidence: Array.from({ length: 9 }, (_, index) => `${index}-${secret}`) },
+			});
+		} catch (error) {
+			expect(String(error)).not.toContain(secret);
+		}
+		const oversized = `${secret}${"x".repeat(2000)}`;
+		try {
+			transitionTask(task.id, "completed", {
+				outcome: { summary: "x", evidence: [oversized] },
+			});
+		} catch (error) {
+			expect(String(error)).toContain(`offending length ${oversized.length}, item maximum 2000`);
+			expect(String(error)).not.toContain(secret);
+		}
+	});
+
 	it("rejects a no-op transition to the same state", () => {
 		const task = createTask({ origin: "subagent", summary: "x" });
 		expect(() => transitionTask(task.id, "unassigned")).toThrow(

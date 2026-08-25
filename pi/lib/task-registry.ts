@@ -496,15 +496,21 @@ function assertDependencyGraphIsAcyclic(
 	nodes: ReadonlyMap<string, TaskDependencyCandidate>,
 ): void {
 	const visiting = new Set<string>();
+	const visitingPath: string[] = [];
 	const visited = new Set<string>();
 	const visit = (id: string): void => {
 		if (visited.has(id)) return;
-		if (visiting.has(id))
-			throw new TaskRegistryError("dependency cycle rejected");
+		if (visiting.has(id)) {
+			const cycleStart = visitingPath.indexOf(id);
+			const members = visitingPath.slice(cycleStart >= 0 ? cycleStart : 0);
+			throw new TaskRegistryError(`dependency cycle rejected: ${members.join(", ")}`);
+		}
 		visiting.add(id);
+		visitingPath.push(id);
 		for (const blocker of normalizedDependencyIds(nodes.get(id)?.blockedBy))
 			visit(blocker);
 		visiting.delete(id);
+		visitingPath.pop();
 		visited.add(id);
 	};
 	for (const id of candidateIds) visit(id);
@@ -806,14 +812,16 @@ function normalizeTaskOutcome(outcome: TaskOutcome, recordedAt?: string): TaskOu
 	if (!normalized.evidence.length || normalized.evidence.some((item) => !item))
 		throw new TaskRegistryError("completed tasks require outcome.evidence");
 	if (normalized.summary.length > TASK_OUTCOME_SUMMARY_MAX_LENGTH)
-		throw new TaskRegistryError(`outcome.summary must be at most ${TASK_OUTCOME_SUMMARY_MAX_LENGTH} characters`);
-	if (normalized.evidence.length > TASK_OUTCOME_MAX_EVIDENCE_ITEMS || normalized.evidence.some((item) => item.length > TASK_OUTCOME_EVIDENCE_MAX_LENGTH))
-		throw new TaskRegistryError("outcome.evidence exceeds its bounds");
+		throw new TaskRegistryError(`outcome.summary exceeds its bound: length ${normalized.summary.length}, maximum ${TASK_OUTCOME_SUMMARY_MAX_LENGTH}`);
+	const evidenceIndex = normalized.evidence.findIndex((item) => item.length > TASK_OUTCOME_EVIDENCE_MAX_LENGTH);
+	if (normalized.evidence.length > TASK_OUTCOME_MAX_EVIDENCE_ITEMS || evidenceIndex >= 0)
+		throw new TaskRegistryError(`outcome.evidence exceeds its bounds: count ${normalized.evidence.length}, maximum ${TASK_OUTCOME_MAX_EVIDENCE_ITEMS}, offending index ${evidenceIndex >= 0 ? evidenceIndex : normalized.evidence.length - 1}${evidenceIndex < 0 ? "" : `, offending length ${normalized.evidence[evidenceIndex]?.length}, item maximum ${TASK_OUTCOME_EVIDENCE_MAX_LENGTH}`}`);
 	for (const [field, maxItems, maxLength] of [["validation", TASK_OUTCOME_MAX_VALIDATION_ITEMS, TASK_OUTCOME_VALIDATION_MAX_LENGTH], ["gaps", TASK_OUTCOME_MAX_GAPS_ITEMS, TASK_OUTCOME_GAPS_MAX_LENGTH]] as const) {
 		const value = outcome[field] === undefined ? undefined : Array.isArray(outcome[field]) ? outcome[field] : [outcome[field] as unknown as string];
 		if (value === undefined) continue;
-		if (value.length > maxItems || value.some((item) => !item || item.length > maxLength))
-			throw new TaskRegistryError(`outcome.${field} exceeds its bounds`);
+		const offendingIndex = value.findIndex((item) => !item || item.length > maxLength);
+		if (value.length > maxItems || offendingIndex >= 0)
+			throw new TaskRegistryError(`outcome.${field} exceeds its bounds: count ${value.length}, maximum ${maxItems}, offending index ${offendingIndex >= 0 ? offendingIndex : value.length - 1}${offendingIndex < 0 ? "" : `, offending length ${value[offendingIndex]?.length}, item maximum ${maxLength}`}`);
 		normalized[field] = value.map((item) => item.trim());
 	}
 	return normalized;
@@ -875,7 +883,7 @@ function transitionTaskInTransaction(
 	if (existing.state === normalizedTarget) return updateSameStateTask(existing, normalizedTarget, opts, db);
 	if (!isAllowedTransition(existing.state, normalizedTarget)) {
 		const allowed = [...(ALLOWED_TRANSITIONS.get(existing.state) ?? [])].join(", ") || "(none)";
-		throw new TaskRegistryError(`invalid transition for ${id}: ${existing.state} -> ${normalizedTarget} (allowed: ${allowed})`);
+		throw new TaskRegistryError(`invalid transition for ${id}: ${existing.state} -> ${normalizedTarget} (allowed: ${allowed}; current state: ${existing.state}; attempted state: ${normalizedTarget})`);
 	}
 	const now = new Date().toISOString();
 	const next = sanitizeTaskValue({ ...existing, state: normalizedTarget, updatedAt: now }) as TaskRecordV1;

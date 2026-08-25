@@ -894,6 +894,13 @@ function matchesAffinityIdentity(
 	);
 }
 
+function affinityRejection(affinityTaskId: string, candidateCount: number, reason: string): AffinityResolution {
+	return {
+		outcome: "rejected",
+		reason: `affinityTaskId=${affinityTaskId}; bounded eligible candidate count=${Math.min(candidateCount, 8)}; ${reason}`,
+	};
+}
+
 export function resolveTaskSessionAffinity(
 	runs: ReadonlyArray<SubagentRunSnapshot>,
 	affinityTaskId: string,
@@ -907,7 +914,7 @@ export function resolveTaskSessionAffinity(
 		(run) => run.taskId === affinityTaskId && matchesAffinityIdentity(run, identity),
 	);
 	if (references.length === 0)
-		return { outcome: "rejected", reason: "no eligible settled Luna session found" };
+		return affinityRejection(affinityTaskId, references.length, "no eligible settled Luna session found");
 	const latestReferenceOrder = Math.max(
 		...references.map((run) => run.settlementOrder as number),
 	);
@@ -917,7 +924,7 @@ export function resolveTaskSessionAffinity(
 			.map((run) => canonicalizeSavedSessionPath(run.sessionPath as string)),
 	);
 	if (referenceSessions.size !== 1)
-		return { outcome: "rejected", reason: "ambiguous eligible sessions" };
+		return affinityRejection(affinityTaskId, referenceSessions.size, "ambiguous eligible sessions");
 	const sessionKey = [...referenceSessions][0] as string;
 	const generations = runs.filter(
 		(run) =>
@@ -925,13 +932,13 @@ export function resolveTaskSessionAffinity(
 			canonicalizeSavedSessionPath(run.sessionPath as string) === sessionKey,
 	);
 	if (generations.length === 0)
-		return { outcome: "rejected", reason: "no eligible settled Luna session found" };
+		return affinityRejection(affinityTaskId, generations.length, "no eligible settled Luna session found");
 	const latestOrder = Math.max(
 		...generations.map((run) => run.settlementOrder as number),
 	);
 	const latest = generations.filter((run) => run.settlementOrder === latestOrder);
 	if (latest.length !== 1)
-		return { outcome: "rejected", reason: "ambiguous eligible sessions" };
+		return affinityRejection(affinityTaskId, latest.length, "ambiguous eligible sessions");
 	return { outcome: "resolved", run: latest[0] as SubagentRunSnapshot };
 }
 

@@ -155,7 +155,7 @@ export function normalizeRepositoryScopes(
 		);
 		if (!isInsideRepository(canonicalScope, canonicalRoot)) {
 			throw new ScopeContainmentError(
-				`Modification scope escapes the repository through a symlink or junction: ${scope}`,
+				`Modification scope escapes the repository through a symlink or junction: ${scope} (repository root: ${canonicalRoot}; supplied scope: ${scope}; resolved target: ${canonicalScope})`,
 			);
 		}
 		normalized.add(repositoryRelativePath(canonicalScope, canonicalRoot));
@@ -305,13 +305,13 @@ export function directMutationViolation(
 		} catch (error) {
 			return `Direct file mutation target cannot be canonicalized: ${
 				error instanceof Error ? error.message : String(error)
-			}`;
+			} (repository root: ${canonicalPolicy.repositoryRoot}; supplied scope: ${policy.scopes.join(", ")}; resolved target: <unresolved>)`;
 		}
 		if (
 			!isInsideRepository(canonicalTarget, canonicalPolicy.repositoryRoot) ||
 			!isPathInsideScope(canonicalTarget, canonicalPolicy)
 		)
-			return `Direct file mutation is outside the assigned scope: ${target}`;
+			return `Direct file mutation is outside the assigned scope: ${target} (repository root: ${canonicalPolicy.repositoryRoot}; supplied scope: ${policy.scopes.join(", ")}; resolved target: ${canonicalTarget})`;
 	}
 	return undefined;
 }

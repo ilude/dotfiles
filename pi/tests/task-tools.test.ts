@@ -697,6 +697,19 @@ describe("task tools", () => {
 		});
 		const before = getTask(task.id);
 
+		const missing = await tool?.execute(
+			"missing-get",
+			{ action: "get", id: "missing-task" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(missing.details).toMatchObject({
+			outcome: "not_found",
+			error: expect.stringContaining(`task not found in current workspace`),
+		});
+		expect(missing.details.error).toContain(resolveTaskWorkspace(tmpRoot));
+
 		const oversizedNotes = await tool?.execute(
 			"oversized-notes",
 			{
@@ -726,6 +739,42 @@ describe("task tools", () => {
 		);
 		expect(invalidBlockers.details.outcome).toBe("rejected");
 		expect(getTask(task.id)).toEqual(before);
+
+		transitionTask(task.id, "assigned");
+		const boundedOutcome = await tool?.execute(
+			"bounded-outcome",
+			{
+				action: "update",
+				id: task.id,
+				state: "completed",
+				outcome: {
+					summary: "done",
+					evidence: Array.from({ length: 9 }, (_, index) => `${index}-private`),
+				},
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(boundedOutcome.details.outcome).toBe("rejected");
+		expect(boundedOutcome.details.error).toMatch(/outcome\.evidence exceeds its bound: count 9, maximum 8, offending index 8/);
+		expect(boundedOutcome.details.error).not.toContain("private");
+
+		const oversizedItem = `private-${"x".repeat(2000)}`;
+		const oversizedOutcome = await tool?.execute(
+			"oversized-outcome-item",
+			{
+				action: "update",
+				id: task.id,
+				state: "completed",
+				outcome: { summary: "done", evidence: [oversizedItem] },
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(oversizedOutcome.details.error).toContain(`offending length ${oversizedItem.length}, item maximum 2000`);
+		expect(oversizedOutcome.details.error).not.toContain("private");
 	});
 
 	it("rejects blocked starts through update without applying the patch", async () => {

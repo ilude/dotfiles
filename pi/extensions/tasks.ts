@@ -463,7 +463,7 @@ function validatedOutcome(value: unknown): TaskOutcome | undefined {
 	const requiredText = (field: "summary"): string => {
 		if (typeof input[field] !== "string" || !(input[field] as string).trim()) throw new Error(`outcome.${field} is required`);
 		const result = (input[field] as string).trim();
-		if (result.length > TASK_OUTCOME_SUMMARY_MAX_LENGTH) throw new Error(`outcome.${field} exceeds its bound`);
+		if (result.length > TASK_OUTCOME_SUMMARY_MAX_LENGTH) throw new Error(`outcome.${field} exceeds its bound: length ${result.length}, maximum ${TASK_OUTCOME_SUMMARY_MAX_LENGTH}`);
 		return result;
 	};
 	const array = (field: "evidence" | "validation" | "gaps", maxItems: number, maxLength: number, required: boolean): string[] | undefined => {
@@ -474,7 +474,11 @@ function validatedOutcome(value: unknown): TaskOutcome | undefined {
 		if (!Array.isArray(input[field])) throw new Error(`outcome.${field} must be an array`);
 		const values = input[field] as unknown[];
 		if (required && values.length === 0) throw new Error(`outcome.${field} is required`);
-		if (values.length > maxItems || values.some((item) => typeof item !== "string" || !(item as string).trim() || (item as string).trim().length > maxLength)) throw new Error(`outcome.${field} exceeds its bound`);
+		const offendingIndex = values.findIndex((item) => typeof item !== "string" || !(item as string).trim() || (item as string).trim().length > maxLength);
+		const offendingLength = offendingIndex >= 0 && typeof values[offendingIndex] === "string"
+			? (values[offendingIndex] as string).trim().length
+			: undefined;
+		if (values.length > maxItems || offendingIndex >= 0) throw new Error(`outcome.${field} exceeds its bound: count ${values.length}, maximum ${maxItems}, offending index ${offendingIndex >= 0 ? offendingIndex : values.length - 1}${offendingLength === undefined ? "" : `, offending length ${offendingLength}, item maximum ${maxLength}`}`);
 		return values.map((item) => (item as string).trim());
 	};
 	return {
@@ -1053,6 +1057,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				return toolResult({
 					outcome: visible ? "persisted" : "not_found",
 					record: visible,
+					...(visible ? {} : { error: `task not found in current workspace: ${id} (workspace: ${workspace})` }),
 				});
 			}
 			if (action === "remove") {
@@ -1134,7 +1139,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 					)
 						return toolResult({
 							outcome: "rejected",
-							error: `invalid transition for ${id}: ${existing.state} -> ${input.state}`,
+							error: `invalid transition for ${id}: ${existing.state} -> ${input.state} (allowed: ${[...TASK_STATES.filter((state) => isAllowedTransition(existing.state, state))].join(", ") || "(none)"})`,
 						});
 					if (target === "assigned") {
 						const candidate = {
