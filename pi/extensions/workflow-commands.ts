@@ -72,7 +72,10 @@ import {
 import { scanSecrets } from "../lib/secret-scan";
 import { SLASH_COMMAND_ECHO_TYPE } from "../lib/slash-command-echo.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent";
-import { createCommitCommandExecutor } from "../lib/workflow-commands/commit-orchestration";
+import {
+	createCommitCommandExecutor,
+	formatCommitWorkflowFailure,
+} from "../lib/workflow-commands/commit-orchestration";
 import {
 	buildCommitPlanningPrompt,
 	buildSecretReviewPrompt,
@@ -2078,7 +2081,12 @@ async function pushCurrentBranchAsync(
 	activity?: CommitActivity,
 	signal?: AbortSignal,
 ) {
-	const pushResult = await runGitAsync(cwd, ["push"], activity, signal);
+	const pushResult = await runGitAsync(
+		cwd,
+		["push", "--recurse-submodules=on-demand"],
+		activity,
+		signal,
+	);
 	if (pushResult.code !== 0)
 		throw new Error(
 			(pushResult.stderr || pushResult.stdout).trim() || "git push failed",
@@ -2756,10 +2764,7 @@ export default function (pi: ExtensionAPI) {
 				}
 				await commitPromise;
 			} catch (err) {
-				ctx.ui.notify(
-					`Commit failed: ${err instanceof Error ? err.message : String(err)}`,
-					"error",
-				);
+				ctx.ui.notify(formatCommitWorkflowFailure(err), "error");
 			}
 		},
 	});

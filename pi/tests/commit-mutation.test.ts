@@ -26,6 +26,10 @@ import {
 	SECRET_PATTERNS,
 } from "../extensions/workflow-commands.ts";
 import { timingSafeTokenEqual } from "../lib/commit/token.ts";
+import {
+	CommitWorkflowError,
+	formatCommitWorkflowFailure,
+} from "../lib/workflow-commands/commit-orchestration.ts";
 import { initializeGitRepository } from "./helpers/git-fixture.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -244,6 +248,70 @@ describe("commit mutation safety", () => {
 			run(checkout, ["rev-parse", "HEAD"]).trim(),
 		);
 	}, REAL_GIT_TEST_TIMEOUT_MS);
+
+	it("pushes a clean submodule commit referenced by an earlier local parent commit", async () => {
+		const child = repo();
+		writeFileSync(join(child, "child.txt"), "base\n");
+		run(child, ["add", "--", "child.txt"]);
+		run(child, ["commit", "-m", "chore: seed child"]);
+		const childBranch = run(child, ["branch", "--show-current"]).trim();
+		const childRemote = bareRepo();
+		run(child, ["remote", "add", "origin", childRemote]);
+		run(child, ["push", "-u", "origin", childBranch]);
+		run(childRemote, ["symbolic-ref", "HEAD", `refs/heads/${childBranch}`]);
+
+		const parent = repo();
+		writeFileSync(join(parent, "parent.txt"), "base\n");
+		run(parent, ["add", "--", "parent.txt"]);
+		run(parent, ["commit", "-m", "chore: seed parent"]);
+		run(parent, [
+			"-c",
+			"protocol.file.allow=always",
+			"submodule",
+			"add",
+			childRemote,
+			"module",
+		]);
+		run(parent, ["commit", "-m", "chore: add module"]);
+		const parentBranch = run(parent, ["branch", "--show-current"]).trim();
+		const parentRemote = bareRepo();
+		run(parent, ["remote", "add", "origin", parentRemote]);
+		run(parent, ["push", "-u", "origin", parentBranch]);
+
+		const checkout = join(parent, "module");
+		run(checkout, ["config", "user.email", "pi@example.invalid"]);
+		run(checkout, ["config", "user.name", "Pi Test"]);
+		writeFileSync(join(checkout, "child.txt"), "unpushed\n");
+		run(checkout, ["add", "--", "child.txt"]);
+		run(checkout, ["commit", "-m", "fix: advance module"]);
+		run(parent, ["add", "--", "module"]);
+		run(parent, ["commit", "-m", "fix: advance module pointer"]);
+		writeFileSync(join(parent, "parent.txt"), "next\n");
+		run(parent, ["config", "push.recurseSubmodules", "check"]);
+
+		const pi = createMockPi();
+		const ctx = createMockCtx({ cwd: parent });
+		await executeCommitCommand(pi as never, "push", ctx as never);
+
+		expect(run(childRemote, ["rev-parse", `refs/heads/${childBranch}`]).trim()).toBe(
+			run(checkout, ["rev-parse", "HEAD"]).trim(),
+		);
+		expect(run(parentRemote, ["rev-parse", `refs/heads/${parentBranch}`]).trim()).toBe(
+			run(parent, ["rev-parse", "HEAD"]).trim(),
+		);
+	}, REAL_GIT_TEST_TIMEOUT_MS);
+
+	it("labels push failures and identifies commits already created", () => {
+		expect(
+			formatCommitWorkflowFailure(
+				new CommitWorkflowError("Push", "remote rejected update", [
+					"abc1234 fix(pi): preserve commit",
+				]),
+			),
+		).toBe(
+			"Push failed after creating abc1234 fix(pi): preserve commit: remote rejected update",
+		);
+	});
 
 	it.each([
 		"nothing to commit, working tree clean",

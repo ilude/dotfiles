@@ -195,6 +195,28 @@ export interface ExecuteCommitCommandOptions {
 	skipSubmoduleDiscovery?: boolean;
 }
 
+export class CommitWorkflowError extends Error {
+	constructor(
+		readonly phase: "Commit" | "Push",
+		message: string,
+		readonly createdCommits: readonly string[] = [],
+	) {
+		super(message);
+		this.name = "CommitWorkflowError";
+	}
+}
+
+export function formatCommitWorkflowFailure(error: unknown): string {
+	if (!(error instanceof CommitWorkflowError)) {
+		return `Commit failed: ${error instanceof Error ? error.message : String(error)}`;
+	}
+	const created =
+		error.phase === "Push" && error.createdCommits.length > 0
+			? ` after creating ${error.createdCommits.join(", ")}`
+			: "";
+	return `${error.phase} failed${created}: ${error.message}`;
+}
+
 export function createCommitCommandExecutor(
 	dependencies: CommitOrchestrationDependencies,
 ) {
@@ -366,6 +388,8 @@ export function createCommitCommandExecutor(
 		const activity = dependencies.createCommitActivity(pi, ctx, commandText);
 		ctx.ui.notify(`Starting ${commandText}...`, "info");
 		activity.setPhase("preparing");
+		const commitSummaries: string[] = [];
+		let failurePhase: "Commit" | "Push" = "Commit";
 		try {
 			if (ctx.signal?.aborted) throw new Error("Operation cancelled");
 			const inspection = await inspectGitStateAsync(
@@ -452,7 +476,6 @@ export function createCommitCommandExecutor(
 			)) {
 				activity.logInfo(warning);
 			}
-			const commitSummaries: string[] = [];
 			const firstGroupFiles = new Set(plan.groups[0]?.files ?? []);
 			const stagedOutsideFirstGroup = prepared.stagedFiles.filter(
 				(file) => !firstGroupFiles.has(file),
@@ -543,6 +566,7 @@ export function createCommitCommandExecutor(
 				}
 			}
 			if (prepared.parsedArgs.push) {
+				failurePhase = "Push";
 				activity.setPhase("pushing");
 				await dependencies.pushCurrentBranchAsync(
 					ctx.cwd,
@@ -559,9 +583,13 @@ export function createCommitCommandExecutor(
 				rawMessage.length <= 2000
 					? rawMessage
 					: `${rawMessage.slice(0, 1978)}\n... details truncated`;
-			activity.logInfo(`Commit failed: ${message}`);
+			const workflowError =
+				error instanceof CommitWorkflowError
+					? error
+					: new CommitWorkflowError(failurePhase, message, commitSummaries);
+			activity.logInfo(formatCommitWorkflowFailure(workflowError));
 			activity.finish();
-			throw new Error(message);
+			throw workflowError;
 		}
 	}
 
