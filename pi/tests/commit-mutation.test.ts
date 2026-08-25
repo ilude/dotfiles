@@ -483,6 +483,23 @@ describe("stageFiles -- ignored paths and exact staging", () => {
 		expect(staged).toEqual([...files].sort());
 	});
 
+	it("finishes staging a rename whose move is already staged", () => {
+		const dir = repo();
+		writeFileSync(join(dir, "old.txt"), "before\n");
+		run(dir, ["add", "--", "old.txt"]);
+		run(dir, ["commit", "-m", "chore: seed file"]);
+		run(dir, ["mv", "old.txt", "new.txt"]);
+		writeFileSync(join(dir, "new.txt"), "after\n");
+
+		expect(() => stageFiles(dir, ["old.txt", "new.txt"])).not.toThrow();
+
+		expect(run(dir, ["diff", "--name-only"]).trim()).toBe("");
+		expect(run(dir, ["show", ":new.txt"]).trim()).toBe("after");
+		expect(
+			run(dir, ["diff", "--cached", "--name-status", "--find-renames"]),
+		).toContain("old.txt");
+	});
+
 	it("stages an exact deletion without staging adjacent changes", () => {
 		const dir = repo();
 		writeFileSync(join(dir, "delete.txt"), "delete\n");

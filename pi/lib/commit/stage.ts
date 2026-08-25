@@ -49,12 +49,42 @@ function exactStageFailure(result: GitResult): Error {
 	);
 }
 
+export function stagedRenameSources(output: string): Set<string> {
+	const records = output.split("\0").filter(Boolean);
+	const sources = new Set<string>();
+	for (let index = 0; index < records.length; index += 1) {
+		if (!/^R\d+$/.test(records[index] ?? "")) continue;
+		const source = records[index + 1];
+		if (source) sources.add(source.replace(/\\/g, "/"));
+		index += 2;
+	}
+	return sources;
+}
+
+function pathsExcludingStagedRenameSources(
+	paths: string[],
+	result: GitResult,
+): string[] {
+	if (result.code !== 0) throw exactStageFailure(result);
+	const sources = stagedRenameSources(result.stdout);
+	return paths.filter((file) => !sources.has(file));
+}
+
 export function stageExactPathsWithRunner(
 	cwd: string,
 	paths: string[],
 	runner: (cwd: string, args: string[]) => GitResult = git,
 ): string[] {
-	const plan = buildStagingPlan({ files: paths });
+	const renameStatus = runner(cwd, [
+		"diff",
+		"--cached",
+		"--name-status",
+		"-z",
+		"--find-renames",
+	]);
+	const plan = buildStagingPlan({
+		files: pathsExcludingStagedRenameSources(paths, renameStatus),
+	});
 	const staged = plan.addArgs.slice(3);
 	if (staged.length === 0) return [];
 	const result = runner(cwd, plan.addArgs);
@@ -68,7 +98,14 @@ export async function stageExactPathsAsync(
 	runner: GitAsyncRunner,
 	signal?: AbortSignal,
 ): Promise<string[]> {
-	const plan = buildStagingPlan({ files: paths });
+	const renameStatus = await runner(
+		cwd,
+		["diff", "--cached", "--name-status", "-z", "--find-renames"],
+		signal,
+	);
+	const plan = buildStagingPlan({
+		files: pathsExcludingStagedRenameSources(paths, renameStatus),
+	});
 	const staged = plan.addArgs.slice(3);
 	if (staged.length === 0) return [];
 	const result = await runner(cwd, plan.addArgs, signal);
