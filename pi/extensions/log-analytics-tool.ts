@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import { Type } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
@@ -112,8 +113,12 @@ export default function logAnalyticsTool(pi: ExtensionAPI): void {
 			_onUpdate,
 			_ctx: ExtensionContext,
 		) {
-			const root = process.env.PI_ANALYTICS_SOURCE_ROOT ?? getAgentDir();
-			const database = defaultAnalyticsDatabase(getAgentDir());
+			const root = await fs.realpath(
+				process.env.PI_ANALYTICS_SOURCE_ROOT ?? getAgentDir(),
+			);
+			const database = defaultAnalyticsDatabase(
+				await fs.realpath(getAgentDir()),
+			);
 			if (params.operation === "catalog") {
 				const catalog = { sources: analyticsCatalog() };
 				return {
