@@ -11,6 +11,7 @@ import {
 	buildSubagentInterventionEvent,
 	readOrchestrationEvents,
 } from "../lib/orchestration-telemetry.js";
+import { runCorrelation } from "../lib/log-analytics/correlation.ts";
 
 let tmpRoot: string;
 
@@ -77,6 +78,54 @@ describe("orchestration telemetry builders", () => {
 				outcomeCode: "blocked",
 			} as never),
 		).toBeNull();
+	});
+
+	it("propagates exact orchestration fields and isolates parallel child joins", async () => {
+		const events = await Promise.all(
+			["one", "two"].map((suffix) =>
+				runCorrelation(
+					{
+						runtime_instance_id: "runtime-test",
+						session_id: `session-${suffix}`,
+						turn_id: `turn-${suffix}`,
+						trace_id: `trace-${suffix}`,
+						interaction_id: `interaction-${suffix}`,
+					},
+					async () =>
+						buildOrchestrationRunEvent({
+							...runInput(),
+							orchestrationId: `orchestration-${suffix}`,
+							parentSessionId: `session-${suffix}`,
+							interactionId: `interaction-${suffix}`,
+							workers: [
+								{
+									...runInput().workers[0],
+									runId: `run-${suffix}`,
+									taskId: `task-${suffix}`,
+								},
+							],
+						}),
+				),
+			),
+		);
+		expect(events.map((event) => event?.correlation)).toEqual([
+			expect.objectContaining({
+				runtime_instance_id: "runtime-test",
+				session_id: "session-one",
+				turn_id: "turn-one",
+				trace_id: "trace-one",
+				interaction_id: "interaction-one",
+				orchestration_id: "orchestration-one",
+			}),
+			expect.objectContaining({
+				runtime_instance_id: "runtime-test",
+				session_id: "session-two",
+				turn_id: "turn-two",
+				trace_id: "trace-two",
+				interaction_id: "interaction-two",
+				orchestration_id: "orchestration-two",
+			}),
+		]);
 	});
 
 	it("builds closed run events and derives bytes not returned inline", () => {

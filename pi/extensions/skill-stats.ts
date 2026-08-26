@@ -5,12 +5,8 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import {
-	enumerateJsonlFiles,
-	readJsonlFile,
-	resolveAgentDir,
-	resolveSessionRoot,
-} from "../lib/session-jsonl.ts";
+import { resolveAgentDir, resolveSessionRoot } from "../lib/session-jsonl.ts";
+import { readSessionAnalytics } from "../lib/log-analytics/session-analytics.ts";
 
 export type SkillEvidenceSource =
 	| "explicit_slash_command"
@@ -55,15 +51,6 @@ export interface SkillStatsResult {
 }
 
 const DEFAULT_WINDOWS = [1, 7, 30];
-const VALID_SOURCES = new Set<SkillEvidenceSource>([
-	"explicit_slash_command",
-	"prompt_skill_inventory",
-	"expanded_skill_block",
-	"historical_explicit_prompt",
-	"manual_read_candidate",
-	"unknown",
-]);
-
 interface SkillRoot {
 	path: string;
 	location: string;
@@ -327,135 +314,6 @@ function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function asString(value: unknown): string | undefined {
-	return typeof value === "string" ? value : undefined;
-}
-
-function parseTime(value: unknown, fallback: Date): Date | null {
-	const raw = asString(value);
-	if (!raw) return fallback;
-	const d = new Date(raw);
-	return Number.isFinite(d.getTime()) ? d : null;
-}
-
-function eventFromJson(
-	entry: Record<string, unknown>,
-	sessionFile: string,
-	line: number,
-	fallback: Date,
-	knownSkills: Set<string>,
-): SkillEvent[] {
-	const out: SkillEvent[] = [];
-	const timestamp = parseTime(entry.timestamp, fallback) ?? fallback;
-	const data = isObject(entry.data) ? entry.data : undefined;
-	if (entry.type === "custom" && entry.customType === "skill-load" && data) {
-		const skill = asString(data.skill);
-		const source = asString(data.source) as SkillEvidenceSource | undefined;
-		const eventTimestamp = parseTime(data.timestamp, timestamp);
-		if (skill && eventTimestamp && (!source || VALID_SOURCES.has(source))) {
-			out.push({
-				skill: safeLabel(skill),
-				source: source || "unknown",
-				timestamp: eventTimestamp,
-				sessionFile,
-				turnKey: asString(data.turnId) || String(line),
-				candidate:
-					source === "manual_read_candidate" ||
-					source === "prompt_skill_inventory",
-			});
-		}
-	}
-
-	const echoedInvocation =
-		entry.customType === "slash-echo" ? asString(entry.content) : undefined;
-	const echoedCommand = echoedInvocation?.match(
-		/^\/([A-Za-z0-9_-]+)(?:\s|$)/,
-	)?.[1];
-	if (echoedCommand && knownSkills.has(echoedCommand.toLowerCase())) {
-		out.push({
-			skill: safeLabel(echoedCommand),
-			source: "explicit_slash_command",
-			timestamp,
-			sessionFile,
-			turnKey: String(line),
-			candidate: false,
-		});
-	}
-
-	const message = isObject(entry.message) ? entry.message : undefined;
-	const messageContent = message?.content;
-	const blocks = Array.isArray(messageContent)
-		? messageContent.filter(isObject)
-		: [];
-	const texts = [entry.text, entry.content]
-		.map(asString)
-		.filter((value): value is string => Boolean(value));
-	if (message?.role === "user") {
-		const messageText = asString(messageContent);
-		if (messageText) texts.push(messageText);
-		for (const block of blocks) {
-			const text = asString(block.text);
-			if (text) texts.push(text);
-		}
-	}
-	for (const text of texts) {
-		for (const match of text.matchAll(/<skill\s+name=["']([^"']+)["']/gi))
-			out.push({
-				skill: safeLabel(match[1]),
-				source: "expanded_skill_block",
-				timestamp,
-				sessionFile,
-				turnKey: String(line),
-				candidate: false,
-			});
-		for (const match of text.matchAll(/(?:^|\s)\/skill:([A-Za-z0-9_-]+)/g))
-			out.push({
-				skill: safeLabel(match[1]),
-				source: "historical_explicit_prompt",
-				timestamp,
-				sessionFile,
-				turnKey: String(line),
-				candidate: false,
-			});
-	}
-
-	for (const toolRecord of [entry, ...blocks]) {
-		const toolName = asString(toolRecord.toolName) || asString(toolRecord.name);
-		const args = isObject(toolRecord.args)
-			? toolRecord.args
-			: isObject(toolRecord.parameters)
-				? toolRecord.parameters
-				: isObject(toolRecord.arguments)
-					? toolRecord.arguments
-					: undefined;
-		const filePath = args
-			? asString(args.path) || asString(args.file_path)
-			: undefined;
-		if (
-			toolName === "read" &&
-			filePath &&
-			/(^|[\\/])SKILL\.md$/i.test(filePath)
-		) {
-			out.push({
-				skill: safeLabel(path.basename(path.dirname(filePath))),
-				source: "manual_read_candidate",
-				timestamp,
-				sessionFile,
-				turnKey: String(line),
-				candidate: true,
-			});
-		}
-	}
-	return out;
-}
-
-function fileTime(file: string): Date {
-	const m = path
-		.basename(file)
-		.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/);
-	return m ? new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`) : new Date(0);
-}
-
 export async function collectSkillStats(
 	args = "",
 	options: SkillStatsOptions = {},
@@ -471,23 +329,35 @@ export async function collectSkillStats(
 	const diagnostics = new Map<string, number>();
 	const skillMetadata = loadSkillMetadata(options.cwd);
 	const knownSkills = new Set(skillMetadata.keys());
-	for (const file of await enumerateJsonlFiles(root, options.signal)) {
-		const fallback = fileTime(file);
-		for await (const { line, value } of readJsonlFile(file, {
-			signal: options.signal,
-			onMalformedLine: () => inc(diagnostics, "malformed_json"),
-		})) {
-			if (isObject(value))
-				events.push(
-					...eventFromJson(
-						value,
-						path.relative(root, file),
-						line,
-						fallback,
-						knownSkills,
-					),
-				);
-		}
+	const analyticsEvents = await readSessionAnalytics({
+		sessionRoot: root,
+		databaseRoot: root,
+		signal: options.signal,
+		diagnostics,
+	});
+	for (const event of analyticsEvents) {
+		for (const evidence of event.skillEvidence)
+			events.push({
+				skill: evidence.skill,
+				source: evidence.source,
+				timestamp: evidence.timestamp,
+				sessionFile: event.sessionId,
+				turnKey: evidence.turnKey,
+				candidate: evidence.candidate,
+			});
+		if (
+			event.customType === "slash-echo" &&
+			event.slashCommand &&
+			knownSkills.has(event.slashCommand.toLowerCase())
+		)
+			events.push({
+				skill: safeLabel(event.slashCommand),
+				source: "explicit_slash_command",
+				timestamp: event.timestamp,
+				sessionFile: event.sessionId,
+				turnKey: event.eventId,
+				candidate: false,
+			});
 	}
 	const deduped = new Map<string, SkillEvent>();
 	for (const e of events) {

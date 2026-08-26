@@ -7,64 +7,35 @@ description: "Pi session, trace, metrics, workflow-friction, workflow-telemetry,
 
 ## Boundary
 
-Use this skill to investigate existing Pi runtime data with the deterministic helper in `pi/analytics/`. Use `logging-observability` to design or add telemetry, `analysis-workflow` for debugging without telemetry, and `database` for generic database work.
+Use the registered in-process `log_analytics` tool to inspect existing Pi runtime data. Use the typed Pi command surfaces for reports such as `/find-fails`, `/usage`, `/extension-stats`, `/skill-stats`, `/orchestration-stats`, and workflow-friction diagnostics. Use `logging-observability` to design or add telemetry, `analysis-workflow` for debugging without telemetry, and `database` for generic database work.
 
-## Governing Principle
+## Governing principle
 
-JSONL is the append-only source of truth. DuckDB views and any DuckDB or Parquet files are disposable local analysis artifacts.
+JSONL is the append-only source of truth. The local DuckDB store and its projections are disposable read-model state. No analytics operation rewrites authoritative JSONL or starts a helper process.
 
 ## Workflow
 
-1. Run from the dotfiles repository root.
-2. Inventory sources without scanning rows:
-
-```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py catalog
-```
-
-3. Select only the sources needed. For repeated or parallel analysis, snapshot each selected source once in the parent workflow:
-
-```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  --source session_entries snapshot
-```
-
-If snapshot creation reports malformed JSONL, validate that source once to locate the malformed rows. Do not run a separate full validation before a successful snapshot.
-
-4. Reuse the snapshot for every query. Snapshot readers do not discover or parse the JSONL corpus. Before the first query against an unfamiliar source or derived view, inspect its columns with `schema <view>` rather than guessing field names:
-
-```bash
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  --snapshot-db .tmp/pi-log-analytics/pi-logs.duckdb \
-  --source session_entries schema session_inventory
-uv run --no-sync --project pi/analytics python pi/analytics/pi_log_query.py \
-  --snapshot-db .tmp/pi-log-analytics/pi-logs.duckdb \
-  --source session_entries \
-  query "SELECT count(*) AS sessions FROM session_inventory" --limit 50
-```
-
-5. Put related `SELECT` statements in one SQL file and use `batch` so they share one connection. For parallel screening, compute the partition column once, export a bounded manifest, and give workers either the shared read-only snapshot or only their assigned files. Workers must not independently validate, snapshot, or rescan the complete corpus.
-6. If `--no-sync` reports a missing environment module, run `uv sync --project pi/analytics --locked` once and retry; do not install the module globally. If a live query or snapshot reports malformed JSONL, validate that source without printing records. Validation caches unchanged-file results under `.tmp/pi-log-analytics/` by default.
-7. Use `--ignore-malformed` only after validation when an incomplete exploratory result is acceptable. Report the omitted row count.
-8. Read [reference.md](reference.md) when source fields, snapshot operations, manifests, correlation rules, or query recipes are needed.
-9. Report the source views, time window, filters, row counts, and any missing or malformed source that limits the conclusion.
-10. For recurring custom-extension tool failures, run `/find-fails`. Its TypeScript authority refreshes the local read model, filters custom tools, selects at most three candidates, and starts exactly one normal active-session diagnostic turn. The active model performs only bounded selected-coordinate inspection and may use the narrow decision writer when current inspected proof qualifies. It owns decisions and the plain-language report under the observability contract; do not invoke a separate analytics command, isolated model call, shortlist message, or approval stage.
+1. Ask `log_analytics` for `{"operation":"catalog"}` before selecting an unfamiliar source.
+2. Use typed `select` or `aggregate` requests with a registered source ID and registered column IDs. Filters support only `eq`, `neq`, `lt`, `lte`, `gt`, and `gte`; ordering is by registered columns; aggregation supports `count` and numeric `sum`.
+3. Keep requests bounded. The tool refreshes registered sources internally and enforces limits of at most 1,000 rows, 256 KiB of encoded output, and 5 seconds per operation. Cancellation and unknown source or column IDs fail explicitly.
+4. Use only structural columns: identifiers, timestamps, event and status labels, names, token and duration counts, costs, and byte counts. Do not request transcript payloads, messages, arbitrary data, arguments, evidence, reasons, paths, filenames, or terminal output.
+5. For recurring custom-extension tool failures, run `/find-fails`. Its TypeScript authority refreshes the local read model, selects at most three candidates, and starts exactly one normal active-session diagnostic turn. The active model performs only bounded selected-coordinate inspection and may use the narrow decision writer when current inspected proof qualifies. It owns decisions and the plain-language report under the observability contract; do not invoke a separate analytics command, isolated model call, shortlist message, or approval stage.
+6. Use `/usage`, `/extension-stats`, `/skill-stats`, `/orchestration-stats`, and workflow-friction commands for their characterized reports rather than reconstructing those reports through ad hoc reads. These commands use typed in-process readers and preserve their documented windows, ordering, and limits.
+7. Report the source IDs, time window, filters, row counts, and any missing or malformed source that limits the conclusion. Treat correlation provenance as evidence metadata, not as permission to decide.
 
 ## Safety
 
-- Treat `session_entries.message`, `session_entries.content`, and `trace_events.payload` as potentially sensitive. Do not select or print raw content unless the task requires it.
-- Use `session_entries` as the canonical corpus. `history_entries` can overlap it; never union both without explicit session-level deduplication.
-- Keep exports and caches under `.tmp/pi-log-analytics/`. Never commit DuckDB, Parquet, JSONL, or copied runtime data.
-- Build snapshots before dispatching parallel readers. Never let workers refresh the same snapshot or independently scan the complete source corpus.
-- Use `--source` and `--files-from` to restrict discovery before reading rows. SQL partition predicates alone do not prevent JSONL scans.
-- Use explicit schemas. Never use `read_ndjson_auto()` for heterogeneous trace payloads.
-- Malformed JSONL fails by default. Never use `--ignore-malformed` without first validating and reporting the omitted records.
+- Treat session and trace sources as potentially sensitive even when the generic projection exposes structural columns only.
+- Do not combine overlapping session and history sources without explicit session-level deduplication.
+- Keep bounded analysis local and disposable. Never commit DuckDB, copied runtime data, or exports.
+- The generic read model is structural-only. Bounded domain readers own any separately authorized evidence retrieval.
+- Exact and deterministic correlations take precedence. Unique inferred correlations are opt-in, provenance-marked, and never decision authority.
+- Append or refresh failures are observational gaps and must not break the primary Pi operation.
 
-## Anti-Patterns
+## Anti-patterns
 
-- Scanning raw prompt or tool output when event metadata answers the question.
-- Treating prompt hashes as unique invocation IDs.
-- Joining sessions and history by filename alone.
-- Replacing live bounded readers or JSONL writers with DuckDB.
-- Treating the disposable snapshot as authoritative state.
-- Running one helper process per query or one full-corpus validation per worker.
+- Running an external interpreter, package environment, replacement command, or subprocess for Pi JSONL analytics.
+- Supplying SQL, expressions, paths, pragmas, table functions, extension commands, or filesystem functions to `log_analytics`.
+- Scanning raw prompt, transcript, tool argument, tool output, workflow evidence, or terminal content when structural metadata answers the question.
+- Treating the disposable DuckDB store as authoritative state.
+- Treating timestamp proximity alone as a correlation or allowing inferred correlation to authorize a decision.

@@ -13,6 +13,7 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 
+import { correlationForEmission, type CorrelationFields } from "./log-analytics/correlation.ts";
 import {
 	ensureDirectory,
 	getDecisionsLogPath,
@@ -35,6 +36,11 @@ export interface PermissionDecision {
 	outcome: DecisionOutcome;
 	provenance: DecisionProvenance;
 	recordedAt: string;
+	runtime_instance_id?: string;
+	session_id?: string;
+	turn_id?: string;
+	trace_id?: string;
+	tool_call_id?: string;
 	summary?: string;
 	rule?: string;
 	replayPayload?: Record<string, unknown>;
@@ -49,6 +55,7 @@ export interface RecordDecisionInput {
 	rule?: string;
 	replayPayload?: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
+	correlation?: Partial<Pick<CorrelationFields, "runtime_instance_id" | "session_id" | "turn_id" | "trace_id" | "tool_call_id">>;
 }
 
 export interface ListDecisionsOptions {
@@ -81,6 +88,8 @@ export function recordDecision(input: RecordDecisionInput): PermissionDecision {
 	}
 	const record: PermissionDecision = {
 		schemaVersion: 1,
+		...correlationForEmission(),
+		...input.correlation,
 		id: crypto.randomUUID(),
 		action: input.action,
 		outcome: input.outcome,

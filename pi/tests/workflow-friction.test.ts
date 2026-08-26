@@ -16,6 +16,7 @@ import workflowFrictionExtension, {
 import {
 	activateOrchestrationInteraction,
 	buildReviewPrompt,
+	correlationFieldsForPacket,
 	consumeWorkflowSubmission,
 	detectFrictionTriggers,
 	type InteractionPacket,
@@ -31,6 +32,7 @@ import {
 	settleOrchestrationInteraction,
 	summarizeInteractionMetadata,
 	type ToolTrace,
+	workflowCorrelationFields,
 	workflowFrictionStorageRoot,
 } from "../lib/workflow-friction.js";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
@@ -463,6 +465,72 @@ describe("workflow friction triggers", () => {
 });
 
 describe("workflow friction metadata", () => {
+	it("preserves exact joins while isolating parallel and child interactions", async () => {
+		const packets = await Promise.all(
+			["one", "two"].map(async (suffix) => {
+				const correlation = workflowCorrelationFields({
+					interactionId: `interaction-${suffix}`,
+					sessionId: `session-${suffix}`,
+					subagentRunId: `run-${suffix}`,
+					correlation: {
+						runtime_instance_id: "runtime-test",
+						turn_id: `turn-${suffix}`,
+						trace_id: `trace-${suffix}`,
+						orchestration_id: `orchestration-${suffix}`,
+					},
+				});
+				return {
+					schemaVersion: 1,
+					interactionId: `interaction-${suffix}`,
+					sessionId: `session-${suffix}`,
+					mode: "explore" as const,
+					startedAt: "2026-07-10T00:00:00.000Z",
+					settledAt: "2026-07-10T00:01:00.000Z",
+					durationMs: 60_000,
+					subagentRunId: `run-${suffix}`,
+					selectionReasons: [],
+					userText: "redacted",
+					assistantTurns: [],
+					assistantText: "",
+					tools: [],
+					...correlation,
+				};
+			}),
+		);
+		const metadata = packets.map((packet) =>
+			interactionMetadataFromPacket(packet),
+		);
+		expect(metadata).toEqual([
+			expect.objectContaining({
+				runtime_instance_id: "runtime-test",
+				session_id: "session-one",
+				turn_id: "turn-one",
+				trace_id: "trace-one",
+				interaction_id: "interaction-one",
+				orchestration_id: "orchestration-one",
+				run_id: "run-one",
+			}),
+			expect.objectContaining({
+				session_id: "session-two",
+				interaction_id: "interaction-two",
+				orchestration_id: "orchestration-two",
+				run_id: "run-two",
+			}),
+		]);
+		const child = correlationFieldsForPacket({
+			...packets[0],
+			interactionId: "interaction-child",
+			subagentRunId: "run-child",
+		});
+		expect(child).toMatchObject({
+			runtime_instance_id: "runtime-test",
+			session_id: "session-one",
+			interaction_id: "interaction-child",
+			orchestration_id: "orchestration-one",
+			run_id: "run-child",
+		});
+	});
+
 	it("records denominator metrics without prompt or response content", () => {
 		const metadata = interactionMetadataFromPacket({
 			schemaVersion: 1,
@@ -560,7 +628,14 @@ describe("workflow friction reviewer", () => {
 		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
 		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
 		try {
-			const packet = queuedReviewPacket("interaction-contention");
+			const packet = {
+				...queuedReviewPacket("interaction-contention"),
+				runtime_instance_id: "runtime-test",
+				turn_id: "turn-review",
+				trace_id: "trace-review",
+				orchestration_id: "orchestration-review",
+				run_id: "run-review",
+			};
 			const job = queuedReviewJob(packet);
 			const pendingDir = path.join(scratch, "queue", "pending");
 			const pendingPath = path.join(pendingDir, `${packet.interactionId}.json`);
@@ -596,6 +671,13 @@ describe("workflow friction reviewer", () => {
 				.map((line) => JSON.parse(line) as StoredReviewRecord);
 			expect(records).toHaveLength(1);
 			expect(records[0]).toMatchObject({
+				runtime_instance_id: "runtime-test",
+				session_id: packet.sessionId,
+				turn_id: "turn-review",
+				trace_id: "trace-review",
+				interaction_id: packet.interactionId,
+				orchestration_id: "orchestration-review",
+				run_id: "run-review",
 				selectionReasons: ["manual_capture", "user_correction"],
 				captureNote: "Preserve this annotation.",
 			});

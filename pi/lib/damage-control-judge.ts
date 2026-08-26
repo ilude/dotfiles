@@ -4,6 +4,7 @@ import * as path from "node:path";
 
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { ensureDirectory, getOperatorStateDir } from "./operator-state.ts";
+import { correlationForEmission, type CorrelationFields } from "./log-analytics/correlation.ts";
 
 const JUDGE_PROVIDER = "openai-codex";
 const JUDGE_MODEL_ID = "gpt-5.6-luna";
@@ -26,6 +27,7 @@ export interface JudgeDamageControlInput {
 	rule: string;
 	reason: string;
 	modelRegistry: DamageControlJudgeModelRegistry;
+	correlation?: Partial<CorrelationFields>;
 }
 
 export interface DamageControlJudgeRecord {
@@ -38,6 +40,11 @@ export interface DamageControlJudgeRecord {
 	model: string;
 	latencyMs: number;
 	recordedAt: string;
+	runtime_instance_id?: string;
+	session_id?: string;
+	turn_id?: string;
+	trace_id?: string;
+	tool_call_id?: string;
 }
 
 export interface DamageControlJudgeEvalEvent {
@@ -90,7 +97,7 @@ export async function judgeDamageControl(
 	const model = input.modelRegistry.find(JUDGE_PROVIDER, JUDGE_MODEL_ID);
 	if (!model) {
 		reason = "model unavailable";
-		return recordJudgeResult(input.eventId, verdict, reason, startedAt);
+		return recordJudgeResult(input.eventId, verdict, reason, startedAt, input.correlation);
 	}
 
 	const controller = new AbortController();
@@ -126,7 +133,7 @@ export async function judgeDamageControl(
 		]);
 		if (result.stopReason === "error" || result.stopReason === "aborted") {
 			reason = "judge error";
-			return recordJudgeResult(input.eventId, verdict, reason, startedAt);
+			return recordJudgeResult(input.eventId, verdict, reason, startedAt, input.correlation);
 		}
 		const parsed = parseDamageControlJudgeVerdict(
 			result.content
@@ -148,7 +155,7 @@ export async function judgeDamageControl(
 	} finally {
 		if (timeout !== undefined) clearTimeout(timeout);
 	}
-	return recordJudgeResult(input.eventId, verdict, reason, startedAt);
+	return recordJudgeResult(input.eventId, verdict, reason, startedAt, input.correlation);
 }
 
 export function listDamageControlJudgeRecords(
@@ -220,10 +227,13 @@ function recordJudgeResult(
 	verdict: DamageControlJudgeVerdict,
 	reason: string,
 	startedAt: number,
+	correlation?: Partial<CorrelationFields>,
 ): DamageControlJudgeRecord {
 	const ts = new Date().toISOString();
 	const record: DamageControlJudgeRecord = {
 		schemaVersion: 1,
+		...correlationForEmission(),
+		...correlation,
 		id: crypto.randomUUID(),
 		ts,
 		eventId,

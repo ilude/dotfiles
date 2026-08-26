@@ -129,11 +129,21 @@ export async function withTimingSpan<T>(options: TimingSpanOptions, fn: (span: T
 	}
 }
 
-export function summarizeTimingSpans(events: Array<{ event: string; data?: Record<string, unknown> }>, maxItems = 5): string[] {
+export function summarizeTimingSpans(
+	events: readonly Pick<MetricsEvent, "event" | "data">[],
+	maxItems = 5,
+): string[] {
 	const spans = events
-		.filter((event) => event.event === "timing_span" && event.data && typeof event.data.durationMs === "number")
+		.filter(
+			(event) =>
+				event.event === "timing_span" &&
+				event.data &&
+				typeof event.data.durationMs === "number",
+		)
 		.map((event) => event.data as unknown as TimingSpanRecord)
 		.sort((a, b) => b.durationMs - a.durationMs)
 		.slice(0, maxItems);
-	return spans.map((span) => `${span.category}:${span.name} ${span.durationMs}ms ${span.status}`);
+	return spans.map(
+		(span) => `${span.category}:${span.name} ${span.durationMs}ms ${span.status}`,
+	);
 }

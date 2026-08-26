@@ -39,6 +39,10 @@ import { emitTerminalBell } from "../../lib/extension-utils.js";
 import { formatTranscriptTiming } from "../../lib/tool-timing.js";
 import { getPiInvocation } from "../../lib/pi-invocation.js";
 import { recordEvent } from "../../lib/metrics.js";
+import {
+	correlationForEmission,
+	type CorrelationFields,
+} from "../../lib/log-analytics/correlation.js";
 import { signalProcessTree } from "../../lib/process-tree.js";
 import { deactivateTools } from "../../lib/tool-activation.js";
 import {
@@ -182,6 +186,53 @@ import {
 function buildSubagentTraceparent(): string {
 	const parentTraceId = getTraceId() || newTraceId();
 	return formatTraceparent(parentTraceId, newSpanId());
+}
+
+const CORRELATION_ENVIRONMENT_KEYS = {
+	runtime_instance_id: "PI_CORRELATION_RUNTIME_INSTANCE_ID",
+	session_id: "PI_CORRELATION_SESSION_ID",
+	turn_id: "PI_CORRELATION_TURN_ID",
+	trace_id: "PI_CORRELATION_TRACE_ID",
+	interaction_id: "PI_CORRELATION_INTERACTION_ID",
+	workflow_episode_id: "PI_CORRELATION_WORKFLOW_EPISODE_ID",
+	orchestration_id: "PI_CORRELATION_ORCHESTRATION_ID",
+	run_id: "PI_CORRELATION_RUN_ID",
+	task_id: "PI_CORRELATION_TASK_ID",
+	goal_id: "PI_CORRELATION_GOAL_ID",
+	tool_call_id: "PI_CORRELATION_TOOL_CALL_ID",
+	operation_id: "PI_CORRELATION_OPERATION_ID",
+} as const;
+
+function subagentCorrelation(
+	runId: string,
+	taskId: string | undefined,
+	runContext: SubagentRunContext | undefined,
+): Partial<CorrelationFields> {
+	return {
+		...(correlationForEmission() ?? {}),
+		...(runContext?.parentSessionId
+			? { session_id: runContext.parentSessionId }
+			: {}),
+		...(runContext?.orchestrationId
+			? { orchestration_id: runContext.orchestrationId }
+			: {}),
+		...(runContext?.interactionId
+			? { interaction_id: runContext.interactionId }
+			: {}),
+		run_id: runId,
+		...(taskId ? { task_id: taskId } : {}),
+	};
+}
+
+function correlationEnvironment(
+	fields: Partial<CorrelationFields>,
+): NodeJS.ProcessEnv {
+	const environment: NodeJS.ProcessEnv = {};
+	for (const [field, key] of Object.entries(CORRELATION_ENVIRONMENT_KEYS)) {
+		const value = fields[field as keyof CorrelationFields];
+		if (value) environment[key] = value;
+	}
+	return environment;
 }
 
 const LEGACY_ADAPTER_BRANCH_KEY = "__legacyAdapterBranch" as const;
@@ -1351,6 +1402,7 @@ interface SubagentRunContext {
 	depth?: number;
 	parentRunId?: string;
 	parentSessionId?: string;
+	interactionId?: string;
 	workspaceId?: string;
 	treeId?: string;
 	repositoryRoot?: string;
@@ -1855,6 +1907,7 @@ export async function runSingleAgent(
 	else signal?.addEventListener("abort", forwardAbort, { once: true });
 	subagentRunManager.begin(
 		{
+			correlation: subagentCorrelation(runId, taskId, runContext),
 			runId,
 			...(taskId ? { taskId } : {}),
 			...(runContext?.orchestrationId
@@ -2030,6 +2083,7 @@ export async function runSingleAgent(
 			// existing env vars (PATH, HOME, OAUTH tokens, etc.) are preserved.
 			const childEnv: NodeJS.ProcessEnv = {
 				...process.env,
+				...correlationEnvironment(subagentCorrelation(runId, taskId, runContext)),
 				PI_CODING_AGENT_DIR: getAgentDir(),
 				TRACEPARENT: buildSubagentTraceparent(),
 				PI_SUBAGENT_RUN_ID: runId,
@@ -3072,6 +3126,10 @@ export default function (pi: ExtensionAPI) {
 			maxLines: SUBAGENT_RESULT_MAX_LINES,
 		}).content}${truncationNote}`;
 		subagentRunManager.queueBackgroundCompletion({
+			correlation: {
+				...(correlationForEmission() ?? {}),
+				orchestration_id: orchestrationId,
+			},
 			orchestrationId,
 			mode,
 			...origin,
@@ -4206,6 +4264,7 @@ export default function (pi: ExtensionAPI) {
 					args[16] = {
 						owner: args[13] ? "task" : "direct",
 						orchestrationId,
+						interactionId,
 						mode: executionMode,
 						background,
 						treeId: currentIdentity.treeId ?? orchestrationId,

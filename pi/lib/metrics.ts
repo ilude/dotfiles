@@ -30,6 +30,8 @@ import * as path from "node:path";
 
 import { getAgentDir } from "./extension-utils.ts";
 import { getSetting } from "./settings-loader.ts";
+import { readMetricEventsFromJsonl } from "./log-analytics/usage-analytics.ts";
+import { correlationForEmission } from "./log-analytics/correlation.ts";
 
 export interface MetricsEvent {
 	schemaVersion: 1;
@@ -37,6 +39,17 @@ export interface MetricsEvent {
 	ts: string;
 	event: string;
 	session?: string;
+	runtime_instance_id?: string;
+	turn_id?: string;
+	trace_id?: string;
+	interaction_id?: string;
+	workflow_episode_id?: string;
+	orchestration_id?: string;
+	run_id?: string;
+	task_id?: string;
+	goal_id?: string;
+	tool_call_id?: string;
+	operation_id?: string;
 	data?: Record<string, unknown>;
 }
 
@@ -44,6 +57,7 @@ export interface RecordEventInput {
 	event: string;
 	session?: string;
 	data?: Record<string, unknown>;
+	correlation?: Partial<Omit<MetricsEvent, "schemaVersion" | "id" | "ts" | "event" | "data">>;
 }
 
 export interface MetricsConfig {
@@ -90,14 +104,21 @@ export function recordEvents(inputs: RecordEventInput[]): MetricsEvent[] {
 	if (!cfg.enabled) return [];
 	const records = inputs
 		.filter((input) => input.event && typeof input.event === "string")
-		.map((input): MetricsEvent => ({
-			schemaVersion: 1,
-			id: crypto.randomUUID(),
-			ts: new Date().toISOString(),
-			event: input.event,
-			...(input.session ? { session: input.session } : {}),
-			...(input.data ? { data: input.data } : {}),
-		}));
+		.map((input): MetricsEvent => {
+			const inherited = correlationForEmission();
+			const context = inherited || input.correlation
+				? { ...inherited, ...input.correlation }
+				: undefined;
+			return {
+				schemaVersion: 1,
+				id: crypto.randomUUID(),
+				ts: new Date().toISOString(),
+				event: input.event,
+				...(input.session ? { session: input.session } : {}),
+				...(context ? { ...context } : {}),
+				...(input.data ? { data: input.data } : {}),
+			};
+		});
 	if (records.length === 0) return [];
 
 	try {
@@ -145,30 +166,5 @@ export function readRecentEvents(
 	limit: number = 100,
 	matches: (event: MetricsEvent) => boolean = () => true,
 ): MetricsEvent[] {
-	try {
-		const logPath = getMetricsLogPath();
-		if (!fs.existsSync(logPath)) return [];
-		const raw = fs.readFileSync(logPath, "utf-8");
-		const events: MetricsEvent[] = [];
-		for (const line of raw.split("\n")) {
-			const trimmed = line.trim();
-			if (!trimmed) continue;
-			try {
-				const parsed = JSON.parse(trimmed) as MetricsEvent;
-				if (
-					parsed?.schemaVersion === 1 &&
-					typeof parsed.id === "string" &&
-					matches(parsed)
-				) {
-					events.push(parsed);
-				}
-			} catch {
-				// skip malformed lines
-			}
-		}
-		events.reverse();
-		return events.slice(0, limit);
-	} catch {
-		return [];
-	}
+	return readMetricEventsFromJsonl(getMetricsLogPath(), limit, matches);
 }

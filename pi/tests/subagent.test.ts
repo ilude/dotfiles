@@ -15,6 +15,7 @@ import {
 	toolsForScopedModifier,
 } from "../extensions/subagent/scope-policy.ts";
 import { assignReadOnlyFanoutExperiment } from "../lib/orchestration-telemetry.js";
+import { runCorrelation } from "../lib/log-analytics/correlation.ts";
 import {
 	closeTaskDatabase,
 	initializeTaskStore,
@@ -1246,7 +1247,17 @@ Do not load this agent.
 			const { runSingleAgent } = await import(
 				"../extensions/subagent/index.ts"
 			);
-			const result = await runSingleAgent(
+			const result = await runCorrelation(
+				{
+					runtime_instance_id: "runtime-test",
+					session_id: "session-parent",
+					turn_id: "turn-parent",
+					trace_id: "trace-parent",
+					interaction_id: "interaction-parent",
+					orchestration_id: "orchestration-parent",
+					task_id: "task-parent",
+				},
+				() => runSingleAgent(
 				tmpDir,
 				[
 					{
@@ -1275,12 +1286,25 @@ Do not load this agent.
 				undefined,
 				undefined,
 				"attempt-override",
+				),
 			);
 
 			expect(result.runId).toBe("attempt-override");
-			expect(spawnMock.mock.calls[0][2].env.PI_SUBAGENT_RUN_ID).toBe(
-				"attempt-override",
-			);
+		const childEnvironment = spawnMock.mock.calls[0][2].env as Record<string, string>;
+		expect(childEnvironment).toMatchObject({
+			PI_CORRELATION_RUNTIME_INSTANCE_ID: "runtime-test",
+			PI_CORRELATION_SESSION_ID: "session-parent",
+			PI_CORRELATION_TURN_ID: "turn-parent",
+			PI_CORRELATION_TRACE_ID: "trace-parent",
+			PI_CORRELATION_INTERACTION_ID: "interaction-parent",
+			PI_CORRELATION_ORCHESTRATION_ID: "orchestration-parent",
+			PI_CORRELATION_RUN_ID: "attempt-override",
+			PI_CORRELATION_TASK_ID: "task-parent",
+			PI_SUBAGENT_RUN_ID: "attempt-override",
+		});
+		expect(childEnvironment.TRACEPARENT).toMatch(
+			/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/,
+		);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

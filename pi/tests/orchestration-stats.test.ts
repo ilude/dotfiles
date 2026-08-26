@@ -7,6 +7,7 @@ import orchestrationStatsExtension, {
 	parseOrchestrationStatsDays,
 	renderOrchestrationStatsReport,
 } from "../extensions/orchestration-stats.js";
+import { readOrchestrationAnalytics } from "../lib/log-analytics/orchestration-analytics.js";
 
 let root: string;
 let metrics: string;
@@ -213,6 +214,34 @@ describe("orchestration stats report", () => {
 		expect(first).toContain(
 			"Friction classifications: productive 0, mixed 0, churn 0, uncertain 0, failed 0, pending 0, unreviewed 1, unmatched 2.",
 		);
+	});
+
+	it("keeps adapter rows ordered and cancellation explicit", async () => {
+		fs.writeFileSync(
+			path.join(metrics, "metrics-2026-07-10.jsonl"),
+			[
+				line("z", "orchestration_interaction", interaction("later", [])),
+				line("bad", "orchestration_interaction", interaction("ignored", [])),
+				"not json",
+				line("a", "orchestration_interaction", interaction("earlier", [])),
+			].join("\n"),
+		);
+		const result = await readOrchestrationAnalytics({
+			metricsDir: metrics,
+			frictionDir: friction,
+			days: 1,
+			now: new Date("2026-07-10T13:00:00.000Z"),
+		});
+		expect(result.events.map((event) => event.id)).toEqual(["a", "bad", "z"]);
+		expect(result.diagnostics.malformedLines).toBe(1);
+		await expect(
+			readOrchestrationAnalytics({
+				metricsDir: metrics,
+				frictionDir: friction,
+				days: 1,
+				signal: AbortSignal.abort(),
+			}),
+		).rejects.toThrow("cancelled");
 	});
 
 	it("parses the registered slash command and does not register a tool", async () => {

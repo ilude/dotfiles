@@ -23,6 +23,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as zlib from "node:zlib";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { correlationForEmission } from "./log-analytics/correlation.ts";
 
 // ---------------------------------------------------------------------------
 // Schema constants
@@ -88,6 +89,14 @@ export interface TranscriptEnvelope {
 	tool_call_id?: string;
 	trace_id: string;
 	parent_trace_id?: string;
+	runtime_instance_id?: string;
+	interaction_id?: string;
+	workflow_episode_id?: string;
+	orchestration_id?: string;
+	run_id?: string;
+	task_id?: string;
+	goal_id?: string;
+	operation_id?: string;
 	event_type: string;
 	timestamp: string;
 	/** BigInt monotonic counter; stringified in JSON to preserve precision. */
@@ -550,6 +559,7 @@ export class TranscriptWriter {
 	private buildEnvelope(input: TranscriptEvent["envelope"]): TranscriptEnvelope {
 		const ts = input.timestamp ?? this.nowFn().toISOString();
 		const monotonic = input.monotonic_ns ?? this.monotonicFn();
+		const context = correlationForEmission();
 		return {
 			schema_version: SCHEMA_VERSION,
 			event_id: crypto.randomUUID(),
@@ -559,6 +569,7 @@ export class TranscriptWriter {
 			tool_call_id: input.tool_call_id,
 			trace_id: input.trace_id,
 			parent_trace_id: input.parent_trace_id,
+			...(context ? { runtime_instance_id: context.runtime_instance_id, interaction_id: context.interaction_id, workflow_episode_id: context.workflow_episode_id, orchestration_id: context.orchestration_id, run_id: context.run_id, task_id: context.task_id, goal_id: context.goal_id, operation_id: context.operation_id } : {}),
 			event_type: input.event_type,
 			timestamp: ts,
 			monotonic_ns: monotonic.toString(),
