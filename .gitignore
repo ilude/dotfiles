@@ -88,6 +88,7 @@ __pycache__/
 *.egg-info/
 uv.lock
 !pi/prompt-routing/uv.lock
+!pi/tool-reduction/uv.lock
 !tools/menos-youtube/uv.lock
 
 # Prompt-router local Python/runtime artifacts

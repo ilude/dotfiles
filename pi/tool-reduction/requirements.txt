@@ -1,4 +1,0 @@
-jsonschema
-ruff
-pytest
-portalocker
