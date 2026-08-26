@@ -331,7 +331,6 @@ export async function collectSkillStats(
 	const knownSkills = new Set(skillMetadata.keys());
 	const analyticsEvents = await readSessionAnalytics({
 		sessionRoot: root,
-		databaseRoot: root,
 		signal: options.signal,
 		diagnostics,
 	});

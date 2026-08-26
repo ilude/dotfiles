@@ -1,14 +1,8 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import {
-	defaultAnalyticsDatabase,
-	openAnalyticsStore,
-	selectAnalytics,
-	type AnalyticsOperationOptions,
-} from "./api.ts";
-import { definitionFor } from "./registry.ts";
-import type { SourceDefinition } from "./store.ts";
+import { withAnalyticsSession } from "./api.ts";
 import { enumerateJsonlFiles, resolveAgentDir } from "../session-jsonl.ts";
 
 export type SessionSkillEvidenceSource =
@@ -45,7 +39,6 @@ export interface SessionAnalyticsEvent {
 
 export interface ReadSessionAnalyticsOptions {
 	sessionRoot: string;
-	databaseRoot?: string;
 	files?: readonly string[];
 	signal?: AbortSignal;
 	diagnostics?: Map<string, number>;
@@ -79,18 +72,6 @@ const VALID_SOURCES = new Set<SessionSkillEvidenceSource>([
 	"manual_read_candidate",
 	"unknown",
 ]);
-
-const SESSION_PAGE_SIZE = 1000;
-const SESSION_COLUMNS = [
-	"event_id",
-	"timestamp",
-	"session_id",
-	"turn_id",
-	"event_type",
-	"event_name",
-	"tool_name",
-	"input_tokens",
-] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -347,18 +328,6 @@ function projectionFor(
 	};
 }
 
-function sessionDefinition(
-	root: string,
-): SourceDefinition<SessionProjection> {
-	const base = definitionFor("session_events", root);
-	if (!base) throw new Error("session_events analytics source is unavailable");
-	return {
-		...base,
-		parse: (value, line, source) =>
-			projectionFor(value, line, source, fileTime(source)),
-	};
-}
-
 function decodeEvidence(value: unknown): SessionSkillEvidence[] {
 	if (!Array.isArray(value)) return [];
 	return value.flatMap((item) => {
@@ -415,34 +384,6 @@ function decodeRow(row: Record<string, unknown>): SessionAnalyticsEvent | null {
 	};
 }
 
-async function readAllRows(
-	store: Awaited<ReturnType<typeof openAnalyticsStore>>,
-	options: AnalyticsOperationOptions,
-): Promise<Record<string, unknown>[]> {
-	const rows: Record<string, unknown>[] = [];
-	let cursor: string | undefined;
-	while (true) {
-		const page = await selectAnalytics(
-			store,
-			{
-				source: "session_events",
-				columns: SESSION_COLUMNS,
-				filters: cursor
-					? [{ column: "event_id", op: "gt", value: cursor }]
-					: undefined,
-				orderBy: [{ column: "event_id", direction: "asc" }],
-				limit: SESSION_PAGE_SIZE,
-			},
-			options,
-		);
-		rows.push(...page);
-		if (page.length < SESSION_PAGE_SIZE) return rows;
-		const next = asString(page[page.length - 1]?.event_id);
-		if (!next || next === cursor) return rows;
-		cursor = next;
-	}
-}
-
 export async function readSessionAnalytics(
 	options: ReadSessionAnalyticsOptions,
 ): Promise<SessionAnalyticsEvent[]> {
@@ -452,31 +393,63 @@ export async function readSessionAnalytics(
 		: await enumerateJsonlFiles(options.sessionRoot, options.signal);
 	if (options.signal?.aborted) return [];
 	await countMalformedJsonLines(files, options.diagnostics);
-	const store = await openAnalyticsStore(
-		defaultAnalyticsDatabase(options.databaseRoot ?? resolveAgentDir()),
-	);
+	const resolvedRoot = path.resolve(options.sessionRoot);
+	const canonical = path.basename(resolvedRoot) === "sessions";
+	const temporaryRoot = canonical ? undefined : await fs.mkdtemp(path.join(os.tmpdir(), "pi-session-analytics-"));
+	if (temporaryRoot) await fs.symlink(resolvedRoot, path.join(temporaryRoot, "sessions"), "junction");
+	const analyticsRoot = canonical ? path.dirname(resolvedRoot) : temporaryRoot!;
+	const selectedFiles = files.map((file) => canonical
+		? path.resolve(file)
+		: path.join(temporaryRoot!, "sessions", path.relative(resolvedRoot, path.resolve(file))));
 	try {
-		try {
-			await store.refresh(sessionDefinition(options.sessionRoot), files, {
+		return await withAnalyticsSession(
+			{
+				root: analyticsRoot,
+				sources: ["session_entries"],
 				signal: options.signal,
-			});
-		} catch (error) {
-			if (!(error instanceof Error) || !error.message.includes("malformed analytics JSONL"))
-				throw error;
-
-		}
-		const rows = await readAllRows(store, { signal: options.signal });
-		const events = rows
-			.map(decodeRow)
-			.filter((event): event is SessionAnalyticsEvent => event !== null);
-		const sessionStarts = new Map<string, Date>();
-		for (const event of events) {
-			if (event.eventType === "session") sessionStarts.set(event.sessionId, event.timestamp);
-		}
-		for (const event of events)
-			event.startedAt = sessionStarts.get(event.sessionId) ?? event.startedAt;
-		return events;
+				selectedFiles: { session_entries: selectedFiles },
+			},
+			async (session) => {
+				const result = await session.query({
+					sql: `
+						SELECT _source_file, _record_key, _timestamp, record
+						FROM session_entries
+						ORDER BY _source_file, _record_key
+					`,
+					maxRows: Number.MAX_SAFE_INTEGER,
+					maxBytes: Number.MAX_SAFE_INTEGER,
+				});
+				const events = result.rows.flatMap((row, index) => {
+					const source = asString(row._source_file);
+					let value: unknown = row.record;
+					if (typeof value === "string") {
+						try {
+							value = JSON.parse(value) as unknown;
+						} catch {
+							return [];
+						}
+					}
+					if (!source || !isRecord(value)) return [];
+					const projected = projectionFor(
+						value,
+						index + 1,
+						source,
+						fileTime(source),
+					);
+					const decoded = projected ? decodeRow(projected) : null;
+					return decoded ? [decoded] : [];
+				});
+				const sessionStarts = new Map<string, Date>();
+				for (const event of events) {
+					if (event.eventType === "session")
+						sessionStarts.set(event.sessionId, event.timestamp);
+				}
+				for (const event of events)
+					event.startedAt = sessionStarts.get(event.sessionId) ?? event.startedAt;
+				return events;
+			},
+		);
 	} finally {
-		await store.close();
+		if (temporaryRoot) await fs.rm(temporaryRoot, { recursive: true, force: true });
 	}
 }

@@ -1,11 +1,11 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { CancellableLoader } from "@earendil-works/pi-tui";
 import { handoffRecoverableLocalFailure } from "../lib/recovery-handoff.js";
 import { createBoundedInspection, type BoundedInspection, type InspectionProof } from "../lib/tool-failure-inspection.ts";
+import { withAnalyticsSession } from "../lib/log-analytics/api.ts";
+import { scanToolFailures, selectedFailureCoordinates, type SessionEntry } from "../lib/tool-failure-classifier.ts";
 import { appendDecision, candidateLedgerState, loadDecisionLedger, normalizeEvidence, EVIDENCE_TYPES, EVIDENCE_TEXT_MAX_LENGTH, type SelectedCandidate, type Decision, type EvidenceItem } from "../lib/tool-failure-decisions.ts";
-import { ToolFailureStore, registerToolFailureStoreLifecycle } from "../lib/tool-failure-store.ts";
 import { buildDiagnosticPrompt } from "../lib/tool-failure-report.ts";
 import { startDiagnosticTurn, registerDiagnosticTurnLifecycle, DIAGNOSTIC_INSPECTION_TOOL_NAME, DIAGNOSTIC_DECISION_TOOL_NAME } from "../lib/tool-failure-diagnostic-turn.ts";
 
@@ -17,26 +17,40 @@ function customExtensionToolNames(pi: ExtensionAPI): Set<string> {
 	return new Set(pi.getAllTools().filter((tool) => tool.sourceInfo?.source !== "builtin" && tool.sourceInfo?.source !== "sdk").map((tool) => tool.name));
 }
 
-type DiagnosticRun = { scan: Awaited<ReturnType<ToolFailureStore["scan"]>>; selected: SelectedCandidate[]; inspection: BoundedInspection; proof?: InspectionProof };
+type DiagnosticRun = { scan: ReturnType<typeof scanToolFailures>; selected: SelectedCandidate[]; inspection: BoundedInspection; proof?: InspectionProof };
+
+async function readSessionEntries(root: string, signal: AbortSignal | undefined): Promise<SessionEntry[]> {
+	const result = await withAnalyticsSession({ root, sources: ["session_entries"], signal }, (session) => session.query({
+		sql: `SELECT _source_file AS filename, _record_key AS id, _timestamp AS timestamp, record FROM session_entries ORDER BY _source_file, _record_key`,
+		maxRows: 100_000,
+		maxBytes: 64 * 1024 * 1024,
+	}));
+	if (result.truncated) throw new Error("tool-failure session query exceeded its bound");
+	return result.rows.map((row) => {
+		let record = row.record;
+		if (typeof record === "string") {
+			try { record = JSON.parse(record) as unknown; } catch { record = undefined; }
+		}
+		const envelope = record && typeof record === "object" && !Array.isArray(record) ? record as Record<string, unknown> : {};
+		const message = envelope.type === "message" && envelope.message && typeof envelope.message === "object" ? envelope.message : envelope;
+		return { filename: String(row.filename), id: String(row.id), timestamp: row.timestamp == null ? null : String(row.timestamp), message };
+	});
+}
 
 async function executeFindFails(pi: ExtensionAPI, ctx: ExtensionContext, signal: AbortSignal | undefined, setProgress: (message: string) => void, setRun: (run: DiagnosticRun | undefined) => void): Promise<boolean> {
 	if (signal?.aborted) throw new Error("This operation was aborted");
-	setProgress("Refreshing the canonical session corpus...");
+	setProgress("Querying the canonical session entries...");
 	const sessionRoot = ctx.sessionManager.getSessionDir();
-	const root = path.join(ctx.cwd, ".tmp", "pi-log-analytics");
-	await fs.mkdir(root, { recursive: true });
-	const store = await ToolFailureStore.open(path.join(root, "tool-failures.duckdb"));
-	try {
-		await store.refreshSessionCorpus(sessionRoot);
-		const scan = await store.scan();
-		await store.saveScan(scan);
+	const scanRows = await readSessionEntries(path.dirname(sessionRoot), signal);
+	const scan = scanToolFailures(scanRows);
+
 		const ledgerPath = path.join(process.env.PI_AGENT_DIR ?? path.join(process.env.HOME ?? process.cwd(), ".pi", "agent"), "tool-failures", "decisions.jsonl");
 		const ledger = await loadDecisionLedger(ledgerPath);
 		const state = candidateLedgerState(scan, ledger.records);
 		const tools = customExtensionToolNames(pi);
 		const selected = state.actionable.filter((item) => tools.has(item.tool));
 		if (!selected.length) return false;
-		const selectedCoordinates = await store.selectedCoordinates(scan, selected.map((item) => item.candidateId));
+		const selectedCoordinates = selectedFailureCoordinates(scan, scanRows, selected.map((item) => item.candidateId));
 		const inspection = createBoundedInspection(ctx.cwd, { transcriptRoots: [sessionRoot], selectedCoordinates: [...selectedCoordinates.values()].flat(), limits: { maxItemsPerTurn: 12, maxBytesPerTurn: 24_576 } });
 		const turn = startDiagnosticTurn(pi, ctx.sessionManager.getSessionId(), () => setRun(undefined));
 		signal?.addEventListener("abort", () => turn.settle(), { once: true });
@@ -49,14 +63,12 @@ async function executeFindFails(pi: ExtensionAPI, ctx: ExtensionContext, signal:
 			turn.settle();
 			throw error;
 		}
-		return true;
-	} finally { await store.close(); }
+	return true;
 }
 
 function notifyWorking(ctx: ExtensionContext, message: string): void { ctx.ui.notify(ctx.mode === "tui" ? ctx.ui.theme.fg("accent", ctx.ui.theme.bold(message)) : message, "info"); }
 
 export default function toolFailureTriageExtension(pi: ExtensionAPI) {
-	registerToolFailureStoreLifecycle(pi as never);
 	let currentRun: DiagnosticRun | undefined;
 	registerDiagnosticTurnLifecycle(pi as never);
 	const inspectTool = { name: DIAGNOSTIC_INSPECTION_TOOL_NAME, description: "Read one selected redacted tool-failure coordinate.", parameters: { type: "object", properties: { coordinate: { type: "string" } }, required: ["coordinate"] }, execute: async (_callId: string, params: { coordinate: string }) => { if (!currentRun) throw new Error("no diagnostic inspection is active"); return { content: [{ type: "text", text: await currentRun.inspection.readSelectedTranscript(params.coordinate) }] }; } };
