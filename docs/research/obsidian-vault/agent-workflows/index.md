@@ -24,6 +24,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [MCP 2026 stateless protocol](projects/mcp-2026-stateless-protocol.md) - request-scoped MCP, multi-round input, gateway identity, caching, authorization, and protocol lifecycle.
 - [Pi Coding Agent deep dive](projects/pi-coding-agent-deep-dive.md) - transcript-reviewed Pi architecture source, evidence cautions, and workflow implications.
 - [Menos research storage](projects/menos-research-storage.md) - superseded research-ingestion proposal retained as historical context.
+- [X research prototype](projects/x-research-prototype/README.md) - archived local SQLite and provider-adapter experiment retained for future Twitter tooling.
 
 ## Strongest signals
 

@@ -6,6 +6,8 @@ source: ../../../../../.specs/archive/x-research-pipeline/
 
 # X Research Pipeline
 
+The completed local SQLite experiment is preserved as the [X research prototype](../projects/x-research-prototype/README.md). It is reference code, not an active dotfiles command or the target service architecture described below.
+
 ## Core idea
 
 Give Claude Code and Pi programmatic read-only access to X.com data for topic research and expert-network mapping. The target use case is building graph-shaped research corpora, such as AI-coding influencer networks, and storing users, tweets, and edges in [menos](../projects/menos.md).
@@ -100,5 +102,6 @@ Prototype the provider protocol, mocked service, and menos persistence before li
 
 ## Related notes
 
+- [Archived X research prototype](../projects/x-research-prototype/README.md)
 - [MCP 2026 stateless protocol](../projects/mcp-2026-stateless-protocol.md)
 - [Menos](../projects/menos.md)

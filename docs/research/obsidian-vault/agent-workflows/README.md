@@ -63,3 +63,4 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [projects/pi-coding-agent-deep-dive](projects/pi-coding-agent-deep-dive.md)
 - [projects/menos](projects/menos.md)
 - [projects/zellij-windows-cockpit](projects/zellij-windows-cockpit.md)
+- [projects/x-research-prototype](projects/x-research-prototype/README.md) - archived local X research implementation reference
