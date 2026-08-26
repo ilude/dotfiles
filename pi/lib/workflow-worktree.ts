@@ -361,6 +361,53 @@ export async function verifyAndCleanupWorkflowWorktree(input: {
 	return { ...ownership, state: "complete", closeoutStage: "merged", mergedHead };
 }
 
+export async function verifyRetainedWorkflowWorktree(input: {
+	worktree: WorkflowWorktree;
+	planPath: string;
+	runner: WorkflowGitRunner;
+}): Promise<WorkflowWorktreeOwnership> {
+	const ownership = input.worktree.ownership;
+	if (ownership.state !== "active") throw new Error("workflow worktree is already complete");
+	if (!fs.existsSync(ownership.worktree)) throw new Error("workflow worktree is missing; retained worktree preserved");
+	const planPath = input.planPath.replace(/^@/, "").replace(/\\/g, "/");
+	if (ownership.planPath && ownership.planPath !== planPath)
+		throw new Error("workflow closeout plan path does not match ownership");
+	const slug = workflowSlugFromPlan(planPath);
+	const source = path.join(ownership.worktree, planPath);
+	const archived = path.join(ownership.worktree, ".specs", "archive", slug, "plan.md");
+	if (fs.existsSync(source) || !fs.existsSync(archived))
+		throw new Error("completed plan was not archived in the retained workflow worktree");
+	const plan = readLinkedPlan(archived);
+	if (!plan.complete) throw new Error(`archived plan is not complete: ${plan.blockers.join("; ")}`);
+	const archivedPlanPath = `.specs/archive/${slug}/plan.md`;
+	const ignored = await input.runner(ownership.primaryWorktree, ["check-ignore", "-q", "--", archivedPlanPath]);
+	if (ignored.code !== 0 && ignored.code !== 1)
+		throw new Error(`inspect retained plan ignore policy: ${ignored.stderr.trim() || ignored.stdout.trim()}`);
+	if (ignored.code === 0) {
+		const tracked = await input.runner(ownership.worktree, ["ls-files", "--error-unmatch", "--", archivedPlanPath]);
+		if (tracked.code === 0) throw new Error("ignored retained plan was committed on the workflow branch");
+		if (tracked.code !== 1) throw new Error(`inspect retained plan tracking state: ${tracked.stderr.trim() || tracked.stdout.trim()}`);
+	}
+	const status = await input.runner(ownership.worktree, ["status", "--porcelain=v1"]);
+	if (status.code !== 0) throw new Error(`inspect workflow worktree: ${status.stderr.trim()}`);
+	if (status.stdout.trim()) throw new Error("workflow worktree is not clean after retained closeout");
+	const unmerged = await input.runner(ownership.worktree, ["diff", "--name-only", "--diff-filter=U"]);
+	if (unmerged.code !== 0 || unmerged.stdout.trim()) throw new Error("workflow worktree has unmerged paths; retained worktree preserved");
+	const primary = await primaryState(ownership.primaryWorktree, input.runner, true, true);
+	if (primary.branch !== ownership.primaryBranch) throw new Error("primary branch changed; retained worktree preserved");
+	const branchHead = parseLine(await input.runner(primary.worktree, ["rev-parse", ownership.branch]), "resolve retained workflow branch");
+	if (branchHead === ownership.initialPrimaryHead)
+		throw new Error("retained workflow branch has no closeout commit");
+	const basedOnInitial = await input.runner(primary.worktree, ["merge-base", "--is-ancestor", ownership.initialPrimaryHead, ownership.branch]);
+	if (basedOnInitial.code !== 0) throw new Error("retained workflow branch no longer descends from its initial primary HEAD");
+	const merged = await input.runner(primary.worktree, ["merge-base", "--is-ancestor", ownership.branch, "HEAD"]);
+	if (merged.code === 0) throw new Error("retained workflow branch was merged into the primary branch");
+	if (merged.code !== 1) throw new Error(`inspect retained workflow merge state: ${merged.stderr.trim() || merged.stdout.trim()}`);
+	const completed = { ...ownership, state: "complete" as const, closeoutStage: "committed" as const, updatedAt: new Date().toISOString() };
+	writeOwnership(ownershipPath(ownership.repoRoot, path.basename(ownership.worktree)), completed);
+	return completed;
+}
+
 export async function closeWorkflowWorktree(input: { worktree: WorkflowWorktree; planPath?: string; archivePlan?: (cwd: string, planPath: string) => Promise<void> | void; runner: WorkflowGitRunner }): Promise<WorkflowWorktreeOwnership> {
 	const original = input.worktree.ownership;
 	if (original.state !== "active") throw new Error("workflow worktree is already complete");

@@ -49,6 +49,8 @@ completed:
 
 Keep incomplete work at this path. After all required tasks and validation pass, `/do-it` marks the plan complete and archives this entire spec directory to `.specs/archive/{slug}/`. Completion is not finished until deterministic archival succeeds.
 
+{When explicitly requested, add exactly: `- Closeout: Retain the committed workflow branch and worktree; do not merge into the primary branch.` Otherwise omit this bullet.}
+
 ## Execution Status
 
 - State: planned, not started

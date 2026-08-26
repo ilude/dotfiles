@@ -61,6 +61,7 @@ import { withTimingSpan } from "../lib/observability";
 import {
 	canonicalPlanPathFromInput,
 	createPlanLifecycleSnapshot,
+	parsePlanCloseoutPolicy,
 	isPlanLifecycleSnapshot,
 	PLAN_LIFECYCLE_ENTRY_TYPE,
 	registerPlanLifecycleController,
@@ -94,6 +95,7 @@ import {
 	type WorkflowWorktree,
 	closeWorkflowWorktree,
 	verifyAndCleanupWorkflowWorktree,
+	verifyRetainedWorkflowWorktree,
 	ensureWorkflowWorktree,
 	materializePlanInWorkflowWorktree,
 	readWorkflowOwnershipForWorktree,
@@ -2634,7 +2636,7 @@ export default function (pi: ExtensionAPI) {
 		name: "plan_archive",
 		label: "Verify Completed Plan Closeout",
 		description:
-			"Verify that the model archived the completed plan, committed the workflow branch, and merged it with --no-ff; then remove only the verified owned worktree and branch.",
+			"Verify completed plan closeout according to its Retention policy: either merge and clean up, or commit without merging and retain the owned branch and worktree.",
 		parameters: Type.Object(
 			{
 				path: Type.String({
@@ -2658,14 +2660,25 @@ export default function (pi: ExtensionAPI) {
 				if (ownership.planPath && ownership.planPath !== planPath)
 					throw new Error("Plan archive path does not match workflow ownership.");
 				const archivedPlan = `.specs/archive/${slug}/plan.md`;
-				const verified = await verifyAndCleanupWorkflowWorktree({
-					worktree: { ownership, resumed: true },
-					planPath,
-					runner: workflowRunner,
-				});
+				const archivedPlanPath = path.join(ownership.worktree, archivedPlan);
+				if (!fs.existsSync(archivedPlanPath))
+					throw new Error("Completed plan was not archived in the owned workflow worktree.");
+				const closeoutPolicy = parsePlanCloseoutPolicy(fs.readFileSync(archivedPlanPath, "utf8"));
+				const verified = closeoutPolicy === "retain"
+					? await verifyRetainedWorkflowWorktree({
+						worktree: { ownership, resumed: true },
+						planPath,
+						runner: workflowRunner,
+					})
+					: await verifyAndCleanupWorkflowWorktree({
+						worktree: { ownership, resumed: true },
+						planPath,
+						runner: workflowRunner,
+					});
 				const archived = {
 					sourcePlan: planPath,
 					archivedPlan,
+					closeoutPolicy,
 					...verified,
 				};
 				deactivateTools(pi, ["plan_archive"]);
@@ -2673,7 +2686,9 @@ export default function (pi: ExtensionAPI) {
 					content: [
 						{
 							type: "text" as const,
-							text: `Plan archived:\nfrom: ${archived.sourcePlan} to: ${archived.archivedPlan}\n${archived.branch} committed and merged into ${archived.primaryBranch} and cleaned up.`,
+							text: closeoutPolicy === "retain"
+								? `Plan archived and committed on ${archived.branch}. The branch and worktree were retained without merging into ${archived.primaryBranch}.`
+								: `Plan archived:\nfrom: ${archived.sourcePlan} to: ${archived.archivedPlan}\n${archived.branch} committed and merged into ${archived.primaryBranch} and cleaned up.`,
 						},
 					],
 					details: archived,
@@ -2900,7 +2915,7 @@ export default function (pi: ExtensionAPI) {
 						"warning",
 					);
 				}
-				workspaceDirective = `\n\nPRIMARY REPOSITORY (mandatory): ${activePlanningRoot}\nWrite the canonical plan directly under ${path.join(activePlanningRoot, ".specs", "<meaningful-slug>", "plan.md")}. Choose a concise kebab-case slug from the requested outcome and conversation context; never use an invocation ID or generic plan name. Do not create a planning worktree. Git state and repository-discovery failures never block planning; record relevant execution constraints in the plan for /do-it. The plan must require /do-it to perform implementation, validation, archive, commit, and merge in its owned worktree.`;
+				workspaceDirective = `\n\nPRIMARY REPOSITORY (mandatory): ${activePlanningRoot}\nWrite the canonical plan directly under ${path.join(activePlanningRoot, ".specs", "<meaningful-slug>", "plan.md")}. Choose a concise kebab-case slug from the requested outcome and conversation context; never use an invocation ID or generic plan name. Do not create a planning worktree. Git state and repository-discovery failures never block planning; record relevant execution constraints in the plan for /do-it. The plan must require /do-it to perform implementation, validation, archive, and commit in its owned worktree. Merge and cleanup are the default; when the operator explicitly requests commit-and-retain closeout, record the exact Retention policy marker and require no merge.`;
 			}
 			await persistPlanLifecycle(lifecycle);
 			activateTools(pi, ["plan_progress"]);
@@ -2958,6 +2973,7 @@ export default function (pi: ExtensionAPI) {
 			let ownedWorktree: WorkflowWorktree | undefined;
 			let completedPlan = false;
 			let planNeedsReconciliation = false;
+			let closeoutPolicy: "merge" | "retain" = "merge";
 			if (ctx.cwd) {
 				try {
 					const primaryRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
@@ -2975,9 +2991,9 @@ export default function (pi: ExtensionAPI) {
 							});
 							return;
 						}
-						const routingState = parsePersistedPlanRoutingState(
-							fs.readFileSync(path.resolve(primaryRoot, canonicalPlanPath), "utf8"),
-						);
+						const sourcePlanContent = fs.readFileSync(path.resolve(primaryRoot, canonicalPlanPath), "utf8");
+						closeoutPolicy = parsePlanCloseoutPolicy(sourcePlanContent);
+						const routingState = parsePersistedPlanRoutingState(sourcePlanContent);
 						completedPlan = routingState.complete;
 						planNeedsReconciliation = routingState.needsReconciliation;
 						if (completedPlan || planNeedsReconciliation) {
@@ -3007,10 +3023,16 @@ export default function (pi: ExtensionAPI) {
 						await materializePlanInWorkflowWorktree({ worktree, planPath: canonicalPlanPath, runner: workflowRunner });
 					ownedWorktree = worktree;
 					ownedWorkspace = worktree.ownership.worktree;
-					const closeoutWork = canonicalPlan
-						? "archive the completed spec, stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff"
-						: "stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff";
-					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${worktree.ownership.worktree}\nConfine implementation and validation to this worktree. When the requested work is complete, ${closeoutWork} yourself, then call the workflow closeout verifier; the verifier only checks exact final state and cleans the owned branch/worktree. Preserve the worktree for recovery on any dirty, unmerged, or conflict state.${completedPlan || planNeedsReconciliation ? `\n\nRECOVERY ONLY: The canonical plan ${canonicalPlanPath} is complete or has conflicting persisted state. Do not rerun implementation or validation. Inspect the active/archive paths, branch, primary HEAD, and ownership record; finish only recoverable closeout work, then call the closeout verifier.` : ""}`;
+					const retainCloseout = canonicalPlan && closeoutPolicy === "retain";
+					const closeoutWork = retainCloseout
+						? "archive the completed spec, stage and commit all nonignored in-scope artifacts, do not force-add ignored plan files, and do not merge the workflow branch into the primary branch"
+						: canonicalPlan
+							? "archive the completed spec, stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff"
+							: "stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff";
+					const verifierEffect = retainCloseout
+						? "verifies the commit and non-merge state while retaining the owned branch, worktree, and ownership record"
+						: "checks exact final state and cleans the owned branch/worktree";
+					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${worktree.ownership.worktree}\nConfine implementation and validation to this worktree. When the requested work is complete, ${closeoutWork} yourself, then call the workflow closeout verifier; the verifier ${verifierEffect}. Preserve the worktree for recovery on any dirty, unmerged, or conflict state.${completedPlan || planNeedsReconciliation ? `\n\nRECOVERY ONLY: The canonical plan ${canonicalPlanPath} is complete or has conflicting persisted state. Do not rerun implementation or validation. Inspect the active/archive paths, branch, primary HEAD, and ownership record; finish only recoverable closeout work, then call the closeout verifier.` : ""}`;
 				} catch (error) {
 					ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
 					return;

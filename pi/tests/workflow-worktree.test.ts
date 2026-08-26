@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { closeWorkflowWorktree, ensureWorkflowWorktree, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain, readWorkflowOwnershipRecord, verifyAndCleanupWorkflowWorktree } from "../lib/workflow-worktree.js";
+import { closeWorkflowWorktree, ensureWorkflowWorktree, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain, readWorkflowOwnershipRecord, verifyAndCleanupWorkflowWorktree, verifyRetainedWorkflowWorktree } from "../lib/workflow-worktree.js";
 
 const roots: string[] = [];
 
@@ -319,6 +319,49 @@ describe("workflow worktree lifecycle", () => {
 		await expect(verifyAndCleanupWorkflowWorktree({ worktree, runner })).rejects.toThrow("--no-ff");
 		expect(fs.existsSync(worktree.ownership.worktree)).toBe(true);
 		expect(readWorkflowOwnershipRecord(root, "fixture")?.state).toBe("active");
+	});
+
+	it("verifies retained closeout without committing an ignored plan or merging", async () => {
+		const root = repo();
+		fs.writeFileSync(path.join(root, ".gitignore"), ".specs/\n");
+		git(root, ["add", ".gitignore"]);
+		git(root, ["commit", "-q", "-m", "test: ignore specs"]);
+		const planPath = ".specs/fixture/plan.md";
+		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });
+		fs.writeFileSync(
+			path.join(root, planPath),
+			completePlan().replace(
+				"## Execution Status",
+				"- Closeout: Retain the committed workflow branch and worktree; do not merge into the primary branch.\n\n## Execution Status",
+			),
+		);
+		const worktree = await ensureWorkflowWorktree({
+			cwd: root,
+			workflow: "do-it",
+			workflowId: "do-it:fixture",
+			slug: "fixture",
+			planPath,
+			runner,
+			allowDirtyPrimary: true,
+		});
+		await materializePlanInWorkflowWorktree({ worktree, planPath, runner });
+		fs.mkdirSync(path.join(worktree.ownership.worktree, ".specs", "archive"), { recursive: true });
+		fs.renameSync(
+			path.join(worktree.ownership.worktree, ".specs", "fixture"),
+			path.join(worktree.ownership.worktree, ".specs", "archive", "fixture"),
+		);
+		fs.writeFileSync(path.join(worktree.ownership.worktree, "result.txt"), "done\n");
+		git(worktree.ownership.worktree, ["add", "-A"]);
+		git(worktree.ownership.worktree, ["commit", "-q", "-m", "feat: retained closeout"]);
+
+		const completed = await verifyRetainedWorkflowWorktree({ worktree, planPath, runner });
+
+		expect(completed).toMatchObject({ state: "complete", closeoutStage: "committed" });
+		expect(fs.existsSync(worktree.ownership.worktree)).toBe(true);
+		expect(readWorkflowOwnershipRecord(root, "fixture")?.state).toBe("complete");
+		expect((await runner(root, ["show", "HEAD:result.txt"])).code).not.toBe(0);
+		expect(git(root, ["ls-tree", "-r", "--name-only", "workflow/fixture", "--", ".specs"])).toBe("");
+		expect(fs.existsSync(path.join(worktree.ownership.worktree, ".specs", "archive", "fixture", "plan.md"))).toBe(true);
 	});
 
 	it("commits, merges, and cleans up while preserving another untracked canonical plan", async () => {

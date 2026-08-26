@@ -83,6 +83,8 @@ status: ready
 
 Keep incomplete work at `.specs/<slug>/plan.md`. After completion, `/do-it` archives this directory to `.specs/archive/<slug>/`.
 
+- Closeout: Retain the committed workflow branch and worktree; do not merge into the primary branch.
+
 ## Execution Status
 
 - State: Ready; implementation has not started.
@@ -90,6 +92,8 @@ Keep incomplete work at `.specs/<slug>/plan.md`. After completion, `/do-it` arch
 - Next: T1.
 - Resume: `/do-it .specs/<slug>/plan.md`
 ```
+
+The `Closeout` bullet is optional and must appear only when the operator explicitly requests commit-and-retain closeout. Its exact wording is the deterministic policy marker; do not paraphrase it.
 
 Before calling `ready`, verify mechanically against the structure above: frontmatter says exactly `status: ready`; every required `##` heading exists; `Completion Evidence` has separate `- Evidence:` and `- Fails when:` bullets; `Validation` contains at least one checkbox; `Execution Status` contains `- State:` and the canonical resume command; and `Retention` names the canonical archive directory.
 
@@ -99,7 +103,7 @@ Use one checkbox list with 1-3 tasks. Use sequential unique keys `T1` through `T
 
 Include only context, boundaries, assumptions, safety, current status, or blockers that change execution. For shared or live state, name the target, stop condition, and concise rollback required by active instructions.
 
-Every canonical plan retains incomplete work at primary `.specs/{slug}/plan.md`. It requires `/do-it` to materialize the spec in its owned implementation worktree, archive the completed spec to `.specs/archive/{slug}/`, commit the workflow branch, merge it with `--no-ff` into the primary branch, verify merged HEAD, then remove only the owned worktree and branch. Ignored specs remain untracked and return to the primary local archive after a successful merge; no workflow may force-add an ignored plan. Any dirty, unmerged, or conflict state preserves the implementation worktree and recoverable plan.
+Every canonical plan retains incomplete work at primary `.specs/{slug}/plan.md`. The default closeout requires `/do-it` to materialize the spec in its owned implementation worktree, archive the completed spec to `.specs/archive/{slug}/`, commit the workflow branch, merge it with `--no-ff` into the primary branch, verify merged HEAD, then remove only the owned worktree and branch. When the operator explicitly requests commit-and-retain closeout, include the exact `- Closeout:` bullet from the contract; `/do-it` then archives and commits on the workflow branch without merging, and retains the worktree, branch, and ownership record. Ignored specs remain untracked; no workflow may force-add or commit an ignored plan. Any dirty, unmerged, or conflict state preserves the implementation worktree and recoverable plan.
 
 ## Report
 

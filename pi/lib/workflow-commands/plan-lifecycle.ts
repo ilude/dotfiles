@@ -293,6 +293,18 @@ export function transitionPlanLifecycle(
 	}
 }
 
+export type PlanCloseoutPolicy = "merge" | "retain";
+
+export function parsePlanCloseoutPolicy(content: string): PlanCloseoutPolicy {
+	const retentionSection =
+		content.split("## Retention", 2)[1]?.split(/^## /m, 1)[0] ?? "";
+	return /^\s*-\s+Closeout:\s+Retain the committed workflow branch and worktree; do not merge into the primary branch\.\s*$/im.test(
+		retentionSection,
+	)
+		? "retain"
+		: "merge";
+}
+
 export function validatePlanContract(
 	content: string,
 	planPath: string,

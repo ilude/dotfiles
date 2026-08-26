@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import registerWorkflowCommands from "../extensions/workflow-commands.ts";
 import { archiveCompletedPlan } from "../lib/plan-archive.ts";
+import { parsePlanCloseoutPolicy } from "../lib/workflow-commands/plan-lifecycle.ts";
 import * as workflowWorktree from "../lib/workflow-worktree.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -17,6 +18,11 @@ vi.mock("../lib/workflow-worktree", () => ({
 		...input.worktree.ownership,
 		state: "complete",
 		mergedHead: "merged-head",
+	})),
+	verifyRetainedWorkflowWorktree: vi.fn(async (input: any) => ({
+		...input.worktree.ownership,
+		state: "complete",
+		closeoutStage: "committed",
 	})),
 	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
 	readWorkflowOwnershipRecord: vi.fn(() => undefined),
@@ -100,11 +106,19 @@ function writePlan(
 }
 
 afterEach(() => {
+	vi.clearAllMocks();
 	for (const root of roots.splice(0))
 		fs.rmSync(root, { recursive: true, force: true });
 });
 
 describe("completed plan archival", () => {
+	it("uses merge by default and recognizes the exact retained-closeout marker", () => {
+		expect(parsePlanCloseoutPolicy("## Retention\n\nArchive after completion.\n")).toBe("merge");
+		expect(parsePlanCloseoutPolicy(
+			"## Retention\n\n- Closeout: Retain the committed workflow branch and worktree; do not merge into the primary branch.\n",
+		)).toBe("retain");
+	});
+
 	it("moves the complete spec directory under .specs/archive", () => {
 		const root = workspace();
 		writePlan(root, "fixture");
@@ -153,6 +167,10 @@ describe("completed plan archival", () => {
 			state: "active",
 		});
 
+		const archiveDir = path.join(root, ".specs", "archive", "tool-fixture");
+		fs.mkdirSync(path.dirname(archiveDir), { recursive: true });
+		fs.renameSync(path.join(root, ".specs", "tool-fixture"), archiveDir);
+
 		pi.setActiveTools(["plan_archive"]);
 		expect(pi.getActiveTools()).toEqual(["plan_archive"]);
 		const tool = pi._getTool("plan_archive");
@@ -174,6 +192,58 @@ describe("completed plan archival", () => {
 			branch: "workflow/tool-fixture",
 			primaryBranch: "main",
 		});
+		expect(pi.getActiveTools()).toEqual([]);
+	});
+
+	it("uses retained verification and leaves owned resources intact for retain policy", async () => {
+		const root = workspace();
+		writePlan(root, "retained");
+		const archiveDir = path.join(root, ".specs", "archive", "retained");
+		fs.mkdirSync(path.dirname(archiveDir), { recursive: true });
+		fs.renameSync(path.join(root, ".specs", "retained"), archiveDir);
+		const archivedPlan = path.join(archiveDir, "plan.md");
+		fs.writeFileSync(
+			archivedPlan,
+			fs.readFileSync(archivedPlan, "utf8").replace(
+				"## Execution Status",
+				"- Closeout: Retain the committed workflow branch and worktree; do not merge into the primary branch.\n\n## Execution Status",
+			),
+		);
+		const ownership = {
+			version: 1 as const,
+			workflow: "do-it" as const,
+			workflowId: "do-it:retained",
+			repoRoot: root,
+			primaryWorktree: root,
+			primaryBranch: "main",
+			initialPrimaryHead: "initial-head",
+			branch: "workflow/retained",
+			worktree: root,
+			createdAt: "2026-08-23T00:00:00.000Z",
+			updatedAt: "2026-08-23T00:00:00.000Z",
+			state: "active" as const,
+		};
+		vi.mocked(workflowWorktree.readWorkflowOwnershipRecord).mockReturnValueOnce(ownership);
+		const pi = createMockPi();
+		registerWorkflowCommands(pi as Parameters<typeof registerWorkflowCommands>[0]);
+		pi.setActiveTools(["plan_archive"]);
+		const tool = pi._getTool("plan_archive");
+		if (!tool) throw new Error("plan_archive tool not registered");
+
+		const result = await tool.execute(
+			"archive-retained",
+			{ path: ".specs/retained/plan.md" },
+			new AbortController().signal,
+			() => {},
+			createMockCtx({ cwd: root }),
+		);
+
+		expect(workflowWorktree.verifyRetainedWorkflowWorktree).toHaveBeenCalledWith(
+			expect.objectContaining({ planPath: ".specs/retained/plan.md" }),
+		);
+		expect(workflowWorktree.verifyAndCleanupWorkflowWorktree).not.toHaveBeenCalled();
+		expect(result.content[0].text).toContain("retained without merging into main");
+		expect(result.details).toMatchObject({ closeoutPolicy: "retain", branch: "workflow/retained" });
 		expect(pi.getActiveTools()).toEqual([]);
 	});
 

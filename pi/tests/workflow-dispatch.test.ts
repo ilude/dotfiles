@@ -60,6 +60,11 @@ vi.mock("../lib/workflow-worktree", () => ({
 		state: "complete",
 		mergedHead: "merged-head",
 	})),
+	verifyRetainedWorkflowWorktree: vi.fn(async (input: any) => ({
+		...input.worktree.ownership,
+		state: "complete",
+		closeoutStage: "committed",
+	})),
 	materializePlanInWorkflowWorktree: vi.fn(async () => "transferred"),
 	resolveWorkflowRepoRoot: vi.fn(async (cwd: string) => cwd),
 	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
@@ -523,6 +528,36 @@ describe("workflow slash command dispatch", () => {
 				display: false,
 			}),
 			{ triggerTurn: true, deliverAs: "followUp" },
+		);
+	});
+
+	it("/do-it honors commit-and-retain closeout from the canonical plan", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(
+			path.join(fixture.root, fixture.planPath),
+			readyPlan(fixture.planPath).replace(
+				"Archive the completed directory to `.specs/archive/workflow-fixture/`.",
+				"Archive the completed directory to `.specs/archive/workflow-fixture/`.\n\n- Closeout: Retain the committed workflow branch and worktree; do not merge into the primary branch.",
+			),
+			"utf8",
+		);
+
+		await getHandler(mockPi, "do-it")(fixture.planPath, { cwd: fixture.root });
+
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining("do not merge the workflow branch into the primary branch"),
+			}),
+			expect.anything(),
+		);
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining("do not force-add ignored plan files"),
+			}),
+			expect.anything(),
 		);
 	});
 
