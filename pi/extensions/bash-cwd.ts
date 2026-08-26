@@ -5,7 +5,7 @@ import {
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
-import { Text } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import path from "node:path";
 import { formatToolTiming, formatTranscriptTiming } from "../lib/tool-timing.js";
 
@@ -149,7 +149,11 @@ export default function (pi: ExtensionAPI) {
 			const durationMs = options.isPartial ? undefined : Number(details.elapsed) * 1000;
 			const timing = formatTranscriptTiming(context.state.transcriptStartedAt, Number.isFinite(durationMs) ? durationMs : undefined);
 			if (!timing) return rendered;
-			return new Text(`${rendered.render(1000).join("\n")}\n${theme.fg("dim", timing)}`, 0, 0);
+			if (rendered instanceof Container) {
+				rendered.addChild(new Text(theme.fg("dim", timing), 0, 0));
+				return rendered;
+			}
+			return rendered;
 		},
 	});
 }
