@@ -153,9 +153,9 @@ function displayUrl(url: string | undefined): string {
 
 function renderWebCall(label: string, value: string, theme: any, context: any): Text {
 	const state = context.state ?? (context.state = {});
-	if (context.executionStarted && state.startedAt === undefined)
-		state.startedAt = Date.now();
-	const timing = formatTranscriptTiming(state.startedAt, undefined);
+	if (context.executionStarted && state.transcriptStartedAt === undefined)
+		state.transcriptStartedAt = Date.now();
+	const timing = formatTranscriptTiming(state.transcriptStartedAt, undefined);
 	return new Text(
 		`${theme.fg("accent", `${label} `)}${theme.fg("toolTitle", value)}${timing ? `\n  ${theme.fg("dim", timing)}` : ""}`,
 		0,
@@ -168,11 +168,11 @@ function renderWebResult(result: any, options: any, theme: any, context: any): T
 	const elapsed = Number(result.details?.elapsed);
 	const durationMs = Number.isFinite(elapsed)
 		? elapsed * 1000
-		: context.state?.startedAt === undefined
+		: context.state?.transcriptStartedAt === undefined
 			? undefined
-			: Date.now() - context.state.startedAt;
+			: Date.now() - context.state.transcriptStartedAt;
 	const timing = formatTranscriptTiming(
-		context.state?.startedAt,
+		context.state?.transcriptStartedAt,
 		options.isPartial ? undefined : durationMs,
 	);
 	return new Text(`${timing ? `${timing}\n` : ""}${text}`, 0, 0);

@@ -2435,16 +2435,16 @@ export const executeCommitCommand = createCommitCommandExecutor({
 });
 
 function renderLifecycleCall(label: string, theme: any, context: any): Text {
-	if (context.executionStarted && context.state.startedAt === undefined)
-		context.state.startedAt = Date.now();
-	const timing = formatTranscriptTiming(context.state.startedAt, undefined);
+	if (context.executionStarted && context.state.transcriptStartedAt === undefined)
+		context.state.transcriptStartedAt = Date.now();
+	const timing = formatTranscriptTiming(context.state.transcriptStartedAt, undefined);
 	return new Text(`${theme.fg("toolTitle", label)}${timing ? `\n  ${theme.fg("dim", timing)}` : ""}`, 0, 0);
 }
 
 function renderLifecycleResult(result: any, options: any, theme: any, context: any): Text {
 	const timing = formatTranscriptTiming(
-		context.state?.startedAt,
-		options.isPartial ? undefined : Date.now() - context.state?.startedAt,
+		context.state?.transcriptStartedAt,
+		options.isPartial ? undefined : Date.now() - context.state?.transcriptStartedAt,
 	);
 	const text = result.content?.[0]?.text ?? "(no output)";
 	return new Text(`${timing ? `${timing}\n` : ""}${text}`, 0, 0);

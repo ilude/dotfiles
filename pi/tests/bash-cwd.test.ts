@@ -26,13 +26,43 @@ describe("bash cwd extension", () => {
 				},
 			);
 
-			expect(state.startedAt).toBe(startedAt);
+			expect(state.transcriptStartedAt).toBe(startedAt);
 			expect(component?.render(300).join("\n")).toContain(
 				`cwd: ${path.resolve("C:/repo")}, started 11:29:30 local, timeout 90s at 11:31:00 local`,
 			);
 		} finally {
 			now.mockRestore();
 		}
+	});
+
+	it("does not start the upstream elapsed-time ticker for partial results", async () => {
+		const { initTheme } = await import("@earendil-works/pi-coding-agent");
+		initTheme("dark");
+		const pi = createMockPi();
+		bashCwd(pi as any);
+		const tool = pi._getTool("bash")!;
+		const state: Record<string, unknown> = { transcriptStartedAt: Date.now() };
+		const invalidate = vi.fn();
+
+		tool.renderResult?.(
+			{
+				content: [{ type: "text", text: "still running" }],
+				details: { cwd: "C:/repo", elapsed: "2.0" },
+			},
+			{ expanded: false, isPartial: true },
+			createMockTheme(),
+			{
+				cwd: "C:/repo",
+				invalidate,
+				isError: false,
+				lastComponent: undefined,
+				showImages: false,
+				state,
+			},
+		);
+
+		expect(state.interval).toBeUndefined();
+		expect(invalidate).not.toHaveBeenCalled();
 	});
 
 	it("renders an explicit command cwd resolved from the session cwd", () => {

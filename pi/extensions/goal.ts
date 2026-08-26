@@ -2381,9 +2381,9 @@ export default function (pi: ExtensionAPI) {
 			),
 		}),
 		renderCall(_args, theme, context) {
-			if (context.executionStarted && context.state.startedAt === undefined)
-				context.state.startedAt = Date.now();
-			const timing = formatTranscriptTiming(context.state.startedAt, undefined);
+			if (context.executionStarted && context.state.transcriptStartedAt === undefined)
+				context.state.transcriptStartedAt = Date.now();
+			const timing = formatTranscriptTiming(context.state.transcriptStartedAt, undefined);
 			return new Text(`${theme.fg("toolTitle", "goal complete")}${timing ? `\n  ${theme.fg("dim", timing)}` : ""}`, 0, 0);
 		},
 		renderResult(result, options, theme, context) {
@@ -2391,11 +2391,11 @@ export default function (pi: ExtensionAPI) {
 			const elapsed = Number(details?.elapsed);
 			const durationMs = Number.isFinite(elapsed)
 				? elapsed * 1000
-				: context.state?.startedAt === undefined
+				: context.state?.transcriptStartedAt === undefined
 					? undefined
-					: Date.now() - context.state.startedAt;
+					: Date.now() - context.state.transcriptStartedAt;
 			const timing = formatTranscriptTiming(
-				context.state?.startedAt,
+				context.state?.transcriptStartedAt,
 				options.isPartial ? undefined : durationMs,
 			);
 			const text = result.content

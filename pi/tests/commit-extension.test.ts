@@ -59,13 +59,13 @@ describe("commit extension registration", () => {
 		const startedAt = new Date(2026, 7, 19, 11, 29, 30).getTime();
 		for (const name of ["commit_stage", "commit_create", "commit_push"]) {
 			const tool = pi._getTool(name)!;
-			const call = tool.renderCall?.({}, theme, { executionStarted: true, state: { startedAt } });
+			const call = tool.renderCall?.({}, theme, { executionStarted: true, state: { transcriptStartedAt: startedAt } });
 			expect(call?.render(300).join("\n")).toContain("started 11:29:30 local");
 			const result = tool.renderResult?.(
 				{ content: [{ type: "text", text: name }] },
 				{ expanded: false, isPartial: false },
 				theme,
-				{ state: { startedAt } },
+				{ state: { transcriptStartedAt: startedAt } },
 			);
 			expect(result?.render(300).join("\n")).toContain("duration");
 		}

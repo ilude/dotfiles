@@ -98,7 +98,7 @@ describe("pwsh extension", () => {
       tool.renderCall(
         { command: "test", timeout: 90 },
         theme,
-        renderContext({ startedAt }, true),
+        renderContext({ transcriptStartedAt: startedAt }, true),
       );
 
       expect(theme.fg).toHaveBeenCalledWith(
@@ -142,16 +142,17 @@ describe("pwsh extension", () => {
         makeResult("output", { elapsed: "2.0" }),
         { expanded: true, isPartial: false },
         theme,
-        { state: { startedAt } },
+        { state: { transcriptStartedAt: startedAt } },
       );
       expect(result.render(300).join("\\n")).toContain("started 11:29:30 local | duration 2s");
       const partial = tool.renderResult(
         makeResult("partial", { elapsed: "2.0" }),
         { expanded: true, isPartial: true },
         theme,
-        { state: { startedAt } },
+        { state: { transcriptStartedAt: startedAt } },
       );
       expect(partial.render(300).join("\\n")).toContain("started 11:29:30 local");
+      expect(partial.render(300).join("\\n")).not.toContain("2.0s");
       expect(partial.render(300).join("\\n")).not.toContain("duration");
     });
 

@@ -213,14 +213,14 @@ describe("web-tools extension", () => {
       const searchCall = searchTool.renderCall(
         { query: "docs" },
         theme,
-        { executionStarted: true, state: { startedAt } },
+        { executionStarted: true, state: { transcriptStartedAt: startedAt } },
       );
       expect(searchCall.render(300).join("\n")).toContain("started 11:29:30 local");
       const fetchResult = fetch_tool.renderResult(
         { content: [{ type: "text", text: "article" }], details: { elapsed: "2.0" } },
         { expanded: false, isPartial: false },
         theme,
-        { state: { startedAt } },
+        { state: { transcriptStartedAt: startedAt } },
       );
       expect(fetchResult.render(300).join("\n")).toContain("article");
       expect(fetchResult.render(300).join("\n")).toContain("started 11:29:30 local | duration 2s");

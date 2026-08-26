@@ -240,8 +240,8 @@ export function renderCall(
   theme: any,
   context: any
 ): any {
-  if (context.executionStarted && context.state.startedAt === undefined) {
-    context.state.startedAt = Date.now();
+  if (context.executionStarted && context.state.transcriptStartedAt === undefined) {
+    context.state.transcriptStartedAt = Date.now();
   }
 
   const lines = args.command.split("\n");
@@ -249,7 +249,7 @@ export function renderCall(
   const isMultiline = lines.length > 1;
   const commandDisplay = isMultiline ? `${firstLine} ...` : firstLine;
   const timeoutSeconds = args.timeout ?? DEFAULT_TIMEOUT_SECONDS;
-  const timing = formatToolTiming(context.state.startedAt, timeoutSeconds);
+  const timing = formatToolTiming(context.state.transcriptStartedAt, timeoutSeconds);
   const timingSuffix = theme.fg("dim", ` [${timing ?? `timeout ${timeoutSeconds}s`}]`);
   const content = `PS> ${commandDisplay}${timingSuffix}`;
   return new Text(content, 0, 0);
@@ -258,7 +258,7 @@ export function renderCall(
 export function selectDisplayLines(lines: string[], options: { expanded: boolean; isPartial: boolean }, elapsed: string, theme: any): string[] {
   if (options.isPartial) {
     const result = lines.slice(-5);
-    result.push(theme.fg("dim", `… [${elapsed}s]`));
+    result.push(theme.fg("dim", "..."));
     return result;
   }
   if (!options.expanded) {
@@ -302,7 +302,7 @@ export function renderResult(
 
   const durationMs = options.isPartial ? undefined : Number(elapsed) * 1000;
   const timing = formatTranscriptTiming(
-    context.state?.startedAt,
+    context.state?.transcriptStartedAt,
     Number.isFinite(durationMs) ? durationMs : undefined,
   );
   if (timing) displayLines.push(theme.fg("dim", timing));

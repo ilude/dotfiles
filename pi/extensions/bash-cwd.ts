@@ -105,8 +105,8 @@ export default function (pi: ExtensionAPI) {
 			);
 		},
 		renderCall(args, theme, context) {
-			if (context.executionStarted && context.state.startedAt === undefined) {
-				context.state.startedAt = Date.now();
+			if (context.executionStarted && context.state.transcriptStartedAt === undefined) {
+				context.state.transcriptStartedAt = Date.now();
 				context.state.endedAt = undefined;
 			}
 			const text =
@@ -117,13 +117,22 @@ export default function (pi: ExtensionAPI) {
 				formatBashCall(
 					args,
 					effectiveCwd(args, context.cwd),
-					context.state.startedAt,
+					context.state.transcriptStartedAt,
 					theme,
 				),
 			);
 			return text;
 		},
 		renderResult(result, options, theme, context) {
+			const renderContext = {
+				...context,
+				state: {
+					...context.state,
+					startedAt: undefined,
+					endedAt: undefined,
+					interval: undefined,
+				},
+			};
 			const rendered =
 				getTool(
 					effectiveCwd(
@@ -134,11 +143,11 @@ export default function (pi: ExtensionAPI) {
 					result as AgentToolResult<BashToolDetails | undefined>,
 					options,
 					theme,
-					context as any,
+					renderContext as any,
 				) ?? new Text("", 0, 0);
 			const details = (result.details ?? {}) as { elapsed?: string };
 			const durationMs = options.isPartial ? undefined : Number(details.elapsed) * 1000;
-			const timing = formatTranscriptTiming(context.state.startedAt, Number.isFinite(durationMs) ? durationMs : undefined);
+			const timing = formatTranscriptTiming(context.state.transcriptStartedAt, Number.isFinite(durationMs) ? durationMs : undefined);
 			if (!timing) return rendered;
 			return new Text(`${rendered.render(1000).join("\n")}\n${theme.fg("dim", timing)}`, 0, 0);
 		},
