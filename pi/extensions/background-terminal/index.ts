@@ -8,6 +8,7 @@ import {
 	type BackgroundTerminalSnapshot,
 } from "./manager.js";
 import { openBackgroundTerminalDashboard } from "./ui.js";
+import { formatTranscriptTiming } from "../../lib/tool-timing.js";
 
 const COMPLETION_MAX_BYTES = 32 * 1024;
 function truncateUtf8Tail(text: string, maxBytes: number): string {
@@ -44,6 +45,11 @@ function formatTerminal(snapshot: BackgroundTerminalSnapshot): string {
 			`output capped in memory; logs: ${snapshot.stdoutPath ?? "unavailable"}, ${snapshot.stderrPath ?? "unavailable"}`,
 		);
 	}
+	const timing = formatTranscriptTiming(
+		snapshot.startedAt,
+		snapshot.endedAt === undefined ? undefined : snapshot.endedAt - snapshot.startedAt,
+	);
+	if (timing) lines.push(timing);
 	const text = lines.join("\n");
 	if (Buffer.byteLength(text, "utf8") <= COMPLETION_MAX_BYTES) return text;
 	return `[... earlier output omitted ...]\n${truncateUtf8Tail(text, COMPLETION_MAX_BYTES - 35)}`;
@@ -94,6 +100,8 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 							id,
 							status: snapshot.status,
 							exitCode: snapshot.exitCode,
+							startedAt: snapshot.startedAt,
+							endedAt: snapshot.endedAt,
 						},
 					},
 					{ deliverAs: "followUp", triggerTurn: true },
@@ -137,9 +145,10 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 				title: params.title,
 				cwd: resolveWorkingDirectory(ctx.cwd, params.working_dir),
 			});
+			const timing = formatTranscriptTiming(snapshot.startedAt, undefined);
 			return textResult(
-				`Started ${snapshot.id} (pid ${snapshot.pid ?? "unknown"}): ${snapshot.title}\nCompletion will be delivered automatically. Use /ps for live output or bg_kill to stop it.`,
-				{ id: snapshot.id, pid: snapshot.pid, status: snapshot.status },
+				`Started ${snapshot.id} (pid ${snapshot.pid ?? "unknown"}): ${snapshot.title}\nCompletion will be delivered automatically. Use /ps for live output or bg_kill to stop it.${timing ? `\n${timing}` : ""}`,
+				{ id: snapshot.id, pid: snapshot.pid, status: snapshot.status, startedAt: snapshot.startedAt },
 			);
 		},
 	});

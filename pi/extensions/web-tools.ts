@@ -27,6 +27,7 @@ import * as path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { formatTranscriptTiming } from "../lib/tool-timing.js";
 
 const DEFAULT_SEARXNG_URL = "https://searxng.ilude.com/search";
 const WEB_FETCH_SCRIPT = path.join(os.homedir(), ".dotfiles", "pi", "extensions", "web-fetch", "fetch.js");
@@ -150,6 +151,33 @@ function displayUrl(url: string | undefined): string {
 	return url.length > 120 ? `${url.slice(0, 117)}...` : url;
 }
 
+function renderWebCall(label: string, value: string, theme: any, context: any): Text {
+	const state = context.state ?? (context.state = {});
+	if (context.executionStarted && state.startedAt === undefined)
+		state.startedAt = Date.now();
+	const timing = formatTranscriptTiming(state.startedAt, undefined);
+	return new Text(
+		`${theme.fg("accent", `${label} `)}${theme.fg("toolTitle", value)}${timing ? `\n  ${theme.fg("dim", timing)}` : ""}`,
+		0,
+		0,
+	);
+}
+
+function renderWebResult(result: any, options: any, theme: any, context: any): Text {
+	const text = result.content?.[0]?.text ?? "(no output)";
+	const elapsed = Number(result.details?.elapsed);
+	const durationMs = Number.isFinite(elapsed)
+		? elapsed * 1000
+		: context.state?.startedAt === undefined
+			? undefined
+			: Date.now() - context.state.startedAt;
+	const timing = formatTranscriptTiming(
+		context.state?.startedAt,
+		options.isPartial ? undefined : durationMs,
+	);
+	return new Text(`${timing ? `${timing}\n` : ""}${text}`, 0, 0);
+}
+
 export function classifyWebSearchFailure(error: unknown): string {
 	if (error instanceof DOMException && error.name === "TimeoutError") return "timeout";
 	if (error instanceof Error && error.name === "AbortError") return "aborted";
@@ -241,6 +269,10 @@ export default function (pi: ExtensionAPI) {
 
 			return { content: [{ type: "text" as const, text }], details: { composedQuery, resultCount: results.length } };
 		},
+		renderCall(args, theme, context) {
+			return renderWebCall("web_search", JSON.stringify((args as StructuredSearchParams).query ?? ""), theme, context);
+		},
+		renderResult: renderWebResult,
 	});
 
 	// ── Tool: web_fetch ─────────────────────────────────────────────────────────
@@ -270,13 +302,14 @@ export default function (pi: ExtensionAPI) {
 
 			return { content: [{ type: "text" as const, text }], details: undefined };
 		},
-		renderCall(args, theme, _context) {
-			const url = displayUrl((args as { url?: string }).url);
-			return new Text(
-				theme.fg("accent", "web_fetch ") + theme.fg("toolTitle", url),
-				0,
-				0,
+		renderCall(args, theme, context) {
+			return renderWebCall(
+				"web_fetch",
+				displayUrl((args as { url?: string }).url),
+				theme,
+				context,
 			);
 		},
+		renderResult: renderWebResult,
 	});
 }

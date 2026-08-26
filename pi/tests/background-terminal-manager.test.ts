@@ -67,6 +67,7 @@ describe("BackgroundTerminalManager", () => {
 		const { snapshot, consumed } = await settled;
 		expect(consumed).toBe(false);
 		expect(snapshot.status).toBe("failed");
+		expect(snapshot.startedAt).toBeLessThanOrEqual(snapshot.endedAt ?? Infinity);
 		expect(snapshot.exitCode).toBe(2);
 		expect(snapshot.stdout).toBe("A".repeat(32));
 		expect(snapshot.stderr).toBe("ERR");

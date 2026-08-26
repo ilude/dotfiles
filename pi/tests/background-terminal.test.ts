@@ -71,6 +71,7 @@ describe("background terminal extension", () => {
 			ctx as never,
 		);
 		expect(result.content[0]?.text).toContain("Started bg-1");
+		expect(result.content[0]?.text).toMatch(/started \d{2}:\d{2}:\d{2} local/);
 		expect(pi.getActiveTools().sort()).toEqual(["bg_kill", "bg_start"]);
 		await waitFor(() => completionAttempts === 1);
 		expect(delivered).toEqual([]);
@@ -134,6 +135,7 @@ describe("background terminal extension", () => {
 			([message]) => message.customType === "background-terminal-result",
 		)?.[0];
 		expect(completion?.content).toContain("replacement-ok");
+		expect(completion?.content).toMatch(/started \d{2}:\d{2}:\d{2} local \| duration \d+s/);
 		expect(
 			firstPi.sendMessage.mock.calls.some(
 				([message]) => message.customType === "background-terminal-result",

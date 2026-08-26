@@ -7,7 +7,9 @@ import type {
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { formatTranscriptTiming } from "../lib/tool-timing.js";
 import { formatToolError } from "../lib/extension-utils.js";
 import { replaceRuntimeContext } from "../lib/runtime-context.js";
 import { archiveCompletedPlan } from "../lib/plan-archive.js";
@@ -2378,6 +2380,30 @@ export default function (pi: ExtensionAPI) {
 				Type.String({ description: "Optional next steps to consider" }),
 			),
 		}),
+		renderCall(_args, theme, context) {
+			if (context.executionStarted && context.state.startedAt === undefined)
+				context.state.startedAt = Date.now();
+			const timing = formatTranscriptTiming(context.state.startedAt, undefined);
+			return new Text(`${theme.fg("toolTitle", "goal complete")}${timing ? `\n  ${theme.fg("dim", timing)}` : ""}`, 0, 0);
+		},
+		renderResult(result, options, theme, context) {
+			const details = result.details as { elapsed?: number } | undefined;
+			const elapsed = Number(details?.elapsed);
+			const durationMs = Number.isFinite(elapsed)
+				? elapsed * 1000
+				: context.state?.startedAt === undefined
+					? undefined
+					: Date.now() - context.state.startedAt;
+			const timing = formatTranscriptTiming(
+				context.state?.startedAt,
+				options.isPartial ? undefined : durationMs,
+			);
+			const text = result.content
+				.filter((item) => item.type === "text")
+				.map((item) => item.text)
+				.join("\n") || "(no output)";
+			return new Text(`${timing ? `${timing}\n` : ""}${text}`, 0, 0);
+		},
 		async execute(_toolCallId, params) {
 			if (foregroundGoal) {
 				try {

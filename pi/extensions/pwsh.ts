@@ -15,7 +15,7 @@ import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { tmpdir, release } from "node:os";
 import { join } from "node:path";
-import { formatToolTiming } from "../lib/tool-timing.js";
+import { formatToolTiming, formatTranscriptTiming } from "../lib/tool-timing.js";
 
 const DEFAULT_TIMEOUT_SECONDS = 120;
 
@@ -285,7 +285,7 @@ export function renderResult(
   result: any,
   options: { expanded: boolean; isPartial: boolean },
   theme: any,
-  _context: any
+  context: any
 ): any {
   const output = normalizeTerminalOutput(result.content?.[0]?.text || "");
   const lines = output.split("\n");
@@ -299,6 +299,13 @@ export function renderResult(
   if (truncated && tempFile) {
     displayLines.push(theme.fg("dim", `[truncated - see ${tempFile} for full output]`));
   }
+
+  const durationMs = options.isPartial ? undefined : Number(elapsed) * 1000;
+  const timing = formatTranscriptTiming(
+    context.state?.startedAt,
+    Number.isFinite(durationMs) ? durationMs : undefined,
+  );
+  if (timing) displayLines.push(theme.fg("dim", timing));
 
   return new Text(displayLines.join("\n"), 0, 0);
 }

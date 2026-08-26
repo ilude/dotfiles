@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import * as path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formatConfiguredUsageReport } from "../extensions/codex-status.ts";
-import { createMockPi } from "./helpers/mock-pi.js";
+import { createMockPi, createMockTheme } from "./helpers/mock-pi.js";
 
 vi.mock("node:child_process", () => ({
 	spawn: vi.fn(),
@@ -177,6 +177,24 @@ describe("workflow command dispatch", () => {
 		mockPi.setModel = vi.fn(async () => {});
 		const mod = await import("../extensions/workflow-commands.ts");
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+	});
+
+	it("renders timing for workflow closeout tools only", () => {
+		const theme = createMockTheme();
+		const startedAt = new Date(2026, 7, 19, 11, 29, 30).getTime();
+		for (const name of ["workflow_complete", "plan_archive"]) {
+			const tool = mockPi._getTool(name)!;
+			const call = tool.renderCall?.({}, theme, { executionStarted: true, state: { startedAt } });
+			expect(call?.render(300).join("\n")).toContain("started 11:29:30 local");
+			const result = tool.renderResult?.(
+				{ content: [{ type: "text", text: name }] },
+				{ expanded: false, isPartial: false },
+				theme,
+				{ state: { startedAt } },
+			);
+			expect(result?.render(300).join("\n")).toContain("duration");
+		}
+		expect(mockPi._getTool("plan_progress")?.renderCall).toBeUndefined();
 	});
 
 	function getHandler(name: string) {
