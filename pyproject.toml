@@ -7,8 +7,6 @@ name = "dotfiles-tests"
 version = "0.1.0"
 requires-python = ">=3.9"
 dependencies = [
-    "httpx",
-    "pydantic",
     "pyyaml",
     "tree-sitter>=0.23.0",
     "tree-sitter-bash>=0.23.0",
@@ -21,9 +19,6 @@ dev = [
     "pytest-xdist",
     "ruff",
 ]
-
-[project.scripts]
-x-research = "x_research.cli:main"
 
 [tool.uv]
 package = false
