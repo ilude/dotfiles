@@ -9,13 +9,17 @@ requires-python = ">=3.9"
 dependencies = [
     "httpx",
     "pydantic",
+    "pyyaml",
+    "tree-sitter>=0.23.0",
+    "tree-sitter-bash>=0.23.0",
+]
+
+[dependency-groups]
+dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-xdist",
-    "pyyaml",
     "ruff",
-    "tree-sitter>=0.23.0",
-    "tree-sitter-bash>=0.23.0",
 ]
 
 [project.scripts]
