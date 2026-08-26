@@ -144,6 +144,30 @@ describe("bedrock cost extension", () => {
 		expect(notify).not.toHaveBeenCalled();
 	});
 
+	it("recalculates the ledger after an extension reload", async () => {
+		await recordBedrockUsage({
+			model: "anthropic.claude-fable-5",
+			usage: { input: 1_000_000 },
+		});
+		expect((await getCurrentBedrockMonthSummary()).costTotal).toBe(10);
+
+		const ledgerPath = path.join(
+			process.env.PI_OPERATOR_DIR ?? "",
+			"bedrock-costs.json",
+		);
+		const ledger = JSON.parse(fs.readFileSync(ledgerPath, "utf-8"));
+		const model = Object.values(ledger.months)[0] as {
+			models: Record<string, { inputTokens: number }>;
+		};
+		Object.values(model.models)[0]!.inputTokens = 2_000_000;
+		fs.writeFileSync(ledgerPath, JSON.stringify(ledger), "utf-8");
+
+		const { pi, ctx, setStatus } = setupExtension();
+		await fire(pi, "session_start", { type: "session_start" }, ctx);
+
+		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock est $20.00");
+	});
+
 	it("records only Bedrock assistant message usage and marks partial totals", async () => {
 		const { pi, ctx, setStatus } = setupExtension();
 

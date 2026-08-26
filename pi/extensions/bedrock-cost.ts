@@ -8,6 +8,7 @@ import type {
 import {
 	type BedrockMonthSummary,
 	getCurrentBedrockMonthSummary,
+	invalidateBedrockSummaryCache,
 	recordBedrockUsage,
 } from "../lib/bedrock-cost-ledger.js";
 
@@ -84,6 +85,7 @@ function errorMessage(error: unknown): string {
 export default function registerBedrockCostExtension(pi: ExtensionAPI) {
 	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		try {
+			invalidateBedrockSummaryCache();
 			await refreshStatus(ctx);
 		} catch (error) {
 			showLedgerError(ctx, error);
