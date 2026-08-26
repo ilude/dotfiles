@@ -63,10 +63,10 @@ describe("bedrock cost status formatting", () => {
 	it("formats exact and partial month-to-date totals", () => {
 		expect(
 			formatBedrockStatus({ costTotal: 1.23456, unpricedRequestCount: 0 }),
-		).toBe("bedrock est $1.23");
+		).toBe("bedrock: $1.23");
 		expect(
 			formatBedrockStatus({ costTotal: 1.23456, unpricedRequestCount: 2 }),
-		).toBe("bedrock est >= $1.23");
+		).toBe("bedrock: $1.23");
 	});
 });
 
@@ -140,7 +140,7 @@ describe("bedrock cost extension", () => {
 
 		await fire(pi, "session_start", { type: "session_start" }, ctx);
 
-		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock est $10.00");
+		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock: $10.00");
 		expect(notify).not.toHaveBeenCalled();
 	});
 
@@ -165,7 +165,7 @@ describe("bedrock cost extension", () => {
 		const { pi, ctx, setStatus } = setupExtension();
 		await fire(pi, "session_start", { type: "session_start" }, ctx);
 
-		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock est $20.00");
+		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock: $20.00");
 	});
 
 	it("records only Bedrock assistant message usage and marks partial totals", async () => {
@@ -203,7 +203,7 @@ describe("bedrock cost extension", () => {
 			ctx,
 		);
 		expect((await getCurrentBedrockMonthSummary()).requestCount).toBe(1);
-		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock est $0.00");
+		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock: $0.00");
 
 		await fire(
 			pi,
@@ -224,7 +224,7 @@ describe("bedrock cost extension", () => {
 		expect(summary.unpricedRequestCount).toBe(1);
 		expect(setStatus).toHaveBeenLastCalledWith(
 			"bedrock",
-			"bedrock est >= $0.00",
+			"bedrock: $0.00",
 		);
 	});
 });

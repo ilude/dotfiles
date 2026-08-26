@@ -26,10 +26,8 @@ function isBedrockProvider(provider: string): provider is BedrockProvider {
 export function formatBedrockStatus(
 	summary: Pick<BedrockMonthSummary, "costTotal" | "unpricedRequestCount">,
 ): string {
-	const prefix =
-		summary.unpricedRequestCount > 0 ? "bedrock est >=" : "bedrock est";
 	const cost = Number.isFinite(summary.costTotal) ? summary.costTotal : 0;
-	return `${prefix} $${cost.toFixed(2)}`;
+	return `bedrock: $${cost.toFixed(2)}`;
 }
 
 export function shouldRecordBedrockMessage(
