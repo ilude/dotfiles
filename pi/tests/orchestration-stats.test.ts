@@ -105,6 +105,17 @@ afterEach(() => {
 });
 
 describe("orchestration stats report", () => {
+	it("uses the explicitly supplied friction directory instead of ambient environment", async () => {
+		const ambient = path.join(root, "ambient-friction");
+		fs.mkdirSync(ambient);
+		fs.writeFileSync(path.join(ambient, "reviews.jsonl"), JSON.stringify({ interactionId: "ambient" }) + "\n");
+		fs.writeFileSync(path.join(friction, "reviews.jsonl"), JSON.stringify({ interactionId: "explicit" }) + "\n");
+		process.env.PI_WORKFLOW_FRICTION_DIR = ambient;
+		const result = await readOrchestrationAnalytics({ metricsDir: metrics, frictionDir: friction, days: 1, now: new Date("2026-07-10T13:00:00.000Z") });
+		expect(result.reviews).toHaveLength(1);
+		expect(result.reviews[0]?.interactionId).toBe("explicit");
+	});
+
 	it("renders deterministic full observations without converting unavailable cost to zero", async () => {
 		fs.writeFileSync(
 			path.join(metrics, "metrics-2026-07-10.jsonl"),

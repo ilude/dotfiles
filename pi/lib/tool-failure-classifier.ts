@@ -110,6 +110,58 @@ function contentItems(message: Record<string, unknown>): Record<string, unknown>
 	return Array.isArray(content) ? content.filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x)) : [];
 }
 
+export function selectedFailureCoordinates(scan: FailureScan, rows: readonly SessionEntry[], candidateIds: readonly string[]): Map<string, import("./tool-failure-inspection.ts").TranscriptCoordinate[]> {
+	const allowed = new Map(scan.candidates.map((candidate) => [candidate.candidateId, new Set(candidate.coordinates)]));
+	const calls = new Map<string, { entry: string; line: number; item: Record<string, unknown> }>();
+	const failures = new Map<string, import("./tool-failure-inspection.ts").TranscriptCoordinate>();
+	const failureTimes = new Map<string, string>();
+	const successes: { coordinate: import("./tool-failure-inspection.ts").TranscriptCoordinate; timestamp: string }[] = [];
+	const sourceLines = new Map<string, number>();
+	for (const row of rows) {
+		const line = row.lineNumber ?? ((sourceLines.get(row.filename) ?? 0) + 1);
+		sourceLines.set(row.filename, line);
+		const message = messageObject(row.message);
+		if (!message) continue;
+		for (const item of contentItems(message)) {
+			if (item.type !== "toolCall" && item.type !== "tool_call") continue;
+			const id = item.id ?? item.toolCallId;
+			if (typeof id === "string") calls.set(`${row.filename}\0${id}`, { entry: row.id, line, item });
+		}
+		const callId = message.toolCallId;
+		if (typeof callId !== "string") continue;
+		const call = calls.get(`${row.filename}\0${callId}`);
+		if (!call) continue;
+		const parsed = row.timestamp ? new Date(row.timestamp) : undefined;
+		const timestamp = parsed && !Number.isNaN(parsed.valueOf()) ? parsed.toISOString() : undefined;
+		if (message.isError === true) {
+			const token = coordinateId(call.entry, callId);
+			if ([...allowed.values()].some((tokens) => tokens.has(token))) {
+				failures.set(token, { filePath: row.filename, line, callLine: call.line, token });
+				if (timestamp) failureTimes.set(token, timestamp);
+			}
+			continue;
+		}
+		const tool = String(call.item.name ?? call.item.toolName ?? "").toLowerCase();
+		const args = call.item.arguments ?? call.item.args;
+		const command = args && typeof args === "object" ? (args as Record<string, unknown>).command : undefined;
+		if ((tool === "bash" || tool === "functions.bash") && typeof command === "string" && command.trim() && timestamp) successes.push({ coordinate: { filePath: row.filename, line, callLine: call.line }, timestamp });
+	}
+	successes.sort((a, b) => b.timestamp.localeCompare(a.timestamp) || a.coordinate.filePath.localeCompare(b.coordinate.filePath) || a.coordinate.line - b.coordinate.line);
+	const result = new Map<string, import("./tool-failure-inspection.ts").TranscriptCoordinate[]>();
+	for (const candidateId of candidateIds) {
+		const candidate = scan.candidates.find((item) => item.candidateId === candidateId);
+		const selected = candidate?.coordinates ?? [];
+		const items = selected.map((token) => failures.get(token)).filter((item): item is import("./tool-failure-inspection.ts").TranscriptCoordinate => item !== undefined);
+		if (candidate?.contract === "required:command" && candidate.tool === "bash") {
+			const failureToken = selected[0];
+			const success = failureToken && failureTimes.has(failureToken) ? successes.find((item) => item.timestamp > failureTimes.get(failureToken)!) : undefined;
+			if (failureToken && success) items.push({ ...success.coordinate, token: `fix-check:${failureToken}`, fixCheckFor: failureToken });
+		}
+		if (items.length) result.set(candidateId, items);
+	}
+	return result;
+}
+
 export function scanToolFailures(rows: readonly SessionEntry[], asOf = new Date(), malformedOmissions = 0): FailureScan {
 	const calls = new Map<string, { tool: string; entry: string }>();
 	const results: { filename: string; callId: string; timestamp?: string | null; message: Record<string, unknown> }[] = [];

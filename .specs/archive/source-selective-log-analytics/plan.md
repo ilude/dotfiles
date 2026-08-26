@@ -1,6 +1,7 @@
 ---
 created: 2026-08-25
-status: ready
+status: complete
+completed: 2026-08-26
 ---
 
 # Restore flexible Pi session and log analytics
@@ -23,20 +24,20 @@ Replace the persistent projection pipeline with one invocation-local `@duckdb/no
 
 ## Tasks
 
-- [ ] **T1: Prove the invocation-local direct-query core**
+- [x] **T1: Prove the invocation-local direct-query core**
   - Files: `pi/lib/log-analytics/api.ts`, `pi/lib/log-analytics/store.ts`, `pi/lib/log-analytics/registry.ts`, `pi/extensions/log-analytics-tool.ts`, `pi/tests/log-analytics-store.test.ts`, `pi/tests/log-analytics-tool.test.ts`, `pi/tests/log-analytics-boundary.test.ts`
   - Change: Implement `withAnalyticsSession` and `session.query` around `session_entries`, then expose the public `query` operation through `log_analytics`. Each registered source definition must discover canonical files and create a same-named instance-local view with `_source_file`, `_record_key`, `_timestamp`, and complete `record` JSON. Build views with `read_json_objects(..., format = 'newline_delimited', filename = true, ignore_errors = true)` and exclude `record IS NULL`, so DuckDB keeps valid records around malformed lines without a custom parser or warning lifecycle. `_record_key` uses the record ID when present and otherwise a hash of raw JSON. After the session slice passes, convert the full catalog - `session_entries`, `metric_events`, `trace_events`, `workflow_events`, `orchestration_events`, `friction_interactions`, `friction_reviews`, `damage_control_events`, `damage_control_judgments`, `permission_decisions`, `usage_events`, and `background_terminal_events` - before freezing T1. Sources sharing files must preserve their current deterministic event predicates in view SQL so each view contains only its named records; typed columns beyond the four common columns are optional cataloged conveniences. Create one in-memory DuckDB instance per session callback and one setup connection for selected views. Each `session.query` opens its own connection, iterates `connection.stream()` with DuckDB's JSON row conversion, stops before accepting a row that exceeds returned row or encoded-byte bounds, and closes that connection on truncation, cancellation, error, or completion; the callback `finally` closes the instance. A later query therefore receives a fresh connection rather than reusing an interrupted or partially consumed result. Remove caller-supplied `SourceDefinition`, `connectionForDomain`, `selectAnalytics`, and `aggregateAnalytics`; callers use registered views and SQL in T2. Do not use `runAndReadAll()`, persistent databases, global instances, refresh state, compatibility adapters, snapshots, or date-selection protocols. Run typecheck before expanding from the session slice to catalog conversion.
   - Done when: The public and internal TypeScript contracts compile; a fixture query using SQL date and content predicates returns the correct `_source_file` and `_record_key` from raw JSON; a selected session record larger than 1 MiB remains queryable; valid records before and after a malformed line remain queryable while the null record is absent; a representative CTE/JSON query succeeds; a high-cardinality result stops at its output bound after bounded chunk consumption; another query succeeds afterward through a fresh connection; two simultaneous sessions complete independently; cancelling or closing one does not affect the other; every listed catalog source creates its registered view, shared-file views exclude unrelated event kinds, and no persistent analytics artifact is created.
   - Verify: `cd pi && pnpm run typecheck && pnpm test log-analytics-store.test.ts log-analytics-tool.test.ts log-analytics-boundary.test.ts`
 
-- [ ] **T2: Migrate affected callers in parallel**
+- [x] **T2: Migrate affected callers in parallel**
   - Files: `pi/extensions/log-analytics-tool.ts`, `pi/lib/log-analytics/session-analytics.ts`, `pi/extensions/extension-stats.ts`, `pi/extensions/skill-stats.ts`, `pi/lib/log-analytics/orchestration-analytics.ts`, `pi/extensions/orchestration-stats.ts`, `pi/extensions/tool-failure-triage.ts`, `pi/lib/tool-failure-store.ts`, `pi/lib/tool-failure-classifier.ts`, `pi/lib/log-analytics/readers.ts`, `pi/lib/log-analytics/index.ts`, `pi/tests/log-analytics-tool.test.ts`, `pi/tests/session-jsonl-stats.test.ts`, `pi/tests/skill-stats.test.ts`, `pi/tests/orchestration-stats.test.ts`, `pi/tests/tool-failure-store.test.ts`, `pi/tests/tool-failure-command.test.ts`
   - Depends on: T1
   - Change: After T1 passes, treat its recorded `withAnalyticsSession`, source-definition, view-coordinate, and bounded-query contracts as the shared interface, then run four independent packages concurrently with no shared-file mutation: P2A owns the generic tool catalog, schemas, and query hints over the T1-registered views; P2B owns `session-analytics.ts`, `/extension-stats`, and `/skill-stats`, performs aggregation through one analytics session, and preserves their reports; P2C owns orchestration analytics and `/orchestration-stats`, queries metrics/reviews through one analytics session, and removes the `.orchestration-stats` staging files and analytics database; P2D owns exported readers and `/find-fails`: `tool-failure-triage.ts` queries message records from `session_entries`, maps only the bounded fields required by `scanToolFailures`, runs the existing classifier and coordinate selection in memory, and preserves decisions JSONL plus bounded transcript inspection. Remove the persistent `ToolFailureStore` database, `saveScan` write with no runtime reader, and runtime-unused `latestScan`, `ingest`, and `candidates` persistence APIs; move any still-needed pure coordinate helper beside the classifier rather than retaining a store wrapper. Delete obsolete store signatures rather than adding compatibility adapters. Leave usage readers, data producers, enforcement, live state, and correlation helpers unchanged.
   - Done when: Each package passes its focused tests independently against the recorded T1 interface; catalog view names and coordinates are stable; the generic tool opens only selected sources; extension and skill reports aggregate in DuckDB instead of accumulating complete session corpora in JavaScript; orchestration creates no staging or database files; failed-tool scanning creates no analytics database, persists no unused scan copy, and preserves existing findings, candidate coordinates, decisions, and inspection behavior; and no package edits the frozen T1 core files `api.ts`, `store.ts`, or `registry.ts`.
   - Verify: `cd pi && pnpm test log-analytics-tool.test.ts session-jsonl-stats.test.ts skill-stats.test.ts orchestration-stats.test.ts tool-failure-store.test.ts tool-failure-command.test.ts && pnpm run typecheck`
 
-- [ ] **T3: Integrate workflows and remove superseded analytics state**
+- [x] **T3: Integrate workflows and remove superseded analytics state**
   - Files: `pi/tests/log-analytics-parity.test.ts`, `pi/tests/log-analytics-boundary.test.ts`, affected existing integration tests, `pi/README.md`, `pi/skills/pi-extension/references/contracts/observability.md`
   - Depends on: T2
   - Change: Reconcile the four migration packages, update the observability contract from structural-only analytics to explicit full session/log querying, document source views and practical SQL hints, and remove superseded persistent projection, refresh, fingerprint, offset, shared-store, lifecycle, and staging code. Keep domain-owned JSONL and unaffected extensions outside the change.
@@ -45,7 +46,7 @@ Replace the persistent projection pipeline with one invocation-local `@duckdb/no
 
 ## Validation
 
-- [ ] From one integrated fixture corpus, SQL identifies the correct session and record from arbitrary content and dates, preserves valid records around a malformed line and a record larger than 1 MiB, keeps shared-file source views event-specific, finds failed tool calls with stable coordinates, and produces expected extension, skill, and orchestration reports; all T1-T3 verification commands pass; no analytics `.duckdb`, `.wal`, `.orchestration-stats`, projection metadata, saved scan copy, or shared connection cache is created.
+- [x] From one integrated fixture corpus, SQL identifies the correct session and record from arbitrary content and dates, preserves valid records around a malformed line and a record larger than 1 MiB, keeps shared-file source views event-specific, finds failed tool calls with stable coordinates, and produces expected extension, skill, and orchestration reports; all T1-T3 verification commands pass; no analytics `.duckdb`, `.wal`, `.orchestration-stats`, projection metadata, saved scan copy, or shared connection cache is created.
 
 ## Retention
 
@@ -53,7 +54,7 @@ Keep incomplete work at `.specs/source-selective-log-analytics/plan.md`. After c
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
+- State: Complete; T1-T3 and final validation passed.
 - Blocker: None.
-- Next: T1.
-- Resume: `/do-it .specs/source-selective-log-analytics/plan.md`
+- Next: Archive and close out the workflow branch.
+- Resume: Not applicable.

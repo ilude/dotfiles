@@ -292,9 +292,9 @@ Extension-owned slash commands are TUI-only by default. `pi/lib/slash-command-ec
 
 ### `log-analytics-tool.ts`
 
-`log_analytics` is the sole generic Pi JSONL analytics tool. It runs in process over the disposable local DuckDB read model and accepts only `catalog`, typed `select`, and typed `aggregate` operations using registered source and column IDs. It accepts no SQL, expressions, paths, filesystem functions, or external access. Results are structural-only and bounded by rows, encoded bytes, and elapsed time; transcript content and domain evidence remain outside the generic read model.
+`log_analytics` is the sole generic Pi JSONL analytics tool. `catalog` lists stable source IDs and same-named DuckDB views; `query` accepts `{ sources, sql, parameters, maxRows }` and passes documented DuckDB SQL to an invocation-local in-memory engine. Each selected view preserves the complete original JSON record in `record` and exposes `_source_file`, `_record_key`, and `_timestamp` plus typed convenience columns. For example: `SELECT _source_file, _record_key, record FROM session_entries WHERE _timestamp >= $start AND json_extract_string(record, '$.message') LIKE $needle ORDER BY _timestamp`. Use CTEs, JSON functions, date predicates, and ordinary DuckDB parameters; do not use filesystem functions or external table functions. Results stop incrementally at the row and encoded-byte bounds and report `truncated`; there is no persistent analytics database or refresh state.
 
-Active readers use typed in-process APIs or this tool. `/find-fails`, `/usage`, `/extension-stats`, `/skill-stats`, `/orchestration-stats`, and workflow-friction diagnostics retain their owning command contracts. Correlation is exact or deterministic by default; unique inferred edges are disclosed, opt-in, and never decision authority. JSONL remains authoritative and refresh failures are observational gaps.
+Active readers use this direct query boundary or typed in-process APIs. `/find-fails`, `/usage`, `/extension-stats`, `/skill-stats`, `/orchestration-stats`, and workflow-friction diagnostics retain their owning command contracts. Correlation is exact or deterministic by default; unique inferred edges are disclosed, opt-in, and never decision authority. Canonical JSONL remains authoritative.
 
 ### `damage-control.ts`
 

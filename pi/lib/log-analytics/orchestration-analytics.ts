@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -11,7 +10,7 @@ import {
 	type OrchestrationRunData,
 } from "../orchestration-telemetry.ts";
 import type { MetricsEvent } from "../metrics.ts";
-import { LogAnalyticsStore, type SourceDefinition } from "./store.ts";
+import { withAnalyticsSession } from "./store.ts";
 
 const MAX_FILES = 367;
 const MAX_LINE_BYTES = 8 * 1024 * 1024;
@@ -19,9 +18,6 @@ const MAX_INPUT_BYTES = 256 * 1024 * 1024;
 const MAX_MALFORMED_LINES = 10_000;
 const MAX_EVENTS = 1_000_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const ORCHESTRATION_EVENTS_SOURCE = "orchestration_stats_events";
-const ORCHESTRATION_REVIEWS_SOURCE = "orchestration_stats_reviews";
 
 export type OrchestrationAnalyticsEvent = {
 	id: string;
@@ -66,79 +62,8 @@ export type ReadOrchestrationAnalyticsResult = {
 	diagnostics: OrchestrationAnalyticsDiagnostics;
 };
 
-type StagedEvent = {
-	event_id: string;
-	timestamp: string;
-	event_type: string;
-	data_json: string;
-};
-
-type StagedReview = {
-	interaction_id: string;
-	reviewed_at: string | null;
-	status: string | null;
-	classification: string | null;
-	source_line: number;
-};
-
-const eventDefinition: SourceDefinition<StagedEvent> = {
-	name: ORCHESTRATION_EVENTS_SOURCE,
-	columns: [
-		{ name: "event_id", type: "VARCHAR" },
-		{ name: "timestamp", type: "VARCHAR" },
-		{ name: "event_type", type: "VARCHAR" },
-		{ name: "data_json", type: "VARCHAR" },
-	],
-	parse: (value) => {
-		if (!isRecord(value)) return undefined;
-		if (
-			typeof value.event_id !== "string" ||
-			typeof value.timestamp !== "string" ||
-			typeof value.event_type !== "string" ||
-			typeof value.data_json !== "string"
-		)
-			return undefined;
-		return {
-			event_id: value.event_id,
-			timestamp: value.timestamp,
-			event_type: value.event_type,
-			data_json: value.data_json,
-		};
-	},
-};
-
-const reviewDefinition: SourceDefinition<StagedReview> = {
-	name: ORCHESTRATION_REVIEWS_SOURCE,
-	columns: [
-		{ name: "interaction_id", type: "VARCHAR" },
-		{ name: "reviewed_at", type: "VARCHAR" },
-		{ name: "status", type: "VARCHAR" },
-		{ name: "classification", type: "VARCHAR" },
-		{ name: "source_line", type: "BIGINT" },
-	],
-	parse: (value) => {
-		if (!isRecord(value) || typeof value.interaction_id !== "string")
-			return undefined;
-		return {
-			interaction_id: value.interaction_id,
-			reviewed_at: stringOrNull(value.reviewed_at),
-			status: stringOrNull(value.status),
-			classification: stringOrNull(value.classification),
-			source_line: numberOrZero(value.source_line),
-		};
-	},
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function stringOrNull(value: unknown): string | null {
-	return typeof value === "string" ? value : null;
-}
-
-function numberOrZero(value: unknown): number {
-	return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function checkCancelled(signal: AbortSignal | undefined): void {
@@ -183,20 +108,41 @@ async function existingFiles(
 	};
 }
 
-function validEvent(value: unknown): value is MetricsEvent {
-	if (!isRecord(value)) return false;
-	return (
-		value.schemaVersion === 1 &&
-		typeof value.id === "string" &&
-		typeof value.ts === "string" &&
-		typeof value.event === "string" &&
-		(value.data === undefined || isRecord(value.data))
-	);
-}
-
-function inWindow(event: MetricsEvent, start: number, end: number): boolean {
-	const timestamp = Date.parse(event.ts);
-	return Number.isFinite(timestamp) && timestamp >= start && timestamp <= end;
+async function collectDiagnostics(
+	files: readonly string[],
+	diagnostics: OrchestrationAnalyticsDiagnostics,
+	signal: AbortSignal | undefined,
+): Promise<void> {
+	for (const file of files) {
+		checkCancelled(signal);
+		diagnostics.filesScanned += 1;
+		const text = await fs.readFile(file, "utf8");
+		for (const line of text.split(/\r?\n/)) {
+			checkCancelled(signal);
+			const bytes = Buffer.byteLength(line, "utf8") + 1;
+			if (bytes > MAX_LINE_BYTES) {
+				diagnostics.overLimitLines += 1;
+				continue;
+			}
+			if (diagnostics.totalInputBytes + bytes > MAX_INPUT_BYTES) {
+				diagnostics.truncated = true;
+				diagnostics.truncationReason = "input_limit";
+				return;
+			}
+			diagnostics.totalInputBytes += bytes;
+			if (!line.trim()) continue;
+			try {
+				JSON.parse(line);
+			} catch {
+				diagnostics.malformedLines += 1;
+				if (diagnostics.malformedLines >= MAX_MALFORMED_LINES) {
+					diagnostics.truncated = true;
+					diagnostics.truncationReason = "malformed_limit";
+					return;
+				}
+			}
+		}
+	}
 }
 
 function normalize(
@@ -246,183 +192,40 @@ function normalize(
 	return undefined;
 }
 
-function stagedEvent(event: OrchestrationAnalyticsEvent): StagedEvent {
-	return {
-		event_id: event.id,
-		timestamp: event.ts,
-		event_type: event.event,
-		data_json: JSON.stringify(event.data),
-	};
+function recordValue(row: Record<string, unknown>): Record<string, unknown> {
+	const record = row.record;
+	if (typeof record === "string") return JSON.parse(record) as Record<string, unknown>;
+	if (isRecord(record)) return record;
+	throw new Error("invalid orchestration analytics record");
 }
 
-function stagingPath(root: string, source: string, kind: string): string {
-	const digest = createHash("sha256").update(source).digest("hex");
-	return path.join(root, ".orchestration-stats", `${kind}-${digest}.jsonl`);
-}
-
-async function writeStaged<T>(
-	filePath: string,
-	rows: readonly T[],
-	signal: AbortSignal | undefined,
-): Promise<void> {
-	checkCancelled(signal);
-	const content = rows.length
-		? `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`
-		: "";
-	let previous: string | undefined;
-	try {
-		previous = await fs.readFile(filePath, "utf8");
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-	}
-	if (previous === content) return;
-	await fs.mkdir(path.dirname(filePath), { recursive: true });
-	await fs.writeFile(filePath, content, "utf8");
-}
-
-async function scanMetrics(
-	files: readonly string[],
-	root: string,
-	now: Date,
-	days: number,
-	diagnostics: OrchestrationAnalyticsDiagnostics,
-	signal: AbortSignal | undefined,
-): Promise<string[]> {
-	const start = now.getTime() - days * DAY_MS;
-	const seen = new Set<string>();
-	const staged: string[] = [];
-	for (const file of files) {
-		checkCancelled(signal);
-		diagnostics.filesScanned += 1;
-		const text = await fs.readFile(file, "utf8");
-		const events: StagedEvent[] = [];
-		const lines = text.split(/\r?\n/);
-		for (const line of lines) {
-			checkCancelled(signal);
-			const bytes = Buffer.byteLength(line, "utf8") + 1;
-			if (bytes > MAX_LINE_BYTES) {
-				diagnostics.overLimitLines += 1;
-				continue;
-			}
-			if (diagnostics.totalInputBytes + bytes > MAX_INPUT_BYTES) {
-				diagnostics.truncated = true;
-				diagnostics.truncationReason = "input_limit";
-				break;
-			}
-			diagnostics.totalInputBytes += bytes;
-			if (!line.trim()) continue;
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(line);
-			} catch {
-				diagnostics.malformedLines += 1;
-				if (diagnostics.malformedLines >= MAX_MALFORMED_LINES) {
-					diagnostics.truncated = true;
-					diagnostics.truncationReason = "malformed_limit";
-					break;
-				}
-				continue;
-			}
-			if (
-				!validEvent(parsed) ||
-				!inWindow(parsed, start, now.getTime()) ||
-				(parsed.event !== "orchestration_run" &&
-					parsed.event !== "orchestration_interaction")
-			)
-				continue;
-			const normalized = normalize(parsed);
-			if (!normalized) {
-				diagnostics.unsupportedLines += 1;
-				continue;
-			}
-			if (seen.has(normalized.id)) {
-				diagnostics.duplicateLines += 1;
-				continue;
-			}
-			seen.add(normalized.id);
-			events.push(stagedEvent(normalized));
-		}
-		const stagedPath = stagingPath(root, file, "events");
-		await writeStaged(stagedPath, events, signal);
-		staged.push(stagedPath);
-		if (diagnostics.truncated && diagnostics.truncationReason !== "file_limit")
-			break;
-	}
-	return staged;
-}
-
-async function scanReviews(
-	file: string,
-	root: string,
-	signal: AbortSignal | undefined,
-): Promise<string[]> {
-	let text: string;
-	try {
-		text = await fs.readFile(file, "utf8");
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-		throw error;
-	}
-	const rows: StagedReview[] = [];
-	for (const [index, line] of text.split(/\r?\n/).entries()) {
-		checkCancelled(signal);
-		if (!line.trim()) continue;
-		let value: unknown;
-		try {
-			value = JSON.parse(line);
-		} catch {
-			continue;
-		}
-		if (!isRecord(value) || typeof value.interactionId !== "string") continue;
-		const review = isRecord(value.review) ? value.review : undefined;
-		rows.push({
-			interaction_id: value.interactionId,
-			reviewed_at: stringOrNull(value.reviewedAt),
-			status: stringOrNull(value.status),
-			classification: stringOrNull(review?.classification),
-			source_line: index + 1,
-		});
-	}
-	const stagedPath = stagingPath(root, file, "reviews");
-	await writeStaged(stagedPath, rows, signal);
-	return [stagedPath];
-}
-
-function decodeEvent(row: Record<string, unknown>): OrchestrationAnalyticsEvent {
-	if (
-		typeof row.event_id !== "string" ||
-		typeof row.timestamp !== "string" ||
-		typeof row.event_type !== "string" ||
-		typeof row.data_json !== "string"
-	)
-		throw new Error("invalid orchestration analytics projection row");
-	const data = JSON.parse(row.data_json) as
-		| OrchestrationRunData
-		| OrchestrationInteractionData;
-	if (
-		row.event_type !== "orchestration_run" &&
-		row.event_type !== "orchestration_interaction"
-	)
-		throw new Error("invalid orchestration analytics event type");
-	return {
-		id: row.event_id,
-		ts: row.timestamp,
-		event: row.event_type,
-		data,
-	};
+function decodeEvent(row: Record<string, unknown>): OrchestrationAnalyticsEvent | undefined {
+	if (typeof row.id !== "string" || typeof row.ts !== "string")
+		throw new Error("invalid orchestration analytics view row");
+	const record = recordValue(row);
+	return normalize({
+		schemaVersion: 1,
+		id: row.id,
+		ts: row.ts,
+		event: row.event,
+		data: record.data,
+		session: record.session,
+	} as MetricsEvent);
 }
 
 function decodeReview(row: Record<string, unknown>): OrchestrationAnalyticsReview {
-	if (typeof row.interaction_id !== "string")
-		throw new Error("invalid orchestration review projection row");
+	const record = recordValue(row);
+	if (typeof record.interactionId !== "string")
+		throw new Error("invalid orchestration review view row");
+	const review = isRecord(record.review) ? record.review : undefined;
 	return {
-		interactionId: row.interaction_id,
-		...(typeof row.reviewed_at === "string"
-			? { reviewedAt: row.reviewed_at }
+		interactionId: record.interactionId,
+		...(typeof record.reviewedAt === "string"
+			? { reviewedAt: record.reviewedAt }
 			: {}),
-		...(typeof row.status === "string" ? { status: row.status } : {}),
-		...(typeof row.classification === "string"
-			? { classification: row.classification }
+		...(typeof record.status === "string" ? { status: record.status } : {}),
+		...(typeof review?.classification === "string"
+			? { classification: review.classification }
 			: {}),
 	};
 }
@@ -446,54 +249,56 @@ export async function readOrchestrationAnalytics(
 		diagnostics.truncated = true;
 		diagnostics.truncationReason = "file_limit";
 	}
-	const store = await LogAnalyticsStore.open(
-		path.join(options.metricsDir, "analytics", "log-analytics.duckdb"),
+	await collectDiagnostics(discovered.files, diagnostics, options.signal);
+	return withAnalyticsSession(
+		{
+			root: options.metricsDir,
+			sources: ["orchestration_events", "friction_reviews"],
+			signal: options.signal,
+			sourceRoots: {
+				orchestration_events: [options.metricsDir],
+				friction_reviews: [options.frictionDir],
+			},
+		},
+		async (session) => {
+			const start = new Date(now.getTime() - options.days * DAY_MS).toISOString();
+			const end = now.toISOString();
+			const [eventRows, reviewRows] = await Promise.all([
+				session.query({
+					sql: `SELECT _record_key AS id, _timestamp AS ts, event, record
+						FROM orchestration_events
+						WHERE _timestamp >= $start AND _timestamp <= $end
+						ORDER BY _timestamp ASC, _record_key ASC`,
+					parameters: { start, end },
+					maxRows: MAX_EVENTS,
+					maxBytes: MAX_INPUT_BYTES,
+				}),
+				session.query({
+					sql: `SELECT record FROM friction_reviews ORDER BY _timestamp ASC, _record_key ASC`,
+					maxRows: MAX_EVENTS,
+					maxBytes: MAX_INPUT_BYTES,
+				}),
+			]);
+			const events: OrchestrationAnalyticsEvent[] = [];
+			const seen = new Set<string>();
+			for (const row of eventRows.rows) {
+				const event = decodeEvent(row);
+				if (!event) {
+					diagnostics.unsupportedLines += 1;
+					continue;
+				}
+				if (seen.has(event.id)) {
+					diagnostics.duplicateLines += 1;
+					continue;
+				}
+				seen.add(event.id);
+				events.push(event);
+			}
+			return {
+				events,
+				reviews: reviewRows.rows.map(decodeReview),
+				diagnostics,
+			};
+		},
 	);
-	try {
-		await store.register(eventDefinition);
-		await store.register(reviewDefinition);
-		const eventPaths = await scanMetrics(
-			discovered.files,
-			options.metricsDir,
-			now,
-			options.days,
-			diagnostics,
-			options.signal,
-		);
-		await store.refresh(eventDefinition, eventPaths, {
-			maxBytes: MAX_INPUT_BYTES,
-			maxRecords: MAX_EVENTS,
-			maxLineBytes: MAX_LINE_BYTES,
-			signal: options.signal,
-		});
-		const reviewPath = path.join(options.frictionDir, "reviews.jsonl");
-		const reviewPaths = await scanReviews(
-			reviewPath,
-			options.metricsDir,
-			options.signal,
-		);
-		await store.refresh(reviewDefinition, reviewPaths, {
-			maxBytes: MAX_INPUT_BYTES,
-			maxRecords: MAX_EVENTS,
-			maxLineBytes: MAX_LINE_BYTES,
-			signal: options.signal,
-		});
-		const events = (
-			await store.query(
-				`SELECT event_id, timestamp, event_type, data_json FROM source_${ORCHESTRATION_EVENTS_SOURCE} ORDER BY timestamp ASC, event_id ASC LIMIT ${MAX_EVENTS}`,
-				[],
-				options.signal,
-			)
-		).map(decodeEvent);
-		const reviews = (
-			await store.query(
-				`SELECT interaction_id, reviewed_at, status, classification FROM source_${ORCHESTRATION_REVIEWS_SOURCE} ORDER BY source_line ASC LIMIT ${MAX_EVENTS}`,
-				[],
-				options.signal,
-			)
-		).map(decodeReview);
-		return { events, reviews, diagnostics };
-	} finally {
-		await store.close();
-	}
 }
