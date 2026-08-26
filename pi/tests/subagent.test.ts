@@ -4948,6 +4948,95 @@ You are a test agent.
 	);
 
 	it(
+		"runs a modern read in the background and delivers its result later",
+		async () => {
+			const proc = createMockProcess();
+			spawnMock.mockImplementation(() => proc);
+			const { pi } = await loadTool();
+			const ctx = createMockCtx({ cwd: tmpDir });
+			await pi
+				._getHook("session_start")[0]
+				.handler({ reason: "startup" }, ctx);
+			const read = pi._getTool("subagent_read");
+			if (!read) throw new Error("subagent_read tool not registered");
+
+			const started = await read.execute(
+				"modern-read-background",
+				{
+					items: [{ agent: "tester", instructions: "Inspect independently." }],
+					agentScope: "project",
+					background: true,
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			expect(started.content[0].text).toContain("Started transient background single");
+			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			proc.stdout.emit(
+				"data",
+				`${JSON.stringify({
+					type: "message_end",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "inspection complete" }],
+						stopReason: "stop",
+					},
+				})}\n`,
+			);
+			proc.emit("close", 0);
+
+			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			expect(pi.sendMessage).toHaveBeenCalledWith(
+				expect.objectContaining({
+					customType: "subagent-result",
+					content: expect.stringContaining("inspection complete"),
+				}),
+				{ deliverAs: "followUp", triggerTurn: true },
+			);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"fails a child process that exits successfully without a deliverable",
+		async () => {
+			const proc = createMockProcess();
+			spawnMock.mockImplementation(() => {
+				queueMicrotask(() => proc.emit("close", 0));
+				return proc;
+			});
+			const { pi } = await loadTool();
+			const read = pi._getTool("subagent_read");
+			if (!read) throw new Error("subagent_read tool not registered");
+
+			const result = await read.execute(
+				"modern-read-empty",
+				{
+					items: [{ agent: "tester", instructions: "Return a required inspection result." }],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.details.results[0]).toMatchObject({
+				stopReason: "error",
+				errorMessage: "Subagent completed without the required textual or structured deliverable.",
+			});
+			expect(result.content[0].text).toContain("required textual or structured deliverable");
+			expect(result.details.results[0].outputReference).toBeUndefined();
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
 		"emits exactly one closeout for each modern subagent tool",
 		async () => {
 			mockSuccessfulSpawn();

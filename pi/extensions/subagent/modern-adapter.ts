@@ -36,6 +36,7 @@ export type ModernExecutorInput = ModernInternalInput & {
 	workBoundary?: string[];
 	maxWorkers?: number;
 	readOnlyFanout?: undefined;
+	background?: boolean;
 	continuable: true;
 };
 
@@ -71,6 +72,7 @@ export function modernRequestToExecutorInput(
 			? { affinityTaskId: request.affinityTaskId }
 			: {}),
 		continuable: true as const,
+		...(request.background === undefined ? {} : { background: request.background }),
 		...(request.enforcedBoundary ? { workspaceRoot: request.enforcedBoundary } : {}),
 	};
 	if (request.kind === "coordinator") {

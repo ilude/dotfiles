@@ -21,6 +21,8 @@ describe("T6 current subagent naming", () => {
 		const enforced = read.enforcedBoundary as { description?: string };
 
 		expect(read).toHaveProperty("enforcedBoundary");
+		expect(read).toHaveProperty("background");
+		expect(read.background).toMatchObject({ type: "boolean", default: false });
 		expect(read).not.toHaveProperty("workspaceRoot");
 		expect(readItem).toHaveProperty("instructions");
 		expect(readItem).toHaveProperty("boundaryPaths");
@@ -31,7 +33,11 @@ describe("T6 current subagent naming", () => {
 		expect(enforced.description).toContain("governed file tools");
 		expect(enforced.description).toContain("recursive-search tools");
 		expect(enforced.description).toContain("not a general sandbox");
-		expect(properties(SubagentWriteSchema)).toHaveProperty("enforcedBoundary");
+		expect(properties(SubagentWriteSchema)).toMatchObject({
+			enforcedBoundary: expect.any(Object),
+			background: { type: "boolean", default: false },
+		});
+		expect(teamlead.background).toMatchObject({ type: "boolean", default: false });
 	});
 
 	it("maps current names to hidden legacy execution fields without changing authority", () => {
@@ -39,6 +45,7 @@ describe("T6 current subagent naming", () => {
 			kind: "read" as const,
 			items: [{ agent: "reader", instructions: "Inspect files", boundaryPaths: ["src"] }],
 			enforcedBoundary: "/workspace",
+			background: true,
 		};
 		const prepared = {
 			items: [
@@ -54,6 +61,7 @@ describe("T6 current subagent naming", () => {
 			task: "Inspect files",
 			scope: ["src"],
 			workspaceRoot: "/workspace",
+			background: true,
 		});
 		expect(executorInput).not.toHaveProperty("instructions");
 	});

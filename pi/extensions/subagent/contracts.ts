@@ -55,6 +55,8 @@ export type CoordinatorItem = SubagentItemBase;
 export interface ReadRequest {
 	readonly kind: "read";
 	readonly items: readonly ReadItem[];
+	/** Run independently and deliver completion as a follow-up. Defaults to false. */
+	readonly background?: boolean;
 	/** Explicit task A whose settled Luna session may continue task B. Single-item only. */
 	readonly affinityTaskId?: string;
 	/** The filesystem boundary enforced by governed file tools and recognized recursive-search tools. */
@@ -67,6 +69,8 @@ export interface ReadRequest {
 export interface WriteRequest {
 	readonly kind: "write";
 	readonly items: readonly WriteItem[];
+	/** Run independently and deliver completion as a follow-up. Defaults to false. */
+	readonly background?: boolean;
 	/** Explicit task A whose settled Luna session may continue task B. Single-item only. */
 	readonly affinityTaskId?: string;
 	/** The filesystem boundary enforced by governed file tools and recognized recursive-search tools. */
@@ -79,6 +83,8 @@ export interface WriteRequest {
 export interface CoordinatorRequest {
 	readonly kind: "coordinator";
 	readonly items: readonly CoordinatorItem[];
+	/** Run independently and deliver completion as a follow-up. Defaults to false. */
+	readonly background?: boolean;
 	/** Advisory boundary for Team Lead coordination; it does not grant authority. */
 	readonly boundary?: readonly string[];
 	/** The filesystem boundary enforced by governed file tools and recognized recursive-search tools. */
@@ -335,6 +341,13 @@ const CoordinatorItemSchema = Type.Object(
 );
 
 const CommonRequestFields = {
+	background: Type.Optional(
+		Type.Boolean({
+			description:
+				"Run independently in the background and return immediately. Completion is delivered as a follow-up. Default: false.",
+			default: false,
+		}),
+	),
 	affinityTaskId: Type.Optional(
 		Type.String({
 			minLength: 1,

@@ -1172,6 +1172,14 @@ function finalizeOutput(
 	saveByDefault: boolean,
 ): SingleResult {
 	result.outputMode = outputMode ?? "inline";
+	if (
+		classifySubagentResult(result) === "completed" &&
+		getResultOutput(result).trim().length === 0
+	) {
+		result.stopReason = "error";
+		result.errorMessage =
+			"Subagent completed without the required textual or structured deliverable.";
+	}
 	const shouldSave =
 		saveByDefault || output !== undefined || result.outputMode === "file-only";
 	result.outputPath = shouldSave
@@ -3377,11 +3385,11 @@ export default function (pi: ExtensionAPI) {
 			const input = args as { action?: string; selector?: { type?: string; processId?: string } };
 			if (input.action !== "interrupt_tool")
 				return new Text(theme.fg("toolTitle", "subagent control"), 0, 0);
-			if (context.executionStarted && context.state.startedAt === undefined) {
-				context.state.startedAt = Date.now();
+			if (context.executionStarted && context.state.transcriptStartedAt === undefined) {
+				context.state.transcriptStartedAt = Date.now();
 				context.state.processId = input.selector?.processId;
 			}
-			const timing = formatTranscriptTiming(context.state.startedAt, undefined);
+			const timing = formatTranscriptTiming(context.state.transcriptStartedAt, undefined);
 			return new Text(
 				`${theme.fg("toolTitle", "subagent control interrupt_tool")}${timing ? `\n  ${theme.fg("dim", timing)}` : ""}`,
 				0,
@@ -3391,7 +3399,7 @@ export default function (pi: ExtensionAPI) {
 		renderResult(result, _options, theme, context) {
 			const details = result.details as SubagentDetails | undefined;
 			const timing = formatTranscriptTiming(
-				details?.transcriptTiming?.startedAt ?? context.state.startedAt,
+				details?.transcriptTiming?.startedAt ?? context.state.transcriptStartedAt,
 				details?.transcriptTiming?.durationMs,
 			);
 			const text = result.content
@@ -5179,11 +5187,11 @@ export default function (pi: ExtensionAPI) {
 
 		renderCall(args, theme, context) {
 			const state = context.state ?? {};
-			if (context.executionStarted && state.startedAt === undefined) {
-				state.startedAt = Date.now();
+			if (context.executionStarted && state.transcriptStartedAt === undefined) {
+				state.transcriptStartedAt = Date.now();
 				state.endedAt = undefined;
 			}
-			const timing = formatTranscriptTiming(state.startedAt, undefined);
+			const timing = formatTranscriptTiming(state.transcriptStartedAt, undefined);
 			const withTiming = (text: string) =>
 				timing ? `${text}\n  ${theme.fg("dim", timing)}` : text;
 			const scope: AgentScope = args.agentScope ?? "user";
@@ -5291,7 +5299,7 @@ export default function (pi: ExtensionAPI) {
 				? subagentRunManager.get(firstResult.runId)
 				: undefined;
 			const timing = formatTranscriptTiming(
-				run?.startedAt ?? details?.transcriptTiming?.startedAt ?? state.startedAt,
+				run?.startedAt ?? details?.transcriptTiming?.startedAt ?? state.transcriptStartedAt,
 				run?.status === "running"
 					? undefined
 					: run?.durationMs ?? details?.transcriptTiming?.durationMs ?? firstResult?.durationMs,
@@ -5806,7 +5814,8 @@ export default function (pi: ExtensionAPI) {
 			label: "Subagent Read",
 			description: "Run read-only subagent items with a closed read authority.",
 			promptGuidelines: [
-				"Use for bounded inspection with an explicit deliverable and completion condition.",
+				"Use subagent_read for bounded inspection with an explicit deliverable and completion condition.",
+				"Run independent subagent_read inspection and review items in the background; keep them foreground when their result gates the next safe action.",
 				"Read subagents cannot modify files, delegate, or use raw shell tools.",
 			],
 			parameters: catalogSchemas.read,
@@ -5820,7 +5829,8 @@ export default function (pi: ExtensionAPI) {
 			label: "Subagent Write",
 			description: "Run modifying subagent items within their configured authority.",
 			promptGuidelines: [
-				"Use for bounded changes with an explicit deliverable and completion condition.",
+				"Use subagent_write for bounded changes with an explicit deliverable and completion condition.",
+				"Keep subagent_write foreground when its result gates dependent work or it owns the active mutation boundary; detach only independent write packages.",
 				"boundaryPaths are advisory coordination markers and do not grant mutation authority.",
 			],
 			parameters: catalogSchemas.write,
@@ -5834,7 +5844,8 @@ export default function (pi: ExtensionAPI) {
 			label: "Subagent Team Lead",
 			description: "Run independent Team Lead packages in parallel.",
 			promptGuidelines: [
-				"Use multiple items only for independently verifiable packages whose results compose into the root deliverable.",
+				"Use multiple subagent_teamlead items only for independently verifiable packages whose results compose into the root deliverable.",
+				"Run an independent subagent_teamlead package in the background; keep it foreground when its integrated result gates dependent work.",
 				"Use work markers for coordination; enforcedBoundary remains the containment control for governed tools.",
 				"boundary is advisory; enforcedBoundary is the filesystem boundary for governed tools.",
 			],
