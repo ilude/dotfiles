@@ -12,6 +12,7 @@ vi.mock("node:os", async (importOriginal) => {
 });
 
 import usageExtension, { buildUsageReport } from "../extensions/usage.ts";
+import { readHistoricalUsage } from "../lib/log-analytics/usage-analytics.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const tempDirs: string[] = [];
@@ -67,6 +68,45 @@ afterEach(async () => {
 });
 
 describe("usage extension", () => {
+	it("owns historical parsing in the typed reader and skips malformed lines", async () => {
+		const root = await makeTempDir();
+		const sessionRoot = path.join(root, "sessions");
+		const codexRoot = path.join(root, "codex");
+		await fs.mkdir(sessionRoot, { recursive: true });
+		await fs.mkdir(codexRoot, { recursive: true });
+		await fs.writeFile(
+			path.join(sessionRoot, "pi.jsonl"),
+			[
+				"not json",
+				JSON.stringify({
+					type: "message",
+					timestamp: "2026-07-14T11:00:00.000Z",
+					message: {
+						role: "assistant",
+						provider: "openai",
+						model: "gpt",
+						usage: { input: 3, output: 2 },
+					},
+				}),
+			].join("\n") + "\n",
+			"utf8",
+		);
+
+		const result = await readHistoricalUsage(sessionRoot, [codexRoot]);
+
+		expect(result.records).toEqual([
+			expect.objectContaining({
+				source: "Pi",
+				model: "openai/gpt",
+				input: 3,
+				output: 2,
+				total: 5,
+			}),
+		]);
+		expect(result.skipped).toEqual({ Pi: 1, "Codex CLI": 0 });
+		expect(result.records[0]).not.toHaveProperty("message");
+	});
+
 	it("streams configured sessions and preserves Codex token pricing without a network request", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-07-14T12:00:00.000Z"));

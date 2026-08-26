@@ -14,6 +14,7 @@ import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent.js";
 import {
 	activateOrchestrationInteraction,
 	buildReviewPrompt,
+	correlationFieldsForPacket,
 	consumeWorkflowSubmission,
 	createInteractionId,
 	detectFrictionTriggers,
@@ -33,6 +34,7 @@ import {
 	summarizeInteractionMetadata,
 	type ToolTrace,
 	type WorkflowMode,
+	workflowCorrelationFields,
 	workflowFrictionStorageRoot,
 } from "../lib/workflow-friction.js";
 
@@ -87,6 +89,18 @@ const WorkflowReviewInputSchema = Type.Object(
 				),
 				captureNote: Type.Optional(Type.String({ maxLength: 1_000 })),
 				repoRoot: Type.Optional(Type.String()),
+				runtime_instance_id: Type.Optional(Type.String()),
+				session_id: Type.Optional(Type.String()),
+				turn_id: Type.Optional(Type.String()),
+				trace_id: Type.Optional(Type.String()),
+				interaction_id: Type.Optional(Type.String()),
+				workflow_episode_id: Type.Optional(Type.String()),
+				orchestration_id: Type.Optional(Type.String()),
+				run_id: Type.Optional(Type.String()),
+				task_id: Type.Optional(Type.String()),
+				goal_id: Type.Optional(Type.String()),
+				tool_call_id: Type.Optional(Type.String()),
+				operation_id: Type.Optional(Type.String()),
 			},
 			{ additionalProperties: false },
 		),
@@ -186,6 +200,7 @@ interface ActiveInteraction {
 	startedMonotonic: number;
 	subagentRunId?: string;
 	subagentStartedAt?: string;
+	correlation: ReturnType<typeof correlationFieldsForPacket>;
 	userTexts: string[];
 	assistantTexts: string[];
 	tools: ToolTrace[];
@@ -635,6 +650,7 @@ async function appendFailedReview(
 ): Promise<void> {
 	const packet = await applyCaptureAnnotation(job.packet);
 	const record: StoredReviewRecord = {
+		...correlationFieldsForPacket(packet),
 		schemaVersion: FRICTION_SCHEMA_VERSION,
 		interactionId: packet.interactionId,
 		sessionId: packet.sessionId,
@@ -705,6 +721,7 @@ async function executeReview(
 	const review = normalizeWorkflowReview(result.output);
 	const finalPacket = await applyCaptureAnnotation(packet);
 	return sanitizeTaskValue({
+		...correlationFieldsForPacket(finalPacket),
 		schemaVersion: FRICTION_SCHEMA_VERSION,
 		interactionId: finalPacket.interactionId,
 		sessionId: finalPacket.sessionId,
@@ -791,6 +808,7 @@ function packetFromInteraction(
 	selectionReasons: string[],
 ): InteractionPacket {
 	return sanitizeTaskValue({
+		...active.correlation,
 		schemaVersion: FRICTION_SCHEMA_VERSION,
 		interactionId: active.interactionId,
 		sessionId: active.sessionId,
@@ -871,8 +889,14 @@ export default function workflowFrictionExtension(
 		const startedAt = Number.isFinite(parsedSubagentStart)
 			? parsedSubagentStart
 			: (submission?.submittedAt ?? now);
+		const interactionId = createInteractionId();
 		active = {
-			interactionId: createInteractionId(),
+			interactionId,
+			correlation: workflowCorrelationFields({
+				interactionId,
+				sessionId,
+				subagentRunId,
+			}),
 			sessionId,
 			repoRoot: workspaceRoot(ctx.cwd),
 			hasPriorAssistant: sessionHasPriorAssistant(ctx),
@@ -983,6 +1007,7 @@ export default function workflowFrictionExtension(
 				durationMs: provisional.durationMs,
 				direct: orchestration.orchestrationIds.length === 0,
 				session: orchestration.sessionId,
+				correlation: correlationFieldsForPacket(provisional),
 			});
 			if (event) recordEvent(event);
 		}

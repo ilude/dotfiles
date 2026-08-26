@@ -1,257 +1,82 @@
 # Pi Log Analytics Reference
 
-## Helper contract
+## In-process tool contract
 
-Run from the dotfiles repository root:
+Pi JSONL analytics is served by the registered `log_analytics` tool. It is an in-process TypeScript boundary over a disposable local DuckDB read model. Refresh is internal to each operation; callers do not open databases, scan files, or run commands.
 
-```bash
-uv sync --project pi/analytics --locked
-uv run --no-sync --project pi/analytics python -m pi_log_query catalog
-uv run --no-sync --project pi/analytics python -m pi_log_query views
-uv run --no-sync --project pi/analytics python -m pi_log_query schema session_inventory
-uv run --no-sync --project pi/analytics python -m pi_log_query query "SELECT ..." --limit 50
+Start with catalog discovery:
+
+```json
+{"operation":"catalog"}
 ```
 
-Run `uv sync --project pi/analytics --locked` when dependencies need installation or updating. Routine analytics commands use `uv run --no-sync` to avoid repeated environment resolution.
+The catalog returns registered source IDs and their typed structural columns. Use those IDs in a typed `select` request:
 
-The live-query default opens an in-memory DuckDB connection, registers explicit JSONL schemas, and runs exactly one read-only `SELECT`. Use `schema <view>` before querying an unfamiliar source or derived view. Results default to 50 rows and cannot exceed 1,000 rows. Table cells are truncated for terminal safety; use `--format csv` or `--format jsonl` only when full selected values are required. DuckDB uses at most four threads by default; place `--threads N` before the subcommand to change the cap.
-
-Restrict discovery whenever the question needs only some sources. Repeat `--source` for multiple sources:
-
-```bash
-uv run --no-sync --project pi/analytics python -m pi_log_query \
-  --source session_entries \
-  query "SELECT count(*) FROM session_inventory"
+```json
+{
+  "operation": "select",
+  "source": "metric_events",
+  "columns": ["event", "model", "timestamp"],
+  "filters": [{"column":"event","op":"eq","value":"tool_use"}],
+  "orderBy": [{"column":"timestamp","direction":"desc"}],
+  "limit": 50
+}
 ```
 
-Unselected source views do not exist, so accidental references fail explicitly.
+Use `aggregate` for bounded counts and numeric sums:
 
-Malformed JSONL fails by default. Diagnose a source without printing record content:
-
-```bash
-uv run --no-sync --project pi/analytics python -m pi_log_query validate metric_events
+```json
+{
+  "operation": "aggregate",
+  "source": "metric_events",
+  "groupBy": ["model"],
+  "measures": [
+    {"kind":"count","as":"events"},
+    {"kind":"sum","column":"input_tokens","as":"input_tokens"}
+  ],
+  "limit": 50
+}
 ```
 
-If an incomplete exploratory result is acceptable, place the explicit opt-in before the subcommand:
+Filters support only `eq`, `neq`, `lt`, `lte`, `gt`, and `gte`. Ordering, grouping, measures, and limits accept registered typed column IDs only. The boundary accepts no SQL, expressions, paths, pragmas, table functions, extension commands, or filesystem functions.
 
-```bash
-uv run --no-sync --project pi/analytics python -m pi_log_query \
-  --ignore-malformed \
-  query "SELECT count(*) FROM metric_events"
-```
+Each operation is bounded to at most 1,000 rows, 256 KiB of encoded output, and 5 seconds. Cancellation, unknown source or column IDs, invalid requests, and budget violations are typed failures. External access and extension loading are disabled. Do not retry a failing operation by widening its scope.
 
-`validate` reports the total malformed count and prints at most 100 issue locations. It caches results by resolved path, size, and modification time under `.tmp/pi-log-analytics/validation-cache.json`; unchanged files are not reparsed. Use `--no-validation-cache` for a forced validation or `--validation-cache PATH` for an alternate disposable cache. Report the total; never present an opt-in result as complete.
+## Structural privacy
 
-Path overrides must precede the subcommand:
+The generic catalog and read model expose only structural fields: compact IDs, timestamps, event and status labels, names, provider and model labels, token and duration counts, costs, and byte counts. They do not expose messages, transcript payloads, arbitrary `data`, arguments, evidence, reasons, paths, filenames, or terminal output. Bounded domain readers own any separately authorized evidence retrieval.
 
-```bash
-uv run --no-sync --project pi/analytics python -m pi_log_query \
-  --agent-dir /path/to/agent \
-  --metrics-dir /path/to/metrics \
-  --trace-dir /path/to/traces \
-  --workflow-telemetry-dir /path/to/workflow-telemetry \
-  catalog
-```
+JSONL remains the append-only source of truth. DuckDB is disposable local state. Refresh is incremental and transactional; malformed, unstable, truncated, replaced, deleted, or over-limit inputs remain observable gaps or fail without rewriting authoritative records or corrupting the prior valid store.
 
-Recognized environment overrides are `PI_AGENT_DIR`, `PI_METRICS_DIR`, `PI_WORKFLOW_TELEMETRY_DIR`, `PI_WORKFLOW_FRICTION_DIR`, and `PI_OPERATOR_DIR`. The default trace root follows `transcript.path` in the agent `settings.json`; `--trace-dir` overrides it explicitly.
+## Correlation
 
-## Tool-failure triage
+Shared fields may include `runtime_instance_id`, `session_id`, `turn_id`, `trace_id`, `interaction_id`, `workflow_episode_id`, `orchestration_id`, `run_id`, `task_id`, `goal_id`, `tool_call_id`, and `operation_id`. Existing IDs remain opaque. Correlation precedence is:
 
-`/find-fails` is the operator entry point. Its TypeScript authority in `pi/lib/tool-failure-classifier.ts`, `pi/lib/tool-failure-decisions.ts`, and `pi/lib/tool-failure-store.ts` refreshes the local DuckDB read model, filters custom-extension tools, selects at most three candidates in stable priority order, and retrieves only selected bounded evidence. Session JSONL remains authoritative and unchanged. The observability contract is normative for automatic decisions, provider disclosure, bounded inspection, and report behavior. This reference documents only the surrounding read-only analytics commands; it does not provide a competing scan, report, or decision path.
+1. `exact` - directly stored matching identifiers.
+2. `deterministic` - a rule-defined join with required scope and direction.
+3. `unique_inferred` - an opt-in unique legacy match with disclosed provenance.
+4. `unmatched` - missing or ambiguous evidence.
 
-Candidate IDs are versioned fingerprints of normalized tool, error class, and structural contract. Thresholds, ledger precedence, revisit and regression behavior, append locking, durability, interrupted trailing-record handling, and the five authorized evidence categories are defined by the observability contract and TypeScript authority.
+Timestamp proximity alone is never sufficient. Inferred edges are excluded by default and never authorize a decision. `/find-fails` and other decision paths accept only authoritative exact or deterministic results.
 
-## Snapshots and batches
+Parallel and child scopes carry explicit immutable correlation envelopes. Settled scopes invalidate inherited context; detached work must receive an explicit child envelope or emit without inherited context. Append failures remain observational gaps and do not change the primary operation.
 
-For repeated queries or parallel analysis, materialize each needed source once. The default path is `.tmp/pi-log-analytics/pi-logs.duckdb`:
+## Typed command surfaces
 
-```bash
-uv run --no-sync --project pi/analytics python -m pi_log_query \
-  --source session_entries snapshot
-```
+Use these active Pi surfaces for their owned reports instead of reconstructing them with custom queries:
 
-Later commands must name the snapshot explicitly. They use its metadata and tables without discovering or parsing live JSONL:
+- `/find-fails` - bounded custom-extension failure triage and one normal active-session diagnostic turn.
+- `/usage` and `/usage-stats` - usage and pricing reports.
+- `/extension-stats` and `/skill-stats` - extension and skill activity reports.
+- `/orchestration-stats` - bounded orchestration and workflow-friction report.
+- Workflow-friction review commands - owned interaction and review diagnostics.
 
-```bash
-uv run --no-sync --project pi/analytics python -m pi_log_query \
-  --snapshot-db .tmp/pi-log-analytics/pi-logs.duckdb \
-  --source session_entries catalog
-uv run --no-sync --project pi/analytics python -m pi_log_query \
-  --snapshot-db .tmp/pi-log-analytics/pi-logs.duckdb \
-  --source session_entries \
-  query "SELECT count(*) FROM session_inventory"
-```
+These readers use typed in-process APIs and preserve their documented windows, ordering, ties, limits, and decision safety. They do not invoke an external process or a replacement command.
 
-Running `snapshot` again inserts new files, replaces changed files, and removes deleted files for the selected sources. If files change during a long initial load, the helper performs bounded incremental stabilization passes that reread only changed files. It rolls back if the source does not stabilize. Other materialized sources remain unchanged. JSONL remains authoritative; delete and rebuild a snapshot when source schemas change.
+## Source selection guidance
 
-Put multiple read-only statements in a SQL file to avoid one process and connection per query:
+Use catalog IDs to restrict a question to the smallest registered source set. Prefer metadata-only event, status, identifier, time, count, and duration fields. Use the canonical session source for session activity and do not combine overlapping history records without explicit session-level deduplication. Background-terminal analytics include lifecycle metadata only; terminal stdout and stderr are excluded.
 
-```bash
-uv run --no-sync --project pi/analytics python -m pi_log_query \
-  --snapshot-db .tmp/pi-log-analytics/pi-logs.duckdb \
-  --source session_entries \
-  batch .tmp/pi-log-analytics/screening.sql --format jsonl --limit 1000
-```
+For churn screens, issue typed structural requests over `session_events`, `metric_events`, and the relevant workflow or orchestration source. Emit only filenames or paths when a separately authorized domain report explicitly requires a source coordinate; never use the generic tool to retrieve content. Every hit requires bounded manual review and is not a prevalence or causality claim.
 
-Every batch statement must be a `SELECT`, and the row limit applies to each result. Before parallel screening, the parent prepares the snapshot and any partition manifest. Workers may read the shared snapshot concurrently, but they must not refresh it or revalidate the complete corpus.
-
-For file-level sharding without a snapshot, pass one or more manifests before the subcommand:
-
-```bash
-uv run --no-sync --project pi/analytics python -m pi_log_query \
-  --source session_entries \
-  --files-from session_entries=.tmp/pi-log-analytics/shard-1.jsonl \
-  query "SELECT count(*) FROM session_entries"
-```
-
-A manifest contains one nonblank path per line or JSONL objects containing `source_file`, `filename`, or `path`. Relative paths resolve from the manifest directory. Duplicate paths are removed, and missing files fail explicitly. A SQL hash predicate alone partitions results after reading the source; a manifest restricts the files read.
-
-## Source views
-
-| View | Source | Content risk | Notes |
-| --- | --- | --- | --- |
-| `session_entries` | `~/.pi/agent/sessions/**/*.jsonl*` | High | Canonical session corpus |
-| `history_entries` | `~/.pi/agent/history/**/*.jsonl*` | High | Archived copies; can overlap sessions |
-| `metric_events` | `PI_METRICS_DIR/metrics*.jsonl` or the agent log root | Medium | `data` is explicit JSON |
-| `trace_events` | configured transcript path or `~/.pi/agent/traces/**/*.jsonl*` | High | `payload` is explicit JSON; no auto inference |
-| `usage_events` | `~/.pi/agent/logs/usage.jsonl` | Medium | Usage extension operations |
-| `workflow_episodes` | `~/.pi/workflow-telemetry/episodes.jsonl` | Medium | Workflow dispatch envelopes |
-| `workflow_events` | `~/.pi/workflow-telemetry/*/events.jsonl` | Medium | Phase and runtime events |
-| `friction_interactions` | `~/.pi/agent/workflow-friction/interactions.jsonl` | Medium | Interaction measurements |
-| `friction_reviews` | `~/.pi/agent/workflow-friction/reviews.jsonl` | Medium | Review outcomes |
-| `friction_experiments` | `~/.pi/agent/workflow-friction/experiments.jsonl` | Medium | Experiment definitions |
-| `friction_learning_decisions` | `~/.pi/agent/workflow-friction/learning-decisions.jsonl` | High | Approved text and target paths |
-| `damage_control_judgments` | `~/.pi/agent/operator/damage-control/judge.jsonl` | Medium | Shadow-judge decisions |
-
-A selected live source with no files still produces an empty view with a stable schema. Unselected source views do not exist. Malformed rows fail the query unless the caller explicitly uses `--ignore-malformed` after validation.
-
-## Derived views
-
-| View | Purpose |
-| --- | --- |
-| `session_inventory` | One metadata row per canonical session file |
-| `history_inventory` | One metadata row per archived history file |
-| `metric_event_summary` | Counts and time range by metric event |
-| `tool_discovery_activity` | Metadata-only toolset exposure, hashed searches, activation results, and tool use |
-| `trace_event_summary` | Counts, sessions, and time range by trace event |
-| `workflow_episode_summary` | Workflow event and budget-trip counts per episode |
-
-## Query recipes
-
-### Source coverage
-
-```sql
-SELECT table_name, table_type
-FROM information_schema.tables
-WHERE table_schema = 'main'
-ORDER BY table_name
-```
-
-Use `catalog` for file counts and byte sizes without scanning source rows.
-
-### Session activity without content
-
-```sql
-SELECT
-  date_trunc('day', started_at) AS day,
-  count(*) AS sessions,
-  sum(user_messages) AS user_messages,
-  sum(tool_results) AS tool_results
-FROM session_inventory
-WHERE started_at >= current_timestamp - INTERVAL '14 days'
-GROUP BY day
-ORDER BY day DESC
-```
-
-Do not combine `session_inventory` with `history_inventory` unless the question explicitly requires archives and the join deduplicates on session ID.
-
-### Metrics by event
-
-```sql
-SELECT event, event_count, first_seen, last_seen
-FROM metric_event_summary
-ORDER BY event_count DESC
-```
-
-For one payload field, extract only that field:
-
-```sql
-SELECT
-  event,
-  try_cast(json_extract_string(data, '$.durationMs') AS DOUBLE) AS duration_ms,
-  try_cast(ts AS TIMESTAMPTZ) AS occurred_at
-FROM metric_events
-WHERE event = 'timing_span'
-  AND try_cast(ts AS TIMESTAMPTZ) >= current_timestamp - INTERVAL '7 days'
-ORDER BY occurred_at DESC
-```
-
-### Tool discovery
-
-```sql
-SELECT
-  event,
-  tool_name,
-  query_hash,
-  activated_tools,
-  toolset_id,
-  occurred_at
-FROM tool_discovery_activity
-WHERE occurred_at >= current_timestamp - INTERVAL '30 days'
-ORDER BY occurred_at DESC
-```
-
-Join searches to later `tool_use` rows only within the same `session_id`. The view contains tool names and structural metadata, not raw search queries, arguments, descriptions, or output.
-
-### Trace coverage
-
-```sql
-SELECT event_type, event_count, session_count, first_seen, last_seen
-FROM trace_event_summary
-ORDER BY event_count DESC
-```
-
-Inspect payload keys before values:
-
-```sql
-SELECT DISTINCT event_type, unnest(json_keys(payload)) AS payload_key
-FROM trace_events
-WHERE try_cast(timestamp AS TIMESTAMPTZ) >= current_timestamp - INTERVAL '1 day'
-ORDER BY event_type, payload_key
-```
-
-
-### Workflow outcomes
-
-```sql
-SELECT command, count(*) AS episodes, sum(budget_trips) AS budget_trips
-FROM workflow_episode_summary
-WHERE started_at >= current_timestamp - INTERVAL '30 days'
-GROUP BY command
-ORDER BY episodes DESC
-```
-
-### Workflow-friction rates
-
-```sql
-SELECT
-  mode,
-  count(*) AS interactions,
-  avg(durationMs) AS mean_duration_ms,
-  sum(toolFailureCount) AS tool_failures,
-  sum(failedSubagentCount) AS failed_subagents
-FROM friction_interactions
-WHERE try_cast(startedAt AS TIMESTAMPTZ) >= current_timestamp - INTERVAL '30 days'
-GROUP BY mode
-ORDER BY interactions DESC
-```
-
-## Exports and disposable caches
-
-Put snapshots, validation caches, manifests, SQL batches, and explicit exports under the ignored scratch root:
-
-```text
-.tmp/pi-log-analytics/
-```
-
-JSONL remains authoritative. Delete and rebuild DuckDB or Parquet artifacts when schemas change. Incremental snapshot refresh handles source selection and file additions, changes, and removals. Do not use generated analytics files as inputs to live Pi readers or writers.
+For malformed or changing sources, report the omission or gap and keep the conclusion bounded. Do not use a raw-content fallback.

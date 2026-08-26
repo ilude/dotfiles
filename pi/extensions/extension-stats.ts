@@ -20,12 +20,8 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import {
-	enumerateJsonlFiles,
-	extractEntryUsageTokens,
-	readJsonlFile,
-	resolveAgentDir,
-} from "../lib/session-jsonl.ts";
+import { enumerateJsonlFiles, resolveAgentDir } from "../lib/session-jsonl.ts";
+import { readSessionAnalytics } from "../lib/log-analytics/session-analytics.ts";
 
 type MetricMode = "calls" | "tokens";
 
@@ -600,14 +596,6 @@ function normalizeHistoricalCommandName(commandName: string): string {
 	return commandName === "status" ? "usage" : commandName;
 }
 
-function parseSlashEchoCommand(content: unknown): string | null {
-	if (typeof content !== "string" || !content.startsWith("/")) return null;
-	const command = content.slice(1).trim().split(/\s+/, 1)[0];
-	return command && command.length > 0
-		? normalizeHistoricalCommandName(command)
-		: null;
-}
-
 function addCommandUsage(
 	commandName: string,
 	ownersByCommand: Map<string, Set<string>>,
@@ -635,164 +623,119 @@ function addCommandUsage(
 	return { owner, commandKey };
 }
 
-function estimateTextTokens(text: unknown): number {
-	return typeof text === "string" && text.length > 0
-		? Math.ceil(text.length / 4)
-		: 0;
+function parseSlashEchoCommand(command: string | undefined): string | null {
+	if (!command) return null;
+	return normalizeHistoricalCommandName(command);
 }
 
-async function parseSessionFile(
-	filePath: string,
+async function parseSessionEvents(
+	events: Awaited<ReturnType<typeof readSessionAnalytics>>,
 	ownersByTool: Map<string, Set<string>>,
 	ownersByCommand: Map<string, Set<string>>,
-	signal?: AbortSignal,
-): Promise<ParsedSession | null> {
-	const fileName = path.basename(filePath);
-	let startedAt = parseSessionStartFromFilename(fileName);
-
-	const callsByToolKey = new Map<string, number>();
-	const tokensByToolKey = new Map<string, number>();
-	const callsByExtension = new Map<string, number>();
-	const tokensByExtension = new Map<string, number>();
-	const sessionsByToolKey = new Set<string>();
-	const sessionsByExtension = new Set<string>();
-	let toolCalls = 0;
-	let estimatedToolTokens = 0;
-	const pendingCommandKeys: string[] = [];
-
-	try {
-		for await (const { value } of readJsonlFile(filePath, { signal })) {
-			if (signal?.aborted) return null;
-			const obj = asRecord(value);
-			if (!obj) continue;
-
-			if (
-				!startedAt &&
-				obj.type === "session" &&
-				typeof obj.timestamp === "string"
-			) {
-				const d = new Date(obj.timestamp);
-				if (Number.isFinite(d.getTime())) startedAt = d;
-				continue;
-			}
-
-			if (
-				obj.type === "custom_message" &&
-				typeof obj.customType === "string" &&
-				ownersByCommand.has(obj.customType)
-			) {
-				const commandName = obj.customType;
-				const tokens = estimateTextTokens(obj.content);
-				toolCalls += 1;
-				estimatedToolTokens += tokens;
+): Promise<ParsedSession[]> {
+	const sessions = new Map<string, ParsedSession>();
+	const pendingBySession = new Map<string, string[]>();
+	for (const event of events) {
+		const session = sessions.get(event.sessionId) ?? {
+			startedAt: event.startedAt,
+			dayKeyLocal: toLocalDayKey(event.startedAt),
+			toolCalls: 0,
+			estimatedToolTokens: 0,
+			callsByToolKey: new Map(),
+			tokensByToolKey: new Map(),
+			callsByExtension: new Map(),
+			tokensByExtension: new Map(),
+			sessionsByToolKey: new Set(),
+			sessionsByExtension: new Set(),
+		};
+		session.startedAt = event.startedAt;
+		session.dayKeyLocal = toLocalDayKey(event.startedAt);
+		const pendingCommandKeys =
+			pendingBySession.get(event.sessionId) ?? [];
+		if (event.eventType === "custom_message" && event.customType) {
+			if (ownersByCommand.has(event.customType)) {
+				session.toolCalls += 1;
+				const tokens = event.customMessageTokens;
+				session.estimatedToolTokens += tokens;
 				addCommandUsage(
-					commandName,
+					event.customType,
 					ownersByCommand,
-					callsByToolKey,
-					tokensByToolKey,
-					callsByExtension,
-					tokensByExtension,
-					sessionsByToolKey,
-					sessionsByExtension,
+					session.callsByToolKey,
+					session.tokensByToolKey,
+					session.callsByExtension,
+					session.tokensByExtension,
+					session.sessionsByToolKey,
+					session.sessionsByExtension,
 					tokens,
 				);
-				continue;
 			}
-
-			if (obj.type === "custom_message" && obj.customType === "slash-echo") {
-				const commandName = parseSlashEchoCommand(obj.content);
-				if (!commandName) continue;
+			const commandName =
+				event.customType === "slash-echo"
+					? parseSlashEchoCommand(event.slashCommand)
+					: null;
+			if (commandName) {
 				const { commandKey } = addCommandUsage(
 					commandName,
 					ownersByCommand,
-					callsByToolKey,
-					tokensByToolKey,
-					callsByExtension,
-					tokensByExtension,
-					sessionsByToolKey,
-					sessionsByExtension,
+					session.callsByToolKey,
+					session.tokensByToolKey,
+					session.callsByExtension,
+					session.tokensByExtension,
+					session.sessionsByToolKey,
+					session.sessionsByExtension,
 				);
-
-				toolCalls += 1;
+				session.toolCalls += 1;
 				pendingCommandKeys.push(commandKey);
-				continue;
 			}
-
-			if (obj.type !== "message") continue;
-			const message = asRecord(obj.message);
-			if (message?.role !== "assistant" || !Array.isArray(message.content))
-				continue;
-
-			const toolNames = message.content
-				.map(asRecord)
-				.filter(
-					(block): block is Record<string, unknown> =>
-						block?.type === "toolCall" && typeof block.name === "string",
-				)
-				.map((block) => String(block.name).trim())
-				.filter((name) => name.length > 0);
-			if (toolNames.length === 0) continue;
-
-			const usageTokens = extractEntryUsageTokens(obj);
+		}
+		if (event.role === "assistant" && event.toolNames.length > 0) {
+			const usageTokens = event.usageTokens;
 			if (usageTokens > 0 && pendingCommandKeys.length > 0) {
 				const tokensPerCommand = usageTokens / pendingCommandKeys.length;
 				for (const commandKey of pendingCommandKeys.splice(0)) {
 					const owner = commandKey.split("/", 1)[0] || "unknown-extension";
-					estimatedToolTokens += tokensPerCommand;
-					tokensByToolKey.set(
+					session.estimatedToolTokens += tokensPerCommand;
+					session.tokensByToolKey.set(
 						commandKey,
-						(tokensByToolKey.get(commandKey) ?? 0) + tokensPerCommand,
+						(session.tokensByToolKey.get(commandKey) ?? 0) + tokensPerCommand,
 					);
-					tokensByExtension.set(
+					session.tokensByExtension.set(
 						owner,
-						(tokensByExtension.get(owner) ?? 0) + tokensPerCommand,
+						(session.tokensByExtension.get(owner) ?? 0) + tokensPerCommand,
 					);
 				}
 			}
 			const tokensPerToolCall =
-				usageTokens > 0 ? usageTokens / toolNames.length : 0;
-
-			for (const toolName of toolNames) {
+				usageTokens > 0 ? usageTokens / event.toolNames.length : 0;
+			for (const toolName of event.toolNames) {
 				const owner = resolveToolOwner(toolName, ownersByTool);
 				const toolKey = `${owner}/${toolName}`;
-
-				toolCalls += 1;
-				estimatedToolTokens += tokensPerToolCall;
-
-				callsByToolKey.set(toolKey, (callsByToolKey.get(toolKey) ?? 0) + 1);
-				tokensByToolKey.set(
+				session.toolCalls += 1;
+				session.estimatedToolTokens += tokensPerToolCall;
+				session.callsByToolKey.set(
 					toolKey,
-					(tokensByToolKey.get(toolKey) ?? 0) + tokensPerToolCall,
+					(session.callsByToolKey.get(toolKey) ?? 0) + 1,
 				);
-
-				callsByExtension.set(owner, (callsByExtension.get(owner) ?? 0) + 1);
-				tokensByExtension.set(
+				session.tokensByToolKey.set(
+					toolKey,
+					(session.tokensByToolKey.get(toolKey) ?? 0) + tokensPerToolCall,
+				);
+				session.callsByExtension.set(
 					owner,
-					(tokensByExtension.get(owner) ?? 0) + tokensPerToolCall,
+					(session.callsByExtension.get(owner) ?? 0) + 1,
 				);
-
-				sessionsByToolKey.add(toolKey);
-				sessionsByExtension.add(owner);
+				session.tokensByExtension.set(
+					owner,
+					(session.tokensByExtension.get(owner) ?? 0) + tokensPerToolCall,
+				);
+				session.sessionsByToolKey.add(toolKey);
+				session.sessionsByExtension.add(owner);
 			}
 		}
-	} catch {
-		return null;
+		sessions.set(event.sessionId, session);
+		pendingBySession.set(event.sessionId, pendingCommandKeys);
 	}
-
-	if (!startedAt) return null;
-
-	return {
-		startedAt,
-		dayKeyLocal: toLocalDayKey(startedAt),
-		toolCalls,
-		estimatedToolTokens,
-		callsByToolKey,
-		tokensByToolKey,
-		callsByExtension,
-		tokensByExtension,
-		sessionsByToolKey,
-		sessionsByExtension,
-	};
+	return [...sessions.values()];
 }
 
 function buildRangeAgg(days: number, now: Date): RangeAgg {
@@ -1019,16 +962,16 @@ async function computeBreakdown(
 		}
 	}
 
-	for (const filePath of candidates) {
-		if (signal?.aborted) break;
-		const session = await parseSessionFile(
-			filePath,
-			ownersByTool,
-			ownership.ownersByCommand,
+	const sessions = await parseSessionEvents(
+		await readSessionAnalytics({
+			sessionRoot,
+			files: candidates,
 			signal,
-		);
-		if (!session) continue;
-
+		}),
+		ownersByTool,
+		ownership.ownersByCommand,
+	);
+	for (const session of sessions) {
 		const sessionDay = localMidnight(session.startedAt);
 		for (const d of RANGE_DAYS) {
 			const range = requiredRange(ranges, d);

@@ -10,6 +10,7 @@ import {
 	type TaskUsage,
 } from "./task-registry.ts";
 import { sanitizeTaskValue } from "./task-security.ts";
+import { correlationForEmission, type CorrelationFields } from "./log-analytics/correlation.ts";
 
 export const ORCHESTRATION_TELEMETRY_SCHEMA_VERSION = 3 as const;
 export const READ_ONLY_FANOUT_EXPERIMENT_ID = "read-only-fanout-v1";
@@ -330,30 +331,61 @@ export interface SubagentInterventionData {
 export interface BuildSubagentInterventionInput
 	extends Omit<SubagentInterventionData, "schemaVersion"> {
 	session?: string;
+	correlation?: EventCorrelation;
 }
 
 export interface BuildOrchestrationRunInput
 	extends Omit<OrchestrationRunData, "schemaVersion" | "workers"> {
 	workers: OrchestrationWorker[];
 	session?: string;
+	correlation?: EventCorrelation;
 }
 
 export interface BuildOrchestrationInteractionInput
 	extends Omit<OrchestrationInteractionData, "schemaVersion"> {
 	session?: string;
+	correlation?: EventCorrelation;
 }
 
 export interface BuildOrchestrationExperimentAssignmentInput
 	extends Omit<OrchestrationExperimentAssignmentData, "schemaVersion"> {
 	session?: string;
+	correlation?: EventCorrelation;
 }
 
 export interface BuildOrchestrationExperimentOutcomeInput
 	extends Omit<OrchestrationExperimentOutcomeData, "schemaVersion"> {
 	session?: string;
+	correlation?: EventCorrelation;
 }
 
 type MetricsData<T extends object> = T & Record<string, unknown>;
+type EventCorrelation = NonNullable<RecordEventInput["correlation"]>;
+
+function eventCorrelation(input: {
+	correlation?: EventCorrelation;
+	session?: string;
+	parentSessionId?: string;
+	interactionId?: string;
+	orchestrationId?: string;
+	runId?: string;
+	taskId?: string;
+}): EventCorrelation | undefined {
+	const inherited = correlationForEmission();
+	const direct: Partial<CorrelationFields> = {
+		...(input.session || input.parentSessionId
+			? { session_id: input.parentSessionId ?? input.session }
+			: {}),
+		...(input.interactionId ? { interaction_id: input.interactionId } : {}),
+		...(input.orchestrationId
+			? { orchestration_id: input.orchestrationId }
+			: {}),
+		...(input.runId ? { run_id: input.runId } : {}),
+		...(input.taskId ? { task_id: input.taskId } : {}),
+	};
+	const result = { ...(inherited ?? {}), ...(input.correlation ?? {}), ...direct };
+	return Object.keys(result).length > 0 ? result : undefined;
+}
 
 export type SubagentInterventionEventInput = Omit<
 	RecordEventInput,
@@ -804,6 +836,7 @@ export function buildOrchestrationRunEvent(
 			"inlineBytesNotReturned",
 			"workers",
 			"session",
+			"correlation",
 			...ORCHESTRATION_TELEMETRY_KEYS,
 		])
 	)
@@ -870,7 +903,17 @@ export function buildOrchestrationRunEvent(
 	);
 	const session = metadataString(input.session);
 	if (input.session !== undefined && !session) return null;
-	return { event: "orchestration_run", ...(session ? { session } : {}), data };
+	const correlation = eventCorrelation({
+		...input,
+		...(session ? { session } : {}),
+		orchestrationId,
+	});
+	return {
+		event: "orchestration_run",
+		...(session ? { session } : {}),
+		...(correlation ? { correlation } : {}),
+		data,
+	};
 }
 
 function buildParentUsage(value: unknown): ParentUsageByModel | undefined {
@@ -937,6 +980,7 @@ export function buildOrchestrationInteractionEvent(
 			"durationMs",
 			"direct",
 			"session",
+			"correlation",
 			...ORCHESTRATION_TELEMETRY_KEYS,
 		])
 	)
@@ -972,9 +1016,15 @@ export function buildOrchestrationInteractionEvent(
 	if (durationMs !== undefined) data.durationMs = durationMs;
 	const session = metadataString(input.session);
 	if (input.session !== undefined && !session) return null;
+	const correlation = eventCorrelation({
+		...input,
+		...(session ? { session } : {}),
+		interactionId,
+	});
 	return {
 		event: "orchestration_interaction",
 		...(session ? { session } : {}),
+		...(correlation ? { correlation } : {}),
 		data,
 	};
 }
@@ -1007,6 +1057,7 @@ export function buildSubagentInterventionEvent(
 			"acknowledged",
 			...INTERVENTION_NUMERIC_KEYS,
 			"session",
+			"correlation",
 		])
 	)
 		return null;
@@ -1046,9 +1097,16 @@ export function buildSubagentInterventionEvent(
 	}
 	const session = metadataString(input.session);
 	if (input.session !== undefined && !session) return null;
+	const correlation = eventCorrelation({
+		...input,
+		...(session ? { session } : {}),
+		orchestrationId,
+		runId,
+	});
 	return {
 		event: "subagent_intervention",
 		...(session ? { session } : {}),
+		...(correlation ? { correlation } : {}),
 		data,
 	};
 }
@@ -1101,6 +1159,7 @@ export function buildOrchestrationExperimentAssignmentEvent(
 			"orchestrationId",
 			"interactionId",
 			"session",
+			"correlation",
 		])
 	)
 		return null;
@@ -1138,9 +1197,16 @@ export function buildOrchestrationExperimentAssignmentEvent(
 	};
 	const session = metadataString(input.session);
 	if (input.session !== undefined && !session) return null;
+	const correlation = eventCorrelation({
+		...input,
+		...(session ? { session } : {}),
+		orchestrationId,
+		interactionId,
+	});
 	return {
 		event: "orchestration_experiment_assignment",
 		...(session ? { session } : {}),
+		...(correlation ? { correlation } : {}),
 		data,
 	};
 }
@@ -1161,6 +1227,7 @@ export function buildOrchestrationExperimentOutcomeEvent(
 			"checksTotal",
 			"checksPassed",
 			"session",
+			"correlation",
 		])
 	)
 		return null;
@@ -1195,9 +1262,15 @@ export function buildOrchestrationExperimentOutcomeEvent(
 	};
 	const session = metadataString(input.session);
 	if (input.session !== undefined && !session) return null;
+	const correlation = eventCorrelation({
+		...input,
+		...(session ? { session } : {}),
+		orchestrationId,
+	});
 	return {
 		event: "orchestration_experiment_outcome",
 		...(session ? { session } : {}),
+		...(correlation ? { correlation } : {}),
 		data,
 	};
 }

@@ -16,6 +16,8 @@ import {
 import type { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import { signalProcessTree } from "../../lib/process-tree.js";
+import { recordEvent } from "../../lib/metrics.js";
+import { correlationForEmission } from "../../lib/log-analytics/correlation.js";
 
 const DEFAULT_MAX_ACTIVE = 8;
 const DEFAULT_MAX_TRACKED = 32;
@@ -452,6 +454,7 @@ export class BackgroundTerminalManager {
 			resolveSettled,
 		};
 		this.entries.set(id, entry);
+		recordEvent({ event: "background_terminal_started", correlation: { ...correlationForEmission(), operation_id: entry.id }, data: { status: "running" } });
 		child.stdout.on("data", (chunk: Buffer) => {
 			entry.stdout.append(chunk, child.stdout);
 			this.emitChange();
@@ -584,6 +587,7 @@ export class BackgroundTerminalManager {
 		await Promise.all([entry.stdout.finish(), entry.stderr.finish()]);
 		entry.resolveSettled();
 		const snapshot = this.snapshot(entry);
+		recordEvent({ event: "background_terminal_settled", correlation: { ...correlationForEmission(), operation_id: entry.id }, data: { status: entry.status, duration_ms: entry.endedAt - entry.startedAt, bytes: entry.stdout.totalBytes + entry.stderr.totalBytes } });
 		this.emitChange();
 		for (const listener of this.settledListeners) {
 			try {

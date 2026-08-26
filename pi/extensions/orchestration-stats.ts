@@ -1,15 +1,16 @@
-import * as fs from "node:fs/promises";
-
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { getMetricsConfig, getMetricsDir } from "../lib/metrics.js";
-import {
-	type OrchestrationInteractionData,
-	type OrchestrationRunData,
-	readOrchestrationEvents,
+import type {
+	OrchestrationInteractionData,
+	OrchestrationRunData,
 } from "../lib/orchestration-telemetry.js";
+import {
+	readOrchestrationAnalytics,
+	type OrchestrationAnalyticsReview,
+} from "../lib/log-analytics/orchestration-analytics.js";
 import { workflowFrictionStorageRoot } from "../lib/workflow-friction.js";
 
 const DEFAULT_DAYS = 7;
@@ -41,13 +42,6 @@ interface ModelRow {
 	cacheReadTokens: number;
 	knownCostUsd: number;
 	unavailableCost: number;
-}
-
-interface ReviewRecord {
-	interactionId?: unknown;
-	reviewedAt?: unknown;
-	status?: unknown;
-	review?: { classification?: unknown };
 }
 
 export function parseOrchestrationStatsDays(args: string): number | null {
@@ -120,11 +114,12 @@ function renderModelTable(
 	return lines;
 }
 
-async function reviewStates(
+function reviewStates(
 	interactionIds: Set<string>,
+	reviews: readonly OrchestrationAnalyticsReview[],
 	start: number,
 	end: number,
-): Promise<Map<ReviewState, number>> {
+): Map<ReviewState, number> {
 	const states = new Map<ReviewState, number>([
 		["productive", 0],
 		["mixed", 0],
@@ -135,43 +130,28 @@ async function reviewStates(
 		["unreviewed", 0],
 		["unmatched", 0],
 	]);
-	let text = "";
-	try {
-		text = await fs.readFile(
-			`${workflowFrictionStorageRoot()}/reviews.jsonl`,
-			"utf8",
-		);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-	}
-	const reviews = new Map<string, ReviewState>();
-	const reviewTimestamps = new Map<string, unknown>();
-	for (const line of text.split(/\r?\n/)) {
-		if (!line.trim()) continue;
-		try {
-			const record = JSON.parse(line) as ReviewRecord;
-			if (typeof record.interactionId !== "string") continue;
-			let state: ReviewState = "pending";
-			if (record.status === "failed") state = "failed";
-			else if (record.status === "completed") {
-				const classification = record.review?.classification;
-				if (
-					classification === "productive" ||
-					classification === "mixed" ||
-					classification === "churn" ||
-					classification === "uncertain"
-				)
-					state = classification;
-			}
-			reviews.set(record.interactionId, state);
-			reviewTimestamps.set(record.interactionId, record.reviewedAt);
-		} catch {}
+	const reviewStatesByInteraction = new Map<string, ReviewState>();
+	const reviewTimestamps = new Map<string, string | undefined>();
+	for (const record of reviews) {
+		let state: ReviewState = "pending";
+		if (record.status === "failed") state = "failed";
+		else if (record.status === "completed") {
+			if (
+				record.classification === "productive" ||
+				record.classification === "mixed" ||
+				record.classification === "churn" ||
+				record.classification === "uncertain"
+			)
+				state = record.classification;
+		}
+		reviewStatesByInteraction.set(record.interactionId, state);
+		reviewTimestamps.set(record.interactionId, record.reviewedAt);
 	}
 	for (const interactionId of interactionIds) {
-		const state = reviews.get(interactionId) ?? "unreviewed";
+		const state = reviewStatesByInteraction.get(interactionId) ?? "unreviewed";
 		states.set(state, (states.get(state) ?? 0) + 1);
 	}
-	for (const interactionId of reviews.keys()) {
+	for (const interactionId of reviewStatesByInteraction.keys()) {
 		const reviewedAt = reviewTimestamps.get(interactionId);
 		const timestamp =
 			typeof reviewedAt === "string" ? Date.parse(reviewedAt) : Number.NaN;
@@ -189,11 +169,14 @@ async function reviewStates(
 export async function renderOrchestrationStatsReport(
 	days: number,
 	now = new Date(),
+	signal?: AbortSignal,
 ): Promise<string> {
-	const result = await readOrchestrationEvents({
-		dir: getMetricsDir(),
+	const result = await readOrchestrationAnalytics({
+		metricsDir: getMetricsDir(),
+		frictionDir: workflowFrictionStorageRoot(),
 		days,
 		now,
+		signal,
 	});
 	const runs: OrchestrationRunData[] = [];
 	const interactions: OrchestrationInteractionData[] = [];
@@ -268,8 +251,9 @@ export async function renderOrchestrationStatsReport(
 	)) {
 		if (!terminalRunIds.has(id)) pendingRuns += 1;
 	}
-	const quality = await reviewStates(
+	const quality = reviewStates(
 		new Set(interactions.map((entry) => entry.interactionId)),
+		result.reviews,
 		now.getTime() - days * 24 * 60 * 60 * 1000,
 		now.getTime(),
 	);

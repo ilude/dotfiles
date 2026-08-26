@@ -1,9 +1,9 @@
 import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DuckDBInstance } from "@duckdb/node-api";
 import { coordinateId, scanToolFailures, type FailureScan, type SessionEntry } from "./tool-failure-classifier.ts";
-import type { BoundedInspection, TranscriptCoordinate } from "./tool-failure-inspection.ts";
+import { LogAnalyticsStore } from "./log-analytics/store.ts";
+import type { TranscriptCoordinate } from "./tool-failure-inspection.ts";
 
 export type ToolFailureObservation = {
 	candidateId: string;
@@ -23,8 +23,8 @@ export type ToolFailureDecision = {
 };
 export type ToolFailureCandidate = ToolFailureObservation & { reason: "new" | "post-effective-regression" };
 export type SessionSource = { path: string; size: number; mtimeMs: number };
-type Store = { instance: DuckDBInstance; connection: Awaited<ReturnType<DuckDBInstance["connect"]>> };
-const instances = new Map<string, Promise<DuckDBInstance>>();
+type Store = { analytics: LogAnalyticsStore; connection: Awaited<ReturnType<LogAnalyticsStore["connectionForDomain"]>> };
+const instances = new Map<string, Promise<LogAnalyticsStore>>();
 
 function requiredString(value: unknown, field: string): string {
 	if (typeof value !== "string" || value.length === 0) throw new Error(`invalid tool-failure fixture field: ${field}`);
@@ -41,8 +41,8 @@ function decision(value: unknown): ToolFailureDecision {
 	return { candidateId: requiredString(row.candidateId, "candidateId"), fingerprint: requiredString(row.fingerprint, "fingerprint"), outcome: row.outcome, recordedAt: requiredString(row.recordedAt, "recordedAt"), effectiveAt: row.effectiveAt === undefined ? undefined : requiredString(row.effectiveAt, "effectiveAt") };
 }
 async function readFixture<T>(filePath: string, parse: (value: unknown) => T): Promise<T[]> { return (await fs.readFile(filePath, "utf8")).split(/\r?\n/).filter((line) => line.trim()).map((line) => parse(JSON.parse(line) as unknown)); }
-async function instanceFor(databasePath: string): Promise<DuckDBInstance> {
-	const key = path.resolve(databasePath); let current = instances.get(key); if (!current) { current = DuckDBInstance.create(key); instances.set(key, current); }
+async function instanceFor(databasePath: string): Promise<LogAnalyticsStore> {
+	const key = path.resolve(databasePath); let current = instances.get(key); if (!current) { current = LogAnalyticsStore.open(key); instances.set(key, current); }
 	try { return await current; } catch (error) { instances.delete(key); throw error; }
 }
 async function discoverJsonl(root: string): Promise<string[]> {
@@ -99,7 +99,7 @@ async function readStable(filePath: string): Promise<{ source: SessionSource; ro
 export class ToolFailureStore {
 	private constructor(private readonly store: Store) {}
 	static async open(databasePath: string): Promise<ToolFailureStore> {
-		const instance = await instanceFor(databasePath); const connection = await instance.connect(); const store = new ToolFailureStore({ instance, connection });
+		const analytics = await instanceFor(databasePath); const connection = await analytics.connectionForDomain(); const store = new ToolFailureStore({ analytics, connection });
 		await connection.run(`
 			CREATE TABLE IF NOT EXISTS tool_failure_observations (append_order BIGINT, candidate_id VARCHAR, fingerprint VARCHAR, tool_name VARCHAR, message VARCHAR, session_id VARCHAR, observed_at VARCHAR, coordinate VARCHAR);
 			CREATE TABLE IF NOT EXISTS tool_failure_decisions (append_order BIGINT, candidate_id VARCHAR, fingerprint VARCHAR, outcome VARCHAR, recorded_at VARCHAR, effective_at VARCHAR);
@@ -169,6 +169,6 @@ export class ToolFailureStore {
 	private async rows(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> { const result = params.length ? await this.store.connection.runAndReadAll(sql, params as never) : await this.store.connection.runAndReadAll(sql); return result.getRowObjectsJS() as Record<string, unknown>[]; }
 }
 
-export async function closeToolFailureStores(): Promise<void> { for (const current of instances.values()) (await current).closeSync(); instances.clear(); }
+export async function closeToolFailureStores(): Promise<void> { for (const current of instances.values()) await (await current).close(); instances.clear(); }
 export function registerToolFailureStoreLifecycle(pi: { on: (event: string, handler: () => Promise<void>) => unknown }): void { pi.on("session_shutdown", closeToolFailureStores); }
 export function resetToolFailureStoreCacheForTests(): Promise<void> { return closeToolFailureStores(); }

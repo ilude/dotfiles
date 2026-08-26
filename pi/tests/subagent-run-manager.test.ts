@@ -75,6 +75,14 @@ describe("SubagentRunManager", () => {
 		manager.subscribe(listener);
 		manager.begin(
 			{
+				correlation: {
+					runtime_instance_id: "runtime-test",
+					session_id: "session-parent",
+					trace_id: "trace-parent",
+					orchestration_id: "orchestration-1",
+					run_id: "run-1",
+					task_id: "task-1",
+				},
 				runId: "run-1",
 				taskId: "task-1",
 				orchestrationId: "orchestration-1",
@@ -95,6 +103,13 @@ describe("SubagentRunManager", () => {
 
 		manager.begin(
 			{
+				correlation: {
+					runtime_instance_id: "runtime-test",
+					session_id: "session-parent",
+					trace_id: "trace-parent",
+					orchestration_id: "orchestration-1",
+					run_id: "run-2",
+				},
 				runId: "run-2",
 				treeId: "tree-1",
 				parentRunId: "run-1",
@@ -110,6 +125,14 @@ describe("SubagentRunManager", () => {
 		);
 
 		expect(manager.get("run-1")).toMatchObject({
+			correlation: {
+				runtime_instance_id: "runtime-test",
+				session_id: "session-parent",
+				trace_id: "trace-parent",
+				orchestration_id: "orchestration-1",
+				run_id: "run-1",
+				task_id: "task-1",
+			},
 			taskId: "task-1",
 			treeId: "tree-1",
 			role: "coordinator",

@@ -2,6 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import * as path from "node:path";
 
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import {
+	correlationForEmission,
+	type CorrelationFields,
+} from "./log-analytics/correlation.ts";
 
 export const FRICTION_SCHEMA_VERSION = 1;
 export const REVIEW_MIN_DURATION_MS = 2 * 60 * 1000;
@@ -38,6 +42,12 @@ export interface SubmissionHint {
 	submittedAt: number;
 }
 
+export type WorkflowCorrelationFields = Partial<{
+	-readonly [Key in keyof CorrelationFields]: CorrelationFields[Key];
+}>;
+
+interface WorkflowCorrelationRecord extends WorkflowCorrelationFields {}
+
 export interface ToolTrace {
 	toolName: string;
 	argsText: string;
@@ -46,7 +56,7 @@ export interface ToolTrace {
 	mutationGeneration: number;
 }
 
-export interface InteractionPacket {
+export interface InteractionPacket extends WorkflowCorrelationRecord {
 	schemaVersion: number;
 	interactionId: string;
 	sessionId: string;
@@ -65,7 +75,7 @@ export interface InteractionPacket {
 	repoRoot?: string;
 }
 
-export interface InteractionMetadataRecord {
+export interface InteractionMetadataRecord extends WorkflowCorrelationRecord {
 	schemaVersion: number;
 	interactionId: string;
 	sessionId: string;
@@ -144,7 +154,7 @@ export interface ReviewResult {
 	suggestedChange?: string;
 }
 
-export interface StoredReviewRecord {
+export interface StoredReviewRecord extends WorkflowCorrelationRecord {
 	schemaVersion: number;
 	interactionId: string;
 	sessionId: string;
@@ -227,6 +237,70 @@ function orchestrationInteractionState(): OrchestrationInteractionState {
 	const state: OrchestrationInteractionState = { active: null };
 	host[ORCHESTRATION_INTERACTION_STATE] = state;
 	return state;
+}
+
+const CORRELATION_ENVIRONMENT_KEYS = {
+	runtime_instance_id: "PI_CORRELATION_RUNTIME_INSTANCE_ID",
+	session_id: "PI_CORRELATION_SESSION_ID",
+	turn_id: "PI_CORRELATION_TURN_ID",
+	trace_id: "PI_CORRELATION_TRACE_ID",
+	interaction_id: "PI_CORRELATION_INTERACTION_ID",
+	workflow_episode_id: "PI_CORRELATION_WORKFLOW_EPISODE_ID",
+	orchestration_id: "PI_CORRELATION_ORCHESTRATION_ID",
+	run_id: "PI_CORRELATION_RUN_ID",
+	task_id: "PI_CORRELATION_TASK_ID",
+	goal_id: "PI_CORRELATION_GOAL_ID",
+	tool_call_id: "PI_CORRELATION_TOOL_CALL_ID",
+	operation_id: "PI_CORRELATION_OPERATION_ID",
+} as const;
+
+function environmentCorrelation(): WorkflowCorrelationFields {
+	const fields: WorkflowCorrelationFields = {};
+	for (const [field, environmentKey] of Object.entries(
+		CORRELATION_ENVIRONMENT_KEYS,
+	) as Array<[keyof typeof CORRELATION_ENVIRONMENT_KEYS, string]>) {
+		const value = process.env[environmentKey]?.trim();
+		if (value) fields[field] = value;
+	}
+	return fields;
+}
+
+export function workflowCorrelationFields(input: {
+	interactionId: string;
+	sessionId: string;
+	subagentRunId?: string;
+	correlation?: WorkflowCorrelationFields;
+}): WorkflowCorrelationFields {
+	const inherited = {
+		...environmentCorrelation(),
+		...(correlationForEmission() ?? {}),
+		...(input.correlation ?? {}),
+	};
+	return {
+		...inherited,
+		session_id: input.sessionId,
+		interaction_id: input.interactionId,
+		...(input.subagentRunId ? { run_id: input.subagentRunId } : {}),
+	};
+}
+
+export function correlationFieldsForPacket(
+	packet: Pick<InteractionPacket, "interactionId" | "sessionId" | "subagentRunId"> &
+		WorkflowCorrelationRecord,
+): WorkflowCorrelationFields {
+	const explicit: WorkflowCorrelationFields = {};
+	for (const field of Object.keys(CORRELATION_ENVIRONMENT_KEYS) as Array<
+		keyof typeof CORRELATION_ENVIRONMENT_KEYS
+	>) {
+		const value = packet[field];
+		if (value) explicit[field] = value;
+	}
+	return workflowCorrelationFields({
+		interactionId: packet.interactionId,
+		sessionId: packet.sessionId,
+		subagentRunId: packet.subagentRunId,
+		correlation: explicit,
+	});
 }
 
 function nonnegativeUsage(value: unknown): number {
@@ -418,6 +492,7 @@ export function interactionMetadataFromPacket(
 			fileMutationCount += 1;
 	}
 	return {
+		...correlationFieldsForPacket(packet),
 		schemaVersion: FRICTION_SCHEMA_VERSION,
 		interactionId: packet.interactionId,
 		sessionId: packet.sessionId,

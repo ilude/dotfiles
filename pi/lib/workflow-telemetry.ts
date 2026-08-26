@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { correlationForEmission } from "./log-analytics/correlation.ts";
 
 export type WorkflowCommandName =
 	| "plan-it"
@@ -10,6 +11,11 @@ export type WorkflowCommandName =
 
 export interface WorkflowEpisodeRecord {
 	schema_version: 1;
+	runtime_instance_id?: string;
+	session_id?: string;
+	turn_id?: string;
+	trace_id?: string;
+	interaction_id?: string;
 	episode_id: string;
 	command: WorkflowCommandName;
 	artifact_path?: string;
@@ -41,6 +47,11 @@ export interface WorkflowEpisodeStartInput {
 
 export interface WorkflowRuntimeEventRecord {
 	schema_version: 1;
+	runtime_instance_id?: string;
+	session_id?: string;
+	turn_id?: string;
+	trace_id?: string;
+	interaction_id?: string;
 	episode_id: string;
 	event_id: string;
 	phase_id: string;
@@ -96,8 +107,10 @@ export function appendWorkflowEvent(
 	input: WorkflowRuntimeEventInput,
 ): WorkflowRuntimeEventRecord {
 	const now = input.now ?? new Date();
+	const context = { ...correlationForEmission(), workflow_episode_id: input.episodeId };
 	const record: WorkflowRuntimeEventRecord = {
 		schema_version: 1,
+		...context,
 		episode_id: input.episodeId,
 		event_id: input.eventId,
 		phase_id: input.phaseId,
@@ -118,9 +131,12 @@ export function startWorkflowEpisode(
 	input: WorkflowEpisodeStartInput,
 ): WorkflowEpisodeRecord {
 	const now = input.now ?? new Date();
+	const episodeId = createWorkflowEpisodeId({ ...input, now });
+	const context = { ...correlationForEmission() };
 	const episode: WorkflowEpisodeRecord = {
 		schema_version: 1,
-		episode_id: createWorkflowEpisodeId({ ...input, now }),
+		...context,
+		episode_id: episodeId,
 		command: input.command,
 		repo_root: input.repoRoot ?? process.cwd(),
 		started_at: now.toISOString(),

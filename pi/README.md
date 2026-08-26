@@ -290,6 +290,12 @@ Repository-owned TypeScript extensions live in `~/.dotfiles/pi/extensions/`. See
 
 Extension-owned slash commands are TUI-only by default. `pi/lib/slash-command-echo.ts` adds a model-visible invocation only for commands explicitly included by their owner. Semantic workflows persist their bounded prompt or result through the owning extension instead of relying on a default raw invocation echo. Control-plane commands, diagnostics, configuration commands, and terminal or process launch commands such as `/branch`, `/new-instance`, and `/new-terminal` are not added to model context.
 
+### `log-analytics-tool.ts`
+
+`log_analytics` is the sole generic Pi JSONL analytics tool. It runs in process over the disposable local DuckDB read model and accepts only `catalog`, typed `select`, and typed `aggregate` operations using registered source and column IDs. It accepts no SQL, expressions, paths, filesystem functions, or external access. Results are structural-only and bounded by rows, encoded bytes, and elapsed time; transcript content and domain evidence remain outside the generic read model.
+
+Active readers use typed in-process APIs or this tool. `/find-fails`, `/usage`, `/extension-stats`, `/skill-stats`, `/orchestration-stats`, and workflow-friction diagnostics retain their owning command contracts. Correlation is exact or deterministic by default; unique inferred edges are disclosed, opt-in, and never decision authority. JSONL remains authoritative and refresh failures are observational gaps.
+
 ### `damage-control.ts`
 
 Pi damage-control is a Pi-native safety extension with its own policy, parser, engine, status text, `/doctor`, and `/permissions` integration. It enforces Bash, managed background-terminal, PowerShell, file-path, semantic Git, Bash AST, sequence/taint, and post-tool secret-output rules through Pi extension hooks.

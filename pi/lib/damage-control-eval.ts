@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { ensureDirectory, getOperatorStateDir } from "./operator-state.ts";
+import { correlationForEmission } from "./log-analytics/correlation.ts";
 
 export type DamageControlEvalDecisionType =
 	| "prompt_shown"
@@ -33,6 +34,10 @@ export interface DamageControlEvalEvent {
 	schemaVersion: 1;
 	id: string;
 	recordedAt: string;
+	runtime_instance_id?: string;
+	session_id?: string;
+	turn_id?: string;
+	trace_id?: string;
 	decisionType: DamageControlEvalDecisionType;
 	toolName: string;
 	redactedAction: string;
@@ -68,6 +73,7 @@ export interface RecordDamageControlEvalInput {
 	redactedActionTruncated?: boolean;
 	redactedActionLossy?: boolean;
 	id?: string;
+	correlation?: Partial<Pick<DamageControlEvalEvent, "runtime_instance_id" | "session_id" | "turn_id" | "trace_id">> & { tool_call_id?: string };
 }
 
 export interface DamageControlEvalStats {
@@ -107,8 +113,10 @@ export function recordDamageControlEval(
 ): DamageControlEvalEvent {
 	if (!input.toolName) throw new Error("toolName is required");
 	if (!input.redactedAction) throw new Error("redactedAction is required");
+	const context = { ...correlationForEmission(), ...input.correlation };
 	const event: DamageControlEvalEvent = {
 		schemaVersion: 1,
+		...context,
 		id: input.id ?? crypto.randomUUID(),
 		recordedAt: new Date().toISOString(),
 		decisionType: input.decisionType,

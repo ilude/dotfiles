@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Message } from "@earendil-works/pi-ai";
 import type { SubagentTreeRole } from "./tree-runtime.js";
+import type { CorrelationFields } from "../../lib/log-analytics/correlation.js";
 
 /**
  * Retained for callers that display the default tree capacity. Admission is
@@ -41,6 +42,7 @@ export type SubagentActivityKind =
 	| "tool-result";
 
 export interface SubagentBackgroundCompletion {
+	readonly correlation?: Partial<CorrelationFields>;
 	readonly orchestrationId: string;
 	readonly mode: Exclude<SubagentRunMode, "task-execute">;
 	readonly content: string;
@@ -92,6 +94,7 @@ export interface SubagentExecutionFingerprint {
 }
 
 export interface SubagentRunSnapshot {
+	readonly correlation?: Partial<CorrelationFields>;
 	readonly runId: string;
 	readonly taskId?: string;
 	readonly orchestrationId?: string;
@@ -140,6 +143,7 @@ export interface SubagentRunSnapshot {
 }
 
 interface MutableSubagentRunSnapshot {
+	correlation?: Partial<CorrelationFields>;
 	runId: string;
 	taskId?: string;
 	orchestrationId?: string;
@@ -189,6 +193,7 @@ interface MutableSubagentRunSnapshot {
 }
 
 export interface BeginSubagentRun {
+	correlation?: Partial<CorrelationFields>;
 	runId: string;
 	taskId?: string;
 	orchestrationId?: string;
@@ -390,6 +395,9 @@ export class SubagentRunManager {
 			return;
 		const pending: SubagentBackgroundCompletion = {
 			...completion,
+			...(completion.correlation
+				? { correlation: { ...completion.correlation } }
+				: {}),
 			taskIds: [...completion.taskIds],
 		};
 		this.backgroundCompletions.set(completion.orchestrationId, pending);
