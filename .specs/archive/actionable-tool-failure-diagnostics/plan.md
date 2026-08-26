@@ -1,6 +1,7 @@
 ---
 created: 2026-08-25
-status: ready
+status: completed
+completed: 2026-08-25
 ---
 
 # Make recurring tool-failure diagnostics actionable
@@ -23,20 +24,20 @@ status: ready
 
 ## Tasks
 
-- [ ] **T1: Select and inspect representative call envelopes**
+- [x] **T1: Select and inspect representative call envelopes**
   - Files: `pi/lib/tool-failure-classifier.ts`, `pi/lib/tool-failure-store.ts`, `pi/lib/tool-failure-inspection.ts`, `pi/tests/tool-failure-store.test.ts`, `pi/tests/tool-failure-inspection.test.ts`
   - Change: Replace hash-ordered coordinate truncation with authoritative ordering by valid observation timestamp descending, then session digest and coordinate token; observations without a valid timestamp follow timestamped observations and use the same stable tie-breakers. Derive `lastObserved` and the first selected coordinate from that ordering, then fill the existing three-coordinate bound with distinct sessions before same-session observations. Extend corpus ingestion to retain correlated successful results needed for verification. Build a structured envelope with tool name, redacted argument shape and bounded values, result status and bounded text, timestamps, session digest, and opaque correlation token. Recursively redact secret-named keys and secret-like values before applying per-field caps and explicit truncation markers, while always retaining tool, status, timestamp validity, and token. Keep paths and surrounding transcript content outside the envelope. Because shared TypeScript types change, run the focused typecheck before expanding into decision behavior.
   - Done when: Fixtures cover hash order differing from time order, tied and invalid timestamps, distinct sessions, nested secrets, oversized arguments/results, and successful-result refresh; the selected newest valid failure supports the reported last-seen value, required envelope fields survive truncation, and protected paths plus per-call/per-turn limits still reject unsafe reads.
   - Verify: `cd pi && pnpm test tool-failure-store.test.ts tool-failure-inspection.test.ts && pnpm run typecheck`
 
-- [ ] **T2: Preserve recurring caller defects and expose the real decision contract**
+- [x] **T2: Preserve recurring caller defects and expose the real decision contract**
   - Depends on: T1
   - Files: `pi/lib/tool-failure-decisions.ts`, `pi/lib/tool-failure-report.ts`, `pi/extensions/tool-failure-triage.ts`, `pi/tests/tool-failure-decisions.test.ts`, `pi/tests/tool-failure-report.test.ts`, `pi/tests/tool-failure-command.test.ts`
   - Change: Persist one validated ISO observation boundary with a caller-contract decision, then derive recurrence occurrence and distinct-session counts only from observations strictly after it so historical aggregates cannot immediately reopen the finding. Keep the existing verdict vocabulary while requiring the explanation to distinguish correct rejection from continuing caller-generation failure. Replace the decision tool's undocumented prefixed strings with structured evidence items whose enumerated type and text constraints exactly match writer validation; normalize them to the existing persisted string encoding at the extension boundary and read prior records without rewriting them.
   - Done when: Tests show that historical and unchanged isolated caller mistakes remain settled, only qualifying failures from enough post-boundary sessions become actionable, stale or malformed boundary state remains unresolved, and every evidence value accepted by the advertised tool schema is accepted by the writer while malformed values are rejected before persistence.
   - Verify: `cd pi && pnpm test tool-failure-decisions.test.ts tool-failure-report.test.ts tool-failure-command.test.ts`
 
-- [ ] **T3: Gate fixed findings on an inspected post-change check**
+- [x] **T3: Gate fixed findings on an inspected post-change check**
   - Depends on: T1, T2
   - Files: `pi/lib/tool-failure-inspection.ts`, `pi/lib/tool-failure-decisions.ts`, `pi/lib/tool-failure-report.ts`, `pi/extensions/tool-failure-triage.ts`, `pi/tests/tool-failure-inspection.test.ts`, `pi/tests/tool-failure-decisions.test.ts`, `pi/tests/tool-failure-report.test.ts`, `pi/tests/tool-failure-command.test.ts`, `pi/skills/pi-extension/references/contracts/observability.md`
   - Change: Implement one deterministic fix verifier for `required:command`: the failed envelope must be a Bash missing-command rejection and the corrected envelope must be a later successful Bash call containing a nonempty `command`. Require an `addressed`/`Fixed` decision for that contract to reference the successful envelope inspected in the current turn with a timestamp strictly after the persisted ISO change boundary. Keep prior date-only records readable but ineligible as new fix proof. Reject unsupported contracts, another tool, pre-boundary results, absence, counts, and free-form claims. Include an eligible fix-check token in the prompt; otherwise report unresolved with a repair/replay recommendation. Update the owning contract with the exact selection, envelope, recurrence, evidence, and fix-verifier rules; defer additional verifier abstraction until another contract requires it.
@@ -45,8 +46,8 @@ status: ready
 
 ## Validation
 
-- [ ] `cd pi && pnpm test tool-failure-store.test.ts tool-failure-inspection.test.ts tool-failure-decisions.test.ts tool-failure-report.test.ts tool-failure-command.test.ts tool-failure-diagnostic-turn.test.ts tool-visibility.test.ts` passes and directly covers deterministic timestamp fallback/ties, newest evidence and matching last seen, structural redaction and truncation, successful-result refresh, post-boundary recurrence, schema parity, and supported-contract post-change fix proof.
-- [ ] Inspect `pi/skills/pi-extension/references/contracts/observability.md` against the executable tests and confirm it preserves the restricted active-provider turn, narrow mutation authority, and direct-proof rules without claiming automatic repair or arbitrary replay execution.
+- [x] `cd pi && pnpm test tool-failure-store.test.ts tool-failure-inspection.test.ts tool-failure-decisions.test.ts tool-failure-report.test.ts tool-failure-command.test.ts tool-failure-diagnostic-turn.test.ts tool-visibility.test.ts` passes and directly covers deterministic timestamp fallback/ties, newest evidence and matching last seen, structural redaction and truncation, successful-result refresh, post-boundary recurrence, schema parity, and supported-contract post-change fix proof.
+- [x] Inspect `pi/skills/pi-extension/references/contracts/observability.md` against the executable tests and confirm it preserves the restricted active-provider turn, narrow mutation authority, and direct-proof rules without claiming automatic repair or arbitrary replay execution.
 
 ## Retention
 
@@ -54,7 +55,7 @@ Keep incomplete work at `.specs/actionable-tool-failure-diagnostics/plan.md`. `/
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
+- State: Completed; implementation and validation passed.
 - Blocker: None.
-- Next: T1.
+- Next: Archive and close out the owned workflow.
 - Resume: `/do-it .specs/actionable-tool-failure-diagnostics/plan.md`

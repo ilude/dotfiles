@@ -31,6 +31,7 @@ export type ClassifiedFailure = {
 	sessions14d: number;
 	occurrences30d: number;
 	sessions30d: number;
+	observations: { timestamp: string; session: string }[];
 };
 
 export type FailureScan = {
@@ -138,10 +139,19 @@ export function scanToolFailures(rows: readonly SessionEntry[], asOf = new Date(
 		observations.push({ id: candidateId(call.tool, errorClass, contract), tool: call.tool.toLowerCase(), errorClass, contract, classification, timestamp, session, coordinate });
 	}
 	const groups = new Map<string, typeof observations>(); for (const item of observations) groups.set(item.id, [...(groups.get(item.id) ?? []), item]);
+	const order = (a: (typeof observations)[number], b: (typeof observations)[number]): number => {
+		if (a.timestamp && b.timestamp && a.timestamp !== b.timestamp) return b.timestamp.localeCompare(a.timestamp);
+		if (Boolean(a.timestamp) !== Boolean(b.timestamp)) return a.timestamp ? -1 : 1;
+		return a.session.localeCompare(b.session) || a.coordinate.localeCompare(b.coordinate);
+	};
 	const candidates = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([id, group]) => {
+		const ordered = [...group].sort(order);
 		const windows = (days: number) => { const cutoff = asOf.valueOf() - days * 86400000; const set = group.filter((x) => x.timestamp && new Date(x.timestamp).valueOf() >= cutoff && new Date(x.timestamp).valueOf() <= asOf.valueOf()); return [set.length, new Set(set.map((x) => x.session)).size] as const; };
 		const all = group.filter((x) => x.timestamp).map((x) => x.timestamp as string).sort(); const w7 = windows(7), w14 = windows(14), w30 = windows(30);
-		return { candidateId: id, fingerprintVersion: FINGERPRINT_VERSION, tool: group[0].tool, errorClass: group[0].errorClass, contract: group[0].contract, classification: group[0].classification, occurrences: group.length, sessions: new Set(group.map((x) => x.session)).size, firstObserved: all[0] ?? null, lastObserved: all.at(-1) ?? null, coordinates: [...new Set(group.map((x) => x.coordinate))].sort().slice(0, MAX_COORDINATES), occurrences7d: w7[0], sessions7d: w7[1], occurrences14d: w14[0], sessions14d: w14[1], occurrences30d: w30[0], sessions30d: w30[1] };
+		const distinctSessions: typeof ordered = []; const seenSessions = new Set<string>();
+		for (const item of ordered) if (!seenSessions.has(item.session)) { seenSessions.add(item.session); distinctSessions.push(item); }
+		const selected = [...distinctSessions, ...ordered.filter((item) => !distinctSessions.includes(item))].slice(0, MAX_COORDINATES);
+		return { candidateId: id, fingerprintVersion: FINGERPRINT_VERSION, tool: group[0].tool, errorClass: group[0].errorClass, contract: group[0].contract, classification: group[0].classification, occurrences: group.length, sessions: new Set(group.map((x) => x.session)).size, firstObserved: all[0] ?? null, lastObserved: ordered.find((x) => x.timestamp)?.timestamp ?? null, coordinates: selected.map((x) => x.coordinate), occurrences7d: w7[0], sessions7d: w7[1], occurrences14d: w14[0], sessions14d: w14[1], occurrences30d: w30[0], sessions30d: w30[1], observations: ordered.flatMap((item) => item.timestamp ? [{ timestamp: item.timestamp, session: item.session }] : []) };
 	});
 	const digestMaterial = candidates.map((x) => [x.candidateId, x.occurrences, x.sessions]);
 	return { schemaVersion: 1, asOf: asOf.toISOString().replace(".000Z", "Z"), timestampDiagnostics: diagnostics, timestampOmissions: diagnostics.missing + diagnostics.malformed + diagnostics.future, manifestDigest: createHash("sha256").update(JSON.stringify(digestMaterial)).digest("hex"), sourceWindow: { first: candidates.flatMap((x) => x.firstObserved ? [x.firstObserved] : []).sort()[0] ?? null, last: candidates.flatMap((x) => x.lastObserved ? [x.lastObserved] : []).sort().at(-1) ?? null }, scannedResults: results.length, unmatchedResults, duplicateCalls, malformedOmissions, candidates };
