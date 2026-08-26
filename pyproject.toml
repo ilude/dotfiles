@@ -36,6 +36,7 @@ exclude = ["dotbot/", "modules/", ".venv/", "pi/prompt-routing/data/synthetic_sh
 select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
+pythonpath = ["src"]
 testpaths = ["test", "claude/hooks/*/tests"]
 markers = [
     "zsh: executable zsh runtime contracts",
