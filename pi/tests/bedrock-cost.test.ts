@@ -63,10 +63,10 @@ describe("bedrock cost status formatting", () => {
 	it("formats exact and partial month-to-date totals", () => {
 		expect(
 			formatBedrockStatus({ costTotal: 1.23456, unpricedRequestCount: 0 }),
-		).toBe("bedrock $1.23");
+		).toBe("bedrock est $1.23");
 		expect(
 			formatBedrockStatus({ costTotal: 1.23456, unpricedRequestCount: 2 }),
-		).toBe("bedrock >= $1.23");
+		).toBe("bedrock est >= $1.23");
 	});
 });
 
@@ -133,14 +133,14 @@ describe("bedrock cost extension", () => {
 
 	it("sets the footer status from the existing ledger when Bedrock is available", async () => {
 		await recordBedrockUsage({
-			model: "anthropic.claude-test",
-			usage: { input: 10, output: 5, cost: { total: 1.23456 } },
+			model: "anthropic.claude-fable-5",
+			usage: { input: 1_000_000, output: 0, cost: { total: 1.23456 } },
 		});
 		const { pi, ctx, setStatus, notify } = setupExtension();
 
 		await fire(pi, "session_start", { type: "session_start" }, ctx);
 
-		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock $1.23");
+		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock est $10.00");
 		expect(notify).not.toHaveBeenCalled();
 	});
 
@@ -172,14 +172,14 @@ describe("bedrock cost extension", () => {
 				message: {
 					role: "assistant",
 					provider: "amazon-bedrock",
-					model: "anthropic.claude-test",
+					model: "anthropic.claude-fable-5",
 					usage: { input: 20, output: 10, cost: { total: 0.01 } },
 				},
 			},
 			ctx,
 		);
 		expect((await getCurrentBedrockMonthSummary()).requestCount).toBe(1);
-		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock $0.01");
+		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock est $0.00");
 
 		await fire(
 			pi,
@@ -198,6 +198,9 @@ describe("bedrock cost extension", () => {
 		const summary = await getCurrentBedrockMonthSummary();
 		expect(summary.requestCount).toBe(2);
 		expect(summary.unpricedRequestCount).toBe(1);
-		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock >= $0.01");
+		expect(setStatus).toHaveBeenLastCalledWith(
+			"bedrock",
+			"bedrock est >= $0.00",
+		);
 	});
 });
