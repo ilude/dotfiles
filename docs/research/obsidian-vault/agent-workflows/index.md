@@ -45,6 +45,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [patterns/pi-observability-timing](patterns/pi-observability-timing.md)
 - [patterns/deterministic-agent-rules-and-guardrails](patterns/deterministic-agent-rules-and-guardrails.md)
 - [patterns/evidence-based-code-review](patterns/evidence-based-code-review.md)
+- [patterns/eliminating-failure-categories](patterns/eliminating-failure-categories.md)
 - [patterns/openai-compatible-chat-providers](patterns/openai-compatible-chat-providers.md)
 
 ## Specs synthesis
