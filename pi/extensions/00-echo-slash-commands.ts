@@ -27,4 +27,16 @@ export default function (pi: ExtensionAPI) {
 			);
 		},
 	);
+	pi.registerMessageRenderer(
+		SLASH_COMMAND_ECHO_TYPE,
+		(message, _options, theme) => {
+			if (typeof message.content !== "string") return undefined;
+			return new Text(
+				theme.bold(theme.fg("success", "> ")) +
+					theme.bold(theme.fg("text", message.content)),
+				0,
+				0,
+			);
+		},
+	);
 }

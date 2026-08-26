@@ -16,6 +16,7 @@ import {
 } from "../lib/slash-command-echo";
 
 type EntryRenderer = Parameters<ExtensionAPI["registerEntryRenderer"]>[1];
+type MessageRenderer = Parameters<ExtensionAPI["registerMessageRenderer"]>[1];
 
 describe("slash command echo renderer", () => {
 	it("strips only a trailing matching next-command section", () => {
@@ -43,8 +44,10 @@ describe("slash command echo renderer", () => {
 
 	it("renders visible slash echoes", () => {
 		const registerEntryRenderer = vi.fn();
+		const registerMessageRenderer = vi.fn();
 		echoSlashCommands({
 			registerEntryRenderer,
+			registerMessageRenderer,
 		} as unknown as ExtensionAPI);
 
 		const renderer = registerEntryRenderer.mock.calls.find(
@@ -104,7 +107,8 @@ describe("slash command echo renderer", () => {
 		expect(sessionEntryToContextMessages(restoredEntry as never)).toEqual([]);
 
 		const registerEntryRenderer = vi.fn();
-		echoSlashCommands({ registerEntryRenderer } as unknown as ExtensionAPI);
+		const registerMessageRenderer = vi.fn();
+		echoSlashCommands({ registerEntryRenderer, registerMessageRenderer } as unknown as ExtensionAPI);
 		const renderer = registerEntryRenderer.mock.calls[0][1] as EntryRenderer;
 		const component = renderer(
 			restoredEntry as Parameters<EntryRenderer>[0],
@@ -124,5 +128,16 @@ describe("slash command echo renderer", () => {
 			} as Parameters<EntryRenderer>[2],
 		);
 		expect(nextComponent?.render(80)[0]?.trim()).toBe("next: /do-it .specs/build/plan.md");
+
+		const messageRenderer = registerMessageRenderer.mock.calls[0][1] as MessageRenderer;
+		const messageComponent = messageRenderer(
+			{ role: "custom", customType: SLASH_COMMAND_ECHO_TYPE, content: "/summarize", display: true, timestamp: Date.now() },
+			{ expanded: false, outputPad: 0 },
+			{
+				bold: (text: string) => text,
+				fg: (_color: string, text: string) => text,
+			} as Parameters<MessageRenderer>[2],
+		);
+		expect(messageComponent?.render(80)[0]?.trim()).toBe("> /summarize");
 	});
 });
