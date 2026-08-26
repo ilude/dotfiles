@@ -1,1 +1,0 @@
-Cannot write artifact: no write/bash/edit tool is available in this session.
