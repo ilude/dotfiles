@@ -54,7 +54,7 @@ describe("storage path", () => {
 });
 
 describe("normalizeUsageRecord", () => {
-	it("uses usage.cost.total and flags token usage without positive cost", () => {
+	it("ignores provider cost and flags unknown token usage as unpriced", () => {
 		expect(
 			normalizeUsageRecord({
 				model: "anthropic.claude-test",
@@ -91,6 +91,40 @@ describe("readBedrockCostLedger", () => {
 		});
 	});
 
+	it("reads schema-v1 data and reprices historical totals from tokens", async () => {
+		const filePath = path.join(tmpRoot, "schema-v1.json");
+		fs.writeFileSync(
+			filePath,
+			JSON.stringify({
+				schemaVersion: 1,
+				months: {
+					"2026-08": {
+						models: {
+							"bedrock-mantle/anthropic.claude-fable-5": {
+								provider: "bedrock-mantle",
+								model: "anthropic.claude-fable-5",
+								inputTokens: 0,
+								outputTokens: 0,
+								cacheReadTokens: 0,
+								cacheWriteTokens: 1_000_000,
+								costTotal: 999,
+								requestCount: 2,
+								unpricedRequestCount: 0,
+							},
+						},
+					},
+				},
+			}),
+			"utf-8",
+		);
+
+		const ledger = await readBedrockCostLedger({ filePath });
+		expect(ledger.months["2026-08"]?.models[
+			"bedrock-mantle/anthropic.claude-fable-5"
+		]?.costTotal).toBe(999);
+		expect(summarizeMonth(ledger, "2026-08").costTotal).toBeCloseTo(22);
+	});
+
 	it("throws an explicit error for malformed JSON", async () => {
 		const filePath = path.join(tmpRoot, "bad.json");
 		fs.writeFileSync(filePath, "not json", "utf-8");
@@ -118,7 +152,7 @@ describe("recordBedrockUsage", () => {
 		await recordBedrockUsage(
 			{
 				provider: "amazon-bedrock",
-				model: "anthropic.claude-1",
+				model: "us.anthropic.claude-fable-5",
 				usage: {
 					input: 100,
 					output: 25,
@@ -133,7 +167,7 @@ describe("recordBedrockUsage", () => {
 		await recordBedrockUsage(
 			{
 				provider: "amazon-bedrock",
-				model: "anthropic.claude-1",
+				model: "us.anthropic.claude-fable-5",
 				usage: { input: 7, output: 3, cost: { total: 0.004 } },
 				date: new Date(2026, 0, 20),
 			},
@@ -142,7 +176,7 @@ describe("recordBedrockUsage", () => {
 		await recordBedrockUsage(
 			{
 				provider: "amazon-bedrock",
-				model: "anthropic.claude-2",
+				model: "anthropic.claude-fable-5",
 				usage: { input: 50, output: 10, cost: { total: 0.02 } },
 				date: new Date(2026, 0, 20),
 			},
@@ -157,21 +191,29 @@ describe("recordBedrockUsage", () => {
 			outputTokens: 38,
 			cacheReadTokens: 10,
 			cacheWriteTokens: 5,
-			costTotal: 0.0363,
 			requestCount: 3,
 			unpricedRequestCount: 0,
 		});
+		expect(summary.costTotal).toBeCloseTo(0.003838);
 		expect(summary.models).toHaveLength(2);
 		expect(summary.models[0]).toMatchObject({
 			provider: "amazon-bedrock",
-			model: "anthropic.claude-1",
+			model: "anthropic.claude-fable-5",
+			inputTokens: 50,
+			outputTokens: 10,
+			requestCount: 1,
+		});
+		expect(summary.models[0]?.costTotal).toBeCloseTo(0.001);
+		expect(summary.models[1]).toMatchObject({
+			provider: "amazon-bedrock",
+			model: "us.anthropic.claude-fable-5",
 			inputTokens: 107,
 			outputTokens: 28,
 			cacheReadTokens: 10,
 			cacheWriteTokens: 5,
 			requestCount: 2,
 		});
-		expect(summary.models[0]?.costTotal).toBeCloseTo(0.0163);
+		expect(summary.models[1]?.costTotal).toBeCloseTo(0.002838);
 	});
 
 	it("counts unpriced requests without inventing cost", async () => {

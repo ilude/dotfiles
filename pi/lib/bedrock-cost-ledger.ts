@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
+import { priceBedrockUsage } from "./bedrock-pricing.ts";
 import { getOperatorStateDir } from "./operator-state.ts";
 
 export const BEDROCK_COST_LEDGER_SCHEMA_VERSION = 1 as const;
@@ -101,10 +102,17 @@ export function normalizeUsageRecord(
 	const outputTokens = finiteNumber(record.usage.output);
 	const cacheReadTokens = finiteNumber(record.usage.cacheRead);
 	const cacheWriteTokens = finiteNumber(record.usage.cacheWrite);
-	const costTotal = finiteNumber(record.usage.cost?.total);
+	const pricing = priceBedrockUsage({
+		provider,
+		model: record.model,
+		inputTokens,
+		outputTokens,
+		cacheReadTokens,
+		cacheWriteTokens,
+		cacheWriteTier: "1h",
+	});
 	const hasTokens =
 		inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens > 0;
-	const unpricedRequestCount = hasTokens && costTotal <= 0 ? 1 : 0;
 
 	return {
 		month: currentMonthKey(record.date),
@@ -114,9 +122,9 @@ export function normalizeUsageRecord(
 		outputTokens,
 		cacheReadTokens,
 		cacheWriteTokens,
-		costTotal,
+		costTotal: pricing.status === "priced" ? pricing.total : 0,
 		requestCount: 1,
-		unpricedRequestCount,
+		unpricedRequestCount: hasTokens && pricing.status === "unpriced" ? 1 : 0,
 	};
 }
 
@@ -124,12 +132,13 @@ export function summarizeMonth(
 	ledger: BedrockCostLedger,
 	month: string = currentMonthKey(),
 ): BedrockMonthSummary {
-	const models = Object.values(ledger.months[month]?.models ?? {}).sort(
-		(a, b) =>
+	const models = Object.values(ledger.months[month]?.models ?? {})
+		.map(repriceModelTotals)
+		.sort((a, b) =>
 			modelUsageKey(a.provider, a.model).localeCompare(
 				modelUsageKey(b.provider, b.model),
 			),
-	);
+		);
 	const summary: BedrockMonthSummary = {
 		month,
 		inputTokens: 0,
@@ -264,6 +273,32 @@ export async function getCurrentBedrockMonthSummary(
 
 function emptyLedger(): BedrockCostLedger {
 	return { schemaVersion: BEDROCK_COST_LEDGER_SCHEMA_VERSION, months: {} };
+}
+
+function repriceModelTotals(
+	totals: BedrockModelUsageTotals,
+): BedrockModelUsageTotals {
+	const pricing = priceBedrockUsage({
+		provider: totals.provider,
+		model: totals.model,
+		inputTokens: totals.inputTokens,
+		outputTokens: totals.outputTokens,
+		cacheReadTokens: totals.cacheReadTokens,
+		cacheWriteTokens: totals.cacheWriteTokens,
+		cacheWriteTier: "1h",
+	});
+	const hasTokens =
+		totals.inputTokens +
+			totals.outputTokens +
+			totals.cacheReadTokens +
+			totals.cacheWriteTokens >
+		0;
+	return {
+		...totals,
+		costTotal: pricing.status === "priced" ? pricing.total : 0,
+		unpricedRequestCount:
+			hasTokens && pricing.status === "unpriced" ? totals.requestCount : 0,
+	};
 }
 
 function emptyModelTotals(
