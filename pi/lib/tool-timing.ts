@@ -5,6 +5,22 @@ export function formatLocalClock(timestamp: number): string {
 		.join(":");
 }
 
+export function formatTranscriptTiming(
+	startedAt: number | undefined,
+	durationMs: number | undefined,
+): string | undefined {
+	if (startedAt === undefined) return undefined;
+
+	const started = `started ${formatLocalClock(startedAt)} local`;
+	if (durationMs === undefined) return started;
+
+	const seconds = Math.max(0, Math.round(durationMs / 1000));
+	const minutes = Math.floor(seconds / 60);
+	const remainder = seconds % 60;
+	const duration = minutes > 0 ? `${minutes}m${String(remainder).padStart(2, "0")}s` : `${remainder}s`;
+	return `${started} | duration ${duration}`;
+}
+
 export function formatToolTiming(
 	startedAt: number | undefined,
 	timeoutSeconds: number | undefined,

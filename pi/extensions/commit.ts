@@ -10,6 +10,8 @@ import { pushCommit } from "../lib/commit/push";
 import { stagePathsAsync } from "../lib/commit/stage";
 import { withTimingSpan } from "../lib/observability";
 import { activateTools, deactivateTools } from "../lib/tool-activation";
+import { Text } from "@earendil-works/pi-tui";
+import { formatTranscriptTiming } from "../lib/tool-timing.js";
 
 const CommitPlanParams = Type.Object({
 	cwd: Type.Optional(
@@ -85,6 +87,22 @@ export const COMMIT_TOOL_NAMES = [
 ] as const;
 const COMMIT_INTENT_PATTERN =
 	/\b(?:commit|commits|committed|committing|stage|staged|staging|push|pushed|pushing)\b/i;
+
+function renderCommitCall(label: string, theme: any, context: any): Text {
+	if (context.executionStarted && context.state.startedAt === undefined)
+		context.state.startedAt = Date.now();
+	const timing = formatTranscriptTiming(context.state.startedAt, undefined);
+	return new Text(`${theme.fg("toolTitle", label)}${timing ? `\n  ${theme.fg("dim", timing)}` : ""}`, 0, 0);
+}
+
+function renderCommitResult(result: any, options: any, theme: any, context: any): Text {
+	const timing = formatTranscriptTiming(
+		context.state?.startedAt,
+		options.isPartial ? undefined : Date.now() - context.state?.startedAt,
+	);
+	const text = result.content?.[0]?.text ?? "(no output)";
+	return new Text(`${timing ? `${timing}\n` : ""}${text}`, 0, 0);
+}
 
 export function registerCommitTools(pi: ExtensionAPI) {
 	const plans = new Map<string, ReturnType<typeof buildCommitPlan>>();
@@ -167,6 +185,10 @@ export function registerCommitTools(pi: ExtensionAPI) {
 			"Stage exact safe paths bound to a commit_plan token using abort-aware Git execution. Never force-adds ignored paths.",
 		promptSnippet: "Run commit_plan first, then pass its planId to commit_stage.",
 		parameters: CommitStageParams,
+		renderCall(_args, theme, context) {
+			return renderCommitCall("commit stage", theme, context);
+		},
+		renderResult: renderCommitResult,
 		executionMode: "sequential",
 		execute: async (
 			_toolCallId,
@@ -212,6 +234,10 @@ export function registerCommitTools(pi: ExtensionAPI) {
 		promptSnippet:
 			"Create a local commit by passing the stageId returned by commit_stage. Does not push.",
 		parameters: CommitCreateParams,
+		renderCall(_args, theme, context) {
+			return renderCommitCall("commit create", theme, context);
+		},
+		renderResult: renderCommitResult,
 		executionMode: "sequential",
 		execute: async (
 			_toolCallId,
@@ -246,6 +272,10 @@ export function registerCommitTools(pi: ExtensionAPI) {
 			"Use commit_push only when the user explicitly requests a push, and pass the hash returned by commit_create as expectedHead.",
 		],
 		parameters: CommitPushParams,
+		renderCall(_args, theme, context) {
+			return renderCommitCall("commit push", theme, context);
+		},
+		renderResult: renderCommitResult,
 		executionMode: "sequential",
 		execute: async (
 			_toolCallId,

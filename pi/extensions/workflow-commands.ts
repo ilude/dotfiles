@@ -53,6 +53,7 @@ import {
 	uniqueGitPaths,
 } from "../lib/commit/status";
 import { emitTerminalBell, formatToolError } from "../lib/extension-utils";
+import { formatTranscriptTiming } from "../lib/tool-timing.js";
 import { handoffRecoverableLocalFailure } from "../lib/recovery-handoff.js";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { parsePersistedPlanRoutingState } from "../lib/plan-state.js";
@@ -2433,6 +2434,22 @@ export const executeCommitCommand = createCommitCommandExecutor({
 	emitCommitReport,
 });
 
+function renderLifecycleCall(label: string, theme: any, context: any): Text {
+	if (context.executionStarted && context.state.startedAt === undefined)
+		context.state.startedAt = Date.now();
+	const timing = formatTranscriptTiming(context.state.startedAt, undefined);
+	return new Text(`${theme.fg("toolTitle", label)}${timing ? `\n  ${theme.fg("dim", timing)}` : ""}`, 0, 0);
+}
+
+function renderLifecycleResult(result: any, options: any, theme: any, context: any): Text {
+	const timing = formatTranscriptTiming(
+		context.state?.startedAt,
+		options.isPartial ? undefined : Date.now() - context.state?.startedAt,
+	);
+	const text = result.content?.[0]?.text ?? "(no output)";
+	return new Text(`${timing ? `${timing}\n` : ""}${text}`, 0, 0);
+}
+
 export default function (pi: ExtensionAPI) {
 	const workflowRunner = async (cwd: string, args: string[]) => {
 		const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
@@ -2586,6 +2603,10 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Commit an active raw /do-it workflow, merge it with --no-ff into its clean primary branch, verify the merge, and remove only the owned worktree and branch.",
 		parameters: Type.Object({}, { additionalProperties: false }),
+		renderCall(_args, theme, context) {
+			return renderLifecycleCall("workflow complete", theme, context);
+		},
+		renderResult: renderLifecycleResult,
 		async execute() {
 			try {
 				const worktree = activeRawWorkflow ?? (() => {
@@ -2622,6 +2643,10 @@ export default function (pi: ExtensionAPI) {
 			},
 			{ additionalProperties: false },
 		),
+		renderCall(_args, theme, context) {
+			return renderLifecycleCall("plan archive", theme, context);
+		},
+		renderResult: renderLifecycleResult,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			try {
 				const planPath = canonicalPlanPathFromInput(params.path);

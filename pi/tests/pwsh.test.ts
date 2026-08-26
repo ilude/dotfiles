@@ -136,6 +136,25 @@ describe("pwsh extension", () => {
       details: { elapsed: "0.1", ...details },
     });
 
+    it("should render running and settled transcript timing", () => {
+      const startedAt = new Date(2026, 7, 19, 11, 29, 30).getTime();
+      const result = tool.renderResult(
+        makeResult("output", { elapsed: "2.0" }),
+        { expanded: true, isPartial: false },
+        theme,
+        { state: { startedAt } },
+      );
+      expect(result.render(300).join("\\n")).toContain("started 11:29:30 local | duration 2s");
+      const partial = tool.renderResult(
+        makeResult("partial", { elapsed: "2.0" }),
+        { expanded: true, isPartial: true },
+        theme,
+        { state: { startedAt } },
+      );
+      expect(partial.render(300).join("\\n")).toContain("started 11:29:30 local");
+      expect(partial.render(300).join("\\n")).not.toContain("duration");
+    });
+
     it("should color WARNING lines", () => {
       tool.renderResult(makeResult("WARNING: low disk"), { expanded: true, isPartial: false }, theme, {});
       expect(theme.fg).toHaveBeenCalledWith("warning", expect.stringContaining("WARNING"));

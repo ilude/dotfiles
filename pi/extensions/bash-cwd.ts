@@ -7,7 +7,7 @@ import {
 import { Type } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import path from "node:path";
-import { formatToolTiming } from "../lib/tool-timing.js";
+import { formatToolTiming, formatTranscriptTiming } from "../lib/tool-timing.js";
 
 type BashParams = {
 	command: string;
@@ -124,7 +124,7 @@ export default function (pi: ExtensionAPI) {
 			return text;
 		},
 		renderResult(result, options, theme, context) {
-			return (
+			const rendered =
 				getTool(
 					effectiveCwd(
 						(result.details ?? {}) as { cwd?: string },
@@ -135,8 +135,12 @@ export default function (pi: ExtensionAPI) {
 					options,
 					theme,
 					context as any,
-				) ?? new Text("", 0, 0)
-			);
+				) ?? new Text("", 0, 0);
+			const details = (result.details ?? {}) as { elapsed?: string };
+			const durationMs = options.isPartial ? undefined : Number(details.elapsed) * 1000;
+			const timing = formatTranscriptTiming(context.state.startedAt, Number.isFinite(durationMs) ? durationMs : undefined);
+			if (!timing) return rendered;
+			return new Text(`${rendered.render(1000).join("\n")}\n${theme.fg("dim", timing)}`, 0, 0);
 		},
 	});
 }

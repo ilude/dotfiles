@@ -206,6 +206,26 @@ describe("web-tools extension", () => {
       expect(result.content[0].text).toBe("(no content extracted)");
     });
 
+    it("should render running and settled timing for both web tools", () => {
+      const startedAt = new Date(2026, 7, 19, 11, 29, 30).getTime();
+      const theme = createMockTheme();
+      const searchTool = mockPi._getTool("web_search")!;
+      const searchCall = searchTool.renderCall(
+        { query: "docs" },
+        theme,
+        { executionStarted: true, state: { startedAt } },
+      );
+      expect(searchCall.render(300).join("\n")).toContain("started 11:29:30 local");
+      const fetchResult = fetch_tool.renderResult(
+        { content: [{ type: "text", text: "article" }], details: { elapsed: "2.0" } },
+        { expanded: false, isPartial: false },
+        theme,
+        { state: { startedAt } },
+      );
+      expect(fetchResult.render(300).join("\n")).toContain("article");
+      expect(fetchResult.render(300).join("\n")).toContain("started 11:29:30 local | duration 2s");
+    });
+
     it("should show the fetched URL in call rendering", () => {
       const theme = createMockTheme();
       const result = fetch_tool.renderCall({ url: "https://example.com/article" }, theme, {});

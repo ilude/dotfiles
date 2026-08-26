@@ -36,6 +36,7 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { type TSchema, Type } from "typebox";
 import { emitTerminalBell } from "../../lib/extension-utils.js";
+import { formatTranscriptTiming } from "../../lib/tool-timing.js";
 import { getPiInvocation } from "../../lib/pi-invocation.js";
 import { recordEvent } from "../../lib/metrics.js";
 import { signalProcessTree } from "../../lib/process-tree.js";
@@ -652,6 +653,7 @@ export interface SubagentDetails {
 	agentScope: AgentScope;
 	projectAgentsDir: string | null;
 	results: SingleResult[];
+	transcriptTiming?: { startedAt: number; durationMs?: number };
 	gaps?: readonly string[];
 	experiment?: ReadOnlyFanoutAssignment;
 }
@@ -2979,6 +2981,10 @@ export default function (pi: ExtensionAPI) {
 			)
 				continue;
 			try {
+				const backgroundRun = subagentRunManager
+					.list()
+					.filter((run) => run.orchestrationId === completion.orchestrationId)
+					.sort((left, right) => left.startedAt - right.startedAt)[0];
 				pi.sendMessage(
 					{
 						customType: "subagent-result",
@@ -2989,6 +2995,14 @@ export default function (pi: ExtensionAPI) {
 							mode: completion.mode,
 							failed: completion.failed,
 							taskIds: completion.taskIds,
+							...(backgroundRun
+								? {
+										transcriptTiming: {
+											startedAt: backgroundRun.startedAt,
+											durationMs: backgroundRun.durationMs,
+										},
+									}
+								: {}),
 						},
 					},
 					{ deliverAs: "followUp", triggerTurn: true },
@@ -3301,6 +3315,37 @@ export default function (pi: ExtensionAPI) {
 			toolCallId: Type.Optional(Type.String({ minLength: 1 })),
 			activityVersion: Type.Optional(Type.Integer({ minimum: 0 })),
 		}),
+		renderCall(args, theme, context) {
+			const input = args as { action?: string; selector?: { type?: string; processId?: string } };
+			if (input.action !== "interrupt_tool")
+				return new Text(theme.fg("toolTitle", "subagent control"), 0, 0);
+			if (context.executionStarted && context.state.startedAt === undefined) {
+				context.state.startedAt = Date.now();
+				context.state.processId = input.selector?.processId;
+			}
+			const timing = formatTranscriptTiming(context.state.startedAt, undefined);
+			return new Text(
+				`${theme.fg("toolTitle", "subagent control interrupt_tool")}${timing ? `\n  ${theme.fg("dim", timing)}` : ""}`,
+				0,
+				0,
+			);
+		},
+		renderResult(result, _options, theme, context) {
+			const details = result.details as SubagentDetails | undefined;
+			const timing = formatTranscriptTiming(
+				details?.transcriptTiming?.startedAt ?? context.state.startedAt,
+				details?.transcriptTiming?.durationMs,
+			);
+			const text = result.content
+				.filter((item) => item.type === "text")
+				.map((item) => item.text)
+				.join("\n");
+			return new Text(
+				[timing, text || "(no output)"].filter(Boolean).join("\n"),
+				0,
+				0,
+			);
+		},
 		prepareArguments(args) {
 			const input = args as Record<string, unknown>;
 			const selector = input.selector as Record<string, unknown> | undefined;
@@ -3394,8 +3439,22 @@ export default function (pi: ExtensionAPI) {
 					session: ctx.sessionManager?.getSessionId?.(),
 				});
 				assertInterruptedRecoverySucceeded(replacementSucceeded);
+				const replacementRun = replacementResults[0]?.runId
+					? subagentRunManager.get(replacementResults[0].runId)
+					: undefined;
 				return {
 					...resumed,
+					details: {
+						...resumed.details,
+						...(replacementRun
+							? {
+									transcriptTiming: {
+										startedAt: replacementRun.startedAt,
+										durationMs: replacementRun.durationMs,
+									},
+								}
+							: {}),
+					},
 					content: [
 						{
 							type: "text",
@@ -5039,6 +5098,10 @@ export default function (pi: ExtensionAPI) {
 						error,
 					),
 				);
+			const backgroundRun = subagentRunManager
+				.list()
+				.filter((run) => run.orchestrationId === orchestrationId)
+				.sort((left, right) => left.startedAt - right.startedAt)[0];
 			return {
 				content: [
 					{
@@ -5046,11 +5109,24 @@ export default function (pi: ExtensionAPI) {
 						text: `Started ${linkedTaskCount > 0 ? "task-linked" : "transient"} background ${executionMode} ${orchestrationId}. Continue parent work; completion will arrive as a follow-up. Use /subagents to inspect or cancel it.`,
 					},
 				],
-				details: makeDetails(originalMode)([]),
+				details: {
+					...makeDetails(originalMode)([]),
+					...(backgroundRun
+						? { transcriptTiming: { startedAt: backgroundRun.startedAt } }
+						: {}),
+				},
 			};
 		},
 
-		renderCall(args, theme, _context) {
+		renderCall(args, theme, context) {
+			const state = context.state ?? {};
+			if (context.executionStarted && state.startedAt === undefined) {
+				state.startedAt = Date.now();
+				state.endedAt = undefined;
+			}
+			const timing = formatTranscriptTiming(state.startedAt, undefined);
+			const withTiming = (text: string) =>
+				timing ? `${text}\n  ${theme.fg("dim", timing)}` : text;
 			const scope: AgentScope = args.agentScope ?? "user";
 			const configuredAgent = args.agent
 				? sessionAgentCatalog?.byScope[scope].agents.find((agent) => agent.name === args.agent)
@@ -5072,22 +5148,26 @@ export default function (pi: ExtensionAPI) {
 			if (args.readOnlyFanout) {
 				const itemCount = args.readOnlyFanout.parallel.length;
 				return new Text(
-					theme.fg("toolTitle", theme.bold("subagent ")) +
-						theme.fg("accent", `read-only fan-out (${itemCount} items)`) +
-						theme.fg("muted", ` [${scope}]`) +
-						modelHint +
-						backgroundHint,
+					withTiming(
+						theme.fg("toolTitle", theme.bold("subagent ")) +
+							theme.fg("accent", `read-only fan-out (${itemCount} items)`) +
+							theme.fg("muted", ` [${scope}]`) +
+							modelHint +
+							backgroundHint,
+					),
 					0,
 					0,
 				);
 			}
 			if (args.continue) {
 				return new Text(
-					theme.fg("toolTitle", theme.bold("subagent ")) +
-						theme.fg("accent", `continue ${args.continue.agent}`) +
-						theme.fg("muted", ` [${scope}]`) +
-						backgroundHint +
-						`\n  ${theme.fg("dim", args.continue.task)}`,
+					withTiming(
+						theme.fg("toolTitle", theme.bold("subagent ")) +
+							theme.fg("accent", `continue ${args.continue.agent}`) +
+							theme.fg("muted", ` [${scope}]`) +
+							backgroundHint +
+							`\n  ${theme.fg("dim", args.continue.task)}`,
+					),
 					0,
 					0,
 				);
@@ -5114,7 +5194,7 @@ export default function (pi: ExtensionAPI) {
 				}
 				if (args.chain.length > 3)
 					text += `\n  ${theme.fg("muted", `... +${args.chain.length - 3} more`)}`;
-				return new Text(text, 0, 0);
+				return new Text(withTiming(text), 0, 0);
 			}
 			if (args.tasks && args.tasks.length > 0) {
 				let text =
@@ -5130,7 +5210,7 @@ export default function (pi: ExtensionAPI) {
 				}
 				if (args.tasks.length > 3)
 					text += `\n  ${theme.fg("muted", `... +${args.tasks.length - 3} more`)}`;
-				return new Text(text, 0, 0);
+				return new Text(withTiming(text), 0, 0);
 			}
 			const agentName = args.agent || "...";
 			const task = args.task || "...";
@@ -5141,15 +5221,26 @@ export default function (pi: ExtensionAPI) {
 				modelHint +
 				backgroundHint;
 			text += `\n  ${theme.fg("dim", task)}`;
-			return new Text(text, 0, 0);
+			return new Text(withTiming(text), 0, 0);
 		},
 
-		renderResult(result, { expanded }, theme, _context) {
+		renderResult(result, { expanded }, theme, context) {
+			const state = context.state ?? {};
 			const details = result.details as SubagentDetails | undefined;
+			const firstResult = details?.results[0];
+			const run = firstResult?.runId
+				? subagentRunManager.get(firstResult.runId)
+				: undefined;
+			const timing = formatTranscriptTiming(
+				run?.startedAt ?? details?.transcriptTiming?.startedAt ?? state.startedAt,
+				run?.status === "running"
+					? undefined
+					: run?.durationMs ?? details?.transcriptTiming?.durationMs ?? firstResult?.durationMs,
+			);
 			if (!details || details.results.length === 0) {
 				const text = result.content[0];
 				return new Text(
-					text?.type === "text" ? text.text : "(no output)",
+					[timing, text?.type === "text" ? text.text : "(no output)"].filter(Boolean).join("\n"),
 					0,
 					0,
 				);
@@ -5192,6 +5283,7 @@ export default function (pi: ExtensionAPI) {
 					if (isError && r.stopReason)
 						header += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 					container.addChild(new Text(header, 0, 0));
+					if (timing) container.addChild(new Text(theme.fg("dim", timing), 0, 0));
 					if (isError && r.errorMessage)
 						container.addChild(
 							new Text(theme.fg("error", `Error: ${r.errorMessage}`), 0, 0),
@@ -5243,7 +5335,7 @@ export default function (pi: ExtensionAPI) {
 					return container;
 				}
 
-				let text = `${icon}  ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))}`;
+				let text = `${timing ? `${theme.fg("dim", timing)}\n` : ""}${icon}  ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))}`;
 				if (isError && r.stopReason)
 					text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 				if (isError && r.errorMessage)
