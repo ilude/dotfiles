@@ -661,7 +661,7 @@ describe("codex-status usage", () => {
 		});
 
 		expect(text).toBe(
-			"Bedrock:\n  fable-5: $68.07 3.6M in, 174.9K out\n  Total:  $68.07",
+			"Bedrock local estimate:\n  fable-5: $68.07 3.6M in, 174.9K out, 946.5K cache write, 11.4M cache read\n  Total:  $68.07",
 		);
 	});
 

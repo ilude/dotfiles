@@ -672,6 +672,8 @@ export function formatBedrockUsageSection(
 		{
 			inputTokens: number;
 			outputTokens: number;
+			cacheReadTokens: number;
+			cacheWriteTokens: number;
 			costTotal: number;
 			unpricedRequestCount: number;
 		}
@@ -681,21 +683,25 @@ export function formatBedrockUsageSection(
 		const totals = modelsByName.get(name) ?? {
 			inputTokens: 0,
 			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
 			costTotal: 0,
 			unpricedRequestCount: 0,
 		};
 		totals.inputTokens += model.inputTokens;
 		totals.outputTokens += model.outputTokens;
+		totals.cacheReadTokens += model.cacheReadTokens;
+		totals.cacheWriteTokens += model.cacheWriteTokens;
 		totals.costTotal += model.costTotal;
 		totals.unpricedRequestCount += model.unpricedRequestCount;
 		modelsByName.set(name, totals);
 	}
 
-	const lines = ["Bedrock:"];
+	const lines = ["Bedrock local estimate:"];
 	for (const [name, model] of modelsByName) {
 		const partial = model.unpricedRequestCount > 0 ? ">= " : "";
 		lines.push(
-			`  ${name}: ${partial}${formatCompactMoney(model.costTotal)} ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out`,
+			`  ${name}: ${partial}${formatCompactMoney(model.costTotal)} ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out, ${formatCompactTokenCount(model.cacheWriteTokens)} cache write, ${formatCompactTokenCount(model.cacheReadTokens)} cache read`,
 		);
 	}
 	const partial = summary.unpricedRequestCount > 0 ? ">= " : "";
