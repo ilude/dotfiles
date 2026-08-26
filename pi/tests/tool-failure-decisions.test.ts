@@ -2,13 +2,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { appendDecision, candidateLedgerState, loadDecisionLedger, selectCandidates } from "../lib/tool-failure-decisions.ts";
+import { appendDecision, candidateLedgerState, loadDecisionLedger, normalizeEvidence, selectCandidates } from "../lib/tool-failure-decisions.ts";
 import { classifyFailure, scanToolFailures, type FailureScan } from "../lib/tool-failure-classifier.ts";
-import { createBoundedInspection, type InspectionProof } from "../lib/tool-failure-inspection.ts";
+import { createBoundedInspection, fixCheckToken, type InspectionProof } from "../lib/tool-failure-inspection.ts";
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
-function scan(overrides: Partial<FailureScan["candidates"][number]> = {}, digest = "x"): FailureScan { return { schemaVersion: 1, asOf: "2026-08-25T00:00:00.000Z", timestampDiagnostics: { missing: 0, malformed: 0, future: 0 }, timestampOmissions: 0, manifestDigest: digest, sourceWindow: { first: null, last: null }, scannedResults: 0, unmatchedResults: 0, duplicateCalls: 0, malformedOmissions: 0, candidates: [{ candidateId: "one", fingerprintVersion: 1, tool: "custom", errorClass: "internal-missing-method", contract: "runtime:missing-method", classification: "candidate", occurrences: 3, sessions: 3, firstObserved: "2026-08-20T00:00:00.000Z", lastObserved: "2026-08-20T00:00:00.000Z", coordinates: ["one"], occurrences7d: 3, sessions7d: 3, occurrences14d: 3, sessions14d: 3, occurrences30d: 3, sessions30d: 3, ...overrides }] }; }
+function scan(overrides: Partial<FailureScan["candidates"][number]> = {}, digest = "x"): FailureScan { return { schemaVersion: 1, asOf: "2026-08-25T00:00:00.000Z", timestampDiagnostics: { missing: 0, malformed: 0, future: 0 }, timestampOmissions: 0, manifestDigest: digest, sourceWindow: { first: null, last: null }, scannedResults: 0, unmatchedResults: 0, duplicateCalls: 0, malformedOmissions: 0, candidates: [{ candidateId: "one", fingerprintVersion: 1, tool: "custom", errorClass: "internal-missing-method", contract: "runtime:missing-method", classification: "candidate", occurrences: 3, sessions: 3, firstObserved: "2026-08-20T00:00:00.000Z", lastObserved: "2026-08-20T00:00:00.000Z", coordinates: ["one"], occurrences7d: 3, sessions7d: 3, occurrences14d: 3, sessions14d: 3, occurrences30d: 3, sessions30d: 3, observations: [], ...overrides }] }; }
 async function proofFor(current: FailureScan, candidateId = "one"): Promise<InspectionProof> { const root = await fs.mkdtemp(path.join(os.tmpdir(), "tool-failure-proof-")); roots.push(root); const file = path.join(root, "session.jsonl"); await fs.writeFile(file, "selected evidence\n"); const inspection = createBoundedInspection(root, { selectedCoordinates: [{ token: candidateId, filePath: file, line: 1 }] }); await inspection.readSelectedTranscript(candidateId); return inspection.issueProof(current, [candidateId]); }
 
 const classificationCases: [string, string, string, string, string][] = [
@@ -56,9 +56,57 @@ describe("tool failure classifier and decisions", () => {
 		const proof = await proofFor(current); await expect(appendDecision(file, scan({}, "changed"), "one", "addressed", "fixed", ["test:current"], { effectiveAfter: "2026-08-21", proof })).rejects.toThrow("inspection proof");
 		await appendDecision(file, current, "one", "addressed", "fixed", ["test:current"], { effectiveAfter: "2026-08-21", proof });
 		const proof2 = await proofFor(current); await appendDecision(file, current, "one", "external", "temporary service", [], { revisitAfter: "2026-09-01", proof: proof2 });
-		for (const disposition of ["safety-rejection", "caller-contract", "cancelled"] as const) { const next = await proofFor(current); await appendDecision(file, current, "one", disposition, "authorized outcome", [], { proof: next }); }
+		for (const disposition of ["safety-rejection", "caller-contract", "cancelled"] as const) { const next = await proofFor(current); await appendDecision(file, current, "one", disposition, "authorized outcome", [], { proof: next, ...(disposition === "caller-contract" ? { effectiveAfter: "2026-08-20T00:00:00.000Z" } : {}) }); }
 		expect((await loadDecisionLedger(file)).records).toHaveLength(5);
 	});
+	it("validates structured evidence while retaining the old persisted string encoding", () => {
+		expect(normalizeEvidence([{ type: "test", text: "pnpm test focused" }, { type: "note", text: "verified rejection" }])).toEqual(["test:pnpm test focused", "note:verified rejection"]);
+		expect(() => normalizeEvidence([{ type: "test", text: "" }])).toThrow("evidence item is invalid");
+		expect(() => normalizeEvidence([{ type: "commit", text: "/home/private/path" }])).toThrow("evidence");
+	});
+	it("requires a validated ISO observation boundary for caller-contract decisions", async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "tool-failure-boundary-")); roots.push(root); const file = path.join(root, "decisions.jsonl"); const current = scan();
+		await expect(appendDecision(file, current, "one", "caller-contract", "correct rejection", [], { proof: await proofFor(current) })).rejects.toThrow("ISO observation boundary");
+		const record = await appendDecision(file, current, "one", "caller-contract", "correct rejection", [], { effectiveAfter: "2026-08-20T00:00:00-04:00", proof: await proofFor(current) });
+		expect(record.effectiveAfter).toBe("2026-08-20T04:00:00.000Z");
+	});
+	it("does not reopen a caller contract from historical aggregate snapshots", async () => {
+		const current = scan({ occurrences14d: 9, sessions14d: 4, lastObserved: "2026-08-25T00:00:00.000Z" });
+		const record: any = { schemaVersion: 1, candidateId: "one", fingerprintVersion: 1, disposition: "caller-contract", effectiveAfter: "2026-08-24T00:00:00.000Z" };
+		expect(selectCandidates(current, [record])).toEqual([]);
+	});
+	it("counts only production scan observations strictly after the caller boundary", () => {
+		const rows = (filename: string, id: string, timestamp: string) => [{ filename, id: `call-${id}`, timestamp, message: { role: "assistant", content: [{ type: "toolCall", id, name: "bash" }] } }, { filename, id: `result-${id}`, timestamp, message: { role: "toolResult", toolCallId: id, isError: true, content: [{ type: "text", text: "Validation failed for tool bash: command must have required properties command" }] } }];
+		const current = scanToolFailures([
+			...rows("old", "old", "2026-08-24T00:00:00.000Z"),
+			...rows("new-a", "a", "2026-08-25T00:00:00.000Z"),
+			...rows("new-b", "b", "2026-08-25T00:00:01.000Z"),
+			...rows("new-c", "c", "2026-08-25T00:00:02.000Z"),
+		], new Date("2026-08-25T00:01:00.000Z"));
+		const candidate = current.candidates[0]!;
+		const selected = selectCandidates(current, [{ schemaVersion: 1, candidateId: candidate.candidateId, fingerprintVersion: 1, disposition: "caller-contract", effectiveAfter: "2026-08-24T00:00:00.000Z" } as any]);
+		expect(candidate.observations).toHaveLength(4);
+		expect(selected[0]?.status).toBe("regression");
+	});
+	it("requires a current inspected post-boundary Bash success for required:command fixes", async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "tool-failure-required-command-")); roots.push(root); const file = path.join(root, "decisions.jsonl"); const transcript = path.join(root, "session.jsonl");
+		await fs.writeFile(transcript, [
+			JSON.stringify({ role: "assistant", timestamp: "2026-08-25T00:00:00Z", content: [{ type: "toolCall", id: "failed", name: "bash", arguments: {} }] }),
+			JSON.stringify({ role: "toolResult", timestamp: "2026-08-25T00:00:01Z", toolCallId: "failed", isError: true, content: [{ type: "text", text: "command is a required property" }] }),
+			JSON.stringify({ role: "assistant", timestamp: "2026-08-26T00:00:00Z", content: [{ type: "toolCall", id: "success", name: "bash", arguments: { command: "echo fixed" } }] }),
+			JSON.stringify({ role: "toolResult", timestamp: "2026-08-26T00:00:01Z", toolCallId: "success", isError: false, content: [{ type: "text", text: "ok" }] }),
+		].join("\n") + "\n");
+		const current = scan({ tool: "bash", errorClass: "missing-required-parameter", contract: "required:command", observations: [{ timestamp: "2026-08-25T00:00:01Z", session: "one" }] });
+		const inspection = createBoundedInspection(root, { selectedCoordinates: [{ filePath: transcript, line: 2, callLine: 1, token: "one" }, { filePath: transcript, line: 4, callLine: 3, token: fixCheckToken("one"), fixCheckFor: "one" }] });
+		await inspection.readSelectedTranscript("one"); const proofWithoutSuccess = inspection.issueProof(current, ["one"]);
+		await expect(appendDecision(file, current, "one", "addressed", "fixed", ["test:direct check"], { effectiveAfter: "2026-08-25", proof: proofWithoutSuccess })).rejects.toThrow("ISO timestamp");
+		await expect(appendDecision(file, current, "one", "addressed", "fixed", ["test:direct check"], { effectiveAfter: "2026-08-25T00:00:02Z", proof: proofWithoutSuccess })).rejects.toThrow("post-boundary Bash success");
+		await inspection.readSelectedTranscript(fixCheckToken("one")); const proof = inspection.issueProof(current, ["one"]);
+		const record = await appendDecision(file, current, "one", "addressed", "fixed", ["test:direct check"], { effectiveAfter: "2026-08-25T00:00:02Z", proof });
+		expect(record.disposition).toBe("addressed");
+		await expect(appendDecision(file, current, "one", "addressed", "fixed", ["test:direct check"], { effectiveAfter: "2026-08-26T00:00:02Z", proof })).rejects.toThrow("post-boundary Bash success");
+	});
+
 	it("preserves thresholds, expected suppression, custom-tool filtering, and stable priority", () => {
 		const expected = scan({ classification: "expected", errorClass: "safety-block", occurrences14d: 9, sessions14d: 4 });
 		expect(selectCandidates(expected, [])).toEqual([]);

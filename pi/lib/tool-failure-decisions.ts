@@ -8,6 +8,11 @@ import { isInspectionProof, type InspectionProof } from "./tool-failure-inspecti
 export const LEDGER_SCHEMA_VERSION = 1;
 const LOCK_TIMEOUT_MS = 5_000;
 
+export const EVIDENCE_TYPES = ["commit", "test", "issue", "note"] as const;
+export const EVIDENCE_TEXT_MAX_LENGTH = 233;
+export type EvidenceType = (typeof EVIDENCE_TYPES)[number];
+export type EvidenceItem = { type: EvidenceType; text: string };
+
 export type Decision = {
 	schemaVersion: 1;
 	recordId: string;
@@ -20,6 +25,27 @@ export type Decision = {
 	effectiveAfter?: string;
 	revisitAfter?: string;
 };
+
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
+export function normalizeEvidence(items: readonly EvidenceItem[]): string[] {
+	return items.map((item) => {
+		if (!item || !EVIDENCE_TYPES.includes(item.type) || typeof item.text !== "string" || !item.text.trim() || item.text.length > EVIDENCE_TEXT_MAX_LENGTH) throw new Error("evidence item is invalid");
+		const value = `${item.type}:${item.text}`;
+		return safeLedgerText(value, "evidence");
+	});
+}
+function parseObservationBoundary(value: string | undefined): string | undefined {
+	if (value === undefined) return undefined;
+	if (!ISO_TIMESTAMP.test(value) || Number.isNaN(Date.parse(value))) throw new Error("observation boundary must be an ISO timestamp");
+	return new Date(value).toISOString();
+}
+function validFixProof(candidate: ClassifiedFailure, boundary: string, proof: InspectionProof): boolean {
+	if (candidate.tool !== "bash" || candidate.contract !== "required:command") return false;
+	const check = proof.fixChecks[candidate.candidateId]; if (!check || check.failure.tool !== "bash" || check.failure.result.status !== "error" || !/(?:required.*command|command.*required)/i.test(check.failure.result.text) || check.success.tool !== "bash" || check.success.result.status !== "success") return false;
+	const failedArguments = check.failure.call.argumentShape; if (failedArguments && typeof failedArguments === "object" && "command" in failedArguments) return false;
+	const argumentsValue = check.success.call.argumentShape; const command = argumentsValue && typeof argumentsValue === "object" ? (argumentsValue as Record<string, unknown>).command : undefined;
+	return typeof command === "string" && command.trim().length > 0 && !!check.failure.result.timestamp && !!check.success.result.timestamp && check.success.result.timestamp > check.failure.result.timestamp && check.success.result.timestamp > boundary;
+}
 
 export type LedgerRead = { records: Decision[]; diagnostics: { line: number; error: string }[] };
 
@@ -50,10 +76,12 @@ export async function appendDecision(filePath: string, scan: FailureScan, candid
 	if (proof.candidateIds.some((id) => !scan.candidates.some((item) => item.candidateId === id))) throw new Error("inspection proof contains an unknown candidate");
 	if (proof.candidateIds.some((id) => proof.fingerprints[id] !== scan.candidates.find((item) => item.candidateId === id)?.fingerprintVersion)) throw new Error("inspection proof fingerprint is stale");
 	const safeReason = safeLedgerText(reason, "reason"); const safeEvidence = evidence.map((item) => { if (!/^(commit|test|issue|note):/.test(item)) throw new Error("evidence must be typed as commit:, test:, issue:, or note:"); return safeLedgerText(item, "evidence"); });
-	const effectiveAfter = parseLedgerDate(options.effectiveAfter, "effective-after"); const revisitAfter = parseLedgerDate(options.revisitAfter, "revisit-after");
+	const effectiveAfter = disposition === "caller-contract" || (disposition === "addressed" && candidate.contract === "required:command") ? parseObservationBoundary(options.effectiveAfter) : parseLedgerDate(options.effectiveAfter, "effective-after"); const revisitAfter = parseLedgerDate(options.revisitAfter, "revisit-after");
+	if (disposition === "caller-contract" && !effectiveAfter) throw new Error("caller-contract decisions require an ISO observation boundary");
 	if (disposition === "addressed" && (!safeEvidence.length || !effectiveAfter)) throw new Error("addressed decisions require typed evidence and effective-after");
+	if (disposition === "addressed" && candidate.contract === "required:command") { const boundary = parseObservationBoundary(options.effectiveAfter); if (!boundary || !proof || !validFixProof(candidate, boundary, proof)) throw new Error("required:command fixes require an inspected post-boundary Bash success"); }
 	if (disposition === "external" && !revisitAfter) throw new Error("external decisions require revisit-after");
-	if (["expected", "safety-rejection", "caller-contract", "cancelled"].includes(disposition) && effectiveAfter) throw new Error("non-fix decisions cannot set effective-after");
+	if (["expected", "safety-rejection", "cancelled"].includes(disposition) && effectiveAfter) throw new Error("non-fix decisions cannot set effective-after");
 	const record: Decision = { schemaVersion: 1, recordId: randomUUID(), candidateId, fingerprintVersion: candidate.fingerprintVersion, decidedAt: options.decidedAt ?? new Date().toISOString(), disposition, reason: safeReason, evidence: safeEvidence, ...(effectiveAfter ? { effectiveAfter } : {}), ...(revisitAfter ? { revisitAfter } : {}) };
 	const release = await lock(filePath);
 	try { const handle = await fs.open(filePath, "a"); try { await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8"); await handle.sync(); } finally { await handle.close(); } } finally { await release(); }
@@ -64,14 +92,33 @@ type Status = "changed" | "regression" | "revisit-due" | "undecided";
 export type SelectedCandidate = ClassifiedFailure & { status: Status; reason: string; priority: number };
 
 function latest(records: readonly Decision[]): Map<string, Decision> { const map = new Map<string, Decision>(); for (const record of records) map.set(record.candidateId, record); return map; }
+function validBoundary(value: string | undefined): value is string { return value !== undefined && ISO_TIMESTAMP.test(value) && !Number.isNaN(Date.parse(value)); }
+function postBoundaryCounts(candidate: ClassifiedFailure, boundary: string): { occurrences: number; sessions: number } {
+	const observations = (candidate as ClassifiedFailure & { observations?: unknown }).observations;
+	if (Array.isArray(observations)) {
+		const qualifying = observations.filter((item): item is { timestamp: string; session: string } => !!item && typeof item === "object" && typeof (item as Record<string, unknown>).timestamp === "string" && typeof (item as Record<string, unknown>).session === "string" && validBoundary((item as Record<string, unknown>).timestamp as string) && (item as { timestamp: string }).timestamp > boundary);
+		return { occurrences: qualifying.length, sessions: new Set(qualifying.map((item) => item.session)).size };
+	}
+	// A scan without observation rows cannot safely reuse aggregate snapshots. The newest
+	// observation is the only count that can be established from the public candidate shape.
+	return candidate.lastObserved && validBoundary(candidate.lastObserved) && candidate.lastObserved > boundary ? { occurrences: 1, sessions: 1 } : { occurrences: 0, sessions: 0 };
+}
 function gate(candidate: ClassifiedFailure, status: Status): string | null { if (status === "changed") return "ledger-changed"; if (status === "regression") return "ledger-regression"; if (status === "revisit-due") return "ledger-revisit"; if (!candidate.occurrences30d) return "stale"; if (candidate.errorClass === "internal-missing-method" && candidate.occurrences14d >= 1) return "internal-contract-defect"; if (candidate.errorClass === "required-runtime-unavailable" && candidate.sessions14d >= 2) return "runtime-unavailable"; if (candidate.errorClass === "external-service-failure" && (candidate.sessions7d >= 3 || candidate.sessions30d >= 10)) return "external-failure"; if (candidate.classification === "unclassified") return "unclassified-review"; if (candidate.occurrences14d >= 3 && candidate.sessions14d >= 2) return "classified-recurrence"; return "below-threshold"; }
 function eligibleReason(candidate: ClassifiedFailure, status: Status): string | null { const reason = gate(candidate, status); if (reason?.startsWith("ledger-") || ["internal-contract-defect", "runtime-unavailable", "external-failure", "unclassified-review", "classified-recurrence"].includes(reason ?? "")) return reason; const model = ["missing-required-parameter", "governed-path-rejection", "stale-manager-contract"].includes(candidate.errorClass); const retry = ["exact-match-miss", "nonunique-match", "invalid-caller-contract", "plan-not-ready", "requested-agent-unavailable", "task-boundary-rejected", "task-instructions-too-long"].includes(candidate.errorClass); if ((model || retry) && candidate.occurrences14d >= 3 && candidate.sessions14d >= 3) return model ? "model-contract-friction" : "retry-ceremony"; return null; }
 export function selectCandidates(scan: FailureScan, records: readonly Decision[], toolNames?: ReadonlySet<string>, today = new Date()): SelectedCandidate[] {
 	const map = latest(records); const selected: SelectedCandidate[] = [];
 	for (const candidate of scan.candidates) {
-		if (toolNames && !toolNames.has(candidate.tool)) continue; const decision = map.get(candidate.candidateId); let status: Status = "undecided";
-		if (decision) { if (decision.fingerprintVersion !== candidate.fingerprintVersion) status = "changed"; else if (decision.disposition === "addressed") { if (decision.effectiveAfter && candidate.lastObserved && candidate.lastObserved.slice(0, 10) > decision.effectiveAfter) status = "regression"; else continue; } else if (decision.disposition === "external" || decision.disposition === "expected" || decision.disposition === "safety-rejection" || decision.disposition === "cancelled" || decision.disposition === "caller-contract") { if (decision.revisitAfter && decision.revisitAfter <= today.toISOString().slice(0, 10)) status = "revisit-due"; else continue; } }
-		const reason = eligibleReason(candidate, status); if (!reason) continue;
+		if (toolNames && !toolNames.has(candidate.tool)) continue; const decision = map.get(candidate.candidateId); let status: Status = "undecided"; let boundaryIssue = false;
+		if (decision) {
+			if (decision.fingerprintVersion !== candidate.fingerprintVersion) status = "changed";
+			else if (decision.disposition === "addressed") { if (decision.effectiveAfter && candidate.lastObserved && candidate.lastObserved.slice(0, 10) > decision.effectiveAfter) status = "regression"; else continue; }
+			else if (decision.disposition === "caller-contract") {
+				if (!validBoundary(decision.effectiveAfter)) boundaryIssue = true;
+				else { const counts = postBoundaryCounts(candidate, decision.effectiveAfter); const qualifies = counts.occurrences >= 3 && counts.sessions >= 2; if (qualifies) status = "regression"; else continue; }
+			}
+			else if (decision.disposition === "external" || decision.disposition === "expected" || decision.disposition === "safety-rejection" || decision.disposition === "cancelled") { if (decision.revisitAfter && decision.revisitAfter <= today.toISOString().slice(0, 10)) status = "revisit-due"; else continue; }
+		}
+		const reason = boundaryIssue ? "unresolved-observation-boundary" : eligibleReason(candidate, status); if (!reason) continue;
 		const expectedStructural = ["model-contract-friction", "retry-ceremony"].includes(reason);
 		if (candidate.classification === "expected" && !expectedStructural && !status.startsWith("changed") && !status.startsWith("regression") && !status.startsWith("revisit")) continue;
 		const priority = reason.startsWith("ledger-") ? 0 : ["internal-contract-defect", "runtime-unavailable"].includes(reason) ? 1 : ["model-contract-friction", "retry-ceremony"].includes(reason) ? 2 : 3; selected.push({ ...candidate, status, reason, priority });

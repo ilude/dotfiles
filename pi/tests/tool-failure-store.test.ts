@@ -7,6 +7,7 @@ import {
 	closeToolFailureStores,
 	registerToolFailureStoreLifecycle,
 } from "../lib/tool-failure-store.ts";
+import { scanToolFailures } from "../lib/tool-failure-classifier.ts";
 
 const roots: string[] = [];
 async function fixture(lines: unknown[]): Promise<string> {
@@ -86,6 +87,31 @@ describe("ToolFailureStore", () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "tool-failure-store-coordinates-")); roots.push(root); const sessions = path.join(root, "sessions"); await fs.mkdir(sessions); const source = path.join(sessions, "one.jsonl");
 		await fs.writeFile(source, `${JSON.stringify({ role: "assistant", content: [{ type: "toolCall", id: "one", name: "custom" }] })}\n${JSON.stringify({ role: "toolResult", toolCallId: "one", isError: true, content: [{ type: "text", text: "this.broker.reconcile is not a function" }] })}\n`);
 		const store = await ToolFailureStore.open(path.join(root, "read-model.duckdb")); await store.refreshSessionCorpus(sessions); const scan = await store.scan(new Date("2026-08-25T00:00:00Z")); const selected = await store.selectedCoordinates(scan, [scan.candidates[0]!.candidateId]); expect(selected.get(scan.candidates[0]!.candidateId)?.[0]?.token).toBe(scan.candidates[0]!.coordinates[0]); expect(JSON.stringify(selected)).not.toContain(source); await store.close();
+	});
+
+	it("orders newest observations first and fills the bound with distinct sessions", () => {
+		const call = (filename: string, id: string) => ({ filename, id: `call-${id}`, timestamp: null, message: { role: "assistant", content: [{ type: "toolCall", id, name: "custom" }] } });
+		const failure = (filename: string, id: string, timestamp: string | null) => ({ filename, id: `result-${id}`, timestamp, message: { role: "toolResult", toolCallId: id, isError: true, content: [{ type: "text", text: "this.broker.reconcile is not a function" }] } });
+		const scan = scanToolFailures([
+			call("z-session", "old"), failure("z-session", "old", "2026-08-20T00:00:00Z"),
+			call("a-session", "new"), failure("a-session", "new", "2026-08-25T00:00:00Z"),
+			call("b-session", "tie"), failure("b-session", "tie", "2026-08-25T00:00:00Z"),
+			call("c-session", "invalid"), failure("c-session", "invalid", "not-a-date"),
+			call("d-session", "missing"), failure("d-session", "missing", null),
+		], new Date("2026-08-25T00:01:00Z"));
+		const candidate = scan.candidates[0]!;
+		expect(candidate.lastObserved).toBe("2026-08-25T00:00:00Z");
+		expect(scan.timestampDiagnostics).toMatchObject({ malformed: 1, missing: 1 });
+		expect(candidate.coordinates).toHaveLength(3);
+		expect(new Set(candidate.coordinates).size).toBe(3);
+		expect(candidate.coordinates[0]).not.toBe(candidate.coordinates[2]);
+	});
+
+	it("retains correlated successful results across corpus refresh", async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "tool-failure-store-success-")); roots.push(root); const sessions = path.join(root, "sessions"); await fs.mkdir(sessions); const source = path.join(sessions, "one.jsonl");
+		const call = (id: string, args: Record<string, unknown>, timestamp: string) => ({ role: "assistant", timestamp, content: [{ type: "toolCall", id, name: "bash", arguments: args }] });
+		await fs.writeFile(source, [call("failed", {}, "2026-08-25T00:00:00Z"), { role: "toolResult", timestamp: "2026-08-25T00:01:00Z", toolCallId: "failed", isError: true, content: [{ type: "text", text: "'command' is a required property" }] }, call("success", { command: "echo ok" }, "2026-08-25T00:01:30Z"), { role: "toolResult", timestamp: "2026-08-25T00:02:00Z", toolCallId: "success", isError: false, content: [{ type: "text", text: "ok" }] }].map(JSON.stringify).join("\n") + "\n");
+		const store = await ToolFailureStore.open(path.join(root, "read-model.duckdb")); await store.refreshSessionCorpus(sessions); const scan = await store.scan(new Date("2026-08-25T00:03:00Z")); expect(scan.scannedResults).toBe(2); const selected = await store.selectedCoordinates(scan, [scan.candidates[0]!.candidateId]); const coordinates = selected.get(scan.candidates[0]!.candidateId); expect(coordinates?.[0]?.callLine).toBe(1); expect(coordinates?.[1]).toMatchObject({ callLine: 3, fixCheckFor: scan.candidates[0]!.coordinates[0], token: `fix-check:${scan.candidates[0]!.coordinates[0]}` }); await store.close();
 	});
 
 	it("closes the process cache on session shutdown", async () => {

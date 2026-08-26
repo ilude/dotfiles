@@ -55,7 +55,7 @@ async function discoverJsonl(root: string): Promise<string[]> {
 	await visit(path.resolve(root)); return result.sort();
 }
 function relevantSessionMessage(message: Record<string, unknown>): boolean {
-	if (message.role === "toolResult") return message.isError === true;
+	if (message.role === "toolResult") return typeof message.toolCallId === "string";
 	if (message.role !== "assistant" || !Array.isArray(message.content)) return false;
 	return message.content.some((item) => item && typeof item === "object" && ((item as Record<string, unknown>).type === "toolCall" || (item as Record<string, unknown>).type === "tool_call"));
 }
@@ -152,11 +152,24 @@ export class ToolFailureStore {
 	}
 	async selectedCoordinates(scan: FailureScan, candidateIds: readonly string[]): Promise<Map<string, TranscriptCoordinate[]>> {
 		const wanted = new Set(candidateIds); const coordinates = new Map<string, TranscriptCoordinate[]>(); const allowed = new Map(scan.candidates.map((candidate) => [candidate.candidateId, new Set(candidate.coordinates)]));
-		const rows = await this.rows("SELECT source_path, line_number, entry_id, message FROM tool_failure_session_entries ORDER BY source_path, line_number"); const calls = new Map<string, string>();
+		const rows = await this.rows("SELECT source_path, line_number, entry_id, timestamp, message FROM tool_failure_session_entries ORDER BY source_path, line_number");
+		const calls = new Map<string, { entry: string; line: number; timestamp: string | null; item: Record<string, unknown> }>();
+		const failures = new Map<string, TranscriptCoordinate>(); const failureTimes = new Map<string, string>();
+		const successes: { coordinate: TranscriptCoordinate; timestamp: string }[] = [];
 		for (const row of rows) { const message = typeof row.message === "string" ? JSON.parse(row.message) as Record<string, unknown> : row.message as Record<string, unknown>; const content = Array.isArray(message.content) ? message.content : [];
-			for (const item of content) if (item && typeof item === "object" && (((item as Record<string, unknown>).type === "toolCall") || ((item as Record<string, unknown>).type === "tool_call"))) { const id = (item as Record<string, unknown>).id ?? (item as Record<string, unknown>).toolCallId; if (typeof id === "string") calls.set(`${row.source_path}\0${id}`, String(row.entry_id)); }
-			const callId = message.toolCallId; if (message.isError !== true || typeof callId !== "string") continue; const coordinate = coordinateId(calls.get(`${row.source_path}\0${callId}`) ?? "", callId);
-			for (const candidate of wanted) if (allowed.get(candidate)?.has(coordinate)) coordinates.set(candidate, [...(coordinates.get(candidate) ?? []), { filePath: String(row.source_path), line: Number(row.line_number), token: coordinate }]);
+			for (const item of content) if (item && typeof item === "object" && (((item as Record<string, unknown>).type === "toolCall") || ((item as Record<string, unknown>).type === "tool_call"))) { const call = item as Record<string, unknown>; const id = call.id ?? call.toolCallId; if (typeof id === "string") calls.set(`${row.source_path}\0${id}`, { entry: String(row.entry_id), line: Number(row.line_number), timestamp: row.timestamp == null ? null : String(row.timestamp), item: call }); }
+			const callId = message.toolCallId; if (typeof callId !== "string") continue; const call = calls.get(`${row.source_path}\0${callId}`); if (!call) continue;
+			const observedAt = row.timestamp == null ? null : String(row.timestamp); const parsed = observedAt ? new Date(observedAt) : undefined; const validTimestamp = parsed && !Number.isNaN(parsed.valueOf()) ? parsed.toISOString() : undefined;
+			if (message.isError === true) { const coordinate = coordinateId(call.entry, callId); if ([...allowed.values()].some((tokens) => tokens.has(coordinate))) { failures.set(coordinate, { filePath: String(row.source_path), line: Number(row.line_number), callLine: call.line, token: coordinate }); if (validTimestamp) failureTimes.set(coordinate, validTimestamp); } continue; }
+			const tool = String(call.item.name ?? call.item.toolName ?? "").toLowerCase(); const args = call.item.arguments ?? call.item.args; const command = args && typeof args === "object" ? (args as Record<string, unknown>).command : undefined;
+			if ((tool === "bash" || tool === "functions.bash") && typeof command === "string" && command.trim() && validTimestamp) successes.push({ coordinate: { filePath: String(row.source_path), line: Number(row.line_number), callLine: call.line }, timestamp: validTimestamp });
+		}
+		successes.sort((a, b) => b.timestamp.localeCompare(a.timestamp) || a.coordinate.filePath.localeCompare(b.coordinate.filePath) || a.coordinate.line - b.coordinate.line);
+		for (const candidateId of candidateIds) {
+			const candidate = scan.candidates.find((item) => item.candidateId === candidateId); const selected = candidate?.coordinates ?? [];
+			const items = selected.map((token) => failures.get(token)).filter((item): item is TranscriptCoordinate => item !== undefined);
+			if (candidate?.contract === "required:command" && candidate.tool === "bash") { const failureToken = selected[0]; const failureTime = failureToken ? failureTimes.get(failureToken) : undefined; const success = failureTime ? successes.find((item) => item.timestamp > failureTime) : undefined; if (failureToken && success) items.push({ ...success.coordinate, token: `fix-check:${failureToken}`, fixCheckFor: failureToken }); }
+			if (items.length) coordinates.set(candidateId, items);
 		}
 		return coordinates;
 	}

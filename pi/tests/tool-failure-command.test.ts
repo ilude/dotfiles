@@ -58,8 +58,10 @@ describe("find-fails TypeScript authority", () => {
 			const inspect = pi._getTool(DIAGNOSTIC_INSPECTION_TOOL_NAME)!;
 			const decide = pi._getTool(DIAGNOSTIC_DECISION_TOOL_NAME)!;
 			expect((await inspect.execute("call-1", { coordinate: "opaque-token" })).content[0].text).toBe("tool failure evidence");
-			await decide.execute("call-2", { candidateId: "candidate-1", disposition: "safety-rejection", reason: "documented safety rule", evidence: [] });
+			await decide.execute("call-2", { candidateId: "candidate-1", disposition: "safety-rejection", reason: "documented safety rule", evidence: [{ type: "note", text: "verified intended rejection" }] });
 			expect((await fs.readFile(path.join(ctx.cwd, "tool-failures", "decisions.jsonl"), "utf8"))).toContain('"disposition":"expected"');
+			expect((await fs.readFile(path.join(ctx.cwd, "tool-failures", "decisions.jsonl"), "utf8"))).toContain('"evidence":["note:verified intended rejection"]');
+			await expect(decide.execute("call-invalid", { candidateId: "candidate-1", disposition: "safety-rejection", reason: "documented safety rule", evidence: [{ type: "bad", text: "invalid" }] })).rejects.toThrow("evidence item is invalid");
 			pi._getHook("agent_end")[0].handler();
 			expect(pi.getActiveTools()).toContain("custom");
 			await expect(inspect.execute("call-3", { coordinate: "opaque-token" })).rejects.toThrow("no diagnostic inspection");

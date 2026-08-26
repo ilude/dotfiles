@@ -22,6 +22,12 @@ describe("tool-failure semantic report", () => {
 		expect(prompt).not.toContain("/private/session.jsonl");
 		expect(prompt).toContain("Read the selected failure evidence yourself");
 		expect(prompt).toContain("Provider boundary");
+		expect(prompt).toContain("one validated ISO timestamp");
+		expect(prompt).toContain("caller-generation failure");
+		const commandPrompt = buildDiagnosticPrompt([{ candidateId: "command", tool: "bash", errorClass: "missing-required-parameter", contract: "required:command", reason: "model-contract-friction", lastObserved: "2026-08-20T00:00:00Z" } as any], "the active provider", new Map([["command", ["failure-token", "fix-check:failure-token"]]]));
+		expect(commandPrompt).toContain("opaque coordinate tokens: failure-token");
+		expect(commandPrompt).toContain("eligible fix-check token: fix-check:failure-token");
+		expect(commandPrompt).toContain("strictly after effectiveAfter");
 	});
 	it("maps all authorized persisted categories to the human verdict vocabulary", () => {
 		expect(verdictForDecision("addressed")).toBe("Fixed");
