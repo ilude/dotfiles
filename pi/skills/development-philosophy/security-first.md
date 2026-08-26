@@ -55,7 +55,7 @@ If the answer is vague ("defense in depth", "best practices"), the control may b
 
 Five-phase security analysis framework:
 
-1. **Attack Surface Mapping** - Identify all external inputs, resource access, privileges, data handling, and authentication needs
+1. **Attack Surface Mapping** - Identify all external inputs, resource access, privileges, data handling, and authentication needs. Give each component only the operations and resources it needs; prefer a narrow capability that cannot express an unauthorized action over a general client plus usage instructions.
 2. **Threat Modeling** - Evaluate injection attacks, authentication bypass, authorization bypass, data exposure, and denial of service vectors
 3. **Secret Management Audit** - Verify API keys, credentials, .gitignore rules, logging, and encryption
 4. **Input Validation Design** - Establish whitelist validation, type/length/format checks, sanitization, and escaping

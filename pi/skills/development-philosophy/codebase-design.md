@@ -30,6 +30,27 @@ Use established repository and domain terms when they are more precise. Distingu
 
 A module may expose multiple interfaces when they serve coherent audiences or purposes, such as commands, queries, administration, events, or migration compatibility.
 
+## Eliminate failure categories
+
+When a failure is recurring, costly, and mechanically distinguishable, prefer removing its possibility over repeatedly detecting or explaining it. Work down this order:
+
+1. Remove the unnecessary concept, state, or operation.
+2. Make invalid states unrepresentable through types, schemas, constructors, or data structures.
+3. Collapse competing implementations into one authoritative path.
+4. Narrow capabilities so a component cannot perform operations it does not own.
+5. Enforce the invariant atomically at its owning boundary, such as a database constraint, state transition, filesystem permission, or deployment gate.
+6. Derive repeated artifacts from one source rather than synchronizing equivalent definitions by convention.
+7. When prevention is impractical, reject the failure with a deterministic test, lint rule, CI check, or runtime validation.
+8. Use durable instructions or human review only for judgment that cannot be encoded without distorting the design.
+
+Do not add architectural machinery merely to avoid writing guidance. Prefer prevention when it simplifies the valid model or removes a demonstrated class of defects. Keep instructions for values, product direction, and context-dependent decisions; keep tests for behavior that remains possible and must be verified.
+
+At untrusted boundaries, parse broad input into domain values that preserve established facts rather than validating and returning the original representation. Model permitted transitions when order matters. Enforce shared invariants at the boundary that serializes competing decisions.
+
+For each proposed constraint, name the invalid outcome it makes impossible, the boundary that owns enforcement, and an executable example showing rejection or non-representability. Verify both that the forbidden outcome is unreachable and that intended work can still complete. The design is not proven by the presence of a wrapper, type, or rule alone.
+
+For recurring cross-boundary failures, concurrent or distributed transitions, consequential safety constraints, or deeper theoretical comparison, read the research note on [eliminating failure categories](../../../docs/research/obsidian-vault/agent-workflows/patterns/eliminating-failure-categories.md).
+
 ## Testing and seams
 
 The stable caller-facing interface should carry most behavioral confidence, but it is not the only valid test surface. Preserve focused internal tests when they cover an independently meaningful algorithm or contract, combinatorial edge cases, faster feedback, or useful fault localization.

@@ -29,6 +29,8 @@ A good workflow has one obvious entry point and predictable side effects. `pi/AG
 ## Design Checks
 
 - Can a new contributor find the right command?
+- Is the shortest path also the safe, complete path?
+- Is exceptional recovery separate from ordinary operation?
 - Does the command name match its side effects?
 - Are destructive operations explicit?
 - Are platform assumptions documented or detected?
@@ -40,3 +42,4 @@ A good workflow has one obvious entry point and predictable side effects. `pi/AG
 - Host/container boundary confusion.
 - Workflows that require hidden local state.
 - Documentation that lists commands without saying when to use them.
+- Confirmation rituals where the workflow could derive, constrain, preview, or atomically enforce the safe action.

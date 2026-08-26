@@ -26,7 +26,7 @@ Adapt the depth to the problem. Prefer a few concrete examples over a complete t
 
 - Model behavior and decisions before classes, tables, endpoints, or message schemas.
 - Keep one term's meaning local to its bounded context; do not force a universal model across contexts.
-- Protect invariants at the boundary that owns them. Do not make an aggregate a graph of every related object or a proxy for a database transaction.
+- Protect invariants at the boundary that owns them. Prefer models whose values and transitions correspond to valid domain states, but encode stable invariants rather than temporary policy. Do not make an aggregate a graph of every related object or a proxy for a database transaction.
 - Treat commands as requests and events as facts. Neither implies a message broker, event sourcing, or eventual consistency by itself.
 - Prefer explicit translation between contexts over accidental sharing. Name an upstream, downstream, or other relationship only when it helps explain change and dependency.
 - If the domain does not need a DDD construct, say so and use the simpler model.

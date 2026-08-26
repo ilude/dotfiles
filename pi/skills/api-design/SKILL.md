@@ -26,7 +26,7 @@ Load only the reference needed for the request:
 - Use resource nouns and standard HTTP methods for REST.
 - Keep response and error shapes consistent with neighboring endpoints.
 - Distinguish missing authentication (`401`) from insufficient permission (`403`).
-- Validate requests at the boundary without exposing internal errors.
+- Parse external representations once at the boundary and pass validated domain values inward without exposing internal errors. Do not spread transport primitives through code that depends on stronger invariants.
 - Put credentials in headers, never URLs.
 - Add pagination, filtering, caching, rate limits, versioning, GraphQL depth limits, or DataLoaders only when the contract requires them.
 - Prefer backward-compatible changes. For GraphQL fields, deprecate before removal.

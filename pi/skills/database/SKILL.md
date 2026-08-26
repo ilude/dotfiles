@@ -17,7 +17,7 @@ Load only what the request needs:
 ## Design
 
 - Start from required data relationships, integrity rules, access patterns, and transaction boundaries.
-- Enforce integrity with keys and constraints.
+- Enforce shared invariants with keys, constraints, and transactions when the database serializes competing writes; do not rely on application-level check-then-write logic.
 - Normalize by default. Denormalize only for a measured read problem with a clear update owner.
 - Use stable natural keys only when they are genuinely immutable; otherwise use surrogate keys.
 - Choose `RESTRICT`, `CASCADE`, or `SET NULL` deliberately for each relationship.
