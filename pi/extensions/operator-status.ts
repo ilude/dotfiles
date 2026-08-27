@@ -40,6 +40,7 @@ const FOOTER_STATUS_EXCLUDE_KEYS = new Set(["damage-control"]);
 const FOOTER_STATUS_PRIORITY = new Map([
 	["loop", 0],
 	["onclave-v2", 5],
+	["schedule", 6],
 	["subagents", 10],
 	["task", 20],
 	["tps", 40],

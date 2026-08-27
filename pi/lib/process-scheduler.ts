@@ -32,6 +32,7 @@ export interface ProcessSchedulerEvent {
 
 export type ScheduleDelivery = (job: ScheduledPromptSpec) => void;
 export type ProcessSchedulerEventSink = (event: ProcessSchedulerEvent) => void;
+export type ProcessSchedulerChangeListener = () => void;
 
 interface RuntimeJob {
 	spec: ScheduledPromptSpec;
@@ -39,7 +40,7 @@ interface RuntimeJob {
 	state: ScheduledPromptState;
 }
 
-const PROCESS_SCHEDULER_VERSION = 1;
+const PROCESS_SCHEDULER_VERSION = 2;
 const MAX_PROCESS_SCHEDULES = 64;
 const PROCESS_SCHEDULER_KEY = Symbol.for("dotfiles.pi.process-scheduler.v1");
 
@@ -67,6 +68,7 @@ function snapshot(job: RuntimeJob): ScheduledPromptSnapshot {
 
 export class ProcessScheduler {
 	private readonly jobs = new Map<string, RuntimeJob>();
+	private readonly changeListeners = new Set<ProcessSchedulerChangeListener>();
 	private delivery: ScheduleDelivery | undefined;
 
 	constructor(
@@ -78,6 +80,7 @@ export class ProcessScheduler {
 		for (const job of this.jobs.values()) {
 			if (job.state === "queued") this.deliver(job);
 		}
+		this.notifyChange();
 	}
 
 	unbind(delivery?: ScheduleDelivery): void {
@@ -86,6 +89,12 @@ export class ProcessScheduler {
 		for (const job of this.jobs.values()) {
 			if (job.state === "delivered") job.state = "scheduled";
 		}
+		this.notifyChange();
+	}
+
+	subscribe(listener: ProcessSchedulerChangeListener): () => void {
+		this.changeListeners.add(listener);
+		return () => this.changeListeners.delete(listener);
 	}
 
 	scheduleAt(runAt: Date, prompt: string): ScheduledPromptSnapshot {
@@ -109,6 +118,7 @@ export class ProcessScheduler {
 		const job: RuntimeJob = { spec, cron, state: "scheduled" };
 		this.jobs.set(spec.id, job);
 		this.onEvent({ event: "schedule_created", job: spec });
+		this.notifyChange();
 		return snapshot(job);
 	}
 
@@ -149,6 +159,7 @@ export class ProcessScheduler {
 		const job: RuntimeJob = { spec, cron, state: "scheduled" };
 		this.jobs.set(spec.id, job);
 		this.onEvent({ event: "schedule_created", job: spec });
+		this.notifyChange();
 		return snapshot(job);
 	}
 
@@ -180,21 +191,30 @@ export class ProcessScheduler {
 		job.cron.stop();
 		this.jobs.delete(job.spec.id);
 		this.onEvent({ event: "schedule_cancelled", job: job.spec });
+		this.notifyChange();
 		return found;
 	}
 
 	markAgentSettled(): void {
+		let changed = false;
 		for (const job of this.jobs.values()) {
 			if (job.spec.kind === "cron" && job.state === "delivered") {
 				job.state = "scheduled";
+				changed = true;
 			}
 		}
+		if (changed) this.notifyChange();
 	}
 
 	stopAll(): void {
 		for (const job of this.jobs.values()) job.cron.stop();
 		this.jobs.clear();
 		this.delivery = undefined;
+		this.notifyChange();
+	}
+
+	private notifyChange(): void {
+		for (const listener of this.changeListeners) listener();
 	}
 
 	private assertCapacity(): void {
@@ -224,6 +244,7 @@ export class ProcessScheduler {
 			return;
 		}
 		job.state = "queued";
+		this.notifyChange();
 		this.deliver(job);
 	}
 
@@ -234,8 +255,10 @@ export class ProcessScheduler {
 			job.state = "delivered";
 			this.onEvent({ event: "schedule_fired", job: job.spec });
 			if (job.spec.kind === "at") this.jobs.delete(job.spec.id);
+			this.notifyChange();
 		} catch {
 			job.state = "queued";
+			this.notifyChange();
 		}
 	}
 }
@@ -257,6 +280,7 @@ export function getProcessScheduler(): ProcessScheduler {
 	if (existing?.version === PROCESS_SCHEDULER_VERSION) {
 		return existing.scheduler;
 	}
+	existing?.scheduler.stopAll();
 	const scheduler = new ProcessScheduler();
 	globals[PROCESS_SCHEDULER_KEY] = {
 		version: PROCESS_SCHEDULER_VERSION,

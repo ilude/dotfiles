@@ -113,6 +113,37 @@ describe("scheduler extension", () => {
 		);
 	});
 
+	it("shows the next run in the footer only while a schedule exists", async () => {
+		const pi = createMockPi();
+		registerScheduler(pi as unknown as ExtensionAPI);
+		const ctx = createMockCtx({ mode: "tui" });
+		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
+		const tool = pi._getTool("schedule") as any;
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("schedule", undefined);
+		await tool.execute(
+			"call-1",
+			{ action: "create_at", when: "1m", prompt: "continue work" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith(
+			"schedule",
+			expect.stringMatching(/^sched@ \d{1,2}:\d{2}(?:am|pm)$/),
+		);
+
+		const [job] = getProcessScheduler().list();
+		await tool.execute(
+			"call-2",
+			{ action: "cancel", id: job.id },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("schedule", undefined);
+	});
+
 	it("keeps the scheduling tool active throughout the session", async () => {
 		const pi = createMockPi();
 		registerScheduler(pi as unknown as ExtensionAPI);
@@ -218,6 +249,9 @@ describe("scheduler extension", () => {
 
 		expect(schedulerTestApi.nextRunMessage([job])).toBe(
 			"Next scheduled run: Saturday, July 18, 2026 at 9:00:00 AM EDT (America/New_York).",
+		);
+		expect(schedulerTestApi.formatScheduleFooterStatus([job])).toBe(
+			"sched@ 9:00am",
 		);
 	});
 

@@ -537,8 +537,10 @@ successful scheduling action reports the next active run in a human-readable
 and the process-local timezone otherwise. Scheduling actions do not inherently
 end the model turn. When a scheduled follow-up is the intended next step and no
 useful work remains before it runs, the model ends the turn so the follow-up can
-be delivered when due; otherwise it continues useful work. Schedule lifecycle
-metrics contain job IDs and timing metadata, not prompt text.
+be delivered when due; otherwise it continues useful work. While any schedule
+exists, the footer shows the earliest next run as `sched@ 9:32am` immediately
+after Onclave; the segment disappears when no schedule remains. Schedule
+lifecycle metrics contain job IDs and timing metadata, not prompt text.
 
 ### `workflow-friction-review.ts`
 
@@ -673,7 +675,9 @@ successful and cancelled history remains in `/subagents`, and existing failures 
 when the next interactive user turn starts. At narrow widths, actionable reload,
 failure, context-pressure, and quota feedback takes precedence over identity details.
 Onclave renders `Onclave[N]: <client>`, coloring the client green only while
-connected and red otherwise. The default client identity uses the compact
+connected and red otherwise. An active schedule renders its earliest next run
+immediately after Onclave as `sched@ 9:32am`; no schedule renders no segment.
+The default client identity uses the compact
 `pi-<12-character-session-prefix>` format, remains stable per Pi session, and
 the peer count excludes the current session. Compact Bedrock spend remains
 right-aligned as the final second-line segment.

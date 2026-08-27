@@ -156,6 +156,21 @@ function nextRunMessage(jobs: ScheduledPromptSnapshot[]): string {
 	return `Next scheduled run: ${formatScheduledTime(job.nextRunAt, applicableTimeZone(job))}.`;
 }
 
+export function formatScheduleFooterStatus(
+	jobs: ScheduledPromptSnapshot[],
+): string | undefined {
+	const job = nextScheduledJob(jobs);
+	if (!job?.nextRunAt) return undefined;
+	const time = new Intl.DateTimeFormat("en-US", {
+		timeZone: applicableTimeZone(job),
+		hour: "numeric",
+		minute: "2-digit",
+	})
+		.format(new Date(job.nextRunAt))
+		.replace(/\s+(AM|PM)$/i, (_, period: string) => period.toLowerCase());
+	return `sched@ ${time}`;
+}
+
 function formatJob(job: ScheduledPromptSnapshot): string {
 	const schedule =
 		job.kind === "at"
@@ -279,16 +294,25 @@ function toolInput(value: unknown): ScheduleToolInput {
 
 export default function registerScheduler(pi: ExtensionAPI) {
 	let activeDelivery: ((job: { prompt: string }) => void) | undefined;
+	let unsubscribeStatus: (() => void) | undefined;
 
-	onSessionStart(pi, import.meta.url, (_event, _ctx) => {
+	onSessionStart(pi, import.meta.url, (_event, ctx) => {
+		const scheduler = getProcessScheduler();
+		const refreshStatus = () => {
+			ctx.ui.setStatus("schedule", formatScheduleFooterStatus(scheduler.list()));
+		};
+		unsubscribeStatus = scheduler.subscribe(refreshStatus);
 		activeDelivery = (job) => {
 			sendBackgroundPrompt(pi, job.prompt);
 		};
-		getProcessScheduler().bind(activeDelivery);
+		scheduler.bind(activeDelivery);
+		refreshStatus();
 	});
 
 	pi.on("session_shutdown", (event) => {
 		const scheduler = getProcessScheduler();
+		unsubscribeStatus?.();
+		unsubscribeStatus = undefined;
 		if (activeDelivery) scheduler.unbind(activeDelivery);
 		activeDelivery = undefined;
 		if (event.reason === "quit") scheduler.stopAll();
@@ -426,6 +450,7 @@ export default function registerScheduler(pi: ExtensionAPI) {
 
 export const schedulerTestApi = {
 	formatJobs,
+	formatScheduleFooterStatus,
 	formatScheduledTime,
 	nextRunMessage,
 	parseCronHeader,

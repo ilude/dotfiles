@@ -144,6 +144,7 @@ describe("footer extension status placement", () => {
 			"Onclave[2]: \x1b[32mpi-01a0115194f6\x1b[0m";
 		const data = footerData({
 			"onclave-v2": onclave,
+			schedule: "sched@ 9:32am",
 			subagents: "subagents 11 running",
 			task: "tasks 2 (2 running)",
 			bedrock: "bedrock $71.64",
@@ -154,10 +155,16 @@ describe("footer extension status placement", () => {
 		const rendered = line ?? "";
 		expect(line).not.toBeNull();
 		expect(rendered).toContain(
-			`${onclave} | subagents 11 running | tasks 2 (2 running) | done - 42 tok/s`,
+			`${onclave} | sched@ 9:32am | subagents 11 running | tasks 2 (2 running) | done - 42 tok/s`,
 		);
 		expect(rendered.endsWith("bedrock $71.64")).toBe(true);
 		expect(visibleWidth(rendered)).toBe(160);
+		expect(rendered.indexOf("sched@ 9:32am")).toBeGreaterThan(
+			rendered.indexOf(onclave),
+		);
+		expect(rendered.indexOf("subagents 11 running")).toBeGreaterThan(
+			rendered.indexOf("sched@ 9:32am"),
+		);
 		expect(rendered.indexOf("done - 42 tok/s")).toBeGreaterThan(
 			rendered.indexOf(onclave),
 		);
