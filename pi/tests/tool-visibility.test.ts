@@ -13,10 +13,6 @@ import {
 	removeToolVisibilityRestriction,
 	setToolVisibilityRestriction,
 } from "../lib/tool-activation.ts";
-import {
-	DIAGNOSTIC_INSPECTION_TOOL_NAME,
-	startDiagnosticTurn,
-} from "../lib/tool-failure-diagnostic-turn.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const GENERAL_TOOL_NAMES = [
@@ -131,17 +127,6 @@ describe("tool visibility", () => {
 		expect(pi.getActiveTools()).not.toContain("plan_archive");
 	});
 
-	it("keeps the diagnostic restriction keyed to its owner", () => {
-		const pi = createMockPi();
-		for (const name of ["read", DIAGNOSTIC_INSPECTION_TOOL_NAME, "edit"])
-			registerTool(pi, name);
-		const turn = startDiagnosticTurn(pi, "owner-1");
-		expect(pi.getActiveTools()).toEqual([DIAGNOSTIC_INSPECTION_TOOL_NAME]);
-		activateTools(pi, ["edit"]);
-		expect(pi.getActiveTools()).toEqual([DIAGNOSTIC_INSPECTION_TOOL_NAME]);
-		turn.settle();
-		expect(pi.getActiveTools()).toEqual(["read", DIAGNOSTIC_INSPECTION_TOOL_NAME, "edit"]);
-	});
 
 	it("records changed toolsets and tool use without content", async () => {
 		const pi = createMockPi();

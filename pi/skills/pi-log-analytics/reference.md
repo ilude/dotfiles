@@ -57,7 +57,7 @@ Shared fields may include `runtime_instance_id`, `session_id`, `turn_id`, `trace
 3. `unique_inferred` - an opt-in unique legacy match with disclosed provenance.
 4. `unmatched` - missing or ambiguous evidence.
 
-Timestamp proximity alone is never sufficient. Inferred edges are excluded by default and never authorize a decision. `/find-fails` and other decision paths accept only authoritative exact or deterministic results.
+Timestamp proximity alone is never sufficient. Inferred edges are excluded by default. `/find-fails` joins representative tool calls and results only through authoritative exact or deterministic identifiers.
 
 Parallel and child scopes carry explicit immutable correlation envelopes. Settled scopes invalidate inherited context; detached work must receive an explicit child envelope or emit without inherited context. Append failures remain observational gaps and do not change the primary operation.
 
@@ -65,13 +65,13 @@ Parallel and child scopes carry explicit immutable correlation envelopes. Settle
 
 Use these active Pi surfaces for their owned reports instead of reconstructing them with custom queries:
 
-- `/find-fails` - bounded custom-extension failure triage and one normal active-session diagnostic turn.
+- `/find-fails` - one ordinary active-session investigation of recurring tool-failure families from the preceding seven days.
 - `/usage` and `/usage-stats` - usage and pricing reports.
 - `/extension-stats` and `/skill-stats` - extension and skill activity reports.
 - `/orchestration-stats` - bounded orchestration and workflow-friction report.
 - Workflow-friction review commands - owned interaction and review diagnostics.
 
-These readers use typed in-process APIs and preserve their documented windows, ordering, ties, limits, and decision safety. They do not invoke an external process or a replacement command.
+These readers use typed in-process APIs and preserve their documented windows, ordering, ties, and limits. `/find-fails` delegates its content-bearing investigation to the ordinary active turn and does not invoke an external process, replacement command, restricted diagnostic turn, or decision writer.
 
 ## Source selection guidance
 

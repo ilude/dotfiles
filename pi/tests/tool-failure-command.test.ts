@@ -25,17 +25,24 @@ describe("find-fails investigation command", () => {
 	});
 
 	it("starts one ordinary investigation turn without changing active tools", async () => {
-		const pi = createMockPi();
-		pi.registerTool({ name: "read", description: "read", parameters: {}, execute: vi.fn() });
-		pi.registerTool({ name: "log_analytics", description: "logs", parameters: {}, execute: vi.fn() });
-		const activeBefore = pi.getActiveTools();
-		const ctx = createMockCtx(); toolFailureTriageExtension(pi as never);
-		await handler(pi)("", ctx);
-		expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
-		expect(pi.getActiveTools()).toEqual(activeBefore);
-		expect(pi._getTool("tool_failure_inspect")).toBeUndefined();
-		expect(pi._getTool("tool_failure_decide")).toBeUndefined();
-		expect(ctx.ui.notify).toHaveBeenCalledWith("Investigating recent tool failures...", "info");
+		vi.useFakeTimers();
+		const now = new Date("2026-08-27T12:00:00.000Z");
+		vi.setSystemTime(now);
+		try {
+			const pi = createMockPi();
+			pi.registerTool({ name: "read", description: "read", parameters: {}, execute: vi.fn() });
+			pi.registerTool({ name: "log_analytics", description: "logs", parameters: {}, execute: vi.fn() });
+			const activeBefore = pi.getActiveTools();
+			const ctx = createMockCtx(); toolFailureTriageExtension(pi as never);
+			await handler(pi)("", ctx);
+			expect(pi.sendUserMessage).toHaveBeenCalledExactlyOnceWith(buildFindFailsInvestigationPrompt(now));
+			expect(pi.getActiveTools()).toEqual(activeBefore);
+			expect(pi._getTool("tool_failure_inspect")).toBeUndefined();
+			expect(pi._getTool("tool_failure_decide")).toBeUndefined();
+			expect(ctx.ui.notify).toHaveBeenCalledWith("Investigating recent tool failures...", "info");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("rejects arguments without starting a turn", async () => {
