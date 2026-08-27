@@ -1,4 +1,12 @@
+---
+status: research-archive
+source: retired pi/workflow-friction/operational-review-2026-07-14.md
+review-window: 2026-07-07T18:02:09.706Z through 2026-07-14T18:02:09.706Z
+---
+
 # Pi Operational Review - Previous 7 Days
+
+> Archived historical telemetry research. This is a seven-day review of the window above, not current operating guidance or a current health report. Re-check live source, telemetry, and contracts before making operational decisions.
 
 ## Scope and bounds
 
@@ -114,3 +122,12 @@ Task metadata has 73 `task_status_change` events over 27 task IDs: 24 pending, 2
 3. **Control context and known cost.** Observed cost is at least $64.94, with 68.7M cache-read tokens against 4.70M fresh input tokens and a 313,363-token parent context peak. Instrument cost by interaction, cache category, and context peak, then inspect the highest-context interactions for avoidable retained state.
 4. **Treat delegation as a reliability and latency trade-off.** Orchestration produced 4 failed workers out of 29 and 2 failed runs out of 23. Subagent-bearing interactions had a 4.8x higher mean duration than non-subagent interactions, though complexity likely contributes. Track task complexity and critical-path child duration before deciding whether delegation itself causes delay.
 5. **Preserve mutation validation while reducing non-mutating validation churn.** Twelve of 13 mutating interactions had validation, a strong observed safety pattern. Separately, 24 interactions ran at least two validations and 21 validated despite no file mutation. Capture validation names and outcomes to distinguish necessary read-only checks from redundant reruns.
+
+## KISS recommendation
+
+Treat this report as a bounded historical baseline only. Do not infer current rates, SLOs, staffing, or causal effects from it. If a current decision needs telemetry, first confirm that the source files, event schemas, coverage, and cost fields still support the same joins and denominators.
+
+## Related notes
+
+- [Pi observability timing](../patterns/pi-observability-timing.md) - general source/runtime boundary and metadata-only timing pattern.
+- [Orchestration telemetry](../../../../../pi/docs/orchestration-telemetry.md) - current implementation documentation; verify it before relying on this archived review.

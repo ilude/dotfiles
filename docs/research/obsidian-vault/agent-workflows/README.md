@@ -62,6 +62,7 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [projects/subagent-task-review-archive](projects/subagent-task-review-archive/README.md) - archived multi-role review package, not an approved plan
 - [projects/mcp-2026-stateless-protocol](projects/mcp-2026-stateless-protocol.md)
 - [projects/pi-coding-agent-deep-dive](projects/pi-coding-agent-deep-dive.md)
+- [projects/pi-operational-review-2026-07-14](projects/pi-operational-review-2026-07-14.md) - archived seven-day workflow telemetry review, not current operating guidance
 - [projects/menos](projects/menos.md)
 - [projects/zellij-windows-cockpit](projects/zellij-windows-cockpit.md)
 - [projects/x-research-prototype](projects/x-research-prototype/README.md) - archived local X research implementation reference

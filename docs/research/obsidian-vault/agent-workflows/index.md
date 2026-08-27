@@ -24,6 +24,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [Subagent and durable-task review archive](projects/subagent-task-review-archive/README.md) - archived multi-role review findings and recommendation candidates; not an approved plan.
 - [MCP 2026 stateless protocol](projects/mcp-2026-stateless-protocol.md) - request-scoped MCP, multi-round input, gateway identity, caching, authorization, and protocol lifecycle.
 - [Pi Coding Agent deep dive](projects/pi-coding-agent-deep-dive.md) - transcript-reviewed Pi architecture source, evidence cautions, and workflow implications.
+- [Pi operational review - 2026-07-14](projects/pi-operational-review-2026-07-14.md) - archived seven-day workflow telemetry research; not current operating guidance.
 - [Menos research storage](projects/menos-research-storage.md) - superseded research-ingestion proposal retained as historical context.
 - [X research prototype](projects/x-research-prototype/README.md) - archived local SQLite and provider-adapter experiment retained for future Twitter tooling.
 - [Durable agent task architecture](projects/agent-task-architecture.md) - archived research on SQLite, durable task graphs, evidence, and long-horizon reliability; not an approved roadmap.
