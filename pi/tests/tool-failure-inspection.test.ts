@@ -36,6 +36,18 @@ describe("bounded tool-failure inspection", () => {
 		expect(JSON.stringify(envelope)).not.toContain("do-not-show");
 	});
 
+	it("resolves persisted entry IDs instead of trusting query-order line numbers", async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "tool-failure-entry-id-")); roots.push(root); const transcript = path.join(root, "session.jsonl");
+		await fs.writeFile(transcript, [
+			{ type: "message", id: "noise", message: { role: "user", content: [{ type: "text", text: "noise" }] } },
+			{ type: "message", id: "call-entry", timestamp: "2026-08-25T00:00:00Z", message: { role: "assistant", content: [{ type: "toolCall", id: "one", name: "bash", arguments: { command: "false" } }] } },
+			{ type: "message", id: "result-entry", timestamp: "2026-08-25T00:01:00Z", message: { role: "toolResult", toolCallId: "one", isError: true, content: [{ type: "text", text: "failed" }] } },
+		].map(JSON.stringify).join("\n") + "\n");
+		const inspection = createBoundedInspection(root, { selectedCoordinates: [{ filePath: transcript, line: 1, callLine: 1, resultEntryId: "result-entry", callEntryId: "call-entry", token: "opaque" }] });
+		const envelope = JSON.parse(await inspection.readSelectedTranscript("opaque")) as { tool: string; result: { text: string } };
+		expect(envelope).toMatchObject({ tool: "bash", result: { text: "failed" } });
+	});
+
 	it("admits only an inspected later successful Bash command as a fix check", async () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "tool-failure-fix-check-")); roots.push(root); const transcript = path.join(root, "session.jsonl");
 		const call = (id: string, command?: string) => ({ role: "assistant", timestamp: id === "failed" ? "2026-08-25T00:00:00Z" : "2026-08-26T00:00:00Z", content: [{ type: "toolCall", id, name: "bash", arguments: command === undefined ? {} : { command } }] });

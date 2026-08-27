@@ -51,7 +51,7 @@ export type FailureScan = {
 const SECRET = /(?:password|passwd|token|secret|api[_-]?key|authorization)\s*[:=]/i;
 const HOME = /(?:[a-z]:\\users\\[^\\\s]+|\/(?:home|users)\/[^/\s]+)/i;
 const ABSOLUTE = /(?:[a-z]:\\|\/(?:home|users|tmp|var|etc|opt)\/)/i;
-const RAW = /[\r\n\0-\x1f]/;
+const hasRawControl = (value: string): boolean => [...value].some((character) => character.charCodeAt(0) <= 0x1f);
 
 export function classifyFailure(tool: string, text: string): [string, string, ClassifiedFailure["classification"]] {
 	const t = tool.toLowerCase();
@@ -119,16 +119,21 @@ export function selectedFailureCoordinates(scan: FailureScan, rows: readonly Ses
 	const failureTimes = new Map<string, string>();
 	const successes: { coordinate: import("./tool-failure-inspection.ts").TranscriptCoordinate; timestamp: string }[] = [];
 	const sourceLines = new Map<string, number>();
-	for (const row of rows) {
+	const indexedRows = rows.map((row) => {
 		const line = row.lineNumber ?? ((sourceLines.get(row.filename) ?? 0) + 1);
 		sourceLines.set(row.filename, line);
-		const message = messageObject(row.message);
+		return { row, line, message: messageObject(row.message) };
+	});
+	for (const { row, line, message } of indexedRows) {
 		if (!message) continue;
 		for (const item of contentItems(message)) {
 			if (item.type !== "toolCall" && item.type !== "tool_call") continue;
 			const id = item.id ?? item.toolCallId;
 			if (typeof id === "string") calls.set(`${row.filename}\0${id}`, { entry: row.id, line, item });
 		}
+	}
+	for (const { row, line, message } of indexedRows) {
+		if (!message) continue;
 		const callId = message.toolCallId;
 		if (typeof callId !== "string") continue;
 		const call = calls.get(`${row.filename}\0${callId}`);
@@ -138,7 +143,7 @@ export function selectedFailureCoordinates(scan: FailureScan, rows: readonly Ses
 		if (message.isError === true) {
 			const token = coordinateId(call.entry, callId, row.filename);
 			if ([...allowed.values()].some((tokens) => tokens.has(token))) {
-				failures.set(token, { filePath: row.filename, line, callLine: call.line, token });
+				failures.set(token, { filePath: row.filename, line, callLine: call.line, resultEntryId: row.id, callEntryId: call.entry, token });
 				if (timestamp) failureTimes.set(token, timestamp);
 			}
 			continue;
@@ -146,7 +151,7 @@ export function selectedFailureCoordinates(scan: FailureScan, rows: readonly Ses
 		const tool = String(call.item.name ?? call.item.toolName ?? "").toLowerCase();
 		const args = call.item.arguments ?? call.item.args;
 		const command = args && typeof args === "object" ? (args as Record<string, unknown>).command : undefined;
-		if ((tool === "bash" || tool === "functions.bash") && typeof command === "string" && command.trim() && timestamp) successes.push({ coordinate: { filePath: row.filename, line, callLine: call.line }, timestamp });
+		if ((tool === "bash" || tool === "functions.bash") && typeof command === "string" && command.trim() && timestamp) successes.push({ coordinate: { filePath: row.filename, line, callLine: call.line, resultEntryId: row.id, callEntryId: call.entry }, timestamp });
 	}
 	successes.sort((a, b) => b.timestamp.localeCompare(a.timestamp) || a.coordinate.filePath.localeCompare(b.coordinate.filePath) || a.coordinate.line - b.coordinate.line);
 	const result = new Map<string, import("./tool-failure-inspection.ts").TranscriptCoordinate[]>();
@@ -154,7 +159,7 @@ export function selectedFailureCoordinates(scan: FailureScan, rows: readonly Ses
 		const candidate = scan.candidates.find((item) => item.candidateId === candidateId);
 		const selected = candidate?.coordinates ?? [];
 		const items = selected.map((token) => failures.get(token)).filter((item): item is import("./tool-failure-inspection.ts").TranscriptCoordinate => item !== undefined);
-		if (candidate?.contract === "required:command" && candidate.tool === "bash") {
+		if (candidate?.contract === "required:command" && (candidate.tool === "bash" || candidate.tool === "functions.bash")) {
 			const failureToken = selected[0];
 			const success = failureToken && failureTimes.has(failureToken) ? successes.find((item) => item.timestamp > failureTimes.get(failureToken)!) : undefined;
 			if (failureToken && success) items.push({ ...success.coordinate, token: `fix-check:${failureToken}`, fixCheckFor: failureToken });
@@ -211,5 +216,5 @@ export function scanToolFailures(rows: readonly SessionEntry[], asOf = new Date(
 	return { schemaVersion: 1, asOf: asOf.toISOString().replace(".000Z", "Z"), timestampDiagnostics: diagnostics, timestampOmissions: diagnostics.missing + diagnostics.malformed + diagnostics.future, manifestDigest: createHash("sha256").update(JSON.stringify(digestMaterial)).digest("hex"), sourceWindow: { first: candidates.flatMap((x) => x.firstObserved ? [x.firstObserved] : []).sort()[0] ?? null, last: candidates.flatMap((x) => x.lastObserved ? [x.lastObserved] : []).sort().at(-1) ?? null }, scannedResults: results.length, unmatchedResults, duplicateCalls, malformedOmissions, candidates };
 }
 
-export function safeLedgerText(value: string, field: string): string { if (!value || value.length > 240 || SECRET.test(value) || HOME.test(value) || ABSOLUTE.test(value) || RAW.test(value)) throw new Error(`${field} contains prohibited sensitive, path, or raw content`); return value; }
+export function safeLedgerText(value: string, field: string): string { if (!value || value.length > 240 || SECRET.test(value) || HOME.test(value) || ABSOLUTE.test(value) || hasRawControl(value)) throw new Error(`${field} contains prohibited sensitive, path, or raw content`); return value; }
 export function parseLedgerDate(value: string | undefined, field: string): string | undefined { if (value === undefined) return undefined; if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) throw new Error(`${field} must be an ISO date`); return value; }

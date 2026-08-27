@@ -40,8 +40,8 @@ function parseObservationBoundary(value: string | undefined): string | undefined
 	return new Date(value).toISOString();
 }
 function validFixProof(candidate: ClassifiedFailure, boundary: string, proof: InspectionProof): boolean {
-	if (candidate.tool !== "bash" || candidate.contract !== "required:command") return false;
-	const check = proof.fixChecks[candidate.candidateId]; if (!check || check.failure.tool !== "bash" || check.failure.result.status !== "error" || !/(?:required.*command|command.*required)/i.test(check.failure.result.text) || check.success.tool !== "bash" || check.success.result.status !== "success") return false;
+	if (!["bash", "functions.bash"].includes(candidate.tool) || candidate.contract !== "required:command") return false;
+	const check = proof.fixChecks[candidate.candidateId]; if (!check || !["bash", "functions.bash"].includes(check.failure.tool) || check.failure.result.status !== "error" || !/(?:required.*command|command.*required)/i.test(check.failure.result.text) || !["bash", "functions.bash"].includes(check.success.tool) || check.success.result.status !== "success") return false;
 	const failedArguments = check.failure.call.argumentShape; if (failedArguments && typeof failedArguments === "object" && "command" in failedArguments) return false;
 	const argumentsValue = check.success.call.argumentShape; const command = argumentsValue && typeof argumentsValue === "object" ? (argumentsValue as Record<string, unknown>).command : undefined;
 	return typeof command === "string" && command.trim().length > 0 && !!check.failure.result.timestamp && !!check.success.result.timestamp && check.success.result.timestamp > check.failure.result.timestamp && check.success.result.timestamp > boundary;

@@ -11,7 +11,17 @@ describe("tool-failure session reader", () => {
 		const candidate = scan.candidates[0]!;
 		expect(candidate).toMatchObject({ tool: "custom", occurrences: 1, firstObserved: "2026-08-20T00:02:00Z" });
 		const selected = selectedFailureCoordinates(scan, rows, [candidate.candidateId]);
-		expect(selected.get(candidate.candidateId)).toEqual([{ filePath: rows[1].filename, line: 3, callLine: 2, token: candidate.coordinates[0] }]);
+		expect(selected.get(candidate.candidateId)).toEqual([{ filePath: rows[1].filename, line: 3, callLine: 2, resultEntryId: "result-entry", callEntryId: "call-entry", token: candidate.coordinates[0] }]);
+	});
+
+	it("pairs results when persisted IDs sort before their calls", () => {
+		const rows = [
+			{ filename: "/sessions/one.jsonl", id: "z-call", lineNumber: 2, timestamp: "2026-08-20T00:01:00Z", message: { role: "assistant", content: [{ type: "toolCall", id: "one", name: "custom" }] } },
+			{ filename: "/sessions/one.jsonl", id: "a-result", lineNumber: 3, timestamp: "2026-08-20T00:02:00Z", message: { role: "toolResult", toolCallId: "one", isError: true, content: [{ type: "text", text: "this.broker.reconcile is not a function" }] } },
+		].sort((a, b) => a.id.localeCompare(b.id));
+		const scan = scanToolFailures(rows);
+		const candidate = scan.candidates[0]!;
+		expect(selectedFailureCoordinates(scan, rows, [candidate.candidateId]).get(candidate.candidateId)).toHaveLength(1);
 	});
 
 	it("preserves newest ordering, timestamp diagnostics, and coordinate bounds", () => {

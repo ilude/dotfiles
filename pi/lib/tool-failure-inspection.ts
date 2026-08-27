@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import type { FailureScan } from "./tool-failure-classifier.ts";
 
 export type InspectionLimits = { maxItemsPerCall: number; maxBytesPerCall: number; maxItemsPerTurn: number; maxBytesPerTurn: number };
-export type TranscriptCoordinate = { filePath: string; line: number; callLine?: number; token?: string; fixCheckFor?: string };
+export type TranscriptCoordinate = { filePath: string; line: number; callLine?: number; resultEntryId?: string; callEntryId?: string; token?: string; fixCheckFor?: string };
 export type ToolFailureEnvelope = {
 	tool: string;
 	call: { argumentShape: unknown; timestamp: string | null };
@@ -67,18 +67,28 @@ export class BoundedInspection {
 		return result;
 	}
 	private async readLine(token: string, coordinate: TranscriptCoordinate): Promise<string> {
-		this.checkItem(); const lines = (await fs.readFile(coordinate.filePath, "utf8")).split(/\r?\n/); const content = lines[coordinate.line - 1]; if (content === undefined) throw new Error("transcript coordinate does not exist");
+		this.checkItem(); const lines = (await fs.readFile(coordinate.filePath, "utf8")).split(/\r?\n/);
+		const entryLine = (entryId: string | undefined, fallback: number | undefined): number | undefined => {
+			if (!entryId) return fallback;
+			for (let index = 0; index < lines.length; index++) {
+				try { if ((JSON.parse(lines[index] ?? "") as Record<string, unknown>).id === entryId) return index + 1; } catch {}
+			}
+			return undefined;
+		};
+		const resultLine = entryLine(coordinate.resultEntryId, coordinate.line); const callLine = entryLine(coordinate.callEntryId, coordinate.callLine);
+		if (resultLine === undefined || (coordinate.callLine !== undefined && callLine === undefined)) throw new Error("transcript coordinate does not exist");
+		const content = lines[resultLine - 1]; if (content === undefined) throw new Error("transcript coordinate does not exist");
 		let result = redact(content);
-		if (coordinate.callLine !== undefined) {
+		if (callLine !== undefined) {
 			let call: Record<string, unknown>; let failure: Record<string, unknown>;
-			try { call = JSON.parse(lines[coordinate.callLine - 1] ?? "") as Record<string, unknown>; failure = JSON.parse(content) as Record<string, unknown>; } catch { throw new Error("transcript coordinate is malformed"); }
+			try { call = JSON.parse(lines[callLine - 1] ?? "") as Record<string, unknown>; failure = JSON.parse(content) as Record<string, unknown>; } catch { throw new Error("transcript coordinate is malformed"); }
 			const callMessage = call.message && typeof call.message === "object" ? call.message as Record<string, unknown> : call;
 			const resultMessage = failure.message && typeof failure.message === "object" ? failure.message as Record<string, unknown> : failure;
 			const callItem = Array.isArray(callMessage.content) ? callMessage.content.find((item) => item && typeof item === "object" && ["toolCall", "tool_call"].includes(String((item as Record<string, unknown>).type))) as Record<string, unknown> | undefined : undefined;
 			const callTime = timestamp(call.timestamp ?? callMessage.timestamp); const resultTime = timestamp(failure.timestamp ?? resultMessage.timestamp);
 			const text = Array.isArray(resultMessage.content) ? resultMessage.content.filter((item) => item && typeof item === "object" && (item as Record<string, unknown>).type === "text").map((item) => String((item as Record<string, unknown>).text ?? "")).join(" ") : "";
 			const envelope: ToolFailureEnvelope = { tool: String(callItem?.name ?? callItem?.toolName ?? "unknown"), call: { argumentShape: bounded(callItem?.arguments ?? callItem?.args ?? {}), timestamp: callTime.value }, result: { status: resultMessage.isError === true ? "error" : "success", text: bounded(text) as string, timestamp: resultTime.value }, timestampValid: resultTime.valid, sessionDigest: createHash("sha256").update(path.resolve(coordinate.filePath)).digest("hex").slice(0, 12), token };
-			result = JSON.stringify(envelope); this.envelopes.set(token, { envelope, line: coordinate.line });
+			result = JSON.stringify(envelope); this.envelopes.set(token, { envelope, line: resultLine });
 		}
 		if (Buffer.byteLength(result, "utf8") > this.limits.maxBytesPerCall) {
 			try { const envelope = JSON.parse(result) as ToolFailureEnvelope; envelope.call.argumentShape = { "[TRUNCATED]": true }; envelope.result.text = "[TRUNCATED]"; result = JSON.stringify(envelope); } catch { result = `${result.slice(0, Math.max(0, this.limits.maxBytesPerCall - 15))}...[TRUNCATED]`; }

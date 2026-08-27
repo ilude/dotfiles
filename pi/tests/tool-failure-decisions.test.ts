@@ -105,15 +105,15 @@ describe("tool failure classifier and decisions", () => {
 		expect(candidate.observations).toHaveLength(4);
 		expect(selected[0]?.status).toBe("regression");
 	});
-	it("requires a current inspected post-boundary Bash success for required:command fixes", async () => {
+	it.each(["bash", "functions.bash"])("requires a current inspected post-boundary %s success for required:command fixes", async (tool) => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "tool-failure-required-command-")); roots.push(root); const file = path.join(root, "decisions.jsonl"); const transcript = path.join(root, "session.jsonl");
 		await fs.writeFile(transcript, [
-			JSON.stringify({ role: "assistant", timestamp: "2026-08-25T00:00:00Z", content: [{ type: "toolCall", id: "failed", name: "bash", arguments: {} }] }),
+			JSON.stringify({ role: "assistant", timestamp: "2026-08-25T00:00:00Z", content: [{ type: "toolCall", id: "failed", name: tool, arguments: {} }] }),
 			JSON.stringify({ role: "toolResult", timestamp: "2026-08-25T00:00:01Z", toolCallId: "failed", isError: true, content: [{ type: "text", text: "command is a required property" }] }),
-			JSON.stringify({ role: "assistant", timestamp: "2026-08-26T00:00:00Z", content: [{ type: "toolCall", id: "success", name: "bash", arguments: { command: "echo fixed" } }] }),
+			JSON.stringify({ role: "assistant", timestamp: "2026-08-26T00:00:00Z", content: [{ type: "toolCall", id: "success", name: tool, arguments: { command: "echo fixed" } }] }),
 			JSON.stringify({ role: "toolResult", timestamp: "2026-08-26T00:00:01Z", toolCallId: "success", isError: false, content: [{ type: "text", text: "ok" }] }),
 		].join("\n") + "\n");
-		const current = scan({ tool: "bash", errorClass: "missing-required-parameter", contract: "required:command", observations: [{ timestamp: "2026-08-25T00:00:01Z", session: "one" }] });
+		const current = scan({ tool, errorClass: "missing-required-parameter", contract: "required:command", observations: [{ timestamp: "2026-08-25T00:00:01Z", session: "one" }] });
 		const inspection = createBoundedInspection(root, { selectedCoordinates: [{ filePath: transcript, line: 2, callLine: 1, token: "one" }, { filePath: transcript, line: 4, callLine: 3, token: fixCheckToken("one"), fixCheckFor: "one" }] });
 		await inspection.readSelectedTranscript("one"); const proofWithoutSuccess = inspection.issueProof(current, ["one"]);
 		await expect(appendDecision(file, current, "one", "addressed", "fixed", ["test:direct check"], { effectiveAfter: "2026-08-25", proof: proofWithoutSuccess })).rejects.toThrow("ISO timestamp");
