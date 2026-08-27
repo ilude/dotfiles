@@ -58,13 +58,14 @@ export function classifyFailure(tool: string, text: string): [string, string, Cl
 	const s = text.toLowerCase();
 	if ((t === "bash" || t === "functions.bash") && (s.includes("required properties command") || s.includes("'command' is a required property"))) return ["missing-required-parameter", "required:command", "candidate"];
 	if ((t === "read" || t === "functions.read") && ["outside", "path escape", "boundary", "not within", "governed"].some((x) => s.includes(x))) return ["governed-path-rejection", "selected-skill-read:path-boundary", "candidate"];
-	if (t.includes("subagent") && ["unknown agent", "available agents", "abi", "manager"].some((x) => s.includes(x))) return ["stale-manager-contract", "subagent-manager:availability", "candidate"];
+	if (t.includes("subagent") && (s.includes("governed path escapes") || s.includes("cannot widen its assigned workspace root"))) return ["governed-path-rejection", "subagent:path-boundary", "expected"];
+	if (t.includes("subagent") && (["unknown agent", "available agents"].some((x) => s.includes(x)) || s.includes("agent: must be equal to one of the allowed values"))) return ["requested-agent-unavailable", "subagent:agent-availability", "expected"];
+	if (t.includes("subagent") && ["abi", "manager"].some((x) => s.includes(x))) return ["stale-manager-contract", "subagent-manager:availability", "candidate"];
 	if (t === "web_search" && (s.trim() === "fetch failed" || s.includes("operation was aborted due to timeout"))) return ["external-service-failure", "web-search:request", "candidate"];
 	if (t.includes("subagent") && s.includes("subagent was aborted")) return ["operation-aborted", "subagent:aborted", "expected"];
 	if (t.includes("subagent") && s.includes("failed to load extension")) return ["extension-load-failure", "subagent:extension-load", "candidate"];
-	if (t.includes("subagent") && s.includes("agent: must be equal to one of the allowed values")) return ["requested-agent-unavailable", "subagent:agent-availability", "expected"];
 	if (s.includes("pi cli entrypoint is unavailable") || s.includes("available agents: none") || /^tool (bash|pwsh) not found$/.test(s.trim())) return ["required-runtime-unavailable", "runtime:availability", "candidate"];
-	if (["damage control", "blocked by policy", "blocked unsafe shell edit", "blocked dangerous command", "blocked unmanaged shell backgrounding", "prefer pi safe edit", "path_escape:", "interactive orchestrator parents must delegate", "repeated_tool_loop:", "dynamic_recursive_target:"].some((x) => s.includes(x))) return ["safety-block", "policy:block", "expected"];
+	if (["damage control", "blocked by policy", "blocked unsafe shell edit", "blocked dangerous command", "blocked unmanaged shell backgrounding", "blocked delete/truncate of no-delete path", "prefer pi safe edit", "path_escape:", "interactive orchestrator parents must delegate", "repeated_tool_loop:", "dynamic_recursive_target:"].some((x) => s.includes(x))) return ["safety-block", "policy:block", "expected"];
 	if (["operator approval is required", "confirmation required for dangerous command", '"outcome":"needs_approval"'].some((x) => s.includes(x))) return ["approval-required", "policy:approval", "expected"];
 	if (/command timed out after \d+(?:s| seconds)/.test(s)) return ["command-timeout", "command:timeout", "expected"];
 	if (s.trim() === "command aborted" || s.trim() === "operation aborted" || s.endsWith("command aborted")) return ["command-aborted", "command:aborted", "expected"];
@@ -76,7 +77,8 @@ export function classifyFailure(tool: string, text: string): [string, string, Cl
 	if (s.includes("offset ") && s.includes(" is beyond end of file")) return ["invalid-offset", "read:offset-range", "expected"];
 	if (t === "task" && s.includes("scope entries must be worktree-relative")) return ["task-boundary-rejected", "task:boundary-path", "expected"];
 	if (t === "task" && s.includes("instructions: must not have more than 500 characters")) return ["task-instructions-too-long", "task:instructions-length", "expected"];
-	if (t === "plan_progress" && s.includes("plan contract validation failed:")) return ["plan-not-ready", "plan:readiness", "expected"];
+	if (t === "plan_progress" && (s.includes("plan contract validation failed:") || s.includes("no active /plan-it lifecycle exists") || s.includes("requires a canonical .specs/{slug}/plan.md path") || s.includes("plan readiness requires") || s === "strategy is required." || (s.includes("plan_progress") && s.includes("invalid while the lifecycle is")))) return ["plan-not-ready", "plan:readiness", "expected"];
+	if (t.includes("subagent") && (s.includes("references unknown skill:") || s.includes("invalid taskid") || s.includes("processid is required") || s.includes("sinceactivityversion requires an exact run id"))) return ["invalid-caller-contract", "caller:validation", "expected"];
 	if (["bash", "functions.bash", "pwsh", "functions.pwsh"].includes(t) && (s.includes("command exited with code ") || s.startsWith("pwsh exited with code ") || s.includes("command failed with exit code "))) return ["command-nonzero", "command:nonzero", "expected"];
 	if (!(["bash", "functions.bash", "pwsh", "functions.pwsh"].includes(t)) && s.includes(" is not a function")) return ["internal-missing-method", "runtime:missing-method", "candidate"];
 	if (s.includes("secret scan blocked the commit")) return ["secret-scan-block", "commit:secret-scan", "expected"];
@@ -84,8 +86,8 @@ export function classifyFailure(tool: string, text: string): [string, string, Cl
 	return ["unclassified-error", "manual-review", "unclassified"];
 }
 
-export function coordinateId(entryId: string, callId: string): string {
-	return createHash("sha256").update(`${entryId}\0${callId}`).digest("hex").slice(0, 12);
+export function coordinateId(entryId: string, callId: string, sourceIdentity = ""): string {
+	return createHash("sha256").update(`${sourceIdentity}\0${entryId}\0${callId}`).digest("hex").slice(0, 12);
 }
 
 export function candidateId(tool: string, errorClass: string, contract: string, version = FINGERPRINT_VERSION): string {
@@ -134,7 +136,7 @@ export function selectedFailureCoordinates(scan: FailureScan, rows: readonly Ses
 		const parsed = row.timestamp ? new Date(row.timestamp) : undefined;
 		const timestamp = parsed && !Number.isNaN(parsed.valueOf()) ? parsed.toISOString() : undefined;
 		if (message.isError === true) {
-			const token = coordinateId(call.entry, callId);
+			const token = coordinateId(call.entry, callId, row.filename);
 			if ([...allowed.values()].some((tokens) => tokens.has(token))) {
 				failures.set(token, { filePath: row.filename, line, callLine: call.line, token });
 				if (timestamp) failureTimes.set(token, timestamp);
@@ -187,7 +189,7 @@ export function scanToolFailures(rows: readonly SessionEntry[], asOf = new Date(
 		const timestamp = parsedTimestamp(result.timestamp, asOf);
 		if (!timestamp) { if (result.timestamp == null || result.timestamp === "") diagnostics.missing++; else if (!Number.isNaN(new Date(String(result.timestamp)).valueOf()) && new Date(String(result.timestamp)) > asOf) diagnostics.future++; else diagnostics.malformed++; }
 		const session = createHash("sha256").update(result.filename).digest("hex").slice(0, 12);
-		const coordinate = coordinateId(call.entry, result.callId);
+		const coordinate = coordinateId(call.entry, result.callId, result.filename);
 		observations.push({ id: candidateId(call.tool, errorClass, contract), tool: call.tool.toLowerCase(), errorClass, contract, classification, timestamp, session, coordinate });
 	}
 	const groups = new Map<string, typeof observations>(); for (const item of observations) groups.set(item.id, [...(groups.get(item.id) ?? []), item]);

@@ -19,12 +19,21 @@ function customExtensionToolNames(pi: ExtensionAPI): Set<string> {
 }
 
 type DiagnosticRun = { scan: ReturnType<typeof scanToolFailures>; selected: SelectedCandidate[]; inspection: BoundedInspection; proof?: InspectionProof };
+type FindFailsResult = { started: true } | { started: false; message: string };
+
+export function sessionAnalyticsRoots(sessionDir: string): { analyticsRoot: string; transcriptRoot: string } {
+	const resolved = path.resolve(sessionDir);
+	if (path.basename(resolved).toLowerCase() === "sessions") return { analyticsRoot: path.dirname(resolved), transcriptRoot: resolved };
+	const parent = path.dirname(resolved);
+	if (path.basename(parent).toLowerCase() === "sessions") return { analyticsRoot: path.dirname(parent), transcriptRoot: parent };
+	return { analyticsRoot: parent, transcriptRoot: resolved };
+}
 
 async function readSessionEntries(root: string, signal: AbortSignal | undefined): Promise<SessionEntry[]> {
 	const result = await withAnalyticsSession({ root, sources: ["session_entries"], signal }, (session) => session.query({
 		sql: `SELECT _source_file AS filename, _record_key AS id, _timestamp AS timestamp, record FROM session_entries ORDER BY _source_file, _record_key`,
-		maxRows: 100_000,
-		maxBytes: 64 * 1024 * 1024,
+		maxRows: 500_000,
+		maxBytes: 256 * 1024 * 1024,
 	}));
 	if (result.truncated) throw new Error("tool-failure session query exceeded its bound");
 	return result.rows.map((row) => {
@@ -38,21 +47,27 @@ async function readSessionEntries(root: string, signal: AbortSignal | undefined)
 	});
 }
 
-async function executeFindFails(pi: ExtensionAPI, ctx: ExtensionContext, signal: AbortSignal | undefined, setProgress: (message: string) => void, setRun: (run: DiagnosticRun | undefined) => void): Promise<boolean> {
+async function executeFindFails(pi: ExtensionAPI, ctx: ExtensionContext, signal: AbortSignal | undefined, setProgress: (message: string) => void, setRun: (run: DiagnosticRun | undefined) => void): Promise<FindFailsResult> {
 	if (signal?.aborted) throw new Error("This operation was aborted");
 	setProgress("Querying the canonical session entries...");
 	const sessionRoot = ctx.sessionManager.getSessionDir();
-	const scanRows = await readSessionEntries(path.dirname(sessionRoot), signal);
+	const roots = sessionAnalyticsRoots(sessionRoot);
+	const scanRows = await readSessionEntries(roots.analyticsRoot, signal);
 	const scan = scanToolFailures(scanRows);
 
 		const ledgerPath = path.join(process.env.PI_AGENT_DIR ?? path.join(process.env.HOME ?? process.cwd(), ".pi", "agent"), "tool-failures", "decisions.jsonl");
 		const ledger = await loadDecisionLedger(ledgerPath);
-		const state = candidateLedgerState(scan, ledger.records);
 		const tools = customExtensionToolNames(pi);
-		const selected = state.actionable.filter((item) => tools.has(item.tool));
-		if (!selected.length) return false;
+		const state = candidateLedgerState(scan, ledger.records, tools);
+		const selected = state.actionable;
+		if (!selected.length) {
+			const customGroups = scan.candidates.filter((item) => tools.has(item.tool)).length;
+			const decided = state.suppressed.unchanged + state.suppressed.resolved;
+			const belowThreshold = Math.max(0, customGroups - decided);
+			return { started: false, message: `No custom-tool finding selected: ${scan.candidates.length} failure groups scanned; ${customGroups} custom-tool groups; ${state.suppressed.unchanged} suppressed by unchanged decisions; ${state.suppressed.resolved} resolved; ${belowThreshold} below current eligibility thresholds.` };
+		}
 		const selectedCoordinates = selectedFailureCoordinates(scan, scanRows, selected.map((item) => item.candidateId));
-		const inspection = createBoundedInspection(ctx.cwd, { transcriptRoots: [sessionRoot], selectedCoordinates: [...selectedCoordinates.values()].flat(), limits: { maxItemsPerTurn: 12, maxBytesPerTurn: 24_576 } });
+		const inspection = createBoundedInspection(ctx.cwd, { transcriptRoots: [roots.transcriptRoot], selectedCoordinates: [...selectedCoordinates.values()].flat(), limits: { maxItemsPerTurn: 12, maxBytesPerTurn: 24_576 } });
 		const turn = startDiagnosticTurn(pi, ctx.sessionManager.getSessionId(), () => setRun(undefined));
 		signal?.addEventListener("abort", () => turn.settle(), { once: true });
 		setRun({ scan, selected, inspection });
@@ -64,7 +79,7 @@ async function executeFindFails(pi: ExtensionAPI, ctx: ExtensionContext, signal:
 			turn.settle();
 			throw error;
 		}
-	return true;
+	return { started: true };
 }
 
 function notifyWorking(ctx: ExtensionContext, message: string): void { ctx.ui.notify(ctx.mode === "tui" ? ctx.ui.theme.fg("accent", ctx.ui.theme.bold(message)) : message, "info"); }
@@ -87,12 +102,12 @@ export default function toolFailureTriageExtension(pi: ExtensionAPI) {
 				await ctx.ui.custom((tui, theme, _keybindings, done) => {
 					const loader = new CancellableLoader(tui, (text) => theme.fg("accent", text), (text) => theme.fg("text", theme.bold(text)), "Finding tool failures...");
 					loader.onAbort = () => done("cancelled");
-				run(loader.signal, (message) => { loader.setMessage(message); tui.requestRender(); }).then((started) => { if (!started) ctx.ui.notify("No tool-failure findings are currently due for inspection.", "info"); done("completed"); }).catch((error) => { if (!loader.signal.aborted) ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); done("completed"); });
+				run(loader.signal, (message) => { loader.setMessage(message); tui.requestRender(); }).then((result) => { if (!result.started) ctx.ui.notify(result.message, "info"); done("completed"); }).catch((error) => { if (!loader.signal.aborted) ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); done("completed"); });
 					return loader;
 				});
 				return;
 			}
-			try { const started = await run(ctx.signal, () => {}); if (!started) ctx.ui.notify("No tool-failure findings are currently due for inspection.", "info"); } catch (error) { const message = error instanceof Error ? error.message : String(error); handoffRecoverableLocalFailure(pi, { command: "/find-fails", failure: message, cwd: ctx.cwd, context: "The local tool-failure authority stopped before producing its bounded result." }); ctx.ui.notify(message, "error"); }
+			try { const result = await run(ctx.signal, () => {}); if (!result.started) ctx.ui.notify(result.message, "info"); } catch (error) { const message = error instanceof Error ? error.message : String(error); handoffRecoverableLocalFailure(pi, { command: "/find-fails", failure: message, cwd: ctx.cwd, context: "The local tool-failure authority stopped before producing its bounded result." }); ctx.ui.notify(message, "error"); }
 		},
 	});
 }

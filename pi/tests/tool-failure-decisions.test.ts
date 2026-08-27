@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { appendDecision, candidateLedgerState, loadDecisionLedger, normalizeEvidence, selectCandidates } from "../lib/tool-failure-decisions.ts";
-import { classifyFailure, scanToolFailures, type FailureScan } from "../lib/tool-failure-classifier.ts";
+import { classifyFailure, coordinateId, scanToolFailures, type FailureScan } from "../lib/tool-failure-classifier.ts";
 import { createBoundedInspection, fixCheckToken, type InspectionProof } from "../lib/tool-failure-inspection.ts";
 
 const roots: string[] = [];
@@ -23,7 +23,20 @@ const classificationCases: [string, string, string, string, string][] = [
 	["task", "scope entries must be worktree-relative", "task-boundary-rejected", "task:boundary-path", "expected"],
 	["task", "Validation failed for tool task: instructions: must not have more than 500 characters", "task-instructions-too-long", "task:instructions-length", "expected"],
 	["plan_progress", "Plan contract validation failed: Missing Validation", "plan-not-ready", "plan:readiness", "expected"],
+	["plan_progress", "No active /plan-it lifecycle exists in this session.", "plan-not-ready", "plan:readiness", "expected"],
+	["plan_progress", "plan_progress requires a canonical .specs/{slug}/plan.md path.", "plan-not-ready", "plan:readiness", "expected"],
+	["plan_progress", "plan_progress ready is invalid while the lifecycle is ready.", "plan-not-ready", "plan:readiness", "expected"],
+	["plan_progress", "Plan readiness requires one final completed subtractive review.", "plan-not-ready", "plan:readiness", "expected"],
+	["plan_progress", "strategy is required.", "plan-not-ready", "plan:readiness", "expected"],
+	["subagent_read", "Agent reviewer references unknown skill: missing-skill", "invalid-caller-contract", "caller:validation", "expected"],
+	["subagent_read", "Invalid taskId for explorer: task was not found. Current choices: none.", "invalid-caller-contract", "caller:validation", "expected"],
+	["subagent_read", "Invalid taskId for developer: task is owned by another root session. Current choices: none.", "invalid-caller-contract", "caller:validation", "expected"],
+	["subagent_status", "processId is required; use /subagents to list tracked processes.", "invalid-caller-contract", "caller:validation", "expected"],
+	["subagent_status", "sinceActivityVersion requires an exact run ID, not an orchestration ID.", "invalid-caller-contract", "caller:validation", "expected"],
 	["subagent", "Validation failed for tool subagent: agent: must be equal to one of the allowed values", "requested-agent-unavailable", "subagent:agent-availability", "expected"],
+	["subagent_read", "Unknown agent: reviewer. Available agents: none.", "requested-agent-unavailable", "subagent:agent-availability", "expected"],
+	["subagent_read", "The governed path escapes the assigned workspace.", "governed-path-rejection", "subagent:path-boundary", "expected"],
+	["subagent_write", "A child cannot widen its assigned workspace root.", "governed-path-rejection", "subagent:path-boundary", "expected"],
 	["subagent", "Subagent was aborted", "operation-aborted", "subagent:aborted", "expected"],
 	["subagent", "Agent failed: Error: Failed to load extension x", "extension-load-failure", "subagent:extension-load", "candidate"],
 	["subagent_control", "this.broker.reconcile is not a function", "internal-missing-method", "runtime:missing-method", "candidate"],
@@ -31,6 +44,7 @@ const classificationCases: [string, string, string, string, string][] = [
 	["subagent", "Cannot launch subagent: Pi CLI entrypoint is unavailable", "required-runtime-unavailable", "runtime:availability", "candidate"],
 	["bash", "Command timed out after 30 seconds", "command-timeout", "command:timeout", "expected"],
 	["bash", "Blocked unsafe shell edit", "safety-block", "policy:block", "expected"],
+	["bash", "Blocked delete/truncate of no-delete path (matched .gitignore)", "safety-block", "policy:block", "expected"],
 	["bash", '{"outcome":"needs_approval","message":"Operator approval is required"}', "approval-required", "policy:approval", "expected"],
 	["bash", "partial output\nCommand aborted", "command-aborted", "command:aborted", "expected"],
 	["bash", "Working directory does not exist: C:/missing", "path-not-found", "filesystem:path-missing", "expected"],
@@ -44,6 +58,9 @@ describe("tool failure classifier and decisions", () => {
 	it("keeps distinct task, plan, and subagent fingerprints private", () => {
 		const ids = [classifyFailure("task", "scope entries must be worktree-relative"), classifyFailure("task", "instructions: must not have more than 500 characters"), classifyFailure("plan_progress", "Plan contract validation failed: x"), classifyFailure("subagent", "Subagent was aborted"), classifyFailure("subagent", "Failed to load extension x")].map(([errorClass, contract]) => `${errorClass}:${contract}`);
 		expect(new Set(ids).size).toBe(5);
+	});
+	it("keeps inspection coordinates distinct across session files", () => {
+		expect(coordinateId("entry", "call", "session-a")).not.toBe(coordinateId("entry", "call", "session-b"));
 	});
 	it("joins calls deterministically, filters sensitive paths, and counts timestamp diagnostics", () => {
 		const rows = (filename: string, timestamp: string | undefined) => [{ filename, id: "c", timestamp, message: { role: "assistant", content: [{ type: "toolCall", id: "x", name: "custom", arguments: { private: "raw" } }] } }, { filename, id: "r", timestamp, message: { role: "toolResult", toolCallId: "x", isError: true, content: [{ type: "text", text: "this.broker.reconcile is not a function" }] } }];
@@ -124,6 +141,17 @@ describe("tool failure classifier and decisions", () => {
 			{ ...scan().candidates[0]!, candidateId: "unknown", classification: "unclassified", errorClass: "unclassified-error", occurrences30d: 1 },
 		] };
 		const ordered = selectCandidates(multi, [{ candidateId: "ledger", fingerprintVersion: 2 } as never]); expect(ordered).toHaveLength(3); expect(ordered[0]?.candidateId).toBe("ledger"); expect(ordered.map((item) => item.candidateId)).toEqual(expect.arrayContaining(["internal", "runtime"]));
+	});
+	it("filters custom tools before applying the investigation limit", () => {
+		const base = scan().candidates[0]!;
+		const current: FailureScan = { ...scan(), candidates: [
+			{ ...base, candidateId: "builtin-one", tool: "read" },
+			{ ...base, candidateId: "builtin-two", tool: "subagent_read" },
+			{ ...base, candidateId: "builtin-three", tool: "subagent_write" },
+			{ ...base, candidateId: "custom-one", tool: "custom" },
+		] };
+		const state = candidateLedgerState(current, [], new Set(["custom"]));
+		expect(state.actionable.map((item) => item.candidateId)).toEqual(["custom-one"]);
 	});
 	it("uses latest physical order, expected suppression, revisit, changed fingerprint, and post-effective regression", async () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "tool-failure-decisions-")); roots.push(root); const file = path.join(root, "decisions.jsonl"); const current = scan();
