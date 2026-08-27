@@ -206,27 +206,42 @@ describe("subagent T1 execution contracts", () => {
 	});
 
 	it("diagnoses unavailable agents against the effective scope before spawn", () => {
+		const reader = {
+			name: "reader",
+			description: "reader",
+			systemPrompt: "",
+			source: "user" as const,
+			filePath: "reader.md",
+		};
+		const developer = {
+			name: "developer",
+			description: "developer",
+			systemPrompt: "",
+			source: "user" as const,
+			filePath: "developer.md",
+		};
 		const diagnostic = diagnoseAgentAvailability(
-			["missing", "reader"],
-			[
-				{
-					name: "reader",
-					description: "reader",
-					systemPrompt: "",
-					source: "user",
-					filePath: "reader.md",
-				},
-			],
-			"user",
+			["missing", "developer", "reader"],
+			[reader],
+			"project",
+			{
+				user: [reader, developer],
+				project: [reader],
+				both: [reader, developer],
+			},
 		);
 		expect(diagnostic).toEqual({
-			rejected: ["missing"],
-			agentScope: "user",
+			rejected: ["missing", "developer"],
+			agentScope: "project",
 			alternatives: ["reader"],
+			scopeHints: [{ name: "developer", scopes: ["user", "both"] }],
 		});
-		expect(formatAgentAvailabilityDiagnostic(diagnostic!)).toContain(
-			'Usable alternatives: "reader"',
+		const message = formatAgentAvailabilityDiagnostic(diagnostic!);
+		expect(message).toContain('Usable alternatives: "reader"');
+		expect(message).toContain(
+			'"developer" is available with agentScope "user" or "both".',
 		);
+		expect(message).not.toMatch(/"missing" is available with agentScope/);
 	});
 
 	it("keeps completion, partial, and blocked worker states distinct", () => {
@@ -298,6 +313,22 @@ describe("subagent T1 execution contracts", () => {
 					parentCwd: parent,
 					isWorkspaceTrusted: (workspaceRoot) => workspaceRoot === target,
 				},
+			);
+			expect(() =>
+				prepareSubagentExecution(
+					{
+						kind: "read",
+						items: [{ agent: "reader", task: "Inspect" }],
+						workspaceRoot: target,
+						agentScope: "project",
+					},
+					{
+						parentCwd: parent,
+						isWorkspaceTrusted: (workspaceRoot) => workspaceRoot === target,
+					},
+				),
+			).toThrow(
+				/Available agents: "target".*"reader" is available with agentScope "user" or "both"/,
 			);
 			const untrusted = prepareSubagentExecution(
 				{

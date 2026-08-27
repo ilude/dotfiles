@@ -156,7 +156,6 @@ import {
 import {
 	formatSubagentStatus,
 	formatSubagentStatusGroup,
-	formatSubagentStatusList,
 	inspectSubagentStatus,
 } from "./status.js";
 import {
@@ -2997,15 +2996,14 @@ export default function (pi: ExtensionAPI) {
 		? Object.freeze({ workspaceRoot: assignedWorkspaceRoot, selectedSkillFiles })
 		: undefined;
 
-	const agentDiscoveryFor = (
+	const agentCatalogFor = (
 		ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
-		scope: AgentScope,
-	): AgentDiscoveryResult => {
+	): SessionAgentCatalog => {
 		const previousCatalog = sessionAgentCatalog;
 		sessionAgentCatalog = resolveSessionAgentCatalog(previousCatalog, ctx);
 		if (sessionAgentCatalog !== previousCatalog)
 			refreshAgentTools(sessionAgentCatalog.agentNames);
-		return sessionAgentCatalog.byScope[scope];
+		return sessionAgentCatalog;
 	};
 
 	const updateStatus = () => {
@@ -3206,57 +3204,8 @@ export default function (pi: ExtensionAPI) {
 			if (currentSubagentIdentity().role !== "root")
 				throw new Error("Only the root agent can inspect subagent status.");
 			const processId = params.processId;
-			if (!processId) {
+			if (!processId)
 				throw new Error("processId is required; use /subagents to list tracked processes.");
-				if (params.sinceActivityVersion !== undefined)
-					throw new Error(
-						"processId is required when sinceActivityVersion is provided.",
-					);
-				const inspections = subagentRunManager
-					.list()
-					.map((run) => inspectTrackedRun(run));
-				const trackedIds = new Set(
-					inspections.map((inspection) => inspection.run.runId),
-				);
-				const brokerOnly = getSubagentTreeBroker()
-					.list()
-					.filter(
-						(run) =>
-							run.role !== "root" &&
-							!trackedIds.has(run.runId) &&
-							(run.state !== "settled" || Boolean(run.scopeLease)),
-					)
-					.map(({ runId, ...run }) => ({ processId: runId, ...run }));
-				const brokerText = brokerOnly.length
-					? `\nBroker-only boundaries:\n${brokerOnly
-							.map(
-								(run) =>
-									`${run.processId} | ${run.state}${run.pid ? ` | pid ${run.pid}` : ""}${run.scopeLease ? ` | scopes ${run.scopeLease.scopes.join(", ")}` : ""}`,
-							)
-							.join("\n")}`
-					: "";
-				return {
-					content: [
-						{
-							type: "text",
-							text: `${formatSubagentStatusList(inspections)}${brokerText}`,
-						},
-					],
-					details: {
-						runs: inspections.map((inspection) => ({
-								processId: inspection.run.runId,
-							status: inspection.run.status,
-							pid: inspection.run.pid,
-							processState: inspection.processState,
-							activityVersion: inspection.activityVersion,
-							lastActivityAt: inspection.lastActivityAt,
-							lastActivityKind: inspection.lastActivityKind,
-							quietForMs: inspection.quietForMs,
-						})),
-						brokerOnly,
-					},
-				};
-			}
 			const run = subagentRunManager.get(processId);
 			if (!run) {
 				const brokerRun = getSubagentTreeBroker()
@@ -3867,7 +3816,8 @@ export default function (pi: ExtensionAPI) {
 				(resolvedModel
 					? `${resolvedModel.provider}/${resolvedModel.id}`
 					: undefined);
-			const discovery = prepared?.discovery ?? agentDiscoveryFor(ctx, agentScope);
+			const sessionCatalog = prepared ? undefined : agentCatalogFor(ctx);
+			const discovery = prepared?.discovery ?? sessionCatalog!.byScope[agentScope];
 			const agents = discovery.agents;
 			if (containsMaxEffortSelection(params, agents) && process.env.PI_SUBAGENT_ALLOW_MAX !== "1") {
 				if (!ctx.hasUI) throw new Error("Subagent max effort requires explicit operator approval or PI_SUBAGENT_ALLOW_MAX=1.");
@@ -4499,20 +4449,27 @@ export default function (pi: ExtensionAPI) {
 				recordBoundaryRejection(error);
 				throw error;
 			}
-			const availability = diagnoseAgentAvailability(
-				[...requestedAgentNames],
-				agents,
-				agentScope,
-			);
-			if (availability) {
-				complete({
-					content: [],
-					details: makeDetails(originalMode)([]),
-					isError: true,
-				});
-				const error = new Error(formatAgentAvailabilityDiagnostic(availability));
-				recordBoundaryRejection(error);
-				throw error;
+			if (!prepared) {
+				const availability = diagnoseAgentAvailability(
+					[...requestedAgentNames],
+					agents,
+					agentScope,
+					{
+						user: sessionCatalog!.byScope.user.agents,
+						project: sessionCatalog!.byScope.project.agents,
+						both: sessionCatalog!.byScope.both.agents,
+					},
+				);
+				if (availability) {
+					complete({
+						content: [],
+						details: makeDetails(originalMode)([]),
+						isError: true,
+					});
+					const error = new Error(formatAgentAvailabilityDiagnostic(availability));
+					recordBoundaryRejection(error);
+					throw error;
+				}
 			}
 
 			if (subscriptionRoot && hasContinue)
@@ -5777,14 +5734,6 @@ export default function (pi: ExtensionAPI) {
 			ctx: ExtensionContext,
 		): Promise<AgentToolResult<SubagentDetails>> => {
 			const request = { kind, ...(params as Record<string, unknown>) } as unknown as SubagentExecutionRequest;
-			const catalog = agentDiscoveryFor(ctx, request.agentScope ?? "user");
-			const availability = diagnoseAgentAvailability(
-				request.items.map((item) => item.agent),
-				catalog.agents,
-				request.agentScope ?? "user",
-			);
-			if (availability)
-				throw new Error(formatAgentAvailabilityDiagnostic(availability));
 			let prepared: PreparedSubagentExecution;
 			try {
 				prepared = prepareSubagentExecution(request, {

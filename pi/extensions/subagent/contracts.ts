@@ -6,7 +6,9 @@ import {
 	type TaskRecordV1,
 } from "../../lib/task-registry.js";
 import {
+	diagnoseAgentAvailability,
 	discoverAgents,
+	formatAgentAvailabilityDiagnostic,
 	withDispatchSkills,
 	type AgentConfig,
 	type AgentDiscoveryResult,
@@ -570,9 +572,31 @@ export function prepareSubagentExecution(
 	const agentScope = request.agentScope ?? options.agentScope ?? "user";
 	// Project-local agent files are governed by the selected workspace trust
 	// decision, not by the caller's prior catalog or requested scope alone.
-	const discovery = projectTrusted
-		? discoverAgents(workspaceRoot, agentScope)
-		: discoverAgents(workspaceRoot, "user");
+	const userDiscovery = discoverAgents(workspaceRoot, "user");
+	const projectDiscovery = projectTrusted
+		? discoverAgents(workspaceRoot, "project")
+		: { agents: [], projectAgentsDir: userDiscovery.projectAgentsDir };
+	const bothDiscovery = projectTrusted
+		? discoverAgents(workspaceRoot, "both")
+		: userDiscovery;
+	const discoveries: Record<AgentScope, AgentDiscoveryResult> = {
+		user: userDiscovery,
+		project: projectDiscovery,
+		both: bothDiscovery,
+	};
+	const discovery = projectTrusted ? discoveries[agentScope] : userDiscovery;
+	const availability = diagnoseAgentAvailability(
+		request.items.map((item) => item.agent),
+		discovery.agents,
+		agentScope,
+		{
+			user: userDiscovery.agents,
+			project: projectDiscovery.agents,
+			both: bothDiscovery.agents,
+		},
+	);
+	if (availability)
+		throw new Error(formatAgentAvailabilityDiagnostic(availability));
 	const policy = policyFor(request.kind, discovery.agents[0] ?? {
 		name: "",
 		description: "",

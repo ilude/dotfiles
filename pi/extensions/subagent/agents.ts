@@ -44,20 +44,36 @@ export interface AgentAvailabilityDiagnostic {
 	readonly rejected: readonly string[];
 	readonly agentScope: AgentScope;
 	readonly alternatives: readonly string[];
+	readonly scopeHints: readonly {
+		readonly name: string;
+		readonly scopes: readonly AgentScope[];
+	}[];
 }
+
+const agentScopes: readonly AgentScope[] = ["user", "project", "both"];
 
 export function diagnoseAgentAvailability(
 	agentNames: readonly string[],
 	agents: readonly AgentConfig[],
 	agentScope: AgentScope,
+	agentsByScope?: Readonly<Record<AgentScope, readonly AgentConfig[]>>,
 ): AgentAvailabilityDiagnostic | undefined {
 	const available = new Set(agents.map((agent) => agent.name));
 	const rejected = [...new Set(agentNames)].filter((name) => !available.has(name));
 	if (rejected.length === 0) return undefined;
+	const scopeHints = agentsByScope
+		? rejected.flatMap((name) => {
+				const scopes = agentScopes.filter((scope) =>
+					agentsByScope[scope].some((agent) => agent.name === name),
+				);
+				return scopes.length > 0 ? [{ name, scopes }] : [];
+			})
+		: [];
 	return {
 		rejected,
 		agentScope,
 		alternatives: agents.map((agent) => agent.name).sort(),
+		scopeHints,
 	};
 }
 
@@ -66,7 +82,22 @@ export function formatAgentAvailabilityDiagnostic(
 ): string {
 	const rejected = diagnostic.rejected.map((name) => `"${name}"`).join(", ");
 	const alternatives = diagnostic.alternatives.map((name) => `"${name}"`).join(", ") || "none";
-	return `Unknown agent: ${rejected}. Available agents: ${alternatives}. Rejected agent selection: ${rejected} for agentScope "${diagnostic.agentScope}". Effective agentScope "${diagnostic.agentScope}". Usable alternatives: ${alternatives}.`;
+	const scopeHints = diagnostic.scopeHints
+		.map(({ name, scopes }) => {
+			const choices = scopes.map((scope) => `"${scope}"`);
+			const scopeText =
+				choices.length === 1
+					? choices[0]
+					: `${choices.slice(0, -1).join(", ")} or ${choices.at(-1)}`;
+			return `"${name}" is available with agentScope ${scopeText}.`;
+		})
+		.join(" ");
+	return [
+		`Unknown agent: ${rejected}. Available agents: ${alternatives}. Rejected agent selection: ${rejected} for agentScope "${diagnostic.agentScope}". Effective agentScope "${diagnostic.agentScope}". Usable alternatives: ${alternatives}.`,
+		scopeHints,
+	]
+		.filter(Boolean)
+		.join(" ");
 }
 
 /** Add the current catalog choices to every model-facing agent property. */

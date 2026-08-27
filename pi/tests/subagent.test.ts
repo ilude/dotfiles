@@ -593,6 +593,37 @@ Execute workflow items with admitted tools only.
 				),
 			).rejects.toThrow(/Unknown agent.*Available agents:.*builder/);
 		}
+		const wrongScope = '"builder" is available with agentScope "user" or "both".';
+		const trustedContext = createMockCtx({
+			cwd: tmpDir,
+			isProjectTrusted: () => true,
+		});
+		await expect(
+			pi._getTool("subagent_write")!.execute(
+				"wrong-scope-modern",
+				{
+					items: [{ agent: "builder", task: "Should reject before spawn" }],
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				trustedContext,
+			),
+		).rejects.toThrow(wrongScope);
+		await expect(
+			tool.execute(
+				"wrong-scope-compatibility",
+				{
+					agent: "builder",
+					task: "Should reject before spawn",
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				trustedContext,
+			),
+		).rejects.toThrow(wrongScope);
+		expect(spawnMock).not.toHaveBeenCalled();
 	});
 
 	it("restores saved continuation authority and defaults unknown sessions to leaf", async () => {
