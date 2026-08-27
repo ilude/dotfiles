@@ -29,13 +29,13 @@ Use this order:
 
 When a skill has steps, keep them easy to find rather than burying them in reference. Keep a concept's rules and caveats together, and do not disclose material that every branch needs.
 
-Every step ends with an observable completion criterion: the artifact, state, or check that proves it is done. Make the criterion clear and exhaustive, not an intent such as "understand" or "review." Sharpen the criterion before splitting the document to address premature completion.
+For each step, state the observable completion criterion: the artifact, state, or check that proves it is done. Make the criterion clear and exhaustive, not an intent such as "understand" or "review." Sharpen the criterion before splitting the document to address premature completion.
 
 ## Source of Truth and Pruning
 
 Treat the environment as authoritative: inspect package scripts, configuration, directory layout, and `--help` output instead of restating facts that can be looked up there. Document conventions, rationale, and gotchas the environment cannot show. Keep each meaning in one authoritative location.
 
-Test instructions behaviorally. If removing a sentence does not change the observed actions or result on a representative task, it is a no-op; delete it rather than rewording it. When uncertain, compare runs with and without the instruction and check behavior, not whether the words are present.
+Test instructions behaviorally. If removing a sentence does not change the observed actions or result on a representative task, it is a no-op; delete it rather than rewording it. When uncertain, preserve the rule and flag its exact text and keep/clean consequences for operator decision rather than using matched model output as proof.
 
 ## Frontmatter Rules
 

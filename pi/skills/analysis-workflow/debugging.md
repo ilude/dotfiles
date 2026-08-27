@@ -8,23 +8,18 @@
 
 **From Andreas Zeller's "Why Programs Fail"**: Debugging is not a black art -- it's a systematic discipline that follows the scientific method.
 
-Research shows **hypothesis-driven debugging** produces:
-- **5x improvement** in success rate for fixing defects
-- **3x reduction** in time to debug
-- Better root-cause discovery vs. symptom masking
-
-> **The key insight**: Expert debuggers form explicit hypotheses and test them systematically. Novices try random permutations.
+Form explicit, testable hypotheses rather than trying random permutations.
 
 ---
 
 ## Hypothesis Validation
 
-When the user proposes a debugging hypothesis with hedged language -- "I think", "seems like", "probably", "maybe", "I suspect", "might be", "could be", "looks like", "pretty sure" -- generate 2-3 alternative causes *independently* before evaluating their theory.
+When the user proposes a debugging hypothesis with hedged language, generate independent plausible causes before evaluating that theory.
 
 **Rule (from the active instruction ruleset's user-certainty calibration):** if the user is not sure, the agent must not be sure.
 
 Procedure:
-1. List 2-3 candidate causes that fit the observed evidence, generated without reference to the user's hypothesis.
+1. List plausible causes that fit the observed evidence, generated without reference to the user's hypothesis.
 2. Score each against available evidence (logs, types, recent changes, test output).
 3. *Then* evaluate the user's hypothesis as one of the candidates, with the same scoring rigor.
 4. Report the ranked list with confidence tiers (high / medium / low). If the user's hypothesis ranks below another candidate, say so.
@@ -39,11 +34,11 @@ Skip this when the user is *not* hedging and is reporting an observed fact ("the
 REPRODUCE -> ISOLATE -> HYPOTHESIZE -> TEST -> FIX -> VERIFY
 ```
 
-### The 10-Minute Rule
+### Investigation boundary
 
-If you've spent **10 minutes** on ad-hoc inspection without progress:
-1. Stop
-2. Document what you know
+If ad-hoc inspection stops producing new evidence:
+1. Record what is known
+2. State the leading hypotheses and disconfirming evidence
 3. Switch to explicit hypothesis testing
 
 ---
@@ -117,14 +112,14 @@ This counters confirmation bias -- the most common bias in debugging.
 
 ## Stop Rules
 
-### After 2 Failed Attempts: STOP
+### Change-of-approach rule
 
-If the same error persists after two fix attempts:
+If the same error persists after focused attempts:
 
-1. **Acknowledge**: "This approach isn't working"
-2. **Step back**: Re-read the error message from scratch
-3. **Research**: Web search for the exact error
-4. **Ask**: If still stuck, ask user for more context
+1. Re-read the complete error and current state.
+2. State a different hypothesis before changing the approach.
+3. Research the exact error when local evidence is insufficient.
+4. Ask for context only when the remaining decision cannot be established from available evidence.
 
 ### Random Changes = Wrong Path
 
@@ -197,13 +192,12 @@ Categorize potential causes:
 
 ## TL;DR
 
-1. **10-minute rule**: Switch to systematic approach if ad-hoc fails quickly
-2. **Reproduce first**: Can't verify fix without reliable reproduction
-3. **Isolate with binary search**: Halve the problem space systematically
-4. **One hypothesis at a time**: Test explicitly, record results
-5. **Consider the opposite**: What would I see if my hypothesis is wrong?
-6. **Stop after 2 failed attempts**: Step back and research
-7. **Read the FULL error message**: Root cause is often buried
+1. **Reproduce first**: A fix needs a representative failing case
+2. **Isolate**: Narrow the boundary and eliminate variables
+3. **Test hypotheses**: Record evidence for and against each one
+4. **Consider the opposite**: Identify what would disprove the leading explanation
+5. **Change approach when evidence stalls**: Re-read the complete failure and reassess
+6. **Read the full error message**: The cause may be below the first line
 
 ---
 

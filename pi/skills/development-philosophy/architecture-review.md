@@ -4,7 +4,7 @@ Use this review to find a small number of evidence-backed improvements. It repor
 
 ## Scope
 
-Start with the module, subsystem, or pain point named by the user. Otherwise inspect recent change and defect hot spots before widening the review. Give little weight to dormant code unless it blocks current work.
+Start with the module, subsystem, or pain point named by the user. Otherwise inspect recent change and defect hot spots before widening the review. Give little weight to dormant code unless it blocks current work. Apply `domain-modeling` only when demonstrated business or operational complexity makes the model clearer; do not activate it for isolated implementation mechanics.
 
 Read the relevant interfaces, call paths, tests, recent changes, domain concepts, and recorded decisions. Do not scan the repository uniformly or recommend a refactor from file size, line count, or dependency count alone.
 
@@ -16,7 +16,7 @@ Read the relevant interfaces, call paths, tests, recent changes, domain concepts
 - A routine change spreads across many callers.
 - Coupled modules leak responsibilities across their interface.
 - Tests must reach past the stable interface to exercise behavior.
-- A seam exists without a real source of variation, ownership, deployment, trust, or external dependency.
+- A seam exists without a real source of variation, repository responsibility, deployment, trust, or external dependency.
 
 Treat experienced change and test friction as stronger evidence than theoretical neatness.
 
@@ -29,7 +29,7 @@ Use these as questions, not laws:
 - **Test surface:** Can callers and tests exercise behavior through the same stable interface?
 - **Locality:** Do related behavior, invariants, change, and verification stay together?
 - **Variation:** Does a seam correspond to something that actually varies or crosses an ownership or external boundary?
-- **Domain ownership:** Does the proposed module align with the language, lifecycle, invariants, and bounded contexts identified by `domain-modeling`?
+- **Domain complexity:** Does the proposed model simplify meaningful identity or lifecycle, rules spanning operations, related state requiring consistent transitions, conflicting domain terminology, or bounded-context relationships? If not, prefer ordinary functions, types, modules, or database constraints.
 
 Adapter count can support a seam decision but does not decide it. Preserve focused lower-level tests when they still provide distinct confidence, fault localization, or a meaningful independent contract.
 
@@ -55,7 +55,7 @@ Use a diagram or HTML report only when the relationships are hard to explain in 
 
 ## Handoff
 
-Stop after presenting the candidates and a top recommendation. If the user selects one:
+Stop after presenting the candidates and a top recommendation. If the user selects one, name the complexity it simplifies before implementing:
 
 - Apply `domain-modeling` when language, ownership, lifecycle, or invariants are unresolved.
 - Read [Codebase design](codebase-design.md) when the interface, seam placement, or dependency strategy is unresolved.

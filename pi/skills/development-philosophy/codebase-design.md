@@ -2,6 +2,8 @@
 
 Use this reference after a module or architecture candidate has been selected and the unresolved question is its responsibility, interface, seam placement, or dependency strategy.
 
+Design hierarchy: delete unnecessary choices; prefer direct code; enforce consequential invariants at the concrete state-transition or mutation boundary; provide overridable defaults; preserve contextual judgment; add policy machinery only after demonstrated failure; retire machinery that no longer changes outcomes.
+
 ## Working terms
 
 - **Module:** Code and behavior presented through one or more coherent interfaces. Its scale can be a function, class, package, process, or cross-layer slice.
@@ -15,17 +17,17 @@ Use established repository and domain terms when they are more precise. Distingu
 
 ## Design process
 
-1. State the behavior and responsibility the module owns. Apply `domain-modeling` first when its language, lifecycle, invariants, or bounded-context ownership is unclear.
+1. State the behavior and responsibility the module owns. Apply `domain-modeling` only when demonstrated business or operational complexity makes its language, identity, lifecycle, rules, or bounded-context relationships unclear.
 2. List what each caller must know. A short method signature can still hide a wide, shallow interface when callers must understand an unwritten protocol.
 3. Identify state, invariants, side effects, and failure behavior that should stay local to the responsibility.
-4. Place seams only where something meaningfully varies or crosses ownership, process, deployment, trust, persistence, or an external contract.
+4. Place seams only where something meaningfully varies or crosses a repository responsibility, process, deployment, trust, persistence, or external contract boundary.
 5. Classify dependencies and choose the simplest suitable treatment:
    - In-process behavior may need no adapter.
    - A real local substitute may be better than a mock.
    - An owned remote system needs an explicit transport contract.
    - An external system needs a controlled adapter and contract validation.
 6. When the choice is consequential and materially different interfaces are plausible, apply `brainstorming` to compare alternatives. Do not generate variants that differ only in naming or method arrangement.
-7. Compare designs by depth, locality, domain coherence, caller complexity, failure behavior, migration cost, and testability.
+7. Compare designs by depth, locality, domain coherence, caller complexity, failure behavior, migration cost, and testability. Do not use DDD terms for low-level query execution, resource lifetime, ordinary validation, error reporting, module placement, or technical concurrency unless they directly express a larger domain model.
 8. Select the smallest interface that supports the known behavior without speculative extension points.
 
 A module may expose multiple interfaces when they serve coherent audiences or purposes, such as commands, queries, administration, events, or migration compatibility.

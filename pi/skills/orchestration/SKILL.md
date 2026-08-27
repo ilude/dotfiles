@@ -12,7 +12,7 @@ description: "Coordinate bounded root-to-coordinator-to-leaf work when independe
 - Leaves and depth-two children cannot delegate.
 - State each leaf's deliverable, allowed changes, capabilities, evidence, and stop condition.
 - Prefer one coordinator per independently verifiable work package. The root retains program-level decomposition, dependency management, integration, and closure.
-- Model and topology guidance is advisory: use Luna low for tool-heavy inspection and summarization, Sol low or Luna high for bounded planning, Sol low for coordinators and subagent team managers, Luna medium or high for implementation, and Sol low for review. If selection is uncertain, compare bounded read-only plans before assigning one modifying owner.
+- Topology and assignment guidance is advisory rather than a gate. Use bounded read-only comparison when the selected topology or modifying owner is uncertain, and record meaningful overrides for later review.
 - Before fan-out over a shared unproven dependency, run one representative leaf and expand only if it succeeds.
 
 ## Scheduler

@@ -25,7 +25,7 @@ Report only demonstrably reachable issues mapped to requested acceptance, a repo
 6. Classify severity and confidence.
 7. Provide exact evidence and required fix.
 
-A review is one terminal pass. Do not repeat a same-boundary review or review a repair unless requested acceptance, an invariant, or safety explicitly requires it.
+Review the selected boundary to a clear stopping condition. Do not repeat the same boundary unless acceptance, an invariant, or safety explicitly requires another pass.
 
 ## Finding Format
 

@@ -1,48 +1,25 @@
 ---
 name: typescript
-description: TypeScript/JavaScript, .ts, .tsx, .js, .jsx, package.json, Bun, Biome, Zod, or code patterns.
+description: "TypeScript or JavaScript files, package manifests, workspaces, module boundaries, or configured test/build behavior. Use for TypeScript-specific runtime and package traps. Not for general repository policy."
 ---
 
-# TypeScript/JavaScript Projects Workflow
+# TypeScript and JavaScript
 
-Compact index for TypeScript and JavaScript work. Load linked files only when the task needs that framework or deeper examples.
+Use this card when the task changes TypeScript, JavaScript, or its package configuration.
 
-## Project-specific rules
+## Activation and routing
 
-- Prefer the existing package manager from the repo lockfile/scripts.
-- In this dotfiles repo, prefer `bun` for general JS/TS unless a package already uses `pnpm-lock.yaml` or Bun cannot resolve the package graph.
-- Never create or commit `package-lock.json`; do not use `npm` unless the user explicitly asks for npm-specific troubleshooting.
-- Preserve module style and formatter already used by the package; do not reformat unrelated code.
-- Before adding or resolving dependencies, check the package-manager hardening guidance in
-  `reference.md`; do not bypass lifecycle-script, build-script, or minimum-release-age
-  protections to make installs pass.
+1. Identify the owning package root from the nearest manifest, lockfile, workspace file, scripts, and compiler configuration.
+2. Read [reference.md](reference.md) for package, lifecycle, module, export, declaration, schema, and type traps.
+3. Read [testing.md](testing.md) when the package's configured test runner is involved; load framework references only when that framework is present.
+4. Use the package's configured manager, scripts, formatter, linter, compiler, and test runner. Do not infer universal tooling from this skill.
 
-## Practical steps
+Completion evidence: the package root and configured commands are identified before editing, and the focused package check passes or its failure is reported.
 
-1. Identify the package root by lockfile and nearest `package.json`.
-2. Read package scripts before selecting commands.
-3. If adding dependencies, update only the owning package-manager files.
-4. For test work, read the shared [testing skill](../testing/SKILL.md) and use [testing.md](testing.md) for TypeScript and JavaScript runner details.
+## Recurring traps
 
-## Quick validation
-
-These are available commands, not a required sequence. Install only when dependencies are missing or changed, and choose the smallest checks that exercise the changed contract.
-
-| Need | Bun | pnpm |
-|---|---|---|
-| Install dependencies | `bun install --frozen-lockfile` | `pnpm install --frozen-lockfile` |
-| Typecheck | `bun run typecheck` | `pnpm run typecheck` |
-| Affected tests | `bun test <filter>` | `pnpm test <filter>` |
-
-## Anti-patterns
-
-- Switching package managers or regenerating lockfiles outside the owning package.
-- Adding runtime dependencies for problems already solved by local utilities or standard APIs.
-- Rewriting module format, import style, or framework structure as drive-by cleanup.
-- Treating schemas, type definitions, and tests as interchangeable; update the artifact that enforces the behavior.
-
-## Optional references
-
-- [reference.md](reference.md) - detailed guidance, examples, and templates.
-- [testing.md](testing.md) - TS/JS testing patterns.
-- [react.md](react.md), [nextjs.md](nextjs.md), [css.md](css.md) - framework-specific guidance.
+- Discover the package root and workspace before changing dependencies. Choose runtime versus development dependency from how the package is consumed.
+- Check lifecycle scripts and native-build requirements before installing or changing a dependency; preserve the project's supply-chain controls.
+- Preserve the package's ESM/CJS mode, export paths, and runtime resolution. Test the actual entry path when exports or module format changes.
+- Check test-script argument forwarding before passing filters or extra options. Generated declarations may require the configured build prerequisite before type checking.
+- Distinguish runtime schemas, static types, and tests: each proves a different contract.

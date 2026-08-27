@@ -1,8 +1,6 @@
 # AGENTS.md
 
-Repository-wide rules for coding agents. This cross-platform dotfiles repository supports Linux, Windows PowerShell, Git Bash/MSYS2, and WSL; uses Dotbot plus project submodules under `modules/`; and converges terminals on zsh.
-
-Read this file first. More specific instructions for the active client or directory take precedence without changing this file's repository-wide invariants:
+Repository-wide rules for this cross-platform dotfiles repository: Linux, Windows PowerShell, Git Bash/MSYS2, and WSL; Dotbot and project submodules under `modules/`; terminals converging on zsh. Read this file first. More specific active-client or directory instructions take precedence without changing these repository-wide invariants:
 
 - Claude Code: `CLAUDE.md`
 - OpenCode/Codex: `opencode/AGENTS.md`
@@ -70,8 +68,8 @@ git submodule update --init --recursive
 - Dotbot link defaults rely on `force: true`, `relink: true`, and `create: true`.
 - In Onramp/Caddy stack variables, a service `port` is the container/service port reachable on the Docker Compose network. Do not reinterpret it as host publishing, split it into host/internal ports, or assume a host bind unless explicitly requested.
 - Use only tools, workflows, permissions, and memory/task systems available in the active harness. If a capability is absent, adapt instead of assuming or naming it.
-- Use deterministic code/tooling for routing, retries, transforms, status handling, install detection, and validation. Reserve model judgment for synthesis, review, classification, and ambiguous language.
-- Do not add try-catch wrappers, guard flags, or fallback logic unless requested. Solve the domain problem directly; missing data or dependencies must fail explicitly, never through silent defaults. Remove redundant paths rather than wrapping old logic in fallback flags.
+- Use deterministic mechanisms when they enforce a known invariant or make an external contract observable; preserve contextual judgment where no such invariant exists.
+- Missing data and dependencies must fail explicitly. Do not hide them with broad exception wrappers, guard flags, or fallback paths; remove redundant paths rather than preserving them behind switches.
 - Keep planning proportional: brief prose for complex work, none for simple work, and clarification only when ambiguity changes correctness or direction.
 - For lists or batches, track every item to completed, explicitly skipped with reason, or blocked before finalizing.
 - Stop research when the core question is answered and further retrieval is unlikely to change the conclusion; be exhaustive only when requested.
