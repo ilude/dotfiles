@@ -7,7 +7,7 @@ description: "Domain-Driven Design (DDD) with Eric Evans concepts: ubiquitous la
 
 ## Boundary
 
-Use Domain-Driven Design as a way to reduce domain complexity and align software with the people who understand the domain. Use the concepts as thinking tools, not as a required process, document set, architecture, or vocabulary test.
+Use Domain-Driven Design only when demonstrated business or operational complexity would make the solution clearer: meaningful identity or lifecycle, rules spanning operations, related state requiring consistent transitions, conflicting domain terminology, or bounded-context relationships. Use the concepts as thinking tools, not as a required process, document set, architecture, or vocabulary test. Do not use them for low-level query execution, resource lifetime, ordinary validation, error reporting, module placement, or technical concurrency unless those mechanics directly express a larger domain model. Each introduced concept must name the complexity it simplifies; otherwise prefer ordinary functions, types, modules, or database constraints.
 
 Do not require `CONTEXT.md`, ADRs, event storming, repositories, tactical patterns, or artifact writes. Suggest or create an artifact only when the user requests it or another workflow owns it.
 

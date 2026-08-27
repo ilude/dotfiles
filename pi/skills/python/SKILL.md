@@ -1,48 +1,25 @@
 ---
 name: python
-description: Python, pyproject.toml, uv, pip, pytest, Pydantic, type hints, or Python patterns.
+description: "Python files, pyproject.toml, Python packaging, pytest, or Python-specific runtime behavior. Use for Python syntax, imports, exceptions, resource cleanup, and compatibility traps. Not for general repository policy."
 ---
 
-# Python Projects Workflow
+# Python
 
-Compact index for Python work. Load linked files only for framework-specific details or examples.
+Use this card when the task changes Python or its project configuration.
 
-## Project-specific rules
+## Activation and routing
 
-- This repo uses `uv`, `pytest`, and `ruff`; Python floor is 3.9 from `pyproject.toml`.
-- Prefer explicit exceptions when required data/dependencies are missing; do not add silent fallback logic.
-- Keep scripts idempotent and LF-only.
-- Do not introduce broad try/except wrappers or guard flags unless requested.
-- Before resolving new dependencies, apply the uv supply-chain hardening settings from `reference.md`; prefer locked installs and avoid ad-hoc `uv pip install`.
-- In Bash commands, use `python`, not `python3`. Run script paths directly; use `python -m` only for modules.
+1. Identify the owning project from its nearest `pyproject.toml`, lockfile, scripts, and configuration.
+2. Read [reference.md](reference.md) for compatibility, exception, cleanup, mutable-default, and import/module traps.
+3. Read [testing.md](testing.md) when pytest or another configured test framework is involved; use framework references only when the project uses that framework.
+4. Use the project's configured package manager, runner, formatter, linter, and type checker. Do not infer them from this skill.
 
-## Practical steps
+Completion evidence: the owning project configuration and the applicable reference sections are identified before editing, and the focused project check passes or its failure is reported.
 
-1. Identify the Python project root and read `pyproject.toml` and relevant tests.
-2. Use `uv` for dependency and command execution when the project supports it.
-3. For test work, read the shared [testing skill](../testing/SKILL.md) and use [testing.md](testing.md) for pytest details.
+## Recurring traps
 
-## Quick validation
-
-These are available commands, not a required sequence. Choose path-focused checks where shown; use aggregate targets only when shared impact or repository policy requires them.
-
-| Purpose | Commands |
-|---|---|
-| Dotfiles quick tests | `make test-quick` |
-| Python tests | `make test-pytest` or `uv run pytest <path>` |
-| Python lint | `make lint-python` or `uv run ruff check <path>` |
-| Format check/fix | `uv run ruff format --check <path>` / `uv run ruff format <path>` |
-| Full repo check | `make check` |
-
-## Anti-patterns
-
-- Using `pip`/global installs when `uv` is available in the repo workflow.
-- Adding comments that restate obvious Python syntax instead of explaining domain intent.
-- Broad exception swallowing, hidden defaults, or fallback behavior that masks missing data.
-- Changing public behavior without focused regression tests.
-
-## Optional references
-
-- [reference.md](reference.md) - detailed guidance, examples, and templates.
-- [testing.md](testing.md) - pytest patterns.
-- [fastapi.md](fastapi.md), [flask.md](flask.md), [django.md](django.md) - framework guidance.
+- Check the supported Python versions before using syntax or library APIs; annotations and imports can change runtime compatibility.
+- Catch and raise specific exceptions only where the boundary requires it. Preserve required exception details and do not hide missing data or dependencies.
+- Close files, processes, sockets, and other owned resources with context managers or `finally`-equivalent cleanup.
+- Inspect mutable defaults, import-time side effects, circular imports, package/module name collisions, and module execution semantics when they are relevant.
+- Keep tests focused on observable behavior and use the configured framework conditionally rather than assuming pytest.

@@ -5,6 +5,38 @@ source: https://www.youtube.com/watch?v=Jf54k7tFeEc
 
 # Eliminating Failure Categories Through Design
 
+## Routing policy case study
+
+This bounded audit records observed routing use without treating a route as a cause of quality.
+
+### Reproducible method and inputs
+
+- Reader: `.tmp/routing-policy-audit.ts`, run with Bun from the repository root. It reads canonical JSONL files directly and never writes, refreshes, or changes analytics persistence.
+- Metrics root: `C:\Users\mglenn\.pi\agent\logs` (the resolved default; `PI_METRICS_DIR` overrides it when set).
+- UTC interval: `2026-08-01T00:00:00.000Z` through `2026-08-27T21:55:00.000Z`, inclusive. The end is the task datetime `2026-08-27T17:55:00-04:00` converted to UTC.
+- Selected file identifiers: `metrics-2026-08-01.jsonl`, `metrics-2026-08-02.jsonl`, `metrics-2026-08-03.jsonl`, `metrics-2026-08-10.jsonl`, `metrics-2026-08-11.jsonl`, `metrics-2026-08-12.jsonl`, `metrics-2026-08-13.jsonl`, `metrics-2026-08-14.jsonl`, `metrics-2026-08-15.jsonl`, `metrics-2026-08-16.jsonl`, `metrics-2026-08-17.jsonl`, `metrics-2026-08-18.jsonl`, `metrics-2026-08-19.jsonl`, `metrics-2026-08-20.jsonl`, `metrics-2026-08-21.jsonl`, `metrics-2026-08-22.jsonl`, `metrics-2026-08-23.jsonl`, `metrics-2026-08-24.jsonl`, `metrics-2026-08-25.jsonl`, `metrics-2026-08-26.jsonl`, and `metrics-2026-08-27.jsonl`. The report records each file's byte bound so later checks read the same input prefix even if the active daily file grows.
+- Reader bounds: at most 367 files, 8,388,608 bytes per non-empty line, 268,435,456 input bytes, 10,000 malformed records, and 1,000,000 records. Records are filtered by parsed envelope timestamp and deduplicated by envelope `id`; only `orchestration_*` events are analyzed.
+
+### Definitions and observed totals
+
+- Event counts: 3,426 `orchestration_interaction` and 1,343 `orchestration_run` records; 1,986 worker rows.
+- Diagnostics: 21 files, 203,978 records read, 75,826,116 input bytes, and zero malformed, oversized, unsupported, duplicate, or truncated records. No records were skipped by the bounded reader.
+- Policy observations are worker-row counts: policy versions `subagent-routing-v1` 193 and missing 1,793; task classes coordination 26, exploration 38, implementation 81, planning 8, review 31, validation 9, and missing 1,793. Preferred/accepted/mismatch classifications were 97/36/60, with 1,793 missing. Topology was 193 matches and 1,793 unavailable.
+- Experiment observations were 10 `codex-routing-outcomes-v1` assignments: arms `luna-high` 2, `sol-low` 5, and historical `terra-baseline` 3. Structural validation availability was 10 `unavailable`; no quality result is inferred. Completion statuses were runs completed 1,142, failed 129, cancelled 60, and rejected 12; worker statuses were completed 1,732, failed 180, and cancelled 74.
+- Models and effort values are reported in `.tmp/routing-policy-audit.json`. Known `pi-usage` cost summed across parent and worker usage records was 8,467.17915134101 USD across 5,266 records; 146 usage records had unavailable cost and were not treated as zero. Run duration summed to 1,248,883,859 ms across 1,343 records; child-work duration summed to 3,734,415,918 ms across 1,343 records.
+- Aggregate definitions: status counts count the stored run or worker label; cost sums only numeric `costUsd` where `costSource` is `pi-usage`; duration sums numeric `durationMs` fields; preferred/accepted/mismatch and topology counts use the stored advisory fields; assignments and arms use stored experiment fields; missing means the field was absent. No join uses timestamp proximity, agent name, or model name.
+
+### Evidence limits and dispositions
+
+These metadata records contain no prompts, outputs, user acceptance, factual verification, or counterfactual cohorts. Status, cost, duration, and structural validation are observational only and do not establish causal quality, route superiority, or process success. The audit therefore does not modify analytics persistence or `codex-routing-outcomes-v1`.
+
+Every active responsibility in `pi/lib/model-routing.ts` has a disposition:
+
+- **Retain:** explicit fable/foreman model resolution; exact provider/model compatibility; same-provider and same-family dynamic selection; `ModelSize` including `small`/`medium` aliases; mismatch classification; topology classification; premium Codex detection; commit-planning resolution; current-model hints; and provider/model string parsing. These have active interfaces or preserve compatibility and safety. Mismatch is descriptive, not a failure gate.
+- **Evidence insufficient:** effort defaults, the task-class advisory matrix, and any quality interpretation of advisory mismatches or topology. These are defaults or heuristics for which the bounded metadata cannot show quality or counterfactual value; no behavioral simplification is authorized.
+- **Evidence insufficient, preserve unchanged:** `codex-routing-outcomes-v1`, including its assignments, arms, and validation fields. This audit cannot answer its stated decision, so the experiment remains unchanged for later operator reconsideration.
+- **Simplify:** none. **Remove:** none. There is no evidence-backed basis to delete or simplify an active routing responsibility.
+
 ## Why this matters
 
 Recurring mistakes are often treated as documentation, review, or testing problems. A stronger response is to change the system so the invalid state, operation, sequence, or authority is absent. The objective is not maximum enforcement. It is a system whose simplest path naturally produces valid outcomes and requires fewer independent decisions.

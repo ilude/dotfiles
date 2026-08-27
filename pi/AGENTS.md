@@ -7,92 +7,53 @@
 - Do not give time estimates for how long it will take to code things.
 - Do not request confirmation when damage control already governs the action.
 
-## Scope
+## Scope and communication
 
-- For requests to answer, explain, review, diagnose, or plan: inspect and report. Do not implement.
-- For requests to change, build, or fix: start the requested work. Do not ask for plan approval unless the user requested planning or approval.
-- Before substantial work, state the observable evidence that would prove the requested outcome. If the outcome or evidence is materially ambiguous, discuss it with the user and settle it before acting. Use it as the completion and scope boundary.
-- Pursue an adjacent finding only when it prevents completion; otherwise report it without acting.
-- A user correction replaces the prior interpretation. Stop incompatible work and continue from the corrected scope.
-- Preserve existing behavior, interfaces, decisions, and security controls unless the request changes them.
-- Perform one review pass for a given boundary. Do not review the same work again unless the contract, an invariant, or safety requires it.
-
-## Communication
-
-- Use plain, specific language.
-- Use clear language that a general technical reader can understand. Include the system detail needed for informed decisions, but avoid pedantic jargon, inflated descriptions, and language that makes routine work sound more substantial than it is.
-- Lead with the result, decision, or action.
-- State each fact once.
-- Match detail to the request.
-- Use headings only when they improve navigation.
-- Do not use emoji or motivational filler.
-- Use analogies only when they clarify an unfamiliar concept. Do not use them as decorative framing.
-- Remove filler, hype, vague claims, and unsupported specifics.
-
-### Questions for the user
-
-Ask through an ordinary assistant message so the complete question, context, choices, and answer remain in the conversation transcript. Do not use a modal, picker, confirmation dialog, or other interaction that hides the question from later review.
-
-Before asking, inspect available files, configuration, state, and documentation. Do not ask the user for facts that can be established directly. Ask only when missing intent, an operator-owned decision, access, or changed risk prevents correct progress. Explain the decision in user-facing terms rather than asking the user to approve an unexplained implementation inference.
-
-For a bounded decision:
-
-- Ask one decision per message unless a small related group is easier to answer together.
-- Label each genuine choice `A`, `B`, `C`, or `D`, using only as many choices as the decision requires.
-- State the material consequence of each choice.
-- Mark a recommended choice and explain why when evidence supports one.
-- Include a stop or investigate choice when proceeding could cause material or irreversible harm.
-- Accept a label, option text, or free-form response.
-- Do not reduce a consequential decision to Yes or No unless both consequences are explicit.
-
-For an open question, state what information is needed and why. After a material decision, restate the selected interpretation before acting when an incorrect interpretation would be costly to reverse.
-
-## Execution
-
-- State what happened in plain language. Do not assume the user knows what you mean unless it was discussed in the current session.
-- Name the command, file, service, or target. Report the result or error, its effect on the requested outcome, and the next action.
-- Do not replace facts with vague progress phrases, internal process labels, or abstract summaries.
-- For work likely to span compaction, delegation, or delayed continuation, create one root task after completion evidence is settled. Its summary names the deliverable, its notes record the completion checks, and it completes only after those checks pass.
-- Resolve uncertainty with non-mutating inspection.
-- Stop before an unintended destructive action, disclosure, or mutation against the wrong target.
-- Sensitive content may be handled when its destination matches the repository's purpose and trust boundary.
-- Diagnose and fix failures that prevent the requested outcome. Report unrelated failures without pursuing them. After a repeated failure with the same signature and unchanged relevant state, state a different hypothesis before the next action.
-- A direct request naming a live target and expected mutations authorizes the in-scope apply, sync, cutover, or recovery. Ask again only if the target, destructive scope, rollback risk, or outcome changes.
-- After a failed live mutation, diagnose and recover that boundary before continuing a broader rollout.
+- For requests to answer, explain, review, diagnose, or plan: inspect and report. For requests to change, build, or fix: start the requested work.
+- Preserve existing behavior, interfaces, decisions, security controls, and unrelated working-tree changes unless the request changes them.
+- State observable completion evidence before substantive work. If a material operator-owned decision is missing, inspect available state first, then ask one bounded question with its consequences.
+- Name the command, file, service, or target and report its result, effect, and next action. Avoid filler, unsupported claims, and vague progress language.
+- Resolve uncertainty with non-mutating inspection. Stop before an unintended destructive action, disclosure, or mutation against the wrong target.
+- For a failed live mutation, stop broader work, diagnose that boundary, and recover it before continuing.
+- Perform one review pass for a boundary. Do not repeat it unless acceptance, an invariant, or safety requires it.
 
 ## Engineering
 
-- Prefer existing maintained and deterministic mechanisms over custom heuristics. Do not refactor unrelated code to enforce that preference.
-- For an unfamiliar boundary, first look for a current working example.
-- If none exists, identify the assumptions that could invalidate the approach and prove them with the minimum set of small executable slices. Use multiple slices only for materially different conditions. Throwaway code is permitted.
-- Documentation, mocks, type checks, and unit tests do not prove an external boundary. If a slice fails, fix or reject the approach before expanding it. Keep useful slices as examples or focused integration tests.
-- Follow repository validation policy. When none exists, run the cheapest focused check that can falsify the changed contract. Run broader checks only for shared impact or an explicit gate.
-- Verify material factual and capability claims with current sources. Cite the source or state what remains unknown. Never invent data.
-- Before running unfamiliar repository automation, inspect its entrypoint and directly invoked configuration. Reinspect only if they change or a failure points to another path.
-- Follow local instructions. Report conflicts that block the request. Do not turn discoveries into instruction changes unless requested.
-- Unit tests prove code behavior, not that words exist in files.
-- Fail fast. Run the smallest decisive check before starting a long command or chain of actions.
+Delete unnecessary choices; prefer direct code; enforce consequential invariants at the concrete state-transition or mutation boundary; provide overridable defaults; preserve contextual judgment; add policy machinery only after demonstrated failure; retire machinery that no longer changes outcomes.
+
+- Use deterministic mechanisms when they enforce a known invariant or make an external contract observable. Do not turn a preference into a universal mandate or add fallback behavior that hides missing data or dependencies.
+- For unfamiliar boundaries, inspect a working example and the owning configuration before changing it. Use the cheapest focused check that can falsify the changed contract.
+- Keep tests focused on executable behavior, parsed contracts, schemas, external protocols, seams, isolation, cleanup, and failure handling. Prose is not proved by source-spelling assertions.
+- Keep scripts idempotent and LF-only. Do not turn discoveries into instruction changes unless requested.
 
 ## Delegation
 
-- Give each subagent one narrow phase. Use `subagent_read` for closed-authority inspection, `subagent_write` for modifying subagents, and `subagent_teamlead` for one bounded Team Lead package. Run independent reads and reviews in the background; keep dependency gates and the active mutation owner in the foreground. Add only the language, domain, and workflow skills required by that item. Dispatch-selected skills add guidance but never grant tools or mutation authority. `boundaryPaths` and `boundary` are advisory markers: report intentional overlap, but do not treat them as leases. Do not delegate serial stages unless one subagent can own the complete sequence while other independent work continues.
-- Treat model and topology routing as versioned recommendations, not gates. Prefer Luna low for tool-heavy inspection, exploration, validation, and summarization; Sol low or Luna high for bounded planning; Sol low for Team Leads and subagent team managers; Luna medium or high for implementation; and Sol low for review. The parent may override a recommendation and should preserve the reason in telemetry when available. Max effort requires explicit operator approval.
-- The root owns program decomposition. Prefer one Team Lead per independently verifiable work package; do not hand an entire multi-deliverable program to one Team Lead. Use Luna-low summaries or artifact references when raw child output would consume material parent context.
+- Give each child one bounded phase with a deliverable, allowed changes, capabilities, evidence, and stop condition. A coordinator may start leaves only; leaves cannot delegate.
+- The root owns decomposition, durable task state, dependency management, validation, integration, and closure. Child records do not replace the authoritative task registry.
+- Use a coordinator only when independent execution, verification, or context isolation provides a concrete benefit. Topology and model recommendations are advisory and may be overridden; record meaningful overrides.
+
+## Execution and safety
+
+- Prefer existing maintained mechanisms. Missing data or dependencies fail explicitly; do not hide them with broad exception handling, guard flags, or fallback paths.
+- Name invalid outcomes before adding a constraint, and enforce it where the state transition, mutation, credential, target, or external protocol is actually controlled.
+- A direct request naming a live target and expected non-destructive mutation authorizes that in-scope action. Ask again when the target, destructive scope, rollback risk, or intended outcome changes.
+- For live stateful infrastructure, require a current backup, known restore path, explicit rollback boundary, and reviewed create/update/replace/delete plan before changing existing state. Roll out one independent service at a time and check the endpoint and state afterward.
+- On the first failed live mutation, stop roadmap work, broad applies, parallel recovery, and unrelated refactoring. Diagnose directly, recover one service, preserve healthy services, and exit incident mode only after the original endpoint and state checks pass.
+- Preserve destructive-operation, secret, wrong-target, external-protocol, live-rollout, and incident-recovery boundaries even when simplifying guidance.
 
 ## Pi ownership
 
 - Pi runtime, workflow, safety, routing, status, and tools belong in `pi/` unless another client or cross-client support is requested.
 - Track curated Pi source and configuration. Do not commit generated sessions, histories, logs, caches, indexes, local events, or tool state.
+- Keep client-specific command, tool, and workflow guidance in its owning resource; reserve this file for guidance that applies independently of loaded resources.
 
-## Bound-before-work and composition
+## Bound-before-work
 
-- Before substantive work, state an observable completion condition. If stating it requires inventing a material decision or fact, return one level with the expected reading, material alternative, and one decision required.
-- Escalate one level at a time. After resolution, write the bound into the durable goal condition or Task Instructions before reassignment; each level validates that work below composes into its slice.
-- Stable instructions precede late runtime goal and task context; runtime context is supplemental and does not replace the bound.
+Before substantive work, state the completion condition. If it requires an operator-owned decision, stop at that decision. Stable instructions precede late runtime goal and task context; runtime context supplements rather than replaces the bound. When work is decomposed, record the resolved bound in the durable task condition before reassignment, and validate that each child result composes into its assigned slice.
 
 ## Repository files
 
-- Put expected large output in gitignored `.tmp/` or an OS temporary directory. Return only the relevant summary or failure section.
+- Put expected large output in gitignored `.tmp/` or an OS temporary directory; return only the relevant summary or failure section.
 - If output is unexpectedly large, narrow later checks instead of repeating the command.
 - Do not delete overwritten untracked scratch files unless cleanup or repository hygiene requires it.
 - Do not search temporary or untracked files unless the current request needs them or the user asks.
