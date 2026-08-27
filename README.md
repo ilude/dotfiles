@@ -9,7 +9,7 @@ For contributor and coding-agent onboarding, start with `AGENTS.md`.
 - **Unified zsh experience** - All terminals use zsh with autosuggestions, syntax highlighting, and fuzzy completion
 - **Automatic Git identity** - Directory-based and URL-based identity switching with SSH key detection
 - **Dotbot symlinks** - Declarative symlink management, idempotent installation
-- **Agent integrations** - Claude Code, OpenCode, and Copilot-specific surfaces live alongside the shared repo config
+- **Agent integrations** - Pi, Claude Code, OpenCode, and Copilot-specific surfaces live alongside the shared repo config
 - **Shared command overlay** - `claude/commands/` is the canonical shared command source, with OpenCode overrides layered on top
 
 ## Prerequisites
@@ -137,10 +137,11 @@ Automatic identity switching based on directory or remote URL:
 | `powershell/profile.ps1` | PowerShell profile |
 | `config/git/` | Git config and global ignore (XDG-compliant) |
 | `config/ohmyposh/` | Oh My Posh prompt theme |
+| `pi/` | Pi runtime configuration, extensions, skills, prompts, and tests |
 | `claude/` | Claude Code-specific runtime config, hooks, commands, and local state |
 | `opencode/` | OpenCode global config (linked to `~/.config/opencode`) |
 | `copilot/` | GitHub Copilot instructions and prompts |
-| `test/` | Bats test files |
+| `test/` | Cross-platform Python, PowerShell, and shell tests |
 | `plugins/` | Zsh plugins (auto-downloaded) |
 | `dotbot/` | Dotbot submodule |
 | `modules/onclave/` | Onclave product and Pi adapter submodule |
@@ -150,6 +151,7 @@ Automatic identity switching based on directory or remote URL:
 
 - `AGENTS.md` is the neutral repo-wide onboarding file for coding agents.
 - `CLAUDE.md` contains Claude-specific runtime guidance for this repo.
+- `pi/AGENTS.md` and `pi/README.md` document the Pi runtime and operator behavior.
 - `claude/commands/` is the canonical shared command source.
 - `opencode/commands/` contains OpenCode-specific overrides and symlinks to shared commands.
 - `copilot/` contains Copilot-specific prompts and instructions.
