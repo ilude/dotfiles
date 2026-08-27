@@ -21,7 +21,7 @@ pi/prompt-routing/docs/router-v3-metrics.md
 pi/prompt-routing/docs/router-v3-output-contract.md
 pi/prompt-routing/docs/router-v3-output.schema.json
 pi/prompt-routing/docs/router-v3-target.md
-pi/prompt-routing/eval-report.md
+docs/research/obsidian-vault/prompt-router/legacy-claude-tier-router.md
 pi/prompt-routing/evals
 pi/prompt-routing/evaluate.py
 pi/prompt-routing/models/router_v3.joblib

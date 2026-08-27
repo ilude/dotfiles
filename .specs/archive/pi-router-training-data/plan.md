@@ -62,7 +62,7 @@ Use this section as the starting point if the session begins with no prior conte
 
 ### Existing repo anchors to read first
 - `pi/prompt-routing/AGENTS.md`
-- `pi/prompt-routing/design-report.md`
+- `docs/research/obsidian-vault/prompt-router/legacy-claude-tier-router.md`
 - `pi/prompt-routing/data.py`
 - `pi/prompt-routing/build_corpus.py`
 - `pi/prompt-routing/train.py`

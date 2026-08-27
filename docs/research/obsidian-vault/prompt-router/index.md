@@ -22,6 +22,10 @@
 - [Workflow data collection](workflow-data-collection.md) - what to collect from
   local usage
 
+## Archived historical research
+
+- [Legacy Claude-tier TF-IDF router](legacy-claude-tier-router.md) - superseded design and evaluation evidence
+
 ## Seed artifacts
 
 - [Curation pipeline PRD](archive-seeds/curation-pipeline-PRD.md)

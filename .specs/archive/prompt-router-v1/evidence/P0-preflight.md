@@ -207,7 +207,7 @@ pi/prompt-routing/data/synthetic_shards/genD/rebuild.py
 pi/prompt-routing/data/train_v3.jsonl
 pi/prompt-routing/data/training_corpus.json
 pi/prompt-routing/data/training_corpus_v3.example.json
-pi/prompt-routing/design-report.md
+docs/research/obsidian-vault/prompt-router/legacy-claude-tier-router.md
 pi/prompt-routing/docs/classifier-experiments.md
 pi/prompt-routing/docs/classifier-training.md
 pi/prompt-routing/docs/confgate-sweep.json
@@ -234,7 +234,7 @@ pi/prompt-routing/docs/synthetic-runbook.md
 pi/prompt-routing/docs/uncertain-threshold-sweep.json
 pi/prompt-routing/docs/uncertain-threshold-sweep.md
 pi/prompt-routing/docs/wave4-generation-report.md
-pi/prompt-routing/eval-report.md
+docs/research/obsidian-vault/prompt-router/legacy-claude-tier-router.md
 pi/prompt-routing/evals/gpt-5.3-codex-spark.smoke.err
 pi/prompt-routing/evals/gpt-5.4-mini.smoke.err
 pi/prompt-routing/evals/low-model-comparison/results-expanded.json

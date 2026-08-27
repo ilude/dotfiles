@@ -16,6 +16,8 @@ and complexity datasets.
   model should be evaluated
 - [user effort override policy](user-effort-override-policy.md) - direct user
   effort selection should win over router reassignment
+- [legacy Claude-tier router](legacy-claude-tier-router.md) - archived
+  TF-IDF/LinearSVC design and evaluation
 
 ## Source code references
 
