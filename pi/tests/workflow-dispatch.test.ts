@@ -263,7 +263,7 @@ describe("workflow slash command dispatch", () => {
 		await dispatched;
 	});
 
-	it("clears plan status when acknowledgement workflow fails", async () => {
+	it("does not set plan status when acknowledgement fails", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
 		const setStatus = vi.fn();
@@ -279,7 +279,7 @@ describe("workflow slash command dispatch", () => {
 				ui: { setStatus },
 			}),
 		).rejects.toThrow("session write failed");
-		expect(setStatus).toHaveBeenLastCalledWith("plan-it", undefined);
+		expect(setStatus).not.toHaveBeenCalled();
 	});
 
 	it("/plan-it continues from cwd when repository discovery fails", async () => {

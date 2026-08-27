@@ -11,6 +11,7 @@ import echoSlashCommands from "../extensions/00-echo-slash-commands";
 import {
 	appendNextCommand,
 	appendSlashCommandAcknowledgement,
+	registerSlashCommand,
 	stripTrailingNextCommand,
 	SLASH_COMMAND_ECHO_TYPE,
 } from "../lib/slash-command-echo";
@@ -68,6 +69,20 @@ describe("slash command echo renderer", () => {
 			} as Parameters<EntryRenderer>[2],
 		);
 		expect(component?.render(80)[0]?.trim()).toBe("> /plan-it build the thing");
+	});
+
+	it("wraps handlers with one immediate TUI-only acknowledgement", async () => {
+		const appendEntry = vi.fn();
+		const handler = vi.fn(async () => undefined);
+		const registerCommand = vi.fn();
+		registerSlashCommand({ appendEntry, registerCommand } as unknown as ExtensionAPI)("sample", { handler });
+		const wrapped = registerCommand.mock.calls[0][1].handler;
+		await wrapped("  arg  ", { mode: "tui" } as ExtensionCommandContext);
+		expect(appendEntry).toHaveBeenCalledWith(SLASH_COMMAND_ECHO_TYPE, {
+			kind: "submitted",
+			text: "/sample arg",
+		});
+		expect(handler).toHaveBeenCalledWith("  arg  ", expect.objectContaining({ mode: "tui" }));
 	});
 
 	it("appends a TUI-only entry that restores visibly without entering model context", () => {

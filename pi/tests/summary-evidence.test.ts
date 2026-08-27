@@ -189,8 +189,8 @@ describe("summarize command", () => {
 			summarizeExtension(pi as never);
 			if (!command) throw new Error("summarize command was not registered");
 			await command.handler("", { waitForIdle: vi.fn(async () => undefined), sessionManager: { getBranch: () => [] }, cwd });
-			expect(sendMessage.mock.calls[1]?.[0].content).toContain("already complete");
-			expect(sendMessage.mock.calls[1]?.[0].content).toContain(".specs/finished/plan.md");
+			expect(sendMessage.mock.calls[0]?.[0].content).toContain("already complete");
+			expect(sendMessage.mock.calls[0]?.[0].content).toContain(".specs/finished/plan.md");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
@@ -219,22 +219,13 @@ describe("summarize command", () => {
 			sessionManager: { getBranch: () => sessionEntries() },
 		});
 
-		expect(sendMessage).toHaveBeenCalledOnce();
-		expect(sendMessage).toHaveBeenNthCalledWith(
-		1,
-		expect.objectContaining({
-			customType: "slash-echo",
-			content: "/summarize focus on validation",
-			display: true,
-		}),
-		{ triggerTurn: false },
-		);
+		expect(sendMessage).not.toHaveBeenCalled();
 		releaseIdle();
 		await pending;
 
-		expect(sendMessage).toHaveBeenCalledTimes(2);
+		expect(sendMessage).toHaveBeenCalledOnce();
 		expect(sendMessage).toHaveBeenNthCalledWith(
-		2,
+		1,
 		expect.objectContaining({
 			customType: "workflow.hiddenPrompt",
 			display: false,
@@ -242,7 +233,7 @@ describe("summarize command", () => {
 		}),
 		{ triggerTurn: true, deliverAs: "followUp" },
 		);
-		expect(sendMessage.mock.calls[1]?.[0].content).toContain(
+		expect(sendMessage.mock.calls[0]?.[0].content).toContain(
 			"Additional focus: focus on validation",
 		);
 	});

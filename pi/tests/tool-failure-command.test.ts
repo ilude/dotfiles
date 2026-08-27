@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import toolFailureTriageExtension from "../extensions/tool-failure-triage.ts";
 import { DIAGNOSTIC_DECISION_TOOL_NAME, DIAGNOSTIC_INSPECTION_TOOL_NAME } from "../lib/tool-failure-diagnostic-turn.ts";
 import { coordinateId } from "../lib/tool-failure-classifier.ts";
@@ -27,6 +27,14 @@ async function context() {
 }
 
 describe("find-fails TypeScript authority", () => {
+	it("echoes the submitted command into the TUI transcript", async () => {
+		const pi = createMockPi(); const ctx = await context(); toolFailureTriageExtension(pi as never);
+		ctx.mode = "tui";
+		ctx.ui.custom = vi.fn(async () => undefined);
+		await handler(pi)("", ctx);
+		expect(pi.appendEntry).toHaveBeenCalledWith("slash-echo", { kind: "submitted", text: "/find-fails" });
+	});
+
 	it("returns a bounded no-findings outcome without starting a provider turn", async () => {
 		const pi = createMockPi(); const ctx = await context(); toolFailureTriageExtension(pi as never);
 		await handler(pi)("", ctx);
