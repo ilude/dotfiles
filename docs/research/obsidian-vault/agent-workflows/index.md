@@ -21,6 +21,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [Claude Code worktrees](projects/claude-code-worktrees.md) - built-in worktree behavior, isolation, cleanup, and known failure modes.
 - [Pi damage-control gap analysis](projects/pi-damage-control-gap-analysis.md) - security coverage compared with demonstrated coding-agent attack paths.
 - [Cloudflare and Astro issue triage](projects/cloudflare-astro-issue-triage.md) - production case study in staged triage, artifact handoffs, visible state, and external verification.
+- [Subagent and durable-task review archive](projects/subagent-task-review-archive/README.md) - archived multi-role review findings and recommendation candidates; not an approved plan.
 - [MCP 2026 stateless protocol](projects/mcp-2026-stateless-protocol.md) - request-scoped MCP, multi-round input, gateway identity, caching, authorization, and protocol lifecycle.
 - [Pi Coding Agent deep dive](projects/pi-coding-agent-deep-dive.md) - transcript-reviewed Pi architecture source, evidence cautions, and workflow implications.
 - [Menos research storage](projects/menos-research-storage.md) - superseded research-ingestion proposal retained as historical context.

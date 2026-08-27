@@ -59,6 +59,7 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [projects/daytona](projects/daytona.md)
 - [projects/convex-agent-plugins](projects/convex-agent-plugins.md)
 - [projects/cloudflare-astro-issue-triage](projects/cloudflare-astro-issue-triage.md)
+- [projects/subagent-task-review-archive](projects/subagent-task-review-archive/README.md) - archived multi-role review package, not an approved plan
 - [projects/mcp-2026-stateless-protocol](projects/mcp-2026-stateless-protocol.md)
 - [projects/pi-coding-agent-deep-dive](projects/pi-coding-agent-deep-dive.md)
 - [projects/menos](projects/menos.md)
