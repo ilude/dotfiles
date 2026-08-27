@@ -236,8 +236,7 @@ as `pi/prompt-routing/uv.lock`.
 
 Do not delete or commit local runtime state unless a separate migration explicitly
 approves it. Treat these as generated/local: `pi/history/`, `pi/sessions/`,
-`pi/multi-team/sessions/`, `pi/multi-team/logs/`, all
-`*-expertise-log.jsonl` files and project-local directories under
+`pi/multi-team/sessions/`, all `*-expertise-log.jsonl` files and project-local directories under
 `pi/multi-team/expertise/`, local indexes, caches, logs, virtualenvs, and
 `node_modules/`. Expertise JSONL is the durable runtime source of truth, but it is
 not curated repository source. Curated prompt-routing research data and models

@@ -8,10 +8,11 @@ This is not a standalone Git repository workflow. Manage changes from the root d
 
 - **CLAUDE.md** - Symlink to the canonical shared instructions in `pi/AGENTS.md`
 - **commands/** - Claude command definitions; this is also the canonical shared command source for OpenCode overlays
-- **COMMANDS-QUICKSTART.md** - Documentation for custom commands
 - **settings.json** - Claude Code runtime settings
 - **hooks/** - Claude hook implementations
 - **agents/** - Claude agent definitions
+- **skills/** and **shared/** - Claude-specific workflows and shared instruction fragments
+- **downloads/**, **ide/**, **sessions/**, **session-env/**, **tasks/**, and **teams/** - ignored runtime state created as needed
 
 ## Installation
 
@@ -50,11 +51,13 @@ claude/
 ├── .gitignore              # Protects sensitive files
 ├── README.md               # This file
 ├── CLAUDE.md               # Symlink to ../pi/AGENTS.md
-├── COMMANDS-QUICKSTART.md  # Command documentation
 ├── settings.json           # Claude Code settings
 ├── commands/               # Shared command source for Claude and OpenCode
 ├── hooks/                  # Claude hooks
-└── agents/                 # Claude agents
+├── agents/                 # Claude agents
+├── skills/                 # Claude-specific skills
+├── shared/                 # Shared Claude instruction fragments
+└── runtime state/          # Ignored downloads, IDE, session, task, and team data
 ```
 
 ### Excluded from Version Control
@@ -68,8 +71,11 @@ The following files and directories are automatically excluded via `.gitignore`:
 - `todos/` - Session todos
 - `debug/` - Debug logs
 - `shell-snapshots/` - Temporary shell snapshots
-- `statsig/` - Analytics data
+- `downloads/` - Downloaded runtime artifacts
 - `ide/` - IDE state files
+- `session-env/` and `sessions/` - Session-specific runtime state
+- `tasks/` and `teams/` - Claude task and team coordination state
+- `statsig/` - Analytics data
 
 ## Usage
 
@@ -82,11 +88,8 @@ The following files and directories are automatically excluded via `.gitignore`:
 
 ### Custom Commands
 
-Available custom slash commands include:
-
-- `/commit [push]` - Create logical git commits with optional push
-
-See `COMMANDS-QUICKSTART.md` for detailed usage instructions.
+Command definitions and their argument hints live under `commands/`. For example,
+`/commit [push]` creates logical Git commits with optional push.
 
 ## Best Practices
 

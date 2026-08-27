@@ -139,7 +139,6 @@ in
           "$HOME/${cfg.stateDir}/history" \
           "$HOME/${cfg.stateDir}/sessions" \
           "$HOME/${cfg.stateDir}/multi-team/expertise" \
-          "$HOME/${cfg.stateDir}/multi-team/logs" \
           "$HOME/${cfg.stateDir}/multi-team/sessions"
       '';
 

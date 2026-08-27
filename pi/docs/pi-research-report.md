@@ -357,7 +357,7 @@ All tracked-source entries are current as of commit `31ad63e3dfa4d45eb15ae9c8a15
 | SRC-025 | Tracked source, current | `pi/extensions/permissions.ts:99-229` | Baseline commit | Operator permission commands | No decision payload | Commands do not reissue tools |
 | SRC-026 | Tracked source, current | `pi/extensions/model-visibility.ts:282-313,355-425` | Baseline commit | Deterministic filtering and UI notice | No credentials | Catalog depends on provider conditions |
 | SRC-028 | Tracked source, current | `pi/extensions/orchestration-stats.ts:313-328` | Baseline commit | Read-only report dispatch | No metrics content | UI report does not start a turn |
-| SRC-029 | Tracked source, current | `pi/agents/orchestrator.md:1-21` | Baseline commit | Orchestrator model and effort | No task content | Role-specific only |
+| SRC-029 | Tracked source, current | `pi/agents/teamlead.md:1-20` | Baseline commit | Team Lead model, effort, and bounded coordination role | No task content | Role-specific only |
 | SRC-030 | Tracked source, current | retired review workflow prompt | Baseline commit | Parent review and repair semantics | No reviewed artifact | Explicit review-only remains non-mutating |
 | SRC-031 | Tracked source, current | `pi/agents/builder.md:1-26` | Baseline commit | Builder model, effort, and bounded behavior | No task content | Role-specific only |
 | SRC-032 | Tracked source, current | `pi/agents/validator.md:1-20` | Baseline commit | Validator model and effort | No task content | Role-specific only |

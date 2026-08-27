@@ -89,7 +89,7 @@ After `home-manager switch`:
     `AGENTS.md`, `damage-control-rules.yaml`, `quality-gates.json`,
     `justfile`, and `keybindings.json`;
   - writable directories created on activation for `history/`, `sessions/`,
-    `multi-team/expertise/`, `multi-team/logs/`, `multi-team/sessions/`.
+    `multi-team/expertise/`, and `multi-team/sessions/`.
 - `auth.json` is **not** managed -- run `pi` and `/login` (or set
   `ANTHROPIC_API_KEY` / similar) to populate it. It will land in the
   writable `stateDir`.
