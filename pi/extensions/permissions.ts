@@ -1,3 +1,5 @@
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
+
 /**
  * /permissions Operator Surface
  *
@@ -99,7 +101,7 @@ function filterDecisionsByOutcome(
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.registerCommand("permissions", {
+	registerSlashCommand(pi)("permissions", {
 		description:
 			"Show permission state -- recent decisions. " +
 			"Usage: /permissions | /permissions allows | /permissions denies | " +

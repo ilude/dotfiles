@@ -1,4 +1,5 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -41,7 +42,7 @@ export default function (pi: ExtensionAPI) {
 		refreshStatus(ctx, pi);
 	});
 
-	pi.registerCommand("fast", {
+	registerSlashCommand(pi)("fast", {
 		description: "Toggle Codex subscription fast mode",
 		handler: async (_args, ctx) => {
 			enabled = !enabled;

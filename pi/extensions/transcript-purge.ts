@@ -12,6 +12,7 @@
  *   /transcript-purge 30m      -- keep only files newer than 30 minutes
  */
 
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { uiNotify } from "../lib/extension-utils.js";
 import { loadSettings, sweepRetention } from "../lib/transcript.js";
@@ -42,7 +43,7 @@ export function parseAgeArgument(raw: string): number | null | undefined {
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.registerCommand("transcript-purge", {
+	registerSlashCommand(pi)("transcript-purge", {
 		description:
 			"Delete trace+spill files older than the given age (default: all). Examples: /transcript-purge, /transcript-purge 7d, /transcript-purge 24h",
 		handler: async (args, ctx) => {

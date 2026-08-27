@@ -1,3 +1,4 @@
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -395,7 +396,7 @@ export default function bedrockRefresh(
 	options: { executeAws?: AwsExecutor } = {},
 ): void {
 	const executeAws = options.executeAws ?? createAwsExecutor(pi);
-	pi.registerCommand(COMMAND_NAME, {
+	registerSlashCommand(pi)(COMMAND_NAME, {
 		description: "Poll AWS Bedrock for current Claude model IDs",
 		handler: async (args, ctx) => {
 			let parsed: ParsedArgs;

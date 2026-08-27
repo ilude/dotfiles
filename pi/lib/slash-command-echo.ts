@@ -17,6 +17,18 @@ export function formatSlashCommand(command: string, args: string): string {
 	return trimmedArgs ? `/${command} ${trimmedArgs}` : `/${command}`;
 }
 
+export function registerSlashCommand(pi: ExtensionAPI): ExtensionAPI["registerCommand"] {
+	return (command, options) => {
+		pi.registerCommand(command, {
+			...options,
+			handler: async (args, ctx) => {
+				appendSlashCommandAcknowledgement(pi, ctx, command, args);
+				return options.handler(args, ctx);
+			},
+		});
+	};
+}
+
 export function appendSlashCommandAcknowledgement(
 	pi: Pick<ExtensionAPI, "appendEntry">,
 	ctx: Pick<ExtensionCommandContext, "mode">,
@@ -24,7 +36,7 @@ export function appendSlashCommandAcknowledgement(
 	args: string,
 ): string {
 	const text = formatSlashCommand(command, args);
-	if (ctx.mode === "tui") {
+	if (ctx?.mode === "tui") {
 		pi.appendEntry<SlashCommandEchoEntry>(SLASH_COMMAND_ECHO_TYPE, {
 			kind: "submitted",
 			text,
@@ -68,7 +80,7 @@ export function appendNextCommand(
 	ctx: Pick<ExtensionCommandContext, "mode">,
 	command: string,
 ): void {
-	if (ctx.mode === "tui") {
+	if (ctx?.mode === "tui") {
 		pi.appendEntry<SlashCommandEchoEntry>(SLASH_COMMAND_ECHO_TYPE, {
 			kind: "next-command",
 			text: command,

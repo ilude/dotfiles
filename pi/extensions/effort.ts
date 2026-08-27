@@ -1,4 +1,5 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export const EFFORT_LEVELS = [
@@ -29,7 +30,7 @@ function isThinkingLevel(value: string): value is ThinkingLevel {
 }
 
 export default function registerEffortCommand(pi: ExtensionAPI): void {
-	pi.registerCommand("effort", {
+	registerSlashCommand(pi)("effort", {
 		description: "Show or set the session thinking effort",
 		getArgumentCompletions: (prefix) => {
 			const normalized = prefix.trim().toLowerCase();

@@ -1,4 +1,5 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	type ModelLike,
@@ -397,7 +398,7 @@ export default function fableCommand(pi: ExtensionAPI): void {
 		return undefined;
 	});
 
-	pi.registerCommand("foreman", {
+	registerSlashCommand(pi)("foreman", {
 		description: "Switch to GPT-5.6 Sol xhigh as a delegating foreman.",
 		handler: async (args, ctx) => {
 			const task = args.trim();
@@ -435,7 +436,7 @@ export default function fableCommand(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerCommand("fable", {
+	registerSlashCommand(pi)("fable", {
 		description: "Switch to Fable high and send the task.",
 		handler: async (args, ctx) => {
 			const task = args.trim();

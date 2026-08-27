@@ -1,4 +1,5 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 // Idea source: this local Pi extension is inspired by Leonard Lin's
 // `pi-codex-status` project: https://github.com/lhl/pi-codex-status
 //
@@ -916,7 +917,7 @@ export default function registerCodexStatusCommand(pi: ExtensionAPI) {
 		clearCodexFooterRefresh();
 	});
 
-	pi.registerCommand("usage", {
+	registerSlashCommand(pi)("usage", {
 		description:
 			"Show ChatGPT Codex quota status using existing Pi/Codex OAuth credentials",
 		handler: async (_args, ctx) => {
@@ -925,7 +926,7 @@ export default function registerCodexStatusCommand(pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("cache-doctor", {
+	registerSlashCommand(pi)("cache-doctor", {
 		description: "Explain observed Codex prompt-cache request-shape changes",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Cache diagnosis started.", "info");

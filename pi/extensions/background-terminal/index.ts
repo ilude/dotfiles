@@ -1,4 +1,5 @@
 import { onSessionStart } from "../../lib/session-start-metrics.js";
+import { registerSlashCommand } from "../../lib/slash-command-echo.js";
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -182,7 +183,7 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerCommand("ps", {
+	registerSlashCommand(pi)("ps", {
 		description: "Open the managed background terminal dashboard",
 		handler: async (_args, ctx) => {
 			await openBackgroundTerminalDashboard(ctx, manager);

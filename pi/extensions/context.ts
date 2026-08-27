@@ -10,6 +10,7 @@
 //   which is the file-internal mechanism that makes this extension safe to
 //   run in the conversation log.
 
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import {
 	formatSkillsForPrompt,
 	type ExtensionAPI,
@@ -663,7 +664,7 @@ export default function registerContextCommand(pi: ExtensionAPI) {
 		),
 	}));
 
-	pi.registerCommand("context", {
+	registerSlashCommand(pi)("context", {
 		description: "Show Pi context usage, token spend, and component breakdown",
 		getArgumentCompletions: (prefix) => {
 			const options = ["clear", "hide", "widget"];

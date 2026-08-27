@@ -1,3 +1,4 @@
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -294,7 +295,7 @@ export async function renderOrchestrationStatsReport(
 }
 
 export default function orchestrationStatsExtension(pi: ExtensionAPI) {
-	pi.registerCommand("orchestration-stats", {
+	registerSlashCommand(pi)("orchestration-stats", {
 		description: "Show deterministic orchestration telemetry statistics",
 		handler: async (args: string, ctx: ExtensionContext) => {
 			const days = parseOrchestrationStatsDays(args);

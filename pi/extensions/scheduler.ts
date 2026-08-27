@@ -1,4 +1,5 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type {
@@ -302,7 +303,7 @@ export default function registerScheduler(pi: ExtensionAPI) {
 		["cron", handleCron],
 		["schedule", handleSchedule],
 	] as const) {
-		pi.registerCommand(name, {
+		registerSlashCommand(pi)(name, {
 			description:
 				name === "at"
 					? "Schedule one process-local prompt"

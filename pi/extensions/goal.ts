@@ -1,4 +1,5 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -1621,7 +1622,7 @@ export default function (pi: ExtensionAPI) {
 		return undefined;
 	});
 
-	pi.registerCommand("goal", {
+	registerSlashCommand(pi)("goal", {
 		description:
 			"Start, inspect, stop, or resume a foreground or unattended outcome goal.",
 		handler: async (args: string, ctx) => {

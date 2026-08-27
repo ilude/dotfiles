@@ -1,3 +1,5 @@
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
+
 /**
  * /extension-stats
  *
@@ -1154,7 +1156,7 @@ function renderMarkdownReport(
 }
 
 export default function extensionStatsExtension(pi: ExtensionAPI) {
-	pi.registerCommand("extension-stats", {
+	registerSlashCommand(pi)("extension-stats", {
 		description:
 			"Dump last 1/7/30 days of ~/.pi session tool/command usage; pass 60, 90, or all to include longer windows",
 		handler: async (args, ctx: ExtensionContext) => {

@@ -1,5 +1,6 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
 import { createHash } from "node:crypto";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	parseSessionBudgetConfig,
@@ -348,7 +349,7 @@ export function registerSessionBudget(
 		};
 	};
 
-	pi.registerCommand("budget", {
+	registerSlashCommand(pi)("budget", {
 		description: "Show the current session watchdog footprint",
 		handler: async (_args, ctx) => {
 			try {

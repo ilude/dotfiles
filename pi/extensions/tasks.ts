@@ -3,6 +3,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
@@ -1185,7 +1186,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 
 export function registerTasksCommand(pi: ExtensionAPI): void {
 	const lifecycle = new TaskLifecycleService();
-	pi.registerCommand("tasks", {
+	registerSlashCommand(pi)("tasks", {
 		description:
 			"Task control plane. Use /tasks help for lifecycle, settings, and recovery commands.",
 		handler: async (args, ctx) => {

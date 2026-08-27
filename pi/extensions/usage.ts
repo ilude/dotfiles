@@ -7,6 +7,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	aggregateUsage,
@@ -98,7 +99,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("usage-stats", {
+	registerSlashCommand(pi)("usage-stats", {
 		description:
 			"Summarize Pi/Codex token usage and cost for the last 1, 7, 30, and 90 days",
 		handler: async (args, ctx) => {

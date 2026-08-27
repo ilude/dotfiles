@@ -1,4 +1,5 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import type {
@@ -804,7 +805,7 @@ function registerDamageControlCommand(
 	pi: ExtensionAPI,
 	state: DamageControlRuntimeState,
 ): void {
-	const registerCommand = pi.registerCommand?.bind(pi);
+	const registerCommand = registerSlashCommand(pi);
 	if (!registerCommand) return;
 	const command = {
 		description:

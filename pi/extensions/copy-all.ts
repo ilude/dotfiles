@@ -1,3 +1,4 @@
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
@@ -55,7 +56,7 @@ function errorMessage(error: unknown): string {
 
 export default function copyAllExtension(pi: ExtensionAPI): void {
 
-	pi.registerCommand("copy-all", {
+	registerSlashCommand(pi)("copy-all", {
 		description:
 			"Copy user and assistant messages to the clipboard; optional fallback file",
 		handler: async (args, ctx) => {

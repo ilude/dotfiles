@@ -1,3 +1,4 @@
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -482,7 +483,7 @@ export function renderSkillStatsMarkdown(result: SkillStatsResult): string {
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.registerCommand("skill-stats", {
+	registerSlashCommand(pi)("skill-stats", {
 		description: "Show best-effort skill usage from Pi session logs.",
 		handler: async (args: string, ctx: ExtensionContext) => {
 			ctx.ui.notify("Skill usage report started.", "info");

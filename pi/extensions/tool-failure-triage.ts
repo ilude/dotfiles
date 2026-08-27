@@ -8,6 +8,7 @@ import { scanToolFailures, selectedFailureCoordinates, type SessionEntry } from 
 import { appendDecision, candidateLedgerState, loadDecisionLedger, normalizeEvidence, EVIDENCE_TYPES, EVIDENCE_TEXT_MAX_LENGTH, type SelectedCandidate, type Decision, type EvidenceItem } from "../lib/tool-failure-decisions.ts";
 import { buildDiagnosticPrompt } from "../lib/tool-failure-report.ts";
 import { startDiagnosticTurn, registerDiagnosticTurnLifecycle, DIAGNOSTIC_INSPECTION_TOOL_NAME, DIAGNOSTIC_DECISION_TOOL_NAME } from "../lib/tool-failure-diagnostic-turn.ts";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 
 export function resolveRepositoryRoot(extensionUrl: string): string {
 	return path.resolve(path.dirname(new URL(extensionUrl).pathname), "../..");
@@ -76,7 +77,7 @@ export default function toolFailureTriageExtension(pi: ExtensionAPI) {
 			const decision = await appendDecision(path.join(process.env.PI_AGENT_DIR ?? path.join(process.env.HOME ?? process.cwd(), ".pi", "agent"), "tool-failures", "decisions.jsonl"), currentRun.scan, params.candidateId, persistedDisposition, params.reason, normalizeEvidence(params.evidence), { effectiveAfter: params.effectiveAfter, revisitAfter: params.revisitAfter, proof }); return { content: [{ type: "text", text: `Decision recorded for ${decision.candidateId}.` }] }; } };
 	pi.registerTool(inspectTool as never);
 	pi.registerTool(decideTool as never);
-	pi.registerCommand("find-fails", {
+	registerSlashCommand(pi)("find-fails", {
 		description: "Investigate recurring custom-tool failures",
 		handler: async (args: string, ctx: ExtensionContext) => {
 			if (args.trim()) { ctx.ui.notify("Usage: /find-fails", "warning"); return; }

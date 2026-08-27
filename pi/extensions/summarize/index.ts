@@ -6,7 +6,7 @@ import {
 	buildSummaryEvidenceFallback,
 	serializeSummaryEvidence,
 } from "./evidence.js";
-import { SLASH_COMMAND_ECHO_TYPE } from "../../lib/slash-command-echo.js";
+import { registerSlashCommand } from "../../lib/slash-command-echo.js";
 import { parsePersistedPlanRoutingState } from "../../lib/plan-state.js";
 
 const TEMPLATE = readFileSync(
@@ -37,14 +37,9 @@ function completedPlanPaths(cwd: string): string[] {
 
 export default function summarizeExtension(pi: ExtensionAPI): void {
 
-	pi.registerCommand("summarize", {
+	registerSlashCommand(pi)("summarize", {
 		description: "Create a compact, evidence-backed handoff for this session",
 		handler: async (args, ctx) => {
-			const text = args.trim() ? `/summarize ${args.trim()}` : "/summarize";
-			pi.sendMessage(
-				{ customType: SLASH_COMMAND_ECHO_TYPE, content: text, display: true },
-				{ triggerTurn: false },
-			);
 			await ctx.waitForIdle();
 			const branch = ctx.sessionManager.getBranch();
 			let evidence: string;

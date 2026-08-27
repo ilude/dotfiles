@@ -1,3 +1,5 @@
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
+
 // Convention exception: provider auth flows are user-initiated modal commands;
 //   `ctx.ui.notify(...)` calls in this file are short status/error/cancel
 //   messages presented inside the command's own UI flow.
@@ -274,7 +276,7 @@ async function runInteractiveFlow(ctx: any) {
 }
 
 export default function registerProviderCommand(pi: ExtensionAPI) {
-	pi.registerCommand("provider", {
+	registerSlashCommand(pi)("provider", {
 		description: "Manage provider credentials (API keys in ~/.pi/agent/auth.json, OAuth guidance)",
 		handler: async (args, ctx) => {
 			let command: ProviderCommand;

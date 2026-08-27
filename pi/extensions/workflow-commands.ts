@@ -75,7 +75,7 @@ import {
 import { scanSecrets } from "../lib/secret-scan";
 import {
 	appendNextCommand,
-	appendSlashCommandAcknowledgement,
+	registerSlashCommand,
 	stripTrailingNextCommandContent,
 } from "../lib/slash-command-echo.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent";
@@ -2780,7 +2780,7 @@ export default function (pi: ExtensionAPI) {
 		);
 	}
 
-	pi.registerCommand("commit", {
+	registerSlashCommand(pi)("commit", {
 		description: "Smart git commit with submodule handling and flexible grouping",
 		handler: async (args, ctx) => {
 			try {
@@ -2831,7 +2831,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("branch", {
+	registerSlashCommand(pi)("branch", {
 		description:
 			"Open a branched copy of this Pi session in a new terminal tab",
 		handler: async (args, ctx) => {
@@ -2846,7 +2846,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("new-instance", {
+	registerSlashCommand(pi)("new-instance", {
 		description: "Open a new Pi instance in this cwd in a new terminal tab",
 		handler: async (args, ctx) => {
 			try {
@@ -2860,7 +2860,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("new-terminal", {
+	registerSlashCommand(pi)("new-terminal", {
 		description: "Open a plain shell in this cwd in a new terminal",
 		handler: async (args, ctx) => {
 			try {
@@ -2888,7 +2888,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("plan-it", {
+	registerSlashCommand(pi)("plan-it", {
 		description:
 			"Crystallize an executable plan in the primary repository",
 		handler: async (args, ctx) => {
@@ -2897,7 +2897,6 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.setStatus?.("plan-it", "planning...");
 			}
 			try {
-				appendSlashCommandAcknowledgement(pi, ctx, "plan-it", args);
 				const planRequest = parsePlanItArgs(args);
 				const lifecycle = createPlanLifecycleSnapshot(
 					randomUUID(),
@@ -2961,10 +2960,9 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("do-it", {
+	registerSlashCommand(pi)("do-it", {
 		description: "Execute work in one owned workflow worktree with proportional validation",
 		handler: async (args, ctx) => {
-			appendSlashCommandAcknowledgement(pi, ctx, "do-it", args);
 			const requestedPlanPath = args.trim().replace(/^@/, "");
 			const canonicalPlanPath = canonicalPlanPathFromInput(requestedPlanPath);
 			const canonicalPlan = canonicalPlanPath !== undefined;
@@ -3056,7 +3054,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("clear", {
+	registerSlashCommand(pi)("clear", {
 		description: "Alias to /new",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Clearing session...", "info");
@@ -3081,7 +3079,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("exit", {
+	registerSlashCommand(pi)("exit", {
 		description: "Gracefully quit pi",
 		handler: async (_args, ctx) => {
 			ctx.shutdown();

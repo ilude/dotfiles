@@ -1,4 +1,5 @@
 import { onSessionStart } from "../../lib/session-start-metrics.js";
+import { registerSlashCommand } from "../../lib/slash-command-echo.js";
 /**
  * Subagent Tool - Delegate tasks to specialized agents
  *
@@ -3580,7 +3581,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("subagents", {
+	registerSlashCommand(pi)("subagents", {
 		description:
 			"Inspect process-local runs. Filters: --session <id>, --workspace <path>, --orchestration <id>, --task <id>, --state <state>, --all.",
 		handler: async (args, ctx) => {

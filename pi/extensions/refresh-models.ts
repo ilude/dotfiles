@@ -1,3 +1,5 @@
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
+
 // Convention exception: this extension is a single user-initiated slash
 //   command (`/refresh-models`) whose UI is a sequence of progress messages
 //   followed by a per-provider success/error summary; the messages are part
@@ -1015,7 +1017,7 @@ function registerCachedProvider(
 export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 	registerCachedProvider(pi, "openai-codex");
 
-	pi.registerCommand("refresh-models", {
+	registerSlashCommand(pi)("refresh-models", {
 		description:
 			"Refresh available models for one configured provider or all configured providers",
 		handler: async (args, ctx) => {

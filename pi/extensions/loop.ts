@@ -1,4 +1,5 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -651,7 +652,7 @@ export default function (pi: ExtensionAPI) {
 		statusPoller = undefined;
 		if (ctx.mode === "tui") ctx.ui.setStatus(STATUS_KEY, undefined);
 	});
-	pi.registerCommand("loop", {
+	registerSlashCommand(pi)("loop", {
 		description: "Start, resume, inspect, or stop a durable plan loop",
 		handler: async (args, ctx) => {
 			try {
