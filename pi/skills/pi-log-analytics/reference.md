@@ -10,43 +10,27 @@ Start with catalog discovery:
 {"operation":"catalog"}
 ```
 
-The catalog returns registered source IDs and their typed structural columns. Use those IDs in a typed `select` request:
+The catalog returns registered source IDs, same-named DuckDB views, and typed convenience columns. Query a selected view with bounded DuckDB SQL:
 
 ```json
 {
-  "operation": "select",
-  "source": "metric_events",
-  "columns": ["event", "model", "timestamp"],
-  "filters": [{"column":"event","op":"eq","value":"tool_use"}],
-  "orderBy": [{"column":"timestamp","direction":"desc"}],
-  "limit": 50
+  "operation": "query",
+  "sources": ["session_entries"],
+  "sql": "SELECT _timestamp, event_type, tool_name FROM session_entries WHERE _timestamp >= $start ORDER BY _timestamp LIMIT 50",
+  "parameters": {"start": "2026-08-01"},
+  "maxRows": 50
 }
 ```
 
-Use `aggregate` for bounded counts and numeric sums:
+The request accepts `sources`, `sql`, scalar `parameters`, and optional `maxRows`. SQL may use CTEs, date predicates, JSON functions, and ordinary DuckDB expressions. Prepared registered views are the only filesystem boundary; do not use filesystem functions, external table functions, pragmas, or extension commands.
 
-```json
-{
-  "operation": "aggregate",
-  "source": "metric_events",
-  "groupBy": ["model"],
-  "measures": [
-    {"kind":"count","as":"events"},
-    {"kind":"sum","column":"input_tokens","as":"input_tokens"}
-  ],
-  "limit": 50
-}
-```
+Each operation is bounded to at most 1,000 rows, 256 KiB of encoded output, and 5 seconds. Cancellation, unknown source IDs, invalid requests, and budget violations fail explicitly. Results report truncation. DuckDB is invocation-local in-memory state with no persistent analytics projection or shared connection cache.
 
-Filters support only `eq`, `neq`, `lt`, `lte`, `gt`, and `gte`. Ordering, grouping, measures, and limits accept registered typed column IDs only. The boundary accepts no SQL, expressions, paths, pragmas, table functions, extension commands, or filesystem functions.
+## Content and privacy boundary
 
-Each operation is bounded to at most 1,000 rows, 256 KiB of encoded output, and 5 seconds. Cancellation, unknown source or column IDs, invalid requests, and budget violations are typed failures. External access and extension loading are disabled. Do not retry a failing operation by widening its scope.
+Each registered view exposes structural convenience fields and the complete original JSON record in `record`, along with `_source_file`, `_record_key`, and `_timestamp`. The generic tool is therefore content-bearing: session and trace records may contain transcript payloads, messages, arguments, evidence, reasons, paths, filenames, or terminal output. Treat these records as potentially sensitive and request `record` only for an explicitly authorized, bounded investigation. Prefer structural fields when they answer the question. Bounded domain readers may provide narrower separately authorized evidence retrieval.
 
-## Structural privacy
-
-The generic catalog and read model expose only structural fields: compact IDs, timestamps, event and status labels, names, provider and model labels, token and duration counts, costs, and byte counts. They do not expose messages, transcript payloads, arbitrary `data`, arguments, evidence, reasons, paths, filenames, or terminal output. Bounded domain readers own any separately authorized evidence retrieval.
-
-JSONL remains the append-only source of truth. DuckDB is disposable local state. Refresh is incremental and transactional; malformed, unstable, truncated, replaced, deleted, or over-limit inputs remain observable gaps or fail without rewriting authoritative records or corrupting the prior valid store.
+JSONL remains the append-only source of truth. DuckDB is invocation-local disposable state with no persistent analytics projection, refresh state, WAL, or shared connection cache. Malformed, unstable, truncated, replaced, deleted, or over-limit inputs remain observable gaps or fail without rewriting authoritative records.
 
 ## Correlation
 
