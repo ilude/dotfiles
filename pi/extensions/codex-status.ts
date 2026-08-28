@@ -694,7 +694,7 @@ export function formatBedrockUsageSection(
 		const cost = formatCompactMoney(model.costTotal);
 		if (cost === "$0.00") continue;
 		lines.push(
-			`  ${name}: ${cost} ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out`,
+			`  ${name}: ${cost} Tokens: ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out`,
 		);
 	}
 	const total = formatCompactMoney(summary.costTotal);
