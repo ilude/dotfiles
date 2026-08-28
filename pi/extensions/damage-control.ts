@@ -1,7 +1,7 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
 import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { createHash, randomUUID } from "node:crypto";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import type {
 	BashToolCallEvent,
 	EditToolCallEvent,
@@ -23,6 +23,7 @@ import {
 	listDamageControlJudgeRecords,
 	summarizeDamageControlJudge,
 } from "../lib/damage-control-judge.js";
+import { parseDamageControlJudgeSettings } from "../lib/damage-control-settings.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
 import {
 	type DamageControlHealth,
@@ -61,6 +62,7 @@ import {
 	matchesPattern,
 } from "./damage-control-engine.js";
 import { hasUnwaitedBackgroundOperator } from "./damage-control/ast-analyzer.js";
+import { analyzeOperation, type KnownEffect } from "./damage-control/operation-analysis.js";
 import { loadRules } from "./damage-control-rules.js";
 import {
 	classifyDamageControlPrompt,
@@ -631,15 +633,12 @@ function formatDamageControlJudge(): string {
 	return lines.join("\n");
 }
 
+function judgeSettings() {
+	return parseDamageControlJudgeSettings(readMergedSettings());
+}
+
 function isJudgeEnabled(): boolean {
-	const damageControl = readMergedSettings().damageControl;
-	if (!damageControl || typeof damageControl !== "object") return false;
-	const judge = (damageControl as Record<string, unknown>).judge;
-	return Boolean(
-		judge &&
-			typeof judge === "object" &&
-			(judge as Record<string, unknown>).enabled === true,
-	);
+	return judgeSettings().enabled;
 }
 
 function isJudgeEligible(approval: DamageControlAskApproval): boolean {
@@ -748,6 +747,69 @@ export function redactShadowJudgeCommand(command: string): string | undefined {
 		: undefined;
 }
 
+function effectSummary(effect: KnownEffect, cwd: string): string {
+	const target = effect.target ? relative(cwd, resolve(cwd, effect.target)) || "." : undefined;
+	return JSON.stringify({
+		language: effect.language,
+		kind: effect.kind,
+		operation: effect.operation,
+		executable: effect.executable,
+		arguments: effect.arguments,
+		target,
+	});
+}
+
+export async function reviewDamageControlAsk(input: {
+	approval: DamageControlAskApproval;
+	command: string;
+	cwd: string;
+	toolName: string;
+	noDeletePaths?: string[];
+	protectedPaths?: string[];
+	modelRegistry: Parameters<typeof judgeDamageControl>[0]["modelRegistry"];
+}): Promise<{ allowed: boolean; eventId?: string }> {
+	const settings = judgeSettings();
+	if (!settings.autoAllow || !input.modelRegistry || !input.cwd) return { allowed: false };
+	if (/(?:secret|\.env|exfil|remote|volume)/i.test(`${input.approval.rule} ${input.approval.reason}`)) return { allowed: false };
+	const analysis = await analyzeOperation(input.command, input.toolName === "pwsh" ? "powershell" : "bash");
+	if (analysis.status !== "known" || analysis.protected || analysis.effects.length === 0) return { allowed: false };
+	for (const effect of analysis.effects) {
+		if (effect.operation !== "delete" || !effect.target) continue;
+		if (checkNoDeletePaths([effect.target], input.noDeletePaths ?? [], input.cwd)) return { allowed: false };
+		const target = canonicalizeOrBlock(effect.target, input.cwd);
+		if ("block" in target || (input.protectedPaths ?? []).some((pattern) => matchesPattern(target.canonical, pattern))) return { allowed: false };
+	}
+	const fragment = redactShadowJudgeCommand(input.command);
+	if (!fragment) return { allowed: false };
+	const eventId = randomUUID();
+	const evidence = [
+		"<authorization>",
+		JSON.stringify({
+			matchedRule: redactSummary(input.approval.rule),
+			reason: redactSummary(input.approval.reason),
+			effects: analysis.effects.map((effect) => effectSummary(effect, input.cwd)),
+			commandFragment: fragment,
+		}),
+		"</authorization>",
+	].join("\n");
+	try {
+		const record = await judgeDamageControl({
+			eventId,
+			command: fragment,
+			cwd: "<redacted>",
+			rule: input.approval.rule,
+			reason: input.approval.reason,
+			provider: settings.provider,
+			modelId: settings.model,
+			evidence,
+			modelRegistry: input.modelRegistry,
+		});
+		return { allowed: record.verdict === "allow" && record.risk === "low", eventId };
+	} catch {
+		return { allowed: false, eventId };
+	}
+}
+
 function startShadowJudge(input: {
 	approval: DamageControlAskApproval;
 	command: string;
@@ -759,12 +821,15 @@ function startShadowJudge(input: {
 		return undefined;
 	}
 	const eventId = randomUUID();
+	const settings = judgeSettings();
 	void judgeDamageControl({
 		eventId,
 		command,
 		cwd: input.cwd,
 		rule: input.approval.rule,
 		reason: input.approval.reason,
+		provider: settings.autoAllow ? settings.provider : undefined,
+		modelId: settings.autoAllow ? settings.model : undefined,
 		modelRegistry: input.modelRegistry,
 	}).catch(() => undefined);
 	return eventId;
@@ -1216,6 +1281,7 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		let askEventId: string | undefined;
+		let authoritativeAutoAllowed = false;
 		let dangerousPrompt: DamageControlPromptTrace | undefined;
 		const dangerous = await evaluateDangerousCommand(
 			command,
@@ -1224,6 +1290,15 @@ export default function (pi: ExtensionAPI) {
 				ui: ctx.ui,
 				hasUI: ctx.hasUI,
 				confirmAsk: async (approval, title, message) => {
+					if (ctx.hasUI && judgeSettings().autoAllow) {
+						const review = await reviewDamageControlAsk({ approval, command, cwd: ctx.cwd, toolName: "bash", noDeletePaths: rules.no_delete_paths, protectedPaths: [...rules.read_only_paths, ...rules.zero_access_paths], modelRegistry: ctx.modelRegistry });
+						if (review.allowed) {
+							authoritativeAutoAllowed = true;
+							askEventId = review.eventId;
+							safeRecordDamageControlEval({ decisionType: "auto_allowed", toolName: "bash", rawAction: command, cwd: ctx.cwd, reason: "Luna low-risk review", rule: approval.rule, ruleSource: loaded.health.ruleSource, toolCallId: event.toolCallId, hasUI: true });
+							return true;
+						}
+					}
 					const result = await requestDamageControlApproval(pi, ctx, {
 						toolName: "bash",
 						rawAction: command,
@@ -1241,6 +1316,7 @@ export default function (pi: ExtensionAPI) {
 				astAnalysis: rules.astAnalysis,
 				cwd: ctx.cwd,
 				noDeletePaths: rules.no_delete_paths,
+				protectedPaths: [...rules.read_only_paths, ...rules.zero_access_paths],
 				safeDeletePaths: rules.safe_delete_paths,
 				onAutoAllowed: (approval) => {
 					safeRecordDamageControlEval({
@@ -1264,7 +1340,8 @@ export default function (pi: ExtensionAPI) {
 						modelRegistry: ctx.modelRegistry,
 					});
 				},
-				onAskApproved: (approval) =>
+				onAskApproved: (approval) => {
+					if (authoritativeAutoAllowed) return;
 					safeRecordApprovedAsk({
 						toolName: "bash",
 						rawAction: command,
@@ -1274,7 +1351,8 @@ export default function (pi: ExtensionAPI) {
 						toolCallId: event.toolCallId,
 						evalEventId: askEventId,
 						prompt: dangerousPrompt,
-					}),
+					});
+				},
 			},
 		);
 		if (dangerous) {
@@ -1372,6 +1450,7 @@ export default function (pi: ExtensionAPI) {
 			return modeDecision;
 		}
 		let askEventId: string | undefined;
+		let authoritativeAutoAllowed = false;
 		let dangerousPrompt: DamageControlPromptTrace | undefined;
 		const dangerous = await evaluateDangerousCommand(
 			command,
@@ -1380,6 +1459,15 @@ export default function (pi: ExtensionAPI) {
 				ui: ctx.ui,
 				hasUI: ctx.hasUI,
 				confirmAsk: async (approval, title, message) => {
+					if (ctx.hasUI && judgeSettings().autoAllow) {
+						const review = await reviewDamageControlAsk({ approval, command, cwd: ctx.cwd, toolName: "pwsh", noDeletePaths: rules.no_delete_paths, protectedPaths: [...rules.read_only_paths, ...rules.zero_access_paths], modelRegistry: ctx.modelRegistry });
+						if (review.allowed) {
+							authoritativeAutoAllowed = true;
+							askEventId = review.eventId;
+							safeRecordDamageControlEval({ decisionType: "auto_allowed", toolName: "pwsh", rawAction: command, cwd: ctx.cwd, reason: "Luna low-risk review", rule: approval.rule, ruleSource: loaded.health.ruleSource, toolCallId: event.toolCallId, hasUI: true });
+							return true;
+						}
+					}
 					const result = await requestDamageControlApproval(pi, ctx, {
 						toolName: "pwsh",
 						rawAction: command,
@@ -1395,6 +1483,7 @@ export default function (pi: ExtensionAPI) {
 				toolName: "pwsh",
 				bypass: state.bypassed,
 				cwd: ctx.cwd,
+				protectedPaths: [...rules.read_only_paths, ...rules.zero_access_paths],
 				onAskStart: (approval) => {
 					askEventId = startShadowJudge({
 						approval,
@@ -1403,7 +1492,8 @@ export default function (pi: ExtensionAPI) {
 						modelRegistry: ctx.modelRegistry,
 					});
 				},
-				onAskApproved: (approval) =>
+				onAskApproved: (approval) => {
+					if (authoritativeAutoAllowed) return;
 					safeRecordApprovedAsk({
 						toolName: "pwsh",
 						rawAction: command,
@@ -1413,7 +1503,8 @@ export default function (pi: ExtensionAPI) {
 						toolCallId: event.toolCallId,
 						evalEventId: askEventId,
 						prompt: dangerousPrompt,
-					}),
+					});
+				},
 			},
 		);
 		if (dangerous) {

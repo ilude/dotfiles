@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -9,6 +10,11 @@ import {
 	analyzeCommandAst,
 	isProvenSafeTempCleanupAt,
 } from "./damage-control/ast-analyzer.js";
+import {
+	analyzeOperation,
+	type KnownEffect,
+	type OperationLanguage,
+} from "./damage-control/operation-analysis.js";
 
 export { analyzeUnsafeShellEdit } from "./damage-control/ast-analyzer.js";
 import {
@@ -233,39 +239,156 @@ export function isDamageControlBypassEligible(
 ): boolean {
 	const command = input.command;
 	const ruleEvidence = `${input.approval.rule} ${input.approval.reason}`;
-	if (
-		/(?:\bssh\b|\bscp\b|\bcurl\b|\bwget\b|\bnc\b|\brclone\b|\baws\b|\baz\b|\bgcloud\b|\bglab\b|\bgh\b|\bdoctl\b|\bkubectl\b|\bhelm\b|\bterraform\b|\btofu\b|\bpulumi\b|\bansible\b)/i.test(
-			command,
-		) ||
-		/(?:upload|exfil)/i.test(ruleEvidence)
-	)
-		return false;
+	if (/(?:\bssh\b|\bscp\b|\bcurl\b|\bwget\b|\bnc\b|\brclone\b|\baws\b|\baz\b|\bgcloud\b|\bglab\b|\bgh\b|\bdoctl\b|\bkubectl\b|\bhelm\b|\bterraform\b|\btofu\b|\bpulumi\b|\bansible\b)/i.test(command) || /(?:upload|exfil)/i.test(ruleEvidence)) return false;
+	if (/\bgit\s+(?:push|remote|submodule)\b/i.test(command) || /\b(?:ext::|--(?:upload-pack|receive-pack)|GIT_(?:SSH|PROXY)_COMMAND=|-c\s+[^\s]*(?:helper|alias|upload-pack|receive-pack))/i.test(command)) return false;
 	const environmentAccess = /\.env/i.test(`${command} ${ruleEvidence}`);
-	if (environmentAccess && !environmentCommandIsContained(command, input.cwd))
+	if (environmentAccess && !environmentCommandIsContained(command, input.cwd)) return false;
+	if (/\bdocker\b/i.test(command) && /(?:volume|--volumes|\s-v\b)/i.test(command)) return false;
+	const hasStandaloneRm = /(?:^|[;&|\n]\s*)(?:sudo\s+)?rm\b/i.test(command);
+	if (hasStandaloneRm && evaluateScopedDelete(command, input.cwd, { no_delete_paths: input.noDeletePaths ?? [] }) !== "allow") return false;
+	return hasStandaloneRm || /\b(?:docker|git)\b/i.test(command) || (environmentAccess && environmentCommandIsContained(command, input.cwd));
+}
+
+function canonicalGitRoot(cwd: string): string | undefined {
+	try {
+		return sharedCanonicalize(execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(), cwd);
+	} catch {
+		return undefined;
+	}
+}
+
+function containedBy(root: string, target: string): boolean {
+	const relative = path.relative(root, target);
+	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function literalGitTransport(args: string[]): boolean {
+	return !args.some((arg) => /^(?:ext:|--(?:upload-pack|receive-pack)(?:=|$))/i.test(arg) || /^-c(?:$|\s|=)|^--config-env(?:$|=)|^GIT_(?:SSH|PROXY)_COMMAND=/i.test(arg) || /^(?:[a-z][a-z0-9+.-]*):/i.test(arg) && !/^(?:https?|ssh|git):/i.test(arg));
+}
+
+const MAX_ANALYZED_SOURCE_BYTES = 256 * 1024;
+const SCRIPT_EXTENSIONS: Record<string, OperationLanguage> = {
+	".py": "python",
+	".js": "javascript",
+	".mjs": "javascript",
+	".cjs": "javascript",
+	".ts": "typescript",
+};
+
+async function embeddedScriptEffects(command: string, cwd: string, root: string | undefined): Promise<{ effects: KnownEffect[]; uncertain: boolean }> {
+	const tokens = shellTokenize(command);
+	const scripts: Array<{ language: OperationLanguage; source: string }> = [];
+	let sourceBytes = 0;
+	for (let index = 0; index < tokens.length; index += 1) {
+		const executable = tokens[index]?.toLowerCase();
+		const language = executable?.startsWith("python") ? "python" : executable === "node" || executable === "bun" || executable === "deno" ? "javascript" : undefined;
+		if (!language) continue;
+		const inlineFlag = tokens[index + 1];
+		if (inlineFlag === "-c" || inlineFlag === "-e") {
+			const source = tokens[index + 2];
+			if (!source) return { effects: [], uncertain: true };
+			sourceBytes += Buffer.byteLength(source, "utf8");
+			if (sourceBytes > MAX_ANALYZED_SOURCE_BYTES) return { effects: [], uncertain: true };
+			scripts.push({ language, source });
+			continue;
+		}
+		const scriptPath = tokens[index + 1];
+		const extension = scriptPath && path.extname(scriptPath).toLowerCase();
+		const fileLanguage = extension ? SCRIPT_EXTENSIONS[extension] : undefined;
+		if (!fileLanguage || !scriptPath) continue;
+		const resolved = canonicalizeOrBlock(scriptPath, cwd);
+		if ("block" in resolved || hasSymlinkPrefix(scriptPath, cwd) || !root || !containedBy(root, resolved.canonical)) return { effects: [], uncertain: true };
+		try {
+			const stat = fs.statSync(resolved.canonical);
+			if (!stat.isFile() || stat.size > MAX_ANALYZED_SOURCE_BYTES) return { effects: [], uncertain: true };
+			const source = fs.readFileSync(resolved.canonical);
+			if (source.includes(0)) return { effects: [], uncertain: true };
+			const decoded = new TextDecoder("utf-8", { fatal: true }).decode(source);
+			sourceBytes += source.byteLength;
+			if (sourceBytes > MAX_ANALYZED_SOURCE_BYTES) return { effects: [], uncertain: true };
+			scripts.push({ language: fileLanguage, source: decoded });
+		} catch {
+			return { effects: [], uncertain: true };
+		}
+	}
+	const effects: KnownEffect[] = [];
+	for (const script of scripts) {
+		const analysis = await analyzeOperation(script.source, script.language, { timeoutMs: 500 });
+		if (analysis.status !== "known") return { effects, uncertain: true };
+		effects.push(...analysis.effects);
+		if (analysis.protected) return { effects, uncertain: false };
+	}
+	return { effects, uncertain: false };
+}
+
+function parsedBypassEligible(effects: KnownEffect[], root: string, cwd: string, noDeletePaths: string[], protectedPaths: string[]): boolean {
+	const isProtected = (target: string): boolean => {
+		const resolved = canonicalizeOrBlock(target, cwd);
+		return "block" in resolved || protectedPaths.some((pattern) => matchesPattern(resolved.canonical, pattern));
+	};
+	if (effects.length === 0) return false;
+	for (const effect of effects) {
+		if (effect.kind === "filesystem") {
+			if (effect.operation === "read" && effect.target?.toLowerCase().includes(".env")) {
+				const target = canonicalizeOrBlock(effect.target, cwd);
+				if ("block" in target || !containedBy(root, target.canonical)) return false;
+			} else if (effect.operation === "delete") {
+				const target = effect.target && canonicalizeOrBlock(effect.target, cwd);
+				if (!target || "block" in target || !containedBy(root, target.canonical) || isScopedDeleteFloor(target.canonical, root) || checkNoDeletePaths([effect.target ?? ""], noDeletePaths, cwd) || isProtected(effect.target ?? "")) return false;
+			}
+			continue;
+		}
+		if (effect.kind === "docker") {
+			const args = effect.arguments ?? [];
+			if (args.some((arg) => /^(?:-v|--volumes|volume)$/i.test(arg))) return false;
+			continue;
+		}
+		if (effect.kind === "git") {
+			const args = effect.arguments ?? [];
+			const op = effect.operation;
+			if (op === "fetch" || op === "clone" || op === "pull") {
+				if (!literalGitTransport(args) || (op === "pull" && !args.includes("--ff-only"))) return false;
+				if (op === "clone") {
+					const destination = effect.target;
+					if (!destination) return false;
+					const resolved = canonicalizeOrBlock(destination, cwd);
+					if ("block" in resolved || hasSymlinkPrefix(destination, cwd) || isScopedDeleteFloor(resolved.canonical, cwd) || checkNoDeletePaths([destination], noDeletePaths, cwd) || isProtected(destination)) return false;
+				}
+				continue;
+			}
+			if (op === "push" || args.includes("--delete") || args.some((arg) => /^:/.test(arg))) return false;
+			if (op === "delete") {
+				const targets = args.slice(1).filter((arg) => arg !== "--" && !arg.startsWith("-"));
+				if (targets.length === 0 || targets.some((target) => {
+					const resolved = canonicalizeOrBlock(target, cwd);
+					return "block" in resolved || !containedBy(root, resolved.canonical) || checkNoDeletePaths([target], noDeletePaths, cwd);
+				})) return false;
+			}
+			continue;
+		}
 		return false;
-	if (
-		/\bdocker\b/i.test(command) &&
-		/(?:volume|--volumes|\s-v\b|--rmi|system\s+prune)/i.test(command)
-	)
-		return false;
-	if (
-		/\bgit\s+(?:push|fetch|pull|clone|remote|submodule)\b/i.test(command)
-	)
-		return false;
-	const hasStandaloneRm =
-		/(?:^|[;&|\n]\s*)(?:sudo\s+)?rm\b/i.test(command);
-	if (
-		hasStandaloneRm &&
-		evaluateScopedDelete(command, input.cwd, {
-			no_delete_paths: input.noDeletePaths ?? [],
-		}) !== "allow"
-	)
-		return false;
-	return (
-		hasStandaloneRm ||
-		/\b(?:docker|git)\b/i.test(command) ||
-		(environmentAccess && environmentCommandIsContained(command, input.cwd))
-	);
+	}
+	return true;
+}
+
+async function isParsedBypassEligible(command: string, toolName: string, cwd: string, noDeletePaths: string[], protectedPaths: string[]): Promise<boolean> {
+	const language: OperationLanguage = toolName === "pwsh" ? "powershell" : "bash";
+	const analysis = await analyzeOperation(command, language);
+	if (analysis.status !== "known" || analysis.protected) return false;
+	const root = canonicalGitRoot(cwd);
+	const script = await embeddedScriptEffects(command, cwd, root);
+	if (script.uncertain) return false;
+	const effects = analysis.effects.filter((effect) => {
+		if (effect.kind !== "subprocess") return true;
+		return !/^(?:python(?:\d+(?:\.\d+)*)?|node|bun|deno)$/i.test(effect.executable ?? "");
+	});
+	effects.push(...script.effects);
+	if (script.effects.length > 0 && script.effects.some((effect) => effect.kind === "filesystem" && effect.operation === "read" && effect.target?.toLowerCase().includes(".env")) && script.effects.some((effect) => effect.kind === "network" || effect.kind === "subprocess")) return false;
+	if (!root) {
+		const clone = analysis.effects.find((effect) => effect.kind === "git" && effect.operation === "clone");
+		return Boolean(clone && parsedBypassEligible(effects, cwd, cwd, noDeletePaths, protectedPaths));
+	}
+	return parsedBypassEligible(effects, root, cwd, noDeletePaths, protectedPaths);
 }
 
 export async function checkZeroAccess(
@@ -892,6 +1015,7 @@ export async function evaluateDangerousCommand(
 		astAnalysis?: AstAnalysisConfig;
 		cwd?: string;
 		noDeletePaths?: string[];
+		protectedPaths?: string[];
 		safeDeletePaths?: string[];
 	},
 ): Promise<{ block: true; reason: string } | undefined> {
@@ -936,6 +1060,12 @@ export async function evaluateDangerousCommand(
 
 	const skipPatternRules =
 		ctx?.toolName === "bash" && hasValidDryRun(analysisCommand);
+	let parsedBypass: Promise<boolean> | undefined;
+	const canUseParsedBypass = async (): Promise<boolean> => {
+		if (!ctx?.bypass || !ctx.cwd || !ctx.toolName || !["bash", "pwsh"].includes(ctx.toolName)) return false;
+		parsedBypass ??= isParsedBypassEligible(analysisCommand, ctx.toolName, ctx.cwd, ctx.noDeletePaths ?? [], ctx.protectedPaths ?? []);
+		return parsedBypass;
+	};
 	const safeRmMatchIndices = new Set<number>();
 	let configuredSafeDeleteApproval: DamageControlAskApproval | undefined;
 	for (const rule of rules) {
@@ -1000,17 +1130,7 @@ export async function evaluateDangerousCommand(
 			ctx.onAutoAllowed?.({ rule: rule.pattern, reason: rule.reason });
 			return undefined;
 		}
-		if (
-			rule.action === "ask" &&
-			ctx?.bypass &&
-			ctx.cwd &&
-			isDamageControlBypassEligible({
-				command: analysisCommand,
-				approval: { rule: rule.pattern, reason: rule.reason },
-				cwd: ctx.cwd,
-				noDeletePaths: ctx.noDeletePaths,
-			})
-		) return undefined;
+		if (rule.action === "ask" && (await canUseParsedBypass())) continue;
 		if (rule.action === "ask") {
 			const approval = { rule: rule.pattern, reason: rule.reason };
 			if (ctx?.hasUI) ctx.onAskStart?.(approval);
