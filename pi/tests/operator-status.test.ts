@@ -105,6 +105,15 @@ describe("footer extension status placement", () => {
 		} as ReadonlyFooterDataProvider;
 	}
 
+	it("omits normal damage-control status and renders only the red bypass label", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		expect(mod.formatExtensionStatuses(footerData({ "damage-control": "damage-control: active" }))).toBeNull();
+		expect(mod.formatExtensionStatusLine(footerData({ "damage-control": "damage-control: active" }), 80)).toBeNull();
+		const bypassed = mod.formatExtensionStatuses(footerData({ "damage-control": "damage-control: bypassed" }));
+		expect(bypassed).toBe("\x1b[31mdamage-control: bypassed\x1b[0m");
+		expect(bypassed?.replace(/\x1b\[[0-9;]*m/g, "")).toBe("damage-control: bypassed");
+	});
+
 	it("keeps codex on the primary line and right-aligns Bedrock spend", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const data = footerData({

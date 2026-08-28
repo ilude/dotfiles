@@ -95,6 +95,8 @@ export {
 	hasValidDryRun,
 	isReadOnlySearchCommand,
 	isSshProtectedPattern,
+	isContainedRepositoryPath,
+	isDamageControlBypassEligible,
 	matchesPattern,
 } from "./damage-control-engine.js";
 export {
@@ -312,10 +314,11 @@ export class RepeatedToolLoopGuard {
 interface DamageControlRuntimeState {
 	health: DamageControlHealth;
 	mode: DamageControlMode;
+	bypassed: boolean;
 }
 
 function createDamageControlState(): DamageControlRuntimeState {
-	return { health: getDamageControlHealth(), mode: "default" };
+	return { health: getDamageControlHealth(), mode: "default", bypassed: false };
 }
 
 function safeRecordDeny(
@@ -580,7 +583,7 @@ async function requestDamageControlApproval(
 }
 
 function damageControlStatusMessage(state: DamageControlRuntimeState): string {
-	return `damage-control status: ${state.health.status}; mode: ${state.mode}; core protections: always on`;
+	return `damage-control status: ${state.health.status}; mode: ${state.mode}; bypass: ${state.bypassed ? "off" : "on"}; core protections: always on`;
 }
 
 function shortId(id: string): string {
@@ -809,28 +812,40 @@ function registerDamageControlCommand(
 	if (!registerCommand) return;
 	const command = {
 		description:
-			"Show or switch the session-local damage-control mode: default, noshell",
+			"Show or switch session-local damage-control mode or bypass: default, noshell, on, off",
 		getArgumentCompletions: (prefix: string) => {
 			const items = [
 				{ value: "status", label: "status" },
 				{ value: "mode default", label: "mode default" },
 				{ value: "mode noshell", label: "mode noshell" },
+				{ value: "on", label: "on" },
+				{ value: "off", label: "off" },
 			];
 			const filtered = items.filter((item) => item.value.startsWith(prefix));
 			return filtered.length > 0 ? filtered : items;
 		},
 		handler: async (args, ctx) => {
 			const trimmed = args.trim();
-			ctx.ui.setStatus?.(
-				"damage-control",
-				`damage-control: ${state.health.status}; mode ${state.mode}`,
-			);
 			if (trimmed === "" || trimmed === "status") {
 				ctx.ui.notify(damageControlStatusMessage(state), "info");
 				return;
 			}
 			const tokens = trimmed.split(/\s+/);
 			const [subcommand, rawMode, labelArg] = tokens;
+			if ((subcommand === "on" || subcommand === "off") && tokens.length === 1) {
+				state.bypassed = subcommand === "off";
+				ctx.ui.setStatus?.(
+					"damage-control",
+					state.bypassed ? "damage-control: bypassed" : undefined,
+				);
+				ctx.ui.notify(
+					state.bypassed
+						? "damage-control bypassed for this session"
+						: "damage-control restored",
+					"info",
+				);
+				return;
+			}
 			if (subcommand === "stats") {
 				ctx.ui.notify(formatDamageControlStats(), "info");
 				return;
@@ -881,7 +896,7 @@ function registerDamageControlCommand(
 			state.mode = mode;
 			ctx.ui.setStatus?.(
 				"damage-control",
-				`damage-control: ${state.health.status}; mode ${state.mode}`,
+				state.bypassed ? "damage-control: bypassed" : undefined,
 			);
 			safeRecordModeTransition(
 				previousMode,
@@ -1043,8 +1058,9 @@ export default function (pi: ExtensionAPI) {
 
 	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		repeatedToolLoop.reset();
+		state.bypassed = false;
 		debugLog("session_start", { health: state.health });
-		ctx.ui.setStatus?.("damage-control", "damage-control: active");
+		ctx.ui.setStatus?.("damage-control", undefined);
 		if (state.health.status === "failed") {
 			ctx.ui.notify(
 				state.health.error ?? "Damage-control rules failed to load.",
@@ -1221,6 +1237,7 @@ export default function (pi: ExtensionAPI) {
 					return result.approved;
 				},
 				toolName: "bash",
+				bypass: state.bypassed,
 				astAnalysis: rules.astAnalysis,
 				cwd: ctx.cwd,
 				noDeletePaths: rules.no_delete_paths,
@@ -1376,6 +1393,7 @@ export default function (pi: ExtensionAPI) {
 					return result.approved;
 				},
 				toolName: "pwsh",
+				bypass: state.bypassed,
 				cwd: ctx.cwd,
 				onAskStart: (approval) => {
 					askEventId = startShadowJudge({
@@ -1486,6 +1504,8 @@ export default function (pi: ExtensionAPI) {
 					{
 						ui: ctx.ui,
 						hasUI: ctx.hasUI,
+						bypass: state.bypassed,
+						cwd: ctx.cwd,
 						confirmAsk: async (approval, title, message) => {
 							const result = await requestDamageControlApproval(pi, ctx, {
 								toolName: event.toolName,

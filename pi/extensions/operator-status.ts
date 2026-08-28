@@ -37,6 +37,7 @@ let cachedPiVersion: string | null | undefined;
 let currentSessionId: string | null = null;
 const cachedStatusDirectories = new Map<string, string>();
 const FOOTER_STATUS_EXCLUDE_KEYS = new Set(["damage-control"]);
+const DAMAGE_CONTROL_BYPASS_STATUS = "damage-control: bypassed";
 const FOOTER_STATUS_PRIORITY = new Map([
 	["loop", 0],
 	["onclave-v2", 5],
@@ -238,6 +239,13 @@ export function rightAnchoredStatus(
 	return status ? sanitizeSingleLine(status) : null;
 }
 
+function footerStatusText(key: string, text: string): string {
+	if (key !== "damage-control") return text;
+	return text === DAMAGE_CONTROL_BYPASS_STATUS
+		? `${ANSI.red}${text}${ANSI.reset}`
+		: "";
+}
+
 function compareFooterStatusKeys(left: string, right: string): number {
 	const leftPriority = FOOTER_STATUS_PRIORITY.get(left) ?? 50;
 	const rightPriority = FOOTER_STATUS_PRIORITY.get(right) ?? 50;
@@ -247,10 +255,10 @@ function compareFooterStatusKeys(left: string, right: string): number {
 export function formatExtensionStatuses(
 	footerData: ReadonlyFooterDataProvider,
 ): string | null {
-	const statuses = Array.from(footerData.getExtensionStatuses().entries())
-		.filter(([key]) => key !== "codex" && !FOOTER_STATUS_EXCLUDE_KEYS.has(key))
+	const statuses = (Array.from(footerData.getExtensionStatuses().entries()) as Array<[string, string]>)
+		.filter(([key, text]) => key !== "codex" && (!FOOTER_STATUS_EXCLUDE_KEYS.has(key) || text === DAMAGE_CONTROL_BYPASS_STATUS))
 		.sort(([a], [b]) => compareFooterStatusKeys(a, b))
-		.map(([, text]) => sanitizeSingleLine(text))
+		.map(([key, text]) => footerStatusText(key, sanitizeSingleLine(text)))
 		.filter(Boolean);
 	return statuses.length > 0 ? statuses.join(" | ") : null;
 }
@@ -260,16 +268,17 @@ export function formatExtensionStatusLine(
 	width: number,
 ): string | null {
 	const statuses = footerData.getExtensionStatuses();
-	const leftSegments = Array.from(statuses.entries())
+	const leftSegments = (Array.from(statuses.entries()) as Array<[string, string]>)
 		.filter(
-			([key]) =>
-				key !== "bedrock" &&
-				key !== "codex" &&
-				key !== "tps" &&
-				!FOOTER_STATUS_EXCLUDE_KEYS.has(key),
+			([key, text]) =>
+				(key !== "bedrock" &&
+					key !== "codex" &&
+					key !== "tps" &&
+					!FOOTER_STATUS_EXCLUDE_KEYS.has(key)) ||
+				text === DAMAGE_CONTROL_BYPASS_STATUS,
 		)
 		.sort(([a], [b]) => compareFooterStatusKeys(a, b))
-		.map(([, text]) => sanitizeSingleLine(text));
+		.map(([key, text]) => footerStatusText(key, sanitizeSingleLine(text)));
 	const throughput = sanitizeSingleLine(statuses.get("tps") ?? "");
 	if (throughput) leftSegments.push(throughput);
 	const left = leftSegments.filter(Boolean).join(" | ");

@@ -19,6 +19,13 @@ import {
 
 export type DamageControlMode = "default" | "noshell";
 
+export interface DamageControlBypassContext {
+	command: string;
+	approval: DamageControlAskApproval;
+	cwd: string;
+	noDeletePaths?: string[];
+}
+
 export interface DamageControlAskApproval {
 	rule: string;
 	reason: string;
@@ -200,12 +207,75 @@ export function isSshProtectedPattern(pattern: string): boolean {
 	);
 }
 
+export function isContainedRepositoryPath(
+	filePath: string,
+	cwd: string,
+): boolean {
+	const target = canonicalizeOrBlock(filePath, cwd);
+	const root = canonicalCwd(cwd);
+	if ("block" in target || !root) return false;
+	const relative = path.relative(root, target.canonical);
+	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function isEnvironmentPath(filePath: string): boolean {
+	return /(?:^|[\\/])\.env(?:$|[.\\/])/i.test(filePath) || /\.env$/i.test(filePath);
+}
+
+function environmentCommandIsContained(command: string, cwd: string): boolean {
+	if (/[|;&<>`$(){}*?\[\]]/.test(command)) return false;
+	const targets = command.trim().split(/\s+/).map(stripShellQuotes).filter(isEnvironmentPath);
+	return targets.length > 0 && targets.every((target) => isContainedRepositoryPath(target, cwd));
+}
+
+export function isDamageControlBypassEligible(
+	input: DamageControlBypassContext,
+): boolean {
+	const command = input.command;
+	const ruleEvidence = `${input.approval.rule} ${input.approval.reason}`;
+	if (
+		/(?:\bssh\b|\bscp\b|\bcurl\b|\bwget\b|\bnc\b|\brclone\b|\baws\b|\baz\b|\bgcloud\b|\bglab\b|\bgh\b|\bdoctl\b|\bkubectl\b|\bhelm\b|\bterraform\b|\btofu\b|\bpulumi\b|\bansible\b)/i.test(
+			command,
+		) ||
+		/(?:upload|exfil)/i.test(ruleEvidence)
+	)
+		return false;
+	const environmentAccess = /\.env/i.test(`${command} ${ruleEvidence}`);
+	if (environmentAccess && !environmentCommandIsContained(command, input.cwd))
+		return false;
+	if (
+		/\bdocker\b/i.test(command) &&
+		/(?:volume|--volumes|\s-v\b|--rmi|system\s+prune)/i.test(command)
+	)
+		return false;
+	if (
+		/\bgit\b/i.test(command) &&
+		/(?:push|fetch|pull|clone|remote|submodule|--delete|:\S+|force-with-lease)/i.test(
+			command,
+		)
+	)
+		return false;
+	if (
+		/\brm\b/i.test(command) &&
+		evaluateScopedDelete(command, input.cwd, {
+			no_delete_paths: input.noDeletePaths ?? [],
+		}) !== "allow"
+	)
+		return false;
+	return (
+		/\b(?:rm|docker|git)\b/i.test(command) ||
+		(environmentAccess && environmentCommandIsContained(command, input.cwd))
+	);
+}
+
 export async function checkZeroAccess(
 	canonical: string,
 	patterns: string[],
 	toolName: string,
 	ctx?: {
 		ui?: { confirm?: (title: string, message: string) => Promise<boolean> };
+		bypass?: boolean;
+		cwd?: string;
 		hasUI?: boolean;
 		confirmAsk?: DamageControlAskConfirmation;
 		onAskApproved?: (approval: DamageControlAskApproval) => void;
@@ -213,6 +283,7 @@ export async function checkZeroAccess(
 ): Promise<{ block: true; reason: string } | undefined> {
 	for (const pattern of patterns) {
 		if (!matchesPattern(canonical, pattern)) continue;
+		if (ctx?.bypass && isEnvironmentPath(canonical) && ctx.cwd && isContainedRepositoryPath(canonical, ctx.cwd)) continue;
 		if (isSshProtectedPattern(pattern) && METADATA_ONLY_TOOLS.has(toolName)) {
 			const approval = {
 				rule: pattern,
@@ -816,6 +887,7 @@ export async function evaluateDangerousCommand(
 		toolName?: string;
 		onAskApproved?: (approval: DamageControlAskApproval) => void;
 		onAskStart?: (approval: DamageControlAskApproval) => void;
+		bypass?: boolean;
 		onAutoAllowed?: (approval: DamageControlAskApproval) => void;
 		astAnalysis?: AstAnalysisConfig;
 		cwd?: string;
@@ -834,6 +906,16 @@ export async function evaluateDangerousCommand(
 			rule: "semantic_git",
 			reason: semanticGit.reason,
 		};
+		if (
+			ctx?.bypass &&
+			ctx.cwd &&
+			isDamageControlBypassEligible({
+				command: analysisCommand,
+				approval,
+				cwd: ctx.cwd,
+				noDeletePaths: ctx.noDeletePaths,
+			})
+		) return undefined;
 		const ok = ctx
 			? await confirmDamageControlAsk(
 					ctx,
@@ -918,6 +1000,17 @@ export async function evaluateDangerousCommand(
 			ctx.onAutoAllowed?.({ rule: rule.pattern, reason: rule.reason });
 			return undefined;
 		}
+		if (
+			rule.action === "ask" &&
+			ctx?.bypass &&
+			ctx.cwd &&
+			isDamageControlBypassEligible({
+				command: analysisCommand,
+				approval: { rule: rule.pattern, reason: rule.reason },
+				cwd: ctx.cwd,
+				noDeletePaths: ctx.noDeletePaths,
+			})
+		) return undefined;
 		if (rule.action === "ask") {
 			const approval = { rule: rule.pattern, reason: rule.reason };
 			if (ctx?.hasUI) ctx.onAskStart?.(approval);
@@ -979,6 +1072,16 @@ export async function evaluateDangerousCommand(
 				rule: "AST analysis",
 				reason: astDecision.reason,
 			};
+			if (
+				ctx.bypass &&
+				ctx.cwd &&
+				isDamageControlBypassEligible({
+					command: analysisCommand,
+					approval,
+					cwd: ctx.cwd,
+					noDeletePaths: ctx.noDeletePaths,
+				})
+			) return undefined;
 			const ok = await confirmDamageControlAsk(
 				ctx,
 				approval,

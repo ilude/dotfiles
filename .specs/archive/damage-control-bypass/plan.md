@@ -1,6 +1,7 @@
 ---
 created: 2026-08-27
-status: ready
+status: completed
+completed: 2026-08-27
 ---
 
 # Add session-local damage-control bypass
@@ -23,13 +24,13 @@ Provide `/dc off` and `/dc on` controls that bypass ordinary ask-tier damage-con
 
 ## Tasks
 
-- [ ] **T1: Implement the bounded bypass state and enforcement seam**
+- [x] **T1: Implement the bounded bypass state and enforcement seam**
   - Files: `pi/extensions/damage-control.ts`, `pi/extensions/damage-control-engine.ts`, `pi/extensions/operator-status.ts`, `pi/skills/pi-extension/references/contracts/damage-control.md`
   - Change: Add non-persisted bypass state controlled by `/dc off` and `/dc on`, reset it in the existing `session_start` lifecycle path for `/clear`, and classify eligibility at the minimum centralized confirmation seams, adding special handling only for ask paths that do not reach them; do not treat all ask-tier decisions or presentation categories as safe. Allow `.env` file access only after canonical containment proves the target remains inside `ctx.cwd`; reject containment failures, symlink escape, ambiguous shell targets, and exfiltration combinations. Keep every confirmed hard protection outside the bypass path. Clear the damage-control status key when on; when off, expose exactly `damage-control: bypassed` and have the existing operator footer render that status in the error color.
   - Done when: Command transitions, eligible local-operation bypass, hard-protection exclusions, contained `.env` handling, `/clear` reset, and footer behavior match the objective and the owning contract documents the accepted operator-facing behavior without persistence or a new policy subsystem.
   - Verify: `cd pi && pnpm run typecheck`
 
-- [ ] **T2: Prove bypass, reset, footer, and retained protections**
+- [x] **T2: Prove bypass, reset, footer, and retained protections**
   - Files: `pi/tests/damage-control.test.ts`, `pi/tests/operator-status.test.ts`
   - Change: Add focused behavioral coverage for `/dc off`, `/dc on`, `session_start` with the `/clear` reason, ordinary local deletion/Docker/Git bypass, and contained repository-local `.env` access versus a table of canonical-containment failures, symlink escape, and exfiltration. Add bypass-enabled checks at each distinct eligibility/enforcement seam, with representative cases for the confirmed hard-protection groups; rely on existing baseline tests instead of duplicating every rule test. Exercise the operator footer renderer to prove normal mode is absent and bypass mode emits exactly red `damage-control: bypassed`.
   - Done when: Tests directly demonstrate every completion-evidence and preserved-safety clause without asserting policy prose or unrelated implementation layout.
@@ -38,8 +39,8 @@ Provide `/dc off` and `/dc on` controls that bypass ordinary ask-tier damage-con
 
 ## Validation
 
-- [ ] `cd pi && pnpm test damage-control.test.ts operator-status.test.ts` passes with direct coverage of bypass eligibility, contained `.env` access, retained hard protections, command transitions, `/clear` reset, and footer presentation.
-- [ ] `cd pi && pnpm run typecheck` passes after the final implementation.
+- [x] `cd pi && pnpm test damage-control.test.ts operator-status.test.ts` passes with direct coverage of bypass eligibility, contained `.env` access, retained hard protections, command transitions, `/clear` reset, and footer presentation.
+- [x] `cd pi && pnpm run typecheck` passes after the final implementation.
 
 ## Retention
 
@@ -47,7 +48,7 @@ Keep incomplete work at `.specs/damage-control-bypass/plan.md`. After completion
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
+- State: Complete; implementation and validation passed on 2026-08-27.
 - Blocker: None.
-- Next: T1.
+- Next: Archive, commit, merge, and verify closeout.
 - Resume: `/do-it .specs/damage-control-bypass/plan.md`
