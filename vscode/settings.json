@@ -284,7 +284,6 @@
   "docker.extension.dockerEngineAvailabilityPrompt": false,
   "dart.flutterSdkPath": "C:\\Projects\\working\\flutter-sdk\\flutter",
   "extensions.ignoreRecommendations": true,
-  "github.copilot.nextEditSuggestions.enabled": true,
   "specstory.helpUsImprove": false,
   "specstory.coordinatedUniversalTimezone": false,
   "zenMode.restore": false,
@@ -319,23 +318,6 @@
   "notebook.cellToolbarLocation": {
     "default": "right",
     "jupyter-notebook": "right"
-  },
-  "chat.mcp.serverSampling": {
-    "Global in Code: sequentialthinking": {
-      "allowedModels": [
-        "copilot/gpt-4.1",
-        "copilot/claude-opus-4",
-        "copilot/claude-opus-41",
-        "copilot/claude-sonnet-4",
-        "copilot/gemini-2.0-flash-001",
-        "copilot/gemini-2.5-pro",
-        "copilot/gpt-4o-mini",
-        "copilot/gpt-5",
-        "copilot/gpt-5-mini",
-        "copilot/o3",
-        "copilot/o4-mini"
-      ]
-    }
   },
   "containers.containerClient": "com.microsoft.visualstudio.containers.docker",
   "containers.orchestratorClient": "com.microsoft.visualstudio.orchestrators.dockercompose",

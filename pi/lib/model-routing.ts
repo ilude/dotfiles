@@ -562,9 +562,7 @@ export function resolveCommitPlanningModel<T extends ModelLike>(
 				)
 			: undefined) ??
 		findExact(availableModels, "openai", "gpt-5.4-mini") ??
-		findExact(availableModels, "github-copilot", "gpt-5.4-mini") ??
 		findFirstMini(availableModels, "openai-codex") ??
-		findFirstMini(availableModels, "github-copilot") ??
 		pickBestModel(availableModels, "mini", currentModel)
 	);
 }

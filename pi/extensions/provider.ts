@@ -37,7 +37,6 @@ type ProviderCommand =
 const PROVIDERS: ProviderEntry[] = [
 	{ id: "anthropic", label: "Anthropic (Claude Pro/Max)", auth: "oauth", envVar: "ANTHROPIC_API_KEY" },
 	{ id: "openai-codex", label: "OpenAI Codex (ChatGPT Plus/Pro)", auth: "oauth" },
-	{ id: "github-copilot", label: "GitHub Copilot", auth: "oauth" },
 	{ id: "google-gemini-cli", label: "Google Gemini CLI", auth: "oauth" },
 	{ id: "google-antigravity", label: "Google Antigravity", auth: "oauth" },
 	{ id: "openai", label: "OpenAI", auth: "api_key", envVar: "OPENAI_API_KEY" },

@@ -614,7 +614,6 @@ if [[ -z "$HEADLESS" ]]; then
     "${BASEDIR}/scripts/opencode-link-setup"
     "${BASEDIR}/scripts/claude-mcp-setup"
     "${BASEDIR}/scripts/claude-plugins-setup"
-    "${BASEDIR}/scripts/copilot-link-setup"
     completed_steps+=("GUI tool setup")
 else
     skipped_steps+=("GUI tool setup (headless)")

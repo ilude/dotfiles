@@ -25,7 +25,6 @@ type ModelLike = {
 
 const TARGET_PROVIDERS = [
 	"openai-codex",
-	"github-copilot",
 	"opencode",
 	"opencode-go",
 	"openrouter",
@@ -235,7 +234,6 @@ const HIDE_EXACT_IDS = {
 		"~openai/gpt-latest",
 		"~openai/gpt-mini-latest",
 	]),
-	"github-copilot": new Set<string>(),
 	"amazon-bedrock": new Set([
 		"moonshot.kimi-k2-thinking",
 		"us.deepseek.r1-v1:0",
@@ -254,7 +252,6 @@ const HIDE_PREFIXES = {
 	"openai-codex": [] as string[],
 	opencode: ["gpt-"],
 	"opencode-go": [] as string[],
-	"github-copilot": [] as string[],
 	"amazon-bedrock": [] as string[],
 } as const;
 
@@ -263,7 +260,6 @@ const HIDE_PATTERNS = {
 	"openai-codex": [] as RegExp[],
 	opencode: [] as RegExp[],
 	"opencode-go": [] as RegExp[],
-	"github-copilot": [] as RegExp[],
 	"amazon-bedrock": [
 		/^anthropic\./,
 		/^global\.anthropic\./,
@@ -381,9 +377,7 @@ function planProvider(models: ModelLike[], provider: string): ProviderPlan | und
 		credentialRequired:
 			changed &&
 			filtered.length > 0 &&
-			(provider === "github-copilot" ||
-				provider === "openai-codex" ||
-				provider === "amazon-bedrock"),
+			(provider === "openai-codex" || provider === "amazon-bedrock"),
 		apiKeyEnv:
 			provider === "opencode" || provider === "opencode-go"
 				? "$OPENCODE_API_KEY"

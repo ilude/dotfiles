@@ -5,12 +5,6 @@
     "access": "REDACTED-PLACEHOLDER-ACCESS-TOKEN-ANTHROPIC",
     "expires": 1735689600000
   },
-  "github-copilot": {
-    "type": "oauth",
-    "refresh": "REDACTED-PLACEHOLDER-REFRESH-TOKEN-COPILOT",
-    "access": "REDACTED-PLACEHOLDER-ACCESS-TOKEN-COPILOT",
-    "expires": 1735689600000
-  },
   "openai-codex": {
     "type": "oauth",
     "access": "REDACTED-PLACEHOLDER-ACCESS-TOKEN-CODEX",

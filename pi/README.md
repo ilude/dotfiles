@@ -614,7 +614,7 @@ Refreshes available model lists for active subscription providers **without relo
 
 Behavior:
 - No provider: refreshes all currently authenticated **supported** subscription providers (OAuth entries in `auth.json`).
-- Provider argument: refreshes only that provider (currently `anthropic`, `openai-codex`, `github-copilot`, `openrouter`, `opencode`, and `opencode-go`).
+- Provider argument: refreshes only that provider (currently `anthropic`, `openai-codex`, `openrouter`, `opencode`, and `opencode-go`).
 - Unsupported providers are skipped with a warning.
 - Uses existing session credentials and updates in-session model availability immediately.
 - Prints per-provider diffs with model IDs that were added/removed.
@@ -627,7 +627,7 @@ Behavior:
 Applies startup model-list cleanup for noisy provider catalogs.
 
 Behavior:
-- Hides date/version-suffixed and preview snapshot models for `openai-codex`, `github-copilot`, `opencode`, `opencode-go`, and `openrouter`.
+- Hides date/version-suffixed and preview snapshot models for `openai-codex`, `opencode`, `opencode-go`, and `openrouter`.
 - Limits the built-in Amazon Bedrock provider to configured `us.anthropic` Claude models; the curated `bedrock-mantle` provider selects current Claude and GPT models and resolves their Mantle or Runtime transport.
 - Applies provider-specific blocklists (including internal/legacy model IDs) before `/model` selection.
 

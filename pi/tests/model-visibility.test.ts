@@ -45,68 +45,6 @@ describe("applyProviderFilter", () => {
 		expect(registerProvider.mock.calls[0]?.[1]).not.toHaveProperty("oauth");
 	});
 
-	it("skips credentials and registration when every provider model is hidden", async () => {
-		const getApiKeyForProvider = vi.fn(async () => "oauth-token");
-		const registerProvider = vi.fn();
-		const ctx = {
-			modelRegistry: {
-				getAll: () => [
-					{
-						provider: "github-copilot",
-						id: "gpt-4.1-2025-04-14",
-						name: "GPT-4.1 Snapshot",
-						api: "openai-completions",
-						baseUrl: "https://api.githubcopilot.com",
-						reasoning: false,
-						input: ["text"],
-						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-						contextWindow: 128000,
-						maxTokens: 16000,
-					},
-				],
-				getApiKeyForProvider,
-				registerProvider,
-			},
-		};
-
-		await expect(applyProviderFilter(ctx, "github-copilot")).resolves.toEqual({
-			before: 1,
-			after: 0,
-		});
-		expect(getApiKeyForProvider).not.toHaveBeenCalled();
-		expect(registerProvider).not.toHaveBeenCalled();
-	});
-
-	it("leaves unauthenticated OAuth providers registered as-is", async () => {
-		const registerProvider = vi.fn();
-		const model = {
-			provider: "github-copilot",
-			name: "GPT-4.1",
-			api: "openai-completions",
-			baseUrl: "https://api.githubcopilot.com",
-			reasoning: false,
-			input: ["text"],
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-			contextWindow: 128000,
-			maxTokens: 16000,
-		};
-		const ctx = {
-			modelRegistry: {
-				getAll: () => [
-					{ ...model, id: "gpt-4.1" },
-					{ ...model, id: "gpt-4.1-2025-04-14" },
-				],
-				getApiKeyForProvider: async () => undefined,
-				registerProvider,
-			},
-		};
-
-		await expect(applyProviderFilter(ctx, "github-copilot")).resolves.toEqual({
-			before: 2,
-			after: 2,
-		});
-		expect(registerProvider).not.toHaveBeenCalled();
-	});
 });
 
 describe("model visibility startup", () => {
@@ -137,30 +75,6 @@ describe("model visibility startup", () => {
 				contextWindow: 1,
 				maxTokens: 1,
 			},
-			{
-				provider: "github-copilot",
-				id: "gpt-4.1",
-				name: "GPT-4.1",
-				api: "completions",
-				baseUrl: "https://copilot.example",
-				reasoning: false,
-				input: ["text"],
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				contextWindow: 1,
-				maxTokens: 1,
-			},
-			{
-				provider: "github-copilot",
-				id: "gpt-4.1-2025-04-14",
-				name: "GPT-4.1",
-				api: "completions",
-				baseUrl: "https://copilot.example",
-				reasoning: false,
-				input: ["text"],
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				contextWindow: 1,
-				maxTokens: 1,
-			},
 		];
 		let pendingCredentials = 0;
 		const ctx = {
@@ -180,25 +94,15 @@ describe("model visibility startup", () => {
 		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
 
 		expect(ctx.modelRegistry.getAll).toHaveBeenCalledOnce();
-		expect(pendingCredentials).toBe(2);
+		expect(pendingCredentials).toBe(1);
 		expect(registerProvider.mock.calls.map(([provider]) => provider)).toEqual([
 			"openai-codex",
-			"github-copilot",
 		]);
 	});
 });
 
 describe("shouldHideModel", () => {
 	it("hides date/version suffix and preview snapshots", () => {
-		expect(
-			shouldHideModel("github-copilot", {
-				id: "gpt-4.1-2025-04-14",
-				name: "GPT-4.1",
-			}),
-		).toBe(true);
-		expect(
-			shouldHideModel("github-copilot", { id: "gpt-4-0613", name: "GPT-4" }),
-		).toBe(true);
 		expect(
 			shouldHideModel("openrouter", {
 				id: "gemini-3-flash-preview",

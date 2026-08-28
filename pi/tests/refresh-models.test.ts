@@ -44,18 +44,6 @@ vi.mock("@earendil-works/pi-ai/compat", () => ({
 				},
 			];
 		}
-		if (provider !== "github-copilot") return [];
-		return [
-			{
-				id: "gpt-4.1",
-				headers: {
-					"User-Agent": "GitHubCopilotChat/0.35.0",
-					"Editor-Version": "vscode/1.107.0",
-					"Editor-Plugin-Version": "copilot-chat/0.35.0",
-					"Copilot-Integration-Id": "vscode-chat",
-				},
-			},
-		];
 	}),
 }));
 
@@ -94,7 +82,7 @@ describe("parseRefreshModelsArgs", () => {
 	});
 
 	it("rejects multiple arguments", () => {
-		expect(() => parseRefreshModelsArgs("openai-codex github-copilot")).toThrow(
+		expect(() => parseRefreshModelsArgs("openai-codex missing-provider")).toThrow(
 			"Usage: /refresh-models [provider]",
 		);
 	});
@@ -104,7 +92,7 @@ describe("getCurrentSubscriptionProviders", () => {
 	it("returns providers with oauth or api-key credentials", () => {
 		const modelRegistry = {
 			authStorage: {
-				list: () => ["openai-codex", "openrouter", "github-copilot", "missing"],
+				list: () => ["openai-codex", "openrouter", "missing"],
 				get: (provider: string) => {
 					if (provider === "openrouter") return { type: "api_key", key: "x" };
 					if (provider === "missing") return undefined;
@@ -120,7 +108,6 @@ describe("getCurrentSubscriptionProviders", () => {
 		expect(getCurrentSubscriptionProviders(modelRegistry)).toEqual([
 			"openai-codex",
 			"openrouter",
-			"github-copilot",
 		]);
 	});
 });
@@ -137,7 +124,7 @@ describe("/refresh-models command", () => {
 			path.join(agentDir, "settings.json"),
 			`${JSON.stringify(
 				{
-					enabledModels: ["openai-codex/gpt-5.4", "github-copilot/gpt-4.1"],
+					enabledModels: ["openai-codex/gpt-5.4"],
 					unrelated: { preserved: true },
 				},
 				null,
@@ -326,413 +313,6 @@ describe("/refresh-models command", () => {
 		expect(definition.models[0].thinkingLevelMap).not.toHaveProperty("off");
 	});
 
-	it("refreshes all active subscriptions when no provider is supplied", async () => {
-		const pi = createMockPi();
-		registerRefreshModelsCommand(
-			pi as Parameters<typeof registerRefreshModelsCommand>[0],
-		);
-		const cmd = pi._commands.find((c) => c.name === "refresh-models");
-		if (!cmd) throw new Error("command not registered");
-
-		const fetchMock = vi.fn(async (url: string) => {
-			if (
-				url.includes("chatgpt.com") &&
-				url.includes("/codex/models?client_version=")
-			) {
-				return mockJsonResponse({
-					models: [
-						{
-							slug: "gpt-5.4",
-							display_name: "GPT-5.4",
-							input_modalities: ["text", "image"],
-							supported_reasoning_levels: ["low", "high"],
-							context_window: 272000,
-						},
-						{
-							slug: "gpt-5.5",
-							display_name: "GPT-5.5",
-							input_modalities: ["text", "image"],
-							supported_reasoning_levels: ["low", "high"],
-							context_window: 272000,
-						},
-						{
-							slug: "gpt-5.6-sol",
-							display_name: "GPT-5.6-Sol",
-							input_modalities: ["text", "image"],
-							supported_reasoning_levels: [
-								{ effort: "low" },
-								{ effort: "medium" },
-								{ effort: "high" },
-								{ effort: "xhigh" },
-								{ effort: "max" },
-								{ effort: "ultra" },
-							],
-							context_window: 372000,
-						},
-						{
-							slug: "gpt-5.6-terra",
-							display_name: "GPT-5.6-Terra",
-							input_modalities: ["text", "image"],
-							supported_reasoning_levels: [
-								{ effort: "low" },
-								{ effort: "medium" },
-								{ effort: "high" },
-								{ effort: "xhigh" },
-								{ effort: "max" },
-								{ effort: "ultra" },
-							],
-							context_window: 372000,
-						},
-						{
-							slug: "gpt-5.6-luna",
-							display_name: "GPT-5.6-Luna",
-							input_modalities: ["text", "image"],
-							supported_reasoning_levels: [
-								{ effort: "low" },
-								{ effort: "medium" },
-								{ effort: "high" },
-								{ effort: "xhigh" },
-								{ effort: "max" },
-							],
-							context_window: 372000,
-						},
-						{
-							slug: "codex-auto-review",
-							display_name: "Codex Auto Review",
-							visibility: "hide",
-							input_modalities: ["text", "image"],
-							supported_reasoning_levels: ["low", "high"],
-							context_window: 272000,
-						},
-					],
-				});
-			}
-			if (url.includes("githubcopilot.com") && url.endsWith("/models")) {
-				return mockJsonResponse({
-					data: [
-						{
-							id: "gpt-4.1",
-							name: "GPT-4.1",
-							model_picker_enabled: true,
-							supported_endpoints: ["/chat/completions"],
-							capabilities: {
-								supports: { vision: true, reasoning_effort: ["low"] },
-								limits: {
-									max_context_window_tokens: 128000,
-									max_output_tokens: 16000,
-								},
-							},
-						},
-						{
-							id: "claude-opus-4.7",
-							name: "Claude Opus 4.7",
-							model_picker_enabled: true,
-							supported_endpoints: ["/v1/messages"],
-							capabilities: {
-								supports: { vision: true, adaptive_thinking: true },
-								limits: {
-									max_context_window_tokens: 200000,
-									max_output_tokens: 64000,
-								},
-							},
-							policy: { state: "enabled" },
-						},
-						{
-							id: "text-embedding-3-small",
-							name: "Embedding V3",
-							model_picker_enabled: false,
-							supported_endpoints: ["/chat/completions"],
-						},
-						{
-							id: "oswe-vscode-secondary",
-							name: "Raptor mini",
-							model_picker_enabled: false,
-							supported_endpoints: ["/responses"],
-						},
-						{
-							id: "accounts/msft/routers/f185i3v4",
-							name: "Search Agent A",
-							model_picker_enabled: false,
-							supported_endpoints: ["/chat/completions"],
-						},
-					],
-				});
-			}
-			return mockJsonResponse({ error: "missing" }, 404);
-		});
-		vi.stubGlobal("fetch", fetchMock);
-
-		const registerProvider = vi.fn();
-		const reload = vi.fn(async () => undefined);
-		const notify = vi.fn();
-		const ctx = {
-			reload,
-			ui: { notify },
-			modelRegistry: {
-				authStorage: {
-					list: () => ["openai-codex", "github-copilot"],
-					get: () => ({
-						type: "oauth",
-						access: "x",
-						refresh: "y",
-						expires: Date.now() + 1000,
-					}),
-				},
-				getApiKeyForProvider: vi.fn(async (provider: string) =>
-					provider === "openai-codex"
-						? makeCodexJwt("acct_test")
-						: "copilot-token",
-				),
-				getAll: () => [
-					{
-						provider: "openai-codex",
-						id: "gpt-5.4",
-						name: "GPT-5.4",
-						api: "openai-codex-responses",
-						baseUrl: "https://chatgpt.com/backend-api",
-						reasoning: true,
-						input: ["text", "image"],
-						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-						contextWindow: 272000,
-						maxTokens: 128000,
-					},
-					{
-						provider: "github-copilot",
-						id: "gpt-4.1",
-						name: "GPT-4.1",
-						api: "openai-completions",
-						baseUrl: "https://api.individual.githubcopilot.com",
-						reasoning: false,
-						input: ["text", "image"],
-						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-						contextWindow: 128000,
-						maxTokens: 16384,
-					},
-					{
-						provider: "github-copilot",
-						id: "text-embedding-3-small",
-						name: "Embedding V3",
-						api: "openai-completions",
-						baseUrl: "https://api.individual.githubcopilot.com",
-						reasoning: false,
-						input: ["text"],
-						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-						contextWindow: 8192,
-						maxTokens: 1024,
-					},
-					{
-						provider: "github-copilot",
-						id: "oswe-vscode-secondary",
-						name: "Raptor mini",
-						api: "openai-responses",
-						baseUrl: "https://api.individual.githubcopilot.com",
-						reasoning: true,
-						input: ["text"],
-						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-						contextWindow: 128000,
-						maxTokens: 16000,
-					},
-				],
-				registerProvider,
-			},
-		};
-
-		await cmd.handler("", ctx as Parameters<typeof cmd.handler>[1]);
-
-		expect(registerProvider).toHaveBeenCalledTimes(2);
-		expect(registerProvider).toHaveBeenCalledWith(
-			"openai-codex",
-			expect.objectContaining({
-				models: expect.arrayContaining([
-					expect.objectContaining({
-						id: "gpt-5.4",
-						api: "openai-codex-responses",
-					}),
-					expect.objectContaining({
-						id: "gpt-5.5",
-						api: "openai-codex-responses",
-					}),
-					expect.objectContaining({
-						id: "gpt-5.6-sol",
-						api: "openai-codex-responses",
-					}),
-					expect.objectContaining({
-						id: "gpt-5.6-terra",
-						api: "openai-codex-responses",
-					}),
-					expect.objectContaining({
-						id: "gpt-5.6-luna",
-						api: "openai-codex-responses",
-					}),
-				]),
-			}),
-		);
-		const codexProviderCall = registerProvider.mock.calls.find(
-			([provider]: [string]) => provider === "openai-codex",
-		);
-		if (!codexProviderCall)
-			throw new Error("missing openai-codex registerProvider call");
-		const codexDefinition = codexProviderCall[1] as {
-			apiKey?: string;
-			oauth?: {
-				login: unknown;
-				refreshToken: unknown;
-				getApiKey: unknown;
-			};
-			models: Array<{
-				id: string;
-				thinkingLevelMap?: Record<string, string | null>;
-			}>;
-		};
-		expect(codexDefinition.apiKey).toBeUndefined();
-		expect(codexDefinition.oauth).toBeUndefined();
-		const codexModels = codexDefinition.models;
-		expect(codexModels.some((model) => model.id === "codex-auto-review")).toBe(
-			false,
-		);
-		expect(
-			codexModels.find((model) => model.id === "gpt-5.6-sol")?.thinkingLevelMap,
-		).toEqual({
-			off: null,
-			minimal: null,
-			low: "low",
-			medium: "medium",
-			high: "high",
-			xhigh: "xhigh",
-			max: "max",
-		});
-		expect(registerProvider).toHaveBeenCalledWith(
-			"github-copilot",
-			expect.objectContaining({
-				models: expect.arrayContaining([
-					expect.objectContaining({ id: "gpt-4.1" }),
-					expect.objectContaining({
-						id: "claude-opus-4.7",
-						api: "anthropic-messages",
-					}),
-				]),
-			}),
-		);
-
-		const copilotProviderCall = registerProvider.mock.calls.find(
-			([provider]: [string]) => provider === "github-copilot",
-		);
-		if (!copilotProviderCall)
-			throw new Error("missing github-copilot registerProvider call");
-		const copilotModels = (
-			copilotProviderCall[1] as { models: Array<{ id: string }> }
-		).models;
-		expect(
-			copilotModels.some((model) => model.id.startsWith("accounts/")),
-		).toBe(false);
-		expect(
-			copilotModels.some((model) => model.id === "text-embedding-3-small"),
-		).toBe(false);
-		expect(
-			copilotModels.some((model) => model.id === "oswe-vscode-secondary"),
-		).toBe(false);
-
-		const codexCall = fetchMock.mock.calls.find(([url]: [string]) =>
-			url.includes("/codex/models?client_version="),
-		);
-		expect(codexCall).toBeDefined();
-		expect(codexCall?.[1]?.headers?.["chatgpt-account-id"]).toBe("acct_test");
-
-		const copilotCall = fetchMock.mock.calls.find(
-			([url]: [string]) =>
-				url.includes("githubcopilot.com") && url.endsWith("/models"),
-		);
-		expect(copilotCall).toBeDefined();
-		expect(copilotCall?.[1]?.headers?.["Editor-Version"]).toBe(
-			"vscode/1.107.0",
-		);
-
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining(
-				"openai-codex added: gpt-5.5, gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra",
-			),
-			"info",
-		);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining(
-				"openai-codex enabled: openai-codex/gpt-5.5, openai-codex/gpt-5.6-luna, openai-codex/gpt-5.6-sol, openai-codex/gpt-5.6-terra",
-			),
-			"info",
-		);
-		const settings = JSON.parse(
-			fs.readFileSync(
-				path.join(tempHome, ".pi", "agent", "settings.json"),
-				"utf-8",
-			),
-		) as { enabledModels: string[]; unrelated: { preserved: boolean } };
-		expect(settings.enabledModels).toEqual([
-			"github-copilot/claude-opus-4.7",
-			"openai-codex/gpt-5.5",
-			"openai-codex/gpt-5.6-luna",
-			"openai-codex/gpt-5.6-sol",
-			"openai-codex/gpt-5.6-terra",
-			"openai-codex/gpt-5.4",
-			"github-copilot/gpt-4.1",
-		]);
-		expect(settings.unrelated).toEqual({ preserved: true });
-		const cacheFile = path.join(
-			tempHome,
-			".pi",
-			"agent",
-			"model-cache",
-			"refresh-models",
-			"openai-codex.json",
-		);
-		expect(fs.existsSync(cacheFile)).toBe(true);
-		const cache = JSON.parse(fs.readFileSync(cacheFile, "utf-8")) as {
-			schemaVersion: number;
-			provider: string;
-			fetchedAt: string;
-			models: Array<Record<string, unknown>>;
-		};
-		expect(cache).toMatchObject({
-			schemaVersion: 2,
-			provider: "openai-codex",
-			fetchedAt: expect.any(String),
-		});
-		expect(cache.models.find((model) => model.id === "gpt-5.6-sol")).toEqual(
-			expect.objectContaining({
-				id: "gpt-5.6-sol",
-				thinkingLevelMap: {
-					off: null,
-					minimal: null,
-					low: "low",
-					medium: "medium",
-					high: "high",
-					xhigh: "xhigh",
-					max: "max",
-				},
-			}),
-		);
-		expect(cache.models[0]).not.toHaveProperty("cost");
-		expect(reload).toHaveBeenCalledTimes(1);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining(
-				"Model catalog changed; reloading Pi resources so /models can see updates.",
-			),
-			"info",
-		);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("github-copilot added: claude-opus-4.7"),
-			"info",
-		);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining(
-				"github-copilot removed: oswe-vscode-secondary, text-embedding-3-small",
-			),
-			"info",
-		);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("Done. Refreshed 2"),
-			"info",
-		);
-	});
-
 	it("refreshes anthropic using /v1/models with x-api-key auth", async () => {
 		const pi = createMockPi();
 		registerRefreshModelsCommand(
@@ -830,107 +410,6 @@ describe("/refresh-models command", () => {
 		);
 	});
 
-	it("continues remaining providers and reports auth failures as warnings", async () => {
-		const pi = createMockPi();
-		registerRefreshModelsCommand(
-			pi as Parameters<typeof registerRefreshModelsCommand>[0],
-		);
-		const cmd = pi._commands.find((c) => c.name === "refresh-models");
-		if (!cmd) throw new Error("command not registered");
-
-		const fetchMock = vi.fn(async (url: string) => {
-			if (url.includes("api.anthropic.com/v1/models")) {
-				return mockJsonResponse(
-					{
-						type: "error",
-						error: {
-							type: "authentication_error",
-							message: "invalid x-api-key",
-						},
-					},
-					401,
-				);
-			}
-			if (url.includes("githubcopilot.com") && url.endsWith("/models")) {
-				return mockJsonResponse({
-					data: [
-						{
-							id: "gpt-4.1",
-							name: "GPT-4.1",
-							model_picker_enabled: true,
-							supported_endpoints: ["/chat/completions"],
-						},
-					],
-				});
-			}
-			return mockJsonResponse({ error: "missing" }, 404);
-		});
-		vi.stubGlobal("fetch", fetchMock);
-
-		const registerProvider = vi.fn();
-		const notify = vi.fn();
-		const ctx = {
-			ui: { notify },
-			modelRegistry: {
-				authStorage: {
-					list: () => ["anthropic", "github-copilot"],
-					get: () => ({
-						type: "oauth",
-						access: "x",
-						refresh: "y",
-						expires: Date.now() + 1000,
-					}),
-				},
-				getApiKeyForProvider: vi.fn(async (provider: string) =>
-					provider === "anthropic" ? "expired-token" : "copilot-token",
-				),
-				getAll: () => [
-					{
-						provider: "anthropic",
-						id: "claude-sonnet-4-5",
-						name: "Claude Sonnet 4.5",
-						api: "anthropic-messages",
-						baseUrl: "https://api.anthropic.com",
-						reasoning: true,
-						input: ["text", "image"],
-						cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-						contextWindow: 200000,
-						maxTokens: 64000,
-					},
-					{
-						provider: "github-copilot",
-						id: "gpt-4.1",
-						name: "GPT-4.1",
-						api: "openai-completions",
-						baseUrl: "https://api.individual.githubcopilot.com",
-						reasoning: false,
-						input: ["text"],
-						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-						contextWindow: 128000,
-						maxTokens: 16000,
-					},
-				],
-				registerProvider,
-			},
-		};
-
-		await cmd.handler("", ctx as Parameters<typeof cmd.handler>[1]);
-
-		expect(registerProvider).toHaveBeenCalledWith(
-			"github-copilot",
-			expect.any(Object),
-		);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("anthropic: authentication failed"),
-			"warning",
-		);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("Refresh completed with errors"),
-			"warning",
-		);
-		expect(notify).not.toHaveBeenCalledWith(expect.any(String), "error");
-	});
-
 	it("refreshes API-key providers with generic /models catalogs", async () => {
 		const pi = createMockPi();
 		registerRefreshModelsCommand(
@@ -961,9 +440,7 @@ describe("/refresh-models command", () => {
 					list: () => ["openrouter", "opencode"],
 					get: () => ({ type: "api_key", key: "x" }),
 				},
-				getApiKeyForProvider: vi.fn(
-					async (provider: string) => `${provider}-key`,
-				),
+				getApiKeyForProvider: vi.fn(async (provider: string) => provider + "-key"),
 				getAll: () => [
 					{
 						provider: "openrouter",
@@ -1083,7 +560,7 @@ describe("/refresh-models command", () => {
 		};
 
 		await cmd.handler(
-			"github-copilot",
+			"missing-provider",
 			ctx as Parameters<typeof cmd.handler>[1],
 		);
 		expect(notify).toHaveBeenCalledWith(

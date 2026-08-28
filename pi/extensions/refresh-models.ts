@@ -33,7 +33,6 @@ const CODEX_CLIENT_VERSION_CANDIDATES = ["999.0.0", "1.0.0", "0.99.0"];
 const SUPPORTED_REFRESH_PROVIDERS = new Set([
 	"anthropic",
 	"openai-codex",
-	"github-copilot",
 	"openrouter",
 	"opencode",
 	"opencode-go",
@@ -81,8 +80,6 @@ type RemoteModelInfo = {
 	contextWindow?: number;
 	maxTokens?: number;
 	thinkingLevelMap?: ThinkingLevelMap;
-	disabled?: boolean;
-	eligible?: boolean;
 };
 
 type ProviderCatalogCache = {
@@ -279,35 +276,6 @@ async function syncEnabledModels(
 	return changes;
 }
 
-function getBuiltInCopilotHeaders(): Record<string, string> {
-	try {
-		const modelWithHeaders = getModels("github-copilot").find(
-			(model) => !!model.headers && Object.keys(model.headers).length > 0,
-		);
-		return modelWithHeaders?.headers ? { ...modelWithHeaders.headers } : {};
-	} catch {
-		return {};
-	}
-}
-
-function inferCopilotApi(remote: Record<string, unknown>): string {
-	const endpoints = asStringArray(remote.supported_endpoints);
-	if (endpoints.some((endpoint) => endpoint.includes("/v1/messages")))
-		return "anthropic-messages";
-	if (endpoints.some((endpoint) => endpoint.includes("/responses")))
-		return "openai-responses";
-	return "openai-completions";
-}
-
-function defaultCopilotCompat(api: string) {
-	if (api !== "openai-completions") return undefined;
-	return {
-		supportsStore: false,
-		supportsDeveloperRole: false,
-		supportsReasoningEffort: false,
-	};
-}
-
 const PI_THINKING_LEVELS = [
 	"off",
 	"minimal",
@@ -473,25 +441,6 @@ async function fetchOpenAICodexCatalog(
 	throw new Error(lastError);
 }
 
-async function fetchGitHubCopilotCatalog(
-	baseUrl: string,
-	apiKey: string,
-	headers?: Record<string, string>,
-) {
-	const normalized = normalizeBaseUrl(baseUrl);
-	const fallbackHeaders = getBuiltInCopilotHeaders();
-	const requestHeaders: Record<string, string> = {
-		Accept: "application/json",
-		...fallbackHeaders,
-		...(headers ?? {}),
-		Authorization: `Bearer ${apiKey}`,
-		"openai-intent": "models",
-		"x-interaction-type": "models",
-	};
-
-	return fetchJson(`${normalized}/models`, requestHeaders);
-}
-
 async function fetchAnthropicCatalog(
 	baseUrl: string,
 	apiKey: string,
@@ -518,13 +467,6 @@ async function fetchProviderCatalog(params: {
 }): Promise<unknown> {
 	if (params.provider === "openai-codex") {
 		return fetchOpenAICodexCatalog(
-			params.baseUrl,
-			params.apiKey,
-			params.headers,
-		);
-	}
-	if (params.provider === "github-copilot") {
-		return fetchGitHubCopilotCatalog(
 			params.baseUrl,
 			params.apiKey,
 			params.headers,
@@ -585,70 +527,6 @@ function parseOpenAICodexRemoteModels(payload: unknown): RemoteModelInfo[] {
 	return parsed;
 }
 
-function parseGitHubCopilotRemoteModels(payload: unknown): RemoteModelInfo[] {
-	if (!payload || typeof payload !== "object") return [];
-	const data = (payload as Record<string, unknown>).data;
-	if (!Array.isArray(data)) return [];
-
-	const parsed: RemoteModelInfo[] = [];
-	for (const item of data) {
-		if (!item || typeof item !== "object") continue;
-		const record = item as Record<string, unknown>;
-		const id = asString(record.id) ?? asString(record.model);
-		if (!id) continue;
-
-		const supportedEndpoints = asStringArray(record.supported_endpoints);
-		const modelPickerEnabled = record.model_picker_enabled === true;
-		const capabilities =
-			record.capabilities && typeof record.capabilities === "object"
-				? (record.capabilities as Record<string, unknown>)
-				: undefined;
-		const supports =
-			capabilities?.supports && typeof capabilities.supports === "object"
-				? (capabilities.supports as Record<string, unknown>)
-				: undefined;
-		const limits =
-			capabilities?.limits && typeof capabilities.limits === "object"
-				? (capabilities.limits as Record<string, unknown>)
-				: undefined;
-		const policy =
-			record.policy && typeof record.policy === "object"
-				? (record.policy as Record<string, unknown>)
-				: undefined;
-
-		const supportedReasoningEffort = asStringArray(supports?.reasoning_effort);
-		const reasoningEffort = supportedReasoningEffort.length > 0;
-		const reasoning = reasoningEffort || Boolean(supports?.adaptive_thinking);
-		const vision = Boolean(supports?.vision);
-		const disabled = asString(policy?.state)?.toLowerCase() === "disabled";
-		const endpointsLookUsable =
-			supportedEndpoints.length === 0 ||
-			hasCopilotUsableEndpoint(supportedEndpoints);
-		const eligible =
-			modelPickerEnabled &&
-			endpointsLookUsable &&
-			!isCopilotInternalId(id) &&
-			!isCopilotEmbeddingId(id) &&
-			!isCopilotSyntheticRouterId(id);
-
-		parsed.push({
-			id,
-			name: asString(record.name),
-			api: inferCopilotApi(record),
-			reasoning,
-			input: vision ? ["text", "image"] : ["text"],
-			contextWindow: asNumber(limits?.max_context_window_tokens),
-			maxTokens:
-				asNumber(limits?.max_output_tokens) ??
-				asNumber(limits?.max_non_streaming_output_tokens),
-			thinkingLevelMap: buildThinkingLevelMap(supportedReasoningEffort),
-			disabled,
-			eligible,
-		});
-	}
-	return parsed;
-}
-
 function parseAnthropicRemoteModels(payload: unknown): RemoteModelInfo[] {
 	if (!payload || typeof payload !== "object") return [];
 	const data = (payload as Record<string, unknown>).data;
@@ -695,31 +573,8 @@ function parseRemoteModels(
 	payload: unknown,
 ): RemoteModelInfo[] {
 	if (provider === "openai-codex") return parseOpenAICodexRemoteModels(payload);
-	if (provider === "github-copilot")
-		return parseGitHubCopilotRemoteModels(payload);
 	if (provider === "anthropic") return parseAnthropicRemoteModels(payload);
 	return parseGenericRemoteModels(payload);
-}
-
-function isCopilotInternalId(id: string): boolean {
-	return id.startsWith("accounts/");
-}
-
-function isCopilotEmbeddingId(id: string): boolean {
-	return id.toLowerCase().includes("embedding");
-}
-
-function isCopilotSyntheticRouterId(id: string): boolean {
-	return id.startsWith("oswe-");
-}
-
-function hasCopilotUsableEndpoint(endpoints: string[]): boolean {
-	return endpoints.some(
-		(endpoint) =>
-			endpoint.includes("/chat/completions") ||
-			endpoint.includes("/responses") ||
-			endpoint.includes("/v1/messages"),
-	);
 }
 
 function toProviderModelDefinition(model: ModelLike): ProviderModelDef {
@@ -751,83 +606,7 @@ function buildProviderModelDefinitions(
 	const existingById = new Map(
 		existingModels.map((model) => [model.id, model]),
 	);
-	const remoteById = new Map(remoteModels.map((model) => [model.id, model]));
-	const activeRemote = remoteModels.filter((model) => !model.disabled);
-	const effectiveRemote = activeRemote.length > 0 ? activeRemote : remoteModels;
-	const effectiveById = new Map(
-		effectiveRemote.map((model) => [model.id, model]),
-	);
-
-	if (provider === "github-copilot") {
-		// Keep existing known models unless explicitly disabled by remote policy,
-		// and append newly discovered picker-enabled models.
-		const orderedIds: string[] = [];
-		const seen = new Set<string>();
-
-		for (const existing of existingModels) {
-			if (isCopilotInternalId(existing.id)) continue;
-			const remote = remoteById.get(existing.id);
-			if (remote?.disabled) continue;
-			if (remote && remote.eligible === false) continue;
-			if (
-				!remote &&
-				(isCopilotEmbeddingId(existing.id) ||
-					isCopilotSyntheticRouterId(existing.id))
-			)
-				continue;
-			if (!seen.has(existing.id)) {
-				orderedIds.push(existing.id);
-				seen.add(existing.id);
-			}
-		}
-
-		for (const remote of effectiveRemote) {
-			if (remote.disabled) continue;
-			if (remote.eligible === false) continue;
-			if (isCopilotInternalId(remote.id)) continue;
-			if (!seen.has(remote.id)) {
-				orderedIds.push(remote.id);
-				seen.add(remote.id);
-			}
-		}
-
-		return orderedIds.map((id) => {
-			const existing = existingById.get(id);
-			const remote = effectiveById.get(id);
-			const api = remote?.api ?? existing?.api ?? template.api;
-			const contextWindow =
-				remote?.contextWindow ??
-				existing?.contextWindow ??
-				DEFAULT_REFRESH_CONTEXT_WINDOW;
-			const maxTokens =
-				remote?.maxTokens ??
-				existing?.maxTokens ??
-				template.maxTokens ??
-				Math.min(16384, contextWindow);
-			const compat =
-				compatWithoutReasoningEffortMap(existing?.compat) ??
-				defaultCopilotCompat(api);
-			const thinkingLevelMap = getThinkingLevelMap(existing, remote);
-
-			return {
-				id,
-				name: remote?.name ?? existing?.name ?? id,
-				api,
-				reasoning:
-					remote?.reasoning ??
-					existing?.reasoning ??
-					template.reasoning ??
-					false,
-				input: remote?.input ?? existing?.input ?? template.input ?? ["text"],
-				cost: existing?.cost ?? template.cost ?? defaultCost(),
-				contextWindow,
-				maxTokens,
-				headers: existing?.headers ?? template.headers,
-				thinkingLevelMap,
-				compat,
-			};
-		});
-	}
+	const effectiveRemote = remoteModels;
 
 	return effectiveRemote.map((remote) => {
 		const existing = existingById.get(remote.id);
@@ -841,9 +620,9 @@ function buildProviderModelDefinitions(
 			existing?.maxTokens ??
 			template.maxTokens ??
 			Math.min(16384, contextWindow);
-		const compat =
-			compatWithoutReasoningEffortMap(existing?.compat) ??
-			(provider === "github-copilot" ? defaultCopilotCompat(api) : undefined);
+		const compat = compatWithoutReasoningEffortMap(
+			existing?.compat,
+		) as ProviderModelDef["compat"];
 		const thinkingLevelMap = getThinkingLevelMap(existing, remote);
 
 		return {

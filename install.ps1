@@ -218,7 +218,7 @@ function Write-GitBashPath {
         '*\Windows\Wbem*', '*\WindowsPowerShell\*',
         '*\WindowsApps*', '*\OpenSSH\*',
         '*\EaseUS\*', '*\NVIDIA*', '*\PhysX\*', '*\Windows Kits\*',
-        '*\.venv\*', '*\Python313*', '*\github.copilot-chat\*',
+        '*\.venv\*', '*\Python313*',
         '*\GitHub CLI*', '*\PowerToys\*'
     )
 

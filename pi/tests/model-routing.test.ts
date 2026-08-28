@@ -240,26 +240,6 @@ describe("resolveCommitPlanningModel", () => {
 		).toEqual(models[0]);
 	});
 
-	it("falls back to preferred OpenAI/GitHub mini models when no current model is provided", () => {
-		const models = [
-			{ provider: "github-copilot", id: "gpt-4.1-mini" },
-			{ provider: "openai-codex", id: "gpt-5.4-mini" },
-		];
-		expect(resolveCommitPlanningModel(models)).toEqual(models[1]);
-	});
-
-	it("falls back to the best available small model when no mini-labeled model exists", () => {
-		const models = [
-			{ provider: "github-copilot", id: "gpt-4.1" },
-			{ provider: "github-copilot", id: "gpt-4.1-fast" },
-		];
-		expect(
-			resolveCommitPlanningModel(models, {
-				provider: "github-copilot",
-				id: "gpt-4.1",
-			}),
-		).toEqual(models[1]);
-	});
 });
 
 describe("resolveDynamicModel", () => {
@@ -361,24 +341,6 @@ describe("resolveDynamicModel", () => {
 		);
 	});
 
-	it("prefers same-provider fallbacks when exact family variants are missing", () => {
-		const models = [
-			{ provider: "github-copilot", id: "gpt-4.1-mini" },
-			{ provider: "github-copilot", id: "gpt-4.1" },
-			{ provider: "github-copilot", id: "o3" },
-			{ provider: "openai-codex", id: "gpt-5.4-mini" },
-		];
-		const current = { provider: "github-copilot", id: "gpt-4.1" };
-		expect(
-			resolveDynamicModel(models, current, "small", "same-provider"),
-		).toEqual(models[0]);
-		expect(
-			resolveDynamicModel(models, current, "medium", "same-provider"),
-		).toEqual(models[1]);
-		expect(
-			resolveDynamicModel(models, current, "large", "same-provider"),
-		).toEqual(models[2]);
-	});
 });
 
 describe("shared named model policies", () => {
