@@ -334,6 +334,23 @@ no_delete_paths: []
 		];
 		expect(await mod.evaluateDangerousCommand("docker compose down", askRules, { bypass: true, toolName: "bash", cwd })).toBeUndefined();
 		expect(await mod.evaluateDangerousCommand("rm -rf build", askRules, { bypass: true, toolName: "bash", cwd })).toBeUndefined();
+		const gitRmCommand =
+			"git rm -- opencode/package-lock.json scripts/install-herdr.ps1 scripts/private-vault-audit scripts/private-vault-normalize\nprintf '\\nStatus:\\n'; git status --short";
+		expect(
+			await mod.evaluateDangerousCommand(
+				gitRmCommand,
+				[
+					{
+						pattern: "\\bgit\\s+rm\\s+(?!.*--cached).*\\S",
+						regex: "\\bgit\\s+rm\\s+(?!.*--cached).*\\S",
+						reason:
+							"git rm (deletes files from working tree and index). Use --cached to only remove from index.",
+						action: "ask",
+					},
+				],
+				{ bypass: true, toolName: "bash", cwd },
+			),
+		).toBeUndefined();
 		expect(mod.isDamageControlBypassEligible({ command: "git reset --hard", approval: { rule: "semantic_git", reason: "git reset --hard permanently discards uncommitted changes" }, cwd })).toBe(true);
 		expect(await mod.evaluateDangerousCommand("git reset --hard", [], { bypass: true, toolName: "bash", cwd })).toBeUndefined();
 		expect(mod.isDamageControlBypassEligible({ command: "cat .env", approval: { rule: "env", reason: ".env access" }, cwd })).toBe(true);
@@ -344,7 +361,9 @@ no_delete_paths: []
 		const hooks: Record<string, Array<(...args: any[]) => Promise<unknown>>> = {};
 		const pi = {
 			on: vi.fn((name, handler) => {
-				(hooks[name] ??= []).push(handler);
+				const handlers = hooks[name] ?? [];
+				handlers.push(handler);
+				hooks[name] = handlers;
 			}),
 			registerCommand: vi.fn((name, command) => {
 				commands[name] = command;

@@ -249,21 +249,21 @@ export function isDamageControlBypassEligible(
 	)
 		return false;
 	if (
-		/\bgit\b/i.test(command) &&
-		/(?:push|fetch|pull|clone|remote|submodule|--delete|:\S+|force-with-lease)/i.test(
-			command,
-		)
+		/\bgit\s+(?:push|fetch|pull|clone|remote|submodule)\b/i.test(command)
 	)
 		return false;
+	const hasStandaloneRm =
+		/(?:^|[;&|\n]\s*)(?:sudo\s+)?rm\b/i.test(command);
 	if (
-		/\brm\b/i.test(command) &&
+		hasStandaloneRm &&
 		evaluateScopedDelete(command, input.cwd, {
 			no_delete_paths: input.noDeletePaths ?? [],
 		}) !== "allow"
 	)
 		return false;
 	return (
-		/\b(?:rm|docker|git)\b/i.test(command) ||
+		hasStandaloneRm ||
+		/\b(?:docker|git)\b/i.test(command) ||
 		(environmentAccess && environmentCommandIsContained(command, input.cwd))
 	);
 }
