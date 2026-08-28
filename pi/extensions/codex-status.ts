@@ -673,10 +673,7 @@ export function formatBedrockUsageSection(
 		{
 			inputTokens: number;
 			outputTokens: number;
-			cacheReadTokens: number;
-			cacheWriteTokens: number;
 			costTotal: number;
-			unpricedRequestCount: number;
 		}
 	>();
 	for (const model of summary.models) {
@@ -684,29 +681,24 @@ export function formatBedrockUsageSection(
 		const totals = modelsByName.get(name) ?? {
 			inputTokens: 0,
 			outputTokens: 0,
-			cacheReadTokens: 0,
-			cacheWriteTokens: 0,
 			costTotal: 0,
-			unpricedRequestCount: 0,
 		};
 		totals.inputTokens += model.inputTokens;
 		totals.outputTokens += model.outputTokens;
-		totals.cacheReadTokens += model.cacheReadTokens;
-		totals.cacheWriteTokens += model.cacheWriteTokens;
 		totals.costTotal += model.costTotal;
-		totals.unpricedRequestCount += model.unpricedRequestCount;
 		modelsByName.set(name, totals);
 	}
 
 	const lines = ["Bedrock local estimate:"];
 	for (const [name, model] of modelsByName) {
-		const partial = model.unpricedRequestCount > 0 ? ">= " : "";
+		const cost = formatCompactMoney(model.costTotal);
+		if (cost === "$0.00") continue;
 		lines.push(
-			`  ${name}: ${partial}${formatCompactMoney(model.costTotal)} ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out, ${formatCompactTokenCount(model.cacheWriteTokens)} cache write, ${formatCompactTokenCount(model.cacheReadTokens)} cache read`,
+			`  ${name}: ${cost} ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out`,
 		);
 	}
-	const partial = summary.unpricedRequestCount > 0 ? ">= " : "";
-	lines.push(`  Total:  ${partial}${formatCompactMoney(summary.costTotal)}`);
+	const total = formatCompactMoney(summary.costTotal);
+	if (total !== "$0.00") lines.push(`  Total:  ${total}`);
 	return lines.join("\n");
 }
 

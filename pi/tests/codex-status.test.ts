@@ -632,8 +632,8 @@ describe("codex-status usage", () => {
 			cacheReadTokens: 11_351_065,
 			cacheWriteTokens: 946_491,
 			costTotal: 68.073485,
-			requestCount: 5,
-			unpricedRequestCount: 0,
+			requestCount: 6,
+			unpricedRequestCount: 1,
 			models: [
 				{
 					provider: "amazon-bedrock",
@@ -644,7 +644,7 @@ describe("codex-status usage", () => {
 					cacheWriteTokens: 31_214,
 					costTotal: 1.819085,
 					requestCount: 3,
-					unpricedRequestCount: 0,
+					unpricedRequestCount: 1,
 				},
 				{
 					provider: "bedrock-mantle",
@@ -657,11 +657,22 @@ describe("codex-status usage", () => {
 					requestCount: 2,
 					unpricedRequestCount: 0,
 				},
+				{
+					provider: "amazon-bedrock",
+					model: "openai.gpt-5.6-luna",
+					inputTokens: 10,
+					outputTokens: 48,
+					cacheReadTokens: 12_000,
+					cacheWriteTokens: 32_000,
+					costTotal: 0.004,
+					requestCount: 1,
+					unpricedRequestCount: 1,
+				},
 			],
 		});
 
 		expect(text).toBe(
-			"Bedrock local estimate:\n  fable-5: $68.07 3.6M in, 174.9K out, 946.5K cache write, 11.4M cache read\n  Total:  $68.07",
+			"Bedrock local estimate:\n  fable-5: $68.07 3.6M in, 174.9K out\n  Total:  $68.07",
 		);
 	});
 
