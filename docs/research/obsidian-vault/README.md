@@ -18,6 +18,7 @@ it needs more specific guidance.
 
 - `agent-workflows/` — agent tooling, workflow patterns, videos, projects, and
   small Pi/dotfiles adaptation ideas.
+- [Ubuntu 24.04 kernel 6.8.0-100 incident](ubuntu-kernel-6.8.0-100-incident.md) - historical networking incident.
 - `prompt-router/` — prompt-router curation, experiments, datasets, deployment
   candidates, and user-effort override policy.
 - `osint/` - OSINT resource directories, agent-assisted investigation sources,

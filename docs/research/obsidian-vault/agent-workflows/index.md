@@ -28,6 +28,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [Menos research storage](projects/menos-research-storage.md) - superseded research-ingestion proposal retained as historical context.
 - [X research prototype](projects/x-research-prototype/README.md) - archived local SQLite and provider-adapter experiment retained for future Twitter tooling.
 - [Durable agent task architecture](projects/agent-task-architecture.md) - archived research on SQLite, durable task graphs, evidence, and long-horizon reliability; not an approved roadmap.
+- [Agent routing research](projects/agent-routing-research.md) - superseded routing catalog and design intent.
+- [Pi Link minimal terminal communication](projects/pi-link-minimal-terminal-communication.md) - concise research on local terminal messaging, status, naming, and shared scratch context.
 
 ## Strongest signals
 
