@@ -11,9 +11,15 @@ const JUDGE_MODEL_ID = "gpt-5.6-luna";
 const JUDGE_MODEL = `${JUDGE_PROVIDER}/${JUDGE_MODEL_ID}`;
 const JUDGE_TIMEOUT_MS = 20_000;
 const SYSTEM_PROMPT =
-	"Decide whether the command may proceed without confirmation. Return exactly one line: allow or ask, followed by a space and a one-line reason.";
+	'Review only the delimited authorization evidence. Decide allow or ask. Return strict JSON: {"decision":"allow"|"ask","risk":"low"|"medium"|"high"|"unknown","reason":string}. Do not use tools.';
 
 export type DamageControlJudgeVerdict = "allow" | "ask" | "error";
+export type DamageControlJudgeRisk = "low" | "medium" | "high" | "unknown";
+export interface DamageControlJudgeReview {
+	decision: "allow" | "ask";
+	risk: DamageControlJudgeRisk;
+	reason: string;
+}
 
 export interface DamageControlJudgeModelRegistry {
 	find: ModelRegistry["find"];
@@ -27,6 +33,9 @@ export interface JudgeDamageControlInput {
 	rule: string;
 	reason: string;
 	modelRegistry: DamageControlJudgeModelRegistry;
+	provider?: string;
+	modelId?: string;
+	evidence?: string;
 	correlation?: Partial<CorrelationFields>;
 }
 
@@ -36,6 +45,7 @@ export interface DamageControlJudgeRecord {
 	ts?: string;
 	eventId: string;
 	verdict: DamageControlJudgeVerdict;
+	risk?: DamageControlJudgeRisk;
 	reason: string;
 	model: string;
 	latencyMs: number;
@@ -88,16 +98,36 @@ export function parseDamageControlJudgeVerdict(
 	return { verdict: match[1] as "allow" | "ask", reason };
 }
 
+export function parseDamageControlJudgeReview(
+	output: string,
+): DamageControlJudgeReview | undefined {
+	try {
+		const value: unknown = JSON.parse(output);
+		if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+		const row = value as Record<string, unknown>;
+		if (Object.keys(row).sort().join(",") !== "decision,reason,risk") return undefined;
+		if ((row.decision !== "allow" && row.decision !== "ask") ||
+			(row.risk !== "low" && row.risk !== "medium" && row.risk !== "high" && row.risk !== "unknown") ||
+			typeof row.reason !== "string" || row.reason.trim() === "") return undefined;
+		return { decision: row.decision, risk: row.risk, reason: row.reason } as DamageControlJudgeReview;
+	} catch {
+		return undefined;
+	}
+}
+
 export async function judgeDamageControl(
 	input: JudgeDamageControlInput,
 ): Promise<DamageControlJudgeRecord> {
 	const startedAt = Date.now();
 	let verdict: DamageControlJudgeVerdict = "error";
+	let risk: DamageControlJudgeRisk | undefined;
 	let reason = "judge error";
-	const model = input.modelRegistry.find(JUDGE_PROVIDER, JUDGE_MODEL_ID);
+	const provider = input.provider ?? JUDGE_PROVIDER;
+	const modelId = input.modelId ?? JUDGE_MODEL_ID;
+	const model = input.modelRegistry.find(provider, modelId);
 	if (!model) {
 		reason = "model unavailable";
-		return recordJudgeResult(input.eventId, verdict, reason, startedAt, input.correlation);
+		return recordJudgeResult(input.eventId, verdict, reason, startedAt, input.correlation, risk, `${provider}/${modelId}`);
 	}
 
 	const controller = new AbortController();
@@ -110,13 +140,15 @@ export async function judgeDamageControl(
 				messages: [
 					{
 						role: "user",
-						content: `command: ${input.command}\ncwd: ${input.cwd}\nrule: ${input.rule}\nreason: ${input.reason}`,
+						content: input.evidence ?? `command: ${input.command}\ncwd: ${input.cwd}\nrule: ${input.rule}\nreason: ${input.reason}`,
 						timestamp: Date.now(),
 					},
 				],
 			},
 			{
 				temperature: 0,
+				reasoningEffort: "high",
+				tools: [],
 				timeoutMs: JUDGE_TIMEOUT_MS,
 				maxRetries: 0,
 				signal: controller.signal,
@@ -135,13 +167,18 @@ export async function judgeDamageControl(
 			reason = "judge error";
 			return recordJudgeResult(input.eventId, verdict, reason, startedAt, input.correlation);
 		}
-		const parsed = parseDamageControlJudgeVerdict(
-			result.content
-				.filter((content) => content.type === "text")
-				.map((content) => content.text)
-				.join(""),
-		);
-		if (parsed) {
+		const output = result.content
+			.filter((content) => content.type === "text")
+			.map((content) => content.text)
+			.join("");
+		const parsed = input.provider || input.modelId || input.evidence
+			? parseDamageControlJudgeReview(output)
+			: parseDamageControlJudgeVerdict(output);
+		if (parsed && "decision" in parsed) {
+			verdict = parsed.decision;
+			risk = parsed.risk;
+			reason = parsed.reason;
+		} else if (parsed) {
 			verdict = parsed.verdict;
 			reason = parsed.reason;
 		} else {
@@ -155,7 +192,7 @@ export async function judgeDamageControl(
 	} finally {
 		if (timeout !== undefined) clearTimeout(timeout);
 	}
-	return recordJudgeResult(input.eventId, verdict, reason, startedAt, input.correlation);
+	return recordJudgeResult(input.eventId, verdict, reason, startedAt, input.correlation, risk, `${provider}/${modelId}`);
 }
 
 export function listDamageControlJudgeRecords(
@@ -228,6 +265,8 @@ function recordJudgeResult(
 	reason: string,
 	startedAt: number,
 	correlation?: Partial<CorrelationFields>,
+	risk?: DamageControlJudgeRisk,
+	model = JUDGE_MODEL,
 ): DamageControlJudgeRecord {
 	const ts = new Date().toISOString();
 	const record: DamageControlJudgeRecord = {
@@ -238,8 +277,9 @@ function recordJudgeResult(
 		ts,
 		eventId,
 		verdict,
+		...(risk ? { risk } : {}),
 		reason,
-		model: JUDGE_MODEL,
+		model,
 		latencyMs: Date.now() - startedAt,
 		recordedAt: ts,
 	};

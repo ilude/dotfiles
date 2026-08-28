@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as TreeSitter from "web-tree-sitter";
@@ -11,12 +10,12 @@ import {
 	compileCommandRegex,
 	type DangerousCommand,
 } from "../damage-control-rules.js";
+import { getBashParser } from "./operation-analysis.js";
 
 export type AstDecision =
 	| { decision: "allow" }
 	| { decision: "ask" | "block"; reason: string };
 
-const require = createRequire(import.meta.url);
 const SAFE_VARIABLES = new Set([
 	"$HOME",
 	"$PWD",
@@ -49,8 +48,6 @@ type ExtractedCommand = {
 	startIndex?: number;
 	endIndex?: number;
 };
-
-let initPromise: Promise<TreeSitter.Parser> | undefined;
 
 function stripQuotes(value: string): string {
 	const trimmed = value.trim();
@@ -340,25 +337,7 @@ function analyzeTempCleanup(
 	return { safeRmCommands, safeCommandTexts, safeRanges };
 }
 
-function bashWasmPath(): string {
-	return path.join(
-		path.dirname(require.resolve("tree-sitter-bash/package.json")),
-		"tree-sitter-bash.wasm",
-	);
-}
-
-async function getParser(): Promise<TreeSitter.Parser> {
-	if (!initPromise) {
-		initPromise = (async () => {
-			await TreeSitter.Parser.init();
-			const language = await TreeSitter.Language.load(bashWasmPath());
-			const parser = new TreeSitter.Parser();
-			parser.setLanguage(language);
-			return parser;
-		})();
-	}
-	return initPromise;
-}
+const getParser = getBashParser;
 
 function parse(parser: TreeSitter.Parser, command: string): TreeSitter.Node {
 	const tree = parser.parse(command);

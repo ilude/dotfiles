@@ -7,3 +7,7 @@ allowBuilds:
   protobufjs: false
   tree-sitter: false
   tree-sitter-bash: false
+  tree-sitter-javascript: false
+  tree-sitter-powershell: false
+  tree-sitter-python: false
+  tree-sitter-typescript: false

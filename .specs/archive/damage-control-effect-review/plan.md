@@ -1,6 +1,7 @@
 ---
 created: 2026-08-27
-status: ready
+status: completed
+completed: 2026-08-28
 ---
 
 # Refactor damage control around parsed effects and Luna review
@@ -23,20 +24,20 @@ Replace whole-command bypass authorization with shared parsed effects for Bash, 
 
 ## Tasks
 
-- [ ] **T1: Prove the shared parser-to-effect contract**
+- [x] **T1: Prove the shared parser-to-effect contract**
   - Files: `pi/package.json`, `pi/pnpm-lock.yaml`, `pi/extensions/damage-control/ast-analyzer.ts`, `pi/extensions/damage-control/operation-analysis.ts`, `pi/tests/damage-control-operation-analysis.test.ts`
   - Change: Add `tree-sitter-powershell@^0.26.4`, `tree-sitter-python@^0.25.0`, `tree-sitter-javascript@^0.25.0`, and `tree-sitter-typescript@^0.23.2`; centralize `Parser.init()`, language/parser caching, exact WASM resolution, and load/timeout failure conversion to uncertainty in `operation-analysis.ts`, while reusing the existing Bash grammar and analysis. Define a discriminated known-effect versus uncertain-effect result: known effects carry source language, normalized operation kind, executable/arguments when applicable, canonical target where applicable, and parser ranges only for diagnostics or command-fragment extraction; filesystem, Git, Docker, subprocess, and network activity are distinct effect kinds, while protection is derived during aggregation rather than stored redundantly. Aggregate every node in the complete invocation before deciding: any protected or uncertain node outranks every allow node, and a sensitive read combined anywhere with an external sink, remote subprocess, or unresolved flow is protected and reviewer-ineligible. First implement the exact multiline `git rm ...; printf ...` regression and PowerShell `Remove-Item -Recurse -Force`; stop expansion if either parser cannot preserve ownership, ranges, arguments, and static targets. Tree-sitter `ERROR`/missing nodes, parser initialization failure, timeout, recursion beyond the existing depth three, and any executable node not mapped to an effect must produce uncertainty.
   - Done when: The representative slices distinguish executable ownership without whole-input regex inference; compound protected effects cannot be hidden by an allowed Git node; malformed and unsupported Bash/PowerShell constructs produce uncertainty; and the shared contract passes focused tests and the early typecheck.
   - Verify: `cd pi && pnpm run typecheck && pnpm test damage-control-operation-analysis.test.ts`
 
-- [ ] **T2: Route bypass and normal safe operations through parsed effects**
+- [x] **T2: Route bypass and normal safe operations through parsed effects**
   - Files: `pi/extensions/damage-control-engine.ts`, `pi/extensions/damage-control.ts`, `pi/extensions/damage-control/operation-analysis.ts`, `pi/damage-control-rules.yaml`, `pi/tests/damage-control.test.ts`, `pi/tests/damage-control-ast.test.ts`, `pi/tests/damage-control-operation-analysis.test.ts`, `pi/skills/pi-extension/references/contracts/damage-control.md`
   - Change: Replace the separate whole-command bypass regex classifier with one final aggregated effect decision after every deterministic sequence, path, no-delete, secret, and dangerous-command check. Route the PowerShell handler through parsing before regex deletion decisions. Discover the canonical root with `git rev-parse --show-toplevel` from the effective tool cwd; linked worktrees resolve to their worktree root, submodules to their own root, and non-repositories or discovery failure remain uncertain with no cwd fallback except for the bounded `git clone` case below. Address PowerShell deletion parity; allow repository-contained `.env` pipelines and sequences while treating any invocation-wide sensitive-read plus external/network/DNS/remote-process or unresolved data flow as protected; use real configured policy and registered handlers; distinguish `docker system/image prune` and `compose down --rmi` from protected `volume rm/prune` and `compose down -v/--volumes`; and reset bypass for every fresh-extension `session_start` reason `startup`, `clear`, `reload`, `resume`, and `fork`, while process exit discards the same non-persisted state; do not add session-entry or settings persistence. Parse UTF-8 inline scripts or canonical repository-contained `.py`, `.js`, `.mjs`, `.cjs`, or `.ts` files within one 256 KiB total analyzed-source budget per invocation and recursion depth three, for supported literal filesystem, subprocess, import, and network APIs; missing, changed, unreadable, binary, symlink-escaped, computed, reflective, aliased, unsupported, or inter-file-dependent code is uncertain. Treat `git fetch`, `git clone`, and `git pull --ff-only` as allow effects only after complete-invocation aggregation. Permit clone outside an existing repository only when its destination is explicit or deterministically derived from a literal source, canonicalized against the effective cwd, has no symlink-prefix escape, and does not intersect protected/read-only/no-delete paths; a dynamic source/destination or unsafe parent remains uncertain. Permit standard literal local/file, HTTPS/HTTP, SSH/scp-like, and `git://` fetch/clone transports. Treat `ext::`, executable Git aliases, `--upload-pack`/`--receive-pack`, `GIT_SSH_COMMAND`/`GIT_PROXY_COMMAND`, `-c` executable/helper overrides, unknown URL schemes, compound protected effects, and uncertain arguments as protected or uncertain. Environment prefixes and non-executable global Git options may otherwise be normalized. Other ordinary local Git effects are bypassable; force push and remote-ref deletion remain protected.
   - Done when: Registered handlers, identified by tool behavior rather than array index, prove all agreed allow classes and retained groups; representative Python/JS/TS tests cover each supported effect family, parser recovery/error cases, and dynamic or unsupported executable constructs becoming uncertain; nested cwd, linked-worktree, submodule, symlink escape, non-repository clone destination, standard transport, and executable transport-override cases prove root and Git transport semantics; and the exact `git rm` regression no longer prompts while bypassed.
   - Verify: `cd pi && pnpm test damage-control.test.ts damage-control-ast.test.ts damage-control-operation-analysis.test.ts`
   - Depends on: T1
 
-- [ ] **T3: Promote the shadow judge into bounded optional Luna auto-review**
+- [x] **T3: Promote the shadow judge into bounded optional Luna auto-review**
   - Files: `pi/lib/damage-control-settings.ts`, `pi/lib/damage-control-judge.ts`, `pi/extensions/damage-control.ts`, `pi/tests/damage-control-settings.test.ts`, `pi/tests/damage-control-judge.test.ts`, `pi/tests/damage-control-shadow-judge-extension.test.ts`, `pi/skills/pi-extension/references/contracts/damage-control.md`
   - Change: Preserve existing shadow-only behavior by default and add a settings parser for `damageControl.judge.{enabled,autoAllow,provider,model}` that validates consumed field types, requires an exact configured model ID containing the Luna family name for auto-allow, uses fixed `high` reviewer effort, and never falls back to another provider/model. Await authoritative review only after all deterministic seams produce one final reviewer-eligible ask with no protected or uncertain effects and only when `ctx.hasUI`; no-UI remains fail-closed without authoritative review. Send the tool-less configured model only bounded redacted authorization, matched rule, repository-relative effect summaries, and untrusted command fragments as delimited data. Require strict JSON `{decision:"allow"|"ask",risk:"low"|"medium"|"high"|"unknown",reason:string}`; only `allow` plus `low` may auto-allow after deterministic eligibility has already proved there are no protected or uncertain effects. Resolution failure, timeout/transport failure, malformed output, ask verdict, or evidence of tool-capable execution retains the original prompt. Hard blocks and ineligible asks cannot reach the reviewer. Reuse existing judge records/correlation and keep `enabled:true` without `autoAllow:true` asynchronous and non-authoritative.
   - Done when: Tests prove one eligible low-risk ask auto-allows through the exact configured Luna model; settings, fixed effort, redaction, exact Luna identity, no-UI, one model-resolution failure, one transport failure, one schema failure, shadow-only, and later-seam hard protection retain the original prompt without replay or authority escalation.
@@ -45,9 +46,9 @@ Replace whole-command bypass authorization with shared parsed effects for Bash, 
 
 ## Validation
 
-- [ ] `cd pi && pnpm test damage-control-operation-analysis.test.ts damage-control-ast.test.ts damage-control-settings.test.ts damage-control-judge.test.ts damage-control-shadow-judge-extension.test.ts damage-control.test.ts operator-status.test.ts` passes with the completion-evidence behaviors exercised through the focused suites.
-- [ ] `cd pi && pnpm exec biome check extensions/damage-control.ts extensions/damage-control-engine.ts extensions/damage-control lib/damage-control-judge.ts tests/damage-control-operation-analysis.test.ts tests/damage-control-ast.test.ts tests/damage-control-settings.test.ts tests/damage-control-judge.test.ts tests/damage-control-shadow-judge-extension.test.ts tests/damage-control.test.ts tests/operator-status.test.ts` passes without fixes.
-- [ ] `cd pi && pnpm run typecheck` passes after the final shared-contract and settings changes.
+- [x] `cd pi && pnpm test damage-control-operation-analysis.test.ts damage-control-ast.test.ts damage-control-settings.test.ts damage-control-judge.test.ts damage-control-shadow-judge-extension.test.ts damage-control.test.ts operator-status.test.ts` passes with the completion-evidence behaviors exercised through the focused suites.
+- [x] `cd pi && pnpm exec biome check extensions/damage-control.ts extensions/damage-control-engine.ts extensions/damage-control lib/damage-control-judge.ts tests/damage-control-operation-analysis.test.ts tests/damage-control-ast.test.ts tests/damage-control-settings.test.ts tests/damage-control-judge.test.ts tests/damage-control-shadow-judge-extension.test.ts tests/damage-control.test.ts tests/operator-status.test.ts` passes without fixes.
+- [x] `cd pi && pnpm run typecheck` passes after the final shared-contract and settings changes.
 
 ## Retention
 
@@ -55,7 +56,7 @@ Keep incomplete work at `.specs/damage-control-effect-review/plan.md`. After com
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
+- State: Complete; T1-T3 and all recorded validation gates passed.
 - Blocker: None.
-- Next: T1.
-- Resume: `/do-it .specs/damage-control-effect-review/plan.md`
+- Next: Archive and close out the workflow.
+- Resume: None.
