@@ -7,8 +7,11 @@
 - [CI contract](ci.md)
 - [Commit helper contract](commit-helper-contract.md)
 
-Historical research and incident records live in the [research vault](research/obsidian-vault/README.md).
+## Research vault
 
-- [Ubuntu 24.04 kernel 6.8.0-100 incident](research/obsidian-vault/ubuntu-kernel-6.8.0-100-incident.md)
-- [Superseded agent-routing research](research/obsidian-vault/agent-workflows/projects/agent-routing-research.md)
-- [Pi Link minimal terminal communication research](research/obsidian-vault/agent-workflows/projects/pi-link-minimal-terminal-communication.md)
+The [research vault](research/obsidian-vault/README.md) contains research notes, historical incidents, and exploratory material. Use its indexes to navigate the contents:
+
+- [Vault index](research/obsidian-vault/index.md)
+- [Agent workflows index](research/obsidian-vault/agent-workflows/index.md)
+- [Prompt router index](research/obsidian-vault/prompt-router/index.md)
+- [OSINT index](research/obsidian-vault/osint/index.md)

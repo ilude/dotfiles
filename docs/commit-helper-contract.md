@@ -1,139 +1,46 @@
-# Commit Helper Contract
+# Commit helper and Pi commit contracts
 
-`uv run python scripts/commit-helper ...` provides deterministic, machine-readable planning for non-Pi `/commit` consumers and parity checks.
+These are related but separate interfaces:
 
-Pi now owns the canonical commit workflow through the TypeScript Pi commit extension (`pi/extensions/workflow-commands.ts` plus `pi/extensions/commit.ts`). The Python helper is retained for compatibility, regression comparison, and clients that have not migrated to the Pi commit extension.
+- `uv run python scripts/commit-helper ...` is a non-mutating Python CLI for compatibility, legacy consumers, and parity checks.
+- `pi/extensions/commit.ts` registers the structured Pi tools. Pi's tools can stage, create, and push; the slash-command orchestration loop is documented in [Agent command surfaces](agent-command-surfaces.md).
 
-## Goals
+## Python helper
 
-- Classify current Git state without relying on agent interpretation of porcelain output.
-- Produce a safe staging plan that preserves already-staged deletions.
-- Reject non-conventional commit messages before `git commit` is attempted.
+Commands are `status-json`, `stage-plan [--paths <paths...>]`, and `validate-message <message>`.
 
-## Non-goals
+The JSON document contains `schema_version` (currently `1`), `command`, `repo_root`, `clean`, `entries`, `warnings`, and `errors`. Each entry contains a repo-relative forward-slash `path`, porcelain-v1 `index` and `worktree` status characters, `classification`, `ignored`, `safe_to_git_add`, `recommended_action`, and `reason`.
 
-- The helper does not create commits.
-- The helper does not push.
-- The helper does not force-add ignored files.
-- The helper does not perform broad secret scanning in V1.
-- The helper does not choose logical commit groupings or write commit messages.
+Python classifications are:
 
-## Implementations
+- `staged_deletion`, `staged`, `modified`, `deleted`, `untracked`, `ignored`, `renamed`, `copied`, `unmerged`, and `unknown`
 
-Three surfaces implement the commit workflow. Each has a distinct scope:
+Actions are `stage`, `keep_staged`, `skip`, `block`, or `none`. `none` is the fallback for an unexpected status with no staging recommendation. The helper preserves staged deletions and never recommends adding ignored paths. For porcelain rename/copy records, it consumes the extra source-path record and emits the reported path as one entry; the Python schema does not expose a source/destination pair.
 
-- `scripts/commit-helper` -- Python CLI; non-mutating JSON output used by legacy callers and parity checks. Does not create commits or push.
-- `claude/agents/committer.md` -- Claude agent definition invoked by `/commit`; orchestrates grouping, conventional-message authoring, and optional push. Calls the Python helper for planning; does not call the Pi commit tools directly.
-- `pi/extensions/commit.ts` + `pi/lib/commit/*` -- Pi-native TypeScript tools (`commit_plan`, `commit_validate_message`, `commit_stage`, `commit_create`). Canonical path for Pi sessions. Confirmation tokens enforce user-review of every staged-path set.
+`validate-message` accepts the repository's conventional subject format and returns exit code `0` when valid, `1` for validation or usage failure, and `2` when Git fails or the current directory is not a repository. Planning commands return JSON and use `2` for those Git/repository failures. The helper does not create commits, push, force-add ignored files, scan secrets, choose groupings, or write messages.
 
-## Commands
+## Pi structured tools
 
-### `status-json`
+`pi/extensions/commit.ts` independently registers:
 
-Prints a JSON document describing current Git status.
+- `commit_plan`: inspect and return a plan without mutation
+- `commit_validate_message`: validate a subject without mutation
+- `commit_stage`: stage exact safe paths
+- `commit_create`: create one local commit
+- `commit_push`: push after checking the expected commit and upstream state
 
-### `stage-plan [--paths <paths...>]`
+The model-visible result is deliberately smaller than the internal result. `commit_plan` exposes `planId`, preflight data, selected entries, `safeStagePaths`, and `expectedStagedPaths`; it does not expose confirmation tokens. `commit_stage` exposes `stageId`, staged paths, and the expected staged set; it does not expose the create token. Internal tool details retain the plan or stage state and tokens for subsequent calls. `commit_validate_message` exposes its validation result. `commit_create` returns the commit hash, message, committed paths, and `pushed: false`. `commit_push` returns branch, hash, and whether a push occurred.
 
-Prints a JSON document describing what the committer should stage, keep staged, skip, or block. This command is non-mutating.
+Pi classifications are:
 
-### `validate-message <message>`
+- `staged_deletion`, `staged_change`, `unstaged_change`, `untracked`, `ignored_untracked`, `unmerged`, and `unknown`
 
-Validates a conventional commit subject. Exits `0` for valid messages and non-zero for invalid messages.
+Pi actions are `keep_staged`, `stage`, `skip`, and `block`; there is no Pi `none` action. Ignored untracked paths are skipped and never force-added. An ignored local copy of a tracked file whose deletion is already staged remains `staged_deletion`, with `safeToGitAdd: false` and `keep_staged`; it must not be re-added.
 
-## JSON schema -- Python helper (scripts/commit-helper)
+Pi does not expose separate `renamed` or `copied` classifications. Renames and copies are represented through the staged-change/status handling. During staging, already-staged rename sources are excluded so staging does not re-add them.
 
-Top-level fields:
+## Normalization and boundaries
 
-- `schema_version`: integer, currently `1`.
-- `repo_root`: absolute repository root path as reported by Git.
-- `clean`: boolean.
-- `entries`: array of path entries (see Per-path fields below).
-- `warnings`: array of strings.
-- `errors`: array of strings.
+Both surfaces normalize paths to repo-relative forward-slash paths and deduplicate them. The Python helper passes Git arguments as subprocess argument lists, preserving spaces and avoiding shell-string parsing. Pi uses the same forward-slash normalization for selected and expected paths.
 
-Per-path fields:
-
-- `path`: repo-relative path using forward slashes.
-- `index`: single-character index status from porcelain v1, or `?` for untracked.
-- `worktree`: single-character worktree status from porcelain v1, or `?` for untracked.
-- `classification`: normalized state label (see Classifications below).
-- `ignored`: boolean from `git check-ignore`.
-- `safe_to_git_add`: boolean.
-- `recommended_action`: one of `stage`, `keep_staged`, `skip`, `block`.
-- `reason`: human-readable reason for the recommendation.
-
-## JSON schema -- Pi commit tools (CommitPlanResult)
-
-The Pi `commit_plan` tool returns a `CommitPlanResult` object. Top-level fields beyond `repoRoot` and `entries`:
-
-- `preflight`: `GitPreflight` object -- `ok` boolean plus per-condition flags (`detachedHead`, `mergeInProgress`, `rebaseInProgress`, `hasUnmergedPaths`, etc.) and `blocked`/`warnings` string arrays. Non-ok preflight prevents staging and commit.
-- `stageConfirmationToken`: opaque string token authorizing `commit_stage` for the exact path set shown. Validated with timing-safe comparison inside `commit_stage`.
-- `createConfirmationToken`: opaque string token authorizing `commit_create` for the exact staged-path set. Validated with timing-safe comparison inside `commit_create`.
-- `safeStagePaths`: string array of paths classified safe to pass to `git add`.
-- `expectedStagedPaths`: string array of paths expected to be staged at commit time. Used by `commit_create` to revalidate the staged set immediately before `git commit`.
-
-## Classifications
-
-### Python helper classifications
-
-The Python helper keeps its historical snake-case JSON contract. Valid `classification` values:
-
-- `staged_deletion`: index deletion already staged; keep it staged and do not run `git add` for that path.
-- `staged`: any other already-staged change.
-- `modified`: tracked unstaged modification.
-- `deleted`: tracked unstaged deletion.
-- `untracked`: untracked path not ignored.
-- `ignored`: path matched by `.gitignore` or another Git ignore source.
-- `renamed`: porcelain rename entry.
-- `copied`: porcelain copy entry.
-- `unmerged`: merge conflict or unmerged state.
-- `unknown`: fallback for unexpected status combinations.
-
-### Pi commit tool classifications
-
-The Pi `CommitPlanResult.entries[].classification` field is drawn from the `CommitClassification` type in `pi/lib/commit/types.ts`. Valid values:
-
-- `staged_deletion`: index deletion already staged; keep it staged and do not run `git add` for that path.
-- `staged_change`: any other already-staged change.
-- `unstaged_change`: tracked file with unstaged modification or deletion.
-- `untracked`: untracked path not ignored.
-- `ignored_untracked`: untracked path matched by `.gitignore` or another Git ignore source.
-- `unmerged`: merge conflict or unmerged state.
-- `unknown`: fallback for unexpected status combinations.
-
-## Recommended actions
-
-The `recommended_action` / `recommendedAction` field is drawn from the `RecommendedAction` type in `pi/lib/commit/types.ts`. Valid values:
-
-- `keep_staged`: entry is already staged and should not be re-staged.
-- `stage`: safe to pass to `git add`.
-- `skip`: do not stage; include as informational context.
-- `block`: staging must be blocked; abort if encountered during automated staging.
-
-## Required ignored staged deletion behavior
-
-When a tracked file is added to `.gitignore` and then removed from the index with `git rm --cached`, Git may show the path as an index deletion while a local ignored file still exists.
-
-That entry must be represented as:
-
-```json
-{
-  "classification": "staged_deletion",
-  "ignored": true,
-  "safe_to_git_add": false,
-  "recommended_action": "keep_staged",
-  "reason": "Deletion is already staged; local path is ignored and must not be re-added"
-}
-```
-
-The committer must not run `git add` for entries with `safe_to_git_add: false`.
-
-## Exit codes
-
-- `0`: command succeeded; for `validate-message`, message is valid.
-- `1`: validation or usage failure; JSON may include `errors` where applicable.
-- `2`: Git command failed or current directory is not inside a Git repository.
-
-## Path normalization
-
-All path entries in JSON use repo-relative forward-slash paths. The helper must handle spaces and Windows/Git Bash path behavior by passing arguments to subprocess calls as lists, not shell strings.
+Pi stage and create operations are bound to opaque SHA-256 tokens derived from the repository root, purpose, exact normalized path set, and the relevant worktree or index fingerprint. Stage and create compare tokens with a timing-safe comparison and revalidate the repository state at the mutation boundary. Create also validates the message, exact staged set, whitespace, and added-content secret scan. Push validates the expected HEAD, branch/upstream state, fetches the remote, rejects a behind branch, and never force-pushes.

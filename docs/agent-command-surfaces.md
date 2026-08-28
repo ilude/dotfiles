@@ -1,37 +1,33 @@
-# Agent Command Surfaces
+# Agent command surfaces
 
-This repository supports multiple coding-agent clients. Keep shared behavior aligned, but edit the command source that each client actually loads.
+This repository supports several coding-agent clients. Shared behavior is intentional, but each client loads its own command entrypoint.
 
-## `/commit` locations
+## `/commit`
 
-- **Pi**: `pi/extensions/workflow-commands.ts` owns the `/commit` slash command; `pi/extensions/commit.ts` is the auto-discovered Pi-native commit tools extension.
-  - `commit_plan` and `commit_validate_message` are non-mutating planning/message tools.
-  - `commit_stage` and `commit_create` are guarded mutating tools that require confirmation tokens and exact staged-set revalidation; agents should invoke them only through the `/commit` command flow after user approval of the exact staged-path set and message.
-  - Pi is the canonical commit workflow; the Python `scripts/commit-helper` is a compatibility/parity reference for non-Pi consumers.
-- **Claude/OpenCode/Copilot**: continue to use their command/prompt surfaces and shared commit instructions unless explicitly migrated to Pi tooling.
+Pi has three related layers:
 
-## `/yt` locations
+- `pi/extensions/workflow-commands.ts` owns the `/commit` slash command. It is the orchestration loop: inspect and preflight Git, handle dirty direct submodules, select changes, plan commit groups, stage and verify each group, review secrets, confirm messages, create commits, and optionally push.
+- `pi/extensions/commit.ts` independently registers the structured tools `commit_plan`, `commit_validate_message`, `commit_stage`, `commit_create`, and `commit_push`. These tools are not the slash command implementation.
+- The structured tools are activated when a prompt contains commit or staging intent. They are independently registered, while internal state and confirmation tokens enforce the stage/create boundaries. `commit_stage` requires the exact plan-bound worktree token; `commit_create` requires the exact staged-set token; `commit_push` requires the commit hash returned by creation and never force-pushes.
 
-- **Shared executable client**: `tools/onclave-youtube/`
-- **Pi**: `pi/prompts/yt.md` owns the Pi workflow and invokes the shared client without depending on Claude-owned paths.
-- **Claude/OpenCode/Copilot**: their prompt surfaces may share workflow instructions, but invoke the same client-neutral executable root.
+The slash command and structured tools therefore expose different workflows. The slash command owns orchestration; the tools expose discrete, token-guarded operations.
 
-## `/do-it` locations
+Claude, OpenCode, and Copilot retain their own command or prompt surfaces and shared commit instructions. The Python `scripts/commit-helper` is a compatibility and parity reference for non-Pi consumers.
 
-- **Pi**: `pi/skills/workflow/do-it.md`
-  - Pi loads workflow skills from `pi/skills/workflow/`.
-  - Changes to Pi `/do-it` behavior must be made here.
-- **Claude Code**: `claude/commands/do-it.md` includes `claude/shared/do-it-instructions.md`.
-  - The command wrapper is intentionally thin; shared behavior lives in `claude/shared/do-it-instructions.md`.
-- **OpenCode**: `opencode/commands/do-it.md` includes `claude/shared/do-it-instructions.md`.
-  - OpenCode shares the Claude command instructions unless an overlay overrides them.
-- **Copilot**: `copilot/prompts/do-it.prompt.md` references `claude/shared/do-it-instructions.md`.
-  - Keep this reference intact unless Copilot needs a client-specific override.
+## `/do-it`
 
-## `/do-it` completion rule
+- **Pi:** `pi/skills/workflow/do-it.md` owns the workflow. Its completion check is contract-focused: run the validation required by the task and do not claim completion when that check fails.
+- **Claude Code:** `claude/commands/do-it.md` includes `claude/shared/do-it-instructions.md`.
+- **OpenCode:** `opencode/commands/do-it.md` includes the shared Claude instructions.
+- **Copilot:** `copilot/prompts/do-it.prompt.md` references the shared Claude instructions.
 
-`/do-it` completion requires the project's full repo-wide validation suite to pass: tests, linting, formatting checks, and any project-defined aggregate check command. If any required validation command fails for any reason, including failures outside the files changed by the task, the task is not complete and the plan must not be archived.
+The non-Pi shared rule is aggregate: `/do-it` requires the project's full repo-wide validation suite, including tests, linting, formatting checks, and the strongest project-defined aggregate check when available. Pi's skill is not governed by that aggregate wording; it validates the task's stated contract.
 
-Use the strongest project-defined aggregate command when available. In this repository that is `make check`, which now includes lint, tests, and Pi extension validation (`check-pi-extensions`). Other projects may use commands such as `make test`, `just check`, `pnpm test`, `cargo test`, `go test ./...`, or separate lint/format/test commands.
+## `/yt`
 
-Targeted tests and changed-file lint checks are useful during implementation, but they do not replace the final repo-wide validation gate.
+All clients use the shared executable root `tools/onclave-youtube/`, but their workflow entrypoints differ:
+
+- **Pi:** `pi/prompts/yt.md`
+- **Claude, OpenCode, and Copilot:** their respective prompt surfaces
+
+Keep client-specific command and prompt guidance in the owning surface, and keep the executable client-neutral.
