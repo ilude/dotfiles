@@ -2,8 +2,7 @@ import { onSessionStart } from "../lib/session-start-metrics.js";
 /**
  * Session Hooks Extension
  *
- * session_start: on reload, restores the configured default model and thinking level; then runs
- *   git pre-flight checks (fetch + behind-count) for primary startup only.
+ * session_start: runs git pre-flight checks (fetch + behind-count) for primary startup only.
  *   Notifies if branch is behind remote. Silently skips if not a git repo. Also runs an idempotent
  *   transcript retention sweep when the per-user transcript toggle is enabled
  *   in ~/.pi/agent/settings.json. Initializes the transcript writer (when
@@ -19,13 +18,11 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { uiNotify } from "../lib/extension-utils.js";
-import { readMergedSettings } from "../lib/settings-loader.js";
 import {
 	loadSettings as loadTranscriptSettings,
 	sweepRetention as sweepTranscriptRetention,
@@ -128,38 +125,8 @@ async function notifyIfBranchBehind(
 }
 
 export default function (pi: ExtensionAPI) {
-	// -- session_start: restore default model and thinking on reload + git pre-flight -------
+	// -- session_start: git pre-flight + transcript initialization ----------------
 	onSessionStart(pi, import.meta.url, async (event, ctx) => {
-		if (event.reason === "reload") {
-			try {
-				// User-level only: model defaults belong to the user profile,
-				// not the project. skipProject + skipLocal preserves the
-				// pre-cascade semantics of the original ad-hoc read.
-				const settings = readMergedSettings({
-					skipProject: true,
-					skipLocal: true,
-				}) as {
-					defaultProvider?: string;
-					defaultModel?: string;
-					defaultThinkingLevel?: ThinkingLevel;
-				};
-				if (settings.defaultProvider && settings.defaultModel) {
-					const model = ctx.modelRegistry.find(
-						settings.defaultProvider,
-						settings.defaultModel,
-					);
-					if (model) {
-						await pi.setModel(model);
-					}
-				}
-				if (settings.defaultThinkingLevel) {
-					pi.setThinkingLevel(settings.defaultThinkingLevel);
-				}
-			} catch {
-				// Silently skip -- invalid/missing settings should not break reload
-			}
-		}
-
 		if (shouldRunGitPreflight(event.reason)) {
 			void notifyIfBranchBehind(pi, ctx);
 		}

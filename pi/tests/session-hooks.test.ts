@@ -24,7 +24,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as transcriptRuntime from "../extensions/transcript-runtime";
-import * as settingsLoader from "../lib/settings-loader";
 import type { TranscriptSettings } from "../lib/transcript";
 import * as transcriptLib from "../lib/transcript";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi";
@@ -182,32 +181,18 @@ describe("session-hooks: session_start", () => {
 		);
 	});
 
-	it("restores the configured model and thinking level on reload", async () => {
-		const model = { provider: "openai-codex", id: "gpt-5.6-sol" };
-		vi.spyOn(settingsLoader, "readMergedSettings").mockReturnValue({
-			defaultProvider: model.provider,
-			defaultModel: model.id,
-			defaultThinkingLevel: "low",
-		});
+	it("preserves the session-scoped model and thinking level on reload", async () => {
 		const pi = makeGitFriendlyPi();
 		const mod = await import("../extensions/session-hooks");
 		mod.default(pi as unknown as ExtensionAPI);
-		const ctx = makeSessionCtx({
-			modelRegistry: {
-				find: vi.fn(() => model),
-			},
-		});
+		const ctx = makeSessionCtx();
 
 		await pi
 			._getHook("session_start")[0]
 			.handler({ reason: "reload" }, ctx as unknown as ExtensionContext);
 
-		expect(ctx.modelRegistry.find).toHaveBeenCalledWith(
-			"openai-codex",
-			"gpt-5.6-sol",
-		);
-		expect(pi.setModel).toHaveBeenCalledWith(model);
-		expect(pi.setThinkingLevel).toHaveBeenCalledWith("low");
+		expect(pi.setModel).not.toHaveBeenCalled();
+		expect(pi.setThinkingLevel).not.toHaveBeenCalled();
 	});
 
 	it("skips git preflight for no-session processes", async () => {
