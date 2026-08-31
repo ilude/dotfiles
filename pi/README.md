@@ -340,7 +340,7 @@ Keeps workflow-state-gated tools out of the default provider schema until they a
 
 ### `active-turn-compaction.ts`
 
-Compacts a tool-driven request before the active model reaches its hard context reserve, then continues from the saved summary. The extension also supports a soft limit through `activeTurnCompaction.softLimitTokens`. When `activeTurnCompaction.softLimitMaxContextWindowTokens` is set, that soft limit applies only to models whose reported context window is no larger than the configured maximum; larger-context models use their native hard reserve instead. The tracked settings use a 255,616-token soft limit for models with context windows up to 372,000 tokens, so 1M-context models do not compact at the smaller-model threshold. This is a local usage-conservation policy, not a claim about a provider's hard context window or subscription pricing. When Pi cannot find a valid compaction cut point, the extension leaves the active request running and retries only after later turns make compaction possible.
+Compacts a tool-driven request before the active model reaches its hard context reserve, then continues from the saved summary. The extension also supports a soft limit through `activeTurnCompaction.softLimitTokens`. When `activeTurnCompaction.softLimitMaxContextWindowTokens` is set, that soft limit applies only to models whose reported context window is no larger than the configured maximum; larger-context models use their native hard reserve instead. The tracked settings use a 255,616-token soft limit for models with context windows up to 372,000 tokens, so 1M-context models do not compact at the smaller-model threshold. This is a local usage-conservation policy, not a claim about a provider's hard context window or subscription pricing. When Pi cannot find a valid compaction cut point, the extension leaves the active request running and retries only after later turns make compaction possible. Pi 0.84.4 may compact natively before the next assistant response; whichever path starts first remains authoritative. Native and extension threshold failures share the bounded failure circuit, while aborted compactions do not open it.
 
 ### `quality-gates.ts`
 
@@ -356,9 +356,13 @@ Failures are resolved in three stages instead of being report-only:
 
 Repositories or paths opt out of all mutation with the Git attribute `quality-autofix=off` in `.gitattributes` (for example `* quality-autofix=off` repo-wide); matching files keep report-only diagnostics. Removing the `repair` block from `quality-gates.json` disables repair turns globally while keeping deterministic autofix.
 
+### `herdr-ui-prompt-state.ts`
+
+Bridges Pi's `ui_prompt_start` and `ui_prompt_end` events into the existing Herdr blocked-state event bus. Herdr reports extension confirmations, selections, inputs, editors, and custom dialogs as waiting for the operator instead of active model work. The generated `herdr-agent-state.ts` remains unmodified.
+
 ### `session-hooks.ts`
 
-Runs lifecycle actions at session boundaries:
+Runs lifecycle actions at session boundaries. Model and thinking selections remain session-scoped across reload; Pi owns explicit persistence of changed defaults.
 
 - **session_start** -- starts a bounded background `git fetch` preflight and notifies if the branch is behind remote without delaying session initialization
 - **session_shutdown** -- archives the session conversation log to `~/.pi/agent/history/YYYY-MM-DD-<sessionId>.jsonl`
@@ -901,6 +905,8 @@ Each Pi extension hook emits exactly one event family into the sidecar trace. Th
 | `message_update` | (none -- intentional no-op) | Per-token streaming is NEVER emitted; one `assistant_message` per turn |
 | `message_end` | `assistant_message` | Exactly ONE per turn at `message_end`; visible thinking + tool-call requests |
 | `model_select` | `model_select` | Records previous and current model identity |
+| `session_compact` | `session_compact` | Records successful compaction metadata without summary content |
+| `session_compact_failed` | `session_compact_failed` | Records failed or aborted compaction metadata without summary content |
 | `tool_call` (in `transcript-tools.ts`) | `tool_call` | Cloned + redacted parameters |
 | `tool_execution_start` | `tool_execution_start` | Records start time for duration computation |
 | `tool_execution_end` | `tool_execution_end` | Carries `duration_ms` and `is_error` |

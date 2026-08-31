@@ -80,6 +80,7 @@ function setup(
 		sessionShutdown: hook("session_shutdown"),
 		sessionBeforeCompact: hook("session_before_compact"),
 		sessionCompact: hook("session_compact"),
+		sessionCompactFailed: hook("session_compact_failed"),
 		agentSettled: hook("agent_settled"),
 		messageEnd: hook("message_end"),
 		turnEnd: hook("turn_end"),
@@ -525,6 +526,65 @@ describe("active-turn compaction", () => {
 			runtime.ctx,
 		);
 		expect(runtime.compact).toHaveBeenCalledTimes(2);
+	});
+
+	it("borrows Pi's failure event to stop repeated native threshold compaction", async () => {
+		const runtime = setup(usage(360_000));
+		await runtime.sessionStart({ type: "session_start", reason: "startup" }, runtime.ctx);
+
+		await runtime.sessionCompactFailed(
+			{
+				type: "session_compact_failed",
+				reason: "threshold",
+				errorMessage: "Auto-compaction failed: summarizer unavailable",
+				aborted: false,
+				willRetry: false,
+				fromExtension: false,
+			},
+			runtime.ctx,
+		);
+
+		expect(
+			await runtime.sessionBeforeCompact(
+				{ type: "session_before_compact", reason: "threshold" },
+				runtime.ctx,
+			),
+		).toEqual({ cancel: true });
+		await runtime.turnEnd(activeTurn(), runtime.ctx);
+		expect(runtime.ctx.abort).not.toHaveBeenCalled();
+
+		await runtime.sessionCompact(
+			{ type: "session_compact", reason: "manual" },
+			runtime.ctx,
+		);
+		expect(
+			await runtime.sessionBeforeCompact(
+				{ type: "session_before_compact", reason: "threshold" },
+				runtime.ctx,
+			),
+		).toBeUndefined();
+	});
+
+	it("does not open the failure circuit for an aborted compaction", async () => {
+		const runtime = setup(usage(360_000));
+		await runtime.sessionStart({ type: "session_start", reason: "startup" }, runtime.ctx);
+		await runtime.sessionCompactFailed(
+			{
+				type: "session_compact_failed",
+				reason: "threshold",
+				aborted: true,
+				willRetry: false,
+				fromExtension: false,
+			},
+			runtime.ctx,
+		);
+
+		expect(
+			await runtime.sessionBeforeCompact(
+				{ type: "session_before_compact", reason: "threshold" },
+				runtime.ctx,
+			),
+		).toBeUndefined();
 	});
 
 	it("does not resume when compaction is cancelled or after session shutdown", async () => {

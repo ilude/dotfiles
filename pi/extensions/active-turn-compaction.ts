@@ -271,6 +271,12 @@ export function registerActiveTurnCompaction(
 		resumeRequest(ctx);
 	});
 
+	pi.on("session_compact_failed", (event) => {
+		if (event.reason !== "threshold" || event.aborted) return;
+		failureCircuitOpen = true;
+		attemptedAboveThreshold = true;
+	});
+
 	pi.on("agent_settled", (_event, ctx) => {
 		startManualCompaction(ctx);
 	});

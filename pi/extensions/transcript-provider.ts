@@ -9,6 +9,8 @@
  *   - message_update         -> NEVER per-token; optional N-second heartbeat (off by default)
  *   - message_end            -> emit EXACTLY ONE `assistant_message` per turn
  *   - model_select           -> emit `model_select`
+ *   - session_compact        -> emit successful compaction metadata
+ *   - session_compact_failed -> emit failed or aborted compaction metadata
  *   - turn_start             -> advance turn counter so subsequent events use turn-N
  *
  * This extension owns the writer initialization in this Pi process. Other
@@ -225,6 +227,38 @@ export default function (pi: ExtensionAPI) {
 				usage,
 				stop_reason: typeof message.stopReason === "string" ? message.stopReason : undefined,
 				model: typeof message.model === "string" ? message.model : undefined,
+			},
+		);
+	});
+
+	// --------------------------------------------------------------------------
+	// compaction: record lifecycle metadata without duplicating summary content.
+	// --------------------------------------------------------------------------
+	pi.on("session_compact", async (event) => {
+		if (!getWriter()) return;
+		const entry = event.compactionEntry as unknown as Record<string, unknown>;
+		await emit(
+			{ event_type: "session_compact" },
+			{
+				reason: event.reason,
+				will_retry: event.willRetry,
+				from_extension: event.fromExtension,
+				compaction_entry_id:
+					typeof entry.id === "string" ? entry.id : undefined,
+			},
+		);
+	});
+
+	pi.on("session_compact_failed", async (event) => {
+		if (!getWriter()) return;
+		await emit(
+			{ event_type: "session_compact_failed" },
+			{
+				reason: event.reason,
+				aborted: event.aborted,
+				will_retry: event.willRetry,
+				from_extension: event.fromExtension,
+				error_message: event.errorMessage,
 			},
 		);
 	});

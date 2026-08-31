@@ -219,6 +219,59 @@ describe("T3 -- provider and message hooks (criterion 1)", () => {
 		expect(raw).not.toContain("sk-ant-rotated-real-secret-1234567890abc");
 	});
 
+	it("emits compaction success and failure metadata without summary content", async () => {
+		await fire(
+			env.pi,
+			"session_compact",
+			{
+				type: "session_compact",
+				reason: "threshold",
+				willRetry: false,
+				fromExtension: false,
+				compactionEntry: {
+					id: "compact-1",
+					summary: "sensitive summary must not be duplicated",
+				},
+			},
+			env.ctx,
+		);
+		await fire(
+			env.pi,
+			"session_compact_failed",
+			{
+				type: "session_compact_failed",
+				reason: "overflow",
+				errorMessage: "summarizer unavailable",
+				aborted: false,
+				willRetry: true,
+				fromExtension: true,
+			},
+			env.ctx,
+		);
+
+		const records = readJsonl(tracePathFor(env.tmpHome));
+		const success = records.find((r) => r.event_type === "session_compact");
+		const failure = records.find(
+			(r) => r.event_type === "session_compact_failed",
+		);
+		expect(success?.payload).toMatchObject({
+			reason: "threshold",
+			will_retry: false,
+			from_extension: false,
+			compaction_entry_id: "compact-1",
+		});
+		expect(failure?.payload).toMatchObject({
+			reason: "overflow",
+			aborted: false,
+			will_retry: true,
+			from_extension: true,
+			error_message: "summarizer unavailable",
+		});
+		expect(JSON.stringify(success)).not.toContain(
+			"sensitive summary must not be duplicated",
+		);
+	});
+
 	it("emits exactly ONE assistant_message per turn (no per-token spam)", async () => {
 		// Turn 1
 		await fire(
