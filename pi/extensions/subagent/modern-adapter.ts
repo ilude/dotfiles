@@ -21,6 +21,7 @@ type LegacyCompatibleItem = {
 	scope?: string[];
 	workBoundary?: string[];
 	maxWorkers?: number;
+	requiredReadPaths?: string[];
 };
 
 export type ModernExecutorInput = ModernInternalInput & {
@@ -35,6 +36,7 @@ export type ModernExecutorInput = ModernInternalInput & {
 	scope?: string[];
 	workBoundary?: string[];
 	maxWorkers?: number;
+	continuationId?: string;
 	readOnlyFanout?: undefined;
 	background?: boolean;
 	continuable: true;
@@ -55,6 +57,9 @@ export function modernRequestToExecutorInput(
 				: undefined;
 		const instructions = item.instructions ?? item.task;
 		if (!instructions) throw new Error("Prepared subagent item has no instructions.");
+		const requiredReadPaths = "requiredReadPaths" in item && Array.isArray(item.requiredReadPaths)
+			? item.requiredReadPaths.filter((value): value is string => typeof value === "string")
+			: undefined;
 		return {
 			agent: item.agent,
 			task: instructions,
@@ -63,6 +68,7 @@ export function modernRequestToExecutorInput(
 			role: request.kind === "coordinator" ? "coordinator" : "leaf",
 			cwd: item.cwd ?? preparedItem.workspaceRoot,
 			...(workPaths ? { scope: workPaths } : {}),
+			...(requiredReadPaths ? { requiredReadPaths } : {}),
 		};
 	});
 	const common = {
@@ -84,6 +90,9 @@ export function modernRequestToExecutorInput(
 				? { workBoundary: [...coordinator.boundary] }
 				: {}),
 			maxWorkers: coordinator.maxWorkers,
+			...(coordinator.continuationId
+				? { continuationId: coordinator.continuationId }
+				: {}),
 		};
 	}
 	if (request.kind === "read") {

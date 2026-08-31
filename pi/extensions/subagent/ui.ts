@@ -379,7 +379,8 @@ class SubagentDashboard implements Component {
 				run.usage.contextPeakTokens > 0
 					? ` | ${tokenLabel(run.usage.contextPeakTokens)}`
 					: "";
-			const right = `pi | ${oneLine(run.model ?? "default")} | ${run.mode} | ${ownership}${usage} | start ${localClock(run.startedAt)} local | ${elapsed(run)}`;
+			const outcomes = `process=${run.processOutcome ?? "pending"} | deliverable=${run.deliverableOutcome ?? "pending"}`;
+			const right = `pi | ${oneLine(run.model ?? "default")} | ${run.mode} | ${ownership} | ${outcomes}${usage} | start ${localClock(run.startedAt)} local | ${elapsed(run)}`;
 			const rightWidth = visibleWidth(right);
 			const leftWidth = Math.max(8, safeWidth - rightWidth - 3);
 			const left = truncateToWidth(
@@ -528,7 +529,7 @@ class SubagentDetail implements Component {
 				? ` | ${tokenLabel(run.usage.contextPeakTokens)}`
 				: "";
 		const header = truncateToWidth(
-			`${statusLabel(run.status)} ${oneLine(run.agent)} | pi | ${oneLine(run.model ?? "default")} | ${run.mode} | ${ownership}${usage} | ${elapsed(run)}`,
+			`${statusLabel(run.status)} ${oneLine(run.agent)} | pi | ${oneLine(run.model ?? "default")} | ${run.mode} | ${ownership} | process=${run.processOutcome ?? "pending"} | deliverable=${run.deliverableOutcome ?? "pending"}${usage} | ${elapsed(run)}`,
 			safeWidth,
 		);
 		const metadata = truncateToWidth(

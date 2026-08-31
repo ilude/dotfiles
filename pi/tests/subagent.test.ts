@@ -7,8 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension from "../extensions/workflow-friction-review.js";
 import {
 	canonicalizeSavedSessionPath,
+	subagentRunManager,
 	SubagentRunManager,
 } from "../extensions/subagent/run-manager.ts";
+import {
+	aggregateDeliverableOutcomes,
+	coordinatorAdmissionCutoffAt,
+	coordinatorReconciliationReserveMs,
+	deliverableOutcomeFor,
+	type ChildCompletion,
+} from "../extensions/subagent/contracts.ts";
 import {
 	directMutationViolation,
 	normalizeRepositoryScopes,
@@ -81,6 +89,43 @@ function beginManagedRun(
 vi.mock("node:child_process", () => ({
 	spawn: spawnMock,
 }));
+
+describe("Team Lead outcome and budget contracts", () => {
+	const completion = (status: "complete" | "partial" | "blocked"): ChildCompletion => {
+		if (status === "blocked")
+			return {
+				status,
+				expectedReading: "input",
+				materialAlternative: "alternative",
+				decision: "operator decision",
+			};
+		return {
+			status,
+			completed: status === "complete" ? ["done"] : [],
+			remaining: status === "complete" ? [] : ["remaining"],
+			validation: { status: "passed" },
+		};
+	};
+
+	it("keeps process outcome separate and reduces required deliverables by precedence", () => {
+		expect(deliverableOutcomeFor(completion("complete"), "succeeded")).toBe("complete");
+		expect(deliverableOutcomeFor(completion("complete"), "cancelled")).toBe("failed");
+		expect(deliverableOutcomeFor(undefined, "succeeded")).toBe("failed");
+		expect(aggregateDeliverableOutcomes(["complete", "partial"])).toBe("partial");
+		expect(aggregateDeliverableOutcomes(["complete", "partial", "blocked"])).toBe("blocked");
+		expect(aggregateDeliverableOutcomes(["complete", "blocked", "failed"])).toBe("failed");
+		expect(aggregateDeliverableOutcomes([])).toBe("failed");
+	});
+
+	it("reserves a bounded reconciliation window and derives an absolute cutoff", () => {
+		expect(coordinatorReconciliationReserveMs(1)).toBe(0);
+		expect(coordinatorReconciliationReserveMs(10_000)).toBe(5_000);
+		expect(coordinatorReconciliationReserveMs(100_000)).toBe(20_000);
+		expect(coordinatorReconciliationReserveMs(1_000_000)).toBe(120_000);
+		expect(coordinatorAdmissionCutoffAt(1_100_000, 100_000)).toBe(1_080_000);
+		expect(() => coordinatorReconciliationReserveMs(0)).toThrow("positive integer");
+	});
+});
 
 describe("subagent modification scopes", () => {
 	it("normalizes repository-relative scopes and rejects escapes", () => {
@@ -1494,7 +1539,7 @@ Implement the requested change.
 	);
 
 	it(
-		"parses modern Team Lead continuation envelopes and owns the session path",
+		"parses modern Team Lead continuation envelopes and exposes only an opaque continuation ID",
 		async () => {
 			spawnMock.mockImplementation((_command: string, args: string[]) => {
 				const proc = createMockProcess();
@@ -1549,17 +1594,55 @@ Implement the requested change.
 			);
 
 			const child = result.details.results[0];
-			expect(child.completion).toEqual({
+			expect(child.completion).toMatchObject({
 				status: "partial",
 				completed: ["inspect"],
 				remaining: ["validate"],
 				validation: { status: "passed" },
 				continuation: {
-					sessionPath: child.sessionPath,
+					continuationId: expect.any(String),
 					additionalTimeMs: 300_000,
 				},
 			});
-			expect(child.sessionPath).toBeTruthy();
+			expect(child).toMatchObject({
+				processState: "settled",
+				processOutcome: "succeeded",
+				deliverableOutcome: "partial",
+			});
+			expect(result.details.deliverableOutcome).toBe("partial");
+			expect(child.sessionPath).toBeUndefined();
+			expect(result.content[0].text).not.toContain("Continuable session:");
+			const continuation = child.completion?.continuation;
+			if (!continuation || !("continuationId" in continuation))
+				throw new Error("opaque Team Lead continuation was not issued");
+			mockSuccessfulSpawn(JSON.stringify({
+				status: "complete",
+				completed: ["inspect", "validate"],
+				remaining: [],
+				validation: { status: "passed" },
+			}));
+			const continuationRequest = {
+				items: [{ agent: "teamlead", instructions: "Coordinate the package." }],
+				agentScope: "project" as const,
+				continuationId: continuation.continuationId,
+			};
+			const resumed = await teamlead.execute(
+				"modern-teamlead-resumed",
+				continuationRequest,
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+			expect(resumed.details.deliverableOutcome).toBe("complete");
+			await expect(
+				teamlead.execute(
+					"modern-teamlead-reused",
+					continuationRequest,
+					undefined,
+					undefined,
+					createMockCtx({ cwd: tmpDir }),
+				),
+			).rejects.toThrow(/already.*consumed/);
 		});
 
 	it(
@@ -1659,7 +1742,7 @@ This agent cannot launch.
 			{ agent: "tester", exitCode: 0 },
 			{ agent: "broken", exitCode: 1 },
 		]);
-		expect(result.content[0].text).toContain("Parallel: 1/2 succeeded");
+		expect(result.content[0].text).toContain("Parallel: 2/2 settled; outcome failed");
 	});
 
 	it(
@@ -4979,6 +5062,49 @@ You are a test agent.
 	);
 
 	it(
+		"rejects required read targets outside authority before run registration or spawn",
+		async () => {
+			const { pi } = await loadTool();
+			const read = pi._getTool("subagent_read");
+			if (!read) throw new Error("subagent_read tool not registered");
+			const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-outside-"));
+			const link = path.join(tmpDir, "outside-link");
+			fs.symlinkSync(outside, link, process.platform === "win32" ? "junction" : "dir");
+			try {
+				for (const requiredReadPath of [
+					outside,
+					path.join(outside, "not-created", "target.txt"),
+					path.join(link, "escaped.txt"),
+				]) {
+					await expect(
+						read.execute(
+							`required-read-${path.basename(requiredReadPath)}`,
+							{
+								items: [
+									{
+										agent: "tester",
+										instructions: "Inspect the declared target.",
+										requiredReadPaths: [requiredReadPath],
+									},
+								],
+								agentScope: "project",
+							},
+							undefined,
+							undefined,
+							createMockCtx({ cwd: tmpDir }),
+						),
+					).rejects.toThrow();
+				}
+				expect(spawnMock).not.toHaveBeenCalled();
+				expect(subagentRunManager.list()).toHaveLength(0);
+			} finally {
+				fs.rmSync(outside, { recursive: true, force: true });
+			}
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
 		"runs a modern read in the background and delivers its result later",
 		async () => {
 			const proc = createMockProcess();
@@ -5188,11 +5314,15 @@ You are a test agent.
 
 			const continuation = pi._getTool("subagent_continue");
 			if (!continuation) throw new Error("subagent_continue tool not registered");
+			const savedSession = subagentRunManager.get(
+				first.details.results[0].runId!,
+			)?.sessionPath;
+			if (!savedSession) throw new Error("coordinator session fixture was not persisted");
 			await continuation.execute(
 				"modern-coordinator-continuation",
 				{
 					agent: "builder",
-					session: first.details.results[0].sessionPath,
+					session: savedSession,
 					task: "Continue the bounded coordination.",
 				},
 				undefined,
@@ -5361,7 +5491,7 @@ You are a test agent.
 				ctx,
 			);
 
-			expect(result.content[0].text).toContain("Parallel: 0/1 succeeded");
+			expect(result.content[0].text).toContain("Parallel: 1/1 settled; outcome failed");
 			expect(result.content[0].text).toContain("FAILED (model error)");
 			expect(subagentRunManager.list()).toHaveLength(1);
 			expect(subagentRunManager.list()[0]).toMatchObject({

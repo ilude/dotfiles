@@ -106,12 +106,18 @@ import {
 	withDispatchSkills,
 } from "./agents.js";
 import {
+	aggregateDeliverableOutcomes,
+	coordinatorAdmissionCutoffAt,
 	coordinatorBudgetFor,
+	deliverableOutcomeFor,
 	formatCoordinatorTask,
 	admitCoordinatorDescendants,
 	type ChildCompletion,
 	type ChildValidation,
 	type ChildContinuationRequest,
+	type SubagentDeliverableOutcome,
+	type SubagentProcessOutcome,
+	type SubagentProcessState,
 	formatCoordinatorGaps,
 	READ_TOOL_ALLOWLIST,
 	SubagentCoordinateSchema,
@@ -697,6 +703,9 @@ export interface SingleResult {
 	continuationStatus?: "fresh" | "continued";
 	/** Internal metadata used only when constructing the content-free closeout event. */
 	telemetry?: SubagentTelemetryMetadata;
+	processState?: SubagentProcessState;
+	processOutcome?: SubagentProcessOutcome;
+	deliverableOutcome?: SubagentDeliverableOutcome;
 }
 
 export interface SubagentDetails {
@@ -707,6 +716,7 @@ export interface SubagentDetails {
 	transcriptTiming?: { startedAt: number; durationMs?: number };
 	gaps?: readonly string[];
 	experiment?: ReadOnlyFanoutAssignment;
+	deliverableOutcome?: SubagentDeliverableOutcome;
 }
 
 export function getFinalOutput(messages: Message[]): string {
@@ -725,6 +735,25 @@ export type SubagentResultClassification =
 	| "completed"
 	| "failed"
 	| "cancelled";
+
+export function processStateForResult(
+	result: Pick<SingleResult, "exitCode">,
+): SubagentProcessState {
+	return result.exitCode === -1 ? "running" : "settled";
+}
+
+export function processOutcomeForResult(
+	result: Pick<SingleResult, "exitCode" | "stopReason" | "errorMessage">,
+): SubagentProcessOutcome {
+	if (result.stopReason === "aborted") return "cancelled";
+	if (
+		result.exitCode !== 0 ||
+		result.stopReason === "error" ||
+		Boolean(result.errorMessage)
+	)
+		return "failed";
+	return "succeeded";
+}
 
 export function classifySubagentResult(
 	result: Pick<SingleResult, "exitCode" | "stopReason" | "errorMessage">,
@@ -893,22 +922,37 @@ function coordinatorChildCompletion(
 			validation: envelope.validation as Exclude<ChildValidation, { status: "failed" }>,
 		};
 	const additionalTimeMs = envelope.requestedAdditionalTimeMs;
+	let continuation: ChildContinuationRequest | undefined;
+	if (
+		additionalTimeMs !== undefined &&
+		envelope.remaining.length > 0 &&
+		envelope.validation.status !== "failed" &&
+		result.runId &&
+		result.sessionPath &&
+		classifySubagentResult(result) === "completed"
+	) {
+		const boundedAdditionalTimeMs = Math.min(
+			additionalTimeMs,
+			MAX_COORDINATOR_CONTINUATION_MS,
+		);
+		try {
+			continuation = {
+				continuationId: subagentRunManager.issueTeamLeadContinuation(
+					result.runId,
+					Date.now() + boundedAdditionalTimeMs,
+				),
+				additionalTimeMs: boundedAdditionalTimeMs,
+			};
+		} catch {
+			// An ineligible or pruned run remains partial without a continuation.
+		}
+	}
 	return {
 		status: "partial",
 		completed: envelope.completed,
 		remaining: envelope.remaining,
 		validation: envelope.validation,
-		...(additionalTimeMs !== undefined && result.sessionPath
-			? {
-					continuation: {
-						sessionPath: result.sessionPath,
-						additionalTimeMs: Math.min(
-							additionalTimeMs,
-							MAX_COORDINATOR_CONTINUATION_MS,
-						),
-					},
-				}
-			: {}),
+		...(continuation ? { continuation } : {}),
 	};
 }
 
@@ -1221,7 +1265,7 @@ function getOutputForParent(result: SingleResult): string {
 				: output;
 		}
 	}
-	return result.sessionPath
+	return result.sessionPath && result.role !== "coordinator"
 		? `${visible}\n\nContinuable session: ${result.sessionPath}`.trim()
 		: visible;
 }
@@ -1233,6 +1277,12 @@ export function aggregateParallelOutputs(results: SingleResult[]): string {
 			const output = getResultOutput(r);
 			const hasOutput = Boolean(output.trim());
 			const classification = classifySubagentResult(r);
+			r.completion ??= completionForResult(r);
+			const processOutcome = processOutcomeForResult(r);
+			const deliverableOutcome = deliverableOutcomeFor(
+				r.completion,
+				processOutcome,
+			);
 			const isModelError =
 				r.stopReason === "error" ||
 				(Boolean(r.errorMessage) && r.exitCode === 0);
@@ -1243,7 +1293,9 @@ export function aggregateParallelOutputs(results: SingleResult[]): string {
 						? `FAILED (${isModelError ? "model error" : `exit code ${r.exitCode}`})${r.errorMessage ? `: ${r.errorMessage}` : ""}`
 						: !hasOutput
 							? "EMPTY OUTPUT (no textual response returned)"
-							: "";
+							: deliverableOutcome === "complete"
+								? ""
+								: `DELIVERABLE ${deliverableOutcome.toUpperCase()}`;
 			let body = status
 				? hasOutput
 					? `${status}\n${output}`
@@ -1258,7 +1310,7 @@ export function aggregateParallelOutputs(results: SingleResult[]): string {
 				const fallbackMessage = getArtifactFallbackMessage(r);
 				if (fallbackMessage) body = `${body}\n\n${fallbackMessage}`;
 			}
-			if (r.sessionPath)
+			if (r.sessionPath && r.role !== "coordinator")
 				body = `${body}\n\nContinuable session: ${r.sessionPath}`;
 			return `${header}\n${body}`;
 		})
@@ -1406,6 +1458,9 @@ interface SubagentRunContext {
 	maxTurns?: number;
 	timeoutMs?: number;
 	hardDeadlineMs?: number;
+	hardDeadlineAt?: number;
+	admissionCutoffAt?: number;
+	requiredReadPaths?: readonly string[];
 	role?: SubagentRole;
 	depth?: number;
 	parentRunId?: string;
@@ -1913,6 +1968,11 @@ export async function runSingleAgent(
 	const forwardAbort = () => runController.abort(signal?.reason);
 	if (signal?.aborted) forwardAbort();
 	else signal?.addEventListener("abort", forwardAbort, { once: true });
+	assertRequiredReadPaths(
+		runContext?.workspaceRoot,
+		runContext?.requiredReadPaths,
+		cwd ?? defaultCwd,
+	);
 	subagentRunManager.begin(
 		{
 			correlation: subagentCorrelation(runId, taskId, runContext),
@@ -1996,6 +2056,11 @@ export async function runSingleAgent(
 
 	try {
 		if (runController.signal.aborted) throw new SubagentAbortError();
+		assertRequiredReadPaths(
+			runContext?.workspaceRoot,
+			runContext?.requiredReadPaths,
+			cwd ?? defaultCwd,
+		);
 		if (runContext?.treeClient) {
 			try {
 				treePermit = await runContext.treeClient.acquire(
@@ -2004,6 +2069,8 @@ export async function runSingleAgent(
 						role: resolvedChild.role,
 						depth: resolvedChild.depth,
 						coordinatorTaskId: runContext.coordinatorTaskId,
+						hardDeadlineAt: runContext.hardDeadlineAt,
+						admissionCutoffAt: runContext.admissionCutoffAt,
 						workflowPhase: runContext.workflowPhase,
 						taskKey: runContext.taskKey,
 						attempt: runContext.attempt,
@@ -2121,6 +2188,11 @@ export async function runSingleAgent(
 					? {}
 					: { PI_SUBAGENT_MAX_WORKERS: String(runContext.maxWorkers) }),
 			};
+			assertRequiredReadPaths(
+				runContext?.workspaceRoot,
+				runContext?.requiredReadPaths,
+				cwd ?? defaultCwd,
+			);
 			const childEnvironment = {
 				...childEnv,
 				...(runContext?.treeClient && treePermit
@@ -2531,6 +2603,7 @@ type TaskParams = {
 	};
 	affinitySessionPath?: string;
 	affinityFingerprint?: SubagentExecutionFingerprint;
+	requiredReadPaths?: readonly string[];
 };
 
 type ChainParams = TaskParams;
@@ -2576,6 +2649,21 @@ function normalizeDirectInvocation(
 			},
 		],
 	};
+}
+
+function assertRequiredReadPaths(
+	workspaceRoot: string | undefined,
+	requiredReadPaths: readonly string[] | undefined,
+	cwd: string,
+): void {
+	if (!requiredReadPaths?.length) return;
+	const result = checkWorkspaceTool(
+		{ workspaceRoot: workspaceRoot ?? cwd },
+		"read",
+		{ paths: requiredReadPaths },
+		cwd,
+	);
+	if (result.outcome === "deny") throw new Error(result.reason);
 }
 
 function agentsForTask(
@@ -3055,6 +3143,9 @@ export default function (pi: ExtensionAPI) {
 							orchestrationId: completion.orchestrationId,
 							mode: completion.mode,
 							failed: completion.failed,
+							processState: completion.processState,
+							processOutcome: completion.processOutcome,
+							deliverableOutcome: completion.deliverableOutcome,
 							taskIds: completion.taskIds,
 							...(backgroundRun
 								? {
@@ -3112,17 +3203,25 @@ export default function (pi: ExtensionAPI) {
 			(bounded.truncated
 				? `Full background result artifact could not be saved: ${artifact.error ?? "unknown error"}`
 				: undefined);
-		const failed =
-			Boolean(error) ||
-			Boolean(
-				result?.details?.results.some(
-					(worker) => classifySubagentResult(worker) !== "completed",
-				),
-			);
+		const deliverableOutcome: SubagentDeliverableOutcome = error
+			? "failed"
+			: result?.details?.deliverableOutcome ?? "failed";
+		const processOutcome: SubagentProcessOutcome = error
+			? "failed"
+			: result?.details?.results.some(
+					(worker) => processOutcomeForResult(worker) === "cancelled",
+				)
+				? "cancelled"
+				: result?.details?.results.some(
+						(worker) => processOutcomeForResult(worker) === "failed",
+					)
+					? "failed"
+					: "succeeded";
+		const failed = deliverableOutcome !== "complete";
 		const truncationNote = bounded.truncated
 			? `\n\n[Result truncated. Inspect the recent run with /subagents.${artifactReference ? ` ${artifactReference}` : ""}]`
 			: "";
-		const backgroundHeader = `Background subagent ${mode} ${orchestrationId} ${failed ? "finished with failures" : "finished"}.\n\n`;
+		const backgroundHeader = `Background subagent ${mode} ${orchestrationId} settled; process=${processOutcome}; outcome=${deliverableOutcome}.\n\n`;
 		const backgroundBudget = Math.max(
 			0,
 			SUBAGENT_RESULT_MAX_BYTES -
@@ -3142,6 +3241,9 @@ export default function (pi: ExtensionAPI) {
 			...origin,
 			content: backgroundContent,
 			failed,
+			processState: "settled",
+			processOutcome,
+			deliverableOutcome,
 			taskIds:
 				result?.details?.results.flatMap((worker) =>
 					worker.taskId ? [worker.taskId] : [],
@@ -3966,8 +4068,29 @@ export default function (pi: ExtensionAPI) {
 				const results = details?.results ?? [];
 				for (const worker of results) {
 					worker.completion ??= completionForResult(worker);
+					worker.processState = processStateForResult(worker);
+					worker.processOutcome = processOutcomeForResult(worker);
+					worker.deliverableOutcome = deliverableOutcomeFor(
+						worker.completion,
+						worker.processOutcome,
+					);
 					worker.activity = collectSubagentActivity(worker.messages, 1);
+					if (
+						worker.role === "coordinator" &&
+						internalParams.__modernRequest?.kind === "coordinator"
+					)
+						delete worker.sessionPath;
+					if (worker.runId)
+						subagentRunManager.recordOutcomes(
+							worker.runId,
+							worker.processOutcome,
+							worker.deliverableOutcome,
+						);
 				}
+				if (details)
+					details.deliverableOutcome = aggregateDeliverableOutcomes(
+						results.map((worker) => worker.deliverableOutcome ?? "failed"),
+					);
 				const parentText = result.content.find(
 					(item) => item.type === "text",
 				)?.text;
@@ -4047,6 +4170,7 @@ export default function (pi: ExtensionAPI) {
 						...(worker.advisoryTopologyMismatch === undefined ? {} : { advisoryTopologyMismatch: worker.advisoryTopologyMismatch }),
 						executionKind: telemetry.executionKind,
 						outcomeCode,
+						deliverableOutcome: worker.deliverableOutcome,
 						workspaceRootSource: telemetry.workspaceRootSource,
 						markerCount: telemetry.markerCount,
 						boundaryCount: telemetry.boundaryCount,
@@ -4150,6 +4274,7 @@ export default function (pi: ExtensionAPI) {
 				const event = buildOrchestrationRunEvent({
 					executionKind: invocationTelemetryExecutionKind,
 					outcomeCode: runOutcomeCode,
+					deliverableOutcome: details?.deliverableOutcome ?? "failed",
 					workspaceRootSource: invocationWorkspaceRootSource,
 					markerCount: workers.reduce((sum, worker) => sum + (worker.markerCount ?? 0), 0),
 					boundaryCount: workers.reduce((sum, worker) => sum + (worker.boundaryCount ?? 0), 0),
@@ -4273,11 +4398,19 @@ export default function (pi: ExtensionAPI) {
 							? { executionKind: internalParams.__modernRequest.kind }
 							: {}),
 						...(coordinatorBudget
-							? {
-									maxTurns: coordinatorBudget.maxTurns,
-									timeoutMs: coordinatorBudget.softDeadlineMs,
-									hardDeadlineMs: coordinatorBudget.hardDeadlineMs,
-								}
+							? (() => {
+									const hardDeadlineAt = Date.now() + coordinatorBudget.hardDeadlineMs;
+									return {
+										maxTurns: coordinatorBudget.maxTurns,
+										timeoutMs: coordinatorBudget.softDeadlineMs,
+										hardDeadlineMs: coordinatorBudget.hardDeadlineMs,
+										hardDeadlineAt,
+										admissionCutoffAt: coordinatorAdmissionCutoffAt(
+											hardDeadlineAt,
+											coordinatorBudget.hardDeadlineMs,
+										),
+									};
+								})()
 							: {}),
 					};
 					if (outputSchema) {
@@ -4592,6 +4725,10 @@ export default function (pi: ExtensionAPI) {
 				recordBoundaryRejection(error);
 				throw error;
 			}
+			const coordinatorContinuationId =
+				internalParams.__modernRequest?.kind === "coordinator"
+					? internalParams.__modernRequest.continuationId
+					: undefined;
 			const affinityTaskId = internalParams.__modernRequest &&
 				internalParams.__modernRequest.kind !== "coordinator"
 				? internalParams.__modernRequest.affinityTaskId
@@ -4656,6 +4793,21 @@ export default function (pi: ExtensionAPI) {
 							details: makeDetails(originalMode)([]),
 						});
 				}
+			}
+
+			if (coordinatorContinuationId) {
+				if (!selectedSingle?.affinityFingerprint)
+					throw new Error("Team Lead continuation requires one prepared coordinator item.");
+				const continuation = subagentRunManager.consumeTeamLeadContinuation(
+					coordinatorContinuationId,
+					{
+						parentSessionId,
+						workspaceId: effectiveWorkspaceIdentity,
+						taskId: selectedSingle.taskId,
+						fingerprint: selectedSingle.affinityFingerprint,
+					},
+				);
+				selectedSingle.affinitySessionPath = continuation.sessionPath;
 			}
 
 			if (fanoutAssignment) {
@@ -4786,6 +4938,7 @@ export default function (pi: ExtensionAPI) {
 						undefined,
 						{ continuable: params.continuable === true, continuationStatus: "fresh" },
 						{
+							requiredReadPaths: step.requiredReadPaths,
 							role: step.resolvedRole,
 							depth: step.resolvedDepth,
 							scopes: step.normalizedScopes,
@@ -4935,6 +5088,7 @@ export default function (pi: ExtensionAPI) {
 								undefined,
 								{ continuable: params.continuable === true, continuationStatus: "fresh" },
 								{
+									requiredReadPaths: t.requiredReadPaths,
 									role: t.resolvedRole,
 									depth: t.resolvedDepth,
 									scopes: t.normalizedScopes,
@@ -4979,14 +5133,20 @@ export default function (pi: ExtensionAPI) {
 					},
 				);
 
-				const successCount = results.filter(
-					(result) => classifySubagentResult(result) === "completed",
-				).length;
+				for (const result of results) result.completion ??= completionForResult(result);
+				const deliverableOutcome = aggregateDeliverableOutcomes(
+					results.map((result) =>
+						deliverableOutcomeFor(
+							result.completion,
+							processOutcomeForResult(result),
+						),
+					),
+				);
 				return complete({
 					content: [
 						{
 							type: "text",
-							text: `Parallel: ${successCount}/${results.length} succeeded\n\n${aggregateParallelOutputs(results)}${coordinatorGapText()}`,
+							text: `Parallel: ${results.length}/${results.length} settled; outcome ${deliverableOutcome}\n\n${aggregateParallelOutputs(results)}${coordinatorGapText()}`,
 						},
 					],
 					details: makeDetails("parallel")(results),
@@ -5019,6 +5179,7 @@ export default function (pi: ExtensionAPI) {
 					},
 					{
 						executionFingerprint: selectedSingle.affinityFingerprint,
+						requiredReadPaths: selectedSingle.requiredReadPaths,
 						role: selectedSingle.resolvedRole,
 						depth: selectedSingle.resolvedDepth,
 						scopes: selectedSingle.normalizedScopes,

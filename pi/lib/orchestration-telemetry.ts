@@ -151,6 +151,11 @@ export type LegacyAdapterBranch =
 	| "fanout"
 	| "workflow";
 export type TaskLinkSource = "none" | "explicit" | "auto" | "invalid";
+export type OrchestrationDeliverableOutcome =
+	| "complete"
+	| "partial"
+	| "blocked"
+	| "failed";
 export type OrchestrationInterventionCode =
 	| "rejection"
 	| "containment"
@@ -180,6 +185,7 @@ export type { CostSource, OrchestrationMode, OrchestrationStatus, OutputMode };
 export interface OrchestrationTelemetryFields {
 	executionKind?: OrchestrationExecutionKind;
 	outcomeCode?: OrchestrationOutcomeCode;
+	deliverableOutcome?: OrchestrationDeliverableOutcome;
 	workspaceRootSource?: WorkspaceRootSource;
 	markerCount?: number;
 	boundaryCount?: number;
@@ -463,9 +469,17 @@ function boundedInterventionNumber(value: unknown): number | undefined {
 		: undefined;
 }
 
+const DELIVERABLE_OUTCOMES = new Set<OrchestrationDeliverableOutcome>([
+	"complete",
+	"partial",
+	"blocked",
+	"failed",
+]);
+
 const ORCHESTRATION_TELEMETRY_KEYS = [
 	"executionKind",
 	"outcomeCode",
+	"deliverableOutcome",
 	"workspaceRootSource",
 	"markerCount",
 	"boundaryCount",
@@ -493,6 +507,11 @@ function telemetryFields(
 		typeof value.outcomeCode === "string" && OUTCOME_CODES.has(value.outcomeCode)
 			? (value.outcomeCode as OrchestrationOutcomeCode)
 			: undefined;
+	const deliverableOutcome =
+		typeof value.deliverableOutcome === "string" &&
+		DELIVERABLE_OUTCOMES.has(value.deliverableOutcome as OrchestrationDeliverableOutcome)
+			? (value.deliverableOutcome as OrchestrationDeliverableOutcome)
+			: undefined;
 	const workspaceRootSource =
 		typeof value.workspaceRootSource === "string" &&
 		WORKSPACE_ROOT_SOURCES.has(value.workspaceRootSource)
@@ -516,6 +535,7 @@ function telemetryFields(
 	if (
 		(value.executionKind !== undefined && executionKind === undefined) ||
 		(value.outcomeCode !== undefined && outcomeCode === undefined) ||
+		(value.deliverableOutcome !== undefined && deliverableOutcome === undefined) ||
 		(value.workspaceRootSource !== undefined && workspaceRootSource === undefined) ||
 		(value.coordinatorBudgetOutcome !== undefined && coordinatorBudgetOutcome === undefined) ||
 		(value.legacyAdapterBranch !== undefined && legacyAdapterBranch === undefined) ||
@@ -527,6 +547,7 @@ function telemetryFields(
 	const result: OrchestrationTelemetryFields = {};
 	if (executionKind) result.executionKind = executionKind;
 	if (outcomeCode) result.outcomeCode = outcomeCode;
+	if (deliverableOutcome) result.deliverableOutcome = deliverableOutcome;
 	if (workspaceRootSource) result.workspaceRootSource = workspaceRootSource;
 	if (coordinatorBudgetOutcome)
 		result.coordinatorBudgetOutcome = coordinatorBudgetOutcome;

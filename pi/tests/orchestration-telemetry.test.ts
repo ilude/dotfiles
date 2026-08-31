@@ -64,13 +64,19 @@ function event(
 }
 
 describe("orchestration telemetry builders", () => {
-	it("preserves complete, partial, and blocked-boundary outcomes", () => {
-		for (const outcomeCode of ["completed", "partial", "rejected"] as const) {
+	it("preserves process and deliverable outcomes as separate fields", () => {
+		for (const [outcomeCode, deliverableOutcome] of [
+			["completed", "complete"],
+			["completed", "partial"],
+			["completed", "blocked"],
+			["failed", "failed"],
+		] as const) {
 			const result = buildOrchestrationRunEvent({
 				...runInput(),
 				outcomeCode,
+				deliverableOutcome,
 			});
-			expect(result?.data).toMatchObject({ outcomeCode });
+			expect(result?.data).toMatchObject({ outcomeCode, deliverableOutcome });
 		}
 		expect(
 			buildOrchestrationRunEvent({

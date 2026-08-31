@@ -9,7 +9,7 @@ import {
 export const DEFAULT_MAX_ACTIVE_TREE_DESCENDANTS = 8;
 export const MAX_ACTIVE_TREE_DESCENDANTS = 16;
 export const MAX_RETAINED_TREE_RUNS = 512;
-export const SUBAGENT_TREE_PROTOCOL_VERSION = 3;
+export const SUBAGENT_TREE_PROTOCOL_VERSION = 4;
 export const SUBAGENT_TREE_RESTART_REQUIRED =
 	"Subagent tree broker protocol or runtime generation does not match this Pi process. Restart Pi before starting new subagent work.";
 
@@ -42,6 +42,8 @@ export interface SubagentTreeMetadata {
 	readonly attempt?: number;
 	readonly retryOrigin?: string;
 	readonly coordinatorTaskId?: string;
+	readonly hardDeadlineAt?: number;
+	readonly admissionCutoffAt?: number;
 }
 
 export interface CreateSubagentTreeInput {
@@ -66,6 +68,8 @@ export interface RequestSubagentTreePermit {
 	readonly attempt?: number;
 	readonly retryOrigin?: string;
 	readonly coordinatorTaskId?: string;
+	readonly hardDeadlineAt?: number;
+	readonly admissionCutoffAt?: number;
 	readonly scopeLease?: {
 		readonly repositoryRoot: string;
 		readonly scopes: readonly string[];
@@ -143,6 +147,7 @@ type MutableTreeNode = {
 	runtimePingCount: number;
 	resolvePermit?: (permit: SubagentTreePermit) => void;
 	rejectPermit?: (error: Error) => void;
+	cutoffTimer?: ReturnType<typeof setTimeout>;
 };
 
 type BrokerRequest =
@@ -223,6 +228,29 @@ function validateChild(
 	if (depth !== parent.depth + 1) {
 		throw new SubagentTreeAdmissionError("A child depth must be exactly one greater than its parent.");
 	}
+	const inheritedDeadline = parent.role === "coordinator"
+		? {
+				hardDeadlineAt: parent.hardDeadlineAt,
+				admissionCutoffAt: parent.admissionCutoffAt,
+			}
+		: request.role === "coordinator"
+			? {
+					hardDeadlineAt: request.hardDeadlineAt,
+					admissionCutoffAt: request.admissionCutoffAt,
+				}
+			: {};
+	if (
+		inheritedDeadline.hardDeadlineAt !== undefined ||
+		inheritedDeadline.admissionCutoffAt !== undefined
+	) {
+		if (
+			!Number.isSafeInteger(inheritedDeadline.hardDeadlineAt) ||
+			!Number.isSafeInteger(inheritedDeadline.admissionCutoffAt) ||
+			(inheritedDeadline.admissionCutoffAt as number) >=
+				(inheritedDeadline.hardDeadlineAt as number)
+		)
+			throw new SubagentTreeAdmissionError("Invalid coordinator reconciliation deadline metadata.");
+	}
 	const metadata: SubagentTreeMetadata = {
 		treeId: request.treeId,
 		parentRunId: request.parentRunId,
@@ -234,6 +262,7 @@ function validateChild(
 		attempt: request.attempt,
 		retryOrigin: request.retryOrigin,
 		coordinatorTaskId: request.coordinatorTaskId,
+		...inheritedDeadline,
 	};
 	if (
 		parent.role === "root" &&
@@ -414,6 +443,12 @@ export class SubagentTreeBroker {
 			throw new SubagentTreeAdmissionError(
 				`Parent run ${request.parentRunId} cannot request children.`,
 			);
+		if (
+			parent.metadata.role === "coordinator" &&
+			parent.metadata.admissionCutoffAt !== undefined &&
+			Date.now() >= parent.metadata.admissionCutoffAt
+		)
+			throw new SubagentTreeAdmissionError("Team Lead descendant admission cutoff has been reached.");
 		const metadata = validateChild(parent.metadata, request);
 		if (this.nodes.has(metadata.runId))
 			throw new SubagentTreeAdmissionError(`Run ID ${metadata.runId} is already registered.`);
@@ -429,6 +464,11 @@ export class SubagentTreeBroker {
 			...(scopeLease ? { scopeLease } : {}),
 		};
 		this.nodes.set(metadata.runId, node);
+		if (
+			metadata.role === "coordinator" &&
+			metadata.admissionCutoffAt !== undefined
+		)
+			this.scheduleCoordinatorCutoff(node);
 		this.queue.push(metadata.runId);
 		if (parent.metadata.role === "coordinator" && parent.state === "active")
 			parent.state = "waiting";
@@ -476,6 +516,10 @@ export class SubagentTreeBroker {
 				descendant,
 				`Run ${descendant.metadata.runId} was cancelled when its parent settled.`,
 			);
+		}
+		if (node.cutoffTimer) {
+			clearTimeout(node.cutoffTimer);
+			node.cutoffTimer = undefined;
 		}
 		if (node.state === "queued") {
 			this.cancelNode(node, `Run ${runId} was released before admission.`);
@@ -630,6 +674,7 @@ export class SubagentTreeBroker {
 
 	async dispose(): Promise<void> {
 		for (const node of this.nodes.values()) {
+			if (node.cutoffTimer) clearTimeout(node.cutoffTimer);
 			if (node.state === "active" || node.state === "waiting" || node.state === "queued")
 				this.cancel(node.metadata.runId);
 		}
@@ -662,6 +707,14 @@ export class SubagentTreeBroker {
 			}
 			const node = this.nodes.get(runId);
 			if (!node || node.state !== "queued") continue;
+			const coordinator = this.coordinatorAncestor(node);
+			if (
+				coordinator?.metadata.admissionCutoffAt !== undefined &&
+				Date.now() >= coordinator.metadata.admissionCutoffAt
+			) {
+				this.cancelNode(node, "Team Lead descendant admission cutoff has been reached.");
+				continue;
+			}
 			if (!node.resolvePermit) {
 				this.queue.splice(queueIndex, 0, runId);
 				return;
@@ -673,6 +726,37 @@ export class SubagentTreeBroker {
 			node.rejectPermit = undefined;
 			resolve(permit);
 		}
+	}
+
+	private coordinatorAncestor(node: MutableTreeNode): MutableTreeNode | undefined {
+		let current: MutableTreeNode | undefined = node;
+		while (current) {
+			if (current.metadata.role === "coordinator") return current;
+			const parentRunId: string | undefined = current.metadata.parentRunId;
+			current = parentRunId ? this.nodes.get(parentRunId) : undefined;
+		}
+		return undefined;
+	}
+
+	private scheduleCoordinatorCutoff(coordinator: MutableTreeNode): void {
+		const cutoffAt = coordinator.metadata.admissionCutoffAt;
+		if (cutoffAt === undefined) return;
+		const enforce = () => {
+			for (const node of this.nodes.values()) {
+				if (
+					node.metadata.runId !== coordinator.metadata.runId &&
+					this.isDescendantOf(node.metadata.runId, coordinator.metadata.runId)
+				)
+					this.cancelNode(
+						node,
+						"Team Lead descendant was settled for the reconciliation reserve.",
+					);
+			}
+			this.dispatch();
+		};
+		const delay = Math.max(0, cutoffAt - Date.now());
+		coordinator.cutoffTimer = setTimeout(enforce, delay);
+		coordinator.cutoffTimer.unref();
 	}
 
 	private hasOutstandingDirectChildren(parentRunId: string): boolean {
@@ -722,6 +806,10 @@ export class SubagentTreeBroker {
 
 	private cancelNode(node: MutableTreeNode, reason: string): boolean {
 		if (node.state === "settled" || node.state === "cancelled") return false;
+		if (node.cutoffTimer) {
+			clearTimeout(node.cutoffTimer);
+			node.cutoffTimer = undefined;
+		}
 		const wasQueued = node.state === "queued";
 		node.cancellationPending = !wasQueued && node.state !== "waiting";
 		node.state = "cancelled";
@@ -790,8 +878,10 @@ export class SubagentTreeBroker {
 			if (
 				node.state === "settled" ||
 				(node.state === "cancelled" && !node.cancellationPending)
-			)
+			) {
+				if (node.cutoffTimer) clearTimeout(node.cutoffTimer);
 				this.nodes.delete(runId);
+			}
 		}
 	}
 
@@ -972,6 +1062,12 @@ function identityEnvironment(
 		PI_SUBAGENT_TREE_RUN_ID: metadata.runId,
 		PI_SUBAGENT_TREE_ROLE: metadata.role,
 		PI_SUBAGENT_TREE_DEPTH: String(metadata.depth),
+		...(metadata.hardDeadlineAt === undefined
+			? {}
+			: { PI_SUBAGENT_TREE_HARD_DEADLINE_AT: String(metadata.hardDeadlineAt) }),
+		...(metadata.admissionCutoffAt === undefined
+			? {}
+			: { PI_SUBAGENT_TREE_ADMISSION_CUTOFF_AT: String(metadata.admissionCutoffAt) }),
 	};
 }
 
@@ -1364,6 +1460,12 @@ export function treeClientFromEnvironment(
 	const protocolVersion = Number(
 		environment.PI_SUBAGENT_TREE_PROTOCOL_VERSION,
 	);
+	const hardDeadlineAt = environment.PI_SUBAGENT_TREE_HARD_DEADLINE_AT === undefined
+		? undefined
+		: Number(environment.PI_SUBAGENT_TREE_HARD_DEADLINE_AT);
+	const admissionCutoffAt = environment.PI_SUBAGENT_TREE_ADMISSION_CUTOFF_AT === undefined
+		? undefined
+		: Number(environment.PI_SUBAGENT_TREE_ADMISSION_CUTOFF_AT);
 	const runtimeGeneration =
 		environment.PI_SUBAGENT_TREE_RUNTIME_GENERATION;
 	const hasBrokerEnvironment = Boolean(host || token || callerToken);
@@ -1387,9 +1489,23 @@ export function treeClientFromEnvironment(
 	) {
 		return undefined;
 	}
+	if (
+		(hardDeadlineAt !== undefined || admissionCutoffAt !== undefined) &&
+		(!Number.isSafeInteger(hardDeadlineAt) ||
+			!Number.isSafeInteger(admissionCutoffAt) ||
+			(admissionCutoffAt as number) >= (hardDeadlineAt as number))
+	)
+		throw new SubagentTreeAdmissionError(SUBAGENT_TREE_RESTART_REQUIRED);
 	return new SubagentTreeClient(
 		{ host, port, token, protocolVersion, runtimeGeneration },
-		{ treeId, runId, role, depth },
+		{
+			treeId,
+			runId,
+			role,
+			depth,
+			...(hardDeadlineAt === undefined ? {} : { hardDeadlineAt }),
+			...(admissionCutoffAt === undefined ? {} : { admissionCutoffAt }),
+		},
 		callerToken,
 	);
 }

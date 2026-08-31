@@ -23,6 +23,13 @@ export const READ_TOOL_ALLOWLIST = ["read", "grep", "find", "ls"] as const;
 export type ReadToolName = (typeof READ_TOOL_ALLOWLIST)[number];
 
 export type ExecutionKind = "read" | "write" | "coordinator";
+export type SubagentProcessState = "running" | "settled";
+export type SubagentProcessOutcome = "succeeded" | "failed" | "cancelled";
+export type SubagentDeliverableOutcome =
+	| "complete"
+	| "partial"
+	| "blocked"
+	| "failed";
 
 export const DEFAULT_COORDINATOR_MAX_WORKERS = 6;
 export const DEFAULT_COORDINATOR_MAX_TURNS = 32;
@@ -45,6 +52,8 @@ export interface SubagentItemBase {
 export interface ReadItem extends SubagentItemBase {
 	/** Advisory paths supplied to coordinate the work; they do not grant authority. */
 	readonly boundaryPaths?: readonly string[];
+	/** Declared read targets validated against existing authority before spawn. */
+	readonly requiredReadPaths?: readonly string[];
 }
 
 export interface WriteItem extends SubagentItemBase {
@@ -52,7 +61,10 @@ export interface WriteItem extends SubagentItemBase {
 	readonly boundaryPaths?: readonly string[];
 }
 
-export type CoordinatorItem = SubagentItemBase;
+export interface CoordinatorItem extends SubagentItemBase {
+	/** Declared read targets validated against existing authority before spawn. */
+	readonly requiredReadPaths?: readonly string[];
+}
 
 export interface ReadRequest {
 	readonly kind: "read";
@@ -100,6 +112,8 @@ export interface CoordinatorRequest {
 	readonly softDeadlineMs?: number;
 	/** Optional containment deadline. It must be later than softDeadlineMs. */
 	readonly hardDeadlineMs?: number;
+	/** Opaque consume-once identity issued for an eligible partial Team Lead result. */
+	readonly continuationId?: string;
 	readonly agentScope?: AgentScope;
 }
 
@@ -113,10 +127,16 @@ export type ChildValidation =
 	| { readonly status: "failed"; readonly reason: string }
 	| { readonly status: "not-run"; readonly reason?: string };
 
-export interface ChildContinuationRequest {
-	readonly sessionPath: string;
-	readonly additionalTimeMs: number;
-}
+export type ChildContinuationRequest =
+	| {
+			readonly continuationId: string;
+			readonly additionalTimeMs: number;
+	  }
+	| {
+			/** Hidden compatibility shape for non-Team-Lead resumed sessions. */
+			readonly sessionPath: string;
+			readonly additionalTimeMs: number;
+	  };
 
 export type ChildCompletion =
 	| {
@@ -152,6 +172,32 @@ export interface SubagentItemResult {
 export interface SubagentExecutionResult {
 	readonly kind: ExecutionKind;
 	readonly items: readonly SubagentItemResult[];
+}
+
+export function deliverableOutcomeFor(
+	completion: ChildCompletion | undefined,
+	processOutcome: SubagentProcessOutcome,
+): SubagentDeliverableOutcome {
+	if (processOutcome !== "succeeded" || completion === undefined) return "failed";
+	return completion.status;
+}
+
+const DELIVERABLE_PRECEDENCE: Record<SubagentDeliverableOutcome, number> = {
+	complete: 0,
+	partial: 1,
+	blocked: 2,
+	failed: 3,
+};
+
+export function aggregateDeliverableOutcomes(
+	outcomes: readonly SubagentDeliverableOutcome[],
+): SubagentDeliverableOutcome {
+	if (outcomes.length === 0) return "failed";
+	return outcomes.reduce((aggregate, outcome) =>
+		DELIVERABLE_PRECEDENCE[outcome] > DELIVERABLE_PRECEDENCE[aggregate]
+			? outcome
+			: aggregate,
+	);
 }
 
 export interface ReadExecutionPolicy {
@@ -214,6 +260,31 @@ export interface CoordinatorBudget {
 	readonly maxTurns: number;
 	readonly softDeadlineMs: number;
 	readonly hardDeadlineMs: number;
+}
+
+export const MAX_COORDINATOR_RECONCILIATION_RESERVE_MS = 120_000;
+export const MIN_COORDINATOR_RECONCILIATION_RESERVE_MS = 5_000;
+
+export function coordinatorReconciliationReserveMs(
+	hardDeadlineMs: number,
+): number {
+	if (!Number.isSafeInteger(hardDeadlineMs) || hardDeadlineMs <= 0)
+		throw new Error("hardDeadlineMs must be a positive integer.");
+	const requested = Math.min(
+		MAX_COORDINATOR_RECONCILIATION_RESERVE_MS,
+		Math.max(
+			MIN_COORDINATOR_RECONCILIATION_RESERVE_MS,
+			Math.floor(hardDeadlineMs * 0.2),
+		),
+	);
+	return Math.min(requested, Math.max(0, hardDeadlineMs - 1));
+}
+
+export function coordinatorAdmissionCutoffAt(
+	hardDeadlineAt: number,
+	hardDeadlineMs: number,
+): number {
+	return hardDeadlineAt - coordinatorReconciliationReserveMs(hardDeadlineMs);
 }
 
 export interface CoordinatorAdmission<T> {
@@ -321,6 +392,13 @@ const ReadItemSchema = Type.Object(
 				description: "Advisory paths for coordination; they do not grant authority.",
 			}),
 		),
+		requiredReadPaths: Type.Optional(
+			Type.Array(Type.String({ minLength: 1 }), {
+				minItems: 1,
+				uniqueItems: true,
+				description: "Declared read targets validated against existing authority before spawn; they do not grant authority.",
+			}),
+		),
 	},
 	{ additionalProperties: false },
 );
@@ -338,7 +416,16 @@ const WriteItemSchema = Type.Object(
 );
 
 const CoordinatorItemSchema = Type.Object(
-	{ ...ItemFields },
+	{
+		...ItemFields,
+		requiredReadPaths: Type.Optional(
+			Type.Array(Type.String({ minLength: 1 }), {
+				minItems: 1,
+				uniqueItems: true,
+				description: "Declared read targets validated against existing authority before spawn; they do not grant authority.",
+			}),
+		),
+	},
 	{ additionalProperties: false },
 );
 
@@ -412,6 +499,12 @@ export const SubagentTeamleadSchema = Type.Object(
 			Type.Integer({
 				minimum: 1,
 				description: "Hard containment deadline in milliseconds; must be greater than softDeadlineMs.",
+			}),
+		),
+		continuationId: Type.Optional(
+			Type.String({
+				minLength: 1,
+				description: "Opaque consume-once identity from an eligible partial Team Lead result.",
 			}),
 		),
 		...CommonRequestFields,
@@ -613,6 +706,20 @@ export function prepareSubagentExecution(
 		);
 		if (cwdResult.outcome === "deny") throw new Error(cwdResult.reason);
 		const effectiveCwd = cwdResult.targets[0] ?? workspaceRoot;
+		const requiredReadPaths = "requiredReadPaths" in item
+			? item.requiredReadPaths
+			: undefined;
+		let canonicalRequiredReadPaths: readonly string[] | undefined;
+		if (requiredReadPaths?.length) {
+			const readTargets = checkNativePathTool(
+				{ workspaceRoot },
+				"read",
+				{ paths: requiredReadPaths },
+				effectiveCwd,
+			);
+			if (readTargets.outcome === "deny") throw new Error(readTargets.reason);
+			canonicalRequiredReadPaths = readTargets.targets;
+		}
 		const instructions = item.instructions ?? item.task;
 		if (!instructions) throw new Error("Subagent items require instructions.");
 		const taskLink = validateTaskLink(
@@ -627,7 +734,14 @@ export function prepareSubagentExecution(
 			? withDispatchSkills(discoveredAgent, item.skills)
 			: discoveredAgent;
 		return {
-			request: { ...item, instructions, cwd: effectiveCwd },
+			request: {
+				...item,
+				instructions,
+				cwd: effectiveCwd,
+				...(canonicalRequiredReadPaths
+					? { requiredReadPaths: [...canonicalRequiredReadPaths] }
+					: {}),
+			},
 			workspaceRoot,
 			taskLink,
 			agent,

@@ -1,6 +1,12 @@
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Message } from "@earendil-works/pi-ai";
+import type {
+	SubagentDeliverableOutcome,
+	SubagentProcessOutcome,
+	SubagentProcessState,
+} from "./contracts.js";
 import type { SubagentTreeRole } from "./tree-runtime.js";
 import type { CorrelationFields } from "../../lib/log-analytics/correlation.js";
 
@@ -47,6 +53,9 @@ export interface SubagentBackgroundCompletion {
 	readonly mode: Exclude<SubagentRunMode, "task-execute">;
 	readonly content: string;
 	readonly failed: boolean;
+	readonly processState: SubagentProcessState;
+	readonly processOutcome: SubagentProcessOutcome;
+	readonly deliverableOutcome: SubagentDeliverableOutcome;
 	readonly taskIds: ReadonlyArray<string>;
 	readonly parentSessionId?: string;
 	readonly workspaceId: string;
@@ -93,6 +102,25 @@ export interface SubagentExecutionFingerprint {
 	readonly authorityTools: ReadonlyArray<string>;
 }
 
+export interface TeamLeadContinuationIdentity {
+	readonly parentSessionId?: string;
+	readonly workspaceId: string;
+	readonly taskId?: string;
+	readonly fingerprint: SubagentExecutionFingerprint;
+}
+
+export interface TeamLeadContinuation {
+	readonly continuationId: string;
+	readonly sourceRunId: string;
+	readonly sessionPath: string;
+	readonly expiresAt: number;
+}
+
+interface MutableTeamLeadContinuation extends TeamLeadContinuation {
+	readonly identity: TeamLeadContinuationIdentity;
+	consumed: boolean;
+}
+
 export interface SubagentRunSnapshot {
 	readonly correlation?: Partial<CorrelationFields>;
 	readonly runId: string;
@@ -121,6 +149,8 @@ export interface SubagentRunSnapshot {
 	readonly effort?: string;
 	readonly background: boolean;
 	readonly status: SubagentRunStatus;
+	readonly processOutcome?: SubagentProcessOutcome;
+	readonly deliverableOutcome?: SubagentDeliverableOutcome;
 	readonly pid?: number;
 	readonly startedAt: number;
 	readonly lastActivityAt: number;
@@ -170,6 +200,8 @@ interface MutableSubagentRunSnapshot {
 	effort?: string;
 	background: boolean;
 	status: SubagentRunStatus;
+	processOutcome?: SubagentProcessOutcome;
+	deliverableOutcome?: SubagentDeliverableOutcome;
 	pid?: number;
 	startedAt: number;
 	lastActivityAt: number;
@@ -327,6 +359,10 @@ export class SubagentRunManager {
 	>();
 	private readonly settlements = new Map<string, RunSettlement>();
 	private readonly sessionLeases = new Map<string, string>();
+	private readonly teamLeadContinuations = new Map<
+		string,
+		MutableTeamLeadContinuation
+	>();
 	private settlementSequence = 0;
 	private acceptBackgroundCompletions = true;
 	private disposalStarted = false;
@@ -420,6 +456,76 @@ export class SubagentRunManager {
 			if (this.sessionLeases.get(key) === runId)
 				this.sessionLeases.delete(key);
 		};
+	}
+
+	issueTeamLeadContinuation(
+		runId: string,
+		expiresAt: number,
+		now = Date.now(),
+	): string {
+		const run = this.snapshots.get(runId);
+		if (
+			!run ||
+			run.status !== "completed" ||
+			run.role !== "coordinator" ||
+			!run.sessionPath ||
+			!run.workspaceId ||
+			!run.executionFingerprint
+		)
+			throw new Error("Team Lead continuation requires an eligible settled coordinator run.");
+		if (!Number.isSafeInteger(expiresAt) || expiresAt <= now)
+			throw new Error("Team Lead continuation expiry must be in the future.");
+		const continuationId = randomUUID();
+		this.teamLeadContinuations.set(continuationId, {
+			continuationId,
+			sourceRunId: run.runId,
+			sessionPath: canonicalizeSavedSessionPath(run.sessionPath),
+			expiresAt,
+			consumed: false,
+			identity: {
+				parentSessionId: run.parentSessionId,
+				workspaceId: canonicalizeWorkspaceIdentity(run.workspaceId),
+				taskId: run.taskId,
+				fingerprint: normalizeExecutionFingerprint(run.executionFingerprint),
+			},
+		});
+		return continuationId;
+	}
+
+	consumeTeamLeadContinuation(
+		continuationId: string,
+		identity: TeamLeadContinuationIdentity,
+		now = Date.now(),
+	): TeamLeadContinuation {
+		const continuation = this.teamLeadContinuations.get(continuationId);
+		if (!continuation) throw new Error("Unknown Team Lead continuation ID.");
+		if (continuation.consumed)
+			throw new Error("Team Lead continuation ID has already been consumed.");
+		if (now >= continuation.expiresAt) {
+			this.teamLeadContinuations.delete(continuationId);
+			throw new Error("Team Lead continuation ID has expired.");
+		}
+		const normalizedIdentity = {
+			...identity,
+			workspaceId: canonicalizeWorkspaceIdentity(identity.workspaceId),
+			fingerprint: normalizeExecutionFingerprint(identity.fingerprint),
+		};
+		if (!sameContinuationIdentity(continuation.identity, normalizedIdentity))
+			throw new Error("Team Lead continuation authority or identity no longer matches.");
+		continuation.consumed = true;
+		return {
+			continuationId,
+			sourceRunId: continuation.sourceRunId,
+			sessionPath: continuation.sessionPath,
+			expiresAt: continuation.expiresAt,
+		};
+	}
+
+	invalidateTeamLeadContinuations(runId: string): void {
+		for (const [continuationId, continuation] of this.teamLeadContinuations) {
+			if (continuation.sourceRunId === runId)
+				this.teamLeadContinuations.delete(continuationId);
+		}
 	}
 
 	begin(input: BeginSubagentRun, controller: AbortController): void {
@@ -628,6 +734,18 @@ export class SubagentRunManager {
 		this.notify(runId);
 	}
 
+	recordOutcomes(
+		runId: string,
+		processOutcome: SubagentProcessOutcome,
+		deliverableOutcome: SubagentDeliverableOutcome,
+	): void {
+		const snapshot = this.snapshots.get(runId);
+		if (!snapshot) return;
+		snapshot.processOutcome = processOutcome;
+		snapshot.deliverableOutcome = deliverableOutcome;
+		this.notify(runId);
+	}
+
 	settle(runId: string, result: SettleSubagentRun): void {
 		const snapshot = this.snapshots.get(runId);
 		if (!snapshot || snapshot.status !== "running") {
@@ -636,6 +754,12 @@ export class SubagentRunManager {
 		}
 		this.update(runId, result);
 		snapshot.status = result.status;
+		snapshot.processOutcome =
+			result.status === "completed"
+				? "succeeded"
+				: result.status === "cancelled"
+					? "cancelled"
+					: "failed";
 		snapshot.settledAt = Date.now();
 		snapshot.settlementOrder = ++this.settlementSequence;
 		snapshot.durationMs ??= snapshot.settledAt - snapshot.startedAt;
@@ -672,6 +796,10 @@ export class SubagentRunManager {
 
 	/** Cancel an in-process run together with every registered descendant. */
 	cancelTree(runId: string): string[] {
+		for (const [continuationId, continuation] of this.teamLeadContinuations) {
+			if (this.isRunOrDescendant(continuation.sourceRunId, runId))
+				this.teamLeadContinuations.delete(continuationId);
+		}
 		const cancelled: string[] = [];
 		for (const snapshot of this.snapshots.values()) {
 			if (
@@ -722,6 +850,7 @@ export class SubagentRunManager {
 			this.snapshots.clear();
 			this.controllers.clear();
 			this.backgroundCompletions.clear();
+			this.teamLeadContinuations.clear();
 			this.completionListeners.clear();
 			this.listeners.clear();
 			this.runListeners.clear();
@@ -739,6 +868,7 @@ export class SubagentRunManager {
 		this.controllers.clear();
 		this.settlements.clear();
 		this.backgroundCompletions.clear();
+		this.teamLeadContinuations.clear();
 		this.acceptBackgroundCompletions = true;
 		this.disposalStarted = false;
 		this.disposalComplete = false;
@@ -858,6 +988,22 @@ function sameValues(left: ReadonlyArray<string>, right: ReadonlyArray<string>): 
 	return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function sameContinuationIdentity(
+	left: TeamLeadContinuationIdentity,
+	right: TeamLeadContinuationIdentity,
+): boolean {
+	return left.parentSessionId === right.parentSessionId &&
+		left.taskId === right.taskId &&
+		left.workspaceId === right.workspaceId &&
+		left.fingerprint.agent === right.fingerprint.agent &&
+		left.fingerprint.role === right.fingerprint.role &&
+		left.fingerprint.depth === right.fingerprint.depth &&
+		left.fingerprint.model === right.fingerprint.model &&
+		left.fingerprint.effort === right.fingerprint.effort &&
+		sameValues(left.fingerprint.skills, right.fingerprint.skills) &&
+		sameValues(left.fingerprint.authorityTools, right.fingerprint.authorityTools);
+}
+
 function matchesAffinityIdentity(
 	run: SubagentRunSnapshot,
 	identity: {
@@ -951,7 +1097,7 @@ export function resolveTaskSessionAffinity(
 }
 
 export const SUBAGENT_RUN_MANAGER_ABI =
-	"dotfiles.pi.subagent-run-manager.v1" as const;
+	"dotfiles.pi.subagent-run-manager.v2" as const;
 const SUBAGENT_RUN_MANAGER_KEY = Symbol.for(
 	"dotfiles.pi.subagent-run-manager",
 );
