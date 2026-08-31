@@ -849,6 +849,67 @@ describe("SubagentTreeBroker", () => {
 		await broker.dispose();
 	});
 
+	it("enforces coordinator admission cutoff and settles active and queued descendants", async () => {
+		vi.useFakeTimers();
+		try {
+			const now = Date.now();
+			const cutoffAt = now + 1_000;
+			const broker = new SubagentTreeBroker({ maxActiveDescendants: 1 });
+			const root = broker.createTree();
+			const coordinator = await broker.acquire({
+				treeId: root.treeId,
+				parentRunId: root.rootRunId,
+				runId: "deadline-coordinator",
+				role: "coordinator",
+				hardDeadlineAt: now + 5_000,
+				admissionCutoffAt: cutoffAt,
+			});
+			const first = await broker.acquire({
+				treeId: root.treeId,
+				parentRunId: coordinator.metadata.runId,
+				runId: "before-cutoff",
+				role: "leaf",
+			});
+			const cancelActive = vi.fn();
+			await first.registerProcess({ pid: 1234, cancel: cancelActive });
+			const queued = broker.acquire({
+				treeId: root.treeId,
+				parentRunId: coordinator.metadata.runId,
+				runId: "queued-across-cutoff",
+				role: "leaf",
+			});
+			const queuedRejection = expect(queued).rejects.toThrow("reconciliation reserve");
+			await vi.advanceTimersByTimeAsync(1_000);
+			await queuedRejection;
+			expect(cancelActive).toHaveBeenCalledOnce();
+			expect(broker.list().find((run) => run.runId === "before-cutoff")?.state).toBe(
+				"cancelled",
+			);
+			await expect(
+				broker.acquire({
+					treeId: root.treeId,
+					parentRunId: coordinator.metadata.runId,
+					runId: "at-cutoff",
+					role: "leaf",
+				}),
+			).rejects.toThrow("admission cutoff");
+			await vi.advanceTimersByTimeAsync(1);
+			await expect(
+				broker.acquire({
+					treeId: root.treeId,
+					parentRunId: coordinator.metadata.runId,
+					runId: "after-cutoff",
+					role: "leaf",
+				}),
+			).rejects.toThrow("admission cutoff");
+			await first.release();
+			await coordinator.release();
+			await broker.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("yields coordinator capacity while direct leaves run", async () => {
 		const broker = new SubagentTreeBroker({ maxActiveDescendants: 1 });
 		const root = broker.createTree();

@@ -1,4 +1,5 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
+import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
 	MAX_ACTIVE_SUBAGENT_RUNS,
@@ -9,6 +10,8 @@ import {
 	SUBAGENT_RUN_MANAGER_ABI,
 	SubagentRunManager,
 	getSubagentRunManager,
+	type SubagentExecutionFingerprint,
+	type TeamLeadContinuationIdentity,
 } from "../extensions/subagent/run-manager.ts";
 import {
 	inspectSubagentStatus,
@@ -20,6 +23,28 @@ import {
 	reconcileSubagentDashboardSelection,
 	type SubagentDashboardSelection,
 } from "../extensions/subagent/ui.ts";
+
+const TEAMLEAD_FINGERPRINT: SubagentExecutionFingerprint = {
+	agent: "teamlead",
+	skills: ["typescript"],
+	role: "coordinator",
+	depth: 1,
+	model: "openai-codex/gpt-5.6-sol",
+	effort: "low",
+	authorityTools: ["subagent_read"],
+};
+
+function teamLeadIdentity(
+	overrides: Partial<TeamLeadContinuationIdentity> = {},
+): TeamLeadContinuationIdentity {
+	return {
+		parentSessionId: "root-session",
+		workspaceId: process.cwd(),
+		taskId: "task-1",
+		fingerprint: TEAMLEAD_FINGERPRINT,
+		...overrides,
+	};
+}
 
 function beginRun(
 	manager: SubagentRunManager,
@@ -347,6 +372,106 @@ describe("SubagentRunManager", () => {
 		expect(() => beginRun(manager, "run-1")).toThrow(
 			"run ID run-1 is already registered",
 		);
+	});
+
+	it("issues and atomically consumes one opaque Team Lead continuation", () => {
+		const manager = new SubagentRunManager();
+		manager.begin(
+			{
+				runId: "teamlead-run",
+				taskId: "task-1",
+				parentSessionId: "root-session",
+				workspaceId: process.cwd(),
+				owner: "direct",
+				mode: "single",
+				agent: "teamlead",
+				task: "Coordinate",
+				cwd: process.cwd(),
+				role: "coordinator",
+				depth: 1,
+				executionFingerprint: TEAMLEAD_FINGERPRINT,
+			},
+			new AbortController(),
+		);
+		manager.settle("teamlead-run", {
+			status: "completed",
+			sessionPath: path.join(process.cwd(), ".tmp", "teamlead-session.jsonl"),
+		});
+
+		const continuationId = manager.issueTeamLeadContinuation(
+			"teamlead-run",
+			20_000,
+			10_000,
+		);
+		expect(continuationId).not.toContain("teamlead-session");
+		const continuation = manager.consumeTeamLeadContinuation(
+			continuationId,
+			teamLeadIdentity(),
+			11_000,
+		);
+		expect(continuation).toMatchObject({
+			continuationId,
+			sourceRunId: "teamlead-run",
+			expiresAt: 20_000,
+		});
+		expect(continuation.sessionPath).toContain("teamlead-session.jsonl");
+		expect(() =>
+			manager.consumeTeamLeadContinuation(
+				continuationId,
+				teamLeadIdentity(),
+				11_001,
+			),
+		).toThrow("already been consumed");
+	});
+
+	it("rejects expired, cancelled, and authority-mismatched continuations", () => {
+		const manager = new SubagentRunManager();
+		manager.begin(
+			{
+				runId: "teamlead-run",
+				taskId: "task-1",
+				parentSessionId: "root-session",
+				workspaceId: process.cwd(),
+				owner: "direct",
+				mode: "single",
+				agent: "teamlead",
+				task: "Coordinate",
+				cwd: process.cwd(),
+				role: "coordinator",
+				depth: 1,
+				executionFingerprint: TEAMLEAD_FINGERPRINT,
+			},
+			new AbortController(),
+		);
+		manager.settle("teamlead-run", {
+			status: "completed",
+			sessionPath: path.join(process.cwd(), ".tmp", "teamlead-session.jsonl"),
+		});
+
+		const mismatched = manager.issueTeamLeadContinuation("teamlead-run", 20_000, 10_000);
+		expect(() =>
+			manager.consumeTeamLeadContinuation(
+				mismatched,
+				teamLeadIdentity({
+					fingerprint: {
+						...TEAMLEAD_FINGERPRINT,
+						authorityTools: [],
+					},
+				}),
+				11_000,
+			),
+		).toThrow("authority or identity");
+
+		const expired = manager.issueTeamLeadContinuation("teamlead-run", 20_000, 10_000);
+		expect(() =>
+			manager.consumeTeamLeadContinuation(expired, teamLeadIdentity(), 20_000),
+		).toThrow("expired");
+
+		const cancelled = manager.issueTeamLeadContinuation("teamlead-run", 20_000, 10_000);
+		manager.cancelTree("teamlead-run");
+		expect(() =>
+			manager.consumeTeamLeadContinuation(cancelled, teamLeadIdentity(), 11_000),
+		).toThrow("Unknown Team Lead continuation");
 	});
 
 	it("does not enforce a process-local active-run cap", () => {
