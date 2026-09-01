@@ -271,6 +271,8 @@ just safe     # damage-control only (safety rules)
 just full     # all extensions (damage-control + subagent + quality-gates + session-hooks)
 ```
 
+Ponytail-derived capability decisions and their canonical local owners are tracked in [`pi/docs/upstream/ponytail.md`](docs/upstream/ponytail.md). Run `just ponytail-upstream` to compare its reviewed commit with the current upstream default branch without changing local files.
+
 Or invoke Pi directly:
 
 ```bash

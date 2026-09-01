@@ -29,6 +29,14 @@ memory-rebuild:
 memory-promote-scan:
     cd ~/.dotfiles && bun pi/scripts/memory-promote-scan.ts
 
+# Compare the tracked Ponytail checkpoint with its current upstream branch (read-only)
+[script]
+ponytail-upstream:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "$HOME/.dotfiles"
+    exec node pi/scripts/ponytail-upstream.mjs
+
 # Show what a snapshot archive would write (no side effects)
 memory-snapshot-archive-dry-run:
     cd ~/.dotfiles && bun pi/scripts/memory-snapshot-archive.ts
