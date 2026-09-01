@@ -12,5 +12,10 @@
         }
       }
     }
+  },
+  "aliases": {
+    "us.openai.gpt-5.6-sol": "us.openai.gpt-5.6-sol",
+    "us.openai.gpt-5.6-terra": "us.openai.gpt-5.6-terra",
+    "us.openai.gpt-5.6-luna": "us.openai.gpt-5.6-luna"
   }
 }
