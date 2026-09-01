@@ -180,6 +180,14 @@ export function formatModelName(
 		.replace(/^claude-/, "");
 }
 
+export function formatProviderName(provider: string | undefined): string | null {
+	if (!provider) return null;
+	if (provider === "openai-codex") return "codex";
+	if (provider === "amazon-bedrock" || provider === "bedrock-mantle")
+		return "bedrock";
+	return provider;
+}
+
 function compactTokens(tokens: number): string {
 	if (tokens < 1_000) return String(tokens);
 	if (tokens < 1_000_000) return `${Math.round(tokens / 1_000)}k`;
@@ -295,7 +303,7 @@ export function formatExtensionStatusLine(
 export function formatPiStatusLine(options: {
 	cwd: string;
 	branch: string | null;
-	model: { id?: string; name?: string } | undefined;
+	model: { id?: string; name?: string; provider?: string } | undefined;
 	pi: ExtensionAPI;
 	piVersion: string | null;
 	reloadNeeded?: boolean;
@@ -306,21 +314,31 @@ export function formatPiStatusLine(options: {
 	const directory = formatPiStatusDirectory(options.cwd);
 	const branch = colorBranch(options.branch);
 	const model = formatModelName(options.model);
+	const provider = formatProviderName(options.model?.provider);
 	const thinking = formatThinkingLevel(options.pi);
 	const thinkingColor = colorForThinkingLevel(model, thinking);
 	const thinkingLabel = `${ANSI.white}[${thinkingColor}${thinking}${ANSI.white}]${ANSI.reset}`;
 	const contextSegment = formatContextUsageSegment(options.contextUsage);
 	const versionLabel = `${ANSI.dim}π v${options.piVersion ?? "?"}${ANSI.reset}${formatReloadIndicator(Boolean(options.reloadNeeded))}`;
-	const buildLeft = (modelText: string) => {
-		const modelLabel = `${ANSI.orange}${modelText}${ANSI.reset}${thinkingLabel}`;
+	const buildLeft = (modelText: string, includeProvider: boolean) => {
+		const providerLabel =
+			includeProvider && provider
+				? `${ANSI.dim}${ANSI.grey}${provider} · ${ANSI.reset}`
+				: "";
+		const modelLabel = `${providerLabel}${ANSI.orange}${modelText}${ANSI.reset}${thinkingLabel}`;
 		const contextLabel = contextSegment ? ` | ${contextSegment}` : "";
 		return `${ANSI.green}${directory}${ANSI.reset}${branch} | ${modelLabel}${contextLabel} | ${versionLabel}`;
 	};
-	let left = buildLeft(model);
+	let includeProvider = true;
+	let left = buildLeft(model, includeProvider);
+	if (visibleWidth(left) > options.width && provider) {
+		includeProvider = false;
+		left = buildLeft(model, includeProvider);
+	}
 	if (visibleWidth(left) > options.width) {
-		const nonModelWidth = visibleWidth(buildLeft(""));
+		const nonModelWidth = visibleWidth(buildLeft("", includeProvider));
 		const availableModelWidth = Math.max(0, options.width - nonModelWidth);
-		left = buildLeft(truncateToWidth(model, availableModelWidth));
+		left = buildLeft(truncateToWidth(model, availableModelWidth), includeProvider);
 	}
 	let composed = rightAnchor(left, options.rightStatus, options.width);
 	if (options.rightStatus && composed === left) {

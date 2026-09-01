@@ -44,7 +44,7 @@ This index records stable public and normative semantics for Pi extensions and t
 ## Footer and extension status
 
 - The primary footer line owns directory, branch, model, reasoning level, context usage, Pi version, reload state, and the right-anchored provider quota when available.
-- Render only the concise model name. Omit provider, region, and vendor-family prefixes such as `anthropic.claude-`.
+- Render a dim normalized provider prefix before the concise model name. Source it from the active model; use `codex` for `openai-codex`, `bedrock` for `amazon-bedrock` and `bedrock-mantle`, and the provider ID otherwise. Omit region and vendor-family prefixes such as `anthropic.claude-`, and drop the provider prefix first at narrow widths.
 - Render context usage after the model reasoning level as its own ` | `-delimited segment. Omit it when usage is unavailable.
 - One-line extension health belongs in `ctx.ui.setStatus()`, not a below-editor widget. The custom footer renders those statuses on a second line.
 - Render Onclave status as `Onclave[N]: <client>`, where `N` is the peer count. Color only the client name: green while connected and red otherwise.

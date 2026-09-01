@@ -213,6 +213,53 @@ describe("formatPiStatusLine", () => {
 		expect(mod.formatModelName({ id })).toBe(expected);
 	});
 
+	it.each([
+		["openai-codex", "codex"],
+		["amazon-bedrock", "bedrock"],
+		["bedrock-mantle", "bedrock"],
+		["anthropic", "anthropic"],
+	])("formats provider %s as %s", async (provider, expected) => {
+		const mod = await import("../extensions/operator-status.ts");
+		expect(mod.formatProviderName(provider)).toBe(expected);
+	});
+
+	it("renders a dim provider prefix before the model", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const pi = Object.assign(createMockPi(), { getThinkingLevel: () => "low" });
+		const line = mod.formatPiStatusLine({
+			cwd: tmpRoot,
+			branch: null,
+			model: { id: "gpt-5.6-sol", provider: "openai-codex" },
+			pi: pi as any,
+			piVersion: "0.72.0",
+			rightStatus: null,
+			width: 120,
+		});
+
+		expect(line).toContain(
+			"\x1b[2m\x1b[90mcodex · \x1b[0m" +
+				"\x1b[38;5;208mgpt-5.6-sol\x1b[0m" +
+				"\x1b[37m[\x1b[36mlow\x1b[37m]\x1b[0m",
+		);
+	});
+
+	it("drops the provider suffix before truncating higher-priority footer content", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const line = mod.formatPiStatusLine({
+			cwd: tmpRoot,
+			branch: null,
+			model: { id: "test-model", provider: "bedrock-mantle" },
+			pi: createMockPi() as any,
+			piVersion: "0.72.0",
+			rightStatus: null,
+			width: 80,
+		});
+
+		expect(line).toContain("test-model");
+		expect(line).not.toContain("bedrock");
+		expect(line).toContain("π v0.72.0");
+	});
+
 	it("omits reload suffix when reload is not needed", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const line = mod.formatPiStatusLine({
