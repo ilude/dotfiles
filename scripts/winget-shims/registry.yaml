@@ -1,7 +1,3 @@
-- package_id: SST.opencode
-  commands:
-    - command_name: opencode
-      target_exe: opencode.exe
 - package_id: astral-sh.uv
   commands:
     - command_name: uv

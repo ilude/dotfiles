@@ -122,8 +122,15 @@ function Add-PathIfNotExists {
   }
 }
 
-# User binary directories
+# User binary directories. Add .local first, then pnpm so pnpm-managed
+# development CLIs take precedence over WinGet shims and legacy installs.
 Add-PathIfNotExists -PathToAdd "$env:USERPROFILE\.local\bin"
+if ($env:LOCALAPPDATA) {
+  $env:PNPM_HOME = "$env:LOCALAPPDATA\pnpm"
+  $pnpmBin = "$env:PNPM_HOME\bin"
+  $pathEntries = @($env:PATH.Split(';') | Where-Object { $_ -and $_ -ine $pnpmBin })
+  $env:PATH = (@($pnpmBin) + $pathEntries) -join ';'
+}
 
 #endregion
 
@@ -157,7 +164,7 @@ function ccyl {
     Write-Host -NoNewline ("`e]0;{0}`a" -f (Split-Path -Leaf $PWD.Path))
     Invoke-Claude --dangerously-skip-permissions --chrome @args
 }
-function claude-install { npm install -g @anthropic-ai/claude-code }
+function claude-install { pnpm add --global --config.minimum-release-age=4320 @anthropic-ai/claude-code }
 
 #endregion
 
