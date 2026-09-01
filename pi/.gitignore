@@ -9,7 +9,6 @@ expertise/*-expertise-log.jsonl
 multi-team/sessions/
 multi-team/logs/
 multi-team/expertise/*-expertise-log.jsonl
-skills/pi-skills/
 
 # Runtime session logs
 sessions/

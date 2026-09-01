@@ -810,15 +810,7 @@ Current paths, retrieval behavior, safety, and canonical tests are documented in
 
 ## Skills
 
-Shared skill packages are referenced under `~/.dotfiles/pi/skills/shared/` without duplicating their source. Community packages are installed under `~/.dotfiles/pi/skills/pi-skills/`:
-
-| Skill | Purpose |
-|-------|---------|
-| `brave-search` | Web search via Brave Search API |
-| `browser-tools` | Browser automation and content extraction; use `scripts/agent-browser-brave` for safe Brave + `agent-browser` workflows |
-| `youtube-transcript` | Fetch YouTube transcripts |
-| `transcribe` | Audio transcription |
-| `vscode` | VS Code integration |
+Shared skill packages are referenced under `~/.dotfiles/pi/skills/shared/` without duplicating their source. No community skill packages are currently installed.
 
 Loading and invocation behavior is documented by upstream Pi.
 

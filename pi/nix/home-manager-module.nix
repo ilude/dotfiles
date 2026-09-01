@@ -126,8 +126,6 @@ in
         "${cfg.stateDir}/settings.json".source = "${cfg.package}/settings.json";
         "${cfg.stateDir}/skills/workflow".source =
           "${cfg.package}/skills/workflow";
-        "${cfg.stateDir}/skills/pi-skills".source =
-          "${cfg.package}/skills/pi-skills";
       }
     ];
 

@@ -49,7 +49,6 @@ symlinkJoin {
     (cleanDir "multi-team/skills" [ ])
     (cleanDir "project-templates" [ ])
     (cleanDir "skills/workflow" [ ])
-    (cleanDir "skills/pi-skills" [ ])
   ];
 
   meta = with lib; {

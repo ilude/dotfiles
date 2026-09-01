@@ -84,7 +84,7 @@ After `home-manager switch`:
 - `pi` is on `$PATH` (from the `coding-agents` module).
 - `~/<stateDir>` (default `~/.pi/agent`) contains:
   - read-only symlinks into the Nix store for `extensions/`, `agents/`,
-    `skills/workflow`, `skills/pi-skills`, `lib/`, `multi-team/agents`,
+    `skills/workflow`, `lib/`, `multi-team/agents`,
     `multi-team/skills`, `project-templates/`, `settings.json`,
     `AGENTS.md`, `damage-control-rules.yaml`, `quality-gates.json`,
     `justfile`, and `keybindings.json`;
@@ -158,7 +158,7 @@ Commit `flake.lock` in **your** consumer repo for reproducibility.
   symlinks point at `~/.dotfiles/claude/skills/`, a sibling subtree that
   doesn't translate to a redistribution package. The kissgyorgy
   `coding-agents` flake provides a baseline skill set; this flake adds
-  `skills/workflow/` and `skills/pi-skills/` on top.
+  `skills/workflow/` on top.
 - **Extensions override**: by default, this module sets the kissgyorgy
   module's `extensionsDir` to the dotfiles set, replacing the upstream
   defaults (tmux-mirror, plan-mode, etc). Use `extraExtensionsDir` or set
