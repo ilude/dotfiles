@@ -323,7 +323,7 @@ export function formatPiStatusLine(options: {
 	const buildLeft = (modelText: string, includeProvider: boolean) => {
 		const providerLabel =
 			includeProvider && provider
-				? `${ANSI.dim}${ANSI.grey}${provider} · ${ANSI.reset}`
+				? `${ANSI.dim}${ANSI.grey}${provider}/${ANSI.reset}`
 				: "";
 		const modelLabel = `${providerLabel}${ANSI.orange}${modelText}${ANSI.reset}${thinkingLabel}`;
 		const contextLabel = contextSegment ? ` | ${contextSegment}` : "";

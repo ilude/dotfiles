@@ -237,13 +237,13 @@ describe("formatPiStatusLine", () => {
 		});
 
 		expect(line).toContain(
-			"\x1b[2m\x1b[90mcodex · \x1b[0m" +
+			"\x1b[2m\x1b[90mcodex/\x1b[0m" +
 				"\x1b[38;5;208mgpt-5.6-sol\x1b[0m" +
 				"\x1b[37m[\x1b[36mlow\x1b[37m]\x1b[0m",
 		);
 	});
 
-	it("drops the provider suffix before truncating higher-priority footer content", async () => {
+	it("drops the provider prefix before truncating higher-priority footer content", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const line = mod.formatPiStatusLine({
 			cwd: tmpRoot,
