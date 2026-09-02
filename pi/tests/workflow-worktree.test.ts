@@ -71,9 +71,34 @@ describe("workflow worktree lifecycle", () => {
 		fs.writeFileSync(path.join(root, "result.txt"), "done\n");
 		git(root, ["add", "result.txt"]);
 		git(root, ["commit", "-q", "-m", "test: finish in place"]);
+		const resumed = await ensureInPlaceWorkflow({ cwd: root, workflowId: "do-it:fixture", slug: "fixture", runner });
+		expect(resumed.resumed).toBe(true);
 		const completed = await verifyInPlaceWorkflow({ ownership: ensured.ownership, cwd: root, runner });
 		expect(completed.state).toBe("complete");
 		expect(git(root, ["worktree", "list", "--porcelain"]).replace(/^HEAD .*\r?\n/gm, "")).toBe(before);
+	});
+
+	it("rejects in-place resume when an ordinary worktree owns the plan", async () => {
+		const root = repo();
+		await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner });
+		await expect(ensureInPlaceWorkflow({ cwd: root, workflowId: "do-it:fixture", slug: "fixture", runner })).rejects.toThrow(/ordinary workflow worktree/);
+		expect(readWorkflowOwnershipRecord(root, "fixture")).toMatchObject({ state: "active" });
+	});
+
+	it("rejects ordinary resume when an in-place workflow owns the plan", async () => {
+		const root = repo();
+		await ensureInPlaceWorkflow({ cwd: root, workflowId: "do-it:fixture", slug: "fixture", runner });
+		await expect(ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner })).rejects.toThrow(/in-place workflow/);
+		expect(readWorkflowOwnershipRecord(root, "fixture")).toBeUndefined();
+	});
+
+	it("upgrades retained closeout on explicit resume and preserves it when omitted", async () => {
+		const root = repo();
+		await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner });
+		const retained = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", closeoutPolicy: "retain", runner });
+		expect(retained.ownership.closeoutPolicy).toBe("retain");
+		const resumed = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner });
+		expect(resumed.ownership.closeoutPolicy).toBe("retain");
 	});
 
 	it("binds in-place ownership to the invoking secondary worktree", async () => {

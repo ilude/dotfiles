@@ -225,6 +225,9 @@ export async function ensureInPlaceWorkflow(input: { cwd: string; workflowId: st
 	const root = worktree;
 	const branch = parseLine(await input.runner(worktree, ["branch", "--show-current"]), "resolve invoking branch");
 	if (!branch) throw new Error("in-place execution requires a checked-out branch");
+	const existingOrdinary = readWorkflowOwnershipRecord(root, input.slug);
+	if (existingOrdinary?.state === "active")
+		throw new Error("an ordinary workflow worktree already owns this plan; resume it without --in-place");
 	const existing = readInPlaceWorkflowOwnership(root, input.slug);
 	if (existing) {
 		if (existing.state !== "active") throw new Error("in-place workflow is already complete");
@@ -273,6 +276,9 @@ export async function ensureWorkflowWorktree(input: { cwd: string; workflow: Wor
 	const root = await resolveWorkflowRepoRoot(input.cwd, input.runner);
 	const slug = assertSafeSlug(input.slug);
 	const metadataPath = ownershipPath(root, slug);
+	const existingInPlace = readInPlaceWorkflowOwnership(root, slug);
+	if (existingInPlace?.state === "active")
+		throw new Error("an in-place workflow already owns this plan; resume it with --in-place");
 	const existing = readOwnership(metadataPath);
 	if (existing) {
 		assertOwned(existing, root, input.workflow, input.workflowId, input.planPath);

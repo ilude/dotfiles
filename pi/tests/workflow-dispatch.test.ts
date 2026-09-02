@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockPi } from "./helpers/mock-pi.js";
+import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 import { parseDoItArgs, routeDirectDoItInput } from "../extensions/workflow-commands.ts";
 
 const copyToClipboardMock = vi.hoisted(() => vi.fn());
@@ -497,6 +497,40 @@ describe("workflow slash command dispatch", () => {
 		expect(definition.getArgumentCompletions("--no-clear ").map((item: any) => item.value)).toEqual(["--in-place", "--no-merge"]);
 		expect(definition.getArgumentCompletions("--no-merge ").map((item: any) => item.value)).toEqual(["--no-clear", "--in-place"]);
 		expect(definition.getArgumentCompletions("--no-merge --")).toBeNull();
+	});
+
+	it("resumes a cleared /do-it through private dispatch without a public command message", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const newSession = vi.fn(async (options: any) => {
+			await options.setup({ appendCustomMessageEntry: vi.fn() });
+			return undefined;
+		});
+		await getHandler(mockPi, "do-it")( "implement the task", { ...createMockCtx(), cwd: "/repo", newSession });
+		expect(newSession).toHaveBeenCalledOnce();
+		const sessionStart = mockPi._getHook("session_start")[0]?.handler;
+		if (!sessionStart) throw new Error("session_start hook not registered");
+		await sessionStart({ reason: "resume" }, {
+			cwd: "/repo",
+			mode: "tui",
+			ui: { notify: vi.fn() },
+			sessionManager: { getSessionId: () => "resume-session", getBranch: () => [
+				{ customType: "workflow.do-it-continuation", data: { request: "implement the task", noClear: false, inPlace: false, noMerge: false } },
+			] },
+		} as any);
+		expect(mockPi.sendUserMessage).not.toHaveBeenCalled();
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "workflow.hiddenPrompt" }), expect.anything());
+	});
+
+	it("uses --no-clear as an immediate clear bypass", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const ctx = { ...createMockCtx(), cwd: "/repo", newSession: vi.fn() };
+		await getHandler(mockPi, "do-it")("--no-clear implement the task", ctx);
+		expect(ctx.newSession).not.toHaveBeenCalled();
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "workflow.hiddenPrompt" }), expect.anything());
 	});
 
 	it("/do-it echoes before repository resolution completes", async () => {

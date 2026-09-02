@@ -123,6 +123,7 @@ const MAX_PLAN_PREFLIGHT_CHARS = 2000;
 const DO_IT_CONTINUATION_TYPE = "workflow.do-it-continuation";
 
 type DoItContinuation = DoItArgs & { consumed?: boolean };
+type DoItDispatchContext = Pick<ExtensionCommandContext, "cwd" | "mode" | "ui"> & Partial<Pick<ExtensionCommandContext, "newSession" | "getContextUsage">>;
 
 export interface DoItArgs {
 	request: string;
@@ -2658,8 +2659,9 @@ export default function (pi: ExtensionAPI) {
 			if ((candidate.customType as string) === `${DO_IT_CONTINUATION_TYPE}.consumed`) consumed = true;
 		}
 		if (!continuation || continuation.consumed || consumed) return;
-		await pi.appendEntry(`${DO_IT_CONTINUATION_TYPE}.consumed`, { request: continuation.request });
-		await pi.sendUserMessage(`/do-it --no-clear${continuation.inPlace ? " --in-place" : ""}${continuation.noMerge ? " --no-merge" : ""}${continuation.request ? ` ${continuation.request}` : ""}`);
+		await pi.appendEntry(`${DO_IT_CONTINUATION_TYPE}.consumed`, continuation);
+		if (!doItHandler) throw new Error("Cannot resume /do-it before its dispatch path is registered.");
+		await doItHandler(continuation, ctx, true);
 	});
 	pi.on("session_tree", (_event, ctx) => {
 		restorePlanLifecycle(ctx);
@@ -3080,25 +3082,26 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	let doItHandler: ((args: string | DoItArgs, ctx: DoItDispatchContext, skipClear?: boolean) => Promise<void>) | undefined;
 	registerSlashCommand(pi)("do-it", {
 		description: "Execute work in one owned workflow worktree with proportional validation",
 		getArgumentCompletions: (prefix) => getDoItArgumentCompletions(
 			prefix,
 			getCachedDoItPlans(activePlanningRoot ?? process.cwd()),
 		),
-		handler: async (args, ctx) => {
+		handler: doItHandler = async (args, ctx, skipClear = false) => {
 			let parsed: DoItArgs;
 			try {
-				parsed = parseDoItArgs(args);
+				parsed = typeof args === "string" ? parseDoItArgs(args) : args;
 			} catch (error) {
 				ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
 				return;
 			}
-			if (!parsed.noClear && typeof ctx.newSession === "function") {
+			if (!skipClear && !parsed.noClear && typeof ctx.newSession === "function") {
 				const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
 				const continuation: DoItContinuation = { ...parsed };
 				try {
-					await newSessionWithReloadIfNeeded(ctx, {
+					await newSessionWithReloadIfNeeded(ctx as Pick<ExtensionCommandContext, "newSession">, {
 						setup: async (sessionManager) => {
 							if (!sessionManager.appendCustomMessageEntry) throw new Error("Cannot persist /do-it session continuation.");
 							sessionManager.appendCustomMessageEntry(DO_IT_CONTINUATION_TYPE, JSON.stringify(continuation), false);
@@ -3152,6 +3155,12 @@ export default function (pi: ExtensionAPI) {
 					const planSlug = workflowSlugFromPlan(canonicalPlanPath ?? requestedPlanPath);
 					const slug = planSlug === "workflow" ? workflowSlugFromRequest(requestedPlanPath) : planSlug;
 					const workflowId = `do-it:${slug}`;
+					const ordinaryOwnership = readWorkflowOwnershipRecord(primaryRoot, slug);
+					const inPlaceOwnership = readInPlaceWorkflowOwnership(primaryRoot, slug);
+					if (parsed.inPlace && ordinaryOwnership?.state === "active")
+						throw new Error("an ordinary workflow worktree already owns this plan; resume it without --in-place");
+					if (!parsed.inPlace && inPlaceOwnership?.state === "active")
+						throw new Error("an in-place workflow already owns this plan; resume it with --in-place");
 					const inPlace = parsed.inPlace
 						? await ensureInPlaceWorkflow({ cwd: ctx.cwd, workflowId, slug, planPath: canonicalPlanPath, runner: workflowRunner })
 						: undefined;

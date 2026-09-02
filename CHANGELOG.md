@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-02: Preserve do-it resume intent
+
+**Why:** A cleared `/do-it` continuation could appear as a new public command and fail to establish workflow ownership before model work.
+
+**Changed:**
+- Resume cleared commands through the private setup path instead of emitting a synthetic `/do-it --no-clear` message.
+- Treat `--no-clear` as conversation-only, allow explicit `--no-merge` to upgrade resumed closeout, and preserve an existing closeout policy when that flag is omitted.
+- Reject resumes whose `--in-place` choice does not match the plan's active ownership mode.
+
+**Preserved:** Resumed worktree and file state always survive conversation clearing, while new-plan defaults and plan-defined retention remain unchanged.
+
+**Validation:** Focused workflow dispatch and worktree tests passed with Pi typecheck and `git diff --check`.
+
+---
+
 ## 2026-09-02: Add on-demand local image editing
 
 **Why:** Pi needed a bounded workflow for inspecting and transforming local images without exposing binary-backed tools on ordinary turns.
