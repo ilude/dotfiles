@@ -1,31 +1,143 @@
 #!/usr/bin/env python3
-"""Safe Brave + agent-browser helper for Pi agents."""
+"""Safe, profile-aware Brave + agent-browser helper for Pi agents."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
+from typing import Any
 
-STATE_DIR = Path(".pi/agent-browser-brave")
-STATE_PATH = STATE_DIR / "state.json"
-PI_PROFILE_DIR = STATE_DIR / "brave-user-data"
 SESSION_ID = "pi-agent-browser-brave"
-
-
-def run(cmd: list[str], check: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, capture_output=True, check=check)
+PI_PROFILE_DIR = Path.home() / ".pi" / "agent" / "browser" / "pi-profile"
+STATE_PATH = Path.home() / ".pi" / "agent" / "browser" / "session.json"
+CONFIG_PATH = Path.home() / ".pi" / "agent" / "browser-profiles.json"
 
 
 def is_windows() -> bool:
     return sys.platform.startswith("win") or "MINGW" in os.environ.get("MSYSTEM", "")
+
+
+def expand_path(value: str, environ: dict[str, str] | None = None) -> Path:
+    env = os.environ if environ is None else environ
+    text = os.path.expanduser(value)
+
+    def variable(match: re.Match[str]) -> str:
+        name = match.group(1) or match.group(2) or match.group(3)
+        if name not in env:
+            raise ValueError(f"unknown environment variable: {name}")
+        return env[name]
+
+    text = re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%", variable, text)
+    if "$" in text or re.search(r"%[^%]+%", text):
+        raise ValueError(f"unexpanded environment variable in path: {value}")
+    return Path(text)
+
+
+def canonical_path(path: str | Path) -> str:
+    return str(Path(path).expanduser().resolve(strict=False))
+
+
+def brave_roots(platform: str | None = None, environ: dict[str, str] | None = None) -> list[Path]:
+    env = os.environ if environ is None else environ
+    platform = platform or sys.platform
+    if platform.startswith("win") or env.get("MSYSTEM"):
+        values = [env.get("BRAVE_USER_DATA_DIR", ""), os.path.join(env.get("LOCALAPPDATA", ""), "BraveSoftware", "Brave-Browser", "User Data")]
+    elif platform == "darwin":
+        values = [env.get("BRAVE_USER_DATA_DIR", ""), "~/Library/Application Support/BraveSoftware/Brave-Browser"]
+    else:
+        values = [env.get("BRAVE_USER_DATA_DIR", ""), "~/.config/BraveSoftware/Brave-Browser", "~/.config/brave-browser"]
+    result = []
+    for value in values:
+        if value:
+            path = expand_path(value, env)
+            if path not in result:
+                result.append(path)
+    return result
+
+
+def default_brave_user_data_dir() -> Path | None:
+    return brave_roots()[0] if brave_roots() else None
+
+
+def discover_profiles(root: str | Path) -> list[dict[str, str]]:
+    root_path = expand_path(str(root))
+    local_state = root_path / "Local State"
+    if not root_path.is_dir() or not local_state.is_file():
+        raise ValueError(f"missing Brave profile metadata: {local_state}")
+    try:
+        cache = json.loads(local_state.read_text(encoding="utf-8"))["profile"]["info_cache"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"corrupt Brave profile metadata: {local_state}") from exc
+    if not isinstance(cache, dict) or not cache:
+        raise ValueError(f"no existing Brave profiles in metadata: {local_state}")
+    profiles = []
+    for directory, info in cache.items():
+        if not isinstance(directory, str) or not isinstance(info, dict) or not (root_path / directory).is_dir():
+            raise ValueError(f"stale Brave profile metadata: {directory}")
+        name = info.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"missing Brave profile display metadata: {directory}")
+        profiles.append({"profileDirectory": directory, "displayName": name})
+    if len({p["displayName"].casefold() for p in profiles}) != len(profiles):
+        raise ValueError("duplicate or case-colliding Brave profile display name")
+    return profiles
+
+
+def validate_config(config: Any) -> dict[str, Any]:
+    if not isinstance(config, dict) or config.get("version") != 1 or not isinstance(config.get("profiles"), dict):
+        raise ValueError("browser profile configuration must have version 1 and profiles object")
+    aliases: dict[str, Any] = {}
+    for alias, entry in config["profiles"].items():
+        if not isinstance(alias, str) or not alias.strip() or any(char.isspace() for char in alias) or alias.casefold() in {key.casefold() for key in aliases}:
+            raise ValueError("invalid, duplicate, or case-colliding profile alias")
+        if not isinstance(entry, dict) or not isinstance(entry.get("profileDirectory"), str) or not entry["profileDirectory"].strip():
+            raise ValueError(f"profile alias {alias!r} requires profileDirectory")
+        if set(entry) - {"profileDirectory", "userDataDir", "extensionsExpected"}:
+            raise ValueError(f"profile alias {alias!r} has unsupported fields")
+        if "userDataDir" in entry and (not isinstance(entry["userDataDir"], str) or not entry["userDataDir"].strip()):
+            raise ValueError(f"profile alias {alias!r} has invalid userDataDir")
+        if "extensionsExpected" in entry and not isinstance(entry["extensionsExpected"], bool):
+            raise ValueError(f"profile alias {alias!r} has invalid extensionsExpected")
+        aliases[alias] = dict(entry)
+    return {"version": 1, "profiles": aliases}
+
+
+def load_config(path: str | Path = CONFIG_PATH) -> dict[str, Any]:
+    try:
+        raw = json.loads(expand_path(str(path)).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"version": 1, "profiles": {}}
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid browser profile configuration: {path}") from exc
+    return validate_config(raw)
+
+
+def resolve_profile(alias: str, root: str | Path) -> dict[str, Any]:
+    profiles = discover_profiles(root)
+    entry = load_config()["profiles"].get(alias)
+    if not entry:
+        raise ValueError(f"unknown profile alias {alias!r}; discovered candidates: {profiles}")
+    configured_root = entry.get("userDataDir")
+    if configured_root and canonical_path(configured_root) != canonical_path(root):
+        raise ValueError(f"configured profile {alias!r} points at another Brave root")
+    matches = [profile for profile in profiles if profile["profileDirectory"] == entry["profileDirectory"]]
+    if len(matches) != 1:
+        raise ValueError(f"configured profile {alias!r} does not resolve uniquely")
+    return {**matches[0], "alias": alias, "extensionsExpected": entry.get("extensionsExpected", False)}
 
 
 def resolve_agent_browser() -> tuple[list[str], str]:
@@ -33,57 +145,21 @@ def resolve_agent_browser() -> tuple[list[str], str]:
     if local:
         return [local], f"installed:{local}"
     npx = shutil.which("npx")
-    if npx:
-        return [npx, "-y", "agent-browser"], "npx-fallback:agent-browser"
-    return [], "missing"
+    return ([npx, "-y", "agent-browser"], "npx-fallback:agent-browser") if npx else ([], "missing")
 
 
 def find_brave() -> str | None:
-    env_path = os.environ.get("BRAVE_PATH")
-    if env_path and Path(env_path).exists():
-        return env_path
-    names = ["brave", "brave-browser", "brave.exe"]
-    for name in names:
-        found = shutil.which(name)
-        if found:
+    if os.environ.get("BRAVE_PATH") and Path(os.environ["BRAVE_PATH"]).exists():
+        return os.environ["BRAVE_PATH"]
+    for name in ("brave", "brave-browser", "brave.exe"):
+        if found := shutil.which(name):
             return found
     if is_windows():
-        candidates = []
-        for base in (
-            os.environ.get("LOCALAPPDATA"),
-            os.environ.get("PROGRAMFILES"),
-            os.environ.get("PROGRAMFILES(X86)"),
-        ):
-            if base:
-                candidates.append(Path(base) / "BraveSoftware/Brave-Browser/Application/brave.exe")
-        for candidate in candidates:
-            if candidate.exists():
+        for base in (os.environ.get("LOCALAPPDATA"), os.environ.get("PROGRAMFILES"), os.environ.get("PROGRAMFILES(X86)")):
+            candidate = Path(base) / "BraveSoftware/Brave-Browser/Application/brave.exe" if base else None
+            if candidate and candidate.exists():
                 return str(candidate)
     return None
-
-
-def default_brave_user_data_dir() -> Path | None:
-    env_path = os.environ.get("BRAVE_USER_DATA_DIR")
-    if env_path:
-        return Path(env_path)
-    if is_windows():
-        local_app_data = os.environ.get("LOCALAPPDATA")
-        return (
-            Path(local_app_data) / "BraveSoftware/Brave-Browser/User Data"
-            if local_app_data
-            else None
-        )
-    if sys.platform == "darwin":
-        return Path.home() / "Library/Application Support/BraveSoftware/Brave-Browser"
-    return Path.home() / ".config/BraveSoftware/Brave-Browser"
-
-
-def normalize_brave_profile_directory(profile: str) -> str:
-    # Chromium profile directory names are stable across machines even when the
-    # display name differs. The default Brave profile directory is "Default";
-    # on this machine its display name is "Work", but other machines may show
-    # a different display name while still using the Default directory.
-    return "Default" if profile.strip().lower() in {"", "default", "work"} else profile
 
 
 def free_port() -> int:
@@ -92,36 +168,85 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def load_state() -> dict:
+def load_state() -> dict[str, Any]:
     if not STATE_PATH.exists():
         return {}
     try:
-        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+        state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"corrupt browser session state: {STATE_PATH}") from exc
+    if not isinstance(state, dict):
+        raise RuntimeError("browser session state must be an object")
+    return state
 
 
-def save_state(state: dict) -> None:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    STATE_PATH.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-
-
-def redact(path: str | None) -> str:
-    if not path:
-        return ""
-    text = str(path).replace("\\", "/")
-    home = str(Path.home()).replace("\\", "/")
-    if home and text.lower().startswith(home.lower()):
-        return "<HOME>" + text[len(home) :]
-    return text
+def save_state(state: dict[str, Any]) -> None:
+    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix="session.", suffix=".tmp", dir=STATE_PATH.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(state, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, STATE_PATH)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def cdp_json(port: int, path: str = "/json/version") -> dict | list | None:
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=2) as resp:
-            return json.loads(resp.read().decode("utf-8", errors="replace"))
-    except Exception:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=2) as response:
+            return json.loads(response.read().decode("utf-8", errors="replace"))
+    except (OSError, ValueError, urllib.error.URLError):
         return None
+
+
+def cdp_targets(port: int) -> list[dict[str, Any]]:
+    value = cdp_json(port, "/json/list")
+    return value if isinstance(value, list) else []
+
+
+def create_cdp_target(port: int, url: str, before: list[dict[str, Any]]) -> str:
+    encoded = urllib.parse.quote(url, safe="")
+    request = urllib.request.Request(f"http://127.0.0.1:{port}/json/new?{encoded}", method="PUT")
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            created = json.loads(response.read().decode("utf-8", errors="replace"))
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        raise ValueError("CDP could not create a new target") from exc
+    target_id = str(created.get("id", "")) if isinstance(created, dict) else ""
+    before_ids = {str(target.get("id")) for target in before}
+    if not target_id or target_id in before_ids or not target_exists(cdp_targets(port), target_id):
+        raise ValueError("new CDP target was not uniquely identified")
+    return target_id
+
+
+def new_target_id(before: list[dict[str, Any]], after: list[dict[str, Any]], url: str) -> str:
+    before_ids = {str(target.get("id")) for target in before}
+    matches = [target for target in after if str(target.get("id")) not in before_ids and target.get("url") == url]
+    if len(matches) != 1 or not matches[0].get("id"):
+        raise ValueError("new CDP target was not uniquely identified")
+    return str(matches[0]["id"])
+
+
+def target_exists(targets: list[dict[str, Any]], target_id: str) -> bool:
+    return any(str(target.get("id")) == target_id for target in targets)
+
+
+def extension_targets(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [target for target in targets if str(target.get("url", "")).startswith("chrome-extension://")]
+
+
+def verify_extension_mode(mode: str, command: list[str], targets: list[dict[str, Any]], expected: bool = False) -> bool:
+    if mode not in {"enabled", "disabled"}:
+        raise ValueError("extension mode must be enabled or disabled")
+    disabled = "--disable-extensions" in command
+    found = extension_targets(targets)
+    if mode == "disabled":
+        return disabled and not found
+    return not disabled and (not expected or bool(found))
 
 
 def wait_cdp(port: int) -> bool:
@@ -132,83 +257,216 @@ def wait_cdp(port: int) -> bool:
     return False
 
 
-def brave_identity(port: int, exe: str | None, user_data_dir: str | None) -> bool:
-    version = cdp_json(port) or {}
-    browser = str(version.get("Browser", "")).lower() if isinstance(version, dict) else ""
-    exe_l = (exe or "").lower()
-    data_l = (user_data_dir or "").lower()
-    return "brave" in browser or "brave" in exe_l or "bravesoftware" in data_l
+def _argv_fields(argv: list[str]) -> dict[str, str | None]:
+    fields: dict[str, str | None] = {"marker": None, "port": None, "userDataDir": None, "profileDirectory": None}
+    for arg in argv:
+        for key, prefix in (("marker", "--pi-launch-marker="), ("port", "--remote-debugging-port="), ("userDataDir", "--user-data-dir="), ("profileDirectory", "--profile-directory=")):
+            if arg.startswith(prefix):
+                fields[key] = arg[len(prefix):]
+    return fields
 
 
-def launch(args: argparse.Namespace, command_source: str) -> dict:
+def windows_argv(command_line: str | None) -> list[str]:
+    """Parse Windows argv without treating a spaced path as separate identity data."""
+    if not command_line:
+        return []
+    result: list[str] = []
+    token = []
+    quoted = False
+    slashes = 0
+    for char in command_line:
+        if char == "\\":
+            slashes += 1
+            continue
+        if char == '"':
+            token.extend("\\" * (slashes // 2))
+            if slashes % 2:
+                token.append('"')
+            else:
+                quoted = not quoted
+            slashes = 0
+            continue
+        token.extend("\\" * slashes)
+        slashes = 0
+        if char.isspace() and not quoted:
+            if token:
+                result.append("".join(token))
+                token = []
+        else:
+            token.append(char)
+    token.extend("\\" * slashes)
+    if token:
+        result.append("".join(token))
+    return result
+
+
+def inspect_process(pid: int) -> dict[str, Any] | None:
+    if os.name == "posix":
+        try:
+            argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+            argv = [part.decode(errors="replace") for part in argv if part]
+            stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+            parent = int(stat.rsplit(")", 1)[1].split()[1])
+            start = int(stat.rsplit(")", 1)[1].split()[19])
+            clock = os.sysconf(os.sysconf_names["SC_CLK_TCK"])
+            return {"pid": pid, "parentPid": parent, "creationTime": start / clock, "executablePath": argv[0] if argv else "", **_argv_fields(argv)}
+        except (OSError, ValueError, IndexError):
+            return None
+    command = ["powershell", "-NoProfile", "-Command", f"Get-CimInstance Win32_Process -Filter \"ProcessId = {pid}\" | Select-Object ProcessId,ParentProcessId,CreationDate,ExecutablePath,CommandLine | ConvertTo-Json -Compress"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=3, check=False)
+        item = json.loads(result.stdout) if result.stdout else None
+        if not isinstance(item, dict):
+            return None
+        argv = windows_argv(item.get("CommandLine", ""))
+        creation = str(item.get("CreationDate", ""))
+        return {"pid": int(item["ProcessId"]), "parentPid": int(item.get("ParentProcessId", 0)), "creationTime": creation, "executablePath": item.get("ExecutablePath", ""), **_argv_fields(argv)}
+    except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError, KeyError):
+        return None
+
+
+def windows_process_snapshot() -> list[dict[str, Any]]:
+    command = "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate,ExecutablePath,CommandLine | ConvertTo-Json -Compress"
+    try:
+        result = subprocess.run(["powershell", "-NoProfile", "-Command", command], capture_output=True, text=True, timeout=10, check=False)
+        raw = json.loads(result.stdout) if result.stdout else []
+        items = raw if isinstance(raw, list) else [raw]
+        processes = []
+        for item in items:
+            if not isinstance(item, dict) or not item.get("ProcessId"):
+                continue
+            argv = windows_argv(item.get("CommandLine"))
+            processes.append({"pid": int(item["ProcessId"]), "parentPid": int(item.get("ParentProcessId", 0)), "creationTime": str(item.get("CreationDate", "")), "executablePath": item.get("ExecutablePath") or "", **_argv_fields(argv)})
+        return processes
+    except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError, KeyError):
+        return []
+
+
+def discover_root(state: dict[str, Any], initial_pid: int) -> dict[str, Any] | None:
+    expected = {"marker": state["launchMarker"], "port": str(state["cdpPort"]), "userDataDir": state["userDataDir"], "profileDirectory": state["profileDirectory"]}
+    candidates = []
+    if os.name == "posix":
+        pids = [initial_pid]
+        pids.extend(int(path.name) for path in Path("/proc").glob("[0-9]*") if path.name != str(initial_pid))
+        observed = [info for pid in pids[:4096] if (info := inspect_process(pid))]
+    else:
+        observed = windows_process_snapshot()
+    for info in observed:
+        if all(info.get(key) == value for key, value in expected.items()):
+            info["executablePath"] = canonical_path(info.get("executablePath", ""))
+            candidates.append(info)
+    if not candidates:
+        return None
+    candidate_pids = {item["pid"] for item in candidates}
+    roots = [item for item in candidates if item.get("parentPid") not in candidate_pids]
+    return min(roots or candidates, key=lambda item: str(item.get("creationTime", "")))
+
+
+def process_matches(state: dict[str, Any]) -> bool:
+    info = inspect_process(int(state.get("pid", 0) or 0))
+    if not info:
+        return False
+    values = {
+        "creationTime": info.get("creationTime"),
+        "executablePath": canonical_path(info.get("executablePath", "")),
+        "userDataDir": canonical_path(info.get("userDataDir", "")),
+        "profileDirectory": info.get("profileDirectory"),
+        "launchMarker": info.get("marker"),
+        "cdpPort": int(info.get("port", 0) or 0),
+    }
+    expected = dict(state)
+    expected["executablePath"] = canonical_path(expected.get("executablePath", ""))
+    expected["userDataDir"] = canonical_path(expected.get("userDataDir", ""))
+    return all(values[key] == expected.get(key) for key in values)
+
+
+def brave_identity(port: int) -> bool:
+    value = cdp_json(port)
+    return isinstance(value, dict) and "brave" in str(value.get("Browser", "")).lower()
+
+
+def launch(args: argparse.Namespace, command_source: str) -> dict[str, Any]:
+    old = load_state()
+    if old:
+        if process_matches(old):
+            raise SystemExit("ERROR: an owned browser session is already running; stop it before starting another")
+        STATE_PATH.unlink(missing_ok=True)
     brave = find_brave()
     if not brave:
         raise SystemExit("ERROR: Brave executable not found. Install Brave or set BRAVE_PATH.")
     port = int(args.port) if args.port else free_port()
-    real_profile = "Default" if args.real_brave_default else args.real_brave_profile
-    if real_profile:
+    profile_alias = None
+    if args.real_brave_profile:
+        root = default_brave_user_data_dir()
+        if not root:
+            raise SystemExit("ERROR: could not resolve Brave user data directory")
+        profile = resolve_profile(args.real_brave_profile, root)
+        user_data_dir, profile_dir, mode = canonical_path(root), profile["profileDirectory"], "real"
+        profile_alias = profile["alias"]
+        expected_extensions = bool(profile["extensionsExpected"])
         print("WARNING: real Brave profile mode can control logged-in sites.", file=sys.stderr)
-        print(
-            "The default Brave profile directory is 'Default' even if its "
-            "display name is 'Work' or another local name.",
-            file=sys.stderr,
-        )
-        brave_user_data = default_brave_user_data_dir()
-        if not brave_user_data:
-            raise SystemExit(
-                "ERROR: could not resolve Brave user data directory. Set BRAVE_USER_DATA_DIR."
-            )
-        user_data_dir = str(brave_user_data)
-        profile_dir = normalize_brave_profile_directory(real_profile)
-        profile_mode = "real"
     else:
-        user_data_dir = str(PI_PROFILE_DIR.resolve())
-        profile_dir = "Pi"
-        profile_mode = "pi"
+        user_data_dir, profile_dir, mode, expected_extensions = canonical_path(PI_PROFILE_DIR), "Pi", "pi", False
         PI_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        brave,
-        "--remote-debugging-address=127.0.0.1",
-        f"--remote-debugging-port={port}",
-        f"--user-data-dir={user_data_dir}",
-        f"--profile-directory={profile_dir}",
-        "--no-first-run",
-        "--no-default-browser-check",
-    ]
-    if args.open:
-        cmd.append(args.open)
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    marker = uuid.uuid4().hex
+    command = [canonical_path(brave), "--remote-debugging-address=127.0.0.1", f"--remote-debugging-port={port}", f"--user-data-dir={user_data_dir}", f"--profile-directory={profile_dir}", f"--pi-launch-marker={marker}", "--no-first-run", "--no-default-browser-check"]
+    if getattr(args, "extensions", "enabled") == "disabled":
+        command.extend(["--disable-extensions", "--disable-component-extensions-with-background-pages"])
+    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if not wait_cdp(port):
-        raise SystemExit("ERROR: Brave launched but CDP endpoint did not become available.")
-    if not brave_identity(port, brave, user_data_dir):
-        raise SystemExit("ERROR: CDP endpoint did not prove Brave identity; refusing to continue.")
-    state = {
-        "pid": proc.pid,
-        "processStartTime": None,
-        "executablePath": brave,
-        "userDataDir": user_data_dir,
-        "profileDirectory": profile_dir,
-        "profileMode": profile_mode,
-        "cdpPort": port,
-        "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "sessionId": SESSION_ID,
-        "agentBrowserCommandSource": command_source,
-    }
+        raise SystemExit("ERROR: Brave CDP endpoint did not become available.")
+    provisional = {"launchMarker": marker, "cdpPort": port, "userDataDir": user_data_dir, "profileDirectory": profile_dir}
+    root_process = discover_root(provisional, process.pid)
+    if not root_process or canonical_path(root_process.get("executablePath", "")) != canonical_path(brave):
+        raise SystemExit("ERROR: surviving Brave root process could not be verified")
+    state = {"sessionId": uuid.uuid4().hex, "launchMarker": marker, "pid": root_process["pid"], "processStartTime": root_process["creationTime"], "creationTime": root_process["creationTime"], "executablePath": root_process["executablePath"], "userDataDir": user_data_dir, "profileDirectory": profile_dir, "profileMode": mode, "cdpPort": port, "targetId": None, "extensionMode": getattr(args, "extensions", "enabled"), "extensionsExpected": expected_extensions, "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "agentBrowserCommandSource": command_source}
+    if profile_alias:
+        state["profileAlias"] = profile_alias
+    before = cdp_targets(port)
     save_state(state)
+    if args.open:
+        try:
+            state["targetId"] = create_cdp_target(port, args.open, before)
+        except ValueError as exc:
+            cleanup = close_owned()
+            if cleanup != 0:
+                raise SystemExit("ERROR: CDP could not open the requested URL and owned cleanup was incomplete") from exc
+            raise SystemExit("ERROR: CDP could not open the requested URL; owned launch was cleaned up") from exc
+        save_state(state)
+    observed_targets = cdp_targets(port)
+    if not verify_extension_mode(getattr(args, "extensions", "enabled"), command, observed_targets, expected_extensions):
+        observed_extension_count = len(extension_targets(observed_targets))
+        cleanup = close_owned()
+        suffix = "owned launch was cleaned up" if cleanup == 0 else "owned cleanup was incomplete"
+        raise SystemExit(f"ERROR: extension mode and observable runtime targets disagree (extensionTargetCount={observed_extension_count}); {suffix}")
     return state
 
 
-def agent_cmd(state: dict, subcommand: list[str]) -> int:
-    base, _source = resolve_agent_browser()
+def agent_cmd(state: dict[str, Any], subcommand: list[str], pin_target: bool = False) -> int:
+    base, _ = resolve_agent_browser()
     if not base:
-        print(
-            "ERROR: agent-browser unavailable. Install Node.js/npx or agent-browser.",
-            file=sys.stderr,
-        )
+        print("ERROR: agent-browser unavailable. Install Node.js/npx or agent-browser.", file=sys.stderr)
         return 1
-    cmd = base + ["--cdp", str(state["cdpPort"]), "--session", SESSION_ID] + subcommand
-    proc = subprocess.run(cmd, text=True)
-    return proc.returncode
+    target_id = state.get("targetId")
+    if target_id and not target_exists(cdp_targets(int(state["cdpPort"])), str(target_id)):
+        print("ERROR: bound CDP target is closed or replaced", file=sys.stderr)
+        return 1
+    options = ["--cdp", str(state["cdpPort"]), "--session", str(state["sessionId"])]
+    if pin_target:
+        options.append("--pin-tab")
+    try:
+        return subprocess.run(base + options + subcommand, text=True, timeout=30).returncode
+    except subprocess.TimeoutExpired:
+        print("ERROR: agent-browser command timed out", file=sys.stderr)
+        return 124
+
+
+def redact(path: str | None) -> str:
+    if not path:
+        return ""
+    text = str(path).replace("\\", "/")
+    home = str(Path.home()).replace("\\", "/")
+    return "<HOME>" + text[len(home):] if text.casefold().startswith(home.casefold()) else text
 
 
 def status() -> int:
@@ -216,114 +474,64 @@ def status() -> int:
     if not state:
         print("status: no owned session state")
         return 0
-    port = int(state.get("cdpPort", 0) or 0)
-    online = bool(port and cdp_json(port))
-    safe = (
-        brave_identity(port, state.get("executablePath"), state.get("userDataDir"))
-        if online
-        else False
-    )
+    online = bool(state.get("cdpPort") and cdp_json(int(state["cdpPort"])))
     print("status: owned session record found")
-    print(f"profileMode: {state.get('profileMode')}")
-    print(f"cdpEndpoint: http://127.0.0.1:{port}")
-    print(f"cdpOnline: {str(online).lower()}")
-    print(f"braveIdentityVerified: {str(safe).lower()}")
-    print(f"agentBrowserCommandSource: {state.get('agentBrowserCommandSource')}")
-    print(f"executablePath: {redact(state.get('executablePath'))}")
-    print(f"userDataDir: {redact(state.get('userDataDir'))}")
+    print(f"profileMode: {state.get('profileMode')}\ncdpEndpoint: http://127.0.0.1:{state.get('cdpPort')}\ncdpOnline: {str(online).lower()}\nprocessTupleVerified: {str(online and process_matches(state)).lower()}")
+    print(f"executablePath: {redact(state.get('executablePath'))}\nuserDataDir: {redact(state.get('userDataDir'))}")
     return 0
 
 
 def close_owned() -> int:
     state = load_state()
     if not state:
-        print("close-owned: no owned session state")
+        print("close-owned: already_absent")
         return 0
-    port = int(state.get("cdpPort", 0) or 0)
-    pid = int(state.get("pid", 0) or 0)
-    if (
-        not port
-        or not pid
-        or not cdp_json(port)
-        or not brave_identity(port, state.get("executablePath"), state.get("userDataDir"))
-    ):
-        print("close-owned: refusing to terminate because identity checks failed")
-        print("Manual cleanup: close the dedicated Pi Brave window yourself.")
-        return 1
+    if not process_matches(state):
+        STATE_PATH.unlink(missing_ok=True)
+        print("close-owned: detached")
+        return 0
+    pid = int(state["pid"])
     try:
         if is_windows():
-            subprocess.run(
-                ["powershell", "-NoProfile", "-Command", f"Stop-Process -Id {pid}"], check=False
-            )
+            subprocess.run(["powershell", "-NoProfile", "-Command", f"Stop-Process -Id {pid}"], check=False)
         else:
-            os.kill(pid, 15)
-    except Exception as exc:
-        print(f"close-owned: failed to terminate owned pid {pid}: {exc}")
+            os.kill(pid, signal.SIGTERM)
+    except OSError as exc:
+        print(f"close-owned: failed: {exc}")
         return 1
-    STATE_PATH.unlink(missing_ok=True)
-    print(f"close-owned: closed owned Brave pid {pid}; no broad browser kill attempted")
-    return 0
+    for _ in range(20):
+        if not cdp_json(int(state["cdpPort"])) and not inspect_process(pid):
+            STATE_PATH.unlink(missing_ok=True)
+            print(f"close-owned: stopped pid {pid}")
+            return 0
+        time.sleep(0.1)
+    print("close-owned: graceful_close_incomplete; session remains recorded")
+    return 1
 
 
-def print_check(command_source: str) -> int:
+def print_check(source: str) -> int:
     base, _ = resolve_agent_browser()
-    brave = find_brave()
-    print(f"agentBrowserCommandSource: {command_source}")
-    print(f"braveExecutable: {redact(brave)}" if brave else "braveExecutable: missing")
+    print(f"agentBrowserCommandSource: {source}\nbraveExecutable: {redact(find_brave()) if find_brave() else 'missing'}")
     if not base:
-        print(
-            "ERROR: agent-browser unavailable. Install Node.js/npx or agent-browser; "
-            "no global mutation was performed."
-        )
+        print("ERROR: agent-browser unavailable; no global mutation was performed.")
         return 1
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Safe Brave + agent-browser helper for Pi agents")
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Report agent-browser and Brave availability without mutating global install state",
-    )
-    parser.add_argument("--status", action="store_true", help="Show sanitized owned-session status")
-    parser.add_argument(
-        "--open", metavar="URL", help="Launch/open URL in dedicated Pi Brave profile by default"
-    )
-    parser.add_argument(
-        "--title", action="store_true", help="Print page title through agent-browser"
-    )
-    parser.add_argument(
-        "--snapshot", action="store_true", help="Print accessibility snapshot through agent-browser"
-    )
-    parser.add_argument(
-        "--screenshot", metavar="PATH", help="Capture screenshot through agent-browser"
-    )
-    parser.add_argument(
-        "--close-owned",
-        action="store_true",
-        help="Close only the identity-verified owned Brave session",
-    )
-    parser.add_argument("--port", type=int, help="Explicit loopback CDP port; default is ephemeral")
-    parser.add_argument(
-        "--real-brave-profile",
-        metavar="PROFILE",
-        help=(
-            "Use real Brave profile directory name. Use Default for the default "
-            "Brave profile, regardless of display name."
-        ),
-    )
-    parser.add_argument(
-        "--real-brave-default",
-        action="store_true",
-        help=(
-            "Use the real default Brave profile directory (Default), regardless of "
-            "local display name such as Work"
-        ),
-    )
-    base, source = resolve_agent_browser()
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--status", action="store_true")
+    parser.add_argument("--open")
+    parser.add_argument("--title", action="store_true")
+    parser.add_argument("--snapshot", action="store_true")
+    parser.add_argument("--screenshot")
+    parser.add_argument("--close-owned", action="store_true")
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--real-brave-profile", metavar="ALIAS")
+    parser.add_argument("--extensions", choices=("enabled", "disabled"), default="enabled")
     args = parser.parse_args()
-
+    base, source = resolve_agent_browser()
     if args.check:
         return print_check(source)
     if args.status:
@@ -331,7 +539,7 @@ def main() -> int:
     if args.close_owned:
         return close_owned()
     state = load_state()
-    if args.open or args.real_brave_profile or args.real_brave_default:
+    if args.open or args.real_brave_profile:
         state = launch(args, source)
     if not state and (args.title or args.snapshot or args.screenshot):
         print("ERROR: no owned session; run --open first", file=sys.stderr)
@@ -344,23 +552,8 @@ def main() -> int:
     if args.screenshot:
         rc = agent_cmd(state, ["screenshot", args.screenshot]) or rc
     if args.open and not (args.title or args.snapshot or args.screenshot):
-        print(f"opened: {args.open}")
-        print(f"profileMode: {state['profileMode']}")
-        print(f"cdpEndpoint: http://127.0.0.1:{state['cdpPort']}")
-        print(f"agentBrowserCommandSource: {state['agentBrowserCommandSource']}")
-    if not any(
-        [
-            args.check,
-            args.status,
-            args.close_owned,
-            args.open,
-            args.title,
-            args.snapshot,
-            args.screenshot,
-            args.real_brave_profile,
-            args.real_brave_default,
-        ]
-    ):
+        print(f"opened: {args.open}\nsessionId: {state['sessionId']}\ntargetId: {state['targetId']}\nprofileMode: {state['profileMode']}\nextensionMode: {state['extensionMode']}\ncdpEndpoint: http://127.0.0.1:{state['cdpPort']}\nagentBrowserCommandSource: {state['agentBrowserCommandSource']}")
+    if not any((args.check, args.status, args.close_owned, args.open, args.title, args.snapshot, args.screenshot, args.real_brave_profile)):
         parser.print_help()
     return rc
 

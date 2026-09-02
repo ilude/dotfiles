@@ -1,74 +1,61 @@
 ---
 name: browser-tools
-description: "Local browser automation via Brave/Chrome CDP. Use for existing tabs, real profiles, logged-in checks, screenshots, or browser A/B tests."
+description: "Local browser automation via Brave CDP. Use for logged-in checks, exact page targets, screenshots, or controlled browser comparisons."
 ---
 
-# Browser Tools
+# Browser tools
 
 Prefer `web_search`, `web_fetch`, or a source-specific tool unless the task requires JavaScript, logged-in state, screenshots, or visible interaction.
 
-## Browser Boundary
+## Start with discovery
 
-1. Run `scripts/agent-browser-brave --check` and `--status` before launch or attachment.
-2. Treat an opened URL and an automation connection as separate facts. A URL forwarded to an existing Chromium process does not prove CDP attached to that tab.
-3. Use the dedicated Pi profile by default. Use a real profile only after the user explicitly requests logged-in state.
-4. Before using a real profile, read Brave `Local State` and report the profile directory and display name. Verify the expected account in the rendered page before drawing conclusions from account-specific state.
-5. Do not export cookies, tokens, CAPTCHA material, or credentials.
+Use Pi's tools rather than shell-level profile, PID, or active-tab guesses:
 
-## Real Profile And Process Ownership
+1. Call `browser_session` with `action: "discover"`.
+2. For a real profile, choose one candidate whose Brave profile directory and live `Local State` display name match the operator's intent.
+3. Save the alias locally with `/browser-setup` using its exact `profileDirectory` and, when needed to disambiguate roots, `userDataDir`.
+4. Call `browser_session` with `action: "start"`, `profile_mode: "real"`, and that alias. Isolated mode is the default and needs no local profile file.
+5. Verify the website's rendered account identity separately. Brave profile metadata does not prove the signed-in website account.
 
-Chromium allows one process to own a user-data directory. If the requested profile is already open without CDP, a second launch may forward the URL to the existing process and ignore new debugging or extension flags.
+Tracked `browser-profiles.schema.json` and `browser-profiles.example.json` describe identity-free configuration. Real aliases stay in `~/.pi/agent/browser-profiles.json`; runtime ownership stays in `~/.pi/agent/browser/session.json`. Never add either machine-local file to tracked fixtures or telemetry.
 
-- Do not claim access unless the CDP endpoint is online and the target appears in its tab list.
-- Do not restart a real browser profile unless the user authorized that disruption.
-- Before shutdown, identify the exact browser root and expected user-data directory. Stop only that owned tree.
-- Treat a saved launcher PID as advisory. Chromium may hand off to a different surviving root PID. Reconcile ownership through the CDP endpoint, effective command line, user-data directory, and process tree before cleanup.
-- Never kill every Brave or Chrome process by image name.
-- After relaunch, verify session restoration and the expected account before continuing.
+Supported Brave stable roots are discovered from `Local State` on Windows, macOS, and Linux. `BRAVE_USER_DATA_DIR` may name an alternate root. Missing, corrupt, stale, duplicate, or ambiguous metadata must fail with setup guidance rather than selecting `Default` or a display name.
 
-On Windows, do not construct a real-profile launch with an unverified `Start-Process -ArgumentList` string when the user-data path contains spaces. Use the maintained wrapper or verify the effective process command line and CDP profile identity before navigation.
+## Session ownership
 
-## Tabs
+Only one automation session may own the machine-local registry. `browser_session` records and revalidates the surviving Brave root's process identity, canonical user-data root, profile directory, CDP port, and generated launch marker.
 
-Use stable `agent-browser` tab IDs such as `t22`, not list positions or guessed labels:
+- Do not start a second session or attach an untracked browser.
+- Never kill Brave or Chrome by image name.
+- Treat `detached`, `graceful_close_incomplete`, and `failed` as not stopped.
+- Restarting an occupied real profile requires the current per-call authorization returned for that exact process tuple. Do not reuse authorization after process or profile state changes.
+- Session shutdown cleans only an isolated session with proven ownership. It preserves real-profile browsers.
 
-```bash
-agent-browser --cdp <port> --session <session> tab list
-agent-browser --cdp <port> --session <session> tab t22
-agent-browser --cdp <port> --session <session> snapshot
-```
+## Exact page targets
 
-After session restore or `open`, explicitly select the intended tab and verify its URL before inspecting the DOM. The active tab may be an unrelated restored page.
+Every `browser_page` call includes the current session ID. Actions other than `list` and `open` also include the exact raw CDP target ID.
 
-## Controlled Browser Comparisons
+- `open` returns the newly created raw target ID, even when restored tabs or duplicate URLs exist.
+- `select` binds subsequent operator intent to that exact ID.
+- A closed, replaced, stale, or cross-session target fails. Never substitute the focused tab or a matching URL.
+- Use `snapshot` before `screenshot` when the surface is safe.
+- Password fields, credentials, cookies, tokens, storage, arbitrary evaluation, CAPTCHA controls, and protected screenshots/snapshots are outside the tool surface.
 
-For extension, account, or setting A/B tests, hold account, profile, query, locale, region, cookies, and result mode constant. Change one variable at a time.
+Let the operator handle CAPTCHAs or consent interstitials manually. Detection increments the comparison generation, clears the selected target, and invalidates the active comparison unconditionally.
 
-Before accepting a comparison, record observable evidence for:
+## Controlled comparisons
 
-- effective browser command line and profile directory
-- expected signed-in account in the rendered page
-- CDP target URL and selected stable tab ID
-- extension state, including extension targets when relevant
-- query URL and result mode
-- CAPTCHA, consent, abuse-exemption, or experiment changes
+Record one comparison transaction containing:
 
-A CAPTCHA completion, new cookie, account mismatch, profile-path parsing error, or changed Google experiment assignment invalidates the comparison. Re-establish the baseline instead of attributing the difference to extensions.
+- Brave profile directory and live display-name match
+- redacted rendered-account alias match
+- raw target ID and sanitized URL
+- extension command-line mode and runtime extension-target mode
+- query and result mode
+- personalization indicator
+- locale and region
+- comparison generation and invalidation events
 
-## Preferred Wrapper
+Accept the second leg only when extension mode is the sole changed invariant. A changed account, CAPTCHA/interstitial handling, locale, query, region, result mode, personalization indicator, experiment state, or comparison generation rejects the comparison. Re-establish the baseline instead of attributing the difference.
 
-```bash
-scripts/agent-browser-brave --open https://example.com --title --snapshot
-scripts/agent-browser-brave --screenshot /tmp/pi-agent-browser.png
-scripts/agent-browser-brave --status
-scripts/agent-browser-brave --close-owned
-```
-
-Use `--real-brave-profile <directory>` rather than assuming a display name maps to `Default`. The wrapper's state must not be treated as proof when CDP identity or process ownership contradicts it.
-
-## Extraction
-
-- Inspect DOM snapshots before screenshots.
-- Bound scrolling and waits; report partial or blocked results directly.
-- Let the user complete CAPTCHAs manually. Do not solve, relay, or bypass them.
-- For X/Twitter, Reddit, YouTube, Gmail, Drive, or Calendar, prefer the source-specific skill or tool when available.
+Use `scripts/smoke-browser-control.ps1` to validate sanitized evidence. It reports only match status and invariant names, not account content, credentials, CAPTCHA material, or local absolute paths.

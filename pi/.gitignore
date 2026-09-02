@@ -10,9 +10,10 @@ multi-team/sessions/
 multi-team/logs/
 multi-team/expertise/*-expertise-log.jsonl
 
-# Runtime session logs
+# Runtime session and browser state
 sessions/
 history/
+browser/
 
 # Project-local expertise (per-repo runtime state). May contain
 # CUI-adjacent project context. Only this repo's own slug is allowlisted;

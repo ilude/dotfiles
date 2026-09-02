@@ -2,6 +2,23 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-09-02: Add profile-aware Pi browser control
+
+**Why:** Browser automation could not safely select a real Brave profile from a friendly name without guessing profile directories, ports, process ownership, or the active tab.
+
+**Changed:**
+- Added machine-local browser profile configuration with schema validation and discovered-candidate setup guidance.
+- Added ownership-verified isolated and real-profile session lifecycle operations and exact raw CDP target selection.
+- Hardened the Brave launcher and cleanup path around root-process identity, loopback CDP endpoints, extension modes, spaced paths, and post-stop verification.
+
+**Preserved:** Isolated browsing remains available without local configuration. Real-profile automation does not expose credentials, solve CAPTCHA, infer account identity from the profile name, broadly terminate browsers, or silently fall back to another profile or tab.
+
+**Validation:** Focused Python and Pi tests, Pi typecheck, sanitized and live isolated Windows smoke checks, and `git diff --check` passed.
+
+**Files:** `pi/{extensions/browser-control.ts,lib/browser-control.ts,skills/browser-tools/,browser-profiles*.json,tests/}`, `scripts/{agent-browser-brave,smoke-browser-control.ps1}`, and `.specs/archive/pi-browser-profile-control/plan.md`
+
+---
+
 ## 2026-09-02: Separate engineering analysis, design, and edit skills
 
 **Why:** Broad development-philosophy and churn-monitor skills overlapped approach selection, architecture design, focused editing, documentation, and telemetry analysis, making routing less precise in both Pi and Claude.

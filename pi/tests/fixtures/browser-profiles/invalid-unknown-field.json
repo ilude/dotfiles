@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "profiles": {
+    "synthetic": {
+      "profileDirectory": "Profile 1",
+      "unsupportedField": true
+    }
+  }
+}

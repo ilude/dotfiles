@@ -209,6 +209,42 @@ pnpm --config.minimumReleaseAge=720 add -g \
 
 ---
 
+## Profile-aware Brave control
+
+Pi exposes `browser_session` and `browser_page` for local Brave automation. Isolated mode is the default and requires no machine-local configuration. Real-profile mode uses explicit aliases validated against Brave `Local State`; it never guesses `Default`, a focused tab, or a profile from its display name.
+
+First-time real-profile setup:
+
+1. Call `browser_session` with `action: "discover"`.
+2. Match one candidate's profile directory and live display name to the intended Brave profile.
+3. Run `/browser-setup` with one JSON object containing an alias, the exact `profileDirectory`, and `userDataDir` when more than one root must be distinguished.
+4. Start `browser_session` in `real` mode with that alias, then separately verify the rendered website account.
+
+Tracked files define an identity-free contract:
+
+- `browser-profiles.schema.json` - local configuration schema
+- `browser-profiles.example.json` - synthetic example
+- `skills/browser-tools/SKILL.md` - operational and comparison rules
+
+Machine-specific files are intentionally untracked:
+
+- `~/.pi/agent/browser-profiles.json` - aliases and allowed profile intent
+- `~/.pi/agent/browser/session.json` - atomic runtime ownership record
+
+Discovery supports Brave stable roots on Windows, macOS, and Linux plus `BRAVE_USER_DATA_DIR`. Only one registered automation session may run. Page operations require the current session ID and exact raw CDP target IDs; closed or replaced targets are never substituted. A real-profile restart requires per-call authorization bound to the current process tuple. Pi shutdown cleans only an ownership-verified isolated browser and preserves real-profile browsers.
+
+`browser_page` does not expose cookies, storage, arbitrary evaluation, passwords, tokens, or CAPTCHA interaction. Credential, CAPTCHA, unusual-traffic, and consent-interstitial detection blocks protected capture or mutation and invalidates the current comparison generation.
+
+Run the sanitized Windows comparison-evidence check with:
+
+```powershell
+pwsh -File scripts/smoke-browser-control.ps1
+```
+
+The smoke script uses synthetic evidence by default. Pass `-EvidencePath` for an operator-observed transaction; account and CAPTCHA values must already be reduced to boolean match/invalidation status.
+
+---
+
 ## Damage-control safety validation
 
 Pi damage-control is Pi-only and lives in `pi/extensions/damage-control.ts` plus focused sibling modules for rule loading, pure engine decisions, and opt-in debug logging. The canonical command/path policy is `pi/damage-control-rules.yaml`, loaded through Pi's native policy schema. `PI_DAMAGE_CONTROL_POLICY_PATH` can select an explicit alternate Pi policy. A missing or invalid default or override fails closed.
