@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { closeWorkflowWorktree, ensureWorkflowWorktree, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain, readWorkflowOwnershipRecord, verifyAndCleanupWorkflowWorktree, verifyRetainedWorkflowWorktree } from "../lib/workflow-worktree.js";
+import { closeWorkflowWorktree, ensureWorkflowWorktree, ensureInPlaceWorkflow, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain, readWorkflowOwnershipRecord, verifyAndCleanupWorkflowWorktree, verifyInPlaceWorkflow, verifyRetainedWorkflowWorktree } from "../lib/workflow-worktree.js";
 
 const roots: string[] = [];
 
@@ -60,6 +60,39 @@ describe("workflow worktree lifecycle", () => {
 			{ path: path.resolve("/repo"), branch: "main" },
 			{ path: path.resolve("/repo/.worktrees/x"), branch: "workflow/x" },
 		]);
+	});
+
+	it("persists and verifies raw in-place ownership without creating another worktree", async () => {
+		const root = repo();
+		const before = git(root, ["worktree", "list", "--porcelain"]).replace(/^HEAD .*\r?\n/gm, "");
+		const ensured = await ensureInPlaceWorkflow({ cwd: root, workflowId: "do-it:fixture", slug: "fixture", runner });
+		expect(ensured.ownership.worktree).toBe(path.resolve(root));
+		expect(ensured.resumed).toBe(false);
+		fs.writeFileSync(path.join(root, "result.txt"), "done\n");
+		git(root, ["add", "result.txt"]);
+		git(root, ["commit", "-q", "-m", "test: finish in place"]);
+		const completed = await verifyInPlaceWorkflow({ ownership: ensured.ownership, cwd: root, runner });
+		expect(completed.state).toBe("complete");
+		expect(git(root, ["worktree", "list", "--porcelain"]).replace(/^HEAD .*\r?\n/gm, "")).toBe(before);
+	});
+
+	it("binds in-place ownership to the invoking secondary worktree", async () => {
+		const root = repo();
+		const secondary = path.join(root, ".worktrees", "secondary");
+		git(root, ["worktree", "add", "-q", "-b", "secondary", secondary]);
+		const ensured = await ensureInPlaceWorkflow({ cwd: secondary, workflowId: "do-it:secondary", slug: "secondary", runner });
+		expect(ensured.ownership).toMatchObject({
+			worktree: path.resolve(secondary),
+			branch: "secondary",
+			repoRoot: path.resolve(secondary),
+		});
+	});
+
+	it("rejects dirty raw in-place dispatch before recording ownership", async () => {
+		const root = repo();
+		fs.writeFileSync(path.join(root, "unrelated.txt"), "dirty\n");
+		await expect(ensureInPlaceWorkflow({ cwd: root, workflowId: "do-it:dirty", slug: "dirty", runner })).rejects.toThrow("clean invoking worktree");
+		expect(fs.existsSync(path.join(root, ".worktrees", "dirty.in-place.workflow.json"))).toBe(false);
 	});
 
 	it("creates one owned worktree and resumes it deterministically from a secondary worktree", async () => {

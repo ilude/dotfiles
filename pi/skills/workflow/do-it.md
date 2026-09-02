@@ -4,6 +4,14 @@ Execute `$ARGUMENTS` as either a raw task or a plan path ending in `plan.md` ins
 
 If no input is provided, ask: "What should I do? Describe the task."
 
+## Execution controls
+
+`/do-it` clears into a fresh session and uses an owned worktree by default. Only the exact `--no-clear` flag suppresses session replacement, and only the exact `--in-place` flag suppresses owned-worktree execution; the flags are independent and may be combined in either order. `--` ends option parsing, so following text is literal task input. Plan wording, commit wording, or incident wording never selects either exception.
+
+Default closeout archives and commits, then merges and cleans the owned workflow. Retain policy archives and commits without merging and preserves the owned branch and worktree. In-place closeout commits in the invoking worktree without creating, inspecting, merging, or removing another worktree; it fails closed if durable mode state, worktree, branch, descendant baseline, clean state, or completed archive requirements do not match.
+
+Direct interactive or RPC input is routed to `/do-it` only for an execution verb plus an exact canonical plan path, or `this plan` when one recent canonical plan is uniquely identified. Trusted extension input is not eligible to mint that route. Native argument completion uses a cached active-plan list, refreshed on session transitions, plan readiness, and successful archival.
+
 ## Objective
 
 Deliver the requested outcome, check the contract that changed, and preserve enough state to resume incomplete plan work.

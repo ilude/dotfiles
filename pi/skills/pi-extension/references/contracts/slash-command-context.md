@@ -4,6 +4,7 @@
 - Extension commands are handled before model input. TUI transcript acknowledgements are applied by the shared command registration wrapper; they do not enter model context or trigger a turn.
 - Add an invocation to model context only when its semantic content or result is needed by the current conversation.
 - Keep control-plane, diagnostic, configuration, terminal, and process launch commands TUI-only by default. Do not echo these commands as model-visible messages; use bounded notifications or results instead.
+- `/do-it` setup and plan-validation failures persist one bounded, displayed custom message with `deliverAs: "nextTurn"` so the next operator prompt and model turn share the exact failure. The command does not trigger an automatic recovery turn.
 - Do not use a raw invocation echo as a substitute for persisting command output that the model needs. Persist a bounded result or faithful summary instead.
 - Preserve interactive dashboards, selectors, confirmations, and cancellable loaders when user input or in-component cancellation is required.
 - RPC, JSON, and print modes retain their existing result and error behavior and do not receive the TUI-only acknowledgement row.

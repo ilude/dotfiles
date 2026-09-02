@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseLinkedPlan } from "../plan-state.js";
+import { parseLinkedPlan, parsePersistedPlanRoutingState } from "../plan-state.js";
 
 export const PLAN_LIFECYCLE_ENTRY_TYPE = "workflow.plan-lifecycle";
 export const PLAN_LIFECYCLE_VERSION = 1;
@@ -115,6 +115,12 @@ export interface PlanContractValidation {
 
 export type PlanValidationMode = "ready" | "execution-preflight";
 
+export interface DoItCompletion {
+	value: string;
+	label: string;
+}
+
+const doItPlanCache = new Map<string, string[]>();
 const PLAN_PATH_PATTERN = /^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/;
 
 export function canonicalPlanPathFromInput(value: string): string | undefined {
@@ -125,6 +131,82 @@ export function canonicalPlanPathFromInput(value: string): string | undefined {
 
 const TASK_PATTERN = /^- \[[ x]\] \*\*(T[1-9][0-9]*): .+\*\*$/gm;
 const MAX_PLAN_DIAGNOSTICS = 8;
+
+function planSection(content: string, heading: string): string {
+	return content.split(heading, 2)[1]?.split(/^## /m, 1)[0] ?? "";
+}
+
+function validateExecutionStrategy(content: string, taskKeys: string[], required: boolean, addError: (message: string) => void): void {
+	const strategy = planSection(content, "## Execution Strategy");
+	if (!strategy) {
+		if (required) addError("Missing ## Execution Strategy.");
+		return;
+	}
+	const keySet = new Set(taskKeys);
+	for (const label of ["Parallel work:", "Smaller-model work:"]) {
+		const match = strategy.match(new RegExp(`^\\s*-\\s+${label.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\s*(\\S[\\s\\S]*?)$`, "im"));
+		if (!match) {
+			addError(`Execution Strategy is missing ${label}`);
+			continue;
+		}
+		const value = match[1].trim();
+		if (/^none$/i.test(value)) continue;
+		const keys = value.match(/\bT[1-9][0-9]*\b/g) ?? [];
+		if (keys.length === 0 || keys.some((key) => !keySet.has(key))) {
+			addError(`Execution Strategy ${label} must name existing task keys or None.`);
+			continue;
+		}
+		if (!/(?:leaf\s+)?packages?\s*:/i.test(value))
+			addError(`Execution Strategy ${label} must name bounded leaf packages or None.`);
+		if (
+			label === "Smaller-model work:" &&
+			(!/advisory/i.test(value) ||
+				!/dynamic\s+sizing/i.test(value) ||
+				!/excludes?\s+authority-sensitive,?\s+integration-owning,?\s+and\s+acceptance-gating\s+work/i.test(value))
+		)
+			addError("Execution Strategy Smaller-model work must use advisory dynamic sizing and exclude authority-sensitive, integration-owning, and acceptance-gating work.");
+	}
+}
+
+export function refreshDoItPlanCache(cwd: string): string[] {
+	const root = path.resolve(cwd);
+	const specs = path.join(root, ".specs");
+	const active: string[] = [];
+	if (fs.existsSync(specs)) {
+		for (const entry of fs.readdirSync(specs, { withFileTypes: true })) {
+			if (!entry.isDirectory() || entry.name === "archive" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.name)) continue;
+			const relative = `.specs/${entry.name}/plan.md`;
+			const absolute = path.join(root, relative);
+			if (!fs.existsSync(absolute)) continue;
+			const content = fs.readFileSync(absolute, "utf8");
+			const routing = parsePersistedPlanRoutingState(content);
+			if (routing.complete || routing.needsReconciliation) continue;
+			if (validatePlanContract(content, relative, "execution-preflight").valid) active.push(relative);
+		}
+	}
+	active.sort();
+	doItPlanCache.set(root, active);
+	return [...active];
+}
+
+export function getCachedDoItPlans(cwd: string): string[] {
+	return [...(doItPlanCache.get(path.resolve(cwd)) ?? [])];
+}
+
+export function getDoItArgumentCompletions(prefix: string, plans: string[]): DoItCompletion[] | null {
+	const normalized = prefix.trimStart();
+	if (normalized === "--") return null;
+	const tokens = normalized.split(/\s+/).filter(Boolean);
+	if (tokens.includes("--")) return null;
+	const selected: Set<string> = new Set(tokens.filter((token) => token === "--no-clear" || token === "--in-place"));
+	const hasTrailingSpace = /\s$/.test(normalized);
+	const partial = hasTrailingSpace ? "" : tokens.at(-1) ?? "";
+	const completedTokens = hasTrailingSpace ? tokens : tokens.slice(0, -1);
+	if (completedTokens.some((token) => !selected.has(token))) return null;
+	const candidates: string[] = ["--no-clear", "--in-place", ...plans].filter((value) => !selected.has(value));
+	const filtered = candidates.filter((value) => value.startsWith(partial));
+	return filtered.length > 0 ? filtered.map((value) => ({ value, label: value })) : null;
+}
 
 function requireStage(
 	snapshot: PlanLifecycleSnapshot,
@@ -351,6 +433,7 @@ export function validatePlanContract(
 				: "Plan frontmatter status must be ready.",
 		);
 	const taskKeys = [...content.matchAll(TASK_PATTERN)].map((match) => match[1]);
+	validateExecutionStrategy(content, taskKeys, mode === "ready", addError);
 	if (taskKeys.length < 1 || taskKeys.length > 16)
 		addError("Plan must contain one to sixteen executable tasks.");
 	if (new Set(taskKeys).size !== taskKeys.length)

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi.js";
+import { parseDoItArgs, routeDirectDoItInput } from "../extensions/workflow-commands.ts";
 
 const copyToClipboardMock = vi.hoisted(() => vi.fn());
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
@@ -69,6 +70,10 @@ vi.mock("../lib/workflow-worktree", () => ({
 	resolveWorkflowRepoRoot: vi.fn(async (cwd: string) => cwd),
 	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
 	readWorkflowOwnershipRecord: vi.fn(() => undefined),
+	readInPlaceWorkflowOwnership: vi.fn(() => undefined),
+	readActiveInPlaceWorkflowOwnership: vi.fn(() => undefined),
+	ensureInPlaceWorkflow: vi.fn(),
+	verifyInPlaceWorkflow: vi.fn(),
 	workflowSlugFromPlan: (value: string) => value.match(/\.specs\/([^/]+)\/plan\.md/)?.[1] ?? "workflow",
 	workflowSlugFromRequest: (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "workflow",
 }));
@@ -117,6 +122,11 @@ Deliver the fixture.
   - Change: Implement the fixture.
   - Done when: The fixture works.
   - Verify: \`pnpm test fixture.test.ts\`
+
+## Execution Strategy
+
+- Parallel work: None
+- Smaller-model work: None
 
 ## Validation
 
@@ -175,6 +185,19 @@ async function prepareReadyInteractivePlan(mockPi: ReturnType<typeof createMockP
 }
 
 describe("workflow slash command dispatch", () => {
+	it("parses exact independent options and preserves literal text after the terminator", () => {
+		expect(parseDoItArgs("--in-place --no-clear -- --no-clear raw task")).toEqual({
+			request: "--no-clear raw task",
+			noClear: true,
+			inPlace: true,
+		});
+		expect(() => parseDoItArgs("--no")).toThrow("Invalid /do-it option");
+		expect(() => parseDoItArgs("--in-place --in-place")).toThrow("Duplicate");
+		expect(routeDirectDoItInput("execute .specs/example/plan.md")).toBe(".specs/example/plan.md");
+		expect(routeDirectDoItInput("build and apply to main as one squashed commit", ".specs/example/plan.md")).toBe(".specs/example/plan.md");
+		expect(routeDirectDoItInput("we should discuss this plan", ".specs/example/plan.md")).toBeUndefined();
+	});
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 		copyToClipboardMock.mockReset();
@@ -461,6 +484,15 @@ describe("workflow slash command dispatch", () => {
 		expect(mockPi.appendEntry).not.toHaveBeenLastCalledWith("slash-echo", expect.objectContaining({ kind: "next-command" }));
 	});
 
+	it("registers native do-it completion with exact flags and duplicate suppression", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const definition = mockPi.registerCommand.mock.calls.find(([name]) => name === "do-it")?.[1] as any;
+		expect(definition.getArgumentCompletions("").map((item: any) => item.value)).toEqual(["--no-clear", "--in-place"]);
+		expect(definition.getArgumentCompletions("--no-clear ").map((item: any) => item.value)).toEqual(["--in-place"]);
+	});
+
 	it("/do-it echoes before repository resolution completes", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -499,11 +531,69 @@ describe("workflow slash command dispatch", () => {
 			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
 			expect.anything(),
 		);
-		expect(mockPi.sendMessage).toHaveBeenCalledWith({
-			customType: "workflow.plan-preflight",
-			content: expect.stringContaining("Plan preflight failed"),
-			display: true,
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			{
+				customType: "workflow.plan-preflight",
+				content: expect.stringContaining("Plan preflight failed"),
+				display: true,
+			},
+			{ deliverAs: "nextTurn" },
+		);
+	});
+
+	it("/do-it persists a materialized-plan validation failure for the next model turn", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(
+			path.join(fixture.root, fixture.planPath),
+			readyPlan(fixture.planPath),
+			"utf8",
+		);
+		vi.mocked(worktrees.materializePlanInWorkflowWorktree).mockImplementationOnce(async () => {
+			await fs.promises.writeFile(
+				path.join(fixture.root, fixture.planPath),
+				"# invalid after materialization\n",
+				"utf8",
+			);
+			return "transferred";
 		});
+
+		await getHandler(mockPi, "do-it")(fixture.planPath, { cwd: fixture.root });
+
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "workflow.plan-preflight",
+				content: expect.stringContaining("Materialized plan failed validation"),
+				display: true,
+			}),
+			{ deliverAs: "nextTurn" },
+		);
+		expect(mockPi.sendMessage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
+			expect.anything(),
+		);
+	});
+
+	it("/do-it persists setup failures for the next model turn", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		vi.mocked(worktrees.resolveWorkflowRepoRoot).mockRejectedValueOnce(new Error("git unavailable"));
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+
+		await getHandler(mockPi, "do-it")("fix the task", { cwd: "/repo" });
+
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "workflow.plan-preflight",
+				content: "/do-it setup failed: git unavailable",
+				display: true,
+			}),
+			{ deliverAs: "nextTurn" },
+		);
 	});
 
 	it("/do-it dispatches a valid canonical plan after preflight", async () => {

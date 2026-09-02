@@ -1,9 +1,15 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	canonicalPlanPathFromInput,
 	createPlanLifecycleSnapshot,
 	transitionPlanLifecycle,
 	validatePlanContract,
+	getDoItArgumentCompletions,
+	refreshDoItPlanCache,
+	getCachedDoItPlans,
 } from "../lib/workflow-commands/plan-lifecycle.ts";
 
 function readyPlan(path = ".specs/example/plan.md"): string {
@@ -39,6 +45,11 @@ Deliver the example.
   - Done when: The example works.
   - Verify: \`pnpm test example.test.ts\`
 
+## Execution Strategy
+
+- Parallel work: None
+- Smaller-model work: None
+
 ## Validation
 
 - [ ] Focused check: \`pnpm test example.test.ts\`
@@ -46,7 +57,7 @@ Deliver the example.
 
 ## Retention
 
-Keep incomplete work at this path. After completion, /do-it archives this directory to \`.specs/archive/example/\`.
+Keep incomplete work at this path. After completion, /do-it archives this directory to \`.specs/archive/${path.split("/")[1]}/\`.
 
 ## Execution Status
 
@@ -284,6 +295,44 @@ describe("plan lifecycle", () => {
 		expect(validatePlanContract(invalid, path, "execution-preflight").errors).toContain(
 			"Plan frontmatter status must be ready, in_progress, in-progress, complete, or completed.",
 		);
+	});
+
+	it("requires execution strategy for readiness but accepts legacy execution preflight", () => {
+		const planPath = ".specs/example/plan.md";
+		const legacy = readyPlan(planPath).replace(/\n## Execution Strategy[\s\S]*?\n## Validation/, "\n## Validation");
+		expect(validatePlanContract(legacy, planPath).errors).toContain("Missing ## Execution Strategy.");
+		expect(validatePlanContract(legacy, planPath, "execution-preflight").valid).toBe(true);
+	});
+
+	it("filters cached native do-it completions and refreshes active plans", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-plan-cache-"));
+		const planPath = path.join(root, ".specs", "active-plan", "plan.md");
+		fs.mkdirSync(path.dirname(planPath), { recursive: true });
+		fs.writeFileSync(planPath, readyPlan(".specs/active-plan/plan.md"));
+		const active = refreshDoItPlanCache(root);
+		expect(active).toEqual([".specs/active-plan/plan.md"]);
+		expect(getCachedDoItPlans(root)).toEqual(active);
+		expect(getDoItArgumentCompletions("", active)).toEqual([
+			{ value: "--no-clear", label: "--no-clear" },
+			{ value: "--in-place", label: "--in-place" },
+			{ value: ".specs/active-plan/plan.md", label: ".specs/active-plan/plan.md" },
+		]);
+		expect(getDoItArgumentCompletions("--no-clear ", active)?.map((item) => item.value)).toEqual(["--in-place", ".specs/active-plan/plan.md"]);
+		expect(getDoItArgumentCompletions("--no-clear --in-place ", active)?.map((item) => item.value)).toEqual([".specs/active-plan/plan.md"]);
+		expect(getDoItArgumentCompletions("--", active)).toBeNull();
+		expect(getDoItArgumentCompletions("-- ", active)).toBeNull();
+		expect(getDoItArgumentCompletions(".specs/active-plan/plan.md ", active)).toBeNull();
+		fs.rmSync(path.join(root, ".specs", "active-plan"), { recursive: true });
+		expect(refreshDoItPlanCache(root)).toEqual([]);
+	});
+
+	it("validates bounded smaller-model strategy exclusions", () => {
+		const planPath = ".specs/example/plan.md";
+		const strategy = readyPlan(planPath).replace(
+			"- Smaller-model work: None",
+			"- Smaller-model work: T1; leaf package: fixture implementation; advisory dynamic sizing; excludes authority-sensitive, integration-owning, and acceptance-gating work.",
+		);
+		expect(validatePlanContract(strategy, planPath).valid).toBe(true);
 	});
 
 	it("validates the executable plan contract", () => {

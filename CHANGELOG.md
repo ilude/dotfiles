@@ -2,6 +2,24 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-09-02: Make do-it execution context explicit
+
+**Why:** Plan execution could retain an oversized prior conversation or mutate the invoking worktree without an explicit operator choice, and active plans were difficult to discover from the command line.
+
+**Changed:**
+- Made `/do-it` start in a fresh session and an owned worktree by default.
+- Added exact `--no-clear` and `--in-place` exceptions, durable in-place closeout checks, and native completion for options and active plans.
+- Routed bounded natural-language execution requests through the same dispatcher and required new plans to assess parallel and smaller-model work without forcing either.
+- Persisted setup and plan-validation failures for the next model turn so the operator and model receive the same failure context.
+
+**Preserved:** Existing plan validation, worktree recovery, commit-and-retain behavior, and literal raw task arguments remain available. Plan prose and commit wording cannot implicitly select in-place execution.
+
+**Validation:** Focused command, parser, session-replacement, worktree, completion, and plan-contract tests passed with Pi typecheck and `git diff --check`.
+
+**Files:** `pi/{extensions/workflow-commands.ts,lib/workflow-commands/,lib/workflow-worktree.ts,skills/workflow/,tests/}`, Pi workflow contracts, and `.specs/archive/do-it-explicit-in-place/plan.md`
+
+---
+
 ## 2026-09-02: Add active-branch prompt history
 
 **Why:** Operators needed a fast way to find and reuse their own prompts without searching assistant output, tool results, other branches, or other sessions.

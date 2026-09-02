@@ -71,6 +71,9 @@ import {
 	type PlanReviewOutcome,
 	transitionPlanLifecycle,
 	validatePlanFile,
+	getCachedDoItPlans,
+	getDoItArgumentCompletions,
+	refreshDoItPlanCache,
 } from "../lib/workflow-commands/plan-lifecycle";
 import { scanSecrets } from "../lib/secret-scan";
 import {
@@ -93,9 +96,14 @@ import { sendHiddenWorkflowPrompt } from "../lib/workflow-prompt.js";
 import { startWorkflowEpisode } from "../lib/workflow-telemetry";
 import {
 	type WorkflowWorktree,
+	type InPlaceWorkflowOwnership,
 	closeWorkflowWorktree,
 	verifyAndCleanupWorkflowWorktree,
 	verifyRetainedWorkflowWorktree,
+	ensureInPlaceWorkflow,
+	verifyInPlaceWorkflow,
+	readInPlaceWorkflowOwnership,
+	readActiveInPlaceWorkflowOwnership,
 	ensureWorkflowWorktree,
 	materializePlanInWorkflowWorktree,
 	readWorkflowOwnershipForWorktree,
@@ -112,6 +120,63 @@ const DOTFILES_PI_DIR = path.join(os.homedir(), ".dotfiles", "pi");
 const SKILLS_DIR = path.join(DOTFILES_PI_DIR, "skills", "workflow");
 const PLAN_PREFLIGHT_MESSAGE_TYPE = "workflow.plan-preflight";
 const MAX_PLAN_PREFLIGHT_CHARS = 2000;
+const DO_IT_CONTINUATION_TYPE = "workflow.do-it-continuation";
+
+type DoItContinuation = DoItArgs & { consumed?: boolean };
+
+export interface DoItArgs {
+	request: string;
+	noClear: boolean;
+	inPlace: boolean;
+}
+
+export function parseDoItArgs(args: string): DoItArgs {
+	let remaining = args.trim();
+	let noClear = false;
+	let inPlace = false;
+	while (remaining) {
+		const match = remaining.match(/^(\S+)(?:\s+([\s\S]*))?$/);
+		if (!match) break;
+		const token = match[1];
+		if (token === "--") return { request: (match[2] ?? "").trim(), noClear, inPlace };
+		if (token !== "--no-clear" && token !== "--in-place") {
+			if (token.startsWith("--")) throw new Error(`Invalid /do-it option: ${token}`);
+			return { request: remaining.trim(), noClear, inPlace };
+		}
+		if (token === "--no-clear") {
+			if (noClear) throw new Error("Duplicate /do-it option: --no-clear");
+			noClear = true;
+		} else {
+			if (inPlace) throw new Error("Duplicate /do-it option: --in-place");
+			inPlace = true;
+		}
+		remaining = (match[2] ?? "").trim();
+	}
+	return { request: "", noClear, inPlace };
+}
+
+export function routeDirectDoItInput(text: string, recentPlanPath?: string): string | undefined {
+	const trimmed = text.trim();
+	const pathMatch = trimmed.match(/^(?:execute|run|implement)\s+(\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md)$/i);
+	if (pathMatch) return pathMatch[1];
+	if (recentPlanPath && /^(?:execute|run|implement)\s+this\s+plan$/i.test(trimmed)) return recentPlanPath;
+	if (recentPlanPath && trimmed.toLowerCase() === "build and apply to main as one squashed commit") return recentPlanPath;
+	return undefined;
+}
+
+function sendDoItFailure(pi: ExtensionAPI, message: string): void {
+	pi.sendMessage(
+		{
+			customType: PLAN_PREFLIGHT_MESSAGE_TYPE,
+			content:
+				message.length <= MAX_PLAN_PREFLIGHT_CHARS
+					? message
+					: `${message.slice(0, MAX_PLAN_PREFLIGHT_CHARS - 22)}\n... details truncated`,
+			display: true,
+		},
+		{ deliverAs: "nextTurn" },
+	);
+}
 
 export function parsePlanItArgs(args: string): {
 	mode: "standard" | "quick";
@@ -2461,6 +2526,7 @@ export default function (pi: ExtensionAPI) {
 	let activePlanningRoot: string | undefined;
 	let pendingNextPlanCommand: string | undefined;
 	let activeRawWorkflow: WorkflowWorktree | undefined;
+	let activeInPlaceWorkflow: InPlaceWorkflowOwnership | undefined;
 
 	const persistPlanLifecycle = async (
 		snapshot: PlanLifecycleSnapshot,
@@ -2548,6 +2614,7 @@ export default function (pi: ExtensionAPI) {
 			const next = transitionPlanLifecycle(activePlanLifecycle, input);
 			await persistPlanLifecycle(next);
 			if (next.stage === "ready") {
+				if (activePlanningRoot) refreshDoItPlanCache(activePlanningRoot);
 				deactivateTools(pi, ["plan_progress"]);
 				if (ctx.mode === "tui")
 					pendingNextPlanCommand = `/do-it ${next.planPath}`;
@@ -2568,8 +2635,31 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	onSessionStart(pi, import.meta.url, (_event, ctx) => restorePlanLifecycle(ctx));
-	pi.on("session_tree", (_event, ctx) => restorePlanLifecycle(ctx));
+	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
+		restorePlanLifecycle(ctx);
+		if (ctx.cwd) refreshDoItPlanCache(ctx.cwd);
+		const entries = ctx.sessionManager.getBranch();
+		let continuation: DoItContinuation | undefined;
+		let consumed = false;
+		for (const entry of entries) {
+			if (!entry || typeof entry !== "object") continue;
+			const candidate = entry as { customType?: unknown; content?: unknown; data?: unknown };
+			if (candidate.customType !== DO_IT_CONTINUATION_TYPE && candidate.customType !== `${DO_IT_CONTINUATION_TYPE}.consumed`) continue;
+			const value = candidate.data ?? candidate.content;
+			try {
+				const parsed = typeof value === "string" ? JSON.parse(value) : value;
+				if (parsed && typeof parsed === "object" && typeof (parsed as DoItContinuation).request === "string") continuation = parsed as DoItContinuation;
+			} catch { /* malformed internal state is ignored and cannot authorize execution */ }
+			if ((candidate.customType as string) === `${DO_IT_CONTINUATION_TYPE}.consumed`) consumed = true;
+		}
+		if (!continuation || continuation.consumed || consumed) return;
+		await pi.appendEntry(`${DO_IT_CONTINUATION_TYPE}.consumed`, { request: continuation.request });
+		await pi.sendUserMessage(`/do-it --no-clear${continuation.inPlace ? " --in-place" : ""}${continuation.request ? ` ${continuation.request}` : ""}`);
+	});
+	pi.on("session_tree", (_event, ctx) => {
+		restorePlanLifecycle(ctx);
+		if (ctx.cwd) refreshDoItPlanCache(ctx.cwd);
+	});
 	pi.on("session_shutdown", () => {
 		pendingNextPlanCommand = undefined;
 	});
@@ -2611,6 +2701,13 @@ export default function (pi: ExtensionAPI) {
 		renderResult: renderLifecycleResult,
 		async execute() {
 			try {
+				const inPlace = activeInPlaceWorkflow ?? readActiveInPlaceWorkflowOwnership(process.cwd());
+				if (inPlace) {
+					const completed = await verifyInPlaceWorkflow({ ownership: inPlace, cwd: process.cwd(), runner: workflowRunner });
+					activeInPlaceWorkflow = undefined;
+					deactivateTools(pi, ["workflow_complete"]);
+					return { content: [{ type: "text" as const, text: `Workflow completed in place.\n${completed.branch} committed in ${completed.worktree}.` }], details: completed };
+				}
 				const worktree = activeRawWorkflow ?? (() => {
 					const ownership = readWorkflowOwnershipForWorktree(process.cwd());
 					return ownership ? { ownership, resumed: true } : undefined;
@@ -2654,7 +2751,14 @@ export default function (pi: ExtensionAPI) {
 				const planPath = canonicalPlanPathFromInput(params.path);
 				if (!planPath) throw new Error("Plan archive requires a canonical .specs/{slug}/plan.md path.");
 				const slug = workflowSlugFromPlan(planPath);
+				const inPlaceOwnership = readInPlaceWorkflowOwnership(ctx.cwd, slug);
 				const ownership = readWorkflowOwnershipRecord(ctx.cwd, slug);
+				if (inPlaceOwnership) {
+					const verified = await verifyInPlaceWorkflow({ ownership: inPlaceOwnership, cwd: ctx.cwd, planPath, runner: workflowRunner });
+					deactivateTools(pi, ["plan_archive"]);
+					refreshDoItPlanCache(ctx.cwd);
+					return { content: [{ type: "text" as const, text: `Plan archived and committed in place on ${verified.branch}.` }], details: verified };
+				}
 				if (!ownership || ownership.state !== "active")
 					throw new Error("Plan closeout requires its active owned workflow worktree.");
 				if (ownership.planPath && ownership.planPath !== planPath)
@@ -2682,6 +2786,7 @@ export default function (pi: ExtensionAPI) {
 					...verified,
 				};
 				deactivateTools(pi, ["plan_archive"]);
+				refreshDoItPlanCache(ctx.cwd);
 				return {
 					content: [
 						{
@@ -2704,6 +2809,11 @@ export default function (pi: ExtensionAPI) {
 	pi.on("input", async (event, ctx) => {
 		if (event.source === "extension") {
 			return { action: "continue" };
+		}
+		const directPlan = routeDirectDoItInput(event.text, activePlanLifecycle?.planPath);
+		if (directPlan) {
+			await pi.sendUserMessage(`/do-it ${directPlan}`);
+			return { action: "handled" };
 		}
 		if (event.text.trim().toLowerCase() === "exit") {
 			ctx.shutdown();
@@ -2962,8 +3072,35 @@ export default function (pi: ExtensionAPI) {
 
 	registerSlashCommand(pi)("do-it", {
 		description: "Execute work in one owned workflow worktree with proportional validation",
+		getArgumentCompletions: (prefix) => getDoItArgumentCompletions(
+			prefix,
+			getCachedDoItPlans(activePlanningRoot ?? process.cwd()),
+		),
 		handler: async (args, ctx) => {
-			const requestedPlanPath = args.trim().replace(/^@/, "");
+			let parsed: DoItArgs;
+			try {
+				parsed = parseDoItArgs(args);
+			} catch (error) {
+				ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
+				return;
+			}
+			if (!parsed.noClear && typeof ctx.newSession === "function") {
+				const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
+				const continuation: DoItContinuation = { ...parsed };
+				try {
+					await newSessionWithReloadIfNeeded(ctx, {
+						setup: async (sessionManager) => {
+							if (!sessionManager.appendCustomMessageEntry) throw new Error("Cannot persist /do-it session continuation.");
+							sessionManager.appendCustomMessageEntry(DO_IT_CONTINUATION_TYPE, JSON.stringify(continuation), false);
+							if (usageMessage) sessionManager.appendCustomMessageEntry(CLEAR_USAGE_TYPE, usageMessage, true);
+						},
+					});
+				} catch (error) {
+					ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
+				}
+				return;
+			}
+			const requestedPlanPath = parsed.request.replace(/^@/, "");
 			const canonicalPlanPath = canonicalPlanPathFromInput(requestedPlanPath);
 			const canonicalPlan = canonicalPlanPath !== undefined;
 			let workspaceDirective = "";
@@ -2979,14 +3116,10 @@ export default function (pi: ExtensionAPI) {
 						const sourceValidation = validatePlanFile(primaryRoot, canonicalPlanPath, "execution-preflight");
 						if (!sourceValidation.valid) {
 							const diagnostics = sourceValidation.errors.join("\n");
-							const message = `Plan preflight failed for ${canonicalPlanPath}:\n${diagnostics}`;
-							pi.sendMessage({
-								customType: PLAN_PREFLIGHT_MESSAGE_TYPE,
-								content: message.length <= MAX_PLAN_PREFLIGHT_CHARS
-									? message
-									: `${message.slice(0, MAX_PLAN_PREFLIGHT_CHARS - 22)}\n... details truncated`,
-								display: true,
-							});
+							sendDoItFailure(
+								pi,
+								`Plan preflight failed for ${canonicalPlanPath}:\n${diagnostics}`,
+							);
 							return;
 						}
 						const sourcePlanContent = fs.readFileSync(path.resolve(primaryRoot, canonicalPlanPath), "utf8");
@@ -3008,38 +3141,62 @@ export default function (pi: ExtensionAPI) {
 					}
 					const planSlug = workflowSlugFromPlan(canonicalPlanPath ?? requestedPlanPath);
 					const slug = planSlug === "workflow" ? workflowSlugFromRequest(requestedPlanPath) : planSlug;
-					const worktree = await ensureWorkflowWorktree({
+					const workflowId = `do-it:${slug}`;
+					const inPlace = parsed.inPlace
+						? await ensureInPlaceWorkflow({ cwd: ctx.cwd, workflowId, slug, planPath: canonicalPlanPath, runner: workflowRunner })
+						: undefined;
+					const worktree = inPlace ? undefined : await ensureWorkflowWorktree({
 						cwd: primaryRoot,
 						workflow: "do-it",
-						workflowId: `do-it:${slug}`,
+						workflowId,
 						planPath: canonicalPlanPath,
 						slug,
 						runner: workflowRunner,
 						allowDirtyPrimary: canonicalPlan,
 					});
-					if (canonicalPlan && !completedPlan && !worktree.resumed)
-						await materializePlanInWorkflowWorktree({ worktree, planPath: canonicalPlanPath, runner: workflowRunner });
-					ownedWorktree = worktree;
-					ownedWorkspace = worktree.ownership.worktree;
+					if (inPlace) {
+						activeInPlaceWorkflow = inPlace.ownership;
+						ownedWorkspace = inPlace.ownership.worktree;
+					} else if (worktree) {
+						if (canonicalPlan && !completedPlan && !worktree.resumed)
+							await materializePlanInWorkflowWorktree({ worktree, planPath: canonicalPlanPath, runner: workflowRunner });
+						ownedWorktree = worktree;
+						ownedWorkspace = worktree.ownership.worktree;
+					}
 					const retainCloseout = canonicalPlan && closeoutPolicy === "retain";
-					const closeoutWork = retainCloseout
-						? "archive the completed spec, stage and commit all nonignored in-scope artifacts, do not force-add ignored plan files, and do not merge the workflow branch into the primary branch"
-						: canonicalPlan
-							? "archive the completed spec, stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff"
-							: "stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff";
-					const verifierEffect = retainCloseout
-						? "verifies the commit and non-merge state while retaining the owned branch, worktree, and ownership record"
-						: "checks exact final state and cleans the owned branch/worktree";
-					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${worktree.ownership.worktree}\nConfine implementation and validation to this worktree. When the requested work is complete, ${closeoutWork} yourself, then call the workflow closeout verifier; the verifier ${verifierEffect}. Preserve the worktree for recovery on any dirty, unmerged, or conflict state.${completedPlan || planNeedsReconciliation ? `\n\nRECOVERY ONLY: The canonical plan ${canonicalPlanPath} is complete or has conflicting persisted state. Do not rerun implementation or validation. Inspect the active/archive paths, branch, primary HEAD, and ownership record; finish only recoverable closeout work, then call the closeout verifier.` : ""}`;
+					const closeoutWork = parsed.inPlace
+						? canonicalPlan
+							? "archive the completed spec, stage and commit all in-scope artifacts in the invoking worktree; do not merge or inspect another worktree"
+							: "stage and commit all in-scope artifacts in the invoking worktree; do not merge or inspect another worktree"
+						: retainCloseout
+							? "archive the completed spec, stage and commit all nonignored in-scope artifacts, do not force-add ignored plan files, and do not merge the workflow branch into the primary branch"
+							: canonicalPlan
+								? "archive the completed spec, stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff"
+								: "stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff";
+					const verifierEffect = parsed.inPlace
+						? "verifies the invoking worktree, branch, descendant commit, clean state, and completed archive without merge or cleanup"
+						: retainCloseout
+							? "verifies the commit and non-merge state while retaining the owned branch, worktree, and ownership record"
+							: "checks exact final state and cleans the owned branch/worktree";
+					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${ownedWorkspace}\n${parsed.inPlace ? "This is explicit in-place execution. Confine implementation and validation to the invoking worktree; never create, inspect, merge, or remove another worktree." : "Confine implementation and validation to this worktree."} When the requested work is complete, ${closeoutWork} yourself, then call the workflow closeout verifier; the verifier ${verifierEffect}. Preserve the worktree for recovery on any dirty, unmerged, or conflict state.${completedPlan || planNeedsReconciliation ? `\n\nRECOVERY ONLY: The canonical plan ${canonicalPlanPath} is complete or has conflicting persisted state. Do not rerun implementation or validation. Inspect the active/archive paths, branch, primary HEAD, and ownership record; finish only recoverable closeout work, then call the closeout verifier.` : ""}`;
 				} catch (error) {
-					ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
+					sendDoItFailure(
+						pi,
+						`/do-it setup failed: ${error instanceof Error ? error.message : String(error)}`,
+					);
 					return;
 				}
 			}
 			if (canonicalPlan) {
 				if (!completedPlan && !planNeedsReconciliation) {
 					const validation = validatePlanFile(ownedWorkspace, canonicalPlanPath, "execution-preflight");
-					if (!validation.valid) throw new Error(`Materialized plan failed validation: ${validation.errors.join(" ")}`);
+					if (!validation.valid) {
+						sendDoItFailure(
+							pi,
+							`Materialized plan failed validation: ${validation.errors.join(" ")}`,
+						);
+						return;
+					}
 				}
 				activateTools(pi, ["plan_archive"]);
 			} else if (ownedWorktree) {
@@ -3047,7 +3204,7 @@ export default function (pi: ExtensionAPI) {
 				activateTools(pi, ["workflow_complete"]);
 			}
 			const template = loadSkill("do-it.md");
-			const prompt = buildSkillPrompt(template, canonicalPlan ? canonicalPlanPath : args, {
+			const prompt = buildSkillPrompt(template, canonicalPlan ? canonicalPlanPath : parsed.request, {
 				replaceArguments: true,
 			});
 			sendHiddenWorkflowPrompt(pi, prompt + workspaceDirective);

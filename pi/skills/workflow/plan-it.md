@@ -75,6 +75,11 @@ status: ready
   - Done when: <Observable task acceptance condition.>
   - Verify: `<Direct check or command>`
 
+## Execution Strategy
+
+- Parallel work: <Concrete independent task keys and bounded leaf packages, or None.>
+- Smaller-model work: <Concrete task keys and bounded leaf packages using advisory dynamic sizing and explicitly excluding authority-sensitive, integration-owning, and acceptance-gating work, or None.>
+
 ## Validation
 
 - [ ] <Direct completion-evidence check and expected result.>
@@ -96,6 +101,13 @@ Keep incomplete work at `.specs/<slug>/plan.md`. After completion, `/do-it` arch
 The `Closeout` bullet is optional and must appear only when the operator explicitly requests commit-and-retain closeout. Its exact wording is the deterministic policy marker; do not paraphrase it.
 
 Before calling `ready`, verify mechanically against the structure above: frontmatter says exactly `status: ready`; every required `##` heading exists; `Completion Evidence` has separate `- Evidence:` and `- Fails when:` bullets; `Validation` contains at least one checkbox; `Execution Status` contains `- State:` and the canonical resume command; and `Retention` names the canonical archive directory.
+
+Every new plan must include `## Execution Strategy` with exactly these required bullets:
+
+- `Parallel work:` Record concrete independent task keys and bounded leaf packages, or `None`.
+- `Smaller-model work:` Record concrete task keys and bounded leaf packages, or `None`; sizing is advisory and dynamic. Do not assign authority-sensitive, integration-owning, or acceptance-gating work to smaller models. These hints do not force delegation, parallel execution, or scheduler records.
+
+Readiness validates this section for new plans. Execution preflight accepts legacy plans without it.
 
 State mutation boundaries explicitly: name the files or state owned by each task, what may be changed, and what remains untouched. Dependencies must identify actual prerequisites, not merely preferred order. A task is ready only when every required dependency is complete; independent ready tasks may proceed in parallel without adding scheduler records.
 

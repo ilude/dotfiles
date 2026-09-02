@@ -3,6 +3,10 @@ import * as path from "node:path";
 import { readLinkedPlan } from "./plan-state.js";
 
 const OWNERSHIP_VERSION = 1;
+const IN_PLACE_OWNERSHIP_VERSION = 1;
+
+const inPlaceOwnershipPath = (root: string, slug: string): string =>
+	path.join(root, ".worktrees", `${slug}.in-place.workflow.json`);
 
 export type WorkflowOwner = "plan-it" | "do-it" | "goal";
 export type WorkflowWorktreeState = "active" | "complete";
@@ -30,6 +34,20 @@ export interface WorkflowWorktreeOwnership {
 export interface WorkflowWorktree {
 	ownership: WorkflowWorktreeOwnership;
 	resumed: boolean;
+}
+
+export interface InPlaceWorkflowOwnership {
+	version: 1;
+	workflow: "do-it";
+	workflowId: string;
+	repoRoot: string;
+	worktree: string;
+	branch: string;
+	baselineHead: string;
+	planPath?: string;
+	createdAt: string;
+	updatedAt: string;
+	state: "active" | "complete";
 }
 
 export interface WorkflowGitResult {
@@ -66,7 +84,7 @@ function ownershipPath(root: string, slug: string): string {
 	return path.join(root, ".worktrees", `${slug}.workflow.json`);
 }
 
-function writeOwnership(filePath: string, ownership: WorkflowWorktreeOwnership): void {
+function writeOwnership(filePath: string, ownership: object): void {
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
 	const temporary = `${filePath}.tmp-${process.pid}`;
 	fs.writeFileSync(temporary, `${JSON.stringify(ownership, null, 2)}\n`, "utf8");
@@ -95,6 +113,37 @@ function ownershipRoot(location: string): string {
 
 export function readWorkflowOwnershipRecord(location: string, slug: string): WorkflowWorktreeOwnership | undefined {
 	return readOwnership(ownershipPath(ownershipRoot(location), assertSafeSlug(slug)));
+}
+
+function inPlaceOwnershipRoot(location: string, slug: string): string {
+	let current = normalize(location);
+	const safe = assertSafeSlug(slug);
+	while (true) {
+		if (fs.existsSync(inPlaceOwnershipPath(current, safe))) return current;
+		const parent = path.dirname(current);
+		if (parent === current) return normalize(location);
+		current = parent;
+	}
+}
+
+export function readInPlaceWorkflowOwnership(location: string, slug: string): InPlaceWorkflowOwnership | undefined {
+	const root = inPlaceOwnershipRoot(location, slug);
+	const filePath = inPlaceOwnershipPath(root, assertSafeSlug(slug));
+	if (!fs.existsSync(filePath)) return undefined;
+	const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as Partial<InPlaceWorkflowOwnership>;
+	if (parsed.version !== IN_PLACE_OWNERSHIP_VERSION || parsed.workflow !== "do-it" || typeof parsed.workflowId !== "string" || typeof parsed.repoRoot !== "string" || typeof parsed.worktree !== "string" || typeof parsed.branch !== "string" || typeof parsed.baselineHead !== "string" || (parsed.planPath !== undefined && !/^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(parsed.planPath)) || (parsed.state !== "active" && parsed.state !== "complete"))
+		throw new Error(`Invalid in-place workflow ownership record: ${filePath}`);
+	return parsed as InPlaceWorkflowOwnership;
+}
+
+export function readActiveInPlaceWorkflowOwnership(location: string): InPlaceWorkflowOwnership | undefined {
+	const root = normalize(location);
+	const directory = path.join(root, ".worktrees");
+	if (!fs.existsSync(directory)) return undefined;
+	const matches = fs.readdirSync(directory).filter((name) => name.endsWith(".in-place.workflow.json"));
+	const active = matches.map((name) => readInPlaceWorkflowOwnership(root, name.slice(0, -".in-place.workflow.json".length))).filter((record): record is InPlaceWorkflowOwnership => Boolean(record && record.state === "active"));
+	if (active.length > 1) throw new Error("multiple active in-place workflow ownership records exist");
+	return active[0];
 }
 
 export function readWorkflowOwnershipForWorktree(location: string): WorkflowWorktreeOwnership | undefined {
@@ -167,6 +216,55 @@ function assertOwned(ownership: WorkflowWorktreeOwnership, root: string, workflo
 		throw new Error("workflow worktree is owned by another invocation");
 	if (ownership.planPath && planPath && ownership.planPath !== planPath)
 		throw new Error("workflow ownership plan path does not match the requested canonical plan");
+}
+
+export async function ensureInPlaceWorkflow(input: { cwd: string; workflowId: string; slug: string; planPath?: string; runner: WorkflowGitRunner }): Promise<{ ownership: InPlaceWorkflowOwnership; resumed: boolean }> {
+	const worktree = normalize(parseLine(await input.runner(input.cwd, ["rev-parse", "--show-toplevel"]), "resolve invoking worktree"));
+	const root = worktree;
+	const branch = parseLine(await input.runner(worktree, ["branch", "--show-current"]), "resolve invoking branch");
+	if (!branch) throw new Error("in-place execution requires a checked-out branch");
+	const existing = readInPlaceWorkflowOwnership(root, input.slug);
+	if (existing) {
+		if (existing.state !== "active") throw new Error("in-place workflow is already complete");
+		if (existing.repoRoot !== root || existing.worktree !== worktree || existing.branch !== branch || existing.workflowId !== input.workflowId || existing.planPath !== input.planPath)
+			throw new Error("in-place workflow ownership does not match the invoking worktree, branch, or plan");
+		return { ownership: existing, resumed: true };
+	}
+	const status = await input.runner(worktree, ["status", "--porcelain=v1", "--untracked-files=all"]);
+	if (status.code !== 0) throw new Error(`inspect invoking worktree: ${status.stderr.trim() || status.stdout.trim()}`);
+	const allowed = input.planPath ? new Set([`?? ${input.planPath}`, ` M ${input.planPath}`, `M  ${input.planPath}`, `MM ${input.planPath}`]) : new Set<string>();
+	if (status.stdout.split(/\r?\n/).filter(Boolean).some((entry) => !allowed.has(entry)) || (!input.planPath && status.stdout.trim()))
+		throw new Error("in-place execution requires a clean invoking worktree, except for the exact canonical plan");
+	const baselineHead = parseLine(await input.runner(worktree, ["rev-parse", "HEAD"]), "resolve in-place baseline");
+	const now = new Date().toISOString();
+	const ownership: InPlaceWorkflowOwnership = { version: 1, workflow: "do-it", workflowId: input.workflowId, repoRoot: root, worktree, branch, baselineHead, ...(input.planPath ? { planPath: input.planPath } : {}), createdAt: now, updatedAt: now, state: "active" };
+	writeOwnership(inPlaceOwnershipPath(root, assertSafeSlug(input.slug)), ownership);
+	return { ownership, resumed: false };
+}
+
+export async function verifyInPlaceWorkflow(input: { ownership: InPlaceWorkflowOwnership; cwd: string; planPath?: string; runner: WorkflowGitRunner }): Promise<InPlaceWorkflowOwnership> {
+	const ownership = input.ownership;
+	const worktree = normalize(parseLine(await input.runner(input.cwd, ["rev-parse", "--show-toplevel"]), "resolve invoking worktree"));
+	const branch = parseLine(await input.runner(worktree, ["branch", "--show-current"]), "resolve invoking branch");
+	if (ownership.state !== "active") throw new Error("in-place workflow is already complete");
+	if (worktree !== ownership.worktree || branch !== ownership.branch || (input.planPath ?? ownership.planPath) !== ownership.planPath)
+		throw new Error("in-place workflow verifier requires the original worktree, branch, and plan");
+	const descendant = await input.runner(worktree, ["merge-base", "--is-ancestor", ownership.baselineHead, "HEAD"]);
+	if (descendant.code !== 0) throw new Error("in-place workflow HEAD is not a descendant of its baseline");
+	if (ownership.baselineHead === parseLine(await input.runner(worktree, ["rev-parse", "HEAD"]), "resolve in-place HEAD"))
+		throw new Error("in-place workflow has no commit beyond its baseline");
+	const status = await input.runner(worktree, ["status", "--porcelain=v1", "--untracked-files=all"]);
+	if (status.code !== 0 || status.stdout.trim()) throw new Error("in-place workflow worktree is not clean");
+	if (ownership.planPath) {
+		const slug = workflowSlugFromPlan(ownership.planPath);
+		const archived = path.join(worktree, ".specs", "archive", slug, "plan.md");
+		if (!fs.existsSync(archived) || fs.existsSync(path.join(worktree, ownership.planPath))) throw new Error("completed plan was not archived in the invoking worktree");
+		if (!readLinkedPlan(archived).complete) throw new Error("archived plan is not complete");
+	}
+	const completed = { ...ownership, state: "complete" as const, updatedAt: new Date().toISOString() };
+	const slug = ownership.planPath ? workflowSlugFromPlan(ownership.planPath) : workflowSlugFromRequest(ownership.workflowId.replace(/^do-it:/, ""));
+	writeOwnership(inPlaceOwnershipPath(ownership.repoRoot, slug), completed);
+	return completed;
 }
 
 export async function ensureWorkflowWorktree(input: { cwd: string; workflow: WorkflowOwner; workflowId: string; slug: string; planPath?: string; runner: WorkflowGitRunner; allowDirtyPrimary?: boolean }): Promise<WorkflowWorktree> {
