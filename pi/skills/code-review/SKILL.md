@@ -27,6 +27,12 @@ Report only demonstrably reachable issues mapped to requested acceptance, a repo
 
 Review the selected boundary to a clear stopping condition. Do not repeat the same boundary unless acceptance, an invariant, or safety explicitly requires another pass.
 
+## Explicit-request complexity lens
+
+Apply this lens only when the user explicitly requests a simplicity, overengineering, or complexity review. Check whether the changed design adds unnecessary abstraction, indirection, ceremony, duplicate state, or validation beyond the requested scope and repository constraints. Treat safety controls, required validation, public contracts, and documented operational constraints as necessary unless evidence shows otherwise. Low line count is not evidence of correctness or simplicity.
+
+Report complexity concerns separately from correctness findings and require evidence of a reachable cost or scope mismatch.
+
 ## Finding Format
 
 ```markdown

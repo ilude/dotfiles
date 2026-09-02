@@ -2,6 +2,23 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-09-02: Separate engineering analysis, design, and edit skills
+
+**Why:** Broad development-philosophy and churn-monitor skills overlapped approach selection, architecture design, focused editing, documentation, and telemetry analysis, making routing less precise in both Pi and Claude.
+
+**Changed:**
+- Split approach selection into `analysis-workflow`, structural decisions into `architecture-design`, and focused pattern-matching edits into `least-astonishment`.
+- Moved overengineering analysis into the owning Pi log-analytics layer and removed obsolete overlapping skill definitions.
+- Updated modifying-agent assignments and analyzer routing to use the narrower capabilities.
+
+**Preserved:** Pi and Claude retain independent skill implementations, existing security analysis remains available, and no new runtime mode, debt ledger, compatibility alias, or automatic policy state was added.
+
+**Validation:** Skill taxonomy and analyzer tests, reference checks, and `git diff --check` passed.
+
+**Files:** `pi/{skills,agents/developer.md,tests/engineering-skill-taxonomy.test.ts}`, `claude/{skills,agents,scripts/skill-analyzer.py}`, `test/test_skill_analyzer.py`, and `.specs/archive/reorganize-engineering-skills/plan.md`
+
+---
+
 ## 2026-08-02: Shard feature-memory events by writer
 
 **Why:** A single synchronized event journal creates cross-machine write and merge

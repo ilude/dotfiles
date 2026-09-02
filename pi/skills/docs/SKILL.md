@@ -27,6 +27,13 @@ Documentation should help a reader do the next task. Optimize for accurate struc
 7. Link related docs instead of duplicating long explanations.
 8. Update navigation/index files when adding docs.
 
+## Code comments and API documentation
+
+- Comment to explain why: business logic, non-obvious trade-offs, complex algorithms, workarounds, API contracts, performance constraints, constants, or gotchas.
+- Do not add comments that restate obvious code, preserve dead code or changelog history, or make claims that can become stale. Prefer clearer names and structure when they remove the need for a comment.
+- Document public APIs with accurate docstrings or JSDoc, including parameters, return values, errors, constraints, and examples when they are not self-evident.
+- Keep security, performance, and workaround comments tied to the concrete constraint they explain.
+
 ## Markdown Defaults
 
 - One `#` title per document.

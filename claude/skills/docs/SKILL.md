@@ -195,6 +195,12 @@ CONTRIBUTING.md  # Contribution guidelines
 CHANGELOG.md     # Version history
 ```
 
+## Code Documentation
+
+Write self-explanatory code and comment only when the reason is not clear from the code. Comments may record non-obvious tradeoffs, workarounds, performance constraints, API contracts, or security assumptions. Do not use comments for narration, history, dead code, or claims that will quickly become stale.
+
+Public interfaces should document inputs, outputs, errors, and constraints. Keep documentation close to the interface it describes, and update it when the contract changes. Prefer a clear name or structure over a comment that explains obvious behavior.
+
 ## Quick Reference
 
 | Element | Rule |

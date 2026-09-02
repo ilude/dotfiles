@@ -55,7 +55,7 @@ When expressing confidence:
 
 ### Tier 2: Auto-Invoke (Triggered by Context)
 - **zero-warning-verification**: Pre-commit quality gate
-- **security-first-design**: Auth/secrets/external data
+- **security-analysis**: Auth/secrets/external data
 - **idempotency-audit**: Scripts/setup/migrations
 
 ### Tier 3: On-Demand (Explicit Request Only)
@@ -221,7 +221,7 @@ Phase 4: Idempotency Issues
 All setup/install/migration scripts MUST be safely re-runnable.
 ```
 
-### security-first-design
+### security-analysis
 
 **Best for**: Authentication, secrets, external data, user input
 
@@ -324,7 +324,7 @@ NEVER optimize without measuring. Premature optimization is evil.
 - `deep-analyze,pre-mortem` - Rigorous analysis with risk identification
 - `reasoning-scaffold,outside-view` - Structured decision with base rates
 - `scope-boundary,evidence-based` - MVP validation with measurement
-- `security-first-design,STRIDE` - Security review with systematic threat enumeration
+- `security-analysis,STRIDE` - Security review with systematic threat enumeration
 
 ---
 
@@ -333,7 +333,7 @@ NEVER optimize without measuring. Premature optimization is evil.
 | Framework | Theater Risk | Counter |
 |-----------|--------------|---------|
 | deep-analyze | Every finding gets a mitigation | Ask: "What's the cost of NOT mitigating?" |
-| security-first-design | Recommends OWASP controls without context | Ask: "Already mitigated at VPC/IAM/app?" |
+| security-analysis | Recommends OWASP controls without context | Ask: "Already mitigated at VPC/IAM/app?" |
 | multi-perspective | Fake conflict for show | Ensure genuine tension in personas |
 | scope-boundary | (Good) - Actually prevents theater | Use to counter-balance other frameworks |
 

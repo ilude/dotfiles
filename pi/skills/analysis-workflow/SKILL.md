@@ -1,6 +1,6 @@
 ---
 name: analysis-workflow
-description: "Analyze, validate, debug, troubleshoot, critique, red-team, adversarial, or what-could-go-wrong questions. Not for PR/diff review; use code-review."
+description: "Analysis, diagnosis, adversarial critique, or evidence-based solution selection. Not for diff review, architecture design, planning, or routine edit consistency."
 ---
 
 # Analysis Workflow
@@ -9,8 +9,12 @@ description: "Analyze, validate, debug, troubleshoot, critique, red-team, advers
 
 | Need | Use |
 | --- | --- |
-| Debugging, validation, root-cause analysis, or adversarial critique | `analysis-workflow` |
+| Analysis, diagnosis, root-cause investigation, or adversarial critique | `analysis-workflow` |
+| Evidence-based reuse and minimal solution selection | `analysis-workflow` |
 | Reviewing a diff, branch, PR, or commit | `code-review` |
+| Module, interface, seam, dependency, or structural design | `architecture-design` |
+| Requirements, acceptance criteria, or implementation planning | `planning` |
+| Routine edits to existing code | `least-astonishment` |
 | Logs, metrics, traces, alerts, or SLOs | `logging-observability` |
 | Failed live mutation | The repository incident policy |
 
@@ -24,9 +28,13 @@ description: "Analyze, validate, debug, troubleshoot, critique, red-team, advers
 6. Stop when further evidence is unlikely to change the conclusion or next action.
 7. Report confirmed facts, likely causes, unknowns, and the smallest evidence-backed next action.
 
-## Conditional Reference
+## Conditional References
 
 For a hard or recurring bug, nondeterministic failure, performance regression, unclear reproduction path, or investigation requiring temporary instrumentation, read [Diagnosing bugs](diagnosing-bugs.md). Use the short process above for straightforward failures.
+
+When selecting an implementation after analysis, read [Solution selection](solution-selection.md) for evidence-based reuse and minimal implementation.
+
+For a security-primary design or review, read [Security analysis](security-analysis.md) and apply its threat, secret, validation, and least-privilege checks.
 
 ## Debugging questions
 

@@ -12,7 +12,7 @@ description: "Pi defineAgent, typed semantic stages, or code-plus-agent workflow
 | Typed semantic stage implementation | `typed-agent-workflows` |
 | Pi hooks, commands, tools, or status UI | `pi-extension` |
 | Public command UX | `workflow-design` |
-| Broad architecture strategy | `development-philosophy` |
+| Module, interface, seam, dependency, or structural design | `architecture-design` |
 
 ## Core Model
 

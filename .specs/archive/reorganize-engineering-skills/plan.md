@@ -1,6 +1,7 @@
 ---
 created: 2026-09-01
-status: ready
+status: complete
+completed: 2026-09-01
 ---
 
 # Reorganize engineering workflow skills
@@ -23,20 +24,20 @@ Reorganize the tracked Pi and Claude engineering skills so parsed skill metadata
 
 ## Tasks
 
-- [ ] **T1: Prove the Pi ownership split**
+- [x] **T1: Prove the Pi ownership split**
   - Files: `pi/skills/analysis-workflow/SKILL.md`, `pi/skills/analysis-workflow/solution-selection.md`, `pi/skills/development-philosophy/SKILL.md`, `pi/skills/development-philosophy/architecture-review.md`, `pi/skills/development-philosophy/codebase-design.md`, `pi/skills/architecture-design/`, `pi/skills/least-astonishment/SKILL.md`, `pi/agents/developer.md`, `pi/skills/planning/SKILL.md`, `pi/skills/domain-modeling/SKILL.md`, `pi/skills/typed-agent-workflows/SKILL.md`, `pi/tests/engineering-skill-taxonomy.test.ts`
   - Change: In the `/do-it`-owned worktree, make `analysis-workflow` the concise approach-selection owner, with positive scope for analysis, diagnosis, adversarial critique, and solution selection and exclusions for diff review, architecture design, planning, and routine edit consistency. Add a conditional solution-selection reference for evidence-based reuse and minimal implementation. Keep `least-astonishment` as the focused edit owner and exclude architecture strategy. Replace the old skill entrypoint with `architecture-design`, moving `architecture-review.md` and `codebase-design.md` there and limiting its scope to module, interface, seam, dependency, and structural design. Update `developer.md` to assign `analysis-workflow` and `least-astonishment`, update the three named live references, and add a repository-backed test that uses the existing parser on the tracked Pi skill root and parsed developer assignment. The test shall verify owner presence, removed-owner absence, and assignment metadata without asserting policy prose or file layout. Stop immediately if this smallest slice cannot pass without duplicate owners, aliases, runtime machinery, or files outside this task.
   - Done when: Pi discovery contains the three intended owners and excludes `development-philosophy`, parsed developer assignments contain the two modifying owners, the three descriptions have the stated boundaries on inspection, and the focused test passes without broader migration work.
   - Verify: `cd pi && pnpm test engineering-skill-taxonomy.test.ts -t "Pi taxonomy"`
 
-- [ ] **T2: Finish Pi-owned references and diagnostics**
+- [x] **T2: Finish Pi-owned references and diagnostics**
   - Depends on: T1
   - Files: `pi/skills/development-philosophy/security-first.md`, `pi/skills/development-philosophy/documentation.md`, `pi/skills/analysis-workflow/security-analysis.md`, `pi/skills/docs/`, `pi/skills/code-review/SKILL.md`, `pi/skills/overengineering-churn-monitor/`, `pi/skills/pi-log-analytics/SKILL.md`, `pi/skills/pi-log-analytics/overengineering-churn.md`, `pi/docs/pi-research-report.md`, `pi/docs/upstream/ponytail.md`
   - Change: Move `security-first.md` to a conditional analysis reference. Compare `documentation.md` with the existing `docs` owner, merge only unique durable guidance, then delete the duplicate and empty old directory. Add the explicit-request complexity lens directly to `code-review/SKILL.md`; create no separate reference unless the resulting entrypoint demonstrates a concrete progressive-disclosure need. Consolidate every RG-1 through RG-4 definition, required manual check, screening step, interpretation constraint, bounded analytics rule, and query from both churn-monitor files into `pi-log-analytics/overengineering-churn.md`; link it conditionally from `pi-log-analytics/SKILL.md`, retain historical baselines and provenance in `pi/docs/pi-research-report.md`, remove the top-level churn skill, and update Ponytail ownership. Do not expand the taxonomy or add runtime state.
   - Done when: The obsolete Pi directories are gone, security and unique documentation guidance have their stated owners, code review contains the opt-in lens without an unnecessary file, `pi-log-analytics` owns each churn-method component exactly once, and Ponytail records the new owners without changing its review mechanism.
   - Verify: `test ! -e pi/skills/development-philosophy && test ! -e pi/skills/overengineering-churn-monitor`
 
-- [ ] **T3: Align Claude independently**
+- [x] **T3: Align Claude independently**
   - Depends on: T1
   - Files: `claude/skills/analysis-workflow/`, `claude/skills/development-philosophy/`, `claude/skills/architecture-design/`, `claude/skills/least-astonishment/`, `claude/skills/code-review/SKILL.md`, `claude/skills/docs/`, `claude/agents/builder.md`, `claude/agents/builder-light.md`, `claude/agents/builder-heavy.md`, `claude/agents/csharp-pro.md`, `claude/agents/devops-pro.md`, `claude/agents/python-pro.md`, `claude/agents/rust-ffi.md`, `claude/agents/rust-pro.md`, `claude/agents/rust-serde.md`, `claude/agents/rust-web.md`, `claude/agents/skills-engineer.md`, `claude/agents/terraform-pro.md`, `claude/agents/typescript-pro.md`, `claude/scripts/skill-analyzer.py`, `test/test_skill_analyzer.py`, `pi/tests/engineering-skill-taxonomy.test.ts`
   - Change: Apply T1's proven boundaries with Claude-owned wording and no copied or linked Pi implementation. Move experiment/fail-fast selection, reuse ordering, simplicity checks, and abstraction thresholds to `analysis-workflow/solution-selection.md`; move `security-first.md` to its conditional security-analysis reference; move structural design and problem-to-pattern material to `architecture-design`; merge unique edit-scope rules into `least-astonishment`; merge unique comment and public-documentation guidance into `docs`; delete duplicated communication, autonomous-execution, file-operation, recovery, testing, verification, and pre-completion policy. Add the explicit-request complexity lens directly to `code-review/SKILL.md`. Replace the listed modifying-agent assignments with `analysis-workflow` and `least-astonishment`, without architecture by default. Split the old analyzer mapping so MVP, over-engineering, simplicity, and approach map to `analysis-workflow`; architecture and structural design map to `architecture-design`; planning maps to `planning`. Extend the parsed taxonomy test to Claude and add focused Python cases for those executable mappings and removed-key absence.
@@ -45,10 +46,10 @@ Reorganize the tracked Pi and Claude engineering skills so parsed skill metadata
 
 ## Validation
 
-- [ ] T1, T2, and T3 verification commands all exit successfully with their stated results.
-- [ ] Read the six changed Pi and Claude frontmatter descriptions side by side and follow every changed relative reference; scopes and exclusions are distinct, references resolve, and newly moved procedures are not duplicated across entrypoints.
-- [ ] Compare `pi/skills/pi-log-analytics/overengineering-churn.md` with both removed churn-monitor files; RG-1 through RG-4 definitions, manual checks, screening procedure, interpretation constraints, analytics bounds, and query guidance are each present once, while historical results remain in `pi/docs/pi-research-report.md`.
-- [ ] Run `if git grep -n -E 'development-philosophy|overengineering-churn-monitor' -- 'pi/agents/**' 'pi/skills/**' 'claude/agents/**' 'claude/skills/**' 'claude/scripts/skill-analyzer.py'; then exit 1; fi && git ls-files -s pi/skills claude/skills | awk '$1 == 120000 { print; found=1 } END { exit found }' && git diff --check`; it finds no stale active owner, tracked skill symlink, or formatting error. Inspect the complete worktree diff against its base commit and confirm every mutation is in scope, source dispositions are complete, implementations remain client-owned, and protected primary-working-tree content is absent.
+- [x] T1, T2, and T3 verification commands all exit successfully with their stated results.
+- [x] Read the six changed Pi and Claude frontmatter descriptions side by side and follow every changed relative reference; scopes and exclusions are distinct, references resolve, and newly moved procedures are not duplicated across entrypoints.
+- [x] Compare `pi/skills/pi-log-analytics/overengineering-churn.md` with both removed churn-monitor files; RG-1 through RG-4 definitions, manual checks, screening procedure, interpretation constraints, analytics bounds, and query guidance are each present once, while historical results remain in `pi/docs/pi-research-report.md`.
+- [x] Run `if git grep -n -E 'development-philosophy|overengineering-churn-monitor' -- 'pi/agents/**' 'pi/skills/**' 'claude/agents/**' 'claude/skills/**' 'claude/scripts/skill-analyzer.py'; then exit 1; fi && git ls-files -s pi/skills claude/skills | awk '$1 == 120000 { print; found=1 } END { exit found }' && git diff --check`; it finds no stale active owner, tracked skill symlink, or formatting error. Inspect the complete worktree diff against its base commit and confirm every mutation is in scope, source dispositions are complete, implementations remain client-owned, and protected primary-working-tree content is absent.
 
 ## Retention
 
@@ -56,7 +57,7 @@ Keep incomplete work at `.specs/reorganize-engineering-skills/plan.md`. After co
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
+- State: Complete.
 - Blocker: None.
-- Next: T1.
+- Next: Archive, commit, merge, and verify closeout.
 - Resume: `/do-it .specs/reorganize-engineering-skills/plan.md`

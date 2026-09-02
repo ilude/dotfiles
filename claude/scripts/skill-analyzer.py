@@ -296,26 +296,50 @@ _INTENT_PATTERNS = {
         "high": ["commit my changes", "push to", "create a branch", "merge"],
         "medium": ["git", "commit", "push", "branch", "staging"],
     },
-    "adversarial-review": {
-        "high": ["what could go wrong", "find flaws", "poke holes", "red team"],
-        "medium": ["review this", "critique", "edge cases", "blind spots"],
+    "analysis-workflow": {
+        "high": [
+            "MVP",
+            "over-engineering",
+            "keep it simple",
+            "deep analyze",
+            "analyze this",
+            "validate",
+            "authentication",
+            "authorization",
+            "API security",
+            "what could go wrong",
+            "find flaws",
+            "poke holes",
+            "red team",
+        ],
+        "medium": [
+            "simplicity",
+            "approach",
+            "analyze",
+            "review",
+            "evaluate",
+            "assess",
+            "security",
+            "secrets",
+            "encryption",
+            "sensitive data",
+            "critique",
+            "edge cases",
+            "blind spots",
+        ],
     },
-    "development-philosophy": {
-        "high": ["MVP", "over-engineering", "keep it simple"],
-        "medium": ["architecture", "design", "planning", "approach"],
+    "architecture-design": {
+        "high": ["structural design"],
+        "medium": ["architecture"],
     },
-    "structured-analysis": {
-        "high": ["deep analyze", "analyze this", "validate"],
-        "medium": ["analyze", "review", "evaluate", "assess"],
+    "planning": {
+        "medium": ["planning"],
     },
     "container-projects": {
         "high": ["docker compose", "kubernetes", "container"],
         "medium": ["docker", "deploy", "orchestration"],
     },
-    "security-first-design": {
-        "high": ["authentication", "authorization", "API security"],
-        "medium": ["security", "secrets", "encryption", "sensitive data"],
-    },
+
 }
 
 

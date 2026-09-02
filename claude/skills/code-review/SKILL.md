@@ -157,6 +157,10 @@ For each issue:
 
 ---
 
+## Explicit-Request Complexity Lens
+
+When the request explicitly asks for a complexity, architecture, or over-engineering review, inspect whether each abstraction solves a demonstrated problem. For every finding, state the concrete failure prevented, the evidence that the complexity is needed, and the simpler alternative considered. Do not turn this opt-in lens into a default recommendation to remove abstractions or expand review scope.
+
 ## Anti-Patterns (Real-World Traps)
 
 ### The "Potential Bug" Trap

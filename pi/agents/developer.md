@@ -4,7 +4,7 @@ description: General implementation worker for bounded production code, tests, r
 model: openai-codex/gpt-5.6-luna
 effort: medium
 skills:
-  - development-philosophy
+  - analysis-workflow
   - least-astonishment
 tools: read, grep, bash, pwsh, edit, write, web_search, web_fetch
 ---

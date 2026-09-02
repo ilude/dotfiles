@@ -13,7 +13,7 @@ description: "Requirements, user stories, acceptance/verification criteria, test
 | Large multi-session effort whose route is not yet clear | `planning` with the wayfinding reference |
 | Product requirements document artifact | `prd` |
 | Long-running Pi `/goal` prompt | `pi-goal` |
-| Implementation philosophy or architecture tradeoffs | `development-philosophy` |
+| Module, interface, seam, dependency, or structural design | `architecture-design` |
 
 ## Core Principle
 

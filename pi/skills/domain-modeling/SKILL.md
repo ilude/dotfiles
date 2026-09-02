@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: "Domain-Driven Design (DDD) with Eric Evans concepts: ubiquitous language, concrete domain scenarios, invariants, entity identity and lifecycle, bounded contexts, aggregates, commands, domain events, or context maps. Use when clarifying business behavior or model boundaries. Not for generic API design; use api-design. Not for requirements and acceptance criteria; use planning. Not for broad architecture strategy; use development-philosophy."
+description: "Domain-Driven Design (DDD) with Eric Evans concepts: ubiquitous language, concrete domain scenarios, invariants, entity identity and lifecycle, bounded contexts, aggregates, commands, domain events, or context maps. Use when clarifying business behavior or model boundaries. Not for generic API design; use api-design. Not for requirements and acceptance criteria; use planning. Not for broad architecture strategy; use architecture-design."
 ---
 
 # Domain Modeling
