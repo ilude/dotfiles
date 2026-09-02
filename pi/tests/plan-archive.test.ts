@@ -26,6 +26,10 @@ vi.mock("../lib/workflow-worktree", () => ({
 	})),
 	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
 	readWorkflowOwnershipRecord: vi.fn(() => undefined),
+	readInPlaceWorkflowOwnership: vi.fn(() => undefined),
+	readActiveInPlaceWorkflowOwnership: vi.fn(() => undefined),
+	ensureInPlaceWorkflow: vi.fn(),
+	verifyInPlaceWorkflow: vi.fn(),
 	workflowSlugFromPlan: (value: string) => value.match(/\.specs\/([^/]+)\/plan\.md/)?.[1] ?? "workflow",
 	workflowSlugFromRequest: (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "workflow",
 }));

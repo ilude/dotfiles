@@ -198,12 +198,12 @@ export function getDoItArgumentCompletions(prefix: string, plans: string[]): DoI
 	if (normalized === "--") return null;
 	const tokens = normalized.split(/\s+/).filter(Boolean);
 	if (tokens.includes("--")) return null;
-	const selected: Set<string> = new Set(tokens.filter((token) => token === "--no-clear" || token === "--in-place"));
+	const selected: Set<string> = new Set(tokens.filter((token) => token === "--no-clear" || token === "--in-place" || token === "--no-merge"));
 	const hasTrailingSpace = /\s$/.test(normalized);
 	const partial = hasTrailingSpace ? "" : tokens.at(-1) ?? "";
 	const completedTokens = hasTrailingSpace ? tokens : tokens.slice(0, -1);
 	if (completedTokens.some((token) => !selected.has(token))) return null;
-	const candidates: string[] = ["--no-clear", "--in-place", ...plans].filter((value) => !selected.has(value));
+	const candidates: string[] = ["--no-clear", "--in-place", "--no-merge", ...plans].filter((value) => !selected.has(value));
 	const filtered = candidates.filter((value) => value.startsWith(partial));
 	return filtered.length > 0 ? filtered.map((value) => ({ value, label: value })) : null;
 }

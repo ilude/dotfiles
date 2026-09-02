@@ -354,6 +354,22 @@ describe("workflow worktree lifecycle", () => {
 		expect(readWorkflowOwnershipRecord(root, "fixture")?.state).toBe("active");
 	});
 
+	it("verifies raw retained closeout without a plan and preserves ownership", async () => {
+		const root = repo();
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:raw-retained", slug: "raw-retained", closeoutPolicy: "retain", runner });
+		fs.writeFileSync(path.join(worktree.ownership.worktree, "result.txt"), "done\n");
+		git(worktree.ownership.worktree, ["add", "--", "result.txt"]);
+		git(worktree.ownership.worktree, ["commit", "-q", "-m", "feat: retained raw closeout"]);
+
+		const completed = await verifyRetainedWorkflowWorktree({ worktree, runner });
+
+		expect(completed).toMatchObject({ state: "complete", closeoutStage: "committed", closeoutPolicy: "retain" });
+		expect(fs.existsSync(worktree.ownership.worktree)).toBe(true);
+		expect(readWorkflowOwnershipRecord(root, "raw-retained")).toMatchObject({ state: "complete", branch: "workflow/raw-retained" });
+		expect(git(root, ["branch", "--list", "workflow/raw-retained"])).toContain("workflow/raw-retained");
+		expect(git(root, ["show-ref", "--verify", "--quiet", "refs/heads/main"])).toBe("");
+	});
+
 	it("verifies retained closeout without committing an ignored plan or merging", async () => {
 		const root = repo();
 		fs.writeFileSync(path.join(root, ".gitignore"), ".specs/\n");

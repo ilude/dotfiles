@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-02: Add operator-approved do-it no-merge closeout
+
+**Why:** Operators needed an explicit invocation-level choice to commit completed work while retaining its owned branch and worktree, including for raw work and plans whose default policy is merge.
+
+**Changed:**
+- Added exact `/do-it --no-merge` parsing, cached completion, duplicate suppression, and session continuation transfer.
+- Applied the flag to raw and canonical closeout, while preserving in-place verification and ownership records without merging.
+
+**Preserved:** The option prefix and `--` terminator rules remain exact, canonical Retention policy remains the default when no flag is supplied, and default closeout still merges and cleans up.
+
+**Validation:** Focused workflow parser, dispatch, completion, retained-closeout, and typecheck checks.
+
+---
+
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
 ## 2026-09-02: Make do-it execution context explicit

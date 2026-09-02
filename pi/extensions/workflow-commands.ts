@@ -128,31 +128,36 @@ export interface DoItArgs {
 	request: string;
 	noClear: boolean;
 	inPlace: boolean;
+	noMerge: boolean;
 }
 
 export function parseDoItArgs(args: string): DoItArgs {
 	let remaining = args.trim();
 	let noClear = false;
 	let inPlace = false;
+	let noMerge = false;
 	while (remaining) {
 		const match = remaining.match(/^(\S+)(?:\s+([\s\S]*))?$/);
 		if (!match) break;
 		const token = match[1];
-		if (token === "--") return { request: (match[2] ?? "").trim(), noClear, inPlace };
-		if (token !== "--no-clear" && token !== "--in-place") {
+		if (token === "--") return { request: (match[2] ?? "").trim(), noClear, inPlace, noMerge };
+		if (token !== "--no-clear" && token !== "--in-place" && token !== "--no-merge") {
 			if (token.startsWith("--")) throw new Error(`Invalid /do-it option: ${token}`);
-			return { request: remaining.trim(), noClear, inPlace };
+			return { request: remaining.trim(), noClear, inPlace, noMerge };
 		}
 		if (token === "--no-clear") {
 			if (noClear) throw new Error("Duplicate /do-it option: --no-clear");
 			noClear = true;
-		} else {
+		} else if (token === "--in-place") {
 			if (inPlace) throw new Error("Duplicate /do-it option: --in-place");
 			inPlace = true;
+		} else {
+			if (noMerge) throw new Error("Duplicate /do-it option: --no-merge");
+			noMerge = true;
 		}
 		remaining = (match[2] ?? "").trim();
 	}
-	return { request: "", noClear, inPlace };
+	return { request: "", noClear, inPlace, noMerge };
 }
 
 export function routeDirectDoItInput(text: string, recentPlanPath?: string): string | undefined {
@@ -2654,7 +2659,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (!continuation || continuation.consumed || consumed) return;
 		await pi.appendEntry(`${DO_IT_CONTINUATION_TYPE}.consumed`, { request: continuation.request });
-		await pi.sendUserMessage(`/do-it --no-clear${continuation.inPlace ? " --in-place" : ""}${continuation.request ? ` ${continuation.request}` : ""}`);
+		await pi.sendUserMessage(`/do-it --no-clear${continuation.inPlace ? " --in-place" : ""}${continuation.noMerge ? " --no-merge" : ""}${continuation.request ? ` ${continuation.request}` : ""}`);
 	});
 	pi.on("session_tree", (_event, ctx) => {
 		restorePlanLifecycle(ctx);
@@ -2693,7 +2698,7 @@ export default function (pi: ExtensionAPI) {
 		name: "workflow_complete",
 		label: "Complete Isolated Workflow",
 		description:
-			"Commit an active raw /do-it workflow, merge it with --no-ff into its clean primary branch, verify the merge, and remove only the owned worktree and branch.",
+			"Commit an active raw /do-it workflow and verify its selected merge or commit-and-retain closeout policy; retained closeout preserves the owned branch, worktree, and ownership record.",
 		parameters: Type.Object({}, { additionalProperties: false }),
 		renderCall(_args, theme, context) {
 			return renderLifecycleCall("workflow complete", theme, context);
@@ -2713,13 +2718,18 @@ export default function (pi: ExtensionAPI) {
 					return ownership ? { ownership, resumed: true } : undefined;
 				})();
 				if (!worktree) throw new Error("No active raw /do-it workflow worktree exists.");
-				const completed = await verifyAndCleanupWorkflowWorktree({ worktree, runner: workflowRunner });
+				const retained = worktree.ownership.closeoutPolicy === "retain";
+				const completed = retained
+					? await verifyRetainedWorkflowWorktree({ worktree, runner: workflowRunner })
+					: await verifyAndCleanupWorkflowWorktree({ worktree, runner: workflowRunner });
 				activeRawWorkflow = undefined;
 				deactivateTools(pi, ["workflow_complete"]);
 				return {
 					content: [{
 						type: "text" as const,
-						text: `Workflow completed.\n${completed.branch} committed and merged into ${completed.primaryBranch} and cleaned up.`,
+						text: retained
+						? `Workflow completed.\n${completed.branch} committed and retained without merging into ${completed.primaryBranch}; the worktree and ownership record were retained.`
+						: `Workflow completed.\n${completed.branch} committed and merged into ${completed.primaryBranch} and cleaned up.`,
 					}],
 					details: completed,
 				};
@@ -2767,7 +2777,7 @@ export default function (pi: ExtensionAPI) {
 				const archivedPlanPath = path.join(ownership.worktree, archivedPlan);
 				if (!fs.existsSync(archivedPlanPath))
 					throw new Error("Completed plan was not archived in the owned workflow worktree.");
-				const closeoutPolicy = parsePlanCloseoutPolicy(fs.readFileSync(archivedPlanPath, "utf8"));
+				const closeoutPolicy = ownership.closeoutPolicy ?? parsePlanCloseoutPolicy(fs.readFileSync(archivedPlanPath, "utf8"));
 				const verified = closeoutPolicy === "retain"
 					? await verifyRetainedWorkflowWorktree({
 						worktree: { ownership, resumed: true },
@@ -3150,6 +3160,7 @@ export default function (pi: ExtensionAPI) {
 						workflow: "do-it",
 						workflowId,
 						planPath: canonicalPlanPath,
+						closeoutPolicy: parsed.noMerge ? "retain" : undefined,
 						slug,
 						runner: workflowRunner,
 						allowDirtyPrimary: canonicalPlan,
@@ -3163,7 +3174,8 @@ export default function (pi: ExtensionAPI) {
 						ownedWorktree = worktree;
 						ownedWorkspace = worktree.ownership.worktree;
 					}
-					const retainCloseout = canonicalPlan && closeoutPolicy === "retain";
+					const effectiveCloseoutPolicy = worktree?.ownership.closeoutPolicy ?? closeoutPolicy;
+					const retainCloseout = !parsed.inPlace && (effectiveCloseoutPolicy === "retain");
 					const closeoutWork = parsed.inPlace
 						? canonicalPlan
 							? "archive the completed spec, stage and commit all in-scope artifacts in the invoking worktree; do not merge or inspect another worktree"

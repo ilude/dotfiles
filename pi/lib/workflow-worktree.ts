@@ -28,6 +28,8 @@ export interface WorkflowWorktreeOwnership {
 	// Optional for v1 records created before canonical plan ownership.
 	planPath?: string;
 	closeoutStage?: WorkflowCloseoutStage;
+	// Optional for v1 records created before invocation-level closeout policy.
+	closeoutPolicy?: "merge" | "retain";
 	mergedHead?: string;
 }
 
@@ -94,7 +96,7 @@ function writeOwnership(filePath: string, ownership: object): void {
 function readOwnership(filePath: string): WorkflowWorktreeOwnership | undefined {
 	if (!fs.existsSync(filePath)) return undefined;
 	const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as Partial<WorkflowWorktreeOwnership>;
-	if (parsed.version !== OWNERSHIP_VERSION || !["plan-it", "do-it", "goal"].includes(parsed.workflow ?? "") || typeof parsed.workflowId !== "string" || typeof parsed.repoRoot !== "string" || typeof parsed.primaryWorktree !== "string" || typeof parsed.primaryBranch !== "string" || typeof parsed.initialPrimaryHead !== "string" || typeof parsed.branch !== "string" || typeof parsed.worktree !== "string" || (parsed.state !== "active" && parsed.state !== "complete") || (parsed.planPath !== undefined && !/^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(parsed.planPath)) || (parsed.closeoutStage !== undefined && !["active", "archived", "committed", "merged"].includes(parsed.closeoutStage)))
+	if (parsed.version !== OWNERSHIP_VERSION || !["plan-it", "do-it", "goal"].includes(parsed.workflow ?? "") || typeof parsed.workflowId !== "string" || typeof parsed.repoRoot !== "string" || typeof parsed.primaryWorktree !== "string" || typeof parsed.primaryBranch !== "string" || typeof parsed.initialPrimaryHead !== "string" || typeof parsed.branch !== "string" || typeof parsed.worktree !== "string" || (parsed.state !== "active" && parsed.state !== "complete") || (parsed.planPath !== undefined && !/^\.specs\/[a-z0-9]+(?:-[a-z0-9]+)*\/plan\.md$/.test(parsed.planPath)) || (parsed.closeoutStage !== undefined && !["active", "archived", "committed", "merged"].includes(parsed.closeoutStage)) || (parsed.closeoutPolicy !== undefined && parsed.closeoutPolicy !== "merge" && parsed.closeoutPolicy !== "retain"))
 		throw new Error(`Invalid workflow ownership record: ${filePath}`);
 	return parsed as WorkflowWorktreeOwnership;
 }
@@ -267,7 +269,7 @@ export async function verifyInPlaceWorkflow(input: { ownership: InPlaceWorkflowO
 	return completed;
 }
 
-export async function ensureWorkflowWorktree(input: { cwd: string; workflow: WorkflowOwner; workflowId: string; slug: string; planPath?: string; runner: WorkflowGitRunner; allowDirtyPrimary?: boolean }): Promise<WorkflowWorktree> {
+export async function ensureWorkflowWorktree(input: { cwd: string; workflow: WorkflowOwner; workflowId: string; slug: string; planPath?: string; closeoutPolicy?: "merge" | "retain"; runner: WorkflowGitRunner; allowDirtyPrimary?: boolean }): Promise<WorkflowWorktree> {
 	const root = await resolveWorkflowRepoRoot(input.cwd, input.runner);
 	const slug = assertSafeSlug(input.slug);
 	const metadataPath = ownershipPath(root, slug);
@@ -277,9 +279,10 @@ export async function ensureWorkflowWorktree(input: { cwd: string; workflow: Wor
 		if (!fs.existsSync(existing.worktree)) throw new Error("owned workflow worktree is missing; preserve the ownership record for recovery");
 		const listed = await listWorktrees(root, input.runner);
 		if (!listed.some((entry) => normalize(entry.path) === normalize(existing.worktree))) throw new Error("owned workflow worktree is not registered with Git");
-		const transferred = existing.workflow === input.workflow && existing.workflowId === input.workflowId && (!input.planPath || existing.planPath === input.planPath)
+		const policyChanged = input.closeoutPolicy !== undefined && existing.closeoutPolicy !== input.closeoutPolicy;
+		const transferred = existing.workflow === input.workflow && existing.workflowId === input.workflowId && (!input.planPath || existing.planPath === input.planPath) && !policyChanged
 			? existing
-			: { ...existing, workflow: input.workflow, workflowId: input.workflowId, ...(input.planPath ? { planPath: input.planPath } : {}), updatedAt: new Date().toISOString() };
+			: { ...existing, workflow: input.workflow, workflowId: input.workflowId, ...(input.planPath ? { planPath: input.planPath } : {}), ...(input.closeoutPolicy ? { closeoutPolicy: input.closeoutPolicy } : {}), updatedAt: new Date().toISOString() };
 		if (transferred !== existing) writeOwnership(metadataPath, transferred);
 		return { ownership: transferred, resumed: true };
 	}
@@ -290,7 +293,7 @@ export async function ensureWorkflowWorktree(input: { cwd: string; workflow: Wor
 	const added = await input.runner(primary.worktree, ["worktree", "add", "-b", branch, worktree, primary.branch]);
 	if (added.code !== 0) throw new Error(`create workflow worktree: ${added.stderr.trim() || added.stdout.trim()}`);
 	const now = new Date().toISOString();
-	const ownership: WorkflowWorktreeOwnership = { version: 1, workflow: input.workflow, workflowId: input.workflowId, repoRoot: root, primaryWorktree: primary.worktree, primaryBranch: primary.branch, initialPrimaryHead: primary.head, branch, worktree: normalize(worktree), createdAt: now, updatedAt: now, state: "active", ...(input.planPath ? { planPath: input.planPath } : {}) };
+	const ownership: WorkflowWorktreeOwnership = { version: 1, workflow: input.workflow, workflowId: input.workflowId, repoRoot: root, primaryWorktree: primary.worktree, primaryBranch: primary.branch, initialPrimaryHead: primary.head, branch, worktree: normalize(worktree), createdAt: now, updatedAt: now, state: "active", ...(input.planPath ? { planPath: input.planPath } : {}), ...(input.closeoutPolicy ? { closeoutPolicy: input.closeoutPolicy } : {}) };
 	writeOwnership(metadataPath, ownership);
 	return { ownership, resumed: false };
 }
@@ -461,30 +464,32 @@ export async function verifyAndCleanupWorkflowWorktree(input: {
 
 export async function verifyRetainedWorkflowWorktree(input: {
 	worktree: WorkflowWorktree;
-	planPath: string;
+	planPath?: string;
 	runner: WorkflowGitRunner;
 }): Promise<WorkflowWorktreeOwnership> {
 	const ownership = input.worktree.ownership;
 	if (ownership.state !== "active") throw new Error("workflow worktree is already complete");
 	if (!fs.existsSync(ownership.worktree)) throw new Error("workflow worktree is missing; retained worktree preserved");
-	const planPath = input.planPath.replace(/^@/, "").replace(/\\/g, "/");
-	if (ownership.planPath && ownership.planPath !== planPath)
+	const planPath = input.planPath?.replace(/^@/, "").replace(/\\/g, "/");
+	if (ownership.planPath && planPath && ownership.planPath !== planPath)
 		throw new Error("workflow closeout plan path does not match ownership");
-	const slug = workflowSlugFromPlan(planPath);
-	const source = path.join(ownership.worktree, planPath);
-	const archived = path.join(ownership.worktree, ".specs", "archive", slug, "plan.md");
-	if (fs.existsSync(source) || !fs.existsSync(archived))
-		throw new Error("completed plan was not archived in the retained workflow worktree");
-	const plan = readLinkedPlan(archived);
-	if (!plan.complete) throw new Error(`archived plan is not complete: ${plan.blockers.join("; ")}`);
-	const archivedPlanPath = `.specs/archive/${slug}/plan.md`;
-	const ignored = await input.runner(ownership.primaryWorktree, ["check-ignore", "-q", "--", archivedPlanPath]);
-	if (ignored.code !== 0 && ignored.code !== 1)
-		throw new Error(`inspect retained plan ignore policy: ${ignored.stderr.trim() || ignored.stdout.trim()}`);
-	if (ignored.code === 0) {
-		const tracked = await input.runner(ownership.worktree, ["ls-files", "--error-unmatch", "--", archivedPlanPath]);
-		if (tracked.code === 0) throw new Error("ignored retained plan was committed on the workflow branch");
-		if (tracked.code !== 1) throw new Error(`inspect retained plan tracking state: ${tracked.stderr.trim() || tracked.stdout.trim()}`);
+	if (planPath) {
+		const slug = workflowSlugFromPlan(planPath);
+		const source = path.join(ownership.worktree, planPath);
+		const archived = path.join(ownership.worktree, ".specs", "archive", slug, "plan.md");
+		if (fs.existsSync(source) || !fs.existsSync(archived))
+			throw new Error("completed plan was not archived in the retained workflow worktree");
+		const plan = readLinkedPlan(archived);
+		if (!plan.complete) throw new Error(`archived plan is not complete: ${plan.blockers.join("; ")}`);
+		const archivedPlanPath = `.specs/archive/${slug}/plan.md`;
+		const ignored = await input.runner(ownership.primaryWorktree, ["check-ignore", "-q", "--", archivedPlanPath]);
+		if (ignored.code !== 0 && ignored.code !== 1)
+			throw new Error(`inspect retained plan ignore policy: ${ignored.stderr.trim() || ignored.stdout.trim()}`);
+		if (ignored.code === 0) {
+			const tracked = await input.runner(ownership.worktree, ["ls-files", "--error-unmatch", "--", archivedPlanPath]);
+			if (tracked.code === 0) throw new Error("ignored retained plan was committed on the workflow branch");
+			if (tracked.code !== 1) throw new Error(`inspect retained plan tracking state: ${tracked.stderr.trim() || tracked.stdout.trim()}`);
+		}
 	}
 	const status = await input.runner(ownership.worktree, ["status", "--porcelain=v1"]);
 	if (status.code !== 0) throw new Error(`inspect workflow worktree: ${status.stderr.trim()}`);

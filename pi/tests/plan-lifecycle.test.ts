@@ -315,10 +315,11 @@ describe("plan lifecycle", () => {
 		expect(getDoItArgumentCompletions("", active)).toEqual([
 			{ value: "--no-clear", label: "--no-clear" },
 			{ value: "--in-place", label: "--in-place" },
+			{ value: "--no-merge", label: "--no-merge" },
 			{ value: ".specs/active-plan/plan.md", label: ".specs/active-plan/plan.md" },
 		]);
-		expect(getDoItArgumentCompletions("--no-clear ", active)?.map((item) => item.value)).toEqual(["--in-place", ".specs/active-plan/plan.md"]);
-		expect(getDoItArgumentCompletions("--no-clear --in-place ", active)?.map((item) => item.value)).toEqual([".specs/active-plan/plan.md"]);
+		expect(getDoItArgumentCompletions("--no-clear ", active)?.map((item) => item.value)).toEqual(["--in-place", "--no-merge", ".specs/active-plan/plan.md"]);
+		expect(getDoItArgumentCompletions("--no-clear --in-place ", active)?.map((item) => item.value)).toEqual(["--no-merge", ".specs/active-plan/plan.md"]);
 		expect(getDoItArgumentCompletions("--", active)).toBeNull();
 		expect(getDoItArgumentCompletions("-- ", active)).toBeNull();
 		expect(getDoItArgumentCompletions(".specs/active-plan/plan.md ", active)).toBeNull();

@@ -38,7 +38,7 @@ vi.mock("../lib/workflow-telemetry", () => ({
 }));
 
 vi.mock("../lib/workflow-worktree", () => ({
-	ensureWorkflowWorktree: vi.fn(async (input: { cwd: string; workflow: string; workflowId: string; slug: string }) => ({
+	ensureWorkflowWorktree: vi.fn(async (input: { cwd: string; workflow: string; workflowId: string; slug: string; closeoutPolicy?: "merge" | "retain" }) => ({
 		resumed: false,
 		ownership: {
 			version: 1,
@@ -53,6 +53,7 @@ vi.mock("../lib/workflow-worktree", () => ({
 			createdAt: "2026-08-23T00:00:00.000Z",
 			updatedAt: "2026-08-23T00:00:00.000Z",
 			state: "active",
+			...(input.closeoutPolicy ? { closeoutPolicy: input.closeoutPolicy } : {}),
 		},
 	})),
 	closeWorkflowWorktree: vi.fn(),
@@ -186,13 +187,16 @@ async function prepareReadyInteractivePlan(mockPi: ReturnType<typeof createMockP
 
 describe("workflow slash command dispatch", () => {
 	it("parses exact independent options and preserves literal text after the terminator", () => {
-		expect(parseDoItArgs("--in-place --no-clear -- --no-clear raw task")).toEqual({
+		expect(parseDoItArgs("--in-place --no-clear --no-merge -- --no-clear raw task")).toEqual({
 			request: "--no-clear raw task",
 			noClear: true,
 			inPlace: true,
+			noMerge: true,
 		});
 		expect(() => parseDoItArgs("--no")).toThrow("Invalid /do-it option");
-		expect(() => parseDoItArgs("--in-place --in-place")).toThrow("Duplicate");
+		expect(() => parseDoItArgs("--no-merge --no-merge")).toThrow("Duplicate");
+		expect(() => parseDoItArgs("task --no-merge")).not.toThrow();
+		expect(parseDoItArgs("task --no-merge").noMerge).toBe(false);
 		expect(routeDirectDoItInput("execute .specs/example/plan.md")).toBe(".specs/example/plan.md");
 		expect(routeDirectDoItInput("build and apply to main as one squashed commit", ".specs/example/plan.md")).toBe(".specs/example/plan.md");
 		expect(routeDirectDoItInput("we should discuss this plan", ".specs/example/plan.md")).toBeUndefined();
@@ -489,8 +493,10 @@ describe("workflow slash command dispatch", () => {
 		const mod = await import("../extensions/workflow-commands.ts");
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
 		const definition = mockPi.registerCommand.mock.calls.find(([name]) => name === "do-it")?.[1] as any;
-		expect(definition.getArgumentCompletions("").map((item: any) => item.value)).toEqual(["--no-clear", "--in-place"]);
-		expect(definition.getArgumentCompletions("--no-clear ").map((item: any) => item.value)).toEqual(["--in-place"]);
+		expect(definition.getArgumentCompletions("").map((item: any) => item.value)).toEqual(["--no-clear", "--in-place", "--no-merge"]);
+		expect(definition.getArgumentCompletions("--no-clear ").map((item: any) => item.value)).toEqual(["--in-place", "--no-merge"]);
+		expect(definition.getArgumentCompletions("--no-merge ").map((item: any) => item.value)).toEqual(["--no-clear", "--in-place"]);
+		expect(definition.getArgumentCompletions("--no-merge --")).toBeNull();
 	});
 
 	it("/do-it echoes before repository resolution completes", async () => {
@@ -593,6 +599,22 @@ describe("workflow slash command dispatch", () => {
 				display: true,
 			}),
 			{ deliverAs: "nextTurn" },
+		);
+	});
+
+	it("/do-it --no-merge overrides canonical merge retention", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(path.join(fixture.root, fixture.planPath), readyPlan(fixture.planPath), "utf8");
+		mockPi.setActiveTools([]);
+
+		await getHandler(mockPi, "do-it")(`--no-merge ${fixture.planPath}`, { cwd: fixture.root });
+
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ content: expect.stringContaining("do not merge the workflow branch into the primary branch") }),
+			expect.anything(),
 		);
 	});
 
@@ -724,6 +746,106 @@ describe("workflow slash command dispatch", () => {
 			}),
 			expect.objectContaining({ triggerTurn: true, deliverAs: "followUp" }),
 		);
+	});
+
+	it("/do-it --no-merge routes raw closeout through retained verification", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		mockPi.setActiveTools([]);
+
+		await getHandler(mockPi, "do-it")("--no-merge fix the task", { cwd: "/repo" });
+		const tool = mockPi._getTool("workflow_complete");
+		if (!tool) throw new Error("workflow_complete tool not registered");
+		await tool.execute("complete", {}, undefined, undefined, {});
+		expect(worktrees.verifyRetainedWorkflowWorktree).toHaveBeenCalled();
+		expect(worktrees.verifyAndCleanupWorkflowWorktree).not.toHaveBeenCalled();
+	});
+
+	it("/do-it --no-merge raw policy survives a fresh extension instance", async () => {
+		const firstPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		mod.default(firstPi as Parameters<typeof mod.default>[0]);
+		firstPi.setActiveTools([]);
+
+		await getHandler(firstPi, "do-it")("--no-merge fix the task", { cwd: "/repo" });
+		expect(worktrees.ensureWorkflowWorktree).toHaveBeenCalledWith(expect.objectContaining({ closeoutPolicy: "retain" }));
+
+		vi.mocked(worktrees.readWorkflowOwnershipForWorktree).mockReturnValueOnce({
+			version: 1,
+			workflow: "do-it",
+			workflowId: "do-it:fix-the-task",
+			repoRoot: "/repo",
+			primaryWorktree: "/repo",
+			primaryBranch: "main",
+			initialPrimaryHead: "initial-head",
+			branch: "workflow/fix-the-task",
+			worktree: "/repo/.worktrees/fix-the-task",
+			createdAt: "2026-08-23T00:00:00.000Z",
+			updatedAt: "2026-08-23T00:00:00.000Z",
+			state: "active",
+			closeoutPolicy: "retain",
+		});
+		const resumedPi = createMockPi();
+		mod.default(resumedPi as Parameters<typeof mod.default>[0]);
+		resumedPi.setActiveTools(["workflow_complete"]);
+		const tool = resumedPi._getTool("workflow_complete");
+		if (!tool) throw new Error("workflow_complete tool not registered");
+		await tool.execute("complete", {}, undefined, undefined, {});
+
+		expect(worktrees.verifyRetainedWorkflowWorktree).toHaveBeenCalledWith(expect.objectContaining({
+			worktree: expect.objectContaining({ ownership: expect.objectContaining({ closeoutPolicy: "retain" }) }),
+		}));
+		expect(worktrees.verifyAndCleanupWorkflowWorktree).not.toHaveBeenCalled();
+	});
+
+	it("/do-it --no-merge canonical policy survives a fresh extension instance", async () => {
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(path.join(fixture.root, fixture.planPath), readyPlan(fixture.planPath), "utf8");
+		const firstPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		mod.default(firstPi as Parameters<typeof mod.default>[0]);
+		firstPi.setActiveTools([]);
+
+		await getHandler(firstPi, "do-it")(`--no-merge ${fixture.planPath}`, { cwd: fixture.root });
+		expect(worktrees.ensureWorkflowWorktree).toHaveBeenCalledWith(expect.objectContaining({
+			planPath: fixture.planPath,
+			closeoutPolicy: "retain",
+		}));
+		const archivedPlan = path.join(fixture.root, ".specs", "archive", "workflow-fixture", "plan.md");
+		await fs.promises.mkdir(path.dirname(archivedPlan), { recursive: true });
+		await fs.promises.writeFile(archivedPlan, readyPlan(fixture.planPath), "utf8");
+		vi.mocked(worktrees.readWorkflowOwnershipRecord).mockReturnValueOnce({
+			version: 1,
+			workflow: "do-it",
+			workflowId: "do-it:workflow-fixture",
+			repoRoot: fixture.root,
+			primaryWorktree: fixture.root,
+			primaryBranch: "main",
+			initialPrimaryHead: "initial-head",
+			branch: "workflow/workflow-fixture",
+			worktree: fixture.root,
+			createdAt: "2026-08-23T00:00:00.000Z",
+			updatedAt: "2026-08-23T00:00:00.000Z",
+			state: "active",
+			planPath: fixture.planPath,
+			closeoutPolicy: "retain",
+		});
+		const resumedPi = createMockPi();
+		mod.default(resumedPi as Parameters<typeof mod.default>[0]);
+		resumedPi.setActiveTools(["plan_archive"]);
+		const tool = resumedPi._getTool("plan_archive");
+		if (!tool) throw new Error("plan_archive tool not registered");
+		await tool.execute("archive", { path: fixture.planPath }, undefined, undefined, { cwd: fixture.root });
+
+		expect(worktrees.verifyRetainedWorkflowWorktree).toHaveBeenCalledWith(expect.objectContaining({
+			planPath: fixture.planPath,
+			worktree: expect.objectContaining({ ownership: expect.objectContaining({ closeoutPolicy: "retain" }) }),
+		}));
+		expect(worktrees.verifyAndCleanupWorkflowWorktree).not.toHaveBeenCalled();
 	});
 
 	it("/do-it keeps raw task dispatch unchanged", async () => {
