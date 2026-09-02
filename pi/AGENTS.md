@@ -43,6 +43,7 @@ Delete unnecessary choices; prefer direct code; enforce consequential invariants
 
 ## Pi ownership
 
+- Onclave discovery and messaging are user-directed. Use them only when the user explicitly requests Onclave communication or to continue an already user-directed Onclave workflow. Never use Onclave as a substitute for Pi subagents, reviewers, failed delegation, provider fallback, local execution, or autonomous workload distribution.
 - Pi runtime, workflow, safety, routing, status, and tools belong in `pi/` unless another client or cross-client support is requested.
 - Track curated Pi source and configuration. Do not commit generated sessions, histories, logs, caches, indexes, local events, or tool state.
 - Keep client-specific command, tool, and workflow guidance in its owning resource; reserve this file for guidance that applies independently of loaded resources.

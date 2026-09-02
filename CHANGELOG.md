@@ -2,6 +2,20 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-09-02: Constrain Onclave to user-directed communication
+
+**Why:** Onclave is an independent agent communication product, not a substitute execution pool for Pi delegation, review, or provider fallback.
+
+**Changed:**
+- Advanced the Onclave submodule to the outbound-usage boundary implementation and documentation.
+- Clarified in Pi instructions that discovery and messaging require an explicit user-directed Onclave workflow.
+
+**Preserved:** Normal Pi subagents, reviewers, local execution, and provider handling remain the owning mechanisms for autonomous work.
+
+**Files:** `modules/onclave`, `pi/AGENTS.md`
+
+---
+
 ## 2026-09-02: Add profile-aware Pi browser control
 
 **Why:** Browser automation could not safely select a real Brave profile from a friendly name without guessing profile directories, ports, process ownership, or the active tab.
