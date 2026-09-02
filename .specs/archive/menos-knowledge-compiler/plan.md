@@ -1,8 +1,8 @@
 ---
 created: 2026-04-07
-status: reviewed
+status: superseded
 review: review-2/synthesis.md
-completed:
+completed: 2026-09-01
 ---
 
 # Plan: menos knowledge compiler - personal long-term memory
