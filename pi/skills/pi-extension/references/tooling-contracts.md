@@ -11,6 +11,7 @@ This index records stable public and normative semantics for Pi extensions and t
 
 ## Contract index
 
+- [Prompt history](#prompt-history)
 - [Footer and extension status](#footer-and-extension-status)
 - [Cache-friendly extension context](contracts/cache-friendly-extension.md)
 - [Commit workflow](contracts/commit-workflow.md)
@@ -31,6 +32,13 @@ This index records stable public and normative semantics for Pi extensions and t
 - [Tool visibility and discovery](contracts/tool-discovery.md)
 - [PowerShell](contracts/powershell.md)
 - [Scheduler](contracts/scheduler.md)
+
+## Prompt history
+
+- `/history` is a TUI-only overlay over textual user-role message entries from `ctx.sessionManager.getBranch()`. It does not scan other branches or sessions and does not use persisted history indexes.
+- The list starts in chronological order with the newest prompt selected. Up/Down and item-based Page Up/Page Down navigate; `/` searches; `v` or Space toggles a clipped full-prompt view; `r` reverses order while preserving selection by entry ID; and Escape cancels after first clearing active search.
+- `e` replaces current editor contents with the selected prompt. `c` and `y` copy its exact text and close before clipboard work. Enter and `b` navigate the current session without summarizing, and `f` forks from the selected entry.
+- `/history` has no global shortcut, numeric invocation mode, telemetry, or fallback clipboard file.
 
 ## Cache-friendly extension context
 

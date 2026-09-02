@@ -2,6 +2,23 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-09-02: Add active-branch prompt history
+
+**Why:** Operators needed a fast way to find and reuse their own prompts without searching assistant output, tool results, other branches, or other sessions.
+
+**Changed:**
+- Added a `/history` TUI overlay for textual user prompts on the active session branch.
+- Added search, ordering, expansion, paging, editor recall, exact clipboard copy, current-session navigation, and session forking.
+- Kept selection tied to stable entry identities across filtering and reordering.
+
+**Preserved:** The command adds no global shortcut, numeric invocation mode, persisted index, cross-session search, or alternate history source. Existing `/tree`, `/fork`, editor history, and clipboard ownership remain unchanged.
+
+**Validation:** Focused interaction tests and Pi typecheck passed.
+
+**Files:** `pi/extensions/history.ts`, `pi/tests/history.test.ts`, Pi operator documentation and tooling contract, and `.specs/archive/prompt-history-ui/plan.md`
+
+---
+
 ## 2026-09-02: Constrain Onclave to user-directed communication
 
 **Why:** Onclave is an independent agent communication product, not a substitute execution pool for Pi delegation, review, or provider fallback.

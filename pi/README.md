@@ -370,6 +370,10 @@ Provides bounded process-local management for long-lived Bash commands through `
 
 `/summarize [focus]` remains an active-model workflow that produces a normal assistant response. The extension adds a bounded, redacted evidence packet with tool failures, shell exit codes, and head-tail session coverage while omitting thinking, images, previous recaps, and hidden workflow prompts. It does not run automatically or send content to a separate model or provider.
 
+### `history.ts`
+
+`/history` opens a TUI overlay containing only textual user prompts from the current active session branch. It keeps chronological order initially with the newest prompt selected. Use Up/Down or Page Up/Page Down to select, `/` to search, `v` or Space to inspect the full prompt, and `r` to reverse the list. Use `e` to replace the current editor text, `c` or `y` to copy the exact prompt and close, Enter or `b` to navigate the current session without summarizing, `f` to fork from the prompt, and Escape to clear active search before a later Escape cancels. The command has no global shortcut or numeric argument mode.
+
 ### `tool-visibility.ts` and `tool-search.ts`
 
 Keeps workflow-state-gated tools out of the default provider schema until they are valid: commit execution, goal completion/progress, improvement decisions, plan archival, workflow-change tracking, and review-artifact writing. Their owning extensions activate them from deterministic command or prompt state. Current roots see the role-specific subagent tools permitted by their authority. Historical subagent names remain registered but hidden for resumed-session compatibility. General and specialized callable tools, including root-only Onclave, usage-report, web, PowerShell, and scheduler tools, remain active when their authority permits them.
