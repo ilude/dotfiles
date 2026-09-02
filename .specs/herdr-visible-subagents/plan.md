@@ -1,22 +1,25 @@
 ---
 created: 2026-08-31
-status: draft
+status: ready
 ---
 
-# Add visible Herdr execution surfaces for governed Pi subagents
+# Add visible Herdr execution surfaces for governed Pi subagents and background terminals
 
 ## Objective
 
-Pi must optionally host governed subagents in visible Herdr panes while preserving the existing broker, authority, task, deadline, continuation, background-delivery, and deliverable-settlement contracts. The primary orchestrator and Team Lead layouts must expose active child terminals without making terminal state authoritative for work completion.
+Pi must optionally host governed subagents and managed background terminals in visible Herdr panes while preserving their separate lifecycle authorities. The primary orchestrator and Team Lead layouts must expose active child terminals without making terminal state authoritative for work completion. Long-lived servers, watchers, and concurrent shell work may run in owned Herdr panes while the existing `BackgroundTerminalManager` remains authoritative for process state, bounded output, completion delivery, `/ps`, and `bg_kill`.
 
-## Completion evidence
+## Completion Evidence
 
+- Evidence: Governed read-only and modifying children, Team Lead packages, and managed background terminals run on explicit Herdr surfaces while their existing managers remain authoritative; accepted layouts, lifecycle behavior, bounded result or output delivery, reload policy, authority controls, and owned-resource cleanup pass focused and live checks.
+- Fails when: Headless defaults change, terminal state or transcript text becomes authoritative, child or background authority expands, process capacity releases before proven settlement, reload or cancellation loses owned state, output/result delivery duplicates or disappears, or any unowned Herdr resource is changed.
 - A read-only pane-hosted Pi child has the same closed tool authority as its headless equivalent, registers with the authenticated broker, and returns a nonblank validated deliverable without transcript scraping.
 - Foreground and background Herdr runs compose through the existing run manager with process state, process outcome, and deliverable outcome remaining separate.
 - Cancellation, reload, pane closure, and Herdr failure settle without closing unowned panes or bypassing Team Lead cutoff and reconciliation bounds.
 - The primary layout shows one through four direct workers above the primary orchestrator; the fifth worker creates one dedicated tab containing all active direct workers, up to eight.
 - A visible Team Lead receives one dedicated tab with the lead above as many as eight visible leaves in two rows of four.
 - `prefix+z` allows focused interaction and restores the prior layout without changing broker identity or authority.
+- `bg_start` can explicitly host a managed server or watcher in an owned Herdr pane while preserving damage-control preflight, bounded stdout/stderr capture, `/ps`, natural completion, `bg_kill`, reload survival, and process-tree cleanup without transcript scraping.
 - Focused tests, live Herdr checks, Pi typecheck, and `git diff --check` pass.
 
 ## Boundaries
@@ -25,17 +28,20 @@ Pi must optionally host governed subagents in visible Herdr panes while preservi
 
 - An optional Herdr execution surface behind the existing subagent run manager.
 - Windows `pane run` plus recognized-agent detection as the Pi launch fallback.
-- Broker-connected read-only feasibility experiments in an isolated Git worktree.
-- Owned pane and tab lifecycle, layout, reload recovery, cancellation, and surface telemetry.
+- Focus-isolated read-only capability checks and a production read-only pilot before broader authority is enabled.
+- Owned pane and tab lifecycle, layout, reload cancellation, and surface telemetry.
 - Read-only production pilot, followed by modifying agents and Team Leads only after their gates pass.
 - Clear operator labels for read-only, modifying, and Team Lead tools.
+- An optional Herdr execution surface for `bg_start` and corresponding owned-pane lifecycle for `bg_kill`, natural completion, manual pane closure, reload, and failure.
+- A manager-owned output and exit relay for pane-hosted background commands; terminal transcript scraping is never an output or completion source.
 - A later compatibility migration to `subagent_inspect` and `subagent_modify` after the execution surface is stable.
 
 ### Out of scope for the first production slice
 
 - Installing another Herdr orchestration package.
-- Replacing the existing broker or process-local run manager.
-- Transcript scraping as canonical result delivery.
+- Replacing the existing broker, subagent run manager, or `BackgroundTerminalManager`.
+- Sharing subagent broker permits, completion transport, run-manager state, or visible-slot accounting with background terminals.
+- Transcript scraping as canonical result or background-terminal output delivery.
 - Changing the broker's default active-descendant ceiling of eight or its configurable range of 1 through 16.
 - Automatic retries or deadline extension.
 - Broker-based child clarification; visible children use their existing direct Pi UI prompts and Herdr blocked-state reporting in this plan.
@@ -46,8 +52,8 @@ Pi must optionally host governed subagents in visible Herdr panes while preservi
 
 - Headless execution remains the default.
 - Herdr execution is explicit and fails when the requested surface is unavailable.
-- The broker remains authoritative for identity, authority, result delivery, and settlement.
-- Process settlement never implies deliverable completion.
+- The broker authenticates child identity and transports admission, cancellation, and run-bound completion inputs; the existing run manager exclusively commits terminal run outcomes and process-permit settlement.
+- Process settlement never implies deliverable completion. An accepted child completion may establish the deliverable before a persistent visible Pi process exits. The process stops through a server-independent bounded termination path before its permit releases; visual pane closure and reflow may occur later.
 - Empty required deliverables fail.
 - Read-only agents cannot modify files, use raw shell tools, or delegate.
 - Modifying authority remains bounded by the existing enforced boundary.
@@ -58,6 +64,9 @@ Pi must optionally host governed subagents in visible Herdr panes while preservi
 - Only panes and tabs created and recorded by the current run may be closed automatically.
 - Direct operator interaction is bounded steering and never expands child authority.
 - The installed Herdr integration remains the sole Herdr lifecycle reporter.
+- `BackgroundTerminalManager` remains the sole authority for managed background process lifecycle, bounded stdout/stderr retention, completion delivery, `/ps`, and `bg_kill`; it shares only low-level Herdr ownership primitives and process-tree termination with subagents.
+- Existing `bg_start` damage-control analysis occurs before manager registration, pane creation, or process start. Headless background execution remains the default, and an explicit unavailable Herdr surface fails without fallback.
+- Background terminals remain process-local, survive session replacement within the Pi process, and terminate on Pi process exit under the existing contract.
 
 ## Accepted workflow decisions
 
@@ -66,15 +75,21 @@ Pi must optionally host governed subagents in visible Herdr panes while preservi
 3. A later naming migration introduces `subagent_inspect` and `subagent_modify` with temporary compatibility aliases. `subagent_teamlead` retains its name.
 4. `surface` applies to the requested child only. Visible descendant policy is explicit and root-controlled.
 5. Herdr remains opt-in and headless remains the default.
-6. Successful panes close only after broker result capture. Failed and blocked panes remain visible.
-7. Failed and blocked panes consume visible capacity until the operator closes them.
-8. `/reload` must rebind existing owned panes instead of duplicating or abandoning them.
+6. Successful panes close only after broker result capture. Routine parent-cancelled panes close after bounded process settlement. Failed panes remain visible after settlement; actively blocked panes remain visible while the nonterminal run continues.
+7. Active blocked runs retain their controller and process permit while awaiting steering, completion, cancellation, or deadline. Blocked is not a terminal outcome: completion may still succeed, while cancellation or deadline settles the run as cancelled or timed out. Settled failed surfaces consume only visible capacity until the operator closes them. Cancelled panes do not remain merely for review of work the parent no longer needs.
+8. `/reload` does not preserve active visible runs. It cancels them through the normal bounded path, closes their owned panes after process settlement, and never recreates them automatically.
 9. Layout management acts only on owned-pane start, owned-pane closure, or threshold migration. It does not continuously force an ideal grid.
 10. `prefix+z` is the supported focused-interaction mechanism. No pane promotion registry is required.
-11. A user-steered child remains attached to the same run, task, authority, and validation requirements.
-12. Tool-name migration remains separate from the first Herdr implementation.
-13. A layout displays at most eight pane-hosted descendants. Explicit per-item Herdr requests beyond visible capacity fail before spawn; a Team Lead's root-controlled descendant-visibility policy means "up to eight visible", with additional scheduler-admitted descendants remaining headless.
-14. Visible capacity and broker scheduling capacity are separate contracts. Retained failed or blocked panes consume visible capacity but do not consume a settled process permit.
+11. Operator interaction is exceptional steering: zoom the child, nudge it or answer a blocker in the existing session, then let it continue normally. Steering remains attached to the same run, task, authority, deadline, and validation requirements.
+12. The operator never has to mark a child complete. The child completes normally by sending its run-bound result; the run manager settles it and the parent integrates the result.
+13. Tool-name migration remains separate from the first Herdr implementation.
+14. A layout displays at most eight pane-hosted descendants. Explicit per-item Herdr requests beyond visible capacity fail before spawn; a Team Lead's root-controlled descendant-visibility policy means "up to eight visible", with additional scheduler-admitted descendants remaining headless.
+15. Visible capacity and broker scheduling capacity are separate contracts. Retained failed panes consume visible capacity but do not consume a settled process permit. Visible slots are reserved atomically before pane or process creation and released on partial-launch cleanup, successful or cancelled cleanup, or explicit cleanup of a retained failed pane.
+16. Team Lead continuation preserves the original execution surface. A visible eligible partial resumes in its existing pane and saved session when available; a headless eligible partial remains headless. Continuation remains parent-controlled and requires no operator approval.
+17. `bg_start` receives `surface?: "headless" | "herdr"`; headless remains the compatibility default and explicit Herdr use requires a valid Herdr environment.
+18. A pane-hosted background command is still a `BackgroundTerminalManager` entry, not a subagent run. It does not acquire a broker permit, register a subagent completion handler, consume subagent visible capacity, or participate in Team Lead layouts.
+19. The actual managed command runs in the owned pane. A manager-owned relay carries stdout, stderr, and exit state into the existing bounded capture and completion path; Herdr transcript and agent state are never parsed as canonical output or settlement.
+20. Natural success and `bg_kill` close the owned pane after process-tree settlement. A failed command may retain its pane for diagnosis without retaining an active process; explicit cleanup closes only the recorded owned pane. Manual pane closure requests termination only for the exact active managed terminal. Herdr loss preserves manager truth and uses the independent PID-tree path.
 
 ## Layout contract
 
@@ -136,6 +151,14 @@ Each visible Team Lead receives one dedicated owned tab:
 - The tab remains while any retained pane exists.
 - The layout never changes the broker's configured active-descendant ceiling. Additional scheduler-admitted descendants remain headless under the package visibility policy; an explicit per-item Herdr request fails when no visible slot is available.
 
+### Visible managed background terminals
+
+- The first explicit `surface: "herdr"` background terminal creates one owned pane without changing focus. Visible background terminals use a dedicated owned `Background terminals` tab rather than subagent or Team Lead layouts.
+- Additional visible background terminals enter that tab under the existing manager's active/tracked capacity bounds. Layout changes occur only on owned start, owned closure, or explicit retained-pane cleanup and never change manager capacity.
+- `prefix+z` supports direct operator interaction with the actual server or watcher process. Such interaction does not alter damage-control history, process ownership, completion delivery, or cleanup authority.
+- When the final owned background pane closes and no retained failure remains, remove only the owned background tab.
+- Zoom may defer visual closure or reflow, but it never defers process-tree termination, exit proof, manager settlement, or completion delivery.
+
 ## Open questions and experimental evidence
 
 Every question records direct evidence in this plan before its blocking production phase begins. An unresolved blocking question stops that phase. A nonblocking question may be deferred only with a stated reason and preserved fallback behavior.
@@ -162,33 +185,33 @@ Every question records direct evidence in this plan before its blocking producti
 
 ### Q3: Single lifecycle ownership
 
-- Type: Experiment
-- Status: Open
+- Type: Design decision followed by implementation experiment
+- Status: Design resolved; implementation unproved
 - Assumption: The existing run manager can supervise a Herdr-hosted process while Herdr state remains optional process evidence rather than a second run state machine.
-- Evidence required: One run showing canonical process state, process outcome, and deliverable outcome with Herdr idle or done unable to force completion.
+- Evidence required: One run showing that an explicit run-bound child result settles the assignment exactly once, a retained TUI may remain idle afterward, operator steering stays on the same run, and Herdr idle or done alone cannot force completion.
 - Blocks: Execution-surface integration.
-- Resolution:
-- Plan impact:
+- Resolution: The existing broker will gain one bounded run-bound completion message. The broker authenticates and transports completion and cancellation inputs but never commits a terminal run outcome. The run manager owns one atomic terminal transition: the first valid completion, cancellation, deadline, or failure input that commits wins, and every later terminal input is rejected idempotently. The parent separately decides how the accepted result affects the larger objective. The operator normally observes only, may use `prefix+z` to nudge the same session or answer a blocker, and never manually marks completion.
+- Plan impact: Keep the broker as transport and the run manager as the sole settlement owner. Accept the deliverable without requiring the persistent Pi TUI to exit, then stop its process through bounded cleanup before releasing its permit; visual pane closure may be deferred independently. A Team Lead pane may remain idle only for its bounded eligible-continuation decision. Track retained failed surfaces separately from completed runs. Add no alternate watcher, transcript parser, or operator completion workflow.
 
 ### Q4: Bounded cancellation
 
-- Type: Experiment
-- Status: Open
+- Type: Design decision followed by implementation experiment
+- Status: Design resolved; implementation unproved
 - Assumption: Startup, active-turn, blocked-prompt, pane-closure, parent-shutdown, and Team Lead cutoff cancellation settle within existing bounds.
 - Evidence required: Timed startup and active cancellation cases plus one bounded Team Lead tree covering admission cutoff, queued-descendant removal, active-descendant cancellation, reconciliation reserve, broker settlement, and owned-pane cleanup.
 - Blocks: Modifying agents and Team Leads.
-- Resolution:
-- Plan impact:
+- Resolution: Cancellation is an input to the run manager's atomic terminal transition. If it wins, cancellation first requests a clean stop, then uses the existing bounded server-independent PID/process-tree termination path if the child does not stop. Completion that committed first remains successful; completion received after cancellation loses is rejected idempotently. Governed capacity releases only after process settlement. Routine parent-cancelled panes close automatically because the parent has already decided their work is unnecessary. Failed panes remain visible for diagnosis; an actively blocked run remains nonterminal and governed until completion, cancellation, deadline, or failure. Manually closing an active nonterminal pane requests cancellation and the already-closed pane is not recreated.
+- Plan impact: Add no cancellation-specific review workflow or retained-pane clutter. Preserve existing deadline, cutoff, queued-removal, reconciliation, and recursive-cancellation behavior; verify the Herdr adapter only closes owned panes and cannot convert pane closure into success. If the server-independent process path cannot prove exit, retain the process permit and fail the rollout gate rather than infer settlement.
 
-### Q5: Reload rebinding
+### Q5: Reload behavior
 
-- Type: Experiment
-- Status: Open
-- Assumption: `/reload` can rebind run, pane, tab, and ownership metadata without duplicate panes or lost background delivery.
-- Evidence required: A running background child survives reload, returns one result, and is cleaned up once.
+- Type: Design decision followed by implementation experiment
+- Status: Design resolved; implementation unproved
+- Assumption: `/reload` can terminate active visible runs cleanly without duplicate settlement, orphaned owned panes, or effects on unrelated Herdr resources.
+- Evidence required: Prove the reload hook runs while the current controller and ownership state remain available, or prove the replacement extension can safely resume cleanup from the persisted snapshot. Then show reload with one active visible child produces one cancellation, bounded process settlement, one owned-pane cleanup, rejection of late completion, and no change to an unowned pane.
 - Blocks: Read-only production pilot.
-- Resolution:
-- Plan impact:
+- Resolution: Live rebinding is unnecessary for the expected workflow. `/reload` cancels active visible runs through the normal Q4 path, closes their owned panes after process settlement, rejects late results, and does not recreate or resume them. The operator should avoid reload while visible work is active, but accidental reload has explicit cleanup behavior.
+- Plan impact: Remove persistent live-run rebinding and duplicate-pane recovery from the implementation. T4 must choose and prove one reload ordering: cleanup completes before unload, or cleanup resumes from snapshots after reload. Reuse bounded cancellation and owned-resource cleanup, and report which visible runs reload interrupted.
 
 ### Q6: Windows launch fidelity
 
@@ -202,13 +225,13 @@ Every question records direct evidence in this plan before its blocking producti
 
 ### Q7: Team Lead continuation surface
 
-- Type: Experiment and design decision
-- Status: Open
+- Type: Design decision followed by implementation experiment
+- Status: Design resolved; implementation unproved
 - Assumption: A saved eligible partial Team Lead session can continue on a Herdr surface under the existing consume-once identity and authority checks.
-- Evidence required: One eligible partial, one successful continuation, second-use rejection, and authority-narrowing rejection without session-path exposure.
+- Evidence required: One eligible visible partial continuing in the same pane and session, one successful completion, second-use rejection, expiry and cancellation rejection, and authority-broadening rejection without session-path exposure.
 - Blocks: Visible Team Lead continuation.
-- Resolution:
-- Plan impact:
+- Resolution: Preserve existing continuation semantics. The parent decides whether a partial result is sufficient; when continuation is needed, the consume-once identifier resumes the same Team Lead task, saved session, authority, model, effort, role, and execution surface under a new bounded deadline. A visible Team Lead resumes in its existing pane when available; headless remains headless. Completed leaves are not rerun automatically, and no operator approval or manual completion action is added.
+- Plan impact: Reuse the existing continuation path and add Herdr pane identity to its execution fingerprint and ownership checks. Retain an eligible partial Team Lead pane only for the bounded continuation decision; close it when continuation is declined or expires.
 
 ### Q8: Primary top-band layout
 
@@ -249,12 +272,12 @@ Every question records direct evidence in this plan before its blocking producti
 - Evidence required: Close one sibling while another pane is zoomed and inspect topology before and after.
 - Blocks: Automatic successful-pane cleanup.
 - Resolution: Closing a sibling while another pane was zoomed automatically cleared zoom and reflowed the underlying layout. Unzoom after the close was therefore already a no-op.
-- Plan impact: Defer automatic successful-pane closure and layout reflow while any pane in the tab is zoomed. Cleanup resumes after the operator restores the normal layout.
+- Plan impact: Process termination and permit release remain bounded and do not wait for zoom. Defer only visual pane closure and layout reflow while any pane in the tab is zoomed; resume that visual cleanup after the operator restores the normal layout.
 
 ### Q12: Team Lead 1+4+4 usability
 
-- Type: Experiment
-- Status: Partially resolved
+- Type: Experiment and operator acceptance
+- Status: Resolved
 - Assumption: A Team Lead and eight leaves remain identifiable in one tab even when detailed interaction requires zoom.
 - Evidence required: Live 1+4+4 geometry and operator acceptance that panes are status surfaces rather than full reading surfaces.
 - Blocks: Visible Team Lead layout rollout.
@@ -263,33 +286,33 @@ Every question records direct evidence in this plan before its blocking producti
 
 ### Q13: Manual pane closure
 
-- Type: Experiment
-- Status: Open
-- Assumption: Closing an active child pane produces a deterministic failed or cancelled run and never a successful deliverable.
-- Evidence required: Manual close during startup and active work, with canonical settlement and no duplicate cleanup.
+- Type: Design decision followed by implementation experiment
+- Status: Design resolved; implementation unproved
+- Assumption: Closing an active child pane produces a deterministic cancelled run and never a successful deliverable.
+- Evidence required: Manual close during startup and active work, with one cancellation, no accepted late result, and no duplicate cleanup.
 - Blocks: Read-only production pilot.
-- Resolution:
-- Plan impact:
+- Resolution: Manual closure is an intentional operator stop only while the owning run remains nonterminal. It submits cancellation to the same atomic terminal transition, releases governed capacity after process settlement, rejects completion only when cancellation committed first, and does not recreate the already-closed pane. Pane disappearance after completion committed is cleanup evidence and cannot replace success.
+- Plan impact: Treat pane disappearance as cancellation input only for a nonterminal run that owns that exact pane. It cannot imply success, replace a committed outcome, or trigger cleanup of another resource.
 
 ### Q14: Herdr server loss
 
-- Type: Experiment
-- Status: Open
+- Type: Design decision followed by adapter validation
+- Status: Design resolved; implementation unproved
 - Assumption: Loss of the Herdr command or server boundary fails active surface operations explicitly while preserving broker and task truth.
-- Evidence required: A safely contained server or socket interruption with observed run outcome and no unrelated pane closure.
+- Evidence required: Adapter-level interruption tests; a live interruption only in an isolated Herdr server boundary that cannot affect operator work.
 - Blocks: Production rollout.
-- Resolution:
-- Plan impact:
+- Resolution: Do not fall back silently to headless execution. Fail new visible launches explicitly. Every child launch retains a server-independent process handle and PID/process-tree identity. If Herdr supervision is lost, submit bounded cancellation to the run manager and use that independent process path for termination and settlement; preserve canonical task state and owned-resource metadata for later visual cleanup, and never act on unrelated panes.
+- Plan impact: Make Herdr unavailability an execution-surface failure, not a broker reset. If the independent process path cannot prove exit, keep the permit held and fail the rollout gate explicitly. Do not stop the operator's shared Herdr server merely to validate this policy.
 
 ### Q15: Retained pane lifecycle
 
-- Type: Experiment
-- Status: Open
-- Assumption: Failed and blocked panes can remain visible without preventing run-manager disposal, reload, or later explicit cleanup.
-- Evidence required: A retained failed pane after logical settlement, reload, detached metadata, and explicit owned-pane cleanup.
+- Type: Design decision followed by implementation experiment
+- Status: Design resolved; implementation unproved
+- Assumption: Failed panes can remain visible without retaining active run-manager controllers or preventing later explicit cleanup.
+- Evidence required: A retained failed pane after logical settlement, detached metadata, released governed capacity, and explicit owned-pane cleanup.
 - Blocks: Failure retention rollout.
-- Resolution:
-- Plan impact:
+- Resolution: Separate governed run state from visual resource state. An actively blocked run is nonterminal and still holds its broker permit, controller, cancellation ownership, deadline, and running-task state so the operator may help it continue. It leaves that state only through successful completion, cancellation, deadline, or failure. After failure settles and process exit is proven, its retained pane holds none of those execution resources and consumes only visible capacity until the operator closes it or invokes owned-resource cleanup.
+- Plan impact: Distinguish active blocked runs from retained failed surfaces. Represent only the latter as owned surface records detached from live runs; closing one performs visual cleanup and cannot alter the already-settled task outcome.
 
 ### Q16: Performance and Windows process churn
 
@@ -304,7 +327,7 @@ Every question records direct evidence in this plan before its blocking producti
 ### Q17: Surface field placement
 
 - Type: Design decision informed by implementation
-- Status: Provisionally resolved
+- Status: Resolved
 - Decision: `surface` is per item so mixed batches remain possible. Default is `headless`.
 - Reopen when: Contract normalization or run composition cannot preserve one surface per item without duplicate execution paths.
 - Resolution: Use per-item `surface?: "headless" | "herdr"` in the read-only pilot.
@@ -313,7 +336,7 @@ Every question records direct evidence in this plan before its blocking producti
 ### Q18: Visible descendant policy
 
 - Type: Design decision informed by implementation
-- Status: Provisionally resolved
+- Status: Resolved
 - Decision: Visibility does not implicitly propagate. A root-controlled descendant surface policy is required for visible Team Lead leaves and means up to eight visible descendants; additional scheduler-admitted descendants remain headless. Explicit per-item Herdr requests fail before spawn when visible capacity is exhausted.
 - Reopen when: Authenticated tree context cannot propagate display ownership without granting children layout authority, or experiments show that bounded headless overflow cannot preserve package result composition.
 - Resolution: Use authenticated root-owned layout context and keep visible admission separate from broker process permits.
@@ -322,22 +345,42 @@ Every question records direct evidence in this plan before its blocking producti
 ### Q19: Continuation fingerprint membership
 
 - Type: Design decision informed by Q7
-- Status: Open
-- Assumption: Surface is an execution presentation choice rather than authority, but TUI versus headless mode may affect safe session continuation.
-- Evidence required: Q7 results plus execution-fingerprint comparison.
+- Status: Resolved
+- Assumption: Surface is not authority, but changing between TUI and headless launch modes changes process ownership, result transport, and cleanup behavior.
+- Evidence required: Contract comparison between the two launch modes.
 - Blocks: Visible Team Lead continuation.
-- Resolution:
-- Plan impact:
+- Resolution: Include execution surface in the continuation fingerprint. Visible continuation stays visible and headless continuation stays headless. No cross-surface continuation is required by the accepted workflow.
+- Plan impact: Reject continuation when the requested surface differs from the partial attempt. This removes pane creation or teardown from continuation and keeps session, transport, and ownership behavior stable.
 
 ### Q20: Persistent ownership metadata
 
-- Type: Experiment and design decision
-- Status: Partially resolved by field inventory
-- Assumption: Existing run-manager state can retain the minimum pane and tab ownership needed for reload without introducing a second registry.
-- Evidence required: Field-level ownership inventory plus Q5 live reload evidence after an adapter exists.
+- Type: Design decision followed by implementation validation
+- Status: Design resolved; implementation unproved
+- Assumption: Existing run-manager state can retain the minimum pane and tab ownership needed for active-run cleanup without introducing a second registry.
+- Evidence required: Field-level ownership inventory, atomic visible-slot reservation behavior, reload-hook ordering, and Q5 reload-cancellation evidence after an adapter exists.
 - Blocks: Read-only production pilot.
-- Resolution: `SubagentRunSnapshot` already retains logical workspace identity, PID, session path, run identity, parent identity, status, outcomes, and execution fingerprint. The manager is stored under a `globalThis` symbol with ABI validation and is intentionally reused across compatible extension reloads. It does not currently retain execution surface, Herdr workspace ID, tab ID, pane ID, owned-resource flags, layout group, or cleanup/retention state. Q5 remains open because no adapter exists to rebind those fields against live Herdr topology.
+- Resolution: `SubagentRunSnapshot` already retains logical workspace identity, PID, session path, run identity, parent identity, status, outcomes, and execution fingerprint. It does not currently retain execution surface, Herdr workspace ID, tab ID, pane ID, owned-resource flags, layout group, or cleanup/retention state. These fields are required for active-run cleanup and retained-pane ownership, not live reload rebinding.
 - Plan impact: Extend the existing snapshot rather than create a second registry. The minimum additional surface record is `surface`, Herdr workspace/tab/pane IDs, explicit ownership for each resource, layout group or package identity, and cleanup/retention state. Keep Herdr agent status advisory and do not duplicate canonical process or deliverable state.
+
+### Q21: Background-terminal output and exit relay
+
+- Type: Design decision followed by implementation experiment
+- Status: Design resolved; implementation unproved
+- Assumption: A command running in a Herdr pane can preserve the existing manager-owned bounded stdout/stderr and completion contracts without transcript scraping.
+- Evidence required: One pane-hosted command with distinguishable stdout and stderr, output exceeding the in-memory bound and spilling through the existing capped log path, one natural exit, and no dependency on pane transcript text or Herdr lifecycle state.
+- Blocks: Visible background-terminal pilot.
+- Resolution: Launch the actual command through a small manager-owned relay in the pane. The relay forwards stdout and stderr through an authenticated, size-bounded process-local channel into the existing `BackgroundTerminalManager` capture and reports the real exit status. The manager records the process/PID tree independently and remains the only settlement owner.
+- Plan impact: Reuse existing bounded buffers, spill files, completion formatting, and process-tree cleanup. Add no second output store, transcript parser, background run manager, or subagent broker dependency. Missing or malformed relay state fails the visible start or active run explicitly rather than inventing output or success.
+
+### Q22: Background-terminal pane and reload lifecycle
+
+- Type: Design decision followed by implementation validation
+- Status: Design resolved; implementation unproved
+- Assumption: Owned background panes can survive `/reload`, close deterministically on success or `bg_kill`, retain failure for diagnosis, and react safely to manual closure or Herdr loss.
+- Evidence required: Reload with one active visible server preserves one manager entry and owned-pane identity; natural success and `bg_kill` settle once before owned closure; manual exact-pane closure terminates the active process; retained failure releases process resources but remains explicitly cleanable; Herdr loss preserves manager truth and affects no unowned pane.
+- Blocks: Visible background-terminal rollout.
+- Resolution: Store surface ownership on the existing process-global manager entry. Session replacement reattaches handlers to that entry rather than cancelling it. Pane disappearance is termination input only for the exact active entry; after settlement it is visual evidence only. Herdr loss never implies process exit and uses the server-independent PID-tree path.
+- Plan impact: Background reload semantics intentionally differ from visible subagents: managed terminals survive session replacement under their existing contract. Cleanup closes only recorded owned panes/tabs, and failure to prove process exit retains manager and ownership state.
 
 ## Limited experiment protocol
 
@@ -355,87 +398,119 @@ Every question records direct evidence in this plan before its blocking producti
 
 ## Tasks
 
-- [x] **T1: Establish the experimental worktree and baseline**
-  - Change: Create the owned worktree and branch, verify the current focused subagent settlement suite and Pi typecheck, and record installed Pi and Herdr versions. Do not change production schemas.
-  - Done when: The worktree is clean, baseline checks pass or existing failures are recorded, and all live Herdr resources created by later tasks have a deterministic ownership prefix.
-  - Verify: Focused subagent tests, `pnpm run typecheck`, `git diff --check`, `pi --version`, `herdr --version`, and `herdr status server`.
-  - Evidence: Created and later removed the owned `workflow/herdr-visible-subagents` worktree after it expanded beyond the intended throwaway scope. Before removal, the eight focused files passed with 196 tests; `pnpm run typecheck` and `git diff --check` passed. Runtime versions were Pi `0.84.4`, Herdr `0.8.2-preview.2026-08-31-b1ff4582e968`, protocol 21, Node `v25.9.0`, and pnpm `11.23.0`; `herdr status server` reported running and compatible. The temporary broker and completion extensions were not retained. Further capability questions use the limited no-code protocol above.
+- [x] **T1: Establish baseline and capability evidence**
+  - Files: `.specs/herdr-visible-subagents/plan.md` and gitignored `.tmp/` experiment artifacts only.
+  - Questions: Q1, Q6, Q8-Q12, and the idle-load portion of Q16; Q20 has only a completed field inventory.
+  - Change: Establish the clean repository baseline and run only focus-isolated, no-production-code capability, launch, layout, movement, zoom, closure, and idle-capacity experiments under the limited experiment protocol.
+  - Done when: Baseline checks pass, every created Herdr resource is accounted for and removed, operator focus remains unchanged, temporary production experiments are discarded, and each answered question records direct evidence and its plan impact.
+  - Verify: Focused baseline subagent tests, Pi typecheck, `git diff --check`, runtime version checks, and before/after Herdr focus and owned-resource inspection.
+  - Evidence: The removed experimental worktree established a passing 196-test baseline, Pi typecheck, and `git diff --check`. Focus-isolated no-code experiments proved exact read-only TUI tools, Windows launch fidelity, persistent sessions, stable process identity across pane moves, accepted layouts and zoom constraints, and eight-idle-child resource use near 1 GB. Q16 active-load evidence and Q20 production ownership validation remain open. Temporary broker code was discarded and no production runtime code was retained.
 
-- [ ] **T2: Prove restricted TUI authority and broker delivery**
-  - Depends on: T1
-  - Questions: Q1, Q2, Q3, Q6
-  - Change: Build the smallest throwaway execution slice that launches one read-only TUI child through Herdr with the current role loadout and broker credentials. Do not add public `surface` schema yet.
-  - Done when: Allowed and prohibited tool evidence passes, authenticated nonblank broker delivery succeeds, malformed or mismatched delivery fails, and no terminal transcript parsing determines completion.
-  - Stop when: Exact read-only authority or broker delivery cannot be preserved. Record falsifying evidence and revise the plan before production work.
+- [x] **T2: Add run-bound completion transport**
+  - Files: `pi/extensions/subagent/tree-runtime.ts`, `pi/extensions/subagent/run-manager.ts`, `pi/extensions/subagent/index.ts`, `pi/extensions/subagent-completion.ts`, `pi/tests/subagent-tree-runtime.test.ts`, `pi/tests/subagent-run-manager.test.ts`, `pi/tests/subagent-completion.test.ts`, `pi/tests/subagent.test.ts`, and `pi/skills/pi-extension/references/contracts/subagents-and-tasks.md`.
+  - Questions: Q2, Q3.
+  - Change: Add one bounded completion operation to the existing authenticated tree broker and connect it to the current run-manager settlement path. Child-side lifecycle integration emits completion after the assigned turn; this is not a model-callable tool. The broker transports the child result but does not decide task success. Keep the headless structured-event path unchanged.
+  - Done when: The admitted child can submit one nonblank result; wrong-run, malformed, empty, oversized, duplicate, late, and post-cancellation messages are rejected; structured results validate against their requested schema; the run manager atomically commits the first valid terminal input and rejects later inputs idempotently; accepted completion settles the logical deliverable exactly once without requiring process exit or terminal parsing. T2 uses a test process seam and does not claim persistent-TUI process cleanup or permit-release validation.
+  - Readiness gate: Before editing production code, identify the exact broker frame, authentication and size bounds, run-manager atomic transition, child emission hook, and unchanged headless path in the owning contracts and implementation. The gate fails if completion and cancellation can commit independently or if a transcript, pane state, or process exit determines the deliverable.
+  - Readiness evidence: Satisfied by code inspection. Add a protocol-versioned `complete` frame in `pi/extensions/subagent/tree-runtime.ts`; require the authenticated caller run to equal the completed run; retain the 64 KiB frame bound and reject completion payloads above 16 KiB or 2,000 lines before transition. Refactor `SubagentRunManager.settle()` in `run-manager.ts` into an observable synchronous first-winner terminal transition used by completion, cancellation, deadline, and failure inputs, while process termination and permit release remain separate. Register a parent-owned run-bound validator before launch so structured completion validates before commit. Emit visible completion from a new child-only `agent_end` extension rather than the installer-owned `herdr-agent-state.ts`. Preserve the existing `runSingleAgent()` JSON stdout, structured-correction, process-close, and background-delivery paths for headless runs. Current cancellation commits only later in `runSingleAgent()` cleanup, so reconciling it through the atomic transition is the first T2 implementation slice.
+  - Verify: Focused broker protocol, run-manager atomic settlement and completion/cancellation race, foreground, background-delivery, empty-deliverable, and unchanged-headless-path tests.
+  - Evidence: The protocol-5 completion frame is strict-self authenticated, bounded to 16 KiB and 2,000 lines, and validated by a parent-owned run-bound validator. The run manager uses an observable first-winner terminal transition; losing inputs do not mutate the snapshot. An explicit child marker prevents headless emission. Focused run-manager, broker, completion-emitter, and subagent tests passed with 158 tests; Pi typecheck and `git diff --check` passed.
 
-- [ ] **T3: Prove cancellation, reload, and failure recovery**
+- [ ] **T3: Add internal Herdr surface ownership and restricted launch**
+  - Files: `pi/extensions/subagent/herdr-surface.ts`, `pi/extensions/subagent/run-manager.ts`, `pi/extensions/subagent/index.ts`, `pi/tests/herdr-surface.test.ts`, `pi/tests/subagent-run-manager.test.ts`, `pi/tests/subagent.test.ts`, and the owning subagent contract.
   - Depends on: T2
-  - Questions: Q4, Q5, Q13, Q14, Q15, Q20
-  - Change: Exercise startup and active cancellation, manual pane closure, root reload, root shutdown, retained failures, and a safely contained Herdr boundary interruption. Also run one bounded Team Lead tree through admission cutoff, queued-descendant removal, active-descendant cancellation, and reconciliation reserve.
-  - Done when: Every case produces one canonical settlement, the Team Lead tree reconciles within its existing reserve, no owned resource is cleaned twice, no unowned resource is closed, and reload delivers one background result.
-  - Stop when: Herdr process ownership requires a parallel scheduler or cannot satisfy existing cancellation, cutoff, or reconciliation bounds.
+  - Questions: Q1, Q6, Q20.
+  - Change: Add one internal execution-surface seam and extend existing run snapshots with Herdr workspace, tab, pane, explicit ownership, layout/package, and cleanup/retention fields. Implement the Windows `pane run` launch path and supported non-Windows launch path with exact model, effort, skills, cwd, session, role, environment, and closed tool authority. Do not expose a public surface field yet.
+  - Done when: One read-only TUI child completes through T2, edit/write/shell/delegation remain absent, headless behavior is unchanged, Herdr status cannot force deliverable completion, a server-independent process handle and PID tree are recorded, visual capacity is reserved atomically before creation, partial launch releases its reservation, and cleanup targets only recorded owned resources. Persistent-process permits release only after independent process settlement is proven; visual pane closure may remain deferred.
+  - Verify: Adapter unit tests, role-loadout tests, malformed Herdr-response tests, atomic visible-slot reservation and partial-launch tests, server-independent process-settlement tests, focused run-manager tests, one focus-isolated live restricted child through an internal test entrypoint, typecheck, and contract updates for changed stable behavior.
 
-- [ ] **T4: Prove primary and Team Lead layouts**
-  - Depends on: T2
-  - Questions: Q8, Q9, Q10, Q11, Q12
-  - Change: Build disposable live tabs for the primary 1-4 layout, fifth-worker migration, 2x4 direct-worker tab, Team Lead 1+4+4 tab, closure reflow, and zoom behavior.
-  - Done when: Pane identities survive moves, focus remains stable, zoom restores correctly, and all owned experiment resources are cleaned.
+- [ ] **T4: Prove cancellation and failure cleanup**
+  - Files: `pi/extensions/subagent/herdr-surface.ts`, `pi/extensions/subagent/run-manager.ts`, `pi/extensions/subagent/index.ts`, focused subagent lifecycle tests, and the owning subagent contract.
+  - Depends on: T3
+  - Questions: Q4, Q5, Q13-Q15, Q20.
+  - Change: Integrate bounded cancellation, reload cancellation, manual pane closure, parent shutdown, retained failed-surface records, active-blocked ownership, partial-launch cleanup, and explicit Herdr-unavailable behavior. Validate server loss through mocks or an isolated Herdr server only; never stop the operator's shared server.
+  - Done when: Each case uses the atomic terminal transition and settles once; completion and cancellation races preserve whichever committed first; capacity releases only after independently proven process settlement; routine cancelled panes close; active blocked runs remain nonterminal and retain execution ownership; settled failed panes detach after process exit; reload hook ordering and ownership persistence prove one bounded cleanup path; no unowned resource closes.
+  - Verify: Focused cancellation/race tests, owned-resource tests, reload ordering and persisted-cleanup tests, and adapter-level manual-closure and Herdr-loss tests. Live manual closure and reload workflow checks move to T5, where a supported pilot surface exists.
 
-- [ ] **T5: Measure visible-child capacity**
-  - Depends on: T2
-  - Questions: Q16
-  - Change: Measure one, four, and eight interactive children against the headless baseline. Run the repository's Windows process-churn diagnostic only when observed system behavior or relevant event evidence indicates it.
-  - Done when: Evidence supports or rejects enabling more than four visible children and records any bounded fallback.
+- [ ] **T5: Ship the read-only Herdr pilot**
+  - Files: `pi/extensions/subagent/contracts.ts`, `pi/extensions/subagent/modern-adapter.ts`, `pi/extensions/subagent/index.ts`, `pi/extensions/subagent/herdr-surface.ts`, focused subagent tests, and the owning subagent contract.
+  - Depends on: T4
+  - Questions: Q17, Q20.
+  - Change: Add per-item `surface?: "headless" | "herdr"` to `subagent_read`, default it to headless, reject explicit Herdr use outside a valid environment, and retain existing foreground/background behavior. Update callable schema, labels, owning stable contracts, and telemetry normalization in the same change.
+  - Done when: One foreground and one background visible read overlap with distinct run and pane identities, complete automatically with exactly-once delivery, and demonstrate cancellation isolation; operator nudging stays on the same governed run; success and routine cancellation stop their processes within bounds; zoom may defer only visual cleanup; failure remains inspectable; empty output fails; headless regression tests remain unchanged.
+  - Verify: Focused schema, modern-adapter, broker, settlement, overlapping foreground/background delivery and cancellation-isolation tests, plus live read-only manual-closure and reload workflow checks.
 
-- [ ] **T6: Record experiment resolutions and pass the production feasibility gate**
-  - Depends on: T3, T4, T5
-  - Change: Fill every experiment-backed question's Resolution and Plan impact fields. Separate confirmed facts from deferred policy decisions.
-  - Done when: Q1-Q6, Q8-Q16, and Q20 are resolved or explicitly block production. No production schema changes begin before this gate passes.
+- [ ] **T6: Add adaptive direct-worker layout**
+  - Files: `pi/extensions/subagent/herdr-surface.ts`, `pi/extensions/subagent/index.ts`, `pi/tests/herdr-surface.test.ts`, `pi/tests/subagent.test.ts`, and the owning Herdr/subagent contract.
+  - Depends on: T5
+  - Questions: Q8-Q11.
+  - Change: Add the one-through-four top band and fifth-worker migration to one two-row `Subagents` tab. Respect zoom, focus, user resizing, retained-pane capacity, and the independent configured broker ceiling.
+  - Done when: Pane and process identities survive unzoomed moves; zoom defers migration, visual closure, and reflow but never process termination or permit release; focus is preserved; atomic visible-capacity reservation makes concurrent exhaustion fail before spawn; partial launch releases the slot; headless overflow remains unaffected.
+  - Verify: Layout adapter tests and focus-isolated live 1-4, fifth-worker, move, closure, and cleanup checks.
 
-- [ ] **T7: Add clear labels and the execution-surface seam**
+- [ ] **T7: Validate active capacity and read-only pilot behavior**
+  - Files: `.specs/herdr-visible-subagents/plan.md`, gitignored `.tmp/` measurements, and Windows churn diagnostics only when triggered by observed evidence.
   - Depends on: T6
-  - Change: Update operator labels without renaming APIs. Add one execution-surface abstraction behind the current run manager, keep headless behavior unchanged, and implement Herdr launch, observation, cancellation, and owned-resource cleanup without duplicating lifecycle state. Update the owning stable subagent and Herdr contracts in the same change.
-  - Done when: Existing headless tests remain unchanged in behavior, surface selection is internal, Herdr metadata cannot force deliverable completion, and the stable contracts describe the new labels and internal ownership boundary.
+  - Questions: Q12, Q16.
+  - Change: Measure one, four, and eight active read-only children during real pilot work, compare the headless baseline, and record startup, memory, CPU, cancellation latency, and parent responsiveness. Run the Windows churn diagnostic only when observed behavior or event evidence indicates it.
+  - Done when: Evidence supports or rejects enabling more than four active visible children by default and records a direct bounded fallback. Synthetic model traffic is not required solely to fill panes.
+  - Verify: Focus-isolated one-, four-, and eight-child pilot measurements, headless comparison, cancellation timing, parent responsiveness, owned-resource cleanup, and the churn diagnostic only when its trigger is observed.
 
-- [ ] **T8: Ship the read-only Herdr pilot**
+- [ ] **T8: Enable visible modifying agents**
+  - Files: `pi/extensions/subagent/contracts.ts`, `pi/extensions/subagent/modern-adapter.ts`, `pi/extensions/subagent/index.ts`, `pi/extensions/subagent/herdr-surface.ts`, focused authority/subagent tests, and the owning subagent contract.
   - Depends on: T7
-  - Questions: Q17, Q20
-  - Change: Add per-item `surface?: "headless" | "herdr"` to the read-only modern interface, default it to headless, fail explicit Herdr requests outside a valid environment, and route foreground and background results through the existing run manager. Update the owning stable contract in the same change.
-  - Done when: One foreground and one background governed read complete through the broker, empty output fails, reload rebinds, cancellation settles, owned cleanup follows the accepted policy, and the callable schema and stable contract agree.
+  - Change: Add the proven surface field to `subagent_write` while preserving foreground default, exact mutation authority, required validation, incident boundaries, and automatic result delivery.
+  - Done when: In-bound modification succeeds, out-of-bound modification fails, steering cannot expand authority, manual closure cannot report success, and headless modifying behavior remains unchanged.
+  - Verify: Focused authority and adapter tests plus one bounded disposable modifying workflow.
 
-- [ ] **T9: Add the primary orchestrator layout**
+- [ ] **T9: Enable visible Team Leads and governed descendants**
+  - Files: `pi/extensions/subagent/contracts.ts`, `pi/extensions/subagent/modern-adapter.ts`, `pi/extensions/subagent/index.ts`, `pi/extensions/subagent/herdr-surface.ts`, `pi/extensions/subagent/run-manager.ts`, focused Team Lead tests, and the owning subagent contract.
   - Depends on: T8
-  - Change: Add the one-through-four top band and fifth-worker migration to one 2x4 `Subagents` tab. Respect zoom, focus, retained-pane capacity, user resizing, and the separate configured broker ceiling. Update the owning Herdr workflow contract in the same change.
-  - Done when: The live layout contract and all Q8-Q11 evidence pass through the production adapter, explicit visible-capacity exhaustion fails before spawn, and additional scheduler-admitted headless work remains unaffected.
+  - Questions: Q7, Q12, Q18, Q19.
+  - Change: Add the dedicated 1+4+4 status-wall tab, root-controlled visibility for up to eight descendants, policy-eligible headless overflow, existing cutoff and reconciliation behavior, and same-surface consume-once continuation.
+  - Done when: Partial continuation resumes the same visible pane and session; second use, expiry, cancellation, authority broadening, and surface change are rejected; completed leaves do not rerun; cutoff, recursive cancellation, deterministic reduction, and private session paths remain intact.
+  - Verify: Focused Team Lead settlement/continuation tests and one bounded focus-isolated visible package.
 
-- [ ] **T10: Enable visible modifying agents**
-  - Depends on: T8
-  - Change: Permit the Herdr surface for modifying leaves while preserving foreground default, exact authority, required validation, and incident boundaries. Update the owning stable subagent contract in the same change.
-  - Done when: In-bound modification succeeds, out-of-bound modification fails, manual interaction cannot expand authority, pane closure cannot report success, and the stable contract matches executable behavior.
+- [ ] **T10: Add visible managed background terminals**
+  - Files: `pi/extensions/background-terminal/index.ts`, `pi/extensions/background-terminal/manager.ts`, a background-terminal Herdr relay/adapter, shared low-level Herdr ownership helpers, `pi/tests/background-terminal.test.ts`, `pi/tests/background-terminal-manager.test.ts`, focused relay/damage-control tests, and `pi/skills/pi-extension/references/contracts/background-terminals.md`.
+  - Depends on: T6
+  - Questions: Q21, Q22.
+  - Change: Add `surface?: "headless" | "herdr"` to `bg_start`, default it to headless, and host explicit Herdr commands in owned panes within one dedicated `Background terminals` tab. Add the manager-owned stdout/stderr and exit relay, surface ownership on existing manager entries, reload reattachment, exact-pane manual-closure handling, retained-failure cleanup, and Herdr-loss behavior. Keep `bg_kill`, `/ps`, bounded buffers, spill logs, completion delivery, damage-control preflight, capacity, and Pi-exit cleanup authoritative in the existing manager. Share no subagent lifecycle state or visible capacity.
+  - Done when: A visible command preserves separate stdout/stderr, bounded memory and spill behavior, real exit code, exactly-once natural completion, and `/ps` output without transcript scraping; `bg_kill` and manual pane closure terminate only the exact process tree; reload preserves the active entry and pane; success and cancellation close owned resources after settlement; failure may retain only visual ownership; Herdr loss preserves manager truth; headless behavior is unchanged.
+  - Verify: Focused manager, relay protocol, damage-control, extension schema, reload, ownership, manual-closure, Herdr-loss, and no-unowned-cleanup tests plus one focus-isolated live dev-server workflow covering start, `/ps`, reload, and `bg_kill`.
 
-- [ ] **T11: Resolve Team Lead surface feasibility before production**
-  - Depends on: T3, T4, T5, T9, T10
-  - Questions: Q7, Q12, Q18, Q19
-  - Change: Use throwaway Team Lead runs to prove root-controlled descendant visibility, up-to-eight visible capacity with headless overflow under a configured scheduler ceiling above eight, explicit per-item capacity rejection, private consume-once continuation, and the execution-fingerprint decision. Do not add the public Team Lead surface contract in this task.
-  - Done when: Q7, Q12, Q18, and Q19 have recorded resolutions; second-use and authority-narrowing continuation cases fail; no session path is exposed; and the evidence either admits or blocks production Team Lead work.
-  - Stop when: Surface selection weakens continuation identity, bypasses cutoff or reconciliation, or requires child-controlled layout authority.
+- [ ] **T11: Finalize labels, contracts, and rollout evidence**
+  - Files: `.specs/herdr-visible-subagents/plan.md`, owning Pi tooling contracts, affected callable schemas/rendering/telemetry, and focused/shared-impact tests.
+  - Depends on: T9, T10
+  - Change: Review whether session evidence still justifies later `subagent_inspect` and `subagent_modify` aliases; otherwise retain current APIs and improved labels. Reconcile owning contracts, Pi guidance, schemas, rendering, telemetry, background-terminal semantics, and rollback instructions without changing archived historical plans.
+  - Done when: Documentation matches behavior, every question is resolved with implementation evidence or a recorded bounded limitation, focused and shared-impact tests pass, Pi typecheck and `git diff --check` pass, and live checks prove accepted subagent and background-terminal cleanup, output, reload, and layout behavior.
+  - Verify: Focused and shared-impact Vitest suites, Pi typecheck, `git diff --check`, canonical plan preflight, and the complete live Herdr validation checklist.
 
-- [ ] **T12: Enable visible Team Leads and descendants**
-  - Depends on: T11
-  - Change: Add the proven explicit root-controlled descendant visibility, dedicated 1+4+4 Team Lead tab, existing cutoff and reconciliation behavior, visible-capacity policy, and consume-once continuation on the Herdr surface. Update the owning stable subagent and Herdr contracts in the same change.
-  - Done when: Configured broker ceilings remain unchanged, up to eight workers are visible, additional policy-eligible descendants remain headless, explicit capacity exhaustion rejects before spawn, admission cutoff and recursive cancellation pass, deterministic deliverable reduction remains intact, and continuation never exposes a session path.
+## Independent adversarial review
 
-- [ ] **T13: Evaluate canonical tool-name migration**
-  - Depends on: T12
-  - Change: Review session evidence after the surface is stable. If confusion remains material, introduce `subagent_inspect` and `subagent_modify` with thin compatibility aliases and canonical telemetry normalization, updating the owning stable contract in the same change. Otherwise retain existing API names and improved labels.
-  - Done when: The evidence-backed naming decision is recorded. If aliases are introduced, old and new names converge before run registration and produce identical authority, lifecycle, and telemetry behavior.
+Review completed after T1 and before production implementation. It found twelve actionable issues; this revision incorporates all of them:
 
-- [ ] **T14: Final contract consistency and validation**
-  - Depends on: T13
-  - Change: Review the already-updated stable contracts, Pi guidance, callable schemas, operator rendering, telemetry, and rollback instructions for consistency. Preserve archived plans as historical evidence; do not defer first-time contract updates to this task.
-  - Done when: Documentation matches executable behavior, focused and shared-impact tests pass, Pi typecheck and `git diff --check` pass, and live Herdr checks prove the accepted layouts and cleanup behavior.
+- The run manager now owns one atomic terminal transition for completion, cancellation, deadline, and failure inputs.
+- Broker authority is narrowed to authentication and input transport; it cannot commit cancellation or another terminal outcome.
+- Process termination and permit release are separated from zoom-deferred visual pane closure.
+- Every visible launch requires a server-independent process handle and PID-tree settlement path; inability to prove exit blocks rollout and retains the permit.
+- Reload requires explicit hook-ordering and ownership-persistence evidence rather than assuming snapshots are sufficient.
+- Manual pane closure requests cancellation only while the run remains nonterminal and cannot replace an accepted completion.
+- Blocked is defined only as an active nonterminal state; only failed terminal panes are retained.
+- T2 proves transport and atomic logical settlement through a test process seam; T3 and T4 own persistent-process and cleanup proof.
+- T3 uses an internal test entrypoint; supported live manual-closure and reload checks occur in the T5 pilot.
+- T5 includes overlapping foreground and background runs with identity, delivery, and cancellation isolation.
+- Visible capacity is reserved atomically before creation and released on partial-launch or lifecycle cleanup.
+- T1 and execution status distinguish completed experiments from partially resolved or implementation-unproved questions.
 
-## Validation strategy
+Review disposition: no finding was deferred. Production implementation remains gated by T2's explicit readiness check.
+
+## Validation
+
+- [ ] Every task-specific focused check passes at its implementation boundary.
+- [ ] Live focus-isolated subagent and background-terminal pilots satisfy their recorded lifecycle, authority, output, layout, reload, and cleanup evidence without changing unowned Herdr resources.
+- [ ] Headless subagent and background-terminal regression behavior remains unchanged.
+- [ ] Pi typecheck and `git diff --check` pass before closeout.
 
 ### Focused unit and adapter checks
 
@@ -446,9 +521,13 @@ Every question records direct evidence in this plan before its blocking producti
 - Owned pane and tab tracking.
 - Cancellation and partial-launch cleanup.
 - Existing process and deliverable outcome composition.
-- Reload serialization or reconstruction.
+- Reload cancellation and owned-resource cleanup.
 - Per-item schema normalization.
 - Label and later compatibility-alias behavior.
+- Background-terminal surface defaulting and explicit Herdr gating.
+- Authenticated bounded stdout/stderr and exit relay behavior.
+- Existing manager capture, spill, completion, `/ps`, and `bg_kill` composition.
+- Background pane ownership, reload reattachment, manual closure, retained failure, and Herdr loss.
 
 ### Broker integration checks
 
@@ -465,33 +544,38 @@ Every question records direct evidence in this plan before its blocking producti
 - One restricted read child.
 - One background read with parent continuation.
 - Manual pane closure.
-- Reload rebinding.
+- Reload cancellation and owned-pane cleanup.
 - `prefix+z` and restoration.
 - Primary 1-4 layout.
 - Fifth-worker migration and 2x4 tab.
 - Team Lead 1+4+4 tab.
 - Successful cleanup and retained failure cleanup.
 - No unrelated pane or tab closure.
+- One visible dev server with distinct stdout/stderr, `/ps` inspection, reload survival, and `bg_kill`.
+- One naturally completing visible background command and one retained failed command with explicit owned cleanup.
+- Manual background-pane closure and adapter-level Herdr-loss handling.
 
 ### Repository gates
 
-Use the cheapest focused checks that exercise each changed contract. Run broader subagent tests when shared run-manager, broker, settlement, or schema behavior changes. Final validation includes focused Vitest suites, `pnpm run typecheck`, and `git diff --check`.
+Use the cheapest focused checks that exercise each changed contract. Run broader subagent tests when shared run-manager, broker, settlement, or schema behavior changes. Run focused background-terminal and damage-control suites when the background execution surface or relay changes. Final validation includes focused Vitest suites, `pnpm run typecheck`, and `git diff --check`.
 
 ## Rollback boundary
 
 - The headless surface remains independently usable throughout rollout.
 - Before the read-only pilot is accepted, removing the Herdr adapter and `surface` schema restores prior behavior without task or session migration.
 - A failed Herdr launch never silently falls back to headless because explicit visibility intent must remain observable.
-- Rollback closes only currently owned experimental or production panes and tabs after their broker boundaries settle.
+- Removing the background Herdr adapter and `bg_start.surface` restores the prior manager-owned headless behavior without migrating terminal records or logs.
+- Rollback closes only currently owned experimental or production panes and tabs after their subagent broker or background-manager process boundaries settle.
 - No rollback changes the installed Herdr package, global Pi package list, saved task records, or archived plans.
 
 ## Retention
 
 Keep incomplete work at `.specs/herdr-visible-subagents/plan.md`. After every task is complete and final validation passes, archive it to `.specs/archive/herdr-visible-subagents/plan.md` through the normal plan closeout workflow.
 
-## Execution status
+## Execution Status
 
-- State: Evidence gathering; production implementation not started.
-- Blocker: Q2 established that the current broker has no deliverable channel, and Q3 cannot be proved until one bounded authenticated result-channel design is selected and integrated with the existing run manager.
-- Evidence: Q1, Q6, Q8, Q9, Q10, and Q11 are resolved at their stated boundaries. Q12, Q16, and Q20 have bounded partial evidence. Focus-isolated experiments confirmed persistent sessions, exact read-only launch fidelity, stable Pi PID across pane moves, eight-idle-child memory near 1 GB, and unchanged operator focus. The temporary worktree and broker experiment were removed and no production runtime code was retained.
-- Next: Stop capability experiments that require a production adapter. Review the smallest authenticated bounded result-channel options against the existing run-manager settlement path, then revise T2 before implementation.
+- State: T2 complete and validated; T3 is next.
+- Blocker: No operator-policy blocker. T2 readiness is recorded; implementation must stop if the atomic transition, strict self-authenticated completion frame, parent-owned structured validator, or unchanged headless path cannot be preserved.
+- Evidence: Q1, Q6, and Q8-Q12 have experimental evidence at their stated boundaries. Q16 has idle-load evidence only. Q2 rejected the existing native-delivery assumption. Q3-Q5, Q7, Q13-Q15, Q20, Q21, and Q22 have resolved designs but still require implementation validation. Q17-Q19 are resolved design decisions. Focus-isolated experiments confirmed persistent sessions, exact read-only launch fidelity, stable Pi PID across pane moves, accepted layouts and zoom constraints, eight-idle-child memory near 1 GB, and unchanged operator focus. The temporary worktree and broker experiment were removed and no production runtime code was retained.
+- Next: Implement and validate T3-T6 as the bounded read-only Herdr pilot and direct-layout package. Do not enable modifying agents or Team Leads before that gate passes.
+- Resume: `/do-it .specs/herdr-visible-subagents/plan.md`
