@@ -10,14 +10,6 @@
 
 ---
 
-## 2026-09-02: Preserve hidden coordinator compatibility and normalize failure reports
-
-**Changed:** Kept the registered `subagent_coordinate` historical alias executable through the current bounded Team Lead seam while excluding it from active discovery, `tool_search`, and current guidance. Failure reports now distinguish expected command nonzero results, actionable failures, expected non-command outcomes, and unclassified results over deduplicated observations.
-
-**Preserved:** Current role-specific subagent tools remain the discoverable interfaces, and canonical session records remain unchanged.
-
----
-
 ## 2026-09-03: Make workflow completion state recoverable
 
 **Why:** `/do-it` dispatch telemetry could be omitted or duplicated across session replacement, foreground goals accepted skipped required tasks, and an unattended goal could lose its completion route after merge cleanup but before durable goal persistence.
@@ -27,6 +19,14 @@
 **Preserved:** Raw request text remains outside metadata telemetry, optional tasks may still be skipped, and existing ownership, merge, cleanup, and dirty-worktree safety checks remain authoritative.
 
 **Validation:** Focused workflow dispatch, telemetry, goal, and worktree tests passed with Pi typecheck and `git diff --check`.
+
+---
+
+## 2026-09-02: Preserve hidden coordinator compatibility and normalize failure reports
+
+**Changed:** Kept the registered `subagent_coordinate` historical alias executable through the current bounded Team Lead seam while excluding it from active discovery, `tool_search`, and current guidance. Failure reports now distinguish expected command nonzero results, actionable failures, expected non-command outcomes, and unclassified results over deduplicated observations.
+
+**Preserved:** Current role-specific subagent tools remain the discoverable interfaces, and canonical session records remain unchanged.
 
 ---
 
@@ -133,20 +133,6 @@ This is the canonical changelog for repository configuration, client workflows, 
 
 ---
 
-## 2026-09-02: Constrain Onclave to user-directed communication
-
-**Why:** Onclave is an independent agent communication product, not a substitute execution pool for Pi delegation, review, or provider fallback.
-
-**Changed:**
-- Advanced the Onclave submodule to the outbound-usage boundary implementation and documentation.
-- Clarified in Pi instructions that discovery and messaging require an explicit user-directed Onclave workflow.
-
-**Preserved:** Normal Pi subagents, reviewers, local execution, and provider handling remain the owning mechanisms for autonomous work.
-
-**Files:** `modules/onclave`, `pi/AGENTS.md`
-
----
-
 ## 2026-09-02: Add profile-aware Pi browser control
 
 **Why:** Browser automation could not safely select a real Brave profile from a friendly name without guessing profile directories, ports, process ownership, or the active tab.
@@ -161,6 +147,20 @@ This is the canonical changelog for repository configuration, client workflows, 
 **Validation:** Focused Python and Pi tests, Pi typecheck, sanitized and live isolated Windows smoke checks, and `git diff --check` passed.
 
 **Files:** `pi/{extensions/browser-control.ts,lib/browser-control.ts,skills/browser-tools/,browser-profiles*.json,tests/}`, `scripts/{agent-browser-brave,smoke-browser-control.ps1}`, and `.specs/archive/pi-browser-profile-control/plan.md`
+
+---
+
+## 2026-09-02: Constrain Onclave to user-directed communication
+
+**Why:** Onclave is an independent agent communication product, not a substitute execution pool for Pi delegation, review, or provider fallback.
+
+**Changed:**
+- Advanced the Onclave submodule to the outbound-usage boundary implementation and documentation.
+- Clarified in Pi instructions that discovery and messaging require an explicit user-directed Onclave workflow.
+
+**Preserved:** Normal Pi subagents, reviewers, local execution, and provider handling remain the owning mechanisms for autonomous work.
+
+**Files:** `modules/onclave`, `pi/AGENTS.md`
 
 ---
 
