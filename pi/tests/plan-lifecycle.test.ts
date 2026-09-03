@@ -304,6 +304,15 @@ describe("plan lifecycle", () => {
 		expect(validatePlanContract(legacy, planPath, "execution-preflight").valid).toBe(true);
 	});
 
+	it("matches exact section headings when a prefixed heading appears first", () => {
+		const planPath = ".specs/example/plan.md";
+		const content = readyPlan(planPath).replace(
+			"## Validation\n",
+			"## Validation fixtures and timeout ownership\n\nFixture details without a checklist.\n\n## Validation\n",
+		);
+		expect(validatePlanContract(content, planPath, "execution-preflight").valid).toBe(true);
+	});
+
 	it("filters cached native do-it completions and refreshes active plans", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-plan-cache-"));
 		const planPath = path.join(root, ".specs", "active-plan", "plan.md");

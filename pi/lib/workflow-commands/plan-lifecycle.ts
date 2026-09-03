@@ -133,7 +133,17 @@ const TASK_PATTERN = /^- \[[ x]\] \*\*(T[1-9][0-9]*): .+\*\*$/gm;
 const MAX_PLAN_DIAGNOSTICS = 8;
 
 function planSection(content: string, heading: string): string {
-	return content.split(heading, 2)[1]?.split(/^## /m, 1)[0] ?? "";
+	const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const match = new RegExp(`^${escapedHeading}[ \\t]*\\r?$`, "m").exec(content);
+	if (!match) return "";
+	const remainder = content.slice(match.index + match[0].length).replace(/^\n/, "");
+	const nextHeading = /^## /m.exec(remainder);
+	return nextHeading ? remainder.slice(0, nextHeading.index) : remainder;
+}
+
+function hasPlanHeading(content: string, heading: string): boolean {
+	const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return new RegExp(`^${escapedHeading}[ \\t]*\\r?$`, "m").test(content);
 }
 
 function validateExecutionStrategy(content: string, taskKeys: string[], required: boolean, addError: (message: string) => void): void {
@@ -409,10 +419,9 @@ export function validatePlanContract(
 		"## Retention",
 		"## Execution Status",
 	]) {
-		if (!content.includes(heading)) addError(`Missing ${heading}.`);
+		if (!hasPlanHeading(content, heading)) addError(`Missing ${heading}.`);
 	}
-	const completionSection =
-		content.split("## Completion Evidence", 2)[1]?.split(/^## /m, 1)[0] ?? "";
+	const completionSection = planSection(content, "## Completion Evidence");
 	if (!/^\s*-\s+Evidence:\s*\S/im.test(completionSection))
 		addError("Completion Evidence is missing Evidence:.");
 	if (!/^\s*-\s+Fails when:\s*\S/im.test(completionSection))
@@ -438,7 +447,7 @@ export function validatePlanContract(
 		addError("Plan must contain one to sixteen executable tasks.");
 	if (new Set(taskKeys).size !== taskKeys.length)
 		addError("Plan task keys must be unique.");
-	const taskSection = content.split("## Tasks", 2)[1]?.split(/^## /m, 1)[0] ?? "";
+	const taskSection = planSection(content, "## Tasks");
 	for (const key of taskKeys) {
 		const start = taskSection.indexOf(`**${key}:`);
 		const next = taskKeys
@@ -456,11 +465,10 @@ export function validatePlanContract(
 			error instanceof Error ? `Plan dependency syntax: ${error.message}` : String(error),
 		);
 	}
-	const validationSection =
-		content.split("## Validation", 2)[1]?.split(/^## /m, 1)[0] ?? "";
+	const validationSection = planSection(content, "## Validation");
 	if (!/^\s*-\s+\[[ xX]\]\s+\S/im.test(validationSection))
 		addError("Validation must contain a checklist item.");
-	if (!/^\s*-\s+State:\s*\S/im.test(content.split("## Execution Status", 2)[1] ?? ""))
+	if (!/^\s*-\s+State:\s*\S/im.test(planSection(content, "## Execution Status")))
 		addError("Execution Status must declare State.");
 	if (!content.includes(`/do-it ${normalizedPath}`))
 		addError("Execution Status must contain the canonical /do-it resume command.");

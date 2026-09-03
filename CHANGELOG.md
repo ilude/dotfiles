@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-02: Match exact do-it plan section headings
+
+**Why:** `/do-it` could reject a valid materialized plan when an earlier level-two heading began with `Validation`, such as `Validation fixtures and timeout ownership`.
+
+**Changed:** Plan contract validation now locates exact level-two headings before reading section contents, with regression coverage for a prefixed heading before the checklist.
+
+**Preserved:** Canonical plan structure, checklist requirements, execution preflight behavior, and worktree materialization remain unchanged.
+
+**Validation:** The focused plan-lifecycle suite passed with Pi typecheck and `git diff --check`.
+
+---
+
 ## 2026-09-02: Preserve do-it resume intent
 
 **Why:** A cleared `/do-it` continuation could appear as a new public command and fail to establish workflow ownership before model work.
