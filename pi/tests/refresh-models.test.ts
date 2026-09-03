@@ -424,7 +424,7 @@ describe("/refresh-models command", () => {
 					data: [{ id: "anthropic/claude-opus-4.7" }, { id: "openai/gpt-5.5" }],
 				});
 			}
-			if (url === "https://api.opencode.ai/models") {
+			if (url === "https://opencode.ai/zen/v1/models") {
 				return mockJsonResponse({ data: [{ id: "zen" }, { id: "sonnet" }] });
 			}
 			return mockJsonResponse({ error: "missing" }, 404);
@@ -459,7 +459,7 @@ describe("/refresh-models command", () => {
 						id: "zen",
 						name: "Zen",
 						api: "openai-completions",
-						baseUrl: "https://api.opencode.ai",
+						baseUrl: "https://opencode.ai/zen",
 						reasoning: false,
 						input: ["text"],
 						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -518,7 +518,7 @@ describe("/refresh-models command", () => {
 		).toBe("Bearer openrouter-key");
 		expect(
 			fetchMock.mock.calls.find(
-				([url]) => url === "https://api.opencode.ai/models",
+				([url]) => url === "https://opencode.ai/zen/v1/models",
 			)?.[1].headers.Authorization,
 		).toBe("Bearer opencode-key");
 		expect(notify).toHaveBeenCalledWith(
@@ -593,7 +593,7 @@ describe("/refresh-models command", () => {
 			reload,
 			modelRegistry: {
 				authStorage: {
-					list: () => ["amazon-bedrock"],
+					list: () => ["amazon-bedrock", "bedrock-mantle"],
 					get: () => ({ type: "api_key", key: "" }),
 				},
 				getAll: () => [
@@ -629,6 +629,11 @@ describe("/refresh-models command", () => {
 			"info",
 		);
 		expect(reload).toHaveBeenCalledOnce();
+		expect(pi.exec).toHaveBeenCalledTimes(2);
+		expect(notify).not.toHaveBeenCalledWith(
+			expect.stringContaining("Skipping unsupported providers: bedrock-mantle"),
+			"warning",
+		);
 	});
 
 	it("fails when an explicit provider is not configured", async () => {

@@ -31,6 +31,7 @@ import {
 const CODEX_CLIENT_VERSION_CANDIDATES = ["999.0.0", "1.0.0", "0.99.0"];
 const SUPPORTED_REFRESH_PROVIDERS = new Set([
 	"amazon-bedrock",
+	"bedrock-mantle",
 	"anthropic",
 	"openai-codex",
 	"openrouter",
@@ -353,10 +354,13 @@ async function fetchJson(
 ): Promise<unknown> {
 	const response = await fetch(url, { method: "GET", headers });
 	const text = await response.text().catch(() => "");
-	const snippet = text.replace(/\s+/g, " ").trim().slice(0, 240);
+	const snippet = text.replace(/\s+/g, " ").trim().slice(0, 120);
 	if (!response.ok) {
+		const detail = /^<!doctype html|^<html/i.test(snippet)
+			? "HTML response"
+			: snippet;
 		throw new Error(
-			`${url} returned HTTP ${response.status}${snippet ? `: ${snippet}` : ""}`,
+			`${url} returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`,
 		);
 	}
 	if (!text) return {};
@@ -446,12 +450,16 @@ async function fetchProviderCatalog(params: {
 	}
 
 	const normalized = normalizeBaseUrl(params.baseUrl);
+	const catalogUrl =
+		params.provider === "opencode" || params.provider === "opencode-go"
+			? `${normalized}/v1/models`
+			: `${normalized}/models`;
 	const headers: Record<string, string> = {
 		Accept: "application/json",
 		Authorization: `Bearer ${params.apiKey}`,
 		...(params.headers ?? {}),
 	};
-	return fetchJson(`${normalized}/models`, headers);
+	return fetchJson(catalogUrl, headers);
 }
 
 function parseOpenAICodexRemoteModels(payload: unknown): RemoteModelInfo[] {
@@ -814,7 +822,15 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 				return;
 			}
 
-			const providers = requestedProviders.filter(isRefreshSupportedProvider);
+			const providers = [
+				...new Set(
+					requestedProviders
+						.filter(isRefreshSupportedProvider)
+						.map((provider) =>
+							provider === "bedrock-mantle" ? "amazon-bedrock" : provider,
+						),
+				),
+			];
 			const skipped = requestedProviders.filter(
 				(provider) => !isRefreshSupportedProvider(provider),
 			);
