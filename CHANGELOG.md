@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-02: Avoid blocking same-tier single-child delegation
+
+**Why:** A lone foreground subagent on the root's model tier hid its work and blocked the root while providing only context isolation.
+
+**Changed:** Pi orchestration now directs the root to work inline, use Luna for bounded isolation, or detach genuinely independent work instead of making that delegation. Same-tier foreground delegation remains available for a distinct role, authority boundary, or dependency gate.
+
+**Preserved:** Parallel fan-out, background review, specialist boundaries, and foreground ownership of dependency-gating or active mutation work remain supported.
+
+---
+
 ## 2026-09-02: Match exact do-it plan section headings
 
 **Why:** `/do-it` could reject a valid materialized plan when an earlier level-two heading began with `Validation`, such as `Validation fixtures and timeout ownership`.

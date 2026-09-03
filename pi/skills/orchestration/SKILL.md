@@ -14,6 +14,7 @@ description: "Coordinate bounded root-to-coordinator-to-leaf work when independe
 - Prefer one coordinator per independently verifiable work package. The root retains program-level decomposition, dependency management, integration, and closure.
 - Topology and assignment guidance is advisory rather than a gate. Use bounded read-only comparison when the selected topology or modifying owner is uncertain, and record meaningful overrides for later review.
 - Before fan-out over a shared unproven dependency, run one representative leaf and expand only if it succeeds.
+- Do not delegate one foreground item to the same model tier as the root merely to isolate context. Perform it directly, route it to Luna when bounded context isolation is the concrete benefit, or detach it when it is genuinely independent and useful work remains for the root. Keep a same-tier single child foreground only when its distinct role, authority, or dependency-gating result provides a concrete benefit that direct execution cannot.
 
 ## Scheduler
 
