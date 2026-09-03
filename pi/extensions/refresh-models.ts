@@ -1,4 +1,5 @@
 import { registerSlashCommand } from "../lib/slash-command-echo.js";
+import { refreshBedrockModelInventory } from "../lib/bedrock-model-refresh.ts";
 
 // Convention exception: this extension is a single user-initiated slash
 //   command (`/refresh-models`) whose UI is a sequence of progress messages
@@ -29,6 +30,7 @@ import {
 
 const CODEX_CLIENT_VERSION_CANDIDATES = ["999.0.0", "1.0.0", "0.99.0"];
 const SUPPORTED_REFRESH_PROVIDERS = new Set([
+	"amazon-bedrock",
 	"anthropic",
 	"openai-codex",
 	"openrouter",
@@ -862,6 +864,17 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 
 			for (const provider of providers) {
 				try {
+					if (provider === "amazon-bedrock") {
+						const result = await refreshBedrockModelInventory(pi, ctx);
+						outcomes.push({
+							provider,
+							ok: true,
+							message: `${provider}: ${result.current.length} -> ${result.recommended.length} configured models`,
+							addedIds: result.missing,
+							removedIds: result.stale,
+						});
+						continue;
+					}
 					const result = await refreshProviderAvailability(ctx, provider);
 					outcomes.push({
 						provider,

@@ -1,4 +1,3 @@
-import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -16,17 +15,16 @@ import {
 	type BedrockTarget,
 	parseAwsIni,
 	resolveBedrockTarget,
-} from "../lib/bedrock-auth.ts";
+} from "./bedrock-auth.ts";
 import {
 	CLAUDE_FAMILIES,
 	selectLatestClaudeModelIds,
-} from "../lib/bedrock-model-policy.js";
+} from "./bedrock-model-policy.js";
 import {
 	getSettingsPath,
 	updateJsonObjectAtomic,
-} from "../lib/settings-file.ts";
+} from "./settings-file.ts";
 
-const COMMAND_NAME = "bedrock-refresh";
 const POLL_TIMEOUT_MS = 60_000;
 const AWS_OUTPUT_MAX_BYTES = 10 * 1024 * 1024;
 const execFileAsync = promisify(execFile);
@@ -41,7 +39,7 @@ type AwsExecutor = (
 	options: AwsExecutionOptions,
 ) => Promise<ExecResult>;
 
-interface PollResult {
+export interface BedrockRefreshResult {
 	profile: string;
 	region: string;
 	settingsFile: string;
@@ -50,55 +48,6 @@ interface PollResult {
 	recommended: string[];
 	missing: string[];
 	stale: string[];
-}
-
-interface ParsedArgs {
-	apply: boolean;
-	profile?: string;
-	region?: string;
-}
-
-function parseArgs(args: string): ParsedArgs {
-	const parts = args.split(/\s+/).filter(Boolean);
-	const parsed: ParsedArgs = { apply: false };
-
-	for (let i = 0; i < parts.length; i++) {
-		const part = parts[i];
-		switch (part) {
-			case "--apply":
-				parsed.apply = true;
-				break;
-			case "--profile": {
-				const value = parts[++i];
-				if (!value) throw new Error("--profile requires a value");
-				parsed.profile = value;
-				break;
-			}
-			case "--region": {
-				const value = parts[++i];
-				if (!value) throw new Error("--region requires a value");
-				parsed.region = value;
-				break;
-			}
-			case "--help":
-			case "-h":
-				throw new Error(helpText());
-			default:
-				throw new Error(`Unknown argument: ${part}\n${helpText()}`);
-		}
-	}
-
-	return parsed;
-}
-
-function helpText(): string {
-	return [
-		"Usage: /bedrock-refresh [--apply] [--profile PROFILE] [--region REGION]",
-		"",
-		"Poll AWS Bedrock for newer configured Claude Fable, Opus, Sonnet, and Haiku model IDs.",
-		"Without --apply, this is read-only and reports current vs latest models.",
-		"With --apply, it updates pi/settings.json bedrockRefresh.models.",
-	].join("\n");
 }
 
 function resolveHomePath(filePath: string): string {
@@ -222,14 +171,11 @@ function stringValues(
 }
 
 async function runPoll(
-	parsed: ParsedArgs,
 	ctx: ExtensionContext,
 	executeAws: AwsExecutor,
-): Promise<PollResult> {
+): Promise<BedrockRefreshResult> {
 	const providerEnv = await providerEnvironment(ctx);
 	const target = resolveBedrockTarget({
-		explicitProfile: parsed.profile,
-		explicitRegion: parsed.region,
 		providerEnv,
 		processEnv: process.env as BedrockAuthEnvironment,
 		profileRegions: configuredProfileRegions(),
@@ -297,9 +243,13 @@ async function runPoll(
 			)
 		: [];
 
-	const knownBedrockIds = new Set(
-		getBuiltinModels("amazon-bedrock").map((model) => model.id),
-	);
+	const knownBedrockIds = new Set([
+		...getBuiltinModels("amazon-bedrock").map((model) => model.id),
+		...ctx.modelRegistry
+			.getAll()
+			.filter((model) => model.provider === "amazon-bedrock")
+			.map((model) => model.id),
+	]);
 	const recommended = selectLatestClaudeModelIds(
 		allModelIds.filter((modelId) => knownBedrockIds.has(modelId)),
 		"us.anthropic",
@@ -326,42 +276,9 @@ async function runPoll(
 	};
 }
 
-function formatPollSummary(result: PollResult): string {
-	const lines = [
-		`AWS profile: ${result.profile}`,
-		`AWS region:  ${result.region}`,
-		`Settings:    ${result.settingsFile}`,
-		"",
-		"Latest Bedrock us.* model IDs by Claude family:",
-	];
-
-	for (const key of Object.keys(result.latest).sort()) {
-		lines.push(`  ${key}: ${result.latest[key] ?? "not found"}`);
-	}
-
-	lines.push("", "Configured Bedrock models:");
-	if (result.current.length > 0) {
-		for (const model of result.current) lines.push(`  ${model}`);
-	} else {
-		lines.push("  none");
-	}
-
-	if (result.missing.length > 0 || result.stale.length > 0) {
-		lines.push("", "Update suggested:");
-		for (const model of result.missing)
-			lines.push(`  add/replace with ${model}`);
-		for (const model of result.stale) lines.push(`  stale: ${model}`);
-	} else {
-		lines.push(
-			"",
-			"Bedrock refresh models are current for Fable, Opus, Sonnet, and Haiku.",
-		);
-	}
-
-	return lines.join("\n");
-}
-
-function applyRecommendedModels(result: PollResult): Promise<boolean> {
+function applyRecommendedModels(
+	result: BedrockRefreshResult,
+): Promise<boolean> {
 	return updateJsonObjectAtomic(getSettingsPath(), (settings) => {
 		const refreshSettings =
 			settings.bedrockRefresh !== null &&
@@ -383,63 +300,11 @@ function applyRecommendedModels(result: PollResult): Promise<boolean> {
 	});
 }
 
-function notify(
-	ctx: ExtensionContext,
-	message: string,
-	level: "info" | "warning" | "error" = "info",
-): void {
-	ctx.ui.notify(message, level);
-}
-
-export default function bedrockRefresh(
+export async function refreshBedrockModelInventory(
 	pi: ExtensionAPI,
-	options: { executeAws?: AwsExecutor } = {},
-): void {
-	const executeAws = options.executeAws ?? createAwsExecutor(pi);
-	registerSlashCommand(pi)(COMMAND_NAME, {
-		description: "Poll AWS Bedrock for current Claude model IDs",
-		handler: async (args, ctx) => {
-			let parsed: ParsedArgs;
-			try {
-				parsed = parseArgs(args);
-			} catch (error) {
-				notify(
-					ctx,
-					error instanceof Error ? error.message : String(error),
-					"warning",
-				);
-				return;
-			}
-
-			ctx.ui.notify("Bedrock refresh started.", "info");
-
-			try {
-				const poll = await runPoll(parsed, ctx, executeAws);
-				const summary = formatPollSummary(poll);
-				if (!parsed.apply) {
-					notify(
-						ctx,
-						summary,
-						poll.missing.length > 0 || poll.stale.length > 0
-							? "warning"
-							: "info",
-					);
-					return;
-				}
-
-				const changed = await applyRecommendedModels(poll);
-				notify(
-					ctx,
-					`${summary}\n\n${changed ? "Updated pi/settings.json bedrockRefresh.models." : "No settings update needed."}`,
-					changed ? "info" : "warning",
-				);
-			} catch (error) {
-				notify(
-					ctx,
-					error instanceof Error ? error.message : String(error),
-					"error",
-				);
-			}
-		},
-	});
+	ctx: ExtensionContext,
+): Promise<BedrockRefreshResult & { changed: boolean }> {
+	const result = await runPoll(ctx, createAwsExecutor(pi));
+	const changed = await applyRecommendedModels(result);
+	return { ...result, changed };
 }

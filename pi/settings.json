@@ -34,7 +34,7 @@
   ],
   "bedrockRefresh": {
     "models": [
-      "us.anthropic.claude-opus-5",
+      "us.anthropic.claude-fable-5-1",
       "us.anthropic.claude-fable-5",
       "us.anthropic.claude-sonnet-5"
     ]

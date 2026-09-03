@@ -543,6 +543,94 @@ describe("/refresh-models command", () => {
 		expect(settings.unrelated).toEqual({ preserved: true });
 	});
 
+	it("refreshes configured Bedrock models through the universal command", async () => {
+		fs.writeFileSync(
+			path.join(tempHome, ".pi", "agent", "settings.json"),
+			`${JSON.stringify(
+				{
+					bedrockRefresh: {
+						models: ["us.anthropic.claude-fable-5"],
+					},
+					enabledModels: ["openai-codex/gpt-5.4"],
+				},
+				null,
+				2,
+			)}\n`,
+			"utf-8",
+		);
+		const pi = createMockPi();
+		pi.exec = vi.fn(async (_command: string, args?: string[]) => ({
+			code: 0,
+			stdout: JSON.stringify(
+				args?.includes("list-inference-profiles")
+					? {
+							inferenceProfileSummaries: [
+								{
+									inferenceProfileId:
+										"us.anthropic.claude-fable-5-1",
+								},
+							],
+						}
+					: {
+							modelSummaries: [
+								{ modelId: "anthropic.claude-fable-5-1" },
+							],
+						},
+			),
+			stderr: "",
+			killed: false,
+		}));
+		registerRefreshModelsCommand(
+			pi as Parameters<typeof registerRefreshModelsCommand>[0],
+		);
+		const cmd = pi._commands.find((command) => command.name === "refresh-models");
+		if (!cmd) throw new Error("command not registered");
+
+		const notify = vi.fn();
+		const reload = vi.fn(async () => undefined);
+		const ctx = {
+			ui: { notify },
+			reload,
+			modelRegistry: {
+				authStorage: {
+					list: () => ["amazon-bedrock"],
+					get: () => ({ type: "api_key", key: "" }),
+				},
+				getAll: () => [
+					{ provider: "amazon-bedrock", id: "us.anthropic.claude-fable-5" },
+					{
+						provider: "amazon-bedrock",
+						id: "us.anthropic.claude-fable-5-1",
+					},
+				],
+				getApiKeyAndHeaders: vi.fn(async () => ({
+					ok: true,
+					env: { AWS_PROFILE: "default", AWS_REGION: "us-east-2" },
+				})),
+			},
+		};
+
+		await cmd.handler("", ctx as Parameters<typeof cmd.handler>[1]);
+
+		const settings = JSON.parse(
+			fs.readFileSync(
+				path.join(tempHome, ".pi", "agent", "settings.json"),
+				"utf-8",
+			),
+		);
+		expect(settings.bedrockRefresh.models).toEqual([
+			"us.anthropic.claude-fable-5-1",
+		]);
+		expect(settings.enabledModels).toEqual(["openai-codex/gpt-5.4"]);
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"amazon-bedrock added: us.anthropic.claude-fable-5-1",
+			),
+			"info",
+		);
+		expect(reload).toHaveBeenCalledOnce();
+	});
+
 	it("fails when an explicit provider is not configured", async () => {
 		const pi = createMockPi();
 		registerRefreshModelsCommand(
