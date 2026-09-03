@@ -1,12 +1,12 @@
 # Changelog
 
-## 2026-09-03: Keep model refresh separate from scoped model selection
+## 2026-09-03: Preserve universal model refresh and curated model scopes
 
-**Why:** `/refresh-models` copied every remotely discovered provider model into `enabledModels`. OpenRouter catalog variants such as `:batch` were then parsed as invalid Pi thinking levels, while models hidden by visibility policy produced unmatched-pattern warnings on startup.
+**Why:** `/refresh-models` copied every remotely discovered provider model into `enabledModels`, and its provider allowlist omitted the AWS Bedrock discovery that the universal command is expected to run. OpenRouter catalog variants such as `:batch` were then parsed as invalid Pi thinking levels, while newly released Bedrock models required an unrelated provider-specific command.
 
-**Changed:** Model refresh now updates the runtime catalog and versioned provider cache without rewriting the curated `enabledModels` scope. The accidentally imported OpenRouter entries were removed from tracked settings.
+**Changed:** Model refresh now discovers configured AWS Bedrock models alongside the other supported providers and updates `bedrockRefresh.models` with the latest supported Claude family IDs. It updates runtime catalogs and provider-owned cache or inventory without rewriting the curated `enabledModels` scope. The accidentally imported OpenRouter entries were removed from tracked settings.
 
-**Preserved:** Refreshed models remain available immediately through Pi's all-model view, provider diffs and reload behavior are unchanged, and the curated Codex and Bedrock scoped model list remains authoritative.
+**Preserved:** Refreshed models become available after the existing reload, and the curated Codex and Bedrock scoped model list remains authoritative. The redundant `/bedrock-refresh` command was removed so `/refresh-models` is the single refresh surface.
 
 ---
 

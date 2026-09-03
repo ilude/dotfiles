@@ -59,19 +59,7 @@ Bedrock credentials stay local and ignored in `~/.pi/agent/auth.json` (`pi/auth.
 
 This does not store AWS keys in the repo. The empty `key` keeps Pi 0.80.7 on profile-based AWS authentication instead of treating the ambient-auth marker as a Bedrock bearer token. The provider-scoped environment tells Pi to use the existing local AWS profile for Bedrock only, while normal shell AWS commands keep their own environment/profile behavior.
 
-Poll AWS Bedrock for newer Fable, Opus, Sonnet, and Haiku model IDs from inside Pi:
-
-```text
-/bedrock-refresh
-```
-
-The command is read-only by default and reports the newest model in each Claude family, including a newer major release. To update `pi/settings.json` `bedrockRefresh.models` to the latest matching `us.*` model IDs:
-
-```text
-/bedrock-refresh --apply
-```
-
-The command reports a warning when a newer model is available or a configured model is stale, so it can be used as a periodic check from inside Pi.
+The universal `/refresh-models` command polls AWS Bedrock for newer Fable, Opus, Sonnet, and Haiku model IDs and updates `pi/settings.json` `bedrockRefresh.models` with the latest supported `us.*` IDs.
 
 Validation:
 
@@ -659,10 +647,10 @@ Refreshes available model lists for active subscription providers **without relo
 ```
 
 Behavior:
-- No provider: refreshes all currently authenticated **supported** subscription providers (OAuth entries in `auth.json`).
-- Provider argument: refreshes only that provider (currently `anthropic`, `openai-codex`, `openrouter`, `opencode`, and `opencode-go`).
+- No provider: refreshes all currently authenticated supported providers, including AWS Bedrock through its provider-scoped credentials.
+- Provider argument: refreshes only that provider (currently `amazon-bedrock`, `anthropic`, `openai-codex`, `openrouter`, `opencode`, and `opencode-go`).
 - Unsupported providers are skipped with a warning.
-- Uses existing session credentials and updates in-session model availability immediately.
+- Uses existing session credentials and updates in-session model availability immediately. Bedrock discovery also updates `bedrockRefresh.models` with the latest supported `us.*` Claude family IDs.
 - Prints per-provider diffs with model IDs that were added/removed.
 - Caches versioned provider catalog facts rather than complete Pi model definitions.
 - On startup, preserves current Pi metadata for built-in Codex models, overlays context windows from versioned refresh responses, and restores cached model discoveries that Pi does not yet know. Legacy caches cannot override known model metadata.
