@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { closeWorkflowWorktree, ensureWorkflowWorktree, ensureInPlaceWorkflow, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain, readWorkflowOwnershipRecord, verifyAndCleanupWorkflowWorktree, verifyInPlaceWorkflow, verifyRetainedWorkflowWorktree } from "../lib/workflow-worktree.js";
+import { closeWorkflowWorktree, ensureWorkflowWorktree, ensureInPlaceWorkflow, materializePlanInWorkflowWorktree, parseWorktreeListPorcelain, readWorkflowOwnershipRecord, verifyAndCleanupWorkflowWorktree, verifyInPlaceWorkflow, verifyMergedGoalReceipt, verifyRetainedWorkflowWorktree } from "../lib/workflow-worktree.js";
+import type { GoalMergeReceipt } from "../lib/goal-state.js";
 
 const roots: string[] = [];
 
@@ -259,6 +260,91 @@ describe("workflow worktree lifecycle", () => {
 		if (!resumed) throw new Error("missing persisted closeout ownership after commit failure");
 		await closeWorkflowWorktree({ worktree: { ownership: resumed, resumed: true }, planPath, archivePlan, runner });
 		expect(archiveCalls).toBe(2);
+	});
+
+	it("persists merged ownership before the receipt callback and preserves recovery on callback failure", async () => {
+		const root = repo();
+		const planPath = ".specs/receipt/plan.md";
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:receipt", slug: "receipt", planPath, runner });
+		fs.mkdirSync(path.join(worktree.ownership.worktree, ".specs", "archive", "receipt"), { recursive: true });
+		fs.writeFileSync(path.join(worktree.ownership.worktree, ".specs", "archive", "receipt", "plan.md"), "archived\\n");
+		fs.writeFileSync(path.join(worktree.ownership.worktree, "result.txt"), "done\\n");
+		let callbackSawOwnership = false;
+		await expect(closeWorkflowWorktree({
+			worktree,
+			planPath,
+			archivePlan: async () => {},
+			onMerged: async ({ mergedHead }) => {
+				callbackSawOwnership = readWorkflowOwnershipRecord(root, "receipt")?.mergedHead === mergedHead;
+				throw new Error("receipt persistence failed");
+			},
+			runner,
+		})).rejects.toThrow("receipt persistence failed");
+		expect(callbackSawOwnership).toBe(true);
+		expect(fs.existsSync(worktree.ownership.worktree)).toBe(true);
+		const resumed = readWorkflowOwnershipRecord(root, "receipt");
+		expect(resumed).toMatchObject({ closeoutStage: "merged" });
+		let retryCallbackCalls = 0;
+		await closeWorkflowWorktree({
+			worktree: { ownership: resumed!, resumed: true },
+			planPath,
+			onMerged: async () => { retryCallbackCalls += 1; },
+			runner,
+		});
+		expect(retryCallbackCalls).toBe(1);
+		expect(fs.existsSync(worktree.ownership.worktree)).toBe(false);
+	});
+
+	async function mergedReceiptFixture(): Promise<{ root: string; receipt: GoalMergeReceipt }> {
+		const root = repo();
+		const planPath = ".specs/receipt-check/plan.md";
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "goal", workflowId: "goal:receipt-check", slug: "receipt-check", planPath, runner });
+		fs.mkdirSync(path.join(worktree.ownership.worktree, ".specs", "archive", "receipt-check"), { recursive: true });
+		fs.writeFileSync(path.join(worktree.ownership.worktree, ".specs", "archive", "receipt-check", "plan.md"), completePlan());
+		let receipt: GoalMergeReceipt | undefined;
+		await closeWorkflowWorktree({
+			worktree,
+			planPath,
+			archivePlan: async () => {},
+			onMerged: async (merged) => {
+				receipt = {
+					version: 1,
+					primaryGitDir: merged.primaryGitDir,
+					primaryWorktree: merged.ownership.primaryWorktree,
+					primaryBranch: merged.ownership.primaryBranch,
+					initialBaseline: merged.ownership.initialPrimaryHead,
+					mergedCommit: merged.mergedHead,
+					archivedPlanPath: merged.archivedPlanPath,
+					archivedPlanBlob: merged.archivedPlanBlob,
+					artifacts: [merged.archivedPlanPath],
+					report: { summary: "done", validation: "passed", knownGaps: "", nextSteps: "", conditionJudgments: [], integrationJudgment: "passed" },
+				};
+			},
+			runner,
+		});
+		if (!receipt) throw new Error("merge receipt was not captured");
+		return { root, receipt };
+	}
+
+	it("verifies a receipt after cleanup and permits a later clean primary commit", async () => {
+		const { root, receipt } = await mergedReceiptFixture();
+		fs.writeFileSync(path.join(root, "later.txt"), "later\n");
+		git(root, ["add", "later.txt"]);
+		git(root, ["commit", "-q", "-m", "test: later primary commit"]);
+		await expect(verifyMergedGoalReceipt({ receipt, runner })).resolves.toMatchObject({ branch: receipt.primaryBranch });
+	});
+
+	it.each([
+		["wrong primary branch", async (root: string, receipt: GoalMergeReceipt) => { git(root, ["checkout", "-q", "-b", "other"]); return receipt; }, /primary branch/],
+		["changed lineage", async (root: string, receipt: GoalMergeReceipt) => ({ ...receipt, initialBaseline: git(root, ["commit-tree", "HEAD^{tree}", "-m", "unrelated baseline"]) }), /does not descend/],
+		["missing expected merge", async (root: string, receipt: GoalMergeReceipt) => ({ ...receipt, mergedCommit: git(root, ["commit-tree", "HEAD^{tree}", "-m", "unrelated merge"]) }), /not an ancestor/],
+		["changed archive blob", async (_root: string, receipt: GoalMergeReceipt) => ({ ...receipt, archivedPlanBlob: "0000000000000000000000000000000000000000" }), /archive does not match/],
+		["dirty primary", async (root: string, receipt: GoalMergeReceipt) => { fs.writeFileSync(path.join(root, "dirty.txt"), "dirty\n"); return receipt; }, /primary worktree is dirty/],
+		["surviving source plan", async (root: string, receipt: GoalMergeReceipt) => { const source = path.join(root, ".specs", "receipt-check", "plan.md"); fs.mkdirSync(path.dirname(source), { recursive: true }); fs.writeFileSync(source, completePlan()); git(root, ["add", ".specs/receipt-check/plan.md"]); git(root, ["commit", "-q", "-m", "test: restore source plan"]); return receipt; }, /source plan still exists/],
+	])("rejects receipt reconciliation for %s", async (_name, mutate, expected) => {
+		const { root, receipt } = await mergedReceiptFixture();
+		const changed = await mutate(root, receipt);
+		await expect(verifyMergedGoalReceipt({ receipt: changed, runner })).rejects.toThrow(expected);
 	});
 
 	it("resumes merged closeout after cleanup failure", async () => {

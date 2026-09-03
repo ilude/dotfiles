@@ -3117,6 +3117,7 @@ export default function (pi: ExtensionAPI) {
 			const canonicalPlanPath = canonicalPlanPathFromInput(requestedPlanPath);
 			const canonicalPlan = canonicalPlanPath !== undefined;
 			let workspaceDirective = "";
+			let workflowRepoRoot: string | undefined;
 			let ownedWorkspace = ctx.cwd;
 			let ownedWorktree: WorkflowWorktree | undefined;
 			let completedPlan = false;
@@ -3125,6 +3126,7 @@ export default function (pi: ExtensionAPI) {
 			if (ctx.cwd) {
 				try {
 					const primaryRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
+					workflowRepoRoot = primaryRoot;
 					if (canonicalPlan) {
 						const sourceValidation = validatePlanFile(primaryRoot, canonicalPlanPath, "execution-preflight");
 						if (!sourceValidation.valid) {
@@ -3224,6 +3226,16 @@ export default function (pi: ExtensionAPI) {
 				activeRawWorkflow = ownedWorktree;
 				activateTools(pi, ["workflow_complete"]);
 			}
+			noteWorkflowSubmission(
+				`/do-it${parsed.request ? ` ${parsed.request}` : ""}`,
+				"engineer",
+			);
+			startWorkflowEpisode({
+				command: "do-it",
+				args: canonicalPlan ? canonicalPlanPath : "",
+				...(canonicalPlanPath ? { artifactPath: canonicalPlanPath } : {}),
+				...(workflowRepoRoot ? { repoRoot: workflowRepoRoot } : {}),
+			});
 			const template = loadSkill("do-it.md");
 			const prompt = buildSkillPrompt(template, canonicalPlan ? canonicalPlanPath : parsed.request, {
 				replaceArguments: true,

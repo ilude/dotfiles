@@ -23,6 +23,7 @@ import {
 	type GoalWaitReason,
 	type GoalCondition,
 	type GoalConditionMode,
+	type GoalMergeReceipt,
 	goalStrategiesMateriallyDiffer,
 	reconcileGoalConditions,
 	validateGoalTaskCoverage,
@@ -51,6 +52,7 @@ import {
 	ensureWorkflowWorktree,
 	readWorkflowOwnershipForWorktree,
 	readWorkflowOwnershipRecord,
+	verifyMergedGoalReceipt,
 	workflowSlugFromPlan,
 } from "../lib/workflow-worktree.js";
 import { noteWorkflowSubmission } from "../lib/workflow-friction.js";
@@ -666,6 +668,29 @@ function planningToolAllowed(
 	);
 }
 
+function foregroundPlanTaskBlockers(goal: ForegroundGoal): string[] {
+	if (!goal.workspace || goal.plans?.length !== 1 || !goal.items)
+		return ["Foreground goal has no canonical plan and durable task mapping."];
+	const plan = readLinkedPlan(path.resolve(goal.workspace, goal.plans[0]));
+	const blockers = [...plan.blockers];
+	for (const planTask of plan.tasks) {
+		if (!planTask.required) continue;
+		const item = goal.items[planTask.key];
+		const record = item ? getTask(item.taskId) : null;
+		if (!record)
+			blockers.push(`${planTask.key}: durable root task is missing`);
+		else if (record.state !== "completed")
+			blockers.push(
+				`${planTask.key}: durable root task is ${record.state}, not completed`,
+			);
+		else if (!record.outcome?.summary || !record.outcome.evidence.length)
+			blockers.push(
+				`${planTask.key}: completed task has no bounded outcome evidence`,
+			);
+	}
+	return blockers;
+}
+
 function foregroundTaskGraphError(goal: ForegroundGoal): string | undefined {
 	if (!goal.workspace || goal.plans?.length !== 1 || !goal.items)
 		return "Foreground goal has no canonical plan and durable task mapping.";
@@ -724,9 +749,17 @@ function assertGoalTaskGraphReady(goal: UnattendedGoal): void {
 function goalJobsForWorkspace(cwd: string): LoopJob[] {
 	const direct = listWorkspaceGoalJobs(cwd);
 	const canonical = fs.realpathSync(cwd);
+	const primaryGitDir = path.resolve(canonical, ".git");
 	const owned = listLoopJobs().filter((job) => {
+		const receipt = job.goal?.mergeReceipt;
+		if (
+			receipt &&
+			(path.resolve(receipt.primaryWorktree) === canonical ||
+				path.resolve(receipt.primaryGitDir) === primaryGitDir)
+		)
+			return true;
 		const workspace = job.goal?.workspace;
-		if (!workspace) return false;
+		if (!workspace || !fs.existsSync(workspace)) return false;
 		const ownership = readWorkflowOwnershipForWorktree(workspace);
 		return ownership?.primaryWorktree === canonical;
 	});
@@ -1153,10 +1186,88 @@ function verifyObjective(goal: UnattendedGoal): string | undefined {
 		: `objective file hash changed: ${goal.objectivePath}`;
 }
 
+async function reconcileReceiptCompletion(
+	pi: ExtensionAPI,
+	job: LoopJob,
+	receipt: GoalMergeReceipt,
+): Promise<LoopJob> {
+	const verified = await verifyMergedGoalReceipt({
+		receipt,
+		runner: async (cwd, args) => {
+			const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
+			return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+		},
+	});
+	const completedAt = nowIso();
+	const completedGoal = {
+		...job.goal!,
+		workspace: verified.primaryWorktree,
+		plans: [receipt.archivedPlanPath],
+		archivedPlanPath: receipt.archivedPlanPath,
+		state: "completed" as const,
+		updatedAt: completedAt,
+		completedAt,
+		finalHead: verified.head,
+		finalBranch: verified.branch,
+		finalWorktree: "clean",
+		changedArtifacts: receipt.artifacts,
+		knownGaps: receipt.report.knownGaps ? [receipt.report.knownGaps] : [],
+		blockers: [],
+		closeout: unattendedCloseout({
+			goal: { ...job.goal!, plans: [receipt.archivedPlanPath], archivedPlanPath: receipt.archivedPlanPath },
+			summary: receipt.report.summary,
+			artifacts: receipt.artifacts,
+			validation: receipt.report.validation,
+			head: verified.head,
+			branch: verified.branch,
+			worktree: "clean",
+			gaps: receipt.report.knownGaps ? [receipt.report.knownGaps] : [],
+			nextSteps: receipt.report.nextSteps,
+			conditionJudgments: receipt.report.conditionJudgments,
+			integrationJudgment: receipt.report.integrationJudgment,
+		}),
+	};
+	const { mergeReceipt: _mergeReceipt, ...consumedGoal } = completedGoal;
+	return updateLoopJob(job.id, (current) => {
+		if (!current.goal || !current.goal.mergeReceipt) return current;
+		if (current.goal.mergeReceipt.mergedCommit !== receipt.mergedCommit)
+			throw new Error("merge receipt changed during reconciliation");
+		return {
+			...current,
+			plans: [receipt.archivedPlanPath],
+			goal: consumedGoal,
+		};
+	});
+}
+
 async function reconcileForResume(
 	pi: ExtensionAPI,
 	job: LoopJob,
 ): Promise<{ ok: true; job: LoopJob } | { ok: false; message: string }> {
+	if (job.goal?.mergeReceipt) {
+		const receipt = job.goal.mergeReceipt;
+		const sourcePlan = receipt.archivedPlanPath.replace(/^\.specs\/archive\//, ".specs/");
+		const ownership = readWorkflowOwnershipRecord(receipt.primaryWorktree, workflowSlugFromPlan(sourcePlan));
+		if (ownership) {
+			try {
+				await closeWorkflowWorktree({
+					worktree: { ownership, resumed: true },
+					runner: async (cwd, args) => {
+						const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
+						return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+					},
+				});
+			} catch (error) {
+				return { ok: false, message: error instanceof Error ? error.message : String(error) };
+			}
+		}
+		try {
+			const completed = await reconcileReceiptCompletion(pi, job, receipt);
+			return { ok: true, job: completed };
+		} catch (error) {
+			return { ok: false, message: error instanceof Error ? error.message : String(error) };
+		}
+	}
 	const activeJob = await reconcileArchivedGoalPath(job);
 	if (!activeJob.goal)
 		return { ok: false, message: "Loop job has no goal metadata." };
@@ -1485,9 +1596,11 @@ function unattendedCloseout(input: {
 export const goalTestApi = {
 	attachOrCreatePlan,
 	createUnattendedGoal,
+	foregroundPlanTaskBlockers,
 	goalFromInline,
 	parseGoal,
 	resolveGoalFile,
+	reconcileForResume,
 	restoreGoal,
 	verifyObjective,
 };
@@ -1664,6 +1777,10 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.notify("Resuming goal...", "info");
 					const reconciliation = await reconcileForResume(pi, prior);
 					if (!reconciliation.ok) throw new Error(reconciliation.message);
+					if (reconciliation.job.goal?.state === "completed") {
+						showGoal(pi, `Goal ${reconciliation.job.goal.id}: completed`);
+						return;
+					}
 					const started = await resumeLoopJob(reconciliation.job);
 					unattendedJobId = started.id;
 					await appendState(pi, stateEntry(null, { unattendedGoalId: started.id }));
@@ -2444,29 +2561,7 @@ export default function (pi: ExtensionAPI) {
 					foregroundGoal.plans?.length === 1 &&
 					foregroundGoal.items
 				) {
-					const blockers: string[] = [];
-					const plan = readLinkedPlan(
-						path.resolve(foregroundGoal.workspace, foregroundGoal.plans[0]),
-					);
-					blockers.push(...plan.blockers);
-					for (const task of plan.tasks) {
-						if (!task.required) continue;
-						const item = foregroundGoal.items[task.key];
-						const record = item ? getTask(item.taskId) : null;
-						if (!record)
-							blockers.push(`${task.key}: durable root task is missing`);
-						else if (!["completed", "skipped"].includes(record.state))
-							blockers.push(
-								`${task.key}: durable root task is ${record.state}`,
-							);
-						else if (
-							record.state === "completed" &&
-							(!record.outcome?.summary || !record.outcome.evidence.length)
-						)
-							blockers.push(
-								`${task.key}: completed task has no bounded outcome evidence`,
-							);
-					}
+					const blockers = foregroundPlanTaskBlockers(foregroundGoal);
 					if (blockers.length > 0)
 						return formatToolError(
 							`Goal completion rejected:\n- ${blockers.join("\n- ")}`,
@@ -2604,6 +2699,40 @@ export default function (pi: ExtensionAPI) {
 					worktree: { ownership, resumed: true },
 					planPath: sourcePlan,
 					archivePlan: (cwd, planPath) => { archiveCompletedPlan(cwd, planPath); },
+					onMerged: async ({ ownership: mergedOwnership, primaryGitDir, mergedHead, archivedPlanPath, archivedPlanBlob }) => {
+						const mergedDiff = await pi.exec("git", ["diff", "--name-only", `${job.initialHead}..${mergedHead}`], { cwd: mergedOwnership.primaryWorktree, timeout: 30_000 });
+						if (mergedDiff.code !== 0) throw new Error("goal merge receipt could not identify merged artifacts");
+						const artifacts = mergedDiff.stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 256);
+						const suppliedGaps = asciiBounded((params.knownGaps ?? "").trim(), 500);
+						const mergeReceipt: GoalMergeReceipt = {
+							version: 1,
+							primaryGitDir,
+							primaryWorktree: path.resolve(mergedOwnership.primaryWorktree),
+							primaryBranch: mergedOwnership.primaryBranch,
+							initialBaseline: job.initialHead,
+							mergedCommit: mergedHead,
+							archivedPlanPath,
+							archivedPlanBlob,
+							artifacts,
+							report: {
+								summary: asciiBounded(params.summary, 1000),
+								validation: asciiBounded(verification.validation, 1000),
+								knownGaps: suppliedGaps && !/^none(?: reported)?$/i.test(suppliedGaps) ? suppliedGaps : "",
+								nextSteps: asciiBounded(params.nextSteps ?? "", 500),
+								conditionJudgments: conditionJudgments.map((item) => ({ id: item.id, evidence: asciiBounded(item.evidence, 500), passed: true as const })),
+								integrationJudgment: asciiBounded(params.integrationJudgment ?? "", 500),
+							},
+						};
+						await updateLoopJob(job.id, (current) => {
+							if (!current.goal) throw new Error("goal disappeared before merge receipt persistence");
+							if (current.goal.mergeReceipt) {
+								if (JSON.stringify(current.goal.mergeReceipt) !== JSON.stringify(mergeReceipt))
+									throw new Error("goal merge receipt is immutable");
+								return current;
+							}
+							return { ...current, goal: { ...current.goal, mergeReceipt } };
+						});
+					},
 					runner: async (cwd, args) => {
 						const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
 						return { code: result.code, stdout: result.stdout, stderr: result.stderr };
@@ -2638,6 +2767,7 @@ export default function (pi: ExtensionAPI) {
 					changedArtifacts: artifacts,
 					knownGaps: [...new Set(gaps)],
 					blockers: [],
+					mergeReceipt: undefined,
 				};
 				const report = unattendedCloseout({
 					goal: completedGoal,

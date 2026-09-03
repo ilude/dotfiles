@@ -34,6 +34,7 @@ vi.mock("../lib/workflow-worktree", () => ({
 	closeWorkflowWorktree: vi.fn(),
 	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
 	readWorkflowOwnershipRecord: vi.fn(() => undefined),
+	verifyMergedGoalReceipt: vi.fn(),
 	workflowSlugFromPlan: (value: string) => value.match(/\.specs\/([^/]+)\/plan\.md/)?.[1] ?? "workflow",
 	workflowSlugFromRequest: (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "workflow",
 }));
@@ -53,7 +54,7 @@ function writeFile(filePath: string, content: string | Buffer) {
 
 function readyPlan(
 	slug: string,
-	tasks: Array<{ key: string; summary: string; dependsOn?: string[] }>,
+	tasks: Array<{ key: string; summary: string; dependsOn?: string[]; required?: boolean }>,
 ): string {
 	return [
 		"---",
@@ -78,10 +79,16 @@ function readyPlan(
 		"- In scope: Fixture work.",
 		"- Out of scope: Other work.",
 		"",
+		"## Execution Strategy",
+		"",
+		"- Parallel work: None",
+		"- Smaller-model work: None",
+		"",
 		"## Tasks",
 		"",
 		...tasks.flatMap((task) => [
 			`- [ ] **${task.key}: ${task.summary}**`,
+			...(task.required === false ? ["  - Required: false"] : []),
 			"  - Files: fixture.txt",
 			`  - Depends on: ${task.dependsOn?.join(", ") ?? "none"}`,
 			"  - Change: Complete the fixture task.",
@@ -536,6 +543,111 @@ describe("goal extension", () => {
 		});
 	});
 
+	it("rejects a skipped required foreground plan task with a bounded blocker", () => {
+		const planPath = path.join(tmp, "plan.md");
+		writeFile(path.join(tmp, "goal.md"), "Complete the planned fixture.\n");
+		writeFile(
+			planPath,
+			readyPlan("fixture", [
+				{ key: "T1", summary: "Complete the required fixture" },
+				{ key: "T2", summary: "Optional cleanup", required: false },
+			]).replaceAll("- [ ]", "- [x]"),
+		);
+		initializeRepository(tmp);
+		const parsed = goalTestApi.parseGoal("goal.md", tmp);
+		expect(parsed.ok).toBe(true);
+		if (!parsed.ok) return;
+		const materialized = goalTestApi.createUnattendedGoal(parsed.parsed, tmp, "plan.md");
+		const required = getTask(materialized.items.T1.taskId);
+		const optional = getTask(materialized.items.T2.taskId);
+		if (!required || !optional) throw new Error("Plan tasks were not created.");
+		transitionTask(required.id, "assigned");
+		transitionTask(required.id, "skipped");
+		transitionTask(optional.id, "assigned");
+		transitionTask(optional.id, "skipped");
+
+		const blockers = goalTestApi.foregroundPlanTaskBlockers({
+			...parsed.goal,
+			workspace: tmp,
+			plans: ["plan.md"],
+			items: materialized.items,
+		});
+		expect(blockers).toContain(
+			"T1: durable root task is skipped, not completed",
+		);
+		expect(blockers.join("\\n")).not.toContain("T2");
+	});
+
+	it("accepts completed outcome evidence for required foreground work and ignores optional skips", () => {
+		writeFile(path.join(tmp, "goal.md"), "Complete the planned fixture.\n");
+		writeFile(
+			path.join(tmp, "plan.md"),
+			readyPlan("fixture", [
+				{ key: "T1", summary: "Complete the required fixture" },
+				{ key: "T2", summary: "Optional cleanup", required: false },
+			]).replaceAll("- [ ]", "- [x]"),
+		);
+		initializeRepository(tmp);
+		const parsed = goalTestApi.parseGoal("goal.md", tmp);
+		expect(parsed.ok).toBe(true);
+		if (!parsed.ok) return;
+		const materialized = goalTestApi.createUnattendedGoal(parsed.parsed, tmp, "plan.md");
+		const required = getTask(materialized.items.T1.taskId);
+		const optional = getTask(materialized.items.T2.taskId);
+		if (!required || !optional) throw new Error("Plan tasks were not created.");
+		transitionTask(required.id, "assigned");
+		transitionTask(required.id, "completed", {
+			outcome: {
+				summary: "Completed the required fixture",
+				evidence: ["The supported fixture check passed."],
+			},
+		});
+		transitionTask(optional.id, "assigned");
+		transitionTask(optional.id, "skipped");
+
+		expect(
+			goalTestApi.foregroundPlanTaskBlockers({
+				...parsed.goal,
+				workspace: tmp,
+				plans: ["plan.md"],
+				items: materialized.items,
+			}),
+		).toEqual([]);
+	});
+
+	it("applies the required-skipped blocker to unattended completion", async () => {
+		writeFile(path.join(tmp, ".specs", "fixture", "goal.md"), "Complete the fixture.\n");
+		writeFile(
+			path.join(tmp, ".specs", "fixture", "plan.md"),
+			readyPlan("fixture", [{ key: "T1", summary: "Complete the fixture" }]).replaceAll("- [ ]", "- [x]"),
+		);
+		initializeRepository(tmp);
+		const pi = createMockPi();
+		configureGitExec(pi, tmp);
+		goal(pi as unknown as ExtensionAPI);
+		const command = pi._commands.find((item) => item.name === "goal");
+		await command?.handler("--unattended .specs/fixture/goal.md", createMockCtx({ cwd: tmp, mode: "tui", shutdown: vi.fn() }));
+		const jobId = fs.readdirSync(process.env.PI_LOOP_DIR as string)[0];
+		const running = readLoopJob(jobId).goal;
+		if (!running) throw new Error("Unattended goal was not created.");
+		const task = getTask(running.items.T1.taskId);
+		if (!task) throw new Error("Required task was not created.");
+		transitionTask(task.id, "assigned");
+		transitionTask(task.id, "skipped");
+		const complete = pi._getTool("goal_complete");
+		const result = await complete?.execute("skipped", {
+			conditionJudgments: [
+				{ id: "G1", evidence: "The fixture was inspected.", passed: true },
+			],
+			integrationJudgment: "The required evidence was reviewed.",
+			summary: "Complete",
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain(
+			"T1: linked task is skipped, not completed",
+		);
+	});
+
 	it("launches, correlates, reports, stops, and resumes an unattended goal without a loop id", async () => {
 		writeFile(path.join(tmp, ".specs", "demo", "goal.md"), "Ship the demo safely.\n");
 		writeFile(
@@ -551,7 +663,6 @@ describe("goal extension", () => {
 		const ctx = createMockCtx({ cwd: tmp, mode: "tui", shutdown });
 
 		await command?.handler("--unattended .specs/demo/goal.md", ctx);
-
 		expect(spawnMock).toHaveBeenCalledOnce();
 		expect(shutdown).toHaveBeenCalledOnce();
 		const [jobId] = fs.readdirSync(process.env.PI_LOOP_DIR as string);
@@ -916,6 +1027,47 @@ describe("goal extension", () => {
 		expect(resumed?.blockers).toContain(
 			"Permission decision permission-456 blocks T2.",
 		);
+	});
+
+	it("reconciles a persisted merge receipt exactly once without the removed worktree", async () => {
+		const { pi, jobId } = await setupUnattendedGoalRecovery();
+		const current = readLoopJob(jobId);
+		const goalState = current.goal!;
+		const receipt = {
+			version: 1 as const,
+			primaryGitDir: path.join(tmp, ".git"),
+			primaryWorktree: tmp,
+			primaryBranch: "main",
+			initialBaseline: current.initialHead,
+			mergedCommit: current.initialHead,
+			archivedPlanPath: ".specs/archive/recovery/plan.md",
+			archivedPlanBlob: "blob",
+			artifacts: ["result.txt"],
+			report: {
+				summary: "Recovered completion",
+				validation: "focused check passed",
+				knownGaps: "",
+				nextSteps: "None",
+				conditionJudgments: [],
+				integrationJudgment: "The receipt is sufficient.",
+			},
+		};
+		vi.mocked(workflowWorktree.verifyMergedGoalReceipt).mockResolvedValue({
+			primaryWorktree: tmp,
+			branch: "main",
+			head: current.initialHead,
+		});
+		await updateLoopJob(jobId, (job) => ({
+			...job,
+			goal: { ...goalState, mergeReceipt: receipt },
+		}));
+		const reconciled = await goalTestApi.reconcileForResume(pi as unknown as ExtensionAPI, readLoopJob(jobId));
+		expect(reconciled.ok).toBe(true);
+		if (!reconciled.ok) return;
+		expect(reconciled.job.goal).toMatchObject({ state: "completed", archivedPlanPath: receipt.archivedPlanPath });
+		expect(reconciled.job.goal).not.toHaveProperty("mergeReceipt");
+		expect(readLoopJob(jobId).goal).not.toHaveProperty("mergeReceipt");
+		expect(workflowWorktree.verifyMergedGoalReceipt).toHaveBeenCalledOnce();
 	});
 
 	it("rejects incomplete linked work and accepts only evidence-backed unattended completion", async () => {

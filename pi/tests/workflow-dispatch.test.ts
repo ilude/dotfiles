@@ -502,6 +502,8 @@ describe("workflow slash command dispatch", () => {
 	it("resumes a cleared /do-it through private dispatch without a public command message", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
+		const telemetry = await import("../lib/workflow-telemetry.ts");
+		const friction = await import("../lib/workflow-friction.ts");
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
 		const newSession = vi.fn(async (options: any) => {
 			await options.setup({ appendCustomMessageEntry: vi.fn() });
@@ -509,6 +511,8 @@ describe("workflow slash command dispatch", () => {
 		});
 		await getHandler(mockPi, "do-it")( "implement the task", { ...createMockCtx(), cwd: "/repo", newSession });
 		expect(newSession).toHaveBeenCalledOnce();
+		expect(telemetry.startWorkflowEpisode).not.toHaveBeenCalled();
+		expect(friction.noteWorkflowSubmission).not.toHaveBeenCalled();
 		const sessionStart = mockPi._getHook("session_start")[0]?.handler;
 		if (!sessionStart) throw new Error("session_start hook not registered");
 		await sessionStart({ reason: "resume" }, {
@@ -521,16 +525,40 @@ describe("workflow slash command dispatch", () => {
 		} as any);
 		expect(mockPi.sendUserMessage).not.toHaveBeenCalled();
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "workflow.hiddenPrompt" }), expect.anything());
+		expect(vi.mocked(telemetry.startWorkflowEpisode)).toHaveBeenCalledOnce();
+		expect(vi.mocked(telemetry.startWorkflowEpisode)).toHaveBeenCalledWith({
+			command: "do-it",
+			args: "",
+			repoRoot: "/repo",
+		});
+		expect(vi.mocked(friction.noteWorkflowSubmission)).toHaveBeenCalledOnce();
+		expect(vi.mocked(friction.noteWorkflowSubmission)).toHaveBeenCalledWith(
+			"/do-it implement the task",
+			"engineer",
+		);
 	});
 
 	it("uses --no-clear as an immediate clear bypass", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
+		const telemetry = await import("../lib/workflow-telemetry.ts");
+		const friction = await import("../lib/workflow-friction.ts");
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
 		const ctx = { ...createMockCtx(), cwd: "/repo", newSession: vi.fn() };
 		await getHandler(mockPi, "do-it")("--no-clear implement the task", ctx);
 		expect(ctx.newSession).not.toHaveBeenCalled();
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ customType: "workflow.hiddenPrompt" }), expect.anything());
+		expect(vi.mocked(telemetry.startWorkflowEpisode)).toHaveBeenCalledOnce();
+		expect(vi.mocked(telemetry.startWorkflowEpisode)).toHaveBeenCalledWith({
+			command: "do-it",
+			args: "",
+			repoRoot: "/repo",
+		});
+		expect(vi.mocked(friction.noteWorkflowSubmission)).toHaveBeenCalledOnce();
+		expect(vi.mocked(friction.noteWorkflowSubmission)).toHaveBeenCalledWith(
+			"/do-it implement the task",
+			"engineer",
+		);
 	});
 
 	it("/do-it echoes before repository resolution completes", async () => {
@@ -560,6 +588,8 @@ describe("workflow slash command dispatch", () => {
 	it("/do-it rejects an invalid canonical plan before archive activation or execution", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
+		const telemetry = await import("../lib/workflow-telemetry.ts");
+		const friction = await import("../lib/workflow-friction.ts");
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
 		const fixture = await createPlanFixture();
 		mockPi.setActiveTools([]);
@@ -579,6 +609,8 @@ describe("workflow slash command dispatch", () => {
 			},
 			{ deliverAs: "nextTurn" },
 		);
+		expect(telemetry.startWorkflowEpisode).not.toHaveBeenCalled();
+		expect(friction.noteWorkflowSubmission).not.toHaveBeenCalled();
 	});
 
 	it("/do-it persists a materialized-plan validation failure for the next model turn", async () => {
@@ -620,6 +652,8 @@ describe("workflow slash command dispatch", () => {
 	it("/do-it persists setup failures for the next model turn", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
+		const telemetry = await import("../lib/workflow-telemetry.ts");
+		const friction = await import("../lib/workflow-friction.ts");
 		const worktrees = await import("../lib/workflow-worktree.ts");
 		vi.mocked(worktrees.resolveWorkflowRepoRoot).mockRejectedValueOnce(new Error("git unavailable"));
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
@@ -634,6 +668,8 @@ describe("workflow slash command dispatch", () => {
 			}),
 			{ deliverAs: "nextTurn" },
 		);
+		expect(telemetry.startWorkflowEpisode).not.toHaveBeenCalled();
+		expect(friction.noteWorkflowSubmission).not.toHaveBeenCalled();
 	});
 
 	it("/do-it --no-merge overrides canonical merge retention", async () => {
@@ -655,6 +691,8 @@ describe("workflow slash command dispatch", () => {
 	it("/do-it dispatches a valid canonical plan after preflight", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
+		const telemetry = await import("../lib/workflow-telemetry.ts");
+		const friction = await import("../lib/workflow-friction.ts");
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
 		const fixture = await createPlanFixture();
 		await fs.promises.writeFile(
@@ -675,6 +713,15 @@ describe("workflow slash command dispatch", () => {
 			}),
 			{ triggerTurn: true, deliverAs: "followUp" },
 		);
+		expect(telemetry.startWorkflowEpisode).toHaveBeenCalledOnce();
+		expect(telemetry.startWorkflowEpisode).toHaveBeenCalledWith({
+			command: "do-it",
+			args: fixture.planPath,
+			artifactPath: fixture.planPath,
+			repoRoot: fixture.root,
+		});
+		expect(vi.mocked(telemetry.startWorkflowEpisode).mock.calls[0][0]).not.toHaveProperty("request");
+		expect(friction.noteWorkflowSubmission).toHaveBeenCalledOnce();
 	});
 
 	it("/do-it honors commit-and-retain closeout from the canonical plan", async () => {

@@ -152,6 +152,32 @@ export type GoalValidationEvidence = {
 	summary?: string;
 };
 
+export type GoalConditionJudgmentReceipt = {
+	id: string;
+	evidence: string;
+	passed: true;
+};
+
+export type GoalMergeReceipt = {
+	version: 1;
+	primaryGitDir: string;
+	primaryWorktree: string;
+	primaryBranch: string;
+	initialBaseline: string;
+	mergedCommit: string;
+	archivedPlanPath: string;
+	archivedPlanBlob: string;
+	artifacts: string[];
+	report: {
+		summary: string;
+		validation: string;
+		knownGaps: string;
+		nextSteps: string;
+		conditionJudgments: GoalConditionJudgmentReceipt[];
+		integrationJudgment: string;
+	};
+};
+
 export type UnattendedGoal = {
 	schemaVersion: 1;
 	id: string;
@@ -188,6 +214,7 @@ export type UnattendedGoal = {
 	finalWorktree?: string;
 	closeoutState?: "archived_pending_commit";
 	archivedPlanPath?: string;
+	mergeReceipt?: GoalMergeReceipt;
 	closeout?: string;
 };
 

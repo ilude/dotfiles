@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-03: Make workflow completion state recoverable
+
+**Why:** `/do-it` dispatch telemetry could be omitted or duplicated across session replacement, foreground goals accepted skipped required tasks, and an unattended goal could lose its completion route after merge cleanup but before durable goal persistence.
+
+**Changed:** `/do-it` now records one privacy-bounded dispatch after successful setup, foreground and unattended goals require completed evidence-backed root tasks, and unattended closeout persists an immutable merge receipt before cleanup so resume can verify and finalize an already-merged goal without replaying Git changes.
+
+**Preserved:** Raw request text remains outside metadata telemetry, optional tasks may still be skipped, and existing ownership, merge, cleanup, and dirty-worktree safety checks remain authoritative.
+
+**Validation:** Focused workflow dispatch, telemetry, goal, and worktree tests passed with Pi typecheck and `git diff --check`.
+
+---
+
 ## 2026-09-02: Avoid blocking same-tier single-child delegation
 
 **Why:** A lone foreground subagent on the root's model tier hid its work and blocked the root while providing only context isolation.

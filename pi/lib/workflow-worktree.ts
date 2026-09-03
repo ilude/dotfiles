@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { readLinkedPlan } from "./plan-state.js";
+import type { GoalMergeReceipt } from "./goal-state.js";
 
 const OWNERSHIP_VERSION = 1;
 const IN_PLACE_OWNERSHIP_VERSION = 1;
@@ -517,7 +518,40 @@ export async function verifyRetainedWorkflowWorktree(input: {
 	return completed;
 }
 
-export async function closeWorkflowWorktree(input: { worktree: WorkflowWorktree; planPath?: string; archivePlan?: (cwd: string, planPath: string) => Promise<void> | void; runner: WorkflowGitRunner }): Promise<WorkflowWorktreeOwnership> {
+export type WorkflowMergeReceiptInput = {
+	ownership: WorkflowWorktreeOwnership;
+	primaryGitDir: string;
+	mergedHead: string;
+	archivedPlanPath: string;
+	archivedPlanBlob: string;
+};
+
+export async function verifyMergedGoalReceipt(input: {
+	receipt: GoalMergeReceipt;
+	runner: WorkflowGitRunner;
+}): Promise<{ primaryWorktree: string; branch: string; head: string }> {
+	const receipt = input.receipt;
+	const primaryGitDir = normalize(receipt.primaryGitDir);
+	const root = normalize(receipt.primaryWorktree);
+	const actualGitDir = normalize(parseLine(await input.runner(root, ["rev-parse", "--absolute-git-dir"]), "resolve receipt Git directory"));
+	if (actualGitDir !== primaryGitDir) throw new Error("merge receipt primary Git directory does not match");
+	const primary = await primaryState(root, input.runner, true);
+	if (primary.branch !== receipt.primaryBranch) throw new Error("merge receipt primary branch does not match");
+	const baseline = await input.runner(primary.worktree, ["merge-base", "--is-ancestor", receipt.initialBaseline, "HEAD"]);
+	if (baseline.code !== 0) throw new Error("current primary HEAD does not descend from the receipt baseline");
+	const merged = await input.runner(primary.worktree, ["merge-base", "--is-ancestor", receipt.mergedCommit, "HEAD"]);
+	if (merged.code !== 0) throw new Error("recorded merge is not an ancestor of the current primary HEAD");
+	const mergedArchive = await input.runner(primary.worktree, ["rev-parse", `${receipt.mergedCommit}:${receipt.archivedPlanPath}`]);
+	if (mergedArchive.code !== 0 || mergedArchive.stdout.trim() !== receipt.archivedPlanBlob)
+		throw new Error("recorded merge archive does not match the merge receipt");
+	const source = receipt.archivedPlanPath.replace(/^\.specs\/archive\//, ".specs/");
+	const sourceCheck = await input.runner(primary.worktree, ["cat-file", "-e", `HEAD:${source}`]);
+	if (sourceCheck.code === 0 || fs.existsSync(path.join(primary.worktree, source)))
+		throw new Error("source plan still exists after receipt merge");
+	return { primaryWorktree: primary.worktree, branch: primary.branch, head: parseLine(await input.runner(primary.worktree, ["rev-parse", "HEAD"]), "resolve receipt HEAD") };
+}
+
+export async function closeWorkflowWorktree(input: { worktree: WorkflowWorktree; planPath?: string; archivePlan?: (cwd: string, planPath: string) => Promise<void> | void; onMerged?: (input: WorkflowMergeReceiptInput) => Promise<void> | void; runner: WorkflowGitRunner }): Promise<WorkflowWorktreeOwnership> {
 	const original = input.worktree.ownership;
 	if (original.state !== "active") throw new Error("workflow worktree is already complete");
 	const planPath = input.planPath?.replace(/^@/, "").replace(/\\/g, "/");
@@ -569,6 +603,13 @@ export async function closeWorkflowWorktree(input: { worktree: WorkflowWorktree;
 		mergedHead = parseLine(await input.runner(primary.worktree, ["rev-parse", "HEAD"]), "verify merged HEAD");
 		ownership = { ...ownership, closeoutStage: "merged", mergedHead, updatedAt: new Date().toISOString() };
 		writeOwnership(metadata, ownership);
+	}
+	if (input.onMerged && planPath && mergedHead) {
+		const slug = workflowSlugFromPlan(planPath);
+		const archivedPlanPath = `.specs/archive/${slug}/plan.md`;
+		const archivedPlanBlob = parseLine(await input.runner(primary.worktree, ["rev-parse", `${mergedHead}:${archivedPlanPath}`]), "resolve merged archive blob");
+		const primaryGitDir = normalize(parseLine(await input.runner(primary.worktree, ["rev-parse", "--absolute-git-dir"]), "resolve primary Git directory"));
+		await input.onMerged({ ownership, primaryGitDir, mergedHead, archivedPlanPath, archivedPlanBlob });
 	}
 	let listed = await listWorktrees(primary.worktree, input.runner);
 	if (listed.some((entry) => normalize(entry.path) === normalize(ownership.worktree))) {
