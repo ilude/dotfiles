@@ -60,6 +60,12 @@ git pull --no-recurse-submodules
 git submodule update --init --recursive
 ```
 
+### Change history
+
+- Keep commit messages concise, but make them specific enough to capture the delivered outcome and relevant user intent. Use a short body only when the subject cannot preserve an important constraint or distinction; leave detailed rationale to the changelog.
+- Update the root `CHANGELOG.md` for material user-facing, operator-facing, workflow, compatibility, or architectural changes. Record the context needed to understand what changed, why it changed, important constraints, and deliberately preserved behavior without duplicating implementation details.
+- Do not invent rationale. Skip changelog entries for mechanical changes that do not alter supported behavior.
+
 ### Implementation and workflow
 
 - All scripts must be idempotent. Use LF line endings only.
