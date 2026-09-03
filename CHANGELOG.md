@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-03: Keep model refresh separate from scoped model selection
+
+**Why:** `/refresh-models` copied every remotely discovered provider model into `enabledModels`. OpenRouter catalog variants such as `:batch` were then parsed as invalid Pi thinking levels, while models hidden by visibility policy produced unmatched-pattern warnings on startup.
+
+**Changed:** Model refresh now updates the runtime catalog and versioned provider cache without rewriting the curated `enabledModels` scope. The accidentally imported OpenRouter entries were removed from tracked settings.
+
+**Preserved:** Refreshed models remain available immediately through Pi's all-model view, provider diffs and reload behavior are unchanged, and the curated Codex and Bedrock scoped model list remains authoritative.
+
+---
+
 ## 2026-09-02: Preserve hidden coordinator compatibility and normalize failure reports
 
 **Changed:** Kept the registered `subagent_coordinate` historical alias executable through the current bounded Team Lead seam while excluding it from active discovery, `tool_search`, and current guidance. Failure reports now distinguish expected command nonzero results, actionable failures, expected non-command outcomes, and unclassified results over deduplicated observations.

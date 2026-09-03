@@ -533,6 +533,14 @@ describe("/refresh-models command", () => {
 			expect.stringContaining("Done. Refreshed 2"),
 			"info",
 		);
+		const settings = JSON.parse(
+			fs.readFileSync(
+				path.join(tempHome, ".pi", "agent", "settings.json"),
+				"utf-8",
+			),
+		);
+		expect(settings.enabledModels).toEqual(["openai-codex/gpt-5.4"]);
+		expect(settings.unrelated).toEqual({ preserved: true });
 	});
 
 	it("fails when an explicit provider is not configured", async () => {

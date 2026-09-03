@@ -24,8 +24,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import {
 	getAgentDir,
-	getSettingsPath,
-	updateJsonObjectAtomic,
 	writeJsonObjectAtomic,
 } from "../lib/settings-file.ts";
 
@@ -243,37 +241,6 @@ function loadProviderCache(provider: string): ProviderCatalogCache | undefined {
 		fetchedAt: "legacy",
 		models: legacyCacheModels(parsed.models),
 	};
-}
-
-async function syncEnabledModels(
-	provider: string,
-	addedIds: string[],
-	removedIds: string[],
-): Promise<{ added: string[]; removed: string[] }> {
-	let changes = { added: [] as string[], removed: [] as string[] };
-	await updateJsonObjectAtomic(getSettingsPath(), (settings) => {
-		if (
-			!Array.isArray(settings.enabledModels) ||
-			settings.enabledModels.length === 0
-		)
-			return settings;
-
-		const existing = settings.enabledModels.filter(
-			(value): value is string => typeof value === "string",
-		);
-		const removed = removedIds
-			.map((id) => `${provider}/${id}`)
-			.filter((id) => existing.includes(id));
-		const added = addedIds
-			.map((id) => `${provider}/${id}`)
-			.filter((id) => !existing.includes(id));
-		const retained = existing.filter((id) => !removed.includes(id));
-		if (added.length === 0 && removed.length === 0) return settings;
-
-		changes = { added, removed };
-		return { ...settings, enabledModels: [...added, ...retained] };
-	});
-	return changes;
 }
 
 const PI_THINKING_LEVELS = [
@@ -940,23 +907,6 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 				if (success.removedIds.length > 0) {
 					notify(
 						`${success.provider} removed: ${formatModelIdList(success.removedIds)}`,
-						"info",
-					);
-				}
-				const enabledChanges = await syncEnabledModels(
-					success.provider,
-					success.addedIds,
-					success.removedIds,
-				);
-				if (enabledChanges.added.length > 0) {
-					notify(
-						`${success.provider} enabled: ${formatModelIdList(enabledChanges.added)}`,
-						"info",
-					);
-				}
-				if (enabledChanges.removed.length > 0) {
-					notify(
-						`${success.provider} disabled: ${formatModelIdList(enabledChanges.removed)}`,
 						"info",
 					);
 				}
