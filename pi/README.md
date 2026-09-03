@@ -648,7 +648,7 @@ Refreshes available model lists for active subscription providers **without relo
 
 Behavior:
 - No provider: refreshes all currently authenticated supported providers, including AWS Bedrock through its provider-scoped credentials.
-- Provider argument: refreshes only that provider (currently `amazon-bedrock`, `anthropic`, `openai-codex`, `openrouter`, `opencode`, and `opencode-go`).
+- Provider argument: refreshes only that provider (currently `amazon-bedrock`, `bedrock-mantle`, `anthropic`, `openai-codex`, `openrouter`, `opencode`, and `opencode-go`). `amazon-bedrock` and `bedrock-mantle` share one deduplicated AWS discovery pass.
 - Unsupported providers are skipped with a warning.
 - Uses existing session credentials and updates in-session model availability immediately. Bedrock discovery also updates `bedrockRefresh.models` with the latest supported `us.*` Claude family IDs.
 - Prints per-provider diffs with model IDs that were added/removed.
