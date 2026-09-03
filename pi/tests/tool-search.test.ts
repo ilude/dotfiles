@@ -41,6 +41,18 @@ const MOCK_TOOLS = [
 		sourceInfo: { source: "extension", origin: "top-level" },
 	},
 	{
+		name: "image_inspect",
+		description: "Inspect local image metadata and image properties for crop, resize, rotate, convert, and compress operations",
+		parameters: {},
+		sourceInfo: { source: "extension", origin: "top-level" },
+	},
+	{
+		name: "image_transform",
+		description: "Safely crop, resize, rotate, convert, or compress a local image with metadata stripped by default",
+		parameters: {},
+		sourceInfo: { source: "extension", origin: "top-level" },
+	},
+	{
 		name: "subagent_continue",
 		description: "Continue a saved child-agent session with a follow-up task",
 		parameters: {},
@@ -82,7 +94,7 @@ describe("tool-search extension", () => {
 		it("should list all tools when no query", async () => {
 			const result = await tool.execute("id", {}, undefined, undefined, {});
 			const text = result.content[0].text;
-			expect(text).toContain("5 available tools");
+			expect(text).toContain("7 available tools");
 			expect(text).toContain("bash");
 			expect(text).toContain("pwsh");
 			expect(text).toContain("web_search");
@@ -98,7 +110,7 @@ describe("tool-search extension", () => {
 				undefined,
 				{},
 			);
-			expect(result.content[0].text).toContain("5 available tools");
+			expect(result.content[0].text).toContain("7 available tools");
 		});
 
 		it("never activates tools from list mode", async () => {
@@ -127,6 +139,16 @@ describe("tool-search extension", () => {
 			const text = result.content[0].text;
 			expect(text).toContain("bash");
 			expect(result.details.matched).toBeGreaterThan(0);
+		});
+
+		it("activates both image tools and retains them for the session", async () => {
+			activeNames = activeNames.filter((name) => !name.startsWith("image_"));
+			const result = await tool.execute("id", { query: "image crop resize rotate convert compress metadata" }, undefined, undefined, {});
+			expect(result.details.activated).toEqual(expect.arrayContaining(["image_transform", "image_inspect"]));
+			expect(result.details.activated).toHaveLength(2);
+			expect(activeNames).toEqual(expect.arrayContaining(["image_transform", "image_inspect"]));
+			const later = await tool.execute("id", { query: "image" }, undefined, undefined, {});
+			expect(later.details.activated).toEqual([]);
 		});
 
 		it("should find tools by name", async () => {

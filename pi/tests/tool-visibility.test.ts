@@ -71,6 +71,8 @@ describe("tool visibility", () => {
 			"plan_progress",
 			"subagent_continue",
 			"workflow_complete",
+			"image_inspect",
+			"image_transform",
 		]);
 		expect(pi.getActiveTools()).toEqual([
 			"read",
@@ -90,6 +92,18 @@ describe("tool visibility", () => {
 				}),
 			}),
 		);
+	});
+
+	it("resets activated image tools on a new session", async () => {
+		const pi = createMockPi();
+		for (const name of ["read", "image_inspect", "image_transform"]) registerTool(pi, name);
+		toolVisibility(pi as Parameters<typeof toolVisibility>[0]);
+		const ctx = sessionContext();
+		await pi._getHook("session_start")[0].handler({}, ctx);
+		activateTools(pi, ["image_inspect", "image_transform"]);
+		expect(pi.getActiveTools()).toEqual(["read", "image_inspect", "image_transform"]);
+		await pi._getHook("session_start")[0].handler({}, ctx);
+		expect(pi.getActiveTools()).toEqual(["read"]);
 	});
 
 	it("keeps desired owner state current under a keyed visibility restriction", () => {

@@ -17,6 +17,8 @@ export const DEFERRED_TOOL_NAMES = [
 	"plan_progress",
 	"subagent_continue",
 	"workflow_complete",
+	"image_inspect",
+	"image_transform",
 ] as const;
 
 function sortedUnique(values: readonly string[]): string[] {

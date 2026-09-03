@@ -8,4 +8,5 @@
 - Search behavior: keep `tool_search` active as a fallback for ordinary roots. A non-empty query activates all matching inactive tools by default; list mode never activates tools.
 - Catalog: `tool_search` guidance does not advertise historical subagent schemas. Current role-specific tools remain directly discoverable when authority permits them.
 - Telemetry: record metadata-only toolset exposure, hashed search decisions, activation results, and tool use. Do not record raw queries, arguments, descriptions, or output.
+- Image tools: `image_inspect` and `image_transform` are operator-approved deferred tools. They remain inactive at session start and are activated by a non-empty matching `tool_search`; activation persists for that session and is reset on the next session. Their binary-backed local image operations remain unavailable until explicitly discovered.
 - Review boundary: telemetry supports later policy review but does not change activation policy automatically.

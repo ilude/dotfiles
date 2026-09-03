@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-02: Add on-demand local image editing
+
+**Why:** Pi needed a bounded workflow for inspecting and transforming local images without exposing binary-backed tools on ordinary turns.
+
+**Changed:**
+- Added deferred Sharp-backed inspection, crop, resize, auto-orient, rotation, and JPEG/PNG/WebP conversion tools.
+- Added metadata stripping by default, bounded quality and pixel limits, and output verification.
+- Added the image-editing skill and session-local tool discovery guidance.
+
+**Preserved:** Sources and existing destinations are never overwritten, image operations remain local, and screenshots, OCR, and image generation remain outside the tool surface.
+
+**Validation:** Focused image-tool, tool-search, tool-visibility, and skill-discovery tests passed with Pi typecheck.
+
+---
+
 ## 2026-09-02: Add operator-approved do-it no-merge closeout
 
 **Why:** Operators needed an explicit invocation-level choice to commit completed work while retaining its owned branch and worktree, including for raw work and plans whose default policy is merge.
