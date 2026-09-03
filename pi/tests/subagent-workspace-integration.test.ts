@@ -30,9 +30,17 @@ describe("subagent workspace containment hook", () => {
 		if (!hook) throw new Error("tool_call containment hook missing");
 		const ctx = createMockCtx({ cwd: workspace });
 
-		expect(
-			await hook({ toolName: "read", input: { path: outside } }, ctx),
-		).toMatchObject({ block: true, reason: expect.stringContaining("path_escape") });
+		const escapeResult = await hook(
+			{ toolName: "read", input: { path: outside } },
+			ctx,
+		);
+		expect(escapeResult).toMatchObject({
+			block: true,
+			reason: expect.stringContaining("path_escape"),
+		});
+		expect(escapeResult.reason).toContain(`workspace: ${workspace}`);
+		expect(escapeResult.reason).toContain(`supplied target: ${outside}`);
+		expect(escapeResult.reason).toContain(`resolved target: ${outside}`);
 		expect(
 			await hook({ toolName: "bash", input: { command: `find "${outside}"` } }, ctx),
 		).toMatchObject({ block: true, reason: expect.stringContaining("path_escape") });

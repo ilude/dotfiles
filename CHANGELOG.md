@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-02: Preserve hidden coordinator compatibility and normalize failure reports
+
+**Changed:** Kept the registered `subagent_coordinate` historical alias executable through the current bounded Team Lead seam while excluding it from active discovery, `tool_search`, and current guidance. Failure reports now distinguish expected command nonzero results, actionable failures, expected non-command outcomes, and unclassified results over deduplicated observations.
+
+**Preserved:** Current role-specific subagent tools remain the discoverable interfaces, and canonical session records remain unchanged.
+
+---
+
 ## 2026-09-03: Make workflow completion state recoverable
 
 **Why:** `/do-it` dispatch telemetry could be omitted or duplicated across session replacement, foreground goals accepted skipped required tasks, and an unattended goal could lose its completion route after merge cleanup but before durable goal persistence.

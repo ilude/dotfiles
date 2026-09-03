@@ -671,6 +671,68 @@ Execute workflow items with admitted tools only.
 		expect(spawnMock).not.toHaveBeenCalled();
 	});
 
+	it("executes the historical coordinator shape through the current bounded seam", async () => {
+		mockSuccessfulSpawn();
+		const { pi } = await loadTool();
+		const ctx = createMockCtx({ cwd: tmpDir, isProjectTrusted: () => true });
+		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
+		const coordinate = pi._getTool("subagent_coordinate");
+		const teamlead = pi._getTool("subagent_teamlead");
+		if (!coordinate || !teamlead) throw new Error("coordinator tools not registered");
+		expect(pi.getActiveTools()).not.toContain("subagent_coordinate");
+
+		const historical = await coordinate.execute(
+			"historical-coordinate",
+			{
+				items: [{
+					agent: "teamlead",
+					task: "Coordinate the historical package.",
+					cwd: tmpDir,
+				}],
+				workspaceRoot: tmpDir,
+				workBoundary: ["pi/extensions/subagent"],
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const current = await teamlead.execute(
+			"current-teamlead",
+			{
+				items: [{
+					agent: "teamlead",
+					instructions: "Coordinate the current package.",
+					cwd: tmpDir,
+				}],
+				enforcedBoundary: tmpDir,
+				boundary: ["pi/extensions/subagent"],
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		for (const result of [historical, current]) {
+			expect(result.isError).not.toBe(true);
+			expect(result.details.mode).toBe("single");
+			expect(result.details.results[0]).toMatchObject({
+				processState: "settled",
+				processOutcome: "succeeded",
+			});
+		}
+		expect(spawnMock).toHaveBeenCalledTimes(2);
+		expect((spawnMock.mock.calls[0][2] as { cwd: string }).cwd).toBe(tmpDir);
+		expect((spawnMock.mock.calls[1][2] as { cwd: string }).cwd).toBe(tmpDir);
+		expect((spawnMock.mock.calls[0][1] as string[])[(spawnMock.mock.calls[0][1] as string[]).indexOf("--tools") + 1]).toBe(
+			"read,grep,find,ls,subagent_read,subagent_write",
+		);
+		expect((spawnMock.mock.calls[1][1] as string[])[(spawnMock.mock.calls[1][1] as string[]).indexOf("--tools") + 1]).toBe(
+			"read,grep,find,ls,subagent_read,subagent_write",
+		);
+	});
+
 	it("restores saved continuation authority and defaults unknown sessions to leaf", async () => {
 		mockSuccessfulSpawn();
 		const { pi } = await loadTool();
@@ -3460,11 +3522,11 @@ You are a test agent.
 			sessionManager: { getSessionId: vi.fn(() => "parent-session") },
 		});
 		const invalidCases = [
-			["missing-task", /task was not found/],
-			[deleted.id, /task was not found/],
-			[foreign.id, /another workspace/],
-			[unassigned.id, /not assigned/],
-			[wrongSession.id, /another root session/],
+			["missing-task", /task was not found.*Current workspace:.*Valid task alternatives:/],
+			[deleted.id, /task was not found.*Current workspace:.*Valid task alternatives:/],
+			[foreign.id, /another workspace.*Current workspace:.*Valid task alternatives:/],
+			[unassigned.id, /not assigned.*Current workspace:.*Valid task alternatives:/],
+			[wrongSession.id, /another root session.*Current workspace:.*Valid task alternatives:/],
 		] as const;
 
 		for (const [taskId, expected] of invalidCases) {

@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { scanToolFailures, selectedFailureCoordinates } from "../lib/tool-failure-classifier.ts";
+import { aggregateFailureOutcomes, scanToolFailures, selectedFailureCoordinates } from "../lib/tool-failure-classifier.ts";
 
 describe("tool-failure session reader", () => {
+	it("keeps unknown records unclassified and aggregates deduplicated candidates", () => {
+		const rows = [
+			{ filename: "/sessions/one.jsonl", id: "command-call", timestamp: "2026-08-20T00:00:00Z", message: { role: "assistant", content: [{ type: "toolCall", id: "command", name: "bash" }] } },
+			{ filename: "/sessions/one.jsonl", id: "command-result", timestamp: "2026-08-20T00:00:01Z", message: { role: "toolResult", toolCallId: "command", isError: true, content: [{ type: "text", text: "Command exited with code 1" }] } },
+			{ filename: "/sessions/two.jsonl", id: "unknown-call", timestamp: "2026-08-21T00:00:00Z", message: { role: "assistant", content: [{ type: "toolCall", id: "unknown", name: "custom" }] } },
+			{ filename: "/sessions/two.jsonl", id: "unknown-result", timestamp: "2026-08-21T00:00:01Z", message: { role: "toolResult", toolCallId: "unknown", isError: true, content: [{ type: "text", text: "not enough evidence" }] } },
+		];
+		const scan = scanToolFailures(rows);
+		expect(scan.candidates.find((item) => item.errorClass === "unclassified-error")).toMatchObject({ outcome: "unclassified", actionability: "unclassified" });
+		expect(aggregateFailureOutcomes(scan)).toMatchObject({ expectedCommand: 1, expectedOther: 0, unclassified: 1, total: 2 });
+	});
+
 	it("keeps classifier output and selects opaque transcript coordinates without persistence", () => {
 		const rows = [
 			{ filename: "/sessions/one.jsonl", id: "call-entry", lineNumber: 2, timestamp: "2026-08-20T00:01:00Z", message: { role: "assistant", content: [{ type: "toolCall", id: "one", name: "custom" }] } },

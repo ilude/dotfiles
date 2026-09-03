@@ -121,6 +121,25 @@ describe("governed native path tools", () => {
 		expect(result).toMatchObject({ outcome: "allow", governed: true });
 	});
 
+	it("preserves absolute target identity while rejecting foreign workspaces", () => {
+		const root = temporaryDirectory("pi-workspace-policy-native-");
+		const outside = temporaryDirectory("pi-workspace-policy-outside-");
+		const policy = policyFor(root);
+		const absoluteTarget = path.join(outside, "file.ts");
+		const result = checkNativePathTool(policy, "read", { path: absoluteTarget }, root);
+		expect(result).toMatchObject({
+			outcome: "deny",
+			code: "path_escape",
+			workspaceRoot: fs.realpathSync.native(root),
+			target: absoluteTarget,
+			resolvedTarget: absoluteTarget,
+		});
+		if (result.outcome === "deny") {
+			expect(result.reason).toContain(`supplied target: ${absoluteTarget}`);
+			expect(result.reason).toContain(`resolved target: ${absoluteTarget}`);
+		}
+	});
+
 	it("rejects symlink and nearest-existing-ancestor escapes before access", () => {
 		const root = temporaryDirectory("pi-workspace-policy-native-");
 		const outside = temporaryDirectory("pi-workspace-policy-outside-");

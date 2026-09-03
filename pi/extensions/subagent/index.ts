@@ -129,6 +129,7 @@ import {
 	type ReadRequest,
 	type SubagentExecutionRequest,
 	type WriteRequest,
+	formatTaskLinkDiagnostic,
 	prepareSubagentExecution,
 	validateTaskLink,
 } from "./contracts.js";
@@ -1603,16 +1604,26 @@ function resolveChildRole(
 ): { role: SubagentRole; depth: number } {
 	const current = currentSubagentIdentity();
 	if (current.role === "leaf" || current.depth >= 2)
-		throw new Error("Leaf and depth-two subagents cannot delegate.");
+		throw new Error(
+			`Leaf and depth-two subagents cannot delegate. Valid role alternatives: none at this boundary.`,
+		);
 	const profileName = canonicalAgentName(agentName);
 	const role =
 		requestedRole ??
 		(current.role === "root" && profileName === "teamlead" ? "coordinator" : "leaf");
+	if (role !== "leaf" && role !== "coordinator")
+		throw new Error(
+			`Invalid subagent role "${String(role)}". Valid role alternatives: "leaf", "coordinator".`,
+		);
 	if (current.role === "coordinator" && role !== "leaf")
-		throw new Error("A Team Lead may invoke subagents only.");
+		throw new Error(
+			`A Team Lead may invoke subagents only. Valid role alternatives: "leaf".`,
+		);
 	const depth = current.depth + 1;
 	if (role === "coordinator" && depth !== 1)
-		throw new Error("A Team Lead may run only at depth one.");
+		throw new Error(
+			`A Team Lead may run only at depth one. Valid role alternatives: "leaf".`,
+		);
 	return { role, depth };
 }
 
@@ -4621,9 +4632,12 @@ export default function (pi: ExtensionAPI) {
 						parentSessionId,
 					);
 					if (taskLink.outcome === "invalid") {
-						const choiceText = taskLink.choices.map((task) => task.id).join(", ") || "none";
 						throw new Error(
-							`Invalid taskId for ${item.agent}: ${taskLink.reason}. Current choices: ${choiceText}.`,
+							formatTaskLinkDiagnostic(
+								item.taskId ?? "<missing>",
+								resolveTaskWorkspace(invocationCwd),
+								taskLink,
+							),
 						);
 					}
 				}

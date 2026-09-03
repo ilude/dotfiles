@@ -13,6 +13,19 @@ export type SessionEntry = {
 	type?: string;
 };
 
+export type FailureOutcome =
+	| "command-nonzero"
+	| "caller-validation"
+	| "policy-rejection"
+	| "target-path-rejection"
+	| "timeout"
+	| "cancellation"
+	| "protocol-failure"
+	| "infrastructure-failure"
+	| "unclassified";
+
+export type FailureActionability = "actionable" | "expected" | "unclassified";
+
 export type ClassifiedFailure = {
 	candidateId: string;
 	fingerprintVersion: number;
@@ -20,6 +33,9 @@ export type ClassifiedFailure = {
 	errorClass: string;
 	contract: string;
 	classification: "candidate" | "expected" | "unclassified";
+	/** Derived report fields. They are not written to session or trace records. */
+	outcome?: FailureOutcome;
+	actionability?: FailureActionability;
 	occurrences: number;
 	sessions: number;
 	firstObserved: string | null;
@@ -32,6 +48,14 @@ export type ClassifiedFailure = {
 	occurrences30d: number;
 	sessions30d: number;
 	observations: { timestamp: string; session: string }[];
+};
+
+export type FailureOutcomeTotals = {
+	expectedCommand: number;
+	actionable: number;
+	expectedOther: number;
+	unclassified: number;
+	total: number;
 };
 
 export type FailureScan = {
@@ -53,13 +77,60 @@ const HOME = /(?:[a-z]:\\users\\[^\\\s]+|\/(?:home|users)\/[^/\s]+)/i;
 const ABSOLUTE = /(?:[a-z]:\\|\/(?:home|users|tmp|var|etc|opt)\/)/i;
 const hasRawControl = (value: string): boolean => [...value].some((character) => character.charCodeAt(0) <= 0x1f);
 
+type FailureMapping = { outcome: FailureOutcome; actionability: FailureActionability };
+
+const FAILURE_MAPPINGS: Record<string, FailureMapping> = {
+	"missing-required-parameter:required:command": { outcome: "caller-validation", actionability: "actionable" },
+	"stale-manager-contract:subagent-manager:availability": { outcome: "caller-validation", actionability: "actionable" },
+	"requested-agent-unavailable:subagent:agent-availability": { outcome: "caller-validation", actionability: "actionable" },
+	"task-link-rejection:subagent:task-link": { outcome: "caller-validation", actionability: "actionable" },
+	"role-selection-rejection:subagent:role-availability": { outcome: "caller-validation", actionability: "actionable" },
+	"tree-admission-capacity:subagent-tree:capacity": { outcome: "caller-validation", actionability: "expected" },
+	"tree-admission-cutoff:subagent-tree:cutoff": { outcome: "cancellation", actionability: "expected" },
+	"extension-load-failure:subagent:extension-load": { outcome: "infrastructure-failure", actionability: "actionable" },
+	"external-service-failure:web-search:request": { outcome: "protocol-failure", actionability: "actionable" },
+	"required-runtime-unavailable:runtime:availability": { outcome: "infrastructure-failure", actionability: "actionable" },
+	"internal-missing-method:runtime:missing-method": { outcome: "infrastructure-failure", actionability: "actionable" },
+	"command-nonzero:command:nonzero": { outcome: "command-nonzero", actionability: "expected" },
+	"nonzero-test:command:test-nonzero": { outcome: "command-nonzero", actionability: "expected" },
+	"command-timeout:command:timeout": { outcome: "timeout", actionability: "expected" },
+	"command-aborted:command:aborted": { outcome: "cancellation", actionability: "expected" },
+	"operation-aborted:subagent:aborted": { outcome: "cancellation", actionability: "expected" },
+	"invalid-caller-contract:caller:validation": { outcome: "caller-validation", actionability: "expected" },
+	"safety-block:policy:block": { outcome: "policy-rejection", actionability: "expected" },
+	"approval-required:policy:approval": { outcome: "policy-rejection", actionability: "expected" },
+	"governed-path-rejection:selected-skill-read:path-boundary": { outcome: "target-path-rejection", actionability: "expected" },
+	"governed-path-rejection:subagent:path-boundary": { outcome: "target-path-rejection", actionability: "expected" },
+	"path-not-found:filesystem:path-missing": { outcome: "target-path-rejection", actionability: "expected" },
+	"invalid-offset:read:offset-range": { outcome: "target-path-rejection", actionability: "expected" },
+	"exact-match-miss:mutation:exact-match": { outcome: "target-path-rejection", actionability: "expected" },
+	"nonunique-match:mutation:unique-match": { outcome: "target-path-rejection", actionability: "expected" },
+	"secret-scan-block:commit:secret-scan": { outcome: "policy-rejection", actionability: "expected" },
+	"instruction-deferred:mutation:instruction-discovery": { outcome: "policy-rejection", actionability: "expected" },
+	"task-boundary-rejected:task:boundary-path": { outcome: "target-path-rejection", actionability: "expected" },
+	"task-instructions-too-long:task:instructions-length": { outcome: "caller-validation", actionability: "expected" },
+	"plan-not-ready:plan:readiness": { outcome: "caller-validation", actionability: "expected" },
+};
+
+function failureMapping(errorClass: string, contract: string, classification: ClassifiedFailure["classification"]): FailureMapping {
+	return FAILURE_MAPPINGS[`${errorClass}:${contract}`] ??
+		(classification === "unclassified"
+			? { outcome: "unclassified", actionability: "unclassified" }
+			: { outcome: "unclassified", actionability: "unclassified" });
+}
+
 export function classifyFailure(tool: string, text: string): [string, string, ClassifiedFailure["classification"]] {
 	const t = tool.toLowerCase();
 	const s = text.toLowerCase();
 	if ((t === "bash" || t === "functions.bash") && (s.includes("required properties command") || s.includes("'command' is a required property"))) return ["missing-required-parameter", "required:command", "candidate"];
 	if ((t === "read" || t === "functions.read") && ["outside", "path escape", "boundary", "not within", "governed"].some((x) => s.includes(x))) return ["governed-path-rejection", "selected-skill-read:path-boundary", "candidate"];
 	if (t.includes("subagent") && (s.includes("governed path escapes") || s.includes("cannot widen its assigned workspace root"))) return ["governed-path-rejection", "subagent:path-boundary", "expected"];
+	if (t.includes("subagent") && s.includes("rejected agent selection")) return ["requested-agent-unavailable", "subagent:agent-availability", "candidate"];
 	if (t.includes("subagent") && (["unknown agent", "available agents"].some((x) => s.includes(x)) || s.includes("agent: must be equal to one of the allowed values"))) return ["requested-agent-unavailable", "subagent:agent-availability", "expected"];
+	if (t.includes("subagent") && s.includes("invalid taskid") && s.includes("valid task alternatives")) return ["task-link-rejection", "subagent:task-link", "candidate"];
+	if (t.includes("subagent") && s.includes("valid role alternatives")) return ["role-selection-rejection", "subagent:role-availability", "candidate"];
+	if (t.includes("subagent") && s.includes("admission cutoff")) return ["tree-admission-cutoff", "subagent-tree:cutoff", "candidate"];
+	if (t.includes("subagent") && s.includes("capacity") && s.includes("active descendants")) return ["tree-admission-capacity", "subagent-tree:capacity", "candidate"];
 	if (t.includes("subagent") && ["abi", "manager"].some((x) => s.includes(x))) return ["stale-manager-contract", "subagent-manager:availability", "candidate"];
 	if (t === "web_search" && (s.trim() === "fetch failed" || s.includes("operation was aborted due to timeout"))) return ["external-service-failure", "web-search:request", "candidate"];
 	if (t.includes("subagent") && s.includes("subagent was aborted")) return ["operation-aborted", "subagent:aborted", "expected"];
@@ -84,6 +155,23 @@ export function classifyFailure(tool: string, text: string): [string, string, Cl
 	if (s.includes("secret scan blocked the commit")) return ["secret-scan-block", "commit:secret-scan", "expected"];
 	if (s.startsWith("validation failed for tool") || s.includes("no active plan lifecycle exists") || s.includes("plan contract validation failed:") || s.includes("scope entries must be worktree-relative")) return ["invalid-caller-contract", "caller:validation", "expected"];
 	return ["unclassified-error", "manual-review", "unclassified"];
+}
+
+export function aggregateFailureOutcomes(scan: Pick<FailureScan, "candidates">): FailureOutcomeTotals {
+	const totals: FailureOutcomeTotals = { expectedCommand: 0, actionable: 0, expectedOther: 0, unclassified: 0, total: 0 };
+	for (const candidate of scan.candidates) {
+		const count = candidate.occurrences;
+		if (!count) continue;
+		const mapping = candidate.outcome && candidate.actionability
+			? { outcome: candidate.outcome, actionability: candidate.actionability }
+			: failureMapping(candidate.errorClass, candidate.contract, candidate.classification);
+		totals.total += count;
+		if (mapping.actionability === "actionable") totals.actionable += count;
+		else if (mapping.actionability === "unclassified") totals.unclassified += count;
+		else if (mapping.outcome === "command-nonzero") totals.expectedCommand += count;
+		else totals.expectedOther += count;
+	}
+	return totals;
 }
 
 export function coordinateId(entryId: string, callId: string, sourceIdentity = ""): string {
@@ -210,7 +298,8 @@ export function scanToolFailures(rows: readonly SessionEntry[], asOf = new Date(
 		const distinctSessions: typeof ordered = []; const seenSessions = new Set<string>();
 		for (const item of ordered) if (!seenSessions.has(item.session)) { seenSessions.add(item.session); distinctSessions.push(item); }
 		const selected = [...distinctSessions, ...ordered.filter((item) => !distinctSessions.includes(item))].slice(0, MAX_COORDINATES);
-		return { candidateId: id, fingerprintVersion: FINGERPRINT_VERSION, tool: group[0].tool, errorClass: group[0].errorClass, contract: group[0].contract, classification: group[0].classification, occurrences: group.length, sessions: new Set(group.map((x) => x.session)).size, firstObserved: all[0] ?? null, lastObserved: ordered.find((x) => x.timestamp)?.timestamp ?? null, coordinates: selected.map((x) => x.coordinate), occurrences7d: w7[0], sessions7d: w7[1], occurrences14d: w14[0], sessions14d: w14[1], occurrences30d: w30[0], sessions30d: w30[1], observations: ordered.flatMap((item) => item.timestamp ? [{ timestamp: item.timestamp, session: item.session }] : []) };
+		const mapping = failureMapping(group[0].errorClass, group[0].contract, group[0].classification);
+		return { candidateId: id, fingerprintVersion: FINGERPRINT_VERSION, tool: group[0].tool, errorClass: group[0].errorClass, contract: group[0].contract, classification: group[0].classification, outcome: mapping.outcome, actionability: mapping.actionability, occurrences: group.length, sessions: new Set(group.map((x) => x.session)).size, firstObserved: all[0] ?? null, lastObserved: ordered.find((x) => x.timestamp)?.timestamp ?? null, coordinates: selected.map((x) => x.coordinate), occurrences7d: w7[0], sessions7d: w7[1], occurrences14d: w14[0], sessions14d: w14[1], occurrences30d: w30[0], sessions30d: w30[1], observations: ordered.flatMap((item) => item.timestamp ? [{ timestamp: item.timestamp, session: item.session }] : []) };
 	});
 	const digestMaterial = candidates.map((x) => [x.candidateId, x.occurrences, x.sessions]);
 	return { schemaVersion: 1, asOf: asOf.toISOString().replace(".000Z", "Z"), timestampDiagnostics: diagnostics, timestampOmissions: diagnostics.missing + diagnostics.malformed + diagnostics.future, manifestDigest: createHash("sha256").update(JSON.stringify(digestMaterial)).digest("hex"), sourceWindow: { first: candidates.flatMap((x) => x.firstObserved ? [x.firstObserved] : []).sort()[0] ?? null, last: candidates.flatMap((x) => x.lastObserved ? [x.lastObserved] : []).sort().at(-1) ?? null }, scannedResults: results.length, unmatchedResults, duplicateCalls, malformedOmissions, candidates };

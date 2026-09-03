@@ -102,6 +102,27 @@ describe("repeated tool loop guard", () => {
 		).toBeUndefined();
 	});
 
+	it("recognizes unchanged native exact-match and non-unique edit failures", () => {
+		const guard = new RepeatedToolLoopGuard();
+		const input = { path: "source.ts", edits: [{ oldText: "old", newText: "new" }] };
+		for (let attempt = 0; attempt < 4; attempt += 1) {
+			guard.record("edit", input, {
+				content: [{ type: "text", text: `Could not find edits[0]. oldText differs on attempt ${attempt}.` }],
+				isError: true,
+			});
+		}
+		expect(guard.check("edit", input)).toMatchObject({ isError: true, attemptCount: 5 });
+
+		guard.reset();
+		for (let attempt = 0; attempt < 4; attempt += 1) {
+			guard.record("edit", input, {
+				content: [{ type: "text", text: `Found 2 occurrences of edits[0]. attempt ${attempt}.` }],
+				isError: true,
+			});
+		}
+		expect(guard.check("edit", input)).toMatchObject({ isError: true, attemptCount: 5 });
+	});
+
 	it("uses stable failure text, code, and status while excluding volatile values", () => {
 		const guard = new RepeatedToolLoopGuard();
 		const input = { path: "missing.ts" };

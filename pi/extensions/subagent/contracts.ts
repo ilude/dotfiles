@@ -613,6 +613,15 @@ export function validateTaskLink(
 	return validateTaskReference(taskId, workspaceRoot, parentSessionId, maxChoices);
 }
 
+export function formatTaskLinkDiagnostic(
+	taskId: string,
+	workspaceRoot: string,
+	link: Extract<TaskLinkResolution, { outcome: "invalid" }>,
+): string {
+	const choices = link.choices.map((task) => task.id).join(", ") || "none";
+	return `Invalid taskId "${taskId}": ${link.reason}. Current workspace: ${workspaceRoot}. Valid task alternatives: ${choices}.`;
+}
+
 export function resolveTaskLink(
 	taskId: string | undefined,
 	workspaceRoot: string,
@@ -626,17 +635,22 @@ export function resolveTaskLink(
 	return { outcome: "none" };
 }
 
-function assertTaskLink(link: TaskLinkResolution, item: SubagentItemBase): void {
+function assertTaskLink(
+	link: TaskLinkResolution,
+	item: SubagentItemBase,
+	workspaceRoot: string,
+): void {
 	if (link.outcome === "invalid") {
-		const choiceText = link.choices.map((task) => task.id).join(", ") || "none";
-		throw new Error(`Invalid taskId for ${item.agent}: ${link.reason}. Current choices: ${choiceText}.`);
+		throw new Error(formatTaskLinkDiagnostic(item.taskId ?? "<missing>", workspaceRoot, link));
 	}
 }
 
 function itemAgent(item: SubagentItemBase, discovery: AgentDiscoveryResult): AgentConfig {
 	const agent = discovery.agents.find((candidate) => candidate.name === item.agent);
-	if (!agent)
-		throw new Error(`Unknown agent ${item.agent} in the selected workspace agent catalog.`);
+	if (!agent) {
+		const alternatives = discovery.agents.map((candidate) => candidate.name).sort().join(", ") || "none";
+		throw new Error(`Unknown agent "${item.agent}" in the selected workspace agent catalog. Valid agent alternatives: ${alternatives}.`);
+	}
 	return agent;
 }
 
@@ -728,7 +742,7 @@ export function prepareSubagentExecution(
 			options.parentSessionId,
 			options.maxTaskChoices,
 		);
-		assertTaskLink(taskLink, item);
+		assertTaskLink(taskLink, item, workspaceRoot);
 		const discoveredAgent = itemAgent(item, discovery);
 		const agent = item.skills
 			? withDispatchSkills(discoveredAgent, item.skills)

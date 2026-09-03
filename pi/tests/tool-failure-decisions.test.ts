@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { appendDecision, candidateLedgerState, loadDecisionLedger, normalizeEvidence, selectCandidates } from "../lib/tool-failure-decisions.ts";
-import { classifyFailure, coordinateId, scanToolFailures, type FailureScan } from "../lib/tool-failure-classifier.ts";
+import { aggregateFailureOutcomes, classifyFailure, coordinateId, scanToolFailures, type FailureScan } from "../lib/tool-failure-classifier.ts";
 import { createBoundedInspection, fixCheckToken, type InspectionProof } from "../lib/tool-failure-inspection.ts";
 
 const roots: string[] = [];
@@ -55,6 +55,25 @@ const classificationCases: [string, string, string, string, string][] = [
 
 describe("tool failure classifier and decisions", () => {
 	it.each(classificationCases)("preserves classifier parity for %s", (tool, text, errorClass, contract, classification) => { expect(classifyFailure(tool, text)).toEqual([errorClass, contract, classification]); });
+	it("adds normalized outcomes without changing the classifier tuple", () => {
+		const rows = (tool: string, id: string, text: string) => [
+			{ filename: `${id}.jsonl`, id: `call-${id}`, timestamp: "2026-08-25T00:00:00Z", message: { role: "assistant", content: [{ type: "toolCall", id, name: tool }] } },
+			{ filename: `${id}.jsonl`, id: `result-${id}`, timestamp: "2026-08-25T00:00:01Z", message: { role: "toolResult", toolCallId: id, isError: true, content: [{ type: "text", text }] } },
+		];
+		const result = scanToolFailures([
+			...rows("bash", "command", "Command exited with code 1"),
+			...rows("custom", "internal", "this.broker.reconcile is not a function"),
+			...rows("custom", "unknown", "Valid runtime entered an impossible lifecycle state"),
+		], new Date("2026-08-25T00:01:00Z"));
+		expect(result.schemaVersion).toBe(1);
+		expect(result.candidates.map(({ outcome, actionability }) => ({ outcome, actionability }))).toEqual(expect.arrayContaining([
+			{ outcome: "command-nonzero", actionability: "expected" },
+			{ outcome: "infrastructure-failure", actionability: "actionable" },
+			{ outcome: "unclassified", actionability: "unclassified" },
+		]));
+		expect(aggregateFailureOutcomes(result)).toEqual({ expectedCommand: 1, actionable: 1, expectedOther: 0, unclassified: 1, total: 3 });
+	});
+
 	it("keeps distinct task, plan, and subagent fingerprints private", () => {
 		const ids = [classifyFailure("task", "scope entries must be worktree-relative"), classifyFailure("task", "instructions: must not have more than 500 characters"), classifyFailure("plan_progress", "Plan contract validation failed: x"), classifyFailure("subagent", "Subagent was aborted"), classifyFailure("subagent", "Failed to load extension x")].map(([errorClass, contract]) => `${errorClass}:${contract}`);
 		expect(new Set(ids).size).toBe(5);

@@ -6,7 +6,7 @@ import { collectExtensionUsageSnapshot } from "../extensions/extension-stats.ts"
 import { collectSkillStats } from "../extensions/skill-stats.ts";
 import { renderOrchestrationStatsReport } from "../extensions/orchestration-stats.js";
 import { withAnalyticsSession } from "../lib/log-analytics/store.ts";
-import { scanToolFailures, selectedFailureCoordinates, type SessionEntry } from "../lib/tool-failure-classifier.ts";
+import { aggregateFailureOutcomes, scanToolFailures, selectedFailureCoordinates, type SessionEntry } from "../lib/tool-failure-classifier.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -52,8 +52,15 @@ describe("integrated analytics fixture", () => {
 		await fs.writeFile(path.join(sessions, "one.jsonl"), [
 			JSON.stringify({ type: "session", id: "session-one", timestamp: "2026-08-20T00:00:00Z" }),
 			JSON.stringify({ type: "message", id: "call-entry", timestamp: "2026-08-20T00:01:00Z", message: { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "custom" }] } }),
+			JSON.stringify({ type: "message", id: "call-entry", timestamp: "2026-08-20T00:01:01Z", message: { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "custom" }] } }),
 			"malformed",
 			JSON.stringify({ type: "message", id: "result-entry", timestamp: "2026-08-20T00:02:00Z", message: { role: "toolResult", toolCallId: "call-1", isError: true, content: [{ type: "text", text: "this.broker.reconcile is not a function" }] } }),
+			JSON.stringify({ type: "message", id: "call-command", timestamp: "2026-08-20T00:03:00Z", message: { role: "assistant", content: [{ type: "toolCall", id: "call-command", name: "bash" }] } }),
+			JSON.stringify({ type: "message", id: "result-command", timestamp: "2026-08-20T00:04:00Z", message: { role: "toolResult", toolCallId: "call-command", isError: true, content: [{ type: "text", text: "Command exited with code 1" }] } }),
+			JSON.stringify({ type: "message", id: "call-expected", timestamp: "2026-08-20T00:05:00Z", message: { role: "assistant", content: [{ type: "toolCall", id: "call-expected", name: "bash" }] } }),
+			JSON.stringify({ type: "message", id: "result-expected", timestamp: "2026-08-20T00:06:00Z", message: { role: "toolResult", toolCallId: "call-expected", isError: true, content: [{ type: "text", text: "Blocked unsafe shell edit" }] } }),
+			JSON.stringify({ type: "message", id: "call-unknown", timestamp: "2026-08-20T00:07:00Z", message: { role: "assistant", content: [{ type: "toolCall", id: "call-unknown", name: "custom" }] } }),
+			JSON.stringify({ type: "message", id: "result-unknown", timestamp: "2026-08-20T00:08:00Z", message: { role: "toolResult", toolCallId: "call-unknown", isError: true, content: [{ type: "text", text: "An unrecognized runtime condition occurred" }] } }),
 			JSON.stringify({ id: "large", timestamp: "2026-08-21T00:00:00Z", content: "needle " + "x".repeat(1_100_000) }),
 		].join("\n") + "\n");
 		await fs.writeFile(path.join(metrics, "metrics-2026-08-20.jsonl"), [
@@ -81,7 +88,15 @@ describe("integrated analytics fixture", () => {
 			return { filename: String(row.filename), id: String(row.id), timestamp: row.timestamp == null ? null : String(row.timestamp), message: envelope };
 		});
 		const scan = scanToolFailures(scanRows);
-		const candidate = scan.candidates[0]!;
+		expect(scan.duplicateCalls).toBe(1);
+		expect(aggregateFailureOutcomes(scan)).toEqual({
+			expectedCommand: 1,
+			actionable: 1,
+			expectedOther: 1,
+			unclassified: 1,
+			total: 4,
+		});
+		const candidate = scan.candidates.find((item) => item.tool === "custom" && item.actionability === "actionable")!;
 		expect(candidate.tool).toBe("custom");
 		expect(selectedFailureCoordinates(scan, scanRows, [candidate.candidateId]).get(candidate.candidateId)).toHaveLength(1);
 

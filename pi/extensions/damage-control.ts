@@ -62,6 +62,7 @@ import {
 	matchesPattern,
 } from "./damage-control-engine.js";
 import { hasUnwaitedBackgroundOperator } from "./damage-control/ast-analyzer.js";
+import { classifyFailure } from "../lib/tool-failure-classifier.js";
 import { analyzeOperation, type KnownEffect } from "./damage-control/operation-analysis.js";
 import { loadRules } from "./damage-control-rules.js";
 import {
@@ -233,7 +234,7 @@ function collectStableErrorCodes(
 		});
 }
 
-function resultFingerprint(result: unknown):
+function resultFingerprint(result: unknown, toolName = ""):
 	| { value: string; isError: boolean }
 	| undefined {
 	const record =
@@ -241,9 +242,25 @@ function resultFingerprint(result: unknown):
 			? (result as Record<string, unknown>)
 			: undefined;
 	const isError = record?.isError === true;
+	const content = normalizeErrorContent(record?.content);
+	const contentText = typeof content === "string"
+		? content
+		: Array.isArray(content)
+			? content
+					.flatMap((item) => item && typeof item === "object" && (item as { type?: unknown }).type === "text"
+						? [String((item as { text?: unknown }).text ?? "")]
+						: [])
+					.join(" ")
+			: "";
+	const [errorClass, contract] = classifyFailure(toolName, contentText);
+	const nativeEditFailure = isError &&
+		["edit", "text_edit", "structured_edit"].includes(toolName.trim().toLowerCase()) &&
+		(errorClass === "exact-match-miss" || errorClass === "nonunique-match");
 	const value = isError
-		? fingerprint({
-				content: normalizeErrorContent(record?.content),
+		? fingerprint(nativeEditFailure
+			? { nativeEditFailure: `${errorClass}:${contract}`, isError: true }
+			: {
+				content,
 				codes: collectStableErrorCodes(record?.details),
 				isError: true,
 			})
@@ -295,7 +312,7 @@ export class RepeatedToolLoopGuard {
 			toolName.trim().toLowerCase(),
 			input,
 		]);
-		const normalizedResult = resultFingerprint(result);
+		const normalizedResult = resultFingerprint(result, toolName);
 		if (!callFingerprint || !normalizedResult) return;
 		const previous = this.outcomes.get(callFingerprint);
 		this.outcomes.delete(callFingerprint);
