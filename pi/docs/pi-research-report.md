@@ -14,7 +14,7 @@ Two sessions retrospectively assessed as clean same-family controls show that ch
 
 The current source contains both expansion paths and restraints. Conditional instruction delivery, tool activation, workflow bodies, task or subagent entrypoints, validation repair, and compaction can add process steps when their predicates hold. Governing policy, deferred tools, explicit entrypoints, bounded repair, deduplication, and stopping guards constrain those paths. The observed sessions lack the resolved prompt, extension order, settings snapshot, and event timeline needed to attribute any selected event to one mechanism. [SRC-005; SRC-008; SRC-009; SRC-010; SRC-012; SRC-015; SRC-018; SRC-019; TMP-008]
 
-The disposable design snapshots recommend a set of reversible, preregistered experiments after a strict readiness gate, consistent with current governing restraints. This is rerun guidance rather than frozen protocol authority. No experiment has run, and nothing in this report authorizes a permanent policy change, removal of safety controls, or cumulative rollout. [SRC-005; TMP-010; TMP-011]
+The disposable design snapshots recommend a set of reversible, preregistered experiments after a strict readiness gate, consistent with current governing restraints. This remains rerun guidance rather than frozen protocol authority. A separate focused Ponytail ladder comparison has run and is reported below; it is descriptive capability evidence, not a prevalence estimate, general causal estimate, or authorization to remove safety controls. [SRC-005; TMP-010; TMP-011]
 
 ## Scope and research questions
 
@@ -119,6 +119,24 @@ Current behavior claims rely on tracked source at the recorded baseline or the v
 The raw boundary was limited to coordinates cited by candidate or control artifacts plus the minimized first-selection locator. The report does not claim a complete transcript audit or reproduce raw content. [SES-005; TMP-007]
 
 ## Evidence and results
+
+### Focused Ponytail ladder comparison
+
+A preregistered local comparison on 2026-09-02 held the installed Pi CLI (`0.84.4`), provider and model (`openai-codex/gpt-5.6-luna`), medium effort, tools (`read,bash,edit,write`), disabled discovery surfaces, and five task fixtures constant across three instruction snapshots. The snapshots were pre-plan commit `39537c6a`, pre-ladder commit `09d7bfa27b9e4bb4c8da1017dfe3c99ea5b2837a`, and the completed ladder implementation. Each of the 15 initial cells used a fresh fixture repository and Pi state directory. A three-cell canary passed before the remaining cells ran, and no frozen repetition trigger fired.
+
+The five tasks tested no change, repository reuse, Node standard-library SHA-256, a native browser confirmation seam, and an already-installed HTML escaping dependency. Acceptance passed for all 15 cells, including the two adversarial safety checks. Arm-blind review selected the expected rung for every cell. No correctness, safety, or selected-rung difference occurred across arms.
+
+| Task | Expected and selected rung in all arms | Correct and safe | Added lines by arm: pre-plan / pre-ladder / completed ladder |
+| --- | --- | ---: | ---: |
+| No change | 1 - change does not need to exist | 3 of 3 | 0 / 0 / 0 |
+| Repository reuse | 2 - reuse the codebase | 3 of 3 | 1 / 1 / 1 |
+| Standard library | 3 - use the standard library | 3 of 3 | 5 / 5 / 5 |
+| Native platform | 4 - use a native platform feature | 3 of 3 | 3 / 3 / 3 |
+| Installed dependency | 5 - use an already-installed dependency | 3 of 3 | 3 / 5 / 5 |
+
+Each non-no-change result added one file. Total added lines were 12 for the pre-plan arm and 14 for each later arm. The only observed implementation-size difference was that the pre-plan installed-dependency cell used a direct export while the other two arms added a thin wrapper; all three used the installed dependency and passed the same acceptance and safety checks. Tool calls were 15, 18, and 13 respectively, with no failed calls or repeated validation invocations. The CLI emitted zero-valued usage and cost objects for every cell despite provider work, so token and cost comparisons are unavailable rather than interpreted as zero consumption.
+
+These results show that all three instruction snapshots could select the intended mechanism on this small deterministic set. They do not show that the ladder improves average behavior, estimate how often unnecessary code occurs, isolate an effect outside these fixtures, or justify relaxing comprehension, correctness, security, accessibility, data-loss, error-handling, calibration, or validation requirements. An initial pilot was excluded before analysis because its fixtures did not instantiate the claimed mechanisms and its diff collector omitted untracked files; the corrected version-2 manifest, fixtures, canary, append-only cell records, blind scoring bundle, and offline rescore were completed before these findings were summarized.
 
 ### Marginal metadata results
 

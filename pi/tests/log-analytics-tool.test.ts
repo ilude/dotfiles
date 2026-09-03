@@ -56,5 +56,10 @@ describe("log_analytics tool", () => {
 			expect(entry.columns.map((column) => column.name)).toEqual(expect.arrayContaining(["_source_file", "_record_key", "_timestamp", "record"]));
 			expect(entry.hint).toContain(entry.view);
 		}
+		const session = catalog.find((entry) => entry.source === "session_entries");
+		expect(session?.columns).toEqual(expect.arrayContaining([
+			expect.objectContaining({ name: "message_role", type: "VARCHAR" }),
+			expect.objectContaining({ name: "is_error", type: "BOOLEAN" }),
+		]));
 	});
 });

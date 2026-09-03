@@ -19,10 +19,13 @@ function quoteString(value: string): string { return `'${value.replaceAll("'", "
 function checkSignal(signal: AbortSignal | undefined): void { if (signal?.aborted) throw new Error("analytics query was cancelled"); }
 function rowBytes(row: Record<string, unknown>): number { return Buffer.byteLength(JSON.stringify(row), "utf8"); }
 
-function typedExpression(column: { name: string; type: string }): string {
+function typedExpression(column: { name: string; type: string; paths?: readonly string[] }): string {
 	const jsonName = column.name === "event_id" ? "id" : column.name;
-	const path = `$.${jsonName}`;
-	return `try_cast(json_extract_string(json, ${quoteString(path)}) AS ${column.type}) AS ${quoteIdentifier(column.name)}`;
+	const paths = column.paths ?? [`$.${jsonName}`];
+	const value = paths.length === 1
+		? `json_extract_string(json, ${quoteString(paths[0]!)})`
+		: `coalesce(${paths.map((path) => `json_extract_string(json, ${quoteString(path)})`).join(", ")})`;
+	return `try_cast(${value} AS ${column.type}) AS ${quoteIdentifier(column.name)}`;
 }
 
 function filesExpression(files: readonly string[]): string {
@@ -42,7 +45,7 @@ async function createView(connection: DuckDBConnection, definition: SourceDefini
 	const fields = [
 		`CAST(filename AS VARCHAR) AS ${quoteIdentifier("_source_file")}`,
 		`coalesce(nullif(json_extract_string(json, '$.id'), ''), nullif(json_extract_string(json, '$.event_id'), ''), md5(CAST(json AS VARCHAR))) AS ${quoteIdentifier("_record_key")}`,
-		`coalesce(json_extract_string(json, '$.timestamp'), json_extract_string(json, '$.ts'), json_extract_string(json, '$.created_at'), json_extract_string(json, '$.occurred_at')) AS ${quoteIdentifier("_timestamp")}`,
+		typedExpression({ name: "_timestamp", type: "VARCHAR", paths: ["$.timestamp", "$.ts", "$.created_at", "$.occurred_at", "$.message.timestamp"] }),
 		`json AS ${quoteIdentifier("record")}`,
 		...definition.columns.map(typedExpression),
 	];

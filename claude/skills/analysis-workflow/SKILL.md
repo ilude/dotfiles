@@ -1,6 +1,6 @@
 ---
 name: analysis-workflow
-description: "Analysis, diagnosis, adversarial critique, or evidence-based solution selection. Not for diff review, architecture design, planning, or routine edit consistency."
+description: "Analysis, diagnosis, adversarial critique, or coding mechanism selection, including routine edits. Not for diff review, architecture design, planning, or routine edit consistency."
 ---
 
 # Analysis Workflow
@@ -32,7 +32,7 @@ For hard or recurring bugs, nondeterministic failures, performance regressions, 
 
 For security as a primary design concern, read [Security analysis](security-analysis.md).
 
-When selecting an implementation after analysis, read [Solution selection](solution-selection.md).
+When selecting an implementation after analysis, including a routine edit that reaches a mechanism choice, first complete comprehension and caller-flow inspection, then read [Solution selection](solution-selection.md). This does not transfer routine diff consistency to this skill or structural ownership from `architecture-design`.
 
 ## Questions
 

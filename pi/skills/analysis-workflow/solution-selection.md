@@ -1,11 +1,17 @@
 # Solution Selection
 
-Use this reference after analysis establishes that a change is needed and an implementation approach must be selected.
+Use this reference after comprehension and caller-flow inspection when a coding task reaches a mechanism choice, including a routine edit. Establish the root cause and whether the change needs to exist before selecting an implementation.
 
-1. Check for an existing repository pattern, module, or interface that already solves the problem.
-2. Reuse it when direct evidence shows that it matches the behavior, boundary, and failure handling required here.
-3. If no suitable reuse exists, choose the smallest implementation that satisfies the confirmed behavior.
-4. Reject speculative abstractions, extension points, and policy machinery without a demonstrated need.
-5. Record the evidence for the selected approach and the concrete behavior that proves it is sufficient.
+Apply these decisions in order:
 
-Completion means the selected approach is supported by repository evidence or a concrete requirement, and no larger alternative is needed for the known behavior.
+1. Determine whether the change needs to exist. Do not remove behavior explicitly requested by the operator.
+2. Reuse the codebase.
+3. Use the standard library.
+4. Use a native platform feature.
+5. Use an already-installed dependency.
+6. Use one line when it remains clear and correct.
+7. Only then write the minimum custom code.
+
+Stop at the first sufficient rung. When two rungs work, choose the higher rung. Fix the root cause rather than a symptom, and record the evidence for the selected approach and the concrete behavior that proves it is sufficient.
+
+The ladder does not weaken trust-boundary validation, security, accessibility, data-loss prevention, required error handling, physical-system calibration, runnable checks for non-trivial logic, or behavior explicitly requested by the operator.

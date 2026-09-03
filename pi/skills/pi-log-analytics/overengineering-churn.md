@@ -48,13 +48,13 @@ Example bounded screen request:
 {
   "operation": "query",
   "sources": ["session_entries"],
-  "sql": "SELECT session_id, tool_name, event_type, count(*) AS events FROM session_entries WHERE timestamp >= $start GROUP BY session_id, tool_name, event_type ORDER BY events DESC LIMIT 100",
-  "parameters": {"start": "2026-08-11T00:00:00Z"},
+  "sql": "SELECT sha256(_source_file) AS session_key, tool_name, tool_call_id, count(*) AS events, sum(CASE WHEN is_error THEN 1 ELSE 0 END) AS errors FROM session_entries WHERE _timestamp >= $start AND message_role = 'toolResult' GROUP BY sha256(_source_file), tool_name, tool_call_id ORDER BY events DESC LIMIT 100",
+  "parameters": {"start": "2026-08-19T00:00:00Z"},
   "maxRows": 100
 }
 ```
 
-Each selected view also exposes the complete original JSON record in `record`, plus `_source_file`, `_record_key`, and `_timestamp`. Treat `record` as potentially sensitive; request it only for an explicitly authorized, bounded investigation. Prefer structural columns, and use a separately authorized domain reader for evidence review.
+Each selected view also exposes the complete original JSON record in `record`, plus `_source_file`, `_record_key`, and `_timestamp`. Treat `record` as potentially sensitive; request it only for an explicitly authorized, bounded investigation. Prefer structural columns, and use a separately authorized domain reader for evidence review. The screen identifies a session only as `sha256(_source_file)` and selects structural fields and counts; arguments and results are reserved for separately authorized correlation by exact tool-call ID.
 
 | Rule | Requirement |
 | --- | --- |
@@ -69,8 +69,8 @@ Each selected view also exposes the complete original JSON record in `record`, p
 
 Use a bounded query with the smallest relevant source set for each screen:
 
-- **Identical-edit retry candidates:** Group `session_entries` by `session_id`, `tool_name`, and `event_type`; use the owning bounded domain reader for any authorized coordinate review. Equal structural results do not establish equivalent arguments, targets, or relevant state.
-- **Cross-client writes:** Filter structural `tool_name`, `session_id`, and event metadata; use the owning domain boundary for any separately authorized path check. Authorized cross-client work is not an incident.
+- **Identical-edit retry candidates:** Group `session_entries` by `sha256(_source_file)`, `tool_name`, and `tool_call_id` for `message_role = 'toolResult'`; use the owning bounded domain reader for any authorized coordinate review. Equal structural results do not establish equivalent arguments, targets, or relevant state.
+- **Cross-client writes:** Filter structural `tool_name`, `sha256(_source_file)`, and event metadata; use the owning domain boundary for any separately authorized path check. Authorized cross-client work is not an incident.
 - **Duplicate verification:** Query successful structural tool events and manually determine whether repeats were verification or whether inputs, state, or failure signatures differed. Mandatory, user-requested, safety, and held-out checks are not incidents merely because output matches.
 - **Metadata outliers:** Query per-session event counts and available timestamp or token-count fields. Treat thresholds as triage thresholds, not causal cutoffs.
 - **Manual review:** Use workflow outcome reports and bounded domain feedback records. Retain only sanitized report-style citations and metadata; do not copy raw feedback or workflow payloads into tracked files.

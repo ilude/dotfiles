@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export type SourceColumn = { name: string; type: "VARCHAR" | "BIGINT" | "DOUBLE" | "BOOLEAN" };
+export type SourceColumn = { name: string; type: "VARCHAR" | "BIGINT" | "DOUBLE" | "BOOLEAN"; paths?: readonly string[] };
 
 export type SourceDefinition<T extends Record<string, unknown> = Record<string, unknown>> = {
 	name: string;
@@ -30,9 +30,21 @@ const columns = {
 } as const satisfies Record<string, SourceColumn>;
 
 const common = [columns.event_id, columns.timestamp, columns.session_id, columns.turn_id, columns.trace_id];
+const sessionColumns = [
+	...common,
+	columns.event_type,
+	columns.event,
+	{ ...columns.tool_name, paths: ["$.tool_name", "$.message.toolName"] },
+	{ ...columns.tool_call_id, paths: ["$.tool_call_id", "$.message.toolCallId"] },
+	{ name: "message_role", type: "VARCHAR", paths: ["$.message.role"] },
+	{ name: "is_error", type: "BOOLEAN", paths: ["$.message.isError"] },
+	columns.provider,
+	columns.model,
+	columns.input_tokens,
+	columns.output_tokens,
+	columns.cache_read_tokens,
+] as const satisfies readonly SourceColumn[];
 const metricsLayouts = ["metrics.jsonl", "metrics-*.jsonl", "logs/metrics.jsonl", "logs/metrics-*.jsonl", "agent/logs/metrics.jsonl", "agent/logs/metrics-*.jsonl"];
-const sessionColumns = [...common, columns.event_type, columns.event, columns.tool_name, columns.tool_call_id, columns.provider, columns.model, columns.input_tokens, columns.output_tokens, columns.cache_read_tokens];
-
 export const registeredSources = [
 	{ name: "session_entries", columns: sessionColumns, layouts: ["sessions/**/*.jsonl", "agent/sessions/**/*.jsonl"] },
 	{ name: "metric_events", columns: [...common, columns.event, columns.provider, columns.model, columns.tool_name, columns.input_tokens, columns.output_tokens, columns.cache_read_tokens, columns.cost_usd], layouts: metricsLayouts },

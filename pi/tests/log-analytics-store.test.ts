@@ -15,6 +15,41 @@ async function fixture(lines: string[]): Promise<string> {
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
 
 describe("invocation-local analytics session", () => {
+	it("projects nested failed tool results without flattening message content", async () => {
+		const root = await fixture([
+			JSON.stringify({ type: "session", id: "session-1", timestamp: "2026-08-01T00:00:00Z" }),
+			JSON.stringify({ id: "assistant-1", message: { role: "assistant", content: [
+				{ type: "toolCall", id: "call-1", name: "edit", arguments: {} },
+				{ type: "toolCall", id: "call-2", name: "edit", arguments: {} },
+			], timestamp: "2026-08-01T00:00:01Z" } }),
+			JSON.stringify({ id: "result-1", message: { role: "toolResult", toolCallId: "call-1", toolName: "edit", isError: false, timestamp: "2026-08-01T00:00:02Z", content: [{ type: "text", text: "ok" }] } }),
+			JSON.stringify({ id: "result-2", message: { role: "toolResult", toolCallId: "call-2", toolName: "edit", isError: true, timestamp: "2026-08-01T00:00:03Z", content: [{ type: "text", text: "failed" }] } }),
+		]);
+		await withAnalyticsSession({ root, sources: ["session_entries"] }, async (session) => {
+			const result = await session.query({ sql: "SELECT _timestamp, message_role, tool_name, tool_call_id, is_error FROM session_entries WHERE message_role = 'toolResult' ORDER BY tool_call_id" });
+			expect(result.rows).toEqual([
+				{ _timestamp: "2026-08-01T00:00:02Z", message_role: "toolResult", tool_name: "edit", tool_call_id: "call-1", is_error: false },
+				{ _timestamp: "2026-08-01T00:00:03Z", message_role: "toolResult", tool_name: "edit", tool_call_id: "call-2", is_error: true },
+			]);
+			const aggregate = await session.query({ sql: "SELECT count(*) AS rows, count(tool_name) AS tool_names, sum(CASE WHEN is_error THEN 1 ELSE 0 END) AS errors FROM session_entries WHERE message_role = 'toolResult'" });
+			expect(aggregate.rows).toEqual([{ rows: "2", tool_names: "2", errors: "1" }]);
+		});
+	});
+
+	it("keeps nested successful results and flat source fields compatible", async () => {
+		const root = await fixture([
+			JSON.stringify({ id: "nested-success", message: { role: "toolResult", toolName: "edit", toolCallId: "call-1", isError: false, timestamp: "2026-08-02T00:00:00Z" } }),
+			JSON.stringify({ id: "flat", timestamp: "2026-08-02T00:00:01Z", tool_name: "legacy", tool_call_id: "legacy-call" }),
+		]);
+		await withAnalyticsSession({ root, sources: ["session_entries"] }, async (session) => {
+			const result = await session.query({ sql: "SELECT _record_key, _timestamp, message_role, tool_name, tool_call_id, is_error FROM session_entries ORDER BY _record_key" });
+			expect(result.rows).toEqual([
+				{ _record_key: "flat", _timestamp: "2026-08-02T00:00:01Z", message_role: null, tool_name: "legacy", tool_call_id: "legacy-call", is_error: null },
+				{ _record_key: "nested-success", _timestamp: "2026-08-02T00:00:00Z", message_role: "toolResult", tool_name: "edit", tool_call_id: "call-1", is_error: false },
+			]);
+		});
+	});
+
 	it("queries complete records with SQL predicates and stable coordinates", async () => {
 		const root = await fixture([
 			JSON.stringify({ id: "first", timestamp: "2026-08-01T00:00:00Z", message: "needle" }),
