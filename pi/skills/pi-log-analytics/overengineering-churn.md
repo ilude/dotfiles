@@ -34,7 +34,7 @@ Historical evidence, decisions, baselines, and experiments live in [`pi/docs/pi-
 
 Use the in-process `log_analytics` tool. Start with catalog discovery, then issue bounded SQL queries against registered views. Do not run an external command or filesystem query.
 
-Use the canonical `session_entries` source for recent session screens and request only structural identifiers, timestamps, event labels, tool names, and counts. Use `metric_events`, workflow, orchestration, or friction sources only when the screen requires their structural lifecycle records. Each request is limited to 1,000 rows, 256 KiB of encoded output, and 5 seconds.
+Use the canonical `session_entries` source for recent session screens and request only structural identifiers, timestamps, event labels, tool names, and counts. Use `metric_events`, workflow, orchestration, or friction sources only when the screen requires their structural lifecycle records. Each request is limited to 1,000 rows and 256 KiB of encoded output within the generic analytics session's configured deadline, input, thread, and memory bounds.
 
 Discover sources:
 

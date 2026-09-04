@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-04: Bound generic Pi log analytics
+
+**Changed:** `log_analytics` now rejects more than 512 MiB of selected input before staging, enforces a 5,000 ms session deadline, and runs DuckDB with 2 threads and a 1 GB memory ceiling by default. `PI_ANALYTICS_MAX_INPUT_BYTES`, `PI_ANALYTICS_TIMEOUT_MS`, `PI_ANALYTICS_THREADS`, and `PI_ANALYTICS_MEMORY_LIMIT` override those defaults. Query results report scanned file and byte counts plus staging and query durations, concurrent sessions serialize staging within one Pi process, and read subagents can use the bounded analytics surface without gaining mutation or shell authority.
+
+**Preserved:** Canonical JSONL remains authoritative, DuckDB remains invocation-local and in-memory, and typed report readers retain their existing unbounded-input behavior.
+
+---
+
 ## 2026-09-04: Remove redundant provider credential command
 
 **Changed:** Removed the custom `/provider` credential workflow and its hardcoded provider catalog. Pi's maintained `/login` and `/logout` commands remain the credential-management surface, while `/model` remains the model-selection surface.

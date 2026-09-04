@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { withAnalyticsSession } from "../lib/log-analytics/store.ts";
+import { DuckDBInstance } from "@duckdb/node-api";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setStagingObserver, withAnalyticsSession } from "../lib/log-analytics/store.ts";
 
 const roots: string[] = [];
 async function fixture(lines: string[]): Promise<string> {
@@ -12,7 +13,65 @@ async function fixture(lines: string[]): Promise<string> {
 	await fs.writeFile(path.join(root, "sessions", "fixture.jsonl"), `${lines.join("\n")}\n`);
 	return root;
 }
-afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
+afterEach(async () => {
+	setStagingObserver(undefined);
+	vi.restoreAllMocks();
+	for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
+});
+
+function parseDuckDBBytes(value: string): number {
+	const match = /^(\d+(?:\.\d+)?)\s+(KiB|MiB|GiB)$/.exec(value);
+	if (!match) throw new Error(`unexpected DuckDB byte setting: ${value}`);
+	return Number(match[1]) * 1024 ** ({ KiB: 1, MiB: 2, GiB: 3 }[match[2]!]!);
+}
+
+const longQuery = "SELECT count(*) FROM range(100000000) a CROSS JOIN range(1000) b";
+
+describe("duckdb contracts", () => {
+	it("applies configured thread and memory limits", async () => {
+		const instance = await DuckDBInstance.create(":memory:", { threads: "2", memory_limit: "1GB" });
+		const connection = await instance.connect();
+		try {
+			const result = await connection.runAndReadAll("SELECT current_setting('threads') AS threads, current_setting('memory_limit') AS memory_limit");
+			const [settings] = result.getRowObjectsJson() as Array<{ threads: string; memory_limit: string }>;
+			expect(Number(settings?.threads)).toBe(2);
+			expect(parseDuckDBBytes(settings!.memory_limit)).toBeCloseTo(1_000_000_000, -6);
+		} finally {
+			connection.closeSync();
+			instance.closeSync();
+		}
+	});
+
+	it("interrupts an in-flight materializing run", async () => {
+		const instance = await DuckDBInstance.create(":memory:");
+		const connection = await instance.connect();
+		const timer = setTimeout(() => connection.interrupt(), 50);
+		try {
+			await expect(connection.run(longQuery)).rejects.toThrow(/interrupt/i);
+		} finally {
+			clearTimeout(timer);
+			connection.closeSync();
+			instance.closeSync();
+		}
+	});
+
+	it("interrupts an in-flight stream pull", async () => {
+		const instance = await DuckDBInstance.create(":memory:");
+		const connection = await instance.connect();
+		const timer = setTimeout(() => connection.interrupt(), 50);
+		try {
+			const pull = (async () => {
+				const result = await connection.stream(longQuery);
+				return result.yieldRowObjectJson().next();
+			})();
+			await expect(pull).rejects.toThrow(/interrupt/i);
+		} finally {
+			clearTimeout(timer);
+			connection.closeSync();
+			instance.closeSync();
+		}
+	});
+});
 
 describe("invocation-local analytics session", () => {
 	it("projects nested failed tool results without flattening message content", async () => {
@@ -91,6 +150,92 @@ describe("invocation-local analytics session", () => {
 			expect(bounded.truncated).toBe(true);
 			const next = await session.query({ sql: "SELECT count(*) AS count FROM session_entries" });
 			expect(next.rows[0]?.count).toBe("50");
+		});
+	});
+
+	it("rejects input over the byte bound before creating DuckDB", async () => {
+		const root = await fixture([JSON.stringify({ id: "bounded" })]);
+		const file = path.join(root, "sessions", "fixture.jsonl");
+		const size = (await fs.stat(file)).size;
+		const create = vi.spyOn(DuckDBInstance, "create");
+		await expect(withAnalyticsSession({ root, sources: ["session_entries"], maxInputBytes: size - 1 }, async () => undefined))
+			.rejects.toThrow(`analytics input ${size} bytes exceeds bound ${size - 1}`);
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["timeoutMs", { timeoutMs: 0 }],
+		["threads", { threads: 0 }],
+		["memoryLimit", { memoryLimit: "" }],
+		["maxInputBytes", { maxInputBytes: -1 }],
+	] as const)("rejects an invalid %s option", async (_name, invalid) => {
+		const root = await fixture([JSON.stringify({ id: "invalid" })]);
+		await expect(withAnalyticsSession({ root, sources: ["session_entries"], ...invalid }, async () => undefined))
+			.rejects.toThrow(/invalid analytics/);
+	});
+
+	it("interrupts a query at the session deadline and still cleans up the callback", async () => {
+		const root = await fixture([JSON.stringify({ id: "deadline" })]);
+		let callbackCleanedUp = false;
+		await expect(withAnalyticsSession({ root, sources: ["session_entries"], timeoutMs: 200 }, async (session) => {
+			try {
+				await session.query({ sql: longQuery });
+			} finally {
+				callbackCleanedUp = true;
+			}
+		})).rejects.toThrow("analytics session exceeded 200 ms");
+		expect(callbackCleanedUp).toBe(true);
+	});
+
+	it("stages concurrent sessions strictly one at a time", async () => {
+		const rootA = await fixture([JSON.stringify({ id: "a" })]);
+		const rootB = await fixture([JSON.stringify({ id: "b" })]);
+		const events: string[] = [];
+		let enterFirst!: () => void;
+		const firstEntered = new Promise<void>((resolve) => { enterFirst = resolve; });
+		let releaseFirst!: () => void;
+		const holdFirst = new Promise<void>((resolve) => { releaseFirst = resolve; });
+		setStagingObserver(async ({ root }) => {
+			events.push(`start:${root}`);
+			if (root === rootA) {
+				enterFirst();
+				await holdFirst;
+			}
+			events.push(`end:${root}`);
+		});
+		const first = withAnalyticsSession({ root: rootA, sources: ["session_entries"] }, async () => undefined);
+		await firstEntered;
+		const second = withAnalyticsSession({ root: rootB, sources: ["session_entries"] }, async () => undefined);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(events).toEqual([`start:${rootA}`]);
+		releaseFirst();
+		await Promise.all([first, second]);
+		expect(events).toEqual([`start:${rootA}`, `end:${rootA}`, `start:${rootB}`, `end:${rootB}`]);
+	});
+
+	it("releases the staging lock when the first session fails", async () => {
+		const rootA = await fixture([JSON.stringify({ id: "a" })]);
+		const rootB = await fixture([JSON.stringify({ id: "b" })]);
+		const staged: string[] = [];
+		setStagingObserver(({ root }) => {
+			staged.push(root);
+			if (root === rootA) throw new Error("first staging failed");
+		});
+		const first = withAnalyticsSession({ root: rootA, sources: ["session_entries"] }, async () => undefined);
+		const second = withAnalyticsSession({ root: rootB, sources: ["session_entries"] }, async () => undefined);
+		await expect(first).rejects.toThrow("first staging failed");
+		await expect(second).resolves.toBeUndefined();
+		expect(staged).toEqual([rootA, rootB]);
+	});
+
+	it("reports the staged file count, bytes, and phase timings", async () => {
+		const root = await fixture([JSON.stringify({ id: "cost" })]);
+		const size = (await fs.stat(path.join(root, "sessions", "fixture.jsonl"))).size;
+		await withAnalyticsSession({ root, sources: ["session_entries"] }, async (session) => {
+			const result = await session.query({ sql: "SELECT _record_key FROM session_entries" });
+			expect(result.cost).toMatchObject({ filesScanned: 1, bytesScanned: size });
+			expect(result.cost.stagingMs).toBeGreaterThanOrEqual(0);
+			expect(result.cost.queryMs).toBeGreaterThanOrEqual(0);
 		});
 	});
 

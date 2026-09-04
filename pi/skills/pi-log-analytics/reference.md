@@ -24,7 +24,7 @@ The catalog returns registered source IDs, same-named DuckDB views, and typed co
 
 The request accepts `sources`, `sql`, scalar `parameters`, and optional `maxRows`. SQL may use CTEs, date predicates, JSON functions, and ordinary DuckDB expressions. Prepared registered views are the only filesystem boundary; do not use filesystem functions, external table functions, pragmas, or extension commands.
 
-Each operation is bounded to at most 1,000 rows, 256 KiB of encoded output, and 5 seconds. Cancellation, unknown source IDs, invalid requests, and budget violations fail explicitly. Results report truncation. DuckDB is invocation-local in-memory state with no persistent analytics projection or shared connection cache.
+Each query session has a 5,000 ms deadline, a 512 MiB input limit, 2 DuckDB threads, and a 1 GB DuckDB memory ceiling by default. `PI_ANALYTICS_TIMEOUT_MS`, `PI_ANALYTICS_MAX_INPUT_BYTES`, `PI_ANALYTICS_THREADS`, and `PI_ANALYTICS_MEMORY_LIMIT` override those defaults. Selected input over the byte limit fails with `exceeds bound` before DuckDB creates staging tables. Output remains bounded to at most 1,000 rows and 256 KiB of encoded data. Cancellation, unknown source IDs, invalid requests, and budget violations fail explicitly. Query results report truncation and `cost: { filesScanned, bytesScanned, stagingMs, queryMs }`. DuckDB is invocation-local in-memory state with no persistent analytics projection or shared connection cache. Typed report readers retain their existing unbounded-input behavior.
 
 ## Content and privacy boundary
 

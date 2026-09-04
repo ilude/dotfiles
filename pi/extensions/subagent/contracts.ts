@@ -19,7 +19,7 @@ import {
 	resolveWorkspaceRoot,
 } from "./workspace-policy.js";
 
-export const READ_TOOL_ALLOWLIST = ["read", "grep", "find", "ls"] as const;
+export const READ_TOOL_ALLOWLIST = ["read", "grep", "find", "ls", "log_analytics"] as const;
 export type ReadToolName = (typeof READ_TOOL_ALLOWLIST)[number];
 
 export type ExecutionKind = "read" | "write" | "coordinator";

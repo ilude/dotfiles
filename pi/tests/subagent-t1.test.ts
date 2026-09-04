@@ -277,6 +277,8 @@ describe("subagent T1 execution contracts", () => {
 		);
 
 		expect(authority.tools).toEqual([...READ_TOOL_ALLOWLIST]);
+		expect(authority.tools).toContain("log_analytics");
+		expect(authority.tools).not.toContain("registered_unknown_mutation");
 		expect(authority.canDirectlyMutate).toBe(false);
 	});
 
