@@ -242,7 +242,7 @@ describe("task registry pruning", () => {
 			createTask({ origin: "other", summary: "completed blocker", state: "assigned" })
 				.id,
 			"completed",
-			{ outcome: { summary: "completed blocker", evidence: "dependency fixture" } },
+			{ outcome: { evidence: "dependency fixture" } },
 		);
 		const pending = createTask({
 			origin: "other",
@@ -268,7 +268,7 @@ describe("task registry pruning", () => {
 
 		transitionTask(pending.id, "assigned");
 		transitionTask(pending.id, "completed", {
-			outcome: { summary: pending.summary, evidence: "dependency fixture" },
+			outcome: { evidence: "dependency fixture" },
 		});
 		const second = pruneTaskRegistry();
 		expect(second.removedIds).toEqual(
@@ -382,7 +382,7 @@ describe("task dependencies and tombstones", () => {
 		const done = transitionTask(
 			createTask({ origin: "other", summary: "done", state: "assigned" }).id,
 			"completed",
-			{ outcome: { summary: "done", evidence: "readiness fixture" } },
+			{ outcome: { evidence: "readiness fixture" } },
 		);
 		const skipped = createTask({
 			origin: "other",

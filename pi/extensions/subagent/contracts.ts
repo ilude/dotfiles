@@ -50,16 +50,11 @@ export interface SubagentItemBase {
 }
 
 export interface ReadItem extends SubagentItemBase {
-	/** Advisory paths supplied to coordinate the work; they do not grant authority. */
-	readonly boundaryPaths?: readonly string[];
 	/** Declared read targets validated against existing authority before spawn. */
 	readonly requiredReadPaths?: readonly string[];
 }
 
-export interface WriteItem extends SubagentItemBase {
-	/** Advisory paths supplied to coordinate the work; they do not grant authority. */
-	readonly boundaryPaths?: readonly string[];
-}
+export type WriteItem = SubagentItemBase;
 
 export interface CoordinatorItem extends SubagentItemBase {
 	/** Declared read targets validated against existing authority before spawn. */
@@ -99,8 +94,6 @@ export interface CoordinatorRequest {
 	readonly items: readonly CoordinatorItem[];
 	/** Run independently and deliver completion as a follow-up. Defaults to false. */
 	readonly background?: boolean;
-	/** Advisory boundary for Team Lead coordination; it does not grant authority. */
-	readonly boundary?: readonly string[];
 	/** The filesystem boundary enforced by governed file tools and recognized recursive-search tools. */
 	readonly enforcedBoundary?: string;
 	/** Hidden compatibility alias for resumed sessions. */
@@ -164,8 +157,6 @@ export interface SubagentItemResult {
 	readonly taskId?: string;
 	readonly status: "completed" | "failed" | "cancelled";
 	readonly completion?: ChildCompletion;
-	readonly boundaryPaths?: readonly string[];
-	readonly boundary?: readonly string[];
 	readonly output?: string;
 }
 
@@ -242,7 +233,6 @@ export interface PreparedSubagentExecution {
 	readonly projectTrusted: boolean;
 	readonly discovery: AgentDiscoveryResult;
 	readonly items: readonly PreparedSubagentItem<SubagentItemBase>[];
-	readonly boundary?: readonly string[];
 }
 
 export type TaskLinkResolution =
@@ -387,11 +377,6 @@ const ItemFields = {
 const ReadItemSchema = Type.Object(
 	{
 		...ItemFields,
-		boundaryPaths: Type.Optional(
-			Type.Array(Type.String({ minLength: 1 }), {
-				description: "Advisory paths for coordination; they do not grant authority.",
-			}),
-		),
 		requiredReadPaths: Type.Optional(
 			Type.Array(Type.String({ minLength: 1 }), {
 				minItems: 1,
@@ -403,17 +388,7 @@ const ReadItemSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-const WriteItemSchema = Type.Object(
-	{
-		...ItemFields,
-		boundaryPaths: Type.Optional(
-			Type.Array(Type.String({ minLength: 1 }), {
-				description: "Advisory paths for coordination; they do not grant authority.",
-			}),
-		),
-	},
-	{ additionalProperties: false },
-);
+const WriteItemSchema = Type.Object(ItemFields, { additionalProperties: false });
 
 const CoordinatorItemSchema = Type.Object(
 	{
@@ -477,11 +452,6 @@ export const SubagentWriteSchema = Type.Object(
 export const SubagentTeamleadSchema = Type.Object(
 	{
 		items: Type.Array(CoordinatorItemSchema, { minItems: 1, maxItems: 8 }),
-		boundary: Type.Optional(
-			Type.Array(Type.String({ minLength: 1 }), {
-				description: "Advisory Team Lead boundary; it does not grant authority.",
-			}),
-		),
 		maxWorkers: Type.Optional(
 			Type.Integer({
 				minimum: 1,
@@ -770,9 +740,7 @@ export function prepareSubagentExecution(
 		projectTrusted,
 		discovery,
 		items,
-		...(request.kind === "coordinator" && (request.boundary ?? legacyRequest.workBoundary)
-			? { boundary: [...(request.boundary ?? legacyRequest.workBoundary ?? [])] }
-			: {}),
+
 	};
 }
 

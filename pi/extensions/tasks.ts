@@ -24,7 +24,6 @@ import {
 	getUnmetBlockers,
 	TASK_OUTCOME_EVIDENCE_MAX_LENGTH,
 	TASK_OUTCOME_GAPS_MAX_LENGTH,
-	TASK_OUTCOME_SUMMARY_MAX_LENGTH,
 	TASK_OUTCOME_VALIDATION_MAX_LENGTH,
 	TASK_OUTCOME_MAX_EVIDENCE_ITEMS,
 	TASK_OUTCOME_MAX_VALIDATION_ITEMS,
@@ -462,12 +461,6 @@ function validatedOutcome(value: unknown): TaskOutcome | undefined {
 	if (value === undefined) return undefined;
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("outcome must be an object");
 	const input = value as Record<string, unknown>;
-	const requiredText = (field: "summary"): string => {
-		if (typeof input[field] !== "string" || !(input[field] as string).trim()) throw new Error(`outcome.${field} is required`);
-		const result = (input[field] as string).trim();
-		if (result.length > TASK_OUTCOME_SUMMARY_MAX_LENGTH) throw new Error(`outcome.${field} exceeds its bound: length ${result.length}, maximum ${TASK_OUTCOME_SUMMARY_MAX_LENGTH}`);
-		return result;
-	};
 	const array = (field: "evidence" | "validation" | "gaps", maxItems: number, maxLength: number, required: boolean): string[] | undefined => {
 		if (input[field] === undefined) {
 			if (required) throw new Error(`outcome.${field} is required`);
@@ -484,7 +477,6 @@ function validatedOutcome(value: unknown): TaskOutcome | undefined {
 		return values.map((item) => (item as string).trim());
 	};
 	return {
-		summary: requiredText("summary"),
 		evidence: array("evidence", TASK_OUTCOME_MAX_EVIDENCE_ITEMS, TASK_OUTCOME_EVIDENCE_MAX_LENGTH, true)!,
 		...(array("validation", TASK_OUTCOME_MAX_VALIDATION_ITEMS, TASK_OUTCOME_VALIDATION_MAX_LENGTH, false) ? { validation: array("validation", TASK_OUTCOME_MAX_VALIDATION_ITEMS, TASK_OUTCOME_VALIDATION_MAX_LENGTH, false) } : {}),
 		...(array("gaps", TASK_OUTCOME_MAX_GAPS_ITEMS, TASK_OUTCOME_GAPS_MAX_LENGTH, false) ? { gaps: array("gaps", TASK_OUTCOME_MAX_GAPS_ITEMS, TASK_OUTCOME_GAPS_MAX_LENGTH, false) } : {}),
@@ -801,7 +793,6 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 	const consumes = Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 16, uniqueItems: true, description: "Optional case-sensitive resources consumed by this Task. Used only to order ready Tasks." });
 	const priority = Type.Number({ description: "Optional ready-order priority. Higher values sort first; absence equals zero and never changes readiness." });
 	const outcome = Type.Object({
-		summary: Type.String({ minLength: 1, maxLength: TASK_OUTCOME_SUMMARY_MAX_LENGTH }),
 		evidence: Type.Array(Type.String({ minLength: 1, maxLength: TASK_OUTCOME_EVIDENCE_MAX_LENGTH }), { minItems: 1, maxItems: TASK_OUTCOME_MAX_EVIDENCE_ITEMS }),
 		validation: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: TASK_OUTCOME_VALIDATION_MAX_LENGTH }), { maxItems: TASK_OUTCOME_MAX_VALIDATION_ITEMS })),
 		gaps: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: TASK_OUTCOME_GAPS_MAX_LENGTH }), { maxItems: TASK_OUTCOME_MAX_GAPS_ITEMS })),
@@ -1255,9 +1246,7 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 					ctx,
 					"Completed",
 					await lifecycle.transition(target.id, "completed", {
-						outcome: parsed.text
-							? { summary: target.summary, evidence: [parsed.text] }
-							: undefined,
+						outcome: parsed.text ? { evidence: [parsed.text] } : undefined,
 					}),
 				);
 			if (parsed.verb === "skip")

@@ -69,6 +69,9 @@ describe("task tool schema", () => {
 				"skipped",
 			],
 		});
+		const outcome = schema.properties.outcome as Schema;
+		expect(outcome.required).toEqual(["evidence"]);
+		expect(outcome.properties).not.toHaveProperty("summary");
 		for (const name of [
 			"ids",
 			"maxConcurrent",
@@ -279,7 +282,7 @@ describe("/tasks command", () => {
 			state: "running",
 		});
 		transitionTask(t.id, "completed", {
-			outcome: { summary: t.summary, evidence: "command fixture" },
+			outcome: { evidence: "command fixture" },
 		});
 
 		const { cmd } = await loadTasks();

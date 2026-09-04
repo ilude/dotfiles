@@ -60,7 +60,7 @@ describe("subagent T1 execution contracts", () => {
 		expect(coordinatorItem).not.toHaveProperty("scope");
 		expect(coordinatorItem).not.toHaveProperty("workPaths");
 		expect(coordinatorItem).toHaveProperty("instructions");
-		expect(coordinator).toHaveProperty("boundary");
+		expect(coordinator).not.toHaveProperty("boundary");
 		expect(coordinator).not.toHaveProperty("workBoundary");
 		expect(readItem).toHaveProperty("skills");
 		expect(writeItem).toHaveProperty("skills");
@@ -519,8 +519,8 @@ describe("subagent T1 execution contracts", () => {
 		expect(legacy.request.items[0]).toMatchObject({
 			agent: "reader",
 			instructions: "read",
-			boundaryPaths: ["src"],
 		});
+		expect(legacy.request.items[0]).not.toHaveProperty("boundaryPaths");
 		const correlated = adaptLegacySubagentInvocation("subagent", {
 			agent: "reader",
 			task: "read",

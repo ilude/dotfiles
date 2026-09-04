@@ -147,10 +147,10 @@ describe("task tools", () => {
 		).toBeUndefined();
 
 		transitionTask(first.id, "completed", {
-			outcome: { summary: first.summary, evidence: "reminder fixture" },
+			outcome: { evidence: "reminder fixture" },
 		});
 		transitionTask(second.id, "completed", {
-			outcome: { summary: second.summary, evidence: "reminder fixture" },
+			outcome: { evidence: "reminder fixture" },
 		});
 		expect(
 			await beforeAgentStart?.({ systemPrompt: "base" }, ctx),
@@ -354,7 +354,7 @@ describe("task tools", () => {
 					action: "update",
 					id: first.id,
 					state,
-					...(state === "completed" ? { outcome: { summary: "done", evidence: ["tool fixture"] } } : {}),
+					...(state === "completed" ? { outcome: { evidence: ["tool fixture"] } } : {}),
 				},
 				undefined,
 				undefined,
@@ -555,7 +555,7 @@ describe("task tools", () => {
 			state: "running",
 		});
 		transitionTask(completed.id, "completed", {
-			outcome: { summary: completed.summary, evidence: "scope fixture" },
+			outcome: { evidence: "scope fixture" },
 		});
 		const unscoped = createTask({
 			origin: "other",
@@ -799,7 +799,7 @@ describe("task tools", () => {
 				action: "update",
 				id: task.id,
 				state: "completed",
-				outcome: { summary: "done", evidence: [oversizedItem] },
+				outcome: { evidence: [oversizedItem] },
 			},
 			undefined,
 			undefined,

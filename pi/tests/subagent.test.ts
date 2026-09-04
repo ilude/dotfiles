@@ -604,7 +604,6 @@ Execute workflow items with admitted tools only.
 			}),
 		).toEqual({
 			enforcedBoundary: tmpDir,
-			boundary: ["pi/extensions/subagent"],
 			maxWorkers: 1,
 			items: [
 				{
@@ -706,7 +705,6 @@ Execute workflow items with admitted tools only.
 					cwd: tmpDir,
 				}],
 				enforcedBoundary: tmpDir,
-				boundary: ["pi/extensions/subagent"],
 				agentScope: "project",
 			},
 			undefined,

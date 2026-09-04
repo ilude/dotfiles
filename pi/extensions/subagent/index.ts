@@ -5949,7 +5949,6 @@ export default function (pi: ExtensionAPI) {
 			promptGuidelines: [
 				"Use subagent_write for bounded changes with an explicit deliverable and completion condition.",
 				"Keep subagent_write foreground when its result gates dependent work or it owns the active mutation boundary; detach only independent write packages.",
-				"boundaryPaths are advisory coordination markers and do not grant mutation authority.",
 			],
 			parameters: catalogSchemas.write,
 			renderResult: subagentExecutor.renderResult,
@@ -5964,8 +5963,6 @@ export default function (pi: ExtensionAPI) {
 			promptGuidelines: [
 				"Use multiple subagent_teamlead items only for independently verifiable packages whose results compose into the root deliverable.",
 				"Run an independent subagent_teamlead package in the background; keep it foreground when its integrated result gates dependent work.",
-				"Use work markers for coordination; enforcedBoundary remains the containment control for governed tools.",
-				"boundary is advisory; enforcedBoundary is the filesystem boundary for governed tools.",
 			],
 			parameters: catalogSchemas.teamlead,
 			renderResult: subagentExecutor.renderResult,
@@ -5987,14 +5984,13 @@ export default function (pi: ExtensionAPI) {
 							return { ...rest, instructions: task };
 						})
 					: input.items;
-				const { workspaceRoot, workBoundary, ...rest } = input;
+				const { workspaceRoot, workBoundary: _workBoundary, ...rest } = input;
 				return {
 					...rest,
 					items,
 					...(workspaceRoot === undefined
 						? {}
 						: { enforcedBoundary: workspaceRoot }),
-					...(workBoundary === undefined ? {} : { boundary: workBoundary }),
 				};
 			},
 			renderResult: subagentExecutor.renderResult,

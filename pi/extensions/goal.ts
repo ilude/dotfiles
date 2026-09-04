@@ -683,7 +683,7 @@ function foregroundPlanTaskBlockers(goal: ForegroundGoal): string[] {
 			blockers.push(
 				`${planTask.key}: durable root task is ${record.state}, not completed`,
 			);
-		else if (!record.outcome?.summary || !record.outcome.evidence.length)
+		else if (!record.outcome?.evidence.length)
 			blockers.push(
 				`${planTask.key}: completed task has no bounded outcome evidence`,
 			);
@@ -1482,7 +1482,7 @@ async function verifyUnattendedCompletion(
 			blockers.push(`${item.key}: linked task is not a durable root task`);
 		else if (task.state !== "completed")
 			blockers.push(`${item.key}: linked task is ${task.state}, not completed`);
-		else if (!task.outcome?.summary || !task.outcome.evidence.length)
+		else if (!task.outcome?.evidence.length)
 			blockers.push(`${item.key}: completed task has no bounded outcome evidence`);
 		else if (task.endedAt && task.endedAt > latestRequiredTaskCompletion)
 			latestRequiredTaskCompletion = task.endedAt;
@@ -2547,7 +2547,7 @@ export default function (pi: ExtensionAPI) {
 						if (!record) blockers.push(`${item.key}: durable root task is missing`);
 						else if (record.state !== "completed")
 							blockers.push(`${item.key}: durable root task is ${record.state}, not completed`);
-						else if (!record.outcome?.summary || !record.outcome.evidence.length)
+						else if (!record.outcome?.evidence.length)
 							blockers.push(`${item.key}: completed task has no bounded outcome evidence`);
 					}
 					if (blockers.length > 0)

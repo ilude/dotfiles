@@ -39,7 +39,6 @@ export type TaskPersistenceOutcome =
 	| "write_failed"
 	| "not_found";
 
-export const TASK_OUTCOME_SUMMARY_MAX_LENGTH = 256;
 export const TASK_OUTCOME_EVIDENCE_MAX_LENGTH = 2_000;
 export const TASK_OUTCOME_VALIDATION_MAX_LENGTH = 512;
 export const TASK_OUTCOME_GAPS_MAX_LENGTH = 512;
@@ -48,7 +47,6 @@ export const TASK_OUTCOME_MAX_VALIDATION_ITEMS = 8;
 export const TASK_OUTCOME_MAX_GAPS_ITEMS = 4;
 
 export interface TaskOutcome {
-	summary: string;
 	evidence: string[];
 	validation?: string[];
 	gaps?: string[];
@@ -801,16 +799,11 @@ const applyTerminalTransition = (
 function normalizeTaskOutcome(outcome: TaskOutcome, recordedAt?: string): TaskOutcome {
 	const evidence = Array.isArray(outcome.evidence) ? outcome.evidence : [outcome.evidence as unknown as string];
 	const normalized: TaskOutcome = {
-		summary: outcome.summary.trim(),
 		evidence: evidence.map((item) => item.trim()),
 		...(recordedAt ? { recordedAt } : outcome.recordedAt ? { recordedAt: outcome.recordedAt } : {}),
 	};
-	if (!normalized.summary)
-		throw new TaskRegistryError("completed tasks require outcome.summary");
 	if (!normalized.evidence.length || normalized.evidence.some((item) => !item))
 		throw new TaskRegistryError("completed tasks require outcome.evidence");
-	if (normalized.summary.length > TASK_OUTCOME_SUMMARY_MAX_LENGTH)
-		throw new TaskRegistryError(`outcome.summary exceeds its bound: length ${normalized.summary.length}, maximum ${TASK_OUTCOME_SUMMARY_MAX_LENGTH}`);
 	const evidenceIndex = normalized.evidence.findIndex((item) => item.length > TASK_OUTCOME_EVIDENCE_MAX_LENGTH);
 	if (normalized.evidence.length > TASK_OUTCOME_MAX_EVIDENCE_ITEMS || evidenceIndex >= 0)
 		throw new TaskRegistryError(`outcome.evidence exceeds its bounds: count ${normalized.evidence.length}, maximum ${TASK_OUTCOME_MAX_EVIDENCE_ITEMS}, offending index ${evidenceIndex >= 0 ? evidenceIndex : normalized.evidence.length - 1}${evidenceIndex < 0 ? "" : `, offending length ${normalized.evidence[evidenceIndex]?.length}, item maximum ${TASK_OUTCOME_EVIDENCE_MAX_LENGTH}`}`);
@@ -828,22 +821,16 @@ function normalizeTaskOutcome(outcome: TaskOutcome, recordedAt?: string): TaskOu
 function normalizePersistedOutcome(value: unknown): TaskOutcome | undefined {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
 	const input = value as Record<string, unknown>;
-	const text = (field: string, max: number): string | undefined => {
-		const raw = input[field];
-		return typeof raw === "string" ? raw.trim().slice(0, max) || undefined : undefined;
-	};
 	const items = (field: string, maxItems: number, maxLength: number): string[] | undefined => {
 		const raw = input[field];
 		const values = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
 		const result = values.filter((item): item is string => typeof item === "string").map((item) => item.trim().slice(0, maxLength)).filter(Boolean).slice(0, maxItems);
 		return result.length ? result : undefined;
 	};
-	const summary = text("summary", TASK_OUTCOME_SUMMARY_MAX_LENGTH);
 	const evidence = items("evidence", TASK_OUTCOME_MAX_EVIDENCE_ITEMS, TASK_OUTCOME_EVIDENCE_MAX_LENGTH);
-	if (!summary && !evidence) return undefined;
+	if (!evidence) return undefined;
 	return {
-		summary: summary ?? "",
-		evidence: evidence ?? [],
+		evidence,
 		...(items("validation", TASK_OUTCOME_MAX_VALIDATION_ITEMS, TASK_OUTCOME_VALIDATION_MAX_LENGTH) ? { validation: items("validation", TASK_OUTCOME_MAX_VALIDATION_ITEMS, TASK_OUTCOME_VALIDATION_MAX_LENGTH) } : {}),
 		...(items("gaps", TASK_OUTCOME_MAX_GAPS_ITEMS, TASK_OUTCOME_GAPS_MAX_LENGTH) ? { gaps: items("gaps", TASK_OUTCOME_MAX_GAPS_ITEMS, TASK_OUTCOME_GAPS_MAX_LENGTH) } : {}),
 		...(typeof input.recordedAt === "string" ? { recordedAt: input.recordedAt } : {}),

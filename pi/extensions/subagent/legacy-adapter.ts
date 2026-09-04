@@ -83,14 +83,6 @@ function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function stringArray(value: unknown): readonly string[] | undefined {
-	if (!Array.isArray(value)) return undefined;
-	const result = value.filter(
-		(item): item is string => typeof item === "string" && item.trim().length > 0,
-	);
-	return result.length > 0 ? result : undefined;
-}
-
 function itemFromLegacy(item: LegacyItem): ReadItem | WriteItem | CoordinatorItem {
 	const agent = stringValue(item.agent);
 	const instructions = stringValue(item.instructions ?? item.task ?? item.prompt);
@@ -102,8 +94,7 @@ function itemFromLegacy(item: LegacyItem): ReadItem | WriteItem | CoordinatorIte
 		...(stringValue(item.cwd) ? { cwd: stringValue(item.cwd) } : {}),
 		...(stringValue(item.effort) ? { effort: stringValue(item.effort) } : {}),
 	};
-	const boundaryPaths = stringArray(item.boundaryPaths ?? item.workPaths ?? item.scope);
-	return boundaryPaths ? { ...common, boundaryPaths } : common;
+	return common;
 }
 
 function kindForItems(items: readonly LegacyItem[], topLevelRole: unknown): "read" | "write" | "coordinator" {
@@ -145,9 +136,6 @@ function requestFromItems(
 			items: coordinatorItems,
 			...(workspaceRoot ? { enforcedBoundary: workspaceRoot } : {}),
 			...(agentScope ? { agentScope } : {}),
-			...(stringArray(input.boundary ?? input.workBoundary ?? input.scope)
-				? { boundary: stringArray(input.boundary ?? input.workBoundary ?? input.scope) }
-				: {}),
 		};
 	}
 	const mapped = normalizedItems.map((item) => itemFromLegacy(item));

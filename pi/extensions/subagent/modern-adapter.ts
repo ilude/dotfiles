@@ -51,10 +51,6 @@ export function modernRequestToExecutorInput(
 		const taskId = preparedItem.taskLink.outcome === "explicit" || preparedItem.taskLink.outcome === "auto"
 			? preparedItem.taskLink.task.id
 			: item.taskId;
-		const workPaths =
-			"boundaryPaths" in item && Array.isArray(item.boundaryPaths)
-				? item.boundaryPaths.filter((value): value is string => typeof value === "string")
-				: undefined;
 		const instructions = item.instructions ?? item.task;
 		if (!instructions) throw new Error("Prepared subagent item has no instructions.");
 		const requiredReadPaths = "requiredReadPaths" in item && Array.isArray(item.requiredReadPaths)
@@ -67,7 +63,6 @@ export function modernRequestToExecutorInput(
 			...(item.skills ? { skills: [...item.skills] } : {}),
 			role: request.kind === "coordinator" ? "coordinator" : "leaf",
 			cwd: item.cwd ?? preparedItem.workspaceRoot,
-			...(workPaths ? { scope: workPaths } : {}),
 			...(requiredReadPaths ? { requiredReadPaths } : {}),
 		};
 	});
@@ -86,9 +81,6 @@ export function modernRequestToExecutorInput(
 		return {
 			...common,
 			...(items.length === 1 ? items[0] : { tasks: items }),
-			...(coordinator.boundary
-				? { workBoundary: [...coordinator.boundary] }
-				: {}),
 			maxWorkers: coordinator.maxWorkers,
 			...(coordinator.continuationId
 				? { continuationId: coordinator.continuationId }

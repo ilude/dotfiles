@@ -22,9 +22,9 @@ describe("T6 current subagent naming", () => {
 		expect(read.background).toMatchObject({ type: "boolean", default: false });
 		expect(read).not.toHaveProperty("workspaceRoot");
 		expect(readItem).toHaveProperty("instructions");
-		expect(readItem).toHaveProperty("boundaryPaths");
+		expect(readItem).not.toHaveProperty("boundaryPaths");
 		expect(readItem).not.toHaveProperty("task");
-		expect(teamlead).toHaveProperty("boundary");
+		expect(teamlead).not.toHaveProperty("boundary");
 		expect(teamlead).toHaveProperty("hardDeadlineMs");
 		expect(teamlead).not.toHaveProperty("workBoundary");
 		expect(properties(SubagentWriteSchema)).toMatchObject({
@@ -37,7 +37,7 @@ describe("T6 current subagent naming", () => {
 	it("maps current names to hidden legacy execution fields without changing authority", () => {
 		const request = {
 			kind: "read" as const,
-			items: [{ agent: "reader", instructions: "Inspect files", boundaryPaths: ["src"] }],
+			items: [{ agent: "reader", instructions: "Inspect files" }],
 			enforcedBoundary: "/workspace",
 			background: true,
 		};
@@ -53,7 +53,6 @@ describe("T6 current subagent naming", () => {
 		const executorInput = modernRequestToExecutorInput(request, prepared);
 		expect(executorInput).toMatchObject({
 			task: "Inspect files",
-			scope: ["src"],
 			workspaceRoot: "/workspace",
 			background: true,
 		});
@@ -70,8 +69,8 @@ describe("T6 current subagent naming", () => {
 		if (!result.request || result.request.kind !== "write") throw new Error("request missing");
 		expect(result.request.items[0]).toMatchObject({
 			instructions: "Inspect files",
-			boundaryPaths: ["src"],
 		});
+		expect(result.request.items[0]).not.toHaveProperty("boundaryPaths");
 		expect(result.request).toHaveProperty("enforcedBoundary", "/workspace");
 		expect(result.request.items[0]).not.toHaveProperty("task");
 	});

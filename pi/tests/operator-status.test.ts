@@ -79,7 +79,7 @@ describe("summarizeTaskCounts / formatTaskStatus", () => {
 			state: "assigned",
 		});
 		transitionTask(completed.id, "completed", {
-			outcome: { summary: "completed", evidence: ["focused status fixture"] },
+			outcome: { evidence: ["focused status fixture"] },
 		});
 		void assigned;
 

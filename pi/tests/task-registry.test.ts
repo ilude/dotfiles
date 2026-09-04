@@ -255,12 +255,12 @@ describe("transitionTask", () => {
 		const secret = "do-not-render-this";
 		expect(() =>
 			transitionTask(task.id, "completed", {
-				outcome: { summary: "x", evidence: Array.from({ length: 9 }, (_, index) => `${index}-${secret}`) },
+				outcome: { evidence: Array.from({ length: 9 }, (_, index) => `${index}-${secret}`) },
 			}),
 		).toThrow(/outcome\.evidence exceeds its bounds: count 9, maximum 8, offending index 8/);
 		try {
 			transitionTask(task.id, "completed", {
-				outcome: { summary: "x", evidence: Array.from({ length: 9 }, (_, index) => `${index}-${secret}`) },
+				outcome: { evidence: Array.from({ length: 9 }, (_, index) => `${index}-${secret}`) },
 			});
 		} catch (error) {
 			expect(String(error)).not.toContain(secret);
@@ -268,7 +268,7 @@ describe("transitionTask", () => {
 		const oversized = `${secret}${"x".repeat(2000)}`;
 		try {
 			transitionTask(task.id, "completed", {
-				outcome: { summary: "x", evidence: [oversized] },
+				outcome: { evidence: [oversized] },
 			});
 		} catch (error) {
 			expect(String(error)).toContain(`offending length ${oversized.length}, item maximum 2000`);
@@ -291,7 +291,7 @@ describe("transitionTask", () => {
 		expect(assigned.endedAt).toBeUndefined();
 
 		const done = transitionTask(task.id, "completed", {
-			outcome: { summary: "x completed", evidence: "focused registry check" },
+			outcome: { evidence: "focused registry check" },
 		});
 		expect(done.state).toBe("completed");
 		expect(done.endedAt).toBeDefined();
@@ -349,7 +349,7 @@ describe("transitionTask", () => {
 			state: "assigned",
 		});
 		transitionTask(task.id, "completed", {
-			outcome: { summary: "x completed", evidence: "terminal transition check" },
+			outcome: { evidence: "terminal transition check" },
 		});
 		expect(() => transitionTask(task.id, "assigned")).toThrow(TaskRegistryError);
 	});
@@ -368,7 +368,7 @@ describe("transitionTask", () => {
 		});
 		const done = transitionTask(task.id, "completed", {
 			usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
-			outcome: { summary: "x completed", evidence: "usage transition check" },
+			outcome: { evidence: "usage transition check" },
 		});
 		expect(done.usage).toEqual({
 			inputTokens: 100,
@@ -400,7 +400,7 @@ describe("transitionTask", () => {
 				turns: 2,
 				costUsd: null,
 			}),
-			outcome: { summary: "x completed", evidence: "normalized usage check" },
+			outcome: { evidence: "normalized usage check" },
 		});
 		expect(completed.usage).toEqual({
 			...legacyUsage,
