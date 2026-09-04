@@ -146,38 +146,6 @@ function hasPlanHeading(content: string, heading: string): boolean {
 	return new RegExp(`^${escapedHeading}[ \\t]*\\r?$`, "m").test(content);
 }
 
-function validateExecutionStrategy(content: string, taskKeys: string[], required: boolean, addError: (message: string) => void): void {
-	const strategy = planSection(content, "## Execution Strategy");
-	if (!strategy) {
-		if (required) addError("Missing ## Execution Strategy.");
-		return;
-	}
-	const keySet = new Set(taskKeys);
-	for (const label of ["Parallel work:", "Smaller-model work:"]) {
-		const match = strategy.match(new RegExp(`^\\s*-\\s+${label.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\s*(\\S[\\s\\S]*?)$`, "im"));
-		if (!match) {
-			addError(`Execution Strategy is missing ${label}`);
-			continue;
-		}
-		const value = match[1].trim();
-		if (/^none$/i.test(value)) continue;
-		const keys = value.match(/\bT[1-9][0-9]*\b/g) ?? [];
-		if (keys.length === 0 || keys.some((key) => !keySet.has(key))) {
-			addError(`Execution Strategy ${label} must name existing task keys or None.`);
-			continue;
-		}
-		if (!/(?:leaf\s+)?packages?\s*:/i.test(value))
-			addError(`Execution Strategy ${label} must name bounded leaf packages or None.`);
-		if (
-			label === "Smaller-model work:" &&
-			(!/advisory/i.test(value) ||
-				!/dynamic\s+sizing/i.test(value) ||
-				!/excludes?\s+authority-sensitive,?\s+integration-owning,?\s+and\s+acceptance-gating\s+work/i.test(value))
-		)
-			addError("Execution Strategy Smaller-model work must use advisory dynamic sizing and exclude authority-sensitive, integration-owning, and acceptance-gating work.");
-	}
-}
-
 export function refreshDoItPlanCache(cwd: string): string[] {
 	const root = path.resolve(cwd);
 	const specs = path.join(root, ".specs");
@@ -410,22 +378,24 @@ export function validatePlanContract(
 	const normalizedPath = planPath.replace(/\\/g, "/");
 	if (!PLAN_PATH_PATTERN.test(normalizedPath))
 		addError("Plan path is not canonical.");
-	for (const heading of [
-		"## Objective",
-		"## Completion Evidence",
-		"## Boundaries",
-		"## Tasks",
-		"## Validation",
-		"## Retention",
-		"## Execution Status",
-	]) {
-		if (!hasPlanHeading(content, heading)) addError(`Missing ${heading}.`);
+	if (!hasPlanHeading(content, "## Tasks")) addError("Missing ## Tasks.");
+	if (mode === "ready") {
+		for (const heading of [
+			"## Objective",
+			"## Completion Evidence",
+			"## Boundaries",
+			"## Validation",
+			"## Retention",
+			"## Execution Status",
+		]) {
+			if (!hasPlanHeading(content, heading)) addError(`Missing ${heading}.`);
+		}
+		const completionSection = planSection(content, "## Completion Evidence");
+		if (!/^\s*-\s+Evidence:\s*\S/im.test(completionSection))
+			addError("Completion Evidence is missing Evidence:.");
+		if (!/^\s*-\s+Fails when:\s*\S/im.test(completionSection))
+			addError("Completion Evidence is missing Fails when:.");
 	}
-	const completionSection = planSection(content, "## Completion Evidence");
-	if (!/^\s*-\s+Evidence:\s*\S/im.test(completionSection))
-		addError("Completion Evidence is missing Evidence:.");
-	if (!/^\s*-\s+Fails when:\s*\S/im.test(completionSection))
-		addError("Completion Evidence is missing Fails when:.");
 	const allowedStatuses =
 		mode === "execution-preflight"
 			? "ready|in_progress|in-progress|complete|completed"
@@ -442,21 +412,22 @@ export function validatePlanContract(
 				: "Plan frontmatter status must be ready.",
 		);
 	const taskKeys = [...content.matchAll(TASK_PATTERN)].map((match) => match[1]);
-	validateExecutionStrategy(content, taskKeys, mode === "ready", addError);
 	if (taskKeys.length < 1 || taskKeys.length > 16)
 		addError("Plan must contain one to sixteen executable tasks.");
 	if (new Set(taskKeys).size !== taskKeys.length)
 		addError("Plan task keys must be unique.");
-	const taskSection = planSection(content, "## Tasks");
-	for (const key of taskKeys) {
-		const start = taskSection.indexOf(`**${key}:`);
-		const next = taskKeys
-			.map((candidate) => taskSection.indexOf(`**${candidate}:`, start + 1))
-			.filter((index) => index > start)
-			.sort((left, right) => left - right)[0];
-		const block = taskSection.slice(start, next ?? undefined);
-		for (const field of ["Files:", "Change:", "Done when:", "Verify:"])
-			if (!block.includes(field)) addError(`${key} is missing ${field}`);
+	if (mode === "ready") {
+		const taskSection = planSection(content, "## Tasks");
+		for (const key of taskKeys) {
+			const start = taskSection.indexOf(`**${key}:`);
+			const next = taskKeys
+				.map((candidate) => taskSection.indexOf(`**${candidate}:`, start + 1))
+				.filter((index) => index > start)
+				.sort((left, right) => left - right)[0];
+			const block = taskSection.slice(start, next ?? undefined);
+			for (const field of ["Files:", "Change:", "Done when:", "Verify:"])
+				if (!block.includes(field)) addError(`${key} is missing ${field}`);
+		}
 	}
 	try {
 		parseLinkedPlan(normalizedPath, content);
@@ -465,15 +436,17 @@ export function validatePlanContract(
 			error instanceof Error ? `Plan dependency syntax: ${error.message}` : String(error),
 		);
 	}
-	const validationSection = planSection(content, "## Validation");
-	if (!/^\s*-\s+\[[ xX]\]\s+\S/im.test(validationSection))
-		addError("Validation must contain a checklist item.");
-	if (!/^\s*-\s+State:\s*\S/im.test(planSection(content, "## Execution Status")))
-		addError("Execution Status must declare State.");
-	if (!content.includes(`/do-it ${normalizedPath}`))
-		addError("Execution Status must contain the canonical /do-it resume command.");
-	if (!content.includes(`.specs/archive/${normalizedPath.split("/")[1]}/`))
-		addError("Retention must name the canonical archive directory.");
+	if (mode === "ready") {
+		const validationSection = planSection(content, "## Validation");
+		if (!/^\s*-\s+\[[ xX]\]\s+\S/im.test(validationSection))
+			addError("Validation must contain a checklist item.");
+		if (!/^\s*-\s+State:\s*\S/im.test(planSection(content, "## Execution Status")))
+			addError("Execution Status must declare State.");
+		if (!content.includes(`/do-it ${normalizedPath}`))
+			addError("Execution Status must contain the canonical /do-it resume command.");
+		if (!content.includes(`.specs/archive/${normalizedPath.split("/")[1]}/`))
+			addError("Retention must name the canonical archive directory.");
+	}
 	return { valid: errors.length === 0, errors, taskKeys };
 }
 

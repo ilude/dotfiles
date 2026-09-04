@@ -3097,7 +3097,26 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
 				return;
 			}
+			const requestedPlanPath = parsed.request.replace(/^@/, "");
+			const canonicalPlanPath = canonicalPlanPathFromInput(requestedPlanPath);
+			const canonicalPlan = canonicalPlanPath !== undefined;
 			if (!skipClear && !parsed.noClear && typeof ctx.newSession === "function") {
+				if (canonicalPlan && ctx.cwd) {
+					try {
+						const primaryRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
+						const validation = validatePlanFile(primaryRoot, canonicalPlanPath, "execution-preflight");
+						if (!validation.valid) {
+							sendDoItFailure(
+								pi,
+								`Plan preflight failed for ${canonicalPlanPath}:\n${validation.errors.join("\n")}`,
+							);
+							return;
+						}
+					} catch (error) {
+						sendDoItFailure(pi, `/do-it setup failed: ${error instanceof Error ? error.message : String(error)}`);
+						return;
+					}
+				}
 				const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
 				const continuation: DoItContinuation = { ...parsed };
 				try {
@@ -3113,9 +3132,6 @@ export default function (pi: ExtensionAPI) {
 				}
 				return;
 			}
-			const requestedPlanPath = parsed.request.replace(/^@/, "");
-			const canonicalPlanPath = canonicalPlanPathFromInput(requestedPlanPath);
-			const canonicalPlan = canonicalPlanPath !== undefined;
 			let workspaceDirective = "";
 			let workflowRepoRoot: string | undefined;
 			let ownedWorkspace = ctx.cwd;

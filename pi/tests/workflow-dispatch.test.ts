@@ -585,6 +585,62 @@ describe("workflow slash command dispatch", () => {
 		await dispatched;
 	});
 
+	it("/do-it clears once after canonical plan preflight succeeds", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const fixture = await createPlanFixture();
+		await fs.promises.writeFile(
+			path.join(fixture.root, fixture.planPath),
+			readyPlan(fixture.planPath),
+			"utf8",
+		);
+		const appendCustomMessageEntry = vi.fn();
+		const newSession = vi.fn(async (options: any) => {
+			await options.setup({ appendCustomMessageEntry });
+		});
+
+		await getHandler(mockPi, "do-it")(fixture.planPath, {
+			...createMockCtx(),
+			cwd: fixture.root,
+			newSession,
+		});
+
+		expect(newSession).toHaveBeenCalledOnce();
+		expect(appendCustomMessageEntry).toHaveBeenCalledWith(
+			"workflow.do-it-continuation",
+			expect.any(String),
+			false,
+		);
+		expect(mockPi.sendMessage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow.plan-preflight" }),
+			expect.anything(),
+		);
+	});
+
+	it("/do-it preserves the current session when canonical plan preflight fails", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const fixture = await createPlanFixture();
+		const newSession = vi.fn();
+
+		await getHandler(mockPi, "do-it")(fixture.planPath, {
+			...createMockCtx(),
+			cwd: fixture.root,
+			newSession,
+		});
+
+		expect(newSession).not.toHaveBeenCalled();
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "workflow.plan-preflight",
+				content: expect.stringContaining("Plan preflight failed"),
+			}),
+			{ deliverAs: "nextTurn" },
+		);
+	});
+
 	it("/do-it rejects an invalid canonical plan before archive activation or execution", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");

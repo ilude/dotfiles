@@ -297,11 +297,33 @@ describe("plan lifecycle", () => {
 		);
 	});
 
-	it("requires execution strategy for readiness but accepts legacy execution preflight", () => {
+	it("treats execution strategy as advisory prose", () => {
 		const planPath = ".specs/example/plan.md";
-		const legacy = readyPlan(planPath).replace(/\n## Execution Strategy[\s\S]*?\n## Validation/, "\n## Validation");
-		expect(validatePlanContract(legacy, planPath).errors).toContain("Missing ## Execution Strategy.");
-		expect(validatePlanContract(legacy, planPath, "execution-preflight").valid).toBe(true);
+		const withoutStrategy = readyPlan(planPath).replace(/\n## Execution Strategy[\s\S]*?\n## Validation/, "\n## Validation");
+		const equivalentProse = readyPlan(planPath).replace(
+			"- Smaller-model work: None",
+			"- Smaller-model work: T1 can use a bounded helper while final acceptance remains with the root.",
+		);
+		expect(validatePlanContract(withoutStrategy, planPath).valid).toBe(true);
+		expect(validatePlanContract(equivalentProse, planPath).valid).toBe(true);
+	});
+
+	it("limits execution preflight to machine-consumed plan state", () => {
+		const planPath = ".specs/example/plan.md";
+		const concise = readyPlan(planPath)
+			.replace(/\n## Objective[\s\S]*?\n## Tasks/, "\n## Tasks")
+			.replace(/  - (?:Files|Change|Done when|Verify):.*\n/g, "")
+			.replace(/\n## Execution Strategy[\s\S]*$/, "\n");
+		expect(validatePlanContract(concise, planPath, "execution-preflight").valid).toBe(true);
+		expect(validatePlanContract(concise.replace("status: ready", "status: paused"), planPath, "execution-preflight").valid).toBe(false);
+		expect(validatePlanContract(concise.replace("- [ ] **T1:", "- Deliver"), planPath, "execution-preflight").valid).toBe(false);
+		const missingDependency = concise.replace(
+			"- [ ] **T1: Deliver example**",
+			"- [ ] **T1: Deliver example**\n  - Depends on: T2",
+		);
+		expect(validatePlanContract(missingDependency, planPath, "execution-preflight").errors).toContain(
+			"Plan dependency syntax: plan task T1 has missing dependency: T2",
+		);
 	});
 
 	it("matches exact section headings when a prefixed heading appears first", () => {
@@ -334,15 +356,6 @@ describe("plan lifecycle", () => {
 		expect(getDoItArgumentCompletions(".specs/active-plan/plan.md ", active)).toBeNull();
 		fs.rmSync(path.join(root, ".specs", "active-plan"), { recursive: true });
 		expect(refreshDoItPlanCache(root)).toEqual([]);
-	});
-
-	it("validates bounded smaller-model strategy exclusions", () => {
-		const planPath = ".specs/example/plan.md";
-		const strategy = readyPlan(planPath).replace(
-			"- Smaller-model work: None",
-			"- Smaller-model work: T1; leaf package: fixture implementation; advisory dynamic sizing; excludes authority-sensitive, integration-owning, and acceptance-gating work.",
-		);
-		expect(validatePlanContract(strategy, planPath).valid).toBe(true);
 	});
 
 	it("validates the executable plan contract", () => {

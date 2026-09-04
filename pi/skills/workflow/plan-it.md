@@ -77,8 +77,7 @@ status: ready
 
 ## Execution Strategy
 
-- Parallel work: <Concrete independent task keys and bounded leaf packages, or None.>
-- Smaller-model work: <Concrete task keys and bounded leaf packages using advisory dynamic sizing and explicitly excluding authority-sensitive, integration-owning, and acceptance-gating work, or None.>
+<Optional execution advice, such as independent task keys, bounded leaf packages, or work that must remain root-owned. Omit this section when it adds no useful guidance.>
 
 ## Validation
 
@@ -102,12 +101,7 @@ The `Closeout` bullet is optional and must appear only when the operator explici
 
 Before calling `ready`, verify mechanically against the structure above: frontmatter says exactly `status: ready`; every required `##` heading exists; `Completion Evidence` has separate `- Evidence:` and `- Fails when:` bullets; `Validation` contains at least one checkbox; `Execution Status` contains `- State:` and the canonical resume command; and `Retention` names the canonical archive directory.
 
-Every new plan must include `## Execution Strategy` with exactly these required bullets:
-
-- `Parallel work:` Record concrete independent task keys and bounded leaf packages, or `None`.
-- `Smaller-model work:` Record concrete task keys and bounded leaf packages, or `None`; sizing is advisory and dynamic. Do not assign authority-sensitive, integration-owning, or acceptance-gating work to smaller models. These hints do not force delegation, parallel execution, or scheduler records.
-
-Readiness validates this section for new plans. Execution preflight accepts legacy plans without it.
+Use `## Execution Strategy` only when it adds useful execution advice. It may identify independent task keys, bounded leaf packages, or work that must remain root-owned. Sizing is advisory and dynamic. Do not assign authority-sensitive, integration-owning, or acceptance-gating work to smaller models. Execution advice does not force delegation, parallel execution, or scheduler records, and its prose is not machine-validated.
 
 State mutation boundaries explicitly: name the files or state owned by each task, what may be changed, and what remains untouched. Dependencies must identify actual prerequisites, not merely preferred order. A task is ready only when every required dependency is complete; independent ready tasks may proceed in parallel without adding scheduler records.
 
