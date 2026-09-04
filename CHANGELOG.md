@@ -1,8 +1,18 @@
 # Changelog
 
-## 2026-09-04: Allow Pi edits to gitignored files
+## 2026-09-04: Remove duplicate task and subagent metadata
 
-**Changed:** Pi's `text_edit` and `structured_edit` tools no longer use Git ignore rules as an edit restriction. Repository containment, secret-like filename, directory, glob, and symlink protections remain in place.
+**Changed:** Task terminal outcomes now record evidence, validation, and gaps without repeating the task summary. Active subagent tools no longer expose advisory `boundaryPaths` or Team Lead `boundary` fields; `enforcedBoundary` remains the filesystem containment control.
+
+**Fixed:** PowerShell output is bounded while commands are running and streamed to a temporary full-output file, preventing unbounded in-memory accumulation before final truncation.
+
+---
+
+## 2026-09-04: Simplify Pi file edits
+
+**Changed:** Pi's `text_edit` and `structured_edit` tools no longer consult Git, restrict filenames, reject glob characters, impose a regex-length limit, or require `format: "json"`. Canonical targets remain confined to the current working directory.
+
+**Changed:** The default text input limit is now 16 MiB and can be overridden with `PI_SAFE_EDIT_MAX_BYTES`.
 
 ---
 
