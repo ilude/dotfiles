@@ -139,6 +139,42 @@ describe("createTaskBatch validation and recovery", () => {
 		}
 	});
 
+	it("accepts more than sixteen dependencies and batch tasks", () => {
+		const blockers = Array.from({ length: 17 }, (_, index) =>
+			createTask({
+				origin: "other",
+				summary: `blocker ${index}`,
+				workspace,
+			}),
+		);
+		const dependent = createTask({
+			origin: "other",
+			summary: "many dependencies",
+			workspace,
+			blockedBy: blockers.map((blocker) => blocker.id),
+		});
+		expect(dependent.blockedBy).toHaveLength(17);
+
+		const batch = createTaskBatch(
+			[
+				...Array.from({ length: 17 }, (_, index) => ({
+					origin: "other" as const,
+					summary: `batch ${index}`,
+					key: `batch-${index}`,
+				})),
+				{
+					origin: "other",
+					summary: "batch dependent",
+					blockedByKeys: Array.from({ length: 17 }, (_, index) => `batch-${index}`),
+				},
+			],
+			workspace,
+		);
+		expect(batch.outcome).toBe("persisted");
+		if (batch.outcome === "persisted")
+			expect(batch.records).toHaveLength(18);
+	});
+
 	it("reports only authorized dependency cycle members", () => {
 		const unrelated = createTask({
 			origin: "other",

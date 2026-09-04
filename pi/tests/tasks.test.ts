@@ -51,7 +51,8 @@ describe("task tool schema", () => {
 			type: "string",
 			enum: ["create", "batch", "update", "remove", "list", "ready", "get"],
 		});
-		expect(schema.properties.tasks).toMatchObject({ minItems: 1, maxItems: 16 });
+		expect(schema.properties.tasks).toMatchObject({ minItems: 1 });
+		expect(schema.properties.tasks).not.toHaveProperty("maxItems");
 		const batchItem = (
 			schema.properties.tasks as {
 				items?: Schema;

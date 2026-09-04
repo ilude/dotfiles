@@ -717,7 +717,7 @@ describe("task tools", () => {
 		expect(result.details.record.outcome.validation).toHaveLength(8);
 	});
 
-	it("rejects invalid notes or blockers without patching or transitioning", async () => {
+	it("accepts unbounded task text while rejecting invalid blockers", async () => {
 		const pi = createMockPi();
 		registerTaskTools(pi as Parameters<typeof registerTaskTools>[0]);
 		const ctx = createMockCtx({ cwd: tmpRoot });
@@ -748,14 +748,21 @@ describe("task tools", () => {
 				action: "update",
 				id: task.id,
 				state: "running",
+				summary: "s".repeat(101),
 				notes: "n".repeat(501),
 			},
 			undefined,
 			undefined,
 			ctx,
 		);
-		expect(oversizedNotes.details.outcome).toBe("rejected");
-		expect(getTask(task.id)).toEqual(before);
+		expect(oversizedNotes.details.outcome).toBe("persisted");
+		expect(getTask(task.id)).toMatchObject({
+			state: "assigned",
+			summary: "s".repeat(101),
+			instructions: "n".repeat(501),
+		});
+		expect(getTask(task.id)).not.toEqual(before);
+		const afterNotes = getTask(task.id);
 
 		const invalidBlockers = await tool?.execute(
 			"invalid-blockers",
@@ -770,9 +777,8 @@ describe("task tools", () => {
 			ctx,
 		);
 		expect(invalidBlockers.details.outcome).toBe("rejected");
-		expect(getTask(task.id)).toEqual(before);
+		expect(getTask(task.id)).toEqual(afterNotes);
 
-		transitionTask(task.id, "assigned");
 		const boundedOutcome = await tool?.execute(
 			"bounded-outcome",
 			{
@@ -1043,21 +1049,20 @@ describe("task tools", () => {
 		expect(
 			Buffer.byteLength(worstCase.content[0].text, "utf8"),
 		).toBeLessThanOrEqual(4_096);
-		await expect(
-			tool?.execute(
-				"batch-too-large",
-				{
-					action: "batch",
-					tasks: Array.from({ length: 17 }, (_, index) => ({
-						key: `task-${index}`,
-						summary: `task ${index}`,
-					})),
-				},
-				undefined,
-				undefined,
-				ctx,
-			),
-		).rejects.toThrow("at most 16");
+		const largeBatch = await tool?.execute(
+			"batch-over-previous-limit",
+			{
+				action: "batch",
+				tasks: Array.from({ length: 17 }, (_, index) => ({
+					key: `task-${index}`,
+					summary: `task ${index}`,
+				})),
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(JSON.parse(largeBatch.content[0].text).tasks).toHaveLength(17);
 	});
 
 });

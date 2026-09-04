@@ -197,6 +197,16 @@ describe("goal extension", () => {
 				nextSteps: expect.objectContaining({ type: "string" }),
 			},
 		});
+
+		const progress = pi._getTool("goal_progress");
+		const progressProperties = progress?.parameters.properties;
+		expect(progressProperties.items).not.toHaveProperty("maxItems");
+		expect(progressProperties.conditions).toMatchObject({ minItems: 1 });
+		expect(progressProperties.conditions).not.toHaveProperty("maxItems");
+		expect(progressProperties.conditions.items).toMatchObject({
+			minLength: 1,
+			maxLength: 500,
+		});
 	});
 
 	it("starts ordinary inline goals directly in the active session and enforces the 15000 character limit", async () => {

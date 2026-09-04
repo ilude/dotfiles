@@ -450,8 +450,6 @@ function writeTaskFile(record: TaskRecordV1, db = openTaskDatabase()): void {
 	writeStoredTask(sanitizeTaskValue(record) as TaskRecordV1, db);
 }
 
-const TASK_DEPENDENCY_MAX_ITEMS = 16;
-
 interface TaskDependencyCandidate {
 	id: string;
 	blockedBy?: unknown;
@@ -463,8 +461,6 @@ function normalizedDependencyIds(value: unknown, label = "blockedBy"): string[] 
 	if (value === undefined) return [];
 	if (!Array.isArray(value))
 		throw new TaskRegistryError(`${label} must be an array`);
-	if (value.length > TASK_DEPENDENCY_MAX_ITEMS)
-		throw new TaskRegistryError(`${label} may contain at most 16 entries`);
 	const normalized: string[] = [];
 	const unique = new Set<string>();
 	for (const dependency of value) {
@@ -593,15 +589,12 @@ export function createTask(input: CreateTaskInput): TaskRecordV1 {
 	return getTask(record.id) ?? record;
 }
 
-const TASK_BATCH_MAX_ITEMS = 16;
 const TASK_BATCH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 
 const resolveLocalBatchDependencies = (
 	localKeys: readonly string[],
 	aliases: Readonly<Record<string, string>>,
 ): string[] => {
-	if (localKeys.length > TASK_BATCH_MAX_ITEMS)
-		throw new TaskRegistryError("blockedByKeys may contain at most 16 entries");
 	if (new Set(localKeys).size !== localKeys.length)
 		throw new TaskRegistryError("duplicate blockedByKeys entry");
 	return localKeys.map((key) => {
@@ -640,8 +633,6 @@ export function createTaskBatch(
 ): TaskBatchResult {
 	if (inputs.length === 0)
 		throw new TaskRegistryError("batch must contain at least one task");
-	if (inputs.length > TASK_BATCH_MAX_ITEMS)
-		throw new TaskRegistryError("batch may contain at most 16 tasks");
 	const operationId = crypto.randomUUID();
 	const generated = inputs.map((input) => ({
 		...(input.key !== undefined ? { key: input.key } : {}),

@@ -67,11 +67,9 @@ import {
 } from "../lib/task-settings.js";
 export { formatTaskDetail, formatTaskList, groupTasksByUrgency };
 
-const TASK_SUMMARY_MAX_LENGTH = 100;
-const TASK_INSTRUCTIONS_MAX_LENGTH = 500;
+const TASK_SUMMARY_PREVIEW_MAX_LENGTH = 100;
 const TASK_LIST_MODEL_MAX_ITEMS = 50;
 const TASK_LIST_BLOCKER_MAX_ITEMS = 5;
-const TASK_BATCH_MAX_ITEMS = 16;
 const TASK_BATCH_RESULT_MAX_BYTES = 4_096;
 const TASK_BATCH_ERROR_MAX_CODE_POINTS = 200;
 const TASK_SCOPE_MAX_ITEMS = 16;
@@ -82,14 +80,11 @@ const TASK_BATCH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 function validateTaskText(
 	label: "summary" | "instructions" | "skipReason",
 	value: string,
-	maxLength: number,
 	oneLine = false,
 ): string {
 	const trimmed = value.trim();
 	if (label === "summary" && trimmed.length === 0)
 		throw new Error("summary is required.");
-	if (trimmed.length > maxLength)
-		throw new Error(`${label} must be at most ${maxLength} characters.`);
 	if (oneLine && /[\r\n]/.test(trimmed))
 		throw new Error(`${label} must be one line.`);
 	return trimmed;
@@ -277,7 +272,7 @@ function compactTask(record: TaskRecordV1) {
 	return {
 		id: record.id,
 		state: record.state,
-		summary: truncateTaskText(record.summary, TASK_SUMMARY_MAX_LENGTH),
+		summary: truncateTaskText(record.summary, TASK_SUMMARY_PREVIEW_MAX_LENGTH),
 		...(blockedBy.length
 			? { blockedBy: blockedBy.slice(0, TASK_LIST_BLOCKER_MAX_ITEMS) }
 			: {}),
@@ -514,15 +509,10 @@ function taskInputFrom(
 	input = prepareCurrentTaskArguments(input);
 	if (typeof input.summary !== "string")
 		throw new Error("summary is required.");
-	const summary = validateTaskText(
-		"summary",
-		input.summary,
-		TASK_SUMMARY_MAX_LENGTH,
-		true,
-	);
+	const summary = validateTaskText("summary", input.summary, true);
 	const instructions =
 		typeof input.instructions === "string"
-			? validateTaskText("instructions", input.instructions, TASK_INSTRUCTIONS_MAX_LENGTH)
+			? validateTaskText("instructions", input.instructions)
 			: undefined;
 	const key = input.key;
 	const blockedByKeys = input.blockedByKeys;
@@ -537,18 +527,16 @@ function taskInputFrom(
 	if (
 		batch &&
 		Array.isArray(blockedByKeys) &&
-		(blockedByKeys.length > TASK_BATCH_MAX_ITEMS ||
-			blockedByKeys.some((item) => typeof item !== "string"))
+		blockedByKeys.some((item) => typeof item !== "string")
 	)
-		throw new Error("blockedByKeys must contain at most 16 strings");
+		throw new Error("blockedByKeys must be an array of strings");
 	if (
 		batch &&
 		input.blockedBy !== undefined &&
 		(!Array.isArray(input.blockedBy) ||
-			input.blockedBy.length > TASK_BATCH_MAX_ITEMS ||
 			input.blockedBy.some((item) => typeof item !== "string"))
 	)
-		throw new Error("blockedBy must contain at most 16 strings");
+		throw new Error("blockedBy must be an array of strings");
 	return {
 		origin: "other",
 		summary,
@@ -763,11 +751,9 @@ function prepareTaskArguments(args: unknown): unknown {
 export function registerTaskTools(pi: ExtensionAPI): void {
 	const summary = Type.String({
 		minLength: 1,
-		maxLength: TASK_SUMMARY_MAX_LENGTH,
 		description: "The durable deliverable, not a procedure or conversation summary.",
 	});
 	const instructions = Type.String({
-		maxLength: TASK_INSTRUCTIONS_MAX_LENGTH,
 		description: "Required work, observable completion evidence, constraints, and out-of-scope items.",
 	});
 	const id = Type.String({
@@ -783,12 +769,11 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 		},
 	);
 	const blockedBy = Type.Array(id, {
-		maxItems: TASK_BATCH_MAX_ITEMS,
 		uniqueItems: true,
 		description: "Explicit hard prerequisite task IDs. This is the only field that creates Dependencies.",
 	});
 	const goalId = Type.String({ minLength: 1, maxLength: 256, description: "Optional Goal association. It does not change readiness or lifecycle transitions." });
-	const covers = Type.Array(Type.String({ minLength: 1, maxLength: 64 }), { maxItems: 16, uniqueItems: true, description: "Current goal condition IDs covered by this task." });
+	const covers = Type.Array(Type.String({ minLength: 1, maxLength: 64 }), { uniqueItems: true, description: "Current goal condition IDs covered by this task." });
 	const produces = Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 16, uniqueItems: true, description: "Optional case-sensitive resources produced by this Task. Used only to order ready Tasks." });
 	const consumes = Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 16, uniqueItems: true, description: "Optional case-sensitive resources consumed by this Task. Used only to order ready Tasks." });
 	const priority = Type.Number({ description: "Optional ready-order priority. Higher values sort first; absence equals zero and never changes readiness." });
@@ -811,7 +796,6 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			priority: Type.Optional(priority),
 			blockedByKeys: Type.Optional(
 				Type.Array(Type.String({ pattern: "^[A-Za-z0-9_-]{1,32}$" }), {
-					maxItems: TASK_BATCH_MAX_ITEMS,
 					uniqueItems: true,
 				}),
 			),
@@ -846,7 +830,6 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			tasks: Type.Optional(
 				Type.Array(taskItem, {
 					minItems: 1,
-					maxItems: TASK_BATCH_MAX_ITEMS,
 				}),
 			),
 			state: Type.Optional(StringEnum(TASK_STATES)),
@@ -936,8 +919,6 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				const tasks = Array.isArray(input.tasks) ? input.tasks : [];
 				if (tasks.length === 0)
 					throw new Error("batch must contain at least one task");
-				if (tasks.length > TASK_BATCH_MAX_ITEMS)
-					throw new Error("batch may contain at most 16 tasks");
 				const batchInputs = tasks.map((item) => {
 					if (!item || typeof item !== "object" || Array.isArray(item))
 						throw new Error("batch task must be an object");
@@ -1048,16 +1029,11 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 					patch = {
 						summary:
 							typeof input.summary === "string"
-								? validateTaskText(
-										"summary",
-										input.summary,
-										TASK_SUMMARY_MAX_LENGTH,
-										true,
-									)
+								? validateTaskText("summary", input.summary, true)
 								: undefined,
 						instructions:
 							typeof input.instructions === "string"
-								? validateTaskText("instructions", input.instructions, TASK_INSTRUCTIONS_MAX_LENGTH)
+								? validateTaskText("instructions", input.instructions)
 								: undefined,
 						boundary: validatedBoundary(input.boundary),
 						covers: validatedCovers(input.covers),
@@ -1069,11 +1045,7 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 					};
 					skipReason =
 						typeof input.skipReason === "string"
-							? validateTaskText(
-									"skipReason",
-									input.skipReason,
-									TASK_INSTRUCTIONS_MAX_LENGTH,
-								)
+							? validateTaskText("skipReason", input.skipReason)
 							: undefined;
 				} catch (error) {
 					return toolResult({
@@ -1202,7 +1174,6 @@ export function registerTasksCommand(pi: ExtensionAPI): void {
 						summary: validateTaskText(
 							"summary",
 							sanitizeTaskValue(parsed.text ?? ""),
-							TASK_SUMMARY_MAX_LENGTH,
 							true,
 						),
 						workspace,

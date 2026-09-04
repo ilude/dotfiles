@@ -1964,7 +1964,6 @@ export default function (pi: ExtensionAPI) {
 							taskId: Type.String(),
 							required: Type.Optional(Type.Boolean()),
 						}),
-						{ maxItems: 16 },
 					),
 				),
 				strategy: Type.Optional(
@@ -1982,7 +1981,7 @@ export default function (pi: ExtensionAPI) {
 				evidence: Type.Optional(Type.String()),
 				assumptions: Type.Optional(Type.String()),
 				message: Type.Optional(Type.String()),
-				conditions: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 500 }), { minItems: 1, maxItems: 8 })),
+				conditions: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 500 }), { minItems: 1 })),
 				waitReason: Type.Optional(StringEnum(WAIT_REASONS)),
 				operatorAction: Type.Optional(Type.String({ maxLength: 500 })),
 				command: Type.Optional(Type.String()),

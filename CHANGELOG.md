@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-04: Remove arbitrary goal and task limits
+
+**Changed:** Goal conditions, linked goal tasks, task summaries, task instructions, dependency lists, goal-condition coverage, and task batches no longer have fixed count or character ceilings. Nonblank summaries, dependency correctness, lifecycle checks, and bounded model-visible output remain enforced. The four-record plan review limit remains unchanged.
+
+---
+
 ## 2026-09-04: Remove duplicate task and subagent metadata
 
 **Changed:** Task terminal outcomes now record evidence, validation, and gaps without repeating the task summary. Active subagent tools no longer expose advisory `boundaryPaths` or Team Lead `boundary` fields; `enforcedBoundary` remains the filesystem containment control.
