@@ -24,7 +24,7 @@ vi.mock("node:child_process", () => ({
   }),
 }));
 
-vi.mock("node:fs/promises", () => ({ writeFile: vi.fn(async () => {}) }));
+vi.mock("node:fs/promises", () => ({ rm: vi.fn(async () => {}) }));
 
 const originalPlatform = process.platform;
 

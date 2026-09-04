@@ -12,7 +12,8 @@ import {
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import { spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir, release } from "node:os";
 import { join } from "node:path";
 import { formatToolTiming, formatTranscriptTiming } from "../lib/tool-timing.js";
@@ -86,6 +87,18 @@ export function normalizeTerminalOutput(output: string): string {
   return lines.join("\n");
 }
 
+export function appendBoundedOutput(current: string, chunk: string): {
+  output: string;
+  truncated: boolean;
+} {
+  const normalized = normalizeTerminalOutput(current + chunk);
+  const bounded = truncateTail(normalized, {
+    maxLines: DEFAULT_MAX_LINES,
+    maxBytes: DEFAULT_MAX_BYTES,
+  });
+  return { output: bounded.content, truncated: bounded.truncated };
+}
+
 function isWindows11(): boolean {
   return isWindows11Check(process.platform, release());
 }
@@ -135,21 +148,40 @@ async function executePwsh(
   const startTime = Date.now();
   const timeoutSeconds = params.timeout ?? DEFAULT_TIMEOUT_SECONDS;
   const timeoutMs = timeoutSeconds * 1000;
+  const safeId = toolCallId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const spoolPath = join(tmpdir(), `pi-pwsh-${safeId}.txt`);
+  const spool = createWriteStream(spoolPath, { encoding: "utf8" });
+  let spoolError: Error | undefined;
+  spool.on("error", (error) => {
+    spoolError = error;
+  });
   let proc: any = null;
   let timeoutHandle: NodeJS.Timeout | null = null;
   let output = "";
+  let captureTruncated = false;
+  let terminated = false;
 
   return new Promise((resolve, reject) => {
+    const discardSpool = () => {
+      spool.destroy();
+      void rm(spoolPath, { force: true });
+    };
     const onAbort = () => {
+      terminated = true;
       killProc(proc?.pid);
+      discardSpool();
       reject(new Error("Command aborted"));
     };
 
-    const onDataChunk = () => {
+    const onDataChunk = (chunk: Buffer) => {
+      spool.write(chunk);
+      const bounded = appendBoundedOutput(output, chunk.toString());
+      output = bounded.output;
+      captureTruncated ||= bounded.truncated;
       if (onUpdate) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         onUpdate({
-          content: [{ type: "text", text: normalizeTerminalOutput(output) }],
+          content: [{ type: "text", text: output }],
           details: { command: params.command, elapsed, isPartial: true },
         });
       }
@@ -172,45 +204,45 @@ async function executePwsh(
       if (signal) signal.addEventListener("abort", onAbort);
 
       timeoutHandle = setTimeout(() => {
+        terminated = true;
         killProc(proc?.pid);
+        discardSpool();
         reject(new Error(`Command timed out after ${timeoutSeconds}s`));
       }, timeoutMs);
 
-      proc.stdout?.on("data", (chunk: Buffer) => {
-        output += chunk.toString();
-        onDataChunk();
-      });
-
-      proc.stderr?.on("data", (chunk: Buffer) => {
-        output += chunk.toString();
-        onDataChunk();
-      });
+      proc.stdout?.on("data", onDataChunk);
+      proc.stderr?.on("data", onDataChunk);
 
       proc.on("error", (err: Error) => {
         if (timeoutHandle) clearTimeout(timeoutHandle);
         if (signal) signal.removeEventListener("abort", onAbort);
+        terminated = true;
+        discardSpool();
         reject(new Error(`Failed to spawn pwsh: ${err.message}`));
       });
 
       proc.on("close", async (code: number) => {
         if (timeoutHandle) clearTimeout(timeoutHandle);
         if (signal) signal.removeEventListener("abort", onAbort);
+        if (terminated) return;
 
+        await new Promise<void>((finish) => spool.end(finish));
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        const normalizedOutput = normalizeTerminalOutput(output);
-        const truncResult = truncateTail(normalizedOutput, {
+        const truncResult = truncateTail(output, {
           maxLines: DEFAULT_MAX_LINES,
           maxBytes: DEFAULT_MAX_BYTES,
         });
-
+        const truncated = captureTruncated || truncResult.truncated;
         let finalOutput = truncResult.content;
         let tempFile: string | undefined;
 
-        if (truncResult.truncated) {
-          const safeId = toolCallId.replace(/[^a-zA-Z0-9_-]/g, "_");
-          tempFile = join(tmpdir(), `pi-pwsh-${safeId}.txt`);
-          await writeFile(tempFile, normalizedOutput, "utf8");
-          finalOutput += buildTruncationNotice(truncResult, tempFile);
+        if (truncated) {
+          if (spoolError)
+            return reject(new Error(`Could not preserve full pwsh output: ${spoolError.message}`));
+          tempFile = spoolPath;
+          finalOutput += `\n\n[Output truncated (${formatSize(DEFAULT_MAX_BYTES)} limit). Full raw output: ${tempFile}]`;
+        } else {
+          await rm(spoolPath, { force: true });
         }
 
         if (code !== 0) {
@@ -222,7 +254,7 @@ async function executePwsh(
               command: params.command,
               exitCode: code,
               elapsed,
-              truncated: truncResult.truncated,
+              truncated,
               ...(tempFile && { tempFile, full_output_path: tempFile }),
             },
           });

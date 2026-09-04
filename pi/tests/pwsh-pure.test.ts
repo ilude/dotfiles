@@ -2,7 +2,12 @@
  * Pure function tests for pwsh extension — no mocking needed.
  */
 import { describe, it, expect } from "vitest";
-import { isWindows11Check, classifyOutputLine, buildTruncationNotice } from "../extensions/pwsh.ts";
+import {
+  appendBoundedOutput,
+  buildTruncationNotice,
+  classifyOutputLine,
+  isWindows11Check,
+} from "../extensions/pwsh.ts";
 
 describe("isWindows11Check", () => {
   it("returns true for Windows 11 (build 22621)", () => {
@@ -59,6 +64,20 @@ describe("classifyOutputLine", () => {
   it("matches substring (not just prefix)", () => {
     expect(classifyOutputLine("  WARNING: indented")).toBe("warning");
     expect(classifyOutputLine("PS C:\\> ERROR: bad")).toBe("error");
+  });
+});
+
+describe("appendBoundedOutput", () => {
+  it("keeps only a bounded tail while output is streaming", () => {
+    const first = appendBoundedOutput("", `${"a".repeat(40_000)}\n`);
+    const second = appendBoundedOutput(first.output, `${"b".repeat(40_000)}\n`);
+    const third = appendBoundedOutput(second.output, `${"c".repeat(40_000)}\n`);
+
+    expect(second.truncated).toBe(true);
+    expect(third.truncated).toBe(true);
+    expect(Buffer.byteLength(third.output, "utf8")).toBeLessThanOrEqual(50 * 1024);
+    expect(third.output).not.toContain("a".repeat(1_000));
+    expect(third.output).toContain("c".repeat(1_000));
   });
 });
 
