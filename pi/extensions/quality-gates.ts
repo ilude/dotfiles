@@ -1,3 +1,4 @@
+import { onSessionStart } from "../lib/session-start-metrics.js";
 import { spawn } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
@@ -15,6 +16,7 @@ import {
 	parseGitDiffLineMapper,
 	parseLizardCsv,
 } from "../lib/quality-gates/lizard.ts";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import { recordEvent } from "../lib/metrics.js";
 import { getPiInvocation } from "../lib/pi-invocation.js";
 import {
@@ -42,7 +44,13 @@ function loadValidators(): QualityGatesPolicy {
 	return loadQualityGatesPolicy(POLICY_PATH);
 }
 
-const validators = loadValidators();
+let policyLoadError: string | undefined;
+let validators: QualityGatesPolicy | undefined;
+try {
+	validators = loadValidators();
+} catch (error) {
+	policyLoadError = error instanceof Error ? error.message : String(error);
+}
 
 export function buildExtMap(
 	config: QualityGatesPolicy | Record<string, LanguageConfig>,
@@ -56,11 +64,10 @@ export function buildExtMap(
 	return map;
 }
 
-const extMap = buildExtMap(validators);
-const skippedPathPatterns = [
-	...validators.excludedPaths,
-	...validators.immutablePaths,
-];
+const extMap = validators ? buildExtMap(validators) : new Map<string, LanguageConfig>();
+const skippedPathPatterns = validators
+	? [...validators.excludedPaths, ...validators.immutablePaths]
+	: [];
 
 function relativePath(root: string, filePath: string): string {
 	return path.relative(root, filePath).replaceAll("\\", "/");
@@ -884,7 +891,7 @@ const validatePendingFile = async (
 			initiation: pending.initiation,
 			evidence: state.evidence,
 			autofix: autofixCandidate && mutationAllowed,
-			lizardThresholds: validators.lizardThresholds,
+			lizardThresholds: validators?.lizardThresholds ?? LIZARD_THRESHOLDS,
 			onOutcome: (outcome) => outcomes.push(outcome),
 		},
 	);
@@ -1302,5 +1309,17 @@ export function registerQualityGates(
 export { POLICY_PATH };
 
 export default function (pi: ExtensionAPI) {
-	registerQualityGates(pi, extMap, { repair: validators.repair });
+	if (policyLoadError) {
+		onSessionStart(pi, import.meta.url, (_event, ctx) => {
+			const message = `Quality gates are unavailable because ${POLICY_PATH} could not be loaded: ${policyLoadError}`;
+			reportActionableExtensionFailure(pi, ctx, {
+				extension: "quality-gates",
+				failure: message,
+				impact: "Automatic validation and repair hooks are disabled for this session.",
+				nextAction: "Inspect and repair the quality-gates policy before relying on automatic validation.",
+			});
+		});
+		return;
+	}
+	registerQualityGates(pi, extMap, { repair: validators?.repair });
 }

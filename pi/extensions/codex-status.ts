@@ -1,5 +1,6 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
 import { registerSlashCommand } from "../lib/slash-command-echo.js";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 // Idea source: this local Pi extension is inspired by Leonard Lin's
 // `pi-codex-status` project: https://github.com/lhl/pi-codex-status
 //
@@ -759,6 +760,7 @@ export async function formatConfiguredUsageReport(
 }
 
 export async function showCodexStatus(
+	pi: ExtensionAPI,
 	ctx: Pick<ExtensionContext, "ui">,
 ): Promise<void> {
 	try {
@@ -767,7 +769,12 @@ export async function showCodexStatus(
 			"info",
 		);
 	} catch (error) {
-		ctx.ui.notify(errorMessage(error), "error");
+		const message = errorMessage(error);
+		reportActionableExtensionFailure(pi, ctx, {
+			extension: "codex-status",
+			failure: message,
+			nextAction: "Inspect Codex authentication and provider configuration before retrying /usage.",
+		});
 	}
 }
 
@@ -860,7 +867,7 @@ export default function registerCodexStatusCommand(pi: ExtensionAPI) {
 			"Show ChatGPT Codex quota status using existing Pi/Codex OAuth credentials",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Usage refresh started.", "info");
-			await showCodexStatus(ctx);
+			await showCodexStatus(pi, ctx);
 		},
 	});
 

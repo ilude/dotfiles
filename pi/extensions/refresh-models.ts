@@ -1,3 +1,4 @@
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { refreshBedrockModelInventory } from "../lib/bedrock-model-refresh.ts";
 import {
@@ -890,10 +891,12 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 				: configuredProviders;
 
 			if (parsed.provider && requestedProviders.length === 0) {
-				notify(
-					`Provider "${parsed.provider}" is not configured. Configured: ${configuredProviders.join(", ")}`,
-					"error",
-				);
+				const message = `Provider "${parsed.provider}" is not configured. Configured: ${configuredProviders.join(", ")}`;
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "refresh-models",
+					failure: message,
+					nextAction: "Choose one of the configured providers and retry /refresh-models.",
+				}, { operatorMessage: message });
 				return;
 			}
 
@@ -911,12 +914,14 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 			);
 
 			if (parsed.provider && providers.length === 0) {
-				notify(
-					`Provider "${requestedProviders[0]}" is configured but not yet supported by /refresh-models. Supported: ${[
-						...SUPPORTED_REFRESH_PROVIDERS,
-					].join(", ")}`,
-					"error",
-				);
+				const message = `Provider "${requestedProviders[0]}" is configured but not yet supported by /refresh-models. Supported: ${[
+					...SUPPORTED_REFRESH_PROVIDERS,
+				].join(", ")}`;
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "refresh-models",
+					failure: message,
+					nextAction: "Retry with one of the supported providers.",
+				}, { operatorMessage: message });
 				return;
 			}
 

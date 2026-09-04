@@ -8,6 +8,7 @@ import {
 	type SessionBudgetConfig,
 	type SessionBudgetFinding,
 } from "../lib/session-budget.js";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
 import { appendWorkflowEvent } from "../lib/workflow-telemetry.js";
 
@@ -24,7 +25,10 @@ interface PendingCommand {
 interface BudgetContext {
 	hasUI: boolean;
 	ui: {
-		notify: (message: string, level: "error") => void;
+		notify: (
+			message: string,
+			level?: "info" | "warning" | "error",
+		) => void;
 		select: (title: string, options: string[]) => Promise<string | undefined>;
 	};
 }
@@ -216,14 +220,21 @@ export function registerSessionBudget(
 
 	const disableForSession = (
 		error: unknown,
-		ctx: { ui: { notify: (message: string, level: "error") => void } },
+		ctx: BudgetContext,
 	) => {
 		if (disabledByError) return;
 		disabledByError = error instanceof Error ? error.message : String(error);
 		console.error(`[session-budget] disabled: ${disabledByError}`);
-		ctx.ui.notify(
-			`Session watchdog disabled for this session: ${disabledByError}`,
-			"error",
+		reportActionableExtensionFailure(
+			pi,
+			ctx,
+			{
+				extension: "session-budget",
+				failure: disabledByError,
+				impact: "Repeated-error and no-progress watchdog enforcement is disabled for this session.",
+				nextAction: "Account for the missing watchdog and avoid repeating failed operations without new evidence.",
+			},
+			{ operatorMessage: `Session watchdog disabled for this session: ${disabledByError}` },
 		);
 	};
 
@@ -376,7 +387,19 @@ export function registerSessionBudget(
 		},
 	});
 
-	if (!config?.enabled || configError) return;
+	if (configError) {
+		onSessionStart(pi, import.meta.url, (_event, ctx) => {
+			const message = `Session watchdog configuration failed: ${configError}`;
+			reportActionableExtensionFailure(pi, ctx, {
+				extension: "session-budget",
+				failure: message,
+				impact: "Repeated-error and no-progress watchdog enforcement is unavailable.",
+				nextAction: "Inspect the session-budget configuration before relying on watchdog enforcement.",
+			});
+		});
+		return;
+	}
+	if (!config?.enabled) return;
 
 	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		try {

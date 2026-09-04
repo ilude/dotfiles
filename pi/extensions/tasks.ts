@@ -7,6 +7,7 @@ import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import {
 	getOperatorStateDir,
 	isAllowedTransition,
@@ -1321,20 +1322,28 @@ export default function (pi: ExtensionAPI) {
 				sessionId,
 			);
 		} catch (error) {
-			if (!isExpectedTaskStoreTransition(error))
-				ctx.ui.notify(
-					`Legacy task migration failed: ${error instanceof Error ? error.message : String(error)}`,
-					"warning",
-				);
+			if (!isExpectedTaskStoreTransition(error)) {
+				const message = `Legacy task migration failed: ${error instanceof Error ? error.message : String(error)}`;
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "tasks",
+					failure: message,
+					impact: "Durable task state may be missing legacy records.",
+					nextAction: "Inspect the task registry before relying on task readiness or completion state.",
+				}, { level: "warning" });
+			}
 		}
 		try {
 			pruneTaskRegistry({ removeUnowned: sessionId !== undefined });
 		} catch (error) {
-			if (!isExpectedTaskStoreTransition(error))
-				ctx.ui.notify(
-					`Task cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
-					"warning",
-				);
+			if (!isExpectedTaskStoreTransition(error)) {
+				const message = `Task cleanup failed: ${error instanceof Error ? error.message : String(error)}`;
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "tasks",
+					failure: message,
+					impact: "Durable task state may include stale or unowned records.",
+					nextAction: "Inspect the task registry before relying on task readiness or completion state.",
+				}, { level: "warning" });
+			}
 		}
 	});
 }

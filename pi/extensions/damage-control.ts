@@ -30,7 +30,7 @@ import {
 	getDamageControlHealth,
 	publishDamageControlHealth,
 } from "../lib/damage-control-health.js";
-import { uiNotify } from "../lib/extension-utils.js";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import { recordEvent } from "../lib/metrics.js";
 import {
 	type DecisionProvenance,
@@ -958,10 +958,12 @@ function registerDamageControlCommand(
 						"info",
 					);
 				} catch (err) {
-					ctx.ui.notify(
-						`Label failed: ${err instanceof Error ? err.message : String(err)}`,
-						"warning",
-					);
+					const message = `Label failed: ${err instanceof Error ? err.message : String(err)}`;
+					reportActionableExtensionFailure(pi, ctx, {
+						extension: "damage-control",
+						failure: message,
+						nextAction: "Inspect the damage-control evaluation ledger before retrying the label operation.",
+					}, { level: "warning" });
 				}
 				return;
 			}
@@ -1123,12 +1125,13 @@ export default function (pi: ExtensionAPI) {
 				resultFingerprint: fingerprintHash(repeated.resultFingerprint),
 			},
 		);
-		uiNotify(
-			ctx,
-			"warning",
-			`Stopped the current run after the same tool call produced the same ${resultKind} ${repeated.resultCount} times.`,
-			{ prefix: "damage-control" },
-		);
+		const loopMessage = `Stopped the current run after the same tool call produced the same ${resultKind} ${repeated.resultCount} times.`;
+		reportActionableExtensionFailure(pi, ctx, {
+			extension: "damage-control",
+			failure: loopMessage,
+			impact: "The current agent run was aborted before additional tool calls could execute.",
+			nextAction: "Inspect the repeated call and its prior results, then change the approach instead of issuing the same call again.",
+		}, { level: "warning", prefix: "damage-control" });
 		ctx.abort();
 		return decision;
 	});

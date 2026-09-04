@@ -52,6 +52,7 @@ import {
 	type ChangedFilesSnapshot,
 	uniqueGitPaths,
 } from "../lib/commit/status";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import { emitTerminalBell, formatToolError } from "../lib/extension-utils";
 import { formatTranscriptTiming } from "../lib/tool-timing.js";
 import { handoffRecoverableLocalFailure } from "../lib/recovery-handoff.js";
@@ -852,10 +853,12 @@ async function executeNewInstanceCommand(
 	const details = launched.error
 		? `Terminal launch failed: ${launched.error}`
 		: plan.reason;
-	return ctx.ui.notify(
-		details ?? "Terminal launch failed.",
-		launched.error ? "warning" : "error",
-	);
+	const message = details ?? "Terminal launch failed.";
+	return reportActionableExtensionFailure(pi, ctx, {
+		extension: "workflow-commands",
+		failure: message,
+		nextAction: "Inspect the terminal launcher configuration before retrying /new-instance.",
+	}, { level: launched.error ? "warning" : "error" });
 }
 
 async function executeNewTerminalCommand(
@@ -884,10 +887,12 @@ async function executeNewTerminalCommand(
 	const details = launched.error
 		? `Terminal launch failed: ${launched.error}`
 		: plan.reason;
-	return ctx.ui.notify(
-		details ?? "Terminal launch failed.",
-		launched.error ? "warning" : "error",
-	);
+	const message = details ?? "Terminal launch failed.";
+	return reportActionableExtensionFailure(pi, ctx, {
+		extension: "workflow-commands",
+		failure: message,
+		nextAction: "Inspect the terminal launcher configuration before retrying /new-terminal.",
+	}, { level: launched.error ? "warning" : "error" });
 }
 
 async function executeBranchCommand(
@@ -898,10 +903,12 @@ async function executeBranchCommand(
 	const sessionManager = ctx.sessionManager;
 	const leafId = sessionManager?.getLeafId?.();
 	if (!sessionManager?.createBranchedSession || !leafId) {
-		return ctx.ui.notify(
-			"Cannot branch this session yet: no persisted session leaf is available.",
-			"error",
-		);
+		const message = "Cannot branch this session yet: no persisted session leaf is available.";
+		return reportActionableExtensionFailure(pi, ctx, {
+			extension: "workflow-commands",
+			failure: message,
+			nextAction: "Wait for session persistence before retrying /branch.",
+		});
 	}
 	const cwd = ctx.cwd ?? process.cwd();
 	const title = args.trim() || defaultBranchTitle(cwd);
@@ -913,10 +920,12 @@ async function executeBranchCommand(
 	);
 	const branchSessionFile = sessionManager.createBranchedSession(leafId);
 	if (!branchSessionFile) {
-		return ctx.ui.notify(
-			"Cannot branch this session: session persistence is unavailable.",
-			"error",
-		);
+		const message = "Cannot branch this session: session persistence is unavailable.";
+		return reportActionableExtensionFailure(pi, ctx, {
+			extension: "workflow-commands",
+			failure: message,
+			nextAction: "Inspect session persistence before retrying /branch.",
+		});
 	}
 	if (isHerdrManagedEnvironment()) {
 		await createHerdrPiTab(pi, {
@@ -946,10 +955,12 @@ async function executeBranchCommand(
 	const details = launched.error
 		? `Terminal launch failed: ${launched.error}`
 		: plan.reason;
-	return ctx.ui.notify(
-		details ?? "Terminal launch failed.",
-		launched.error ? "warning" : "error",
-	);
+	const message = details ?? "Terminal launch failed.";
+	return reportActionableExtensionFailure(pi, ctx, {
+		extension: "workflow-commands",
+		failure: message,
+		nextAction: "Inspect session persistence and terminal launcher configuration before retrying /branch.",
+	}, { level: launched.error ? "warning" : "error" });
 }
 
 function extractJsonValue(text: string) {
@@ -2673,11 +2684,11 @@ export default function (pi: ExtensionAPI) {
 			if (outcome !== "pending")
 				await pi.appendEntry(`${DO_IT_CONTINUATION_TYPE}.consumed`, continuation);
 		} catch (error) {
-			ctx.ui?.notify?.(
-				`/do-it continuation remains pending: ${error instanceof Error ? error.message : String(error)}`,
-				"error",
+			const message = `/do-it continuation remains pending: ${error instanceof Error ? error.message : String(error)}`;
+			throw new Error(
+				`${message} Inspect the canonical plan, repository state, and workflow ownership before retrying or reloading.`,
+				{ cause: error },
 			);
-			throw error;
 		}
 	});
 	pi.on("session_tree", (_event, ctx) => {
@@ -2989,10 +3000,11 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await executeBranchCommand(pi, args, ctx);
 			} catch (err) {
-				ctx.ui.notify(
-					err instanceof Error ? err.message : String(err),
-					"error",
-				);
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "workflow-commands",
+					failure: err instanceof Error ? err.message : String(err),
+					nextAction: "Inspect session persistence and terminal launcher state before retrying /branch.",
+				});
 			}
 		},
 	});
@@ -3003,10 +3015,11 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await executeNewInstanceCommand(pi, args, ctx);
 			} catch (err) {
-				ctx.ui.notify(
-					err instanceof Error ? err.message : String(err),
-					"error",
-				);
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "workflow-commands",
+					failure: err instanceof Error ? err.message : String(err),
+					nextAction: "Inspect the terminal launcher configuration before retrying /new-instance.",
+				});
 			}
 		},
 	});
@@ -3017,10 +3030,11 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await executeNewTerminalCommand(pi, args, ctx);
 			} catch (err) {
-				ctx.ui.notify(
-					err instanceof Error ? err.message : String(err),
-					"error",
-				);
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "workflow-commands",
+					failure: err instanceof Error ? err.message : String(err),
+					nextAction: "Inspect the terminal launcher configuration before retrying /new-terminal.",
+				});
 			}
 		},
 	});
@@ -3031,10 +3045,11 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await executeNewInstanceCommand(pi, "", ctx);
 			} catch (err) {
-				ctx.ui.notify(
-					err instanceof Error ? err.message : String(err),
-					"error",
-				);
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "workflow-commands",
+					failure: err instanceof Error ? err.message : String(err),
+					nextAction: "Inspect the terminal launcher configuration before retrying the new-instance shortcut.",
+				});
 			}
 		},
 	});
@@ -3060,10 +3075,13 @@ export default function (pi: ExtensionAPI) {
 					activePlanningRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
 				} catch (error) {
 					activePlanningRoot = path.resolve(ctx.cwd);
-					ctx.ui?.notify?.(
-						`Repository discovery did not complete; planning continues in ${activePlanningRoot}: ${error instanceof Error ? error.message : String(error)}`,
-						"warning",
-					);
+					const message = `Repository discovery did not complete; planning continues in ${activePlanningRoot}: ${error instanceof Error ? error.message : String(error)}`;
+					reportActionableExtensionFailure(pi, ctx, {
+						extension: "workflow-commands",
+						failure: message,
+						impact: "The fallback working directory is not a verified repository root.",
+						nextAction: "Record this execution constraint in the plan and require /do-it to verify repository ownership before mutation.",
+					}, { deliverAs: "followUp", level: "warning" });
 				}
 				workspaceDirective = `\n\nPRIMARY REPOSITORY (mandatory): ${activePlanningRoot}\nWrite the canonical plan directly under ${path.join(activePlanningRoot, ".specs", "<meaningful-slug>", "plan.md")}. Choose a concise kebab-case slug from the requested outcome and conversation context; never use an invocation ID or generic plan name. Do not create a planning worktree. Git state and repository-discovery failures never block planning; record relevant execution constraints in the plan for /do-it. The plan must require /do-it to perform implementation, validation, archive, and commit in its owned worktree. Merge and cleanup are the default; when the operator explicitly requests commit-and-retain closeout, record the exact Retention policy marker and require no merge. Every adversary, specialist, and proponent reviewer prompt must include the Verification-design rubric from plan-it.md and require supported findings to name the task key, failed rubric item, and proposed rewrite.`;
 			}
@@ -3160,7 +3178,12 @@ export default function (pi: ExtensionAPI) {
 						},
 					});
 				} catch (error) {
-					ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
+					reportActionableExtensionFailure(pi, ctx, {
+						extension: "workflow-commands",
+						failure: error instanceof Error ? error.message : String(error),
+						impact: "The /do-it continuation was not transferred to a replacement session.",
+						nextAction: "Retry /do-it without assuming the destination session was created.",
+					});
 				}
 				return;
 			}

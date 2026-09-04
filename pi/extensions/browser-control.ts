@@ -2,6 +2,7 @@ import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import { onSessionStart } from "../lib/session-start-metrics.js";
 import {
 	BrowserControlError,
@@ -149,7 +150,12 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 				await writeBrowserConfig({ [setup.alias]: entry });
 				ctx.ui.notify(`Saved browser profile alias ${setup.alias} in ${getBrowserConfigPath()}.`, "info");
 			} catch (error) {
-				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+				const message = error instanceof Error ? error.message : String(error);
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "browser-control",
+					failure: message,
+					nextAction: "Inspect the Brave profile configuration before retrying browser setup.",
+				});
 			}
 		},
 	});

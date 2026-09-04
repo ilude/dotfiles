@@ -13,6 +13,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import { registerSlashCommand } from "../lib/slash-command-echo.js";
 
 export interface PromptHistoryItem {
@@ -205,7 +206,10 @@ export class PromptHistoryOverlay implements Component {
 	private isPrintable(data: string): boolean { return data.length > 0 && !/[\u0000-\u001f\u007f]/u.test(data); }
 }
 
-export async function runPromptHistory(ctx: ExtensionCommandContext): Promise<void> {
+export async function runPromptHistory(
+	pi: ExtensionAPI,
+	ctx: ExtensionCommandContext,
+): Promise<void> {
 	await ctx.waitForIdle();
 	if (ctx.mode !== "tui") {
 		ctx.ui.notify("/history is available only in interactive TUI mode.", "warning");
@@ -237,13 +241,18 @@ export async function runPromptHistory(ctx: ExtensionCommandContext): Promise<vo
 		if (fork.cancelled) ctx.ui.notify("Prompt fork was cancelled.", "warning");
 		return;
 	} catch (error) {
-		ctx.ui.notify(`History action failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+		const message = `History action failed: ${error instanceof Error ? error.message : String(error)}`;
+		reportActionableExtensionFailure(pi, ctx, {
+			extension: "history",
+			failure: message,
+			nextAction: "Inspect the active session state and retry the history action.",
+		});
 	}
 }
 
 export default function (pi: ExtensionAPI): void {
 	registerSlashCommand(pi)("history", {
 		description: "Search and act on user prompts in the active session branch",
-		handler: async (_args, ctx) => runPromptHistory(ctx),
+		handler: async (_args, ctx) => runPromptHistory(pi, ctx),
 	});
 }

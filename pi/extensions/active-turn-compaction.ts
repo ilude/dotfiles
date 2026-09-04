@@ -7,6 +7,7 @@ import {
 	type ExtensionContext,
 	type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
 
 const DEFAULT_RESERVE_TOKENS = 16_384;
@@ -227,7 +228,15 @@ export function registerActiveTurnCompaction(
 					error.name !== "AbortError" &&
 					error.message !== "Compaction cancelled"
 				) {
+					const reportFailure = !failureCircuitOpen;
 					failureCircuitOpen = true;
+					if (reportFailure)
+						reportActionableExtensionFailure(pi, ctx, {
+							extension: "active-turn-compaction",
+							failure: error.message,
+							impact: "Automatic threshold compaction is disabled for the remainder of this session.",
+							nextAction: "Continue with the retained context and avoid assuming compaction succeeded.",
+						}, { deliverAs: "followUp" });
 					resumeRequest(ctx);
 				}
 			},
@@ -236,7 +245,12 @@ export function registerActiveTurnCompaction(
 
 	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		generation += 1;
-		policy = loadPolicy(ctx.cwd, ctx.isProjectTrusted());
+		try {
+			policy = loadPolicy(ctx.cwd, ctx.isProjectTrusted());
+		} catch (error) {
+			const message = `Active-turn compaction policy failed to load: ${error instanceof Error ? error.message : String(error)}`;
+			throw new Error(message, { cause: error });
+		}
 		compactionPending = false;
 		compactionAbortArtifactPending = false;
 		manualCompactionStarted = false;
@@ -274,8 +288,16 @@ export function registerActiveTurnCompaction(
 		resumeRequest(ctx);
 	});
 
-	pi.on("session_compact_failed", (event) => {
+	pi.on("session_compact_failed", (event, ctx) => {
 		if (event.reason !== "threshold" || event.aborted) return;
+		if (!failureCircuitOpen) {
+			reportActionableExtensionFailure(pi, ctx, {
+				extension: "active-turn-compaction",
+				failure: event.errorMessage ?? "Threshold compaction failed.",
+				impact: "Automatic threshold compaction is disabled for the remainder of this session.",
+				nextAction: "Continue with the retained context and avoid assuming compaction succeeded.",
+			});
+		}
 		failureCircuitOpen = true;
 		attemptedAboveThreshold = true;
 	});

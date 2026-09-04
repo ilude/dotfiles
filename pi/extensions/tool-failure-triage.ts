@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import { registerSlashCommand } from "../lib/slash-command-echo.js";
 
 const WINDOW_DAYS = 7;
@@ -44,7 +45,11 @@ export default function toolFailureTriageExtension(pi: ExtensionAPI) {
 			try {
 				await pi.sendUserMessage(buildFindFailsInvestigationPrompt());
 			} catch (error) {
-				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "tool-failure-triage",
+					failure: error instanceof Error ? error.message : String(error),
+					nextAction: "Retry /find-fails after inspecting the session state.",
+				});
 			}
 		},
 	});

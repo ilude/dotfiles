@@ -10,6 +10,7 @@ import {
 	getCurrentBedrockMonthSummary,
 	recordBedrockUsage,
 } from "../lib/bedrock-cost-ledger.js";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 
 const STATUS_KEY = "bedrock";
 type BedrockProvider = "amazon-bedrock" | "bedrock-mantle";
@@ -56,14 +57,19 @@ async function refreshStatus(ctx: ExtensionContext): Promise<void> {
 	ctx.ui.setStatus(STATUS_KEY, formatBedrockStatus(summary));
 }
 
-function showLedgerError(ctx: ExtensionContext, error: unknown): void {
+function showLedgerError(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	error: unknown,
+): void {
+	const message = `Bedrock cost ledger failed: ${errorMessage(error)}`;
 	ctx.ui.setStatus(STATUS_KEY, "bedrock error");
-	if (ctx.hasUI) {
-		ctx.ui.notify(
-			`Bedrock cost ledger failed: ${errorMessage(error)}`,
-			"warning",
-		);
-	}
+	reportActionableExtensionFailure(pi, ctx, {
+		extension: "bedrock-cost",
+		failure: message,
+		impact: "The displayed monthly Bedrock cost estimate may be stale or incomplete.",
+		nextAction: "Inspect the Bedrock cost ledger before relying on the status estimate.",
+	}, { level: "warning" });
 }
 
 function isUsage(value: unknown): value is Usage {
@@ -79,7 +85,7 @@ export default function registerBedrockCostExtension(pi: ExtensionAPI) {
 		try {
 			await refreshStatus(ctx);
 		} catch (error) {
-			showLedgerError(ctx, error);
+			showLedgerError(pi, ctx, error);
 		}
 	});
 
@@ -94,7 +100,7 @@ export default function registerBedrockCostExtension(pi: ExtensionAPI) {
 			});
 			await refreshStatus(ctx);
 		} catch (error) {
-			showLedgerError(ctx, error);
+			showLedgerError(pi, ctx, error);
 		}
 	});
 }

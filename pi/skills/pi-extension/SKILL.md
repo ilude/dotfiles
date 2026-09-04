@@ -62,6 +62,7 @@ Update an existing contract only when the requested change would otherwise make 
 13. Use `StringEnum` from `@earendil-works/pi-ai` for string enums.
 14. Every registered tool input schema must serialize with root JSON Schema `type: "object"`. Bedrock Converse rejects root unions such as `Type.Union([...Type.Object(...)])` before inference; expose one object-root callable schema and enforce action-specific invariants in `execute()` or `tool_call`.
 15. Strip a leading `@` from custom-tool path arguments and resolve extension-relative helpers from `import.meta.url`.
+16. When a custom extension causes or detects an actionable failure, block, or abort that requires model awareness, call `reportActionableExtensionFailure()` once so the shared boundary emits the operator notification and a bounded redacted model/session diagnostic; a TUI notification, status, console line, metric, or thrown session hook alone is insufficient. Report before aborting the active run so the next turn receives the reason. Use `notify: false` only when the host already renders the same thrown error. Do not duplicate ordinary progress, usage guidance, expected prompts or cancellations, or tool failures whose complete actionable reason is already present in the tool result.
 
 ## Command output decisions
 

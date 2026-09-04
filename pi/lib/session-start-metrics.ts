@@ -5,6 +5,7 @@ import type {
 	ExtensionContext,
 	SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
+import { reportActionableExtensionFailure } from "./extension-diagnostics.js";
 import { recordEvents, type RecordEventInput } from "./metrics.js";
 
 export type SessionStartHandler = (
@@ -58,6 +59,12 @@ export function onSessionStart(
 			await handler(event, ctx);
 		} catch (error) {
 			status = "error";
+			reportActionableExtensionFailure(pi, ctx, {
+				extension,
+				failure: error instanceof Error ? error.message : String(error),
+				impact: `The ${event.reason} session-start handler did not complete.`,
+				nextAction: "Inspect the extension and current session state before relying on its startup behavior.",
+			}, { notify: false });
 			throw error;
 		} finally {
 			const durationMs = Math.max(

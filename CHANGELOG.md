@@ -16,6 +16,12 @@
 
 ---
 
+## 2026-09-04: Preserve actionable extension failures in model context
+
+**Fixed:** Custom Pi extensions now publish bounded redacted diagnostics when failures, blocks, or aborts require model awareness instead of leaving the reason only in TUI notifications, status text, console output, or metrics. Damage control records its repeated-call stop reason before aborting so the next turn can change approach; compaction, watchdog, quality-gate, task-registry, workflow-continuation, permission-registry, and Herdr metadata failures retain equivalent recovery context.
+
+---
+
 ## 2026-09-04: Make `/do-it` session handoff reload-safe
 
 **Fixed:** `/do-it` now uses its required new-session replacement as the only extension refresh, keeps continuation consumption scoped to one invocation and deferred until dispatch or a terminal stop succeeds, and leaves setup, validation, and failed dispatches available for reload recovery. The destination session retains a visible command acknowledgement, and resumed in-place workflows no longer require the operator to repeat `--in-place`.

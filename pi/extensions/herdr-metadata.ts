@@ -3,6 +3,8 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
+import type { UiNotifyContext } from "../lib/extension-utils.js";
 import { listTasks } from "../lib/task-registry.js";
 import { isTaskStoreUnavailable } from "../lib/task-store.js";
 import {
@@ -92,6 +94,20 @@ export default function (pi: ExtensionAPI) {
 	let writeChain = Promise.resolve();
 	let sessionId: string | undefined;
 	let unsubscribeSubagents: (() => void) | undefined;
+	let reportingContext: UiNotifyContext | undefined;
+	let metadataFailureReported = false;
+
+	function reportMetadataFailure(error: unknown): void {
+		if (metadataFailureReported) return;
+		metadataFailureReported = true;
+		const message = `Herdr metadata update failed: ${error instanceof Error ? error.message : String(error)}`;
+		reportActionableExtensionFailure(pi, reportingContext, {
+			extension: "herdr-metadata",
+			failure: message,
+			impact: "The Herdr pane may show stale model, context, subagent, or task metadata.",
+			nextAction: "Treat pane metadata as stale until the Herdr connection and metadata publication path are checked.",
+		});
+	}
 
 	function publish(
 			patch: MetadataPatch | (() => MetadataPatch),
@@ -155,14 +171,12 @@ export default function (pi: ExtensionAPI) {
 	onSessionStart(pi, import.meta.url, (_event, ctx) => {
 		if (ctx.mode !== "tui") return;
 		sessionId = ctx.sessionManager.getSessionId();
+		reportingContext = { ui: ctx.ui };
+		metadataFailureReported = false;
 		const startupSessionId = sessionId;
 		unsubscribeSubagents?.();
 		unsubscribeSubagents = subagentRunManager.subscribe(() => {
-			void publishSubagents().catch((error) => {
-				console.error(
-					`Herdr metadata update failed: ${error instanceof Error ? error.message : String(error)}`,
-				);
-			});
+			void publishSubagents().catch(reportMetadataFailure);
 		});
 		void publish(
 			() => ({
@@ -171,11 +185,7 @@ export default function (pi: ExtensionAPI) {
 				tasks: formatTasks(startupSessionId),
 			}),
 			true,
-		).catch((error) => {
-			console.error(
-				`Herdr metadata update failed: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		});
+		).catch(reportMetadataFailure);
 	});
 
 	pi.on("model_select", async (_event, ctx) => {
@@ -196,6 +206,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		unsubscribeSubagents?.();
 		unsubscribeSubagents = undefined;
+		reportingContext = undefined;
 		sessionId = undefined;
 		await writeChain;
 	});

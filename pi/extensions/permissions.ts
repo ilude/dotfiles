@@ -18,6 +18,7 @@ import { registerSlashCommand } from "../lib/slash-command-echo.js";
  */
 
 import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import {
 	type DecisionOutcome,
 	getDecision,
@@ -157,10 +158,12 @@ export default function (pi: ExtensionAPI) {
 						"info",
 					);
 				} catch (err) {
-					ctx.ui.notify(
-						`Replay record failed: ${err instanceof Error ? err.message : String(err)}`,
-						"error",
-					);
+					const message = `Replay record failed: ${err instanceof Error ? err.message : String(err)}`;
+					reportActionableExtensionFailure(pi, ctx, {
+						extension: "permissions",
+						failure: message,
+						nextAction: "Inspect the permission registry before retrying or reissuing the original action.",
+					});
 				}
 				return;
 			}
@@ -169,10 +172,13 @@ export default function (pi: ExtensionAPI) {
 			try {
 				recent = listRecentDecisions({ limit: RECENT_LIMIT });
 			} catch (err) {
-				ctx.ui.notify(
-					`Failed to read permission registry: ${err instanceof Error ? err.message : String(err)}`,
-					"error",
-				);
+				const message = `Failed to read permission registry: ${err instanceof Error ? err.message : String(err)}`;
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "permissions",
+					failure: message,
+					impact: "Permission history and replay state are unavailable.",
+					nextAction: "Inspect the permission registry before relying on prior allow or deny decisions.",
+				});
 				return;
 			}
 

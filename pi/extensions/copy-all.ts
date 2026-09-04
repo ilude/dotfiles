@@ -1,3 +1,4 @@
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -81,10 +82,13 @@ export default function copyAllExtension(pi: ExtensionAPI): void {
 			} catch (error) {
 				const fallbackArg = args.trim();
 				if (!fallbackArg) {
-					ctx.ui.notify(
-						`Clipboard copy failed: ${errorMessage(error)}. Retry with /copy-all <fallback-file>.`,
-						"error",
-					);
+					reportActionableExtensionFailure(pi, ctx, {
+						extension: "copy-all",
+						failure: `Clipboard copy failed: ${errorMessage(error)}.`,
+						nextAction: "Retry with /copy-all <fallback-file> to write the conversation to a fallback file.",
+					}, {
+						operatorMessage: `Clipboard copy failed: ${errorMessage(error)}. Retry with /copy-all <fallback-file>.`,
+					});
 					return;
 				}
 
@@ -92,10 +96,11 @@ export default function copyAllExtension(pi: ExtensionAPI): void {
 					? fallbackArg
 					: resolve(ctx.cwd, fallbackArg);
 				if (existsSync(fallbackPath)) {
-					ctx.ui.notify(
-						`Clipboard copy failed and fallback file already exists: ${fallbackPath}`,
-						"error",
-					);
+					reportActionableExtensionFailure(pi, ctx, {
+						extension: "copy-all",
+						failure: `Clipboard copy failed and fallback file already exists: ${fallbackPath}`,
+						nextAction: "Choose a different fallback file and retry /copy-all.",
+					});
 					return;
 				}
 				try {
@@ -105,10 +110,11 @@ export default function copyAllExtension(pi: ExtensionAPI): void {
 						"warning",
 					);
 				} catch (writeError) {
-					ctx.ui.notify(
-						`Clipboard copy and fallback write failed: ${errorMessage(writeError)}`,
-						"error",
-					);
+					reportActionableExtensionFailure(pi, ctx, {
+						extension: "copy-all",
+						failure: `Clipboard copy and fallback write failed: ${errorMessage(writeError)}`,
+						nextAction: "Check the fallback path and permissions, then retry /copy-all.",
+					});
 				}
 			}
 		},

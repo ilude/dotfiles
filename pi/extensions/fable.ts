@@ -1,6 +1,7 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
 import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
 import {
 	type ModelLike,
 	preferredModelId,
@@ -295,16 +296,23 @@ export default function fableCommand(pi: ExtensionAPI): void {
 			);
 			const foremanModel = resolution.model;
 			if (!foremanModel) {
-				ctx.ui.notify(resolution.diagnostic ?? "Foreman model unavailable.", "error");
+				const message = resolution.diagnostic ?? "Foreman model unavailable.";
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "fable",
+					failure: message,
+					nextAction: "Inspect available models and provider configuration before retrying /foreman.",
+				});
 				return;
 			}
 
 			const changed = await pi.setModel(foremanModel);
 			if (!changed) {
-				ctx.ui.notify(
-					`Could not switch to ${resolution.modelId}. Check provider credentials.`,
-					"error",
-				);
+				const message = `Could not switch to ${resolution.modelId}. Check provider credentials.`;
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "fable",
+					failure: message,
+					nextAction: "Inspect provider credentials before retrying /foreman.",
+				});
 				return;
 			}
 
@@ -333,16 +341,23 @@ export default function fableCommand(pi: ExtensionAPI): void {
 			);
 			const fableModel = resolution.model;
 			if (!fableModel) {
-				ctx.ui.notify(resolution.diagnostic ?? "Fable model unavailable.", "error");
+				const message = resolution.diagnostic ?? "Fable model unavailable.";
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "fable",
+					failure: message,
+					nextAction: "Inspect available models and provider configuration before retrying /fable.",
+				});
 				return;
 			}
 
 			const changed = await pi.setModel(fableModel);
 			if (!changed) {
-				ctx.ui.notify(
-					`Could not switch to ${resolution.modelId}. Check provider credentials.`,
-					"error",
-				);
+				const message = `Could not switch to ${resolution.modelId}. Check provider credentials.`;
+				reportActionableExtensionFailure(pi, ctx, {
+					extension: "fable",
+					failure: message,
+					nextAction: "Inspect provider credentials before retrying /fable.",
+				});
 				return;
 			}
 
