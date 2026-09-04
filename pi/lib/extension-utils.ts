@@ -34,6 +34,7 @@ export interface UiNotifyContext {
 }
 
 export function emitTerminalBell(): void {
+	if (!process.stdout.isTTY) return;
 	try {
 		process.stdout.write("\x07");
 	} catch {

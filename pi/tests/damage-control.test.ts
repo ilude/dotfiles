@@ -1681,6 +1681,7 @@ describe("damage-control eval hasUI tracking", () => {
 		const previousPolicy = process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
 		const previousHerdrEnv = process.env.HERDR_ENV;
 		const previousHerdrPaneId = process.env.HERDR_PANE_ID;
+		const previousHerdrSocketPath = process.env.HERDR_SOCKET_PATH;
 		const policyPath = path.join(root, "policy.json");
 		fs.writeFileSync(
 			policyPath,
@@ -1692,6 +1693,7 @@ describe("damage-control eval hasUI tracking", () => {
 		process.env.PI_DAMAGE_CONTROL_POLICY_PATH = policyPath;
 		process.env.HERDR_ENV = "1";
 		process.env.HERDR_PANE_ID = "w1:p1";
+		process.env.HERDR_SOCKET_PATH = "test-herdr";
 		try {
 			vi.resetModules();
 			const mod = await import("../extensions/damage-control.ts");
@@ -1761,11 +1763,13 @@ describe("damage-control eval hasUI tracking", () => {
 			);
 
 			expect(emit.mock.calls).toEqual([
+				["herdr:managed-custom-ui", { active: true }],
 				[
 					"herdr:blocked",
 					{ active: true, label: "Confirm dangerous command" },
 				],
 				["herdr:blocked", { active: false }],
+				["herdr:managed-custom-ui", { active: false }],
 			]);
 			expect(deferred).toMatchObject({ block: true });
 			const structured = JSON.parse(
@@ -1822,6 +1826,9 @@ describe("damage-control eval hasUI tracking", () => {
 			else process.env.HERDR_ENV = previousHerdrEnv;
 			if (previousHerdrPaneId === undefined) delete process.env.HERDR_PANE_ID;
 			else process.env.HERDR_PANE_ID = previousHerdrPaneId;
+			if (previousHerdrSocketPath === undefined)
+				delete process.env.HERDR_SOCKET_PATH;
+			else process.env.HERDR_SOCKET_PATH = previousHerdrSocketPath;
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});

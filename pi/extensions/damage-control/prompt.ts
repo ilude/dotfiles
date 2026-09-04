@@ -139,11 +139,15 @@ export async function showDamageControlPrompt(
 ): Promise<boolean> {
 	const presentation = PRESENTATION[request.category];
 	const heading = `[${presentation.severityLabel}] ${presentation.categoryLabel}`;
-	emitTerminalBell();
 
 	if (ctx.mode !== "tui") {
 		return ctx.ui.confirm(`${heading} - ${request.title}`, request.message);
 	}
+	const herdrReportsPrompt =
+		process.env.HERDR_ENV === "1" &&
+		Boolean(process.env.HERDR_PANE_ID) &&
+		Boolean(process.env.HERDR_SOCKET_PATH);
+	if (!herdrReportsPrompt) emitTerminalBell();
 
 	const outcome = await ctx.ui.custom<"allow" | "deny">(
 		(tui, theme, _keybindings, done) => {

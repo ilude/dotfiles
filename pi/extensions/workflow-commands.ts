@@ -82,8 +82,11 @@ import {
 import { scanSecrets } from "../lib/secret-scan";
 import {
 	appendNextCommand,
+	formatSlashCommand,
 	registerSlashCommand,
+	SLASH_COMMAND_ECHO_TYPE,
 	stripTrailingNextCommandContent,
+	type SlashCommandEchoEntry,
 } from "../lib/slash-command-echo.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent";
 import {
@@ -118,7 +121,6 @@ import {
 } from "../lib/workflow-worktree";
 import { activateTools, deactivateTools } from "../lib/tool-activation";
 import { formatConfiguredUsageReport } from "./codex-status";
-import { isOperatorReloadNeeded } from "./operator-status";
 
 const DOTFILES_PI_DIR = path.join(os.homedir(), ".dotfiles", "pi");
 const SKILLS_DIR = path.join(DOTFILES_PI_DIR, "skills", "workflow");
@@ -126,7 +128,8 @@ const PLAN_PREFLIGHT_MESSAGE_TYPE = "workflow.plan-preflight";
 const MAX_PLAN_PREFLIGHT_CHARS = 2000;
 const DO_IT_CONTINUATION_TYPE = "workflow.do-it-continuation";
 
-type DoItContinuation = DoItArgs & { consumed?: boolean };
+type DoItContinuation = DoItArgs & { id: string };
+type DoItLaunchOutcome = "dispatched" | "pending" | "blocked";
 type DoItDispatchContext = Pick<ExtensionCommandContext, "cwd" | "mode" | "ui"> & Partial<Pick<ExtensionCommandContext, "newSession" | "getContextUsage">>;
 
 export interface DoItArgs {
@@ -163,6 +166,15 @@ export function parseDoItArgs(args: string): DoItArgs {
 		remaining = (match[2] ?? "").trim();
 	}
 	return { request: "", noClear, inPlace, noMerge };
+}
+
+function formatDoItInvocationArgs(args: DoItArgs): string {
+	return [
+		args.noClear ? "--no-clear" : "",
+		args.inPlace ? "--in-place" : "",
+		args.noMerge ? "--no-merge" : "",
+		args.request,
+	].filter(Boolean).join(" ");
 }
 
 export function routeDirectDoItInput(text: string, recentPlanPath?: string): string | undefined {
@@ -231,31 +243,6 @@ function loadSkill(name: string) {
 	} catch (err) {
 		throw new Error(`Failed to load skill ${name} from ${skillPath}: ${err}`);
 	}
-}
-
-async function newSessionWithReloadIfNeeded(
-	ctx: Pick<ExtensionCommandContext, "newSession">,
-	options?: Parameters<ExtensionCommandContext["newSession"]>[0],
-) {
-	const reloadNeeded = isOperatorReloadNeeded();
-	if (
-		!reloadNeeded &&
-		!options?.parentSession &&
-		!options?.withSession &&
-		!options?.setup
-	) {
-		return ctx.newSession();
-	}
-	return ctx.newSession({
-		parentSession: options?.parentSession,
-		setup: options?.setup,
-		withSession: async (newCtx) => {
-			await options?.withSession?.(newCtx);
-			if (reloadNeeded && !options?.withSession) {
-				await newCtx.reload();
-			}
-		},
-	});
 }
 
 function formatUsageTokens(tokens: number): string {
@@ -394,6 +381,7 @@ interface WorkflowContext {
 	getSystemPrompt?: () => string | undefined;
 	signal: AbortSignal | undefined;
 	sessionManager?: WorkflowSessionManager;
+	reportHerdrBlocked?: (active: boolean, label?: string) => void;
 }
 
 const CommitPlannerInputSchema = Type.Object({
@@ -1872,17 +1860,24 @@ export async function classifyUntrackedFiles(
 	);
 }
 
-async function resolveLowConfidenceClassifications(
+export async function resolveLowConfidenceClassifications(
 	ctx: WorkflowContext,
 	items: UntrackedClassification[],
 ) {
 	const resolved: UntrackedClassification[] = [];
 	for (const item of items) {
-		emitTerminalBell();
-		const selected = await ctx.ui.select?.(
-			`Track untracked path ${item.path}? ${item.reason}`,
-			["ignore", "do_not_ignore"],
-		);
+		const title = `Track untracked path ${item.path}? ${item.reason}`;
+		if (ctx.reportHerdrBlocked) {
+			ctx.reportHerdrBlocked(true, `Waiting for user: ${title}`);
+		} else {
+			emitTerminalBell();
+		}
+		let selected: string | null | undefined;
+		try {
+			selected = await ctx.ui.select?.(title, ["ignore", "do_not_ignore"]);
+		} finally {
+			ctx.reportHerdrBlocked?.(false);
+		}
 		if (selected !== "ignore" && selected !== "do_not_ignore") {
 			throw new Error("Commit cancelled during untracked classification");
 		}
@@ -2650,7 +2645,8 @@ export default function (pi: ExtensionAPI) {
 		if (ctx.cwd) refreshDoItPlanCache(ctx.cwd);
 		const entries = ctx.sessionManager.getBranch();
 		let continuation: DoItContinuation | undefined;
-		let consumed = false;
+		let legacyConsumed = false;
+		const consumedIds = new Set<string>();
 		for (const entry of entries) {
 			if (!entry || typeof entry !== "object") continue;
 			const candidate = entry as { customType?: unknown; content?: unknown; data?: unknown };
@@ -2658,14 +2654,31 @@ export default function (pi: ExtensionAPI) {
 			const value = candidate.data ?? candidate.content;
 			try {
 				const parsed = typeof value === "string" ? JSON.parse(value) : value;
-				if (parsed && typeof parsed === "object" && typeof (parsed as DoItContinuation).request === "string") continuation = parsed as DoItContinuation;
+				if (!parsed || typeof parsed !== "object" || typeof (parsed as DoItArgs).request !== "string") continue;
+				if (candidate.customType === DO_IT_CONTINUATION_TYPE) {
+					continuation = typeof (parsed as { id?: unknown }).id === "string"
+						? parsed as DoItContinuation
+						: { ...(parsed as DoItArgs), id: "legacy" };
+				} else if (typeof (parsed as { id?: unknown }).id === "string") {
+					consumedIds.add((parsed as { id: string }).id);
+				} else {
+					legacyConsumed = true;
+				}
 			} catch { /* malformed internal state is ignored and cannot authorize execution */ }
-			if ((candidate.customType as string) === `${DO_IT_CONTINUATION_TYPE}.consumed`) consumed = true;
 		}
-		if (!continuation || continuation.consumed || consumed) return;
-		await pi.appendEntry(`${DO_IT_CONTINUATION_TYPE}.consumed`, continuation);
-		if (!doItHandler) throw new Error("Cannot resume /do-it before its dispatch path is registered.");
-		await doItHandler(continuation, ctx, true);
+		if (!continuation) return;
+		if (continuation.id === "legacy" ? legacyConsumed : consumedIds.has(continuation.id)) return;
+		try {
+			const outcome = await launchDoIt(continuation, ctx);
+			if (outcome !== "pending")
+				await pi.appendEntry(`${DO_IT_CONTINUATION_TYPE}.consumed`, continuation);
+		} catch (error) {
+			ctx.ui?.notify?.(
+				`/do-it continuation remains pending: ${error instanceof Error ? error.message : String(error)}`,
+				"error",
+			);
+			throw error;
+		}
 	});
 	pi.on("session_tree", (_event, ctx) => {
 		restorePlanLifecycle(ctx);
@@ -2918,21 +2931,33 @@ export default function (pi: ExtensionAPI) {
 
 				let commitPromise: Promise<void> | undefined;
 				let cancelled = false;
-				await ctx.ui.custom<void>((tui, theme, _keybindings, done) => {
-					const loader = new BorderedLoader(tui, theme, "Running /commit...");
-					loader.onAbort = () => {
-						cancelled = true;
-					};
-					commitPromise = executeCommitCommand(pi, args, {
-						...ctx,
-						signal: loader.signal,
+				pi.events.emit("herdr:managed-custom-ui", { active: true });
+				try {
+					await ctx.ui.custom<void>((tui, theme, _keybindings, done) => {
+						const loader = new BorderedLoader(tui, theme, "Running /commit...");
+						loader.onAbort = () => {
+							cancelled = true;
+						};
+						commitPromise = executeCommitCommand(pi, args, {
+							...ctx,
+							signal: loader.signal,
+							reportHerdrBlocked:
+								process.env.HERDR_ENV === "1" &&
+								process.env.HERDR_PANE_ID &&
+								process.env.HERDR_SOCKET_PATH
+									? (active: boolean, label?: string) =>
+											pi.events.emit("herdr:blocked", { active, label })
+									: undefined,
+						});
+						void commitPromise.then(
+							() => done(undefined),
+							() => done(undefined),
+						);
+						return loader;
 					});
-					void commitPromise.then(
-						() => done(undefined),
-						() => done(undefined),
-					);
-					return loader;
-				});
+				} finally {
+					pi.events.emit("herdr:managed-custom-ui", { active: false });
+				}
 
 				if (!commitPromise) throw new Error("Commit loader did not start.");
 				if (cancelled) {
@@ -3086,17 +3111,16 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	let doItHandler: ((args: string | DoItArgs, ctx: DoItDispatchContext, skipClear?: boolean) => Promise<void>) | undefined;
 	registerSlashCommand(pi)("do-it", {
 		description: "Execute work in one owned workflow worktree with proportional validation",
 		getArgumentCompletions: (prefix) => getDoItArgumentCompletions(
 			prefix,
 			getCachedDoItPlans(activePlanningRoot ?? process.cwd()),
 		),
-		handler: doItHandler = async (args, ctx, skipClear = false) => {
+		handler: async (args, ctx) => {
 			let parsed: DoItArgs;
 			try {
-				parsed = typeof args === "string" ? parseDoItArgs(args) : args;
+				parsed = parseDoItArgs(args);
 			} catch (error) {
 				ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
 				return;
@@ -3104,7 +3128,7 @@ export default function (pi: ExtensionAPI) {
 			const requestedPlanPath = parsed.request.replace(/^@/, "");
 			const canonicalPlanPath = canonicalPlanPathFromInput(requestedPlanPath);
 			const canonicalPlan = canonicalPlanPath !== undefined;
-			if (!skipClear && !parsed.noClear && typeof ctx.newSession === "function") {
+			if (!parsed.noClear && typeof ctx.newSession === "function") {
 				if (canonicalPlan && ctx.cwd) {
 					try {
 						const primaryRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
@@ -3122,12 +3146,16 @@ export default function (pi: ExtensionAPI) {
 					}
 				}
 				const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
-				const continuation: DoItContinuation = { ...parsed };
+				const continuation: DoItContinuation = { ...parsed, id: randomUUID() };
 				try {
-					await newSessionWithReloadIfNeeded(ctx as Pick<ExtensionCommandContext, "newSession">, {
+					await ctx.newSession({
 						setup: async (sessionManager) => {
-							if (!sessionManager.appendCustomMessageEntry) throw new Error("Cannot persist /do-it session continuation.");
-							sessionManager.appendCustomMessageEntry(DO_IT_CONTINUATION_TYPE, JSON.stringify(continuation), false);
+							sessionManager.appendCustomEntry(DO_IT_CONTINUATION_TYPE, continuation);
+							const destinationEcho: SlashCommandEchoEntry = {
+								kind: "submitted",
+								text: formatSlashCommand("do-it", formatDoItInvocationArgs(parsed)),
+							};
+							sessionManager.appendCustomEntry(SLASH_COMMAND_ECHO_TYPE, destinationEcho);
 							if (usageMessage) sessionManager.appendCustomMessageEntry(CLEAR_USAGE_TYPE, usageMessage, true);
 						},
 					});
@@ -3136,6 +3164,14 @@ export default function (pi: ExtensionAPI) {
 				}
 				return;
 			}
+			await launchDoIt(parsed, ctx);
+		},
+	});
+
+	async function launchDoIt(parsed: DoItArgs, ctx: DoItDispatchContext): Promise<DoItLaunchOutcome> {
+			const requestedPlanPath = parsed.request.replace(/^@/, "");
+			const canonicalPlanPath = canonicalPlanPathFromInput(requestedPlanPath);
+			const canonicalPlan = canonicalPlanPath !== undefined;
 			let workspaceDirective = "";
 			let workflowRepoRoot: string | undefined;
 			let ownedWorkspace = ctx.cwd;
@@ -3143,6 +3179,7 @@ export default function (pi: ExtensionAPI) {
 			let completedPlan = false;
 			let planNeedsReconciliation = false;
 			let closeoutPolicy: "merge" | "retain" = "merge";
+			let inPlaceExecution = parsed.inPlace;
 			if (ctx.cwd) {
 				try {
 					const primaryRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
@@ -3155,7 +3192,7 @@ export default function (pi: ExtensionAPI) {
 								pi,
 								`Plan preflight failed for ${canonicalPlanPath}:\n${diagnostics}`,
 							);
-							return;
+							return "pending";
 						}
 						const sourcePlanContent = fs.readFileSync(path.resolve(primaryRoot, canonicalPlanPath), "utf8");
 						closeoutPolicy = parsePlanCloseoutPolicy(sourcePlanContent);
@@ -3170,7 +3207,7 @@ export default function (pi: ExtensionAPI) {
 									: `Canonical plan ${canonicalPlanPath} is already complete. Do not rerun implementation or validation. Report it as already complete; no owned workflow worktree or branch exists to recover. Do not recommend this plan as new work.`;
 								ctx.ui?.notify?.(recovery, "info");
 								sendHiddenWorkflowPrompt(pi, recovery);
-								return;
+								return "dispatched";
 							}
 						}
 					}
@@ -3179,11 +3216,12 @@ export default function (pi: ExtensionAPI) {
 					const workflowId = `do-it:${slug}`;
 					const ordinaryOwnership = readWorkflowOwnershipRecord(primaryRoot, slug);
 					const inPlaceOwnership = readInPlaceWorkflowOwnership(primaryRoot, slug);
+					if (ordinaryOwnership?.state === "active" && inPlaceOwnership?.state === "active")
+						throw new Error("conflicting ordinary and in-place workflow ownership records require reconciliation");
 					if (parsed.inPlace && ordinaryOwnership?.state === "active")
 						throw new Error("an ordinary workflow worktree already owns this plan; resume it without --in-place");
-					if (!parsed.inPlace && inPlaceOwnership?.state === "active")
-						throw new Error("an in-place workflow already owns this plan; resume it with --in-place");
-					const inPlace = parsed.inPlace
+					if (inPlaceOwnership?.state === "active") inPlaceExecution = true;
+					const inPlace = inPlaceExecution
 						? await ensureInPlaceWorkflow({ cwd: ctx.cwd, workflowId, slug, planPath: canonicalPlanPath, runner: workflowRunner })
 						: undefined;
 					const worktree = inPlace ? undefined : await ensureWorkflowWorktree({
@@ -3206,8 +3244,8 @@ export default function (pi: ExtensionAPI) {
 						ownedWorkspace = worktree.ownership.worktree;
 					}
 					const effectiveCloseoutPolicy = worktree?.ownership.closeoutPolicy ?? closeoutPolicy;
-					const retainCloseout = !parsed.inPlace && (effectiveCloseoutPolicy === "retain");
-					const closeoutWork = parsed.inPlace
+					const retainCloseout = !inPlaceExecution && (effectiveCloseoutPolicy === "retain");
+					const closeoutWork = inPlaceExecution
 						? canonicalPlan
 							? "archive the completed spec, stage and commit all in-scope artifacts in the invoking worktree; do not merge or inspect another worktree"
 							: "stage and commit all in-scope artifacts in the invoking worktree; do not merge or inspect another worktree"
@@ -3216,18 +3254,18 @@ export default function (pi: ExtensionAPI) {
 							: canonicalPlan
 								? "archive the completed spec, stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff"
 								: "stage and commit all in-scope artifacts, and merge the workflow branch with --no-ff";
-					const verifierEffect = parsed.inPlace
+					const verifierEffect = inPlaceExecution
 						? "verifies the invoking worktree, branch, descendant commit, clean state, and completed archive without merge or cleanup"
 						: retainCloseout
 							? "verifies the commit and non-merge state while retaining the owned branch, worktree, and ownership record"
 							: "checks exact final state and cleans the owned branch/worktree";
-					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${ownedWorkspace}\n${parsed.inPlace ? "This is explicit in-place execution. Confine implementation and validation to the invoking worktree; never create, inspect, merge, or remove another worktree." : "Confine implementation and validation to this worktree."} When the requested work is complete, ${closeoutWork} yourself, then call the workflow closeout verifier; the verifier ${verifierEffect}. Preserve the worktree for recovery on any dirty, unmerged, or conflict state.${completedPlan || planNeedsReconciliation ? `\n\nRECOVERY ONLY: The canonical plan ${canonicalPlanPath} is complete or has conflicting persisted state. Do not rerun implementation or validation. Inspect the active/archive paths, branch, primary HEAD, and ownership record; finish only recoverable closeout work, then call the closeout verifier.` : ""}`;
+					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${ownedWorkspace}\n${inPlaceExecution ? "This is in-place execution. Confine implementation and validation to the invoking worktree; never create, inspect, merge, or remove another worktree." : "Confine implementation and validation to this worktree."} When the requested work is complete, ${closeoutWork} yourself, then call the workflow closeout verifier; the verifier ${verifierEffect}. Preserve the worktree for recovery on any dirty, unmerged, or conflict state.${completedPlan || planNeedsReconciliation ? `\n\nRECOVERY ONLY: The canonical plan ${canonicalPlanPath} is complete or has conflicting persisted state. Do not rerun implementation or validation. Inspect the active/archive paths, branch, primary HEAD, and ownership record; finish only recoverable closeout work, then call the closeout verifier.` : ""}`;
 				} catch (error) {
 					sendDoItFailure(
 						pi,
 						`/do-it setup failed: ${error instanceof Error ? error.message : String(error)}`,
 					);
-					return;
+					return "pending";
 				}
 			}
 			if (canonicalPlan) {
@@ -3238,13 +3276,13 @@ export default function (pi: ExtensionAPI) {
 							pi,
 							`Materialized plan failed validation: ${validation.errors.join(" ")}`,
 						);
-						return;
+						return "pending";
 					}
 					const planContent = fs.readFileSync(path.resolve(ownedWorkspace, canonicalPlanPath), "utf8");
 					const selection = selectNextPlanTask(parseLinkedPlan(canonicalPlanPath, planContent));
 					if (selection.operatorDecision) {
 						sendDoItFailure(pi, `Live verification stopped: ${selection.operatorDecision}`);
-						return;
+						return "blocked";
 					}
 				}
 				activateTools(pi, ["plan_archive"]);
@@ -3267,15 +3305,15 @@ export default function (pi: ExtensionAPI) {
 				replaceArguments: true,
 			});
 			sendHiddenWorkflowPrompt(pi, prompt + workspaceDirective);
-		},
-	});
+			return "dispatched";
+	}
 
 	registerSlashCommand(pi)("clear", {
 		description: "Alias to /new",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Clearing session...", "info");
 			const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
-			await newSessionWithReloadIfNeeded(ctx, {
+			await ctx.newSession({
 				setup: async (sessionManager) => {
 					if (!sessionManager.appendCustomMessageEntry) return;
 					const codexStatusMessage = await formatClearedSessionCodexStatus();

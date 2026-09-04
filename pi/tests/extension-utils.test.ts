@@ -1,13 +1,33 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	canonicalize,
+	emitTerminalBell,
 	formatToolError,
 	getAgentDir,
 	getMultiTeamDir,
 	uiNotify,
 } from "../lib/extension-utils.ts";
+
+describe("emitTerminalBell", () => {
+	it("does not write a bell to non-interactive stdout", () => {
+		const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+		const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		try {
+			Object.defineProperty(process.stdout, "isTTY", {
+				configurable: true,
+				value: false,
+			});
+			emitTerminalBell();
+			expect(write).not.toHaveBeenCalled();
+		} finally {
+			write.mockRestore();
+			if (descriptor) Object.defineProperty(process.stdout, "isTTY", descriptor);
+			else delete (process.stdout as { isTTY?: boolean }).isTTY;
+		}
+	});
+});
 
 describe("getAgentDir", () => {
 	it("returns ~/.pi/agent", () => {

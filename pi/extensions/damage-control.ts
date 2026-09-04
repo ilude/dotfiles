@@ -576,8 +576,10 @@ async function requestDamageControlApproval(
 	const reportsHerdrState =
 		process.env.HERDR_ENV === "1" &&
 		Boolean(process.env.HERDR_PANE_ID) &&
+		Boolean(process.env.HERDR_SOCKET_PATH) &&
 		Boolean(pi.events?.emit);
 	if (reportsHerdrState) {
+		pi.events.emit("herdr:managed-custom-ui", { active: true });
 		pi.events.emit("herdr:blocked", {
 			active: true,
 			label: input.title,
@@ -597,6 +599,7 @@ async function requestDamageControlApproval(
 	} finally {
 		if (reportsHerdrState) {
 			pi.events.emit("herdr:blocked", { active: false });
+			pi.events.emit("herdr:managed-custom-ui", { active: false });
 		}
 	}
 }

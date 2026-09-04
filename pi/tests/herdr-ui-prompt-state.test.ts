@@ -45,4 +45,41 @@ describe("herdr UI prompt state", () => {
 			label: "Waiting for user",
 		});
 	});
+
+	it("keeps passive custom loaders working without masking later prompts", async () => {
+		const pi = createMockPi();
+		herdrUiPromptState(pi as never);
+		const managedUiHandler = pi.events.on.mock.calls.find(
+			([event]) => event === "herdr:managed-custom-ui",
+		)?.[1];
+		expect(managedUiHandler).toBeTypeOf("function");
+
+		managedUiHandler?.({ active: true });
+		await pi._getHook("ui_prompt_start")[0].handler({
+			type: "ui_prompt_start",
+			reason: "ui_prompt",
+			kind: "custom",
+		});
+		await pi._getHook("ui_prompt_end")[0].handler({
+			type: "ui_prompt_end",
+			reason: "ui_prompt",
+			kind: "custom",
+		});
+		managedUiHandler?.({ active: false });
+		expect(pi.events.emit).not.toHaveBeenCalledWith(
+			"herdr:blocked",
+			expect.anything(),
+		);
+
+		await pi._getHook("ui_prompt_start")[0].handler({
+			type: "ui_prompt_start",
+			reason: "ui_prompt",
+			kind: "confirm",
+			title: "Continue?",
+		});
+		expect(pi.events.emit).toHaveBeenLastCalledWith("herdr:blocked", {
+			active: true,
+			label: "Waiting for user: Continue?",
+		});
+	});
 });

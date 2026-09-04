@@ -53,6 +53,7 @@ export interface SlashCommitContext {
 	getSystemPrompt?: () => string | undefined;
 	signal: AbortSignal | undefined;
 	sessionManager?: SlashCommitSessionManager;
+	reportHerdrBlocked?: (active: boolean, label?: string) => void;
 }
 
 export interface SlashCommitPlanGroup {

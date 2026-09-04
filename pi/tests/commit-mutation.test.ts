@@ -22,6 +22,7 @@ import {
 	ignoredCommitArgumentPaths,
 	listChangedFiles,
 	postClassificationRequestedFiles,
+	resolveLowConfidenceClassifications,
 	stageFiles,
 	SECRET_PATTERNS,
 } from "../extensions/workflow-commands.ts";
@@ -58,6 +59,52 @@ function bareRepo() {
 
 afterEach(() => {
 	for (const dir of repos.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("commit untracked classification prompt state", () => {
+	it("reports a Herdr blocker only while awaiting a classification", async () => {
+		const select = vi.fn(async () => "do_not_ignore");
+		const reportHerdrBlocked = vi.fn();
+
+		await expect(
+			resolveLowConfidenceClassifications(
+				{
+					cwd: process.cwd(),
+					ui: { select } as never,
+					model: undefined,
+					modelRegistry: {} as never,
+					signal: undefined,
+					reportHerdrBlocked,
+				},
+				[{ path: "notes.txt", decision: "do_not_ignore", reason: "classification uncertain" }],
+			),
+		).resolves.toEqual([
+			{ path: "notes.txt", decision: "do_not_ignore", reason: "classification uncertain" },
+		]);
+		expect(reportHerdrBlocked.mock.calls).toEqual([
+			[true, "Waiting for user: Track untracked path notes.txt? classification uncertain"],
+			[false],
+		]);
+	});
+
+	it("clears the Herdr blocker when classification is cancelled", async () => {
+		const reportHerdrBlocked = vi.fn();
+
+		await expect(
+			resolveLowConfidenceClassifications(
+				{
+					cwd: process.cwd(),
+					ui: { select: vi.fn(async () => undefined) } as never,
+					model: undefined,
+					modelRegistry: {} as never,
+					signal: undefined,
+					reportHerdrBlocked,
+				},
+				[{ path: "notes.txt", decision: "ignore", reason: "classification uncertain" }],
+			),
+		).rejects.toThrow("Commit cancelled during untracked classification");
+		expect(reportHerdrBlocked).toHaveBeenLastCalledWith(false);
+	});
 });
 
 describe("commit mutation safety", () => {

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-04: Remove redundant provider credential command
+
+**Changed:** Removed the custom `/provider` credential workflow and its hardcoded provider catalog. Pi's maintained `/login` and `/logout` commands remain the credential-management surface, while `/model` remains the model-selection surface.
+
+**Fixed:** Damage-control approval prompts now have one Herdr blocked-state owner instead of incrementing the blocked counter through both explicit and generic prompt reports. Connected Herdr sessions rely on that request notification instead of adding a second terminal bell, and terminal bells are emitted only when stdout is interactive so bell control bytes cannot enter RPC or redirected output.
+
+---
+
+## 2026-09-04: Make `/do-it` session handoff reload-safe
+
+**Fixed:** `/do-it` now uses its required new-session replacement as the only extension refresh, keeps continuation consumption scoped to one invocation and deferred until dispatch or a terminal stop succeeds, and leaves setup, validation, and failed dispatches available for reload recovery. The destination session retains a visible command acknowledgement, and resumed in-place workflows no longer require the operator to repeat `--in-place`.
+
+---
+
+## 2026-09-04: Keep commit progress active in Herdr
+
+**Fixed:** Pi's cancellable `/commit` progress loader now remains `working` in Herdr instead of being reported as a blocked user prompt and triggering a request sound. When untracked-file classification genuinely needs a decision, Herdr reports `blocked` with the path until the prompt is answered or cancelled, without adding a second terminal bell. Other interactive confirmation, selection, input, and custom prompts still report `blocked`.
+
+---
+
 ## 2026-09-04: Bound live plan validation
 
 **Changed:** Canonical plans can tag verification as deterministic or live. Live tasks now declare isolated sessions, terminal outcomes, cleanup, and bounded attempts in a durable ledger; `/do-it` stops at the effective attempt cap for an operator decision. Plan readiness also requires explicit ownership and closeout when task files span repositories, and every subject-matter review applies a verification-design rubric.
