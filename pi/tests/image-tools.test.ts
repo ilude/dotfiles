@@ -54,6 +54,7 @@ describe("image tools", () => {
 			expect(inspect.description.toLowerCase()).toContain(term);
 			expect(transform.description.toLowerCase()).toContain(term);
 		}
+		expect(transform.parameters.type).toBe("object");
 		await expect(inspect.execute("id", { source: "missing.png" }, undefined, undefined, { cwd: os.tmpdir() })).rejects.toThrow();
 		await expect(transform.execute("id", { source: "missing.png", destination: "out.png" }, undefined, undefined, { cwd: os.tmpdir() })).rejects.toThrow("operation");
 		for (const input of [
@@ -62,12 +63,12 @@ describe("image tools", () => {
 			{ source: "x", destination: "y", format: "gif" },
 			{ source: "x", destination: "y", quality: 0 },
 			{ source: "x", destination: "y", quality: 101 },
-			{ source: "x", destination: "y", quality: 80 },
-			{ source: "x", destination: "y", auto_orient: true, rotate: 90 },
 			{ source: "x", destination: "y", auto_orient: false, crop: { left: 0, top: 0, width: 1, height: 1 } },
 		])
 			expect(Value.Check(transform.parameters, input)).toBe(false);
 		expect(Value.Check(transform.parameters, { source: "x", destination: "y", rotate: 90, format: "webp", quality: 80 })).toBe(true);
+		await expect(transform.execute("id", { source: "x", destination: "y", quality: 80 }, undefined, undefined, { cwd: os.tmpdir() })).rejects.toThrow("Quality requires");
+		await expect(transform.execute("id", { source: "x", destination: "y", auto_orient: true, rotate: 90 }, undefined, undefined, { cwd: os.tmpdir() })).rejects.toThrow("cannot be combined");
 	});
 
 	it("inspects known metadata and strips covered metadata from transformed output", async () => {

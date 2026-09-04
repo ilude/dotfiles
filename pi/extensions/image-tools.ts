@@ -4,7 +4,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import sharp from "sharp";
-import { Type, type TSchema } from "typebox";
+import { Type } from "typebox";
 
 const MAX_BYTES = 100 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 64 * 1024 * 1024;
@@ -40,31 +40,19 @@ const resizeSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-const transformBaseProperties = {
-	source: Type.String(),
-	destination: Type.String(),
-	crop: Type.Optional(cropSchema),
-	resize: Type.Optional(resizeSchema),
-};
-
-function transformVariant(
-	orientation: Record<string, TSchema>,
-	encoding: Record<string, TSchema>,
-) {
-	return Type.Object(
-		{ ...transformBaseProperties, ...orientation, ...encoding },
-		{ additionalProperties: false },
-	);
-}
-
-const imageTransformSchema = Type.Union([
-	transformVariant({}, {}),
-	transformVariant({}, { format: StringEnum(OUTPUT_FORMATS), quality: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })) }),
-	transformVariant({ auto_orient: Type.Literal(true) }, {}),
-	transformVariant({ auto_orient: Type.Literal(true) }, { format: StringEnum(OUTPUT_FORMATS), quality: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })) }),
-	transformVariant({ rotate: ROTATION_SCHEMA }, {}),
-	transformVariant({ rotate: ROTATION_SCHEMA }, { format: StringEnum(OUTPUT_FORMATS), quality: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })) }),
-]);
+const imageTransformSchema = Type.Object(
+	{
+		source: Type.String(),
+		destination: Type.String(),
+		crop: Type.Optional(cropSchema),
+		resize: Type.Optional(resizeSchema),
+		auto_orient: Type.Optional(Type.Literal(true)),
+		rotate: Type.Optional(ROTATION_SCHEMA),
+		format: Type.Optional(StringEnum(OUTPUT_FORMATS)),
+		quality: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+	},
+	{ additionalProperties: false },
+);
 
 interface ImageMetadata {
 	width: number;

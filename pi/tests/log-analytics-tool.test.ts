@@ -11,6 +11,7 @@ describe("log_analytics tool", () => {
 		let registered: any;
 		logAnalyticsTool({ registerTool: (tool: unknown) => { registered = tool; } } as never);
 		expect(registered.name).toBe("log_analytics");
+		expect(registered.parameters.type).toBe("object");
 		const schema = JSON.stringify(registered.parameters);
 		expect(schema).toContain("catalog");
 		expect(schema).toContain("query");
@@ -18,6 +19,21 @@ describe("log_analytics tool", () => {
 		expect(schema).toContain("sql");
 		expect(schema).not.toContain("select");
 		expect(schema).not.toContain("aggregate");
+	});
+
+	it("rejects a query without its operation-specific fields", async () => {
+		let registered: any;
+		logAnalyticsTool({ registerTool: (tool: unknown) => { registered = tool; } } as never);
+
+		await expect(
+			registered.execute(
+				"test",
+				{ operation: "query" },
+				new AbortController().signal,
+				undefined,
+				{},
+			),
+		).rejects.toThrow("log_analytics query requires sources and sql");
 	});
 
 	it("executes a bounded session_entries SQL query through the registered tool", async () => {

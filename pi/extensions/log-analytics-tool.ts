@@ -1,21 +1,25 @@
 import fs from "node:fs/promises";
-import { Type } from "@earendil-works/pi-ai";
+import { StringEnum, Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { analyticsCatalog, queryAnalytics, type AnalyticsRequest } from "../lib/log-analytics/api.ts";
 import { registeredSources, type AnalyticsSourceId } from "../lib/log-analytics/registry.ts";
 import { getAgentDir } from "../lib/extension-utils.ts";
 
 const sourceIds = registeredSources.map((source) => Type.Literal(source.name));
-const requestSchema = Type.Union([
-	Type.Object({ operation: Type.Literal("catalog") }),
-	Type.Object({
-		operation: Type.Literal("query"),
-		sources: Type.Array(Type.Union(sourceIds), { minItems: 1, uniqueItems: true }),
-		sql: Type.String({ minLength: 1, maxLength: 32_000 }),
-		parameters: Type.Optional(Type.Record(Type.String(), Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Null()]))),
-		maxRows: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
-	}),
-]);
+const requestSchema = Type.Object({
+	operation: StringEnum(["catalog", "query"] as const),
+	sources: Type.Optional(
+		Type.Array(Type.Union(sourceIds), { minItems: 1, uniqueItems: true }),
+	),
+	sql: Type.Optional(Type.String({ minLength: 1, maxLength: 32_000 })),
+	parameters: Type.Optional(
+		Type.Record(
+			Type.String(),
+			Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Null()]),
+		),
+	),
+	maxRows: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
+});
 
 export default function logAnalyticsTool(pi: ExtensionAPI): void {
 	pi.registerTool({
@@ -27,6 +31,9 @@ export default function logAnalyticsTool(pi: ExtensionAPI): void {
 			if (params.operation === "catalog") {
 				const details = { sources: analyticsCatalog() };
 				return { content: [{ type: "text", text: JSON.stringify(details) }], details };
+			}
+			if (!params.sources || !params.sql) {
+				throw new Error("log_analytics query requires sources and sql");
 			}
 			const root = await fs.realpath(process.env.PI_ANALYTICS_SOURCE_ROOT ?? getAgentDir());
 			const request = params as AnalyticsRequest;
