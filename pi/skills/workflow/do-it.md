@@ -38,7 +38,11 @@ Do not add tasks, follow-up work, full-suite checks, reviewer passes, telemetry,
 
 After a task's relevant check passes, mark its checkbox complete and save the plan. Record a concise result only when it is needed for resume, external mutation, or a required audit. A root task created for raw work remains authoritative across compaction and delegation; update it after a user correction and complete it only after its recorded checks pass.
 
-Execute plan tasks directly. Delegate only when independent workstreams materially improve execution, and create durable tasks only when they add useful cross-turn or dependency tracking. Do not mirror the plan checklist into another tracking system by default.
+Execute normal plan tasks directly. Delegate only independently parallel work or work that materially benefits from context isolation, and create durable tasks only when they add useful cross-turn or dependency tracking. Do not mirror the plan checklist into another tracking system by default.
+
+For live tasks, the root runs every live command; leaves never run live commands. Before an attempt, confirm the plan's session, cap, terminal outcomes, and hard stop. After any live attempt, record exactly one ledger row and stop. A `rejected` terminal outcome completes a live evaluation task. A material fixture change does not reset the attempt count. If the cap is reached, ask the operator before another attempt. Before delegating analysis of external evidence, copy that evidence into `.tmp/evidence/<task>/` and give the leaf only that bounded artifact.
+
+When a user correction changes the active task outcome, update the active task bound first and disregard results from children still working from the superseded bound. Do not automatically cancel those children; reconcile them through the existing process controls when needed.
 
 ## Worktree lifecycle
 

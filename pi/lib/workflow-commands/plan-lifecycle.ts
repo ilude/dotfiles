@@ -146,6 +146,42 @@ function hasPlanHeading(content: string, heading: string): boolean {
 	return new RegExp(`^${escapedHeading}[ \\t]*\\r?$`, "m").test(content);
 }
 
+function taskBlocks(content: string, taskKeys: string[]): Map<string, string> {
+	const section = planSection(content, "## Tasks");
+	return new Map(taskKeys.map((key) => {
+		const start = section.indexOf(`**${key}:`);
+		const next = taskKeys
+			.map((candidate) => section.indexOf(`**${candidate}:`, start + 1))
+			.filter((index) => index > start)
+			.sort((left, right) => left - right)[0];
+		return [key, section.slice(start, next ?? undefined)];
+	}));
+}
+
+function repositoriesNamedByFiles(content: string): string[] {
+	const repositories = new Set<string>();
+	for (const match of planSection(content, "## Tasks").matchAll(/^\s*-\s+Files:\s*(\S.*)$/gim)) {
+		const value = match[1].replace(/`/g, "");
+		for (const token of value.split(/[,;]\s*|\s+and\s+/i).map((item) => item.trim()).filter(Boolean)) {
+			const normalized = token.replace(/\\/g, "/");
+			const module = normalized.match(/(?:^|\/)modules\/([^/]+)/);
+			if (module) repositories.add(`modules/${module[1]}`);
+			else if (/^(?:\.\.\/|\/|[A-Za-z]:\/)/.test(normalized)) repositories.add(normalized);
+			else repositories.add("workspace");
+		}
+	}
+	return [...repositories];
+}
+
+function validateRepositoryDeclaration(content: string, addError: (message: string) => void): void {
+	const repositories = repositoriesNamedByFiles(content);
+	if (repositories.length <= 1) return;
+	const declaration = planSection(content, "## Boundaries").match(/^\s*-\s+Repositories:\s*(\S.*)$/im)?.[1] ?? "";
+	const complete = declaration && repositories.every((repository) => declaration.includes(repository)) && /owner/i.test(declaration) && /branch/i.test(declaration) && /closeout/i.test(declaration);
+	if (!complete)
+		addError(`Plans spanning multiple repositories must declare each repository with its owner branch and closeout in the Boundaries Repositories: bullet: ${repositories.join(", ")}.`);
+}
+
 export function refreshDoItPlanCache(cwd: string): string[] {
 	const root = path.resolve(cwd);
 	const specs = path.join(root, ".specs");
@@ -412,25 +448,44 @@ export function validatePlanContract(
 				: "Plan frontmatter status must be ready.",
 		);
 	const taskKeys = [...content.matchAll(TASK_PATTERN)].map((match) => match[1]);
+	const blocks = taskBlocks(content, taskKeys);
 	if (taskKeys.length < 1 || taskKeys.length > 16)
 		addError("Plan must contain one to sixteen executable tasks.");
 	if (new Set(taskKeys).size !== taskKeys.length)
 		addError("Plan task keys must be unique.");
 	if (mode === "ready") {
-		const taskSection = planSection(content, "## Tasks");
 		for (const key of taskKeys) {
-			const start = taskSection.indexOf(`**${key}:`);
-			const next = taskKeys
-				.map((candidate) => taskSection.indexOf(`**${candidate}:`, start + 1))
-				.filter((index) => index > start)
-				.sort((left, right) => left - right)[0];
-			const block = taskSection.slice(start, next ?? undefined);
+			const block = blocks.get(key) ?? "";
 			for (const field of ["Files:", "Change:", "Done when:", "Verify:"])
 				if (!block.includes(field)) addError(`${key} is missing ${field}`);
 		}
+		validateRepositoryDeclaration(content, addError);
 	}
 	try {
-		parseLinkedPlan(normalizedPath, content);
+		const linked = parseLinkedPlan(normalizedPath, content);
+		const liveTasks = linked.tasks.filter((task) => task.verificationType === "live");
+		if (liveTasks.length > 0) {
+			if (!hasPlanHeading(content, "## Live attempt ledger"))
+				addError("A plan with live verification must contain ## Live attempt ledger.");
+			else if (!/^\s*\|\s*Task\s*\|\s*Attempt\s*\|\s*Preconditions\s*\|\s*Result\s*\|\s*Cleanup\s*\|\s*Disposition\s*\|\s*$/im.test(planSection(content, "## Live attempt ledger")))
+				addError("Live attempt ledger must use columns Task | Attempt | Preconditions | Result | Cleanup | Disposition.");
+		}
+		for (const task of liveTasks) {
+			const block = blocks.get(task.key) ?? "";
+			if (task.maxAttempts === undefined || task.maxAttempts < 1)
+				addError(`${task.key} live verification requires Max attempts: <positive integer>.`);
+			if (!task.session)
+				addError(`${task.key} live verification requires Session: <isolated target>.`);
+			if (task.terminalOutcomes?.join("|") !== "supported|rejected|blocked")
+				addError(`${task.key} live verification requires Terminal outcomes: supported | rejected | blocked.`);
+			if (!/cleanup/i.test(task.verify ?? ""))
+				addError(`${task.key} live Verify must name cleanup.`);
+			const behaviorClauses = task.verify?.match(/\b(?:and\s+)?then\b/gi)?.length ?? 0;
+			if (behaviorClauses > 1 || /\b(?:voluntarily|chooses)\b/i.test(task.verify ?? ""))
+				addError(`${task.key} live Verify must name one observable behavior and cannot depend on a model choosing an action.`);
+			for (const field of ["Max attempts:", "Session:", "Terminal outcomes:"])
+				if (!block.includes(field)) addError(`${task.key} is missing ${field}`);
+		}
 	} catch (error) {
 		addError(
 			error instanceof Error ? `Plan dependency syntax: ${error.message}` : String(error),

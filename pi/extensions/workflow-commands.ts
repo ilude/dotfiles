@@ -56,7 +56,11 @@ import { emitTerminalBell, formatToolError } from "../lib/extension-utils";
 import { formatTranscriptTiming } from "../lib/tool-timing.js";
 import { handoffRecoverableLocalFailure } from "../lib/recovery-handoff.js";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
-import { parsePersistedPlanRoutingState } from "../lib/plan-state.js";
+import {
+	parseLinkedPlan,
+	parsePersistedPlanRoutingState,
+	selectNextPlanTask,
+} from "../lib/plan-state.js";
 import { withTimingSpan } from "../lib/observability";
 import {
 	canonicalPlanPathFromInput,
@@ -3036,7 +3040,7 @@ export default function (pi: ExtensionAPI) {
 						"warning",
 					);
 				}
-				workspaceDirective = `\n\nPRIMARY REPOSITORY (mandatory): ${activePlanningRoot}\nWrite the canonical plan directly under ${path.join(activePlanningRoot, ".specs", "<meaningful-slug>", "plan.md")}. Choose a concise kebab-case slug from the requested outcome and conversation context; never use an invocation ID or generic plan name. Do not create a planning worktree. Git state and repository-discovery failures never block planning; record relevant execution constraints in the plan for /do-it. The plan must require /do-it to perform implementation, validation, archive, and commit in its owned worktree. Merge and cleanup are the default; when the operator explicitly requests commit-and-retain closeout, record the exact Retention policy marker and require no merge.`;
+				workspaceDirective = `\n\nPRIMARY REPOSITORY (mandatory): ${activePlanningRoot}\nWrite the canonical plan directly under ${path.join(activePlanningRoot, ".specs", "<meaningful-slug>", "plan.md")}. Choose a concise kebab-case slug from the requested outcome and conversation context; never use an invocation ID or generic plan name. Do not create a planning worktree. Git state and repository-discovery failures never block planning; record relevant execution constraints in the plan for /do-it. The plan must require /do-it to perform implementation, validation, archive, and commit in its owned worktree. Merge and cleanup are the default; when the operator explicitly requests commit-and-retain closeout, record the exact Retention policy marker and require no merge. Every adversary, specialist, and proponent reviewer prompt must include the Verification-design rubric from plan-it.md and require supported findings to name the task key, failed rubric item, and proposed rewrite.`;
 			}
 			await persistPlanLifecycle(lifecycle);
 			activateTools(pi, ["plan_progress"]);
@@ -3234,6 +3238,12 @@ export default function (pi: ExtensionAPI) {
 							pi,
 							`Materialized plan failed validation: ${validation.errors.join(" ")}`,
 						);
+						return;
+					}
+					const planContent = fs.readFileSync(path.resolve(ownedWorkspace, canonicalPlanPath), "utf8");
+					const selection = selectNextPlanTask(parseLinkedPlan(canonicalPlanPath, planContent));
+					if (selection.operatorDecision) {
+						sendDoItFailure(pi, `Live verification stopped: ${selection.operatorDecision}`);
 						return;
 					}
 				}

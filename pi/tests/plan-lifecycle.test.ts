@@ -68,6 +68,30 @@ Keep incomplete work at this path. After completion, /do-it archives this direct
 `;
 }
 
+function liveReadyPlan(path = ".specs/example/plan.md"): string {
+	return readyPlan(path)
+		.replace(
+			"  - Verify: `pnpm test example.test.ts`",
+			[
+				"  - Verify: live Observe one result, then cleanup the isolated session.",
+				"  - Max attempts: 2",
+				"  - Session: isolated-herdr",
+				"  - Terminal outcomes: supported | rejected | blocked",
+			].join("\n"),
+		)
+		.replace(
+			"## Validation",
+			[
+				"## Live attempt ledger",
+				"",
+				"| Task | Attempt | Preconditions | Result | Cleanup | Disposition |",
+				"| --- | --- | --- | --- | --- | --- |",
+				"",
+				"## Validation",
+			].join("\n"),
+		);
+}
+
 function reviewedDraft() {
 	let state = createPlanLifecycleSnapshot("invocation", "example");
 	state = transitionPlanLifecycle(state, {
@@ -279,6 +303,53 @@ describe("plan lifecycle", () => {
 		expect(
 			validatePlanContract(noisy, "plan.md").errors.length,
 		).toBeLessThanOrEqual(8);
+	});
+
+	it("validates live verification metadata without changing untagged plans", () => {
+		const planPath = ".specs/example/plan.md";
+		expect(validatePlanContract(readyPlan(planPath), planPath).valid).toBe(true);
+		expect(validatePlanContract(liveReadyPlan(planPath), planPath).valid).toBe(true);
+		for (const field of [
+			"  - Max attempts: 2\n",
+			"  - Session: isolated-herdr\n",
+			"  - Terminal outcomes: supported | rejected | blocked\n",
+		]) {
+			const validation = validatePlanContract(liveReadyPlan(planPath).replace(field, ""), planPath);
+			expect(validation.valid).toBe(false);
+			const label = field.trim().replace(/^-\s+/, "").split(":")[0];
+			expect(validation.errors.some((error) => error.includes(label))).toBe(true);
+		}
+		const withoutLedger = liveReadyPlan(planPath).replace(/\n## Live attempt ledger[\s\S]*?\n## Validation/, "\n## Validation");
+		expect(validatePlanContract(withoutLedger, planPath).errors).toContain(
+			"A plan with live verification must contain ## Live attempt ledger.",
+		);
+		const multiBehavior = liveReadyPlan(planPath).replace(
+			"Observe one result, then cleanup",
+			"Observe one result, then inspect another, and then cleanup",
+		);
+		expect(validatePlanContract(multiBehavior, planPath).errors).toContain(
+			"T1 live Verify must name one observable behavior and cannot depend on a model choosing an action.",
+		);
+		const modelChoice = liveReadyPlan(planPath).replace("Observe one result", "Observe whether the child voluntarily chooses one result");
+		expect(validatePlanContract(modelChoice, planPath).errors).toContain(
+			"T1 live Verify must name one observable behavior and cannot depend on a model choosing an action.",
+		);
+	});
+
+	it("requires per-repository ownership and closeout for multi-repository plans", () => {
+		const planPath = ".specs/example/plan.md";
+		const multiRepo = readyPlan(planPath).replace(
+			"  - Files: `src/example.ts`",
+			"  - Files: `src/example.ts`, `modules/onclave/src/example.ts`",
+		);
+		expect(validatePlanContract(multiRepo, planPath).errors[0]).toContain(
+			"Plans spanning multiple repositories",
+		);
+		const declared = multiRepo.replace(
+			"- In scope: Example.",
+			"- In scope: Example.\n- Repositories: workspace - owner branch main, closeout merge; modules/onclave - owner branch feature/v2-broker-core, closeout commit before parent.",
+		);
+		expect(validatePlanContract(declared, planPath).valid).toBe(true);
 	});
 
 	it("keeps ready as the default status gate and widens only execution preflight", () => {

@@ -9,6 +9,8 @@ description: "Control Herdr terminal workspaces, tabs, panes, commands, and codi
 
 Check `HERDR_ENV=1` before controlling Herdr. If it is absent, report that the current process is outside Herdr and stop.
 
+Stop when validation work targets the default interactive socket. Automation must use a dedicated session and pinned socket as documented in [automation contracts](references/automation.md).
+
 Use the Herdr tools rather than raw CLI input:
 
 - `herdr_layout` for workspaces, tabs, pane topology, and splits.

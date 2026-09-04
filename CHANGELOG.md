@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-04: Bound live plan validation
+
+**Changed:** Canonical plans can tag verification as deterministic or live. Live tasks now declare isolated sessions, terminal outcomes, cleanup, and bounded attempts in a durable ledger; `/do-it` stops at the effective attempt cap for an operator decision. Plan readiness also requires explicit ownership and closeout when task files span repositories, and every subject-matter review applies a verification-design rubric.
+
+**Preserved:** Untagged checks remain deterministic, existing plan execution and review modes remain unchanged, and rejected live evaluations can terminate without retry churn.
+
+---
+
 ## 2026-09-03: Restore Bedrock tool-schema compatibility
 
 **Fixed:** `log_analytics` and the on-demand image transform tool now expose object-root input schemas accepted by Bedrock Converse. Operation-specific analytics fields and mutually exclusive image options remain enforced at execution.

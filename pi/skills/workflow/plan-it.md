@@ -21,10 +21,10 @@ Use `plan_progress` for this invocation. Persisted lifecycle stages are only `st
 After `plan_progress ready` succeeds, explain the plan in human terms and assess all four of these dimensions in the final assistant response: whether it follows good coding standards, whether it uses appropriate design patterns, whether it over-engineers the outcome, and whether it introduces unnecessary churn risk. The final assistant response must not contain `/do-it`, a next-command heading, a command block, or any other command presentation. Do not repeat the plan's Resume value. The command finalizer separately copies and renders the next command after the assistant response.
 
 1. Create one canonical complete plan, establish real dependencies and mutation boundaries, then record `draft` with its path.
-2. Select 0-4 subject-matter reviews according to the plan's actual risks. Use reviews when their domains add useful evidence; do not require them for low-risk plans. Each review reads the entire draft, challenges correctness and feasibility from its assigned domain, and returns findings mapped to the objective, completion evidence, tasks, safety, or validation. Review strategy and concern are optional telemetry. Do not reuse one generic reviewer under several labels.
+2. Select 0-4 subject-matter reviews according to the plan's actual risks. Use reviews when their domains add useful evidence; do not require them for low-risk plans. Each review reads the entire draft, challenges correctness and feasibility from its assigned domain, and applies the Verification-design rubric below to every task. Review strategy and concern are optional telemetry. Do not reuse one generic reviewer under several labels.
 3. Apply every supported finding that affects the objective, completion evidence, dependencies, safety, executability, or validation. Reject findings that are irrelevant or unsupported. Record each subject-matter review with `plan_progress review` after disposition: use `covered` when supported findings have been repaired and `no_finding` when no repair was needed. Use `supported` only while a finding remains unresolved; it must later be recorded as `covered` after repair. Use `adversary`, `specialist`, or `proponent` for the perspective. `strategy` is optional telemetry, not a workflow prerequisite.
 4. If a genuine operator-owned decision remains unresolved, call `blocked` and ask the operator. Git state, worktree state, transfer mechanics, commit state, and anticipated merge state are never `/plan-it` blockers; record them as `/do-it` execution context instead.
-5. After correctness repairs, perform one final necessity/subtractive review. Ask exclusively for overengineering, gold-plating, unnecessary abstraction, duplicate state, excessive validation, and churn risks.
+5. After correctness repairs, perform one final necessity/subtractive review. Ask exclusively for overengineering, gold-plating, unnecessary abstraction, duplicate state, excessive validation, and churn risks. Flag multi-claim tasks and live checks without attempt caps as churn risks.
 6. Apply necessary subtractive findings, then record the final review with role `subtractive`: use `covered` after repairing supported findings or `no_finding` when no repair was needed. An unresolved `supported` result cannot reach readiness. For every task, mechanism, state field, telemetry field, abstraction, and validation step, ask:
    - Is it required to prove `Completion Evidence` or preserve a stated safety boundary?
    - Does the first task test one assumption with the smallest representative slice?
@@ -34,6 +34,20 @@ After `plan_progress ready` succeeds, explain the plan in human terms and assess
    - Can later work become conditional and be skipped when the first slice finds no signal?
    Remove or defer anything that fails this necessity test. A factually valid reviewer concern is not a required repair unless it blocks completion evidence.
 7. Reread the reduced complete plan and call `ready`. In standard mode, readiness requires one final completed subtractive review, with any supported findings resolved first. Subject-matter reviews are optional and bounded at four records. In quick mode, readiness requires the draft and deterministic plan-file validation but no reviews. The tool then runs deterministic plan-file validation.
+
+### Verification-design rubric
+
+Every adversary, specialist, and proponent reviewer must apply these checks to every task. When one fails, return a supported finding that names the task key, cites the failed item number, and gives a proposed rewrite:
+
+1. `Verify` directly falsifies `Done when`; it does not merely say that tests pass.
+2. The check is tagged deterministic or live. A live check names one behavior, cleanup, `Max attempts`, `Session`, and `Terminal outcomes`.
+3. Success does not depend on a child model choosing an action.
+4. The task does not bundle more than one independently verifiable claim.
+5. Every relied-on external-system contract, including API response shape, CLI flags, and wait or cancellation semantics, is cited from maintained documentation or an installed schema, or becomes a research question that blocks the task.
+6. Each named test or check advances Completion Evidence rather than restating implementation.
+7. The task states what ends it on failure without a retry.
+
+The deterministic plan validator enforces the machine-readable portion of item 2; reviewers judge verification design and the remaining items.
 
 If a shared TypeScript contract is changed, include an early typecheck before implementation expands. If a shared mechanism is unproven, specify one representative executable slice that can falsify it before expansion. Do not make typecheck a universal gate or add scheduler state for an experiment.
 
@@ -73,7 +87,22 @@ status: ready
   - Files: `<Exact files or targets>`
   - Change: <Bounded mutation and mechanism.>
   - Done when: <Observable task acceptance condition.>
-  - Verify: `<Direct check or command>`
+  - Verify: `<deterministic direct check or command>`
+
+- [ ] **T2: <Optional live evaluation task>**
+  - Files: `<Exact files or targets>`
+  - Change: <One bounded live evaluation.>
+  - Done when: <One observable behavior reaches a terminal outcome and cleanup completes.>
+  - Verify: live <Observe one behavior, then cleanup the isolated session.>
+  - Max attempts: <positive integer>
+  - Session: <isolated target>
+  - Terminal outcomes: supported | rejected | blocked
+  - Depends on: T1
+
+## Live attempt ledger
+
+| Task | Attempt | Preconditions | Result | Cleanup | Disposition |
+| --- | --- | --- | --- | --- | --- |
 
 ## Execution Strategy
 
@@ -94,6 +123,7 @@ Keep incomplete work at `.specs/<slug>/plan.md`. After completion, `/do-it` arch
 - State: Ready; implementation has not started.
 - Blocker: None.
 - Next: T1.
+- Current frontier: T1; verify with `<direct check>`; remaining live attempts: N/A.
 - Resume: `/do-it .specs/<slug>/plan.md`
 ```
 
@@ -105,7 +135,7 @@ Use `## Execution Strategy` only when it adds useful execution advice. It may id
 
 State mutation boundaries explicitly: name the files or state owned by each task, what may be changed, and what remains untouched. Dependencies must identify actual prerequisites, not merely preferred order. A task is ready only when every required dependency is complete; independent ready tasks may proceed in parallel without adding scheduler records.
 
-Use one checkbox list with 1-3 tasks. Use sequential unique keys `T1` through `T3`. Every task must use the exact field labels `Files:`, `Change:`, `Done when:`, and `Verify:`. Add `Depends on: T1` only when an actual prerequisite exists. Task-level `Done when` and `Verify` clauses must collectively prove the completion evidence.
+Use one checkbox list with 1-3 tasks. Use sequential unique keys `T1` through `T3`. Every task must use the exact field labels `Files:`, `Change:`, `Done when:`, and `Verify:`. Add `Depends on: T1` only when an actual prerequisite exists. Task-level `Done when` and `Verify` clauses must collectively prove the completion evidence. Untagged `Verify:` remains deterministic for compatibility; use the explicit tag in new plans. Include the optional live task and ledger only when live work exists. If research questions exceed ten, move them to `.specs/<slug>/research.md` and keep only task-blocking references in the plan.
 
 Include only context, boundaries, assumptions, safety, current status, or blockers that change execution. For shared or live state, name the target, stop condition, and concise rollback required by active instructions.
 

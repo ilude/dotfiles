@@ -18,7 +18,10 @@ const COMPACTION_HANDOFF_INSTRUCTIONS = `Preserve a durable handoff for the acti
 - latest user correction affecting scope or completion; omit superseded intent and let the newer retained correction take precedence
 - response owed to the user
 - pending question that must be answered or settled
+- pending operator decisions, kept distinct from pending questions
 - canonical plan or goal artifact path when present
+- per-task live attempt counts and caps
+- hard stop conditions that forbid another attempt
 - explicitly supplied active root task details as authoritative supplemental durable requirements, constraints, dependencies, and acceptance checks; their Instructions, goal coverage, and boundaries remain authoritative; task state does not replace the current request
 - completed checks and first unmet completion check
 - changed files

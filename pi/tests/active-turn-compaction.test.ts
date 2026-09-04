@@ -243,6 +243,15 @@ describe("active-turn compaction", () => {
 			"pending question that must be answered or settled",
 		);
 		expect(runtime.compactOptions?.customInstructions).toContain(
+			"pending operator decisions, kept distinct from pending questions",
+		);
+		expect(runtime.compactOptions?.customInstructions).toContain(
+			"per-task live attempt counts and caps",
+		);
+		expect(runtime.compactOptions?.customInstructions).toContain(
+			"hard stop conditions that forbid another attempt",
+		);
+		expect(runtime.compactOptions?.customInstructions).toContain(
 			"supplemental durable requirements, constraints, dependencies, and acceptance checks",
 		);
 		expect(runtime.compactOptions?.customInstructions).toContain(

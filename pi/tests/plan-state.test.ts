@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseLinkedPlan } from "../lib/plan-state.ts";
+import { parseLinkedPlan, selectNextPlanTask } from "../lib/plan-state.ts";
 
 describe("linked plan state", () => {
 	it("requires every required executable task and ignores explicit optional work", () => {
@@ -70,6 +70,57 @@ describe("linked plan state", () => {
 				].join("\n"),
 			),
 		).toThrow("dependency cycle");
+	});
+
+	it("parses live metadata and stops task selection at the effective attempt cap", () => {
+		const content = [
+			"- [ ] **T1: Exercise one live behavior**",
+			"  - Verify: live Observe one response, then cleanup the session.",
+			"  - Max attempts: 2",
+			"  - Session: isolated-herdr",
+			"  - Terminal outcomes: supported | rejected | blocked",
+			"",
+			"## Live attempt ledger",
+			"",
+			"| Task | Attempt | Preconditions | Result | Cleanup | Disposition |",
+			"| --- | --- | --- | --- | --- | --- |",
+			"| T1 | 1 | ready | blocked | complete | retry allowed |",
+		].join("\n");
+		let plan = parseLinkedPlan("plan.md", content);
+		expect(plan.tasks[0]).toMatchObject({
+			verificationType: "live",
+			maxAttempts: 2,
+			session: "isolated-herdr",
+			terminalOutcomes: ["supported", "rejected", "blocked"],
+		});
+		expect(selectNextPlanTask(plan)).toMatchObject({ task: { key: "T1" } });
+
+		plan = parseLinkedPlan("plan.md", `${content}\n| T1 | 2 | ready | blocked | complete | cap reached |`);
+		expect(selectNextPlanTask(plan).operatorDecision).toContain("T1 has 2 recorded live attempts");
+
+		plan = parseLinkedPlan("plan.md", `${content}\n| T1 | 2 | ready | blocked | complete | Operator authorized by user |`);
+		const authorizedSelection = selectNextPlanTask(plan);
+		expect(authorizedSelection.task).toMatchObject({ key: "T1" });
+		expect(authorizedSelection.operatorDecision).toBeUndefined();
+	});
+
+	it("treats a rejected live result as a completing terminal outcome", () => {
+		const plan = parseLinkedPlan(
+			"plan.md",
+			[
+				"- [ ] **T1: Evaluate live support**",
+				"  - Verify: live Observe support, then cleanup the session.",
+				"  - Max attempts: 1",
+				"  - Session: isolated-herdr",
+				"  - Terminal outcomes: supported | rejected | blocked",
+				"## Live attempt ledger",
+				"| Task | Attempt | Preconditions | Result | Cleanup | Disposition |",
+				"| --- | --- | --- | --- | --- | --- |",
+				"| T1 | 1 | ready | rejected | complete | final |",
+			].join("\n"),
+		);
+		expect(plan.complete).toBe(true);
+		expect(selectNextPlanTask(plan).task).toBeUndefined();
 	});
 
 	it("rejects a plan without an executable checklist", () => {
