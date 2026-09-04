@@ -75,6 +75,40 @@ describe("Fable Bedrock compatibility", () => {
 		});
 	});
 
+	it("uses short cache points for Fable 5 and 5.1 on both Bedrock transports", () => {
+		const payload = {
+			system: [{ text: "prompt" }, { cachePoint: { type: "default", ttl: "1h" } }],
+			messages: [
+				{
+					role: "user",
+					content: [
+						{ text: "request" },
+						{ cachePoint: { type: "default", ttl: "1h" } },
+					],
+				},
+			],
+		};
+		for (const model of [
+			fableModel,
+			{ provider: "amazon-bedrock", id: "us.anthropic.claude-fable-5-1" },
+			{ provider: "bedrock-mantle", id: "anthropic.claude-fable-5" },
+			{ provider: "bedrock-mantle", id: "anthropic.claude-fable-5-1" },
+		]) {
+			expect(sanitizeFableBedrockPayload(payload, model)).toEqual({
+				system: [{ text: "prompt" }, { cachePoint: { type: "default" } }],
+				messages: [
+					{
+						role: "user",
+						content: [
+							{ text: "request" },
+							{ cachePoint: { type: "default" } },
+						],
+					},
+				],
+			});
+		}
+	});
+
 	it("leaves other models and already-compatible payloads unchanged", () => {
 		expect(
 			sanitizeFableBedrockPayload(
@@ -84,7 +118,10 @@ describe("Fable Bedrock compatibility", () => {
 		).toBeUndefined();
 		expect(
 			sanitizeFableBedrockPayload(
-				{ inferenceConfig: { maxTokens: 128 } },
+				{
+					inferenceConfig: { maxTokens: 128 },
+					system: [{ cachePoint: { type: "default" } }],
+				},
 				fableModel,
 			),
 		).toBeUndefined();

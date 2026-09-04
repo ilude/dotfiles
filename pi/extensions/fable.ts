@@ -197,10 +197,49 @@ export function isFableBedrockModel(model?: {
 	provider?: unknown;
 	id?: unknown;
 }): boolean {
-	return (
-		model?.provider === "amazon-bedrock" &&
-		model.id === "us.anthropic.claude-fable-5"
+	if (typeof model?.id !== "string") return false;
+	if (model.provider === "amazon-bedrock")
+		return /^us\.anthropic\.claude-fable-5(?:-1)?$/.test(model.id);
+	if (model.provider === "bedrock-mantle")
+		return /^anthropic\.claude-fable-5(?:-1)?$/.test(model.id);
+	return false;
+}
+
+function useShortFableCache(value: unknown): unknown {
+	if (Array.isArray(value)) {
+		let changed = false;
+		const items = value.map((item) => {
+			const next = useShortFableCache(item);
+			if (next !== item) changed = true;
+			return next;
+		});
+		return changed ? items : value;
+	}
+	if (!value || typeof value !== "object") return value;
+
+	let changed = false;
+	const entries = Object.entries(value as Record<string, unknown>).map(
+		([key, item]) => {
+			if (
+				key === "cachePoint" &&
+				item &&
+				typeof item === "object" &&
+				!Array.isArray(item) &&
+				"ttl" in item
+			) {
+				const { ttl: _ttl, ...shortCachePoint } = item as Record<
+					string,
+					unknown
+				>;
+				changed = true;
+				return [key, shortCachePoint] as const;
+			}
+			const next = useShortFableCache(item);
+			if (next !== item) changed = true;
+			return [key, next] as const;
+		},
 	);
+	return changed ? Object.fromEntries(entries) : value;
 }
 
 export function isSubscriptionOrchestratorModel(model?: {
@@ -226,21 +265,21 @@ export function sanitizeFableBedrockPayload(
 
 	const request = payload as Record<string, unknown>;
 	const inferenceConfig = request.inferenceConfig;
+	let compatiblePayload = useShortFableCache(request);
 	if (
-		!inferenceConfig ||
-		typeof inferenceConfig !== "object" ||
-		Array.isArray(inferenceConfig) ||
-		!("temperature" in inferenceConfig)
+		inferenceConfig &&
+		typeof inferenceConfig === "object" &&
+		!Array.isArray(inferenceConfig) &&
+		"temperature" in inferenceConfig
 	) {
-		return undefined;
+		const { temperature: _temperature, ...supportedInferenceConfig } =
+			inferenceConfig as Record<string, unknown>;
+		compatiblePayload = {
+			...(compatiblePayload as Record<string, unknown>),
+			inferenceConfig: supportedInferenceConfig,
+		};
 	}
-
-	const { temperature: _temperature, ...supportedInferenceConfig } =
-		inferenceConfig as Record<string, unknown>;
-	return {
-		...request,
-		inferenceConfig: supportedInferenceConfig,
-	};
+	return compatiblePayload === request ? undefined : compatiblePayload;
 }
 
 export function improveFableBedrockError(

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-03: Limit Bedrock Fable cache-write retention
+
+**Changed:** Bedrock Fable 5 and 5.1 now use the provider's default 5-minute prompt-cache retention instead of the global 1-hour Anthropic preference, reducing their expensive cache-write exposure.
+
+**Preserved:** Other Anthropic and OpenAI models retain the existing global long-cache preference.
+
+---
+
 ## 2026-09-03: Keep live subagents inspectable across reloads
 
 **Why:** The footer could report a live child while plain `/subagents` hid it behind implicit session and workspace filters, incorrectly claiming that the process tracked no runs. Long assignments and quiet provider phases also lacked enough visible detail to distinguish ongoing work from a stall.
