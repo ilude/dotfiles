@@ -64,7 +64,7 @@ Run only checks that can establish whether the changed contract works.
 - For prose-only edits, inspect the revised content directly. Do not run code tests, generic repository checks, or `git diff --check` unless they test a changed parser, loader, generator, or formatting contract.
 - Do not run a check merely because it is customary or available.
 
-On failure, isolate the changed boundary, make the smallest in-scope repair, and rerun only the failing check and any directly dependent check. Stop when repair requires unavailable access, destructive action, user judgment, or scope expansion.
+On failure, isolate the changed boundary, make the smallest in-scope repair, and rerun only the failing check and any directly dependent check. The task, not the edit, is the validation unit: batch related edits before checking. If a repair leaves the failure signature unchanged, report it and stop. Stop when repair requires unavailable access, destructive action, user judgment, or scope expansion.
 
 Do not perform a second review path. For a canonical plan, use only the correctness review and subtractive gate already recorded by `/plan-it`; validate directly against the closed contract.
 

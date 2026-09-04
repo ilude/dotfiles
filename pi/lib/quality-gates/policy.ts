@@ -38,17 +38,11 @@ export interface LanguageConfig {
 	validators: ValidatorConfig[];
 }
 
-export interface RepairConfig {
-	model: string;
-	maxAttempts: number;
-}
-
 export interface QualityGatesPolicy {
 	version: 1;
 	lizardThresholds: LizardThresholdsConfig;
 	excludedPaths: string[];
 	immutablePaths: string[];
-	repair?: RepairConfig;
 	languages: Record<string, LanguageConfig>;
 }
 
@@ -234,27 +228,12 @@ const parseValidator = (value: unknown): ValidatorConfig | undefined => {
 		: parseCommandValidator(validator);
 };
 
-const parseRepairConfig = (value: unknown): RepairConfig | undefined => {
-	if (value === undefined) return undefined;
-	if (!value || typeof value !== "object")
-		throw new Error("Invalid repair config");
-	const repair = value as Record<string, unknown>;
-	const maxAttempts = numberField(repair.maxAttempts);
-	if (
-		typeof repair.model !== "string" ||
-		!repair.model.includes("/") ||
-		maxAttempts === undefined ||
-		maxAttempts < 1 ||
-		!Number.isInteger(maxAttempts)
-	)
-		throw new Error("Invalid repair config");
-	return { model: repair.model, maxAttempts };
-};
-
 export function parseQualityGatesPolicy(value: unknown): QualityGatesPolicy {
 	if (!value || typeof value !== "object")
 		throw new Error("Policy must be an object");
 	const policy = value as Record<string, unknown>;
+	if ("repair" in policy)
+		throw new Error("Policy must not contain repair");
 	const lizardThresholds = parseThresholds(policy.lizardThresholds, true);
 	if (
 		policy.version !== 1 ||
@@ -288,13 +267,11 @@ export function parseQualityGatesPolicy(value: unknown): QualityGatesPolicy {
 			validators: validators as ValidatorConfig[],
 		};
 	}
-	const repair = parseRepairConfig(policy.repair);
 	return {
 		version: 1,
 		lizardThresholds: lizardThresholds as LizardThresholdsConfig,
 		excludedPaths: policy.excludedPaths,
 		immutablePaths: policy.immutablePaths,
-		...(repair ? { repair } : {}),
 		languages,
 	};
 }

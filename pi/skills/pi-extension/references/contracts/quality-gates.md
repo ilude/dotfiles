@@ -6,7 +6,7 @@
 - Execution: invoke validator commands without shell interpolation, bound their output, and classify pass, failure, unavailable, skipped, advisory, and duration mechanically.
 - Paths: exclude configured generated, dependency, vendor, build, and immutable paths before validation or repair. Configuration is authoritative; do not infer additional exclusions.
 - Deterministic repair: only a configured fix command may run automatically after its validator fails. Re-run the validator and report only what remains.
-- Model repair: remaining repairable failures may receive a bounded repair turn. Limit edits to the reported files and checks, cap attempts, revalidate afterward, and stop immediately when the failure signature is unchanged.
-- Mutation opt-out: the Git attribute `quality-autofix=off` disables deterministic autofix and model repair for matching files while retaining report-only diagnostics.
+- Report-only settlement: surviving blocking failures are reported without triggering another turn or spawning a delegated model.
+- Mutation opt-out: the Git attribute `quality-autofix=off` disables deterministic autofix for matching files while retaining report-only diagnostics.
 - Evidence reuse: reuse unchanged validation evidence and replay prior failures where supported. Do not treat duplicate output as a fresh check.
 - Reporting: report surviving blocking failures without fabricating success. Advisory findings remain nonblocking. Missing tools are unavailable evidence, not proof that the target passed.

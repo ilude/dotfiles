@@ -27,6 +27,7 @@ Delete unnecessary choices; prefer direct code; enforce consequential invariants
   misunderstanding, or protocol violation. Fixture and external-contract failures do not authorize a live rerun;
   external-contract failures require reading the maintained doc and installed schema first.
 - Keep tests focused on executable behavior, parsed contracts, schemas, external protocols, seams, isolation, cleanup, and failure handling. Prose is not proved by source-spelling assertions.
+- A passing check stays valid until an input it covers changes. Do not rerun an unchanged passing check, poll status that completion delivers, or re-issue a call whose prior result already answered the question. Classify warnings and advisory findings from passing runs before repairing, and repair only what blocks the requested outcome or an applicable gate.
 - Keep scripts idempotent and LF-only. Do not turn discoveries into instruction changes unless requested.
 
 ## Delegation

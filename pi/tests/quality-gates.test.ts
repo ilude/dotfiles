@@ -886,6 +886,11 @@ describe("quality-gates extension", () => {
 					},
 					{ triggerTurn: false },
 				);
+				expect(
+					pi.sendMessage.mock.calls.some(
+						([, options]) => options.triggerTurn === true,
+					),
+				).toBe(false);
 				const metrics = fs
 					.readdirSync(metricsDir)
 					.map((name) => fs.readFileSync(path.join(metricsDir, name), "utf8"))
@@ -1226,19 +1231,13 @@ describe("quality-gates extension", () => {
 		});
 	});
 
-	describe("autofix and repair", () => {
-		const repairConfig = {
-			model: "openai-codex/gpt-5.6-sol",
-			maxAttempts: 2,
-		} as const;
-
-		it("parses fix and repair policy fields and rejects invalid ones", () => {
+	describe("autofix and report-only policy", () => {
+		it("parses policies without repair and rejects the repair field", () => {
 			const policy = {
 				version: 1,
 				lizardThresholds: { ccn: 8, parameters: 7, length: 250 },
 				excludedPaths: [],
 				immutablePaths: [],
-				repair: { model: "openai-codex/gpt-5.6-sol", maxAttempts: 2 },
 				languages: {
 					test: {
 						extensions: [".test"],
@@ -1254,10 +1253,6 @@ describe("quality-gates extension", () => {
 				},
 			};
 			const parsed = parseQualityGatesPolicy(policy);
-			expect(parsed.repair).toEqual({
-				model: "openai-codex/gpt-5.6-sol",
-				maxAttempts: 2,
-			});
 			const validator = parsed.languages.test.validators[0];
 			expect("fix" in validator ? validator.fix : undefined).toEqual([
 				"fmt",
@@ -1266,28 +1261,9 @@ describe("quality-gates extension", () => {
 			expect(() =>
 				parseQualityGatesPolicy({
 					...policy,
-					repair: { model: "missing-provider", maxAttempts: 2 },
+					repair: { model: "openai-codex/gpt-5.6-sol", maxAttempts: 2 },
 				}),
-			).toThrow("Invalid repair config");
-			expect(() =>
-				parseQualityGatesPolicy({
-					...policy,
-					repair: { model: "openai-codex/gpt-5.6-sol", maxAttempts: 0 },
-				}),
-			).toThrow("Invalid repair config");
-			expect(() =>
-				parseQualityGatesPolicy({
-					...policy,
-					languages: {
-						test: {
-							extensions: [".test"],
-							validators: [
-								{ name: "fmt", command: ["fmt"], fix: [], always: true },
-							],
-						},
-					},
-				}),
-			).toThrow("Invalid validator");
+			).toThrow("Policy must not contain repair");
 		});
 
 		it("auto-fixes formatter failures and reports the fix without a turn", async () => {
@@ -1391,17 +1367,12 @@ describe("quality-gates extension", () => {
 						],
 					},
 				});
-				registerQualityGates(pi as unknown as ExtensionAPI, map, {
-					repair: repairConfig,
-				});
+				registerQualityGates(pi as unknown as ExtensionAPI, map);
 				await pi._getHook("tool_result")[0].handler({
 					toolName: "edit",
 					input: { path: filePath },
 				} as unknown as ToolResultEvent);
-				await pi._getHook("agent_settled")[0].handler(
-					{},
-					{ cwd: root, model: { provider: "openai-codex" } },
-				);
+				await pi._getHook("agent_settled")[0].handler({}, { cwd: root });
 
 				expect(
 					pi.exec.mock.calls.filter(([command]) => command === "fmt-fix"),
@@ -1418,201 +1389,5 @@ describe("quality-gates extension", () => {
 			}
 		});
 
-		it("triggers a bounded active-session repair turn on openai-codex", async () => {
-			const root = fs.mkdtempSync(
-				path.join(os.tmpdir(), "pi-quality-repair-"),
-			);
-			const filePath = path.join(root, "foo.repairme");
-			try {
-				fs.writeFileSync(filePath, "broken\n");
-				const pi = createMockPi();
-				pi.exec.mockImplementation(async (command: string) => {
-					if (command === "git") return { code: 1, stdout: "", stderr: "" };
-					if (command === "lint-check")
-						return { code: 1, stdout: "E501 line too long", stderr: "" };
-					return { code: 0, stdout: "", stderr: "" };
-				});
-				const map = buildExtMap({
-					test: {
-						extensions: [".repairme"],
-						validators: [
-							{
-								name: "lint",
-								command: ["lint-check", "{file}"],
-								always: true,
-							},
-						],
-					},
-				});
-				registerQualityGates(pi as unknown as ExtensionAPI, map, {
-					repair: repairConfig,
-				});
-				const ctx = { cwd: root, model: { provider: "openai-codex" } };
-				await pi._getHook("tool_result")[0].handler({
-					toolName: "edit",
-					input: { path: filePath },
-				} as unknown as ToolResultEvent);
-				await pi._getHook("agent_settled")[0].handler({}, ctx);
-
-				expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-				const [message, options] = pi.sendMessage.mock.calls[0];
-				expect(message.content).toContain("Quality gate validation failed");
-				expect(message.content).toContain(
-					"Fix these quality gate failures now",
-				);
-				expect(options).toEqual({ triggerTurn: true });
-
-				// Unchanged repair revalidation preserves the failure without re-running it.
-				await pi._getHook("agent_settled")[0].handler({}, ctx);
-				expect(
-					pi.exec.mock.calls.filter(([command]) => command === "lint-check"),
-				).toHaveLength(1);
-				expect(pi.sendMessage).toHaveBeenCalledTimes(3);
-				const [skipMessage, skipOptions] = pi.sendMessage.mock.calls[1];
-				expect(skipMessage.content).toContain("verification skipped");
-				expect(skipMessage.content).toContain("lint");
-				expect(skipMessage.content).toContain("foo.repairme");
-				expect(skipOptions).toEqual({ triggerTurn: false });
-				expect(
-					pi.sendMessage.mock.calls.filter(
-						([, messageOptions]) => messageOptions.triggerTurn === true,
-					),
-				).toHaveLength(1);
-				const [message2, options2] = pi.sendMessage.mock.calls[2];
-				expect(message2.content).toContain("Quality gate validation failed");
-				expect(message2.content).not.toContain(
-					"Fix these quality gate failures now",
-				);
-				expect(options2).toEqual({ triggerTurn: false });
-			} finally {
-				fs.rmSync(root, { recursive: true, force: true });
-			}
-		});
-
-		it("re-runs model revalidation when its evidence changes", async () => {
-			const root = fs.mkdtempSync(
-				path.join(os.tmpdir(), "pi-quality-evidence-change-"),
-			);
-			const filePath = path.join(root, "foo.evidence-change");
-			try {
-				fs.writeFileSync(filePath, "broken\n");
-				const pi = createMockPi();
-				pi.exec.mockImplementation(async (command: string) => {
-					if (command === "git") return { code: 1, stdout: "", stderr: "" };
-					if (command === "evidence-change-validator")
-						return { code: 1, stdout: "still broken", stderr: "" };
-					return { code: 0, stdout: "", stderr: "" };
-				});
-				const map = buildExtMap({
-					test: {
-						extensions: [".evidence-change"],
-						validators: [
-							{
-								name: "evidence-change",
-								command: ["evidence-change-validator", "{file}"],
-								always: true,
-							},
-						],
-					},
-				});
-				registerQualityGates(pi as unknown as ExtensionAPI, map, {
-					repair: repairConfig,
-				});
-				const ctx = { cwd: root, model: { provider: "openai-codex" } };
-				await pi._getHook("tool_result")[0].handler({
-					toolName: "edit",
-					input: { path: filePath },
-				} as unknown as ToolResultEvent);
-				await pi._getHook("agent_settled")[0].handler({}, ctx);
-				fs.writeFileSync(filePath, "changed but still broken\n");
-				await pi._getHook("agent_settled")[0].handler({}, ctx);
-
-				expect(
-					pi.exec.mock.calls.filter(
-						([command]) => command === "evidence-change-validator",
-					),
-				).toHaveLength(2);
-				expect(
-					pi.sendMessage.mock.calls.some(
-						([message]) => message.content.includes("verification skipped"),
-					),
-				).toBe(false);
-			} finally {
-				fs.rmSync(root, { recursive: true, force: true });
-			}
-		});
-
-		it("delegates repair to the configured model for non-subscription active models", async () => {
-			const root = fs.mkdtempSync(
-				path.join(os.tmpdir(), "pi-quality-delegate-"),
-			);
-			const filePath = path.join(root, "foo.delegate");
-			try {
-				fs.writeFileSync(filePath, "broken\n");
-				let repaired = false;
-				const pi = createMockPi();
-				pi.exec.mockImplementation(async (command: string) => {
-					if (command === "git") return { code: 1, stdout: "", stderr: "" };
-					if (command === "lint-check")
-						return repaired
-							? { code: 0, stdout: "", stderr: "" }
-							: { code: 1, stdout: "E501 line too long", stderr: "" };
-					return { code: 0, stdout: "", stderr: "" };
-				});
-				const runRepairChild = vi.fn(async () => {
-					repaired = true;
-					fs.writeFileSync(filePath, "repaired\n");
-					return { exitCode: 0, detail: "" };
-				});
-				const map = buildExtMap({
-					test: {
-						extensions: [".delegate"],
-						validators: [
-							{
-								name: "lint",
-								command: ["lint-check", "{file}"],
-								always: true,
-							},
-						],
-					},
-				});
-				registerQualityGates(pi as unknown as ExtensionAPI, map, {
-					repair: repairConfig,
-					runRepairChild,
-				});
-				await pi._getHook("tool_result")[0].handler(
-					{
-						toolName: "edit",
-						input: { path: filePath },
-					} as unknown as ToolResultEvent,
-					{ cwd: root },
-				);
-				await pi._getHook("agent_settled")[0].handler(
-					{},
-					{ cwd: root, model: { provider: "amazon-bedrock" } },
-				);
-
-				expect(runRepairChild).toHaveBeenCalledTimes(1);
-				const [model, prompt, cwd] = runRepairChild.mock.calls[0];
-				expect(model).toBe("openai-codex/gpt-5.6-sol");
-				expect(prompt).toContain("lint reported issues in");
-				expect(cwd).toBe(root);
-				expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-				const [message, options] = pi.sendMessage.mock.calls[0];
-				expect(message.content).toContain("delegated repair");
-				expect(message.content).toContain("foo.delegate");
-				expect(options).toEqual({ triggerTurn: false });
-				const metrics = fs
-					.readdirSync(metricsDir)
-					.map((name) =>
-						fs.readFileSync(path.join(metricsDir, name), "utf8"),
-					)
-					.join("\n");
-				expect(metrics).toContain('"event":"quality_gate_repair"');
-				expect(metrics).toContain('"mode":"delegated"');
-			} finally {
-				fs.rmSync(root, { recursive: true, force: true });
-			}
-		});
 	});
 });

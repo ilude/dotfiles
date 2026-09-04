@@ -24,7 +24,7 @@ After `plan_progress ready` succeeds, explain the plan in human terms and assess
 2. Select 0-4 subject-matter reviews according to the plan's actual risks. Use reviews when their domains add useful evidence; do not require them for low-risk plans. Each review reads the entire draft, challenges correctness and feasibility from its assigned domain, and applies the Verification-design rubric below to every task. Review strategy and concern are optional telemetry. Do not reuse one generic reviewer under several labels.
 3. Apply every supported finding that affects the objective, completion evidence, dependencies, safety, executability, or validation. Reject findings that are irrelevant or unsupported. Record each subject-matter review with `plan_progress review` after disposition: use `covered` when supported findings have been repaired and `no_finding` when no repair was needed. Use `supported` only while a finding remains unresolved; it must later be recorded as `covered` after repair. Use `adversary`, `specialist`, or `proponent` for the perspective. `strategy` is optional telemetry, not a workflow prerequisite.
 4. If a genuine operator-owned decision remains unresolved, call `blocked` and ask the operator. Git state, worktree state, transfer mechanics, commit state, and anticipated merge state are never `/plan-it` blockers; record them as `/do-it` execution context instead.
-5. After correctness repairs, perform one final necessity/subtractive review. Ask exclusively for overengineering, gold-plating, unnecessary abstraction, duplicate state, excessive validation, and churn risks. Flag multi-claim tasks and live checks without attempt caps as churn risks.
+5. After correctness repairs, perform one final necessity/subtractive review. Ask exclusively for overengineering, gold-plating, unnecessary abstraction, duplicate state, excessive validation, and churn risks. Flag multi-claim tasks, validation steps without a stated trigger, and live checks without attempt caps as churn risks.
 6. Apply necessary subtractive findings, then record the final review with role `subtractive`: use `covered` after repairing supported findings or `no_finding` when no repair was needed. An unresolved `supported` result cannot reach readiness. For every task, mechanism, state field, telemetry field, abstraction, and validation step, ask:
    - Is it required to prove `Completion Evidence` or preserve a stated safety boundary?
    - Does the first task test one assumption with the smallest representative slice?
@@ -49,7 +49,7 @@ Every adversary, specialist, and proponent reviewer must apply these checks to e
 
 The deterministic plan validator enforces the machine-readable portion of item 2; reviewers judge verification design and the remaining items.
 
-If a shared TypeScript contract is changed, include an early typecheck before implementation expands. If a shared mechanism is unproven, specify one representative executable slice that can falsify it before expansion. Do not make typecheck a universal gate or add scheduler state for an experiment.
+If a shared TypeScript contract is changed, include one early typecheck before implementation expands, then defer typecheck until the slice settles. If a shared mechanism is unproven, specify one representative executable slice that can falsify it before expansion. Do not make typecheck a universal gate or add scheduler state for an experiment.
 
 A restored snapshot may contain a legacy post-draft stage. Treat it as compatibility telemetry only. Complete the current subject-matter and subtractive reviews before `ready`. Do not emit the removed `settle_review`, `adjudicate`, `repair`, `accept`, or `inspect` actions.
 
@@ -87,7 +87,7 @@ status: ready
   - Files: `<Exact files or targets>`
   - Change: <Bounded mutation and mechanism.>
   - Done when: <Observable task acceptance condition.>
-  - Verify: `<deterministic direct check or command>`
+  - Verify: `<deterministic check that falsifies Done when; run once when the task's edits are complete>`
 
 - [ ] **T2: <Optional live evaluation task>**
   - Files: `<Exact files or targets>`
@@ -110,7 +110,7 @@ status: ready
 
 ## Validation
 
-- [ ] <Direct completion-evidence check and expected result.>
+- [ ] <Direct completion-evidence check, when it runs (after which task settles), and expected result. Each confirmatory check appears once.>
 
 ## Retention
 

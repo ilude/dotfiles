@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-04: Report quality-gate failures without repair turns
+
+**Changed:** Pi quality gates now report surviving blocking findings when the agent settles without triggering another model turn or spawning a delegated repair model. Configured deterministic autofix, advisory findings, validator selection, and unchanged-evidence handling remain intact.
+
+**Changed:** Pi workflow guidance now treats the task as the validation unit, preserves passing evidence until covered inputs change, and requires plans to state when each confirmatory check runs.
+
+---
+
 ## 2026-09-04: Bound generic Pi log analytics
 
 **Changed:** `log_analytics` now rejects more than 512 MiB of selected input before staging, enforces a 5,000 ms session deadline, and runs DuckDB with 2 threads and a 1 GB memory ceiling by default. `PI_ANALYTICS_MAX_INPUT_BYTES`, `PI_ANALYTICS_TIMEOUT_MS`, `PI_ANALYTICS_THREADS`, and `PI_ANALYTICS_MEMORY_LIMIT` override those defaults. Query results report scanned file and byte counts plus staging and query durations, concurrent sessions serialize staging within one Pi process, and read subagents can use the bounded analytics surface without gaining mutation or shell authority.
