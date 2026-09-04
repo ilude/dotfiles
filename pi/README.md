@@ -620,23 +620,6 @@ Behavior:
 - Reconciles Pi's provider-based context estimate with the character-based component estimate and reports the unattributed remainder or component overage explicitly.
 - Emits the full report as a normal transcript message so it scrolls with the conversation; the extension filters those report messages back out of future LLM context.
 
-### `provider.ts`
-
-Manages provider credentials in `~/.pi/agent/auth.json`.
-
-**Slash command:**
-```
-/provider
-/provider <provider>
-/provider remove <provider>
-/provider list
-```
-
-Behavior:
-- Interactive mode (`/provider`) supports setting API keys, removing provider auth, and listing configured providers.
-- Direct mode (`/provider <provider>`) prompts for API key providers and saves credentials to `auth.json`.
-- OAuth providers are guided to `/login`.
-
 ### `refresh-models.ts`
 
 Refreshes available model lists for active subscription providers **without relogging**.
