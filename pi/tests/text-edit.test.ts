@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import {
 	mkdtempSync,
 	readFileSync,
@@ -9,11 +8,16 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import textEditExtension, {
 	applyTextOperations,
 	type Operation,
 } from "../extensions/text-edit.ts";
+import {
+	maxTextBytes,
+	readSafeText,
+	resolveSafePath,
+} from "../lib/safe-edit.ts";
 
 const tempPaths = new Set<string>();
 
@@ -34,10 +38,10 @@ class MockPi {
 function repo() {
 	const dir = mkdtempSync(path.join(tmpdir(), "safe-edit-"));
 	tempPaths.add(dir);
-	execFileSync("git", ["init"], { cwd: dir, stdio: "ignore" });
 	return dir;
 }
 afterEach(() => {
+	vi.unstubAllEnvs();
 	for (const tempPath of tempPaths) {
 		rmSync(tempPath, { recursive: true, force: true });
 	}
@@ -247,6 +251,14 @@ describe("text_edit", () => {
 		expect(result.isError).toBe(true);
 		expect(readFileSync(target, "utf8")).toBe("alpha\n");
 	});
+	it("accepts regex patterns longer than 500 characters", () => {
+		const pattern = "a".repeat(501);
+		const result = applyTextOperations(pattern, [
+			{ mode: "regex_replace", pattern, replace: "x", expectedMatches: 1 },
+		]);
+
+		expect(result.text).toBe("x");
+	});
 	it("expectedMatches and allowZero protect silent misses", () => {
 		expect(() =>
 			applyTextOperations("a", [
@@ -264,35 +276,95 @@ describe("text_edit", () => {
 			] satisfies Operation[]),
 		).not.toThrow();
 	});
-	it("rejects .env, gitignored, glob, and symlink escape paths", async () => {
+	it("edits files without a Git repository", async () => {
+		const cwd = repo();
+		writeFileSync(path.join(cwd, "ignored.txt"), "x");
+
+		const result = await tool().execute(
+			"1",
+			{
+				paths: ["ignored.txt"],
+				operations: [
+					{
+						mode: "literal_replace",
+						search: "x",
+						replace: "y",
+						expectedMatches: 1,
+					},
+				],
+			},
+			undefined,
+			undefined,
+			{ cwd },
+		);
+
+		expect(result.isError).not.toBe(true);
+		expect(readFileSync(path.join(cwd, "ignored.txt"), "utf8")).toBe("y");
+	});
+	it("allows unrestricted filenames", async () => {
 		const cwd = repo();
 		writeFileSync(path.join(cwd, ".env"), "x");
-		writeFileSync(path.join(cwd, ".gitignore"), "ignored.txt\n");
-		writeFileSync(path.join(cwd, "ignored.txt"), "x");
+		writeFileSync(path.join(cwd, "..notes.txt"), "x");
+
+		const result = await tool().execute(
+			"1",
+			{
+				paths: [".env"],
+				operations: [
+					{
+						mode: "literal_replace",
+						search: "x",
+						replace: "y",
+						expectedMatches: 1,
+					},
+				],
+			},
+			undefined,
+			undefined,
+			{ cwd },
+		);
+
+		expect(result.isError).not.toBe(true);
+		expect(readFileSync(path.join(cwd, ".env"), "utf8")).toBe("y");
+		expect(resolveSafePath("..notes.txt", cwd).relative).toBe("..notes.txt");
+	});
+	it("rejects a canonical path outside the working directory", async () => {
+		const cwd = repo();
 		const outside = path.join(tmpdir(), `outside-${Date.now()}.txt`);
 		tempPaths.add(outside);
 		writeFileSync(outside, "x");
 		symlinkSync(outside, path.join(cwd, "link.txt"));
-		const t = tool();
-		for (const p of [".env", "ignored.txt", "*.txt", "link.txt"]) {
-			const r = await t.execute(
-				"1",
-				{
-					paths: [p],
-					operations: [
-						{
-							mode: "literal_replace",
-							search: "x",
-							replace: "y",
-							allowZero: true,
-						},
-					],
-				},
-				undefined,
-				undefined,
-				{ cwd },
-			);
-			expect(r.isError).toBe(true);
-		}
+
+		const result = await tool().execute(
+			"1",
+			{
+				paths: ["link.txt"],
+				operations: [
+					{
+						mode: "literal_replace",
+						search: "x",
+						replace: "y",
+						expectedMatches: 1,
+					},
+				],
+			},
+			undefined,
+			undefined,
+			{ cwd },
+		);
+
+		expect(result.isError).toBe(true);
+		expect(readFileSync(outside, "utf8")).toBe("x");
+	});
+	it("uses a configurable 16 MiB file-size limit", () => {
+		const cwd = repo();
+		writeFileSync(path.join(cwd, "a.txt"), "xx");
+		const file = resolveSafePath("a.txt", cwd);
+
+		expect(maxTextBytes()).toBe(16 * 1024 * 1024);
+		vi.stubEnv("PI_SAFE_EDIT_MAX_BYTES", "1");
+		expect(() => readSafeText(file)).toThrow(
+			"File is 2 bytes; configured limit is 1 bytes",
+		);
 	});
 });

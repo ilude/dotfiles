@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import {
 	lstatSync,
 	readFileSync,
@@ -10,86 +9,48 @@ import path from "node:path";
 
 export type SafePath = { input: string; absolute: string; relative: string };
 
-const SECRET_BASENAME_RE =
-	/^(\.env(?:\..*)?|.*(?:secret|secrets|credential|credentials|token|key).*)$/i;
-const GLOB_RE = /[*?[\]{}]/;
-const MAX_TEXT_BYTES = 1024 * 1024;
+const DEFAULT_MAX_TEXT_BYTES = 16 * 1024 * 1024;
 
-export function findRepoRoot(cwd: string): string {
-	try {
-		return execFileSync("git", ["rev-parse", "--show-toplevel"], {
-			cwd,
-			encoding: "utf8",
-		}).trim();
-	} catch {
-		return realpathSync(cwd);
-	}
+export function maxTextBytes(): number {
+	const configured = process.env.PI_SAFE_EDIT_MAX_BYTES;
+	if (configured === undefined) return DEFAULT_MAX_TEXT_BYTES;
+	if (!/^[1-9]\d*$/.test(configured))
+		throw new Error("PI_SAFE_EDIT_MAX_BYTES must be a positive integer");
+	const parsed = Number(configured);
+	if (!Number.isSafeInteger(parsed))
+		throw new Error("PI_SAFE_EDIT_MAX_BYTES exceeds the supported integer range");
+	return parsed;
 }
 
 export function resolveSafePath(input: string, cwd: string): SafePath {
 	if (input.includes("\0")) throw new Error("Path contains NUL byte");
-	if (GLOB_RE.test(input))
-		throw new Error("Glob-like paths are not supported in v1");
 
-	const repoRoot = realpathSync(findRepoRoot(cwd));
+	const root = realpathSync(cwd);
 	const absoluteCandidate = path.resolve(cwd, input);
 	const st = lstatSync(absoluteCandidate);
 	if (st.isDirectory()) throw new Error("Refusing to edit a directory");
 
 	const absolute = realpathSync(absoluteCandidate);
-	const relative = path.relative(repoRoot, absolute).replace(/\\/g, "/");
-	if (relative.startsWith("..") || path.isAbsolute(relative)) {
-		throw new Error("Path resolves outside the repository");
+	const relativePath = path.relative(root, absolute);
+	if (
+		relativePath === ".." ||
+		relativePath.startsWith(`..${path.sep}`) ||
+		path.isAbsolute(relativePath)
+	) {
+		throw new Error("Path resolves outside the working directory");
 	}
-	if (st.isSymbolicLink()) {
-		const linkParent = realpathSync(path.dirname(absoluteCandidate));
-		const linkTarget = realpathSync(absoluteCandidate);
-		if (
-			!linkTarget.startsWith(repoRoot + path.sep) &&
-			linkTarget !== repoRoot
-		) {
-			throw new Error("Symlink target escapes the repository");
-		}
-		if (
-			!linkParent.startsWith(repoRoot + path.sep) &&
-			linkParent !== repoRoot
-		) {
-			throw new Error("Symlink parent escapes the repository");
-		}
-	}
-	const base = path.basename(relative);
-	if (SECRET_BASENAME_RE.test(base))
-		throw new Error("Refusing to edit .env or secret-like file names");
-	if (isGitIgnored(repoRoot, relative))
-		throw new Error("Refusing to edit gitignored target");
-	return { input, absolute, relative };
-}
-
-export function isGitIgnored(repoRoot: string, relative: string): boolean {
-	try {
-		execFileSync("git", ["check-ignore", "--quiet", "--", relative], {
-			cwd: repoRoot,
-		});
-		return true;
-	} catch (error) {
-		if (
-			typeof error === "object" &&
-			error !== null &&
-			"status" in error &&
-			error.status === 1
-		)
-			return false;
-		return false; // documented fallback: if git is unavailable, continue with repo containment checks.
-	}
+	return { input, absolute, relative: relativePath.replace(/\\/g, "/") };
 }
 
 export function readSafeText(
 	file: SafePath,
-	maxBytes = MAX_TEXT_BYTES,
+	maxBytes = maxTextBytes(),
 ): string {
 	const st = statSync(file.absolute);
 	if (st.size > maxBytes)
-		throw new Error(`File exceeds max supported size of ${maxBytes} bytes`);
+		throw new Error(
+			`File is ${st.size} bytes; configured limit is ${maxBytes} bytes`,
+		);
 	const buf = readFileSync(file.absolute);
 	if (buf.includes(0)) throw new Error("Refusing to edit binary file");
 	return buf.toString("utf8");

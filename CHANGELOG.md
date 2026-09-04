@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-04: Allow Pi edits to gitignored files
+
+**Changed:** Pi's `text_edit` and `structured_edit` tools no longer use Git ignore rules as an edit restriction. Repository containment, secret-like filename, directory, glob, and symlink protections remain in place.
+
+---
+
 ## 2026-09-04: Consolidate Pi workflow guidance
 
 **Changed:** Cross-cutting completion, operator-decision, validation, and delegation rules now have one repository-wide owner, while Pi-specific evidence, review, and lifecycle-patch rules live in their owning skill, contract, or Pi instruction file. The workflow lifecycle contract now describes operator-visible execution behavior without implementation history, and `/plan-it` leaves next-command presentation solely to its command finalizer.

@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,7 +21,6 @@ class MockPi {
 function repo() {
 	const dir = mkdtempSync(path.join(tmpdir(), "structured-edit-"));
 	tempRepos.add(dir);
-	execFileSync("git", ["init"], { cwd: dir, stdio: "ignore" });
 	return dir;
 }
 afterEach(() => {
@@ -56,6 +54,7 @@ describe("structured_edit", () => {
 		};
 		const operation = parameters.properties.operations.items;
 
+		expect(Object.keys(parameters.properties)).not.toContain("format");
 		expect(JSON.stringify(tool().parameters).length).toBeLessThan(500);
 		expect(operation.anyOf).toBeUndefined();
 		expect(operation.properties.mode.enum).toEqual(["set", "delete"]);
@@ -78,7 +77,6 @@ describe("structured_edit", () => {
 			"1",
 			{
 				path: "a.json",
-				format: "json",
 				operations: [{ mode: "set", path: ["a"] }],
 			},
 			undefined,
@@ -97,7 +95,6 @@ describe("structured_edit", () => {
 			"1",
 			{
 				path: "a.json",
-				format: "json",
 				indent: 2,
 				finalNewline: true,
 				operations: [{ mode: "set", path: ["a"], value: 2 }],
@@ -134,7 +131,6 @@ describe("structured_edit", () => {
 				"1",
 				{
 					path: "a.json",
-					format: "json",
 					operations: [{ mode: "set", path: ["a"], value: 2 }],
 				},
 				undefined,
@@ -145,7 +141,6 @@ describe("structured_edit", () => {
 				"2",
 				{
 					path: "./a.json",
-					format: "json",
 					operations: [{ mode: "set", path: ["b"], value: 2 }],
 				},
 				undefined,
@@ -184,7 +179,6 @@ describe("structured_edit", () => {
 			"1",
 			{
 				path: "a.json",
-				format: "json",
 				operations: [{ mode: "set", path: ["a"], value: 2 }],
 			},
 			controller.signal,
@@ -217,35 +211,24 @@ describe("structured_edit", () => {
 			] satisfies Operation[]),
 		).toThrow(/Delete target/);
 	});
-	it("rejects .env and unsupported formats", async () => {
+	it("allows secret-like filenames", async () => {
 		const cwd = repo();
 		writeFileSync(path.join(cwd, ".env"), "{}");
-		const t = tool();
-		expect(
-			(
-				await t.execute(
-					"1",
-					{
-						path: ".env",
-						format: "json",
-						operations: [{ mode: "set", path: ["a"], value: 1 }],
-					},
-					undefined,
-					undefined,
-					{ cwd },
-				)
-			).isError,
-		).toBe(true);
-		expect(
-			(
-				await t.execute(
-					"1",
-					{ path: ".env", format: "yaml", operations: [] },
-					undefined,
-					undefined,
-					{ cwd },
-				)
-			).isError,
-		).toBe(true);
+
+		const result = await tool().execute(
+			"1",
+			{
+				path: ".env",
+				operations: [{ mode: "set", path: ["a"], value: 1 }],
+			},
+			undefined,
+			undefined,
+			{ cwd },
+		);
+
+		expect(result.isError).not.toBe(true);
+		expect(JSON.parse(readFileSync(path.join(cwd, ".env"), "utf8"))).toEqual({
+			a: 1,
+		});
 	});
 });

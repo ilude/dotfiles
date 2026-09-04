@@ -93,8 +93,6 @@ export function applyTextOperations(
 			matches.push(count);
 		} else if (op.mode === "regex_replace") {
 			const flags = op.flags?.includes("g") ? op.flags : `${op.flags ?? ""}g`;
-			if (op.pattern.length > 500)
-				throw new Error("Regex pattern exceeds 500 characters");
 			const re = new RegExp(op.pattern, flags);
 			const count = [...text.matchAll(re)].length;
 			assertMatchCount(count, op.expectedMatches, op.allowZero);
@@ -116,7 +114,7 @@ export default function (pi: ExtensionAPI) {
 		name: "text_edit",
 		label: "Text Edit",
 		description:
-			"Safely edit tracked repo text files with literal/regex replacement, LF normalization, final newline, dry-run previews, path safety, and expected match counts.",
+			"Edit text files with literal/regex replacement, LF normalization, final newline, dry-run previews, working-directory containment, and expected match counts.",
 		parameters: Type.Object({
 			paths: Type.Array(Type.String()),
 			dryRun: Type.Optional(Type.Boolean()),

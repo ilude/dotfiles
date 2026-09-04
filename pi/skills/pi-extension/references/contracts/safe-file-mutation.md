@@ -1,7 +1,7 @@
 # Safe File Mutation
 
-- Scope: `text_edit` owns bounded tracked-text transformations and `structured_edit` owns typed structured-file operations. Native `edit` and `write` remain separate Pi tools but participate in the same instruction-loading boundary.
-- Path safety: resolve repository paths canonically. Reject NULs, glob-shaped file arguments, directories, ignored targets, secret-like targets, and symlink escapes. A governed mutation must not escape its repository boundary.
+- Scope: `text_edit` owns bounded text transformations and `structured_edit` owns typed structured-file operations. Native `edit` and `write` remain separate Pi tools but participate in the same instruction-loading boundary.
+- Path safety: resolve target paths canonically, reject directories, and confine mutations to the current working directory. Filename patterns and Git state do not limit edits. Text input is limited to 16 MiB by default, overridable with the positive integer byte value `PI_SAFE_EDIT_MAX_BYTES`.
 - Text operations: support literal replacement, regular-expression replacement, line-ending normalization, and final-newline enforcement. Validate operation shape and expected match counts before writing. Repeated unchanged exact-match and non-unique native edit failures participate in the existing repeated-tool guard without rewriting the original result, inferring a correction, or retrying.
 - Structured operations: parse the complete document, apply typed set/delete operations, serialize deterministically, and fail without mutation when the source or requested operation is invalid.
 - Dry run: a dry run reports the proposed result without writing.

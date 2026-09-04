@@ -141,13 +141,14 @@ Use these helpers when:
 
 ## Safe edit tools
 
-Prefer Pi-native `text_edit` and `structured_edit` for tracked repo edits when they fit:
+Prefer Pi-native `text_edit` and `structured_edit` for file edits when they fit:
 
 - Use `text_edit` instead of Python heredoc, `sed -i`, `perl -pi`, or `cat >` for literal replacement, regex replacement, LF normalization, and final-newline changes.
 - Use `structured_edit` instead of ad hoc JSON mutation scripts for JSON `set` and `delete` operations.
-- These tools enforce repo containment, reject `.env`/secret-like and gitignored targets, provide bounded dry-run/previews, and make expected match counts explicit.
+- These tools confine canonical target paths to the current working directory, provide bounded dry-run/previews, and make expected match counts explicit. They do not consult Git or restrict filenames.
+- Text input is limited to 16 MiB by default. Set `PI_SAFE_EDIT_MAX_BYTES` to a positive integer byte limit when another bound is needed.
 
-Shell/Python edits are still acceptable for read-only analysis or cases outside these tools' scope, but do not use mutating Python heredoc snippets for routine tracked repo edits.
+Shell/Python edits are still acceptable for read-only analysis or cases outside these tools' scope, but do not use mutating Python heredoc snippets for routine file edits.
 
 ## Tool error shape
 

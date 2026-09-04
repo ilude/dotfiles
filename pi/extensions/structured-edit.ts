@@ -116,10 +116,9 @@ export default function (pi: ExtensionAPI) {
 		name: "structured_edit",
 		label: "Structured Edit",
 		description:
-			"Safely edit JSON files with typed-array set/delete operations, indentation, finalNewline, and repo path safety.",
+			"Edit JSON files with typed-array set/delete operations, indentation, finalNewline, and working-directory containment.",
 		parameters: Type.Object({
 			path: Type.String(),
-			format: Type.Literal("json"),
 			indent: Type.Optional(Type.Number()),
 			finalNewline: Type.Optional(Type.Boolean()),
 			operations: Type.Array(
@@ -132,8 +131,6 @@ export default function (pi: ExtensionAPI) {
 		}),
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			try {
-				if (params.format !== "json")
-					throw new Error("Only format=json is supported in v1");
 				const operations = validateStructuredOperations(
 					params.operations as Operation[],
 				);
@@ -156,7 +153,6 @@ export default function (pi: ExtensionAPI) {
 							},
 						],
 						details: {
-							format: "json",
 							finalNewline: params.finalNewline ?? true,
 						},
 					};
