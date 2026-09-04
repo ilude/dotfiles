@@ -33,29 +33,44 @@ export type BedrockPriceResult =
 
 type RatesPerMillion = BedrockPriceComponents;
 
-const FABLE_5_REGIONAL_RATES: RatesPerMillion = {
-	input: 10,
-	output: 50,
-	cacheRead: 1,
-	cacheWrite: 20,
+const FABLE_REGIONAL_RATES: Readonly<Record<string, RatesPerMillion>> = {
+	"anthropic.claude-fable-5": {
+		input: 10,
+		output: 50,
+		cacheRead: 1,
+		cacheWrite: 20,
+	},
+	"anthropic.claude-fable-5-1": {
+		input: 10,
+		output: 50,
+		cacheRead: 0.25,
+		cacheWrite: 20,
+	},
 };
 
 const CROSS_REGION_MULTIPLIER = 1.1;
+
+export function bedrockModelCost(
+	provider: string,
+	model: string,
+): RatesPerMillion | undefined {
+	const classified = classifyModel(provider, model);
+	if (!classified) return undefined;
+	return multiplyRates(
+		classified.rates,
+		classified.crossRegion ? CROSS_REGION_MULTIPLIER : 1,
+	);
+}
 
 export function priceBedrockUsage(input: BedrockPriceInput): BedrockPriceResult {
 	if (input.cacheWriteTier !== "1h") {
 		return { status: "unpriced", reason: "unsupported cache-write tier" };
 	}
 
-	const model = classifyModel(input.provider, input.model);
-	if (!model) {
+	const rates = bedrockModelCost(input.provider, input.model);
+	if (!rates) {
 		return { status: "unpriced", reason: "unsupported provider or model" };
 	}
-
-	const rates = multiplyRates(
-		FABLE_5_REGIONAL_RATES,
-		model.crossRegion ? CROSS_REGION_MULTIPLIER : 1,
-	);
 	const components = {
 		input: componentCost(input.inputTokens, rates.input),
 		output: componentCost(input.outputTokens, rates.output),
@@ -76,14 +91,16 @@ export function priceBedrockUsage(input: BedrockPriceInput): BedrockPriceResult 
 function classifyModel(
 	provider: string,
 	model: string,
-): { crossRegion: boolean } | undefined {
-	if (provider === "bedrock-mantle" && model === "anthropic.claude-fable-5") {
-		return { crossRegion: true };
+): { crossRegion: boolean; rates: RatesPerMillion } | undefined {
+	if (provider === "bedrock-mantle") {
+		const rates = FABLE_REGIONAL_RATES[model];
+		return rates ? { crossRegion: true, rates } : undefined;
 	}
 	if (provider !== "amazon-bedrock") return undefined;
-	if (model === "us.anthropic.claude-fable-5") return { crossRegion: true };
-	if (model === "anthropic.claude-fable-5") return { crossRegion: false };
-	return undefined;
+	const regionalId = model.replace(/^us[.]/, "");
+	const rates = FABLE_REGIONAL_RATES[regionalId];
+	if (!rates) return undefined;
+	return { crossRegion: model.startsWith("us."), rates };
 }
 
 function multiplyRates(
@@ -91,11 +108,15 @@ function multiplyRates(
 	multiplier: number,
 ): RatesPerMillion {
 	return {
-		input: rates.input * multiplier,
-		output: rates.output * multiplier,
-		cacheRead: rates.cacheRead * multiplier,
-		cacheWrite: rates.cacheWrite * multiplier,
+		input: roundedRate(rates.input * multiplier),
+		output: roundedRate(rates.output * multiplier),
+		cacheRead: roundedRate(rates.cacheRead * multiplier),
+		cacheWrite: roundedRate(rates.cacheWrite * multiplier),
 	};
+}
+
+function roundedRate(value: number): number {
+	return Number(value.toFixed(12));
 }
 
 function componentCost(tokens: number, ratePerMillion: number): number {

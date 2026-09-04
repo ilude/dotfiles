@@ -23,6 +23,7 @@ import {
 	selectLatestClaudeModelIds,
 	selectLatestGptModelIds,
 } from "../lib/bedrock-model-policy.js";
+import { bedrockModelCost } from "../lib/bedrock-pricing.js";
 import { getSettingsPath } from "../lib/settings-file.ts";
 import type { BedrockModelMetadata } from "../lib/bedrock-model-refresh.ts";
 
@@ -264,11 +265,13 @@ function runtimeClaudeRoutes(
 		const logicalId = runtimeId
 			.replace(/^us[.]/, "")
 			.replace(/-\d{8}-v\d+:\d+$/, "");
+		const cost = bedrockModelCost(PROVIDER_ID, logicalId);
 		const model: Model<Api> = {
 			...source,
 			id: logicalId,
 			provider: PROVIDER_ID,
 			name: `${displayName.replace(/ \(US\)$/, "")} (Bedrock Runtime)`,
+			...(cost ? { cost } : {}),
 		};
 		const runtimeTarget = { ...source, id: runtimeId };
 		return [{ model, target: runtimeTarget, transport: "runtime" as const }];

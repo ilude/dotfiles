@@ -691,7 +691,10 @@ describe("/refresh-models command", () => {
 		).find((route) => route.model.id === "anthropic.claude-fable-5-1");
 		expect(fableRoute).toMatchObject({
 			transport: "runtime",
-			model: { name: expect.stringContaining("Claude Fable 5.1") },
+			model: {
+				name: expect.stringContaining("Claude Fable 5.1"),
+				cost: { input: 11, output: 55, cacheRead: 0.275, cacheWrite: 22 },
+			},
 			target: { id: "us.anthropic.claude-fable-5-1" },
 		});
 		expect(notify).toHaveBeenCalledWith(

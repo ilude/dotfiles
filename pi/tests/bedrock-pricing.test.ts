@@ -23,6 +23,32 @@ describe("priceBedrockUsage", () => {
 		}
 	});
 
+	it("prices Fable 5.1 with its lower cache-read rate", () => {
+		for (const [provider, model, expectedMultiplier] of [
+			["bedrock-mantle", "anthropic.claude-fable-5-1", 1.1],
+			["amazon-bedrock", "us.anthropic.claude-fable-5-1", 1.1],
+			["amazon-bedrock", "anthropic.claude-fable-5-1", 1],
+		] as const) {
+			const result = priceBedrockUsage({
+				provider,
+				model,
+				inputTokens: 1_000_000,
+				outputTokens: 1_000_000,
+				cacheReadTokens: 1_000_000,
+				cacheWriteTokens: 1_000_000,
+				cacheWriteTier: "1h",
+			});
+			expect(result.status).toBe("priced");
+			if (result.status === "priced") {
+				expect(result.components.input).toBeCloseTo(10 * expectedMultiplier);
+				expect(result.components.output).toBeCloseTo(50 * expectedMultiplier);
+				expect(result.components.cacheRead).toBeCloseTo(0.25 * expectedMultiplier);
+				expect(result.components.cacheWrite).toBeCloseTo(20 * expectedMultiplier);
+				expect(result.total).toBeCloseTo(80.25 * expectedMultiplier);
+			}
+		}
+	});
+
 	it("uses regional rates when the model is not cross-region", () => {
 		const result = priceBedrockUsage({
 			provider: "amazon-bedrock",
