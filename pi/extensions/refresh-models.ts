@@ -766,9 +766,12 @@ export async function syncCuratedModelScope(
 		const codex = existing.filter((id) => id.startsWith("openai-codex/"));
 		const bedrock =
 			configured.has("amazon-bedrock") || configured.has("bedrock-mantle")
-				? bedrockModelIds.map(
-						(id) => `bedrock-mantle/${id.replace(/^us[.]/, "")}`,
-					)
+				? bedrockModelIds.map((id) => {
+						const logicalId = id
+							.replace(/^us[.]/, "")
+							.replace(/-\d{8}-v\d+:\d+$/, "");
+						return `bedrock-mantle/${logicalId}`;
+					})
 				: [];
 		const orderedProviders = [
 			...CURATED_PROVIDER_ORDER.filter((provider) => configured.has(provider)),
