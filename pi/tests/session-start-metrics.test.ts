@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	extensionNameFromUrl,
 	onSessionStart,
+	whenMetricsFlushed,
 } from "../lib/session-start-metrics.js";
 
 const originalMetricsDir = process.env.PI_METRICS_DIR;
@@ -48,7 +49,7 @@ function context(sessionId = "session-1"): ExtensionContext {
 }
 
 async function readRecordedEvent(directory: string): Promise<Record<string, unknown>> {
-	await new Promise((resolve) => setTimeout(resolve, 20));
+	await whenMetricsFlushed();
 	const file = fs
 		.readdirSync(directory)
 		.find((name) => name.startsWith("metrics-") && name.endsWith(".jsonl"));

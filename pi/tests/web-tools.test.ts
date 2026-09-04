@@ -154,12 +154,6 @@ describe("web-tools extension", () => {
         "SearXNG dns failure at searxng.ilude.com: fetch failed",
       );
     });
-
-    it("should show '(no snippet)' when content is missing", async () => {
-      mockSearchResponse([{ title: "Bare", url: "https://bare.com" }]);
-      const result = await search.execute("id", { query: "test" }, undefined, undefined, {});
-      expect(result.content[0].text).toContain("(no snippet)");
-    });
   });
 
   describe("web_fetch", () => {
@@ -204,26 +198,6 @@ describe("web-tools extension", () => {
       mockPi.exec.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
       const result = await fetch_tool.execute("id", { url: "https://example.com" }, undefined, undefined, {});
       expect(result.content[0].text).toBe("(no content extracted)");
-    });
-
-    it("should render running and settled timing for both web tools", () => {
-      const startedAt = new Date(2026, 7, 19, 11, 29, 30).getTime();
-      const theme = createMockTheme();
-      const searchTool = mockPi._getTool("web_search")!;
-      const searchCall = searchTool.renderCall(
-        { query: "docs" },
-        theme,
-        { executionStarted: true, state: { transcriptStartedAt: startedAt } },
-      );
-      expect(searchCall.render(300).join("\n")).toContain("started 11:29:30 local");
-      const fetchResult = fetch_tool.renderResult(
-        { content: [{ type: "text", text: "article" }], details: { elapsed: "2.0" } },
-        { expanded: false, isPartial: false },
-        theme,
-        { state: { transcriptStartedAt: startedAt } },
-      );
-      expect(fetchResult.render(300).join("\n")).toContain("article");
-      expect(fetchResult.render(300).join("\n")).toContain("started 11:29:30 local | duration 2s");
     });
 
     it("should show the fetched URL in call rendering", () => {

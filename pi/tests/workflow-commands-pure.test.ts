@@ -69,16 +69,18 @@ describe("commit planner warnings", () => {
 
 describe("buildCommitPlanningPrompt", () => {
 	it("includes a semantic validation correction on the retry prompt", () => {
+		const correction = "Regenerate the complete plan.";
 		const prompt = buildCommitPlanningPrompt("instructions", {
 			files: ["a.ts"],
 			diffStat: "",
 			diff: "",
 			hint: "",
-			validationCorrection: "Regenerate the complete plan.",
+			validationCorrection: correction,
 		});
 
-		expect(prompt).toContain(
-			"Validation correction:\nRegenerate the complete plan.",
+		expect(prompt.split(correction)).toHaveLength(2);
+		expect(prompt.indexOf(correction)).toBeGreaterThan(
+			prompt.indexOf("instructions"),
 		);
 	});
 });

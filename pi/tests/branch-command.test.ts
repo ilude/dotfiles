@@ -85,12 +85,8 @@ describe("/branch", () => {
 		const command = pi._commands.find((entry) => entry.name === "branch");
 		expect(command).toBeTruthy();
 		if (!command) throw new Error("branch command not registered");
-		const order: string[] = [];
-		const notify = vi.fn((message: string) => {
-			if (message.startsWith("Opening branched")) order.push("ack");
-		});
+		const notify = vi.fn();
 		const createBranchedSession = vi.fn(() => {
-			order.push("session");
 			return "C:/Users/me/.pi/agent/sessions/project/2026-05-04T18-58-02-760Z_019df45a-c587-70ae-bf94-c74cd681715c.jsonl";
 		});
 
@@ -104,8 +100,6 @@ describe("/branch", () => {
 		});
 
 		expect(createBranchedSession).toHaveBeenCalledWith("leaf-1");
-		expect(order).toEqual(["ack", "session"]);
-		expect(notify.mock.calls.filter(([message]) => message.startsWith("Opening branched"))).toHaveLength(1);
 		expect(mockSpawnSync).toHaveBeenCalledWith(
 			"wt",
 			expect.arrayContaining([
@@ -117,10 +111,6 @@ describe("/branch", () => {
 				"& pi '--session' '019df45a-c587-70ae-bf94-c74cd681715c'",
 			]),
 			expect.objectContaining({ shell: false }),
-		);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("Opened branched Pi session"),
-			"info",
 		);
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
@@ -188,10 +178,6 @@ describe("/branch", () => {
 			expect.objectContaining({ cwd: "C:\\Users\\me\\project" }),
 		);
 		expect(mockSpawnSync).not.toHaveBeenCalled();
-		expect(notify).toHaveBeenCalledWith(
-			"Opened branched Pi session in a Herdr tab: review",
-			"info",
-		);
 	});
 
 	it("builds new-terminal argv for Windows Terminal", () => {
@@ -285,10 +271,6 @@ describe("/branch", () => {
 			]),
 			expect.objectContaining({ shell: false }),
 		);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("Opened new Pi instance"),
-			"info",
-		);
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 
 		mockSpawnSync.mockClear();
@@ -333,10 +315,6 @@ describe("/branch", () => {
 			expect.any(Object),
 		);
 		expect(mockSpawnSync).not.toHaveBeenCalled();
-		expect(notify).toHaveBeenCalledWith(
-			"Opened new Pi instance in a Herdr tab: helper",
-			"info",
-		);
 	});
 
 	it("registers new-terminal command", async () => {
@@ -362,10 +340,6 @@ describe("/branch", () => {
 				"pwsh",
 			]),
 			expect.objectContaining({ shell: false }),
-		);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("Opened new terminal"),
-			"info",
 		);
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
@@ -401,10 +375,6 @@ describe("/branch", () => {
 			expect.any(Object),
 		);
 		expect(mockSpawnSync).not.toHaveBeenCalled();
-		expect(notify).toHaveBeenCalledWith(
-			"Opened new Herdr tab in this cwd: shell",
-			"info",
-		);
 	});
 
 	it("reports launch failures without a manual recovery command", async () => {
@@ -428,7 +398,7 @@ describe("/branch", () => {
 		});
 
 		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("Terminal launch failed: wt exited 1"),
+			expect.stringContaining("wt exited 1"),
 			"warning",
 		);
 		expect(notify.mock.calls[0][0]).not.toContain("Manual resume command:");

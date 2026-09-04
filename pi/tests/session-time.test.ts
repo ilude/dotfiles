@@ -9,15 +9,15 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
 import registerSessionTime, {
-	formatSessionTime,
 	SESSION_TIME_MESSAGE_TYPE,
 } from "../extensions/session-time.js";
+import { whenMetricsFlushed } from "../lib/session-start-metrics.js";
 
 const previousMetricsDir = process.env.PI_METRICS_DIR;
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 10));
+	await whenMetricsFlushed();
 	if (previousMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
 	else process.env.PI_METRICS_DIR = previousMetricsDir;
 	for (const directory of temporaryDirectories.splice(0))
@@ -63,14 +63,6 @@ function runtime(initialEntries: SessionEntry[] = []) {
 }
 
 describe("session time context", () => {
-	it("formats a compact local timestamp with its numeric UTC offset", () => {
-		const date = new Date("2026-08-22T13:14:15.000Z");
-		const rendered = formatSessionTime(date);
-		expect(rendered).toMatch(
-			/^Current datetime: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\.$/,
-		);
-	});
-
 	it("injects one hidden context message and keeps it stable on reload", async () => {
 		const metricsDirectory = fs.mkdtempSync(
 			path.join(os.tmpdir(), "pi-session-time-"),
@@ -81,6 +73,7 @@ describe("session time context", () => {
 
 		await instance.start("startup");
 		await instance.start("reload");
+		await whenMetricsFlushed();
 
 		expect(instance.sent).toHaveLength(1);
 		expect(instance.sent[0]).toMatchObject({

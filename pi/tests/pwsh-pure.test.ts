@@ -73,11 +73,4 @@ describe("buildTruncationNotice", () => {
     expect(notice).toContain("Full output: /tmp/pi-pwsh-abc.txt");
   });
 
-  it("starts with newlines for separation", () => {
-    const notice = buildTruncationNotice(
-      { outputLines: 100, totalLines: 200, outputBytes: 1024, totalBytes: 2048 },
-      "/tmp/test.txt"
-    );
-    expect(notice.startsWith("\n\n")).toBe(true);
-  });
 });

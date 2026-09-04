@@ -166,10 +166,21 @@ describe("BoundedWorkflowRuntime", () => {
 		const runtime = new BoundedWorkflowRuntime();
 		let active = 0;
 		let peak = 0;
+		let started = 0;
+		let release!: () => void;
+		const barrier = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let resolveTwoStarted!: () => void;
+		const twoStarted = new Promise<void>((resolve) => {
+			resolveTwoStarted = resolve;
+		});
 		const execute = vi.fn(async ({ key }: { key: string }) => {
 			active++;
 			peak = Math.max(peak, active);
-			await new Promise((resolve) => setTimeout(resolve, 5));
+			started++;
+			if (started === 2) resolveTwoStarted();
+			await barrier;
 			active--;
 			return { status: "found", evidence: [key] };
 		});
@@ -185,7 +196,10 @@ describe("BoundedWorkflowRuntime", () => {
 			})),
 		};
 
-		const first = await runtime.run(spec, dependencies(execute));
+		const firstRun = runtime.run(spec, dependencies(execute));
+		await twoStarted;
+		release();
+		const first = await firstRun;
 		const resumed = await runtime.run(spec, dependencies(execute));
 
 		expect(peak).toBe(2);

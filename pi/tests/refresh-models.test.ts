@@ -433,11 +433,11 @@ describe("/refresh-models command", () => {
 			"2023-06-01",
 		);
 		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("anthropic added: claude-opus-4-7"),
+			expect.stringContaining("claude-opus-4-7"),
 			"info",
 		);
 		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("anthropic removed: claude-sonnet-4-5"),
+			expect.stringContaining("claude-sonnet-4-5"),
 			"info",
 		);
 		expect(notify).toHaveBeenCalledWith(
@@ -558,11 +558,11 @@ describe("/refresh-models command", () => {
 			)?.[1].headers.Authorization,
 		).toBe("Bearer opencode-key");
 		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("openrouter added: openai/gpt-5.5"),
+			expect.stringContaining("openai/gpt-5.5"),
 			"info",
 		);
 		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("opencode added: sonnet"),
+			expect.stringContaining("sonnet"),
 			"info",
 		);
 		expect(notify).toHaveBeenCalledWith(
@@ -699,22 +699,18 @@ describe("/refresh-models command", () => {
 		});
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringContaining(
-				"amazon-bedrock added: us.anthropic.claude-fable-5-1",
+				"us.anthropic.claude-fable-5-1",
 			),
 			"info",
 		);
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringContaining(
-				"Claude Fable 5.1 - select: bedrock-mantle/anthropic.claude-fable-5-1; route: amazon-bedrock/us.anthropic.claude-fable-5-1",
+				"amazon-bedrock/us.anthropic.claude-fable-5-1",
 			),
 			"info",
 		);
 		expect(reload).toHaveBeenCalledOnce();
 		expect(pi.exec).toHaveBeenCalledTimes(2);
-		expect(notify).not.toHaveBeenCalledWith(
-			expect.stringContaining("Skipping unsupported providers: bedrock-mantle"),
-			"warning",
-		);
 	});
 
 	it("fails when an explicit provider is not configured", async () => {

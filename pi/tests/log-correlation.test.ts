@@ -17,17 +17,31 @@ import {
 
 describe("correlation context", () => {
 	it("creates compact runtime-scoped IDs and isolates parallel scopes", async () => {
-		const values = await Promise.all(
+		let started = 0;
+		let release!: () => void;
+		const barrier = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let resolveBothStarted!: () => void;
+		const bothStarted = new Promise<void>((resolve) => {
+			resolveBothStarted = resolve;
+		});
+		const valuesPromise = Promise.all(
 			[1, 2].map(
 				(item) =>
 					new Promise<string>((resolve) =>
 						runCorrelation({ session_id: `s-${item}` }, async () => {
-							await new Promise((done) => setTimeout(done, item));
+							started++;
+							if (started === 2) resolveBothStarted();
+							await barrier;
 							resolve(correlationForEmission()!.session_id!);
 						}),
 					),
 			),
 		);
+		await bothStarted;
+		release();
+		const values = await valuesPromise;
 		expect(values).toEqual(["s-1", "s-2"]);
 		expect(createCorrelationId("turn")).toMatch(/^turn-[a-z0-9]+-[a-z0-9]+$/);
 	});

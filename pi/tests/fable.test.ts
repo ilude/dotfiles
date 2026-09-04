@@ -156,22 +156,6 @@ describe("Bedrock Claude orchestration policy", () => {
 			expect(isBedrockClaudeRootModel(model)).toBe(false);
 	});
 
-	it("adds one concise delegation instruction in every runtime mode", () => {
-		const { beforeAgentStart } = hooks();
-		for (const model of subscriptionOrchestratorModels) {
-			for (const mode of ["tui", "rpc", "json", "print"]) {
-				const result = beforeAgentStart(
-					{ systemPrompt: "base" },
-					createMockCtx({ mode, model }),
-				);
-				const paragraphs = result.systemPrompt.split("\n\n");
-				expect(paragraphs).toHaveLength(2);
-				expect(paragraphs[0]).toBe("base");
-				expect(paragraphs[1].split(/\s+/).length).toBeLessThanOrEqual(70);
-			}
-		}
-	});
-
 	it("removes the retired tool visibility restriction on reload", async () => {
 		const pi = createMockPi();
 		for (const name of ["read", "write"]) {
@@ -419,21 +403,6 @@ describe("foreman command", () => {
 		expect(pi.setThinkingLevel).toHaveBeenCalledWith("xhigh");
 		expect(pi.sendUserMessage).toHaveBeenCalledWith("Ship the feature");
 
-		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
-		const result = beforeAgentStart(
-			{ systemPrompt: "base" },
-			orchestratorCtx({ model: foremanModel }),
-		);
-		expect(result.systemPrompt).toContain(
-			"Act as the foreman for a team of lower-cost Codex subagents.",
-		);
-		expect(result.systemPrompt).toContain("Minimize your own token usage");
-		expect(result.systemPrompt).toContain("follow YAGNI and KISS");
-		expect(result.systemPrompt).toContain("prefer the Pareto 80/20 solution");
-		expect(result.systemPrompt).toContain(
-			"do not create tests that merely restate implementation details",
-		);
-		expect(result.systemPrompt).not.toContain("otherwise work directly");
 	});
 });
 

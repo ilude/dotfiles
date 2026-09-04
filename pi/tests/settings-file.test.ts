@@ -2,6 +2,7 @@ import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { once } from "node:events";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAgentDir as getExtensionUtilsAgentDir } from "../lib/extension-utils.ts";
@@ -111,63 +112,45 @@ describe("atomic JSON-object updates", () => {
 
 	it("preserves two updates from concurrent processes", async () => {
 		const settingsPath = path.join(tempDir, "settings.json");
-		const firstEnteredPath = path.join(tempDir, "first-entered");
 		fs.writeFileSync(settingsPath, "{}\n", "utf-8");
 		const moduleUrl = pathToFileURL(
 			path.resolve(import.meta.dirname, "../lib/settings-file.ts"),
 		).href;
 		const script = `
-			import fs from "node:fs";
-			const [moduleUrl, settingsPath, key, enteredPath, delayMs] = process.argv.slice(1);
+			const [moduleUrl, settingsPath, key, role] = process.argv.slice(1);
 			const { updateJsonObjectAtomic } = await import(moduleUrl);
-			await updateJsonObjectAtomic(settingsPath, (settings) => {
-				if (enteredPath) fs.writeFileSync(enteredPath, "ready");
-				if (delayMs !== "0") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(delayMs));
-				return { ...settings, [key]: true };
-			});
+			const options = role === "holder" ? {
+				beforeRead: () => new Promise((resolve) => {
+					process.stdout.write("ready\\n");
+					process.stdin.once("data", resolve);
+				}),
+			} : role === "writer" ? {
+				onLockContention: () => process.stdout.write("contended\\n"),
+			} : undefined;
+			await updateJsonObjectAtomic(settingsPath, (settings) => ({ ...settings, [key]: true }), options);
 		`;
-		const runWriter = (key: string, enteredPath = "", delayMs = 0) => {
+		const runWriter = (key: string, role = "plain") => {
 			const child = spawn(
 				process.execPath,
-				[
-					"--input-type=module",
-					"--eval",
-					script,
-					moduleUrl,
-					settingsPath,
-					key,
-					enteredPath,
-					String(delayMs),
-				],
-				{ stdio: ["ignore", "pipe", "pipe"] },
+				["--input-type=module", "--eval", script, moduleUrl, settingsPath, key, role],
+				{ stdio: ["pipe", "pipe", "pipe"] },
 			);
-			return new Promise<void>((resolve, reject) => {
+			const done = new Promise<void>((resolve, reject) => {
 				let stderr = "";
 				child.stderr.setEncoding("utf-8");
-				child.stderr.on("data", (chunk: string) => {
-					stderr += chunk;
-				});
+				child.stderr.on("data", (chunk: string) => { stderr += chunk; });
 				child.on("error", reject);
-				child.on("exit", (code) => {
-					if (code === 0) resolve();
-					else
-						reject(new Error(`Writer ${key} exited with ${code}: ${stderr}`));
-				});
+				child.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`Writer ${key} exited with ${code}: ${stderr}`)));
 			});
+			return { child, done };
 		};
 
-		const first = runWriter("first", firstEnteredPath, 500);
-		for (
-			let attempt = 0;
-			attempt < 500 && !fs.existsSync(firstEnteredPath);
-			attempt++
-		) {
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		}
-		if (!fs.existsSync(firstEnteredPath)) await first;
-		expect(fs.existsSync(firstEnteredPath)).toBe(true);
-		const second = runWriter("second");
-		await Promise.all([first, second]);
+		const first = runWriter("first", "holder");
+		await once(first.child.stdout!, "data");
+		const second = runWriter("second", "writer");
+		await once(second.child.stdout!, "data");
+		first.child.stdin!.end("release\n");
+		await Promise.all([first.done, second.done]);
 
 		expect(JSON.parse(fs.readFileSync(settingsPath, "utf-8"))).toEqual({
 			first: true,

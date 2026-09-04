@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	getMetricsConfig,
 	getMetricsLogPath,
@@ -27,6 +27,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	if (prevMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
 	else process.env.PI_METRICS_DIR = prevMetricsDir;
 	if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
@@ -110,8 +111,10 @@ describe("readRecentEvents", () => {
 	});
 
 	it("returns newest-first", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-08-25T00:00:00.000Z"));
 		recordEvent({ event: "first" });
-		await new Promise((r) => setTimeout(r, 5));
+		vi.setSystemTime(new Date("2026-08-25T00:00:00.005Z"));
 		recordEvent({ event: "second" });
 		const events = readRecentEvents();
 		expect(events[0].event).toBe("second");

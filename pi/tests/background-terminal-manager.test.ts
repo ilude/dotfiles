@@ -1,3 +1,5 @@
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import {
 	existsSync,
 	mkdtempSync,
@@ -35,6 +37,14 @@ function nodeSpawner(script: string) {
 			stdio: ["pipe", "pipe", "pipe"],
 			windowsHide: true,
 		});
+}
+
+function controlledProcess(): ChildProcessWithoutNullStreams {
+	const child = new EventEmitter() as ChildProcessWithoutNullStreams;
+	child.stdout = new PassThrough();
+	child.stderr = new PassThrough();
+	child.stdin = new PassThrough();
+	return child;
 }
 
 function nextSettlement(manager: BackgroundTerminalManager): Promise<{
@@ -87,14 +97,17 @@ describe("BackgroundTerminalManager", () => {
 
 	it("preserves UTF-8 characters split across output chunks", async () => {
 		const tempRoot = root();
+		const child = controlledProcess();
 		const manager = new BackgroundTerminalManager({
 			tempRoot,
-			spawnProcess: nodeSpawner(
-				'const value = Buffer.from("A\\u{1F600}B"); process.stdout.write(value.subarray(0, 3)); setTimeout(() => process.stdout.write(value.subarray(3)), 10);',
-			),
+			spawnProcess: () => child,
 		});
 		const settled = nextSettlement(manager);
 		manager.start({ command: "unicode", cwd: tempRoot });
+		const value = Buffer.from("A\u{1F600}B");
+		child.stdout.emit("data", value.subarray(0, 3));
+		child.stdout.emit("data", value.subarray(3));
+		child.emit("close", 0);
 		expect((await settled).snapshot.stdout).toBe("A\u{1F600}B");
 		await manager.dispose();
 	});

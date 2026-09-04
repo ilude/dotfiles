@@ -11,6 +11,7 @@ import {
 } from "../lib/reload-status";
 
 const tempDirs: string[] = [];
+const FIXED_BASELINE_MS = 2_000;
 
 function makeTempDir(): string {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-reload-status-"));
@@ -28,7 +29,8 @@ describe("reload status detector", () => {
 		const dir = makeTempDir();
 		const candidate = path.join(dir, "operator-status.ts");
 		fs.writeFileSync(candidate, "export {};\n");
-		const state = createReloadStatusState(Date.now() + 60_000);
+		fs.utimesSync(candidate, 1, 1);
+		const state = createReloadStatusState(FIXED_BASELINE_MS);
 
 		expect(
 			needsPiReload({
@@ -67,7 +69,7 @@ describe("reload status detector", () => {
 				nowMs: 10_000,
 			}),
 		).toBe(true);
-		resetReloadStatusBaseline(state, Date.now() + 60_000);
+		resetReloadStatusBaseline(state, FIXED_BASELINE_MS);
 		state.lastScanMs = 10_000;
 		state.cachedNeedsReload = true;
 		expect(
@@ -83,6 +85,7 @@ describe("reload status detector", () => {
 		const dir = makeTempDir();
 		const candidate = path.join(dir, "operator-status.ts");
 		fs.writeFileSync(candidate, "export {};\n");
+		fs.utimesSync(candidate, 1, 1);
 		const state = createReloadStatusState(0);
 
 		expect(
@@ -92,7 +95,7 @@ describe("reload status detector", () => {
 				nowMs: 6_000,
 			}),
 		).toBe(true);
-		resetReloadStatusBaseline(state, Date.now() + 60_000);
+		resetReloadStatusBaseline(state, FIXED_BASELINE_MS);
 		expect(
 			needsPiReload({
 				state,

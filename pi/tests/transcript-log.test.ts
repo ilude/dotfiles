@@ -528,16 +528,17 @@ describe("storage and runtime safety", () => {
 		const newFile = path.join(tmpDir, "new.jsonl");
 		fs.writeFileSync(oldFile, "x");
 		fs.writeFileSync(newFile, "y");
-		// Backdate old.jsonl by 30 days.
-		const past = (Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000;
+		// Backdate old.jsonl by 30 days relative to the fixed sweep clock.
+		const nowMs = Date.parse("2026-04-25T12:00:00.000Z");
+		const past = (nowMs - 30 * 24 * 60 * 60 * 1000) / 1000;
 		fs.utimesSync(oldFile, past, past);
 
-		const first = await sweepRetention(tmpDir, 14);
+		const first = await sweepRetention(tmpDir, 14, undefined, nowMs);
 		expect(first.removedFiles).toBe(1);
 		expect(fs.existsSync(oldFile)).toBe(false);
 		expect(fs.existsSync(newFile)).toBe(true);
 
-		const second = await sweepRetention(tmpDir, 14);
+		const second = await sweepRetention(tmpDir, 14, undefined, nowMs);
 		expect(second.removedFiles).toBe(0); // idempotent
 	});
 
@@ -600,6 +601,7 @@ describe("routing decision schema and purge command", () => {
 		process.env.USERPROFILE = tmpHome;
 	});
 	afterEach(() => {
+		vi.useRealTimers();
 		fs.rmSync(tmpDir, { recursive: true, force: true });
 		fs.rmSync(tmpHome, { recursive: true, force: true });
 		if (originalHome === undefined) delete process.env.HOME;
@@ -656,7 +658,10 @@ describe("routing decision schema and purge command", () => {
 		fs.writeFileSync(oldJsonl, "x");
 		fs.mkdirSync(oldSpill, { recursive: true });
 		fs.writeFileSync(path.join(oldSpill, "evt.json.gz"), "gz");
-		const oldTime = new Date(Date.now() - 60_000);
+		vi.useFakeTimers();
+		const now = new Date("2026-04-25T12:00:00.000Z");
+		vi.setSystemTime(now);
+		const oldTime = new Date(now.getTime() - 60_000);
 		fs.utimesSync(oldJsonl, oldTime, oldTime);
 		fs.utimesSync(oldSpill, oldTime, oldTime);
 
@@ -675,6 +680,7 @@ describe("routing decision schema and purge command", () => {
 			},
 		};
 		await purge!.handler("", ctx as any);
+		vi.useRealTimers();
 		expect(fs.existsSync(oldJsonl)).toBe(false);
 		expect(fs.existsSync(oldSpill)).toBe(false);
 	});

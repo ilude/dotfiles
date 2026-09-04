@@ -23,16 +23,33 @@ const performanceClock: SessionStartClock = {
 
 const pendingEvents: RecordEventInput[] = [];
 let flushScheduled = false;
+let metricsFlush: Promise<void> | undefined;
+let resolveMetricsFlush: (() => void) | undefined;
 
 function flushPendingEvents(): void {
 	flushScheduled = false;
-	recordEvents(pendingEvents.splice(0));
+	const resolve = resolveMetricsFlush;
+	metricsFlush = undefined;
+	resolveMetricsFlush = undefined;
+	try {
+		recordEvents(pendingEvents.splice(0));
+	} finally {
+		resolve?.();
+	}
+}
+
+/** Resolves after the currently scheduled metrics batch has been persisted. */
+export function whenMetricsFlushed(): Promise<void> {
+	return metricsFlush ?? Promise.resolve();
 }
 
 function enqueueEvent(event: RecordEventInput): void {
 	pendingEvents.push(event);
 	if (flushScheduled) return;
 	flushScheduled = true;
+	metricsFlush = new Promise<void>((resolve) => {
+		resolveMetricsFlush = resolve;
+	});
 	const timer = setTimeout(flushPendingEvents, 0);
 	timer.unref?.();
 }

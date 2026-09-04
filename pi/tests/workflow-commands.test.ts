@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import * as path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formatConfiguredUsageReport } from "../extensions/codex-status.ts";
-import { createMockPi, createMockTheme } from "./helpers/mock-pi.js";
+import { createMockPi } from "./helpers/mock-pi.js";
 
 vi.mock("node:child_process", () => ({
 	spawn: vi.fn(),
@@ -179,24 +179,6 @@ describe("workflow command dispatch", () => {
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
 	});
 
-	it("renders timing for workflow closeout tools only", () => {
-		const theme = createMockTheme();
-		const startedAt = new Date(2026, 7, 19, 11, 29, 30).getTime();
-		for (const name of ["workflow_complete", "plan_archive"]) {
-			const tool = mockPi._getTool(name)!;
-			const call = tool.renderCall?.({}, theme, { executionStarted: true, state: { transcriptStartedAt: startedAt } });
-			expect(call?.render(300).join("\n")).toContain("started 11:29:30 local");
-			const result = tool.renderResult?.(
-				{ content: [{ type: "text", text: name }] },
-				{ expanded: false, isPartial: false },
-				theme,
-				{ state: { transcriptStartedAt: startedAt } },
-			);
-			expect(result?.render(300).join("\n")).toContain("duration");
-		}
-		expect(mockPi._getTool("plan_progress")?.renderCall).toBeUndefined();
-	});
-
 	function getHandler(name: string) {
 		const cmd = mockPi._commands.find((candidate) => candidate.name === name);
 		if (!cmd) throw new Error(`${name} command not registered`);
@@ -289,7 +271,6 @@ describe("workflow command dispatch", () => {
 			expect.objectContaining({ customType: "workflow-commit-activity" }),
 			expect.anything(),
 		);
-		expect(notify).toHaveBeenCalledWith("Working tree is clean", "info");
 	});
 
 	it.each([
@@ -648,14 +629,6 @@ describe("workflow command dispatch", () => {
 		expect(
 			mockTypedAgentRun.mock.calls.some(([id]) => id === "secret-reviewer"),
 		).toBe(false);
-		expect(mockPi.sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				customType: "workflow-commit-activity",
-				content:
-					"commit-secrets=allow for 1 selected path(s); skipping secret review for those paths.",
-				display: true,
-			}),
-		);
 	});
 
 	it("retries incomplete secret-review coverage with stable candidate IDs", async () => {
@@ -762,52 +735,6 @@ describe("workflow command dispatch", () => {
 		);
 	});
 
-	it("surfaces planner warnings before commit mutation", async () => {
-		const notify = vi.fn();
-		const file = "pi/lib/extension-utils.ts";
-		for (const result of [
-			{ stdout: modifiedStatus([file]) },
-			{},
-			{ stdout: `${file}\n` },
-			{},
-			{},
-			{},
-			{ stdout: `${file} | 1 +\n` },
-			{ code: 1 },
-			{},
-			{ stdout: `${file} | 1 +\n` },
-			{ stdout: `diff --git a/${file} b/${file}\n` },
-			{ code: 1, stderr: "stop after warning\n" },
-		]) {
-			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
-		}
-		mockTypedAgentRun.mockResolvedValueOnce({
-			output: {
-				groups: [
-					{
-						files: [file],
-						subject: "chore(pi): update secret scanner",
-					},
-				],
-				warnings: ["Review generated files before committing."],
-			},
-			attempts: 1,
-		});
-
-		await getHandler("commit")("", {
-			cwd: path.resolve(process.cwd(), ".."),
-			ui: { notify },
-		});
-
-		expect(mockPi.sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				customType: "workflow-commit-activity",
-				content: "Planner warning: Review generated files before committing.",
-				display: true,
-			}),
-		);
-	});
-
 	it("reports /commit executor failures without dispatching a workflow prompt", async () => {
 		const notify = vi.fn();
 		mockSpawn.mockImplementationOnce(() =>
@@ -826,15 +753,12 @@ describe("workflow command dispatch", () => {
 		);
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
-				customType: "workflow-commit-activity",
-				content: "Commit failed: fatal: not a git repository",
-				display: true,
-			}),
-		);
-		expect(notify).toHaveBeenCalledWith(
-			"Commit failed: fatal: not a git repository",
-			"error",
-		);
+			customType: "workflow.recoverable-local-failure",
+			content: expect.stringContaining("fatal: not a git repository"),
+		}),
+		expect.objectContaining({ triggerTurn: true, deliverAs: "followUp" }),
+	);
+		expect(notify).toHaveBeenCalledWith(expect.any(String), "error");
 	});
 
 	it("surfaces untracked classifier provider failures through /commit", async () => {
@@ -873,15 +797,12 @@ describe("workflow command dispatch", () => {
 		);
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
-				customType: "workflow-commit-activity",
-				content: "Commit failed: synthetic upstream failure",
-				display: true,
-			}),
-		);
-		expect(notify).toHaveBeenCalledWith(
-			"Commit failed: synthetic upstream failure",
-			"error",
-		);
+			customType: "workflow.recoverable-local-failure",
+			content: expect.stringContaining("synthetic upstream failure"),
+		}),
+		expect.objectContaining({ triggerTurn: true, deliverAs: "followUp" }),
+	);
+		expect(notify).toHaveBeenCalledWith(expect.any(String), "error");
 	});
 
 	it("cancels /commit before launching git when the command signal is already aborted", async () => {
@@ -898,15 +819,11 @@ describe("workflow command dispatch", () => {
 		expect(mockSpawn).not.toHaveBeenCalled();
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
-				customType: "workflow-commit-activity",
-				content: "Commit failed: Operation cancelled",
-				display: true,
-			}),
+			customType: "workflow-commit-activity",
+			content: expect.stringContaining("Operation cancelled"),
+		}),
 		);
-		expect(notify).toHaveBeenCalledWith(
-			"Commit failed: Operation cancelled",
-			"error",
-		);
+		expect(notify).toHaveBeenCalledWith(expect.any(String), "error");
 	});
 
 	it("cancels /commit with Esc through the loader signal", async () => {

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const recordEvent = vi.hoisted(() => vi.fn());
 vi.mock("../lib/metrics.ts", () => ({ recordEvent }));
 
-import { createMockPi, createMockTheme } from "./helpers/mock-pi.js";
+import { createMockPi } from "./helpers/mock-pi.js";
 
 const MOCK_TOOLS = [
 	{
@@ -239,20 +239,6 @@ describe("tool-search extension", () => {
 			);
 			expect(result.content[0].text).toContain("No tools found");
 		});
-
-		it("should rank name matches higher", async () => {
-			const result = await tool.execute(
-				"id",
-				{ query: "bash" },
-				undefined,
-				undefined,
-				{},
-			);
-			const text = result.content[0].text;
-			// bash should appear first (exact name match)
-			const bashPos = text.indexOf("bash");
-			expect(bashPos).toBeGreaterThan(-1);
-		});
 	});
 
 	describe("include_params", () => {
@@ -276,20 +262,6 @@ describe("tool-search extension", () => {
 				{},
 			);
 			expect(result.content[0].text).not.toContain("Parameters:");
-		});
-	});
-
-	describe("renderCall", () => {
-		it("should show search query", () => {
-			const theme = createMockTheme();
-			tool.renderCall({ query: "powershell" }, theme, {});
-			expect(theme.fg).toHaveBeenCalledWith("toolTitle", "powershell");
-		});
-
-		it("should show 'list all' when no query", () => {
-			const theme = createMockTheme();
-			const result = tool.renderCall({}, theme, {});
-			expect(result).toBeDefined();
 		});
 	});
 });

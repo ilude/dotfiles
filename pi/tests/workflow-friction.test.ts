@@ -10,6 +10,7 @@ import workflowFrictionExtension, {
 	type ImprovementCandidateUsage,
 	learningDecisionsPath,
 	processPendingReviews,
+	waitForPendingReviewTasks,
 	rankImprovementCandidates,
 	readCurrentLearningDecisions,
 } from "../extensions/workflow-friction-review.js";
@@ -261,31 +262,6 @@ function rankedCandidate(
 		reviewedAt,
 		review: record.review ? { ...record.review, impact } : undefined,
 	};
-}
-
-async function waitForPath(filePath: string): Promise<void> {
-	for (let attempt = 0; attempt < 100; attempt += 1) {
-		try {
-			await fs.access(filePath);
-			return;
-		} catch {
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		}
-	}
-	throw new Error(`Timed out waiting for ${filePath}`);
-}
-
-async function waitForPathRemoval(filePath: string): Promise<void> {
-	for (let attempt = 0; attempt < 100; attempt += 1) {
-		try {
-			await fs.access(filePath);
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		} catch {
-			await new Promise((resolve) => setTimeout(resolve, 10));
-			return;
-		}
-	}
-	throw new Error(`Timed out waiting for removal of ${filePath}`);
 }
 
 async function seedLearningReviews(
@@ -802,8 +778,9 @@ describe("workflow friction reviewer", () => {
 				isError: true,
 			});
 			await settled({}, ctx);
+			await waitForPendingReviewTasks();
 
-			await vi.waitFor(() => expect(reviewer.run).toHaveBeenCalledOnce());
+			expect(reviewer.run).toHaveBeenCalledOnce();
 			const input = reviewer.run.mock.calls[0]?.[0] as
 				| { packet: InteractionPacket }
 				| undefined;
@@ -822,7 +799,7 @@ describe("workflow friction reviewer", () => {
 				packet.tools[0]?.resultText,
 			])
 				expect(value).toMatch(/\n\[truncated\]$/);
-			await waitForPathRemoval(path.join(scratch, "worker.lock"));
+			await expect(fs.access(path.join(scratch, "worker.lock"))).rejects.toMatchObject({ code: "ENOENT" });
 		} finally {
 			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
 			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;

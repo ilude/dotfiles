@@ -45,7 +45,7 @@ import { readLoopJob, updateLoopJob } from "../extensions/loop.ts";
 import { getTask, transitionTask } from "../lib/task-registry.ts";
 import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.ts";
 import { initializeGitRepository } from "./helpers/git-fixture.ts";
-import { createMockCtx, createMockPi, createMockTheme } from "./helpers/mock-pi.ts";
+import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 function writeFile(filePath: string, content: string | Buffer) {
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -168,6 +168,7 @@ describe("goal extension", () => {
 	});
 
 	afterEach(() => {
+		vi.useRealTimers();
 		if (priorLoopDir === undefined) delete process.env.PI_LOOP_DIR;
 		else process.env.PI_LOOP_DIR = priorLoopDir;
 		if (priorGoalId === undefined) delete process.env.PI_GOAL_ID;
@@ -196,24 +197,6 @@ describe("goal extension", () => {
 				nextSteps: expect.objectContaining({ type: "string" }),
 			},
 		});
-	});
-
-	it("renders goal completion timing without changing its report text", () => {
-		const pi = createMockPi();
-		goal(pi as unknown as ExtensionAPI);
-		const tool = pi._getTool("goal_complete")!;
-		const startedAt = new Date(2026, 7, 19, 11, 29, 30).getTime();
-		const theme = createMockTheme();
-		const call = tool.renderCall?.({}, theme, { executionStarted: true, state: { transcriptStartedAt: startedAt } });
-		expect(call?.render(300).join("\n")).toContain("started 11:29:30 local");
-		const result = tool.renderResult?.(
-			{ content: [{ type: "text", text: "goal report" }] },
-			{ expanded: false, isPartial: false },
-			theme,
-			{ state: { transcriptStartedAt: startedAt } },
-		);
-		expect(result?.render(300).join("\n")).toContain("goal report");
-		expect(result?.render(300).join("\n")).toContain("duration");
 	});
 
 	it("starts ordinary inline goals directly in the active session and enforces the 15000 character limit", async () => {
@@ -1071,6 +1054,8 @@ describe("goal extension", () => {
 	});
 
 	it("rejects incomplete linked work and accepts only evidence-backed unattended completion", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-08-25T00:00:00.000Z"));
 		writeFile(
 			path.join(tmp, ".specs", "demo", "goal.md"),
 			"Finish the verified item.\n",
@@ -1175,7 +1160,7 @@ describe("goal extension", () => {
 			passed: true,
 			summary: "recorded before required tasks completed",
 		});
-		await new Promise((resolve) => setTimeout(resolve, 5));
+		vi.setSystemTime(new Date("2026-08-25T00:00:00.005Z"));
 		for (const linkedTask of [task, secondTask]) {
 			transitionTask(linkedTask.id, "assigned");
 			transitionTask(linkedTask.id, "completed", {

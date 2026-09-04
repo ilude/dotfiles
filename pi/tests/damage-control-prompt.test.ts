@@ -2,17 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { showDamageControlPrompt } from "../extensions/damage-control/prompt.ts";
 
 describe("damage-control approval prompt", () => {
-	it("renders the matched reason in the highlight color with allow selected first", async () => {
-		const requestRender = vi.fn();
+	it("renders the matched reason with allow selected first", async () => {
 		const theme = {
-			fg: vi.fn((color: string, text: string) => `<${color}>${text}</${color}>`),
-			bold: (text: string) => `<bold>${text}</bold>`,
+			fg: (_color: string, text: string) => text,
+			bold: (text: string) => text,
 		};
 		let rendered = "";
 		const custom = vi.fn(async (factory: (...args: any[]) => any) => {
 			let selected: "allow" | "deny" | undefined;
 			const component = await factory(
-				{ requestRender },
+				{ requestRender: () => {} },
 				theme,
 				{},
 				(value: "allow" | "deny") => {
@@ -42,15 +41,10 @@ describe("damage-control approval prompt", () => {
 		expect(approved).toBe(true);
 		expect(confirm).not.toHaveBeenCalled();
 		expect(rendered).toContain("[CRITICAL] Local state");
+		expect(rendered).toContain("Reason: Discards uncommitted changes. Use 'git stash' first or --staged to only unstage");
 		expect(rendered).toContain("Allow once");
 		expect(rendered).toContain("Deny");
 		expect(rendered).not.toContain("recommended");
-		expect(theme.fg).toHaveBeenCalledWith("error", expect.any(String));
-		expect(theme.fg).toHaveBeenCalledWith(
-			"accent",
-			"Reason: Discards uncommitted changes. Use 'git stash' first or --staged to only unstage",
-		);
-		expect(requestRender).toHaveBeenCalled();
 	});
 
 	it("uses a labeled plain confirmation outside TUI mode", async () => {

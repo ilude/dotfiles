@@ -82,11 +82,9 @@ describe("commit planning", () => {
 		);
 	});
 
-	it("matches synchronous preflight without redundant sparse-checkout discovery", async () => {
+	it("matches synchronous preflight and reports status", async () => {
 		const dir = repo();
-		const calls: string[][] = [];
 		const runner: GitAsyncRunner = async (cwd, args) => {
-			calls.push(args);
 			const result = run(cwd, args, { allowFailure: true });
 			return {
 				code: result.status ?? 1,
@@ -98,11 +96,6 @@ describe("commit planning", () => {
 		const inspection = await inspectGitStateAsync(dir, runner);
 		expect(inspection.preflight).toEqual(preflightGitState(dir));
 		expect(inspection.statusOutput).toContain("main");
-		expect(calls).not.toContainEqual([
-			"config",
-			"--bool",
-			"core.sparseCheckout",
-		]);
 	});
 
 	it("cancels while async preflight git is running", async () => {

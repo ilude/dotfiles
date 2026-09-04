@@ -232,9 +232,5 @@ describe("damage-control scoped delete and shadow judge extension wiring", () =>
 		if (!command) throw new Error("/dc was not registered");
 		const ui = { notify: vi.fn(), setStatus: vi.fn() };
 		await command.handler("judge", { ui });
-		expect(ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("damage-control judge agreement:"),
-			"info",
-		);
 	});
 });

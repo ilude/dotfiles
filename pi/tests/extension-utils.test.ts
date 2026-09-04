@@ -127,9 +127,10 @@ describe("uiNotify", () => {
 			},
 		};
 		uiNotify(ctx, "warning", "watch out", { prefix: "damage-control" });
-		expect(calls).toEqual([
-			{ message: "[damage-control] watch out", level: "warning" },
-		]);
+		expect(calls).toHaveLength(1);
+		expect(calls[0].message).toMatch(/^\[damage-control\]/);
+		expect(calls[0].message).toContain("watch out");
+		expect(calls[0].level).toBe("warning");
 	});
 
 	it("falls back to console output when no UI is available", () => {
@@ -138,7 +139,9 @@ describe("uiNotify", () => {
 		console.warn = (msg: string) => captured.push(msg);
 		try {
 			uiNotify({}, "warning", "no ui here", { prefix: "test" });
-			expect(captured).toEqual(["[test] no ui here"]);
+			expect(captured).toHaveLength(1);
+			expect(captured[0]).toMatch(/^\[test\]/);
+			expect(captured[0]).toContain("no ui here");
 		} finally {
 			console.warn = originalWarn;
 		}

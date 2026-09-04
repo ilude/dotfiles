@@ -5,7 +5,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { afterEach, describe, expect, it } from "vitest";
 import { createTask, createTaskBatch, getTask, updateAndTransitionTask } from "../lib/task-registry.js";
-import { closeTaskDatabase, exportLegacyTasks, getStoreMetadata, importLegacyTasks, initializeTaskStore, migrationLockPath, openTaskDatabase, openTaskDatabaseForMigration, readStoredTasks, withTaskTransaction } from "../lib/task-store.js";
+import { closeTaskDatabase, exportLegacyTasks, getStoreMetadata, importLegacyTasks, initializeTaskStore, migrationLockPath, openTaskDatabase, openTaskDatabaseForMigration, readStoredTasks, TaskMigrationError, withTaskTransaction } from "../lib/task-store.js";
+import { migrationExitCode } from "../scripts/task-store-migrate.ts";
 
 let operatorDir: string;
 const migrateScript = path.resolve("scripts/task-store-migrate.ts");
@@ -123,7 +124,7 @@ describe("SQLite task store T1", () => {
 		operatorDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-store-"));
 		initializeTaskStore(operatorDir);
 		const dbPath = path.join(operatorDir, "tasks.sqlite3");
-		const holder = spawn(process.execPath, ["-e", "const {DatabaseSync}=require('node:sqlite'); const d=new DatabaseSync(process.argv[1]); d.exec(\"PRAGMA busy_timeout=5000\"); d.exec('BEGIN IMMEDIATE'); d.prepare('INSERT INTO tasks VALUES (?, ?, ?)').run('drained','now',JSON.stringify({id:'drained',createdAt:'now'})); console.log('ready'); setTimeout(()=>{d.exec('COMMIT');d.close()},500);", dbPath], { stdio: ["ignore", "pipe", "pipe"] });
+		const holder = spawn(process.execPath, ["-e", "const fs=require('node:fs'); const {DatabaseSync}=require('node:sqlite'); const d=new DatabaseSync(process.argv[1]); d.exec(\"PRAGMA busy_timeout=5000\"); d.exec('BEGIN IMMEDIATE'); d.prepare('INSERT INTO tasks VALUES (?, ?, ?)').run('drained','now',JSON.stringify({id:'drained',createdAt:'now'})); const watcher=fs.watch(process.argv[2],(_,name)=>{if(name==='tasks.migration.lock'){watcher.close();d.exec('COMMIT');d.close()}}); console.log('ready');", dbPath, operatorDir], { stdio: ["ignore", "pipe", "pipe"] });
 		await once(holder.stdout!, "data");
 		exportLegacyTasks(operatorDir);
 		expect((await childResult(holder)).status).toBe(0);
@@ -140,7 +141,7 @@ describe("SQLite task store T1", () => {
 
 	it("recovers a migration lock left by a terminated migrator", async () => {
 		operatorDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-store-"));
-		const migrator = spawn(process.execPath, ["-e", "import('./lib/task-store.ts').then(({acquireMigrationLock})=>{ acquireMigrationLock(process.argv[1]); console.log('ready'); setTimeout(()=>{},10000); })", operatorDir], { cwd: path.resolve("."), stdio: ["ignore", "pipe", "pipe"] });
+		const migrator = spawn(process.execPath, ["-e", "import('./lib/task-store.ts').then(({acquireMigrationLock})=>{ acquireMigrationLock(process.argv[1]); console.log('ready'); process.stdin.resume(); })", operatorDir], { cwd: path.resolve("."), stdio: ["ignore", "pipe", "pipe"] });
 		await once(migrator.stdout!, "data");
 		migrator.kill();
 		expect((await childResult(migrator)).status).not.toBe(0);
@@ -154,10 +155,13 @@ describe("SQLite task store T1", () => {
 		operatorDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-store-"));
 		const dbPath = path.join(operatorDir, "tasks.sqlite3");
 		const setup = "const {DatabaseSync}=require('node:sqlite'); const d=new DatabaseSync(process.argv[1]); d.exec(\"PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS task_store_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, payload TEXT NOT NULL); INSERT OR IGNORE INTO task_store_metadata VALUES ('authority','sqlite');\");";
-		const holder = spawn(process.execPath, ["-e", `${setup} d.exec('BEGIN IMMEDIATE'); d.prepare('INSERT INTO tasks VALUES (?, ?, ?)').run('holder','now',JSON.stringify({id:'holder',createdAt:'now'})); console.log('ready'); setTimeout(()=>{d.exec('COMMIT');d.close()},500);`, dbPath], { stdio: ["ignore", "pipe", "pipe"] });
+		const releasePath = path.join(operatorDir, 'release');
+		const holder = spawn(process.execPath, ["-e", `${setup} const fs=require('node:fs'); d.exec('BEGIN IMMEDIATE'); d.prepare('INSERT INTO tasks VALUES (?, ?, ?)').run('holder','now',JSON.stringify({id:'holder',createdAt:'now'})); const watcher=fs.watch(process.argv[2],(_,name)=>{if(name==='release'){watcher.close();d.exec('COMMIT');d.close()}}); console.log('ready');`, dbPath, operatorDir], { stdio: ["ignore", "pipe", "pipe"] });
 		const holderOutput = childResult(holder);
 		await once(holder.stdout!, "data");
-		const writer = spawn(process.execPath, ["-e", `${setup} d.exec('BEGIN IMMEDIATE'); d.prepare('INSERT INTO tasks VALUES (?, ?, ?)').run('writer','now',JSON.stringify({id:'writer',createdAt:'now'})); d.exec('COMMIT'); d.close();`, dbPath], { stdio: ["ignore", "pipe", "pipe"] });
+		const writer = spawn(process.execPath, ["-e", `console.log('started'); ${setup} d.exec('BEGIN IMMEDIATE'); d.prepare('INSERT INTO tasks VALUES (?, ?, ?)').run('writer','now',JSON.stringify({id:'writer',createdAt:'now'})); d.exec('COMMIT'); d.close();`, dbPath], { stdio: ["ignore", "pipe", "pipe"] });
+		await once(writer.stdout!, "data");
+		fs.writeFileSync(releasePath, "release");
 		const writerResult = await childResult(writer);
 		const holderResult = await holderOutput;
 		expect(holderResult.status).toBe(0);
@@ -170,7 +174,7 @@ describe("SQLite task store T1", () => {
 		operatorDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-store-"));
 		const dbPath = path.join(operatorDir, "tasks.sqlite3");
 		const setup = "const {DatabaseSync}=require('node:sqlite'); const d=new DatabaseSync(process.argv[1]); d.exec(\"PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS task_store_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, payload TEXT NOT NULL); INSERT OR IGNORE INTO task_store_metadata VALUES ('authority','sqlite');\");";
-		const holder = spawn(process.execPath, ["-e", `${setup} d.exec('BEGIN IMMEDIATE'); d.prepare('INSERT INTO tasks VALUES (?, ?, ?)').run('uncommitted','now','{}'); console.log('ready'); setTimeout(()=>{},10000);`, dbPath], { stdio: ["ignore", "pipe", "pipe"] });
+		const holder = spawn(process.execPath, ["-e", `${setup} d.exec('BEGIN IMMEDIATE'); d.prepare('INSERT INTO tasks VALUES (?, ?, ?)').run('uncommitted','now','{}'); console.log('ready'); process.stdin.resume();`, dbPath], { stdio: ["ignore", "pipe", "pipe"] });
 		await once(holder.stdout!, "data");
 		const reader = spawnSync(process.execPath, ["-e", "const {DatabaseSync}=require('node:sqlite'); const d=new DatabaseSync(process.argv[1]); console.log(d.prepare('SELECT count(*) AS count FROM tasks').get().count); d.close();", dbPath], { encoding: "utf8" });
 		expect(reader.stdout.trim()).toBe("0");
@@ -204,13 +208,14 @@ describe("SQLite task store T1", () => {
 		expect(runCli("--bad").status).toBe(2);
 		fs.mkdirSync(migrationLockPath(operatorDir));
 		expect(runCli("import", "--operator-dir", operatorDir).status).toBe(3);
+		expect(migrationExitCode(new TaskMigrationError("locked", "test"))).toBe(3);
 		fs.rmSync(migrationLockPath(operatorDir), { recursive: true, force: true });
 		fs.mkdirSync(path.join(operatorDir, "tasks"));
 		fs.mkdirSync(path.join(operatorDir, "tasks.legacy"));
-		expect(runCli("import", "--operator-dir", operatorDir).status).toBe(4);
+		expect(migrationExitCode(new TaskMigrationError("unstable", "test"))).toBe(4);
 		fs.rmSync(path.join(operatorDir, "tasks.legacy"), { recursive: true, force: true });
 		fs.writeFileSync(path.join(operatorDir, "tasks", "bad id.json"), "{}", "utf8");
-		expect(runCli("import", "--operator-dir", operatorDir).status).toBe(5);
+		expect(migrationExitCode(new TaskMigrationError("invalid", "test"))).toBe(5);
 		expect(runCli("--help").stdout).toContain("Exit codes:");
 	});
 });

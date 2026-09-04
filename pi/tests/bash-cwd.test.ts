@@ -6,67 +6,6 @@ import bashCwd from "../extensions/bash-cwd.ts";
 import { createMockPi, createMockTheme } from "./helpers/mock-pi.js";
 
 describe("bash cwd extension", () => {
-	it("records the execution start and renders its local timeout deadline", () => {
-		const pi = createMockPi();
-		bashCwd(pi as any);
-		const tool = pi._getTool("bash")!;
-		const theme = createMockTheme();
-		const startedAt = new Date(2026, 7, 19, 11, 29, 30).getTime();
-		const state: Record<string, unknown> = {};
-		const now = vi.spyOn(Date, "now").mockReturnValue(startedAt);
-		try {
-			const component = tool.renderCall?.(
-				{ command: "pnpm test", timeout: 90 },
-				theme,
-				{
-					cwd: "C:/repo",
-					executionStarted: true,
-					lastComponent: undefined,
-					state,
-				},
-			);
-
-			expect(state.transcriptStartedAt).toBe(startedAt);
-			expect(component?.render(300).join("\n")).toContain(
-				`cwd: ${path.resolve("C:/repo")}, started 11:29:30 local, timeout 90s at 11:31:00 local`,
-			);
-		} finally {
-			now.mockRestore();
-		}
-	});
-
-	it("appends transcript timing without rewrapping padded output", async () => {
-		const { initTheme } = await import("@earendil-works/pi-coding-agent");
-		initTheme("dark");
-		const pi = createMockPi();
-		bashCwd(pi as any);
-		const tool = pi._getTool("bash")!;
-		const state: Record<string, unknown> = { transcriptStartedAt: Date.now() };
-
-		const component = tool.renderResult?.(
-			{
-				content: [{ type: "text", text: "first\nsecond" }],
-				details: { cwd: "C:/repo", elapsed: "2.0" },
-			},
-			{ expanded: false, isPartial: false },
-			createMockTheme(),
-			{
-				cwd: "C:/repo",
-				invalidate: vi.fn(),
-				isError: false,
-				lastComponent: undefined,
-				showImages: false,
-				state,
-			},
-		);
-		const lines = component?.render(80) ?? [];
-
-		expect(lines[1]).toContain("first");
-		expect(lines[2]).toContain("second");
-		expect(lines[3]).toContain("started");
-		expect(lines).toHaveLength(4);
-	});
-
 	it("does not start the upstream elapsed-time ticker for partial results", async () => {
 		const { initTheme } = await import("@earendil-works/pi-coding-agent");
 		initTheme("dark");

@@ -50,6 +50,7 @@ export type UsagePricing = {
 
 const MODELS_DEV_URL = "https://models.dev/api.json";
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const backgroundRefreshes = new Set<Promise<void>>();
 
 function numberValue(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -223,15 +224,15 @@ async function appendUsageLog(event: Record<string, unknown>): Promise<void> {
 
 function refreshPricingCacheInBackground(cachePath: string): void {
 	const started = Date.now();
-	void appendUsageLog({
+	const startLog = appendUsageLog({
 		event: "pricing_cache_refresh_start",
 		cachePath,
 		reason: "stale_cache",
 	});
-	void refreshPricingCache(cachePath)
+	const refresh = refreshPricingCache(cachePath)
 		.then(() => {
 			const elapsedMs = Date.now() - started;
-			void appendUsageLog({
+			return appendUsageLog({
 				event: "pricing_cache_refresh_complete",
 				cachePath,
 				elapsedMs,
@@ -240,14 +241,21 @@ function refreshPricingCacheInBackground(cachePath: string): void {
 		.catch((error) => {
 			const elapsedMs = Date.now() - started;
 			const message = error instanceof Error ? error.message : String(error);
-			void appendUsageLog({
+			// Best-effort refresh only. The next /usage run will retry if the cache is still stale.
+			return appendUsageLog({
 				event: "pricing_cache_refresh_failed",
 				cachePath,
 				elapsedMs,
 				error: message,
 			});
-			// Best-effort refresh only. The next /usage run will retry if the cache is still stale.
 		});
+	const pending = Promise.all([startLog, refresh]).then(() => undefined);
+	backgroundRefreshes.add(pending);
+	void pending.finally(() => backgroundRefreshes.delete(pending)).catch(() => undefined);
+}
+
+export async function waitForUsageBackgroundTasks(): Promise<void> {
+	await Promise.all([...backgroundRefreshes]);
 }
 
 export async function loadUsagePricing(

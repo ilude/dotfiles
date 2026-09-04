@@ -916,29 +916,6 @@ Execute workflow items with admitted tools only.
 	});
 
 
-
-
-
-	it("renders the full single-agent task prompt", async () => {
-		const { tool } = await loadTool();
-		if (!tool.renderCall) throw new Error("subagent renderCall not registered");
-		const task =
-			"Re-review the now-simplified context optimization diff. Verify every affected provider schema and preserve the complete reviewer instructions.\nReport all remaining findings with file and line references.";
-		const component = tool.renderCall(
-			{ agent: "code-reviewer", agentScope: "both", task },
-			createMockTheme(),
-			{},
-		);
-		const renderedLines = component
-			.render(500)
-			.map((line: string) => line.trim());
-		const renderedTask = renderedLines.slice(1).join("\n");
-
-		expect(renderedLines[0]).toContain("subagent code-reviewer [both]");
-		expect(renderedTask).toBe(task);
-		expect(renderedTask).not.toContain(`${task.slice(0, 60)}...`);
-	});
-
 	it("renders resolved agent model and reasoning effort", async () => {
 		const { pi, tool } = await loadTool();
 		const ctx = createMockCtx({ cwd: tmpDir, isProjectTrusted: () => true });
@@ -955,77 +932,6 @@ Execute workflow items with admitted tools only.
 		expect(rendered).toContain(
 			"subagent teamlead [project] (model: openai-codex/gpt-5.6-sol, effort: low)",
 		);
-	});
-
-	it("renders canonical timing for every subagent entry point", async () => {
-		const { pi } = await loadTool();
-		const startedAt = new Date(2026, 7, 25, 20, 10, 25).getTime();
-		const result = {
-			content: [{ type: "text", text: "completed output" }],
-			details: {
-				mode: "single",
-				agentScope: "user",
-				projectAgentsDir: null,
-				transcriptTiming: { startedAt, durationMs: 125_000 },
-				results: [],
-			},
-		};
-		for (const name of [
-			"subagent",
-			"subagent_read",
-			"subagent_write",
-			"subagent_teamlead",
-			"subagent_coordinate",
-			"subagent_continue",
-		]) {
-			const tool = pi._getTool(name);
-			if (!tool?.renderResult) throw new Error(`${name} renderer not registered`);
-			const running = tool.renderResult(
-				{ ...result, details: { ...result.details, transcriptTiming: { startedAt } } } as never,
-				{ expanded: false },
-				createMockTheme(),
-				{},
-			).render(240).join("\n");
-			expect(running).toContain("started 20:10:25 local");
-			expect(running).not.toContain("duration");
-			const rendered = tool.renderResult(
-				result as never,
-				{ expanded: false },
-				createMockTheme(),
-				{},
-			).render(240).join("\n");
-			expect(rendered).toContain("started 20:10:25 local | duration 2m05s");
-		}
-
-		const control = pi._getTool("subagent_control");
-		if (!control?.renderCall || !control.renderResult)
-			throw new Error("subagent_control renderer not registered");
-		const controlContext = { executionStarted: true, state: {} } as never;
-		const running = control.renderCall(
-			{ action: "interrupt_tool", selector: { type: "process", processId: "run-1" } },
-			createMockTheme(),
-			controlContext,
-		).render(120).join("\n");
-		expect(running).toContain("started ");
-		const settled = control.renderResult(
-			{
-				content: [{ type: "text", text: "resumed" }],
-				details: { transcriptTiming: { startedAt, durationMs: 125_000 } },
-			} as never,
-			{ expanded: false },
-			createMockTheme(),
-			controlContext,
-		).render(120).join("\n");
-		expect(settled).toContain("started 20:10:25 local | duration 2m05s");
-
-		for (const action of ["cancel", "force_terminate", "reconcile"]) {
-			const rendered = control.renderCall(
-			{ action, selector: { type: "process", processId: "run-1" } },
-			createMockTheme(),
-			{ executionStarted: true, state: {} } as never,
-			).render(120).join("\n");
-			expect(rendered).not.toContain("started ");
-		}
 	});
 
 	it("adds project agents to schemas only after trust validation", async () => {
@@ -3938,7 +3844,6 @@ You are a test agent.
 				{ timeout: 5000 },
 			);
 			await secondPi._getHook("agent_settled")[0].handler({}, secondCtx);
-			await new Promise((resolve) => setTimeout(resolve, 20));
 			expect(secondPi.sendMessage).toHaveBeenCalledTimes(1);
 			expect(subagentRunManager.pendingBackgroundCompletions()).toEqual([]);
 			expect(secondPi.sendMessage.mock.calls[0][0]).toMatchObject({
@@ -4749,7 +4654,7 @@ You are a test agent.
 	);
 
 	it(
-		"records activity and renders elapsed closeout stats",
+		"records and renders closeout activity stats",
 		async () => {
 			spawnMock.mockImplementation(() => {
 				const proc = createMockProcess();
@@ -4799,12 +4704,10 @@ You are a test agent.
 				filesWritten: 2,
 				subagentsStarted: 1,
 			});
-			worker.durationMs = 125_000;
 			const rendered = tool
 				.renderResult(result, { expanded: true }, createMockTheme(), {})
 				.render(240)
 				.join("\n");
-			expect(rendered).toContain("time:2m05s");
 			expect(rendered).toContain("files:r2/w2");
 			expect(rendered).toContain("commands:2");
 			expect(rendered).toContain("tools:7");

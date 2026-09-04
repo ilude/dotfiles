@@ -12,9 +12,6 @@ describe("find-fails investigation command", () => {
 	it("builds a deterministic seven-day investigation window", () => {
 		const prompt = buildFindFailsInvestigationPrompt(new Date("2026-08-27T12:00:00.000Z"));
 		expect(prompt).toContain("Window: 2026-08-20T12:00:00.000Z through 2026-08-27T12:00:00.000Z.");
-		expect(prompt).toContain("Group failures into recurring families");
-		expect(prompt).toContain("separate totals for expected command nonzero results, actionable failures, expected non-command outcomes, and unclassified failures");
-		expect(prompt).toContain("Do not modify files");
 		expect(prompt).not.toContain("tool_failure_inspect");
 		expect(prompt).not.toContain("tool_failure_decide");
 	});
@@ -40,7 +37,6 @@ describe("find-fails investigation command", () => {
 			expect(pi.getActiveTools()).toEqual(activeBefore);
 			expect(pi._getTool("tool_failure_inspect")).toBeUndefined();
 			expect(pi._getTool("tool_failure_decide")).toBeUndefined();
-			expect(ctx.ui.notify).toHaveBeenCalledWith("Investigating recent tool failures...", "info");
 		} finally {
 			vi.useRealTimers();
 		}

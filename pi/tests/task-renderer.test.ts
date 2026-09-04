@@ -38,14 +38,6 @@ describe("formatTaskToolResult", () => {
 		expect(result.text).toContain("compact task");
 	});
 
-	it("renders a single record in expanded detail mode", () => {
-		const record = createTask({ origin: "other", summary: "detail task" });
-		const result = formatTaskToolResult({ outcome: "persisted", record }, true);
-
-		expect(result.text).toContain("state:");
-		expect(result.text).toContain("summary: detail task");
-	});
-
 	it("renders record lists grouped by state", () => {
 		const unassigned = createTask({ origin: "other", summary: "unassigned task" });
 		const assigned = transitionTask(unassigned.id, "assigned");

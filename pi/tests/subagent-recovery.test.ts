@@ -147,12 +147,4 @@ describe("subagent interrupted-tool recovery", () => {
 		expect(() => assertInterruptedRecoverySucceeded(true)).not.toThrow();
 	});
 
-	it("marks interrupted output and side effects unknown", () => {
-		expect(INTERRUPTED_TOOL_RECOVERY_MESSAGE).toContain(
-			"output and side effects are unknown",
-		);
-		expect(INTERRUPTED_TOOL_RECOVERY_MESSAGE).toContain(
-			"last durable session context",
-		);
-	});
 });

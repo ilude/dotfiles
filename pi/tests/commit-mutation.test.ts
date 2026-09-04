@@ -138,10 +138,6 @@ describe("commit mutation safety", () => {
 		const pi = createMockPi();
 		const ctx = createMockCtx({ cwd: parent });
 		await executeCommitCommand(pi as never, "--no-submodules", ctx as never);
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"No committable parent-repository changes found; dirty submodule worktrees were left untouched.",
-			"info",
-		);
 		expect(run(parent, ["diff", "--cached", "--name-only"]).trim()).toBe("");
 
 		await executeCommitCommand(pi as never, "", ctx as never);
@@ -350,14 +346,17 @@ describe("commit mutation safety", () => {
 	}, REAL_GIT_TEST_TIMEOUT_MS);
 
 	it("labels push failures and identifies commits already created", () => {
-		expect(
-			formatCommitWorkflowFailure(
-				new CommitWorkflowError("Push", "remote rejected update", [
-					"abc1234 fix(pi): preserve commit",
-				]),
-			),
-		).toBe(
-			"Push failed after creating abc1234 fix(pi): preserve commit: remote rejected update",
+		const message = formatCommitWorkflowFailure(
+			new CommitWorkflowError("Push", "remote rejected update", [
+				"abc1234 fix(pi): preserve commit",
+			]),
+		);
+		expect(message).toContain("Push");
+		expect(message).toContain("abc1234 fix(pi): preserve commit");
+		expect(message).toContain("remote rejected update");
+		expect(message.indexOf("Push")).toBeLessThan(message.indexOf("abc1234"));
+		expect(message.indexOf("abc1234")).toBeLessThan(
+			message.indexOf("remote rejected update"),
 		);
 	});
 

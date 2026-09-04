@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeTaskDatabase, initializeTaskStore, openTaskDatabase, readStoredTask, writeStoredTask } from "../lib/task-store.js";
 import {
 	createTask,
@@ -29,6 +29,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	closeTaskDatabase(tmpRoot);
 	if (prevOverride === undefined) delete process.env.PI_OPERATOR_DIR;
 	else process.env.PI_OPERATOR_DIR = prevOverride;
@@ -490,8 +491,10 @@ describe("getTask", () => {
 
 describe("listTasks", () => {
 	it("returns newest-first by createdAt", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-08-25T00:00:00.000Z"));
 		const t1 = createTask({ origin: "subagent", summary: "first" });
-		await new Promise((r) => setTimeout(r, 5));
+		vi.setSystemTime(new Date("2026-08-25T00:00:00.005Z"));
 		const t2 = createTask({ origin: "subagent", summary: "second" });
 		const list = listTasks();
 		expect(list.length).toBe(2);

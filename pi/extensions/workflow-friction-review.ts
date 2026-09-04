@@ -740,6 +740,16 @@ async function executeReview(
 }
 
 let localWorkerRunning = false;
+const backgroundWorkerTasks = new Set<Promise<void>>();
+const reviewQueueTasks = new Set<Promise<void>>();
+
+export async function waitForPendingReviewTasks(): Promise<void> {
+	for (;;) {
+		const tasks = [...backgroundWorkerTasks, ...reviewQueueTasks];
+		if (tasks.length === 0) return;
+		await Promise.all(tasks);
+	}
+}
 
 export async function processPendingReviews(
 	ctx: TypedAgentRunContext,
@@ -797,9 +807,11 @@ function startBackgroundWorker(
 	ctx: TypedAgentRunContext,
 	reviewer: WorkflowReviewRunner,
 ): void {
-	void processPendingReviews(ctx, reviewer).catch(() => {
+	const task = processPendingReviews(ctx, reviewer).catch(() => {
 		// Background review must not interrupt the active Pi workflow.
 	});
+	backgroundWorkerTasks.add(task);
+	void task.finally(() => backgroundWorkerTasks.delete(task)).catch(() => undefined);
 }
 
 function packetFromInteraction(
@@ -1013,11 +1025,13 @@ export default function workflowFrictionExtension(
 		}
 		if (reasons.length === 0) return;
 		const packet = latestCompleted;
-		void enqueueReview(packet)
+		const queueTask = enqueueReview(packet)
 			.then(() => startBackgroundWorker(ctx, reviewer))
 			.catch(() => {
 				// Selection persistence must not delay or interrupt control return.
 			});
+		reviewQueueTasks.add(queueTask);
+		void queueTask.finally(() => reviewQueueTasks.delete(queueTask)).catch(() => undefined);
 	});
 
 }

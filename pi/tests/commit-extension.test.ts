@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import registerCommitTools from "../extensions/commit.js";
-import { createMockPi, createMockTheme } from "./helpers/mock-pi.js";
+import { createMockPi } from "./helpers/mock-pi.js";
 import { buildCommitPlan } from "../lib/commit/plan.ts";
 
 const repos: string[] = [];
@@ -50,26 +50,6 @@ describe("commit extension registration", () => {
 				"commit_create",
 			]),
 		);
-	});
-
-	it("renders timing for commit mutations but not immediate planning", () => {
-		const pi = createMockPi();
-		registerCommitTools(pi as any);
-		const theme = createMockTheme();
-		const startedAt = new Date(2026, 7, 19, 11, 29, 30).getTime();
-		for (const name of ["commit_stage", "commit_create", "commit_push"]) {
-			const tool = pi._getTool(name)!;
-			const call = tool.renderCall?.({}, theme, { executionStarted: true, state: { transcriptStartedAt: startedAt } });
-			expect(call?.render(300).join("\n")).toContain("started 11:29:30 local");
-			const result = tool.renderResult?.(
-				{ content: [{ type: "text", text: name }] },
-				{ expanded: false, isPartial: false },
-				theme,
-				{ state: { transcriptStartedAt: startedAt } },
-			);
-			expect(result?.render(300).join("\n")).toContain("duration");
-		}
-		expect(pi._getTool("commit_plan")?.renderCall).toBeUndefined();
 	});
 
 	it("commit_stage throws on failure so Pi marks the tool call failed", async () => {

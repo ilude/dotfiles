@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, watch, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import backgroundTerminalExtension from "../extensions/background-terminal/index.ts";
 import { resetBackgroundTerminalManager } from "../extensions/background-terminal/manager.ts";
@@ -17,12 +17,20 @@ afterEach(async () => {
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
-	const deadline = Date.now() + timeoutMs;
-	while (!predicate()) {
-		if (Date.now() >= deadline) throw new Error("Timed out waiting for condition");
-		await new Promise((resolve) => setTimeout(resolve, 10));
-	}
+function pathCreated(path: string): Promise<void> {
+	if (existsSync(path)) return Promise.resolve();
+	return new Promise((resolve, reject) => {
+		const watcher = watch(dirname(path), () => {
+			if (!existsSync(path)) return;
+			watcher.close();
+			resolve();
+		});
+		watcher.on("error", reject);
+		if (existsSync(path)) {
+			watcher.close();
+			resolve();
+		}
+	});
 }
 
 function context(cwd: string) {
@@ -40,11 +48,19 @@ describe("background terminal extension", () => {
 		const pi = createMockPi();
 		const delivered: Array<Record<string, unknown>> = [];
 		let completionAttempts = 0;
+		let resolveFirstAttempt!: () => void;
+		const firstAttempt = new Promise<void>((resolve) => {
+			resolveFirstAttempt = resolve;
+		});
 		pi.sendMessage.mockImplementation((message: Record<string, unknown>) => {
 			if (message.customType === "background-terminal-result") {
 				completionAttempts++;
-				if (completionAttempts === 1) throw new Error("synthetic send failure");
-				delivered.push(message);
+				try {
+					if (completionAttempts === 1) throw new Error("synthetic send failure");
+					delivered.push(message);
+				} finally {
+					if (completionAttempts === 1) resolveFirstAttempt();
+				}
 			}
 		});
 		backgroundTerminalExtension(pi as never);
@@ -73,14 +89,13 @@ describe("background terminal extension", () => {
 		expect(result.content[0]?.text).toContain("Started bg-1");
 		expect(result.content[0]?.text).toMatch(/started \d{2}:\d{2}:\d{2} local/);
 		expect(pi.getActiveTools().sort()).toEqual(["bg_kill", "bg_start"]);
-		await waitFor(() => completionAttempts === 1);
+		await firstAttempt;
 		expect(delivered).toEqual([]);
 
 		await pi._getHook("agent_settled")[0].handler({}, ctx);
-		await waitFor(() => delivered.length === 1);
+		expect(delivered).toHaveLength(1);
 		expect(delivered[0]?.content).toContain("background-ok");
 		await pi._getHook("agent_settled")[0].handler({}, ctx);
-		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(delivered).toHaveLength(1);
 
 		await pi._getHook("session_shutdown")[0].handler(
@@ -102,23 +117,37 @@ describe("background terminal extension", () => {
 		);
 		const start = firstPi._getTool("bg_start");
 		if (!start) throw new Error("bg_start was not registered");
+		const readyPath = join(cwd, "replacement-ready");
+		const releasePath = join(cwd, "replacement-release");
+		const ready = pathCreated(readyPath);
+		const readyForScript = readyPath.replaceAll("\\", "/");
+		const releaseForScript = releasePath.replaceAll("\\", "/");
+		const cwdForScript = cwd.replaceAll("\\", "/");
+		const script = `const fs=require("node:fs");const ready=${JSON.stringify(readyForScript)};const release=${JSON.stringify(releaseForScript)};const finish=()=>{watcher.close();process.stdout.write("replacement-ok");process.exit(0)};const watcher=fs.watch(${JSON.stringify(cwdForScript)},()=>{if(fs.existsSync(release))finish()});fs.writeFileSync(ready,"ready");if(fs.existsSync(release))finish()`;
 		await start.execute(
 			"call-replacement",
 			{
-				command:
-					"node -e \"setTimeout(() => process.stdout.write('replacement-ok'), 250)\"",
+				command: `node -e '${script}'`,
 				title: "replacement",
 			},
 			new AbortController().signal,
 			() => {},
 			firstCtx as never,
 		);
+		await ready;
 		await firstPi._getHook("session_shutdown")[0].handler(
 			{ reason: "new" },
 			firstCtx,
 		);
 
 		const secondPi = createMockPi();
+		let resolveDelivery!: () => void;
+		const delivery = new Promise<void>((resolve) => {
+			resolveDelivery = resolve;
+		});
+		secondPi.sendMessage.mockImplementation((message: Record<string, unknown>) => {
+			if (message.customType === "background-terminal-result") resolveDelivery();
+		});
 		backgroundTerminalExtension(secondPi as never);
 		const secondCtx = context(cwd);
 		await secondPi._getHook("session_start")[0].handler(
@@ -126,11 +155,8 @@ describe("background terminal extension", () => {
 			secondCtx,
 		);
 		expect(secondPi.getActiveTools().sort()).toEqual(["bg_kill", "bg_start"]);
-		await waitFor(() =>
-			secondPi.sendMessage.mock.calls.some(
-				([message]) => message.customType === "background-terminal-result",
-			),
-		);
+		writeFileSync(releasePath, "release");
+		await delivery;
 		const completion = secondPi.sendMessage.mock.calls.find(
 			([message]) => message.customType === "background-terminal-result",
 		)?.[0];

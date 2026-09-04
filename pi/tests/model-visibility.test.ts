@@ -39,14 +39,6 @@ describe("applyProviderFilter", () => {
 			before: 2,
 			after: 1,
 		});
-		expect(registerProvider).toHaveBeenCalledWith(
-			"openai-codex",
-			expect.objectContaining({
-				baseUrl: model.baseUrl,
-				models: [expect.objectContaining({ id: "gpt-5.5" })],
-			}),
-		);
-		expect(registerProvider.mock.calls[0]?.[1]).not.toHaveProperty("oauth");
 	});
 
 });

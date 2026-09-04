@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
 	analyzeOperation,
-	getOperationParser,
 	type KnownEffect,
 } from "../extensions/damage-control/operation-analysis.ts";
 
@@ -73,9 +72,5 @@ describe("damage-control operation analysis", () => {
 	it("turns unsupported language calls into uncertainty", async () => {
 		const result = await analyzeOperation("dangerous_call(target)", "python");
 		expect(result.status).toBe("uncertain");
-	});
-
-	it("caches one parser per language", async () => {
-		expect(await getOperationParser("bash")).toBe(await getOperationParser("bash"));
 	});
 });

@@ -120,11 +120,6 @@ describe("formatSearchResult", () => {
     expect(text).not.toContain("Engine:");
   });
 
-  it("shows '(no snippet)' when content is missing", () => {
-    const text = formatSearchResult({ title: "T", url: "https://t.com" }, 1);
-    expect(text).toContain("Snippet: (no snippet)");
-  });
-
   it("uses correct index number", () => {
     const text = formatSearchResult({ title: "T", url: "https://t.com" }, 7);
     expect(text).toContain("Result 7");

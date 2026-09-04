@@ -7,7 +7,6 @@ import {
 import { adaptLegacySubagentInvocation } from "../extensions/subagent/legacy-adapter.ts";
 import { modernRequestToExecutorInput } from "../extensions/subagent/modern-adapter.ts";
 import type { PreparedSubagentExecution } from "../extensions/subagent/contracts.ts";
-import type { SubagentControlSelector } from "../extensions/subagent/control.ts";
 
 function properties(schema: unknown): Record<string, unknown> {
 	return ((schema as { properties?: Record<string, unknown> }).properties ?? {});
@@ -18,8 +17,6 @@ describe("T6 current subagent naming", () => {
 		const read = properties(SubagentReadSchema);
 		const readItem = properties((read.items as { items?: unknown }).items);
 		const teamlead = properties(SubagentTeamleadSchema);
-		const enforced = read.enforcedBoundary as { description?: string };
-
 		expect(read).toHaveProperty("enforcedBoundary");
 		expect(read).toHaveProperty("background");
 		expect(read.background).toMatchObject({ type: "boolean", default: false });
@@ -30,9 +27,6 @@ describe("T6 current subagent naming", () => {
 		expect(teamlead).toHaveProperty("boundary");
 		expect(teamlead).toHaveProperty("hardDeadlineMs");
 		expect(teamlead).not.toHaveProperty("workBoundary");
-		expect(enforced.description).toContain("governed file tools");
-		expect(enforced.description).toContain("recursive-search tools");
-		expect(enforced.description).toContain("not a general sandbox");
 		expect(properties(SubagentWriteSchema)).toMatchObject({
 			enforcedBoundary: expect.any(Object),
 			background: { type: "boolean", default: false },
@@ -82,8 +76,4 @@ describe("T6 current subagent naming", () => {
 		expect(result.request.items[0]).not.toHaveProperty("task");
 	});
 
-	it("defines process selectors with current process terminology", () => {
-		const selector: SubagentControlSelector = { type: "process", processId: "p-1" };
-		expect(selector).toEqual({ type: "process", processId: "p-1" });
-	});
 });

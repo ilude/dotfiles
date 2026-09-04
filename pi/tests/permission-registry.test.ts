@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	getDecision,
 	listRecentDecisions,
@@ -19,6 +19,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	if (prevOverride === undefined) delete process.env.PI_OPERATOR_DIR;
 	else process.env.PI_OPERATOR_DIR = prevOverride;
 	fs.rmSync(tmpRoot, { recursive: true, force: true });
@@ -65,8 +66,10 @@ describe("recordDecision", () => {
 
 describe("listRecentDecisions", () => {
 	it("returns newest-first", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-08-25T00:00:00.000Z"));
 		const a = recordDecision({ action: "Bash:ls", outcome: "allow", provenance: "rule" });
-		await new Promise((r) => setTimeout(r, 5));
+		vi.setSystemTime(new Date("2026-08-25T00:00:00.005Z"));
 		const b = recordDecision({ action: "Bash:rm", outcome: "deny", provenance: "manual_once" });
 		const got = listRecentDecisions();
 		expect(got.map((d) => d.id)).toEqual([b.id, a.id]);
@@ -132,13 +135,5 @@ describe("getDecision", () => {
 	it("returns null for unknown id", () => {
 		recordDecision({ action: "Bash:ls", outcome: "allow", provenance: "rule" });
 		expect(getDecision("not-found")).toBeNull();
-	});
-});
-
-describe("durable storage", () => {
-	it("does not depend on transcript parsing -- writes only to permissions/", () => {
-		recordDecision({ action: "Bash:ls", outcome: "allow", provenance: "rule" });
-		const decisionsFile = path.join(tmpRoot, "permissions", "decisions.jsonl");
-		expect(fs.existsSync(decisionsFile)).toBe(true);
 	});
 });

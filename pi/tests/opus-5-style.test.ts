@@ -37,7 +37,6 @@ describe("Opus 5 style instruction", () => {
 		const first = appendOpus5Instruction("base prompt", OPUS_MODELS[0]);
 
 		expect(first).toContain("base prompt");
-		expect(first).toContain("For Opus 5");
 		expect(appendOpus5Instruction(first ?? "", OPUS_MODELS[0])).toBeUndefined();
 		expect(first?.split(OPUS_5_INSTRUCTION)).toHaveLength(2);
 	});

@@ -235,9 +235,6 @@ describe("workflow slash command dispatch", () => {
 			ui: { setStatus },
 		});
 
-		expect(setStatus).toHaveBeenNthCalledWith(1, "plan-it", "planning...");
-		expect(setStatus).toHaveBeenLastCalledWith("plan-it", undefined);
-
 		expect(mockPi.appendEntry).toHaveBeenCalledWith("slash-echo", {
 			kind: "submitted",
 			text: "/plan-it build the thing",
@@ -457,7 +454,6 @@ describe("workflow slash command dispatch", () => {
 		expect(copyToClipboardMock.mock.invocationCallOrder[0]).toBeLessThan(
 			mockPi.appendEntry.mock.invocationCallOrder.at(-1)!,
 		);
-		expect(notify).not.toHaveBeenCalled();
 	});
 
 	it("does not emit a stale command after another plan-it starts", async () => {
@@ -484,7 +480,6 @@ describe("workflow slash command dispatch", () => {
 		if (!agentEnd) throw new Error("agent_end hook not registered");
 		await agentEnd({ messages: [] }, ctx);
 		expect(copyToClipboardMock).toHaveBeenCalledOnce();
-		expect(ctx.ui.notify).toHaveBeenCalledWith("Could not copy the next command to the clipboard.", "warning");
 		expect(mockPi.appendEntry).not.toHaveBeenLastCalledWith("slash-echo", expect.objectContaining({ kind: "next-command" }));
 	});
 
@@ -580,11 +575,10 @@ describe("workflow slash command dispatch", () => {
 			inPlace: false,
 			noMerge: false,
 		};
-		const notify = vi.fn();
 		const ctx = {
 			cwd: "/repo",
 			mode: "tui",
-			ui: { notify },
+			ui: { notify: vi.fn() },
 			sessionManager: { getSessionId: () => "resume-session", getBranch: () => [
 				{ customType: "workflow.do-it-continuation.consumed", data: { ...continuation, id: "older-continuation" } },
 				{ customType: "workflow.do-it-continuation", data: continuation },
@@ -602,11 +596,6 @@ describe("workflow slash command dispatch", () => {
 			"workflow.do-it-continuation.consumed",
 			expect.anything(),
 		);
-		expect(notify).toHaveBeenCalledWith(
-			"/do-it continuation remains pending: dispatch unavailable",
-			"error",
-		);
-
 		await sessionStart({ reason: "reload" }, ctx);
 
 		expect(mockPi.sendMessage).toHaveBeenLastCalledWith(

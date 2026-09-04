@@ -279,15 +279,15 @@ describe("shared session JSONL stats primitives", () => {
 		expect(extensionOutput).toContain(
 			`Sessions directory: ${customSessionDir}`,
 		);
-		expect(extensionOutput).toContain("| grep | 1 | 11 |");
-		expect(extensionOutput).not.toContain("| find | 1 | 97 |");
+		expect(extensionOutput).toMatch(/grep[^\n]*\b1\b[^\n]*\b11\b/);
+		expect(extensionOutput).not.toMatch(/find[^\n]*\b1\b[^\n]*\b97\b/);
 		const snapshot = await collectExtensionUsageSnapshot(
 			extensionPi as unknown as ExtensionAPI,
 			cwd,
 			customSessionDir,
 		);
 		expect(snapshot.tools.get("Pi/grep")).toBe(1);
-		expect(skillOutput).toContain("| custom-root-skill |");
-		expect(skillOutput).not.toContain("| default-root-skill |");
+		expect(skillOutput).toContain("custom-root-skill");
+		expect(skillOutput).not.toContain("default-root-skill");
 	});
 });

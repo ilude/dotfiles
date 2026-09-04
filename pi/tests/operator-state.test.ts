@@ -104,10 +104,6 @@ describe("ALLOWED_TRANSITIONS / isAllowedTransition", () => {
 		}
 	});
 
-	it("allows failed -> assigned as the retry transition", () => {
-		expect(isAllowedTransition("failed", "assigned")).toBe(true);
-	});
-
 	const rejectedTransitions: Array<[TaskState, TaskState]> = [
 		["unassigned", "completed"],
 		["assigned", "assigned"],

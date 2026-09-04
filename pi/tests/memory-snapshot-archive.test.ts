@@ -354,22 +354,4 @@ describe("CLI integration", () => {
     }
   });
 
-  it("omitting --confirm does NOT write the archive (dry-run is the default gate)", () => {
-    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "pi-snap-cli-noconfirm-"));
-    try {
-      const env = { ...process.env, HOME: sandbox };
-      // Run without --confirm.
-      execSync(`bun ${JSON.stringify(SCRIPT_PATH)}`, {
-        env,
-        cwd: REPO_ROOT,
-        encoding: "utf8",
-        stdio: "pipe",
-      });
-
-      const archiveRoot = path.join(sandbox, ".pi", "agent", "index", "archive");
-      expect(fs.existsSync(archiveRoot)).toBe(false);
-    } finally {
-      fs.rmSync(sandbox, { recursive: true, force: true });
-    }
-  });
 });

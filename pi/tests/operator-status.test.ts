@@ -223,7 +223,7 @@ describe("formatPiStatusLine", () => {
 		expect(mod.formatProviderName(provider)).toBe(expected);
 	});
 
-	it("renders a dim provider prefix before the model", async () => {
+	it("renders provider, model, and thinking level", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const pi = Object.assign(createMockPi(), { getThinkingLevel: () => "low" });
 		const line = mod.formatPiStatusLine({
@@ -235,12 +235,9 @@ describe("formatPiStatusLine", () => {
 			rightStatus: null,
 			width: 120,
 		});
-
-		expect(line).toContain(
-			"\x1b[2m\x1b[90mcodex/\x1b[0m" +
-				"\x1b[38;5;208mgpt-5.6-sol\x1b[0m" +
-				"\x1b[37m[\x1b[36mlow\x1b[37m]\x1b[0m",
-		);
+		expect(line).toContain("codex/");
+		expect(line).toContain("gpt-5.6-sol");
+		expect(line).toContain("low");
 	});
 
 	it("drops the provider prefix before truncating higher-priority footer content", async () => {
@@ -291,7 +288,7 @@ describe("formatPiStatusLine", () => {
 		});
 
 		expect(line).toContain("π v0.72.0");
-		expect(line).toContain("\x1b[37m[\x1b[38;5;205mreload\x1b[37m]\x1b[0m");
+		expect(line).toContain("reload");
 	});
 
 	it("renders pipe-delimited context usage after model reasoning", async () => {

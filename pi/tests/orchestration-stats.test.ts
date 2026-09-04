@@ -445,7 +445,7 @@ describe("orchestration telemetry archive verifier", () => {
 			),
 		);
 		reject((fixture) => {
-			const stale = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+			const stale = new Date("2026-07-08T13:00:00.000Z");
 			fs.utimesSync(fixture.smoke, stale, stale);
 		});
 	});

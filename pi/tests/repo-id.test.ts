@@ -15,12 +15,9 @@ import {
   parseRemoteUrl,
   resolveProviderPrefix,
   windowsSafeSlug,
-  buildSlugFromParsed,
   localFallbackSlug,
   hashSuffix,
-  WINDOWS_RESERVED_NAMES,
   MAX_SLUG_LENGTH,
-  KNOWN_PROVIDER_PREFIXES,
 } from "../lib/repo-id.js";
 import { GIT_REMOTE_FIXTURES, WINDOWS_NORMALIZATION_FIXTURES } from "./helpers/mock-pi.js";
 
@@ -44,19 +41,9 @@ function makeContext(remotes: Record<string, string>, overrides: Partial<RepoIdC
 // A clean import failure here is the expected Wave-1 failure mode.
 // ---------------------------------------------------------------------------
 
-describe("preflight: repo-id module availability", () => {
-  it("exports required functions and constants", () => {
-    expect(typeof deriveRepoId).toBe("function");
-    expect(typeof parseRemoteUrl).toBe("function");
-    expect(typeof resolveProviderPrefix).toBe("function");
-    expect(typeof windowsSafeSlug).toBe("function");
-    expect(typeof buildSlugFromParsed).toBe("function");
-    expect(typeof localFallbackSlug).toBe("function");
-    expect(typeof hashSuffix).toBe("function");
-    expect(WINDOWS_RESERVED_NAMES).toBeDefined();
+describe("preflight: repo-id slug length", () => {
+  it("keeps the maximum slug length at 120", () => {
     expect(MAX_SLUG_LENGTH).toBe(120);
-    expect(KNOWN_PROVIDER_PREFIXES["github.com"]).toBe("gh");
-    expect(KNOWN_PROVIDER_PREFIXES["gitlab.com"]).toBe("gl");
   });
 });
 

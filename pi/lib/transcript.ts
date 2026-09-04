@@ -395,10 +395,11 @@ export async function sweepRetention(
 	traceDir: string,
 	retentionDays: number,
 	maxAgeMs?: number,
+	nowMs = Date.now(),
 ): Promise<{ removedFiles: number; removedSpillDirs: number }> {
 	let removedFiles = 0;
 	let removedSpillDirs = 0;
-	const cutoff = Date.now() - (typeof maxAgeMs === "number" ? maxAgeMs : retentionDays * 24 * 60 * 60 * 1000);
+	const cutoff = nowMs - (typeof maxAgeMs === "number" ? maxAgeMs : retentionDays * 24 * 60 * 60 * 1000);
 
 	let entries: fs.Dirent[];
 	try {

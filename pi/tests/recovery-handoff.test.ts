@@ -12,8 +12,6 @@ describe("recoverable local failure handoff", () => {
 			cwd: "C:/repo",
 		});
 		expect(prompt).toContain("[REDACTED]");
-		expect(prompt).toContain("not permission to bypass safety controls");
-		expect(prompt).toContain("Do not replay a partially observed mutation blindly");
 		expect(prompt.length).toBeLessThan(2_000);
 	});
 

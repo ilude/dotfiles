@@ -140,15 +140,30 @@ describe("createTaskBatch validation and recovery", () => {
 	});
 
 	it("reports only authorized dependency cycle members", () => {
-		expect(() =>
+		const unrelated = createTask({
+			origin: "other",
+			summary: "unrelated",
+			workspace,
+		});
+		let failure: unknown;
+		try {
 			createTaskBatch(
 				[
 					{ origin: "other", summary: "a", key: "a", blockedByKeys: ["b"] },
 					{ origin: "other", summary: "b", key: "b", blockedByKeys: ["a"] },
 				],
 				workspace,
-			),
-		).toThrow(/dependency cycle rejected: .*a.*b/);
+			);
+		} catch (error) {
+			failure = error;
+		}
+
+		expect(failure).toBeInstanceOf(TaskRegistryError);
+		const message = (failure as Error).message;
+		expect(message).toMatch(
+			/^dependency cycle rejected: [0-9a-f-]{36}, [0-9a-f-]{36}$/,
+		);
+		expect(message).not.toContain(unrelated.id);
 	});
 
 	it("reports partial writes and supports ordered public recovery", () => {

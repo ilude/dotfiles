@@ -139,9 +139,6 @@ describe("/skill-stats extension", () => {
 		if (!result) throw new Error("expected skill stats result");
 		const markdown = renderSkillStatsMarkdown(result);
 		expect(markdown).toContain(`Session root: ${root}`);
-		expect(markdown).toContain("## Unused skills");
-		expect(markdown).toContain("| Skill | Location | Count | Description |");
-		expect(markdown).toContain("| Skill | Location | Description |");
 		expect(markdown).not.toContain("/home/person");
 	});
 

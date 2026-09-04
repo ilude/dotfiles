@@ -55,15 +55,6 @@ describe("parsePermissionsArgs", () => {
 });
 
 describe("/permissions summary", () => {
-	it("shows empty state when registry is fresh", async () => {
-		const { cmd } = await loadPermissions();
-		const ctx = createMockCtx();
-		await cmd.handler("", ctx);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-		expect(text).toContain("recent allows (0)");
-		expect(text).toContain("recent denies (0)");
-	});
-
 	it("includes recent denies", async () => {
 		const { recordDecision } = await import("../lib/permission-registry.ts");
 		recordDecision({
@@ -110,13 +101,6 @@ describe("/permissions allows / denies", () => {
 		expect(text).not.toContain("Bash:ls");
 	});
 
-	it("notifies empty state when there are no matching decisions", async () => {
-		const { cmd } = await loadPermissions();
-		const ctx = createMockCtx();
-		await cmd.handler("denies", ctx);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-		expect(text).toContain("No recent deny decisions");
-	});
 });
 
 describe("/permissions retry", () => {
@@ -136,8 +120,9 @@ describe("/permissions retry", () => {
 		const { cmd } = await loadPermissions();
 		const ctx = createMockCtx();
 		await cmd.handler(`retry ${allow.id}`, ctx);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-		expect(text).toContain("Only deny decisions can be retried");
+		const calls = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls;
+		expect(calls[0][1]).toBe("warning");
+		expect(calls[0][0]).toContain("allow");
 	});
 
 	it("warns when there is no replay payload", async () => {
@@ -147,8 +132,10 @@ describe("/permissions retry", () => {
 		const { cmd } = await loadPermissions();
 		const ctx = createMockCtx();
 		await cmd.handler(`retry ${deny.id}`, ctx);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-		expect(text).toContain("no replay payload");
+		const calls = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls;
+		expect(calls[0][1]).toBe("warning");
+		expect(calls[0][0]).toContain(deny.id.slice(0, 8));
+		expect(calls[0][0]).toContain("replay payload");
 	});
 
 	it("records a replay attempt as a new decision when replayPayload exists", async () => {

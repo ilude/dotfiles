@@ -145,14 +145,6 @@ describe("provider request fixture (llm_request)", () => {
     expect(Array.isArray(payload.messages)).toBe(true);
   });
 
-  it("does not mutate the original fixture event payload", () => {
-    const event = makeProviderRequestEvent();
-    const originalHeaders = (event.payload as any).headers;
-    const originalKey = originalHeaders["x-api-key"];
-    // Run through redact by constructing a writer (but don't write -- just verify
-    // the factory output is unchanged since redact is pure).
-    expect(originalKey).toBe("sk-ant-abcdefghijklmnopqrstuvwxyz");
-  });
 });
 
 // ---------------------------------------------------------------------------

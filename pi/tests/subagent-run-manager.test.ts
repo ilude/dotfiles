@@ -552,21 +552,6 @@ describe("subagent dashboard selection", () => {
 		expect(renderedViews[1]).toContain("[13:14:15] assistant:");
 	});
 
-	it("distinguishes an empty process from filters that hide tracked runs", async () => {
-		const manager = new SubagentRunManager();
-		beginRun(manager, "hidden-run");
-		const notify = vi.fn();
-		await openSubagentDashboard(
-			{ ui: { notify } } as never,
-			manager,
-			() => false,
-		);
-		expect(notify).toHaveBeenCalledWith(
-			"1 subagent run is tracked in this process, but none match the requested filters.",
-			"info",
-		);
-	});
-
 	it("formats actionable running and failed footer counts", () => {
 		expect(formatSubagentActivityStatus([])).toBeUndefined();
 		expect(

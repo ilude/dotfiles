@@ -1,3 +1,5 @@
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { exportLegacyTasks, importLegacyTasks, TaskMigrationError } from "../lib/task-store.ts";
 
 const USAGE = "Usage: task-store-migrate.ts <import|export> --operator-dir <path>";
@@ -22,7 +24,7 @@ function parseArgs(argv: readonly string[]): { mode: "import" | "export"; operat
 	return { mode, operatorDir: argv[2] };
 }
 
-function exitCode(error: unknown): number {
+export function migrationExitCode(error: unknown): number {
 	if (!(error instanceof TaskMigrationError)) return 6;
 	if (error.code === "locked") return 3;
 	if (error.code === "unstable") return 4;
@@ -30,11 +32,13 @@ function exitCode(error: unknown): number {
 	return 6;
 }
 
-try {
-	const args = parseArgs(process.argv.slice(2));
-	const result = args.mode === "import" ? importLegacyTasks(args.operatorDir) : exportLegacyTasks(args.operatorDir);
-	process.stdout.write(`${args.mode} complete: ${result.imported} task records\n`);
-} catch (error) {
-	process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-	process.exitCode = error instanceof TaskMigrationError && error.code === "invalid" && error.message === USAGE ? 2 : exitCode(error);
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+	try {
+		const args = parseArgs(process.argv.slice(2));
+		const result = args.mode === "import" ? importLegacyTasks(args.operatorDir) : exportLegacyTasks(args.operatorDir);
+		process.stdout.write(`${args.mode} complete: ${result.imported} task records\n`);
+	} catch (error) {
+		process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+		process.exitCode = error instanceof TaskMigrationError && error.code === "invalid" && error.message === USAGE ? 2 : migrationExitCode(error);
+	}
 }

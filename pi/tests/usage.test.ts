@@ -12,7 +12,10 @@ vi.mock("node:os", async (importOriginal) => {
 });
 
 import usageExtension, { buildUsageReport } from "../extensions/usage.ts";
-import { readHistoricalUsage } from "../lib/log-analytics/usage-analytics.ts";
+import {
+	readHistoricalUsage,
+	waitForUsageBackgroundTasks,
+} from "../lib/log-analytics/usage-analytics.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const tempDirs: string[] = [];
@@ -159,6 +162,8 @@ describe("usage extension", () => {
 	});
 
 	it("writes structured pricing refresh audit records", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-07-14T12:00:00.000Z"));
 		const root = await makeTempDir();
 		const agentDir = path.join(root, "agent");
 		const sessionRoot = path.join(root, "sessions");
@@ -166,7 +171,7 @@ describe("usage extension", () => {
 		process.env.PI_USAGE_TEST_HOME = root;
 		await writePricingCache(agentDir);
 		const cachePath = path.join(agentDir, "cache", "models-dev-api.json");
-		const staleDate = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+		const staleDate = new Date("2026-07-06T12:00:00.000Z");
 		await fs.utimes(cachePath, staleDate, staleDate);
 		vi.stubGlobal(
 			"fetch",
@@ -179,13 +184,12 @@ describe("usage extension", () => {
 		);
 
 		await buildUsageReport(false, sessionRoot, []);
+		await waitForUsageBackgroundTasks();
 		const logPath = path.join(agentDir, "logs", "usage.jsonl");
-		await vi.waitFor(async () => {
-			const lines = (await fs.readFile(logPath, "utf8"))
-				.trim()
-				.split("\n");
-			expect(lines).toHaveLength(2);
-		});
+		const lines = (await fs.readFile(logPath, "utf8"))
+			.trim()
+			.split("\n");
+		expect(lines).toHaveLength(2);
 		const records = (await fs.readFile(logPath, "utf8"))
 			.trim()
 			.split("\n")

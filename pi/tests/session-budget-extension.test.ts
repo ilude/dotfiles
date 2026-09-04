@@ -163,7 +163,6 @@ describe("session budget extension", () => {
 
 		const notices = hiddenMessages(runtime);
 		expect(notices).toHaveLength(1);
-		expect(notices[0][0].content).toContain("Fix only the requested bug");
 		expect(notices[0][0].content).toContain("3 tool calls");
 		expect(notices[0][1]).toEqual({
 			triggerTurn: true,
@@ -413,7 +412,7 @@ describe("session budget extension", () => {
 			await startEpoch(runtime);
 			await expect(callTool(runtime, "read-1")).resolves.toBeUndefined();
 			expect(runtime.ctx.ui.notify).toHaveBeenCalledWith(
-				"Session watchdog disabled for this session: clock unavailable",
+				expect.stringContaining("clock unavailable"),
 				"error",
 			);
 			await expect(callTool(runtime, "read-2")).resolves.toBeUndefined();

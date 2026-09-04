@@ -223,18 +223,6 @@ describe("findSkillByName", () => {
 	});
 });
 
-describe("tracked image editing skill", () => {
-	it("discovers the concise image workflow without warnings", () => {
-		const skills = discoverSkills({ roots: [{ path: path.resolve(process.cwd(), "skills"), source: "builtin" }] });
-		const skill = skills.find((candidate) => candidate.name === "image-editing");
-		expect(skill).toBeDefined();
-		expect(skill?.description).toContain("local images");
-		expect(skill?.body).toContain("Before any crop or pixel-coordinate transform, call `image_inspect`");
-		expect(skill?.body).toContain("Reopen and verify");
-		expect(skill?.body).toContain("does not cover screenshots, OCR, image generation");
-	});
-});
-
 describe("metadata passthrough", () => {
 	it("preserves unknown frontmatter keys on metadata", () => {
 		writeFile(

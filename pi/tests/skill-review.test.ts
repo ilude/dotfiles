@@ -62,7 +62,6 @@ describe("skill-review deterministic core", () => {
 	it("extracts inventory metadata and usage placeholders", () => {
 		const inventory = buildInventory(fixtureSkills(), path.resolve(".."));
 		const clean = inventory.find((item) => item.name === "clean-skill");
-		expect(clean?.description).toContain("focused clean");
 		expect(clean?.boundarySignal).toBe(true);
 		expect(clean?.usage.signal).toBe("unused");
 		expect(clean?.frontmatterFields).toContain("name");

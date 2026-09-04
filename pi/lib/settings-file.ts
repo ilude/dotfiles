@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { lock } from "proper-lockfile";
+import { check, lock } from "proper-lockfile";
 import { getAgentDir } from "./extension-utils.ts";
 
 export type JsonObject = Record<string, unknown>;
@@ -140,7 +140,13 @@ export async function writeJsonObjectAtomic(
 	}
 }
 
-async function acquireLock(filePath: string): Promise<() => Promise<void>> {
+async function acquireLock(
+	filePath: string,
+	onContention?: () => void | Promise<void>,
+): Promise<() => Promise<void>> {
+	if (onContention && (await check(filePath, { realpath: false }))) {
+		await onContention();
+	}
 	return lock(filePath, {
 		realpath: false,
 		stale: LOCK_STALE_MS,
@@ -155,12 +161,19 @@ async function acquireLock(filePath: string): Promise<() => Promise<void>> {
 	});
 }
 
+export interface UpdateJsonObjectOptions {
+	beforeRead?: () => void | Promise<void>;
+	onLockContention?: () => void | Promise<void>;
+}
+
 export async function updateJsonObjectAtomic(
 	filePath: string,
 	update: (current: JsonObject) => JsonObject,
+	options: UpdateJsonObjectOptions = {},
 ): Promise<boolean> {
-	const release = await acquireLock(filePath);
+	const release = await acquireLock(filePath, options.onLockContention);
 	try {
+		await options.beforeRead?.();
 		const raw = fs.readFileSync(filePath, "utf-8");
 		const current: unknown = JSON.parse(raw);
 		assertJsonObject(current, filePath);

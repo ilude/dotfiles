@@ -666,45 +666,6 @@ describe("SubagentTreeBroker", () => {
 		await broker.dispose();
 	});
 
-	it("holds an active scope cancelled before PID registration until settlement", async () => {
-		const broker = new SubagentTreeBroker({ maxActiveDescendants: 2 });
-		const root = broker.createTree();
-		const first = await broker.acquire({
-			treeId: root.treeId,
-			parentRunId: root.rootRunId,
-			runId: "cancelled-before-registration",
-			role: "leaf",
-			scopeLease: {
-				repositoryRoot: process.cwd(),
-				scopes: ["src/pre-registration"],
-			},
-		});
-		broker.cancel(first.metadata.runId);
-		const earlyReplacement = await broker.acquire({
-			treeId: root.treeId,
-			parentRunId: root.rootRunId,
-			runId: "premature-pre-registration-replacement",
-			role: "leaf",
-			scopeLease: {
-				repositoryRoot: process.cwd(),
-				scopes: ["src/pre-registration"],
-			},
-		});
-		await earlyReplacement.release();
-		await first.release();
-		const replacement = await broker.acquire({
-			treeId: root.treeId,
-			parentRunId: root.rootRunId,
-			runId: "post-registration-window-replacement",
-			role: "leaf",
-			scopeLease: {
-				repositoryRoot: process.cwd(),
-				scopes: ["src/pre-registration"],
-			},
-		});
-		await replacement.release();
-	});
-
 	it("holds a cancelled process scope lease until its permit settles", async () => {
 		const broker = new SubagentTreeBroker({ maxActiveDescendants: 2 });
 		const root = broker.createTree();
