@@ -6,9 +6,8 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import {
-	type BedrockMonthSummary,
+	formatBedrockStatus,
 	getCurrentBedrockMonthSummary,
-	invalidateBedrockSummaryCache,
 	recordBedrockUsage,
 } from "../lib/bedrock-cost-ledger.js";
 
@@ -23,12 +22,7 @@ function isBedrockProvider(provider: string): provider is BedrockProvider {
 	return BEDROCK_PROVIDERS.has(provider as BedrockProvider);
 }
 
-export function formatBedrockStatus(
-	summary: Pick<BedrockMonthSummary, "costTotal" | "unpricedRequestCount">,
-): string {
-	const cost = Number.isFinite(summary.costTotal) ? summary.costTotal : 0;
-	return `bedrock: $${cost.toFixed(2)}`;
-}
+export { formatBedrockStatus };
 
 export function shouldRecordBedrockMessage(
 	message: AgentMessage,
@@ -83,7 +77,6 @@ function errorMessage(error: unknown): string {
 export default function registerBedrockCostExtension(pi: ExtensionAPI) {
 	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
 		try {
-			invalidateBedrockSummaryCache();
 			await refreshStatus(ctx);
 		} catch (error) {
 			showLedgerError(ctx, error);

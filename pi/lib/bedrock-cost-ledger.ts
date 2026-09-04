@@ -1,11 +1,16 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { lock } from "proper-lockfile";
 
 import { priceBedrockUsage } from "./bedrock-pricing.ts";
 import { getOperatorStateDir } from "./operator-state.ts";
 
 export const BEDROCK_COST_LEDGER_SCHEMA_VERSION = 1 as const;
 export const BEDROCK_COST_LEDGER_FILE = "bedrock-costs.json";
+
+const LOCK_STALE_MS = 10_000;
+const LOCK_RETRY_MS = 25;
+const LOCK_RETRIES = 400;
 
 export interface BedrockCostLedgerOptions {
 	filePath?: string;
@@ -172,6 +177,73 @@ export function formatTokenCount(tokens: number): string {
 	);
 }
 
+function formatCompactMoney(amount: number): string {
+	return `$${finiteNumber(amount).toFixed(2)}`;
+}
+
+function formatCompactTokenCount(tokens: number): string {
+	const count = finiteNumber(tokens);
+	if (count < 1_000) return String(count);
+	if (count < 1_000_000) return `${(count / 1_000).toFixed(1)}K`;
+	return `${(count / 1_000_000).toFixed(1)}M`;
+}
+
+function shortBedrockModelName(model: string): string {
+	const match = model.match(/claude-(opus|fable|sonnet|haiku)-(\d+(?:-\d+)?)/);
+	return match ? `${match[1]}-${match[2]}` : model;
+}
+
+export function formatBedrockStatus(
+	summary: Pick<BedrockMonthSummary, "costTotal">,
+): string {
+	return `bedrock: ${formatCompactMoney(summary.costTotal)}`;
+}
+
+export function formatBedrockUsageSection(summary: BedrockMonthSummary): string {
+	if (summary.requestCount === 0 || summary.models.length === 0) {
+		return "Bedrock: no usage recorded this month.";
+	}
+
+	const modelsByName = new Map<
+		string,
+		{
+			inputTokens: number;
+			outputTokens: number;
+			cacheReadTokens: number;
+			cacheWriteTokens: number;
+			costTotal: number;
+		}
+	>();
+	for (const model of summary.models) {
+		const name = shortBedrockModelName(model.model);
+		const totals = modelsByName.get(name) ?? {
+			inputTokens: 0,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			costTotal: 0,
+		};
+		totals.inputTokens += model.inputTokens;
+		totals.outputTokens += model.outputTokens;
+		totals.cacheReadTokens += model.cacheReadTokens;
+		totals.cacheWriteTokens += model.cacheWriteTokens;
+		totals.costTotal += model.costTotal;
+		modelsByName.set(name, totals);
+	}
+
+	const lines = ["Bedrock local estimate:"];
+	for (const [name, model] of modelsByName) {
+		const cost = formatCompactMoney(model.costTotal);
+		if (cost === "$0.00") continue;
+		lines.push(
+			`  ${name}: ${cost} Tokens: ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out, ${formatCompactTokenCount(model.cacheReadTokens)} cache read, ${formatCompactTokenCount(model.cacheWriteTokens)} cache write`,
+		);
+	}
+	const total = formatCompactMoney(summary.costTotal);
+	if (total !== "$0.00") lines.push(`  Total:  ${total}`);
+	return lines.join("\n");
+}
+
 export async function readBedrockCostLedger(
 	options: BedrockCostLedgerOptions = {},
 ): Promise<BedrockCostLedger> {
@@ -200,75 +272,42 @@ export async function recordBedrockUsage(
 	options: BedrockCostLedgerOptions = {},
 ): Promise<BedrockCostLedger> {
 	const filePath = getBedrockCostLedgerPath(options);
-	const ledger = await readBedrockCostLedger(options);
-	const normalized = normalizeUsageRecord(record);
-	const month = ledger.months[normalized.month] ?? { models: {} };
-	ledger.months[normalized.month] = month;
-	const key = modelUsageKey(normalized.provider, normalized.model);
-	const totals =
-		month.models[key] ??
-		emptyModelTotals(normalized.provider, normalized.model);
-	month.models[key] = totals;
-	addUsage(totals, normalized);
-	await writeLedgerAtomic(filePath, ledger);
-	cacheMonthSummary(filePath, normalized.month, summarizeMonth(ledger, normalized.month));
-	return ledger;
-}
-
-const SUMMARY_CACHE_KEY = Symbol.for("dotfiles.pi.bedrock-summary-cache.v1");
-type SummaryCache = Map<string, Promise<BedrockMonthSummary>>;
-
-function summaryCache(): SummaryCache {
-	const root = globalThis as typeof globalThis & {
-		[SUMMARY_CACHE_KEY]?: SummaryCache;
-	};
-	const existing = root[SUMMARY_CACHE_KEY];
-	if (existing) return existing;
-	const created: SummaryCache = new Map();
-	root[SUMMARY_CACHE_KEY] = created;
-	return created;
-}
-
-function summaryCacheKey(filePath: string, month: string): string {
-	return `${filePath}\0${month}`;
-}
-
-function cacheMonthSummary(
-	filePath: string,
-	month: string,
-	summary: BedrockMonthSummary,
-): void {
-	summaryCache().set(summaryCacheKey(filePath, month), Promise.resolve(summary));
-}
-
-export function invalidateBedrockSummaryCache(
-	options: BedrockCostLedgerOptions = {},
-	date: Date = new Date(),
-): void {
-	summaryCache().delete(
-		summaryCacheKey(getBedrockCostLedgerPath(options), currentMonthKey(date)),
-	);
+	await fs.mkdir(path.dirname(filePath), { recursive: true });
+	const release = await lock(filePath, {
+		realpath: false,
+		stale: LOCK_STALE_MS,
+		update: LOCK_STALE_MS / 2,
+		retries: {
+			retries: LOCK_RETRIES,
+			factor: 1,
+			minTimeout: LOCK_RETRY_MS,
+			maxTimeout: LOCK_RETRY_MS,
+			randomize: false,
+		},
+	});
+	try {
+		const ledger = await readBedrockCostLedger(options);
+		const normalized = normalizeUsageRecord(record);
+		const month = ledger.months[normalized.month] ?? { models: {} };
+		ledger.months[normalized.month] = month;
+		const key = modelUsageKey(normalized.provider, normalized.model);
+		const totals =
+			month.models[key] ??
+			emptyModelTotals(normalized.provider, normalized.model);
+		month.models[key] = totals;
+		addUsage(totals, normalized);
+		await writeLedgerAtomic(filePath, ledger);
+		return ledger;
+	} finally {
+		await release();
+	}
 }
 
 export async function getCurrentBedrockMonthSummary(
 	options: BedrockCostLedgerOptions = {},
 	date: Date = new Date(),
 ): Promise<BedrockMonthSummary> {
-	const filePath = getBedrockCostLedgerPath(options);
-	const month = currentMonthKey(date);
-	const key = summaryCacheKey(filePath, month);
-	const cache = summaryCache();
-	let pending = cache.get(key);
-	if (!pending) {
-		pending = readBedrockCostLedger(options).then((ledger) =>
-			summarizeMonth(ledger, month),
-		);
-		cache.set(key, pending);
-		void pending.catch(() => {
-			if (cache.get(key) === pending) cache.delete(key);
-		});
-	}
-	return pending;
+	return summarizeMonth(await readBedrockCostLedger(options), currentMonthKey(date));
 }
 
 function emptyLedger(): BedrockCostLedger {

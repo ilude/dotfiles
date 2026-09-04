@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-03: Restore Bedrock tool-schema compatibility
+
+**Fixed:** `log_analytics` and the on-demand image transform tool now expose object-root input schemas accepted by Bedrock Converse. Operation-specific analytics fields and mutually exclusive image options remain enforced at execution.
+
+**Why:** Codex tolerated the root unions, but switching or reloading into Bedrock caused request validation to fail before inference.
+
+---
+
+## 2026-09-03: Make plan execution preflight structural
+
+**Changed:** `/do-it` validates canonical plans before clearing the current session and limits execution preflight to machine-consumed path, file, status, task, and dependency state. Human-readable completion, validation, retention, resume, and execution-strategy prose remains available as plan context without blocking execution over equivalent wording.
+
+**Preserved:** `/plan-it` readiness still checks authoring quality. Canonical path containment, regular-file checks, supported persisted states, executable task bounds, dependency references and cycles, ownership, worktree, and closeout safety remain enforced.
+
+---
+
+## 2026-09-03: Keep Bedrock month-to-date usage consistent
+
+**Changed:** The compact footer and startup/new-session report now format one current Bedrock ledger summary. The detailed report breaks the same total into input, output, cache-read, and cache-write tokens. Ledger updates are serialized across Pi processes, and summary reads no longer reuse process-local values that can diverge from shared storage.
+
+**Preserved:** The footer remains compact and right-aligned, while the expanded report remains local and month-to-date.
+
+---
+
 ## 2026-09-03: Make Bedrock Claude delegation proportional
 
 **Changed:** Bedrock Fable and Opus now retain normal direct tools for small work while receiving concise cost-aware guidance to delegate substantial work to Codex subagents. Bounded Team Lead packages are available when multiple independent specialists provide a concrete benefit.

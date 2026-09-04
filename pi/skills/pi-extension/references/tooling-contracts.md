@@ -59,5 +59,5 @@ This index records stable public and normative semantics for Pi extensions and t
 - When a process-local schedule exists, render its next run immediately after Onclave as `sched@ <time>` using the schedule's applicable timezone and a compact lowercase 12-hour time. Omit the segment when no schedule exists.
 - At narrow widths, preserve reload, failure, context-pressure, and provider-quota feedback before model identity, Pi version, branch, or directory details. Extension failures sort ahead of routine task and throughput statuses.
 - Render token-throughput status after Onclave and the other left-side extension statuses.
-- Keep compact Bedrock spend right-aligned as the final second-line segment.
+- Keep compact Bedrock month-to-date spend right-aligned as the final second-line segment. The footer and startup/new-session usage report read the same current ledger summary and pricing path; the report expands that total with per-model input, output, cache-read, and cache-write tokens.
 - Reserve below-editor widgets for content that is not footer status.

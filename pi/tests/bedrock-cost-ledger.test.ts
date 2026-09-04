@@ -216,6 +216,33 @@ describe("recordBedrockUsage", () => {
 		expect(summary.models[1]?.costTotal).toBeCloseTo(0.002838);
 	});
 
+	it("serializes concurrent updates without losing usage", async () => {
+		const filePath = path.join(tmpRoot, "concurrent.json");
+		const date = new Date(2026, 0, 20);
+		await Promise.all(
+			Array.from({ length: 20 }, () =>
+				recordBedrockUsage(
+					{
+						provider: "bedrock-mantle",
+						model: "anthropic.claude-fable-5-1",
+						usage: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 },
+						date,
+					},
+					{ filePath },
+				),
+			),
+		);
+
+		const summary = await getCurrentBedrockMonthSummary({ filePath }, date);
+		expect(summary).toMatchObject({
+			inputTokens: 20,
+			outputTokens: 40,
+			cacheReadTokens: 60,
+			cacheWriteTokens: 80,
+			requestCount: 20,
+		});
+	});
+
 	it("counts unpriced requests without inventing cost", async () => {
 		const filePath = path.join(tmpRoot, "unpriced.json");
 		await recordBedrockUsage(
@@ -256,11 +283,12 @@ describe("recordBedrockUsage", () => {
 });
 
 describe("getCurrentBedrockMonthSummary", () => {
-	it("reuses the cached summary and refreshes it after recording usage", async () => {
-		const filePath = path.join(tmpRoot, "cached-summary.json");
+	it("reads the latest persisted month summary", async () => {
+		const filePath = path.join(tmpRoot, "current-summary.json");
 		const date = new Date(2026, 5, 15);
-		const empty = await getCurrentBedrockMonthSummary({ filePath }, date);
-		expect(await getCurrentBedrockMonthSummary({ filePath }, date)).toBe(empty);
+		expect(
+			(await getCurrentBedrockMonthSummary({ filePath }, date)).requestCount,
+		).toBe(0);
 
 		await recordBedrockUsage(
 			{
@@ -271,10 +299,9 @@ describe("getCurrentBedrockMonthSummary", () => {
 			{ filePath },
 		);
 
-		const refreshed = await getCurrentBedrockMonthSummary({ filePath }, date);
-		expect(refreshed).not.toBe(empty);
-		expect(refreshed.requestCount).toBe(1);
-		expect(await getCurrentBedrockMonthSummary({ filePath }, date)).toBe(refreshed);
+		expect(
+			(await getCurrentBedrockMonthSummary({ filePath }, date)).requestCount,
+		).toBe(1);
 	});
 
 	it("summarizes the selected month from isolated storage", async () => {

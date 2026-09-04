@@ -23,7 +23,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import {
-	type BedrockMonthSummary,
+	formatBedrockUsageSection,
 	getCurrentBedrockMonthSummary,
 } from "../lib/bedrock-cost-ledger.js";
 
@@ -646,61 +646,7 @@ export function formatUsage(
 	return lines.join("\n");
 }
 
-function formatCompactMoney(amount: number): string {
-	return `$${amount.toFixed(2)}`;
-}
-
-function formatCompactTokenCount(tokens: number): string {
-	if (tokens < 1_000) return String(tokens);
-	if (tokens < 1_000_000) return `${(tokens / 1_000).toFixed(1)}K`;
-	return `${(tokens / 1_000_000).toFixed(1)}M`;
-}
-
-function shortBedrockModelName(model: string): string {
-	const match = model.match(/claude-(opus|fable|sonnet|haiku)-(\d+(?:-\d+)?)/);
-	return match ? `${match[1]}-${match[2]}` : model;
-}
-
-export function formatBedrockUsageSection(
-	summary: BedrockMonthSummary,
-): string {
-	if (summary.requestCount === 0 || summary.models.length === 0) {
-		return "Bedrock: no usage recorded this month.";
-	}
-
-	const modelsByName = new Map<
-		string,
-		{
-			inputTokens: number;
-			outputTokens: number;
-			costTotal: number;
-		}
-	>();
-	for (const model of summary.models) {
-		const name = shortBedrockModelName(model.model);
-		const totals = modelsByName.get(name) ?? {
-			inputTokens: 0,
-			outputTokens: 0,
-			costTotal: 0,
-		};
-		totals.inputTokens += model.inputTokens;
-		totals.outputTokens += model.outputTokens;
-		totals.costTotal += model.costTotal;
-		modelsByName.set(name, totals);
-	}
-
-	const lines = ["Bedrock local estimate:"];
-	for (const [name, model] of modelsByName) {
-		const cost = formatCompactMoney(model.costTotal);
-		if (cost === "$0.00") continue;
-		lines.push(
-			`  ${name}: ${cost} Tokens: ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out`,
-		);
-	}
-	const total = formatCompactMoney(summary.costTotal);
-	if (total !== "$0.00") lines.push(`  Total:  ${total}`);
-	return lines.join("\n");
-}
+export { formatBedrockUsageSection };
 
 export async function formatConfiguredBedrockUsageSection(): Promise<
 	string | null
