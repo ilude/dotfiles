@@ -636,7 +636,7 @@ describe("Bedrock provider registration", () => {
 	});
 
 	it("restores discovered model IDs from the persisted catalog", async () => {
-		const provider = createBedrockModelProvider({});
+		const provider = createBedrockModelProvider({}, { runtimeMetadata: [] });
 		const storedModels = buildBedrockModelRoutes(mantleModelIds).map(
 			(route) => route.model,
 		);

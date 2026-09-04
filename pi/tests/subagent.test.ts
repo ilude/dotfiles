@@ -3722,7 +3722,10 @@ You are a test agent.
 			const proc = createMockProcess();
 			spawnMock.mockImplementation(() => proc);
 			const { pi: firstPi, tool } = await loadTool();
-			const firstCtx = createMockCtx({ cwd: tmpDir });
+			const firstCtx = createMockCtx({
+				cwd: tmpDir,
+				sessionManager: { getSessionId: vi.fn(() => "reload-session") },
+			});
 			await firstPi
 				._getHook("session_start")[0]
 				.handler({ reason: "startup" }, firstCtx);
@@ -3753,7 +3756,13 @@ You are a test agent.
 			const secondPi = createMockPi();
 			const mod = await import("../extensions/subagent/index.ts");
 			mod.default(secondPi as Parameters<typeof mod.default>[0]);
-			const secondCtx = createMockCtx({ cwd: tmpDir });
+			const secondCtx = createMockCtx({
+				cwd: tmpDir,
+				mode: "tui",
+				sessionManager: { getSessionId: vi.fn(() => "reload-session") },
+			});
+			const dashboard = vi.fn(async () => null);
+			(secondCtx.ui as typeof secondCtx.ui & { custom: typeof dashboard }).custom = dashboard;
 			await secondPi
 				._getHook("session_start")[0]
 				.handler({ reason: "reload" }, secondCtx);
@@ -3769,6 +3778,12 @@ You are a test agent.
 				"subagents",
 				"subagents 1 running",
 			);
+			const subagentsCommand = secondPi._commands.find(
+				(command) => command.name === "subagents",
+			);
+			expect(subagentsCommand).toBeDefined();
+			await subagentsCommand?.handler("", secondCtx);
+			expect(dashboard).toHaveBeenCalledOnce();
 
 			proc.emit("close", 0);
 			await vi.waitFor(

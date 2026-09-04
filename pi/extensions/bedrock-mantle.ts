@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import { getTokenProvider } from "@aws/bedrock-token-generator";
 import {
 	anthropicMessagesApi,
@@ -22,6 +23,8 @@ import {
 	selectLatestClaudeModelIds,
 	selectLatestGptModelIds,
 } from "../lib/bedrock-model-policy.js";
+import { getSettingsPath } from "../lib/settings-file.ts";
+import type { BedrockModelMetadata } from "../lib/bedrock-model-refresh.ts";
 
 const PROVIDER_ID = "bedrock-mantle";
 const DEFAULT_MANTLE_REGION = "us-east-1";
@@ -236,14 +239,28 @@ function mantleClaudeRoute(
 	return { model, target: model, transport: "mantle-anthropic" };
 }
 
-function runtimeClaudeRoutes(): BedrockModelRoute[] {
+function runtimeClaudeRoutes(
+	metadata: readonly BedrockModelMetadata[] = [],
+): BedrockModelRoute[] {
 	const catalog = getBuiltinModels("amazon-bedrock");
-	return selectLatestClaudeModelIds(
-		catalog.map((model) => model.id),
-		"us.anthropic",
-	).flatMap((runtimeId) => {
-		const source = catalog.find((model) => model.id === runtimeId);
+	const runtimeIds = metadata
+		.filter((entry) => entry.kind === "inference-profile")
+		.map((entry) => entry.id);
+	const candidateIds = [...new Set([...catalog.map((model) => model.id), ...runtimeIds])];
+	return selectLatestClaudeModelIds(candidateIds, "us.anthropic").flatMap((runtimeId) => {
+		const source = catalog.find((model) => model.id === runtimeId) ??
+			catalog.find((model) => {
+				const family = /claude-(fable|opus|sonnet|haiku)-/.exec(model.id)?.[1];
+				return family !== undefined && runtimeId.includes(`claude-${family}-`);
+			});
 		if (!source) return [];
+		const entry = metadata.find((candidate) => candidate.id === runtimeId);
+		const displayName =
+			typeof entry?.inferenceProfileName === "string"
+				? entry.inferenceProfileName
+				: typeof entry?.modelName === "string"
+					? entry.modelName
+					: source.name;
 		const logicalId = runtimeId
 			.replace(/^us[.]/, "")
 			.replace(/-\d{8}-v\d+:\d+$/, "");
@@ -251,15 +268,17 @@ function runtimeClaudeRoutes(): BedrockModelRoute[] {
 			...source,
 			id: logicalId,
 			provider: PROVIDER_ID,
-			name: `${source.name.replace(/ \(US\)$/, "")} (Bedrock Runtime)`,
+			name: `${displayName.replace(/ \(US\)$/, "")} (Bedrock Runtime)`,
 		};
-		return [{ model, target: source, transport: "runtime" as const }];
+		const runtimeTarget = { ...source, id: runtimeId };
+		return [{ model, target: runtimeTarget, transport: "runtime" as const }];
 	});
 }
 
 export function buildBedrockModelRoutes(
 	mantleModelIds: readonly string[],
 	target: BedrockMantleTarget = resolveBedrockMantleTarget(),
+	runtimeMetadata: readonly BedrockModelMetadata[] = [],
 ): BedrockModelRoute[] {
 	const knownAnthropicIds = new Set(
 		getBuiltinModels("anthropic").map((model) => `anthropic.${model.id}`),
@@ -275,14 +294,16 @@ export function buildBedrockModelRoutes(
 		const route = mantleClaudeRoute(modelId, target);
 		return route ? [route] : [];
 	});
-	const mantleClaudeFamilies = new Set(
-		mantleClaudeRoutes.map(
-			(route) => /claude-(fable|opus|sonnet|haiku)-/.exec(route.model.id)?.[1],
-		),
-	);
-	const fallbackClaudeRoutes = runtimeClaudeRoutes().filter((route) => {
-		const family = /claude-(fable|opus|sonnet|haiku)-/.exec(route.model.id)?.[1];
-		return family !== undefined && !mantleClaudeFamilies.has(family);
+	const runtimeRoutes = runtimeClaudeRoutes(runtimeMetadata);
+	const claudeCandidates = [...mantleClaudeRoutes, ...runtimeRoutes];
+	const claudeRoutes = selectLatestClaudeModelIds(
+		claudeCandidates.map((route) => route.model.id),
+		"anthropic",
+	).flatMap((modelId) => {
+		const route = claudeCandidates.find(
+			(candidate) => candidate.model.id === modelId,
+		);
+		return route ? [route] : [];
 	});
 	const gptRoutes = selectLatestGptModelIds(
 		mantleModelIds.filter((modelId) => knownBedrockIds.has(modelId)),
@@ -290,7 +311,7 @@ export function buildBedrockModelRoutes(
 		const route = mantleGptRoute(modelId, target);
 		return route ? [route] : [];
 	});
-	return [...mantleClaudeRoutes, ...fallbackClaudeRoutes, ...gptRoutes];
+	return [...claudeRoutes, ...gptRoutes];
 }
 
 export const BEDROCK_MANTLE_MODELS = buildBedrockModelRoutes(
@@ -474,12 +495,42 @@ export function createBedrockRoutingStream(
 	};
 }
 
+function loadBedrockRuntimeMetadata(): BedrockModelMetadata[] {
+	const settings = JSON.parse(fs.readFileSync(getSettingsPath(), "utf-8")) as Record<string, unknown>;
+	const refresh = settings.bedrockRefresh;
+	if (!refresh || typeof refresh !== "object" || Array.isArray(refresh)) return [];
+	const refreshRecord = refresh as Record<string, unknown>;
+	const catalog = Array.isArray(refreshRecord.catalog)
+		? refreshRecord.catalog.filter((entry): entry is BedrockModelMetadata =>
+				entry !== null &&
+				typeof entry === "object" &&
+				typeof (entry as Record<string, unknown>).id === "string" &&
+				((entry as Record<string, unknown>).kind === "foundation" ||
+					(entry as Record<string, unknown>).kind === "inference-profile"),
+			)
+		: [];
+	const catalogIds = new Set(catalog.map((entry) => entry.id));
+	const configuredIds = Array.isArray(refreshRecord.models)
+		? refreshRecord.models.filter(
+				(id): id is string =>
+					typeof id === "string" && id.startsWith("us.anthropic.claude-"),
+			)
+		: [];
+	return [
+		...catalog,
+		...configuredIds
+			.filter((id) => !catalogIds.has(id))
+			.map((id) => ({ id, kind: "inference-profile" as const })),
+	];
+}
+
 export function createBedrockModelProvider(
 	env: BedrockMantleEnvironment = process.env,
 	options: {
 		discoverModels?: MantleDiscovery;
 		provideToken?: TokenProvider;
 		tokenFactory?: TokenProviderFactory;
+		runtimeMetadata?: readonly BedrockModelMetadata[];
 	} = {},
 ): Provider<Api> {
 	const initialTarget = resolveBedrockMantleTarget(env);
@@ -489,7 +540,13 @@ export function createBedrockModelProvider(
 	const discoverModels =
 		options.discoverModels ?? discoverBedrockMantleModelIds;
 	let mantleModelIds: readonly string[] = INITIAL_MANTLE_MODEL_IDS;
-	let routes = buildBedrockModelRoutes(mantleModelIds, initialTarget);
+	const runtimeMetadata =
+		options.runtimeMetadata ?? loadBedrockRuntimeMetadata();
+	let routes = buildBedrockModelRoutes(
+		mantleModelIds,
+		initialTarget,
+		runtimeMetadata,
+	);
 	const resolveRoute = (
 		modelId: string,
 		streamOptions?: RoutingStreamOptions,
@@ -498,7 +555,7 @@ export function createBedrockModelProvider(
 			...env,
 			...streamOptions?.env,
 		});
-		return buildBedrockModelRoutes(mantleModelIds, target).find(
+		return buildBedrockModelRoutes(mantleModelIds, target, runtimeMetadata).find(
 			(route) => route.model.id === modelId,
 		);
 	};
@@ -633,7 +690,11 @@ export function createBedrockModelProvider(
 				if (!context.stored?.models.length) return;
 				const restoredIds = context.stored.models.map((model) => model.id);
 				const restoredTarget = resolveBedrockMantleTarget(env);
-				const restored = buildBedrockModelRoutes(restoredIds, restoredTarget);
+				const restored = buildBedrockModelRoutes(
+					restoredIds,
+					restoredTarget,
+					runtimeMetadata,
+				);
 				if (restored.length === 0) return;
 				await context.publish({
 					update: () => {
@@ -659,7 +720,11 @@ export function createBedrockModelProvider(
 				() => provideToken(credentialOptions),
 				context.signal,
 			);
-			const refreshed = buildBedrockModelRoutes(modelIds, target);
+			const refreshed = buildBedrockModelRoutes(
+				modelIds,
+				target,
+				runtimeMetadata,
+			);
 			if (refreshed.length === 0)
 				throw new Error(
 					`Bedrock Mantle discovery found no supported models in ${target.region}`,

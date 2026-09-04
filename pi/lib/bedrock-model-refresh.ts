@@ -39,6 +39,12 @@ type AwsExecutor = (
 	options: AwsExecutionOptions,
 ) => Promise<ExecResult>;
 
+export interface BedrockModelMetadata {
+	id: string;
+	kind: "foundation" | "inference-profile";
+	[key: string]: unknown;
+}
+
 export interface BedrockRefreshResult {
 	profile: string;
 	region: string;
@@ -48,6 +54,7 @@ export interface BedrockRefreshResult {
 	recommended: string[];
 	missing: string[];
 	stale: string[];
+	catalog: BedrockModelMetadata[];
 }
 
 function resolveHomePath(filePath: string): string {
@@ -154,20 +161,32 @@ async function awsJson(
 	return JSON.parse(result.stdout) as Record<string, unknown>;
 }
 
-function stringValues(
+const SENSITIVE_METADATA_KEYS = /(?:credential|header|token|secret|password|authorization|api.?key)/i;
+
+function safeMetadata(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(safeMetadata);
+	if (!value || typeof value !== "object") return value;
+	return Object.fromEntries(
+		Object.entries(value)
+			.filter(([key]) => !SENSITIVE_METADATA_KEYS.test(key))
+			.map(([key, nested]) => [key, safeMetadata(nested)]),
+	);
+}
+
+function metadataEntries(
 	payload: Record<string, unknown>,
 	listKey: string,
 	idKey: string,
-): string[] {
+	kind: BedrockModelMetadata["kind"],
+): BedrockModelMetadata[] {
 	const rawList = payload[listKey];
 	if (!Array.isArray(rawList)) return [];
-	return rawList
-		.map((item) => {
-			if (item === null || typeof item !== "object") return undefined;
-			const value = (item as Record<string, unknown>)[idKey];
-			return typeof value === "string" ? value : undefined;
-		})
-		.filter((value): value is string => value !== undefined);
+	return rawList.flatMap((item) => {
+		if (item === null || typeof item !== "object") return [];
+		const safe = safeMetadata(item) as Record<string, unknown>;
+		const id = safe[idKey];
+		return typeof id === "string" ? [{ ...safe, id, kind }] : [];
+	});
 }
 
 async function runPoll(
@@ -216,14 +235,22 @@ async function runPoll(
 			executionOptions,
 		),
 	]);
-	const modelIds = new Set([
-		...stringValues(foundation, "modelSummaries", "modelId"),
-		...stringValues(
-			profiles,
-			"inferenceProfileSummaries",
-			"inferenceProfileId",
-		),
-	]);
+	const foundationCatalog = metadataEntries(
+		foundation,
+		"modelSummaries",
+		"modelId",
+		"foundation",
+	);
+	const profileCatalog = metadataEntries(
+		profiles,
+		"inferenceProfileSummaries",
+		"inferenceProfileId",
+		"inference-profile",
+	);
+	const catalog = [...foundationCatalog, ...profileCatalog].sort((left, right) =>
+		left.id.localeCompare(right.id),
+	);
+	const modelIds = new Set(catalog.map((entry) => entry.id));
 	const allModelIds = [...modelIds].sort();
 	const settingsFile = getSettingsPath();
 	const settings = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as Record<
@@ -273,31 +300,8 @@ async function runPoll(
 		recommended,
 		missing,
 		stale,
+		catalog,
 	};
-}
-
-function applyRecommendedModels(
-	result: BedrockRefreshResult,
-): Promise<boolean> {
-	return updateJsonObjectAtomic(getSettingsPath(), (settings) => {
-		const refreshSettings =
-			settings.bedrockRefresh !== null &&
-			typeof settings.bedrockRefresh === "object" &&
-			!Array.isArray(settings.bedrockRefresh)
-				? (settings.bedrockRefresh as Record<string, unknown>)
-				: {};
-		const existing = Array.isArray(refreshSettings.models)
-			? refreshSettings.models.filter(
-					(value): value is string => typeof value === "string",
-				)
-			: [];
-		if (JSON.stringify(existing) === JSON.stringify(result.recommended))
-			return settings;
-		return {
-			...settings,
-			bedrockRefresh: { ...refreshSettings, models: result.recommended },
-		};
-	});
 }
 
 export async function refreshBedrockModelInventory(
@@ -305,6 +309,32 @@ export async function refreshBedrockModelInventory(
 	ctx: ExtensionContext,
 ): Promise<BedrockRefreshResult & { changed: boolean }> {
 	const result = await runPoll(ctx, createAwsExecutor(pi));
-	const changed = await applyRecommendedModels(result);
+	const changed = await updateJsonObjectAtomic(getSettingsPath(), (settings) => {
+		const refreshSettings =
+			settings.bedrockRefresh !== null &&
+				typeof settings.bedrockRefresh === "object" &&
+				!Array.isArray(settings.bedrockRefresh)
+				? (settings.bedrockRefresh as Record<string, unknown>)
+				: {};
+		const existingModels = Array.isArray(refreshSettings.models)
+			? refreshSettings.models
+			: [];
+		const existingCatalog = Array.isArray(refreshSettings.catalog)
+			? refreshSettings.catalog
+			: [];
+		if (
+			JSON.stringify(existingModels) === JSON.stringify(result.recommended) &&
+			JSON.stringify(existingCatalog) === JSON.stringify(result.catalog)
+		)
+			return settings;
+		return {
+			...settings,
+			bedrockRefresh: {
+				...refreshSettings,
+				models: result.recommended,
+				catalog: result.catalog,
+			},
+		};
+	});
 	return { ...result, changed };
 }

@@ -1,7 +1,11 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import modelVisibility, {
 	applyProviderFilter,
+	getConfiguredBedrockModelIds,
 	shouldHideModel,
 } from "../extensions/model-visibility";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi";
@@ -213,6 +217,12 @@ describe("shouldHideModel", () => {
 				id: "us.anthropic.claude-fable-5",
 				name: "Claude Fable 5",
 			}),
+		).toBe(true);
+		expect(
+			shouldHideModel("amazon-bedrock", {
+				id: "us.anthropic.claude-fable-5-1",
+				name: "Claude Fable 5.1",
+			}),
 		).toBe(false);
 		expect(
 			shouldHideModel("amazon-bedrock", {
@@ -222,6 +232,29 @@ describe("shouldHideModel", () => {
 		).toBe(true);
 	});
 
+
+	it("loads refreshed Bedrock visibility IDs from settings", () => {
+		const agentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-model-visibility-"),
+		);
+		try {
+			fs.writeFileSync(
+				path.join(agentDir, "settings.json"),
+				JSON.stringify({
+					bedrockRefresh: {
+						models: ["us.anthropic.claude-fable-5-1"],
+					},
+				}),
+			);
+			vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+			expect(getConfiguredBedrockModelIds()).toEqual(
+				new Set(["us.anthropic.claude-fable-5-1"]),
+			);
+		} finally {
+			vi.unstubAllEnvs();
+			fs.rmSync(agentDir, { recursive: true, force: true });
+		}
+	});
 
 	it("hides non-US Amazon Bedrock regional models", () => {
 		expect(

@@ -1,4 +1,6 @@
 import { onSessionStart } from "../lib/session-start-metrics.js";
+import { getSettingsPath } from "../lib/settings-file.ts";
+import * as fs from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { uiNotify } from "../lib/extension-utils.js";
 
@@ -33,9 +35,10 @@ const TARGET_PROVIDERS = [
 
 const ALLOW_EXACT_IDS = {
 	"amazon-bedrock": new Set([
+		"us.anthropic.claude-fable-5-1",
 		"us.anthropic.claude-opus-5",
-		"us.anthropic.claude-fable-5",
 		"us.anthropic.claude-sonnet-5",
+		"us.anthropic.claude-haiku-4-5-20251001-v1:0",
 	]),
 } as const;
 
@@ -289,8 +292,14 @@ function isPreviewSnapshot(id: string, name: string): boolean {
 	return combined.includes("preview");
 }
 
-function shouldHideByCustomRules(provider: string, id: string): boolean {
-	const allowed = ALLOW_EXACT_IDS[provider as keyof typeof ALLOW_EXACT_IDS];
+function shouldHideByCustomRules(
+	provider: string,
+	id: string,
+	allowedOverride?: ReadonlySet<string>,
+): boolean {
+	const allowed =
+		allowedOverride ??
+		ALLOW_EXACT_IDS[provider as keyof typeof ALLOW_EXACT_IDS];
 	if (allowed && !allowed.has(id)) return true;
 	const exact = HIDE_EXACT_IDS[provider as keyof typeof HIDE_EXACT_IDS];
 	if (exact?.has(id)) return true;
@@ -303,8 +312,9 @@ function shouldHideByCustomRules(provider: string, id: string): boolean {
 export function shouldHideModel(
 	provider: string,
 	model: Pick<ModelLike, "id" | "name">,
+	allowedOverride?: ReadonlySet<string>,
 ): boolean {
-	if (shouldHideByCustomRules(provider, model.id)) return true;
+	if (shouldHideByCustomRules(provider, model.id, allowedOverride)) return true;
 	return (
 		isDatedOrVersionSuffix(model.id) || isPreviewSnapshot(model.id, model.name)
 	);
@@ -365,10 +375,51 @@ type ProviderPlan = {
 	apiKeyEnv: string | undefined;
 };
 
-function planProvider(models: ModelLike[], provider: string): ProviderPlan | undefined {
+export function getConfiguredBedrockModelIds(): Set<string> {
+	const settings = JSON.parse(
+		fs.readFileSync(getSettingsPath(), "utf-8"),
+	) as Record<string, unknown>;
+	const refresh =
+		settings.bedrockRefresh &&
+		typeof settings.bedrockRefresh === "object" &&
+		!Array.isArray(settings.bedrockRefresh)
+			? (settings.bedrockRefresh as Record<string, unknown>)
+			: undefined;
+	const catalog = Array.isArray(refresh?.catalog) ? refresh.catalog : [];
+	const catalogIds = catalog.flatMap((entry) => {
+		if (!entry || typeof entry !== "object") return [];
+		const id = (entry as Record<string, unknown>).id;
+		return typeof id === "string" && id.startsWith("us.anthropic.claude-")
+			? [id]
+			: [];
+	});
+	const models = Array.isArray(refresh?.models) ? refresh.models : [];
+	const configured = new Set(
+		(catalogIds.length > 0 ? catalogIds : models).filter(
+			(model): model is string =>
+				typeof model === "string" && model.startsWith("us.anthropic.claude-"),
+		),
+	);
+	return configured.size > 0
+		? configured
+		: new Set(ALLOW_EXACT_IDS["amazon-bedrock"]);
+}
+
+function planProvider(
+	models: ModelLike[],
+	provider: string,
+	bedrockAllowedIds?: ReadonlySet<string>,
+): ProviderPlan | undefined {
 	const providerModels = models.filter((model) => model.provider === provider);
 	if (providerModels.length === 0) return undefined;
-	const filtered = providerModels.filter((model) => !shouldHideModel(provider, model));
+	const filtered = providerModels.filter(
+		(model) =>
+			!shouldHideModel(
+				provider,
+				model,
+				provider === "amazon-bedrock" ? bedrockAllowedIds : undefined,
+			),
+	);
 	const changed = filtered.length !== providerModels.length;
 	return {
 		provider,
@@ -426,7 +477,11 @@ export async function applyProviderFilter(
 	ctx: VisibilityContext,
 	provider: string,
 ): Promise<FilterResult | undefined> {
-	const plan = planProvider(ctx.modelRegistry.getAll(), provider);
+	const plan = planProvider(
+		ctx.modelRegistry.getAll(),
+		provider,
+		provider === "amazon-bedrock" ? getConfiguredBedrockModelIds() : undefined,
+	);
 	if (!plan) return undefined;
 	return (await applyPlans(ctx, [plan]))[0];
 }
@@ -435,7 +490,10 @@ async function applyProviderFilters(
 	ctx: VisibilityContext,
 ): Promise<Array<{ provider: string; result: FilterResult }>> {
 	const models = ctx.modelRegistry.getAll();
-	const plans = TARGET_PROVIDERS.map((provider) => planProvider(models, provider)).filter(
+	const bedrockAllowedIds = getConfiguredBedrockModelIds();
+	const plans = TARGET_PROVIDERS.map((provider) =>
+		planProvider(models, provider, bedrockAllowedIds),
+	).filter(
 		(plan): plan is ProviderPlan => plan !== undefined,
 	);
 	const results = await applyPlans(ctx, plans);

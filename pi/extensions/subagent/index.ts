@@ -3673,13 +3673,8 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.notify(`Unknown /subagents filter --${key}.`, "warning");
 					return;
 				}
-			const currentSession = ctx.sessionManager?.getSessionId?.();
-			const currentWorkspace =
-				process.platform === "win32"
-					? path.resolve(ctx.cwd).toLowerCase()
-					: path.resolve(ctx.cwd);
-			const session = filters.get("session") ?? (all ? undefined : currentSession);
-			const workspace = filters.get("workspace") ?? (all ? undefined : currentWorkspace);
+			const session = all ? undefined : filters.get("session");
+			const workspace = all ? undefined : filters.get("workspace");
 			await openSubagentDashboard(
 				ctx,
 				subagentRunManager,

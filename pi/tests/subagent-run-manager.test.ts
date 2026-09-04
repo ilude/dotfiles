@@ -543,7 +543,28 @@ describe("subagent dashboard selection", () => {
 		expect(renderedViews[1]).toContain(
 			"started 2026-08-15 13:14:15 local",
 		);
+		expect(renderedViews[1]).toContain("Assignment");
+		expect(renderedViews[1]).toContain("run run-1");
+		expect(renderedViews[1]).toContain("Execution");
+		expect(renderedViews[1]).toContain("model=default | effort=default | tools=none");
+		expect(renderedViews[1]).toContain("Activity");
+		expect(renderedViews[1]).toContain("completed | last assistant");
 		expect(renderedViews[1]).toContain("[13:14:15] assistant:");
+	});
+
+	it("distinguishes an empty process from filters that hide tracked runs", async () => {
+		const manager = new SubagentRunManager();
+		beginRun(manager, "hidden-run");
+		const notify = vi.fn();
+		await openSubagentDashboard(
+			{ ui: { notify } } as never,
+			manager,
+			() => false,
+		);
+		expect(notify).toHaveBeenCalledWith(
+			"1 subagent run is tracked in this process, but none match the requested filters.",
+			"info",
+		);
 	});
 
 	it("formats actionable running and failed footer counts", () => {

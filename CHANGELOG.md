@@ -1,12 +1,22 @@
 # Changelog
 
+## 2026-09-03: Keep live subagents inspectable across reloads
+
+**Why:** The footer could report a live child while plain `/subagents` hid it behind implicit session and workspace filters, incorrectly claiming that the process tracked no runs. Long assignments and quiet provider phases also lacked enough visible detail to distinguish ongoing work from a stall.
+
+**Changed:** Plain `/subagents` now lists every process-local run retained across reload and session transitions. Explicit filters still narrow the dashboard, and an empty filtered result reports that tracked runs were excluded instead of claiming the manager is empty. Run details show the complete wrapped assignment, model, effort, tools, advisory boundaries, attributed current phase, and age of the last observable activity.
+
+**Preserved:** Run ownership, process-local retention, explicit filtering, cancellation boundaries, and footer lifecycle counts remain unchanged.
+
+---
+
 ## 2026-09-03: Preserve universal model refresh and curated model scopes
 
 **Why:** `/refresh-models` copied every remotely discovered provider model into `enabledModels`, and its provider allowlist omitted the AWS Bedrock discovery that the universal command is expected to run. OpenRouter catalog variants such as `:batch` were then parsed as invalid Pi thinking levels, while newly released Bedrock models required an unrelated provider-specific command.
 
-**Changed:** Model refresh now discovers configured AWS Bedrock models alongside the other supported providers and updates `bedrockRefresh.models` with the latest supported Claude family IDs. `amazon-bedrock` and `bedrock-mantle` share one deduplicated AWS discovery pass, OpenCode uses its `/zen/v1/models` catalog endpoint, and HTTP errors suppress HTML response bodies. Refresh updates runtime catalogs and provider-owned cache or inventory without rewriting the curated `enabledModels` scope. The accidentally imported OpenRouter entries were removed from tracked settings.
+**Changed:** Model refresh now discovers configured AWS Bedrock models alongside the other supported providers, persists a complete sanitized foundation-model and inference-profile catalog without credentials or headers, and updates `bedrockRefresh.models` with the latest supported Claude family IDs. `amazon-bedrock` and `bedrock-mantle` share one deduplicated AWS discovery pass, OpenCode uses its `/zen/v1/models` catalog endpoint, and HTTP errors suppress HTML response bodies. Bedrock Mantle consumes the refreshed inventory to route a newly discovered logical Claude model through its `us.*` Runtime target when Mantle lacks the family. Amazon Bedrock visibility reads the same inventory instead of a hardcoded refreshed ID, so newly discovered models appear in `/model` after the internal reload. Refresh updates runtime catalogs and provider-owned cache or inventory, then rebuilds the exact filtered `enabledModels` scope in Codex, Bedrock Mantle, OpenRouter, OpenCode, and remaining configured-provider order. Unfiltered OpenRouter catalog entries are never copied into that scope.
 
-**Preserved:** Refreshed models become available after the existing reload, and the curated Codex and Bedrock scoped model list remains authoritative. The redundant `/bedrock-refresh` command was removed so `/refresh-models` is the single refresh surface.
+**Preserved:** Refreshed models become available after the existing internal `ctx.reload`, and the curated Codex and Bedrock scoped model list remains authoritative. Refresh reporting is bounded and presents display names first, followed by IDs and Bedrock logical-to-Runtime selection details. The redundant `/bedrock-refresh` command was removed so `/refresh-models` is the single refresh surface.
 
 ---
 

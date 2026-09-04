@@ -4,7 +4,11 @@ import type {
 	Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 import type { SubagentControlFacade } from "./control.js";
 import type {
 	SubagentRunManager,
@@ -104,6 +108,35 @@ function tokenLabel(tokens: number): string {
 	if (tokens < 1000) return `${tokens} tok`;
 	if (tokens < 1_000_000) return `${(tokens / 1000).toFixed(1)}k tok`;
 	return `${(tokens / 1_000_000).toFixed(1)}m tok`;
+}
+
+function durationLabel(milliseconds: number): string {
+	const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+	if (seconds < 60) return `${seconds}s`;
+	const minutes = Math.floor(seconds / 60);
+	return `${minutes}m${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+function currentPhase(run: SubagentRunSnapshot): string {
+	if (run.status !== "running") return run.status;
+	const tool = run.liveTools[0];
+	if (tool) return `running ${oneLine(tool.name)}`;
+	if (run.liveText) return "receiving model output";
+	switch (run.lastActivityKind) {
+		case "started":
+		case "process-started":
+			return "starting child runtime";
+		case "tool-finished":
+		case "tool-result":
+			return "waiting for model response after tool completion";
+		case "assistant":
+		case "thinking":
+		case "output":
+		case "tool-output":
+			return "receiving or waiting for model output";
+		case "tool-started":
+			return "running tool";
+	}
 }
 
 function statusLabel(status: SubagentRunStatus): string {
@@ -208,8 +241,14 @@ export async function openSubagentDashboard(
 ): Promise<void> {
 	const selection: SubagentDashboardSelection = { index: 0 };
 	while (true) {
-		if (manager.list().filter(filter).length === 0) {
-			ctx.ui.notify("No subagent runs are tracked in this process.", "info");
+		const trackedRuns = manager.list();
+		if (trackedRuns.filter(filter).length === 0) {
+			ctx.ui.notify(
+				trackedRuns.length === 0
+					? "No subagent runs are tracked in this process."
+					: `${trackedRuns.length} subagent run${trackedRuns.length === 1 ? " is" : "s are"} tracked in this process, but none match the requested filters.`,
+				"info",
+			);
 			return;
 		}
 		const selected = await ctx.ui.custom<string | null>(
@@ -380,7 +419,8 @@ class SubagentDashboard implements Component {
 					? ` | ${tokenLabel(run.usage.contextPeakTokens)}`
 					: "";
 			const outcomes = `process=${run.processOutcome ?? "pending"} | deliverable=${run.deliverableOutcome ?? "pending"}`;
-			const right = `pi | ${oneLine(run.model ?? "default")} | ${run.mode} | ${ownership} | ${outcomes}${usage} | start ${localClock(run.startedAt)} local | ${elapsed(run)}`;
+			const activityAge = durationLabel(Date.now() - run.lastActivityAt);
+			const right = `pi | ${oneLine(run.model ?? "default")} | ${run.mode} | ${ownership} | ${outcomes}${usage} | ${currentPhase(run)} | activity ${activityAge} ago | start ${localClock(run.startedAt)} local | ${elapsed(run)}`;
 			const rightWidth = visibleWidth(right);
 			const leftWidth = Math.max(8, safeWidth - rightWidth - 3);
 			const left = truncateToWidth(
@@ -536,8 +576,7 @@ class SubagentDetail implements Component {
 			`run ${run.runId} | started ${localDateTime(run.startedAt)} local | ${treeMetadata(run) ?? oneLine(run.cwd)}`,
 			safeWidth,
 		);
-		const task = truncateToWidth(`task: ${oneLine(run.task)}`, safeWidth);
-		const body = this.transcriptLines(run, safeWidth);
+		const body = this.detailLines(run, safeWidth);
 		const viewport = this.viewportHeight();
 		const maxOffset = Math.max(0, body.length - viewport);
 		this.scrollOffset = Math.min(this.scrollOffset, maxOffset);
@@ -547,7 +586,6 @@ class SubagentDetail implements Component {
 			border,
 			this.theme.fg(statusColor(run.status), header),
 			this.theme.fg("dim", metadata),
-			this.theme.fg("muted", task),
 			...(this.controlError
 				? [
 						truncateToWidth(
@@ -573,11 +611,37 @@ class SubagentDetail implements Component {
 		return lines.map((line) => pad(line, safeWidth));
 	}
 
-	private transcriptLines(
-		run: SubagentRunSnapshot,
-		width: number,
-	): string[] {
-		const lines: string[] = [];
+	private detailLines(run: SubagentRunSnapshot, width: number): string[] {
+		const activityAge = durationLabel(Date.now() - run.lastActivityAt);
+		const authority = run.authorityTools?.length
+			? run.authorityTools.join(", ")
+			: "none";
+		const markers = [
+			run.workPaths?.length
+				? `boundaryPaths=${run.workPaths.join(", ")}`
+				: "",
+			run.workBoundary?.length
+				? `boundary=${run.workBoundary.join(", ")}`
+				: "",
+		].filter(Boolean);
+		const lines = [
+			this.theme.fg("accent", "Assignment"),
+			...wrapTextWithAnsi(terminalSafe(run.task), width),
+			this.theme.fg("accent", "Execution"),
+			...wrapTextWithAnsi(
+				`model=${oneLine(run.model ?? "default")} | effort=${oneLine(run.effort ?? "default")} | tools=${authority}`,
+				width,
+			),
+			...(markers.length > 0
+				? wrapTextWithAnsi(`markers: ${markers.join(" | ")}`, width)
+				: []),
+			this.theme.fg("accent", "Activity"),
+			...wrapTextWithAnsi(
+				`${currentPhase(run)} | last ${run.lastActivityKind} ${activityAge} ago at ${localClock(run.lastActivityAt)} local`,
+				width,
+			),
+			this.theme.fg("border", "-".repeat(width)),
+		];
 		if (run.errorMessage) {
 			lines.push(
 				truncateToWidth(

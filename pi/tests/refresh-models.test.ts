@@ -50,16 +50,13 @@ vi.mock("@earendil-works/pi-ai/compat", () => ({
 import registerRefreshModelsCommand, {
 	getCurrentSubscriptionProviders,
 	parseRefreshModelsArgs,
+	syncCuratedModelScope,
 } from "../extensions/refresh-models";
-
-function makeCodexJwt(accountId = "acct_test") {
-	const payload = Buffer.from(
-		JSON.stringify({
-			"https://api.openai.com/auth": { chatgpt_account_id: accountId },
-		}),
-	).toString("base64url");
-	return `header.${payload}.sig`;
-}
+import { buildBedrockModelRoutes } from "../extensions/bedrock-mantle.js";
+import {
+	getConfiguredBedrockModelIds,
+	shouldHideModel,
+} from "../extensions/model-visibility";
 
 function mockJsonResponse(payload: unknown, status = 200) {
 	return {
@@ -140,6 +137,45 @@ describe("/refresh-models command", () => {
 		vi.unstubAllEnvs();
 		vi.restoreAllMocks();
 		fs.rmSync(tempHome, { recursive: true, force: true });
+	});
+
+	it("orders filtered provider models after Codex and Bedrock", async () => {
+		const model = (provider: string, id: string, name = id) => ({
+			provider,
+			id,
+			name,
+			api: "openai-completions",
+			baseUrl: "https://example.test",
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 128000,
+			maxTokens: 16000,
+		});
+		const models = [
+			model("openrouter", "google/gemini-3.1-pro", "Gemini 3.1 Pro"),
+			model("openrouter", "openai/gpt-4o", "GPT-4o"),
+			model("opencode", "zen"),
+		];
+		const ctx = {
+			modelRegistry: {
+				getAll: () => models,
+				getProviderAuthStatus: (provider: string) => ({
+					configured: provider === "openrouter" || provider === "opencode",
+				}),
+			},
+		} as never;
+
+		const result = await syncCuratedModelScope(ctx, [
+			"us.anthropic.claude-fable-5-1",
+		]);
+
+		expect(result.scope).toEqual([
+			"openai-codex/gpt-5.4",
+			"openrouter/google/gemini-3.1-pro",
+			"opencode/zen",
+		]);
+		expect(result.scope).not.toContain("openrouter/openai/gpt-4o");
 	});
 
 	it("restores current Pi metadata when the cache has no new models", () => {
@@ -539,7 +575,10 @@ describe("/refresh-models command", () => {
 				"utf-8",
 			),
 		);
-		expect(settings.enabledModels).toEqual(["openai-codex/gpt-5.4"]);
+		expect(settings.enabledModels).toEqual([
+			"openai-codex/gpt-5.4",
+			"opencode/zen",
+		]);
 		expect(settings.unrelated).toEqual({ preserved: true });
 	});
 
@@ -568,6 +607,8 @@ describe("/refresh-models command", () => {
 								{
 									inferenceProfileId:
 										"us.anthropic.claude-fable-5-1",
+									inferenceProfileName: "Claude Fable 5.1",
+									headers: { authorization: "must-not-persist" },
 								},
 							],
 						}
@@ -621,10 +662,47 @@ describe("/refresh-models command", () => {
 		expect(settings.bedrockRefresh.models).toEqual([
 			"us.anthropic.claude-fable-5-1",
 		]);
-		expect(settings.enabledModels).toEqual(["openai-codex/gpt-5.4"]);
+		expect(settings.enabledModels).toEqual([
+			"openai-codex/gpt-5.4",
+			"bedrock-mantle/anthropic.claude-fable-5-1",
+		]);
+		expect(settings.bedrockRefresh.catalog).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: "us.anthropic.claude-fable-5-1",
+					inferenceProfileName: "Claude Fable 5.1",
+				}),
+			]),
+		);
+		expect(settings.bedrockRefresh.catalog).not.toEqual(
+			expect.arrayContaining([expect.objectContaining({ headers: expect.anything() })]),
+		);
+		expect(getConfiguredBedrockModelIds()).toEqual(
+			new Set(["us.anthropic.claude-fable-5-1"]),
+		);
+		expect(shouldHideModel("amazon-bedrock", {
+			id: "us.anthropic.claude-fable-5-1",
+			name: "Claude Fable 5.1",
+		})).toBe(false);
+		const fableRoute = buildBedrockModelRoutes(
+			["anthropic.claude-fable-5", "openai.gpt-5.6-sol"],
+			undefined,
+			settings.bedrockRefresh.catalog,
+		).find((route) => route.model.id === "anthropic.claude-fable-5-1");
+		expect(fableRoute).toMatchObject({
+			transport: "runtime",
+			model: { name: expect.stringContaining("Claude Fable 5.1") },
+			target: { id: "us.anthropic.claude-fable-5-1" },
+		});
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringContaining(
 				"amazon-bedrock added: us.anthropic.claude-fable-5-1",
+			),
+			"info",
+		);
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"Claude Fable 5.1 - select: bedrock-mantle/anthropic.claude-fable-5-1; route: amazon-bedrock/us.anthropic.claude-fable-5-1",
 			),
 			"info",
 		);

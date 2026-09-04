@@ -1,5 +1,9 @@
 import { registerSlashCommand } from "../lib/slash-command-echo.js";
 import { refreshBedrockModelInventory } from "../lib/bedrock-model-refresh.ts";
+import {
+	getConfiguredBedrockModelIds,
+	shouldHideModel,
+} from "./model-visibility.ts";
 
 // Convention exception: this extension is a single user-initiated slash
 //   command (`/refresh-models`) whose UI is a sequence of progress messages
@@ -25,6 +29,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import {
 	getAgentDir,
+	getSettingsPath,
+	updateJsonObjectAtomic,
 	writeJsonObjectAtomic,
 } from "../lib/settings-file.ts";
 
@@ -573,7 +579,7 @@ function toProviderModelDefinition(model: ModelLike): ProviderModelDef {
 }
 
 function buildProviderModelDefinitions(
-	provider: string,
+	_provider: string,
 	existingModels: ModelLike[],
 	remoteModels: RemoteModelInfo[],
 ): ProviderModelDef[] {
@@ -737,6 +743,65 @@ function formatModelIdList(ids: string[], maxItems = 12): string {
 	return `${shown.join(", ")} ... (+${ids.length - maxItems} more)`;
 }
 
+const CURATED_PROVIDER_ORDER = [
+	"openrouter",
+	"opencode",
+	"opencode-go",
+] as const;
+
+export async function syncCuratedModelScope(
+	ctx: ExtensionContext,
+	bedrockModelIds: readonly string[],
+): Promise<{ scope: string[]; changed: boolean }> {
+	const available = ctx.modelRegistry.getAll() as ModelLike[];
+	const configured = new Set(getCurrentRefreshableProviders(ctx.modelRegistry));
+	let scope: string[] = [];
+	let changed = false;
+	await updateJsonObjectAtomic(getSettingsPath(), (settings) => {
+		const existing = Array.isArray(settings.enabledModels)
+			? settings.enabledModels.filter(
+					(value): value is string => typeof value === "string",
+				)
+			: [];
+		const codex = existing.filter((id) => id.startsWith("openai-codex/"));
+		const bedrock =
+			configured.has("amazon-bedrock") || configured.has("bedrock-mantle")
+				? bedrockModelIds.map(
+						(id) => `bedrock-mantle/${id.replace(/^us[.]/, "")}`,
+					)
+				: [];
+		const orderedProviders = [
+			...CURATED_PROVIDER_ORDER.filter((provider) => configured.has(provider)),
+			...[...new Set(available.map((model) => model.provider))]
+				.filter(
+					(provider) =>
+						configured.has(provider) &&
+						provider !== "openai-codex" &&
+						provider !== "amazon-bedrock" &&
+						provider !== "bedrock-mantle" &&
+						!CURATED_PROVIDER_ORDER.includes(
+							provider as (typeof CURATED_PROVIDER_ORDER)[number],
+						),
+				)
+				.sort(),
+		];
+		const remaining = orderedProviders.flatMap((provider) =>
+			available
+				.filter(
+					(model) =>
+						model.provider === provider && !shouldHideModel(provider, model),
+				)
+				.sort((left, right) => left.id.localeCompare(right.id))
+				.map((model) => `${provider}/${model.id}`),
+		);
+		scope = [...new Set([...codex, ...bedrock, ...remaining])];
+		if (JSON.stringify(existing) === JSON.stringify(scope)) return settings;
+		changed = true;
+		return { ...settings, enabledModels: scope };
+	});
+	return { scope, changed };
+}
+
 export function formatRefreshFailure(provider: string, error: unknown): string {
 	const detail = error instanceof Error ? error.message : String(error);
 	if (
@@ -751,7 +816,7 @@ export function formatRefreshFailure(provider: string, error: unknown): string {
 
 function registerCachedProvider(
 	pi: ExtensionAPI,
-	provider: "openai-codex",
+	provider: "openai-codex" | "openrouter" | "opencode" | "opencode-go",
 ): void {
 	const cache = loadProviderCache(provider);
 	if (!cache) return;
@@ -771,7 +836,14 @@ function registerCachedProvider(
 }
 
 export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
-	registerCachedProvider(pi, "openai-codex");
+	for (const provider of [
+		"openai-codex",
+		"openrouter",
+		"opencode",
+		"opencode-go",
+	] as const) {
+		registerCachedProvider(pi, provider);
+	}
 
 	registerSlashCommand(pi)("refresh-models", {
 		description:
@@ -863,6 +935,7 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 				`Refreshing model availability for ${providers.join(", ")}...`,
 				"info",
 			);
+			let refreshedBedrockIds = [...getConfiguredBedrockModelIds()];
 			const outcomes: Array<
 				| {
 						provider: string;
@@ -870,6 +943,8 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 						message: string;
 						addedIds: string[];
 						removedIds: string[];
+						details?: string[];
+						changed?: boolean;
 				  }
 				| {
 						provider: string;
@@ -882,12 +957,27 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 				try {
 					if (provider === "amazon-bedrock") {
 						const result = await refreshBedrockModelInventory(pi, ctx);
+						refreshedBedrockIds = result.recommended;
+						const displayName = (id: string) => {
+							const entry = result.catalog.find((candidate) => candidate.id === id);
+							return typeof entry?.inferenceProfileName === "string"
+								? entry.inferenceProfileName
+								: typeof entry?.modelName === "string"
+									? entry.modelName
+									: id;
+						};
+						const details = result.recommended.map((id) => {
+							const logicalId = id.replace(/^us[.]/, "");
+							return `${displayName(id)} - select: bedrock-mantle/${logicalId}; route: amazon-bedrock/${id}`;
+						});
 						outcomes.push({
 							provider,
 							ok: true,
-							message: `${provider}: ${result.current.length} -> ${result.recommended.length} configured models`,
+							message: `${provider}: ${result.current.length} -> ${result.recommended.length} selected models; catalog ${result.catalog.length} entries`,
 							addedIds: result.missing,
 							removedIds: result.stale,
+							details,
+							changed: result.changed,
 						});
 						continue;
 					}
@@ -924,8 +1014,18 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 			let changedModelState = false;
 			for (const success of successes) {
 				notify(success.message, "info");
-				if (success.addedIds.length > 0 || success.removedIds.length > 0) {
+				if (
+					success.changed ||
+					success.addedIds.length > 0 ||
+					success.removedIds.length > 0
+				) {
 					changedModelState = true;
+				}
+				if (success.details && success.details.length > 0) {
+					notify(
+						`${success.provider} selection/routing: ${formatModelIdList(success.details)}`,
+						"info",
+					);
 				}
 				if (success.addedIds.length > 0) {
 					notify(
@@ -941,6 +1041,18 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 				}
 			}
 			for (const failure of failures) notify(failure.message, "warning");
+
+			const scopeUpdate = await syncCuratedModelScope(
+				ctx,
+				refreshedBedrockIds,
+			);
+			if (scopeUpdate.changed) {
+				changedModelState = true;
+				notify(
+					`Curated model scope updated: ${scopeUpdate.scope.length} models ordered Codex, Bedrock, OpenRouter, then other providers.`,
+					"info",
+				);
+			}
 
 			if (failures.length === 0) {
 				notify(`Done. Refreshed ${successes.length} provider(s).`, "info");

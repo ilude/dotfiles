@@ -38,7 +38,7 @@ Rollback: remove the `personality` key or set it to `"default"`/`"none"`. The re
 
 ### Codex plus Bedrock workflow
 
-The tracked `pi/settings.json` keeps the Codex subscription provider as the startup default and limits `enabledModels` to the OpenAI Codex models used for `/model` scoped mode and Ctrl+P cycling. Bedrock model IDs are tracked separately under `bedrockRefresh.models`, so machines without Bedrock credentials do not receive unmatched-model warnings.
+The tracked `pi/settings.json` keeps the Codex subscription provider as the startup default. `/refresh-models` rebuilds `enabledModels` as an exact filtered scope ordered Codex, Bedrock Mantle, OpenRouter, OpenCode, then other configured providers, so `/model` scoped mode and Ctrl+P cycling avoid stale or hidden catalog entries. Bedrock discovery remains tracked separately under `bedrockRefresh.models` and supplies the Bedrock portion of that scope.
 
 `/model` starts in scoped mode when `enabledModels` is set. Pressing Tab toggles to Pi's all-model view, which uses Pi's built-in provider sort instead of this curated order.
 
@@ -59,7 +59,7 @@ Bedrock credentials stay local and ignored in `~/.pi/agent/auth.json` (`pi/auth.
 
 This does not store AWS keys in the repo. The empty `key` keeps Pi 0.80.7 on profile-based AWS authentication instead of treating the ambient-auth marker as a Bedrock bearer token. The provider-scoped environment tells Pi to use the existing local AWS profile for Bedrock only, while normal shell AWS commands keep their own environment/profile behavior.
 
-The universal `/refresh-models` command polls AWS Bedrock for newer Fable, Opus, Sonnet, and Haiku model IDs and updates `pi/settings.json` `bedrockRefresh.models` with the latest supported `us.*` IDs.
+The universal `/refresh-models` command polls AWS Bedrock for supported foundation models and inference profiles, persists a sanitized complete catalog in `bedrockRefresh.catalog`, and updates `bedrockRefresh.models` with the latest supported `us.*` IDs. A changed catalog reloads Pi internally so Mantle routing and visibility use the new inventory in the same workflow.
 
 Validation:
 
@@ -647,10 +647,11 @@ Refreshes available model lists for active subscription providers **without relo
 ```
 
 Behavior:
-- No provider: refreshes all currently authenticated supported providers, including AWS Bedrock through its provider-scoped credentials.
+- No provider: refreshes all currently authenticated supported providers, including AWS Bedrock through its provider-scoped credentials. Bedrock reports display names first, with IDs and logical-to-Runtime routing details.
 - Provider argument: refreshes only that provider (currently `amazon-bedrock`, `bedrock-mantle`, `anthropic`, `openai-codex`, `openrouter`, `opencode`, and `opencode-go`). `amazon-bedrock` and `bedrock-mantle` share one deduplicated AWS discovery pass.
 - Unsupported providers are skipped with a warning.
 - Uses existing session credentials and updates in-session model availability immediately. Bedrock discovery also updates `bedrockRefresh.models` with the latest supported `us.*` Claude family IDs.
+- Rebuilds the exact curated scope in provider order: Codex, Bedrock Mantle, OpenRouter, OpenCode, then remaining configured providers. Provider visibility rules are applied before IDs enter the scope.
 - Prints per-provider diffs with model IDs that were added/removed.
 - Caches versioned provider catalog facts rather than complete Pi model definitions.
 - On startup, preserves current Pi metadata for built-in Codex models, overlays context windows from versioned refresh responses, and restores cached model discoveries that Pi does not yet know. Legacy caches cannot override known model metadata.
