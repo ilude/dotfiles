@@ -23,6 +23,9 @@ Delete unnecessary choices; prefer direct code; enforce consequential invariants
 
 - Use deterministic mechanisms when they enforce a known invariant or make an external contract observable. Do not turn a preference into a universal mandate or add fallback behavior that hides missing data or dependencies.
 - For unfamiliar boundaries, inspect a working example and the owning configuration before changing it. Use the cheapest focused check that can falsify the changed contract.
+- A failed check is evidence, not a defect. Classify it before editing: fixture/harness, product, external-contract
+  misunderstanding, or protocol violation. Fixture and external-contract failures do not authorize a live rerun;
+  external-contract failures require reading the maintained doc and installed schema first.
 - Keep tests focused on executable behavior, parsed contracts, schemas, external protocols, seams, isolation, cleanup, and failure handling. Prose is not proved by source-spelling assertions.
 - Keep scripts idempotent and LF-only. Do not turn discoveries into instruction changes unless requested.
 
