@@ -33,42 +33,33 @@ async function loadTasks() {
 }
 
 describe("task tool schema", () => {
-	it("publishes strict action-specific current schemas", async () => {
+	it("publishes a Bedrock-compatible object-root schema", async () => {
 		const { pi } = await loadTasks();
 		const tool = pi._getTool("task");
 		expect(tool).toBeDefined();
 		type Schema = {
+			type?: string;
 			additionalProperties?: boolean;
 			required?: string[];
 			properties: Record<string, Record<string, unknown>>;
 		};
-		const variants = (tool!.parameters as { anyOf: Schema[] }).anyOf;
-		expect(variants).toHaveLength(7);
-		for (const variant of variants)
-			expect(variant.additionalProperties).toBe(false);
-		const byAction = new Map(
-			variants.map((variant) => [
-				(variant.properties.action.enum as string[])[0],
-				variant,
-			]),
-		);
-		const create = byAction.get("create");
-		const batch = byAction.get("batch");
-		const update = byAction.get("update");
-		if (!batch) throw new Error("batch task schema not registered");
-		expect(create?.required).toEqual(expect.arrayContaining(["action", "summary"]));
-		expect(batch.required).toEqual(expect.arrayContaining(["action", "tasks"]));
-		expect(batch.properties.tasks).toMatchObject({ minItems: 1, maxItems: 16 });
+		const schema = tool!.parameters as Schema;
+		expect(schema.type).toBe("object");
+		expect(schema.additionalProperties).toBe(false);
+		expect(schema.required).toEqual(["action"]);
+		expect(schema.properties.action).toMatchObject({
+			type: "string",
+			enum: ["create", "batch", "update", "remove", "list", "ready", "get"],
+		});
+		expect(schema.properties.tasks).toMatchObject({ minItems: 1, maxItems: 16 });
 		const batchItem = (
-			batch.properties.tasks as {
+			schema.properties.tasks as {
 				items?: Schema;
 			}
 		).items;
 		expect(batchItem?.additionalProperties).toBe(false);
-		expect(batchItem?.required).toEqual(
-			expect.arrayContaining(["summary"]),
-		);
-		expect(update?.properties.state).toMatchObject({
+		expect(batchItem?.required).toEqual(expect.arrayContaining(["summary"]));
+		expect(schema.properties.state).toMatchObject({
 			type: "string",
 			enum: [
 				"unassigned",
@@ -89,7 +80,7 @@ describe("task tool schema", () => {
 			"model",
 			"modelSize",
 		])
-			expect(JSON.stringify(tool!.parameters)).not.toContain(`"${name}"`);
+			expect(JSON.stringify(schema)).not.toContain(`"${name}"`);
 	});
 });
 

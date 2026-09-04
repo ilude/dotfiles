@@ -60,7 +60,8 @@ Update an existing contract only when the requested change would otherwise make 
 11. Preload and cache external autocomplete data, filter it locally, and run session-transition guards in `session_before_*` rather than render paths.
 12. Register every `session_start` handler with `onSessionStart(pi, import.meta.url, handler)` from `pi/lib/session-start-metrics.ts`, never with direct `pi.on("session_start", ...)`. The wrapper awaits the original handler, preserves thrown errors, derives the extension name from `import.meta.url`, measures monotonic duration, and defers an `extension_session_start` event to the existing metrics JSONL with session id, reason, duration, and status. It measures handler work only; module imports and extension factories remain Pi runtime timings.
 13. Use `StringEnum` from `@earendil-works/pi-ai` for string enums.
-14. Strip a leading `@` from custom-tool path arguments and resolve extension-relative helpers from `import.meta.url`.
+14. Every registered tool input schema must serialize with root JSON Schema `type: "object"`. Bedrock Converse rejects root unions such as `Type.Union([...Type.Object(...)])` before inference; expose one object-root callable schema and enforce action-specific invariants in `execute()` or `tool_call`.
+15. Strip a leading `@` from custom-tool path arguments and resolve extension-relative helpers from `import.meta.url`.
 
 ## Command output decisions
 

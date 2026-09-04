@@ -830,74 +830,40 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 		description:
 			"Include terminal tasks and tasks from other sessions or workspaces when listing.",
 	});
-	const parameters = Type.Union([
-		Type.Object(
-			{
-				action: StringEnum(["create"] as const),
-				summary,
-				instructions: Type.Optional(instructions),
-				boundary: Type.Optional(boundary),
-				covers: Type.Optional(covers),
-				blockedBy: Type.Optional(blockedBy),
-				goalId: Type.Optional(goalId),
-				produces: Type.Optional(produces),
-				consumes: Type.Optional(consumes),
-				priority: Type.Optional(priority),
-			},
-			{ additionalProperties: false },
-		),
-		Type.Object(
-			{
-				action: StringEnum(["batch"] as const),
-				tasks: Type.Array(taskItem, {
+	const parameters = Type.Object(
+		{
+			action: StringEnum([
+				"create",
+				"batch",
+				"update",
+				"remove",
+				"list",
+				"ready",
+				"get",
+			] as const),
+			id: Type.Optional(id),
+			summary: Type.Optional(summary),
+			instructions: Type.Optional(instructions),
+			boundary: Type.Optional(boundary),
+			covers: Type.Optional(covers),
+			blockedBy: Type.Optional(blockedBy),
+			goalId: Type.Optional(goalId),
+			produces: Type.Optional(produces),
+			consumes: Type.Optional(consumes),
+			priority: Type.Optional(priority),
+			tasks: Type.Optional(
+				Type.Array(taskItem, {
 					minItems: 1,
 					maxItems: TASK_BATCH_MAX_ITEMS,
 				}),
-			},
-			{ additionalProperties: false },
-		),
-		Type.Object(
-			{
-				action: StringEnum(["update"] as const),
-				id,
-				summary: Type.Optional(summary),
-				instructions: Type.Optional(instructions),
-				boundary: Type.Optional(boundary),
-				covers: Type.Optional(covers),
-				state: Type.Optional(StringEnum(TASK_STATES)),
-				outcome: Type.Optional(outcome),
-				skipReason: Type.Optional(instructions),
-				blockedBy: Type.Optional(blockedBy),
-				goalId: Type.Optional(goalId),
-				produces: Type.Optional(produces),
-				consumes: Type.Optional(consumes),
-				priority: Type.Optional(priority),
-			},
-			{ additionalProperties: false },
-		),
-		Type.Object(
-			{ action: StringEnum(["remove"] as const), id },
-			{ additionalProperties: false },
-		),
-		Type.Object(
-			{
-				action: StringEnum(["list"] as const),
-				all: Type.Optional(all),
-			},
-			{ additionalProperties: false },
-		),
-		Type.Object(
-			{
-				action: StringEnum(["ready"] as const),
-				all: Type.Optional(all),
-			},
-			{ additionalProperties: false },
-		),
-		Type.Object(
-			{ action: StringEnum(["get"] as const), id },
-			{ additionalProperties: false },
-		),
-	]);
+			),
+			state: Type.Optional(StringEnum(TASK_STATES)),
+			outcome: Type.Optional(outcome),
+			skipReason: Type.Optional(instructions),
+			all: Type.Optional(all),
+		},
+		{ additionalProperties: false },
+	);
 	pi.registerTool({
 		name: "task",
 		label: "Task",
