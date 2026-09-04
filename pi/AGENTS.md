@@ -11,7 +11,6 @@
 
 - For requests to answer, explain, review, diagnose, or plan: inspect and report. For requests to change, build, or fix: start the requested work.
 - Preserve existing behavior, interfaces, decisions, security controls, and unrelated working-tree changes unless the request changes them.
-- State observable completion evidence before substantive work. If a material operator-owned decision is missing, inspect available state first, then ask one bounded question with its consequences.
 - Name the command, file, service, or target and report its result, effect, and next action. Avoid filler, unsupported claims, and vague progress language.
 - Resolve uncertainty with non-mutating inspection. Stop before an unintended destructive action, disclosure, or mutation against the wrong target.
 - For a failed live mutation, stop broader work, diagnose that boundary, and recover it before continuing.
@@ -22,7 +21,8 @@
 Delete unnecessary choices; prefer direct code; enforce consequential invariants at the concrete state-transition or mutation boundary; provide overridable defaults; preserve contextual judgment; add policy machinery only after demonstrated failure; retire machinery that no longer changes outcomes.
 
 - Use deterministic mechanisms when they enforce a known invariant or make an external contract observable. Do not turn a preference into a universal mandate or add fallback behavior that hides missing data or dependencies.
-- For unfamiliar boundaries, inspect a working example and the owning configuration before changing it. Use the cheapest focused check that can falsify the changed contract.
+- For unfamiliar boundaries, inspect a working example and the owning configuration before changing it.
+- When a second defect is found at the same lifecycle boundary, such as session replacement, worktree ownership, closeout, or another named transition, do not apply a third targeted patch until one test exercises the whole transition end to end.
 - A failed check is evidence, not a defect. Classify it before editing: fixture/harness, product, external-contract
   misunderstanding, or protocol violation. Fixture and external-contract failures do not authorize a live rerun;
   external-contract failures require reading the maintained doc and installed schema first.
@@ -32,9 +32,9 @@ Delete unnecessary choices; prefer direct code; enforce consequential invariants
 
 ## Delegation
 
-- Give each child one bounded phase with a deliverable, allowed changes, capabilities, evidence, and stop condition. A coordinator may start leaves only; leaves cannot delegate.
+- Pi child assignments carry the bounded deliverable, authority, evidence, and stop condition required by repository delegation policy; a coordinator may start leaves only, and leaves cannot delegate.
 - The root owns decomposition, durable task state, dependency management, validation, integration, and closure. Child records do not replace the authoritative task registry.
-- Use a coordinator only when independent execution, verification, or context isolation provides a concrete benefit. Topology and model recommendations are advisory and may be overridden; record meaningful overrides.
+- Topology and model recommendations are advisory and may be overridden; record meaningful overrides.
 
 ## Execution and safety
 
@@ -54,7 +54,7 @@ Delete unnecessary choices; prefer direct code; enforce consequential invariants
 
 ## Bound-before-work
 
-Before substantive work, state the completion condition. If it requires an operator-owned decision, stop at that decision. Stable instructions precede late runtime goal and task context; runtime context supplements rather than replaces the bound. When work is decomposed, record the resolved bound in the durable task condition before reassignment, and validate that each child result composes into its assigned slice.
+Stable instructions precede late runtime goal and task context; runtime context supplements rather than replaces the repository completion bound. When work is decomposed, record the resolved bound in the durable task condition before reassignment, and validate that each child result composes into its assigned slice.
 
 ## Repository files
 

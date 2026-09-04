@@ -18,7 +18,7 @@ Deliver the requested outcome, check the contract that changed, and preserve eno
 
 ## Raw Task
 
-Before substantial work, state the observable evidence that would prove the requested outcome and how it could fail. If materially different completion conditions fit the request, discuss them with the operator and settle one before acting.
+For raw work, apply the repository completion-evidence and operator-decision rules before acting.
 
 Inspect only enough repository state to establish scope, ownership, and relevant validation. Execute bounded work directly.
 
@@ -38,7 +38,7 @@ Do not add tasks, follow-up work, full-suite checks, reviewer passes, telemetry,
 
 After a task's relevant check passes, mark its checkbox complete and save the plan. Record a concise result only when it is needed for resume, external mutation, or a required audit. A root task created for raw work remains authoritative across compaction and delegation; update it after a user correction and complete it only after its recorded checks pass.
 
-Execute normal plan tasks directly. Delegate only independently parallel work or work that materially benefits from context isolation, and create durable tasks only when they add useful cross-turn or dependency tracking. Do not mirror the plan checklist into another tracking system by default.
+Execute normal plan tasks directly; use repository delegation policy for independent or context-isolated slices, create durable tasks only when they add useful cross-turn or dependency tracking, and do not mirror the plan checklist into another tracking system.
 
 For live tasks, the root runs every live command; leaves never run live commands. Before an attempt, confirm the plan's session, cap, terminal outcomes, and hard stop. After any live attempt, record exactly one ledger row and stop. A `rejected` terminal outcome completes a live evaluation task. A material fixture change does not reset the attempt count. If the cap is reached, ask the operator before another attempt. Before delegating analysis of external evidence, copy that evidence into `.tmp/evidence/<task>/` and give the leaf only that bounded artifact.
 
@@ -57,16 +57,14 @@ For actual stateful mutation, verify the current backup or explicit no-prior-sta
 
 ## Validation
 
-Run only checks that can establish whether the changed contract works.
+Apply repository contract-directed validation to the plan's completion evidence.
 
 - For behavior changes, exercise the user entrypoint or closest available exact workflow.
-- For code or parsed contracts, run focused tests first; run broader suites only when shared impact, repository policy, or focused failures justify them.
-- For prose-only edits, inspect the revised content directly. Do not run code tests, generic repository checks, or `git diff --check` unless they test a changed parser, loader, generator, or formatting contract.
-- Do not run a check merely because it is customary or available.
+- For prose-only edits, inspect the revised content directly; do not run code tests, generic repository checks, or `git diff --check` unless they test a changed parser, loader, generator, or formatting contract.
 
 On failure, isolate the changed boundary, make the smallest in-scope repair, and rerun only the failing check and any directly dependent check. The task, not the edit, is the validation unit: batch related edits before checking. If a repair leaves the failure signature unchanged, report it and stop. Stop when repair requires unavailable access, destructive action, user judgment, or scope expansion.
 
-Do not perform a second review path. For a canonical plan, use only the correctness review and subtractive gate already recorded by `/plan-it`; validate directly against the closed contract.
+For a canonical plan, validate directly against the closed contract.
 
 ## Completion
 

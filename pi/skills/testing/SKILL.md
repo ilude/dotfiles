@@ -24,7 +24,7 @@ Runner references:
 - Test observable behavior, parsed contracts, schemas, and failure handling rather than private implementation details or policy prose.
 - Name the seam: the public interface where the behavior is observed. Ask the user only when competing seams would create materially different contracts.
 - Derive expected values from an independent source such as a specification, worked example, known-good result, or distinct implementation. Do not recompute the expectation with the logic under test.
-- Use the repository runner. Start with the focused test that can falsify the changed contract.
+- Use the repository runner at the observable seam selected by the repository's contract-directed validation rule.
 - Keep tests deterministic and independent of execution order.
 - Follow repository coverage requirements. Do not invent a percentage target or use coverage as a substitute for behavior.
 
@@ -58,8 +58,6 @@ If no correct seam can reproduce the contract, report that gap and use an approp
 
 ## Failure handling
 
-- Record the expected successful outcome before editing.
 - Do not write a horizontal batch of tests for imagined behavior before exercising the first vertical slice.
-- Run the focused test through its supported command.
 - When residue is part of the regression, compare relevant external state before and after the test.
 - Reproduce a broader-suite failure directly before calling it unrelated. Never report a failing suite as green.

@@ -4,7 +4,7 @@ Turn `$ARGUMENTS` and relevant conversation context into `.specs/{slug}/plan.md`
 
 ## Method
 
-Load and follow `planning` for requirements, acceptance, and verification language. Before drafting, state the observable evidence that would prove the requested outcome and how that evidence could fail. Ask rather than choosing silently when materially different completion conditions fit the request.
+Load and follow `planning` for requirements, acceptance, and verification language. Before drafting, apply the repository completion-evidence and operator-decision rules to the requested outcome.
 
 Create the smallest complete plan using the existing mechanism. Preserve supplied requirements, defined terms, normative words, actors, conditions, bounds, exceptions, and verification. Preserve explicit behavior, interfaces, scope limits, and safety boundaries. Do not add unrelated work.
 
@@ -49,7 +49,7 @@ Every adversary, specialist, and proponent reviewer must apply these checks to e
 
 The deterministic plan validator enforces the machine-readable portion of item 2; reviewers judge verification design and the remaining items.
 
-If a shared TypeScript contract is changed, include one early typecheck before implementation expands, then defer typecheck until the slice settles. If a shared mechanism is unproven, specify one representative executable slice that can falsify it before expansion. Do not make typecheck a universal gate or add scheduler state for an experiment.
+If a shared TypeScript contract is changed, include one early typecheck before implementation expands, then defer typecheck until the slice settles. If a shared mechanism is unproven, specify one representative executable slice that can falsify it before expansion. Do not make typecheck a universal gate or add scheduler state for an experiment. For a task whose only changes are prose, configuration text, or documentation, `Verify:` is direct inspection of the changed content against the stated contract; do not name a test suite, typecheck, or repository-wide check unless the task changes something a parser, loader, or formatter reads.
 
 A restored snapshot may contain a legacy post-draft stage. Treat it as compatibility telemetry only. Complete the current subject-matter and subtractive reviews before `ready`. Do not emit the removed `settle_review`, `adjudicate`, `repair`, `accept`, or `inspect` actions.
 
@@ -131,7 +131,7 @@ The `Closeout` bullet is optional and must appear only when the operator explici
 
 Before calling `ready`, verify mechanically against the structure above: frontmatter says exactly `status: ready`; every required `##` heading exists; `Completion Evidence` has separate `- Evidence:` and `- Fails when:` bullets; `Validation` contains at least one checkbox; `Execution Status` contains `- State:` and the canonical resume command; and `Retention` names the canonical archive directory.
 
-Use `## Execution Strategy` only when it adds useful execution advice. It may identify independent task keys, bounded leaf packages, or work that must remain root-owned. Sizing is advisory and dynamic. Do not assign authority-sensitive, integration-owning, or acceptance-gating work to smaller models. Execution advice does not force delegation, parallel execution, or scheduler records, and its prose is not machine-validated.
+Use `## Execution Strategy` only when it adds useful execution advice; it may identify independent task keys, bounded leaf packages, or work that must remain root-owned, but remains advisory, does not assign authority-sensitive, integration-owning, or acceptance-gating work away from the root, and does not force delegation, parallel execution, or scheduler records.
 
 State mutation boundaries explicitly: name the files or state owned by each task, what may be changed, and what remains untouched. Dependencies must identify actual prerequisites, not merely preferred order. A task is ready only when every required dependency is complete; independent ready tasks may proceed in parallel without adding scheduler records.
 
@@ -143,8 +143,4 @@ Every canonical plan retains incomplete work at primary `.specs/{slug}/plan.md`.
 
 ## Report
 
-Report the execution-ready plan path, scope, dependencies, assumptions or blockers, and the direct next command:
-
-```bash
-/do-it .specs/{slug}/plan.md
-```
+Report the execution-ready plan path, scope, dependencies, and assumptions or blockers.

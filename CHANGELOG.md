@@ -1,10 +1,10 @@
 # Changelog
 
-## 2026-09-04: Report quality-gate failures without repair turns
+## 2026-09-04: Consolidate Pi workflow guidance
 
-**Changed:** Pi quality gates now report surviving blocking findings when the agent settles without triggering another model turn or spawning a delegated repair model. Configured deterministic autofix, advisory findings, validator selection, and unchanged-evidence handling remain intact.
+**Changed:** Cross-cutting completion, operator-decision, validation, and delegation rules now have one repository-wide owner, while Pi-specific evidence, review, and lifecycle-patch rules live in their owning skill, contract, or Pi instruction file. The workflow lifecycle contract now describes operator-visible execution behavior without implementation history, and `/plan-it` leaves next-command presentation solely to its command finalizer.
 
-**Changed:** Pi workflow guidance now treats the task as the validation unit, preserves passing evidence until covered inputs change, and requires plans to state when each confirmatory check runs.
+**Preserved:** Workflow flags, clearing, ownership, preflight, routing, closeout policies, archive verification, recovery state, safety boundaries, reviewer rubric, and clipboard presentation remain unchanged.
 
 ---
 
@@ -13,6 +13,14 @@
 **Changed:** `log_analytics` now rejects more than 512 MiB of selected input before staging, enforces a 5,000 ms session deadline, and runs DuckDB with 2 threads and a 1 GB memory ceiling by default. `PI_ANALYTICS_MAX_INPUT_BYTES`, `PI_ANALYTICS_TIMEOUT_MS`, `PI_ANALYTICS_THREADS`, and `PI_ANALYTICS_MEMORY_LIMIT` override those defaults. Query results report scanned file and byte counts plus staging and query durations, concurrent sessions serialize staging within one Pi process, and read subagents can use the bounded analytics surface without gaining mutation or shell authority.
 
 **Preserved:** Canonical JSONL remains authoritative, DuckDB remains invocation-local and in-memory, and typed report readers retain their existing unbounded-input behavior.
+
+---
+
+## 2026-09-04: Report quality-gate failures without repair turns
+
+**Changed:** Pi quality gates now report surviving blocking findings when the agent settles without triggering another model turn or spawning a delegated repair model. Configured deterministic autofix, advisory findings, validator selection, and unchanged-evidence handling remain intact.
+
+**Changed:** Pi workflow guidance now treats the task as the validation unit, preserves passing evidence until covered inputs change, and requires plans to state when each confirmatory check runs.
 
 ---
 

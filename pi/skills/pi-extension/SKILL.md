@@ -131,7 +131,7 @@ A recovery handoff never authorizes replay, safety bypass, credential disclosure
 
 ## Validation
 
-Choose only the checks affected by the change; these commands are not a required sequence:
+Apply the repository contract-directed validation rule; these Pi code commands are options, not a required sequence:
 
 ```bash
 cd pi && pnpm test <matching-test-file>.ts
