@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-03: Make Bedrock Claude delegation proportional
+
+**Changed:** Bedrock Fable and Opus now retain normal direct tools for small work while receiving concise cost-aware guidance to delegate substantial work to Codex subagents. Bounded Team Lead packages are available when multiple independent specialists provide a concrete benefit.
+
+**Preserved:** Codex child-model routing, generated private delegation artifacts, standard tool safety, child authority, depth and worker limits, and root-owned integration remain enforced.
+
+---
+
 ## 2026-09-03: Limit Bedrock Fable cache-write retention
 
 **Changed:** Bedrock Fable 5 and 5.1 now use the provider's default 5-minute prompt-cache retention instead of the global 1-hour Anthropic preference, reducing their expensive cache-write exposure.

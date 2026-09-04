@@ -2928,7 +2928,33 @@ You are a test agent.
 		expect(result.details.results[0].role).toBe("leaf");
 	});
 
+	it("allows Bedrock Claude roots to launch bounded Team Leads", async () => {
+		mockSuccessfulSpawn();
+		const { tool } = await loadTool();
+		const result = await tool.execute(
+			"fable-teamlead",
+			{
+				agent: "teamlead",
+				task: "Coordinate bounded work",
+				role: "coordinator",
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			fableCtx(),
+		);
 
+		const args = spawnMock.mock.calls[0][1] as string[];
+		expect(args[args.indexOf("--model") + 1]).toBe(
+			"openai-codex/gpt-5.6-sol",
+		);
+		expect(spawnMock.mock.calls[0][2].env.PI_SUBAGENT_TREE_ROLE).toBe(
+			"coordinator",
+		);
+		expect(result.details.results[0].role).toBe("coordinator");
+		const outputPath = result.details.results[0].outputPath;
+		if (outputPath) await fs.promises.rm(outputPath, { force: true });
+	});
 
 	it("joins every text block in the final assistant response", async () => {
 		spawnMock.mockImplementation(() => {
@@ -3021,7 +3047,7 @@ You are a test agent.
 		const visible = result.content[0].text;
 		expect(Buffer.byteLength(visible, "utf8")).toBeLessThanOrEqual(16 * 1024);
 		expect(visible.split(/\r\n|\r|\n/).length).toBeLessThanOrEqual(2_000);
-		expect(visible).toContain("Result truncated at the subscription foreground boundary");
+		expect(visible).toContain("Result truncated at the Bedrock Claude foreground boundary");
 
 		const childPath = result.details.results[0].outputPath;
 		expect(childPath).toBeDefined();

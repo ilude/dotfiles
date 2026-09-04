@@ -11,11 +11,11 @@ vi.mock("../extensions/subagent/agents.js", () => ({
 import fableCommand, {
 	improveFableBedrockError,
 	isFableBedrockModel,
-	isSubscriptionOrchestratorModel,
-	providerOrchestrationCapability,
+	isBedrockClaudeRootModel,
 	sanitizeFableBedrockPayload,
 	subagentModelFor,
 } from "../extensions/fable.ts";
+import { setToolVisibilityRestriction } from "../lib/tool-activation.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const codexModels = [
@@ -147,27 +147,16 @@ describe("Bedrock Claude orchestration policy", () => {
 	it("detects Fable and Opus on both Bedrock transports", () => {
 		expect(isFableBedrockModel(fableModel)).toBe(true);
 		for (const model of subscriptionOrchestratorModels)
-			expect(isSubscriptionOrchestratorModel(model)).toBe(true);
+			expect(isBedrockClaudeRootModel(model)).toBe(true);
 		for (const model of [
 			{ provider: "other", id: "us.anthropic.claude-fable-5" },
 			{ provider: "amazon-bedrock", id: "claude-fable-test" },
 			{ provider: "bedrock-mantle", id: "anthropic.claude-sonnet-5" },
 		])
-			expect(isSubscriptionOrchestratorModel(model)).toBe(false);
+			expect(isBedrockClaudeRootModel(model)).toBe(false);
 	});
 
-	it("publishes provider capability records for both Bedrock transports", () => {
-		for (const model of subscriptionOrchestratorModels)
-			expect(providerOrchestrationCapability(model)).toEqual({
-				teamleadsAllowed: false,
-				controlTools: ["subagent_status", "subagent_control"],
-			});
-		expect(
-			providerOrchestrationCapability({ provider: "openai-codex", id: "gpt-5.6-sol" }),
-		).toMatchObject({ teamleadsAllowed: true });
-	});
-
-	it("enforces subscription guidance in every runtime mode", () => {
+	it("adds one concise delegation instruction in every runtime mode", () => {
 		const { beforeAgentStart } = hooks();
 		for (const model of subscriptionOrchestratorModels) {
 			for (const mode of ["tui", "rpc", "json", "print"]) {
@@ -175,86 +164,65 @@ describe("Bedrock Claude orchestration policy", () => {
 					{ systemPrompt: "base" },
 					createMockCtx({ mode, model }),
 				);
-				expect(result.systemPrompt).toContain("root orchestrator");
-				expect(result.systemPrompt).toContain(
-					"openai-codex subscription subagents",
-				);
-				expect(result.systemPrompt).toContain(
-					"small for bounded work (Luna high)",
-				);
+				const paragraphs = result.systemPrompt.split("\n\n");
+				expect(paragraphs).toHaveLength(2);
+				expect(paragraphs[0]).toBe("base");
+				expect(paragraphs[1].split(/\s+/).length).toBeLessThanOrEqual(70);
 			}
 		}
 	});
 
-	it("hard-blocks tools and delegation arguments outside the subscription control plane", () => {
+	it("removes the retired tool visibility restriction on reload", async () => {
+		const pi = createMockPi();
+		for (const name of ["read", "write"]) {
+			pi.registerTool({
+				name,
+				label: name,
+				description: name,
+				parameters: {},
+				execute: vi.fn(),
+			});
+		}
+		setToolVisibilityRestriction(
+			pi as Parameters<typeof setToolVisibilityRestriction>[0],
+			"bedrock-claude-orchestrator",
+			["write"],
+		);
+		expect(pi.getActiveTools()).toEqual(["write"]);
+
+		fableCommand(pi as Parameters<typeof fableCommand>[0]);
+		await pi._getHook("session_start")[0].handler(
+			{ reason: "reload" },
+			createMockCtx(),
+		);
+
+		expect(pi.getActiveTools()).toEqual(["read", "write"]);
+	});
+
+	it("allows Bedrock Claude roots to use direct tools and Team Leads", () => {
 		const { tool } = hooks();
 		for (const model of subscriptionOrchestratorModels) {
 			for (const mode of ["tui", "rpc", "json", "print"]) {
 				const ctx = createMockCtx({ mode, model });
 				for (const toolName of [
 					"read",
+					"write",
 					"bash",
 					"tool_search",
-					"subagent_continue",
-					"subagent_coordinate",
 					"subagent_teamlead",
-				]) {
-					const blocked = tool({ toolName, input: {} }, ctx);
-					expect(blocked).toMatchObject({ block: true });
-					expect(blocked.reason).toContain(
-						"Bedrock Claude subscription-only orchestration boundary",
-					);
-				}
-
-				for (const toolName of [
-					"task",
-					"plan_archive",
-					"subagent_status",
-					"subagent_control",
 				]) {
 					expect(tool({ toolName, input: {} }, ctx)).toBeUndefined();
 				}
-				expect(
-					tool(
-						{
-							toolName: "subagent",
-							input: { agent: "builder", task: "work", role: "leaf" },
-						},
-						ctx,
-					),
-				).toMatchObject({ block: true });
 			}
 		}
 
-		const ctx = createMockCtx({ mode: "tui", model: fableModel });
+		const coordinator = {
+			toolName: "subagent",
+			input: { agent: "teamlead", task: "work", role: "coordinator" },
+		};
 		expect(
-			tool(
-				{ toolName: "write", input: { path: ".specs/example/plan.md" } },
-				ctx,
-			),
+			tool(coordinator, createMockCtx({ mode: "tui", model: fableModel })),
 		).toBeUndefined();
-		expect(
-			tool({ toolName: "write", input: { path: "src/plan.md" } }, ctx),
-		).toMatchObject({ block: true });
-		for (const input of [
-			{ agent: "builder", task: "work", role: "coordinator" },
-			{ agent: "teamlead", task: "work" },
-			{ agent: "builder", task: "write the architecture plan", role: "leaf" },
-			{ agent: "builder", task: "work", output: "result.md" },
-			{
-				tasks: [
-					{ agent: "builder", task: "work", output: "nested.md" },
-				],
-			},
-			{
-				steps: [
-					{ agent: "builder", task: "work", role: "coordinator" },
-				],
-			},
-		]) {
-			const blocked = tool({ toolName: "subagent", input }, ctx);
-			expect(blocked).toMatchObject({ block: true });
-		}
 	});
 
 	it("does not append orchestration guidance for ordinary parents", () => {
@@ -415,34 +383,6 @@ describe("Bedrock Claude orchestration policy", () => {
 
 		expect(tool(event, orchestratorCtx())).toBeUndefined();
 		expect(event.input).not.toHaveProperty("model");
-	});
-
-	it("adds foreman guidance for subscription roots or explicit foreman mode", () => {
-		const { beforeAgentStart } = hooks("medium");
-		expect(
-			beforeAgentStart({ systemPrompt: "base" }, orchestratorCtx()),
-		).toBeUndefined();
-
-		const fable = beforeAgentStart(
-			{ systemPrompt: "base" },
-			createMockCtx({
-				mode: "tui",
-				model: {
-					provider: "amazon-bedrock",
-					id: "us.anthropic.claude-fable-5",
-				},
-			}),
-		)?.systemPrompt;
-		expect(fable).toContain(
-			"Act as the foreman for a team of lower-cost Codex subagents.",
-		);
-		expect(fable).toContain("understanding of user intent");
-		expect(fable).toContain("Minimize your own token usage");
-		expect(fable).toContain(
-			"delegating investigation, implementation, and validation",
-		);
-		expect(fable).toContain("Stay focused on the big picture");
-		expect(fable).not.toContain("otherwise work directly");
 	});
 
 	it("allows direct tools while enforcing GPT-5.6 routing after delegation", () => {

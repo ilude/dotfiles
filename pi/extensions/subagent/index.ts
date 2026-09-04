@@ -86,7 +86,7 @@ import {
 	normalizeTaskUsage,
 } from "../../lib/task-registry.js";
 import { registerOrchestrationInvocation } from "../../lib/workflow-friction.js";
-import { isSubscriptionOrchestratorModel } from "../fable.js";
+import { isBedrockClaudeRootModel } from "../fable.js";
 import {
 	formatTraceparent,
 	getTraceId,
@@ -1156,7 +1156,7 @@ function saveOutputArtifact(
 
 function boundProviderVisibleResult<
 	T extends { content: Array<{ type: string; text?: string }> },
->(result: T, label: string, boundary: "subscription" | "provider-visible"): T {
+>(result: T, label: string, boundary: "bedrock-claude" | "provider-visible"): T {
 	const details = (result as T & {
 		details?: { results?: Array<{ outputMode?: OutputMode }> };
 	}).details;
@@ -1180,15 +1180,17 @@ function boundProviderVisibleResult<
 
 	const saved = saveOutputArtifact(
 		getDefaultArtifactPath(
-			`${boundary === "subscription" ? "subscription" : "foreground"}-${label}-${randomUUID()}`,
+			`${boundary === "bedrock-claude" ? "bedrock-claude" : "foreground"}-${label}-${randomUUID()}`,
 			0,
 		),
 		fullOutput,
 	);
 	const reference = saved.reference?.message ??
 		`Full result artifact could not be saved: ${saved.error ?? "unknown error"}`;
+	const boundaryLabel =
+		boundary === "bedrock-claude" ? "Bedrock Claude" : "provider-visible";
 	const visible = truncateTail(
-		`${fullOutput}\n\n[Result truncated at the ${boundary} foreground boundary. ${reference}]`,
+		`${fullOutput}\n\n[Result truncated at the ${boundaryLabel} foreground boundary. ${reference}]`,
 		{ maxBytes: SUBAGENT_RESULT_MAX_BYTES, maxLines: SUBAGENT_RESULT_MAX_LINES },
 	);
 	if (saved.reference === undefined) {
@@ -1657,7 +1659,7 @@ function containsMaxEffortSelection(value: unknown, agents: readonly AgentConfig
 	return false;
 }
 
-function resolveSubscriptionChildModel(
+function resolveBedrockClaudeChildModel(
 	availableModels: readonly ModelLike[],
 	currentModel: ModelLike | undefined,
 	agent: AgentConfig,
@@ -1669,7 +1671,7 @@ function resolveSubscriptionChildModel(
 		const parsed = parseProviderModelString(modelSelectionBase(requested));
 		if (!parsed || parsed.provider !== "openai-codex")
 			throw new Error(
-				`Bedrock Claude subscription-only orchestration requires openai-codex child models; ${agent.name} resolved to ${requested}.`,
+				`Bedrock Claude cost routing requires an openai-codex child model; ${agent.name} resolved to ${requested}.`,
 			);
 		if (
 			!availableModels.some(
@@ -1678,7 +1680,7 @@ function resolveSubscriptionChildModel(
 			)
 		)
 			throw new Error(
-				`Bedrock Claude subscription-only orchestration model is unavailable: ${requested}.`,
+				`Bedrock Claude child model is unavailable: ${requested}.`,
 			);
 		return requested;
 	}
@@ -1694,7 +1696,7 @@ function resolveSubscriptionChildModel(
 	);
 	if (!resolved)
 		throw new Error(
-			"Bedrock Claude subscription-only orchestration requires an available openai-codex model, but none was found.",
+			"Bedrock Claude cost routing requires an available openai-codex model, but none was found.",
 		);
 	return `${resolved.provider}/${resolved.id}`;
 }
@@ -3838,7 +3840,7 @@ export default function (pi: ExtensionAPI) {
 					: legacyBranchForInput(params as unknown as Record<string, unknown>));
 			const legacyAdapterUse = legacyAdapterBranch !== undefined;
 			const currentIdentity = currentSubagentIdentity();
-			const subscriptionRoot = isSubscriptionOrchestratorModel(ctx.model);
+			const bedrockClaudeRoot = isBedrockClaudeRootModel(ctx.model);
 			const internalWorkflowContext = internalWorkflowRuns.get(_toolCallId);
 			if (currentIdentity.role === "leaf" || currentIdentity.depth >= 2)
 				throw new Error("Leaf and depth-two subagents cannot delegate.");
@@ -3894,7 +3896,7 @@ export default function (pi: ExtensionAPI) {
 				tasks: params.tasks as unknown as TaskParams[] | undefined,
 			});
 			const sampledResolution =
-				!subscriptionRoot && !explicitModel && modelSize
+				!bedrockClaudeRoot && !explicitModel && modelSize
 					? resolveSampledDynamicModelFromRegistry(
 							ctx.modelRegistry,
 							ctx,
@@ -3935,7 +3937,7 @@ export default function (pi: ExtensionAPI) {
 				);
 				if (!approved) throw new Error("Subagent max effort was not approved.");
 			}
-			const availableModels = subscriptionRoot
+			const availableModels = bedrockClaudeRoot
 				? (ctx.modelRegistry.getAvailable() as ModelLike[])
 				: [];
 			const confirmProjectAgents = params.confirmProjectAgents ?? false;
@@ -4611,9 +4613,9 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 
-			if (subscriptionRoot && hasContinue)
+			if (bedrockClaudeRoot && hasContinue)
 				throw new Error(
-					"Bedrock Claude subscription-only orchestration does not allow saved-session continuation.",
+					"Bedrock Claude delegation does not support saved-session continuation.",
 				);
 
 			let preparedItemCursor = 0;
@@ -4649,13 +4651,9 @@ export default function (pi: ExtensionAPI) {
 				item.telemetryMarkerCount = item.scope?.length ?? 0;
 				item.telemetryBoundaryCount = internalParams.workBoundary?.length ?? 0;
 				const requestedRole = forcedRole ?? item.role;
-				if (subscriptionRoot && requestedRole === "coordinator")
+				if (bedrockClaudeRoot && typeof item.output === "string")
 					throw new Error(
-						"Bedrock Claude subscription-only orchestration keeps the selected Claude model as the root and does not allow Team Leads.",
-					);
-				if (subscriptionRoot && typeof item.output === "string")
-					throw new Error(
-						"Bedrock Claude subscription-only orchestration does not allow caller-supplied output paths.",
+						"Bedrock Claude delegation uses runtime-generated private output paths.",
 					);
 				const resolved = resolveChildRole(requestedRole, item.agent);
 				item.resolvedRole = item.continuationAuthority?.role ?? resolved.role;
@@ -4697,8 +4695,8 @@ export default function (pi: ExtensionAPI) {
 						`Team Lead agent ${item.agent} must have a subagent delegation capability.`,
 					);
 				// workPaths are advisory markers and are not required for writes.
-				if (subscriptionRoot) {
-					item.resolvedModel = resolveSubscriptionChildModel(
+				if (bedrockClaudeRoot) {
+					item.resolvedModel = resolveBedrockClaudeChildModel(
 						availableModels,
 						ctx.model as ModelLike | undefined,
 						agent,
@@ -4872,7 +4870,7 @@ export default function (pi: ExtensionAPI) {
 				);
 				finalizeOutput(
 					result,
-					subscriptionRoot ? true : followUp.output,
+					bedrockClaudeRoot ? true : followUp.output,
 					followUp.outputMode,
 					invocationCwd,
 					followUp.cwd,
@@ -4961,7 +4959,7 @@ export default function (pi: ExtensionAPI) {
 					);
 					finalizeOutput(
 						result,
-						subscriptionRoot ? true : step.output,
+						bedrockClaudeRoot ? true : step.output,
 						step.outputMode,
 						invocationCwd,
 						step.cwd,
@@ -5112,7 +5110,7 @@ export default function (pi: ExtensionAPI) {
 							);
 							finalizeOutput(
 								result,
-								subscriptionRoot ? true : t.output,
+								bedrockClaudeRoot ? true : t.output,
 								t.outputMode,
 								invocationCwd,
 								t.cwd,
@@ -5207,7 +5205,7 @@ export default function (pi: ExtensionAPI) {
 				);
 				finalizeOutput(
 					result,
-					subscriptionRoot ? true : selectedSingle.output,
+					bedrockClaudeRoot ? true : selectedSingle.output,
 					selectedSingle.outputMode,
 					invocationCwd,
 					selectedSingle.cwd,
@@ -5264,7 +5262,7 @@ export default function (pi: ExtensionAPI) {
 						: boundProviderVisibleResult(
 								result,
 								orchestrationId,
-								subscriptionRoot ? "subscription" : "provider-visible",
+								bedrockClaudeRoot ? "bedrock-claude" : "provider-visible",
 							);
 				} finally {
 					await settleInvocationTree();
