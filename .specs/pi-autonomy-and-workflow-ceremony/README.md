@@ -1,41 +1,43 @@
 # Pi autonomy and workflow ceremony investigation
 
-Status: Incomplete. The first pass was too centered on recent failures. Investigation only; no runtime or instruction changes.
-Prior task reference: `470fdcf6-c1be-4cca-ad59-67319baaa8ee`
-Source baseline: `4549dca9545c38d460719a69698a75da9091b51d` on main, observed 2026-09-05.
+Status: Broadened investigation complete. The operator has clarified the direction as radical simplification, not incremental trimming; the main proposal now reflects removal of whole procedural subsystems. No implementation or runtime verification performed.
 
-## System-wide question
+## Read first
 
-How does an ordinary request accumulate extra requirements, procedures, reviews, state, tools, and tests, and why do attempts to simplify the system regenerate that machinery?
+1. [System-wide diagnosis and proposal](system-wide-proposal.md): how requirements and procedure accumulate, why simplification regenerates machinery, minimal operating model, and removal/retention decisions.
+2. [Current-session evidence](current-session-evidence.md): benchmark and subagent execution churn under current rules, necessary browser protections, and this investigation's own premature completion.
+3. [Contrasting cases and history](system-evidence.md): direct successful work, explicitly requested complexity, requirement expansion, and policy changes over time.
 
-The investigation must follow the whole request-to-completion path across instructions, skills, commands, delegation, design, testing, recovery, and closeout. Assess mechanisms that work as designed as well as broken ones. Compare independent work types and direct successful work. Distinguish necessary constraints from preferences that became universal rules, and identify the feedback that turns each local disappointment into more policy.
+The initial failure-centered pass was insufficient. The documents above supersede its narrow organizing conclusion; they do not erase its useful source evidence.
 
-Completion requires a coherent minimal operating model and evidence-backed removal/consolidation boundaries, not merely fixes to the recent goal failure. Existing findings remain useful bounded evidence; their proposed changes are provisional rather than the complete simplification scope.
+## Preservation and replacement boundary
 
-## First-pass findings
+Leave damage control and `/commit` unchanged. Retain only useful subagent capabilities. Remove or replace `/do-it` and the managed workflow architecture, and replace development-flow instructions/skills rather than preserving their current structure. Preserve real partial work and explicit in-flight obligations, not the rejected workflow design.
 
-The strongest findings are a cross-extension controller identity defect, failed goal startup leaving a procedural tool blockade, user-only lifecycle initialization, inadequate recovery of the original objective, counter-driven test interruptions, and tests that miss real host boundaries while preserving review procedure.
+## Main finding
 
-Recommend removing procedural coupling and conflicting instructions together. Commands should share useful agent-callable operations. Preserve exact intent, real safety/ownership checks, unattended continuation, and recovery of partially completed work. Do not replace the removed ceremony with another enforcement framework.
+The system gives procedure stronger authority than it should, while implementation and test suggestions can acquire the status of user requirements. Plans, review/readiness rules, delegation, deferred validation, and completion records then preserve those choices. When partial work fails to compose, another repair, review, handoff, or operator interruption follows.
 
-## Read next
+Current sessions demonstrate churn before the final tests, not just excessive test execution. Historical changes show validation control moving between automatic repair and instruction-level scheduling. Shortening or consolidating rules does not necessarily remove the obligations.
 
-1. [Findings](findings.md): observed failures, source mechanisms, counterevidence, and limits.
-2. [Runtime, instructions, and tests](runtime-and-tests.md): path map, retained protections, removal candidates, and qualified worker evidence.
-3. [Solution-planning inputs](solution-inputs.md): recommended approach, proposed slices, behavior checks, unfinished-state risks, and unresolved operator choices.
-4. [Installed mechanisms and history](upstream-and-history.md): Pi 0.84.4 APIs, example discrepancy, and relevant commits.
-5. [Continuation](continuation.md): closeout state and exact evidence locators.
+Recommend a substantial reset: remove the managed development procedure, mandatory planning/review lifecycle, universal validation schedule and repair budget, and compulsory completion mappings. Default to direct work, relevant testing, diagnosis-led repair, and completion. Retain useful optional planning/delegation, minimal continuation, and concrete safety at actual operations. Commands remain conveniences with shared agent-callable capabilities. Add ceremony back only when demonstrated need warrants it, not preemptively. Do not add an anti-ceremony framework or reinterpret real user constraints as optional.
 
-## User intent and scope
+## Supporting first-pass notes
 
-Make Pi simple and flexible. Slash commands are conveniences, not exclusive access to useful capabilities. Allow execution and recovery within the request without inventing requirements, silently choosing consequential behavior, or repeatedly patching unproductive tests. Investigate runtime and instruction causes together.
+- [Findings](findings.md): specific source-established failures and qualifications.
+- [Runtime, instructions, and tests](runtime-and-tests.md): detailed path map and protection inventory.
+- [Implementation detail inputs](solution-inputs.md): provisional technical slices, host checks, and unfinished-state risks; subordinate to the system-wide proposal.
+- [Installed mechanisms and history](upstream-and-history.md): Pi 0.84.4 APIs and targeted history.
+- [Continuation](continuation.md): preservation boundary, retrieval limits, and subsequent work.
 
-Only this investigation directory was authorized for file changes. Runtime, skills, instructions, tests, existing plans, live systems, and Git state were not changed by this investigation. No managed planning/goal workflow, benchmark, or development check was run; no repair allowance was consumed.
+## Scope and evidence
 
-Pre-existing untracked paths included `.specs/duckdb-sqlite-log-analytics-benchmark/` and `pi/browser-profiles.json`. They were preserved. Other sessions may change the shared worktree; the source baseline is not a claim that live files remain frozen.
+Question: How does ordinary work accumulate extra requirements, procedures, reviews, state, tools, and tests, and why do simplification attempts regenerate them?
 
-## Evidence standard and completion
+Evidence consists of selected exact transcripts, current source, installed documentation, targeted Git history, and the initial three read-only inspections. Cases establish mechanisms and concrete effects, not prevalence, model-internal causes, or guaranteed improvement from the proposal. Recent active work was observed without contacting or controlling other instances. Its later outcomes remain outside this snapshot.
 
-This is a mechanism-focused investigation using selected exact sessions, source, targeted tests/history, installed documentation, and three read-only inspections. It is not an exhaustive historical census or a runtime verification report. The notes distinguish observation, source-established mechanism, plausible contribution, and unresolved behavior. No copied raw transcripts or sensitive exports are stored here.
+Only this investigation directory was authorized for writes. No runtime, instruction, skill, test, existing-plan, live-system, or Git mutation was performed by this investigation. No benchmark or development validation was run; no repair allowance was consumed.
 
-The first pass supplies specific source-linked findings but does not establish the requested system-wide diagnosis. Further investigation must address the machinery-generation pattern across independent cases rather than accumulate more evidence about the same failure. Implementation and its verification remain separate work.
+Initial source baseline: `4549dca9545c38d460719a69698a75da9091b51d`. Later observed main HEAD: `4aa7c2b6d82059412bdb6e25c7a443d4711e7b6b`. The checkout is shared and contains unrelated background-delivery changes. Initial pre-existing benchmark files and `pi/browser-profiles.json` remain outside this investigation's mutation boundary.
+
+Prior task reference: `470fdcf6-c1be-4cca-ad59-67319baaa8ee`. It was prematurely completed during the first pass; a later update returned task-not-found in the current workspace. No replacement task was created and no new tracker completion is claimed. The broader deliverable and its evidence are these notes.

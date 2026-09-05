@@ -1,6 +1,6 @@
 # Simplification direction and implementation-planning inputs
 
-Provisional first-pass recommendations, not a complete system-wide solution or approved implementation plan. The broader investigation scope is in README.md. Nothing here changes current runtime policy. The investigation supports a deletion-first change spanning runtime and owning instructions, not a controller patch plus more exceptions.
+Provisional first-pass technical inputs, not an approved implementation plan. The completed [system-wide proposal](system-wide-proposal.md) supersedes this document's narrower framing and priority order. Retain the detailed host checks and unfinished-state inventory below as supporting inputs. Nothing here changes current runtime policy. The investigation supports a deletion-first change spanning runtime and owning instructions, not a controller patch plus more exceptions.
 
 ## Desired operating model
 
@@ -124,4 +124,4 @@ These choices belong in the later implementation discussion because they change 
 - Narrow analytics input selection is a separately actionable efficiency issue. It is not a prerequisite for removing workflow coupling and does not justify a new analytics engine.
 - Background result delivery had a recoverable gap during this investigation. Its cause was not investigated here; existing parallel work already examines related delivery behavior. Do not silently add that product repair to this package.
 
-The earlier stopping conclusion was premature. These specific mechanisms do not establish the larger pattern of requirement expansion and policy accumulation; investigate that pattern before selecting the complete simplification scope.
+The earlier stopping conclusion was premature. The subsequent system-wide proposal and current-session evidence now address requirement expansion, prevalidation churn, partial delegation, and policy accumulation. Do not reduce their recommended scope back to these original workflow defects.

@@ -1,52 +1,55 @@
-# Continuation and evidence locators
+# Continuation and preservation
 
-Investigation incomplete: the first pass overfocused on specific failures. Prior root task: `470fdcf6-c1be-4cca-ad59-67319baaa8ee`.
-Source baseline: `4549dca9545c38d460719a69698a75da9091b51d`, main.
+## Current state
 
-## Frontier
+The broadened investigation is complete as a research deliverable. The operator subsequently clarified that the proposal must involve radical simplification: remove whole procedural systems and rely on direct work, testing, diagnosis-led repair, and completion; add ceremony back only when needed. `system-wide-proposal.md` has been rewritten accordingly and supersedes both the controller-centered first pass and the later conservative trimming proposal. Read it first, then `current-session-evidence.md` and `system-evidence.md`.
 
-The current scope is the system-wide question in README.md: how requests accumulate machinery and why simplification attempts regenerate it. The existing findings and solution inputs are a bounded first pass, not a completed diagnosis. Assess whole mechanisms across independent work types, including ones that operate as designed, and explain the request-to-completion and policy-growth feedback. Do not continue by collecting more examples of the same controller failure. No runtime, instruction, test, existing-plan, or Git changes were made by this investigation. No development validation or live experiment was run; no repair allowance was consumed.
+The report now covers requirement authority, current prevalidation churn, partial delegated work and integration, validation-policy oscillation, review/readiness gates, necessary complexity, direct successful work, concrete protections, and whole-mechanism removal/retention.
 
-All three read-only inspections completed and their saved results were integrated. No child work remains to await. One exceptional status lookup recovered terminal-state information after the completed orchestration record was found but no pushed report was visible; saved artifacts supplied the reports. Do not poll or redispatch them. Corrections to worker claims and exact artifact paths are in runtime-and-tests.md.
+The latest preservation boundary is explicit: leave damage control and `/commit` unchanged; retain only useful parts of subagents; remove or replace `/do-it` and managed workflows; replace the development-flow portions of instructions and skills rather than preserving their current structure. Do not treat old workflow defaults as compatibility requirements. Preserve actual partial work and explicit in-flight obligations, not the rejected architecture.
 
-The notes preserve useful source/session-linked findings, preservation boundaries, installed reuse options, and migration risks. They are insufficient for the broadened synthesis. There is no canonical `plan.md`, managed readiness state, or implementation authorization to recover. Attempting to reopen/update the prior task returned `task not found in current workspace`; no replacement task was created and no tracker change succeeded. The revised investigation scope is recorded in README.md rather than allowing tracker recovery to become another prerequisite.
+No runtime implementation has been requested in this clarification exchange. No runtime, instruction, skill, test, existing-plan, live-system, or Git mutation was performed by this investigation. No development validation or live experiment was run; no repair allowance was consumed.
 
-## Next action if implementation planning is requested
+## If implementation is requested
 
-Reinspect current owning source and active work because the checkout is shared. Resolve only material defaults identified in solution-inputs.md: goal/worktree/closeout meaning and whether `/do-it` retains fresh-session/merge defaults. Preserve explicit constraints of already-authored work. Then make a proportional deletion-first plan; do not add another review or tracking system to authorize it.
+Reinspect the owning source and actual active work. The checkout is shared; another session is modifying background terminals/subagents and SDK delivery. Do not adopt or discard its changes.
 
-Do not retrieve history merely to increase sample size. Select additional evidence only to resolve distinct system-wide questions: requirement expansion, procedural enforcement, delegation/review obligations, test-driven scope growth, recovery, and repeated policy accumulation. Runtime experimentation remains outside the authorized investigation.
+Use the radical simplification proposal as the direction. Remove whole procedural subsystems rather than preserving them with exceptions or a simplicity mode. Proposed default execution is direct, without automatic planning, review, task mapping, or Git/session lifecycle ceremony. The earlier blanket recommendation to freeze `/do-it` defaults is withdrawn; make the exact command-default changes explicit in the implementation scope and preserve existing active-work obligations. Replace universal local validation timing/repair accounting while retaining explicit live-attempt and safety limits. Do not launch another managed planning workflow or add review/tracking machinery merely to authorize simplification.
 
-## Exact session evidence
+Keep existing partial plans/tasks, goal/loop state, prepared worktrees, and archive/merge receipts until their real remaining operations are understood. Do not delete state because a proposed replacement will no longer create it.
 
-Base directory: `C:/Users/mglenn/.pi/agent/sessions/--C--Users-mglenn-.dotfiles--/`
+If more evidence is requested, prioritize a specific unresolved mechanism or the operator's named current sessions. Do not perform a historical census or keep following live sessions just to increase sample size. Their post-snapshot outcomes were not observed.
 
-- `2026-09-05T15-18-28-718Z_01a07226-506e-79df-81a1-729d2718ed7f.jsonl`
-  - Original benchmark objective: `2b93a4b2`.
-  - Startup and blocking: `45931e31`, `92638f1c`, `0a2e501a`, `071894c3`.
-  - Altered attempted prompt preservation: `63f2cee1`; write rejected.
-- `2026-09-05T15-38-46-171Z_01a07238-e41b-74ca-be95-2090d77cef77.jsonl`
-  - Conversational planning request, draft, missing lifecycle, and operator handoff: `3d3aa01e`, `b222415c`, `46af2a9f`, `611f9546`.
-- `2026-09-05T14-16-14-265Z_01a071ed-54b9-77e2-a881-7935addaaba0.jsonl`
-  - Repair-limit interruption: `0e84b0f7`.
-  - User follow-up and authorization: `3129a30b`, `2b4b84cd`, `4612b121`, `fe251b0a`.
-  - Source-comprehension/test-assumption admission: `f25e04b0`.
-  - Bounded direct research reports: `f3bdbb94`, `369ae81f`; these reports are not independently verified implementations.
-- `2026-09-05T06-27-36-970Z_01a07040-4b8a-701a-af6d-5ff6791ae380.jsonl`
-  - Related earlier work; inherited entries overlap the later session. Do not count duplicated history as independent observations.
+## Task and child state
 
-Historical context only:
-- `2026-07-11T04-06-59-993Z_019f4f5b-6e98-7548-a01e-28f732185291.jsonl` and `2026-07-11T04-11-59-417Z_019f4f60-0039-72b8-ac62-e1849b63b40c.jsonl` under the same base directory: prior ceremony investigations/changes, not proof of current behavior.
-- `C:/Users/mglenn/.pi/agent/sessions/--C--Projects-Personal-homelab-infra--/2026-07-21T21-50-58-983Z_019f86a9-21a3-7c47-a358-c4e7c3c998a9.jsonl`, entry `23930c9d`: explicit objection to plan linting. Do not infer current infrastructure state or expand this task into that repository.
+Prior root task: `470fdcf6-c1be-4cca-ad59-67319baaa8ee`. It was completed prematurely during the first pass. Updating/reopening it returned `task not found in current workspace`. No replacement task was created; no successful broader tracker update or completion is claimed.
 
-## Analytics limitations
+The initial three read-only inspections completed; saved reports were integrated. One exceptional status lookup recovered terminal information after completion evidence existed but pushed reports were absent. All artifact paths and corrections are in `runtime-and-tests.md`. No child from that package remains to await.
 
-A session-specific `session_entries` query still selected approximately 3.37 GB before filtering and failed the 512 MiB input bound. Do not repeat it unchanged or raise resource bounds. Exact authorized file reading worked; filename discovery via `find` missed ignored session files, while bounded shell filename globbing located them.
+A second-pass background read-only assignment was refused because acknowledged completion delivery was unavailable. No child started. The root performed the broader inspection directly. Do not redispatch or poll those packages.
 
-`friction_reviews` was used only for selected case discovery (approximately 2.68 MB). Its `_timestamp` was null; `record.reviewedAt` and `record.sessionId` supplied metadata. Reviews are not primary causal evidence.
+## Evidence locators
 
-A bounded `orchestration_events` query filtered the exact root session `01a07239-c292-7893-858b-d58708606bb7`, returning seven records with limit eight. It scanned 109 files / 119,360,073 bytes and established terminal child completion at `2026-09-05T16:00:47.539Z`. The report content was then read from exact saved artifacts. No broad prompt-content query, exported corpus, or source-log edit was performed. The analytics tool may refresh its disposable read-model store during queries.
+- Current cases and exact parent transcript paths/IDs: `current-session-evidence.md`.
+- Historical contrasts and Git changes: `system-evidence.md`.
+- Initial goal sessions: `01a07226-506e-79df-81a1-729d2718ed7f` and `01a07238-e41b-74ca-be95-2090d77cef77`, under `C:/Users/mglenn/.pi/agent/sessions/--C--Users-mglenn-.dotfiles--/`. Exact entries are in `findings.md` and `upstream-and-history.md`.
+- Repair/concurrency session: `01a071ed-54b9-77e2-a881-7935addaaba0`; it includes inherited history and multiple parent-ID branches. Do not count inherited `01a07040-4b8a-701a-af6d-5ff6791ae380` content twice or flatten branches into a single causal sequence.
+- Initial historical July cases remain supporting context only. No inspection here authorizes changes to their repositories or live systems.
 
-## Preservation
+## Retrieval limits
 
-The pre-existing benchmark spec and `pi/browser-profiles.json` remain outside this investigation's write boundary. Do not delete or overwrite them, even if the benchmark spec changes concurrently. The final `git status --short` showed only the two pre-existing untracked paths and this new investigation directory; no tracked-file changes. The notes are intentionally ordinary files under `.specs/`; do not invoke archive, merge, cleanup, or a workflow command to finish this investigation.
+A session-specific `session_entries` query staged approximately 3.37 GB before filtering and exceeded the 512 MiB input bound. Do not repeat it unchanged or raise resource limits. Exact authorized reads worked. Filename metadata discovery found ignored transcripts that `find` missed. No replacement corpus parser or exported transcript store was created.
+
+`friction_reviews` was used only for case discovery, with approximately 2.70 MB scanned. Its `_timestamp` was null; use `record.reviewedAt` and `record.sessionId`. Reviews are locators, not proof of completion or causation. Recent queries, selection limits, and excluded synthetic metadata are recorded in `system-evidence.md`.
+
+A bounded `orchestration_events` query on this root session returned seven records and established the initial package's terminal completion. It scanned 109 files / 119,360,073 bytes. Saved report content was then read directly. Analytics may refresh disposable read-model state; no source logs were edited.
+
+Current-session discovery used a one-time metadata snapshot of recently modified parent/child filenames, followed by exact parent transcript inspection. Modification time was not represented as proof of process liveness. No Onclave or Herdr discovery/control was used.
+
+## Shared checkout and write boundary
+
+Only `C:/Users/mglenn/.dotfiles/.specs/pi-autonomy-and-workflow-ceremony/` was written by this investigation.
+
+Initial baseline: `4549dca9545c38d460719a69698a75da9091b51d`, main. Later inspection observed `4aa7c2b6d82059412bdb6e25c7a443d4711e7b6b` and unrelated tracked/untracked background-delivery implementation and test changes. The first-pass notes now appear tracked; this investigation did not commit them. Do not attribute other sessions' Git operations or changes to this work.
+
+Pre-existing `.specs/duckdb-sqlite-log-analytics-benchmark/` and `pi/browser-profiles.json` were preserved. Their absence from a later untracked listing does not authorize deletion or imply they were changed here. No archive, merge, cleanup, or workflow closeout is required for these research notes.
