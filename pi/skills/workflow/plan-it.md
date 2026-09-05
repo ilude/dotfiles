@@ -1,6 +1,6 @@
 # Plan an Executable Change
 
-Turn `$ARGUMENTS` and relevant conversation context into `.specs/{slug}/plan.md` in the primary repository. Do not implement the plan. Use the latest stated goal and constraints as authoritative.
+Turn `$ARGUMENTS` and relevant conversation context into `.specs/{slug}/plan.md` in the primary repository. Do not implement the plan. Use the latest stated goal and constraints as authoritative. Unless the operator explicitly requests early or TDD validation, plan implementation, test authoring, and integration before one root-owned final validation batch.
 
 ## Method
 
@@ -27,7 +27,7 @@ After `plan_progress ready` succeeds, explain the plan in human terms and assess
 5. After correctness repairs, perform one final necessity/subtractive review. Ask exclusively for overengineering, gold-plating, unnecessary abstraction, duplicate state, excessive validation, and churn risks. Flag multi-claim tasks, validation steps without a stated trigger, and live checks without attempt caps as churn risks.
 6. Apply necessary subtractive findings, then record the final review with role `subtractive`: use `covered` after repairing supported findings or `no_finding` when no repair was needed. An unresolved `supported` result cannot reach readiness. For every task, mechanism, state field, telemetry field, abstraction, and validation step, ask:
    - Is it required to prove `Completion Evidence` or preserve a stated safety boundary?
-   - Does the first task test one assumption with the smallest representative slice?
+   - Does the first implementation task isolate the smallest representative slice without introducing an early validation gate?
    - Does it build for an unobserved failure, future provider/client, or unrequested scale?
    - Does it add persistence, retries, correlation, lifecycle, or cleanup before proving value?
    - Can fewer files, modes, checks, or mutations answer the question?
@@ -39,17 +39,17 @@ After `plan_progress ready` succeeds, explain the plan in human terms and assess
 
 Every adversary, specialist, and proponent reviewer must apply these checks to every task. When one fails, return a supported finding that names the task key, cites the failed item number, and gives a proposed rewrite:
 
-1. `Verify` directly falsifies `Done when`; it does not merely say that tests pass.
-2. The check is tagged deterministic or live. A live check names one behavior, cleanup, `Max attempts`, `Session`, and `Terminal outcomes`.
+1. `Verify` directly falsifies the task's `Done when`; for implementation tasks this may verify authored files, tests, or integration state, but must not claim behavior was verified by inspection. Behavior acceptance belongs to the explicit final validation task or the final `Validation` batch.
+2. The check is tagged deterministic or live and states when it runs. Source inspection may establish authored-work completion; executable development checks wait until implementation, test authoring, and integration settle unless the operator chooses early or TDD checks. A live check names one behavior, cleanup, `Max attempts`, `Session`, and `Terminal outcomes`.
 3. Success does not depend on a child model choosing an action.
-4. The task does not bundle more than one independently verifiable claim.
+4. Implementation tasks remain independently executable; the final validation task may batch the checks needed to prove the integrated outcome without repeating them per task.
 5. Every relied-on external-system contract, including API response shape, CLI flags, and wait or cancellation semantics, is cited from maintained documentation or an installed schema, or becomes a research question that blocks the task.
 6. Each named test or check advances Completion Evidence rather than restating implementation.
 7. The task states what ends it on failure without a retry.
 
 The deterministic plan validator enforces the machine-readable portion of item 2; reviewers judge verification design and the remaining items.
 
-If a shared TypeScript contract is changed, include one early typecheck before implementation expands, then defer typecheck until the slice settles. If a shared mechanism is unproven, specify one representative executable slice that can falsify it before expansion. Do not make typecheck a universal gate or add scheduler state for an experiment. For a task whose only changes are prose, configuration text, or documentation, `Verify:` is direct inspection of the changed content against the stated contract; do not name a test suite, typecheck, or repository-wide check unless the task changes something a parser, loader, or formatter reads.
+If the operator explicitly chooses early or TDD validation, record that choice and its bounded checks in `Execution Strategy` or `Validation`. Otherwise do not add early typechecks or per-task behavior checks: implementation, test authoring, and integration settle first, followed by one root-owned final validation batch. If a shared mechanism is unproven, inspect or source-review one representative slice before expansion and author its executable check for the final phase. Do not treat source inspection as proof of runtime behavior. Do not make typecheck a universal gate or add scheduler state for an experiment. For a task whose only changes are prose, configuration text, or documentation, `Verify:` is direct inspection of the changed content against the stated contract; do not name a test suite, typecheck, or repository-wide check unless the task changes something a parser, loader, or formatter reads.
 
 A restored snapshot may contain a legacy post-draft stage. Treat it as compatibility telemetry only. Complete the current subject-matter and subtractive reviews before `ready`. Do not emit the removed `settle_review`, `adjudicate`, `repair`, `accept`, or `inspect` actions.
 
@@ -86,10 +86,17 @@ status: ready
 - [ ] **T1: <Executable task name>**
   - Files: `<Exact files or targets>`
   - Change: <Bounded mutation and mechanism.>
-  - Done when: <Observable task acceptance condition.>
-  - Verify: `<deterministic check that falsifies Done when; run once when the task's edits are complete>`
+  - Done when: <Observable authored-work acceptance condition; do not claim runtime behavior is verified here.>
+  - Verify: deterministic <Inspect authored files and integration; defer executable checks to T2.>
 
-- [ ] **T2: <Optional live evaluation task>**
+- [ ] **T2: Validate the integrated outcome**
+  - Files: `<Relevant test files or execution targets>`
+  - Change: Run the final Validation batch after implementation, test authoring, and integration settle.
+  - Done when: <Completion Evidence passes through the stated behavioral checks.>
+  - Verify: deterministic Run the checks listed in Validation once; report results and follow the shared repair allowance on failure.
+  - Depends on: T1
+
+- [ ] **T3: <Optional live evaluation task>**
   - Files: `<Exact files or targets>`
   - Change: <One bounded live evaluation.>
   - Done when: <One observable behavior reaches a terminal outcome and cleanup completes.>
@@ -97,7 +104,7 @@ status: ready
   - Max attempts: <positive integer>
   - Session: <isolated target>
   - Terminal outcomes: supported | rejected | blocked
-  - Depends on: T1
+  - Depends on: T2
 
 ## Live attempt ledger
 
@@ -106,11 +113,13 @@ status: ready
 
 ## Execution Strategy
 
-<Optional execution advice, such as independent task keys, bounded leaf packages, or work that must remain root-owned. Omit this section when it adds no useful guidance.>
+<Optional execution advice, such as independent task keys, bounded leaf packages, or work that must remain root-owned. State the default order: implementation, test authoring, and integration first; one root-owned final validation phase after all implementation tasks settle. Record an explicit operator request for early or TDD checks here when applicable.>
 
 ## Validation
 
-- [ ] <Direct completion-evidence check, when it runs (after which task settles), and expected result. Each confirmatory check appears once.>
+- [ ] T2: <Exact final checks and expected results; each command appears once.>
+- Timing: After implementation, test authoring, and integration settle; the root runs the batch.
+- On failure: Classify first, then at most one focused repair batch and one targeted rerun for the whole outcome. If any check still fails, stop patching, reassess the mechanism, assumptions, and harness, and report before further execution. User direction is required for more repair or validation.
 
 ## Retention
 
@@ -123,7 +132,8 @@ Keep incomplete work at `.specs/<slug>/plan.md`. After completion, `/do-it` arch
 - State: Ready; implementation has not started.
 - Blocker: None.
 - Next: T1.
-- Current frontier: T1; verify with `<direct check>`; remaining live attempts: N/A.
+- Current frontier: T1; source inspection establishes authored completion; final validation pending.
+- Validation progress: No checks run; one shared repair batch and targeted rerun remain.
 - Resume: `/do-it .specs/<slug>/plan.md`
 ```
 
@@ -135,7 +145,7 @@ Use `## Execution Strategy` only when it adds useful execution advice; it may id
 
 State mutation boundaries explicitly: name the files or state owned by each task, what may be changed, and what remains untouched. Dependencies must identify actual prerequisites, not merely preferred order. A task is ready only when every required dependency is complete; independent ready tasks may proceed in parallel without adding scheduler records.
 
-Use one checkbox list with the fewest independently executable tasks that cover the outcome. Use sequential unique keys `T1`, `T2`, and so on; there is no fixed task-count cap. Prefer the field labels `Files:`, `Change:`, `Done when:`, and `Verify:` for readability. Keep the machine-consumed `Verify:` tag and dependency syntax. Add `Depends on: T1` only when an actual prerequisite exists. Task-level `Done when` and `Verify` clauses must collectively prove the completion evidence. Untagged `Verify:` remains deterministic for compatibility; use the explicit tag in new plans. Include the optional live task and ledger only when live work exists. If research questions exceed ten, move them to `.specs/<slug>/research.md` and keep only task-blocking references in the plan.
+Use one checkbox list with the fewest independently executable tasks that cover the outcome. Use sequential unique keys `T1`, `T2`, and so on; there is no fixed task-count cap. Prefer the field labels `Files:`, `Change:`, `Done when:`, and `Verify:` for readability. Keep the machine-consumed `Verify:` tag and dependency syntax. Add `Depends on: T1` only when an actual prerequisite exists. Implementation task `Done when` and `Verify` clauses prove authored work only; add an explicit final validation task when behavior or acceptance remains to be proven, and make it depend on all relevant implementation, test-authoring, and integration tasks. The final task and `Validation` section collectively prove completion evidence. Name each executable command once in `Validation`; task-level `Verify` clauses refer to that batch. Keep the repair allowance and any used evidence in existing execution notes across resume. The template's optional live task belongs in the final phase only when required; adjust task keys and dependencies to the actual plan. Untagged `Verify:` remains deterministic for compatibility; use the explicit tag in new plans. Include the optional live task and ledger only when live work exists. If research questions exceed ten, move them to `.specs/<slug>/research.md` and keep only task-blocking references in the plan.
 
 Include only context, boundaries, assumptions, safety, current status, or blockers that change execution. For shared or live state, name the target, stop condition, and concise rollback required by active instructions.
 

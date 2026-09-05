@@ -14,7 +14,7 @@ Direct interactive or RPC input is routed to `/do-it` only for an execution verb
 
 ## Objective
 
-Deliver the requested outcome, check the contract that changed, and preserve enough state to resume incomplete plan work.
+Deliver the requested outcome and preserve enough state to resume incomplete plan work. By default, finish implementation, test authoring, and integration before the root runs one final validation phase; an explicit operator early or TDD choice overrides that order.
 
 ## Raw Task
 
@@ -30,15 +30,15 @@ Create a plan only when unresolved architecture, migration design, destructive o
 
 When the argument is a canonical `.specs/{slug}/plan.md`, treat that plan as the sole ledger. Read the complete plan, validate its canonical syntax, dependency graph, readiness status, and archive prerequisites before implementation, then resume from the first unchecked dependency-ready task. Do not create a duplicate root task or mirror the plan checklist in the task registry. A usable plan needs an objective, boundaries, executable tasks, real dependencies, validation, retention/archive instructions, and current status; equivalent structures are acceptable.
 
-Treat checked work as complete when current repository state and its recorded result do not contradict it. Do not demand separate evidence files, gate IDs, wave narratives, or duplicate checklists.
+Treat checked work as complete when current repository state and its recorded result do not contradict it. For implementation tasks, their task-specific `Done when` and recorded result establish authored-work completion only; inspection does not establish behavior verification. Do not demand separate evidence files, gate IDs, wave narratives, or duplicate checklists.
 
 Treat the plan's `Completion Evidence`, requested acceptance, stated invariants, and safety boundaries as the closed execution contract. Preserve source requirement identifiers when supplied, but do not invent requirement IDs or additional contracts. Do not silently weaken, strengthen, or reinterpret the contract. If completion evidence is missing or repository evidence cannot resolve competing material interpretations, stop and ask for the product or design decision.
 
-Do not add tasks, follow-up work, full-suite checks, reviewer passes, telemetry, or documentation work unless the closed contract directly requires them. A reviewer finding is advisory unless it maps to requested acceptance, a stated invariant, or a safety boundary; reject or defer unmapped advice without editing for it. For a canonical plan, record progress in the plan only; use the task registry only when the operator explicitly requests separate tracking or when this is raw large work.
+Do not add tasks, follow-up work, full-suite checks, reviewer passes, telemetry, or documentation work unless the closed contract directly requires them. A reviewer finding is advisory unless it maps to requested acceptance, a stated invariant, or a safety boundary; reject or defer unmapped advice without editing for it. For a canonical plan, record progress in the plan only; use the task registry only when the operator explicitly requests separate tracking or when this is raw large work. Do not add early development checks by default.
 
-After a task's relevant check passes, mark its checkbox complete and save the plan. Record a concise result only when it is needed for resume, external mutation, or a required audit. A root task created for raw work remains authoritative across compaction and delegation; update it after a user correction and complete it only after its recorded checks pass.
+Mark an implementation checkbox when its authored-work acceptance is met by source inspection, without running deferred development checks. Keep final acceptance unchecked until the executable evidence passes. For legacy plans that gate each implementation task on runtime checks, record the scheduling adjustment: preserve those behavior criteria and commands in a final acceptance task and distinguish authored completion on the implementation tasks. Preserve task identity, real dependencies, and existing passing evidence; do not weaken the overall acceptance contract. Save concise implementation progress, used checks, and remaining repair allowance in the existing Execution Status notes so resume does not replay edits or reset the budget. A root task created for raw work remains authoritative across compaction and delegation; update it after a user correction and complete it only after its recorded checks pass.
 
-Execute normal plan tasks directly; use repository delegation policy for independent or context-isolated slices without creating a task merely because work is delegated or independently verifiable. When tracking is required, use the sequence record/assign -> root tool or actual subagent invocation -> validate -> record the terminal outcome. Readiness selects eligible work only; it never dispatches work, and assigned means selected work rather than live process activity. Do not mirror the plan checklist into another tracking system.
+Execute normal plan tasks directly; use repository delegation policy for independent or context-isolated slices without creating a task merely because work is delegated or independently verifiable. Finish implementation, test authoring, and integration before the root-owned final validation task or `Validation` batch. Children do not run development validation unless the plan records an explicit operator early/TDD choice. When tracking is required, use the sequence record/assign -> root tool or actual subagent invocation -> validate -> record the terminal outcome. Readiness selects eligible work only; it never dispatches work, and assigned means selected work rather than live process activity. Do not mirror the plan checklist into another tracking system.
 
 For live tasks, the root runs every live command; leaves never run live commands. Before that task's first live action, confirm its actual target, authorization, session, cap, terminal outcomes, hard stop, and concrete cleanup. Missing prerequisites block that action, not independent earlier implementation. Judge cleanup and verification instructions by meaning; keyword presence or absence does not establish safety. After any live attempt, record exactly one ledger row and stop. A `rejected` terminal outcome completes a live evaluation task. A material fixture change does not reset the attempt count. If the cap is reached, ask the operator before another attempt. Before delegating analysis of external evidence, copy that evidence into `.tmp/evidence/<task>/` and give the leaf only that bounded artifact.
 
@@ -57,14 +57,14 @@ For actual stateful mutation, verify the current backup or explicit no-prior-sta
 
 ## Validation
 
-Apply repository contract-directed validation to the plan's completion evidence.
+Apply repository contract-directed validation to the plan's completion evidence. The root owns one final validation phase after implementation, test authoring, and integration settle. Run each necessary command in the plan's `Validation` section once; that section carries timing and budget. An explicit operator early or TDD choice may authorize bounded earlier checks. Preserve legacy per-task checks and evidence, but batch their execution unless that choice or a safety boundary requires earlier validation.
 
 - For behavior changes, exercise the user entrypoint or closest available exact workflow.
 - For prose-only edits, inspect the revised content directly; do not run code tests, generic repository checks, or `git diff --check` unless they test a changed parser, loader, generator, or formatting contract.
 
-On failure, isolate the changed boundary, make the smallest in-scope repair, and rerun only the failing check and any directly dependent check. The task, not the edit, is the validation unit: batch related edits before checking. If a repair leaves the failure signature unchanged, report it and stop. Stop when repair requires unavailable access, destructive action, user judgment, or scope expansion.
+On a final-phase failure, classify it as fixture/harness, product, external-contract misunderstanding, or protocol violation before editing. Make at most one focused development repair batch, then run one targeted rerun for the entire affected outcome. The allowance is shared across tasks, children, messages, and resume. If any check still fails after that rerun, stop patching, reassess the mechanism, assumptions, and harness, and report the evidence with a better approach or blocker. Further repair or validation requires user direction even if the failure signature changed. Closeout/archive/merge recovery remains a separate incident boundary and does not authorize development repair or validation reruns.
 
-For a canonical plan, validate directly against the closed contract.
+For a canonical plan, validate directly against the closed contract. An explicit final validation task remains incomplete until its acceptance check passes.
 
 ## Completion
 
@@ -74,7 +74,7 @@ For an incomplete plan, keep it at its existing path and save the current status
 
 For a canonical `.specs/{slug}/plan.md`, completion requires all of these steps:
 
-1. Finish every required task and prove the plan's `Completion Evidence` with relevant validation.
+1. Finish every required implementation, test-authoring, integration, and explicit final validation task. Prove the plan's `Completion Evidence` only with the root-owned final validation phase or an explicitly authorized early/TDD check.
 2. Mark the required task checkboxes, validation checkboxes, frontmatter status, completion date, and execution status complete.
 3. Move the complete spec directory to `.specs/archive/{slug}/` in the workflow worktree and stage and commit all nonignored in-scope artifacts. Never force-add an ignored plan. Under the default policy, merge the workflow branch with `--no-ff` into the primary branch. Under commit-and-retain policy, do not merge.
 4. Call `plan_archive` with the original plan path. Under the default policy, the tool verifies the exact archive, source absence, completed plan, clean workflow and primary state, required merge commit, and ownership before removing only the owned worktree and branch. Under commit-and-retain policy, it verifies the archive, completed plan, clean committed branch, and non-merge state, then leaves the owned worktree, branch, and ownership record intact.

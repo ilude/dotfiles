@@ -28,9 +28,11 @@ Runner references:
 - Keep tests deterministic and independent of execution order.
 - Follow repository coverage requirements. Do not invent a percentage target or use coverage as a substitute for behavior.
 
-## Test-first loop
+Follow `pi/AGENTS.md` Validation cadence: implementation workers may author the smallest tests that express the changed contract, but leave development validation to the root-owned final phase by default. Preserve required immediate safety checks, read-only inspection, and live incident stops. An explicit user request for TDD or early checks overrides this default.
 
-Use a red-green loop when the user requests test-first development or a feature or regression has a useful seam:
+## Explicit test-first loop
+
+Only use a red-green loop when the user explicitly requests test-first development or early checks:
 
 1. Define one behavior and its seam.
 2. Write the smallest test that expresses that behavior, then run it and confirm it fails for the expected reason.
@@ -39,6 +41,10 @@ Use a red-green loop when the user requests test-first development or a feature 
 5. Refactor only from green, then rerun the focused checks.
 
 If no correct seam can reproduce the contract, report that gap and use an appropriate executable slice instead of adding a shallow test that gives false confidence.
+
+## Final-batch validation
+
+After implementation, test authoring, and integration settle, apply the root-owned final phase from `pi/AGENTS.md`: run each necessary focused check once, classify failures before repair, and use the single shared repair batch and targeted rerun allowed there. Persistent failures stop patching; reassess the mechanism, assumptions, and harness and report the unresolved boundary.
 
 ## Isolation and cleanup
 
@@ -58,6 +64,6 @@ If no correct seam can reproduce the contract, report that gap and use an approp
 
 ## Failure handling
 
-- Do not write a horizontal batch of tests for imagined behavior before exercising the first vertical slice.
+- Author tests for observed contracts, not imagined behavior; defer their execution to the final phase unless the user chose test-first development.
 - When residue is part of the regression, compare relevant external state before and after the test.
-- Reproduce a broader-suite failure directly before calling it unrelated. Never report a failing suite as green.
+- Do not call a broader-suite failure unrelated without direct evidence or report a failing suite as green. Any executable reproduction uses the remaining validation allowance.

@@ -30,6 +30,7 @@
       "validators": [
         {
           "name": "ruff-check",
+          "automatic": false,
           "command": [
             "ruff",
             "check",
@@ -40,6 +41,7 @@
         },
         {
           "name": "ruff-format",
+          "automatic": false,
           "command": [
             "ruff",
             "format",
@@ -74,6 +76,7 @@
       "validators": [
         {
           "name": "eslint",
+          "automatic": false,
           "command": [
             "pnpm",
             "--dir",
@@ -99,6 +102,7 @@
         },
         {
           "name": "biome",
+          "automatic": false,
           "command": [
             "pnpm",
             "--dir",
@@ -116,6 +120,7 @@
         },
         {
           "name": "tsc-check",
+          "automatic": false,
           "command": [
             "python",
             "{project_root}/tsc-check.py"
@@ -150,6 +155,7 @@
       "validators": [
         {
           "name": "biome",
+          "automatic": false,
           "command": [
             "pnpm",
             "--dir",
@@ -182,6 +188,7 @@
       "validators": [
         {
           "name": "shellcheck",
+          "automatic": false,
           "command": [
             "shellcheck",
             "{file}"
@@ -209,6 +216,7 @@
         },
         {
           "name": "gofmt",
+          "automatic": false,
           "command": [
             "gofmt",
             "-l",
@@ -252,6 +260,7 @@
       "validators": [
         {
           "name": "clang-format",
+          "automatic": false,
           "command": [
             "clang-format",
             "--dry-run",
@@ -284,6 +293,7 @@
       "validators": [
         {
           "name": "dotnet-format",
+          "automatic": false,
           "command": [
             "dotnet",
             "format",
@@ -311,6 +321,7 @@
       "validators": [
         {
           "name": "rustfmt",
+          "automatic": false,
           "command": [
             "rustfmt",
             "--check",
@@ -340,6 +351,7 @@
       "validators": [
         {
           "name": "rubocop",
+          "automatic": false,
           "command": [
             "rubocop",
             "--no-color",
@@ -428,6 +440,7 @@
       "validators": [
         {
           "name": "ktlint",
+          "automatic": false,
           "command": [
             "ktlint",
             "--color=never",
@@ -451,6 +464,7 @@
       "validators": [
         {
           "name": "luacheck",
+          "automatic": false,
           "command": [
             "luacheck",
             "{file}"
@@ -460,6 +474,7 @@
         },
         {
           "name": "stylua",
+          "automatic": false,
           "command": [
             "stylua",
             "--check",
@@ -488,6 +503,7 @@
       "validators": [
         {
           "name": "clang-format",
+          "automatic": false,
           "command": [
             "clang-format",
             "--dry-run",
@@ -517,6 +533,7 @@
       "validators": [
         {
           "name": "phpcs",
+          "automatic": false,
           "command": [
             "phpcs",
             "--standard=PSR12",
@@ -541,6 +558,7 @@
       "validators": [
         {
           "name": "scalafmt",
+          "automatic": false,
           "command": [
             "scalafmt",
             "--test",
@@ -564,6 +582,7 @@
       "validators": [
         {
           "name": "solhint",
+          "automatic": false,
           "command": [
             "solhint",
             "{file}"
@@ -586,6 +605,7 @@
       "validators": [
         {
           "name": "swiftlint",
+          "automatic": false,
           "command": [
             "swiftlint",
             "lint",
@@ -597,6 +617,7 @@
         },
         {
           "name": "swift-format",
+          "automatic": false,
           "command": [
             "swift-format",
             "lint",
@@ -641,6 +662,7 @@
       "validators": [
         {
           "name": "biome",
+          "automatic": false,
           "command": [
             "pnpm",
             "--dir",
@@ -672,6 +694,7 @@
       "validators": [
         {
           "name": "zig-fmt",
+          "automatic": false,
           "command": [
             "zig",
             "fmt",

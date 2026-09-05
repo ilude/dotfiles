@@ -1,8 +1,8 @@
 /**
  * Behavioral tests for quality-gates.ts.
  *
- * Covers a forced validation failure and a clean run after changed files
- * are collected during tool execution and validated when the agent settles.
+ * Covers explicit validation and settlement behavior after changed files are
+ * collected during tool execution.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -21,6 +21,7 @@ import {
 	getFilePath,
 	getFilePaths,
 	registerQualityGates,
+	POLICY_PATH,
 	runAvailableValidators,
 	runFirstAvailableValidator,
 } from "../extensions/quality-gates.ts";
@@ -31,6 +32,7 @@ import {
 	parseLizardCsv,
 } from "../lib/quality-gates/lizard.ts";
 import {
+	loadQualityGatesPolicy,
 	parseQualityGatesPolicy,
 } from "../lib/quality-gates/policy.ts";
 import { createMockPi } from "./helpers/mock-pi.ts";
@@ -834,6 +836,51 @@ describe("quality-gates extension", () => {
 	});
 
 	describe("batched hook timing", () => {
+		it("does not validate shipped policy files at settlement but allows explicit validation", async () => {
+			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-explicit-only-"));
+			const filePath = path.join(root, "target.py");
+			try {
+				fs.writeFileSync(path.join(root, "pyproject.toml"), "[project]\nname = 'fixture'\n");
+				fs.writeFileSync(filePath, "target = 1\n");
+				const policy = loadQualityGatesPolicy(POLICY_PATH);
+				const commandValidators = Object.values(policy.languages)
+					.flatMap((language) => language.validators)
+					.filter((validator) => "command" in validator);
+				expect(commandValidators.length).toBeGreaterThan(0);
+				expect(commandValidators.every((validator) => validator.automatic === false)).toBe(true);
+				const language = buildExtMap(policy).get(".py")!;
+				expect(language).toBeDefined();
+				const pi = createMockPi();
+				pi.exec.mockImplementation(async (command: string) => ({
+					code: command === "git" || command === "ruff" ? 1 : 0,
+					stdout: "",
+					stderr: command === "ruff" ? "fixture failure" : "",
+					killed: false,
+				}));
+				registerQualityGates(pi as unknown as ExtensionAPI, buildExtMap(policy));
+				await pi._getHook("tool_result")[0].handler({
+					toolName: "write",
+					input: { path: filePath },
+				} as unknown as ToolResultEvent, { cwd: root });
+				await pi._getHook("agent_settled")[0].handler({}, { cwd: root });
+
+				expect(pi.exec.mock.calls.filter(([command]) => command !== "git")).toEqual([]);
+				expect(pi.sendMessage).not.toHaveBeenCalled();
+
+				const issues = await runAvailableValidators(pi as unknown as ExtensionAPI, {
+					...language,
+					validators: language.validators.filter((validator) => "command" in validator),
+				}, filePath, root);
+				expect(issues).toHaveLength(2);
+				expect(pi.exec.mock.calls.filter(([command]) => command === "ruff").map(([, args]) => args)).toEqual([
+					["check", filePath],
+					["format", "--check", filePath],
+				]);
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
+		});
+
 		it("validates once at agent_settled and reports without a follow-up", async () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-batch-"));
 			const filePath = path.join(root, "foo.batch-failure");

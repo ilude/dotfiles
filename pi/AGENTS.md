@@ -22,13 +22,18 @@ Delete unnecessary choices; prefer direct code; enforce consequential invariants
 
 - Use deterministic mechanisms when they enforce a known invariant or make an external contract observable. Do not turn a preference into a universal mandate or add fallback behavior that hides missing data or dependencies.
 - For unfamiliar boundaries, inspect a working example and the owning configuration before changing it.
-- When a second defect is found at the same lifecycle boundary, such as session replacement, worktree ownership, closeout, or another named transition, do not apply a third targeted patch until one test exercises the whole transition end to end.
-- A failed check is evidence, not a defect. Classify it before editing: fixture/harness, product, external-contract
-  misunderstanding, or protocol violation. Fixture and external-contract failures do not authorize a live rerun;
-  external-contract failures require reading the maintained doc and installed schema first.
+- When a second defect is found at the same lifecycle boundary, such as session replacement, worktree ownership, or closeout, reassess the whole transition before another targeted patch. Author a transition-level regression rather than accumulating isolated patches; execute it in the final validation phase within the remaining repair allowance.
 - Keep tests focused on executable behavior, parsed contracts, schemas, external protocols, seams, isolation, cleanup, and failure handling. Prose is not proved by source-spelling assertions.
-- A passing check stays valid until an input it covers changes. Do not rerun an unchanged passing check, poll status that completion delivers, or re-issue a call whose prior result already answered the question. Classify warnings and advisory findings from passing runs before repairing, and repair only what blocks the requested outcome or an applicable gate.
 - Keep scripts idempotent and LF-only. Do not turn discoveries into instruction changes unless requested.
+
+## Validation cadence
+
+- By default, finish implementation, test authoring, and integration for the requested outcome before running development validation. The root owns one final validation phase, with each necessary focused check run once. Do not run intermediate tests, typechecks, linters, builds, smoke checks, or `git diff --check`, including in delegated work. Explicit user-directed early validation or test-first development overrides this default.
+- Read-only inspection, source review, workflow input/state validation, and required authorization, ownership, target, backup, live-mutation, and closeout safety checks remain at their actual boundary. Deferring development validation never defers those checks or authorizes an unsafe action.
+- A failed check is evidence, not necessarily a product defect. Classify failures before editing: fixture/harness, product, external-contract misunderstanding, or protocol violation. Fixture and external-contract failures do not authorize a live rerun; external-contract failures require reading the maintained doc and installed schema first.
+- After the final phase fails, allow at most one focused repair batch and one targeted rerun of affected checks. If failures remain, stop patching, reassess the mechanism, assumptions, and test harness, and report the evidence and a better approach or blocker before further execution. Further repair or validation requires user direction; a changed failure signature does not replenish the allowance.
+- The repair allowance belongs to the requested outcome, not a task, worker, message, or session. Delegation, task splitting, compaction, and resume do not reset it. Carry used checks and the remaining allowance in existing task or execution notes when work must continue later; do not add a separate ledger.
+- A passing check stays valid until an input it covers changes. Do not rerun an unchanged passing check, poll status that completion delivers, or re-issue a call whose prior result already answered the question. Classify warnings and advisory findings from passing runs before repairing, and repair only what blocks the requested outcome or an applicable gate. Report implementation finished separately from verified completion.
 
 ## Delegation
 

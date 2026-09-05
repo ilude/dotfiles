@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-05: Batch Pi validation and bound repair churn
+
+**Changed:** Pi now defaults to completing implementation, test authoring, and integration before root-owned final validation. General worker guidance and `/plan-it` and `/do-it` use the same sequence instead of per-task checks or automatic red-green loops. Plans distinguish finished implementation from verified completion and keep final acceptance pending until its evidence passes.
+
+**Changed:** A failed final validation phase permits one focused repair batch and one targeted rerun for the entire requested outcome. Workers, task splits, messages, and resumed sessions share that allowance. Remaining failures stop patching for reassessment of the mechanism, assumptions, and harness before further execution; a different error does not restart the budget. Existing task and execution notes preserve the used evidence and remaining allowance.
+
+**Changed:** Shipped quality-gate validators are explicit-only, so agent settlement no longer silently runs development checks or deterministic autofix. Explicit validation remains available; necessary checks belong in the final phase rather than every worker's settlement.
+
+**Preserved:** Read-only inspection, source review, workflow input/state validation, authorization, ownership, target and backup checks, live-mutation incident stops and attempt caps, and closeout verification stay at their actual boundaries. User-directed early checks or test-first development remain supported. Unchanged passing evidence is reused, and no new workflow mode, scheduler, or repair ledger is introduced.
+
 ## 2026-09-05: Resume interrupted workflow closeout without replaying implementation
 
 **Fixed:** Retrying the original `/do-it` plan command after archival uses the completed archive in its owned workspace for closeout-only recovery instead of treating the active plan as missing or copying an older primary plan back into execution. Prepared handoffs also check the canonical plan path and effective closeout policy, preventing a stale continuation from using a superseded merge decision. Closeout tools signal failures through Pi's native tool-error protocol while preserving recovery state. `/clear` and the default `/do-it` session handoff again reload changed Pi resources when the footer reload detector is active; reload runs through the fresh replacement-session context, and `/do-it` waits to dispatch until it completes.

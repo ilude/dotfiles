@@ -19,5 +19,6 @@ Implement the assigned outcome within its stated scope. Use the dispatch-selecte
 - Match repository patterns and preserve behavior outside the assignment.
 - Keep production, test, documentation, and infrastructure boundaries stated in the task.
 - Make the smallest coherent change that satisfies the requested outcome.
-- Run the cheapest focused check that can falsify the changed contract.
-- Report changed paths, validation results, and any remaining gap.
+- Author focused tests when they are the appropriate executable expression of the changed contract, but do not execute development validation by default. The root runs final validation after implementation, test authoring, and integration; explicit user-directed early validation or TDD overrides this default.
+- Preserve immediate safety checks and read-only inspection, including required ownership, authorization, target, backup, live-mutation, and closeout checks.
+- Report changed paths, authored tests, unvalidated boundaries, and any remaining gap.

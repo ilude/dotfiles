@@ -376,17 +376,11 @@ Compacts a tool-driven request before the active model reaches its hard context 
 
 ### `quality-gates.ts`
 
-Collects files successfully changed by `write`, `edit`, `text_edit`, and `structured_edit`, preserving the cwd from each edit, then runs cheap file-scoped linters and format checks when the agent run ends. Validator output and aggregate messages are bounded, unchanged content is cached, and stale results are discarded.
+Collects files successfully changed by `write`, `edit`, `text_edit`, and `structured_edit`, preserving the cwd from each edit. Settlement records pending files and remains silent: it does not execute validators, autofixes, repair turns, or delegated model runs under the shipped policy.
 
-Validators, Lizard thresholds, excluded paths, immutable paths, and the repair policy are configured in the Pi-owned `~/.dotfiles/pi/quality-gates.json`. Automatic settlement checks skip policy-marked explicit-only, project-scoped, long-running, and Lizard validators; those remain available to explicit validation callers. Validator pass, failure, autofix, unavailable, skipped, duration, notification, and repair outcomes are recorded in structured metrics.
+Validators, Lizard thresholds, excluded paths, and immutable paths are configured in the Pi-owned `~/.dotfiles/pi/quality-gates.json`. Every shipped command validator is marked `automatic: false`; Lizard is also excluded from settlement. All configured validators remain available to explicit validation callers. Settlement may record skipped-validator metadata. Explicit validation records pass, failure, autofix, unavailable, skipped, duration, and notification outcomes.
 
-Failures are resolved in three stages instead of being report-only:
-
-1. **Deterministic autofix** -- validators with a configured `fix` command (ruff-format, gofmt, rustfmt, clang-format, stylua, zig-fmt) run the formatter directly, re-run the check, and report only what still fails. A context notice lists auto-fixed files because their on-disk content changed.
-2. **Bounded repair turns** -- remaining non-advisory failures trigger a repair turn in the active session when the active model is an `openai-codex` subscription model. Any other active model (Bedrock fable, opus, sonnet, or Bedrock-hosted GPT) delegates the repair to a spawned child Pi run on the configured `repair.model` so metered models never pay for repairs. Attempts are capped by `repair.maxAttempts`, and an unchanged failure set stops retries immediately.
-3. **Visible report** -- failures that survive autofix and repair (or that cannot be repaired) are reported without triggering a turn, matching the previous behavior.
-
-Repositories or paths opt out of all mutation with the Git attribute `quality-autofix=off` in `.gitattributes` (for example `* quality-autofix=off` repo-wide); matching files keep report-only diagnostics. Removing the `repair` block from `quality-gates.json` disables repair turns globally while keeping deterministic autofix.
+Final development validation is an explicit workflow step after all edits integrate. Run initial checks without autofix. After classifying failures, selected fixes and rechecks count within the root's shared repair allowance. Explicit callers of the low-level validator helper must apply path exclusions and the `quality-autofix=off` Git attribute before requesting autofix; that helper does not enforce those caller-side protections itself. See the [quality-gates contract](skills/pi-extension/references/contracts/quality-gates.md).
 
 ### `herdr-ui-prompt-state.ts`
 
@@ -408,7 +402,7 @@ Registers shared skill-backed slash commands:
 ```
 /commit        # smart git commit with LLM-adjudicated secret review
 /plan-it       # write an executable plan in primary .specs/
-/do-it         # execute one owned worktree with proportional validation
+/do-it         # execute one owned worktree with final-batch validation
 ```
 
 Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`. The extension-backed `/summarize [focus]` workflow adds bounded session evidence before requesting the recap. Prompt-only commands use Pi-native templates under `~/.dotfiles/pi/prompts/`:
@@ -418,6 +412,7 @@ Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`. T
 ```
 
 Workflow highlights:
+- Development checks run after implementation, test authoring, and integration settle. `/plan-it` records final acceptance separately from finished implementation; `/do-it` batches the checks and shares one repair batch plus one targeted rerun across the outcome. Remaining failures require reassessment before further execution. Explicit user-directed early checks and immediate safety/closeout checks retain their own timing. See [Validation cadence](AGENTS.md#validation-cadence).
 - `/plan-it` writes the canonical plan directly to primary `.specs/{meaningful-slug}/plan.md`, creates no worktree, includes correctness review, and ends with a subtractive overengineering/gold-plating/churn gate. `/plan-it quick [request]` retains the same plan and validation contract but skips both review phases for operator-selected small work sets. `/do-it` materializes that spec in its owned implementation worktree; ignored specs are never force-added and return to the primary local archive only after a successful merge.
 - `/do-it` establishes ownership before raw work or canonical-plan execution, confines modifications to the owned worktree, and closes out by archiving artifacts, committing, merging `--no-ff` into the primary branch, verifying merged HEAD, and removing only its owned worktree and branch.
 - `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning; each planning pass reuses one status snapshot. Before the parent commit, each dirty direct submodule must be on an attached branch with an upstream, is updated with a fast-forward-only pull, and runs the same commit workflow; `/commit push` pushes each resulting submodule commit before the parent, while `--no-submodules` leaves dirty submodule worktrees untouched. Nested submodules are not processed automatically. Ignored files are omitted. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.

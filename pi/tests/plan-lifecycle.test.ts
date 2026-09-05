@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { parseLinkedPlan, selectNextPlanTask } from "../lib/plan-state.ts";
 import {
 	canonicalPlanPathFromInput,
 	createPlanLifecycleSnapshot,
@@ -403,6 +404,39 @@ describe("plan lifecycle", () => {
 		const cyclic = content.replace("**T1: Task 1**", "**T1: Task 1**\n  - Depends on: T2")
 			.replace("**T2: Task 2**", "**T2: Task 2**\n  - Depends on: T1");
 		expect(validatePlanContract(cyclic, planPath).valid).toBe(false);
+	});
+
+	it("keeps final acceptance pending after implementation dependencies finish", () => {
+		const planPath = ".specs/final-batch/plan.md";
+		const content = `---
+status: in_progress
+---
+## Tasks
+- [x] **T1: Author the interface and regression tests**
+  - Done when: The interface and tests are authored; execution is deferred to T3.
+  - Verify: deterministic Inspect the interface and test cases without executing checks.
+- [ ] **T2: Integrate the caller**
+  - Depends on: T1
+  - Done when: The caller uses the interface; execution is deferred to T3.
+  - Verify: deterministic Inspect the integrated caller without executing checks.
+- [ ] **T3: Validate the integrated outcome**
+  - Depends on: T1, T2
+  - Done when: The interface and caller pass the final behavioral checks.
+  - Verify: deterministic Run the focused interface and caller tests.
+`;
+		expect(validatePlanContract(content, planPath, "execution-preflight").valid).toBe(true);
+		expect(selectNextPlanTask(parseLinkedPlan(planPath, content)).task?.key).toBe("T2");
+
+		const integrated = content.replace("[ ] **T2:", "[x] **T2:");
+		const awaitingValidation = parseLinkedPlan(planPath, integrated);
+		expect(awaitingValidation.complete).toBe(false);
+		expect(awaitingValidation.blockers).toEqual(["T3 is not complete"]);
+		expect(selectNextPlanTask(awaitingValidation).task?.key).toBe("T3");
+		expect(validatePlanContract(integrated, planPath, "execution-preflight").valid).toBe(true);
+
+		const validated = parseLinkedPlan(planPath, integrated.replace("[ ] **T3:", "[x] **T3:"));
+		expect(validated.complete).toBe(true);
+		expect(selectNextPlanTask(validated).task).toBeUndefined();
 	});
 
 	it("checks live prerequisites when that task is next, not before earlier implementation", () => {

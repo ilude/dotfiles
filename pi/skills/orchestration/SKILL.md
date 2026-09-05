@@ -13,8 +13,14 @@ description: "Coordinate bounded root-to-coordinator-to-leaf work when independe
 - State each leaf's deliverable, allowed changes, capabilities, evidence, and stop condition.
 - Prefer one coordinator per independently verifiable work package. The root retains program-level decomposition, dependency management, integration, and closure.
 - Topology and assignment guidance is advisory rather than a gate. Use bounded read-only comparison when the selected topology or modifying owner is uncertain, and record meaningful overrides for later review.
-- Before fan-out over a shared unproven dependency, run one representative leaf and expand only if it succeeds.
+- Before fan-out over a shared unproven dependency, inspect or source-review one representative slice and expand only when that evidence supports the dependency. Do not add automatic intermediate validation solely to authorize expansion.
 - Do not delegate one foreground item to the same model tier as the root merely to isolate context. Perform it directly, route it to Luna when bounded context isolation is the concrete benefit, or detach it when it is genuinely independent and useful work remains for the root. Keep a same-tier single child foreground only when its distinct role, authority, or dependency-gating result provides a concrete benefit that direct execution cannot.
+
+## Final-batch validation
+
+Follow the Validation cadence and Delegation rules in `pi/AGENTS.md`. For delegated implementation, workers author tests but do not execute development checks by default; root validates after implementation, test authoring, and integration. The outcome-level repair allowance is shared across workers, messages, compaction, and resumes, and is not reset by splitting or continuing work. Required safety checks, read-only inspection, and live incident stops remain immediate.
+
+After classifying final failures, use only the shared focused repair batch and targeted rerun allowed by the governing policy. Persistent failures stop patching; reassess the mechanism, assumptions, and harness, then report before further execution.
 
 ## Scheduler
 
