@@ -10,7 +10,7 @@ description: "Analysis, diagnosis, adversarial critique, or coding mechanism sel
 | Need | Use |
 | --- | --- |
 | Analysis, diagnosis, root-cause investigation, or adversarial critique | `analysis-workflow` |
-| Evidence-based reuse and minimal solution selection | `analysis-workflow` |
+| Evidence-based solution selection | `analysis-workflow` |
 | Reviewing a diff, branch, PR, or commit | `code-review` |
 | Module, interface, seam, dependency, or structural design | `architecture-design` |
 | Requirements, acceptance criteria, or implementation planning | `planning` |
@@ -26,13 +26,13 @@ description: "Analysis, diagnosis, adversarial critique, or coding mechanism sel
 4. If feasibility is unproven, select the minimum materially different executable slices needed to decide it.
 5. Run the cheapest decisive check or authorized slice first.
 6. Stop when further evidence is unlikely to change the conclusion or next action.
-7. Report confirmed facts, likely causes, unknowns, and the smallest evidence-backed next action.
+7. Report confirmed facts, likely causes, unknowns, and the evidence-backed next action.
 
 ## Conditional References
 
 For a hard or recurring bug, nondeterministic failure, performance regression, unclear reproduction path, or investigation requiring temporary instrumentation, read [Diagnosing bugs](diagnosing-bugs.md). Use the short process above for straightforward failures.
 
-When selecting an implementation after analysis, including a routine edit that reaches a mechanism choice, first complete comprehension and caller-flow inspection, then read [Solution selection](solution-selection.md) for evidence-based reuse and minimal implementation. This does not transfer routine diff consistency to this skill or structural ownership from `architecture-design`.
+When selecting an implementation after analysis, including a routine edit that reaches a mechanism choice, first complete comprehension and caller-flow inspection, then read [Solution selection](solution-selection.md) for evidence-based selection of a complete solution. This does not transfer routine diff consistency to this skill or structural ownership from `architecture-design`.
 
 For a security-primary design or review, read [Security analysis](security-analysis.md) and apply its threat, secret, validation, and least-privilege checks.
 

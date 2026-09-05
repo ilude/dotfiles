@@ -11,7 +11,7 @@ Use this skill as an edit-time diff guard. `pi/AGENTS.md` Engineering owns broad
 
 ## Core Principle
 
-A change should be predictable to someone who knows the codebase. If it would surprise them, make a smaller change or explain the tradeoff first.
+A change should be understandable to someone who knows the codebase. Preserve established patterns unless they contribute to the problem or a different approach has a concrete advantage. Explain consequential departures; do not shrink a complete fix merely to make the diff look familiar.
 
 ## Surprise Check
 
@@ -31,7 +31,7 @@ Before editing, ask:
 - Preserve return types and defaults unless asked.
 - Add backward-compatible parameters where possible.
 - When a migration or refactor must preserve behavior, check that behavior before removing the old path.
-- Flag broader refactors separately instead of bundling them.
+- Include restructuring needed for the selected solution; flag unrelated refactors separately. Explain how the restructuring serves the requested outcome.
 
 ## Anti-Patterns
 

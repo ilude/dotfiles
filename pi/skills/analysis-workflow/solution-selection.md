@@ -1,17 +1,30 @@
 # Solution Selection
 
-Use this reference after comprehension and caller-flow inspection when a coding task reaches a mechanism choice, including a routine edit. Establish the root cause and whether the change needs to exist before selecting an implementation.
+Use this reference after comprehension and caller-flow inspection when a coding task reaches a mechanism choice, including a routine edit. Apply `pi/AGENTS.md` Engineering to choose the best-supported complete solution, not the smallest diff.
 
-Apply these decisions in order:
+## Establish the decision
 
-1. Determine whether the change needs to exist. Do not remove behavior explicitly requested by the operator.
-2. Reuse the codebase.
-3. Use the standard library.
-4. Use a native platform feature.
-5. Use an already-installed dependency.
-6. Use one line when it remains clear and correct.
-7. Only then write the minimum custom code.
+State the required behavior, causal mechanism, affected callers, and constraints. Distinguish an observed cause from an untested explanation. Determine whether a change needs to exist without removing behavior explicitly requested by the operator.
 
-Stop at the first sufficient rung. When two rungs work, choose the higher rung. Fix the root cause rather than a symptom, and record the evidence for the selected approach and the concrete behavior that proves it is sufficient.
+Prefer suitable maintained code, standard-library or platform capabilities, and installed dependencies, but assess their fit rather than stopping at a fixed reuse rank. Do not preserve a flawed abstraction or introduce awkward coupling merely to avoid custom code.
 
-The ladder does not weaken trust-boundary validation, security, accessibility, data-loss prevention, required error handling, physical-system calibration, runnable checks for non-trivial logic, or behavior explicitly requested by the operator.
+## Compare meaningful alternatives
+
+When the mechanism choice is consequential, compare plausible approaches that could materially change the result:
+
+- Correctness and failure coverage.
+- Clarity, ownership, caller complexity, and testability.
+- Operational and maintenance burden.
+- Migration cost and regression risk.
+
+Compare a local patch with a boundary-level correction when evidence makes both relevant. Do not manufacture alternatives for obvious fixes. Use `brainstorming` when meaningful alternatives need comparison and `architecture-design` when ownership, interfaces, or seams need design.
+
+State the decisive evidence, material tradeoff, and concrete behavior that will prove the selected approach works. A larger diff is justified when it removes the cause or materially simplifies the resulting system; prefer a smaller diff when it is otherwise equally sound.
+
+## Bound the work, not the diagnosis
+
+If the required work or expertise exceeds a delegated assignment, return the evidence and proposed boundary to the root rather than silently expanding authority or applying an incomplete workaround.
+
+Stop investigation when further evidence is unlikely to change the decision. If a decisive executable check is unavailable or disallowed by the current validation policy, report the uncertainty and the bounded check needed; do not call an assumption proven or choose a workaround to avoid the check.
+
+Preserve trust-boundary validation, security, accessibility, data-loss prevention, required error handling, physical-system calibration, runnable checks for non-trivial logic, and explicitly requested behavior.

@@ -20,7 +20,7 @@ Deliver the requested outcome and preserve enough state to resume incomplete pla
 
 For raw work, apply the repository completion-evidence and operator-decision rules before acting.
 
-Inspect only enough repository state to establish scope, ownership, and relevant validation. Execute bounded work directly.
+Inspect enough repository state to establish the cause, affected callers, scope, ownership, and relevant validation. Distinguish evidence from implementation assumptions, then execute bounded work directly.
 
 Treat work as large only when it is expected to span compaction, interruption, or delayed continuation, or when the operator explicitly requests tracking. For large raw work, after completion evidence and scope bounds settle, create exactly one root task whose summary names the deliverable and whose Task Instructions record the completion checks. Short direct work remains task-free; delegation or an independently verifiable deliverable alone does not require a task. Preserve mandatory unattended-goal root tasks. Do not create a root task before bounds settle.
 
@@ -33,6 +33,8 @@ When the argument is a canonical `.specs/{slug}/plan.md`, treat that plan as the
 Treat checked work as complete when current repository state and its recorded result do not contradict it. For implementation tasks, their task-specific `Done when` and recorded result establish authored-work completion only; inspection does not establish behavior verification. Do not demand separate evidence files, gate IDs, wave narratives, or duplicate checklists.
 
 Treat the plan's `Completion Evidence`, requested acceptance, stated invariants, and safety boundaries as the closed execution contract. Preserve source requirement identifiers when supplied, but do not invent requirement IDs or additional contracts. Do not silently weaken, strengthen, or reinterpret the contract. If completion evidence is missing or repository evidence cannot resolve competing material interpretations, stop and ask for the product or design decision.
+
+Keep acceptance, invariants, explicit operator design decisions, and authority fixed, but reassess implementation assumptions when repository evidence disproves them. Do not keep patching a disproven approach to preserve the original file list. The root records an in-scope method revision in the existing plan or task before continuing or reassigning affected work. If the revision changes an explicit operator decision, acceptance, repository authority, a live-mutation plan, or protected task mappings, stop the affected work and obtain the required decision or reconciliation. Method revisions never bypass plan handoff checks, worktree ownership, or the shared repair allowance.
 
 Do not add tasks, follow-up work, full-suite checks, reviewer passes, telemetry, or documentation work unless the closed contract directly requires them. A reviewer finding is advisory unless it maps to requested acceptance, a stated invariant, or a safety boundary; reject or defer unmapped advice without editing for it. For a canonical plan, record progress in the plan only; use the task registry only when the operator explicitly requests separate tracking or when this is raw large work. Do not add early development checks by default.
 

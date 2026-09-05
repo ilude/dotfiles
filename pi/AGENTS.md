@@ -18,11 +18,13 @@
 
 ## Engineering
 
+Choose the best-supported complete solution for the required behavior and constraints. Prefer designs that address the cause and reduce ongoing complexity and failure risk; do not optimize for changed lines or files. Include restructuring when evidence shows it materially improves the solution, and exclude unrelated cleanup and speculative generalization. Prefer the smaller change when alternatives are otherwise comparably sound.
+
 Delete unnecessary choices; prefer direct code; enforce consequential invariants at the concrete state-transition or mutation boundary; provide overridable defaults; preserve contextual judgment; add policy machinery only after demonstrated failure; retire machinery that no longer changes outcomes.
 
 - Use deterministic mechanisms when they enforce a known invariant or make an external contract observable. Do not turn a preference into a universal mandate or add fallback behavior that hides missing data or dependencies.
 - For unfamiliar boundaries, inspect a working example and the owning configuration before changing it.
-- When a second defect is found at the same lifecycle boundary, such as session replacement, worktree ownership, or closeout, reassess the whole transition before another targeted patch. Author a transition-level regression rather than accumulating isolated patches; execute it in the final validation phase within the remaining repair allowance.
+- Reassess the whole transition when evidence identifies a shared ownership or lifecycle cause, and always when a second defect appears at that boundary, before adding another targeted patch. Author a transition-level regression rather than accumulating isolated patches; execute it in the final validation phase within the remaining repair allowance.
 - Keep tests focused on executable behavior, parsed contracts, schemas, external protocols, seams, isolation, cleanup, and failure handling. Prose is not proved by source-spelling assertions.
 - Keep scripts idempotent and LF-only. Do not turn discoveries into instruction changes unless requested.
 

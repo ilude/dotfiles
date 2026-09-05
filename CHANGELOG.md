@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-05: Prefer complete Pi solutions over smallest diffs
+
+**Changed:** Pi solution-selection guidance compares meaningful alternatives by correctness, failure coverage, clarity, maintenance burden, and change risk instead of stopping at a fixed reuse rank or preferring one-line implementations. Smaller changes are a tie-breaker between comparably sound solutions, not the primary objective. Necessary restructuring is permitted; unrelated cleanup and speculative generalization remain excluded.
+
+**Changed:** `/plan-it` preserves cause-removing restructuring through its necessity review. `/do-it` distinguishes fixed acceptance and authority from implementation assumptions that evidence can disprove, requiring the root to record in-scope method revisions before affected work continues. Shared ownership or lifecycle evidence triggers transition-level reassessment without waiting for a second defect.
+
+**Preserved:** Public contracts, explicit operator decisions, worker authority, worktree and plan-handoff checks, final-batch validation, repair limits, and live-operation safeguards remain intact. Diagnostic experiments still require the active validation policy's early-check authorization; uncertainty must be reported rather than treated as runtime proof.
+
+## 2026-09-05: Align Pi agent tools with delegated workflows
+
+**Changed:** Worker definitions now include log analytics and role-appropriate file discovery, safe editing, PowerShell, and web tools. Read execution admits web search and fetch alongside bounded log analytics; Team Leads can query log analytics and use the current read/write delegation interfaces. Coordinator policy and launch authority share one tool list to prevent drift.
+
+**Clarified:** Validators running commands and reviewers inspecting Git diffs require execution-capable dispatch; read-mode workers inspect supplied evidence instead. Execution capability does not authorize source edits outside the assignment. Read workers still cannot use shells, mutate files, or delegate, and Team Leads retain their no-shell, no-direct-mutation boundary. Root-owned browser, process, scheduling, workflow, Onclave, and Herdr permissions remain unchanged; summarizer and skill-review definitions retain their narrow tool lists.
+
 ## 2026-09-05: Batch Pi validation and bound repair churn
 
 **Changed:** Pi now defaults to completing implementation, test authoring, and integration before root-owned final validation. General worker guidance and `/plan-it` and `/do-it` use the same sequence instead of per-task checks or automatic red-green loops. Plans distinguish finished implementation from verified completion and keep final acceptance pending until its evidence passes.

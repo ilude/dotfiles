@@ -6,7 +6,7 @@ Turn `$ARGUMENTS` and relevant conversation context into `.specs/{slug}/plan.md`
 
 Load and follow `planning` for requirements, acceptance, and verification language. Before drafting, apply the repository completion-evidence and operator-decision rules to the requested outcome.
 
-Create the smallest complete plan using the existing mechanism. Preserve supplied requirements, defined terms, normative words, actors, conditions, bounds, exceptions, and verification. Preserve explicit behavior, interfaces, scope limits, and safety boundaries. Do not add unrelated work.
+Create a concise, complete plan for the selected solution using the existing planning workflow. Before drafting a consequential mechanism choice, apply `analysis-workflow` solution selection; do not require an alternatives exercise for an obvious fix. Preserve supplied requirements, defined terms, normative words, actors, conditions, bounds, exceptions, and verification. Preserve explicit behavior, interfaces, scope limits, and safety boundaries. Do not add unrelated work.
 
 ## Lifecycle
 
@@ -27,12 +27,12 @@ After `plan_progress ready` succeeds, explain the plan in human terms and assess
 5. After correctness repairs, perform one final necessity/subtractive review. Ask exclusively for overengineering, gold-plating, unnecessary abstraction, duplicate state, excessive validation, and churn risks. Flag multi-claim tasks, validation steps without a stated trigger, and live checks without attempt caps as churn risks.
 6. Apply necessary subtractive findings, then record the final review with role `subtractive`: use `covered` after repairing supported findings or `no_finding` when no repair was needed. An unresolved `supported` result cannot reach readiness. For every task, mechanism, state field, telemetry field, abstraction, and validation step, ask:
    - Is it required to prove `Completion Evidence` or preserve a stated safety boundary?
-   - Does the first implementation task isolate the smallest representative slice without introducing an early validation gate?
+   - Does the first implementation task isolate a representative slice without introducing an early validation gate or mistaking partial coverage for the complete production fix?
    - Does it build for an unobserved failure, future provider/client, or unrequested scale?
    - Does it add persistence, retries, correlation, lifecycle, or cleanup before proving value?
-   - Can fewer files, modes, checks, or mutations answer the question?
+   - Can this be simplified without weakening the outcome, leaving the cause in place, or moving complexity and failure handling into callers?
    - Can later work become conditional and be skipped when the first slice finds no signal?
-   Remove or defer anything that fails this necessity test. A factually valid reviewer concern is not a required repair unless it blocks completion evidence.
+   Remove or defer anything that fails this necessity test. Do not classify necessary cross-file restructuring as churn solely because it is larger; retain each change whose concrete contribution to the complete solution is established. A factually valid reviewer concern is not a required repair unless it blocks completion evidence.
 7. Reread the reduced complete plan and call `ready`. In standard mode, readiness requires one final completed subtractive review, with any supported findings resolved first. Subject-matter reviews are optional and bounded at four records. In quick mode, readiness requires the draft and deterministic plan-file validation but no reviews. The tool then runs deterministic plan-file validation.
 
 ### Verification-design rubric

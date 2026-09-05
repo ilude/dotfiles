@@ -2,6 +2,8 @@
 
 Use this process when a failure is hard to reproduce, recurring, nondeterministic, performance-related, or likely to require instrumentation. Adapt it to the available boundary rather than forcing a test harness that cannot represent the failure.
 
+Executable reproductions and diagnostic experiments follow the active validation policy. If selecting the mechanism requires an early experiment, surface that need before implementation and obtain the bounded early-check decision. Otherwise use read-only evidence and defer executable checks to the permitted phase; report any unresolved causal uncertainty rather than treating inspection as runtime proof.
+
 ## Establish the signal
 
 Find the smallest repeatable check that exercises the reported path and detects the exact symptom. Prefer, as appropriate:
