@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension from "../extensions/workflow-friction-review.js";
@@ -724,10 +725,10 @@ Execute workflow items with admitted tools only.
 		expect((spawnMock.mock.calls[0][2] as { cwd: string }).cwd).toBe(tmpDir);
 		expect((spawnMock.mock.calls[1][2] as { cwd: string }).cwd).toBe(tmpDir);
 		expect((spawnMock.mock.calls[0][1] as string[])[(spawnMock.mock.calls[0][1] as string[]).indexOf("--tools") + 1]).toBe(
-			"read,grep,find,ls,subagent_read,subagent_write",
+			"read,grep,find,ls,log_analytics,subagent_read,subagent_write",
 		);
 		expect((spawnMock.mock.calls[1][1] as string[])[(spawnMock.mock.calls[1][1] as string[]).indexOf("--tools") + 1]).toBe(
-			"read,grep,find,ls,subagent_read,subagent_write",
+			"read,grep,find,ls,log_analytics,subagent_read,subagent_write",
 		);
 	});
 
@@ -5196,6 +5197,48 @@ You are a test agent.
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
+
+	it.each([
+		["subagent_read", "explorer", ["read", "grep", "find", "ls", "log_analytics", "web_search", "web_fetch"]],
+		["subagent_read", "developer", ["read", "grep", "find", "ls", "log_analytics", "web_search", "web_fetch"]],
+		["subagent_write", "developer", ["read", "grep", "find", "ls", "log_analytics", "bash", "pwsh", "edit", "write", "text_edit", "structured_edit", "web_search", "web_fetch"]],
+		["subagent_write", "devops-pro", ["read", "grep", "find", "ls", "log_analytics", "bash", "pwsh", "edit", "write", "text_edit", "structured_edit", "web_search", "web_fetch"]],
+		["subagent_write", "validator", ["read", "grep", "find", "ls", "log_analytics", "bash", "pwsh"]],
+		["subagent_write", "code-reviewer", ["read", "grep", "find", "ls", "log_analytics", "bash"]],
+		["subagent_teamlead", "teamlead", ["read", "grep", "find", "ls", "log_analytics", "subagent_read", "subagent_write"]],
+	] as const)("launches %s with the shipped %s tool capabilities", async (toolName, profileName, expectedTools) => {
+		const { loadAgentsFromDir } = await import("../extensions/subagent/agents.ts");
+		const profile = loadAgentsFromDir(fileURLToPath(new URL("../agents/", import.meta.url)), "user")
+			.find((agent) => agent.name === profileName);
+		if (!profile?.tools) throw new Error(`Missing shipped tool profile: ${profileName}`);
+		// Keep model and skill discovery out of this tool-authority integration fixture.
+		fs.writeFileSync(
+			path.join(tmpDir, ".pi", "agents", "capability-worker.md"),
+			`---\nname: capability-worker\ndescription: Tool authority fixture\ntools: ${profile.tools.join(", ")}\n---\nInspect the assigned capability.\n`,
+		);
+		mockSuccessfulSpawn();
+		const { pi } = await loadTool();
+		const tool = pi._getTool(toolName);
+		if (!tool) throw new Error(`${toolName} tool not registered`);
+		const result = await tool.execute(
+			`authority-${toolName}-${profileName}`,
+			{
+				items: [{ agent: "capability-worker", instructions: "Inspect the assigned capability." }],
+				agentScope: "project",
+			},
+			undefined,
+			undefined,
+			createMockCtx({ cwd: tmpDir }),
+		);
+		expect(result.isError).not.toBe(true);
+		expect(result.details.results[0]).toMatchObject({ processOutcome: "succeeded" });
+		expect(spawnMock).toHaveBeenCalledTimes(1);
+		const args = spawnMock.mock.calls[0][1] as string[];
+		expect(args).toContain("--tools");
+		expect(args[args.indexOf("--tools") + 1].split(",")).toEqual(expectedTools);
+		const [run] = subagentRunManager.list();
+		expect(run.authorityTools).toEqual(expectedTools);
+	}, SUBAGENT_TEST_TIMEOUT_MS);
 
 	it(
 		"emits exactly one closeout for each modern subagent tool",

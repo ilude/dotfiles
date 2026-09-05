@@ -7,7 +7,7 @@ memory: none
 effort: low
 skills:
   - analysis-workflow
-tools: read, grep, find, ls, web_search, web_fetch
+tools: read, grep, find, ls, log_analytics, web_search, web_fetch
 ---
 
 # Explorer

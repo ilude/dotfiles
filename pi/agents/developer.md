@@ -6,7 +6,7 @@ effort: medium
 skills:
   - analysis-workflow
   - least-astonishment
-tools: read, grep, bash, pwsh, edit, write, web_search, web_fetch
+tools: read, grep, find, ls, log_analytics, bash, pwsh, edit, write, text_edit, structured_edit, web_search, web_fetch
 ---
 
 # Developer

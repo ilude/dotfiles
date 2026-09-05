@@ -5,7 +5,7 @@ model: openai-codex/gpt-5.6-sol
 effort: low
 skills:
   - orchestration
-tools: read, grep, find, ls, subagent
+tools: read, grep, find, ls, log_analytics, subagent_read, subagent_write
 ---
 
 # Team Lead

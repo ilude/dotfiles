@@ -5,7 +5,7 @@ model: openai-codex/gpt-5.6-sol
 effort: low
 skills:
   - analysis-workflow
-tools: read, grep, bash
+tools: read, grep, find, ls, log_analytics, bash
 ---
 
 # Security Reviewer

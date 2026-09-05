@@ -1,16 +1,18 @@
 ---
 name: validator
-description: Read-only validation worker for focused or cross-file test, lint, typecheck, integration, and acceptance verification.
+description: Validation worker for focused or cross-file test, lint, typecheck, integration, and acceptance verification without source edits. Use subagent_write for command execution; subagent_read can only inspect supplied evidence.
 model: openai-codex/gpt-5.6-luna
 effort: low
 skills:
   - analysis-workflow
-tools: read, grep, bash
+tools: read, grep, find, ls, log_analytics, bash, pwsh
 ---
 
 # Validator
 
-Verify the assigned outcome without modifying files.
+Verify the assigned outcome without editing source or running autofix. Validation commands may produce normal test or build artifacts.
+
+Command execution requires `subagent_write`; `subagent_read` cannot run checks. In read mode, inspect supplied evidence and report any missing command results instead of claiming execution.
 
 ## Behavior
 

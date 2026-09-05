@@ -119,6 +119,7 @@ import {
 	type SubagentProcessOutcome,
 	type SubagentProcessState,
 	formatCoordinatorGaps,
+	COORDINATOR_TOOL_ALLOWLIST,
 	READ_TOOL_ALLOWLIST,
 	SubagentCoordinateSchema,
 	SubagentReadSchema,
@@ -1726,21 +1727,16 @@ export function resolveChildToolAuthority(
 	}
 	const defaults =
 		options.executionKind === "coordinator" || options.role === "coordinator"
-			? ["read", "grep", "find", "ls", "subagent_read", "subagent_write"]
+			? COORDINATOR_TOOL_ALLOWLIST
 			: ["read", "bash"];
 	let tools = [...(agent.tools ?? defaults)];
 	if (options.executionKind === "coordinator") {
-		tools = ["read", "grep", "find", "ls", "subagent_read", "subagent_write"];
+		tools = [...COORDINATOR_TOOL_ALLOWLIST];
 	}
 	if (options.role === "coordinator") {
-		const coordinatorTools = new Set([
-			"read",
-			"grep",
-			"find",
-			"ls",
+		const coordinatorTools = new Set<string>([
+			...COORDINATOR_TOOL_ALLOWLIST,
 			"subagent",
-			"subagent_read",
-			"subagent_write",
 		]);
 		tools = tools.filter((tool) => coordinatorTools.has(tool));
 	} else {
@@ -5934,7 +5930,7 @@ export default function (pi: ExtensionAPI) {
 			promptGuidelines: [
 				"Use subagent_read for bounded inspection with an explicit deliverable and completion condition.",
 				"Run independent subagent_read inspection and review items in the background; keep them foreground when their result gates the next safe action.",
-				"Read subagents cannot modify files, delegate, or use raw shell tools.",
+				"Read subagents can inspect files, query log_analytics, and use web_search/web_fetch; they cannot modify files, delegate, or use raw shell tools. Supply diff and command evidence when inspection needs it.",
 			],
 			parameters: catalogSchemas.read,
 			renderResult: subagentExecutor.renderResult,
@@ -5947,7 +5943,7 @@ export default function (pi: ExtensionAPI) {
 			label: "Subagent Write",
 			description: "Run modifying subagent items within their configured authority.",
 			promptGuidelines: [
-				"Use subagent_write for bounded changes with an explicit deliverable and completion condition.",
+				"Use subagent_write for bounded changes or configured shell execution, including validator checks and Git diff review, with an explicit deliverable and completion condition. Execution capability does not authorize source edits outside the assignment.",
 				"Keep subagent_write foreground when its result gates dependent work or it owns the active mutation boundary; detach only independent write packages.",
 			],
 			parameters: catalogSchemas.write,

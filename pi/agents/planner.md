@@ -5,7 +5,7 @@ model: openai-codex/gpt-5.6-sol
 effort: low
 skills:
   - planning
-tools: read, grep, find, ls
+tools: read, grep, find, ls, log_analytics
 ---
 
 # Planner

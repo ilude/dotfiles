@@ -19,8 +19,14 @@ import {
 	resolveWorkspaceRoot,
 } from "./workspace-policy.js";
 
-export const READ_TOOL_ALLOWLIST = ["read", "grep", "find", "ls", "log_analytics"] as const;
+export const READ_TOOL_ALLOWLIST = [
+	"read", "grep", "find", "ls", "log_analytics", "web_search", "web_fetch",
+] as const;
 export type ReadToolName = (typeof READ_TOOL_ALLOWLIST)[number];
+
+export const COORDINATOR_TOOL_ALLOWLIST = [
+	"read", "grep", "find", "ls", "log_analytics", "subagent_read", "subagent_write",
+] as const;
 
 export type ExecutionKind = "read" | "write" | "coordinator";
 export type SubagentProcessState = "running" | "settled";
@@ -538,7 +544,7 @@ function policyFor(kind: ExecutionKind, agent: AgentConfig): ExecutionPolicy {
 		case "coordinator":
 			return {
 				kind,
-				tools: ["read", "grep", "find", "ls", "subagent_read", "subagent_write"],
+				tools: COORDINATOR_TOOL_ALLOWLIST,
 				canMutate: false,
 				canDelegate: true,
 			};

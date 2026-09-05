@@ -1,9 +1,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-	READ_TOOL_ALLOWLIST,
+	policyForRequest,
 	SubagentTeamleadSchema,
 	SubagentReadSchema,
 	SubagentWriteSchema,
@@ -23,6 +24,7 @@ import {
 import {
 	diagnoseAgentAvailability,
 	formatAgentAvailabilityDiagnostic,
+	loadAgentsFromDir,
 } from "../extensions/subagent/agents.ts";
 import {
 	resolveTaskSessionAffinity,
@@ -274,23 +276,80 @@ describe("subagent T1 execution contracts", () => {
 		).toBe("failed");
 	});
 
-	it("projects read authority from the closed positive allowlist", () => {
-		const authority = resolveChildToolAuthority(
-			{
-				name: "reader",
-				description: "reader",
-				tools: [...READ_TOOL_ALLOWLIST, "registered_unknown_mutation"],
-				systemPrompt: "",
-				source: "user",
-				filePath: "reader.md",
-			},
-			{ role: "leaf", hasScopeLease: false, executionKind: "read" },
-		);
+	it.each([
+		{
+			kind: "read" as const,
+			role: "leaf" as const,
+			tools: ["read", "grep", "find", "ls", "log_analytics", "web_search", "web_fetch"],
+		},
+		{
+			kind: "coordinator" as const,
+			role: "coordinator" as const,
+			tools: ["read", "grep", "find", "ls", "log_analytics", "subagent_read", "subagent_write"],
+		},
+	])("projects $kind policy and launch authority without admitting unrelated tools", ({ kind, role, tools }) => {
+		const agent = {
+			name: "worker",
+			description: "worker",
+			tools: [
+				"read", "bash", "pwsh", "powershell", "edit", "write", "text_edit", "structured_edit",
+				"bg_start", "bg_kill", "browser_session", "browser_page", "image_transform",
+				"tool_search", "task", "schedule", "goal_complete", "plan_archive",
+				"subagent", "subagent_read", "subagent_write", "subagent_teamlead",
+				"subagent_status", "subagent_control", "onclave_instances", "onclave_message",
+				"herdr_layout", "herdr_pane", "herdr_agent", "registered_unknown_mutation",
+			],
+			systemPrompt: "",
+			source: "user" as const,
+			filePath: "worker.md",
+		};
+		const policy = policyForRequest({ kind, items: [{ agent: agent.name, instructions: "Inspect." }] }, agent);
+		const authority = resolveChildToolAuthority(agent, {
+			role,
+			hasScopeLease: false,
+			executionKind: kind,
+		});
 
-		expect(authority.tools).toEqual([...READ_TOOL_ALLOWLIST]);
-		expect(authority.tools).toContain("log_analytics");
-		expect(authority.tools).not.toContain("registered_unknown_mutation");
+		expect(policy.tools).toEqual(tools);
+		expect(policy.canMutate).toBe(false);
+		expect(policy.canDelegate).toBe(kind === "coordinator");
+		expect(authority.tools).toEqual(tools);
 		expect(authority.canDirectlyMutate).toBe(false);
+	});
+
+	it.each([
+		["developer", ["find", "ls", "log_analytics", "text_edit", "structured_edit"]],
+		["devops-pro", ["find", "ls", "log_analytics", "text_edit", "structured_edit", "pwsh", "web_search", "web_fetch"]],
+		["validator", ["find", "ls", "log_analytics", "bash", "pwsh"]],
+		["code-reviewer", ["find", "ls", "log_analytics", "bash"]],
+		["security-reviewer", ["find", "ls", "log_analytics", "bash"]],
+		["reviewer", ["find", "ls", "log_analytics"]],
+		["planner", ["find", "ls", "log_analytics"]],
+		["explorer", ["log_analytics", "web_search", "web_fetch"]],
+		["teamlead", ["log_analytics", "subagent_read", "subagent_write"]],
+	] as const)("preserves the shipped %s profile's workflow capabilities at launch", (name, requiredTools) => {
+		const agents = loadAgentsFromDir(fileURLToPath(new URL("../agents/", import.meta.url)), "user");
+		const agent = agents.find((candidate) => candidate.name === name);
+		if (!agent) throw new Error(`Missing shipped profile: ${name}`);
+		const role = name === "teamlead" ? "coordinator" : "leaf";
+		// The compatibility path also consumes frontmatter rather than the fixed modern coordinator list.
+		const authority = resolveChildToolAuthority(agent, { role, hasScopeLease: false });
+		expect(authority.tools).toEqual(expect.arrayContaining([...requiredTools]));
+		expect(authority.tools).not.toContain("subagent");
+		if (name !== "developer" && name !== "devops-pro")
+			expect(authority.canDirectlyMutate).toBe(false);
+	});
+
+	it.each([
+		["summarizer", ["read"]],
+		["skill-review", ["read", "write"]],
+	] as const)("keeps the shipped %s profile's configured authority narrow", (name, tools) => {
+		const agent = loadAgentsFromDir(fileURLToPath(new URL("../agents/", import.meta.url)), "user")
+			.find((candidate) => candidate.name === name);
+		if (!agent) throw new Error(`Missing shipped profile: ${name}`);
+		expect(resolveChildToolAuthority(agent, {
+			role: "leaf", hasScopeLease: false, executionKind: "write",
+		}).tools).toEqual(tools);
 	});
 
 	it("resolves target-workspace trust before project-agent discovery", () => {
