@@ -260,6 +260,11 @@ describe("task tools", () => {
 		);
 		expect(updated.details.record.boundary).toEqual(["docs/**"]);
 
+		expect(JSON.parse(created.content[0].text)).toMatchObject({
+			operation: "recorded",
+			launched: false,
+		});
+
 		const batch = await tool?.execute(
 			"scoped-batch",
 			{
@@ -277,6 +282,10 @@ describe("task tools", () => {
 			ctx,
 		);
 		expect(batch.details.records[0].boundary).toEqual(["test/**"]);
+		expect(JSON.parse(batch.content[0].text)).toMatchObject({
+			operation: "recorded",
+			launched: false,
+		});
 	});
 
 	it("uses one registry for planning dependencies and readiness", async () => {
@@ -347,7 +356,23 @@ describe("task tools", () => {
 		expect(initiallyReady.details.records.map((item: { id: string }) => item.id)).toEqual([
 			first.id,
 		]);
-		for (const state of ["assigned", "completed"]) {
+		const assignedVisible = await tool?.execute(
+			"workflow-assigned-ack",
+			{ action: "update", id: first.id, state: "assigned" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(JSON.parse(assignedVisible.content[0].text)).toMatchObject({
+			operation: "recorded",
+			launched: false,
+			state: "assigned",
+		});
+		expect(assignedVisible.details).toMatchObject({
+			operation: "recorded",
+			launched: false,
+		});
+		for (const state of ["completed"]) {
 			const updated = await tool?.execute(
 				`workflow-${state}`,
 				{
@@ -475,6 +500,8 @@ describe("task tools", () => {
 			outcome: "persisted",
 			id,
 			state: "unassigned",
+			operation: "recorded",
+			launched: false,
 		});
 		expect(created.details.record.instructions).toContain("complete durable");
 		const persistedShape = JSON.parse(JSON.stringify(created.details.record));

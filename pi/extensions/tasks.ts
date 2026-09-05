@@ -151,7 +151,7 @@ export function resolveTaskId(
 }
 
 function helpText(): string {
-	return "Usage: /tasks|/tasks list [--all]|ready|blocked|show <id>|create <summary>|assign <id>|complete <id> <evidence>|skip <id> [reason]|retry <id>|clear completed|settings mode compact|full|hidden. Examples: /tasks ready (what can I consider next?), /tasks blocked (which Dependencies are unmet?). Retry/reopen does not execute work.";
+	return "Usage: /tasks|/tasks list [--all]|ready|blocked|show <id>|create <summary>|assign <id>|complete <id> <evidence>|skip <id> [reason]|reopen <id>|clear completed|settings mode compact|full|hidden. Examples: /tasks ready (what can I consider next?), /tasks blocked (which Dependencies are unmet?). Reopen (retry is a compatible alias) only reopens the record; it does not execute work. Assignment only selects work; it does not launch work.";
 }
 
 function formatBlockedView(tasks: readonly TaskRecordV1[]): string {
@@ -299,30 +299,38 @@ function compactTaskCollection(
 	};
 }
 
-function operationToolResult(result: TaskOperationResult, id?: string) {
+function operationToolResult(
+	result: TaskOperationResult,
+	id?: string,
+	acknowledgement?: { operation: "recorded"; launched: false },
+) {
 	const resultId = result.record?.id ?? id;
 	const error =
 		result.error ??
 		(result.outcome === "not_found" && resultId
 			? `task not found: ${resultId}`
 			: undefined);
-	return toolResult(result, {
-		outcome: result.outcome,
-		...(resultId ? { id: resultId } : {}),
-		...(result.record?.state ? { state: result.record.state } : {}),
-		...(result.readiness
-			? {
-					readiness: {
-						ready: result.readiness.ready,
-						unmetBlockers: result.readiness.unmetBlockers.map((blocker) => ({
-							id: blocker.id,
-							status: blocker.status,
-						})),
-					},
-				}
-			: {}),
-		...(error ? { error } : {}),
-	});
+	return toolResult(
+		acknowledgement ? { ...result, ...acknowledgement } : result,
+		{
+			outcome: result.outcome,
+			...(resultId ? { id: resultId } : {}),
+			...(result.record?.state ? { state: result.record.state } : {}),
+			...(acknowledgement ?? {}),
+			...(result.readiness
+				? {
+						readiness: {
+							ready: result.readiness.ready,
+							unmetBlockers: result.readiness.unmetBlockers.map((blocker) => ({
+								id: blocker.id,
+								status: blocker.status,
+							})),
+						},
+					}
+				: {}),
+			...(error ? { error } : {}),
+		},
+	);
 }
 
 function asParams(params: unknown): Record<string, unknown> {
@@ -845,10 +853,10 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 		description: "Record durable tasks and their dependencies; task records never execute work.",
 		promptSnippet: "Record durable tasks and dependencies",
 		promptGuidelines: [
-			"Use task for work that must survive context compaction or represent an independently verifiable deliverable; ordinary short work can remain prose.",
+			"Create a task only for a durable checkpoint that must survive compaction, interruption, or later continuation, or when the user explicitly requests tracking. Mandatory unattended goals retain their required root tasks; delegation or an independently verifiable deliverable alone does not require a task.",
 			"After compaction or resume, inspect the assigned task and keep its Instructions, coverage, dependencies, boundary, and acceptance checks supplemental to the current request.",
 			"When a user correction changes the outcome, update Instructions before continuing and omit work no longer required.",
-			"Use blockedBy for hard prerequisites. Use ready to select eligible unassigned work, then assign it and record its bounded terminal outcome explicitly; validation is limited to Task Instructions.",
+			"Use this sequence for tracked work: record and assign the task, invoke root tools or the actual subagent, validate the result, then record the terminal outcome. Readiness only selects eligible work; it never dispatches work.",
 			"Task records describe work and outcomes only. They do not execute, wait for, stop, schedule, or capture output from processes.",
 		],
 		parameters,
@@ -909,10 +917,14 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 			const workspace = resolveTaskWorkspace(ctx.cwd);
 			const sessionId = currentTaskSessionId(ctx);
 			if (action === "create")
-				return operationToolResult({
-					outcome: "persisted",
-					record: createTaskFromInput(input, ctx.cwd, sessionId),
-				});
+				return operationToolResult(
+					{
+						outcome: "persisted",
+						record: createTaskFromInput(input, ctx.cwd, sessionId),
+					},
+					undefined,
+					{ operation: "recorded", launched: false },
+				);
 			if (action === "batch") {
 				if (input.tasks !== undefined && !Array.isArray(input.tasks))
 					throw new Error("tasks must be an array");
@@ -943,6 +955,8 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 				}
 				const visible = {
 					outcome: result.outcome,
+					operation: "recorded" as const,
+					launched: false as const,
 					count: result.records.length,
 					tasks: result.records.map((record, index) => ({
 						...(batchInputs[index]?.key ? { key: batchInputs[index].key } : {}),
@@ -957,6 +971,8 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 					content: [{ type: "text" as const, text }],
 					details: {
 						outcome: result.outcome,
+						operation: "recorded",
+						launched: false,
 						records: result.records,
 						aliases: result.aliases,
 					},
@@ -1098,7 +1114,11 @@ export function registerTaskTools(pi: ExtensionAPI): void {
 							outcome: validatedOutcome(input.outcome),
 						});
 						const readiness = target === "assigned" ? { ready: true, unmetBlockers: [] } : undefined;
-						return operationToolResult({ outcome: "persisted", record, ...(readiness ? { readiness } : {}) }, id);
+						return operationToolResult(
+							{ outcome: "persisted", record, ...(readiness ? { readiness } : {}) },
+							id,
+							target === "assigned" ? { operation: "recorded", launched: false } : undefined,
+						);
 					}
 					const record = updateTask(id, patch);
 					return operationToolResult({ outcome: "persisted", record });
