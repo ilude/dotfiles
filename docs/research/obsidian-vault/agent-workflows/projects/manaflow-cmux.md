@@ -16,10 +16,6 @@ A Ghostty/libghostty-based macOS terminal built for multitasking coding agents.
 - Sidebar shows project context such as branch, PR, directory, ports, and latest notification text.
 - Uses Claude Code stop hooks in the demo to signal completed/blocked panes.
 
-## Source video
-
-- ../videos/cmux-video.md
-
 ## Related repo
 
 - Vercel Agent Browser: https://github.com/vercel-labs/agent-browser

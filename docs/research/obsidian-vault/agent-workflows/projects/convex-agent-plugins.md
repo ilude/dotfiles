@@ -25,10 +25,6 @@ Weak direct support, but strong adaptation value. The structure maps cleanly to 
 - Hooks → Pi extensions or explicit workflow commands.
 - MCP → future tool integration or external command wrapper.
 
-## Source video
-
-- ../videos/smart-pi-daytona-convex-video.md
-
 ## Patterns
 
 - ../patterns/agent-friendly-platforms.md

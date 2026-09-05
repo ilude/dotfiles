@@ -321,3 +321,7 @@ Key Insight: *"The definition of a 'nit' is subjective and varies from team to t
 
 Review the change boundary first, verify call sites and repository precedent, and report only defects attributable to the change.
 
+## Related notes
+
+- [Pi test-suite value review](../workflow-ideas/test-suite-value-review/README.md)
+

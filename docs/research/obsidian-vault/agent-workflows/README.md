@@ -20,6 +20,7 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [workflow-ideas/code-intelligence](workflow-ideas/code-intelligence.md) - Graphify/SCIP/code-intel ideas
 - [workflow-ideas/duckdb-for-pi-usage-analytics](workflow-ideas/duckdb-for-pi-usage-analytics.md) - optional DuckDB backend idea for Pi usage/session analytics
 - [workflow-ideas/agent-workflow-benchmark-loops](workflow-ideas/agent-workflow-benchmark-loops.md) - research-stage hard-task fixtures for controlled workflow comparisons
+- [workflow-ideas/test-suite-value-review](workflow-ideas/test-suite-value-review/README.md) - test-suite value review PRD, testing-smell references, and agentic review research
 - [workflow-ideas/adaptive-plan-review-telemetry](workflow-ideas/adaptive-plan-review-telemetry.md) -- telemetry signals for embedding `/review-it` into `/plan-it` later
 - [workflow-ideas/goal-closeout-handoff](workflow-ideas/goal-closeout-handoff.md) -- automatic closeout reports for `/goal` completion
 - [workflow-ideas/durable-task-dependency-systems](workflow-ideas/durable-task-dependency-systems.md) -- sourced designs for durable task DAGs, recovery, provenance, and Pi subagent integration
@@ -43,13 +44,6 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 - [Menos research storage](projects/menos-research-storage.md) - superseded proposal retained as historical context
 - [OpenAI-compatible chat providers](patterns/openai-compatible-chat-providers.md)
 - [Agent skills ecosystem](projects/agent-skills-ecosystem.md)
-
-## Source videos
-
-- [videos/browser-harness-video](videos/browser-harness-video.md)
-- [videos/cmux-video](videos/cmux-video.md)
-- [videos/smart-pi-daytona-convex-video](videos/smart-pi-daytona-convex-video.md)
-- [videos/codex-replaced-claude-video](videos/codex-replaced-claude-video.md)
 
 ## Project notes
 

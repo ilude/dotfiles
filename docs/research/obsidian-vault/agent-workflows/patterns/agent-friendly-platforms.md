@@ -7,7 +7,6 @@ Developer experience is becoming agent experience: docs, APIs, rules, plugins, a
 ## Seen in
 
 - ../projects/convex-agent-plugins.md
-- ../videos/codex-replaced-claude-video.md
 
 ## Building blocks
 

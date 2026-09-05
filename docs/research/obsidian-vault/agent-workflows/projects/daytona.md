@@ -16,10 +16,6 @@ Secure, elastic infrastructure for running AI-generated code and agent workflows
 - Snapshots support persistent agent operations across sessions.
 - Includes MCP server and computer-use docs.
 
-## Source video
-
-- ../videos/smart-pi-daytona-convex-video.md
-
 ## Patterns
 
 - ../patterns/sandboxed-agent-runtimes.md

@@ -62,6 +62,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [workflow-ideas/code-intelligence](workflow-ideas/code-intelligence.md) - Graphify/SCIP/code-intel ideas for semantic navigation and architecture orientation.
 - [workflow-ideas/duckdb-for-pi-usage-analytics](workflow-ideas/duckdb-for-pi-usage-analytics.md) - optional DuckDB backend idea for Pi usage/session analytics.
 - [workflow-ideas/agent-workflow-benchmark-loops](workflow-ideas/agent-workflow-benchmark-loops.md) - controlled hard-task fixtures for testing routing, prompt, tool, and review changes without building a benchmark platform.
+- [workflow-ideas/test-suite-value-review](workflow-ideas/test-suite-value-review/README.md) - PRD and research for reviewing JavaScript and TypeScript suite value, regression protection, and developer-time cost.
 - [workflow-ideas/adaptive-plan-review-telemetry](workflow-ideas/adaptive-plan-review-telemetry.md) -- data model for learning when `/review-it` can be embedded into `/plan-it` with adaptive reviewer counts.
 - [workflow-ideas/goal-closeout-handoff](workflow-ideas/goal-closeout-handoff.md) -- automatic `/goal` completion closeout so goal endings preserve outcome, validation, state, and next steps.
 - [workflow-ideas/durable-task-dependency-systems](workflow-ideas/durable-task-dependency-systems.md) -- session evidence, academic and workflow-system sources, and incremental designs for durable task DAGs with Pi subagents.

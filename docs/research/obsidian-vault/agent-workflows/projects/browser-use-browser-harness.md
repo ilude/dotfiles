@@ -14,10 +14,6 @@ A minimal browser automation harness for LLM agents. It connects directly to Chr
 - `agent-workspace/domain-skills/` stores reusable site/task knowledge.
 - Missing capability flow: task fails or helper missing → agent writes helper → task proceeds → helper persists.
 
-## Source video
-
-- ../videos/browser-harness-video.md
-
 ## Patterns
 
 - ../patterns/self-healing-harnesses.md

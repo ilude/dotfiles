@@ -7,7 +7,6 @@ Run risky or long-lived agent work in isolated environments with explicit file/p
 ## Seen in
 
 - ../projects/daytona.md
-- ../videos/smart-pi-daytona-convex-video.md
 
 ## Useful primitives
 
