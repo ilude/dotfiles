@@ -3716,9 +3716,9 @@ export default function (pi: ExtensionAPI) {
 		const historicalTools = [...HISTORICAL_SUBAGENT_TOOL_NAMES];
 		const unavailableModernTools =
 			identity.role === "leaf" || identity.depth >= 2
-				? ["subagent_read", "subagent_write", "subagent_teamlead", "subagent_coordinate"]
+				? ["subagent_read", "subagent_write", "subagent_teamlead", "subagent_coordinate", "workflow_inspect"]
 				: identity.role === "coordinator"
-					? ["subagent_teamlead", "subagent_coordinate"]
+					? ["subagent_teamlead", "subagent_coordinate", "workflow_inspect"]
 					: [];
 		deactivateTools(pi, [...historicalTools, ...unavailableModernTools]);
 		sessionOpen = true;

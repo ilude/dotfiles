@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-05: Resolve workflow state consistently across inspection and execution
+
+**Added:** A shared read-only workflow observation and source-selection module plus the root-only `workflow_inspect` tool. It reports primary, owned, and archived plan evidence, ownership and Git registration, separate routing claims, conflicts, and bounded errors without changing repository or session state.
+
+**Changed:** Native `/do-it` completion snapshots refresh asynchronously at lifecycle boundaries and no longer perform discovery during completion filtering. Execution and closeout retain fresh action-specific ownership, target, and merge checks.
+
 ## 2026-09-05: Preserve unrelated primary dirt during merged workflow cleanup
 
 **Fixed:** The post-merge `plan_archive` verifier no longer treats unrelated dirty primary files as a cleanup failure. It still requires pre-merge primary cleanliness, rejects dirty workflow-owned archive/source paths, verifies the registered owned worktree and expected branch, and validates the complete archive in the merged tree without rejecting legitimate archive reconciliation.

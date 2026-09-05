@@ -59,7 +59,7 @@ export interface WorkflowGitResult {
 	stderr: string;
 }
 
-export type WorkflowGitRunner = (cwd: string, args: string[]) => Promise<WorkflowGitResult>;
+export type WorkflowGitRunner = (cwd: string, args: string[], signal?: AbortSignal) => Promise<WorkflowGitResult>;
 
 function normalize(value: string): string {
 	return path.resolve(value);

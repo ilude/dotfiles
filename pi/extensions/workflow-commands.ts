@@ -62,6 +62,7 @@ import {
 	parsePersistedPlanRoutingState,
 	selectNextPlanTask,
 } from "../lib/plan-state.js";
+import { discoverWorkflows, observeWorkflow } from "../lib/workflow-observation.js";
 import { withTimingSpan } from "../lib/observability";
 import {
 	canonicalPlanPathFromInput,
@@ -78,7 +79,7 @@ import {
 	validatePlanFile,
 	getCachedDoItPlans,
 	getDoItArgumentCompletions,
-	refreshDoItPlanCache,
+	refreshDoItPlanObservationCache,
 } from "../lib/workflow-commands/plan-lifecycle";
 import { scanSecrets } from "../lib/secret-scan";
 import {
@@ -104,6 +105,7 @@ import { sendHiddenWorkflowPrompt } from "../lib/workflow-prompt.js";
 import { startWorkflowEpisode } from "../lib/workflow-telemetry";
 import {
 	type WorkflowWorktree,
+	type WorkflowWorktreeOwnership,
 	type InPlaceWorkflowOwnership,
 	closeWorkflowWorktree,
 	verifyAndCleanupWorkflowWorktree,
@@ -114,7 +116,6 @@ import {
 	readActiveInPlaceWorkflowOwnership,
 	ensureWorkflowWorktree,
 	materializePlanInWorkflowWorktree,
-	resolveWorkflowPlanWorkspace,
 	readWorkflowOwnershipForWorktree,
 	readWorkflowOwnershipRecord,
 	resolveWorkflowRepoRoot,
@@ -154,7 +155,7 @@ type DoItContinuation = DoItArgs & {
 	reloadBeforeDispatch?: boolean;
 };
 type DoItLaunchOutcome = "dispatched" | "pending" | "blocked";
-type DoItDispatchContext = Pick<ExtensionCommandContext, "cwd" | "mode" | "ui"> & Partial<Pick<ExtensionCommandContext, "newSession" | "getContextUsage">>;
+type DoItDispatchContext = Pick<ExtensionCommandContext, "cwd" | "mode" | "ui"> & Partial<Pick<ExtensionCommandContext, "newSession" | "getContextUsage" | "signal">>;
 
 export interface DoItArgs {
 	request: string;
@@ -2563,9 +2564,29 @@ function renderLifecycleResult(result: any, options: any, theme: any, context: a
 	return new Text(`${timing ? `${timing}\n` : ""}${text}`, 0, 0);
 }
 
+const WORKFLOW_INSPECTION_MAX_STRING = 1200;
+const WORKFLOW_INSPECTION_MAX_ITEMS = 32;
+
+function boundWorkflowInspection(value: unknown, depth = 0): unknown {
+	if (typeof value === "string") return value.length > WORKFLOW_INSPECTION_MAX_STRING ? `${value.slice(0, WORKFLOW_INSPECTION_MAX_STRING)}... [truncated]` : value;
+	if (value === null || typeof value !== "object") return value;
+	if (depth > 5) return "[inspection depth truncated]";
+	if (Array.isArray(value)) return value.slice(0, WORKFLOW_INSPECTION_MAX_ITEMS).map((item) => boundWorkflowInspection(item, depth + 1));
+	const output: Record<string, unknown> = {};
+	for (const [key, item] of Object.entries(value).slice(0, WORKFLOW_INSPECTION_MAX_ITEMS)) {
+		if (key === "content") {
+			output.content = typeof item === "string" ? { omitted: true, length: item.length } : { omitted: true };
+			continue;
+		}
+		output[key] = boundWorkflowInspection(item, depth + 1);
+	}
+	return output;
+}
+
 export default function (pi: ExtensionAPI) {
-	const workflowRunner = async (cwd: string, args: string[]) => {
-		const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
+	const workflowRunner = async (cwd: string, args: string[], signal?: AbortSignal) => {
+		if (signal?.aborted) return { code: 1, stdout: "", stderr: "Operation cancelled" };
+		const result = await pi.exec("git", args, { cwd, timeout: 120_000, signal });
 		return { code: result.code, stdout: result.stdout, stderr: result.stderr };
 	};
 	let activePlanLifecycle: PlanLifecycleSnapshot | undefined;
@@ -2660,7 +2681,7 @@ export default function (pi: ExtensionAPI) {
 			const next = transitionPlanLifecycle(activePlanLifecycle, input);
 			await persistPlanLifecycle(next);
 			if (next.stage === "ready") {
-				if (activePlanningRoot) refreshDoItPlanCache(activePlanningRoot);
+				if (activePlanningRoot) await refreshDoItPlanObservationCache(activePlanningRoot, workflowRunner);
 				deactivateTools(pi, ["plan_progress"]);
 				if (ctx.mode === "tui")
 					pendingNextPlanCommand = `/do-it ${next.planPath}`;
@@ -2683,7 +2704,7 @@ export default function (pi: ExtensionAPI) {
 
 	onSessionStart(pi, import.meta.url, async (event, ctx) => {
 		restorePlanLifecycle(ctx);
-		if (ctx.cwd) refreshDoItPlanCache(ctx.cwd);
+		if (ctx.cwd) await refreshDoItPlanObservationCache(ctx.cwd, workflowRunner);
 		const entries = ctx.sessionManager.getBranch();
 		let continuation: DoItContinuation | undefined;
 		let legacyConsumed = false;
@@ -2724,9 +2745,9 @@ export default function (pi: ExtensionAPI) {
 			);
 		}
 	});
-	pi.on("session_tree", (_event, ctx) => {
+	pi.on("session_tree", async (_event, ctx) => {
 		restorePlanLifecycle(ctx);
-		if (ctx.cwd) refreshDoItPlanCache(ctx.cwd);
+		if (ctx.cwd) await refreshDoItPlanObservationCache(ctx.cwd, workflowRunner);
 	});
 	pi.on("session_shutdown", () => {
 		pendingNextPlanCommand = undefined;
@@ -2758,6 +2779,34 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
+		name: "workflow_inspect",
+		label: "Inspect Workflow State",
+		description: "Read-only inspection of canonical plans, owned workflow worktrees, archives, routing claims, conflicts, and Git registration. This tool does not mutate files or start an execution turn.",
+		promptSnippet: "Inspect workflow state without selecting or executing work",
+		parameters: Type.Object({
+			path: Type.Optional(Type.String({ description: "Exact repository-relative .specs/{slug}/plan.md path" })),
+		}, { additionalProperties: false }),
+		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+			if (process.env.PI_SUBAGENT_RUN_ID || process.env.PI_SUBAGENT_TREE_RUN_ID)
+				throw new Error("workflow_inspect is available only to the root workflow authority");
+			let result;
+			if (params.path) {
+				const observation = await observeWorkflow({ cwd: ctx.cwd, planPath: params.path, runner: workflowRunner, signal });
+				result = { repositoryRoot: observation.repositoryRoot, observations: [observation], errors: observation.errors, complete: observation.errors.length === 0 };
+			} else {
+				result = await discoverWorkflows({ cwd: ctx.cwd, runner: workflowRunner, signal });
+			}
+			const boundedResult = boundWorkflowInspection(result);
+			const serialized = JSON.stringify(boundedResult);
+			const finalResult = serialized.length > 20_000
+				? { truncated: true, summary: serialized.slice(0, 19_900) }
+				: boundedResult;
+			const bounded = JSON.stringify(finalResult, null, 2);
+			return { content: [{ type: "text" as const, text: bounded }], details: finalResult };
+		},
+	});
+
+	pi.registerTool({
 		name: "workflow_complete",
 		label: "Complete Isolated Workflow",
 		description:
@@ -2774,7 +2823,10 @@ export default function (pi: ExtensionAPI) {
 					const completed = await verifyInPlaceWorkflow({ ownership: inPlace, cwd: process.cwd(), runner: workflowRunner });
 					activeInPlaceWorkflow = undefined;
 					deactivateTools(pi, ["workflow_complete"]);
-					return { content: [{ type: "text" as const, text: `Workflow completed in place.\n${completed.branch} committed in ${completed.worktree}.` }], details: completed };
+					return {
+						content: [{ type: "text" as const, text: `Workflow completed in place.\n${completed.branch} committed in ${completed.worktree}.` }],
+						details: completed as InPlaceWorkflowOwnership | WorkflowWorktreeOwnership,
+					};
 				}
 				const worktree = activeRawWorkflow ?? (() => {
 					const ownership = readWorkflowOwnershipForWorktree(process.cwd());
@@ -2824,12 +2876,15 @@ export default function (pi: ExtensionAPI) {
 				const planPath = canonicalPlanPathFromInput(params.path);
 				if (!planPath) throw new Error("Plan archive requires a canonical .specs/{slug}/plan.md path.");
 				const slug = workflowSlugFromPlan(planPath);
+				const observation = await observeWorkflow({ cwd: ctx.cwd, planPath, runner: workflowRunner });
+				if (observation.selection === "conflict")
+					throw new Error(`workflow source conflict for ${planPath}: ${observation.conflicts.join("; ")}`);
 				const inPlaceOwnership = readInPlaceWorkflowOwnership(ctx.cwd, slug);
 				const ownership = readWorkflowOwnershipRecord(ctx.cwd, slug);
 				if (inPlaceOwnership) {
 					const verified = await verifyInPlaceWorkflow({ ownership: inPlaceOwnership, cwd: ctx.cwd, planPath, runner: workflowRunner });
 					deactivateTools(pi, ["plan_archive"]);
-					refreshDoItPlanCache(ctx.cwd);
+					await refreshDoItPlanObservationCache(ctx.cwd, workflowRunner);
 					return { content: [{ type: "text" as const, text: `Plan archived and committed in place on ${verified.branch}.` }], details: verified };
 				}
 				if (!ownership || ownership.state !== "active")
@@ -2859,7 +2914,7 @@ export default function (pi: ExtensionAPI) {
 					...verified,
 				};
 				deactivateTools(pi, ["plan_archive"]);
-				refreshDoItPlanCache(ctx.cwd);
+				await refreshDoItPlanObservationCache(ctx.cwd, workflowRunner);
 				return {
 					content: [
 						{
@@ -3244,6 +3299,7 @@ export default function (pi: ExtensionAPI) {
 			let effectiveCloseoutPolicy: "merge" | "retain" = parsed.noMerge ? "retain" : "merge";
 			let executionPlanPath = canonicalPlanPath;
 			let inPlaceExecution = parsed.inPlace;
+			let resolvedEvidence = "";
 			if (ctx.cwd) {
 				try {
 					const primaryRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
@@ -3253,12 +3309,20 @@ export default function (pi: ExtensionAPI) {
 					const workflowId = `do-it:${slug}`;
 					const ordinaryOwnership = readWorkflowOwnershipRecord(primaryRoot, slug);
 					const inPlaceOwnership = readInPlaceWorkflowOwnership(primaryRoot, slug);
-					const planWorkspace = canonicalPlan && ordinaryOwnership
-						? await resolveWorkflowPlanWorkspace({ worktree: { ownership: ordinaryOwnership, resumed: true }, planPath: canonicalPlanPath, runner: workflowRunner })
+					const observation = canonicalPlan && !inPlaceOwnership
+						? await observeWorkflow({ cwd: primaryRoot, planPath: canonicalPlanPath!, runner: workflowRunner, signal: ctx.signal })
+						: undefined;
+					if (observation?.selection === "conflict")
+						throw new Error(`workflow source conflict for ${canonicalPlanPath}: ${observation.conflicts.join("; ")}`);
+					if (observation) resolvedEvidence = JSON.stringify({ selected: observation.selected?.path, comparisonRevision: observation.comparisonRevision, facts: observation.facts, conflicts: observation.conflicts, errors: observation.errors }).slice(0, 3000);
+					const planWorkspace = canonicalPlan && observation?.selected?.workspace
+						? observation.selected.workspace
 						: inPlaceOwnership?.worktree ?? (parsed.inPlace ? ctx.cwd : primaryRoot);
 					if (canonicalPlan) {
+						const selectedRelativePath = observation?.selected?.relativePath;
 						const archivePath = path.join(".specs", "archive", workflowSlugFromPlan(canonicalPlanPath), "plan.md");
-						if (planWorkspace !== primaryRoot && fs.existsSync(path.resolve(planWorkspace, archivePath))) executionPlanPath = archivePath;
+						if (selectedRelativePath) executionPlanPath = selectedRelativePath;
+						else if (planWorkspace !== primaryRoot && fs.existsSync(path.resolve(planWorkspace, archivePath))) executionPlanPath = archivePath;
 						const sourceValidation = validatePlanFile(planWorkspace, executionPlanPath!, "execution-preflight", canonicalPlanPath);
 						if (!sourceValidation.valid) {
 							const diagnostics = sourceValidation.errors.join("\n");
@@ -3328,7 +3392,7 @@ export default function (pi: ExtensionAPI) {
 						: retainCloseout
 							? "verifies the commit and non-merge state while retaining the owned branch, worktree, and ownership record"
 							: "checks exact final state and cleans the owned branch/worktree";
-					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${ownedWorkspace}\n${inPlaceExecution ? "This is in-place execution. Confine implementation and validation to the invoking worktree; never create, inspect, merge, or remove another worktree." : "Confine implementation and validation to this worktree."} When the requested work is complete, ${closeoutWork} yourself, then call the workflow closeout verifier; the verifier ${verifierEffect}. Preserve the worktree for recovery on any dirty, unmerged, or conflict state.${completedPlan || planNeedsReconciliation ? `\n\nRECOVERY ONLY: The canonical plan ${canonicalPlanPath} is complete or has conflicting persisted state. Do not rerun implementation or validation. Inspect the active/archive paths, branch, primary HEAD, and ownership record; finish only recoverable closeout work, then call the closeout verifier.` : ""}`;
+					workspaceDirective = `\n\nWORKFLOW WORKTREE (mandatory): ${ownedWorkspace}\n${inPlaceExecution ? "This is in-place execution. Confine implementation and validation to the invoking worktree; never create, inspect, merge, or remove another worktree." : "Confine implementation and validation to this worktree."} When the requested work is complete, ${closeoutWork} yourself, then call the workflow closeout verifier; the verifier ${verifierEffect}. Preserve the worktree for recovery on any dirty, unmerged, or conflict state.${resolvedEvidence ? `\n\nRESOLVED READ-ONLY EVIDENCE (bounded, not authorization): ${resolvedEvidence}` : ""}${completedPlan || planNeedsReconciliation ? `\n\nRECOVERY ONLY: The canonical plan ${canonicalPlanPath} is complete or has conflicting persisted state. Do not rerun implementation or validation. Inspect the active/archive paths, branch, primary HEAD, and ownership record; finish only recoverable closeout work, then call the closeout verifier.` : ""}`;
 				} catch (error) {
 					sendDoItFailure(
 						pi,
@@ -3360,7 +3424,7 @@ export default function (pi: ExtensionAPI) {
 				replaceArguments: true,
 			});
 			const branch = ownedWorktree?.ownership.branch ?? inPlaceOwnershipForDispatch?.branch;
-			const receipt = `Prepared /do-it: execution=${executionPlanPath ?? parsed.request}; worktree=${ownedWorkspace}; branch=${branch ?? "unknown"}; mode=${inPlaceExecution ? "in-place" : "owned-worktree"}; closeout=${inPlaceExecution ? "commit-in-place" : effectiveCloseoutPolicy}. Execution has not started.`;
+			const receipt = `Prepared /do-it: execution=${executionPlanPath ?? parsed.request}; worktree=${ownedWorkspace}; branch=${branch ?? "unknown"}; mode=${inPlaceExecution ? "in-place" : "owned-worktree"}; closeout=${inPlaceExecution ? "commit-in-place" : effectiveCloseoutPolicy}${resolvedEvidence ? `; evidence=${resolvedEvidence}` : ""}. Execution has not started.`;
 			return {
 				request: parsed.request, canonicalPlanPath, executionPlanPath, ownedWorkspace, workflowRepoRoot,
 				ownedWorktree, inPlaceOwnership: inPlaceOwnershipForDispatch,

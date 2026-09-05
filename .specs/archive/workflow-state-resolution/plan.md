@@ -1,6 +1,7 @@
 ---
 created: 2026-09-05
-status: ready
+status: complete
+completed: 2026-09-05
 ---
 
 # Resolve workflow state consistently across inspection and execution
@@ -36,20 +37,20 @@ Autocomplete remains an in-memory projection: preload observations at existing a
 
 ## Tasks
 
-- [ ] **T1: Extract shared read-only workflow observation and selection**
+- [x] **T1: Extract shared read-only workflow observation and selection**
   - Files: `pi/lib/workflow-observation.ts` (new); `pi/lib/workflow-worktree.ts`; `pi/lib/plan-state.ts` only if a compatible parser extraction is required; `pi/tests/workflow-observation.test.ts` (new); `pi/tests/workflow-worktree.test.ts`.
   - Change: Map the actual discovery, selection, ownership, and closeout callers before editing. Extract the common filesystem/Git observations and source-selection policy without moving mutations into the resolver. Author the representative stale primary plus completed owned archive fixture and inspect that slice before expansion; do not run it early. Finish the complete bounded observation behavior for active, archived, in-place, retained, conflicted, missing, malformed, and interrupted-resource cases. Preserve existing formats and distinguish absence from failed inspection. Reuse or extract existing merge/registration observations rather than adding a second implementation. Author tests for non-mutation and failure behavior at the filesystem/Git seam.
   - Done when: The typed result, read-only observation path, compatibility-preserving selection policy, and representative plus edge-case regressions are authored. Every field has a concrete caller need; source review identifies no mutation-capable path invoked by inspection. This is authored completion only; runtime acceptance remains T3.
   - Verify: deterministic Before marking T1 authored complete, inspect the caller map, complete diff, and test scenarios against the selected mechanism; defer all executable checks to T3. An unmet authored criterion leaves T1 incomplete: record the mismatch and stop dependent integration; do not claim completion, widen scope, or start executable retries. If current evidence requires changing an operator decision, ownership format, or excluded subsystem, stop affected work and report the required reconciliation instead of extending scope or adding fallback state.
 
-- [ ] **T2: Integrate consistent discovery, inspection, and execution context**
+- [x] **T2: Integrate consistent discovery, inspection, and execution context**
   - Files: `pi/extensions/workflow-commands.ts`; `pi/lib/workflow-commands/plan-lifecycle.ts`; `pi/lib/workflow-worktree.ts`; `pi/tests/plan-lifecycle.test.ts`; `pi/tests/workflow-dispatch.test.ts`; `pi/tests/workflow-observation.test.ts`; `pi/tests/workflow-worktree.test.ts`; `pi/skills/workflow/do-it.md`; `pi/skills/pi-extension/references/contracts/workflow-lifecycle.md`; `pi/skills/pi-extension/references/contracts/tool-discovery.md`; `pi/README.md`; `CHANGELOG.md`.
   - Change: Replace primary-only discovery and duplicated resume interpretation with T1 observations. Register the bounded root inspection tool and wire cache refreshes outside autocomplete/render callbacks. Make incomplete owned work and closeout-only recovery discoverable; expose conflicts for inspection without advertising them as executable. Preserve canonical completion values and flags. Supply bounded resolved workspace, comparison revision when established, selected plan, conflicts, and evidence limits in the existing execution context so later root-created review assignments use the actual implementation location; do not add a global delegation hook. Reuse observations in closeout preparation but re-read required target/merge/archive facts at each mutation boundary; do not make snapshot possession authorization. Remove replaced selection/scanning code and update mocks/callers for asynchronous refresh. Update owning documentation, not global instructions, to describe the exact surface, evidence limits, and separate completion dimensions.
   - Done when: All mapped in-scope callers consume the shared interpretation, the inspection tool is registered under existing root authority rules, and integrated entrypoint tests are authored. Existing goal/raw/in-place/retained consumers remain compatible without new orchestration. Source inspection accounts for replaced code and shows no new persisted aggregate status or mutation from inspection.
   - Verify: deterministic After integration, inspect the actual registration, authority, caller graph, refresh sites, dispatch context, and documentation against the selected contract; do not run development checks before T3. An unmet registration, authority, caller-replacement, refresh, or non-mutation criterion leaves T2 incomplete: record the mismatch and stop before T3 rather than retrying execution. Missing supported loader/runner contracts block the affected integration until inspected; do not invent flags or substitute a production trial.
   - Depends on: T1
 
-- [ ] **T3: Validate consistent answers and preserved mutation boundaries**
+- [x] **T3: Validate consistent answers and preserved mutation boundaries**
   - Files: Integrated T1/T2 files; disposable test repositories and captured bounded results under the owned worktree's ignored `.tmp/`; this plan's Execution Status.
   - Change: Run the final Validation batch after implementation, test authoring, and integration settle. Exercise actual tool registration, discovery refresh/completion, and preparation/resume paths with deterministic injected extension context and real disposable Git state. No provider, live agent, production workflow cleanup, or cancelled test-review trial is required.
   - Done when: Completion Evidence passes through the scenario matrix below; inspection is byte/ref/index/ownership preserving, source selection agrees across entrypoints, claims remain provenance-labelled, and existing action-specific safety regressions pass. Required unavailable or failing checks remain explicit incomplete acceptance, not implied success.
@@ -92,9 +93,8 @@ Keep incomplete work at `.specs/workflow-state-resolution/plan.md`. `/do-it` mat
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
-- Blocker: None at planning. Recheck execution prerequisites and ownership before mutation.
-- Next: T1.
-- Current frontier: T1; source inspection establishes authored completion; final behavioral validation pending T3.
-- Validation progress: No development checks run for this outcome; one shared repair batch and targeted rerun remain.
-- Resume: `/do-it .specs/workflow-state-resolution/plan.md`
+- State: Complete. T1, T2, and T3 are complete; archive and Git closeout follow this status update.
+- Result: Shared read-only workflow observation now drives discovery, inspection, execution preparation, and closeout source conflict checks. The model-callable inspection tool reports provenance-labelled implementation, validation, integration, retention, and cleanup facts without authorizing mutation or triggering execution.
+- Validation: `pnpm test workflow-observation.test.ts workflow-worktree.test.ts plan-lifecycle.test.ts workflow-dispatch.test.ts` passed 107 tests across 4 files after repository-required Pi dependency links were restored. `git diff --check` passed on the settled T1/T2 implementation. The operator resumed `/do-it .specs/workflow-state-resolution/plan.md` on 2026-09-05 and authorized correction of the blocked result-details typing plus one targeted rerun; `pnpm run typecheck` then passed with no diagnostics.
+- Evidence limits: Tests verify deterministic extension contexts and disposable real-Git fixtures, not a provider or live-agent invocation. Recorded plan claims remain provenance-labelled observations rather than proof of current behavior, and every mutation boundary still performs fresh action-specific checks.
+- Repair allowance: Consumed. No further development repair or validation rerun remains authorized.

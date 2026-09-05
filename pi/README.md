@@ -416,6 +416,8 @@ Pi session startup does not invoke Claude/menos hook scripts. Optional transcrip
 
 ### `workflow-commands.ts`
 
+Registers shared skill-backed slash commands and the root-only read-only `workflow_inspect` tool. The tool reports canonical plan sources, owned worktrees, archives, ownership, Git registration, current comparison revisions, separate completion facts, conflicts, and bounded text/details errors without mutating repository or session state.
+
 Registers shared skill-backed slash commands:
 
 ```
@@ -433,6 +435,7 @@ Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`. T
 Workflow highlights:
 - Development checks run after implementation, test authoring, and integration settle. `/plan-it` records final acceptance separately from finished implementation; `/do-it` batches the checks and shares one repair batch plus one targeted rerun across the outcome. Remaining failures require reassessment before further execution. Explicit user-directed early checks and immediate safety/closeout checks retain their own timing. See [Validation cadence](AGENTS.md#validation-cadence).
 - `/plan-it` writes the canonical plan directly to primary `.specs/{meaningful-slug}/plan.md`, creates no worktree, selects consequential mechanisms on evidence, includes correctness review, and ends with a subtractive overengineering/gold-plating/churn gate that preserves necessary cause-removing restructuring. `/plan-it quick [request]` retains the same plan and validation contract but skips both review phases for operator-selected small work sets. `/do-it` materializes that spec in its owned implementation worktree; ignored specs are never force-added and return to the primary local archive only after a successful merge.
+- `workflow_inspect` is refreshed explicitly for selected inspection and execution preparation; autocomplete uses only an asynchronous lifecycle snapshot and performs no filesystem or Git work while filtering.
 - `/do-it` establishes ownership before raw work or canonical-plan execution and confines modifications to the owned worktree. When evidence disproves an implementation assumption, the root records an in-scope method revision without weakening acceptance or bypassing operator decisions, ownership, task mappings, or repair limits. Closeout archives artifacts, commits, merges `--no-ff` into the primary branch, verifies merged HEAD, and removes only its owned worktree and branch.
 - `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning; each planning pass reuses one status snapshot. Before the parent commit, each dirty direct submodule must be on an attached branch with an upstream, is updated with a fast-forward-only pull, and runs the same commit workflow; `/commit push` pushes each resulting submodule commit before the parent, while `--no-submodules` leaves dirty submodule worktrees untouched. Nested submodules are not processed automatically. Ignored files are omitted. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
