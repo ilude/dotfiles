@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { Value } from "typebox/value";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -429,6 +430,42 @@ Execute workflow items with admitted tools only.
 
 			return proc;
 		});
+	}
+
+	function mockSettledSessionBatch(output: string | ((args: string[]) => string), batchSize: number) {
+		const pending: Array<{ proc: MockProcess; text: string }> = [];
+		spawnMock.mockImplementation((_command: string, args: string[]) => {
+			const proc = createMockProcess();
+			const sessionIdIndex = args.indexOf("--session-id");
+			if (sessionIdIndex >= 0) {
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[sessionIdIndex + 1];
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`),
+					testSessionHeader(sessionId, tmpDir), "utf8");
+			}
+			pending.push({ proc, text: typeof output === "function" ? output(args) : output });
+			if (pending.length === batchSize) {
+				// Finish in reverse launch order without clocks or guessed delays.
+				queueMicrotask(() => {
+					for (const { proc: child, text } of pending.splice(0).reverse()) {
+						child.stdout.emit("data", `${JSON.stringify({
+							type: "message_end",
+							message: { role: "assistant", content: [{ type: "text", text }], stopReason: "end_turn" },
+						})}\n`);
+						child.emit("close", 0);
+					}
+				});
+			}
+			return proc;
+		});
+	}
+
+	function launchForRun(runId: string) {
+		expect(runId).toEqual(expect.any(String));
+		const launches = spawnMock.mock.calls.filter((call) => call[2]?.env?.PI_SUBAGENT_RUN_ID === runId);
+		expect(launches).toHaveLength(1);
+		return { args: launches[0][1] as string[], env: launches[0][2].env as NodeJS.ProcessEnv };
 	}
 
 	async function loadTool() {
@@ -3159,7 +3196,7 @@ You are a test agent.
 	);
 
 	it(
-		"uses explicit effort over agent frontmatter in every mode",
+		"uses explicit effort and records its fingerprint in every mode",
 		async () => {
 			const { tool } = await loadTool();
 			const ctx = createMockCtx({ cwd: tmpDir });
@@ -3223,6 +3260,8 @@ You are a test agent.
 							: "xhigh";
 				expect(spawnArgs[thinkingIndex + 1]).toBe(expected);
 				expect(result.details.results[0].effort).toBe(expected);
+				expect(subagentRunManager.get(result.details.results[0].runId)?.executionFingerprint)
+					.toMatchObject({ effort: expected, role: "leaf" });
 			}
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
@@ -5004,7 +5043,7 @@ You are a test agent.
 
 			const first = await modernWrite.execute(
 				"modern-affinity-task-a",
-				{ items: [{ agent: "luna", instructions: "Complete task A.", taskId: taskA.id }], agentScope: "project" },
+				{ items: [{ agent: "luna", instructions: "Complete task A.", taskId: taskA.id, effort: "medium" }], agentScope: "project" },
 				undefined,
 				undefined,
 				ctx,
@@ -5014,11 +5053,17 @@ You are a test agent.
 			expect(path.normalize(firstSessionPath!).toLowerCase()).toBe(
 				path.normalize(savedSessionPath!).toLowerCase(),
 			);
+			await expect(modernWrite.execute("modern-affinity-changed-effort", {
+				affinityTaskId: taskA.id,
+				items: [{ agent: "luna", instructions: "Continue as task B.", taskId: taskB.id, effort: "low" }],
+				agentScope: "project",
+			}, undefined, undefined, ctx)).rejects.toThrow("Task session affinity rejected");
+			expect(childInvocations).toHaveLength(1);
 			const second = await modernWrite.execute(
 				"modern-affinity-task-b",
 				{
 					affinityTaskId: taskA.id,
-					items: [{ agent: "luna", instructions: "Continue as task B.", taskId: taskB.id }],
+					items: [{ agent: "luna", instructions: "Continue as task B.", taskId: taskB.id, effort: "medium" }],
 					agentScope: "project",
 				},
 				undefined,
@@ -5039,6 +5084,10 @@ You are a test agent.
 				path.normalize(firstSessionPath!).toLowerCase(),
 			);
 			expect(childInvocations).toHaveLength(2);
+			for (const { args } of childInvocations) {
+				expect(args).toContain("--thinking");
+				expect(args[args.indexOf("--thinking") + 1]).toBe("medium");
+			}
 			expect(childInvocations[0]?.args).toEqual(expect.arrayContaining(["--session-id", expect.any(String)]));
 			expect(childInvocations[1]?.args).toEqual(
 				expect.arrayContaining(["--session", secondSessionPath]),
@@ -5239,6 +5288,368 @@ You are a test agent.
 		const [run] = subagentRunManager.list();
 		expect(run.authorityTools).toEqual(expectedTools);
 	}, SUBAGENT_TEST_TIMEOUT_MS);
+
+	it.each([
+		{ parallel: false, background: false }, { parallel: true, background: false },
+		{ parallel: false, background: true }, { parallel: true, background: true },
+	])("preserves Team Lead choices through settlement ($parallel parallel, $background background)", async ({ parallel, background }) => {
+		const { loadAgentsFromDir } = await import("../extensions/subagent/agents.ts");
+		const profile = loadAgentsFromDir(fileURLToPath(new URL("../agents/", import.meta.url)), "user")
+			.find((agent) => agent.name === "teamlead");
+		if (!profile?.tools) throw new Error("Missing shipped Team Lead profile");
+		// Replace the existing fixture, retaining exactly one profile per name.
+		fs.writeFileSync(path.join(tmpDir, ".pi", "agents", "orchestrator.md"),
+			`---\nname: teamlead\ndescription: Team Lead selection fixture\nmodel: ${profile.model}\neffort: ${profile.effort}\ntools: ${profile.tools.join(", ")}\n---\nCoordinate the assigned package.\n`);
+		fs.writeFileSync(path.join(tmpDir, ".pi", "agents", "custom-lead.md"),
+			"---\nname: custom-lead\ndescription: Custom Team Lead\nmodel: openai-codex/gpt-5.6-terra\neffort: minimal\ntools: subagent_write\n---\nCoordinate.\n");
+		const selections: Array<{ agent?: string; model?: string; effort?: string }> = parallel ? [
+			{}, { model: " openai-codex/gpt-5.6-luna ", effort: "high" },
+			{ model: "openai-codex/gpt-5.6-sol" }, { effort: "medium" }, { agent: "custom-lead" },
+		] : [{ model: "openai-codex/gpt-5.6-luna", effort: "high" }];
+		mockSettledSessionBatch((args) => JSON.stringify({
+			status: "complete", completed: [`${args[args.indexOf("--model") + 1]} / ${args[args.indexOf("--thinking") + 1]}`],
+			remaining: [], validation: { status: "passed" },
+		}), selections.length);
+		const { pi } = await loadTool();
+		const ctx = createMockCtx({ cwd: tmpDir });
+		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
+		const tool = pi._getTool("subagent_teamlead");
+		if (!tool) throw new Error("subagent_teamlead not registered");
+		const input = { agentScope: "project", background, maxWorkers: 2,
+			items: selections.map((selection, index) => ({
+				agent: "teamlead", instructions: `Coordinate package ${index}.`, ...selection,
+			})) };
+		expect(Value.Check(tool.parameters, input)).toBe(true);
+		const result = await tool.execute("teamlead-selection", input, undefined, undefined, ctx);
+		expect(result.isError).not.toBe(true);
+		if (background) {
+			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(1), { timeout: 5000 });
+			expect(pi.sendMessage.mock.calls[0][0].details).toMatchObject({ failed: false, deliverableOutcome: "complete" });
+		} else {
+			expect(result.details.agentScope).toBe("project");
+			expect(result.details.results).toHaveLength(selections.length);
+		}
+		expect(spawnMock).toHaveBeenCalledTimes(selections.length);
+		expect(subagentRunManager.list()).toHaveLength(selections.length);
+		for (const [index, selection] of selections.entries()) {
+			const expectedModel = selection.model?.trim() ?? (selection.agent ? "openai-codex/gpt-5.6-terra" : "openai-codex/gpt-6-astra");
+			const expectedEffort = selection.effort ?? (selection.agent ? "minimal" : "low");
+			const child = background
+				? subagentRunManager.list().find((run) => run.task === input.items[index].instructions)
+				: result.details.results[index];
+			expect(child).toMatchObject({ model: expectedModel, effort: expectedEffort });
+			const { args, env } = launchForRun(child.runId);
+			expect(args).toContain("--model");
+			expect(args).toContain("--thinking");
+			expect(args[args.indexOf("--model") + 1]).toBe(expectedModel);
+			expect(args[args.indexOf("--thinking") + 1]).toBe(expectedEffort);
+			expect(env.PI_SUBAGENT_MAX_WORKERS).toBe("2");
+			const savedRun = subagentRunManager.get(child.runId);
+			expect(JSON.parse(savedRun!.finalText).completed).toEqual([`${expectedModel} / ${expectedEffort}`]);
+			expect(savedRun).toMatchObject({
+				status: "completed", sessionPath: expect.any(String), deliverableOutcome: "complete",
+				executionFingerprint: {
+					agent: selection.agent ?? "teamlead", model: expectedModel, effort: expectedEffort,
+					role: "coordinator", depth: 1, skills: [],
+					authorityTools: ["find", "grep", "log_analytics", "ls", "read", "subagent_read", "subagent_write"],
+				},
+			});
+		}
+	}, SUBAGENT_TEST_TIMEOUT_MS);
+
+	it("uses the shipped Team Lead defaults from the user catalog", async () => {
+		const { loadAgentsFromDir } = await import("../extensions/subagent/agents.ts");
+		const profile = loadAgentsFromDir(fileURLToPath(new URL("../agents/", import.meta.url)), "user")
+			.find((agent) => agent.name === "teamlead")!;
+		// Isolate skill discovery; load the real profile's model, effort and tools.
+		fs.writeFileSync(path.join(tmpDir, "agent", "agents", "teamlead.md"),
+			`---\nname: teamlead\ndescription: Shipped defaults\nmodel: ${profile.model}\neffort: ${profile.effort}\ntools: ${profile.tools!.join(", ")}\n---\nCoordinate.\n`);
+		mockSuccessfulSpawn();
+		const { pi } = await loadTool();
+		const result = await pi._getTool("subagent_teamlead")!.execute("shipped-user-defaults", {
+			items: [{ agent: "teamlead", instructions: "Coordinate." }],
+		}, undefined, undefined, createMockCtx({ cwd: tmpDir }));
+		expect(result.details.agentScope).toBe("user");
+		expect(result.details.results[0]).toMatchObject({ agentSource: "user", model: "openai-codex/gpt-6-astra", effort: "low" });
+		const { args } = launchForRun(result.details.results[0].runId);
+		expect(args[args.indexOf("--model") + 1]).toBe("openai-codex/gpt-6-astra");
+		expect(args[args.indexOf("--thinking") + 1]).toBe("low");
+	});
+
+	it.each([
+		{ selection: {}, model: "openai-codex/gpt-5.6-terra", effort: "minimal" },
+		{ selection: { model: "openai-codex/gpt-6-astra" }, model: "openai-codex/gpt-6-astra", effort: "minimal" },
+		{ selection: { effort: "high" }, model: "openai-codex/gpt-5.6-terra", effort: "high" },
+		{ selection: { model: "openai-codex/gpt-6-astra", effort: "off" }, model: "openai-codex/gpt-6-astra", effort: "off" },
+	])("overrides only the selected custom-profile fields ($model, $effort)", async ({ selection, model, effort }) => {
+		fs.writeFileSync(path.join(tmpDir, ".pi", "agents", "custom-lead.md"),
+			"---\nname: custom-lead\ndescription: Custom Team Lead\nmodel: openai-codex/gpt-5.6-terra\neffort: minimal\ntools: subagent_write\n---\nCoordinate.\n");
+		mockSuccessfulSpawn();
+		const { pi } = await loadTool();
+		const result = await pi._getTool("subagent_teamlead")!.execute("custom-profile-options", {
+			items: [{ agent: "custom-lead", instructions: "Coordinate.", ...selection }], agentScope: "project",
+		}, undefined, undefined, createMockCtx({ cwd: tmpDir }));
+		const { args } = launchForRun(result.details.results[0].runId);
+		expect(args[args.indexOf("--model") + 1]).toBe(model);
+		expect(args[args.indexOf("--thinking") + 1]).toBe(effort);
+		expect(subagentRunManager.get(result.details.results[0].runId)?.executionFingerprint).toMatchObject({ model, effort });
+	});
+
+	it.each([false, true])("continues each settled Team Lead with unchanged choices only (parallel=%s)", async (parallel) => {
+		const items = [
+			{ agent: "teamlead", instructions: "Coordinate one.", model: "openai-codex/gpt-6-astra", effort: "low" },
+			...(parallel ? [{ agent: "teamlead", instructions: "Coordinate two.", model: "openai-codex/gpt-5.6-sol", effort: "high" }] : []),
+		];
+		mockSettledSessionBatch((args) => JSON.stringify({ status: "partial",
+			completed: [`${args[args.indexOf("--model") + 1]} / ${args[args.indexOf("--thinking") + 1]}`], remaining: ["validate"],
+			validation: { status: "passed" }, requestedAdditionalTimeMs: 5000 }), items.length);
+		const { pi } = await loadTool();
+		const tool = pi._getTool("subagent_teamlead")!;
+		const ctx = createMockCtx({ cwd: tmpDir });
+		const first = await tool.execute("teamlead-partials", { items, agentScope: "project" }, undefined, undefined, ctx);
+		expect(first.details.results).toHaveLength(items.length);
+		expect(new Set(first.details.results.map((child: { completion?: { continuation?: { continuationId?: string } } }) =>
+			child.completion?.continuation?.continuationId)).size).toBe(items.length);
+		for (const [index, item] of items.entries()) {
+			const child = first.details.results[index];
+			const continuationId = child.completion?.continuation?.continuationId;
+			expect(child.completion.completed).toEqual([`${item.model} / ${item.effort}`]);
+			expect(continuationId).toEqual(expect.any(String));
+			expect(child.sessionPath).toBeUndefined();
+			const before = spawnMock.mock.calls.length;
+			for (const changed of [{ model: "openai-codex/gpt-5.6-luna" }, { effort: "medium" }]) {
+				await expect(tool.execute("changed-teamlead-continuation", {
+					items: [{ ...item, ...changed }], agentScope: "project", continuationId,
+				}, undefined, undefined, ctx)).rejects.toThrow("authority or identity no longer matches");
+			}
+			expect(spawnMock).toHaveBeenCalledTimes(before);
+			const saved = subagentRunManager.get(child.runId)?.sessionPath;
+			expect(saved).toEqual(expect.any(String));
+			mockSettledSessionBatch("done", 1);
+			const request = { items: [item], agentScope: "project", continuationId, maxWorkers: 1 };
+			const resumed = await tool.execute("unchanged-teamlead-continuation", request, undefined, undefined, ctx);
+			const continued = resumed.details.results[0];
+			expect(continued).toMatchObject({ model: item.model, effort: item.effort, continuationStatus: "continued" });
+			const { args, env } = launchForRun(continued.runId);
+			expect(args).toContain("--session");
+			expect(canonicalizeSavedSessionPath(args[args.indexOf("--session") + 1])).toBe(canonicalizeSavedSessionPath(saved!));
+			expect(env.PI_SUBAGENT_MAX_WORKERS).toBe("1");
+			expect(subagentRunManager.get(continued.runId)?.executionFingerprint).toEqual(
+				subagentRunManager.get(child.runId)?.executionFingerprint,
+			);
+			await expect(tool.execute("reused-teamlead-continuation", request, undefined, undefined, ctx))
+				.rejects.toThrow("already been consumed");
+			expect(spawnMock).toHaveBeenCalledTimes(before + 1);
+		}
+	}, SUBAGENT_TEST_TIMEOUT_MS);
+
+	it.each([
+		{ toolName: "subagent_read", parallel: false }, { toolName: "subagent_read", parallel: true },
+		{ toolName: "subagent_write", parallel: false }, { toolName: "subagent_write", parallel: true },
+	])("preserves explicit worker effort through $toolName ($parallel parallel)", async ({ toolName, parallel }) => {
+		mockSuccessfulSpawn();
+		const { pi } = await loadTool();
+		const tool = pi._getTool(toolName)!;
+		const efforts = parallel ? ["low", "off"] : ["medium"];
+		const result = await tool.execute("worker-effort", {
+			items: efforts.map((effort) => ({ agent: "tester", instructions: `Work at ${effort}.`, effort })), agentScope: "project",
+		}, undefined, undefined, createMockCtx({ cwd: tmpDir }));
+		expect(result.isError).not.toBe(true);
+		expect(result.details.results).toHaveLength(efforts.length);
+		for (const [index, effort] of efforts.entries()) {
+			const child = result.details.results[index];
+			const { args } = launchForRun(child.runId);
+			expect(args).toContain("--thinking");
+			expect(args[args.indexOf("--thinking") + 1]).toBe(effort);
+			expect(child.effort).toBe(effort);
+			expect(subagentRunManager.get(child.runId)?.executionFingerprint).toMatchObject({ effort });
+		}
+	});
+
+	it("rejects invalid Team Lead choices and preserves max-effort approval before spawning", async () => {
+		const { pi } = await loadTool();
+		const tool = pi._getTool("subagent_teamlead");
+		if (!tool) throw new Error("subagent_teamlead not registered");
+		for (const selection of [{ model: " " }, { model: 42 }, { effort: "turbo" }, { effort: null }]) {
+			await expect(tool.execute("invalid-teamlead-selection", {
+				items: [{ agent: "teamlead", instructions: "Coordinate.", ...selection }], agentScope: "project",
+			}, undefined, undefined, createMockCtx({ cwd: tmpDir }))).rejects.toThrow(/Team Lead model|subagent effort/);
+		}
+		const previous = process.env.PI_SUBAGENT_ALLOW_MAX;
+		delete process.env.PI_SUBAGENT_ALLOW_MAX;
+		try {
+			for (const selection of [{ effort: "max" }, { model: "openai-codex/gpt-6-astra:max" }]) {
+				await expect(tool.execute("max-teamlead-selection", {
+					items: [{ agent: "teamlead", instructions: "Coordinate.", ...selection }], agentScope: "project",
+				}, undefined, undefined, createMockCtx({ cwd: tmpDir, hasUI: false }))).rejects.toThrow("max effort requires explicit operator approval");
+			}
+		} finally {
+			if (previous === undefined) delete process.env.PI_SUBAGENT_ALLOW_MAX;
+			else process.env.PI_SUBAGENT_ALLOW_MAX = previous;
+		}
+		expect(spawnMock).not.toHaveBeenCalled();
+	});
+
+	it.each(["subagent_read", "subagent_teamlead"])("rechecks required read paths at the %s process-start boundary", async (toolName) => {
+		const requiredDir = path.join(tmpDir, "required");
+		fs.mkdirSync(requiredDir);
+		fs.writeFileSync(path.join(requiredDir, "target.txt"), "inside");
+		const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pi-required-read-race-"));
+		fs.writeFileSync(path.join(outside, "target.txt"), "outside");
+		const begin = subagentRunManager.begin.bind(subagentRunManager);
+		const spy = vi.spyOn(subagentRunManager, "begin").mockImplementation((...args) => {
+			const result = begin(...args);
+			fs.rmSync(requiredDir, { recursive: true });
+			fs.symlinkSync(outside, requiredDir, process.platform === "win32" ? "junction" : "dir");
+			return result;
+		});
+		try {
+			const { pi } = await loadTool();
+			const tool = pi._getTool(toolName)!;
+			await expect(tool.execute("required-read-start-race", {
+				items: [{ agent: toolName === "subagent_teamlead" ? "teamlead" : "tester", instructions: "Read the declared target.",
+					requiredReadPaths: [path.join(requiredDir, "target.txt")] }], agentScope: "project",
+			}, undefined, undefined, createMockCtx({ cwd: tmpDir }))).rejects.toThrow(/outside|escape|boundary/i);
+			expect(spawnMock).not.toHaveBeenCalled();
+			expect(subagentRunManager.list()).toHaveLength(1);
+			expect(subagentRunManager.list()[0].status).toBe("failed");
+		} finally {
+			spy.mockRestore();
+			fs.rmSync(requiredDir, { recursive: true, force: true });
+			fs.rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it.each(["subagent_read", "subagent_write", "subagent_teamlead"])("validates every item before %s acknowledges background work", async (toolName) => {
+		const { pi } = await loadTool();
+		const ctx = createMockCtx({ cwd: tmpDir });
+		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
+		const tool = pi._getTool(toolName)!;
+		const agent = toolName === "subagent_teamlead" ? "teamlead" : "tester";
+		const input = { agentScope: "project", background: true, items: [
+			{ agent, instructions: "Valid first item.", effort: "low" },
+			{ agent, instructions: "Invalid second item.", effort: "turbo" },
+		] };
+		expect(Value.Check(tool.parameters, input)).toBe(false);
+		await expect(tool.execute("invalid-batch", input, undefined, undefined, ctx)).rejects.toThrow("Invalid subagent effort");
+		expect(spawnMock).not.toHaveBeenCalled();
+		expect(subagentRunManager.list()).toHaveLength(0);
+		expect(pi.sendMessage).not.toHaveBeenCalled();
+		if (toolName === "subagent_teamlead") {
+			const badModel = { ...input, items: [input.items[0], { agent, instructions: "Invalid model.", model: " " }] };
+			await expect(tool.execute("invalid-model-batch", badModel, undefined, undefined, ctx)).rejects.toThrow("Team Lead model");
+			expect(spawnMock).not.toHaveBeenCalled();
+		}
+	});
+
+	it.each([false, true])("requires UI approval before starting any worker in a max-effort batch (approved=%s)", async (approved) => {
+		const previous = process.env.PI_SUBAGENT_ALLOW_MAX;
+		delete process.env.PI_SUBAGENT_ALLOW_MAX;
+		try {
+			mockSuccessfulSpawn();
+			const { pi } = await loadTool();
+			const tool = pi._getTool("subagent_teamlead")!;
+			const ctx = createMockCtx({ cwd: tmpDir });
+			ctx.ui.confirm.mockImplementation(async () => {
+				expect(spawnMock).not.toHaveBeenCalled();
+				expect(subagentRunManager.list()).toHaveLength(0);
+				return approved;
+			});
+			const execution = tool.execute("max-batch-approval", { agentScope: "project", items: [
+				{ agent: "teamlead", instructions: "Normal worker.", effort: "low" },
+				{ agent: "teamlead", instructions: "Expensive worker.", effort: "max" },
+			] }, undefined, undefined, ctx);
+			if (approved) {
+				const result = await execution;
+				expect(result.isError).not.toBe(true);
+				expect(spawnMock).toHaveBeenCalledTimes(2);
+				const { args } = launchForRun(result.details.results[1].runId);
+				expect(args[args.indexOf("--thinking") + 1]).toBe("max");
+			} else {
+				await expect(execution).rejects.toThrow("max effort was not approved");
+				expect(spawnMock).not.toHaveBeenCalled();
+				expect(subagentRunManager.list()).toHaveLength(0);
+			}
+			expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
+		} finally {
+			if (previous === undefined) delete process.env.PI_SUBAGENT_ALLOW_MAX;
+			else process.env.PI_SUBAGENT_ALLOW_MAX = previous;
+		}
+	});
+
+	it("ignores unused max-effort profiles while preserving selected-profile approval", async () => {
+		const previous = process.env.PI_SUBAGENT_ALLOW_MAX;
+		delete process.env.PI_SUBAGENT_ALLOW_MAX;
+		try {
+			fs.writeFileSync(path.join(tmpDir, ".pi", "agents", "unused-max.md"),
+				"---\nname: unused-max\ndescription: Max profile\nmodel: openai-codex/gpt-6-astra\neffort: max\ntools: subagent_write\n---\nCoordinate.\n");
+			mockSuccessfulSpawn();
+			const { pi } = await loadTool();
+			const tool = pi._getTool("subagent_teamlead")!;
+			const ctx = createMockCtx({ cwd: tmpDir, hasUI: false });
+			await tool.execute("normal-effort-profile", {
+				items: [{ agent: "teamlead", instructions: "Coordinate." }], agentScope: "project",
+			}, undefined, undefined, ctx);
+			expect(spawnMock).toHaveBeenCalledTimes(1);
+			const request = { items: [{ agent: "unused-max", instructions: "Coordinate." }], agentScope: "project" };
+			await expect(tool.execute("selected-max-profile", request, undefined, undefined, ctx))
+				.rejects.toThrow("max effort requires explicit operator approval");
+			expect(spawnMock).toHaveBeenCalledTimes(1);
+			process.env.PI_SUBAGENT_ALLOW_MAX = "1";
+			const approved = await tool.execute("approved-max-profile", request, undefined, undefined, ctx);
+			const { args } = launchForRun(approved.details.results[0].runId);
+			expect(args[args.indexOf("--thinking") + 1]).toBe("max");
+		} finally {
+			if (previous === undefined) delete process.env.PI_SUBAGENT_ALLOW_MAX;
+			else process.env.PI_SUBAGENT_ALLOW_MAX = previous;
+		}
+	});
+
+	it("preflights every explicit Team Lead model against Bedrock child-provider restrictions", async () => {
+		mockSuccessfulSpawn();
+		const { pi } = await loadTool();
+		const tool = pi._getTool("subagent_teamlead")!;
+		const ctx = fableCtx([
+			{ provider: "openai-codex", id: "gpt-6-astra" },
+			{ provider: "openai-codex", id: "gpt-5.6-luna" },
+		]);
+		const first = { agent: "teamlead", instructions: "Coordinate one.", model: "openai-codex/gpt-6-astra", effort: "low" };
+		for (const model of ["anthropic/claude-sonnet-4-6", "openai-codex/unavailable"]) {
+			await expect(tool.execute("invalid-provider-batch", {
+				items: [first, { ...first, model }], agentScope: "project",
+			}, undefined, undefined, ctx)).rejects.toThrow(/requires an openai-codex child model|child model is unavailable/);
+		}
+		expect(spawnMock).not.toHaveBeenCalled();
+		expect(subagentRunManager.list()).toHaveLength(0);
+		const result = await tool.execute("valid-provider-batch", {
+			items: [first, { ...first, model: "openai-codex/gpt-5.6-luna", effort: "high" }], agentScope: "project",
+		}, undefined, undefined, ctx);
+		try {
+			expect(result.isError).not.toBe(true);
+			expect(result.details.results).toHaveLength(2);
+			for (const [index, model] of ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-luna"].entries()) {
+				const { args } = launchForRun(result.details.results[index].runId);
+				expect(args[args.indexOf("--model") + 1]).toBe(model);
+			}
+		} finally {
+			for (const child of result.details.results) {
+				if (child.outputPath) fs.rmSync(child.outputPath, { force: true });
+			}
+		}
+	});
+
+	it("keeps the registered tool's authority when a direct caller supplies another kind", async () => {
+		mockSuccessfulSpawn();
+		const { pi } = await loadTool();
+		const tool = pi._getTool("subagent_read")!;
+		const result = await tool.execute("read-cannot-be-write", {
+			kind: "write", items: [{ agent: "tester", instructions: "Inspect only." }], agentScope: "project",
+		}, undefined, undefined, createMockCtx({ cwd: tmpDir }));
+		const { args } = launchForRun(result.details.results[0].runId);
+		expect(args[args.indexOf("--tools") + 1].split(",")).toEqual([
+			"read", "grep", "find", "ls", "log_analytics", "web_search", "web_fetch",
+		]);
+	});
 
 	it(
 		"emits exactly one closeout for each modern subagent tool",

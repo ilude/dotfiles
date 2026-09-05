@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-05: Make Team Lead model and effort selectable
+
+**Changed:** `subagent_teamlead` accepts a model override on each item and now applies its existing effort option to the actual child launch. Omitted values use the selected profile; the shipped Team Lead defaults to `openai-codex/gpt-6-astra` with low effort. Parallel items retain independent selections, and continuation fingerprints include the effective choices.
+
+**Fixed:** Shared launch settings now retain execution fingerprints and authority in every launch mode, including parallel Team Leads, and apply the Team Lead worker limit consistently. Read/write items honor their effort overrides, single-item read assertions reach the process-start recheck, coordinator results retain the requested agent scope, and max-effort approval no longer inspects unused profiles. The selected tool controls execution authority even for direct callers. Tests match launches by worker ID and exercise reverse completion order, saved sessions, continuation rejection without consuming the ID, and background delivery.
+
+**Preserved:** Worker defaults, tool authority, provider restrictions, execution budgets, and explicit approval for max effort are unchanged. The subagent contract now also reflects the already-supported Bedrock Team Lead behavior documented by the provider owner.
+
 ## 2026-09-05: Preserve unrelated primary dirt during merged workflow cleanup
 
 **Fixed:** The post-merge `plan_archive` verifier no longer treats unrelated dirty primary files as a cleanup failure. It still requires pre-merge primary cleanliness, rejects dirty workflow-owned archive/source paths, verifies the registered owned worktree and expected branch, and validates the complete archive in the merged tree without rejecting legitimate archive reconciliation.

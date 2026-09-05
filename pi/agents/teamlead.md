@@ -1,7 +1,7 @@
 ---
 name: teamlead
 description: Coordinates one independently verifiable work package through bounded subagent assignments.
-model: openai-codex/gpt-5.6-sol
+model: openai-codex/gpt-6-astra
 effort: low
 skills:
   - orchestration

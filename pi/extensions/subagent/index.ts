@@ -3925,7 +3925,7 @@ export default function (pi: ExtensionAPI) {
 			const sessionCatalog = prepared ? undefined : agentCatalogFor(ctx);
 			const discovery = prepared?.discovery ?? sessionCatalog!.byScope[agentScope];
 			const agents = discovery.agents;
-			if (containsMaxEffortSelection(params, agents) && process.env.PI_SUBAGENT_ALLOW_MAX !== "1") {
+			if (containsMaxEffortSelection(internalParams.__modernRequest ?? params, agents) && process.env.PI_SUBAGENT_ALLOW_MAX !== "1") {
 				if (!ctx.hasUI) throw new Error("Subagent max effort requires explicit operator approval or PI_SUBAGENT_ALLOW_MAX=1.");
 				const approved = await ctx.ui.confirm(
 					"Approve max subagent effort",
@@ -4405,6 +4405,7 @@ export default function (pi: ExtensionAPI) {
 							? (() => {
 									const hardDeadlineAt = Date.now() + coordinatorBudget.hardDeadlineMs;
 									return {
+										maxWorkers: coordinatorBudget.maxWorkers,
 										maxTurns: coordinatorBudget.maxTurns,
 										timeoutMs: coordinatorBudget.softDeadlineMs,
 										hardDeadlineMs: coordinatorBudget.hardDeadlineMs,
@@ -4618,6 +4619,14 @@ export default function (pi: ExtensionAPI) {
 			const prepareChild = (item: TaskParams, forcedRole?: SubagentRole) => {
 				const executionKind = internalParams.__modernRequest?.kind;
 				const preparedItem = prepared?.items[preparedItemCursor++];
+				if (preparedItem) {
+					const selection = preparedItem.request;
+					if (executionKind === "coordinator" && "model" in selection && typeof selection.model === "string")
+						item.resolvedModel = selection.model.trim();
+					item.resolvedEffort = selection.effort as AgentEffort | undefined;
+					if ("requiredReadPaths" in selection && selection.requiredReadPaths)
+						item.requiredReadPaths = [...selection.requiredReadPaths];
+				}
 				if (!preparedItem) {
 					const taskLink = validateTaskLink(
 						item.taskId,
@@ -4696,7 +4705,7 @@ export default function (pi: ExtensionAPI) {
 						availableModels,
 						ctx.model as ModelLike | undefined,
 						agent,
-						explicitModel,
+						item.resolvedModel ?? explicitModel,
 						modelSize,
 					);
 				}
@@ -4710,6 +4719,22 @@ export default function (pi: ExtensionAPI) {
 					authorityTools: normalizeFingerprintValues(effectiveAuthorityTools),
 				};
 			};
+			// Keep launch authority and continuation identity identical across modes.
+			const childRunContext = (item: TaskParams): SubagentRunContext => ({
+				executionFingerprint: item.affinityFingerprint,
+				requiredReadPaths: item.requiredReadPaths,
+				role: item.resolvedRole,
+				depth: item.resolvedDepth,
+				authorityTools: item.resolvedAuthorityTools,
+				scopes: item.normalizedScopes,
+				workPaths: item.scope,
+				workBoundary: internalParams.workBoundary,
+				repositoryRoot: item.repositoryRoot,
+				telemetryWorkspaceRootSource: item.telemetryWorkspaceRootSource,
+				telemetryTaskLinkSource: item.telemetryTaskLinkSource,
+				telemetryMarkerCount: item.telemetryMarkerCount,
+				telemetryBoundaryCount: item.telemetryBoundaryCount,
+			});
 			const chain = params.chain as unknown as TaskParams[] | undefined;
 			try {
 				if (fanoutPlan) {
@@ -4853,16 +4878,7 @@ export default function (pi: ExtensionAPI) {
 					undefined,
 					undefined,
 					{ continuable: true, sessionPath: followUp.session },
-					{
-						role: followUp.resolvedRole,
-						depth: followUp.resolvedDepth,
-						scopes: followUp.normalizedScopes,
-						telemetryWorkspaceRootSource: followUp.telemetryWorkspaceRootSource,
-						telemetryTaskLinkSource: followUp.telemetryTaskLinkSource,
-						telemetryMarkerCount: followUp.telemetryMarkerCount,
-						telemetryBoundaryCount: followUp.telemetryBoundaryCount,
-						authorityTools: followUp.resolvedAuthorityTools,
-					},
+					childRunContext(followUp),
 				);
 				finalizeOutput(
 					result,
@@ -4940,18 +4956,7 @@ export default function (pi: ExtensionAPI) {
 						undefined,
 						undefined,
 						{ continuable: params.continuable === true, continuationStatus: "fresh" },
-						{
-							requiredReadPaths: step.requiredReadPaths,
-							role: step.resolvedRole,
-							depth: step.resolvedDepth,
-							scopes: step.normalizedScopes,
-							workPaths: step.scope,
-							repositoryRoot: step.repositoryRoot,
-							telemetryWorkspaceRootSource: step.telemetryWorkspaceRootSource,
-							telemetryTaskLinkSource: step.telemetryTaskLinkSource,
-							telemetryMarkerCount: step.telemetryMarkerCount,
-							telemetryBoundaryCount: step.telemetryBoundaryCount,
-						},
+						childRunContext(step),
 					);
 					finalizeOutput(
 						result,
@@ -5090,19 +5095,7 @@ export default function (pi: ExtensionAPI) {
 								t.taskId,
 								undefined,
 								{ continuable: params.continuable === true, continuationStatus: "fresh" },
-								{
-									requiredReadPaths: t.requiredReadPaths,
-									role: t.resolvedRole,
-									depth: t.resolvedDepth,
-									scopes: t.normalizedScopes,
-									workPaths: t.scope,
-									repositoryRoot: t.repositoryRoot,
-									workBoundary: internalParams.workBoundary,
-									telemetryWorkspaceRootSource: t.telemetryWorkspaceRootSource,
-									telemetryTaskLinkSource: t.telemetryTaskLinkSource,
-									telemetryMarkerCount: t.telemetryMarkerCount,
-									telemetryBoundaryCount: t.telemetryBoundaryCount,
-								},
+								childRunContext(t),
 							);
 							finalizeOutput(
 								result,
@@ -5170,7 +5163,7 @@ export default function (pi: ExtensionAPI) {
 					selectedSingle.resolvedModel ?? resolvedModelId,
 					modelSize,
 					modelPolicy,
-					selectedSingle.resolvedEffort ?? routedEffort,
+					selectedSingle.resolvedEffort ?? selectedSingle.effort ?? routedEffort,
 					selectedSingle.taskId,
 					undefined,
 					{
@@ -5180,24 +5173,7 @@ export default function (pi: ExtensionAPI) {
 							? { sessionPath: selectedSingle.affinitySessionPath, leaseSessionPath: selectedSingle.affinitySessionPath }
 							: {}),
 					},
-					{
-						executionFingerprint: selectedSingle.affinityFingerprint,
-						requiredReadPaths: selectedSingle.requiredReadPaths,
-						role: selectedSingle.resolvedRole,
-						depth: selectedSingle.resolvedDepth,
-						scopes: selectedSingle.normalizedScopes,
-						workPaths: selectedSingle.scope,
-						workBoundary: internalParams.workBoundary,
-						repositoryRoot: selectedSingle.repositoryRoot,
-						workspaceRoot: invocationCwd,
-						telemetryWorkspaceRootSource: selectedSingle.telemetryWorkspaceRootSource,
-						telemetryTaskLinkSource: selectedSingle.telemetryTaskLinkSource,
-						telemetryMarkerCount: selectedSingle.telemetryMarkerCount,
-						telemetryBoundaryCount: selectedSingle.telemetryBoundaryCount,
-						...(coordinatorBudget
-							? { maxWorkers: coordinatorBudget.maxWorkers }
-							: {}),
-					},
+					childRunContext(selectedSingle),
 				);
 				finalizeOutput(
 					result,
@@ -5897,7 +5873,7 @@ export default function (pi: ExtensionAPI) {
 			onUpdate: OnUpdateCallback | undefined,
 			ctx: ExtensionContext,
 		): Promise<AgentToolResult<SubagentDetails>> => {
-			const request = { kind, ...(params as Record<string, unknown>) } as unknown as SubagentExecutionRequest;
+			const request = { ...(params as Record<string, unknown>), kind } as unknown as SubagentExecutionRequest;
 			let prepared: PreparedSubagentExecution;
 			try {
 				prepared = prepareSubagentExecution(request, {

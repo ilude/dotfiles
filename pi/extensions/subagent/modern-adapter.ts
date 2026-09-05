@@ -1,8 +1,6 @@
 import type {
 	CoordinatorRequest,
-	ReadRequest,
 	SubagentExecutionRequest,
-	WriteRequest,
 } from "./contracts.js";
 import type { PreparedSubagentExecution } from "./contracts.js";
 
@@ -69,6 +67,7 @@ export function modernRequestToExecutorInput(
 	const common = {
 		__modernRequest: request,
 		__modernPrepared: prepared,
+		agentScope: request.agentScope,
 		...(request.kind !== "coordinator" && request.affinityTaskId
 			? { affinityTaskId: request.affinityTaskId }
 			: {}),
@@ -88,18 +87,14 @@ export function modernRequestToExecutorInput(
 		};
 	}
 	if (request.kind === "read") {
-		const read = request as ReadRequest;
 		return {
 			...common,
 			...(items.length === 1 ? items[0] : { tasks: items }),
 			readOnlyFanout: undefined,
-			agentScope: read.agentScope,
 		};
 	}
-	const write = request as WriteRequest;
 	return {
 		...common,
 		...(items.length === 1 ? items[0] : { tasks: items }),
-		agentScope: write.agentScope,
 	};
 }

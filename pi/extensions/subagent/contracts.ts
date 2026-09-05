@@ -1,4 +1,5 @@
 import { Type, type TSchema } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
 import {
 	getTask,
 	listTasks,
@@ -63,6 +64,8 @@ export interface ReadItem extends SubagentItemBase {
 export type WriteItem = SubagentItemBase;
 
 export interface CoordinatorItem extends SubagentItemBase {
+	/** Overrides the selected Team Lead profile's model for this item only. */
+	readonly model?: string;
 	/** Declared read targets validated against existing authority before spawn. */
 	readonly requiredReadPaths?: readonly string[];
 }
@@ -238,7 +241,7 @@ export interface PreparedSubagentExecution {
 	readonly workspaceRoot: string;
 	readonly projectTrusted: boolean;
 	readonly discovery: AgentDiscoveryResult;
-	readonly items: readonly PreparedSubagentItem<SubagentItemBase>[];
+	readonly items: readonly PreparedSubagentItem<ReadItem | WriteItem | CoordinatorItem>[];
 }
 
 export type TaskLinkResolution =
@@ -344,6 +347,8 @@ const READ_SCHEMA_TOOLS = Type.Array(
 	Type.String({ enum: [...READ_TOOL_ALLOWLIST] }),
 );
 
+const SUBAGENT_EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
 const ItemFields = {
 	agent: Type.String({
 		minLength: 1,
@@ -365,12 +370,9 @@ const ItemFields = {
 			description: "Working directory for the assigned subagent.",
 		}),
 	),
-	effort: Type.Optional(
-		Type.String({
-			minLength: 1,
-			description: "Execution effort for the assigned subagent.",
-		}),
-	),
+	effort: Type.Optional(StringEnum(SUBAGENT_EFFORTS, {
+		description: "Reasoning effort override for this item. Omission uses the selected agent profile.",
+	})),
 	skills: Type.Optional(
 		Type.Array(Type.String({ minLength: 1 }), {
 			minItems: 1,
@@ -399,6 +401,10 @@ const WriteItemSchema = Type.Object(ItemFields, { additionalProperties: false })
 const CoordinatorItemSchema = Type.Object(
 	{
 		...ItemFields,
+		model: Type.Optional(Type.String({
+			minLength: 1,
+			description: "Model override for this Team Lead (provider/model). Omission uses the selected agent profile.",
+		})),
 		requiredReadPaths: Type.Optional(
 			Type.Array(Type.String({ minLength: 1 }), {
 				minItems: 1,
@@ -693,6 +699,13 @@ export function prepareSubagentExecution(
 		filePath: "",
 	});
 	const items = request.items.map((item) => {
+		if (request.kind === "coordinator") {
+			if ("model" in item && item.model !== undefined &&
+				(typeof item.model !== "string" || !item.model.trim()))
+				throw new Error("Team Lead model must be a nonblank model selection.");
+		}
+		if (item.effort !== undefined && !SUBAGENT_EFFORTS.some((value) => value === item.effort))
+			throw new Error(`Invalid subagent effort: expected ${SUBAGENT_EFFORTS.join(", ")}.`);
 		const cwdResult = checkNativePathTool(
 			{ workspaceRoot },
 			"read",

@@ -404,6 +404,23 @@ describe("SubagentRunManager", () => {
 			10_000,
 		);
 		expect(continuationId).not.toContain("teamlead-session");
+		const mismatches: Parameters<typeof teamLeadIdentity>[0][] = [
+			{ parentSessionId: "other-root" },
+			{ workspaceId: path.resolve(process.cwd(), "other-workspace") },
+			{ taskId: "other-task" },
+			{ fingerprint: { ...TEAMLEAD_FINGERPRINT, agent: "other-profile" } },
+			{ fingerprint: { ...TEAMLEAD_FINGERPRINT, role: "leaf" } },
+			{ fingerprint: { ...TEAMLEAD_FINGERPRINT, depth: 2 } },
+			{ fingerprint: { ...TEAMLEAD_FINGERPRINT, model: "openai-codex/gpt-6-astra" } },
+			{ fingerprint: { ...TEAMLEAD_FINGERPRINT, effort: "high" } },
+			{ fingerprint: { ...TEAMLEAD_FINGERPRINT, skills: ["other-skill"] } },
+			{ fingerprint: { ...TEAMLEAD_FINGERPRINT, authorityTools: [] } },
+		];
+		for (const mismatch of mismatches) {
+			expect(() => manager.consumeTeamLeadContinuation(continuationId, teamLeadIdentity(mismatch), 11_000))
+				.toThrow("authority or identity no longer matches");
+		}
+		// Every mismatch leaves the same ID eligible for its original identity.
 		const continuation = manager.consumeTeamLeadContinuation(
 			continuationId,
 			teamLeadIdentity(),

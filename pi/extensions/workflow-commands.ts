@@ -30,6 +30,7 @@ import * as path from "node:path";
 import {
 	BorderedLoader,
 	copyToClipboard,
+	type AgentToolResult,
 	type ContextUsage,
 	type ExtensionAPI,
 	type ExtensionCommandContext,
@@ -2767,7 +2768,7 @@ export default function (pi: ExtensionAPI) {
 			return renderLifecycleCall("workflow complete", theme, context);
 		},
 		renderResult: renderLifecycleResult,
-		async execute() {
+		async execute(): Promise<AgentToolResult<InPlaceWorkflowOwnership | WorkflowWorktree["ownership"]>> {
 			try {
 				const inPlace = activeInPlaceWorkflow ?? readActiveInPlaceWorkflowOwnership(process.cwd());
 				if (inPlace) {
