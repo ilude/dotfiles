@@ -18,6 +18,14 @@ import { StringDecoder } from "node:string_decoder";
 import { signalProcessTree } from "../../lib/process-tree.js";
 import { recordEvent } from "../../lib/metrics.js";
 import { correlationForEmission } from "../../lib/log-analytics/correlation.js";
+import {
+	deliveryId,
+	deliveryOriginMatches,
+	retryGateForReceipt,
+	type DeliveryOrigin,
+	type DeliveryReceipt,
+	type DeliveryState,
+} from "../../lib/background-delivery.js";
 
 const DEFAULT_MAX_ACTIVE = 8;
 const DEFAULT_MAX_TRACKED = 32;
@@ -51,12 +59,16 @@ export interface BackgroundTerminalSnapshot {
 	stderrTruncated: boolean;
 	stdoutPath?: string;
 	stderrPath?: string;
+	/** Parent origin is required for new entries; absent means legacy and blocked. */
+	origin?: DeliveryOrigin;
+	delivery?: DeliveryState;
 }
 
 export interface BackgroundTerminalStartInput {
 	command: string;
 	cwd: string;
 	title?: string;
+	origin: DeliveryOrigin;
 }
 
 export interface BackgroundTerminalManagerOptions {
@@ -103,6 +115,12 @@ interface TerminalEntry {
 	settledPromise: Promise<void>;
 	resolveSettled: () => void;
 	terminationPromise?: Promise<void>;
+	origin: DeliveryOrigin;
+	delivery: {
+		phase: DeliveryState["phase"];
+		retryGate: DeliveryState["retryGate"];
+		failureReported: boolean;
+	};
 }
 
 export class BackgroundTerminalCapacityError extends Error {}
@@ -381,7 +399,79 @@ export class BackgroundTerminalManager {
 
 	consumeCompletion(id: string): void {
 		const entry = this.entries.get(id);
-		if (entry?.settled) entry.completionConsumed = true;
+		if (!entry) return;
+		entry.completionConsumed ||= entry.settled;
+		if (entry.completionConsumed) entry.delivery.phase = "consumed";
+	}
+
+	deliveryState(id: string): DeliveryState | undefined {
+		const entry = this.entries.get(id);
+		return entry ? { ...entry.delivery } : undefined;
+	}
+
+	beginCompletionDelivery(id: string): BackgroundTerminalSnapshot | undefined {
+		const entry = this.entries.get(id);
+		if (
+			!entry ||
+			!entry.settled ||
+			entry.completionConsumed ||
+			entry.delivery.phase !== "pending" ||
+			entry.delivery.retryGate !== "none"
+		)
+			return undefined;
+		entry.delivery.phase = "in-flight";
+		this.emitChange();
+		return this.snapshot(entry);
+	}
+
+	finishCompletionDelivery(
+		id: string,
+		origin: DeliveryOrigin,
+		receipt: DeliveryReceipt,
+	): boolean {
+		const entry = this.entries.get(id);
+		if (
+			!entry ||
+			entry.delivery.phase !== "in-flight" ||
+			!deliveryOriginMatches(entry.origin, origin) ||
+			receipt.deliveryId !== deliveryId("background-terminal", id) ||
+			receipt.sessionId !== origin.parentSessionId
+		)
+			return false;
+		if (receipt.status === "inserted") {
+			entry.delivery.phase = entry.completionConsumed ? "consumed" : "inserted";
+			if (!entry.completionConsumed) this.consumeCompletion(id);
+			return true;
+		}
+		entry.delivery.phase = receipt.status;
+		entry.delivery.retryGate = retryGateForReceipt(receipt);
+		this.emitChange();
+		return true;
+	}
+
+	markDeliveryFailureReported(id: string): boolean {
+		const entry = this.entries.get(id);
+		if (!entry || entry.delivery.failureReported) return false;
+		entry.delivery.failureReported = true;
+		return true;
+	}
+
+	resumeCompletionDeliveries(
+		boundary: "interactive" | "session-start",
+		origin: DeliveryOrigin,
+	): void {
+		for (const entry of this.entries.values()) {
+			if (!deliveryOriginMatches(entry.origin, origin)) continue;
+			const retryable =
+				(boundary === "interactive" &&
+					(entry.delivery.phase === "discarded" || entry.delivery.phase === "rejected")) ||
+				(boundary === "session-start" && entry.delivery.phase === "rejected");
+			if (retryable) {
+				entry.delivery.phase = "pending";
+				entry.delivery.retryGate = "none";
+			}
+		}
+		this.emitChange();
 	}
 
 	hasPendingCompletion(id: string): boolean {
@@ -450,6 +540,12 @@ export class BackgroundTerminalManager {
 			killRequested: false,
 			completionConsumed: false,
 			settled: false,
+			origin: input.origin,
+			delivery: {
+				phase: "pending",
+				retryGate: "none",
+				failureReported: false,
+			},
 			settledPromise,
 			resolveSettled,
 		};
@@ -566,6 +662,8 @@ export class BackgroundTerminalManager {
 			stderrTruncated: entry.stderr.isTruncated(),
 			stdoutPath: entry.stdout.path,
 			stderrPath: entry.stderr.path,
+			origin: entry.origin,
+			delivery: { ...entry.delivery },
 		};
 	}
 
@@ -672,7 +770,7 @@ export class BackgroundTerminalManager {
 	}
 }
 
-const BACKGROUND_TERMINAL_MANAGER_VERSION = 1;
+const BACKGROUND_TERMINAL_MANAGER_VERSION = 2;
 const BACKGROUND_TERMINAL_MANAGER_KEY = Symbol.for(
 	"dotfiles.pi.background-terminal-manager",
 );
@@ -686,6 +784,24 @@ function managerGlobals(): typeof globalThis & Record<symbol, unknown> {
 	return globalThis as typeof globalThis & Record<symbol, unknown>;
 }
 
+function hasObservableLiveState(value: unknown): boolean {
+	if (!value || typeof value !== "object") return true;
+	const candidate = value as {
+		list?: () => unknown;
+		pendingCompletions?: () => unknown;
+	};
+	if (typeof candidate.list !== "function" || typeof candidate.pendingCompletions !== "function") return true;
+	try {
+		const entries = candidate.list();
+		const pending = candidate.pendingCompletions();
+		return !Array.isArray(entries) || !Array.isArray(pending) ||
+			entries.some((entry) => (entry as { status?: unknown })?.status === "running") ||
+			pending.length > 0;
+	} catch {
+		return true;
+	}
+}
+
 export function getBackgroundTerminalManager(): BackgroundTerminalManager {
 	const globals = managerGlobals();
 	const existing = globals[
@@ -694,6 +810,10 @@ export function getBackgroundTerminalManager(): BackgroundTerminalManager {
 	if (existing?.version === BACKGROUND_TERMINAL_MANAGER_VERSION) {
 		return existing.manager;
 	}
+	if (existing && hasObservableLiveState(existing.manager))
+		throw new Error(
+			"Cannot reload an incompatible background terminal manager while live terminals or completions are observable.",
+		);
 	const manager = new BackgroundTerminalManager();
 	globals[BACKGROUND_TERMINAL_MANAGER_KEY] = {
 		version: BACKGROUND_TERMINAL_MANAGER_VERSION,

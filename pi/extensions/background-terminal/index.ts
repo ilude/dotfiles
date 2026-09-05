@@ -2,7 +2,7 @@ import { onSessionStart } from "../../lib/session-start-metrics.js";
 import { registerSlashCommand } from "../../lib/slash-command-echo.js";
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
 	getBackgroundTerminalManager,
@@ -10,6 +10,17 @@ import {
 } from "./manager.js";
 import { openBackgroundTerminalDashboard } from "./ui.js";
 import { formatTranscriptTiming } from "../../lib/tool-timing.js";
+import { reportActionableExtensionFailure } from "../../lib/extension-diagnostics.js";
+import {
+	captureDeliveryOrigin,
+	deliveryId,
+	deliveryOriginMatches,
+	receiptFailureLabel,
+	requireReceiptDelivery,
+	isExpectedDeliveryCancellation,
+	sendWithReceipt,
+	type DeliveryOrigin,
+} from "../../lib/background-delivery.js";
 
 const COMPLETION_MAX_BYTES = 32 * 1024;
 function truncateUtf8Tail(text: string, maxBytes: number): string {
@@ -82,43 +93,152 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 	let unsubscribeSettled: (() => void) | undefined;
 	const pending = new Map<string, BackgroundTerminalSnapshot>();
 	let deliveryScheduled = false;
+	let deliveryInFlight = false;
+	let deliveryDrainRequested = false;
+	let deliveryGeneration = 0;
+	let receiptSender: ReturnType<typeof requireReceiptDelivery> | undefined;
+	let activeOrigin: DeliveryOrigin | undefined;
 
-	const flushPending = () => {
-		deliveryScheduled = false;
-		if (!sessionOpen) return;
-		for (const [id, snapshot] of pending) {
-			if (!manager.hasPendingCompletion(id)) {
-				pending.delete(id);
-				continue;
-			}
-			try {
-				pi.sendMessage(
-					{
-						customType: "background-terminal-result",
-						content: `Background terminal ${id} ${snapshot.status}.\n\n${formatTerminal(snapshot)}`,
-						display: true,
-						details: {
-							id,
-							status: snapshot.status,
-							exitCode: snapshot.exitCode,
-							startedAt: snapshot.startedAt,
-							endedAt: snapshot.endedAt,
-						},
-					},
-					{ deliverAs: "followUp", triggerTurn: true },
-				);
-				manager.consumeCompletion(id);
-				pending.delete(id);
-			} catch {
-				// Keep the result pending and retry after the next settled agent turn.
-			}
+	let currentContext: ExtensionContext | undefined;
+
+	const hasReadyPendingDelivery = (): boolean => {
+		if (!sessionOpen || !activeOrigin || !currentContext) return false;
+		for (const [id, queued] of pending) {
+			const snapshot = manager.get(id) ?? queued;
+			const state = manager.deliveryState(id);
+			if (
+				manager.hasPendingCompletion(id) &&
+				snapshot.origin &&
+				state?.phase === "pending" &&
+				state.retryGate === "none" &&
+				deliveryOriginMatches(snapshot.origin, activeOrigin)
+			)
+				return true;
 		}
+		return false;
 	};
 
 	const scheduleDelivery = () => {
+		if (deliveryInFlight) {
+			deliveryDrainRequested = true;
+			return;
+		}
 		if (deliveryScheduled) return;
 		deliveryScheduled = true;
-		queueMicrotask(flushPending);
+		queueMicrotask(() => void flushPending());
+	};
+
+	const flushPending = async () => {
+		if (deliveryInFlight) {
+			deliveryDrainRequested = true;
+			return;
+		}
+		deliveryScheduled = false;
+		if (!sessionOpen || !activeOrigin || !currentContext) return;
+		const context = currentContext;
+		const generation = deliveryGeneration;
+		deliveryInFlight = true;
+		try {
+			for (const [id, queued] of pending) {
+				if (!sessionOpen || generation !== deliveryGeneration) break;
+				const snapshot = manager.get(id) ?? queued;
+				if (!manager.hasPendingCompletion(id)) {
+					pending.delete(id);
+					continue;
+				}
+				if (!snapshot.origin) {
+					if (
+						generation === deliveryGeneration &&
+						sessionOpen &&
+						currentContext === context &&
+						manager.markDeliveryFailureReported(id)
+					)
+						reportActionableExtensionFailure(pi, context, {
+							extension: "background-terminal",
+							failure: "A legacy background terminal completion has no reliable parent origin.",
+							impact: "The completion is retained but cannot be routed safely.",
+							nextAction: "Inspect the original session and workspace; do not infer origin from worker metadata.",
+						}, { level: "warning" });
+					continue;
+				}
+				if (!deliveryOriginMatches(snapshot.origin, activeOrigin)) continue;
+				const completion = manager.beginCompletionDelivery(id);
+				if (!completion) continue;
+				const message = {
+					customType: "background-terminal-result",
+					content: `Background terminal ${id} ${completion.status}.\n\n${formatTerminal(completion)}`,
+					display: true,
+					details: {
+						id,
+						status: completion.status,
+						exitCode: completion.exitCode,
+						startedAt: completion.startedAt,
+						endedAt: completion.endedAt,
+					},
+				};
+				try {
+					const receipt = await sendWithReceipt(
+						receiptSender ?? requireReceiptDelivery(pi),
+						message,
+						snapshot.origin,
+						deliveryId("background-terminal", id),
+					);
+					manager.finishCompletionDelivery(id, snapshot.origin, receipt);
+					const current =
+						generation === deliveryGeneration &&
+						sessionOpen &&
+						currentContext === context &&
+						activeOrigin !== undefined &&
+						deliveryOriginMatches(snapshot.origin, activeOrigin);
+					if (
+						(receipt.status === "rejected" || receipt.status === "uncertain") &&
+						current &&
+						manager.markDeliveryFailureReported(id)
+					)
+						reportActionableExtensionFailure(pi, context, {
+							extension: "background-terminal",
+							failure: `Background terminal completion ${receiptFailureLabel(receipt) ?? "was not inserted"}.`,
+							impact: "The completion remains retained and automatic delivery is paused according to the receipt state.",
+							nextAction: "Inspect the original session and provide later interactive input before retrying, unless the receipt is uncertain.",
+						});
+					if (receipt.status === "inserted") pending.delete(id);
+				} catch (error) {
+					const cancellation = isExpectedDeliveryCancellation(error);
+					manager.finishCompletionDelivery(id, snapshot.origin, cancellation
+						? {
+								status: "discarded",
+							deliveryId: deliveryId("background-terminal", id),
+							sessionId: snapshot.origin.parentSessionId,
+							reason: "aborted",
+						}
+						: {
+								status: "uncertain",
+								deliveryId: deliveryId("background-terminal", id),
+								sessionId: snapshot.origin.parentSessionId,
+							error: new Error("Acknowledged delivery did not settle."),
+							});
+					if (
+						!cancellation &&
+						generation === deliveryGeneration &&
+						sessionOpen &&
+						currentContext === context &&
+						activeOrigin !== undefined &&
+						deliveryOriginMatches(snapshot.origin, activeOrigin) &&
+						manager.markDeliveryFailureReported(id)
+					)
+						reportActionableExtensionFailure(pi, context, {
+							extension: "background-terminal",
+							failure: "Acknowledged background terminal completion delivery became uncertain.",
+							impact: "The completion is retained without blind retry.",
+							nextAction: "Inspect the original session and completion state.",
+						});
+				}
+			}
+		} finally {
+			deliveryInFlight = false;
+			deliveryDrainRequested = false;
+			if (hasReadyPendingDelivery()) scheduleDelivery();
+		}
 	};
 
 	pi.registerTool({
@@ -141,11 +261,18 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 			),
 		}),
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+			const origin = captureDeliveryOrigin({
+				cwd: ctx.cwd,
+				sessionId: ctx.sessionManager?.getSessionId?.(),
+			});
+			const sender = requireReceiptDelivery(pi);
 			const snapshot = manager.start({
 				command: params.command,
 				title: params.title,
 				cwd: resolveWorkingDirectory(ctx.cwd, params.working_dir),
+				origin,
 			});
+			receiptSender = sender;
 			const timing = formatTranscriptTiming(snapshot.startedAt, undefined);
 			return textResult(
 				`Started ${snapshot.id} (pid ${snapshot.pid ?? "unknown"}): ${snapshot.title}\nCompletion will be delivered automatically. Use /ps for live output or bg_kill to stop it.${timing ? `\n${timing}` : ""}`,
@@ -190,8 +317,24 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	onSessionStart(pi, import.meta.url, (_event, _ctx) => {
+	onSessionStart(pi, import.meta.url, (_event, ctx) => {
+		deliveryGeneration++;
 		sessionOpen = true;
+		currentContext = ctx;
+		try {
+			activeOrigin = captureDeliveryOrigin({
+				cwd: ctx.cwd,
+				sessionId: ctx.sessionManager?.getSessionId?.(),
+			});
+		} catch (error) {
+			activeOrigin = undefined;
+			reportActionableExtensionFailure(pi, ctx, {
+				extension: "background-terminal",
+				failure: `Could not capture the parent delivery origin: ${error instanceof Error ? error.message : String(error)}`,
+				impact: "Background terminal completions are retained but delivery is disabled for this session.",
+				nextAction: "Resume with an existing session ID and an accessible current workspace.",
+			}, { level: "warning" });
+		}
 		unsubscribeSettled?.();
 		unsubscribeSettled = manager.onSettled((snapshot, consumed) => {
 			if (consumed || !sessionOpen) return;
@@ -201,13 +344,30 @@ export default function backgroundTerminalExtension(pi: ExtensionAPI): void {
 		for (const snapshot of manager.pendingCompletions()) {
 			pending.set(snapshot.id, snapshot);
 		}
+		if (activeOrigin) manager.resumeCompletionDeliveries("session-start", activeOrigin);
 		if (pending.size > 0) scheduleDelivery();
 	});
 	pi.on("agent_settled", () => {
 		if (pending.size > 0) scheduleDelivery();
 	});
+	pi.on("input", (event, ctx) => {
+		if (event.source !== "interactive") return;
+		try {
+			activeOrigin = captureDeliveryOrigin({
+				cwd: ctx.cwd,
+				sessionId: ctx.sessionManager?.getSessionId?.(),
+			});
+		} catch {
+			activeOrigin = undefined;
+		}
+		if (activeOrigin) manager.resumeCompletionDeliveries("interactive", activeOrigin);
+		scheduleDelivery();
+	});
 	pi.on("session_shutdown", async (event) => {
+		deliveryGeneration++;
 		sessionOpen = false;
+		activeOrigin = undefined;
+		currentContext = undefined;
 		pending.clear();
 		unsubscribeSettled?.();
 		unsubscribeSettled = undefined;

@@ -80,6 +80,28 @@ describe("SubagentRunManager", () => {
 			const replacement = getSubagentRunManager();
 			expect(replacement).not.toBe(incompatibleQuiescent);
 
+			const retained = new SubagentRunManager();
+			retained.queueBackgroundCompletion({
+				orchestrationId: "retained-completion",
+				mode: "single",
+				origin: { parentSessionId: "root-session", parentWorkspaceId: process.cwd() },
+				parentSessionId: "root-session",
+				workspaceId: process.cwd(),
+				content: "retained",
+				failed: false,
+				processState: "settled",
+				processOutcome: "succeeded",
+				deliverableOutcome: "complete",
+				taskIds: [],
+			});
+			globals[key] = { abi: SUBAGENT_RUN_MANAGER_ABI, manager: retained };
+			expect(getSubagentRunManager()).toBe(retained);
+			expect(retained.hasPendingBackgroundCompletion("retained-completion")).toBe(true);
+			globals[key] = { abi: "old", manager: retained };
+			expect(() => getSubagentRunManager()).toThrow(
+				/incompatible subagent run manager/,
+			);
+
 			const live = new SubagentRunManager();
 			beginRun(live, "reload-live");
 			globals[key] = { abi: "old", manager: live };
@@ -496,6 +518,107 @@ describe("SubagentRunManager", () => {
 		for (let index = 0; index <= MAX_ACTIVE_SUBAGENT_RUNS; index++)
 			beginRun(manager, `active-${index}`);
 		expect(manager.list()).toHaveLength(MAX_ACTIVE_SUBAGENT_RUNS + 1);
+	});
+});
+
+describe("subagent background delivery state", () => {
+	it("keeps completions pending until insertion and holds uncertain receipts", () => {
+		const manager = new SubagentRunManager();
+		const origin = { parentSessionId: "parent", parentWorkspaceId: process.cwd() };
+		manager.queueBackgroundCompletion({
+			orchestrationId: "orchestration-1",
+			mode: "single",
+			origin,
+			parentSessionId: origin.parentSessionId,
+			workspaceId: origin.parentWorkspaceId,
+			content: "bounded completion",
+			failed: false,
+			processState: "settled",
+			processOutcome: "succeeded",
+			deliverableOutcome: "complete",
+			taskIds: [],
+		});
+		expect(manager.beginBackgroundCompletionDelivery("orchestration-1")).toBeDefined();
+		expect(manager.finishBackgroundCompletionDelivery("orchestration-1", { ...origin, parentWorkspaceId: "/different" }, {
+			status: "inserted",
+			deliveryId: "subagent:orchestration-1",
+			sessionId: "parent",
+			entryId: "wrong-origin",
+		})).toBe(false);
+		manager.finishBackgroundCompletionDelivery("orchestration-1", origin, {
+			status: "uncertain",
+			deliveryId: "subagent:orchestration-1",
+			sessionId: "parent",
+			error: new Error("unknown"),
+		});
+		expect(manager.hasPendingBackgroundCompletion("orchestration-1")).toBe(true);
+		manager.resumeBackgroundCompletionDeliveries("interactive", origin);
+		expect(manager.beginBackgroundCompletionDelivery("orchestration-1")).toBeUndefined();
+
+		manager.queueBackgroundCompletion({
+			orchestrationId: "orchestration-2",
+			mode: "single",
+			origin,
+			parentSessionId: origin.parentSessionId,
+			workspaceId: origin.parentWorkspaceId,
+			content: "discarded completion",
+			failed: false,
+			processState: "settled",
+			processOutcome: "succeeded",
+			deliverableOutcome: "complete",
+			taskIds: [],
+		});
+		expect(manager.beginBackgroundCompletionDelivery("orchestration-2")).toBeDefined();
+		expect(manager.finishBackgroundCompletionDelivery("orchestration-2", origin, {
+			status: "discarded",
+			deliveryId: "subagent:orchestration-2",
+			sessionId: "parent",
+			reason: "session_replaced",
+		})).toBe(true);
+		manager.resumeBackgroundCompletionDeliveries("session-start", origin);
+		expect(manager.beginBackgroundCompletionDelivery("orchestration-2")).toBeUndefined();
+		manager.resumeBackgroundCompletionDeliveries("interactive", origin);
+		expect(manager.beginBackgroundCompletionDelivery("orchestration-2")).toBeDefined();
+		expect(manager.finishBackgroundCompletionDelivery("orchestration-2", origin, {
+			status: "inserted",
+			deliveryId: "subagent:orchestration-2",
+			sessionId: "parent",
+			entryId: "entry-2",
+		})).toBe(true);
+		expect(manager.hasPendingBackgroundCompletion("orchestration-2")).toBe(false);
+	});
+
+	it("resumes only rejected entries from the requested parent origin", () => {
+		const manager = new SubagentRunManager();
+		const originA = { parentSessionId: "session-a", parentWorkspaceId: process.cwd() };
+		const originB = { parentSessionId: "session-b", parentWorkspaceId: process.cwd() };
+		for (const [orchestrationId, entryOrigin] of [["a", originA], ["b", originB]] as const) {
+			manager.queueBackgroundCompletion({
+				orchestrationId,
+				mode: "single",
+				origin: entryOrigin,
+				parentSessionId: entryOrigin.parentSessionId,
+				workspaceId: entryOrigin.parentWorkspaceId,
+				content: orchestrationId,
+				failed: false,
+				processState: "settled",
+				processOutcome: "succeeded",
+				deliverableOutcome: "complete",
+				taskIds: [],
+			});
+			expect(manager.beginBackgroundCompletionDelivery(orchestrationId)).toBeDefined();
+			expect(manager.finishBackgroundCompletionDelivery(orchestrationId, entryOrigin, {
+				status: "rejected",
+				deliveryId: `subagent:${orchestrationId}`,
+				sessionId: entryOrigin.parentSessionId,
+				reason: "preflight_failed",
+				error: new Error("synthetic"),
+			})).toBe(true);
+		}
+
+		manager.resumeBackgroundCompletionDeliveries("session-start", originB);
+		expect(manager.beginBackgroundCompletionDelivery("a")).toBeUndefined();
+		expect(manager.beginBackgroundCompletionDelivery("b")).toBeDefined();
 	});
 });
 

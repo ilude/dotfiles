@@ -37,6 +37,17 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { type TSchema, Type } from "typebox";
 import { emitTerminalBell } from "../../lib/extension-utils.js";
+import { reportActionableExtensionFailure } from "../../lib/extension-diagnostics.js";
+import {
+	captureDeliveryOrigin,
+	deliveryId,
+	deliveryOriginMatches,
+	receiptFailureLabel,
+	requireReceiptDelivery,
+	isExpectedDeliveryCancellation,
+	sendWithReceipt,
+	type DeliveryOrigin,
+} from "../../lib/background-delivery.js";
 import { formatTranscriptTiming } from "../../lib/tool-timing.js";
 import { getPiInvocation } from "../../lib/pi-invocation.js";
 import { recordEvent } from "../../lib/metrics.js";
@@ -151,6 +162,7 @@ import {
 	canonicalizeSavedSessionPath,
 	canonicalizeWorkspaceIdentity,
 	subagentRunManager,
+	type SubagentBackgroundDeliveryMessage,
 	type SubagentRunMode,
 	type SubagentRunSnapshot,
 	type SubagentRunUsage,
@@ -3071,6 +3083,12 @@ export default function (pi: ExtensionAPI) {
 	let renderedStatus: string | undefined;
 	let refreshAgentTools: (agentNames: readonly string[]) => void = () => {};
 	let deliveryScheduled = false;
+	let deliveryInFlight = false;
+	let deliveryDrainRequested = false;
+	let deliveryGeneration = 0;
+	let receiptSender: ReturnType<typeof requireReceiptDelivery> | undefined;
+	let activeDeliveryOrigin: DeliveryOrigin | undefined;
+	let originFailureReported = false;
 	let resumeInterruptedSession:
 		| ((
 				recovery: PreparedInterruptedRecovery,
@@ -3103,6 +3121,25 @@ export default function (pi: ExtensionAPI) {
 		return sessionAgentCatalog;
 	};
 
+	const captureActiveDeliveryOrigin = (ctx: ExtensionContext): void => {
+		try {
+			activeDeliveryOrigin = captureDeliveryOrigin({
+				cwd: ctx.cwd,
+				sessionId: ctx.sessionManager?.getSessionId?.(),
+			});
+		} catch (error) {
+			activeDeliveryOrigin = undefined;
+			if (originFailureReported) return;
+			originFailureReported = true;
+			reportActionableExtensionFailure(pi, ctx, {
+				extension: "subagent",
+				failure: `Could not capture the parent delivery origin: ${error instanceof Error ? error.message : String(error)}`,
+				impact: "Background subagent completions are retained but delivery is disabled for this session.",
+				nextAction: "Resume with an existing session ID and an accessible current workspace.",
+			}, { level: "warning" });
+		}
+	};
+
 	const updateStatus = () => {
 		if (!statusContext) return;
 		const visibleRuns = subagentRunManager
@@ -3123,70 +3160,143 @@ export default function (pi: ExtensionAPI) {
 		statusContext.ui.setStatus("subagents", nextStatus);
 	};
 
-	const flushPendingBackgroundCompletions = () => {
-		deliveryScheduled = false;
-		if (!sessionOpen) return;
-		const activeSessionId = statusContext?.sessionManager?.getSessionId?.();
-		const activeWorkspaceId = statusContext
-			? process.platform === "win32"
-				? path.resolve(statusContext.cwd).toLowerCase()
-				: path.resolve(statusContext.cwd)
-			: undefined;
-		for (const completion of subagentRunManager.pendingBackgroundCompletions()) {
-			if (
-				completion.parentSessionId !== activeSessionId ||
-				completion.workspaceId !== activeWorkspaceId
-			)
-				continue;
-			try {
-				const backgroundRun = subagentRunManager
-					.list()
-					.filter((run) => run.orchestrationId === completion.orchestrationId)
-					.sort((left, right) => left.startedAt - right.startedAt)[0];
-				pi.sendMessage(
-					{
-						customType: "subagent-result",
-						content: completion.content,
-						display: true,
-						details: {
-							orchestrationId: completion.orchestrationId,
-							mode: completion.mode,
-							failed: completion.failed,
-							processState: completion.processState,
-							processOutcome: completion.processOutcome,
-							deliverableOutcome: completion.deliverableOutcome,
-							taskIds: completion.taskIds,
-							...(backgroundRun
-								? {
-										transcriptTiming: {
-											startedAt: backgroundRun.startedAt,
-											durationMs: backgroundRun.durationMs,
-										},
-									}
-								: {}),
-						},
-					},
-					{ deliverAs: "followUp", triggerTurn: true },
-				);
-				subagentRunManager.consumeBackgroundCompletion(
-					completion.orchestrationId,
-				);
-			} catch {
-				// Keep the result pending and retry after the next settled agent turn.
-			}
-		}
+	const hasReadyBackgroundDelivery = (): boolean => {
+		const origin = activeDeliveryOrigin;
+		if (!sessionOpen || !origin || !statusContext) return false;
+		return subagentRunManager.pendingBackgroundCompletions().some((completion) => {
+			const state = subagentRunManager.backgroundCompletionDelivery(
+				completion.orchestrationId,
+			);
+			return Boolean(
+				completion.origin &&
+				state?.phase === "pending" &&
+				state.retryGate === "none" &&
+				deliveryOriginMatches(completion.origin, origin),
+			);
+		});
 	};
 
 	const scheduleBackgroundCompletionDelivery = () => {
+		if (deliveryInFlight) {
+			deliveryDrainRequested = true;
+			return;
+		}
 		if (deliveryScheduled) return;
 		deliveryScheduled = true;
-		queueMicrotask(flushPendingBackgroundCompletions);
+		queueMicrotask(() => void flushPendingBackgroundCompletions());
+	};
+
+	const flushPendingBackgroundCompletions = async () => {
+		if (deliveryInFlight) {
+			deliveryDrainRequested = true;
+			return;
+		}
+		deliveryScheduled = false;
+		if (!sessionOpen || !activeDeliveryOrigin || !statusContext) return;
+		const context = statusContext;
+		const generation = deliveryGeneration;
+		deliveryInFlight = true;
+		try {
+			for (const pending of subagentRunManager.pendingBackgroundCompletions()) {
+				if (generation !== deliveryGeneration || !sessionOpen) break;
+				if (!pending.origin) {
+					if (
+						generation === deliveryGeneration &&
+						sessionOpen &&
+						statusContext === context &&
+						subagentRunManager.markBackgroundCompletionFailureReported(pending.orchestrationId)
+					)
+						reportActionableExtensionFailure(pi, context, {
+							extension: "subagent",
+							failure: "A legacy background completion has no reliable parent origin.",
+							impact: "The completion is retained but cannot be routed safely.",
+							nextAction: "Inspect the original session and workspace; do not infer origin from worker metadata.",
+						}, { level: "warning" });
+					continue;
+				}
+				if (!deliveryOriginMatches(pending.origin, activeDeliveryOrigin)) continue;
+				const completion = subagentRunManager.beginBackgroundCompletionDelivery(pending.orchestrationId);
+				if (!completion) continue;
+				const message = pending.deliveryMessage as SubagentBackgroundDeliveryMessage;
+				try {
+					const receipt = await sendWithReceipt(
+						receiptSender ?? requireReceiptDelivery(pi),
+						message,
+						pending.origin,
+						deliveryId("subagent", completion.orchestrationId),
+					);
+					subagentRunManager.finishBackgroundCompletionDelivery(
+						completion.orchestrationId,
+						pending.origin,
+						receipt,
+					);
+					const current =
+						generation === deliveryGeneration &&
+						sessionOpen &&
+						statusContext === context &&
+						activeDeliveryOrigin !== undefined &&
+						deliveryOriginMatches(pending.origin, activeDeliveryOrigin);
+					if (
+						(receipt.status === "rejected" || receipt.status === "uncertain") &&
+						current &&
+						subagentRunManager.markBackgroundCompletionFailureReported(completion.orchestrationId)
+					)
+						reportActionableExtensionFailure(pi, context, {
+							extension: "subagent",
+							failure: `Background completion ${receiptFailureLabel(receipt) ?? "was not inserted"}.`,
+							impact: "The completion remains retained and automatic delivery is paused according to the receipt state.",
+							nextAction: "Inspect the original session and provide later interactive input before retrying, unless the receipt is uncertain.",
+						});
+				} catch (error) {
+					const cancellation = isExpectedDeliveryCancellation(error);
+					const state = subagentRunManager.backgroundCompletionDelivery(completion.orchestrationId);
+					if (state?.phase === "in-flight")
+						subagentRunManager.finishBackgroundCompletionDelivery(
+							completion.orchestrationId,
+							pending.origin,
+							cancellation
+								? {
+										status: "discarded",
+										deliveryId: deliveryId("subagent", completion.orchestrationId),
+										sessionId: pending.origin.parentSessionId,
+										reason: "aborted",
+									}
+								: {
+										status: "uncertain",
+										deliveryId: deliveryId("subagent", completion.orchestrationId),
+										sessionId: pending.origin.parentSessionId,
+										error: new Error("Acknowledged delivery did not settle."),
+									},
+						);
+					if (
+						!cancellation &&
+						generation === deliveryGeneration &&
+						sessionOpen &&
+						statusContext === context &&
+						activeDeliveryOrigin !== undefined &&
+						deliveryOriginMatches(pending.origin, activeDeliveryOrigin) &&
+						subagentRunManager.markBackgroundCompletionFailureReported(completion.orchestrationId)
+					)
+						reportActionableExtensionFailure(pi, context, {
+							extension: "subagent",
+							failure: "Acknowledged background completion delivery became uncertain.",
+							impact: "The completion is retained without blind retry.",
+							nextAction: "Inspect the original session and completion state.",
+						});
+				}
+			}
+		} finally {
+			deliveryInFlight = false;
+			deliveryDrainRequested = false;
+			if (hasReadyBackgroundDelivery()) scheduleBackgroundCompletionDelivery();
+		}
 	};
 
 	const queueBackgroundResult = (
 		orchestrationId: string,
 		mode: Exclude<SubagentRunMode, "task-execute">,
-		origin: { parentSessionId?: string; workspaceId: string },
+		origin: DeliveryOrigin,
+		transcriptTiming: { startedAt: number; durationMs?: number } | undefined,
 		result?: AgentToolResult<SubagentDetails>,
 		error?: unknown,
 	) => {
@@ -3240,6 +3350,24 @@ export default function (pi: ExtensionAPI) {
 			maxBytes: backgroundBudget,
 			maxLines: SUBAGENT_RESULT_MAX_LINES,
 		}).content}${truncationNote}`;
+		const deliveryMessage: SubagentBackgroundDeliveryMessage = {
+			customType: "subagent-result",
+			content: backgroundContent,
+			display: true,
+			details: {
+				orchestrationId,
+				mode,
+				failed,
+				processState: "settled",
+				processOutcome,
+				deliverableOutcome,
+				taskIds:
+					result?.details?.results.flatMap((worker) =>
+						worker.taskId ? [worker.taskId] : [],
+					) ?? [],
+				...(transcriptTiming ? { transcriptTiming: { ...transcriptTiming } } : {}),
+			},
+		};
 		subagentRunManager.queueBackgroundCompletion({
 			correlation: {
 				...(correlationForEmission() ?? {}),
@@ -3247,16 +3375,16 @@ export default function (pi: ExtensionAPI) {
 			},
 			orchestrationId,
 			mode,
-			...origin,
+			origin,
+			parentSessionId: origin.parentSessionId,
+			workspaceId: origin.parentWorkspaceId,
 			content: backgroundContent,
+			deliveryMessage,
 			failed,
 			processState: "settled",
 			processOutcome,
 			deliverableOutcome,
-			taskIds:
-				result?.details?.results.flatMap((worker) =>
-					worker.taskId ? [worker.taskId] : [],
-				) ?? [],
+			taskIds: deliveryMessage.details.taskIds,
 		});
 	};
 
@@ -3690,6 +3818,9 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	onSessionStart(pi, import.meta.url, (_event, ctx) => {
+		deliveryGeneration++;
+		originFailureReported = false;
+		captureActiveDeliveryOrigin(ctx);
 		sessionAgentCatalog = resolveSessionAgentCatalog(undefined, ctx);
 		refreshAgentTools(sessionAgentCatalog.agentNames);
 		deactivateTools(pi, ["subagent_coordinate"]);
@@ -3731,6 +3862,11 @@ export default function (pi: ExtensionAPI) {
 			scheduleBackgroundCompletionDelivery,
 		);
 		updateStatus();
+		if (activeDeliveryOrigin)
+			subagentRunManager.resumeBackgroundCompletionDeliveries(
+				"session-start",
+				activeDeliveryOrigin,
+			);
 		scheduleBackgroundCompletionDelivery();
 	});
 
@@ -3783,8 +3919,15 @@ export default function (pi: ExtensionAPI) {
 			scheduleBackgroundCompletionDelivery();
 	});
 
-	pi.on("input", (event) => {
+	pi.on("input", (event, ctx) => {
 		if (event.source !== "interactive") return;
+		captureActiveDeliveryOrigin(ctx);
+		if (activeDeliveryOrigin)
+			subagentRunManager.resumeBackgroundCompletionDeliveries(
+				"interactive",
+				activeDeliveryOrigin,
+			);
+		scheduleBackgroundCompletionDelivery();
 		statusInspectionGuards.clear();
 		for (const run of subagentRunManager.list()) {
 			if (run.status === "failed") acknowledgedFailureRunIds.add(run.runId);
@@ -3793,6 +3936,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", async (event) => {
+		deliveryGeneration++;
 		sessionOpen = false;
 		if (runtimePingTimer) clearInterval(runtimePingTimer);
 		runtimePingTimer = undefined;
@@ -3802,6 +3946,7 @@ export default function (pi: ExtensionAPI) {
 		unsubscribeBackgroundCompletion = undefined;
 		statusContext?.ui.setStatus("subagents", undefined);
 		statusContext = undefined;
+		activeDeliveryOrigin = undefined;
 		renderedStatus = undefined;
 		if (event.reason === "quit") {
 			if (currentSubagentIdentity().role === "root") {
@@ -3869,6 +4014,13 @@ export default function (pi: ExtensionAPI) {
 				| TSchema
 				| undefined;
 			const background = params.background ?? false;
+			const backgroundOrigin = background
+				? captureDeliveryOrigin({
+						cwd: ctx.cwd,
+						sessionId: ctx.sessionManager?.getSessionId?.(),
+					})
+				: undefined;
+			if (background) receiptSender = requireReceiptDelivery(pi);
 			const executionSignal = background ? undefined : signal;
 			const visibleUpdate = background ? undefined : onUpdate;
 			const fanoutPlan = params.readOnlyFanout as unknown as
@@ -4063,6 +4215,36 @@ export default function (pi: ExtensionAPI) {
 					: undefined;
 			let orchestrationEmitted = false;
 			let experimentAssignmentEmitted = false;
+			let backgroundTranscriptStartedAt: number | undefined;
+			let backgroundTranscriptEndedAt: number | undefined;
+			const recordBackgroundRunTiming = (result: SingleResult | undefined): void => {
+				if (!result?.runId) return;
+				const run = subagentRunManager.get(result.runId);
+				if (!run) return;
+				const endedAt = run.settledAt ?? run.startedAt + (result.durationMs ?? 0);
+				backgroundTranscriptStartedAt =
+					backgroundTranscriptStartedAt === undefined
+						? run.startedAt
+						: Math.min(backgroundTranscriptStartedAt, run.startedAt);
+				backgroundTranscriptEndedAt =
+					backgroundTranscriptEndedAt === undefined
+						? endedAt
+						: Math.max(backgroundTranscriptEndedAt, endedAt);
+			};
+			const backgroundTranscriptTiming = () =>
+				backgroundTranscriptStartedAt === undefined
+					? undefined
+					: {
+							startedAt: backgroundTranscriptStartedAt,
+							...(backgroundTranscriptEndedAt === undefined
+								? {}
+								: {
+										durationMs: Math.max(
+											0,
+											backgroundTranscriptEndedAt - backgroundTranscriptStartedAt,
+										),
+								  }),
+						};
 			const complete = <T extends AgentToolResult<SubagentDetails>>(
 				result: T,
 			): T => {
@@ -4423,6 +4605,7 @@ export default function (pi: ExtensionAPI) {
 						args[15] = { ...(args[15] ?? {}), continuable: true };
 					}
 					result = await runSingleAgent(...args);
+					recordBackgroundRunTiming(result);
 					if (routingExperiment) result.routingExperiment = routingExperiment;
 					if (
 						!outputSchema ||
@@ -4496,6 +4679,7 @@ export default function (pi: ExtensionAPI) {
 							? (error as Error & { subagentResult?: SingleResult })
 									.subagentResult
 							: undefined);
+					recordBackgroundRunTiming(failedResult);
 					if (failedResult && outputSchema) {
 						failedResult.stopReason = "error";
 						failedResult.errorMessage =
@@ -5241,16 +5425,15 @@ export default function (pi: ExtensionAPI) {
 				}
 			};
 			if (!background) return executeWithTreeSettlement();
-			const backgroundOrigin = {
-				parentSessionId,
-				workspaceId: effectiveWorkspaceIdentity,
-			};
+			if (!backgroundOrigin)
+				throw new Error("Background completion origin was not captured.");
 			void executeWithTreeSettlement()
 				.then((result) =>
 					queueBackgroundResult(
 						orchestrationId,
 						executionMode,
 						backgroundOrigin,
+						backgroundTranscriptTiming(),
 						result,
 					),
 				)
@@ -5259,6 +5442,7 @@ export default function (pi: ExtensionAPI) {
 						orchestrationId,
 						executionMode,
 						backgroundOrigin,
+						backgroundTranscriptTiming(),
 						undefined,
 						error,
 					),

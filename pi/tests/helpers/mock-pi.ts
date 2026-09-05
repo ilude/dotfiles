@@ -21,6 +21,16 @@ export interface RegisteredHook {
 	handler: Function;
 }
 
+export function createDeferred<T>() {
+	let resolve!: (value: T | PromiseLike<T>) => void;
+	let reject!: (reason?: unknown) => void;
+	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+		resolve = resolvePromise;
+		reject = rejectPromise;
+	});
+	return { promise, resolve, reject };
+}
+
 export function createMockPi() {
 	const tools: RegisteredTool[] = [];
 	const hooks: RegisteredHook[] = [];
@@ -59,6 +69,18 @@ export function createMockPi() {
 		}),
 		sendUserMessage: vi.fn(async (_msg: string) => {}),
 		sendMessage: vi.fn((_message: any, _options?: any) => {}),
+		sendMessageWithReceipt: vi.fn(async (message: any, options: any) => {
+			mockPi.sendMessage(message, {
+				deliverAs: options?.deliverAs,
+				triggerTurn: options?.triggerTurn,
+			});
+			return {
+				status: "inserted" as const,
+				deliveryId: options.deliveryId,
+				sessionId: options.sessionId,
+				entryId: `entry-${options.deliveryId}`,
+			};
+		}),
 		appendEntry: vi.fn(async (_customType: string, _data?: unknown) => {}),
 		registerEntryRenderer: vi.fn(),
 		getAllTools: vi.fn(() => [...tools]),
@@ -84,6 +106,7 @@ export function createMockCtx(overrides: Record<string, any> = {}) {
 	return {
 		cwd: "/test/dir",
 		abort: vi.fn(),
+		sessionManager: { getSessionId: vi.fn(() => "mock-session") },
 		ui: {
 			theme: createMockTheme(),
 			notify: vi.fn(),

@@ -9,6 +9,14 @@ import type {
 } from "./contracts.js";
 import type { SubagentTreeRole } from "./tree-runtime.js";
 import type { CorrelationFields } from "../../lib/log-analytics/correlation.js";
+import {
+	deliveryId,
+	deliveryOriginMatches,
+	retryGateForReceipt,
+	type DeliveryOrigin,
+	type DeliveryReceipt,
+	type DeliveryState,
+} from "../../lib/background-delivery.js";
 
 /**
  * Retained for callers that display the default tree capacity. Admission is
@@ -47,6 +55,25 @@ export type SubagentActivityKind =
 	| "tool-finished"
 	| "tool-result";
 
+export interface SubagentBackgroundDeliveryMessage {
+	readonly customType: "subagent-result";
+	readonly content: string;
+	readonly display: true;
+	readonly details: {
+		readonly orchestrationId: string;
+		readonly mode: Exclude<SubagentRunMode, "task-execute">;
+		readonly failed: boolean;
+		readonly processState: SubagentProcessState;
+		readonly processOutcome: SubagentProcessOutcome;
+		readonly deliverableOutcome: SubagentDeliverableOutcome;
+		readonly taskIds: ReadonlyArray<string>;
+		readonly transcriptTiming?: {
+			readonly startedAt: number;
+			readonly durationMs?: number;
+		};
+	};
+}
+
 export interface SubagentBackgroundCompletion {
 	readonly correlation?: Partial<CorrelationFields>;
 	readonly orchestrationId: string;
@@ -57,6 +84,10 @@ export interface SubagentBackgroundCompletion {
 	readonly processOutcome: SubagentProcessOutcome;
 	readonly deliverableOutcome: SubagentDeliverableOutcome;
 	readonly taskIds: ReadonlyArray<string>;
+	/** Materialized at enqueue time so retries do not rebuild payloads from runs. */
+	readonly deliveryMessage?: SubagentBackgroundDeliveryMessage;
+	/** Parent origin is required for new records; absent means legacy and blocked. */
+	readonly origin?: DeliveryOrigin;
 	readonly parentSessionId?: string;
 	readonly workspaceId: string;
 }
@@ -170,6 +201,12 @@ export interface SubagentRunSnapshot {
 	readonly finalText: string;
 	readonly executionFingerprint?: SubagentExecutionFingerprint;
 	readonly settlementOrder?: number;
+}
+
+interface MutableBackgroundDeliveryState {
+	phase: DeliveryState["phase"];
+	retryGate: DeliveryState["retryGate"];
+	failureReported: boolean;
 }
 
 interface MutableSubagentRunSnapshot {
@@ -354,6 +391,7 @@ export class SubagentRunManager {
 		string,
 		SubagentBackgroundCompletion
 	>();
+	private readonly backgroundDelivery = new Map<string, MutableBackgroundDeliveryState>();
 	private readonly completionListeners = new Set<
 		(completion: SubagentBackgroundCompletion) => void
 	>();
@@ -420,7 +458,82 @@ export class SubagentRunManager {
 	}
 
 	consumeBackgroundCompletion(orchestrationId: string): void {
+		const state = this.backgroundDelivery.get(orchestrationId);
+		if (state) state.phase = "consumed";
 		this.backgroundCompletions.delete(orchestrationId);
+		this.backgroundDelivery.delete(orchestrationId);
+		this.notify();
+	}
+
+	backgroundCompletionDelivery(orchestrationId: string): DeliveryState | undefined {
+		const state = this.backgroundDelivery.get(orchestrationId);
+		return state ? { ...state } : undefined;
+	}
+
+	beginBackgroundCompletionDelivery(
+		orchestrationId: string,
+	): SubagentBackgroundCompletion | undefined {
+		const completion = this.backgroundCompletions.get(orchestrationId);
+		const state = this.backgroundDelivery.get(orchestrationId);
+		if (!completion || !state || state.phase !== "pending" || state.retryGate !== "none")
+			return undefined;
+		state.phase = "in-flight";
+		this.notify();
+		return completion;
+	}
+
+	finishBackgroundCompletionDelivery(
+		orchestrationId: string,
+		origin: DeliveryOrigin,
+		receipt: DeliveryReceipt,
+	): boolean {
+		const completion = this.backgroundCompletions.get(orchestrationId);
+		const state = this.backgroundDelivery.get(orchestrationId);
+		if (
+			!completion ||
+			!state ||
+			state.phase !== "in-flight" ||
+			!completion.origin ||
+			!deliveryOriginMatches(completion.origin, origin) ||
+			receipt.deliveryId !== deliveryId("subagent", orchestrationId) ||
+			receipt.sessionId !== origin.parentSessionId
+		)
+			return false;
+		if (receipt.status === "inserted") {
+			state.phase = "inserted";
+			this.consumeBackgroundCompletion(orchestrationId);
+			return true;
+		}
+		state.phase = receipt.status;
+		state.retryGate = retryGateForReceipt(receipt);
+		this.notify();
+		return true;
+	}
+
+	markBackgroundCompletionFailureReported(orchestrationId: string): boolean {
+		const state = this.backgroundDelivery.get(orchestrationId);
+		if (!state || state.failureReported) return false;
+		state.failureReported = true;
+		return true;
+	}
+
+	resumeBackgroundCompletionDeliveries(
+		boundary: "interactive" | "session-start",
+		origin: DeliveryOrigin,
+	): void {
+		for (const [orchestrationId, state] of this.backgroundDelivery) {
+			const completion = this.backgroundCompletions.get(orchestrationId);
+			if (!completion?.origin || !deliveryOriginMatches(completion.origin, origin)) continue;
+			const retryable =
+				(boundary === "interactive" &&
+					(state.phase === "discarded" || state.phase === "rejected")) ||
+				(boundary === "session-start" && state.phase === "rejected");
+			if (retryable) {
+				state.phase = "pending";
+				state.retryGate = "none";
+			}
+		}
+		this.notify();
 	}
 
 	queueBackgroundCompletion(completion: SubagentBackgroundCompletion): void {
@@ -429,14 +542,42 @@ export class SubagentRunManager {
 			this.backgroundCompletions.has(completion.orchestrationId)
 		)
 			return;
+		const taskIds = Object.freeze([...completion.taskIds]);
+		const sourceMessage = completion.deliveryMessage ?? {
+			customType: "subagent-result" as const,
+			content: completion.content,
+			display: true as const,
+			details: {
+				orchestrationId: completion.orchestrationId,
+				mode: completion.mode,
+				failed: completion.failed,
+				processState: completion.processState,
+				processOutcome: completion.processOutcome,
+				deliverableOutcome: completion.deliverableOutcome,
+				taskIds,
+			},
+		};
+		const deliveryMessage: SubagentBackgroundDeliveryMessage = Object.freeze({
+			...sourceMessage,
+			details: Object.freeze({
+				...sourceMessage.details,
+				taskIds: Object.freeze([...sourceMessage.details.taskIds]),
+			}),
+		});
 		const pending: SubagentBackgroundCompletion = {
 			...completion,
 			...(completion.correlation
 				? { correlation: { ...completion.correlation } }
 				: {}),
-			taskIds: [...completion.taskIds],
+			taskIds,
+			deliveryMessage,
 		};
 		this.backgroundCompletions.set(completion.orchestrationId, pending);
+		this.backgroundDelivery.set(completion.orchestrationId, {
+			phase: "pending",
+			retryGate: "none",
+			failureReported: false,
+		});
 		for (const listener of [...this.completionListeners]) {
 			try {
 				listener(pending);
@@ -850,6 +991,7 @@ export class SubagentRunManager {
 			this.snapshots.clear();
 			this.controllers.clear();
 			this.backgroundCompletions.clear();
+			this.backgroundDelivery.clear();
 			this.teamLeadContinuations.clear();
 			this.completionListeners.clear();
 			this.listeners.clear();
@@ -868,6 +1010,7 @@ export class SubagentRunManager {
 		this.controllers.clear();
 		this.settlements.clear();
 		this.backgroundCompletions.clear();
+		this.backgroundDelivery.clear();
 		this.teamLeadContinuations.clear();
 		this.acceptBackgroundCompletions = true;
 		this.disposalStarted = false;
@@ -1097,7 +1240,7 @@ export function resolveTaskSessionAffinity(
 }
 
 export const SUBAGENT_RUN_MANAGER_ABI =
-	"dotfiles.pi.subagent-run-manager.v2" as const;
+	"dotfiles.pi.subagent-run-manager.v3" as const;
 const SUBAGENT_RUN_MANAGER_KEY = Symbol.for(
 	"dotfiles.pi.subagent-run-manager",
 );

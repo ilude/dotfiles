@@ -31,6 +31,7 @@ import {
 	initializeTaskStore,
 } from "../lib/task-store.js";
 import {
+	createDeferred,
 	createMockCtx,
 	createMockPi,
 	createMockTheme,
@@ -3373,7 +3374,7 @@ You are a test agent.
 					state,
 					summary: `linked work ${index}`,
 					workspace,
-					sessionId: undefined,
+					sessionId: "mock-session",
 				}),
 			);
 			const [singleTask, firstParallelTask, secondParallelTask, fourthTask, fifthTask] =
@@ -3539,6 +3540,7 @@ You are a test agent.
 				state: "assigned",
 				summary: "background linked work",
 				workspace: resolveTaskWorkspace(tmpDir),
+				sessionId: "mock-session",
 			});
 			const ctx = createMockCtx({ cwd: tmpDir });
 			await pi
@@ -3588,12 +3590,16 @@ You are a test agent.
 			});
 
 			proc.emit("close", 1);
-			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(1), {
+			await vi.waitFor(() => expect(pi.sendMessageWithReceipt).toHaveBeenCalledTimes(1), {
 				timeout: 5000,
 			});
-			expect(pi.sendMessage.mock.calls[0][0]).toMatchObject({
+			expect(pi.sendMessageWithReceipt.mock.calls[0][0]).toMatchObject({
 				customType: "subagent-result",
 				details: { taskIds: [task.id], failed: true },
+			});
+			expect(pi.sendMessageWithReceipt.mock.calls[0][1]).toMatchObject({
+				deliveryId: expect.stringMatching(/^subagent:/),
+				sessionId: "mock-session",
 			});
 			expect(getTask(task.id)?.state).toBe("assigned");
 		},
@@ -3610,6 +3616,11 @@ You are a test agent.
 			const { subagentRunManager } = await import(
 				"../extensions/subagent/run-manager.ts"
 			);
+			const receipt = createDeferred<any>();
+			pi.sendMessageWithReceipt.mockImplementation((message: Record<string, unknown>, options: Record<string, unknown>) => {
+				pi.sendMessage(message, options);
+				return receipt.promise;
+			});
 			const ctx = createMockCtx({ cwd: tmpDir });
 			await pi
 				._getHook("session_start")[0]
@@ -3663,15 +3674,34 @@ You are a test agent.
 					expect(subagentRunManager.list()[0]?.status).toBe("completed"),
 				{ timeout: 5000 },
 			);
-			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(1), {
+			await vi.waitFor(() => expect(pi.sendMessageWithReceipt).toHaveBeenCalledTimes(1), {
 				timeout: 5000,
 			});
-			expect(pi.sendMessage).toHaveBeenCalledWith(
+			expect(subagentRunManager.pendingBackgroundCompletions()).toHaveLength(1);
+			const completion = subagentRunManager.pendingBackgroundCompletions()[0];
+			if (!completion) throw new Error("background completion missing");
+			expect(subagentRunManager.backgroundCompletionDelivery(completion.orchestrationId)).toMatchObject({
+				phase: "in-flight",
+			});
+			receipt.resolve({
+				status: "inserted",
+				deliveryId: `subagent:${completion.orchestrationId}`,
+				sessionId: "mock-session",
+				entryId: "entry-1",
+			});
+			await vi.waitFor(() => expect(subagentRunManager.pendingBackgroundCompletions()).toEqual([]), {
+				timeout: 5000,
+			});
+			expect(pi.sendMessageWithReceipt).toHaveBeenCalledWith(
 				expect.objectContaining({
 					customType: "subagent-result",
 					content: expect.stringContaining("background done"),
 				}),
-				{ deliverAs: "followUp", triggerTurn: true },
+				expect.objectContaining({
+					deliverAs: "followUp",
+					triggerTurn: true,
+					sessionId: "mock-session",
+				}),
 			);
 			const delivered = pi.sendMessage.mock.calls[0][0].content as string;
 			expect(delivered).toContain("[Result truncated.");
@@ -3762,11 +3792,11 @@ You are a test agent.
 				{ timeout: 5000 },
 			);
 			await vi.waitFor(
-				() => expect(secondPi.sendMessage).toHaveBeenCalledTimes(1),
+				() => expect(secondPi.sendMessageWithReceipt).toHaveBeenCalledTimes(1),
 				{ timeout: 5000 },
 			);
 			expect(firstCtx.ui.setStatus).toHaveBeenCalledTimes(firstStatusCalls);
-			expect(firstPi.sendMessage).not.toHaveBeenCalled();
+			expect(firstPi.sendMessageWithReceipt).not.toHaveBeenCalled();
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -3818,9 +3848,13 @@ You are a test agent.
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
-	it.each(["new", "resume", "fork"] as const)(
-		"delivers a completion during %s session replacement exactly once",
-		async (reason) => {
+	it.each([
+		{ reason: "new" as const, sessionId: "new-session", delivers: false },
+		{ reason: "resume" as const, sessionId: "mock-session", delivers: true },
+		{ reason: "fork" as const, sessionId: "fork-session", delivers: false },
+	])(
+		"routes a completion only to the original parent on $reason session replacement",
+		async ({ reason, sessionId, delivers }) => {
 			const proc = createMockProcess();
 			spawnMock.mockImplementation(() => proc);
 			const { pi: firstPi, tool } = await loadTool();
@@ -3868,32 +3902,45 @@ You are a test agent.
 					),
 				{ timeout: 5000 },
 			);
-			expect(firstPi.sendMessage).not.toHaveBeenCalled();
+			expect(firstPi.sendMessageWithReceipt).not.toHaveBeenCalled();
 
 			const secondPi = createMockPi();
 			const mod = await import("../extensions/subagent/index.ts");
 			mod.default(secondPi as Parameters<typeof mod.default>[0]);
-			const secondCtx = createMockCtx({ cwd: tmpDir });
+			const secondCtx = createMockCtx({
+				cwd: tmpDir,
+				sessionManager: { getSessionId: () => sessionId },
+			});
 			await secondPi
 				._getHook("session_start")[0]
 				.handler({ reason }, secondCtx);
-			await vi.waitFor(
-				() => expect(secondPi.sendMessage).toHaveBeenCalledTimes(1),
-				{ timeout: 5000 },
-			);
-			await secondPi._getHook("agent_settled")[0].handler({}, secondCtx);
-			expect(secondPi.sendMessage).toHaveBeenCalledTimes(1);
-			expect(subagentRunManager.pendingBackgroundCompletions()).toEqual([]);
-			expect(secondPi.sendMessage.mock.calls[0][0]).toMatchObject({
-				customType: "subagent-result",
-				content: expect.stringContaining("replacement complete"),
-			});
+			if (delivers) {
+				await vi.waitFor(
+					() => expect(secondPi.sendMessageWithReceipt).toHaveBeenCalledTimes(1),
+					{ timeout: 5000 },
+				);
+				expect(secondPi.sendMessageWithReceipt.mock.calls[0]?.[1]).toMatchObject({
+					deliveryId: expect.stringMatching(/^subagent:/),
+					sessionId,
+				});
+				expect(secondPi.sendMessageWithReceipt.mock.calls[0]?.[0]).toMatchObject({
+					customType: "subagent-result",
+					content: expect.stringContaining("replacement complete"),
+				});
+				await vi.waitFor(() => expect(subagentRunManager.pendingBackgroundCompletions()).toEqual([]), { timeout: 5000 });
+			} else {
+				await vi.waitFor(() => expect(subagentRunManager.pendingBackgroundCompletions()).toHaveLength(1), { timeout: 5000 });
+				expect(secondPi.sendMessageWithReceipt).not.toHaveBeenCalled();
+				expect(subagentRunManager.pendingBackgroundCompletions()[0]?.origin).toMatchObject({
+					parentSessionId: "mock-session",
+				});
+			}
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
 	it(
-		"keeps a failed background completion delivery in the manager for retry",
+		"holds a synchronous background delivery throw as uncertain without automatic retry",
 		async () => {
 			const proc = createMockProcess();
 			spawnMock.mockImplementation(() => proc);
@@ -3902,7 +3949,7 @@ You are a test agent.
 				"../extensions/subagent/run-manager.ts"
 			);
 			const ctx = createMockCtx({ cwd: tmpDir });
-			pi.sendMessage.mockImplementationOnce(() => {
+			pi.sendMessageWithReceipt.mockImplementationOnce(() => {
 				throw new Error("session unavailable");
 			});
 			await pi
@@ -3924,16 +3971,24 @@ You are a test agent.
 				timeout: 5000,
 			});
 			proc.emit("close", 0);
-			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(1), {
+			await vi.waitFor(() => expect(pi.sendMessageWithReceipt).toHaveBeenCalledTimes(1), {
 				timeout: 5000,
 			});
+			const pending = subagentRunManager.pendingBackgroundCompletions()[0];
+			if (!pending) throw new Error("background completion missing");
+			await vi.waitFor(
+				() => expect(subagentRunManager.backgroundCompletionDelivery(pending.orchestrationId)?.phase).toBe("uncertain"),
+				{ timeout: 5000 },
+			);
 			expect(subagentRunManager.pendingBackgroundCompletions()).toHaveLength(1);
 
 			await pi._getHook("agent_settled")[0].handler({}, ctx);
-			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(2), {
-				timeout: 5000,
-			});
-			expect(subagentRunManager.pendingBackgroundCompletions()).toEqual([]);
+			await pi._getHook("input")[0].handler(
+				{ source: "interactive", text: "continue", images: [] },
+				ctx,
+			);
+			expect(pi.sendMessageWithReceipt).toHaveBeenCalledTimes(1);
+			expect(subagentRunManager.pendingBackgroundCompletions()).toHaveLength(1);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -4215,6 +4270,7 @@ You are a test agent.
 				state: "assigned",
 				summary: "cancelled linked work",
 				workspace: resolveTaskWorkspace(tmpDir),
+				sessionId: "mock-session",
 			});
 			const controller = new AbortController();
 			const execution = tool.execute(
@@ -5200,15 +5256,19 @@ You are a test agent.
 			);
 			proc.emit("close", 0);
 
-			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(1), {
+			await vi.waitFor(() => expect(pi.sendMessageWithReceipt).toHaveBeenCalledTimes(1), {
 				timeout: 5000,
 			});
-			expect(pi.sendMessage).toHaveBeenCalledWith(
+			expect(pi.sendMessageWithReceipt).toHaveBeenCalledWith(
 				expect.objectContaining({
 					customType: "subagent-result",
 					content: expect.stringContaining("inspection complete"),
 				}),
-				{ deliverAs: "followUp", triggerTurn: true },
+				expect.objectContaining({
+					deliverAs: "followUp",
+					triggerTurn: true,
+					sessionId: "mock-session",
+				}),
 			);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
@@ -5323,8 +5383,12 @@ You are a test agent.
 		const result = await tool.execute("teamlead-selection", input, undefined, undefined, ctx);
 		expect(result.isError).not.toBe(true);
 		if (background) {
-			await vi.waitFor(() => expect(pi.sendMessage).toHaveBeenCalledTimes(1), { timeout: 5000 });
-			expect(pi.sendMessage.mock.calls[0][0].details).toMatchObject({ failed: false, deliverableOutcome: "complete" });
+			await vi.waitFor(() => expect(pi.sendMessageWithReceipt).toHaveBeenCalledTimes(1), { timeout: 5000 });
+			expect(pi.sendMessageWithReceipt.mock.calls[0][0].details).toMatchObject({ failed: false, deliverableOutcome: "complete" });
+			expect(pi.sendMessageWithReceipt.mock.calls[0][1]).toMatchObject({
+				deliveryId: expect.stringMatching(/^subagent:/),
+				sessionId: "mock-session",
+			});
 		} else {
 			expect(result.details.agentScope).toBe("project");
 			expect(result.details.results).toHaveLength(selections.length);

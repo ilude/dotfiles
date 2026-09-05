@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	BackgroundTerminalCapacityError,
 	BackgroundTerminalManager,
+	getBackgroundTerminalManager,
 	type BackgroundTerminalSnapshot,
 } from "../extensions/background-terminal/manager.ts";
 import { reconcileBackgroundTerminalSelection } from "../extensions/background-terminal/ui.ts";
@@ -28,6 +29,10 @@ function root(): string {
 	const value = mkdtempSync(join(tmpdir(), "pi-bg-manager-test-"));
 	roots.push(value);
 	return value;
+}
+
+function origin(cwd: string, parentSessionId = "test-session") {
+	return { parentSessionId, parentWorkspaceId: cwd };
 }
 
 function nodeSpawner(script: string) {
@@ -71,7 +76,7 @@ describe("BackgroundTerminalManager", () => {
 			),
 		});
 		const settled = nextSettlement(manager);
-		const started = manager.start({ command: "synthetic", cwd: tempRoot });
+		const started = manager.start({ origin: origin(tempRoot), command: "synthetic", cwd: tempRoot });
 		expect(started.status).toBe("running");
 
 		const { snapshot, consumed } = await settled;
@@ -103,7 +108,7 @@ describe("BackgroundTerminalManager", () => {
 			spawnProcess: () => child,
 		});
 		const settled = nextSettlement(manager);
-		manager.start({ command: "unicode", cwd: tempRoot });
+		manager.start({ origin: origin(tempRoot), command: "unicode", cwd: tempRoot });
 		const value = Buffer.from("A\u{1F600}B");
 		child.stdout.emit("data", value.subarray(0, 3));
 		child.stdout.emit("data", value.subarray(3));
@@ -122,7 +127,7 @@ describe("BackgroundTerminalManager", () => {
 			},
 		});
 		const settled = nextSettlement(manager);
-		const started = manager.start({ command: "long-running", cwd: tempRoot });
+		const started = manager.start({ origin: origin(tempRoot), command: "long-running", cwd: tempRoot });
 		const results = await manager.kill([started.id], true);
 		const completion = await settled;
 
@@ -149,7 +154,7 @@ describe("BackgroundTerminalManager", () => {
 			terminateProcess: async () => {},
 		});
 		const settled = nextSettlement(manager);
-		const started = manager.start({ command: "stubborn", cwd: tempRoot });
+		const started = manager.start({ origin: origin(tempRoot), command: "stubborn", cwd: tempRoot });
 		const results = await manager.kill([started.id], true);
 		expect(results[0]?.snapshot).toMatchObject({
 			status: "running",
@@ -170,13 +175,13 @@ describe("BackgroundTerminalManager", () => {
 			spawnProcess: nodeSpawner('process.stdout.write("done");'),
 		});
 		let settled = nextSettlement(manager);
-		const first = manager.start({ command: "first", cwd: tempRoot });
+		const first = manager.start({ origin: origin(tempRoot), command: "first", cwd: tempRoot });
 		const firstSnapshot = (await settled).snapshot;
 		expect(existsSync(firstSnapshot.stdoutPath ?? "")).toBe(true);
 		manager.consumeCompletion(first.id);
 
 		settled = nextSettlement(manager);
-		manager.start({ command: "second", cwd: tempRoot });
+		manager.start({ origin: origin(tempRoot), command: "second", cwd: tempRoot });
 		await settled;
 		expect(manager.get(first.id)).toBeUndefined();
 		expect(existsSync(firstSnapshot.stdoutPath ?? "")).toBe(false);
@@ -191,10 +196,10 @@ describe("BackgroundTerminalManager", () => {
 			spawnProcess: nodeSpawner('process.stdout.write("done");'),
 		});
 		const settled = nextSettlement(manager);
-		const first = manager.start({ command: "first", cwd: tempRoot });
+		const first = manager.start({ origin: origin(tempRoot), command: "first", cwd: tempRoot });
 		await settled;
 
-		expect(() => manager.start({ command: "second", cwd: tempRoot })).toThrow(
+		expect(() => manager.start({ origin: origin(tempRoot), command: "second", cwd: tempRoot })).toThrow(
 			BackgroundTerminalCapacityError,
 		);
 		expect(manager.hasPendingCompletion(first.id)).toBe(true);
@@ -224,13 +229,117 @@ describe("BackgroundTerminalManager", () => {
 				child.kill("SIGTERM");
 			},
 		});
-		manager.start({ command: "one", cwd: tempRoot });
-		expect(() => manager.start({ command: "two", cwd: tempRoot })).toThrow(
+		manager.start({ origin: origin(tempRoot), command: "one", cwd: tempRoot });
+		expect(() => manager.start({ origin: origin(tempRoot), command: "two", cwd: tempRoot })).toThrow(
 			BackgroundTerminalCapacityError,
 		);
 		expect(spawnCount).toBe(1);
 		await manager.dispose();
 	});
+});
+
+describe("background terminal manager retention and delivery state", () => {
+	it("retains a compatible manager and guards incompatible replacement with pending state", async () => {
+		const key = Symbol.for("dotfiles.pi.background-terminal-manager");
+		const globals = globalThis as typeof globalThis & Record<symbol, unknown>;
+		const previous = globals[key];
+		const tempRoot = root();
+		const child = controlledProcess();
+		const pendingManager = new BackgroundTerminalManager({ tempRoot, spawnProcess: () => child });
+		try {
+			globals[key] = { version: 2, manager: pendingManager };
+			expect(getBackgroundTerminalManager()).toBe(pendingManager);
+			const settled = nextSettlement(pendingManager);
+			const started = pendingManager.start({ origin: origin(tempRoot), command: "pending", cwd: tempRoot });
+			child.emit("close", 0);
+			await settled;
+			expect(pendingManager.hasPendingCompletion(started.id)).toBe(true);
+			globals[key] = { version: 1, manager: pendingManager };
+			expect(() => getBackgroundTerminalManager()).toThrow(
+				/incompatible background terminal manager/,
+			);
+		} finally {
+			if (previous === undefined) delete globals[key];
+			else globals[key] = previous;
+			await pendingManager.dispose();
+		}
+	});
+
+	it("pauses discarded receipts, retries rejected receipts, and holds uncertain receipts", async () => {
+		const tempRoot = root();
+		const child = controlledProcess();
+		const manager = new BackgroundTerminalManager({ tempRoot, spawnProcess: () => child });
+		const started = manager.start({ command: "delivery", cwd: tempRoot, origin: origin(tempRoot) });
+		child.emit("close", 0);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(manager.beginCompletionDelivery(started.id)?.delivery?.phase).toBe("in-flight");
+		manager.finishCompletionDelivery(started.id, origin(tempRoot), {
+			status: "rejected",
+			deliveryId: `background-terminal:${started.id}`,
+			sessionId: "test-session",
+			reason: "preflight_failed",
+			error: new Error("synthetic"),
+		});
+		expect(manager.beginCompletionDelivery(started.id)).toBeUndefined();
+		manager.resumeCompletionDeliveries("session-start", origin(tempRoot));
+		expect(manager.beginCompletionDelivery(started.id)?.delivery?.phase).toBe("in-flight");
+		manager.finishCompletionDelivery(started.id, origin(tempRoot), {
+			status: "discarded",
+			deliveryId: `background-terminal:${started.id}`,
+			sessionId: "test-session",
+			reason: "session_replaced",
+		});
+		manager.resumeCompletionDeliveries("session-start", origin(tempRoot));
+		expect(manager.beginCompletionDelivery(started.id)).toBeUndefined();
+		manager.resumeCompletionDeliveries("interactive", origin(tempRoot));
+		expect(manager.beginCompletionDelivery(started.id)?.delivery?.phase).toBe("in-flight");
+		manager.finishCompletionDelivery(started.id, origin(tempRoot), {
+			status: "uncertain",
+			deliveryId: `background-terminal:${started.id}`,
+			sessionId: "test-session",
+			error: new Error("unknown"),
+		});
+		manager.resumeCompletionDeliveries("interactive", origin(tempRoot));
+		expect(manager.beginCompletionDelivery(started.id)).toBeUndefined();
+		expect(manager.hasPendingCompletion(started.id)).toBe(true);
+		manager.consumeCompletion(started.id);
+		await manager.dispose();
+	});
+
+	it("resumes only rejected entries from the requested parent origin", async () => {
+		const tempRoot = root();
+		const firstChild = controlledProcess();
+		const secondChild = controlledProcess();
+		const children = [firstChild, secondChild];
+		const manager = new BackgroundTerminalManager({
+			tempRoot,
+			spawnProcess: () => children.shift()!,
+		});
+		const originA = origin(tempRoot, "session-a");
+		const originB = origin(tempRoot, "session-b");
+		const first = manager.start({ command: "first", cwd: tempRoot, origin: originA });
+		const second = manager.start({ command: "second", cwd: tempRoot, origin: originB });
+		firstChild.emit("close", 0);
+		secondChild.emit("close", 0);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+
+		for (const [id, entryOrigin] of [[first.id, originA], [second.id, originB]] as const) {
+			expect(manager.beginCompletionDelivery(id)).toBeDefined();
+			expect(manager.finishCompletionDelivery(id, entryOrigin, {
+				status: "rejected",
+				deliveryId: `background-terminal:${id}`,
+				sessionId: entryOrigin.parentSessionId,
+				reason: "preflight_failed",
+				error: new Error("synthetic"),
+			})).toBe(true);
+		}
+
+		manager.resumeCompletionDeliveries("session-start", originB);
+		expect(manager.beginCompletionDelivery(first.id)).toBeUndefined();
+		expect(manager.beginCompletionDelivery(second.id)).toBeDefined();
+		await manager.dispose();
+	});
+
 });
 
 describe("background terminal UI projections", () => {
