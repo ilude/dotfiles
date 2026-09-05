@@ -688,7 +688,7 @@ Research supports these corrections:
 
 ## Decision handoff
 
-The [test-suite value review PRD](PRD.md) resolves the product questions that remained open during research. In particular, it selects JavaScript and TypeScript scope, baseline-first mode inference, local Git-common-directory state, complete baseline execution, one local timing sample per unit, recorded user dispositions, and a skill-plus-agent first implementation.
+The [test-suite value review PRD](PRD.md) resolves the product questions that remained open during research. It selects owned JavaScript and TypeScript scope, baseline-first mode inference, local Git-common-directory state, complete baseline accounting, one local timing sample per distinct canonical command scope shared across relevant review units, recorded user dispositions, and a skill-plus-agent first implementation. The [operating model](operating-model.md) defines resume, final-commit reconciliation, repository boundaries, and known-answer calibration.
 
 ## KISS recommendation
 

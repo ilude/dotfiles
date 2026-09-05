@@ -5,452 +5,185 @@ status: draft
 
 # PRD: Pi test-suite value review
 
+## Decision summary
+
+Build a testing-only review workflow using one `/test-review` prompt template, one reusable skill, and one closed-read reviewer. Establish a complete repository baseline before ordinary diff-first review. Judge tests by meaningful regression protection relative to maintainer time, not test count, coverage, or finding count.
+
+This is a product draft for planning consideration, not implementation approval. Requirements and acceptance criteria below are normative. The companion [operating model](operating-model.md) defines their lifecycle terms and execution boundaries; its suggested file layout and defaults are planning choices, not additional product features. Existing requirement IDs are retained for traceability.
+
 ## Problem
 
-The repository can accumulate a large number of tests without evidence that each test provides useful regression protection relative to the human time it consumes. New tests are easy to add, but test count and coverage do not establish that assertions detect meaningful faults, mocks represent real boundaries, or duplicated scenarios justify their execution and maintenance cost.
+A suite can accumulate tests without evidence that each adds useful regression protection. Coverage does not establish that assertions detect meaningful faults, doubles represent real boundaries, or duplicated scenarios justify their execution and maintenance cost.
 
-The primary cost is the maintainer's time. That includes waiting for developer-facing test commands, reviewing and updating tests, investigating failures, recovering from flaky tests, and understanding complex fixtures. A fast, stable, simple test can remain even when its marginal protection is weak because changing it would consume more time than it saves. Slow or complex tests require stronger evidence of unique protection.
+The primary cost is maintainer time: waiting, understanding tests, reviewing changes, updating fixtures, investigating failures, recovering from flakes, and context switching. A fast, stable, simple test can remain despite weak marginal protection when changing it would cost more than it saves. Slow or complex tests require stronger evidence of unique protection.
 
-The initial capability is a testing review, not a general production-code review. It may inspect production code to reconstruct the tested contract and may later recommend a behavior-preserving production seam change when reliable testing otherwise remains impractical.
+Production code is context for tested contracts and seams, not an invitation to general production review. Later, explicitly requested remediation may change a seam while preserving observable behavior and public interfaces.
 
 ## Goals
 
-1. Review all in-scope JavaScript and TypeScript unit, integration, contract, and component tests in a repository for effectiveness, reliability, isolation, maintainability, and developer-facing execution cost.
-2. Establish a resumable baseline for a repository that has never received this review.
-3. Identify test proliferation, semantic duplication, weak or misleading assertions, unrealistic doubles, lifecycle leaks, and avoidable execution cost.
-4. Recommend additions, strengthening, consolidation, replacement, deletion, tier changes, or no change according to marginal regression protection and human-time cost.
-5. Ground findings in the repository's actual runners, versions, configuration, source contracts, history, CI evidence, and focused command output.
-6. Produce concise, prioritized findings while retaining complete reviewed-scope and evidence records locally.
-7. Prove the workflow with a prompt template, reusable skill, and closed-read reviewer before considering a Pi extension.
+1. Assess JavaScript and TypeScript test effectiveness, reliability, isolation, maintainability, and developer-facing execution cost.
+2. Establish a resumable, fully accounted baseline, then review changed tests and affected behavior without repeating unrelated baseline debt.
+3. Recommend strengthening, adding, consolidating, replacing, deleting, retiering, retaining, or explicitly taking no action according to protection and human cost.
+4. Ground findings in actual source contracts, configured runners and versions, fixtures, focused checks, and available history and CI evidence.
+5. Prove recommendation quality and one complete inventory-review-verification-report-resume loop before adding orchestration machinery.
 
 ## Non-goals
 
-- Perform a general review of production design, style, security, or implementation quality.
-- Maximize test count, line coverage, branch coverage, mutation score, or finding count.
-- Remove every weak test when the test imposes negligible human cost.
-- Enforce a universal test pyramid, file size, worker count, runtime threshold, or unit-to-integration ratio.
-- Review browser end-to-end tests semantically in the initial capability.
-- Support languages other than JavaScript and TypeScript initially.
-- Modify files, install dependencies, approve changes, push, merge, or publish external comments during review.
-- Start automatically when Pi opens a repository or after a commit.
-- Add a Pi extension, database, generalized queue, or numeric test-value scoring formula in the first version.
-- Begin remediation before the initial baseline is complete.
+- General production design, style, security, or implementation review.
+- Maximizing coverage, mutation score, test count, finding count, or eliminating every smell.
+- Universal runtime limits, test pyramids, worker counts, or numeric test-value/confidence scores.
+- Semantic browser E2E review or languages other than JavaScript and TypeScript initially.
+- Automatic invocation, package installation during review, external publication, or automatic remediation.
+- A Pi extension, standalone CLI, database, or generalized queue in the first version.
+- Remediation before baseline closeout, or integration/cleanup without explicit instructions.
 
-## Users and jobs to be done
+## Users and product principles
 
-- Primary user: the maintainer reviewing a local repository through Pi.
-- Primary job: determine whether the suite prevents meaningful regressions at an acceptable cost to developer time.
-- Baseline job: review a previously unreviewed repository to establish suite inventory, review coverage, findings, timing evidence, and known gaps.
-- Steady-state job: review changed tests and their affected behavior clusters without repeating unrelated baseline debt.
-- Remediation job: improve the suite in an isolated worktree only after the maintainer explicitly requests fixes.
+The maintainer uses baseline mode to understand existing suite protection and cost, diff mode to assess changes, and a separately authorized remediation workflow to improve the suite.
 
-## Product principles
-
-### Optimize human time
-
-The reviewer shall weigh unique regression protection against:
-
-- local execution waiting;
-- maintenance and comprehension effort;
-- failure investigation;
-- flake recovery;
-- code-review burden;
-- context switching; and
-- the implementation cost of the proposed correction.
-
-Automated compute cost matters when it delays a developer-facing workflow, consumes material CI resources, or creates operational burden. It is not a reason by itself to spend maintainer time rewriting harmless tests.
-
-### Evaluate behavior clusters
-
-The primary semantic unit is a behavior or fault-protection cluster. It includes the relevant tests, subject code, fixtures, mocks, setup, utilities, runner configuration, and public contracts. Test files and individual cases are evidence within the cluster, not the default value unit.
-
-### Treat coverage as evidence
-
-Coverage can reveal unexamined code but cannot prove assertion strength or regression protection. A remediation may reduce numerical coverage when the remaining suite preserves or improves meaningful behavior and fault protection while reducing human-time cost.
-
-### Permit no change
-
-A valid conclusion is that a known weakness is not worth changing. The report shall distinguish this conclusion from an unreviewed or unvalidated item.
+- **Human time first:** weigh unique protection against execution waiting, maintenance, comprehension, investigation, flake recovery, review, context switching, and correction effort. Compute cost matters when it affects those costs or creates material operational burden.
+- **Behavior clusters:** a semantic review unit contains tests, subject behavior, contracts, and relevant fixtures/configuration. It is not necessarily one file or one executable test command.
+- **Measurements are separate:** multiple review units can share one timing sample. A shared command duration is not each unit's exclusive runtime.
+- **Evidence, not proxy targets:** coverage and targeted mutation inform fault protection; neither is proof of suite value. Coverage may decrease when meaningful protection is preserved or improved.
+- **Permit no change:** harmless weakness and justified complexity do not require cleanup. Insufficient evidence is a limitation, not permission to invent a finding.
 
 ## Requirements
 
-### Command and review modes
+### Invocation and scope
 
-- **REQ-001:** The first version shall provide `pi/prompts/test-review.md` as the primary `/test-review` entrypoint.
-  - The prompt template shall invoke the `test-review` skill workflow.
-  - Review shall begin only after an explicit user request.
-  - Verification: Pi discovers the prompt template, and invoking it places the complete workflow instructions in model context.
+- **REQ-001:** The first version shall provide `pi/prompts/test-review.md` as the primary `/test-review` entrypoint invoking the `test-review` skill. Review shall begin only on explicit user request.
+- **REQ-002:** An unqualified invocation shall start a missing baseline, resume an incomplete baseline, refresh an uncertain baseline, review changes against a closed baseline, or report unchanged status, in that precedence. A closed baseline with recorded gaps shall not silently restart unchanged blocked/skipped work. Mode selection shall follow the [state table](operating-model.md#mode-selection).
+- **REQ-003:** Explicit `baseline`, `diff`, `path`, `deep-performance`, and `smells` modes shall be available. Path scope shall be repository-contained; limited modes shall not claim whole-baseline completion, and smell candidates shall remain distinct from verified findings.
+- **REQ-004:** Semantic scope shall include JavaScript and TypeScript unit, integration, contract, and component tests owned by the selected Git repository. JavaScript-only packages receive the same review without TypeScript-specific checks. Submodules and nested independent repositories shall be inventoried as boundaries, not recursively reviewed without explicit selection and their own baseline.
+- **REQ-005:** Scope shall include relevant fixtures, doubles, builders, setup, utilities, runner configuration, scripts, environments, transforms, module mode, and TypeScript configuration that affect test meaning or cost.
+- **REQ-006:** Configured compile-time tests and public type-contract checks shall be in scope, including `tsd`, `expectTypeOf`, declaration tests, and `@ts-expect-error` cases.
+- **REQ-007:** Browser E2E shall be inventoried and timed when available and safe; semantic review shall route to the dedicated browser-E2E capability, using Playwright guidance where applicable rather than assuming every browser suite uses Playwright.
+- **REQ-008:** The reviewer shall use the repository's configured JavaScript/TypeScript runner, with version-appropriate repository or maintained documentation evidence. It shall not substitute a generic runner or transfer incompatible mock, timer, or module assumptions. Initial verification shall include Vitest, Jest, and Node Test examples.
 
-- **REQ-002:** An unqualified `/test-review` invocation shall infer its normal mode.
-  - When no baseline state exists, it shall run baseline mode.
-  - When a current baseline exists and repository changes are present, it shall run diff mode.
-  - When neither condition applies, it shall report current baseline status and offer applicable explicit modes.
-  - Verification: exercise all three repository states and inspect the selected mode.
+### Baseline and completion
 
-- **REQ-003:** The prompt shall accept explicit mode overrides for `baseline`, `diff`, `path`, `deep-performance`, and `smells`.
-  - `path` shall require a repository-contained target.
-  - `smells` shall not promote unverified candidates to normal findings.
-  - Verification: invoke each mode and confirm its scope and report classification.
+- **REQ-009:** Baseline semantic review shall start from a clean committed revision of the selected repository. Tracked, staged, untracked non-ignored changes and changed gitlink revisions in that worktree shall block baseline start; ignored files, unrelated linked worktrees, and internal dirt in excluded child repositories shall not. Commands consuming dirty or unavailable child dependencies shall be blocked individually. No changes shall be discarded. See [repository boundaries](operating-model.md#repository-and-cleanliness-boundaries).
+- **REQ-010:** Baseline mode shall first create a deterministic inventory of owned packages, tests, commands, runners/versions, setup, fixtures, environments, type checks, coverage/mutation configuration, CI entrypoints, disabled tests, available historical evidence, and excluded repository boundaries.
+- **REQ-011:** Every discovered owned test shall belong to a behavior-area review unit, normally within a package/workspace, or have an explicit exclusion reason. Units shall name subject behavior, relevant infrastructure, and dependency relationships. Measurement units shall be recorded separately.
+- **REQ-012:** Evidence-based risk priority shall set review order, with user critical-area overrides taking precedence. Destructive/stateful boundaries, authentication, persistence, concurrency, shared infrastructure, churn, regressions, and CI failures may inform priority; priority shall not remove units from scope.
+- **REQ-013:** Baseline execution shall continue until every unit is `reviewed`, `blocked`, or explicitly `skipped` with a reason, without an overall execution budget. Closeout shall distinguish `closed-assessed` from `closed-with-gaps`; neither pending work nor unreconciled revision changes count as closed. Blocked/skipped units and missing dynamic evidence shall not be presented as successful assessment.
+- **REQ-014:** Independent static reviews may run concurrently; performance measurements shall run serially without overlapping review-owned execution workloads that would distort them.
+- **REQ-015:** Failed commands shall retain relevant output and be classified before conclusions or edits. The root shall continue independent work and revisit failed units before closeout, recording any unresolved block rather than treating a check failure as proof of a product defect.
+- **REQ-016:** Every command shall have a finite timeout and child-process cleanup appropriate to its execution mechanism. Repository configuration and observed behavior shall inform the bound; timeouts shall be incomplete evidence requiring diagnosis, not automatic findings.
 
-### Initial language and test scope
+### State and revision validity
 
-- **REQ-004:** The first version shall semantically review JavaScript and TypeScript unit, integration, contract, and component tests.
-  - JavaScript-only packages shall receive the same review without TypeScript-specific checks.
-  - Verification: the first trial inventories and classifies every JavaScript and TypeScript test unit in the dotfiles repository.
+- **REQ-017:** Local untracked state and reports shall live under `<git-common-dir>/test-review/`, shared by linked worktrees without conflating different baseline scopes or revisions.
+- **REQ-018:** The root shall be the sole state writer for an active baseline; reviewer children shall return evidence, not mutate state. Concurrent roots shall not silently overwrite one another's baseline records.
+- **REQ-019:** State shall retain repository/scope identity, starting commit, per-unit reviewed commit and status, evidence references, findings, dispositions, command measurements, and the final commit and reconciliation evidence at closeout. Raw logs/source snapshots shall remain temporary unless requested; persistent summaries shall be bounded and disclose truncation.
+- **REQ-020:** Git changes shall invalidate touched units and dependents affected by shared source, fixtures, configuration, or other recorded inputs. Unchanged evidence may carry forward with a recorded Git comparison. Unknown dependencies, unavailable revisions, or insufficient comparisons shall require refresh, not assumed validity; no content-fingerprint machinery is required initially.
+- **REQ-021:** Work may continue on unaffected units after a change, but closeout shall reconcile the complete inventory, unit evidence, measurements, and gap reasons to one clean final commit. Dirty or uncertain results shall not acquire a reviewed-commit label. In-flight affected results shall be withheld until revalidated. See [revision reconciliation](operating-model.md#revision-reconciliation).
 
-- **REQ-005:** The review shall include test infrastructure that can change test meaning or cost.
-  - This includes fixtures, mocks, builders, setup hooks, test utilities, runner configuration, package scripts, module mode, transforms, environments, and TypeScript configuration.
-  - Verification: every reviewed unit records the infrastructure inspected or states why none applies.
+### Evidence and timing
 
-- **REQ-006:** Compile-time TypeScript tests shall be in scope.
-  - This includes configured `tsd`, `expectTypeOf`, declaration tests, `@ts-expect-error` cases, and public type-contract checks.
-  - Verification: a fixture containing runtime and compile-time tests produces separate contract assessments.
+- **REQ-022:** The root may automatically run existing focused local, non-destructive tests, type checks, and linters. Live, destructive, external, or unclear execution targets shall stop at the relevant authorization boundary.
+- **REQ-023:** Missing dependencies/tooling shall block affected dynamic validation without automatic installation. Static review may continue with explicit limits but shall not be called fully validated.
+- **REQ-024:** The baseline shall collect one ordinary timing sample per distinct canonical measurement unit when available and safe, and link it to every relevant semantic unit. It shall not rerun an unchanged command solely for another cluster, double-count shared runtime, or invent per-cluster percentages. Duration, command scope, runner version, instrumentation, and revision shall accompany each sample. Workflow share requires a measured compatible denominator and observable attribution.
+- **REQ-025:** Optional deep-performance mode shall distinguish cold/warm repetitions, variability, available phase/slow-test data, coverage, type-check, and profiling overhead. Runner configuration experiments remain separately authorized remediation, not ordinary baseline measurement.
+- **REQ-026:** Current coverage evidence shall be reused; configured coverage shall run only when needed to resolve a specific protection/value question, not automatically for every unit.
+- **REQ-027:** Existing mutation tooling shall be used selectively where targeted mutation resolves assertion strength, uniqueness, or redundancy. Mutants shall retain provenance and a named behavior interpretation; score is not a target. Missing tooling may be proposed for later remediation, not installed during baseline. Any mutation execution shall use an isolated disposable execution location, preserve the reviewed checkout, and obey REQ-022.
+- **REQ-028:** The root may inspect bounded Git history for origin, churn, regressions, and maintenance, expanding to complete relevant history only when an observed signal justifies it.
+- **REQ-029:** Already-configured authenticated CI may supply read-only timing, failure, retry, and flake evidence with source/timeframe. Retrieval shall not mutate CI or disclose credentials.
+- **REQ-030:** Reviewers needing context beyond their assignment shall request it explicitly; the root shall validate relevance and containment before supplying it. Context expansion shall not expand mutation, shell, delegation, or publication authority.
 
-- **REQ-007:** Browser end-to-end tests shall be inventoried and their developer-facing runtime recorded when available, but detailed semantic review shall route to the Playwright E2E capability.
-  - Verification: a repository containing browser E2E tests lists them without applying unit-test-specific conclusions to browser-owned behavior.
+### Test-suite value
 
-- **REQ-008:** The reviewer shall support any configured JavaScript or TypeScript test runner.
-  - Runner-specific conclusions shall cite repository evidence or maintained documentation applicable to the installed version.
-  - The workflow shall not substitute an unrelated generic runner.
-  - Verification: review fixtures using at least Vitest, Jest, and Node Test without transferring incompatible mocking, timer, or module assumptions.
+- **REQ-031:** Reviewers shall map behavior clusters to observable contracts and plausible faults before recommending changes. An independent contract takes precedence over assuming the current implementation defines correctness.
+- **REQ-032:** Missing coverage shall be a finding only for a concrete unprotected behavior, branch, failure mode, or invariant, not merely a function without a direct test.
+- **REQ-033:** Severity shall reflect reachable product consequence and the suite's false-confidence mechanism, not smell labels, file size, or complexity alone.
+- **REQ-034:** Complexity shall be reportable only with concrete reliability, comprehension, maintenance, investigation, or execution burden, weighed against unique protection and correction effort.
+- **REQ-035:** Recommendations may strengthen, consolidate, replace, delete, retier, or retain tests. Deletion/consolidation shall identify remaining equivalent behavior/fault protection, supported where practical by focused execution, coverage, history, or targeted mutation. Uncertain unique protection shall block a deletion recommendation.
+- **REQ-036:** Valuable slow tests may be recommended for local/PR, pre-merge, scheduled, or release tiers only with the protected risk, measured human-time cost, and required feedback cadence made explicit.
+- **REQ-037:** Fast, stable, simple tests with weak marginal protection shall not require findings without material false confidence or human cost.
+- **REQ-038:** `reviewed - no change warranted` shall be an explicit conclusion distinct from blocked, skipped, or unreviewed state.
+- **REQ-039:** Reports shall separate protection, consequence, runtime share, flake evidence, and maintenance burden; they shall not compute a synthetic test-value or model-confidence score.
 
-### Baseline inventory and completion
+### Findings and trust
 
-- **REQ-009:** Baseline mode shall require a clean, committed working tree before semantic review begins.
-  - `git status --porcelain=v1 --untracked-files=all` shall produce no entries in the reviewed worktree. Ignored files and changes in other linked worktrees shall not block review. An in-scope dirty submodule shall block its affected unit.
-  - The workflow shall not discard or overwrite existing changes.
-  - Verification: dirty tracked, staged, untracked, and in-scope submodule fixture states are reported as blocked and remain unchanged; ignored files and unrelated linked-worktree changes do not block review.
-
-- **REQ-010:** Baseline mode shall create a deterministic repository-wide inventory before semantic review.
-  - The inventory shall include package/workspace boundaries, test commands, runners and versions, test files, setup, fixtures, environments, type checks, coverage, mutation configuration, CI entrypoints, disabled tests, and available timing or flake evidence.
-  - Verification: compare the generated inventory with known fixture repository contents.
-
-- **REQ-011:** Baseline mode shall divide the inventory into behavior-area review units, normally bounded by a package or workspace.
-  - Each unit shall name its tests, subject behavior, relevant infrastructure, and known dependency relationships.
-  - Verification: every discovered test belongs to a unit or has an explicit unsupported/skipped reason.
-
-- **REQ-012:** Baseline priority shall be inferred from repository evidence and overridden by user-specified critical areas.
-  - Relevant evidence may include destructive or stateful boundaries, authentication, persistence, concurrency, shared infrastructure, churn, historical regressions, CI failures, and suite centrality.
-  - Priority shall change review order, not silently remove units from scope.
-  - Verification: a user override moves the named unit ahead of lower-priority work without dropping other units.
-
-- **REQ-013:** A requested baseline shall continue until every discovered unit is `reviewed`, `blocked`, or `skipped` with a reason.
-  - There is no overall execution budget.
-  - Persistent state exists for recovery from interruption, not planned partial completion.
-  - Verification: the final report accounts for every inventory unit and contains no unexplained pending unit.
-
-- **REQ-014:** Static semantic review may run concurrently across independent units, while performance measurements shall run serially.
-  - Verification: execution records show no overlapping timing samples and no conflicting review assignments.
-
-- **REQ-015:** If a unit command fails, the root shall classify the failure, preserve its output, continue independent units, and revisit the failed unit before baseline completion.
-  - A failing check shall not automatically become a product finding.
-  - Verification: a fixture with one failing unit still reviews independent units and ends with the failed unit explicitly resolved or blocked.
-
-- **REQ-016:** Each command shall have hang protection based on repository timeout configuration and observed suite behavior when available, otherwise a bounded command timeout.
-  - A timeout shall produce incomplete evidence requiring diagnosis, not automatic proof of a defect.
-  - Verification: a hanging fixture command terminates within its configured bound and remains classified as incomplete.
-
-### State and invalidation
-
-- **REQ-017:** Baseline state and reports shall be stored under `<git-common-dir>/test-review/`, resolved through `git rev-parse --git-common-dir`.
-  - The location shall remain untracked and shared by linked worktrees.
-  - Verification: state is absent from `git status` and resolves to the same common directory from linked worktrees.
-
-- **REQ-018:** The root shall be the sole writer of baseline state.
-  - Reviewer agents shall return evidence and candidates but shall not write state.
-  - Verification: agent definitions lack write tools and state changes occur only in root-owned steps.
-
-- **REQ-019:** State shall retain repository identity, starting revision, unit status, last reviewed revision, bounded evidence, findings, user dispositions, commands, and timing summaries.
-  - Complete raw logs and source snapshots shall remain temporary unless requested.
-  - Verification: inspect a completed trial state and confirm required fields and bounded payloads.
-
-- **REQ-020:** Repository changes shall invalidate touched units and units affected by changed shared fixtures or configuration.
-  - The initial version shall determine change scope from Git history and recorded reviewed revisions rather than content-fingerprint machinery.
-  - If history cannot establish the change safely, the affected state shall become uncertain and require re-review.
-  - Verification: change one unit and one shared setup file in a fixture repository and inspect invalidation results.
-
-- **REQ-021:** When files change during a baseline, unaffected units may continue, while touched units and affected dependents shall refresh before completion.
-  - Verification: mutate a fixture unit during review and confirm that completed unrelated units remain valid.
-
-### Evidence collection
-
-- **REQ-022:** The root may automatically run existing focused local commands that are non-destructive and do not target live or unclear external systems.
-  - This includes applicable tests, type checks, and linters.
-  - Live, external, destructive, or unclear targets shall stop at the relevant boundary.
-  - Verification: local fixture commands run; a command marked as requiring a live service is not executed without additional authorization.
-
-- **REQ-023:** Missing repository dependencies or required tooling shall block dynamic validation for the affected unit without automatic installation during baseline review.
-  - Static review may continue but shall not be labeled fully validated.
-  - Verification: remove a required dependency from a fixture environment and confirm no package installation occurs.
-
-- **REQ-024:** Each baseline unit shall receive one timed run of its canonical local developer-facing test command when such a command exists.
-  - The report shall label this as a timing sample, not a statistically rigorous benchmark.
-  - It shall record absolute duration and the unit's share of the target local workflow where available.
-  - Verification: timing records name the command, runner version, selected scope, and instrumentation state.
-
-- **REQ-025:** Deep-performance mode shall support separate cold and warm samples, repeated measurements, phase or slow-test data where the runner supports them, and variability reporting.
-  - Runner configuration experiments shall remain a later remediation action rather than part of ordinary baseline measurement.
-  - Verification: a deep-performance fixture report distinguishes cold, warm, coverage, type-check, and profiled runs.
-
-- **REQ-026:** Coverage evidence shall be reused when current and collected through existing repository commands only when it resolves a behavior-protection or suite-value question.
-  - Coverage collection shall not run for every unit by default.
-  - Verification: a unit with sufficient existing evidence does not trigger an unnecessary coverage run.
-
-- **REQ-027:** Existing mutation tooling shall be used selectively when targeted mutation can distinguish assertion strength, unique protection, or semantic redundancy.
-  - Mutation score shall not be a target or sole decision rule.
-  - Missing mutation tooling may be proposed for the later remediation worktree but shall not be installed during baseline review.
-  - Verification: surviving and killed mutants retain tool provenance and are interpreted against a named behavior.
-
-- **REQ-028:** The root may inspect bounded Git history for test origin, churn, prior regressions, and fixture maintenance.
-  - It may expand to complete relevant history when earlier evidence indicates likely high-value information.
-  - Verification: history expansion names the signal that justified broader retrieval.
-
-- **REQ-029:** When an authenticated CI provider is already configured, the root may retrieve relevant read-only timing, failure, retry, and flake evidence.
-  - It shall not mutate CI state or disclose credentials.
-  - Verification: CI retrieval uses read-only operations and the report records source and timeframe.
-
-- **REQ-030:** A reviewer that needs context outside its assigned behavior cluster shall return a structured context request.
-  - The root shall validate repository containment and relevance before supplying the additional path or evidence.
-  - Verification: a fixture with a shared dependency expands context without giving the reviewer write or publication authority.
-
-### Test-suite value assessment
-
-- **REQ-031:** The reviewer shall map each behavior cluster to observable contracts and plausible fault classes before recommending test changes.
-  - Production implementation behavior alone shall not define the expected result when an independent contract exists.
-  - Verification: findings name the protected or unprotected contract and the fault mechanism.
-
-- **REQ-032:** Missing coverage shall become a finding only when a concrete behavior, branch, failure mode, or invariant is left unprotected.
-  - Lack of a direct test for each production function shall not be sufficient.
-  - Verification: an untested implementation detail without independent behavioral risk produces no finding.
-
-- **REQ-033:** Test severity shall derive from the reachable product consequence and the mechanism by which the suite gives false confidence.
-  - Testing-smell labels, test-file size, and test complexity alone shall not determine severity.
-  - Verification: severity rationales name both consequence and false-confidence path.
-
-- **REQ-034:** Test complexity shall be reportable when it causes concrete reliability, comprehension, modification, investigation, or execution burden.
-  - The reviewer shall weigh that burden against the test's unique regression protection and the effort required to improve it.
-  - Verification: complexity findings include evidence of burden and do not rely on a structural threshold alone.
-
-- **REQ-035:** The reviewer may recommend strengthening, consolidating, replacing, deleting, retiering, or retaining tests.
-  - Deletion or consolidation shall require behavior/fault mapping that shows no lost unique protection, supported where practical by focused execution, coverage, history, or targeted mutation.
-  - Verification: each deletion recommendation identifies the remaining source of equivalent protection.
-
-- **REQ-036:** The reviewer may recommend moving valuable slow tests among local/PR, pre-merge, scheduled, or release tiers.
-  - The recommendation shall preserve the cadence needed for the protected risk.
-  - Verification: tier recommendations state the protected behavior, current human-time cost, and expected feedback point.
-
-- **REQ-037:** A fast, stable, simple test with weak marginal protection shall not require a finding when it creates no material false confidence or human-time burden.
-  - Verification: clean-control fixtures containing harmless low-value tests do not produce cleanup findings.
-
-- **REQ-038:** The reviewer shall permit `reviewed - no change warranted` as an explicit outcome when remediation cost exceeds likely benefit.
-  - Verification: the outcome is distinguishable from blocked, skipped, and unreviewed state.
-
-- **REQ-039:** The initial workflow shall not compute a numeric test-value or model-confidence score.
-  - It shall report protection, consequence, runtime share, flake evidence, and maintenance burden separately.
-  - Verification: reports contain no synthetic weighted score or confidence threshold.
-
-### Findings and reporting
-
-- **REQ-040:** Candidate findings shall receive an independent root evidence check before publication.
-  - The root shall reject duplicates, unsupported hypotheticals, version mistakes, style preferences, and findings contradicted by callers or contracts.
-  - Verification: trial records retain candidate disposition counts and rejection reasons.
-
-- **REQ-041:** The standard report shall distinguish verified defects, concrete test-quality risks, maintainability advice, and contract questions.
-  - A clean `no verified findings` result shall be valid.
-  - Verification: report fixtures render each class separately.
-
-- **REQ-042:** The primary findings section shall contain every high-severity finding plus the highest-value medium findings.
-  - Remaining verified findings shall appear in an appendix rather than disappear.
-  - Cross-cutting findings shall appear once with an affected-unit list.
-  - Verification: a fixture with repeated shared-setup impact produces one finding and complete affected scope.
-
-- **REQ-043:** Smell-audit mode shall place weaker or unverified smell candidates in a separate candidate appendix.
-  - Candidate status shall not be represented as low-severity verified status.
-  - Verification: seeded smell signals lacking a concrete failure mechanism remain candidates only.
-
-- **REQ-044:** Every verified finding shall include category, severity, location, tested contract, failure mechanism, reachable impact, evidence, required outcome, and focused validation.
-  - Findings shall preserve deterministic tool and documentation provenance.
-  - Verification: schema inspection rejects a verified finding missing any required field.
-
-- **REQ-045:** Every report shall include review coverage and limitations.
-  - This includes units and symbols examined, commands and versions used, omitted or blocked scope, truncated evidence, and checks not run.
-  - Verification: the reader can account for every inventoried unit from the report.
-
-- **REQ-046:** Later diff reviews shall retain unresolved baseline findings locally but repeat them only when the affected area is touched, severity changes, or the finding blocks the current change.
-  - Verification: an unrelated diff does not repeat known baseline debt.
-
-- **REQ-047:** The workflow shall record user dispositions as `useful`, `valid-not-worth-changing`, `false-positive`, `already-known`, or `needs-more-evidence`.
-  - Dispositions shall support trial evaluation but shall not become ground truth automatically.
-  - Verification: each disposition is retained with finding identity and revision.
-
-### Reviewer authority and trust
-
-- **REQ-048:** `pi/agents/test-reviewer.md` shall be a closed-read reviewer.
-  - It shall not modify files, run arbitrary shell commands, install dependencies, approve, merge, push, publish externally, or delegate.
-  - Verification: its tool and role definition expose no mutation or publication authority.
-
-- **REQ-049:** The root shall own repository discovery, command execution, candidate verification, state, reporting, and remediation decisions.
-  - Verification: no child result bypasses root validation into the final report.
-
-- **REQ-050:** User-owned reviewer policy and trusted repository policy shall remain authoritative over pull-request narratives, test comments, source text, and instructions introduced by the change under review.
-  - Untrusted text shall be treated as evidence claims, not operating instructions.
-  - Verification: adversarial fixture comments cannot alter review scope, tools, or publication rules.
+- **REQ-040:** The root shall independently check candidate evidence before publication, rejecting duplicates, unsupported hypotheticals, version errors, style preferences, and contradictions with contracts/callers. Candidate dispositions and rejection reasons shall remain available for evaluation.
+- **REQ-041:** Standard reports shall separate verified defects, concrete test-quality risks, maintainability advice, and contract questions; `no verified findings` is valid.
+- **REQ-042:** The primary section shall contain every high-severity finding and the highest-value medium findings; other verified findings shall remain in an appendix. Shared problems shall appear once with all affected units.
+- **REQ-043:** Exhaustive smell candidates lacking verification shall appear only in a separate candidate appendix, not as low-severity verified findings.
+- **REQ-044:** Verified findings shall contain category, severity, location, tested contract, failure mechanism, reachable impact, evidence/provenance, required outcome, and focused validation. Incomplete candidates shall not be published as verified findings.
+- **REQ-045:** Reports shall account for every inventory unit, reviewed behavior/symbols, commands/versions, evidence limits, checks not run, blocked/skipped scope, and closeout revision/status.
+- **REQ-046:** Later diff reviews shall retain unresolved baseline findings but repeat them only when touched, changed in severity, or blocking the current change.
+- **REQ-047:** Local dispositions shall use `useful`, `valid-not-worth-changing`, `false-positive`, `already-known`, and `needs-more-evidence`, attached to finding identity and revision. Dispositions are feedback, not objective ground truth.
+- **REQ-048:** `pi/agents/test-reviewer.md` shall be closed-read, without writes, arbitrary shell execution, installation, approval, merge/push, external publication, or delegation.
+- **REQ-049:** The root shall own discovery, commands, verification, state, reports, and remediation decisions; child results shall not bypass root validation.
+- **REQ-050:** User-owned and trusted base-revision policy shall remain authoritative. Instructions introduced by reviewed changes, repository narratives, comments, and PR descriptions shall be treated as untrusted claims, not operating authority.
 
 ### Remediation
 
-- **REQ-051:** Remediation shall begin only after the full initial baseline is complete and the user explicitly requests fixes.
-  - Unit-by-unit remediation during an active baseline shall remain a documented future option, not initial behavior.
-  - Verification: the initial workflow does not create a remediation worktree while baseline units remain pending.
-
-- **REQ-052:** The root shall create one isolated Git worktree for the entire baseline remediation effort, based on the exact reviewed revision.
-  - It shall preserve unrelated working-tree changes and existing worktrees.
-  - Verification: fixes occur outside the user's primary checkout and no pre-existing worktree is removed or changed.
-
-- **REQ-053:** Remediation shall create focused commits after each validated review unit but shall not push, merge, rebase, or synchronize `main` automatically.
-  - Divergence from `main` shall be reported and await explicit instructions.
-  - Verification: repository history shows focused local commits and unchanged remotes/main.
-
-- **REQ-054:** The remediation worktree and branch shall remain until the user states that fix work is complete and provides integration or cleanup instructions.
-  - Verification: closeout reports the exact worktree and branch without deleting them.
-
-- **REQ-055:** Remediation may change production code when the existing seam prevents reliable testing, provided observable behavior and public interfaces remain unchanged.
-  - Broader production refactoring may be proposed but requires a separate explicit decision.
-  - Verification: any production change is reported separately and validated against existing behavior.
+- **REQ-051:** Remediation shall require baseline closeout and an explicit fix request. `closed-with-gaps` permits only verified findings whose evidence is independent of unresolved gaps; dependent findings remain blocked. Unit-by-unit remediation during an active baseline is deferred.
+- **REQ-052:** The root shall create one isolated remediation worktree for the baseline from its recorded final commit, not whichever commit is currently checked out. Existing worktrees and unrelated changes shall remain untouched. An unavailable final commit or invalidated finding shall block affected remediation.
+- **REQ-053:** Remediation shall create focused commits after validated units, without automatic push, merge, rebase, or synchronization of `main`. Divergence shall be reported for explicit integration instructions.
+- **REQ-054:** The remediation branch/worktree shall remain until the user supplies completion and integration/cleanup instructions; closeout shall identify both.
+- **REQ-055:** Behavior-preserving production seam changes may be made when necessary for reliable testing, reported separately and validated against observable behavior/public interfaces. Broader production refactoring requires a separate decision.
 
 ## Non-functional requirements
 
-- **NFR-001:** The workflow shall minimize maintainer attention by omitting speculative cleanup and recommending no change when correction cost exceeds likely benefit.
-  - Verification: clean-control evaluation includes harmless weak tests and justified complex tests without mandatory findings.
-
-- **NFR-002:** The workflow shall preserve failure provenance.
-  - Test, type-check, lint, coverage, mutation, CI, and history evidence shall retain source, command or query, revision, version, and relevant scope.
-  - Verification: a reader can distinguish deterministic results from reviewer judgment.
-
-- **NFR-003:** The workflow shall be resumable after context compaction or process interruption using local state and repository revision.
-  - Verification: interrupt a fixture baseline and resume without repeating completed unaffected units.
-
-- **NFR-004:** The workflow shall use LF line endings and ASCII punctuation in tracked artifacts.
-  - Verification: repository formatting checks and an ASCII scan pass.
-
-- **NFR-005:** The first version shall remain removable without repository migration.
-  - Removing the prompt, skill, and agent shall leave only untracked `<git-common-dir>/test-review/` data.
-  - Verification: no production package, test runner, or CI configuration depends on the reviewer.
+- **NFR-001:** The workflow shall minimize maintainer attention by omitting speculative cleanup and permitting no action when correction cost exceeds benefit. Harmless weak and justified complex controls shall not generate mandatory cleanup.
+- **NFR-002:** Evidence shall preserve its source, command/query, revision, relevant version/scope, and limits so deterministic results can be distinguished from judgment.
+- **NFR-003:** Interrupted work shall resume from local state and Git evidence without repeating unchanged completed units or valid timing samples.
+- **NFR-004:** Tracked artifacts shall use LF and ASCII punctuation.
+- **NFR-005:** The prompt/skill/agent shall be removable without production, runner, or CI migration; only local review data may remain. The first version shall not add runtime orchestration infrastructure merely to automate a manual procedure.
 
 ## Acceptance criteria
 
-1. [ ] Given a clean repository with no review state, when `/test-review` runs without a mode, then it inventories every JavaScript and TypeScript test unit and starts baseline review.
-   - Verification: the dotfiles trial inventory accounts for every applicable test or records an explicit exclusion.
+1. [ ] Invocation selects the expected action for absent, active, uncertain, changed-closed, unchanged-closed, and closed-with-gaps baselines. Explicit limited modes do not claim complete coverage. Demonstrate the [mode table](operating-model.md#mode-selection), including interruption/resume.
+2. [ ] The dotfiles trial accounts for every owned JavaScript/TypeScript runtime and compile-time test, with browser E2E routed and independent repositories excluded explicitly. Verify inventory against tracked files and configured discovery, including disabled tests.
+3. [ ] Dirty parent tracked/staged/untracked files and gitlink revision changes block baseline start without mutation. Excluded child dirt and unrelated linked-worktree changes do not; commands consuming dirty/unavailable children are individually blocked. Demonstrate each boundary.
+4. [ ] Two behavior clusters sharing one canonical command reference one timing sample. Overlapping aggregate/package commands are not summed as exclusive time; unavailable attribution is labeled unknown. A changed command/configuration invalidates the shared sample and its dependents.
+5. [ ] One lifecycle demonstration interrupts a baseline, commits a unit and shared-setup change, resumes unaffected work, and reconciles added/removed/changed units to one final commit. Dirty in-flight results are withheld; missing revision/dependency evidence prevents unsupported carry-forward.
+6. [ ] Closeout contains no pending or stale unit and matches state/report inventory sets. A fully assessed run is distinguished from a closed run with blocked/skipped units or incomplete dynamic evidence. An unchanged closed-with-gaps run reports gaps without silently retrying them.
+7. [ ] Failed, hanging, missing-tool, and unauthorized-target checks preserve provenance, terminate safely where applicable, allow independent work, and end explicitly resolved or blocked. No missing dependency is installed.
+8. [ ] Vitest, Jest, Node Test, and compile-time examples demonstrate version-appropriate interpretation. Unsupported claims remain unverified. Browser fidelity is not inferred from DOM emulation.
+9. [ ] Every verified finding passes root contract/location/mechanism/evidence checks. Shared findings are deduplicated; advice, questions, and smell candidates remain separate. No-change and no-verified-findings outcomes remain valid.
+10. [ ] The [calibration set](operating-model.md#calibration-and-trial-evidence) exercises known regressions, unique protection, redundancy, justified complexity, and harmless weakness. No accepted recommendation removes known unique protection. Expected detections, misses, false positives, and abstentions are recorded separately; omissions are not hidden by useful-finding counts.
+11. [ ] On the bounded known-answer calibration set, each seeded contract-threatening assertion defect is correctly localized and explained after root verification. Any miss, false mandatory cleanup, or unsafe accepted deletion fails calibration acceptance until diagnosed and corrected. Passing this set is not a claim of general recall.
+12. [ ] The complete dotfiles trial reports finding dispositions, review/verification burden, measured waiting-time opportunities, and confidence limits on proposed savings. No finding-count, coverage, or mutation-score target gates a clean real-world result; performance savings remain proposals until measured after remediation.
+13. [ ] An explicitly requested remediation demonstration starts one worktree from the final reviewed commit, respects unresolved gap dependencies, produces focused validated commits, and leaves primary checkout, remotes, and `main` unchanged. Demonstration uses disposable fixture repositories, not unauthorized real fixes.
+14. [ ] Reviewer authority and adversarial-content examples demonstrate that root-owned verification and trusted policy cannot be replaced by instructions in reviewed material. Findings retain provenance and user dispositions without treating either model confidence or user acceptance as sole truth.
 
-2. [ ] Given the baseline inventory, when review completes, then every unit is reviewed, blocked, or skipped with a reason.
-   - Verification: machine state and Markdown coverage tables contain the same complete unit set.
+## Evaluation and scope of the first trial
 
-3. [ ] Given a review unit, when the reviewer assesses it, then the evidence includes its behavior contract, relevant source seam, fixtures/configuration, and one canonical local timing sample when available.
-   - Verification: inspect all trial unit records; no reviewed unit lacks required evidence without a stated limitation.
+Calibration establishes a small known-answer safety check before the real baseline; it does not replace the baseline or attempt to create a benchmark platform. The first trial covers all owned JavaScript/TypeScript runtime and compile-time tests in the dotfiles Git repository, prioritizing suite value, proliferation, and human-time cost. It does not automatically include `modules/` repositories or other nested Git repositories. Browser E2E receives inventory/timing and a separate semantic-review route.
 
-4. [ ] Given duplicated or proliferated tests, when consolidation is recommended, then the report identifies remaining equivalent protection and the expected human-time benefit.
-   - Verification: no deletion recommendation relies only on code similarity, test count, or coverage percentage.
+Measure detection and preservation on controlled cases, then usefulness and maintainer burden in the real suite. A useful finding does not prove recall; an accepted deletion does not prove equivalence; a single timing sample does not establish a speedup. The [operating model](operating-model.md#calibration-and-trial-evidence) defines the evidence to retain.
 
-5. [ ] Given a fast and harmless weak test, when the standard review runs, then it does not consume the primary report merely because its assertion is weak.
-   - Verification: a clean-control fixture yields no finding unless a concrete false-confidence or maintenance mechanism exists.
+## Alternatives and risks
 
-6. [ ] Given a slow test with little additional coverage, when value is assessed, then the decision considers unique behavior/fault protection and execution tier rather than a coverage/runtime ratio alone.
-   - Verification: critical unique integration coverage can be retained or retiered, while redundant slow coverage can be consolidated or removed.
+| Decision | Reason and retained risk |
+| --- | --- |
+| Prompt + skill + closed-read agent first | Reversible and inspectable; manual state coordination must still demonstrate reliable resume/closeout. |
+| Baseline before steady-state diff review | Exposes existing suite debt; completeness means explicit accounting, not pretending every unit was assessable. |
+| Separate semantic and measurement units | Avoids repeated package runs and false runtime attribution; some cluster costs will remain unknown. |
+| No numeric score or coverage/runtime ratio | Avoids false precision and losing critical low-coverage tests. |
+| Targeted configured mutation only | Useful assertion evidence without a full-suite cost target; isolate execution and disclose equivalent-mutant uncertainty. |
+| Separate authorized remediation | Limits review authority and protects existing work; uncertain equivalence blocks deletion. |
+| Defer extension/CLI and broader refactoring | Reconsider only through a later product decision supported by observed failures, not as automatic trial follow-up. |
 
-7. [ ] Given a high-severity candidate, when the final report is produced, then the root has verified its current location, contract, reachable mechanism, and evidence.
-   - Verification: rejected candidates retain rejection reasons and do not appear as verified findings.
+## Planning handoff
 
-8. [ ] Given an unsupported or version-sensitive runner claim, when authoritative evidence is unavailable, then the claim remains unvalidated rather than becoming a defect.
-   - Verification: the report identifies the missing evidence.
+A `/plan-it` run should consume this PRD and the [operating model](operating-model.md), not treat the research notes as competing requirements. Plan the smallest complete inventory -> review -> verify -> report -> resume/invalidate loop, including calibration and the dotfiles baseline. Preserve all accepted scope and optional modes; sequence them without replacing baseline acceptance with a narrow smoke test.
 
-9. [ ] Given a changed unit after baseline, when `/test-review` runs again, then unrelated reviewed units remain valid and touched/shared-dependent units become stale.
-   - Verification: a fixture change produces the expected invalidation set from Git history.
+Planning may choose state serialization and size limits, prompt syntax, evidence filenames, focused command timeout defaults, and fixture locations using existing Pi mechanisms. These are bounded implementation decisions, not unresolved product goals. Inspect installed agent-discovery/tool contracts before assuming a new reviewer name can be delegated. Missing harness support must be surfaced rather than silently broadening authority or adding an extension.
 
-10. [ ] Given one failing or hanging unit command, when baseline review continues, then independent units complete and the affected unit is revisited or explicitly blocked.
-    - Verification: the baseline cannot close with an unexplained command failure.
-
-11. [ ] Given browser E2E tests, when the baseline runs, then they are inventoried and timed where available but routed to the Playwright E2E capability for semantic review.
-    - Verification: no browser-fidelity claim is inferred from DOM-emulator tests.
-
-12. [ ] Given completed baseline findings, when the user supplies a disposition, then local state records it without treating that response as objective correctness ground truth.
-    - Verification: trial evaluation reports disposition counts and separately verified false positives.
-
-13. [ ] Given an explicit remediation request after baseline completion, when fixes begin, then one isolated worktree contains all baseline fixes as focused unit commits.
-    - Verification: the primary checkout and `main` remain unchanged until explicit integration instructions.
-
-14. [ ] Given the first dotfiles trial, when the user evaluates the output, then success is based on accurate and useful findings plus credible consolidation or performance savings.
-    - Verification: finding count, coverage increase, and mutation score are not acceptance gates; `no verified findings` remains a valid result.
-
-## Alternatives considered
-
-| Option | Advantages | Costs | Decision |
-| --- | --- | --- | --- |
-| Skill and closed-read reviewer | Small, inspectable, reversible, and quick to revise | Root manually coordinates state and completion | Selected for the first version |
-| Pi extension plus skill/reviewer | Deterministic queues, state, modes, and UI | Larger privileged TypeScript surface before review value is proven | Defer until repeated failures demonstrate need |
-| Standalone CLI | Cross-client and CI use | Duplicates Pi orchestration, security, packaging, and model integration | Out of scope |
-| Diff-only review | Fast steady-state feedback | Cannot establish value or debt in a never-reviewed suite | Use after baseline, not instead of baseline |
-| Whole-repository single prompt | Simple invocation | Poor context quality, weak coverage accounting, and injection exposure | Reject |
-| Numeric test-value score | Easy ranking | False precision without calibrated local weights | Reject initially |
-| Coverage/runtime ratio | Simple | Misses critical low-coverage tests and weak high-coverage assertions | Reject as sole decision rule |
-| Full mutation suite | Strong fault evidence | High cost and equivalent-mutant noise | Use targeted configured mutation only |
-| Automatic remediation | Reduces handoff steps | Expands authority and can destroy unique protection | Reject |
-
-## Risks
-
-| Risk | Impact | Mitigation |
-| --- | --- | --- |
-| Reviewer recommends deleting uniquely valuable tests | Escaped regressions | Require behavior/fault mapping, root verification, supporting evidence, isolated worktree, and focused validation |
-| Baseline consumes excessive maintainer attention | Workflow costs exceed value | Prioritize human-time impact, cap the primary report, permit no-change outcomes, and keep uncertain candidates separate |
-| One timing sample is mistaken for a benchmark | Misguided performance changes | Label ordinary evidence as a timing sample and reserve repeated measurements for deep-performance mode |
-| Manual state coordination drifts | Repeated or missing units | Keep root as sole writer, reconcile report/state unit sets, and use Git revisions for invalidation |
-| Review scope expands into general production review | Noise and unrelated refactoring | Require every finding to explain test validity, protection, or cost |
-| Repository text manipulates reviewer behavior | Unsafe scope or authority expansion | Keep user-owned policy authoritative and treat repository narratives as untrusted claims |
-| CI/history retrieval exposes sensitive data | Disclosure | Use existing authenticated read-only mechanisms, bounded queries, and summarized evidence |
-| Runner semantics are assumed incorrectly | False findings | Inspect installed version/configuration and maintained applicable documentation |
-| Slow but valuable tests are deleted | Lost integration protection | Consider unique faults, consequence, and execution tier before deletion |
-| Harmless weak tests generate cleanup work | Wasted maintainer time | Require a concrete false-confidence or human-cost mechanism before reporting |
-| Baseline never reaches closure | Incomplete review presented as complete | Account for every unit as reviewed, blocked, or skipped and persist recovery state |
-
-## Evaluation
-
-The first trial shall cover all in-scope JavaScript and TypeScript unit, integration, contract, and component tests in the dotfiles repository. Browser E2E tests shall be inventoried and timed where available, then routed to the Playwright E2E capability for semantic review. The trial shall emphasize actual suite value rather than seeded finding count.
-
-User dispositions shall use:
-
-- `useful`
-- `valid-not-worth-changing`
-- `false-positive`
-- `already-known`
-- `needs-more-evidence`
-
-Evaluation shall consider:
-
-- verified false positives;
-- finding actionability;
-- duplicate findings;
-- localization accuracy;
-- useful consolidation opportunities;
-- measured local feedback-time opportunities;
-- review and verification burden;
-- completeness of unit accounting; and
-- explicit abstention when evidence is insufficient.
-
-Human dispositions, comment resolution, coverage, mutation score, and model self-confidence shall not serve as sole ground truth.
+This revision neither runs `/plan-it` nor authorizes implementation, actual baseline execution, remediation, or commits. A later extension, broad production refactoring, or unit-by-unit remediation during an active baseline remains a separate product decision.
 
 ## Research references
 
+- [Operating model and validation scenarios](operating-model.md)
 - [Agentic test-review research](agentic-test-review-research.md)
 - [General testing code smells](general-testing-code-smells.md)
 - [TypeScript testing smells and performance](typescript-testing-code-smells.md)
 - [Evidence-based code review](../../patterns/evidence-based-code-review.md)
 
-## Open questions
-
-- What default per-command timeout should apply when neither repository configuration nor prior timing provides a reliable bound?
-- Which exact fields and size limits should the first local state format use?
-- Does the first trial expose enough repeated orchestration failure to justify a later extension?
-- Should broader production refactoring become an ordinary remediation option after the initial workflow is proven?
-- Should the human-readable report eventually be rendered from machine state rather than stored as a separate artifact?
-
 ## KISS recommendation
 
-Implement one `/test-review` prompt template, one review skill with progressive references, and one closed-read reviewer. Run the complete dotfiles JavaScript/TypeScript baseline, record user dispositions, and consider additional machinery only after observed failures show what deterministic support is missing.
+Prove one complete review loop and safe, useful recommendations with a prompt, skill, and closed-read reviewer. Keep durable requirement IDs, but do not turn each requirement into a new runtime component or a source-spelling test. Add machinery only when an observed failure demonstrates why it is needed.

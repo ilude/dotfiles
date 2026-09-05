@@ -11,7 +11,8 @@ The proposed Pi workflow reviews whether a JavaScript or TypeScript test suite p
 
 ## Decision artifact
 
-- [PRD: Pi test-suite value review](PRD.md) - current product decisions, requirements, acceptance criteria, and first-trial scope.
+- [PRD: Pi test-suite value review](PRD.md) - current product decisions, requirements, acceptance criteria, and planning handoff.
+- [Operating model](operating-model.md) - resume and revision rules, repository boundaries, shared timing samples, and calibration scenarios.
 
 ## Research
 
@@ -23,11 +24,13 @@ The proposed Pi workflow reviews whether a JavaScript or TypeScript test suite p
 
 The first version uses one `/test-review` prompt template, one reusable skill, and one closed-read reviewer agent. The root Pi session owns inventory, local commands, finding verification, state under the Git common directory, and later worktree remediation. No extension is planned until real use demonstrates a deterministic orchestration failure worth solving.
 
-The first trial covers all JavaScript and TypeScript unit, integration, contract, and component tests in the dotfiles repository. Browser E2E tests are inventoried and timed where available, then routed to the Playwright E2E capability for semantic review. The trial evaluates useful findings, consolidation opportunities, and developer-facing time savings rather than finding count, coverage growth, or a numeric test-value score.
+The first trial covers JavaScript and TypeScript runtime and compile-time tests owned by the dotfiles Git repository, not tests owned by submodules or nested independent repositories. Browser E2E tests are inventoried and timed where safe and available, then routed to the dedicated browser-E2E capability. A small known-answer calibration set checks missed defects and unsafe deletion recommendations before the complete real baseline.
+
+Semantic review units share canonical command measurements instead of rerunning or double-counting the same suite. Closeout reconciles all evidence to one final commit and distinguishes fully assessed scope from closed scope with explicit gaps. The trial evaluates useful findings, consolidation opportunities, and developer-facing cost rather than finding count, coverage growth, or a numeric test-value score.
 
 ## KISS recommendation
 
-Implement the prompt, skill, and reviewer; run one complete baseline; then use observed false positives, user dispositions, and orchestration failures to decide whether any additional machinery is justified.
+Use the PRD and operating model as inputs to a prospective `/plan-it` run. Plan one complete review loop, bounded calibration, and a full selected-repository baseline before considering more machinery. The documents do not themselves authorize implementation or baseline execution.
 
 ## Related notes
 
