@@ -1,10 +1,18 @@
 # Pi autonomy and workflow ceremony investigation
 
-Status: Complete. Investigation only; no runtime or instruction changes.
-Task: `470fdcf6-c1be-4cca-ad59-67319baaa8ee`
+Status: Incomplete. The first pass was too centered on recent failures. Investigation only; no runtime or instruction changes.
+Prior task reference: `470fdcf6-c1be-4cca-ad59-67319baaa8ee`
 Source baseline: `4549dca9545c38d460719a69698a75da9091b51d` on main, observed 2026-09-05.
 
-## Result
+## System-wide question
+
+How does an ordinary request accumulate extra requirements, procedures, reviews, state, tools, and tests, and why do attempts to simplify the system regenerate that machinery?
+
+The investigation must follow the whole request-to-completion path across instructions, skills, commands, delegation, design, testing, recovery, and closeout. Assess mechanisms that work as designed as well as broken ones. Compare independent work types and direct successful work. Distinguish necessary constraints from preferences that became universal rules, and identify the feedback that turns each local disappointment into more policy.
+
+Completion requires a coherent minimal operating model and evidence-backed removal/consolidation boundaries, not merely fixes to the recent goal failure. Existing findings remain useful bounded evidence; their proposed changes are provisional rather than the complete simplification scope.
+
+## First-pass findings
 
 The strongest findings are a cross-extension controller identity defect, failed goal startup leaving a procedural tool blockade, user-only lifecycle initialization, inadequate recovery of the original objective, counter-driven test interruptions, and tests that miss real host boundaries while preserving review procedure.
 
@@ -30,4 +38,4 @@ Pre-existing untracked paths included `.specs/duckdb-sqlite-log-analytics-benchm
 
 This is a mechanism-focused investigation using selected exact sessions, source, targeted tests/history, installed documentation, and three read-only inspections. It is not an exhaustive historical census or a runtime verification report. The notes distinguish observation, source-established mechanism, plausible contribution, and unresolved behavior. No copied raw transcripts or sensitive exports are stored here.
 
-The deliverable is complete: evidence-linked diagnosis, dispositions for investigated areas, preserved invariants, simplification direction, migration risks, behavioral checks, and material unknowns. Implementation and its verification remain separate work. Additional retrospective retrieval is unlikely to change that direction.
+The first pass supplies specific source-linked findings but does not establish the requested system-wide diagnosis. Further investigation must address the machinery-generation pattern across independent cases rather than accumulate more evidence about the same failure. Implementation and its verification remain separate work.

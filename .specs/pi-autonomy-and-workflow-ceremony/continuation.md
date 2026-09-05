@@ -1,21 +1,21 @@
 # Continuation and evidence locators
 
-Investigation complete. Root task: `470fdcf6-c1be-4cca-ad59-67319baaa8ee`.
+Investigation incomplete: the first pass overfocused on specific failures. Prior root task: `470fdcf6-c1be-4cca-ad59-67319baaa8ee`.
 Source baseline: `4549dca9545c38d460719a69698a75da9091b51d`, main.
 
 ## Frontier
 
-The response owed is the investigation conclusion, not implementation. Read README and solution-inputs.md for the result. No runtime, instruction, test, existing-plan, or Git changes were made by this investigation. No development validation or live experiment was run; no repair allowance was consumed.
+The current scope is the system-wide question in README.md: how requests accumulate machinery and why simplification attempts regenerate it. The existing findings and solution inputs are a bounded first pass, not a completed diagnosis. Assess whole mechanisms across independent work types, including ones that operate as designed, and explain the request-to-completion and policy-growth feedback. Do not continue by collecting more examples of the same controller failure. No runtime, instruction, test, existing-plan, or Git changes were made by this investigation. No development validation or live experiment was run; no repair allowance was consumed.
 
 All three read-only inspections completed and their saved results were integrated. No child work remains to await. One exceptional status lookup recovered terminal-state information after the completed orchestration record was found but no pushed report was visible; saved artifacts supplied the reports. Do not poll or redispatch them. Corrections to worker claims and exact artifact paths are in runtime-and-tests.md.
 
-The notes provide the required source/session-linked diagnosis, disposition map, preservation boundaries, installed reuse options, historical context, migration risks, and focused behavior examples. There is no canonical `plan.md`, managed readiness state, or implementation authorization to recover.
+The notes preserve useful source/session-linked findings, preservation boundaries, installed reuse options, and migration risks. They are insufficient for the broadened synthesis. There is no canonical `plan.md`, managed readiness state, or implementation authorization to recover. Attempting to reopen/update the prior task returned `task not found in current workspace`; no replacement task was created and no tracker change succeeded. The revised investigation scope is recorded in README.md rather than allowing tracker recovery to become another prerequisite.
 
 ## Next action if implementation planning is requested
 
 Reinspect current owning source and active work because the checkout is shared. Resolve only material defaults identified in solution-inputs.md: goal/worktree/closeout meaning and whether `/do-it` retains fresh-session/merge defaults. Preserve explicit constraints of already-authored work. Then make a proportional deletion-first plan; do not add another review or tracking system to authorize it.
 
-Do not continue historical retrieval merely to increase sample size. The remaining uncertainties concern the selected implementation's runtime behavior, which this investigation was explicitly not authorized to test.
+Do not retrieve history merely to increase sample size. Select additional evidence only to resolve distinct system-wide questions: requirement expansion, procedural enforcement, delegation/review obligations, test-driven scope growth, recovery, and repeated policy accumulation. Runtime experimentation remains outside the authorized investigation.
 
 ## Exact session evidence
 

@@ -1,6 +1,6 @@
 # Findings
 
-Investigation complete; implementation not started. References describe source inspected at baseline `4549dca9545c38d460719a69698a75da9091b51d`, unless marked historical. These are selected cases, not a prevalence study. No executable reproduction or development validation was run.
+First-pass findings only; the system-wide investigation is incomplete. These findings overrepresent recent failures and do not yet explain the broader machinery-generation pattern. Implementation not started. References describe source inspected at baseline `4549dca9545c38d460719a69698a75da9091b51d`, unless marked historical. These are selected cases, not a prevalence study. No executable reproduction or development validation was run.
 
 ## Conclusion
 
