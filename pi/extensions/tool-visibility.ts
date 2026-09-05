@@ -7,10 +7,6 @@ import {
 } from "../lib/tool-activation.js";
 
 export const DEFERRED_TOOL_NAMES = [
-	"commit_plan",
-	"commit_validate_message",
-	"commit_stage",
-	"commit_create",
 	"goal_complete",
 	"goal_progress",
 	"plan_archive",

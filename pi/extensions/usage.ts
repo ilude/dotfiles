@@ -94,7 +94,7 @@ export default function (pi: ExtensionAPI) {
 			const markdown = await buildUsageReport(params.refreshPricing ?? false);
 			return {
 				content: [{ type: "text", text: markdown }],
-				details: { markdown },
+				details: undefined,
 			};
 		},
 	});

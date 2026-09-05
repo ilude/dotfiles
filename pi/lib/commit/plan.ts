@@ -2,17 +2,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { type GitAsyncRunner, type GitResult, git } from "./git";
 import {
-	indexStateFingerprint,
-	worktreeStateFingerprint,
-} from "./state";
-import {
 	isDirtyOnlySubmodule,
 	parsePorcelainV2Status,
 	PORCELAIN_V2_STATUS_ARGS,
+	normalizeCommitPaths,
 	statusHasUnmergedPaths,
 	type PorcelainV2StatusEntry,
 } from "./status";
-import { createConfirmationToken, normalizeCommitPaths } from "./token";
 import type {
 	CommitPathEntry,
 	CommitPlanResult,
@@ -382,31 +378,11 @@ export function buildCommitPlan(
 		...alreadyStagedPaths,
 		...safeStagePaths,
 	]);
-	const stageEntries = selectedEntries.filter((entry) =>
-		safeStagePaths.includes(entry.path),
-	);
-	const stageFingerprint = worktreeStateFingerprint(root, stageEntries);
-	const createFingerprint =
-		safeStagePaths.length === 0 ? indexStateFingerprint(root) : undefined;
 	return {
 		repoRoot: root,
 		preflight,
 		entries,
 		selectedPaths,
-		stageConfirmationToken: createConfirmationToken(
-			root,
-			safeStagePaths,
-			"stage",
-			stageFingerprint,
-		),
-		createConfirmationToken: createFingerprint
-			? createConfirmationToken(
-					root,
-					expectedStagedPaths,
-					"create",
-					createFingerprint,
-				)
-			: undefined,
 		safeStagePaths,
 		expectedStagedPaths,
 	};

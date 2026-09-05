@@ -549,14 +549,13 @@ function unattendedReminder(goal: UnattendedGoal): string {
 		active
 			? `Active work item: ${active.key} (${active.taskId})`
 			: "No work item is claimed. Link root tasks if needed, then call goal_progress begin_attempt before any modifying-capable tool.",
-		"Use goal_progress for attempts, outcomes, validation evidence, artifacts, blockers, and recovery. Call goal_complete only after every linked requirement is verified.",
+		"Use goal_progress for attempts, outcomes, validation evidence, blockers, and recovery. Final artifacts are derived from Git. Call goal_complete only after every linked requirement is verified.",
 	].join("\n");
 }
 
 type GoalConditionJudgment = {
 	id: string;
 	evidence: string;
-	passed: boolean;
 };
 
 function validateGoalCompletionEvidence(
@@ -580,8 +579,6 @@ function validateGoalCompletionEvidence(
 		seen.add(judgment.id);
 		if (!judgment.evidence.trim())
 			throw new Error(`condition ${judgment.id} is missing evidence`);
-		if (!judgment.passed)
-			throw new Error(`condition ${judgment.id} failed`);
 	}
 	for (const condition of conditions)
 		if (!seen.has(condition.id))
@@ -592,7 +589,6 @@ function validateGoalCompletionEvidence(
 	return judgments.map((judgment) => ({
 		id: judgment.id,
 		evidence: judgment.evidence.trim(),
-		passed: judgment.passed,
 	}));
 }
 
@@ -601,8 +597,7 @@ function formatConditionEvidence(judgments: readonly GoalConditionJudgment[]): s
 		? "None recorded (legacy goal without structured conditions)"
 		: judgments
 				.map(
-					(judgment) =>
-						`${judgment.id}: ${judgment.passed ? "passed" : "failed"} - ${judgment.evidence}`,
+					(judgment) => `${judgment.id}: ${judgment.evidence}`,
 				)
 				.join("; ");
 }
@@ -1098,7 +1093,6 @@ function createUnattendedGoal(
 			requireRepositoryState: true,
 		},
 		validations: [],
-		changedArtifacts: [],
 		blockers: [],
 		knownGaps: [],
 	};
@@ -1210,13 +1204,12 @@ async function reconcileReceiptCompletion(
 		finalHead: verified.head,
 		finalBranch: verified.branch,
 		finalWorktree: "clean",
-		changedArtifacts: receipt.artifacts,
 		knownGaps: receipt.report.knownGaps ? [receipt.report.knownGaps] : [],
 		blockers: [],
 		closeout: unattendedCloseout({
 			goal: { ...job.goal!, plans: [receipt.archivedPlanPath], archivedPlanPath: receipt.archivedPlanPath },
 			summary: receipt.report.summary,
-			artifacts: receipt.artifacts,
+			artifacts: verified.artifacts,
 			validation: receipt.report.validation,
 			head: verified.head,
 			branch: verified.branch,
@@ -1541,9 +1534,6 @@ async function verifyUnattendedCompletion(
 				.map((item) => item.trim())
 				.filter(Boolean);
 	}
-	for (const recorded of goal.changedArtifacts)
-		if (!artifacts.includes(recorded))
-			blockers.push(`recorded artifact is not in the final Git diff: ${recorded}`);
 	if (blockers.length > 0) return { ok: false, blockers: [...new Set(blockers)] };
 
 	return {
@@ -1945,7 +1935,6 @@ export default function (pi: ExtensionAPI) {
 					"record_outcome",
 					"re_evaluate",
 					"validation",
-					"artifacts",
 					"blocker",
 					"resolve_blocker",
 					"gap",
@@ -1987,7 +1976,6 @@ export default function (pi: ExtensionAPI) {
 				command: Type.Optional(Type.String()),
 				passed: Type.Optional(Type.Boolean()),
 				summary: Type.Optional(Type.String()),
-				paths: Type.Optional(Type.Array(Type.String(), { maxItems: 64 })),
 			},
 			{ additionalProperties: false },
 		),
@@ -2360,24 +2348,6 @@ export default function (pi: ExtensionAPI) {
 					}));
 					return goalProgressResult(goal, `recorded validation: ${command}`);
 				}
-				if (action === "artifacts") {
-					if (!Array.isArray(input.paths)) throw new Error("paths is required");
-					const job = goalJob();
-					if (!job?.goal) throw new Error("No unattended /goal is active.");
-					const paths = input.paths.map((raw) => {
-						if (typeof raw !== "string") throw new Error("artifact path must be a string");
-						const absolute = path.resolve(job.goal?.workspace ?? job.cwd, raw);
-						if (!isContained(job.goal?.workspace ?? job.cwd, absolute))
-							throw new Error(`artifact escaped the workspace: ${raw}`);
-						return displayPath(absolute, job.goal?.workspace ?? job.cwd);
-					});
-					const goal = await updateCurrentGoal((current) => ({
-						...current,
-						updatedAt: nowIso(),
-						changedArtifacts: [...new Set([...current.changedArtifacts, ...paths])],
-					}));
-					return goalProgressResult(goal, `recorded ${paths.length} artifact(s)`);
-				}
 				if (
 					action === "blocker" ||
 					action === "resolve_blocker" ||
@@ -2477,9 +2447,8 @@ export default function (pi: ExtensionAPI) {
 				Type.Array(
 					Type.Object({
 						id: Type.String({ description: "Current goal condition ID" }),
-						evidence: Type.String({ description: "Observable evidence" }),
-						passed: Type.Boolean({ description: "Whether the condition passed" }),
-					}),
+						evidence: Type.String({ description: "Nonblank observable evidence" }),
+					}, { additionalProperties: false }),
 				),
 			),
 			integrationJudgment: Type.Optional(
@@ -2718,7 +2687,7 @@ export default function (pi: ExtensionAPI) {
 								validation: asciiBounded(verification.validation, 1000),
 								knownGaps: suppliedGaps && !/^none(?: reported)?$/i.test(suppliedGaps) ? suppliedGaps : "",
 								nextSteps: asciiBounded(params.nextSteps ?? "", 500),
-								conditionJudgments: conditionJudgments.map((item) => ({ id: item.id, evidence: asciiBounded(item.evidence, 500), passed: true as const })),
+								conditionJudgments: conditionJudgments.map((item) => ({ id: item.id, evidence: asciiBounded(item.evidence, 500) })),
 								integrationJudgment: asciiBounded(params.integrationJudgment ?? "", 500),
 							},
 						};
@@ -2763,7 +2732,6 @@ export default function (pi: ExtensionAPI) {
 					finalHead: closed.mergedHead,
 					finalBranch: closed.primaryBranch,
 					finalWorktree: "clean",
-					changedArtifacts: artifacts,
 					knownGaps: [...new Set(gaps)],
 					blockers: [],
 					mergeReceipt: undefined,
@@ -2837,7 +2805,6 @@ export default function (pi: ExtensionAPI) {
 							finalHead: verification.head,
 							finalBranch: verification.branch,
 							finalWorktree: verification.worktree,
-							changedArtifacts: verification.artifacts,
 							knownGaps: [...new Set(gaps)],
 							blockers: [],
 							closeout: report,

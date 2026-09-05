@@ -371,7 +371,7 @@ describe("Bedrock Claude orchestration policy", () => {
 
 	it("allows direct tools while enforcing GPT-5.6 routing after delegation", () => {
 		const { tool } = hooks();
-		for (const toolName of ["bash", "pwsh", "edit", "write", "commit_stage"]) {
+		for (const toolName of ["bash", "pwsh", "edit", "write"]) {
 			expect(tool({ toolName, input: {} }, orchestratorCtx())).toBeUndefined();
 		}
 	});

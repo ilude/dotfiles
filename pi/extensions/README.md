@@ -229,16 +229,9 @@ A bare TODO or a comment without all three lines is NOT a documented
 exception and fails review. Reviewers should reject any deviation from the
 shared conventions that is not documented this way.
 
-## Pi `/commit` extension
+## Pi `/commit` command
 
-Pi owns `/commit` through the existing `pi/extensions/workflow-commands.ts` command registration. The Pi-native commit tools live in `pi/extensions/commit.ts` as their own auto-discovered extension, so there is still exactly one slash-command owner for `commit`.
-
-The extension exposes structured commit tools:
-
-- `commit_plan` and `commit_validate_message` are non-mutating. `commit_plan.paths` limits a plan to an exact selection, and its model-visible content includes an opaque `planId` for the next tool call.
-- `commit_stage` and `commit_create` are abort-aware mutations. `commit_stage` accepts a `planId` and returns an opaque `stageId`; state-binding tokens remain internal to the extension.
-- `commit_create` re-reads the staged set, checks staged whitespace, scans added lines for secrets, and reports `pushed: false`.
-- `commit_push` requires an explicit push request, expected HEAD, configured upstream, and a branch that is not behind its freshly fetched upstream. It never force-pushes.
+Pi owns `/commit` through `pi/extensions/workflow-commands.ts`. It performs deterministic candidate extraction, isolated secret review, logical grouping, and ownership-aware direct-submodule handling. `/commit push` is the explicit push-capable form, and `--no-submodules` leaves dirty submodule worktrees untouched.
 
 The older Python `scripts/commit-helper` remains a compatibility/parity reference for non-Pi consumers. Pi behavior is canonical going forward.
 
@@ -246,13 +239,7 @@ The older Python `scripts/commit-helper` remains a compatibility/parity referenc
 
 `/commit` checks the custom Git attribute `commit-secrets` only for paths with secret-scan findings. The exact value `allow` bypasses secret review for that path. Missing, unset, bare-set, and other values retain the default blocking behavior. Repositories can apply the policy to every path with `* commit-secrets=allow` or scope it with normal `.gitattributes` patterns. Git owns attribute resolution, so the convention is available to other clients without Pi-specific configuration.
 
-### Direct-tool vs. slash-command usage
-
-Structured commit tools and `/commit` may create coherent, in-scope local commits without separate user approval. `commit_push` and `/commit push` run only when the user explicitly requests a push-capable workflow.
-
-The structured tools use opaque handles backed by state-integrity tokens. `commit_stage` accepts only the exact safe path set and worktree content bound to `commit_plan`; `commit_create` accepts only the exact staged paths and index tree bound to `commit_stage`. Handles expire after successful use and are cleared at session start. The underlying tokens do not represent user confirmation.
-
-`/commit` owns its deterministic end-to-end workflow in `workflow-commands.ts`, including logical grouping and dirty direct-submodule handling. It displays an Esc-cancellable loader while running. Agents may instead use the structured tools or a normal shell workflow (`git status`, targeted `git add -- <paths>`, repository-required checks, `git diff --cached --check`, `git commit`) while keeping local commits coherent and in scope.
+`/commit` displays an Esc-cancellable loader while running. Agents may instead use a normal shell workflow (`git status`, targeted `git add -- <paths>`, repository-required checks, `git diff --cached --check`, `git commit`) while keeping local commits coherent and in scope.
 
 ## Validation
 

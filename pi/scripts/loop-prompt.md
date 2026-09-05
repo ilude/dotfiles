@@ -43,8 +43,8 @@ For an unattended goal:
   inspect durable task and repository state before beginning a materially
   different replacement attempt.
 - Record focused validation through `goal_progress` in the same Pi process that
-  observed the successful `bash` or `pwsh` result. Record changed artifacts
-  through `goal_progress`.
+  observed the successful `bash` or `pwsh` result. Final artifacts are derived
+  from the final Git diff.
 - Call `goal_complete` only after the canonical plan, required root tasks,
   validation evidence, and repository state satisfy the objective. The first
   successful closeout call archives the plan while the goal stays active.

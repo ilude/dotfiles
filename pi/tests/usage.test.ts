@@ -267,5 +267,10 @@ describe("usage extension", () => {
 		);
 		const message = pi.sendMessage.mock.calls[0]?.[0];
 		expect(message.content).not.toContain("openai/default-model");
+
+		const reportTool = pi._getTool("usage_report");
+		const toolResult = await reportTool?.execute("usage-test", {});
+		expect(toolResult.content[0].text).toContain("openai/default-model");
+		expect(toolResult.details).toBeUndefined();
 	});
 });

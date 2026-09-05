@@ -43,9 +43,6 @@ export interface CommitPlanResult {
 	preflight: GitPreflight;
 	entries: CommitPathEntry[];
 	selectedPaths: string[];
-	confirmationToken?: string;
-	stageConfirmationToken?: string;
-	createConfirmationToken?: string;
 	safeStagePaths: string[];
 	expectedStagedPaths: string[];
 }

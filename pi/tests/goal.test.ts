@@ -43,6 +43,7 @@ import goal, { goalTestApi } from "../extensions/goal.ts";
 import * as workflowWorktree from "../lib/workflow-worktree.ts";
 import { readLoopJob, updateLoopJob } from "../extensions/loop.ts";
 import { getTask, transitionTask } from "../lib/task-registry.ts";
+import { migrateUnattendedGoal } from "../lib/goal-state.ts";
 import { closeTaskDatabase, initializeTaskStore } from "../lib/task-store.ts";
 import { initializeGitRepository } from "./helpers/git-fixture.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
@@ -197,8 +198,10 @@ describe("goal extension", () => {
 				nextSteps: expect.objectContaining({ type: "string" }),
 			},
 		});
+		expect(tool?.parameters.properties.conditionJudgments.items.properties).not.toHaveProperty("passed");
 
 		const progress = pi._getTool("goal_progress");
+		expect(progress?.parameters.properties.action.enum).not.toContain("artifacts");
 		const progressProperties = progress?.parameters.properties;
 		expect(progressProperties.items).not.toHaveProperty("maxItems");
 		expect(progressProperties.conditions).toMatchObject({ minItems: 1 });
@@ -207,6 +210,57 @@ describe("goal extension", () => {
 			minLength: 1,
 			maxLength: 500,
 		});
+	});
+
+	it("migrates legacy manual artifacts and condition pass flags without preserving either", () => {
+		const migrated = migrateUnattendedGoal({
+			schemaVersion: 1,
+			id: "goal",
+			mode: "inline",
+			state: "completed",
+			startedAt: "2026-01-01T00:00:00.000Z",
+			updatedAt: "2026-01-01T00:00:00.000Z",
+			workspace: tmp,
+			scope: ["."],
+			summary: "goal",
+			preview: "goal",
+			objectiveHash: "hash",
+			plans: [],
+			items: {},
+			conditions: [],
+			conditionMode: "legacy_compatibility",
+			completionContract: {
+				requireLinkedPlanTasks: true,
+				requireLinkedRootTasks: true,
+				requireValidationEvidence: true,
+				requireRepositoryState: true,
+			},
+			validations: [],
+			blockers: [],
+			knownGaps: [],
+			changedArtifacts: ["manual.txt"],
+			mergeReceipt: {
+				version: 1,
+				primaryGitDir: ".git",
+				primaryWorktree: tmp,
+				primaryBranch: "main",
+				initialBaseline: "a",
+				mergedCommit: "b",
+				archivedPlanPath: "plan.md",
+				archivedPlanBlob: "blob",
+				artifacts: ["final.txt"],
+				report: {
+					summary: "done",
+					validation: "passed",
+					knownGaps: "",
+					nextSteps: "",
+					conditionJudgments: [{ id: "G1", evidence: "observed", passed: true }],
+					integrationJudgment: "composed",
+				},
+			},
+		} as any);
+		expect(migrated).not.toHaveProperty("changedArtifacts");
+		expect(migrated.mergeReceipt?.report.conditionJudgments).toEqual([{ id: "G1", evidence: "observed" }]);
 	});
 
 	it("starts ordinary inline goals directly in the active session and enforces the 15000 character limit", async () => {
@@ -279,7 +333,7 @@ describe("goal extension", () => {
 		const complete = pi._getTool("goal_complete");
 		const conditionEvidence = {
 			conditionJudgments: [
-				{ id: "G1", evidence: "The fixture behavior is observed.", passed: true },
+				{ id: "G1", evidence: "The fixture behavior is observed." },
 			],
 			integrationJudgment: "The observed condition composes into the goal.",
 		};
@@ -630,7 +684,7 @@ describe("goal extension", () => {
 		const complete = pi._getTool("goal_complete");
 		const result = await complete?.execute("skipped", {
 			conditionJudgments: [
-				{ id: "G1", evidence: "The fixture was inspected.", passed: true },
+				{ id: "G1", evidence: "The fixture was inspected." },
 			],
 			integrationJudgment: "The required evidence was reviewed.",
 			summary: "Complete",
@@ -1049,6 +1103,7 @@ describe("goal extension", () => {
 			primaryWorktree: tmp,
 			branch: "main",
 			head: current.initialHead,
+			artifacts: [receipt.archivedPlanPath],
 		});
 		await updateLoopJob(jobId, (job) => ({
 			...job,
@@ -1128,7 +1183,6 @@ describe("goal extension", () => {
 				{
 					id: "G1",
 					evidence: "The fixture objective works through its supported entrypoint.",
-					passed: true,
 				},
 			],
 			integrationJudgment: "All current condition evidence composes into the goal.",

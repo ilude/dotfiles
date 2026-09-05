@@ -529,7 +529,7 @@ export type WorkflowMergeReceiptInput = {
 export async function verifyMergedGoalReceipt(input: {
 	receipt: GoalMergeReceipt;
 	runner: WorkflowGitRunner;
-}): Promise<{ primaryWorktree: string; branch: string; head: string }> {
+}): Promise<{ primaryWorktree: string; branch: string; head: string; artifacts: string[] }> {
 	const receipt = input.receipt;
 	const primaryGitDir = normalize(receipt.primaryGitDir);
 	const root = normalize(receipt.primaryWorktree);
@@ -548,7 +548,19 @@ export async function verifyMergedGoalReceipt(input: {
 	const sourceCheck = await input.runner(primary.worktree, ["cat-file", "-e", `HEAD:${source}`]);
 	if (sourceCheck.code === 0 || fs.existsSync(path.join(primary.worktree, source)))
 		throw new Error("source plan still exists after receipt merge");
-	return { primaryWorktree: primary.worktree, branch: primary.branch, head: parseLine(await input.runner(primary.worktree, ["rev-parse", "HEAD"]), "resolve receipt HEAD") };
+	const artifactDiff = await input.runner(primary.worktree, [
+		"diff",
+		"--name-only",
+		`${receipt.initialBaseline}..${receipt.mergedCommit}`,
+	]);
+	if (artifactDiff.code !== 0)
+		throw new Error(`derive merged receipt artifacts: ${artifactDiff.stderr.trim() || artifactDiff.stdout.trim()}`);
+	return {
+		primaryWorktree: primary.worktree,
+		branch: primary.branch,
+		head: parseLine(await input.runner(primary.worktree, ["rev-parse", "HEAD"]), "resolve receipt HEAD"),
+		artifacts: artifactDiff.stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+	};
 }
 
 export async function closeWorkflowWorktree(input: { worktree: WorkflowWorktree; planPath?: string; archivePlan?: (cwd: string, planPath: string) => Promise<void> | void; onMerged?: (input: WorkflowMergeReceiptInput) => Promise<void> | void; runner: WorkflowGitRunner }): Promise<WorkflowWorktreeOwnership> {

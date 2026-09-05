@@ -27,6 +27,10 @@ export function normalizeGitPath(file: string): string {
 	return file.replaceAll("\\", "/").replace(/^\.\//, "");
 }
 
+export function normalizeCommitPaths(paths: string[]): string[] {
+	return [...new Set(paths.map(normalizeGitPath))].sort();
+}
+
 export function uniqueGitPaths(values: string[]): string[] {
 	return [...new Set(values.filter(Boolean).map(normalizeGitPath))].sort((a, b) =>
 		a.localeCompare(b),

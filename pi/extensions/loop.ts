@@ -11,9 +11,10 @@ import type {
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { createAsyncPoller, type AsyncPoller } from "../lib/async-poller.js";
-import type {
-	GoalPublicState,
-	UnattendedGoal,
+import {
+	migrateUnattendedGoal,
+	type GoalPublicState,
+	type UnattendedGoal,
 } from "../lib/goal-state.js";
 import { updateJsonObjectAtomic } from "../lib/settings-file.js";
 import {
@@ -142,11 +143,13 @@ function writeJob(job: LoopJob): void {
 }
 
 export function readLoopJob(id: string): LoopJob {
-	return JSON.parse(fs.readFileSync(jobPath(id), "utf8")) as LoopJob;
+	const job = JSON.parse(fs.readFileSync(jobPath(id), "utf8")) as LoopJob;
+	return job.goal ? { ...job, goal: migrateUnattendedGoal(job.goal) } : job;
 }
 
 async function readJobAsync(id: string): Promise<LoopJob> {
-	return JSON.parse(await fs.promises.readFile(jobPath(id), "utf8")) as LoopJob;
+	const job = JSON.parse(await fs.promises.readFile(jobPath(id), "utf8")) as LoopJob;
+	return job.goal ? { ...job, goal: migrateUnattendedGoal(job.goal) } : job;
 }
 
 export async function updateLoopJob(
@@ -155,7 +158,10 @@ export async function updateLoopJob(
 ): Promise<LoopJob> {
 	let updated: LoopJob | undefined;
 	await updateJsonObjectAtomic(jobPath(id), (current) => {
-		updated = update(current as LoopJob);
+		const job = current as LoopJob;
+		const normalized = job.goal ? { ...job, goal: migrateUnattendedGoal(job.goal) } : job;
+		updated = update(normalized);
+		if (updated.goal) updated = { ...updated, goal: migrateUnattendedGoal(updated.goal) };
 		return updated as unknown as Record<string, unknown>;
 	});
 	return updated ?? readLoopJob(id);

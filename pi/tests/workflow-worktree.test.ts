@@ -326,12 +326,17 @@ describe("workflow worktree lifecycle", () => {
 		return { root, receipt };
 	}
 
-	it("verifies a receipt after cleanup and permits a later clean primary commit", async () => {
+	it("verifies a receipt after cleanup and derives artifacts from the recorded merge", async () => {
 		const { root, receipt } = await mergedReceiptFixture();
 		fs.writeFileSync(path.join(root, "later.txt"), "later\n");
 		git(root, ["add", "later.txt"]);
 		git(root, ["commit", "-q", "-m", "test: later primary commit"]);
-		await expect(verifyMergedGoalReceipt({ receipt, runner })).resolves.toMatchObject({ branch: receipt.primaryBranch });
+		const forged = { ...receipt, artifacts: ["forged.txt"] };
+		const verified = await verifyMergedGoalReceipt({ receipt: forged, runner });
+		expect(verified).toMatchObject({ branch: receipt.primaryBranch });
+		expect(verified.artifacts).toContain(receipt.archivedPlanPath);
+		expect(verified.artifacts).not.toContain("forged.txt");
+		expect(verified.artifacts).not.toContain("later.txt");
 	});
 
 	it.each([

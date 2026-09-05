@@ -1,10 +1,8 @@
-# Commit fixtures
+# Commit fixture expectations
 
-Commit mutation tests use disposable real Git repositories created under the OS temp directory. Fixture expectations cover:
+These fixtures cover the shared `/commit` workflow helpers:
 
-- state-binding token required for `commit_stage`, `commit_create`, and future `commit_push` mutation
-- final staged-set revalidation immediately before `commit_create`
-- no force-add of ignored files
-- `commit_create` reports committed state with `pushed: false`
-
-`commit_push` is deferred; when implemented it must add explicit upstream/ref/rejection tests here before any push-capable tool ships.
+- non-mutating Git inspection before mutation
+- exact-path staging without force-adding ignored files
+- staged-set and whitespace checks before commit
+- explicit push behavior only when requested

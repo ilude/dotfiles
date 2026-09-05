@@ -412,12 +412,6 @@ const CommonRequestFields = {
 			default: false,
 		}),
 	),
-	affinityTaskId: Type.Optional(
-		Type.String({
-			minLength: 1,
-			description: "Explicit prior task ID for serial Luna session affinity; single-item read/write only and requires the current item taskId.",
-		}),
-	),
 	enforcedBoundary: Type.Optional(
 		Type.String({
 			minLength: 1,
@@ -433,10 +427,20 @@ const CommonRequestFields = {
 	),
 };
 
+const SingleItemRequestFields = {
+	affinityTaskId: Type.Optional(
+		Type.String({
+			minLength: 1,
+			description: "Explicit prior task ID for serial Luna session affinity; single-item read/write only and requires the current item taskId.",
+		}),
+	),
+};
+
 export const SubagentReadSchema = Type.Object(
 	{
 		items: Type.Array(ReadItemSchema, { minItems: 1 }),
 		...CommonRequestFields,
+		...SingleItemRequestFields,
 	},
 	{ additionalProperties: false },
 );
@@ -445,6 +449,7 @@ export const SubagentWriteSchema = Type.Object(
 	{
 		items: Type.Array(WriteItemSchema, { minItems: 1 }),
 		...CommonRequestFields,
+		...SingleItemRequestFields,
 	},
 	{ additionalProperties: false },
 );

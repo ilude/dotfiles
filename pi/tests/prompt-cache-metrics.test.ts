@@ -110,7 +110,7 @@ describe("prompt cache request metrics", () => {
 					description: "Search",
 					parameters: { type: "object", properties: {} },
 					execute: async () => {
-						activeTools = [...activeTools, "commit_plan", "review_artifact_write"];
+						activeTools = [...activeTools, "goal_complete", "review_artifact_write"];
 						return { content: [] };
 					},
 				},
@@ -122,18 +122,18 @@ describe("prompt cache request metrics", () => {
 			} as never,
 		);
 		const result = await wrapped.execute("call-1", {}, undefined, undefined);
-		expect(result.addedToolNames).toEqual(["commit_plan", "review_artifact_write"]);
+		expect(result.addedToolNames).toEqual(["goal_complete", "review_artifact_write"]);
 	});
 
 	it("keeps ordered immediate tools distinct while the installed deferred path carries activations in transcript messages", () => {
 		const read = { name: "read", description: "Read", parameters: {} };
 		const search = { name: "tool_search", description: "Search", parameters: {} };
-		const activated = { name: "commit_plan", description: "Commit", parameters: {} };
+		const activated = { name: "goal_complete", description: "Goal", parameters: {} };
 		const first = splitDeferredTools(
 			{
 				messages: [
 					{ role: "assistant", content: [{ type: "toolCall", name: "tool_search" }] },
-					{ role: "toolResult", toolCallId: "call-1", toolName: "tool_search", content: [], addedToolNames: ["commit_plan"] },
+					{ role: "toolResult", toolCallId: "call-1", toolName: "tool_search", content: [], addedToolNames: ["goal_complete"] },
 				],
 				tools: [read, search, activated],
 			},
@@ -141,7 +141,7 @@ describe("prompt cache request metrics", () => {
 		);
 
 		expect(first.immediate.map((tool) => tool.name)).toEqual(["read", "tool_search"]);
-		expect([...first.deferred.keys()]).toEqual(["commit_plan"]);
+		expect([...first.deferred.keys()]).toEqual(["goal_complete"]);
 		expect(orderedToolsetFingerprint(["read", "search"])).not.toBe(
 			orderedToolsetFingerprint(["search", "read"]),
 		);

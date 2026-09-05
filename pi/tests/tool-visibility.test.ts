@@ -61,10 +61,6 @@ describe("tool visibility", () => {
 		await pi._getHook("session_start")[0].handler({}, sessionContext());
 
 		expect(DEFERRED_TOOL_NAMES).toEqual([
-			"commit_plan",
-			"commit_validate_message",
-			"commit_stage",
-			"commit_create",
 			"goal_complete",
 			"goal_progress",
 			"plan_archive",

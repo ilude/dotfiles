@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-04: Remove redundant Pi tool ceremony
+
+**Changed:** Removed the unused model-visible commit tool workflow while preserving the direct `/commit` executor and shared Git helpers. Goal completion now records condition evidence without redundant success booleans, and unattended goal artifacts are derived from verified Git history rather than manually declared paths.
+
+**Changed:** Team Lead calls no longer advertise unsupported session affinity, while read/write affinity remains available. Usage reports retain one model-visible report instead of duplicating it in tool details.
+
+---
+
 ## 2026-09-04: Remove arbitrary goal and task limits
 
 **Changed:** Goal conditions, linked goal tasks, task summaries, task instructions, dependency lists, goal-condition coverage, and task batches no longer have fixed count or character ceilings. Nonblank summaries, dependency correctness, lifecycle checks, and bounded model-visible output remain enforced. The four-record plan review limit remains unchanged.

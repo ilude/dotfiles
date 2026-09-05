@@ -18,7 +18,7 @@ const classificationCases: [string, string, string, string, string][] = [
 	["read", "ENOENT: no such file or directory", "path-not-found", "filesystem:path-missing", "expected"],
 	["read", "Offset 20 is beyond end of file", "invalid-offset", "read:offset-range", "expected"],
 	["pwsh", "pwsh exited with code 2", "command-nonzero", "command:nonzero", "expected"],
-	["commit_create", "Secret scan blocked the commit: private-key.", "secret-scan-block", "commit:secret-scan", "expected"],
+	["workflow-commands", "Secret scan blocked the commit: private-key.", "secret-scan-block", "commit:secret-scan", "expected"],
 	["task", "Validation failed for tool task: summary is required", "invalid-caller-contract", "caller:validation", "expected"],
 	["task", "scope entries must be worktree-relative", "task-boundary-rejected", "task:boundary-path", "expected"],
 	["task", "Validation failed for tool task: instructions: must not have more than 500 characters", "task-instructions-too-long", "task:instructions-length", "expected"],

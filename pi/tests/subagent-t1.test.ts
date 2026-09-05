@@ -62,6 +62,7 @@ describe("subagent T1 execution contracts", () => {
 		expect(coordinatorItem).toHaveProperty("instructions");
 		expect(coordinator).not.toHaveProperty("boundary");
 		expect(coordinator).not.toHaveProperty("workBoundary");
+		expect(coordinator).not.toHaveProperty("affinityTaskId");
 		expect(readItem).toHaveProperty("skills");
 		expect(writeItem).toHaveProperty("skills");
 		expect(coordinatorItem).toHaveProperty("skills");
@@ -72,6 +73,16 @@ describe("subagent T1 execution contracts", () => {
 		const write = schemaProperties(SubagentWriteSchema);
 		expect(read).toHaveProperty("affinityTaskId");
 		expect(write).toHaveProperty("affinityTaskId");
+		expect(() =>
+			prepareSubagentExecution(
+				{
+					kind: "coordinator",
+					affinityTaskId: "task-a",
+					items: [{ agent: "teamlead", task: "coordinate" }],
+				} as never,
+				{ parentCwd: process.cwd() },
+			),
+		).toThrow("single-item");
 		expect(() =>
 			prepareSubagentExecution(
 				{

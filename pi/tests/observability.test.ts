@@ -1,14 +1,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getMetricsLogPath, readRecentEvents } from "../lib/metrics.js";
 import { invalidateSettingsCache } from "../lib/settings-loader.js";
 import { sanitizeTimingMetadata, summarizeTimingSpans, TimingSpan, withTimingSpan, type Clock } from "../lib/observability.js";
-import registerCommitTools from "../extensions/commit.js";
-import { createMockPi } from "./helpers/mock-pi.js";
-import { buildCommitPlan } from "../lib/commit/plan.ts";
 
 let tmpRoot: string;
 let prevMetricsDir: string | undefined;
@@ -97,130 +93,5 @@ describe("summarizeTimingSpans", () => {
 			{ event: "other", data: { durationMs: 100 } },
 		], 1);
 		expect(rows).toEqual(["subagent:reviewer 50ms ok"]);
-	});
-});
-
-describe("commit tool timing spans", () => {
-	const repos: string[] = [];
-
-	function run(cwd: string, args: string[]) {
-		const result = spawnSync("git", args, { cwd, encoding: "utf8" });
-		if ((result.status ?? 1) !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
-		return result.stdout;
-	}
-
-	function repo() {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-obs-commit-"));
-		repos.push(dir);
-		run(dir, ["init"]);
-		run(dir, ["config", "user.email", "pi@example.invalid"]);
-		run(dir, ["config", "user.name", "Pi Test"]);
-		return dir;
-	}
-
-	function useRealGitExec(pi: ReturnType<typeof createMockPi>) {
-		pi.exec.mockImplementation(async (command, args, options) => {
-			const result = spawnSync(command, args, {
-				cwd: options?.cwd,
-				encoding: "utf8",
-			});
-			return {
-				code: result.status ?? 1,
-				stdout: result.stdout ?? "",
-				stderr: result.stderr ?? "",
-			};
-		});
-	}
-
-	afterEach(() => {
-		for (const dir of repos.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
-	});
-
-	it("commit_stage emits a commit.stage timing span", async () => {
-		const dir = repo();
-		fs.writeFileSync(path.join(dir, "staged.txt"), "hello\n");
-
-		const pi = createMockPi();
-		useRealGitExec(pi);
-		registerCommitTools(pi as any);
-
-		const planTool = pi._getTool("commit_plan")!;
-		const stageTool = pi._getTool("commit_stage")!;
-		const ctx = { cwd: dir };
-
-		const planResult = await planTool.execute("id", {}, undefined, undefined, ctx);
-		const plan = planResult.details as ReturnType<typeof buildCommitPlan> & {
-			planId: string;
-		};
-
-		await stageTool.execute(
-			"id",
-			{ planId: plan.planId },
-			undefined,
-			undefined,
-			ctx,
-		);
-
-		const events = readRecentEvents();
-		const spanNames = events.filter((e) => e.event === "timing_span").map((e) => e.data?.name);
-		expect(spanNames).toContain("commit.stage");
-	});
-
-	it("commit_create emits a commit.create timing span", async () => {
-		const dir = repo();
-		fs.writeFileSync(path.join(dir, "create.txt"), "hello\n");
-
-		const pi = createMockPi();
-		useRealGitExec(pi);
-		registerCommitTools(pi as any);
-
-		const planTool = pi._getTool("commit_plan")!;
-		const stageTool = pi._getTool("commit_stage")!;
-		const createTool = pi._getTool("commit_create")!;
-		const ctx = { cwd: dir };
-
-		const planResult = await planTool.execute("id", {}, undefined, undefined, ctx);
-		const plan = planResult.details as ReturnType<typeof buildCommitPlan> & {
-			planId: string;
-		};
-
-		const stageResult = await stageTool.execute(
-			"id",
-			{ planId: plan.planId },
-			undefined,
-			undefined,
-			ctx,
-		);
-
-		await createTool.execute(
-			"id",
-			{
-				message: "feat: add create.txt",
-				stageId: stageResult.details.stageId,
-			},
-			undefined,
-			undefined,
-			ctx,
-		);
-
-		const events = readRecentEvents();
-		const spanNames = events.filter((e) => e.event === "timing_span").map((e) => e.data?.name);
-		expect(spanNames).toContain("commit.create");
-	});
-
-	it("commit_stage emits a span even when staging fails", async () => {
-		const pi = createMockPi();
-		registerCommitTools(pi as any);
-
-		const stageTool = pi._getTool("commit_stage")!;
-		const ctx = { cwd: "/nonexistent-repo-path" };
-
-		await expect(
-			stageTool.execute("id", { planId: "missing" }, undefined, undefined, ctx),
-		).rejects.toThrow(/Unknown or expired commit planId/);
-
-		const events = readRecentEvents();
-		const spanNames = events.filter((e) => e.event === "timing_span").map((e) => e.data?.name);
-		expect(spanNames).toContain("commit.stage");
 	});
 });

@@ -14,8 +14,6 @@ const REAL_GIT_TEST_TIMEOUT_MS = 60_000;
 
 import { commitFailureMessage } from "../lib/commit/failure.ts";
 import { buildCommitPlan } from "../lib/commit/plan.ts";
-import { stagePaths } from "../lib/commit/stage.ts";
-import { createCommit } from "../lib/commit/create.ts";
 import {
 	chooseFilesToCommit,
 	executeCommitCommand,
@@ -26,7 +24,6 @@ import {
 	stageFiles,
 	SECRET_PATTERNS,
 } from "../extensions/workflow-commands.ts";
-import { timingSafeTokenEqual } from "../lib/commit/token.ts";
 import {
 	CommitWorkflowError,
 	formatCommitWorkflowFailure,
@@ -399,133 +396,7 @@ describe("commit mutation safety", () => {
 		).toEqual([".gitignore", "source.ts"]);
 	});
 
-	it("commit_stage rejects missing token and never stages unsafe ignored paths", () => {
-		const dir = repo();
-		writeFileSync(join(dir, ".gitignore"), "*.secret\n");
-		writeFileSync(join(dir, "safe.txt"), "safe\n");
-		writeFileSync(join(dir, "local.secret"), "secret\n");
-		const plan = buildCommitPlan(dir);
-		expect(() => stagePaths(dir, ["safe.txt"])).toThrow(/confirmation token/);
-		expect(() => stagePaths(dir, ["local.secret"], plan.stageConfirmationToken)).toThrow(/confirmation token|Ignored untracked|unsafe|not present/);
-		const result = stagePaths(dir, plan.safeStagePaths, plan.stageConfirmationToken);
-		expect(result.staged).toEqual([".gitignore", "safe.txt"]);
-	});
 
-	it("commit_stage rejects content drift after planning", () => {
-		const dir = repo();
-		writeFileSync(join(dir, "safe.txt"), "before\n");
-		const plan = buildCommitPlan(dir);
-		writeFileSync(join(dir, "safe.txt"), "after\n");
-		expect(() =>
-			stagePaths(dir, plan.safeStagePaths, plan.stageConfirmationToken),
-		).toThrow(/worktree state/);
-	});
-
-	it("commit_stage stages an exact deletion without staging adjacent changes", () => {
-		const dir = repo();
-		writeFileSync(join(dir, "delete.txt"), "delete\n");
-		writeFileSync(join(dir, "keep.txt"), "before\n");
-		run(dir, ["add", "--", "delete.txt", "keep.txt"]);
-		run(dir, ["commit", "-m", "chore: seed files"]);
-		rmSync(join(dir, "delete.txt"));
-		writeFileSync(join(dir, "keep.txt"), "after\n");
-
-		const plan = buildCommitPlan(dir, ["delete.txt"]);
-		stagePaths(dir, plan.safeStagePaths, plan.stageConfirmationToken);
-
-		expect(run(dir, ["diff", "--cached", "--name-only"]).trim()).toBe(
-			"delete.txt",
-		);
-		expect(run(dir, ["diff", "--name-only"]).trim()).toBe("keep.txt");
-	});
-
-	it("commit_create rejects staged content drift and newly added secrets", () => {
-		const dir = repo();
-		writeFileSync(join(dir, "safe.txt"), "before\n");
-		const plan = buildCommitPlan(dir);
-		const staged = stagePaths(
-			dir,
-			plan.safeStagePaths,
-			plan.stageConfirmationToken,
-		);
-		writeFileSync(
-			join(dir, "safe.txt"),
-			["api", "key=abcdef123456\n"].join("_"),
-		);
-		run(dir, ["add", "--", "safe.txt"]);
-		expect(() =>
-			createCommit(
-				dir,
-				"feat: add safe file",
-				staged.expectedStagedPaths,
-				staged.createConfirmationToken,
-			),
-		).toThrow(/confirmation token/);
-		const refreshed = buildCommitPlan(dir);
-		expect(() =>
-			createCommit(
-				dir,
-				"feat: add safe file",
-				refreshed.expectedStagedPaths,
-				refreshed.createConfirmationToken,
-			),
-		).toThrow(/Secret scan/);
-	});
-
-	it("commit_create revalidates staged set and message immediately before commit", () => {
-		const dir = repo();
-		writeFileSync(join(dir, "safe.txt"), "safe\n");
-		const plan = buildCommitPlan(dir);
-		let staged = stagePaths(
-			dir,
-			plan.safeStagePaths,
-			plan.stageConfirmationToken,
-		);
-		writeFileSync(join(dir, "drift.txt"), "drift\n");
-		run(dir, ["add", "--", "drift.txt"]);
-		expect(() => createCommit(dir, "feat: add safe file", staged.expectedStagedPaths, staged.createConfirmationToken)).toThrow(/confirmation token|Staged set changed/);
-		run(dir, ["reset", "--", "drift.txt"]);
-		rmSync(join(dir, "drift.txt"));
-		staged = stagePaths(dir, [], buildCommitPlan(dir).stageConfirmationToken);
-		expect(() => createCommit(dir, "bad message", staged.expectedStagedPaths, staged.createConfirmationToken)).toThrow(/conventional/);
-		const commit = createCommit(dir, "feat: add safe file", staged.expectedStagedPaths, staged.createConfirmationToken);
-		expect(commit.committedPaths).toEqual(["safe.txt"]);
-		expect(commit.pushed).toBe(false);
-	});
-});
-
-describe("timingSafeTokenEqual", () => {
-	it("returns true for two matching valid hex tokens", () => {
-		const token = "a".repeat(64);
-		expect(timingSafeTokenEqual(token, token)).toBe(true);
-	});
-
-	it("returns false for two distinct same-length valid hex tokens", () => {
-		const a = "a".repeat(64);
-		const b = "b".repeat(64);
-		expect(timingSafeTokenEqual(a, b)).toBe(false);
-	});
-
-	it("returns false for tokens of different string lengths without throwing", () => {
-		const a = "ab".repeat(32);
-		const b = "ab".repeat(16);
-		expect(() => timingSafeTokenEqual(a, b)).not.toThrow();
-		expect(timingSafeTokenEqual(a, b)).toBe(false);
-	});
-
-	it("returns false for undefined or non-string input without throwing", () => {
-		expect(() => timingSafeTokenEqual(undefined, "a".repeat(64))).not.toThrow();
-		expect(timingSafeTokenEqual(undefined, "a".repeat(64))).toBe(false);
-		expect(() => timingSafeTokenEqual(42, "a".repeat(64))).not.toThrow();
-		expect(timingSafeTokenEqual(42, "a".repeat(64))).toBe(false);
-	});
-
-	it("returns false for same-length non-hex strings without throwing", () => {
-		const nonHex = "!".repeat(64);
-		const valid = "a".repeat(64);
-		expect(() => timingSafeTokenEqual(nonHex, valid)).not.toThrow();
-		expect(timingSafeTokenEqual(nonHex, valid)).toBe(false);
-	});
 });
 
 // ---------------------------------------------------------------------------

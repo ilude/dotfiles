@@ -155,7 +155,6 @@ export type GoalValidationEvidence = {
 export type GoalConditionJudgmentReceipt = {
 	id: string;
 	evidence: string;
-	passed: true;
 };
 
 export type GoalMergeReceipt = {
@@ -204,7 +203,6 @@ export type UnattendedGoal = {
 		requireRepositoryState: true;
 	};
 	validations: GoalValidationEvidence[];
-	changedArtifacts: string[];
 	blockers: string[];
 	knownGaps: string[];
 	completedAt?: string;
@@ -217,6 +215,27 @@ export type UnattendedGoal = {
 	mergeReceipt?: GoalMergeReceipt;
 	closeout?: string;
 };
+
+/** Normalize persisted goal state while retaining compatibility with schema version 1. */
+export function migrateUnattendedGoal(input: UnattendedGoal): UnattendedGoal {
+	const legacy = input as UnattendedGoal & { changedArtifacts?: unknown };
+	const { changedArtifacts: _changedArtifacts, ...withoutManualArtifacts } = legacy;
+	const receipt = withoutManualArtifacts.mergeReceipt;
+	if (!receipt) return withoutManualArtifacts;
+	return {
+		...withoutManualArtifacts,
+		mergeReceipt: {
+			...receipt,
+			report: {
+				...receipt.report,
+				conditionJudgments: receipt.report.conditionJudgments.map(({ id, evidence }) => ({
+					id,
+					evidence,
+				})),
+			},
+		},
+	};
+}
 
 const REEVALUATION_OUTCOMES = new Set<GoalFailureOutcome>([
 	"error",

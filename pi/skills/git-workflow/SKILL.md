@@ -23,7 +23,7 @@ Compact index for Git operations and repository hosting. Load linked files for w
 - Pull inside a submodule before updating the parent repo's pinned submodule reference.
 - If submodule fetch fails: `git pull --no-recurse-submodules` then `git submodule update --init --recursive`.
 - Git identity is directory/remote driven; machine-specific SSH config belongs in gitignored local files.
-- For Pi structured commits, run `commit_plan` before `commit_stage` or `commit_create` so their tokens bind mutation to the planned state.
+- For Pi commits, use `/commit` for the owned workflow or follow the ordinary Bash Git policy with targeted staging and repository-required checks.
 
 ## Practical steps
 

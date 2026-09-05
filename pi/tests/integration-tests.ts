@@ -1,10 +1,8 @@
 export const integrationTests = [
 	"tests/background-terminal-manager.test.ts",
 	"tests/background-terminal.test.ts",
-	"tests/commit-extension.test.ts",
 	"tests/commit-mutation.test.ts",
 	"tests/commit-planning.test.ts",
-	"tests/commit-push.test.ts",
 	"tests/damage-control-replay.test.ts",
 	"tests/goal.test.ts",
 	"tests/loop-runner.test.ts",
