@@ -448,7 +448,7 @@ records. While an interactive Pi session is open, the footer shows
 `loop <job-id> T:<iteration>/<maximum>` when the maximum is known and omits the
 maximum for legacy jobs. Active task status follows the loop, and compact
 month-to-date Bedrock cost is last, for example
-`loop rationalization-345 T:35/100 | tasks 2 (2 running) | bedrock $71.64`.
+`loop rationalization-345 T:35/100 | tasks 2 (2 assigned) | bedrock $71.64`.
 The five-second refresh uses asynchronous file reads, never overlaps polls, and
 updates the footer only when the value changes. It disappears when no supervisor
 PID is active. A job becomes trustworthy only after its first
@@ -711,28 +711,30 @@ Commands:
 Operator surface for the durable task registry.
 
 Commands:
-- `/tasks` -- active tasks assigned to the current Pi session and repository workspace, urgency-grouped as blocked > failed > running > pending, with compact rows containing short id + summary + relative time + retry count. `/tasks list --all` forces the full view and includes other sessions plus unscoped, terminal, tombstoned, and foreign-workspace history.
+- `/tasks` -- active tasks assigned to the current Pi session and repository workspace, urgency-grouped as assigned > failed > unassigned, with compact rows containing short id + summary + relative time + retry count. `/tasks list --all` forces the full view and includes other sessions plus unscoped, terminal, tombstoned, and foreign-workspace history.
 - `/tasks <id-prefix>` -- detail view (id, state, summary, scope, dependencies, notes, timestamps, retries, and legacy metadata when present). Prefix matching needs >=4 chars and rejects ambiguous matches
-- `/tasks cancel <id>` -- transitions `running`/`blocked`/`pending` -> `cancelled`; preserves the final summary
-- `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
+- `/tasks cancel <id>` -- records the task as `skipped` (the public cancellation alias); preserves the final summary
+- `/tasks reopen <id>` -- transitions `failed` -> `assigned`; `retry` remains a compatible alias, and the registry bumps `retryCount` and clears `errorReason`. Reopening does not re-execute work; you re-issue the original action through normal channels
+- Assignment selects work but does not launch work or indicate live process activity
 
 Model-callable task surface:
-- The unified `task` tool owns durable Goal Execution state through `create`, `batch`, `update`, `remove`, `list`, `ready`, and `get`. A Task requires only `summary`. Ordinary short workflows can remain prose; durable records are useful for requested todo lists, Dependency Graphs, and work that may span context compaction.
+- The unified `task` tool owns durable Goal Execution state through `create`, `batch`, `update`, `remove`, `list`, `ready`, and `get`. A Task requires only `summary`. Create records only for checkpoints that must survive compaction, interruption, or later continuation, or when tracking is explicitly requested; mandatory unattended goals retain their required root tasks. Ordinary short workflows, delegation, and independently verifiable deliverables can remain task-free
 - A graph-aware `batch` creates 1 through 16 Tasks with request-local keys and dependency keys. Batch publication is atomic: a failed batch persists no generated IDs. Current tool schemas are action-specific and reject unrelated fields, while resumed legacy execution fields retain explicit retirement diagnostics.
 - Tasks are tagged with the creating Pi session and current repository workspace. Optional `goalId` associates a Task with a Goal. Optional `produces`, `consumes`, and numeric `priority` refine only `ready` ordering; metadata never creates a Dependency or changes readiness.
-- `list` excludes other sessions plus unscoped, terminal, and foreign-workspace records unless `all: true` requests a global view; tombstones remain excluded. Its newest-created-first order is unchanged. `ready` applies the same boundary and returns only pending Tasks with no incomplete hard Dependencies, ordered by priority, exact case-sensitive producer relationship, incomplete direct-dependent count, creation time, and Task ID.
-- The parent selects ready work, marks it `running`, passes its `taskId` when executing through `subagent` (or uses `bg_start` without linkage), validates the result, and then records the terminal state. Task never starts, waits for, stops, schedules, or captures output from those processes. Timed prompts belong to the separate `schedule` tool.
+- `list` excludes other sessions plus unscoped, terminal, and foreign-workspace records unless `all: true` requests a global view; tombstones remain excluded. Its newest-created-first order is unchanged. `ready` applies the same boundary and returns only unassigned Tasks with no incomplete hard Dependencies, ordered by priority, exact case-sensitive producer relationship, incomplete direct-dependent count, creation time, and Task ID.
+- For tracked work, the parent selects ready work, marks it `assigned`, invokes the root tool or actual subagent with its `taskId`, validates the result, and then records the terminal state. `ready` only selects eligible work and never dispatches it. Successful create, batch, and assignment results acknowledge that the operation launched no work; task never starts, waits for, stops, schedules, or captures output from processes. Timed prompts belong to the separate `schedule` tool.
 - Optional worktree-relative `scope` paths or globs describe Task boundaries for coordination. `blockedBy` is the only persisted authority creating a hard Dependency; create, update, and batch reject missing, tombstoned, duplicate, cyclic, or foreign-workspace Dependencies. Reverse `blocks` detail is derived from current records rather than persisted as a second edge direction.
 - Task records and dependency edges are committed atomically in SQLite. Separate Pi processes observe committed state directly without a process cache. Legacy JSON import and rollback export require the quiescent migration workflow documented in [`pi/docs/goal-execution-domain.md`](docs/goal-execution-domain.md).
 - Legacy `.pi/todo.json` entries are imported once per workspace. Startup cleanup removes pre-session, imported legacy, and retired execution-era records unless an active durable Dependency still references them, plus terminal Task graphs with no active dependents. Failed and other non-terminal session-owned records remain available only to their owning session or an explicit global view until updated or removed. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity.
 
 Lifecycle (defined in `pi/lib/operator-state.ts`):
 ```
-pending  -> running, cancelled, failed, skipped
-running  -> blocked, completed, failed, cancelled
-blocked  -> running, failed, cancelled, skipped
-failed   -> running, skipped     (running is retry)
-completed, cancelled, skipped = terminal
+unassigned -> assigned, skipped
+assigned   -> unassigned, completed, failed, skipped
+failed     -> assigned, skipped     (assigned is reopen/retry)
+completed, skipped = terminal
+
+Legacy `pending`, `running`, `blocked`, and `cancelled` values remain accepted only as compatibility input and normalize to current states.
 ```
 
 #### `permissions.ts`
@@ -786,7 +788,7 @@ New work uses the role-specific interfaces. Advisory path markers do not grant m
 
 Agent fields enumerate the current trust-aware catalog for each registered subagent tool: user agents are always listed and project-agent names appear only after project trust is validated. To invoke a trusted project agent, set `agentScope` to `project` or `both` and provide its project-local name. A cwd or trust change rebuilds the catalog rather than falling back to raw project discovery; `/reload` also refreshes it. Every invocation validates all requested agents against `agentScope` before any worker starts or a background run is acknowledged.
 
-A root owns durable task creation, state transitions, validation, and closure. Each current subagent item may carry an existing assigned task ID for correlation. If exactly one eligible assigned root task exists in the effective workspace, the runtime may link it unambiguously; invalid or ambiguous links return bounded choices. Children never create or transition task records. Disposable delegation remains task-free.
+A root owns durable task creation, assignment, validation, and closure. Each current subagent item may carry an existing assigned task ID for correlation. If exactly one eligible assigned root task exists in the effective workspace, the runtime may link it unambiguously; invalid or ambiguous links return bounded choices. Children never create or transition task records. Disposable delegation remains task-free, and neither delegation nor independent verifiability alone requires a task record.
 
 ### Agent configuration
 

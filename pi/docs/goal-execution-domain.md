@@ -17,11 +17,11 @@ Prompt Scheduling is a separate domain owned by the `schedule` tool and `schedul
 
 ## Scenarios and invariants
 
-A summary-only Task can be created, queried, updated, transitioned, removed, migrated, and exported without metadata. Metadata never creates a Dependency and never changes readiness or an allowed lifecycle transition.
+A summary-only Task can be created, queried, updated, transitioned, removed, migrated, and exported without metadata. Create a Task only for a checkpoint that must survive compaction, interruption, or later continuation, or when tracking is explicitly requested; mandatory unattended goals retain their required root tasks. Delegation or independent verifiability alone does not require a record. Metadata never creates a Dependency and never changes readiness or an allowed lifecycle transition.
 
 `blockedBy` is the only input that creates a hard prerequisite. New Dependencies must reference an existing non-tombstoned Task in the same workspace and must not create a cycle. Migrated dangling Dependencies are retained because they are recoverable historical state; they remain visible and can be repaired through `task update`.
 
-`task list` remains newest-created-first. `task ready` includes only pending Tasks with no incomplete hard Dependency and applies this total order:
+`task list` remains newest-created-first. `task ready` includes only unassigned Tasks with no incomplete hard Dependency and applies this total order:
 
 1. Numeric priority descending, with absence equal to zero.
 2. A producer before a candidate consuming the same exact case-sensitive resource name.
@@ -29,9 +29,9 @@ A summary-only Task can be created, queried, updated, transitioned, removed, mig
 4. Creation time descending.
 5. Task ID ascending.
 
-This ordering is a projection. It does not reserve, execute, schedule, lease, or transition a Task.
+This ordering is a projection. It does not reserve, execute, schedule, lease, or transition a Task. Readiness selects eligible work only; it never dispatches it.
 
-Lifecycle transitions remain defined by `pi/lib/operator-state.ts`. A parent marks selected work running, executes it through a separate tool or process, validates the result, and records the terminal state. Child processes do not own Task transitions.
+Lifecycle transitions remain defined by `pi/lib/operator-state.ts`. For tracked work, a parent records and assigns the task, invokes a root tool or separate process, validates the result, and records the terminal state. Assignment means selected work, not live process activity. Child processes do not own Task transitions. Create, batch, and assignment acknowledgements report recording only and do not monitor work.
 
 ## Storage and transaction boundary
 

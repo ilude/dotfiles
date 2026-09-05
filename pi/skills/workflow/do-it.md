@@ -22,7 +22,7 @@ For raw work, apply the repository completion-evidence and operator-decision rul
 
 Inspect only enough repository state to establish scope, ownership, and relevant validation. Execute bounded work directly.
 
-Treat work as large only when it is expected to span compaction, delegation, or delayed continuation. For large raw work, after completion evidence and scope bounds settle, create exactly one root task whose summary names the deliverable and whose Task Instructions record the completion checks. Short direct work remains task-free. Do not create a root task before bounds settle.
+Treat work as large only when it is expected to span compaction, interruption, or delayed continuation, or when the operator explicitly requests tracking. For large raw work, after completion evidence and scope bounds settle, create exactly one root task whose summary names the deliverable and whose Task Instructions record the completion checks. Short direct work remains task-free; delegation or an independently verifiable deliverable alone does not require a task. Preserve mandatory unattended-goal root tasks. Do not create a root task before bounds settle.
 
 Create a plan only when unresolved architecture, migration design, destructive or stateful rollout, or material ambiguity makes direct execution unsafe. Otherwise do the work without adding planning ceremony.
 
@@ -38,7 +38,7 @@ Do not add tasks, follow-up work, full-suite checks, reviewer passes, telemetry,
 
 After a task's relevant check passes, mark its checkbox complete and save the plan. Record a concise result only when it is needed for resume, external mutation, or a required audit. A root task created for raw work remains authoritative across compaction and delegation; update it after a user correction and complete it only after its recorded checks pass.
 
-Execute normal plan tasks directly; use repository delegation policy for independent or context-isolated slices, create durable tasks only when they add useful cross-turn or dependency tracking, and do not mirror the plan checklist into another tracking system.
+Execute normal plan tasks directly; use repository delegation policy for independent or context-isolated slices without creating a task merely because work is delegated or independently verifiable. When tracking is required, use the sequence record/assign -> root tool or actual subagent invocation -> validate -> record the terminal outcome. Readiness selects eligible work only; it never dispatches work, and assigned means selected work rather than live process activity. Do not mirror the plan checklist into another tracking system.
 
 For live tasks, the root runs every live command; leaves never run live commands. Before an attempt, confirm the plan's session, cap, terminal outcomes, and hard stop. After any live attempt, record exactly one ledger row and stop. A `rejected` terminal outcome completes a live evaluation task. A material fixture change does not reset the attempt count. If the cap is reached, ask the operator before another attempt. Before delegating analysis of external evidence, copy that evidence into `.tmp/evidence/<task>/` and give the leaf only that bounded artifact.
 

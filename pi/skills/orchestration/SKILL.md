@@ -25,6 +25,6 @@ Cancelling a Team Lead cancels its queued and active descendants. Process-tree s
 ## Mutation and tasks
 
 - Concurrent modifying leaves may carry normalized repository-relative work markers. Markers are advisory; governed workspace and tool-target containment remains enforced.
-- The root owns durable task creation, state changes, validation, and closure. Team Leads may carry an assigned task ID. Subagents do not change task records.
+- Create durable tasks only for checkpoints that must survive compaction, interruption, or later continuation, or for explicitly requested tracking. Mandatory unattended goals retain their required root tasks; delegation or an independently verifiable deliverable alone does not require a record. The root owns task creation, assignment, validation, and closure. Use record/assign -> invoke the root tool or actual subagent -> validate -> record the outcome. Readiness selects work but never dispatches it. Assigned means selected work, not live process activity. Team Leads may carry an existing task ID for correlation. Subagents do not create or change task records.
 - Reduce or summarize worker output before returning it. Prefer a Luna-low reduction when raw output would consume material parent context. The root must validate the requested outcome.
 - Recommendation overrides remain allowed and should be recorded for later routing analysis. Max effort requires explicit operator approval.

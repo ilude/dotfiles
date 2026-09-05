@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-04: Clarify durable task tracking and execution
+
+**Changed:** Durable task records are now guidance for checkpoints that must survive compaction, interruption, or later continuation, or for explicitly requested tracking. Delegation and independently verifiable deliverables do not require records, while mandatory unattended goals retain their root tasks. The record/assign, invoke, validate, and record-outcome sequence is explicit; readiness selects work but never dispatches it.
+
+**Changed:** Task create, batch, and assignment results acknowledge recording without launching or monitoring work. `/tasks reopen` is the public recovery command, with `retry` retained as a compatible alias; cancellation and assignment descriptions now match the existing registry behavior.
+
 ## 2026-09-04: Remove redundant Pi tool ceremony
 
 **Changed:** Removed the unused model-visible commit tool workflow while preserving the direct `/commit` executor and shared Git helpers. Goal completion now records condition evidence without redundant success booleans, and unattended goal artifacts are derived from verified Git history rather than manually declared paths.
