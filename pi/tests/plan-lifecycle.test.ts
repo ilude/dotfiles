@@ -327,24 +327,20 @@ describe("plan lifecycle", () => {
 			"Observe one result, then cleanup",
 			"Observe one result, then inspect another, and then cleanup",
 		);
-		expect(validatePlanContract(multiBehavior, planPath).errors).toContain(
-			"T1 live Verify must name one observable behavior and cannot depend on a model choosing an action.",
-		);
+		expect(validatePlanContract(multiBehavior, planPath).valid).toBe(true);
 		const modelChoice = liveReadyPlan(planPath).replace("Observe one result", "Observe whether the child voluntarily chooses one result");
-		expect(validatePlanContract(modelChoice, planPath).errors).toContain(
-			"T1 live Verify must name one observable behavior and cannot depend on a model choosing an action.",
-		);
+		expect(validatePlanContract(modelChoice, planPath).valid).toBe(true);
+		const cleaning = liveReadyPlan(planPath).replace("cleanup", "clean owned fixtures");
+		expect(validatePlanContract(cleaning, planPath).valid).toBe(true);
 	});
 
-	it("requires per-repository ownership and closeout for multi-repository plans", () => {
+	it("leaves repository-boundary prose to plan review rather than keyword matching", () => {
 		const planPath = ".specs/example/plan.md";
 		const multiRepo = readyPlan(planPath).replace(
 			"  - Files: `src/example.ts`",
 			"  - Files: `src/example.ts`, `modules/onclave/src/example.ts`",
 		);
-		expect(validatePlanContract(multiRepo, planPath).errors[0]).toContain(
-			"Plans spanning multiple repositories",
-		);
+		expect(validatePlanContract(multiRepo, planPath).valid).toBe(true);
 		const declared = multiRepo.replace(
 			"- In scope: Example.",
 			"- In scope: Example.\n- Repositories: workspace - owner branch main, closeout merge; modules/onclave - owner branch feature/v2-broker-core, closeout commit before parent.",
@@ -386,6 +382,7 @@ describe("plan lifecycle", () => {
 			.replace(/  - (?:Files|Change|Done when|Verify):.*\n/g, "")
 			.replace(/\n## Execution Strategy[\s\S]*$/, "\n");
 		expect(validatePlanContract(concise, planPath, "execution-preflight").valid).toBe(true);
+		expect(validatePlanContract(concise, planPath, "ready").valid).toBe(true);
 		expect(validatePlanContract(concise.replace("status: ready", "status: paused"), planPath, "execution-preflight").valid).toBe(false);
 		expect(validatePlanContract(concise.replace("- [ ] **T1:", "- Deliver"), planPath, "execution-preflight").valid).toBe(false);
 		const missingDependency = concise.replace(
@@ -395,6 +392,28 @@ describe("plan lifecycle", () => {
 		expect(validatePlanContract(missingDependency, planPath, "execution-preflight").errors).toContain(
 			"Plan dependency syntax: plan task T1 has missing dependency: T2",
 		);
+	});
+
+	it("accepts more than sixteen tasks while rejecting cyclic execution graphs", () => {
+		const planPath = ".specs/example/plan.md";
+		const tasks = Array.from({ length: 20 }, (_, i) => `- [ ] **T${i + 1}: Task ${i + 1}**`).join("\n");
+		const content = `---\nstatus: ready\n---\n## Tasks\n${tasks}\n`;
+		expect(validatePlanContract(content, planPath).taskKeys).toHaveLength(20);
+		expect(validatePlanContract(content, planPath).valid).toBe(true);
+		const cyclic = content.replace("**T1: Task 1**", "**T1: Task 1**\n  - Depends on: T2")
+			.replace("**T2: Task 2**", "**T2: Task 2**\n  - Depends on: T1");
+		expect(validatePlanContract(cyclic, planPath).valid).toBe(false);
+	});
+
+	it("checks live prerequisites when that task is next, not before earlier implementation", () => {
+		const planPath = ".specs/example/plan.md";
+		const content = `---\nstatus: ready\n---\n## Tasks\n- [ ] **T1: Implement**\n- [ ] **T2: Evaluate**\n  - Depends on: T1\n  - Verify: live Observe the fixture and clean it.\n`;
+		expect(validatePlanContract(content, planPath, "execution-preflight").valid).toBe(true);
+		const next = content.replace("[ ] **T1:", "[x] **T1:");
+		const validation = validatePlanContract(next, planPath, "execution-preflight");
+		expect(validation.valid).toBe(false);
+		expect(validation.errors).toContain("T2 live verification requires Max attempts: <positive integer>.");
+		expect(validation.errors).toContain("A plan with live verification must contain ## Live attempt ledger.");
 	});
 
 	it("matches exact section headings when a prefixed heading appears first", () => {
@@ -447,9 +466,7 @@ describe("plan lifecycle", () => {
 		expect(validation.valid).toBe(false);
 		expect(validation.errors).toEqual(
 			expect.arrayContaining([
-				"Completion Evidence is missing Fails when:.",
 				"Plan frontmatter status must be ready.",
-				"T1 is missing Verify:",
 			]),
 		);
 	});

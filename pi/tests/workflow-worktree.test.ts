@@ -21,6 +21,15 @@ async function runner(cwd: string, args: string[]) {
 	}
 }
 
+async function rawRunner(cwd: string, args: string[]) {
+	try {
+		return { code: 0, stdout: execFileSync("git", args, { cwd, encoding: "utf8" }), stderr: "" };
+	} catch (error) {
+		const failure = error as { status?: number; stdout?: Buffer | string; stderr?: Buffer | string };
+		return { code: failure.status ?? 1, stdout: String(failure.stdout ?? ""), stderr: String(failure.stderr ?? "") };
+	}
+}
+
 function completePlan(): string {
 	return [
 		"---",
@@ -186,7 +195,10 @@ describe("workflow worktree lifecycle", () => {
 		expect(git(root, ["status", "--porcelain=v1", "--", ".specs"])).toBe("");
 	});
 
-	it("transfers an unstaged modified tracked plan and cleans the primary copy", async () => {
+	it.each([
+		["trimmed Git output", runner],
+		["raw Git output", rawRunner],
+	] as const)("transfers an unstaged modified tracked plan with %s and cleans the primary copy", async (_label, gitRunner) => {
 		const root = repo();
 		const planPath = ".specs/fixture/plan.md";
 		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });
@@ -194,8 +206,8 @@ describe("workflow worktree lifecycle", () => {
 		git(root, ["add", planPath]);
 		git(root, ["commit", "-q", "-m", "test: track plan"]);
 		fs.writeFileSync(path.join(root, planPath), "modified\n");
-		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner, allowDirtyPrimary: true });
-		expect(await materializePlanInWorkflowWorktree({ worktree, planPath, runner })).toBe("updated");
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner: gitRunner, allowDirtyPrimary: true });
+		expect(await materializePlanInWorkflowWorktree({ worktree, planPath, runner: gitRunner })).toBe("updated");
 		expect(fs.readFileSync(path.join(worktree.ownership.worktree, planPath), "utf8")).toBe("modified\n");
 		expect(fs.readFileSync(path.join(root, planPath), "utf8")).toBe("tracked\n");
 		expect(git(root, ["status", "--porcelain=v1", "--", planPath])).toBe("");

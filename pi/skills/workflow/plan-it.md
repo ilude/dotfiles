@@ -55,7 +55,7 @@ A restored snapshot may contain a legacy post-draft stage. Treat it as compatibi
 
 ## Plan Contract
 
-Write the canonical plan from this exact structural contract rather than inferring its format from archived plans. Replace every placeholder with plan-specific content and omit optional bullets that do not apply:
+Use this template as authoring guidance rather than inferring intent from archived plans. Replace placeholders with plan-specific content and omit optional bullets that do not apply. Keep machine-consumed task, dependency, status, live-attempt, and closeout syntax; equivalent organization of the explanatory prose is acceptable:
 
 ```markdown
 ---
@@ -129,13 +129,13 @@ Keep incomplete work at `.specs/<slug>/plan.md`. After completion, `/do-it` arch
 
 The `Closeout` bullet is optional and must appear only when the operator explicitly requests commit-and-retain closeout. Its exact wording is the deterministic policy marker; do not paraphrase it.
 
-Before calling `ready`, verify mechanically against the structure above: frontmatter says exactly `status: ready`; every required `##` heading exists; `Completion Evidence` has separate `- Evidence:` and `- Fails when:` bullets; `Validation` contains at least one checkbox; `Execution Status` contains `- State:` and the canonical resume command; and `Retention` names the canonical archive directory.
+Before calling `ready`, check the parsed status, task IDs, dependencies, and declared live-attempt metadata. Review objective, completion evidence, boundaries, verification, and recovery instructions for meaning, not heading or keyword matches. The deterministic validator does not prove those prose obligations or cleanup adequacy.
 
 Use `## Execution Strategy` only when it adds useful execution advice; it may identify independent task keys, bounded leaf packages, or work that must remain root-owned, but remains advisory, does not assign authority-sensitive, integration-owning, or acceptance-gating work away from the root, and does not force delegation, parallel execution, or scheduler records.
 
 State mutation boundaries explicitly: name the files or state owned by each task, what may be changed, and what remains untouched. Dependencies must identify actual prerequisites, not merely preferred order. A task is ready only when every required dependency is complete; independent ready tasks may proceed in parallel without adding scheduler records.
 
-Use one checkbox list with 1-3 tasks. Use sequential unique keys `T1` through `T3`. Every task must use the exact field labels `Files:`, `Change:`, `Done when:`, and `Verify:`. Add `Depends on: T1` only when an actual prerequisite exists. Task-level `Done when` and `Verify` clauses must collectively prove the completion evidence. Untagged `Verify:` remains deterministic for compatibility; use the explicit tag in new plans. Include the optional live task and ledger only when live work exists. If research questions exceed ten, move them to `.specs/<slug>/research.md` and keep only task-blocking references in the plan.
+Use one checkbox list with the fewest independently executable tasks that cover the outcome. Use sequential unique keys `T1`, `T2`, and so on; there is no fixed task-count cap. Prefer the field labels `Files:`, `Change:`, `Done when:`, and `Verify:` for readability. Keep the machine-consumed `Verify:` tag and dependency syntax. Add `Depends on: T1` only when an actual prerequisite exists. Task-level `Done when` and `Verify` clauses must collectively prove the completion evidence. Untagged `Verify:` remains deterministic for compatibility; use the explicit tag in new plans. Include the optional live task and ledger only when live work exists. If research questions exceed ten, move them to `.specs/<slug>/research.md` and keep only task-blocking references in the plan.
 
 Include only context, boundaries, assumptions, safety, current status, or blockers that change execution. For shared or live state, name the target, stop condition, and concise rollback required by active instructions.
 

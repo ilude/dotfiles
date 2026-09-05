@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-05: Resume interrupted workflow closeout without replaying implementation
+
+**Fixed:** Retrying the original `/do-it` plan command after archival uses the completed archive in its owned workspace for closeout-only recovery instead of treating the active plan as missing or copying an older primary plan back into execution. Prepared handoffs also check the canonical plan path and effective closeout policy, preventing a stale continuation from using a superseded merge decision. Closeout tools signal failures through Pi's native tool-error protocol while preserving recovery state. `/clear` and the default `/do-it` session handoff again reload changed Pi resources when the footer reload detector is active; reload runs through the fresh replacement-session context, and `/do-it` waits to dispatch until it completes.
+
+**Changed:** `/do-it` shows its selected execution path, workspace, branch, mode, and closeout policy at dispatch. Cancelled session replacement reports that execution did not start and identifies the preserved prepared workspace. An empty invocation asks for a task without creating a worktree or clearing the session.
+
+**Preserved:** Flags-first parsing, merge/retain defaults, ownership and plan-byte checks, existing execution progress, and archive/merge verification remain intact. These fixes do not execute or change the pending test-review capability plan.
+
+## 2026-09-04: Make plan startup validate execution state instead of prose
+
+**Changed:** Plan validation no longer gates readiness or execution on prose keywords, conjunction counts, template-only headings and fields, repository-description wording, or an arbitrary task-count cap. Planning and review still own the plan's substantive completeness and safety. Parsed paths, statuses, task graphs, live-attempt metadata, and closeout contracts remain enforced. Execution checks live prerequisites when the next task is live, without blocking earlier implementation over later live work.
+
+**Fixed:** `/do-it` prepares the owned workspace and validates its actual plan before clearing. Unstaged tracked-plan edits transfer with raw or trimmed Git output; a retry can finish setup in a clean baseline worktree instead of silently running its stale plan. Existing execution progress is preserved, and divergent primary edits require reconciliation. Setup failures immediately report affected paths/state and recovery guidance in the current session without starting a model turn; they no longer wait for the next user prompt to become visible. The replacement session checks ownership, branch, and plan identity before dispatching once.
+
+**Preserved:** Staged and mixed spec changes, wrong-target ownership, conflicting worktree state, exhausted live attempts, unsafe actions, and closeout verification remain protected. Ignored plans are never force-added. No pending user plan or live implementation worktree is modified by this repair.
+
 ## 2026-09-04: Clarify durable task tracking and execution
 
 **Changed:** Durable task records are now guidance for checkpoints that must survive compaction, interruption, or later continuation, or for explicitly requested tracking. Delegation and independently verifiable deliverables do not require records, while mandatory unattended goals retain their root tasks. The record/assign, invoke, validate, and record-outcome sequence is explicit; readiness selects work but never dispatches it.

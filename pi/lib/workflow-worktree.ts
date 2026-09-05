@@ -307,6 +307,42 @@ export async function ensureWorkflowWorktree(input: { cwd: string; workflow: Wor
 
 export type PlanMaterialization = "transferred" | "ignored" | "tracked" | "updated" | "resumed";
 
+// Git and the plan remain the recovery authority; existence alone is not progress.
+export async function resolveWorkflowPlanWorkspace(input: {
+	worktree: WorkflowWorktree;
+	planPath: string;
+	runner: WorkflowGitRunner;
+}): Promise<string> {
+	const { ownership, resumed } = input.worktree;
+	const source = path.join(ownership.primaryWorktree, input.planPath);
+	const target = path.join(ownership.worktree, input.planPath);
+	const slug = workflowSlugFromPlan(input.planPath);
+	const archived = path.join(ownership.worktree, ".specs", "archive", slug, "plan.md");
+	if (resumed && fs.existsSync(archived)) {
+		if (fs.existsSync(target)) throw new Error(`owned workflow contains both active and archived plans for ${input.planPath}; reconcile the archive before retrying`);
+		if (!fs.lstatSync(archived).isFile() || !fs.realpathSync(archived).startsWith(`${fs.realpathSync(ownership.worktree)}${path.sep}`))
+			throw new Error(`owned workflow archive is not a regular file within the worktree: ${archived}`);
+		if (!readLinkedPlan(archived).complete) throw new Error(`owned workflow archive is not complete: ${archived}`);
+		return ownership.worktree;
+	}
+	if (!resumed || !fs.existsSync(target)) return ownership.primaryWorktree;
+	if (!fs.existsSync(source) || fs.readFileSync(source).equals(fs.readFileSync(target))) return ownership.worktree;
+	const specDir = path.posix.dirname(input.planPath);
+	const sourceStatus = await input.runner(ownership.primaryWorktree, ["status", "--porcelain=v1", "--untracked-files=all", "--", specDir]);
+	if (sourceStatus.code !== 0) throw new Error(`inspect primary spec: ${sourceStatus.stderr}`);
+	if (!sourceStatus.stdout.trim()) {
+		const changed = await input.runner(ownership.primaryWorktree, ["diff", "--quiet", ownership.initialPrimaryHead, "HEAD", "--", specDir]);
+		if (changed.code === 0) return ownership.worktree;
+		throw new Error(`primary and owned plans diverged: ${source} and ${target}; primary spec commits changed since setup. Reconcile the two copies before retrying; neither was overwritten.`);
+	}
+	const head = parseLine(await input.runner(ownership.worktree, ["rev-parse", "HEAD"]), "inspect owned baseline");
+	const targetStatus = await input.runner(ownership.worktree, ["status", "--porcelain=v1", "--untracked-files=all"]);
+	if (targetStatus.code !== 0) throw new Error(`inspect owned worktree: ${targetStatus.stderr}`);
+	if (head !== ownership.initialPrimaryHead || targetStatus.stdout.trim())
+		throw new Error(`primary and owned plans diverged: ${source} and ${target}; the owned worktree has changes or commits. Reconcile the two copies before retrying; neither was overwritten.`);
+	return ownership.primaryWorktree;
+}
+
 export async function materializePlanInWorkflowWorktree(input: {
 	worktree: WorkflowWorktree;
 	planPath: string;
@@ -359,12 +395,18 @@ export async function materializePlanInWorkflowWorktree(input: {
 		return "tracked";
 	}
 	const normalizedPlanPath = planPath;
+	const normalizedStatusEntry = entries[0]?.replace(/\\/g, "/");
 	const modifiedPlanOnly = entries.length === 1
-		&& entries[0].startsWith("M ")
-		&& entries[0].slice(2).replace(/\\/g, "/") === normalizedPlanPath;
+		&& (normalizedStatusEntry === ` M ${normalizedPlanPath}`
+			|| normalizedStatusEntry === `M ${normalizedPlanPath}`);
 	if (modifiedPlanOnly) {
 		if (!fs.existsSync(targetPlan))
 			throw new Error("modified tracked plan is missing from the implementation worktree");
+		const primaryBlob = parseLine(await input.runner(input.worktree.ownership.primaryWorktree, ["rev-parse", `:${planPath}`]), "inspect primary plan index");
+		const targetBlob = parseLine(await input.runner(input.worktree.ownership.worktree, ["rev-parse", `HEAD:${planPath}`]), "inspect owned plan baseline");
+		const targetDiff = await input.runner(input.worktree.ownership.worktree, ["diff", "--quiet", "HEAD", "--", planPath]);
+		if (primaryBlob !== targetBlob || targetDiff.code !== 0)
+			throw new Error(`cannot transfer ${planPath}: primary index and clean owned baseline no longer match. Reconcile ${sourcePlan} and ${targetPlan}; neither was overwritten.`);
 		const committedPlan = fs.readFileSync(targetPlan);
 		fs.copyFileSync(sourcePlan, targetPlan);
 		if (fs.readFileSync(targetPlan, "utf8") !== fs.readFileSync(sourcePlan, "utf8"))
@@ -381,7 +423,7 @@ export async function materializePlanInWorkflowWorktree(input: {
 		return "updated";
 	}
 	if (!entries.every((entry) => entry.startsWith("?? ")))
-		throw new Error("canonical spec has unsupported tracked or mixed changes; commit or restore them before /do-it");
+		throw new Error(`canonical spec has unsupported tracked or mixed changes in ${sourceDir}: ${entries.slice(0, 8).map((entry) => JSON.stringify(entry)).join(", ")}. Only an unstaged edit to ${planPath} can be transferred automatically. Preserve the index and other spec edits; reconcile them before retrying /do-it.`);
 	fs.mkdirSync(path.dirname(targetDir), { recursive: true });
 	fs.cpSync(sourceDir, targetDir, { recursive: true, errorOnExist: true, force: false });
 	if (!fs.existsSync(targetPlan) || fs.readFileSync(targetPlan, "utf8") !== fs.readFileSync(sourcePlan, "utf8"))

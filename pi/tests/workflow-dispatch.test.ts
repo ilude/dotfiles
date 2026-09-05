@@ -7,6 +7,7 @@ import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 import { parseDoItArgs, routeDirectDoItInput } from "../extensions/workflow-commands.ts";
 
 const copyToClipboardMock = vi.hoisted(() => vi.fn());
+const reloadStatusMock = vi.hoisted(() => ({ needed: false }));
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
 	copyToClipboard: copyToClipboardMock,
@@ -23,6 +24,10 @@ vi.mock("node:fs", async (importOriginal) => {
 
 vi.mock("node:child_process", () => ({
 	spawnSync: vi.fn(),
+}));
+
+vi.mock("../extensions/operator-status", () => ({
+	isOperatorReloadNeeded: vi.fn(() => reloadStatusMock.needed),
 }));
 
 vi.mock("../lib/model-routing", () => ({
@@ -68,6 +73,7 @@ vi.mock("../lib/workflow-worktree", () => ({
 		closeoutStage: "committed",
 	})),
 	materializePlanInWorkflowWorktree: vi.fn(async () => "transferred"),
+	resolveWorkflowPlanWorkspace: vi.fn(async (input: any) => input.worktree.ownership.worktree),
 	resolveWorkflowRepoRoot: vi.fn(async (cwd: string) => cwd),
 	readWorkflowOwnershipForWorktree: vi.fn(() => undefined),
 	readWorkflowOwnershipRecord: vi.fn(() => undefined),
@@ -205,6 +211,7 @@ describe("workflow slash command dispatch", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		copyToClipboardMock.mockReset();
+		reloadStatusMock.needed = false;
 	});
 
 	afterEach(() => {
@@ -494,6 +501,76 @@ describe("workflow slash command dispatch", () => {
 		expect(definition.getArgumentCompletions("--no-merge --")).toBeNull();
 	});
 
+	it("reloads before dispatching a cleared /do-it when runtime resources changed", async () => {
+		reloadStatusMock.needed = true;
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const appendCustomEntry = vi.fn();
+		const appendCustomMessageEntry = vi.fn();
+		const reload = vi.fn(async () => undefined);
+		const newSession = vi.fn(async (options: any) => {
+			await options.setup({ appendCustomEntry, appendCustomMessageEntry });
+			await options.withSession({ reload });
+		});
+
+		await getHandler(mockPi, "do-it")("implement the task", {
+			...createMockCtx(), cwd: "/repo", newSession,
+		});
+
+		const continuation = appendCustomEntry.mock.calls.find(
+			([type]) => type === "workflow.do-it-continuation",
+		)?.[1];
+		expect(continuation).toMatchObject({ reloadBeforeDispatch: true });
+		expect(reload).toHaveBeenCalledOnce();
+
+		const resumedPi = createMockPi();
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		vi.mocked(worktrees.readWorkflowOwnershipRecord).mockReturnValue(continuation.prepared.ownedWorktree.ownership);
+		resumedPi.exec.mockResolvedValue({ code: 0, stdout: "workflow/implement-the-task\n", stderr: "" });
+		mod.default(resumedPi as Parameters<typeof mod.default>[0]);
+		const sessionStart = resumedPi._getHook("session_start")[0]?.handler;
+		if (!sessionStart) throw new Error("session_start hook not registered");
+		const ctx = {
+			cwd: "/repo", mode: "tui", ui: { notify: vi.fn() },
+			sessionManager: { getSessionId: () => "resume-session", getBranch: () => [
+				{ customType: "workflow.do-it-continuation", data: continuation },
+			] },
+		} as any;
+
+		await sessionStart({ reason: "new" }, ctx);
+		expect(resumedPi.sendMessage).not.toHaveBeenCalled();
+		await sessionStart({ reason: "reload" }, ctx);
+		expect(resumedPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
+			expect.anything(),
+		);
+		expect(resumedPi.appendEntry).toHaveBeenCalledWith(
+			"workflow.do-it-continuation.consumed",
+			continuation,
+		);
+	});
+
+	it("reloads /clear through the replacement-session context only when needed", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const reload = vi.fn(async () => undefined);
+		const newSession = vi.fn(async (options: any) => {
+			await options.setup({ appendCustomMessageEntry: vi.fn() });
+			await options.withSession?.({ reload });
+		});
+		const ctx = { ...createMockCtx(), getContextUsage: vi.fn(), newSession };
+
+		await getHandler(mockPi, "clear")("", ctx);
+		expect(newSession.mock.calls[0]?.[0]?.withSession).toBeUndefined();
+		expect(reload).not.toHaveBeenCalled();
+
+		reloadStatusMock.needed = true;
+		await getHandler(mockPi, "clear")("", ctx);
+		expect(reload).toHaveBeenCalledOnce();
+	});
+
 	it("resumes a cleared /do-it once through the fresh extension instance", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -516,16 +593,20 @@ describe("workflow slash command dispatch", () => {
 		const continuation = appendCustomEntry.mock.calls.find(
 			([type]) => type === "workflow.do-it-continuation",
 		)?.[1];
-		expect(continuation).toEqual({
+		expect(continuation).toMatchObject({
 			id: expect.any(String),
 			request: "implement the task",
 			noClear: false,
 			inPlace: false,
 			noMerge: true,
+			prepared: { ownedWorkspace: "/repo", ownedWorktree: { ownership: { closeoutPolicy: "retain" } } },
 		});
 		expect(telemetry.startWorkflowEpisode).not.toHaveBeenCalled();
 		expect(friction.noteWorkflowSubmission).not.toHaveBeenCalled();
 		const resumedPi = createMockPi();
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		vi.mocked(worktrees.readWorkflowOwnershipRecord).mockReturnValueOnce(continuation.prepared.ownedWorktree.ownership);
+		resumedPi.exec.mockResolvedValueOnce({ code: 0, stdout: "workflow/implement-the-task\n", stderr: "" });
 		mod.default(resumedPi as Parameters<typeof mod.default>[0]);
 		const sessionStart = resumedPi._getHook("session_start")[0]?.handler;
 		if (!sessionStart) throw new Error("session_start hook not registered");
@@ -608,6 +689,43 @@ describe("workflow slash command dispatch", () => {
 		);
 	});
 
+	it.each(["planPath", "closeoutPolicy"] as const)("stops prepared continuation when %s drifts", async (field) => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		const worktrees = await import("../lib/workflow-worktree.ts");
+		const ownership = {
+			version: 1, workflow: "do-it", workflowId: "do-it:workflow-fixture", repoRoot: "/repo",
+			primaryWorktree: "/repo", primaryBranch: "main", initialPrimaryHead: "initial-head",
+			branch: "workflow/workflow-fixture", worktree: "/repo/worktree", createdAt: "now", updatedAt: "now",
+			state: "active", planPath: ".specs/workflow-fixture/plan.md", closeoutPolicy: "merge",
+		} as const;
+		const continuation = {
+			id: "continuation-drift", request: ".specs/workflow-fixture/plan.md", noClear: false, inPlace: false, noMerge: false,
+			prepared: {
+				request: ".specs/workflow-fixture/plan.md", canonicalPlanPath: ownership.planPath, executionPlanPath: ownership.planPath,
+				ownedWorkspace: ownership.worktree, workflowRepoRoot: "/repo", ownedWorktree: { ownership, resumed: true },
+				effectiveCloseoutPolicy: "merge", branch: ownership.branch, receipt: "receipt", prompt: "prompt",
+			},
+		};
+		vi.mocked(worktrees.readWorkflowOwnershipRecord).mockReturnValue(field === "planPath"
+			? { ...ownership, planPath: ".specs/other/plan.md" }
+			: { ...ownership, closeoutPolicy: "retain" });
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const sessionStart = mockPi._getHook("session_start")[0]?.handler;
+		if (!sessionStart) throw new Error("session_start hook not registered");
+		await sessionStart({ reason: "new" }, {
+			cwd: "/repo", mode: "tui", ui: { notify: vi.fn() },
+			sessionManager: { getSessionId: () => "resume-session", getBranch: () => [
+				{ customType: "workflow.do-it-continuation", data: continuation },
+			] },
+		} as any);
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+			customType: "workflow.plan-preflight", content: expect.stringContaining("canonical plan path"),
+		}), expect.anything());
+		expect(mockPi.sendMessage).not.toHaveBeenCalledWith(expect.objectContaining({ customType: "workflow.hiddenPrompt" }), expect.anything());
+		expect(mockPi.appendEntry).toHaveBeenCalledWith("workflow.do-it-continuation.consumed", continuation);
+	});
+
 	it("keeps a setup failure pending after the session was cleared", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -636,9 +754,9 @@ describe("workflow slash command dispatch", () => {
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow.plan-preflight",
-				content: "/do-it setup failed: git unavailable",
+				content: expect.stringContaining("/do-it setup failed: git unavailable"),
 			}),
-			{ deliverAs: "nextTurn" },
+			{ triggerTurn: false },
 		);
 		expect(mockPi.appendEntry).not.toHaveBeenCalledWith(
 			"workflow.do-it-continuation.consumed",
@@ -646,7 +764,8 @@ describe("workflow slash command dispatch", () => {
 		);
 	});
 
-	it("uses --no-clear as an immediate clear bypass", async () => {
+	it("uses --no-clear as an immediate clear and reload bypass", async () => {
+		reloadStatusMock.needed = true;
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
 		const telemetry = await import("../lib/workflow-telemetry.ts");
@@ -779,7 +898,7 @@ describe("workflow slash command dispatch", () => {
 				customType: "workflow.plan-preflight",
 				content: expect.stringContaining("Plan preflight failed"),
 			}),
-			{ deliverAs: "nextTurn" },
+			{ triggerTurn: false },
 		);
 	});
 
@@ -805,7 +924,7 @@ describe("workflow slash command dispatch", () => {
 				content: expect.stringContaining("Plan preflight failed"),
 				display: true,
 			},
-			{ deliverAs: "nextTurn" },
+			{ triggerTurn: false },
 		);
 		expect(telemetry.startWorkflowEpisode).not.toHaveBeenCalled();
 		expect(friction.noteWorkflowSubmission).not.toHaveBeenCalled();
@@ -831,15 +950,17 @@ describe("workflow slash command dispatch", () => {
 			return "transferred";
 		});
 
-		await getHandler(mockPi, "do-it")(fixture.planPath, { cwd: fixture.root });
+		const newSession = vi.fn();
+		await getHandler(mockPi, "do-it")(fixture.planPath, { cwd: fixture.root, newSession });
 
+		expect(newSession).not.toHaveBeenCalled();
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow.plan-preflight",
 				content: expect.stringContaining("Materialized plan failed validation"),
 				display: true,
 			}),
-			{ deliverAs: "nextTurn" },
+			{ triggerTurn: false },
 		);
 		expect(mockPi.sendMessage).not.toHaveBeenCalledWith(
 			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
@@ -861,10 +982,10 @@ describe("workflow slash command dispatch", () => {
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow.plan-preflight",
-				content: "/do-it setup failed: git unavailable",
+				content: expect.stringContaining("/do-it setup failed: git unavailable"),
 				display: true,
 			}),
-			{ deliverAs: "nextTurn" },
+			{ triggerTurn: false },
 		);
 		expect(telemetry.startWorkflowEpisode).not.toHaveBeenCalled();
 		expect(friction.noteWorkflowSubmission).not.toHaveBeenCalled();

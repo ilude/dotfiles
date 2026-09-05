@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseLinkedPlan, parsePersistedPlanRoutingState } from "../plan-state.js";
+import { parseLinkedPlan, parsePersistedPlanRoutingState, selectNextPlanTask } from "../plan-state.js";
 
 export const PLAN_LIFECYCLE_ENTRY_TYPE = "workflow.plan-lifecycle";
 export const PLAN_LIFECYCLE_VERSION = 1;
@@ -144,42 +144,6 @@ function planSection(content: string, heading: string): string {
 function hasPlanHeading(content: string, heading: string): boolean {
 	const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	return new RegExp(`^${escapedHeading}[ \\t]*\\r?$`, "m").test(content);
-}
-
-function taskBlocks(content: string, taskKeys: string[]): Map<string, string> {
-	const section = planSection(content, "## Tasks");
-	return new Map(taskKeys.map((key) => {
-		const start = section.indexOf(`**${key}:`);
-		const next = taskKeys
-			.map((candidate) => section.indexOf(`**${candidate}:`, start + 1))
-			.filter((index) => index > start)
-			.sort((left, right) => left - right)[0];
-		return [key, section.slice(start, next ?? undefined)];
-	}));
-}
-
-function repositoriesNamedByFiles(content: string): string[] {
-	const repositories = new Set<string>();
-	for (const match of planSection(content, "## Tasks").matchAll(/^\s*-\s+Files:\s*(\S.*)$/gim)) {
-		const value = match[1].replace(/`/g, "");
-		for (const token of value.split(/[,;]\s*|\s+and\s+/i).map((item) => item.trim()).filter(Boolean)) {
-			const normalized = token.replace(/\\/g, "/");
-			const module = normalized.match(/(?:^|\/)modules\/([^/]+)/);
-			if (module) repositories.add(`modules/${module[1]}`);
-			else if (/^(?:\.\.\/|\/|[A-Za-z]:\/)/.test(normalized)) repositories.add(normalized);
-			else repositories.add("workspace");
-		}
-	}
-	return [...repositories];
-}
-
-function validateRepositoryDeclaration(content: string, addError: (message: string) => void): void {
-	const repositories = repositoriesNamedByFiles(content);
-	if (repositories.length <= 1) return;
-	const declaration = planSection(content, "## Boundaries").match(/^\s*-\s+Repositories:\s*(\S.*)$/im)?.[1] ?? "";
-	const complete = declaration && repositories.every((repository) => declaration.includes(repository)) && /owner/i.test(declaration) && /branch/i.test(declaration) && /closeout/i.test(declaration);
-	if (!complete)
-		addError(`Plans spanning multiple repositories must declare each repository with its owner branch and closeout in the Boundaries Repositories: bullet: ${repositories.join(", ")}.`);
 }
 
 export function refreshDoItPlanCache(cwd: string): string[] {
@@ -415,23 +379,6 @@ export function validatePlanContract(
 	if (!PLAN_PATH_PATTERN.test(normalizedPath))
 		addError("Plan path is not canonical.");
 	if (!hasPlanHeading(content, "## Tasks")) addError("Missing ## Tasks.");
-	if (mode === "ready") {
-		for (const heading of [
-			"## Objective",
-			"## Completion Evidence",
-			"## Boundaries",
-			"## Validation",
-			"## Retention",
-			"## Execution Status",
-		]) {
-			if (!hasPlanHeading(content, heading)) addError(`Missing ${heading}.`);
-		}
-		const completionSection = planSection(content, "## Completion Evidence");
-		if (!/^\s*-\s+Evidence:\s*\S/im.test(completionSection))
-			addError("Completion Evidence is missing Evidence:.");
-		if (!/^\s*-\s+Fails when:\s*\S/im.test(completionSection))
-			addError("Completion Evidence is missing Fails when:.");
-	}
 	const allowedStatuses =
 		mode === "execution-preflight"
 			? "ready|in_progress|in-progress|complete|completed"
@@ -448,22 +395,15 @@ export function validatePlanContract(
 				: "Plan frontmatter status must be ready.",
 		);
 	const taskKeys = [...content.matchAll(TASK_PATTERN)].map((match) => match[1]);
-	const blocks = taskBlocks(content, taskKeys);
-	if (taskKeys.length < 1 || taskKeys.length > 16)
-		addError("Plan must contain one to sixteen executable tasks.");
+	if (taskKeys.length < 1)
+		addError("Plan must contain at least one executable task.");
 	if (new Set(taskKeys).size !== taskKeys.length)
 		addError("Plan task keys must be unique.");
-	if (mode === "ready") {
-		for (const key of taskKeys) {
-			const block = blocks.get(key) ?? "";
-			for (const field of ["Files:", "Change:", "Done when:", "Verify:"])
-				if (!block.includes(field)) addError(`${key} is missing ${field}`);
-		}
-		validateRepositoryDeclaration(content, addError);
-	}
 	try {
 		const linked = parseLinkedPlan(normalizedPath, content);
-		const liveTasks = linked.tasks.filter((task) => task.verificationType === "live");
+		const nextTask = mode === "execution-preflight" ? selectNextPlanTask(linked).task : undefined;
+		const liveTasks = linked.tasks.filter((task) => task.verificationType === "live"
+			&& (mode === "ready" || task === nextTask));
 		if (liveTasks.length > 0) {
 			if (!hasPlanHeading(content, "## Live attempt ledger"))
 				addError("A plan with live verification must contain ## Live attempt ledger.");
@@ -471,36 +411,18 @@ export function validatePlanContract(
 				addError("Live attempt ledger must use columns Task | Attempt | Preconditions | Result | Cleanup | Disposition.");
 		}
 		for (const task of liveTasks) {
-			const block = blocks.get(task.key) ?? "";
 			if (task.maxAttempts === undefined || task.maxAttempts < 1)
 				addError(`${task.key} live verification requires Max attempts: <positive integer>.`);
 			if (!task.session)
 				addError(`${task.key} live verification requires Session: <isolated target>.`);
 			if (task.terminalOutcomes?.join("|") !== "supported|rejected|blocked")
 				addError(`${task.key} live verification requires Terminal outcomes: supported | rejected | blocked.`);
-			if (!/cleanup/i.test(task.verify ?? ""))
-				addError(`${task.key} live Verify must name cleanup.`);
-			const behaviorClauses = task.verify?.match(/\b(?:and\s+)?then\b/gi)?.length ?? 0;
-			if (behaviorClauses > 1 || /\b(?:voluntarily|chooses)\b/i.test(task.verify ?? ""))
-				addError(`${task.key} live Verify must name one observable behavior and cannot depend on a model choosing an action.`);
-			for (const field of ["Max attempts:", "Session:", "Terminal outcomes:"])
-				if (!block.includes(field)) addError(`${task.key} is missing ${field}`);
+
 		}
 	} catch (error) {
 		addError(
 			error instanceof Error ? `Plan dependency syntax: ${error.message}` : String(error),
 		);
-	}
-	if (mode === "ready") {
-		const validationSection = planSection(content, "## Validation");
-		if (!/^\s*-\s+\[[ xX]\]\s+\S/im.test(validationSection))
-			addError("Validation must contain a checklist item.");
-		if (!/^\s*-\s+State:\s*\S/im.test(planSection(content, "## Execution Status")))
-			addError("Execution Status must declare State.");
-		if (!content.includes(`/do-it ${normalizedPath}`))
-			addError("Execution Status must contain the canonical /do-it resume command.");
-		if (!content.includes(`.specs/archive/${normalizedPath.split("/")[1]}/`))
-			addError("Retention must name the canonical archive directory.");
 	}
 	return { valid: errors.length === 0, errors, taskKeys };
 }
@@ -509,6 +431,7 @@ export function validatePlanFile(
 	cwd: string,
 	planPath: string,
 	mode: PlanValidationMode = "ready",
+	contractPath: string = planPath,
 ): PlanContractValidation {
 	const normalizedPath = planPath.replace(/\\/g, "/");
 	try {
@@ -524,7 +447,7 @@ export function validatePlanFile(
 			return { valid: false, errors: ["Plan path is not a regular file."], taskKeys: [] };
 		return validatePlanContract(
 			fs.readFileSync(absolutePath, "utf8"),
-			normalizedPath,
+			contractPath,
 			mode,
 		);
 	} catch (error) {

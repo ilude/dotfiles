@@ -23,7 +23,7 @@ import { onSessionStart } from "../lib/session-start-metrics.js";
 //   command name and add visual noise to user-facing command output.
 
 import { spawn, spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -53,7 +53,7 @@ import {
 	uniqueGitPaths,
 } from "../lib/commit/status";
 import { reportActionableExtensionFailure } from "../lib/extension-diagnostics.js";
-import { emitTerminalBell, formatToolError } from "../lib/extension-utils";
+import { emitTerminalBell } from "../lib/extension-utils";
 import { formatTranscriptTiming } from "../lib/tool-timing.js";
 import { handoffRecoverableLocalFailure } from "../lib/recovery-handoff.js";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
@@ -114,6 +114,7 @@ import {
 	readActiveInPlaceWorkflowOwnership,
 	ensureWorkflowWorktree,
 	materializePlanInWorkflowWorktree,
+	resolveWorkflowPlanWorkspace,
 	readWorkflowOwnershipForWorktree,
 	readWorkflowOwnershipRecord,
 	resolveWorkflowRepoRoot,
@@ -122,6 +123,7 @@ import {
 } from "../lib/workflow-worktree";
 import { activateTools, deactivateTools } from "../lib/tool-activation";
 import { formatConfiguredUsageReport } from "./codex-status";
+import { isOperatorReloadNeeded } from "./operator-status";
 
 const DOTFILES_PI_DIR = path.join(os.homedir(), ".dotfiles", "pi");
 const SKILLS_DIR = path.join(DOTFILES_PI_DIR, "skills", "workflow");
@@ -129,7 +131,28 @@ const PLAN_PREFLIGHT_MESSAGE_TYPE = "workflow.plan-preflight";
 const MAX_PLAN_PREFLIGHT_CHARS = 2000;
 const DO_IT_CONTINUATION_TYPE = "workflow.do-it-continuation";
 
-type DoItContinuation = DoItArgs & { id: string };
+interface PreparedDoIt {
+	request: string;
+	canonicalPlanPath?: string;
+	ownedWorkspace: string;
+	workflowRepoRoot?: string;
+	ownedWorktree?: WorkflowWorktree;
+	inPlaceOwnership?: InPlaceWorkflowOwnership;
+	planHash?: string;
+	executionPlanPath?: string;
+	effectiveCloseoutPolicy: "merge" | "retain";
+	planCloseoutPolicy?: "merge" | "retain";
+	branch?: string;
+	receipt: string;
+	prompt: string;
+	recoveryOnly?: boolean;
+}
+
+type DoItContinuation = DoItArgs & {
+	id: string;
+	prepared?: PreparedDoIt;
+	reloadBeforeDispatch?: boolean;
+};
 type DoItLaunchOutcome = "dispatched" | "pending" | "blocked";
 type DoItDispatchContext = Pick<ExtensionCommandContext, "cwd" | "mode" | "ui"> & Partial<Pick<ExtensionCommandContext, "newSession" | "getContextUsage">>;
 
@@ -187,6 +210,13 @@ export function routeDirectDoItInput(text: string, recentPlanPath?: string): str
 	return undefined;
 }
 
+function sendDoItReceipt(pi: ExtensionAPI, message: string): void {
+	pi.sendMessage(
+		{ customType: "workflow.do-it-receipt", content: message, display: true },
+		{ triggerTurn: false },
+	);
+}
+
 function sendDoItFailure(pi: ExtensionAPI, message: string): void {
 	pi.sendMessage(
 		{
@@ -197,7 +227,7 @@ function sendDoItFailure(pi: ExtensionAPI, message: string): void {
 					: `${message.slice(0, MAX_PLAN_PREFLIGHT_CHARS - 22)}\n... details truncated`,
 			display: true,
 		},
-		{ deliverAs: "nextTurn" },
+		{ triggerTurn: false },
 	);
 }
 
@@ -2651,7 +2681,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	onSessionStart(pi, import.meta.url, async (_event, ctx) => {
+	onSessionStart(pi, import.meta.url, async (event, ctx) => {
 		restorePlanLifecycle(ctx);
 		if (ctx.cwd) refreshDoItPlanCache(ctx.cwd);
 		const entries = ctx.sessionManager.getBranch();
@@ -2679,8 +2709,11 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (!continuation) return;
 		if (continuation.id === "legacy" ? legacyConsumed : consumedIds.has(continuation.id)) return;
+		if (continuation.reloadBeforeDispatch && event.reason !== "reload") return;
 		try {
-			const outcome = await launchDoIt(continuation, ctx);
+			const outcome = continuation.prepared
+				? await resumePreparedDoIt(continuation.prepared)
+				: await launchDoIt(continuation, ctx);
 			if (outcome !== "pending")
 				await pi.appendEntry(`${DO_IT_CONTINUATION_TYPE}.consumed`, continuation);
 		} catch (error) {
@@ -2764,7 +2797,7 @@ export default function (pi: ExtensionAPI) {
 					details: completed,
 				};
 			} catch (error) {
-				return formatToolError(error instanceof Error ? error.message : String(error));
+				throw error instanceof Error ? error : new Error(String(error));
 			}
 		},
 	});
@@ -2839,9 +2872,7 @@ export default function (pi: ExtensionAPI) {
 					details: archived,
 				};
 			} catch (error) {
-				return formatToolError(
-					error instanceof Error ? error.message : String(error),
-				);
+				throw error instanceof Error ? error : new Error(String(error));
 			}
 		},
 	});
@@ -3143,32 +3174,26 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui?.notify?.(error instanceof Error ? error.message : String(error), "error");
 				return;
 			}
-			const requestedPlanPath = parsed.request.replace(/^@/, "");
-			const canonicalPlanPath = canonicalPlanPathFromInput(requestedPlanPath);
-			const canonicalPlan = canonicalPlanPath !== undefined;
+			if (!parsed.request) {
+				ctx.ui?.notify?.("What should I do? Describe the task.", "info");
+				return;
+			}
+			const prepared = await prepareDoIt(parsed, ctx);
+			if (!prepared) return;
 			if (!parsed.noClear && typeof ctx.newSession === "function") {
-				if (canonicalPlan && ctx.cwd) {
-					try {
-						const primaryRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
-						const validation = validatePlanFile(primaryRoot, canonicalPlanPath, "execution-preflight");
-						if (!validation.valid) {
-							sendDoItFailure(
-								pi,
-								`Plan preflight failed for ${canonicalPlanPath}:\n${validation.errors.join("\n")}`,
-							);
-							return;
-						}
-					} catch (error) {
-						sendDoItFailure(pi, `/do-it setup failed: ${error instanceof Error ? error.message : String(error)}`);
-						return;
-					}
-				}
 				const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
-				const continuation: DoItContinuation = { ...parsed, id: randomUUID() };
+				const reloadBeforeDispatch = isOperatorReloadNeeded();
+				const continuation: DoItContinuation = {
+					...parsed,
+					id: randomUUID(),
+					prepared,
+					...(reloadBeforeDispatch ? { reloadBeforeDispatch: true } : {}),
+				};
 				try {
-					await ctx.newSession({
+					const result = await ctx.newSession({
 						setup: async (sessionManager) => {
 							sessionManager.appendCustomEntry(DO_IT_CONTINUATION_TYPE, continuation);
+							sessionManager.appendCustomMessageEntry("workflow.do-it-receipt", prepared.receipt, true);
 							const destinationEcho: SlashCommandEchoEntry = {
 								kind: "submitted",
 								text: formatSlashCommand("do-it", formatDoItInvocationArgs(parsed)),
@@ -3176,7 +3201,14 @@ export default function (pi: ExtensionAPI) {
 							sessionManager.appendCustomEntry(SLASH_COMMAND_ECHO_TYPE, destinationEcho);
 							if (usageMessage) sessionManager.appendCustomMessageEntry(CLEAR_USAGE_TYPE, usageMessage, true);
 						},
+						...(reloadBeforeDispatch
+							? { withSession: async (newCtx) => { await newCtx.reload(); } }
+							: {}),
 					});
+					if (result?.cancelled) {
+						sendDoItFailure(pi, `${prepared.receipt}\nExecution was not dispatched because session replacement was cancelled. Prepared target preserved at ${prepared.ownedWorkspace}. Retry /do-it to continue; no prepared files were removed.`);
+						return;
+					}
 				} catch (error) {
 					reportActionableExtensionFailure(pi, ctx, {
 						extension: "workflow-commands",
@@ -3187,11 +3219,17 @@ export default function (pi: ExtensionAPI) {
 				}
 				return;
 			}
-			await launchDoIt(parsed, ctx);
+			sendDoItReceipt(pi, prepared.receipt);
+			dispatchDoIt(prepared);
 		},
 	});
 
 	async function launchDoIt(parsed: DoItArgs, ctx: DoItDispatchContext): Promise<DoItLaunchOutcome> {
+		const prepared = await prepareDoIt(parsed, ctx);
+		return prepared ? dispatchDoIt(prepared) : "pending";
+	}
+
+	async function prepareDoIt(parsed: DoItArgs, ctx: DoItDispatchContext): Promise<PreparedDoIt | undefined> {
 			const requestedPlanPath = parsed.request.replace(/^@/, "");
 			const canonicalPlanPath = canonicalPlanPathFromInput(requestedPlanPath);
 			const canonicalPlan = canonicalPlanPath !== undefined;
@@ -3199,25 +3237,38 @@ export default function (pi: ExtensionAPI) {
 			let workflowRepoRoot: string | undefined;
 			let ownedWorkspace = ctx.cwd;
 			let ownedWorktree: WorkflowWorktree | undefined;
+			let inPlaceOwnershipForDispatch: InPlaceWorkflowOwnership | undefined;
 			let completedPlan = false;
 			let planNeedsReconciliation = false;
 			let closeoutPolicy: "merge" | "retain" = "merge";
+			let effectiveCloseoutPolicy: "merge" | "retain" = parsed.noMerge ? "retain" : "merge";
+			let executionPlanPath = canonicalPlanPath;
 			let inPlaceExecution = parsed.inPlace;
 			if (ctx.cwd) {
 				try {
 					const primaryRoot = await resolveWorkflowRepoRoot(ctx.cwd, workflowRunner);
 					workflowRepoRoot = primaryRoot;
+					const planSlug = workflowSlugFromPlan(canonicalPlanPath ?? requestedPlanPath);
+					const slug = planSlug === "workflow" ? workflowSlugFromRequest(requestedPlanPath) : planSlug;
+					const workflowId = `do-it:${slug}`;
+					const ordinaryOwnership = readWorkflowOwnershipRecord(primaryRoot, slug);
+					const inPlaceOwnership = readInPlaceWorkflowOwnership(primaryRoot, slug);
+					const planWorkspace = canonicalPlan && ordinaryOwnership
+						? await resolveWorkflowPlanWorkspace({ worktree: { ownership: ordinaryOwnership, resumed: true }, planPath: canonicalPlanPath, runner: workflowRunner })
+						: inPlaceOwnership?.worktree ?? (parsed.inPlace ? ctx.cwd : primaryRoot);
 					if (canonicalPlan) {
-						const sourceValidation = validatePlanFile(primaryRoot, canonicalPlanPath, "execution-preflight");
+						const archivePath = path.join(".specs", "archive", workflowSlugFromPlan(canonicalPlanPath), "plan.md");
+						if (planWorkspace !== primaryRoot && fs.existsSync(path.resolve(planWorkspace, archivePath))) executionPlanPath = archivePath;
+						const sourceValidation = validatePlanFile(planWorkspace, executionPlanPath!, "execution-preflight", canonicalPlanPath);
 						if (!sourceValidation.valid) {
 							const diagnostics = sourceValidation.errors.join("\n");
 							sendDoItFailure(
 								pi,
-								`Plan preflight failed for ${canonicalPlanPath}:\n${diagnostics}`,
+								`Plan preflight failed for ${path.resolve(planWorkspace, executionPlanPath!)}:\n${diagnostics}\nExecution was not dispatched. Correct the reported parsed state in this copy, then retry /do-it; no session was cleared by this preparation.`,
 							);
-							return "pending";
+							return;
 						}
-						const sourcePlanContent = fs.readFileSync(path.resolve(primaryRoot, canonicalPlanPath), "utf8");
+						const sourcePlanContent = fs.readFileSync(path.resolve(planWorkspace, executionPlanPath!), "utf8");
 						closeoutPolicy = parsePlanCloseoutPolicy(sourcePlanContent);
 						const routingState = parsePersistedPlanRoutingState(sourcePlanContent);
 						completedPlan = routingState.complete;
@@ -3228,17 +3279,12 @@ export default function (pi: ExtensionAPI) {
 								const recovery = planNeedsReconciliation
 									? `Canonical plan ${canonicalPlanPath} has conflicting persisted state and requires reconciliation. Do not run implementation or validation. Explain the conflict clearly and inspect repository evidence before proposing recovery. No owned workflow worktree or branch exists to recover.`
 									: `Canonical plan ${canonicalPlanPath} is already complete. Do not rerun implementation or validation. Report it as already complete; no owned workflow worktree or branch exists to recover. Do not recommend this plan as new work.`;
-								ctx.ui?.notify?.(recovery, "info");
-								sendHiddenWorkflowPrompt(pi, recovery);
-								return "dispatched";
+								const recoveryPolicy = parsePlanCloseoutPolicy(sourcePlanContent);
+								const receipt = `Prepared /do-it recovery: execution=${executionPlanPath}; worktree=${planWorkspace}; branch=${ordinaryOwnership?.branch ?? "unknown"}; mode=closeout-only; closeout=${recoveryPolicy}. Dispatch will begin after session setup.`;
+								return { request: parsed.request, canonicalPlanPath, executionPlanPath, ownedWorkspace: planWorkspace, workflowRepoRoot: primaryRoot, effectiveCloseoutPolicy: recoveryPolicy, branch: ordinaryOwnership?.branch, receipt, prompt: recovery, recoveryOnly: true };
 							}
 						}
 					}
-					const planSlug = workflowSlugFromPlan(canonicalPlanPath ?? requestedPlanPath);
-					const slug = planSlug === "workflow" ? workflowSlugFromRequest(requestedPlanPath) : planSlug;
-					const workflowId = `do-it:${slug}`;
-					const ordinaryOwnership = readWorkflowOwnershipRecord(primaryRoot, slug);
-					const inPlaceOwnership = readInPlaceWorkflowOwnership(primaryRoot, slug);
 					if (ordinaryOwnership?.state === "active" && inPlaceOwnership?.state === "active")
 						throw new Error("conflicting ordinary and in-place workflow ownership records require reconciliation");
 					if (parsed.inPlace && ordinaryOwnership?.state === "active")
@@ -3258,15 +3304,15 @@ export default function (pi: ExtensionAPI) {
 						allowDirtyPrimary: canonicalPlan,
 					});
 					if (inPlace) {
-						activeInPlaceWorkflow = inPlace.ownership;
+						inPlaceOwnershipForDispatch = inPlace.ownership;
 						ownedWorkspace = inPlace.ownership.worktree;
 					} else if (worktree) {
-						if (canonicalPlan && !completedPlan && !worktree.resumed)
+						if (canonicalPlan && !completedPlan && !planNeedsReconciliation && planWorkspace === primaryRoot)
 							await materializePlanInWorkflowWorktree({ worktree, planPath: canonicalPlanPath, runner: workflowRunner });
 						ownedWorktree = worktree;
 						ownedWorkspace = worktree.ownership.worktree;
 					}
-					const effectiveCloseoutPolicy = worktree?.ownership.closeoutPolicy ?? closeoutPolicy;
+					effectiveCloseoutPolicy = inPlaceExecution ? "merge" : worktree?.ownership.closeoutPolicy ?? closeoutPolicy;
 					const retainCloseout = !inPlaceExecution && (effectiveCloseoutPolicy === "retain");
 					const closeoutWork = inPlaceExecution
 						? canonicalPlan
@@ -3286,9 +3332,9 @@ export default function (pi: ExtensionAPI) {
 				} catch (error) {
 					sendDoItFailure(
 						pi,
-						`/do-it setup failed: ${error instanceof Error ? error.message : String(error)}`,
+						`/do-it setup failed: ${error instanceof Error ? error.message : String(error)}\nRequest: ${parsed.request}\nRepository: ${workflowRepoRoot ?? ctx.cwd}\nExecution was not dispatched. Preserve the plan and owned worktree; inspect the reported state before retrying /do-it.`,
 					);
-					return "pending";
+					return;
 				}
 			}
 			if (canonicalPlan) {
@@ -3297,38 +3343,92 @@ export default function (pi: ExtensionAPI) {
 					if (!validation.valid) {
 						sendDoItFailure(
 							pi,
-							`Materialized plan failed validation: ${validation.errors.join(" ")}`,
+							`Materialized plan failed validation: ${path.resolve(ownedWorkspace, canonicalPlanPath)}\n${validation.errors.join("\n")}\nExecution was not dispatched. The worktree is preserved; correct this execution copy before retrying /do-it.`,
 						);
-						return "pending";
+						return;
 					}
-					const planContent = fs.readFileSync(path.resolve(ownedWorkspace, canonicalPlanPath), "utf8");
+					const planContent = fs.readFileSync(path.resolve(ownedWorkspace, executionPlanPath ?? canonicalPlanPath), "utf8");
 					const selection = selectNextPlanTask(parseLinkedPlan(canonicalPlanPath, planContent));
 					if (selection.operatorDecision) {
 						sendDoItFailure(pi, `Live verification stopped: ${selection.operatorDecision}`);
-						return "blocked";
+						return;
 					}
 				}
-				activateTools(pi, ["plan_archive"]);
-			} else if (ownedWorktree) {
-				activeRawWorkflow = ownedWorktree;
-				activateTools(pi, ["workflow_complete"]);
 			}
-			noteWorkflowSubmission(
-				`/do-it${parsed.request ? ` ${parsed.request}` : ""}`,
-				"engineer",
-			);
-			startWorkflowEpisode({
-				command: "do-it",
-				args: canonicalPlan ? canonicalPlanPath : "",
-				...(canonicalPlanPath ? { artifactPath: canonicalPlanPath } : {}),
-				...(workflowRepoRoot ? { repoRoot: workflowRepoRoot } : {}),
-			});
 			const template = loadSkill("do-it.md");
 			const prompt = buildSkillPrompt(template, canonicalPlan ? canonicalPlanPath : parsed.request, {
 				replaceArguments: true,
 			});
-			sendHiddenWorkflowPrompt(pi, prompt + workspaceDirective);
+			const branch = ownedWorktree?.ownership.branch ?? inPlaceOwnershipForDispatch?.branch;
+			const receipt = `Prepared /do-it: execution=${executionPlanPath ?? parsed.request}; worktree=${ownedWorkspace}; branch=${branch ?? "unknown"}; mode=${inPlaceExecution ? "in-place" : "owned-worktree"}; closeout=${inPlaceExecution ? "commit-in-place" : effectiveCloseoutPolicy}. Execution has not started.`;
+			return {
+				request: parsed.request, canonicalPlanPath, executionPlanPath, ownedWorkspace, workflowRepoRoot,
+				ownedWorktree, inPlaceOwnership: inPlaceOwnershipForDispatch,
+				effectiveCloseoutPolicy, planCloseoutPolicy: closeoutPolicy, branch, receipt,
+				...(canonicalPlanPath && executionPlanPath
+					? { planHash: createHash("sha256").update(fs.readFileSync(path.resolve(ownedWorkspace, executionPlanPath))).digest("hex") }
+					: {}),
+				prompt: prompt + workspaceDirective,
+			};
+	}
+
+	async function resumePreparedDoIt(prepared: PreparedDoIt): Promise<DoItLaunchOutcome> {
+		const expected = prepared.ownedWorktree?.ownership ?? prepared.inPlaceOwnership;
+		if (expected) {
+			try {
+				const slug = prepared.canonicalPlanPath ? workflowSlugFromPlan(prepared.canonicalPlanPath) : workflowSlugFromRequest(prepared.request);
+				const current = prepared.inPlaceOwnership
+					? readInPlaceWorkflowOwnership(expected.repoRoot, slug)
+					: readWorkflowOwnershipRecord(expected.repoRoot, slug);
+				if (!current || current.worktree !== expected.worktree || current.branch !== expected.branch
+					|| current.workflowId !== expected.workflowId || current.state !== expected.state
+					|| current.planPath !== expected.planPath
+					|| (prepared.canonicalPlanPath !== undefined && current.planPath !== prepared.canonicalPlanPath)
+					|| (prepared.inPlaceOwnership ? "merge" : ("closeoutPolicy" in current ? current.closeoutPolicy : undefined) ?? prepared.planCloseoutPolicy ?? "merge") !== prepared.effectiveCloseoutPolicy)
+					throw new Error("workflow ownership, canonical plan path, or closeout policy changed after preparation");
+				const branch = await workflowRunner(expected.worktree, ["branch", "--show-current"]);
+				if (branch.code !== 0 || branch.stdout.trim() !== expected.branch)
+					throw new Error("owned worktree is missing or its checked-out branch changed after preparation");
+			} catch (error) {
+				sendDoItFailure(pi, `/do-it dispatch stopped: ${expected.worktree}\n${error instanceof Error ? error.message : String(error)}\nExecution was not dispatched. Inspect ownership and Git state, then run /do-it again; no worktree was recreated or overwritten.`);
+				return "blocked";
+			}
+		}
+		return dispatchDoIt(prepared);
+	}
+
+	function dispatchDoIt(prepared: PreparedDoIt): DoItLaunchOutcome {
+		const { canonicalPlanPath, ownedWorktree, inPlaceOwnership, workflowRepoRoot } = prepared;
+		if (canonicalPlanPath && prepared.planHash) {
+			const executionPlan = path.resolve(prepared.ownedWorkspace, prepared.executionPlanPath ?? canonicalPlanPath);
+			try {
+				if (!fs.lstatSync(executionPlan).isFile()
+					|| createHash("sha256").update(fs.readFileSync(executionPlan)).digest("hex") !== prepared.planHash)
+					throw new Error("execution copy changed after preparation");
+			} catch (error) {
+				sendDoItFailure(pi, `/do-it dispatch stopped: ${executionPlan}\n${error instanceof Error ? error.message : String(error)}\nExecution was not dispatched. Inspect the changed execution copy and run /do-it again to prepare it; this continuation will not execute a different plan.`);
+				return "blocked";
+			}
+		}
+		if (prepared.recoveryOnly) {
+			sendHiddenWorkflowPrompt(pi, prepared.prompt);
 			return "dispatched";
+		}
+		if (inPlaceOwnership) activeInPlaceWorkflow = inPlaceOwnership;
+		if (canonicalPlanPath) activateTools(pi, ["plan_archive"]);
+		else if (ownedWorktree) {
+			activeRawWorkflow = ownedWorktree;
+			activateTools(pi, ["workflow_complete"]);
+		}
+		noteWorkflowSubmission(`/do-it${prepared.request ? ` ${prepared.request}` : ""}`, "engineer");
+		startWorkflowEpisode({
+			command: "do-it",
+			args: canonicalPlanPath ?? "",
+			...(canonicalPlanPath ? { artifactPath: canonicalPlanPath } : {}),
+			...(workflowRepoRoot ? { repoRoot: workflowRepoRoot } : {}),
+		});
+		sendHiddenWorkflowPrompt(pi, prepared.prompt);
+		return "dispatched";
 	}
 
 	registerSlashCommand(pi)("clear", {
@@ -3336,6 +3436,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Clearing session...", "info");
 			const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
+			const reloadNeeded = isOperatorReloadNeeded();
 			await ctx.newSession({
 				setup: async (sessionManager) => {
 					if (!sessionManager.appendCustomMessageEntry) return;
@@ -3352,6 +3453,9 @@ export default function (pi: ExtensionAPI) {
 						true,
 					);
 				},
+				...(reloadNeeded
+					? { withSession: async (newCtx) => { await newCtx.reload(); } }
+					: {}),
 			});
 		},
 	});
