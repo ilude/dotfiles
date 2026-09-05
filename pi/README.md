@@ -197,6 +197,25 @@ pnpm --config.minimumReleaseAge=720 add -g \
 
 ---
 
+## Test-suite value review
+
+Use `/test-review` only for an explicit JavaScript or TypeScript test-suite review:
+
+```text
+/test-review
+/test-review baseline package-or-scope
+/test-review diff changed tests
+/test-review path pi/tests/example.test.ts
+/test-review deep-performance pi
+/test-review smells pi/tests
+```
+
+The unqualified command selects a missing, active, uncertain, changed-closed, or unchanged-closed baseline according to the state table. Baseline state and reports are local under the selected repository's Git common directory at `test-review/<baseline-name>/`; they are not tracked Pi session state. Baselines require a clean committed parent worktree, account for disabled and compile-time tests, and list browser E2E and independent repositories as explicit routes or boundaries.
+
+The root owns discovery, commands, measurements, checkpoint writes, verification, reports, and remediation decisions. The `test-reviewer` is a closed-read leaf with only `read`, `grep`, `find`, `ls`, and bounded `log_analytics` authority. Its result is a candidate, not a finding. Missing tools are gaps and are never installed during review. One canonical timing sample may serve multiple behavior clusters; overlapping commands are not summed.
+
+A baseline closes as `closed-assessed` only with required evidence, or `closed-with-gaps` with every gap explicit. Resume reuses valid completed units and measurements, while changed inputs invalidate affected units and dependents. Remediation requires a closed baseline plus a separate explicit request, starts from the recorded final commit in an isolated retained worktree, and does not push, merge, rebase, or clean up automatically. See `pi/skills/test-review/references/review.md` and `references/lifecycle.md` for the operator contract.
+
 ## Profile-aware Brave control
 
 Pi exposes `browser_session` and `browser_page` for local Brave automation. Isolated mode is the default and requires no machine-local configuration. Real-profile mode uses explicit aliases validated against Brave `Local State`; it never guesses `Default`, a focused tab, or a profile from its display name.

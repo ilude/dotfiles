@@ -1,0 +1,6 @@
+{
+  "name": "runner-typescript-contract",
+  "private": true,
+  "scripts": { "test": "tsc --noEmit" },
+  "devDependencies": { "typescript": "5.9.3", "tsd": "0.33.0" }
+}

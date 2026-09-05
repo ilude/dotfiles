@@ -1,0 +1,7 @@
+{
+  "name": "runner-vitest",
+  "private": true,
+  "type": "module",
+  "devDependencies": { "vitest": "4.1.9" },
+  "scripts": { "test": "vitest run --config vitest.config.ts" }
+}

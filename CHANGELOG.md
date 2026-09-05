@@ -14,6 +14,16 @@
 
 **Clarified:** Validators running commands and reviewers inspecting Git diffs require execution-capable dispatch; read-mode workers inspect supplied evidence instead. Execution capability does not authorize source edits outside the assignment. Read workers still cannot use shells, mutate files, or delegate, and Team Leads retain their no-shell, no-direct-mutation boundary. Root-owned browser, process, scheduling, workflow, Onclave, and Herdr permissions remain unchanged; summarizer and skill-review definitions retain their narrow tool lists.
 
+## 2026-09-05: Add root-owned test-suite value review
+
+**Added:** The explicit `/test-review` prompt and skill support resumable JavaScript/TypeScript suite-value reviews with baseline, diff, path, deep-performance, and smells modes. Reviews preserve inventory, revision, timing, evidence, finding, gap, and disposition accounting under the Git common directory.
+
+**Added:** The closed-read `test-reviewer` profile returns candidates without writes, shell execution, delegation, installation, or remediation authority. The private checkpoint helper uses contained exclusive initialization and owner-checked locked atomic JSON updates. Calibration fixtures remain outside ordinary test discovery.
+
+**Fixed:** Native Pi prompt/skill loading and dynamic agent discovery are exercised through their installed loaders; the checkpoint uses canonical intermediate-symlink containment and Node's same-filesystem atomic rename without a Windows backup path. Identity fields remain immutable under the lock, and lifecycle closeout judgments stay with the root rather than the helper.
+
+**Preserved:** Root verification, trusted policy, serial shared measurements, missing-tool gaps, separate remediation authorization, retained remediation worktrees, and no synthetic value or confidence scores.
+
 ## 2026-09-05: Batch Pi validation and bound repair churn
 
 **Changed:** Pi now defaults to completing implementation, test authoring, and integration before root-owned final validation. General worker guidance and `/plan-it` and `/do-it` use the same sequence instead of per-task checks or automatic red-green loops. Plans distinguish finished implementation from verified completion and keep final acceptance pending until its evidence passes.
