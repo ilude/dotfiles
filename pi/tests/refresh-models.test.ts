@@ -178,6 +178,34 @@ describe("/refresh-models command", () => {
 		expect(result.scope).not.toContain("openrouter/openai/gpt-4o");
 	});
 
+	it("rebuilds configured Codex scope from refreshed available models", async () => {
+		const model = (id: string) => ({
+			provider: "openai-codex",
+			id,
+			name: id,
+			api: "openai-codex-responses",
+			baseUrl: "https://chatgpt.com/backend-api",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 256000,
+			maxTokens: 128000,
+		});
+		const ctx = {
+			modelRegistry: {
+				getAll: () => [model("gpt-6-astra"), model("codex-auto-review")],
+				getProviderAuthStatus: (provider: string) => ({
+					configured: provider === "openai-codex",
+				}),
+			},
+		} as never;
+
+		const result = await syncCuratedModelScope(ctx, []);
+
+		expect(result.scope).toEqual(["openai-codex/gpt-6-astra"]);
+		expect(result.scope).not.toContain("openai-codex/gpt-5.4");
+	});
+
 	it("restores current Pi metadata when the cache has no new models", () => {
 		const cacheDir = path.join(
 			tempHome,

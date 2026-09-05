@@ -764,7 +764,19 @@ export async function syncCuratedModelScope(
 					(value): value is string => typeof value === "string",
 				)
 			: [];
-		const codex = existing.filter((id) => id.startsWith("openai-codex/"));
+		const existingCodex = existing.filter((id) =>
+			id.startsWith("openai-codex/"),
+		);
+		const availableCodex = available
+			.filter(
+				(model) =>
+					model.provider === "openai-codex" &&
+					!shouldHideModel("openai-codex", model),
+			)
+			.map((model) => `openai-codex/${model.id}`);
+		const codex = configured.has("openai-codex")
+			? availableCodex
+			: existingCodex;
 		const bedrock =
 			configured.has("amazon-bedrock") || configured.has("bedrock-mantle")
 				? bedrockModelIds.map((id) => {
