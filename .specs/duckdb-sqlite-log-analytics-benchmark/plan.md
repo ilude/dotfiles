@@ -1,6 +1,6 @@
 ---
 created: 2026-09-05
-status: draft
+status: ready
 ---
 
 # Benchmark DuckDB and SQLite log-analytics pipelines
@@ -39,7 +39,7 @@ Build and run a reproducible, correctness-gated comparison of the current DuckDB
   - Depends on: T1
 
 - [ ] **T3: Implement paired process measurement and case accounting**
-  - Files: `pi/benchmarks/log-analytics/worker.ts`, `pi/benchmarks/log-analytics/run.ts`, `pi/benchmarks/log-analytics/statistics.ts`, `pi/tests/log-analytics-benchmark-runner.test.ts`
+  - Files: `pi/benchmarks/log-analytics/worker.ts`, `pi/benchmarks/log-analytics/run.ts`, `pi/tests/log-analytics-benchmark-runner.test.ts`
   - Change: Run complete discover/create/import-project/query/consume/serialize/cleanup invocations in directly spawned workers. Separate cold-process from warm-runtime conditions while rebuilding the database per invocation; seed randomized engine order per pair; perform two warmup and ten measured pairs per dataset/query/runtime condition; and compare every measured result with its oracle. Record parent wall time from acknowledged case start through settlement, worker `process.cpuUsage(start)` deltas, phase timings, serialized bytes, and fixed-interval heartbeat delay. For cold workers record documented process-lifetime `maxRSS`; for warm workers record baseline/end RSS and worker-lifetime high-water RSS, explicitly marking per-invocation peak unavailable unless a documented cross-platform sampler is implemented. Forced termination records censored heartbeat delay and unavailable terminal worker metrics rather than inventing values. Aggregate only complete correct pairs, reporting count, median paired ratio, a deterministic Q1/Q3 method, and separate timeout/error/incorrect/unavailable counts. Parent-owned raw JSONL writes remain in the ignored directory. Parent timeout/cancellation begins at `case-start`, terminates only the recorded worker PID, waits a documented close bound, and records cleanup/PID-settlement status.
   - Done when: The finite case matrix, seeded order, sample counts, fresh-database invariant, oracle gate, phase boundaries, metric availability, failure retention, statistics, raw schema, and worker cleanup are explicit and covered by controlled runner tests.
   - Verify: deterministic In T5, controlled workers must falsify ordering, exact accounting, oracle gating, timeout/error retention, metric labels, raw ownership, aggregation, or bounded cleanup defects.
@@ -95,13 +95,12 @@ The implementation workflow must create and own `.worktrees/duckdb-sqlite-log-an
 
 ## Validation
 
-- [ ] T5 deterministic: Record `BASE_SHA=$(git rev-parse HEAD)` before implementation, then after integration run `cd pi && pnpm test log-analytics-benchmark-engines.test.ts log-analytics-benchmark-fixtures.test.ts log-analytics-benchmark-runner.test.ts log-analytics-benchmark-report.test.ts log-analytics-store.test.ts` and require all focused adapter, fixture, runner, report, and preserved-store checks to pass.
+- [ ] T5 deterministic: Record `BASE_SHA=$(git rev-parse HEAD)` before implementation, then after integration run `cd pi && pnpm test log-analytics-benchmark-engines.test.ts log-analytics-benchmark-fixtures.test.ts log-analytics-benchmark-runner.test.ts log-analytics-benchmark-report.test.ts` and require all focused adapter, fixture, runner, and report checks to pass.
 - [ ] T5 deterministic: Run `cd pi && pnpm run typecheck` and require no TypeScript errors for the integrated benchmark code.
 - [ ] T5 deterministic: Run `cd pi && pnpm exec biome check benchmarks/log-analytics tests/log-analytics-benchmark-engines.test.ts tests/log-analytics-benchmark-fixtures.test.ts tests/log-analytics-benchmark-runner.test.ts tests/log-analytics-benchmark-report.test.ts` and require no diagnostics or file mutation.
 - [ ] T5 deterministic: Run `git ls-files -- pi/.tmp/log-analytics-benchmark` and require no output; run `git check-ignore -q pi/.tmp/log-analytics-benchmark` and require success; require the report path not to be ignored; and run `git diff --exit-code "$BASE_SHA" -- pi/extensions/log-analytics-tool.ts pi/lib/log-analytics` with no production analytics difference.
 - [ ] T6 live: Run the documented paired-performance command once. Max attempts: 1. Session: the workflow-owned benchmark worktree on the recorded host. Terminal outcomes: supported when every matrix case and required metadata is represented and cleanup succeeds; rejected when correctness or accounting contradicts the objective; blocked when host capacity or quiescence preconditions prevent the run. Cleanup: terminate recorded owned workers, wait the documented bound, verify their PIDs are absent, and retain only ignored raw/generated artifacts plus the maintained report.
 - [ ] T7 live: Run the documented cancellation-probe command once. Max attempts: 1. Session: the same isolated worktree and host. Terminal outcomes: supported when both engine-specific outcomes and cleanup evidence are recorded accurately; rejected when observed behavior contradicts the report; blocked when the probes cannot safely start. Cleanup: terminate recorded probe PIDs, wait the documented bound, verify absence, and rerender the report from retained raw outcomes.
-- [ ] Closeout deterministic: Require `git ls-files --error-unmatch pi/docs/log-analytics-duckdb-sqlite-benchmark.md` after commit and inspect the base-to-commit patch for complete case accounting, ignored generated data, and no production analytics changes.
 - Timing: T5 runs after implementation, test authoring, and integration settle. T6 and T7 run only after T5 passes and their preconditions hold.
 - On failure: Classify first. Before live execution, allow at most one focused repair batch and one targeted rerun for the whole outcome. Predefined benchmark samples are not retries. A started T6 or T7 is never rerun under that allowance; if it rejects or cleanup fails, stop and report. If a deterministic rerun still fails, stop patching, reassess the mechanism, assumptions, and harness, and require user direction before further execution.
 
@@ -111,7 +110,7 @@ Keep incomplete work at `.specs/duckdb-sqlite-log-analytics-benchmark/plan.md`. 
 
 ## Execution Status
 
-- State: Draft; implementation has not started.
+- State: Ready; implementation has not started.
 - Blocker: None.
 - Next: T1.
 - Current frontier: T1; authored adapter and oracle work precedes fixture and runner tasks; final validation and live measurements remain pending.
