@@ -1,5 +1,6 @@
 ---
 created: 2026-08-31
+updated: 2026-09-05
 status: ready
 ---
 
@@ -8,6 +9,18 @@ status: ready
 ## Objective
 
 Pi must optionally host governed subagents and managed background terminals in visible Herdr panes while preserving their separate lifecycle authorities. The primary orchestrator and Team Lead layouts must expose active child terminals without making terminal state authoritative for work completion. Long-lived servers, watchers, and concurrent shell work may run in owned Herdr panes while the existing `BackgroundTerminalManager` remains authoritative for process state, bounded output, completion delivery, `/ps`, and `bg_kill`.
+
+## Current baseline and workflow reconciliation
+
+Reviewed against dotfiles HEAD `0097a0d3` on 2026-09-05. This revision changes the plan only; it does not launch Herdr, implement runtime code, or repeat historical tests.
+
+- T1 retains its historical capability evidence, not current production acceptance. T2 is reopened: `tree-runtime.ts` currently declares protocol 4 and only handshake, ping, acquire, register, release, and cancel requests. `subagent-completion.ts` and its named test are absent. `run-manager.ts` settles on process status and removes the controller; it does not implement the claimed separate visible-deliverable transition. The previous 158-test/protocol-5 claim cannot establish completion in this checkout.
+- Current read authority is `read`, `grep`, `find`, `ls`, `log_analytics`, `web_search`, and `web_fetch`, not the four-tool experimental loadout. Team Leads have file-reading tools, analytics, and read/write delegation, but no direct shell or mutation. Write workers retain configured execution tools; validation and Git-diff execution belong there without granting unrelated source edits.
+- Implementation, test authoring, and integration precede one root-owned final validation phase. Historical task IDs and passing evidence remain, but old per-task runtime gates now belong to final acceptance. Implementing a later surface does not enable it for production before the read-only pilot passes. Source inspection is not runtime proof.
+- Herdr automation requires a dedicated named session and pinned socket. An unfocused workspace on the default interactive socket is not isolation. Current move responses include `result.move_result.changed` and `reason`; moves require `--split` for an existing tab and cancel active Herdr agent waits in that workspace. Explicit child pane/tab environment is required.
+- The canonical plan is the execution ledger. Default `/do-it` prepares one owned implementation worktree, validates the execution copy before session replacement, and resumes only matching prepared state. Do not mirror these tasks into the durable registry unless separately requested or required by an unattended goal. Do not reset validation or live-attempt limits on handoff.
+
+Owning references: [workflow lifecycle](../../pi/skills/pi-extension/references/contracts/workflow-lifecycle.md), [execution workflow](../../pi/skills/workflow/do-it.md), [subagents and tasks](../../pi/skills/pi-extension/references/contracts/subagents-and-tasks.md), [background terminals](../../pi/skills/pi-extension/references/contracts/background-terminals.md), and [Herdr automation](../../pi/skills/herdr/references/automation.md). Prefer the owning contracts and current source over stale summary text. Read the installed Herdr API schema before adapter implementation; historical experiments are not a schema substitute.
 
 ## Completion Evidence
 
@@ -30,11 +43,11 @@ Pi must optionally host governed subagents and managed background terminals in v
 - Windows `pane run` plus recognized-agent detection as the Pi launch fallback.
 - Focus-isolated read-only capability checks and a production read-only pilot before broader authority is enabled.
 - Owned pane and tab lifecycle, layout, reload cancellation, and surface telemetry.
-- Read-only production pilot, followed by modifying agents and Team Leads only after their gates pass.
+- Read-only production pilot, followed by enabling modifying agents and Team Leads only after their final-phase pilot gates pass; author their implementation before that validation phase.
 - Clear operator labels for read-only, modifying, and Team Lead tools.
 - An optional Herdr execution surface for `bg_start` and corresponding owned-pane lifecycle for `bg_kill`, natural completion, manual pane closure, reload, and failure.
 - A manager-owned output and exit relay for pane-hosted background commands; terminal transcript scraping is never an output or completion source.
-- A later compatibility migration to `subagent_inspect` and `subagent_modify` after the execution surface is stable.
+- Preserve the accepted deferral of `subagent_inspect` and `subagent_modify`; no aliases or naming migration ship in this plan.
 
 ### Out of scope for the first production slice
 
@@ -45,7 +58,7 @@ Pi must optionally host governed subagents and managed background terminals in v
 - Changing the broker's default active-descendant ceiling of eight or its configurable range of 1 through 16.
 - Automatic retries or deadline extension.
 - Broker-based child clarification; visible children use their existing direct Pi UI prompts and Herdr blocked-state reporting in this plan.
-- Visible modifying agents, visible Team Leads, continuation changes, or public tool renaming before the read-only pilot passes.
+- Production enablement of visible modifying agents, visible Team Leads, or visible continuation before the read-only pilot passes; public tool renaming throughout this plan.
 - Editing the archived `.specs/archive/pi-herdr-full-integration/plan.md` or `.specs/archive/reliable-teamlead-settlement/plan.md`.
 
 ### Preserve
@@ -56,7 +69,10 @@ Pi must optionally host governed subagents and managed background terminals in v
 - Process settlement never implies deliverable completion. An accepted child completion may establish the deliverable before a persistent visible Pi process exits. The process stops through a server-independent bounded termination path before its permit releases; visual pane closure and reflow may occur later.
 - Empty required deliverables fail.
 - Read-only agents cannot modify files, use raw shell tools, or delegate.
-- Modifying authority remains bounded by the existing enforced boundary.
+- Preserve the existing enforced boundary for governed file tools and recognized recursive searches. It is not a general sandbox for arbitrary programs launched by write workers. Herdr controls remain parent-owned and never enter child tool authority.
+- Preserve current provider routing and restrictions, including Bedrock Claude root restrictions on Team Leads and saved-session continuation; never change model/provider to make a surface test pass silently.
+- Preserve single-item Luna read/write `affinityTaskId` semantics, canonical saved-session leasing, immutable profile/skills/role/depth/authority identity, and task correlation. Include surface in reuse eligibility; never silently cross between headless and visible execution.
+- Preserve the 64-turn child ceiling, eight-minute read timeout, existing Team Lead budgets, and no added wall-clock deadline for modifying workers.
 - Dependency gates and active mutation owners remain foreground unless explicitly detached.
 - Required read targets validate existing authority before run registration, broker permit acquisition, and process start; they never grant authority.
 - Team Lead admission cutoff, reconciliation reserve, recursive cancellation, deterministic deliverable reduction, and consume-once continuation remain authoritative.
@@ -72,7 +88,7 @@ Pi must optionally host governed subagents and managed background terminals in v
 
 1. The first implementation retains `subagent_read`, `subagent_write`, and `subagent_teamlead` as API names.
 2. Operator labels become `Read-only subagent`, `Modifying subagent`, and `Team Lead package`.
-3. A later naming migration introduces `subagent_inspect` and `subagent_modify` with temporary compatibility aliases. `subagent_teamlead` retains its name.
+3. The previously accepted later naming migration to `subagent_inspect` and `subagent_modify` remains deferred outside this execution package. Current APIs, including `subagent_teamlead`, remain unchanged.
 4. `surface` applies to the requested child only. Visible descendant policy is explicit and root-controlled.
 5. Herdr remains opt-in and headless remains the default.
 6. Successful panes close only after broker result capture. Routine parent-cancelled panes close after bounded process settlement. Failed panes remain visible after settlement; actively blocked panes remain visible while the nonterminal run continues.
@@ -161,7 +177,7 @@ Each visible Team Lead receives one dedicated owned tab:
 
 ## Open questions and experimental evidence
 
-Every question records direct evidence in this plan before its blocking production phase begins. An unresolved blocking question stops that phase. A nonblocking question may be deferred only with a stated reason and preserved fallback behavior.
+The Q1-Q22 records below retain historical experiments and accepted designs. Their resolved labels apply only to their stated historical boundaries, not production readiness. Current corrections here and in Current baseline take precedence. Source and external-contract uncertainty blocks the affected implementation; behavioral proof is deferred to final validation and gates production enablement, not intermediate development checks. An unresolved acceptance question prevents closeout.
 
 ### Q1: Restricted TUI loadout
 
@@ -171,7 +187,7 @@ Every question records direct evidence in this plan before its blocking producti
 - Evidence required: Captured callable tool schema, one successful allowed read, and absence of edit, raw shell, and delegation tools.
 - Blocks: Read-only production pilot.
 - Resolution: A live Herdr-hosted Pi TUI launched with `--tools read,grep,find,ls --no-skills` exposed exactly `find`, `grep`, `ls`, and `read` in the provider request and successfully read this plan. Edit, write, raw shell, and delegation tools were absent.
-- Plan impact: Preserve the existing closed positive allowlist when constructing the TUI launch. Tool authority is feasible and no broader interactive tool set is required.
+- Plan impact: The four-tool experiment proves restricted TUI feasibility only. T3 must use the current seven-tool read allowlist from `contracts.ts`, load the analytics/web extensions explicitly, retain exact selected-skill read exceptions, and deny shell, mutation, discovery activation, delegation, and Onclave. No new interactive authority is required.
 
 ### Q2: Authenticated broker settlement
 
@@ -181,7 +197,7 @@ Every question records direct evidence in this plan before its blocking producti
 - Evidence required: Inspect the existing broker protocol and prove or reject a native completion path.
 - Blocks: Read-only production pilot.
 - Resolution: The current tree broker authenticates identity and supports handshake, ping, acquire, register, release, and cancel, but has no deliverable frame. A temporary broker extension carried one live result, proving feasibility only by changing the protocol; that experimental code and worktree were removed.
-- Plan impact: Production work must first choose and review one authenticated bounded result channel. Transcript scraping remains rejected. No broker change is implied by the layout experiments.
+- Plan impact: T2 must implement the accepted Q3 authenticated bounded completion channel. Current protocol 4 still has no such channel. Transcript scraping remains rejected; layout experiments do not establish broker delivery.
 
 ### Q3: Single lifecycle ownership
 
@@ -221,7 +237,7 @@ Every question records direct evidence in this plan before its blocking producti
 - Evidence required: Focus-isolated child output and saved-session metadata matching explicit launch inputs without global settings mutation.
 - Blocks: Read-only production pilot.
 - Resolution: In dedicated unfocused workspace `w12`, `pane run` launched and auto-detected Pi in the requested repository cwd with `openai-codex/gpt-5.6-sol`, low thinking, `--no-skills`, and exactly `find`, `grep`, `ls`, and `read`. The child read this plan and returned `Q6_SESSION_OK`. Its 39,564-byte persistent session contained the matching model and thinking entries plus assistant messages. The active operator pane remained `wX:p7` before, during, and after the experiment. The owned workspace and scratch session were removed. Production role identity and full run-manager fingerprint composition remain part of Q3 rather than the launcher boundary.
-- Plan impact: Retain the Windows `pane run` fallback with explicit model, thinking, skills, tools, cwd, session, and child environment. Require focus-before/focus-after assertions in live adapter validation.
+- Plan impact: Retain the Windows `pane run` fallback with explicit model, thinking, skills, tools, cwd, session, and child environment. Set `HERDR_PANE_ID` and `HERDR_TAB_ID` to the created target rather than inheriting the root values; pin the intended socket. Resolve the current available model rather than pinning the experimental model. Require focus-before/focus-after assertions in live adapter validation.
 
 ### Q7: Team Lead continuation surface
 
@@ -262,7 +278,7 @@ Every question records direct evidence in this plan before its blocking producti
 - Blocks: Eight-worker layout rollout.
 - Fallback: Put worker five in the new tab and defer migration of existing panes until the affected tab is no longer zoomed.
 - Resolution: While the source tab was zoomed, Herdr returned successful move responses but left the panes and topology unchanged. The same moves succeeded immediately after unzooming.
-- Plan impact: Detect zoom before migration, defer all source-tab moves while zoomed, and verify resulting tab and pane topology after every move.
+- Plan impact: Detect zoom before migration, defer all source-tab moves while zoomed, and verify resulting tab and pane topology after every move. Parse current `result.move_result.changed` and `reason`; a successful RPC is not proof of a move. Use installed-schema `--split` semantics. Moves cancel Herdr agent waits in the workspace, so broker settlement must not depend on those waits.
 
 ### Q11: Closure and grid restoration
 
@@ -292,7 +308,7 @@ Every question records direct evidence in this plan before its blocking producti
 - Evidence required: Manual close during startup and active work, with one cancellation, no accepted late result, and no duplicate cleanup.
 - Blocks: Read-only production pilot.
 - Resolution: Manual closure is an intentional operator stop only while the owning run remains nonterminal. It submits cancellation to the same atomic terminal transition, releases governed capacity after process settlement, rejects completion only when cancellation committed first, and does not recreate the already-closed pane. Pane disappearance after completion committed is cleanup evidence and cannot replace success.
-- Plan impact: Treat pane disappearance as cancellation input only for a nonterminal run that owns that exact pane. It cannot imply success, replace a committed outcome, or trigger cleanup of another resource.
+- Plan impact: Treat verified pane disappearance on the reachable pinned Herdr session as cancellation input only for a nonterminal run that owns that exact pane. Transport failure is Q14, not proof that a pane closed. Neither condition implies success, replaces a committed outcome, or triggers cleanup of another resource.
 
 ### Q14: Herdr server loss
 
@@ -352,7 +368,7 @@ Every question records direct evidence in this plan before its blocking producti
 - Resolution: Include execution surface in the continuation fingerprint. Visible continuation stays visible and headless continuation stays headless. No cross-surface continuation is required by the accepted workflow.
 - Plan impact: Reject continuation when the requested surface differs from the partial attempt. This removes pane creation or teardown from continuation and keeps session, transport, and ownership behavior stable.
 
-### Q20: Persistent ownership metadata
+### Q20: Process-local ownership metadata
 
 - Type: Design decision followed by implementation validation
 - Status: Design resolved; implementation unproved
@@ -360,7 +376,7 @@ Every question records direct evidence in this plan before its blocking producti
 - Evidence required: Field-level ownership inventory, atomic visible-slot reservation behavior, reload-hook ordering, and Q5 reload-cancellation evidence after an adapter exists.
 - Blocks: Read-only production pilot.
 - Resolution: `SubagentRunSnapshot` already retains logical workspace identity, PID, session path, run identity, parent identity, status, outcomes, and execution fingerprint. It does not currently retain execution surface, Herdr workspace ID, tab ID, pane ID, owned-resource flags, layout group, or cleanup/retention state. These fields are required for active-run cleanup and retained-pane ownership, not live reload rebinding.
-- Plan impact: Extend the existing snapshot rather than create a second registry. The minimum additional surface record is `surface`, Herdr workspace/tab/pane IDs, explicit ownership for each resource, layout group or package identity, and cleanup/retention state. Keep Herdr agent status advisory and do not duplicate canonical process or deliverable state.
+- Plan impact: Extend existing process-local manager state rather than add a durable registry. Surface ownership needs the pinned Herdr session/socket identity as well as workspace/tab/pane IDs, explicit ownership, layout/package identity, and cleanup/retention state. Ownership must outlive run-history pruning while retained panes exist. Preserve the manager ABI check on reload; incompatible live state must fail explicitly rather than drop controllers, permits, or cleanup records. Keep Herdr status advisory; do not duplicate canonical process or deliverable state.
 
 ### Q21: Background-terminal output and exit relay
 
@@ -370,7 +386,7 @@ Every question records direct evidence in this plan before its blocking producti
 - Evidence required: One pane-hosted command with distinguishable stdout and stderr, output exceeding the in-memory bound and spilling through the existing capped log path, one natural exit, and no dependency on pane transcript text or Herdr lifecycle state.
 - Blocks: Visible background-terminal pilot.
 - Resolution: Launch the actual command through a small manager-owned relay in the pane. The relay forwards stdout and stderr through an authenticated, size-bounded process-local channel into the existing `BackgroundTerminalManager` capture and reports the real exit status. The manager records the process/PID tree independently and remains the only settlement owner.
-- Plan impact: Reuse existing bounded buffers, spill files, completion formatting, and process-tree cleanup. Add no second output store, transcript parser, background run manager, or subagent broker dependency. Missing or malformed relay state fails the visible start or active run explicitly rather than inventing output or success.
+- Plan impact: Reuse existing bounded buffers, spill files, completion formatting, and process-tree cleanup. Add no second output store, transcript parser, background run manager, or subagent broker dependency. Missing or malformed relay state fails explicitly. Specify startup authentication, frame/stream bounds, backpressure, disconnect behavior, and exit-versus-output-drain ordering before launch. Prove stdin and signal forwarding for the supported server/watcher workflow; do not claim arbitrary full-screen or TTY-dependent application compatibility from a piped-output relay.
 
 ### Q22: Background-terminal pane and reload lifecycle
 
@@ -385,197 +401,228 @@ Every question records direct evidence in this plan before its blocking producti
 ## Limited experiment protocol
 
 - Do not create a worktree or modify production code merely to answer a Herdr capability or layout question.
-- Use a dedicated `hvs-experiment` Herdr workspace created without focus and never the operator's active workspace.
+- Use a dedicated named `hvs-` Herdr session and pin `HERDR_SOCKET_PATH` to its nondefault socket. Verify `HERDR_ENV=1`, session identity, installed schema, and ownership before controlling resources. Use an unfocused workspace within that isolated session; never run automation against the default interactive socket.
 - Record the focused workspace, tab, and pane before each experiment and verify that all remain unchanged afterward.
 - Use uniquely named `hvs-` workspaces, tabs, panes, agents, and session files.
 - Pass `--no-focus` for every supported create, split, and move operation.
 - Do not automate zoom or another focus-sensitive operation without explicit operator permission.
 - Record every owned Herdr workspace, pane, and tab ID before launch.
 - Close successful experimental resources after evidence capture and close only owned resources.
-- Stop at the first unexpected focus change, live-state mutation, or need to modify the broker or run manager; record the unanswered boundary instead of expanding the experiment.
+- The root owns live checks. Stop at the first unexpected focus change, unplanned mutation, wrong socket, unowned-resource effect, unproved process exit, or failed check; record one attempt and cleanup result instead of expanding the experiment. No automatic live retry. Broker/run-manager changes belong to implementation tasks, never ad hoc experiment repair.
 - Store expected large output in gitignored `.tmp/` or an OS temporary directory.
 - Update the relevant question's Status, Resolution, and Plan impact immediately after each experiment.
 
 ## Tasks
 
-- [x] **T1: Establish baseline and capability evidence**
-  - Files: `.specs/herdr-visible-subagents/plan.md` and gitignored `.tmp/` experiment artifacts only.
-  - Questions: Q1, Q6, Q8-Q12, and the idle-load portion of Q16; Q20 has only a completed field inventory.
-  - Change: Establish the clean repository baseline and run only focus-isolated, no-production-code capability, launch, layout, movement, zoom, closure, and idle-capacity experiments under the limited experiment protocol.
-  - Done when: Baseline checks pass, every created Herdr resource is accounted for and removed, operator focus remains unchanged, temporary production experiments are discarded, and each answered question records direct evidence and its plan impact.
-  - Verify: Focused baseline subagent tests, Pi typecheck, `git diff --check`, runtime version checks, and before/after Herdr focus and owned-resource inspection.
-  - Evidence: The removed experimental worktree established a passing 196-test baseline, Pi typecheck, and `git diff --check`. Focus-isolated no-code experiments proved exact read-only TUI tools, Windows launch fidelity, persistent sessions, stable process identity across pane moves, accepted layouts and zoom constraints, and eight-idle-child resource use near 1 GB. Q16 active-load evidence and Q20 production ownership validation remain open. Temporary broker code was discarded and no production runtime code was retained.
+Task IDs T1-T11 are preserved. T2 is reopened against current source. For T2-T6 and T8-T10, `Done when` means authored implementation and regression coverage, not observed behavior. Their runtime criteria remain required by T11-T16. No task authorizes intermediate development checks.
 
-- [x] **T2: Add run-bound completion transport**
-  - Files: `pi/extensions/subagent/tree-runtime.ts`, `pi/extensions/subagent/run-manager.ts`, `pi/extensions/subagent/index.ts`, `pi/extensions/subagent-completion.ts`, `pi/tests/subagent-tree-runtime.test.ts`, `pi/tests/subagent-run-manager.test.ts`, `pi/tests/subagent-completion.test.ts`, `pi/tests/subagent.test.ts`, and `pi/skills/pi-extension/references/contracts/subagents-and-tasks.md`.
+- [x] **T1: Establish baseline and capability evidence**
+  - Files: This plan and historical temporary experiment artifacts only.
+  - Change: Completed focus-isolated capability, launch, layout, movement, zoom, closure, and idle-capacity experiments.
+  - Done when: Historical resources were accounted for and removed, and findings were recorded in Q1, Q6, Q8-Q12 and the idle portion of Q16.
+  - Verify: deterministic Retain recorded evidence; do not rerun the historical baseline during planning or call it current validation.
+  - Evidence: The prior removed experimental worktree recorded a passing 196-test baseline, typecheck, and whitespace check. Experiments recorded exact four-tool TUI authority, persistent sessions, stable Pi PID across moves, accepted geometry and zoom limitations, eight-idle-child memory near 1 GB, and unchanged operator focus. These results do not establish current seven-tool parity, current API schema, isolated-socket compliance, active-load behavior, or production cleanup. Temporary broker code was discarded.
+
+- [ ] **T2: Add run-bound completion transport**
+  - Files: `pi/extensions/subagent/tree-runtime.ts`, `run-manager.ts`, `index.ts`, new `pi/extensions/subagent-completion.ts`, focused broker/run-manager/completion/subagent tests, and the owning subagent contract.
+  - Depends on: T1
   - Questions: Q2, Q3.
-  - Change: Add one bounded completion operation to the existing authenticated tree broker and connect it to the current run-manager settlement path. Child-side lifecycle integration emits completion after the assigned turn; this is not a model-callable tool. The broker transports the child result but does not decide task success. Keep the headless structured-event path unchanged.
-  - Done when: The admitted child can submit one nonblank result; wrong-run, malformed, empty, oversized, duplicate, late, and post-cancellation messages are rejected; structured results validate against their requested schema; the run manager atomically commits the first valid terminal input and rejects later inputs idempotently; accepted completion settles the logical deliverable exactly once without requiring process exit or terminal parsing. T2 uses a test process seam and does not claim persistent-TUI process cleanup or permit-release validation.
-  - Readiness gate: Before editing production code, identify the exact broker frame, authentication and size bounds, run-manager atomic transition, child emission hook, and unchanged headless path in the owning contracts and implementation. The gate fails if completion and cancellation can commit independently or if a transcript, pane state, or process exit determines the deliverable.
-  - Readiness evidence: Satisfied by code inspection. Add a protocol-versioned `complete` frame in `pi/extensions/subagent/tree-runtime.ts`; require the authenticated caller run to equal the completed run; retain the 64 KiB frame bound and reject completion payloads above 16 KiB or 2,000 lines before transition. Refactor `SubagentRunManager.settle()` in `run-manager.ts` into an observable synchronous first-winner terminal transition used by completion, cancellation, deadline, and failure inputs, while process termination and permit release remain separate. Register a parent-owned run-bound validator before launch so structured completion validates before commit. Emit visible completion from a new child-only `agent_end` extension rather than the installer-owned `herdr-agent-state.ts`. Preserve the existing `runSingleAgent()` JSON stdout, structured-correction, process-close, and background-delivery paths for headless runs. Current cancellation commits only later in `runSingleAgent()` cleanup, so reconciling it through the atomic transition is the first T2 implementation slice.
-  - Verify: Focused broker protocol, run-manager atomic settlement and completion/cancellation race, foreground, background-delivery, empty-deliverable, and unchanged-headless-path tests.
-  - Evidence: The protocol-5 completion frame is strict-self authenticated, bounded to 16 KiB and 2,000 lines, and validated by a parent-owned run-bound validator. The run manager uses an observable first-winner terminal transition; losing inputs do not mutate the snapshot. An explicit child marker prevents headless emission. Focused run-manager, broker, completion-emitter, and subagent tests passed with 158 tests; Pi typecheck and `git diff --check` passed.
+  - Change: Add a versioned, strict-self-authenticated completion frame to the existing broker; register a parent-owned run-bound validator before launch. Retain the 64 KiB broker frame limit and bound completion to 16 KiB and 2,000 lines. Add child-only lifecycle emission, not a model-callable completion tool. Keep headless structured-event and structured-correction paths unchanged.
+  - Done when: Source implements one observable first-winner logical transition for completion, cancellation, deadline, and failure, with separate process termination and permit settlement. Authored tests cover wrong-run, empty, malformed, oversized, duplicate, late and post-cancellation inputs, requested structured schemas, race order, and unchanged headless behavior. Accepted completion must not delete the controller or report process exit while a persistent TUI is alive.
+  - Verify: deterministic Inspect the complete transition and child hook against installed Pi docs and a working lifecycle example before expansion; execute authored checks only in T11. If the hook cannot distinguish assignment completion from queued steering or unrelated turns, stop the affected implementation and revise the method without weakening run identity.
+  - Evidence correction: The prior plan claimed protocol 5 and 158 passing tests. At reviewed HEAD the broker is protocol 4, the emitter/test are absent, and `settle()` removes controllers on process-status settlement. That historical claim is not completion evidence for this checkout.
 
 - [ ] **T3: Add internal Herdr surface ownership and restricted launch**
-  - Files: `pi/extensions/subagent/herdr-surface.ts`, `pi/extensions/subagent/run-manager.ts`, `pi/extensions/subagent/index.ts`, `pi/tests/herdr-surface.test.ts`, `pi/tests/subagent-run-manager.test.ts`, `pi/tests/subagent.test.ts`, and the owning subagent contract.
+  - Files: New `pi/extensions/subagent/herdr-surface.ts`, existing subagent `run-manager.ts` and `index.ts`, focused surface/run-manager/authority tests, and the owning subagent contract. Low-level sharing with T10 may live under `pi/lib/`; no module repository changes.
   - Depends on: T2
   - Questions: Q1, Q6, Q20.
-  - Change: Add one internal execution-surface seam and extend existing run snapshots with Herdr workspace, tab, pane, explicit ownership, layout/package, and cleanup/retention fields. Implement the Windows `pane run` launch path and supported non-Windows launch path with exact model, effort, skills, cwd, session, role, environment, and closed tool authority. Do not expose a public surface field yet.
-  - Done when: One read-only TUI child completes through T2, edit/write/shell/delegation remain absent, headless behavior is unchanged, Herdr status cannot force deliverable completion, a server-independent process handle and PID tree are recorded, visual capacity is reserved atomically before creation, partial launch releases its reservation, and cleanup targets only recorded owned resources. Persistent-process permits release only after independent process settlement is proven; visual pane closure may remain deferred.
-  - Verify: Adapter unit tests, role-loadout tests, malformed Herdr-response tests, atomic visible-slot reservation and partial-launch tests, server-independent process-settlement tests, focused run-manager tests, one focus-isolated live restricted child through an internal test entrypoint, typecheck, and contract updates for changed stable behavior.
+  - Change: Add one internal surface seam using current installed Herdr schema. Extend process-local ownership with exact session/socket/workspace/tab/pane identity, ownership flags, layout/package identity, and visual cleanup state. Preserve the manager ABI boundary. Implement the required Windows `pane run` path and schema-supported non-Windows path using the existing resolved role/model/effort/skills/cwd/session/environment configuration.
+  - Done when: Source and authored tests cover the current seven-tool read allowlist, exact selected-skill exceptions, inherited Onclave denial, atomic visible-slot reservation before resource creation, partial-launch cleanup, and an independently verified process identity/termination path. Launch readiness cannot be inferred from `pane run` success or agent detection. Parent-owned authenticated registration must bind the actual child process to the run; PID reuse or missing process proof fails closed.
+  - Verify: deterministic Inspect one representative internal read-child path and negative authority/response fixtures; defer executable and live proof to T11/T12. Do not expose a public field before T4's cleanup is authored. Missing external schema or a viable independent process-settlement mechanism blocks this task, not unrelated planning work.
 
-- [ ] **T4: Prove cancellation and failure cleanup**
-  - Files: `pi/extensions/subagent/herdr-surface.ts`, `pi/extensions/subagent/run-manager.ts`, `pi/extensions/subagent/index.ts`, focused subagent lifecycle tests, and the owning subagent contract.
+- [ ] **T4: Integrate cancellation and failure cleanup**
+  - Files: Subagent surface, run manager, index, focused lifecycle tests, and the owning subagent contract.
   - Depends on: T3
   - Questions: Q4, Q5, Q13-Q15, Q20.
-  - Change: Integrate bounded cancellation, reload cancellation, manual pane closure, parent shutdown, retained failed-surface records, active-blocked ownership, partial-launch cleanup, and explicit Herdr-unavailable behavior. Validate server loss through mocks or an isolated Herdr server only; never stop the operator's shared server.
-  - Done when: Each case uses the atomic terminal transition and settles once; completion and cancellation races preserve whichever committed first; capacity releases only after independently proven process settlement; routine cancelled panes close; active blocked runs remain nonterminal and retain execution ownership; settled failed panes detach after process exit; reload hook ordering and ownership persistence prove one bounded cleanup path; no unowned resource closes.
-  - Verify: Focused cancellation/race tests, owned-resource tests, reload ordering and persisted-cleanup tests, and adapter-level manual-closure and Herdr-loss tests. Live manual closure and reload workflow checks move to T5, where a supported pilot surface exists.
+  - Change: Integrate startup/active/blocked cancellation, visible-run reload cancellation, parent exit, exact manual pane closure, partial-launch cleanup, retained failed surfaces, and Herdr loss into the T2 transition. Retain cancellation ownership after logical completion until process exit is proven.
+  - Done when: Source and tests cover first-winner races, bounded process-tree settlement before permit release, zoom-deferred visual cleanup only, active blocked ownership, detached failed-pane retention, and no unowned cleanup. Reload ordering is explicitly implemented using the process-global manager, not hypothetical disk recovery. Run-history pruning cannot lose retained ownership. Headless session-replacement behavior remains unchanged; visible reload cancellation is an explicit surface-specific addition.
+  - Verify: deterministic Inspect lifecycle ordering and ABI compatibility; author transition-level regressions rather than separate patch tests. Run tests in T11 and supported manual-close/reload checks in T12. Failure to preserve an independent cleanup path stops expansion.
 
-- [ ] **T5: Ship the read-only Herdr pilot**
-  - Files: `pi/extensions/subagent/contracts.ts`, `pi/extensions/subagent/modern-adapter.ts`, `pi/extensions/subagent/index.ts`, `pi/extensions/subagent/herdr-surface.ts`, focused subagent tests, and the owning subagent contract.
+- [ ] **T5: Integrate the read-only Herdr pilot surface**
+  - Files: Subagent `contracts.ts`, `modern-adapter.ts`, `index.ts`, surface adapter, relevant normalization/rendering tests, and the owning subagent contract.
   - Depends on: T4
   - Questions: Q17, Q20.
-  - Change: Add per-item `surface?: "headless" | "herdr"` to `subagent_read`, default it to headless, reject explicit Herdr use outside a valid environment, and retain existing foreground/background behavior. Update callable schema, labels, owning stable contracts, and telemetry normalization in the same change.
-  - Done when: One foreground and one background visible read overlap with distinct run and pane identities, complete automatically with exactly-once delivery, and demonstrate cancellation isolation; operator nudging stays on the same governed run; success and routine cancellation stop their processes within bounds; zoom may defer only visual cleanup; failure remains inspectable; empty output fails; headless regression tests remain unchanged.
-  - Verify: Focused schema, modern-adapter, broker, settlement, overlapping foreground/background delivery and cancellation-isolation tests, plus live read-only manual-closure and reload workflow checks.
+  - Change: Add per-item `surface?: "headless" | "herdr"` to `subagent_read`, with explicit unavailable-surface errors and unchanged headless default. Keep independent reads background and dependency gates foreground. Apply the accepted operator labels through existing renderers. Reuse existing telemetry only where surface normalization is necessary; no new telemetry subsystem.
+  - Done when: Callable schema and integrated launch path match; tests cover mixed batches, preflight before registration/spawn/background acknowledgement, overlap and cancellation isolation, exactly-once delivery, blank-result failure, unchanged headless behavior, and no authority expansion through steering. Surface participates in Luna affinity eligibility and canonical saved-session leasing; cross-surface reuse rejects before spawn. Current provider restrictions remain intact.
+  - Verify: deterministic Inspect schema-to-launch-to-delivery composition and tests; T11/T12 prove behavior. Do not claim the pilot shipped or enable broader visible authority from source inspection alone.
 
-- [ ] **T6: Add adaptive direct-worker layout**
-  - Files: `pi/extensions/subagent/herdr-surface.ts`, `pi/extensions/subagent/index.ts`, `pi/tests/herdr-surface.test.ts`, `pi/tests/subagent.test.ts`, and the owning Herdr/subagent contract.
+- [ ] **T6: Add adaptive direct-worker layout and pilot fixtures**
+  - Files: Subagent surface/index, focused layout tests, isolated live-validation fixtures under `pi/tests/` or `pi/scripts/`, and the owning Herdr/subagent contract.
   - Depends on: T5
-  - Questions: Q8-Q11.
-  - Change: Add the one-through-four top band and fifth-worker migration to one two-row `Subagents` tab. Respect zoom, focus, user resizing, retained-pane capacity, and the independent configured broker ceiling.
-  - Done when: Pane and process identities survive unzoomed moves; zoom defers migration, visual closure, and reflow but never process termination or permit release; focus is preserved; atomic visible-capacity reservation makes concurrent exhaustion fail before spawn; partial launch releases the slot; headless overflow remains unaffected.
-  - Verify: Layout adapter tests and focus-isolated live 1-4, fifth-worker, move, closure, and cleanup checks.
+  - Questions: Q8-Q11, Q16.
+  - Change: Implement the top band for one through four workers and fifth-worker migration to a two-row Subagents tab. Author fixtures for T12 and the T7 active/headless comparison. Use current move-result fields, explicit target environment, and topology verification; do not make cancelled Herdr waits authoritative.
+  - Done when: Source and tests preserve pane/process identity, root focus, user resizing, zoom deferral, concurrent slot admission, retained-pane capacity, and configured broker capacity. Measurement fixtures collect startup, memory, CPU, cancellation and parent-response evidence without changing runtime defaults. Model-independent fixtures drive races, capacity, closure and failure; actual provider checks remain bounded integration evidence.
+  - Verify: deterministic Inspect layout and fixture contracts; run them only in the final phase. Missing move/zoom schema blocks the affected adapter. Do not repeatedly fill panes with synthetic provider traffic.
 
-- [ ] **T7: Validate active capacity and read-only pilot behavior**
-  - Files: `.specs/herdr-visible-subagents/plan.md`, gitignored `.tmp/` measurements, and Windows churn diagnostics only when triggered by observed evidence.
-  - Depends on: T6
+- [ ] **T7: Evaluate active capacity and read-only pilot behavior**
+  - Files: This plan and private temporary measurement artifacts; the existing Windows churn diagnostic only when triggered.
+  - Depends on: T12
   - Questions: Q12, Q16.
-  - Change: Measure one, four, and eight active read-only children during real pilot work, compare the headless baseline, and record startup, memory, CPU, cancellation latency, and parent responsiveness. Run the Windows churn diagnostic only when observed behavior or event evidence indicates it.
-  - Done when: Evidence supports or rejects enabling more than four active visible children by default and records a direct bounded fallback. Synthetic model traffic is not required solely to fill panes.
-  - Verify: Focus-isolated one-, four-, and eight-child pilot measurements, headless comparison, cancellation timing, parent responsiveness, owned-resource cleanup, and the churn diagnostic only when its trigger is observed.
+  - Change: Run one bounded active-load comparison using the T6 fixture, comparing one, four and eight visible read workers with matching headless work and recording resource use, cancellation and parent responsiveness.
+  - Done when: One supported, rejected or blocked evaluation is recorded with measurements and cleanup. A rejected more-than-four recommendation retains explicit opt-in eight-pane capability and a conservative no-default-expansion recommendation; it does not silently lower the accepted layout capacity or change headless defaults.
+  - Verify: live Observe operational viability of the active capacity profile; terminate owned processes, prove exit, and remove only owned surfaces after the measurement. Record unavailable evidence rather than retrying or inventing a performance threshold. Source policy still requires no default visibility expansion without supporting evidence.
+  - Max attempts: 1
+  - Session: Dedicated `hvs-capacity` Herdr session with pinned nondefault socket and isolated Pi state; actual socket and resource IDs recorded before launch.
+  - Terminal outcomes: supported | rejected | blocked
 
-- [ ] **T8: Enable visible modifying agents**
-  - Files: `pi/extensions/subagent/contracts.ts`, `pi/extensions/subagent/modern-adapter.ts`, `pi/extensions/subagent/index.ts`, `pi/extensions/subagent/herdr-surface.ts`, focused authority/subagent tests, and the owning subagent contract.
-  - Depends on: T7
-  - Change: Add the proven surface field to `subagent_write` while preserving foreground default, exact mutation authority, required validation, incident boundaries, and automatic result delivery.
-  - Done when: In-bound modification succeeds, out-of-bound modification fails, steering cannot expand authority, manual closure cannot report success, and headless modifying behavior remains unchanged.
-  - Verify: Focused authority and adapter tests plus one bounded disposable modifying workflow.
+- [ ] **T8: Implement visible modifying agents without early rollout**
+  - Files: Subagent contracts, modern adapter, index, surface adapter, authority tests, and the owning subagent contract.
+  - Depends on: T6
+  - Change: Add the surface to `subagent_write` through the same lifecycle seam. Preserve configured shell/mutation authority, foreground mutation ownership, headless behavior, and incident boundaries. Validation workers may execute assigned checks only in the root's final validation phase.
+  - Done when: Implementation and regression fixtures cover in-bound writes, governed out-of-bound rejection, steering without expanded authority, manual-close races, and exact saved-session leasing. Do not claim arbitrary shell containment. Production enablement remains blocked on T12; task completion records authored work only.
+  - Verify: deterministic Inspect the reused seam and negative authority fixtures; executable tests run in T11 and the disposable modifying workflow in T13. Stop if surface support requires broadening authority.
 
-- [ ] **T9: Enable visible Team Leads and governed descendants**
-  - Files: `pi/extensions/subagent/contracts.ts`, `pi/extensions/subagent/modern-adapter.ts`, `pi/extensions/subagent/index.ts`, `pi/extensions/subagent/herdr-surface.ts`, `pi/extensions/subagent/run-manager.ts`, focused Team Lead tests, and the owning subagent contract.
+- [ ] **T9: Implement visible Team Leads and governed descendants**
+  - Files: Subagent contracts, modern adapter, index, surface/run manager, Team Lead settlement/continuation tests, and the owning subagent contract.
   - Depends on: T8
   - Questions: Q7, Q12, Q18, Q19.
-  - Change: Add the dedicated 1+4+4 status-wall tab, root-controlled visibility for up to eight descendants, policy-eligible headless overflow, existing cutoff and reconciliation behavior, and same-surface consume-once continuation.
-  - Done when: Partial continuation resumes the same visible pane and session; second use, expiry, cancellation, authority broadening, and surface change are rejected; completed leaves do not rerun; cutoff, recursive cancellation, deterministic reduction, and private session paths remain intact.
-  - Verify: Focused Team Lead settlement/continuation tests and one bounded focus-isolated visible package.
+  - Change: Implement the dedicated 1+4+4 tab, authenticated root-controlled descendant visibility, headless overflow, cutoff/reconciliation, and same-surface consume-once continuation. A Team Lead retains its current delegation-only execution authority.
+  - Done when: Source and tests cover eight leaf display slots separately from the lead and broker permits; explicit visible-capacity rejection; scheduler-admitted headless overflow; expiry, second-use, cancellation, authority and surface rejection; and no rerun of completed leaves. Saved-session leases prevent concurrent writers, and stale pane ownership cannot resume another process. An idle retained continuation process still holds its permit until proven stopped; idle never means released capacity. Missing original-pane availability must resolve under the accepted ownership contract before launch, never by guessing a replacement.
+  - Verify: deterministic Inspect continuation and tree-cutoff composition; run tests in T11 and the visible package in T14. Do not use a provider route that forbids Team Leads or saved-session continuation. Production enablement waits for the read-only gate.
 
-- [ ] **T10: Add visible managed background terminals**
-  - Files: `pi/extensions/background-terminal/index.ts`, `pi/extensions/background-terminal/manager.ts`, a background-terminal Herdr relay/adapter, shared low-level Herdr ownership helpers, `pi/tests/background-terminal.test.ts`, `pi/tests/background-terminal-manager.test.ts`, focused relay/damage-control tests, and `pi/skills/pi-extension/references/contracts/background-terminals.md`.
-  - Depends on: T6
+- [ ] **T10: Implement visible managed background terminals**
+  - Files: `pi/extensions/background-terminal/index.ts`, `manager.ts`, new relay/adapter, shared low-level ownership/process helpers, focused manager/relay/schema/damage-control tests, and `pi/skills/pi-extension/references/contracts/background-terminals.md`.
+  - Depends on: T4
   - Questions: Q21, Q22.
-  - Change: Add `surface?: "headless" | "herdr"` to `bg_start`, default it to headless, and host explicit Herdr commands in owned panes within one dedicated `Background terminals` tab. Add the manager-owned stdout/stderr and exit relay, surface ownership on existing manager entries, reload reattachment, exact-pane manual-closure handling, retained-failure cleanup, and Herdr-loss behavior. Keep `bg_kill`, `/ps`, bounded buffers, spill logs, completion delivery, damage-control preflight, capacity, and Pi-exit cleanup authoritative in the existing manager. Share no subagent lifecycle state or visible capacity.
-  - Done when: A visible command preserves separate stdout/stderr, bounded memory and spill behavior, real exit code, exactly-once natural completion, and `/ps` output without transcript scraping; `bg_kill` and manual pane closure terminate only the exact process tree; reload preserves the active entry and pane; success and cancellation close owned resources after settlement; failure may retain only visual ownership; Herdr loss preserves manager truth; headless behavior is unchanged.
-  - Verify: Focused manager, relay protocol, damage-control, extension schema, reload, ownership, manual-closure, Herdr-loss, and no-unowned-cleanup tests plus one focus-isolated live dev-server workflow covering start, `/ps`, reload, and `bg_kill`.
+  - Change: Add optional `bg_start.surface` through the existing manager. Host the actual command in its owned Background terminals tab, with authenticated bounded stdout/stderr/exit relay, stdin/signal forwarding, reload reattachment, exact manual-close handling and retained failure cleanup. Share only low-level ownership primitives and process-tree termination, not subagent state, permits or display slots.
+  - Done when: Source and fixtures cover damage-control before registration/creation/spawn, relay startup and malformed frames, bounded buffering/spill/backpressure, drain-before-exit delivery, natural completion, and awaited `bg_kill` consuming the follow-up exactly once. Manager entries and pane identities survive session replacement; process exit triggers tree cleanup and log removal. Herdr loss never establishes exit. Retained visual ownership survives tracked-entry pruning until explicit cleanup.
+  - Verify: deterministic Inspect the relay protocol and lifecycle against the existing manager and author focused regressions; run tests in T11 and the exact background workflow in T15. Missing safe authentication, stream bounds, or process proof blocks this task. It does not depend on direct-worker grid layout or Team Lead rollout.
 
-- [ ] **T11: Finalize labels, contracts, and rollout evidence**
-  - Files: `.specs/herdr-visible-subagents/plan.md`, owning Pi tooling contracts, affected callable schemas/rendering/telemetry, and focused/shared-impact tests.
+- [ ] **T11: Integrate contracts and run final deterministic validation**
+  - Files: Owning Pi contracts, affected guidance/schemas/rendering, `CHANGELOG.md`, implementation and regression files from T2-T6/T8-T10, and this plan.
   - Depends on: T9, T10
-  - Change: Review whether session evidence still justifies later `subagent_inspect` and `subagent_modify` aliases; otherwise retain current APIs and improved labels. Reconcile owning contracts, Pi guidance, schemas, rendering, telemetry, background-terminal semantics, and rollback instructions without changing archived historical plans.
-  - Done when: Documentation matches behavior, every question is resolved with implementation evidence or a recorded bounded limitation, focused and shared-impact tests pass, Pi typecheck and `git diff --check` pass, and live checks prove accepted subagent and background-terminal cleanup, output, reload, and layout behavior.
-  - Verify: Focused and shared-impact Vitest suites, Pi typecheck, `git diff --check`, canonical plan preflight, and the complete live Herdr validation checklist.
+  - Change: Finish integration, accepted labels, operator cleanup instructions, contract changes, and the material-change changelog before running the final deterministic batch. Keep aliases deferred. Document live scenarios using the implemented entrypoints and installed schema.
+  - Done when: All authored work is integrated and the deterministic Validation batch passes with no unclassified gate failures. This establishes readiness for live evaluation, not production acceptance.
+  - Verify: deterministic Execute the named final checks once after integration; record results and affected inputs. On failure apply the single shared repair allowance or stop. No separate full-suite, benchmark, or review pass is implied.
 
-## Independent adversarial review
+- [ ] **T12: Validate the isolated read-only pilot and direct layout**
+  - Files: T6 fixture, private live artifacts, this plan; runtime files are not edited during the attempt.
+  - Depends on: T11
+  - Change: Run one isolated read-only surface workflow through `subagent_read`, including foreground/background overlap and direct layout lifecycle, using fixture-driven terminal cases and one actual restricted Pi assignment.
+  - Done when: The workflow returns a nonblank authenticated deliverable once, proves actual seven-tool loadout without forbidden authority, and satisfies the read-only/layout live criteria below with cleanup. Only a supported result unlocks production enablement of visible writes and Team Leads; rejected or blocked results do not prove acceptance even if the evaluation itself terminates.
+  - Verify: live Observe governed read execution from launch through result, cancellation/reload/manual-close and owned cleanup; verify stable IDs and focus before/after migration. Use fixtures for deterministic races rather than relying on a model to choose them. Operator-driven zoom is checked only with explicit permission. Stop after this attempt and record its row.
+  - Max attempts: 1
+  - Session: Dedicated `hvs-read-pilot` Herdr session with pinned nondefault socket and isolated Pi state; record actual identities before launch.
+  - Terminal outcomes: supported | rejected | blocked
 
-Review completed after T1 and before production implementation. It found twelve actionable issues; this revision incorporates all of them:
+- [ ] **T13: Validate a bounded visible modifying workflow**
+  - Files: Disposable worktree-local fixture, private artifacts, this plan.
+  - Depends on: T12
+  - Change: Run one visible write assignment against disposable sentinel files after T12 is supported; do not mutate unrelated repository or live infrastructure state.
+  - Done when: In-bound modification and result delivery succeed, governed out-of-bound modification rejects, no steering expands authority, and exact process/pane cleanup completes. Failure cases are fixture-driven, not dependent on a model voluntarily attempting a forbidden edit.
+  - Verify: live Observe the visible modifying assignment and sentinel effects, then terminate owned processes and remove only owned surfaces. A rejected/blocked result leaves modifying acceptance unproved.
+  - Max attempts: 1
+  - Session: Dedicated `hvs-write-pilot` Herdr session with pinned nondefault socket and isolated Pi state.
+  - Terminal outcomes: supported | rejected | blocked
 
-- The run manager now owns one atomic terminal transition for completion, cancellation, deadline, and failure inputs.
-- Broker authority is narrowed to authentication and input transport; it cannot commit cancellation or another terminal outcome.
-- Process termination and permit release are separated from zoom-deferred visual pane closure.
-- Every visible launch requires a server-independent process handle and PID-tree settlement path; inability to prove exit blocks rollout and retains the permit.
-- Reload requires explicit hook-ordering and ownership-persistence evidence rather than assuming snapshots are sufficient.
-- Manual pane closure requests cancellation only while the run remains nonterminal and cannot replace an accepted completion.
-- Blocked is defined only as an active nonterminal state; only failed terminal panes are retained.
-- T2 proves transport and atomic logical settlement through a test process seam; T3 and T4 own persistent-process and cleanup proof.
-- T3 uses an internal test entrypoint; supported live manual-closure and reload checks occur in the T5 pilot.
-- T5 includes overlapping foreground and background runs with identity, delivery, and cancellation isolation.
-- Visible capacity is reserved atomically before creation and released on partial-launch or lifecycle cleanup.
-- T1 and execution status distinguish completed experiments from partially resolved or implementation-unproved questions.
+- [ ] **T14: Validate a bounded visible Team Lead workflow**
+  - Files: Team Lead fixture, private artifacts, this plan.
+  - Depends on: T13
+  - Change: Run one bounded visible package on a provider route that permits Team Leads and continuation; demonstrate the 1+4+4 layout and same-pane eligible-partial continuation using controlled fixture outcomes.
+  - Done when: The package preserves tree budgets/cutoff/reconciliation and automatic result reduction, resumes the eligible partial once in the owned session, does not rerun completed leaves, and cleans owned resources. Deterministic T11 coverage supplies rejection/race permutations; do not multiply provider calls to repeat them.
+  - Verify: live Observe package identity, accepted continuation, result and cleanup; stop on unproved process exit, missing original identity, or a rejected/blocked result. No operator approval step is added to normal continuation.
+  - Max attempts: 1
+  - Session: Dedicated `hvs-teamlead-pilot` Herdr session with pinned nondefault socket and isolated Pi state.
+  - Terminal outcomes: supported | rejected | blocked
 
-Review disposition: no finding was deferred. Production implementation remains gated by T2's explicit readiness check.
+- [ ] **T15: Validate the visible background-terminal workflow**
+  - Files: Background relay fixture, private artifacts, this plan.
+  - Depends on: T11
+  - Change: Run one isolated `bg_start` -> `/ps` -> `/reload` -> `bg_kill` workflow, with bounded companion natural-success, failed-retention, and manual-close fixtures in the same session.
+  - Done when: The actual pane-hosted command preserves distinguishable stdout/stderr, bounded spill, stdin/signal forwarding, real exit status, reload identity and exactly-once output delivery. Successful/terminated commands close only owned surfaces after exit; failed retention remains explicitly cleanable. No subagent permit or display slot is acquired.
+  - Verify: live Observe the managed command lifecycle and output, then prove all fixture process trees stopped and clean only owned resources. Herdr-loss failure injection remains deterministic unless a separate isolated server boundary is already available; never interrupt the shared operator server.
+  - Max attempts: 1
+  - Session: Dedicated `hvs-background-pilot` Herdr session with pinned nondefault socket and isolated Pi state.
+  - Terminal outcomes: supported | rejected | blocked
+
+- [ ] **T16: Accept the integrated outcome for closeout**
+  - Files: This plan, owning contracts, recorded validation artifacts and owned workflow Git state.
+  - Depends on: T7, T12, T13, T14, T15
+  - Change: Reconcile every required Completion Evidence item with observed results and documented limits; prepare the accepted plan for the separate Retention closeout boundary.
+  - Done when: Required deterministic and live behavior checks pass, Q1-Q22 have current proof or an acceptance-compatible recorded limitation, and no process or owned-resource cleanup remains unresolved. A rejected live evaluation is not successful feature acceptance; Q16 may reject default expansion without rejecting explicit eight-pane support. This checkbox records acceptance, not a completed Git closeout.
+  - Verify: deterministic Inspect the accumulated evidence and final changed inputs. Reuse passing checks whose inputs are unchanged; no automatic rerun. Mark acceptance before archive preflight, then follow Retention; overall completion still requires verified closeout. Stop before archival if required behavior remains unproved.
+
+## Remaining-work review
+
+The 2026-09-05 source/contract review replaces the earlier pre-T2 readiness conclusion:
+
+- Reopened T2 rather than relying on missing protocol-5 code and historical test counts. T3 is not currently ready.
+- Updated read authority and protected Team Lead execution restrictions, provider limits, optional task correlation and single-item Luna session affinity.
+- Moved behavioral checks to the final phase while preserving read-only-before-broader-production gates. T8/T9 can be authored without a premature rollout. T7 remains live evaluation, not an implementation dependency. T10 depends on ownership/lifecycle primitives, not the subagent layout feature.
+- Replaced workspace-only isolation with session/socket isolation, current move-result parsing, cancelled-wait handling and explicit child pane/tab environment.
+- Added bounded live metadata and a single attempt ledger; missing live prerequisites block the attempt, not earlier safe implementation.
+- Corrected logical completion versus persistent-process settlement, ownership retention under pruning, reload ABI compatibility, and background relay drain/delivery risks. These are requirements of the existing accepted lifecycle, not new managers.
+- Kept accepted surface/layout/continuation decisions. Deferred aliases, automatic visibility expansion, durable surface registries, new lifecycle reporters, transcript-based result delivery and extra telemetry. No additional review pass is required during execution.
+
+Design assessment: one adapter per lifecycle owner is appropriate; a shared lifecycle manager is not. The highest remaining risk is independent process settlement after logical completion or Herdr loss, followed by current-authority TUI loading, reload ordering, and relay I/O correctness. The file list may change when source evidence supports a simpler complete mechanism; accepted authority and behavior must not change silently.
+
+## Execution Strategy
+
+- This update is planning only. `/do-it` must establish/resume the owned implementation worktree before code changes and verify the prepared plan's bytes, canonical path, branch, execution mode and closeout policy across handoff. Do not overwrite an existing progressed execution copy with this revision; reconcile divergent copies through the existing workflow.
+- Implement T2-T6 and T8-T10, author all regression/live fixtures, and integrate contracts/changelog first. Source-review the representative transition before expansion; do not run intermediate tests, typechecks, builds or smoke checks.
+- T11 starts the single root-owned final validation phase. Then evaluate T12 before enabling writes/Team Leads, T7 after the read pilot, T13 then T14 for broader authority, and T15 independently after deterministic integration. Finish with T16. These are ordered acceptance checks within one phase, not a separate validation budget per task.
+- Independent read inspection/review may run in background with the closed read tools. Command execution requires a bounded write/validator assignment, and no child runs intermediate validation or live commands. Keep dependency gates and the active mutation owner foreground. Completion is pushed; status is exceptional diagnosis, not polling.
+- Preserve the plan as the sole ledger unless separate tracking is requested or an unattended goal requires its normal root-task mapping. Record any acceptance-affecting method revision here before reassignment.
 
 ## Validation
 
-- [ ] Every task-specific focused check passes at its implementation boundary.
-- [ ] Live focus-isolated subagent and background-terminal pilots satisfy their recorded lifecycle, authority, output, layout, reload, and cleanup evidence without changing unowned Herdr resources.
-- [ ] Headless subagent and background-terminal regression behavior remains unchanged.
-- [ ] Pi typecheck and `git diff --check` pass before closeout.
+Timing: After implementation, test authoring and integration settle. T11-T16 form one final phase. Historical T1 tests are not rerun just to recreate a baseline. Record exact added fixture filters and live entrypoints when authored; do not substitute unrelated checks if a required workflow is unavailable.
 
-### Focused unit and adapter checks
+- [ ] T11 deterministic: From the owned worktree's `pi/`, run `pnpm test subagent-tree-runtime.test.ts subagent-run-manager.test.ts subagent-completion.test.ts subagent.test.ts herdr-surface.test.ts background-terminal-manager.test.ts background-terminal.test.ts damage-control.test.ts` once, adding only newly authored fixture/relay files required by these contracts to that invocation. Expected: protocol authentication/bounds, transition races, authority/affinity, lifecycle, schema, layout and relay checks pass. The absent completion/surface tests must be authored first; missing filters cannot count as coverage.
+- [ ] T11 deterministic: Run `pnpm run typecheck` once from that `pi/` directory because broker/manager/schema integration changes shared TypeScript boundaries.
+- [ ] T11 deterministic: Run `git diff --check` once from the owning implementation repository. No generic aggregate gate unless changed shared impact requires it.
+- [ ] T12-T15 live: Record the observed workflow results in the ledger below, including the exact socket and resources, timing/process proof and cleanup. Required behavior must be supported before acceptance.
+- [ ] T7 live: Record the active/headless comparison and supported recommendation or explicit no-default-expansion limitation. No new arbitrary latency or memory threshold is inferred from historical measurements.
+- [ ] T16 deterministic: Direct inspection reconciles Completion Evidence and Q1-Q22 against current source and retained passing results, and normal canonical-plan closeout preflight verifies machine-consumed state.
 
-- Surface defaulting and explicit Herdr gating.
-- Windows launch command and non-Windows agent-start path.
-- Restricted role loadout construction.
-- Herdr response parsing and malformed output.
-- Owned pane and tab tracking.
-- Cancellation and partial-launch cleanup.
-- Existing process and deliverable outcome composition.
-- Reload cancellation and owned-resource cleanup.
-- Per-item schema normalization.
-- Label and later compatibility-alias behavior.
-- Background-terminal surface defaulting and explicit Herdr gating.
-- Authenticated bounded stdout/stderr and exit relay behavior.
-- Existing manager capture, spill, completion, `/ps`, and `bg_kill` composition.
-- Background pane ownership, reload reattachment, manual closure, retained failure, and Herdr loss.
+### Required behavioral coverage
 
-### Broker integration checks
+- Broker: self-authentication, run identity, nonblank/structured output, frame bounds, late/duplicate rejection, first-winner races, persistent process separation, headless equivalence and bounded foreground/background output.
+- Launch/authority: current read allowlist, selected-skill exception, Team Lead delegation-only tools, configured write tools, required-read preflight, catalog/provider constraints, unavailable surface, canonical saved-session leases and cross-surface rejection.
+- Lifecycle: startup/active/blocked cancellation, parent exit, foreground/background isolation, reload ABI/cleanup ordering, exact manual close, Herdr loss, process-exit proof before permit release, and retained ownership surviving history pruning. Inability to prove exit is a failure, never inferred success.
+- Layout: one through four workers above an unchanged root; fifth-worker migration and two rows of four; stable pane/PID identity; installed-schema no-op results; cancelled Herdr waits; focus preservation; zoom deferring visuals only; retained capacity and atomic reservation cleanup; Team Lead plus eight leaves and broker capacity independence.
+- Team Leads: cutoff, queued removal, recursive cancellation, reconciliation reserve, reduction, eligible partial reuse, expiry/second-use/authority/surface rejection, no completed-leaf replay, provider restrictions, and bounded retention.
+- Background: damage-control before side effects, authenticated bounded relay, stdout/stderr separation, spill/backpressure, input/signals, drain-before-exit ordering, `/ps`, natural completion, kill consuming completion, reload survival, retained failure cleanup, exact manual close and independent process cleanup.
 
-- Authenticated registration and identity mismatch rejection.
-- Nonblank result delivery and empty-result rejection.
-- Foreground and background composition.
-- Parent shutdown and recursive cancellation.
-- Required-read-path validation before pane launch.
-- Existing Pi UI prompt and Herdr blocked-state behavior remains intact.
-- Team Lead cutoff, reconciliation, and continuation.
+### Failure and attempt bounds
 
-### Live Herdr checks
+Classify the first failed final check as fixture/harness, product, external-contract misunderstanding or protocol violation before editing. At most one focused development repair batch and one targeted rerun of affected deterministic checks is allowed for the entire requested outcome. Preserve unchanged passing checks. If failures remain, stop patching, reassess mechanism and harness, and report before further execution. A changed signature, delegation, task boundary, or resumed session does not reset the allowance.
 
-- One restricted read child.
-- One background read with parent continuation.
-- Manual pane closure.
-- Reload cancellation and owned-pane cleanup.
-- `prefix+z` and restoration.
-- Primary 1-4 layout.
-- Fifth-worker migration and 2x4 tab.
-- Team Lead 1+4+4 tab.
-- Successful cleanup and retained failure cleanup.
-- No unrelated pane or tab closure.
-- One visible dev server with distinct stdout/stderr, `/ps` inspection, reload survival, and `bg_kill`.
-- One naturally completing visible background command and one retained failed command with explicit owned cleanup.
-- Manual background-pane closure and adapter-level Herdr-loss handling.
+Each live task has one attempt. Before it starts, the root verifies authorization, actual isolated target/socket, installed schema, cap, stop condition and cleanup. Record one ledger row after the attempt and stop that evaluation. Fixture or external-contract failure never authorizes another live attempt; inspect maintained docs and installed schema for the latter. Another live attempt requires explicit operator authorization, recorded in the existing ledger. No process polling or background timer substitutes for pushed completion or the scheduler.
 
-### Repository gates
+## Live attempt ledger
 
-Use the cheapest focused checks that exercise each changed contract. Run broader subagent tests when shared run-manager, broker, settlement, or schema behavior changes. Run focused background-terminal and damage-control suites when the background execution surface or relay changes. Final validation includes focused Vitest suites, `pnpm run typecheck`, and `git diff --check`.
+| Task | Attempt | Preconditions | Result | Cleanup | Disposition |
+| --- | --- | --- | --- | --- | --- |
+
+Historical T1 experiments remain in Q1-Q22; no T7/T12-T15 attempt has run under this revision. Planning performs no live action.
 
 ## Rollback boundary
 
-- The headless surface remains independently usable throughout rollout.
-- Before the read-only pilot is accepted, removing the Herdr adapter and `surface` schema restores prior behavior without task or session migration.
-- A failed Herdr launch never silently falls back to headless because explicit visibility intent must remain observable.
-- Removing the background Herdr adapter and `bg_start.surface` restores the prior manager-owned headless behavior without migrating terminal records or logs.
-- Rollback closes only currently owned experimental or production panes and tabs after their subagent broker or background-manager process boundaries settle.
-- No rollback changes the installed Herdr package, global Pi package list, saved task records, or archived plans.
+- Headless remains the compatibility default throughout. Explicit Herdr failure never silently falls back.
+- Before production enablement, remove the optional surface wiring and adapter only after exact owned processes settle. Retain safe ownership records for any visual cleanup still pending; never discard unproved live state to satisfy rollback.
+- Background rollback keeps the existing manager/output contracts and headless entries. Subagent rollback keeps the broker/run manager/task separation. Neither closes unowned resources, changes the installed Herdr package or global Pi packages, nor rewrites task/session history.
+- Existing stateful-infrastructure backup/restore rules still apply if a later request introduces a live stateful target; this plan authorizes only isolated local fixtures and owned terminal resources.
 
 ## Retention
 
-Keep incomplete work at `.specs/herdr-visible-subagents/plan.md`. After every task is complete and final validation passes, archive it to `.specs/archive/herdr-visible-subagents/plan.md` through the normal plan closeout workflow.
+Keep incomplete work at `.specs/herdr-visible-subagents/plan.md`. After all required behavior is accepted, `/do-it` archives the complete directory to `.specs/archive/herdr-visible-subagents/` in its owned implementation worktree, commits in-scope nonignored artifacts, merges `--no-ff` into the primary branch, verifies merged HEAD and archive/ownership state, and removes only its owned worktree/branch through normal closeout verification. Ignore rules remain authoritative; never force-add an ignored spec. Failed or incomplete closeout preserves the recovery worktree and plan. An explicit workflow no-merge/in-place option retains its owning contract; this plan does not select either exception.
 
 ## Execution Status
 
-- State: T2 complete and validated; T3 is next.
-- Blocker: No operator-policy blocker. T2 readiness is recorded; implementation must stop if the atomic transition, strict self-authenticated completion frame, parent-owned structured validator, or unchanged headless path cannot be preserved.
-- Evidence: Q1, Q6, and Q8-Q12 have experimental evidence at their stated boundaries. Q16 has idle-load evidence only. Q2 rejected the existing native-delivery assumption. Q3-Q5, Q7, Q13-Q15, Q20, Q21, and Q22 have resolved designs but still require implementation validation. Q17-Q19 are resolved design decisions. Focus-isolated experiments confirmed persistent sessions, exact read-only launch fidelity, stable Pi PID across pane moves, accepted layouts and zoom constraints, eight-idle-child memory near 1 GB, and unchanged operator focus. The temporary worktree and broker experiment were removed and no production runtime code was retained.
-- Next: Implement and validate T3-T6 as the bounded read-only Herdr pilot and direct-layout package. Do not enable modifying agents or Team Leads before that gate passes.
+- State: Ready for implementation; T1 historical experiments retained, T2 reopened, T3-T16 incomplete.
+- Blocker: No operator design decision blocks T2. Current installed Herdr schema and independent process identity/termination proof are implementation prerequisites; isolated-session availability and authorization are later live prerequisites, not assumed facts.
+- Next: T2, in the `/do-it` owned implementation worktree. Do not resume at T3 from the previous status.
+- Current frontier: T2 transport and terminal-transition implementation; no current visible runtime implementation or final acceptance is established by this plan.
+- Validation progress: This revision used source/contract inspection and the current `parseLinkedPlan`/`selectNextPlanTask` parser: 16 tasks, valid dependency graph, only T1 checked, T2 selected next, and five live tasks with valid one-attempt/session/outcome metadata. Historical T1 results remain scoped to the removed experiment; the prior T2 claim is contradicted by current source. No development tests or live attempts ran during this update. One shared final-phase repair batch and targeted deterministic rerun remain; each future live task has its stated cap.
 - Resume: `/do-it .specs/herdr-visible-subagents/plan.md`
