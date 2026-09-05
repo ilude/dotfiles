@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-05: Deliver background completions through SDK receipts
+
+**Changed:** Subagent and background-terminal completions now capture the parent session and canonical parent workspace, route only to that origin, and retain manager-owned completion state until an acknowledged inserted receipt or explicit `bg_kill` consumption. In-flight sends are not resubmitted by settlement hooks; queue-cleared, aborted, and replacement outcomes pause retry until interactive input, rejected outcomes retry only at a later lifecycle boundary, and uncertain outcomes remain held.
+
+**Fixed:** Missing `sendMessageWithReceipt` capability now fails before background spawn without falling back to ordinary message delivery. Reload-safe manager state preserves origin, receipt state, actionable failure reporting, canonical alias matching, and concurrent `bg_kill` ordering while blocking legacy records that lack reliable origin.
+
+**Preserved:** Worker cwd and execution boundaries, affinity and containment, bounded output and timing, ordinary senders, process-manager separation, and process-local retention remain unchanged. No crash/restart durability is claimed.
+
 ## 2026-09-05: Resolve workflow state consistently across inspection and execution
 
 **Added:** A shared read-only workflow observation and source-selection module plus the root-only `workflow_inspect` tool. It reports primary, owned, and archived plan evidence, ownership and Git registration, separate routing claims, conflicts, and bounded errors without changing repository or session state.
