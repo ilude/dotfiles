@@ -42,6 +42,12 @@ vi.mock("../lib/workflow-telemetry", () => ({
 	startWorkflowEpisode: vi.fn(),
 }));
 
+vi.mock("../lib/workflow-observation", () => ({
+	discoverWorkflows: vi.fn(async () => ({ repositoryRoot: "/test/dir", observations: [], errors: [], complete: true })),
+	observeWorkflow: vi.fn(async (_input: any) => ({ repositoryRoot: "/test/dir", canonicalPath: _input.planPath, primary: { kind: "primary", path: _input.planPath, exists: true }, selection: "primary", conflicts: [], errors: [], facts: { implementation: "unknown", validation: "unknown", integration: "unknown", retention: "unknown", resources: "unknown", cleanup: "not-observed", uncertainty: [] } })),
+	selectWorkflowSource: vi.fn(),
+}));
+
 vi.mock("../lib/workflow-worktree", () => ({
 	ensureWorkflowWorktree: vi.fn(async (input: { cwd: string; workflow: string; workflowId: string; slug: string; closeoutPolicy?: "merge" | "retain" }) => ({
 		resumed: false,
@@ -95,6 +101,16 @@ function getHandler(mockPi: ReturnType<typeof createMockPi>, name: string) {
 	if (!command) throw new Error(`${name} command not registered`);
 	return command.handler as (args: string, ctx: unknown) => Promise<void>;
 }
+
+it("registers root-only workflow inspection without sending a message or starting a turn", async () => {
+	const mockPi = createMockPi();
+	const mod = await import("../extensions/workflow-commands.ts");
+	mod.default(mockPi as Parameters<typeof mod.default>[0]);
+	const tool = mockPi._getTool("workflow_inspect");
+	expect(tool).toBeDefined();
+	await tool?.execute("inspect", {}, new AbortController().signal, undefined, createMockCtx());
+	expect(mockPi.sendMessage).not.toHaveBeenCalled();
+});
 
 function readyPlan(planPath: string): string {
 	const slug = planPath.split("/")[1];
@@ -172,6 +188,7 @@ async function prepareReadyInteractivePlan(mockPi: ReturnType<typeof createMockP
 	const mod = await import("../extensions/workflow-commands.ts");
 	const lifecycle = await import("../lib/workflow-commands/plan-lifecycle.ts");
 	mod.default(mockPi as Parameters<typeof mod.default>[0]);
+	expect(mockPi._getTool("workflow_inspect")).toBeDefined();
 	const sessionStart = mockPi._getHook("session_start")[0]?.handler;
 	if (!sessionStart) throw new Error("session_start hook not registered");
 	const started = lifecycle.createPlanLifecycleSnapshot("interactive-invocation", "fixture");

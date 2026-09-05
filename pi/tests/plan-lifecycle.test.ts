@@ -9,7 +9,7 @@ import {
 	transitionPlanLifecycle,
 	validatePlanContract,
 	getDoItArgumentCompletions,
-	refreshDoItPlanCache,
+	refreshDoItPlanObservationCache,
 	getCachedDoItPlans,
 } from "../lib/workflow-commands/plan-lifecycle.ts";
 
@@ -459,12 +459,15 @@ status: in_progress
 		expect(validatePlanContract(content, planPath, "execution-preflight").valid).toBe(true);
 	});
 
-	it("filters cached native do-it completions and refreshes active plans", () => {
+	it("filters cached native do-it completions and refreshes active plans", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-plan-cache-"));
 		const planPath = path.join(root, ".specs", "active-plan", "plan.md");
 		fs.mkdirSync(path.dirname(planPath), { recursive: true });
 		fs.writeFileSync(planPath, readyPlan(".specs/active-plan/plan.md"));
-		const active = refreshDoItPlanCache(root);
+		const active = await refreshDoItPlanObservationCache(root, async (cwd, args) => {
+			if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: cwd, stderr: "" };
+			return { code: 0, stdout: "", stderr: "" };
+		});
 		expect(active).toEqual([".specs/active-plan/plan.md"]);
 		expect(getCachedDoItPlans(root)).toEqual(active);
 		expect(getDoItArgumentCompletions("", active)).toEqual([
@@ -479,7 +482,10 @@ status: in_progress
 		expect(getDoItArgumentCompletions("-- ", active)).toBeNull();
 		expect(getDoItArgumentCompletions(".specs/active-plan/plan.md ", active)).toBeNull();
 		fs.rmSync(path.join(root, ".specs", "active-plan"), { recursive: true });
-		expect(refreshDoItPlanCache(root)).toEqual([]);
+		expect(await refreshDoItPlanObservationCache(root, async (cwd, args) => {
+			if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: cwd, stderr: "" };
+			return { code: 0, stdout: "", stderr: "" };
+		})).toEqual([]);
 	});
 
 	it("validates the executable plan contract", () => {

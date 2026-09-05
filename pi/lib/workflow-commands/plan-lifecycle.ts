@@ -1,6 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseLinkedPlan, parsePersistedPlanRoutingState, selectNextPlanTask } from "../plan-state.js";
+import { parseLinkedPlan, selectNextPlanTask } from "../plan-state.js";
+import { discoverWorkflows } from "../workflow-observation.js";
+import type { WorkflowGitRunner } from "../workflow-worktree.js";
 
 export const PLAN_LIFECYCLE_ENTRY_TYPE = "workflow.plan-lifecycle";
 export const PLAN_LIFECYCLE_VERSION = 1;
@@ -146,29 +148,25 @@ function hasPlanHeading(content: string, heading: string): boolean {
 	return new RegExp(`^${escapedHeading}[ \\t]*\\r?$`, "m").test(content);
 }
 
-export function refreshDoItPlanCache(cwd: string): string[] {
-	const root = path.resolve(cwd);
-	const specs = path.join(root, ".specs");
-	const active: string[] = [];
-	if (fs.existsSync(specs)) {
-		for (const entry of fs.readdirSync(specs, { withFileTypes: true })) {
-			if (!entry.isDirectory() || entry.name === "archive" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.name)) continue;
-			const relative = `.specs/${entry.name}/plan.md`;
-			const absolute = path.join(root, relative);
-			if (!fs.existsSync(absolute)) continue;
-			const content = fs.readFileSync(absolute, "utf8");
-			const routing = parsePersistedPlanRoutingState(content);
-			if (routing.complete || routing.needsReconciliation) continue;
-			if (validatePlanContract(content, relative, "execution-preflight").valid) active.push(relative);
-		}
-	}
-	active.sort();
-	doItPlanCache.set(root, active);
-	return [...active];
-}
-
 export function getCachedDoItPlans(cwd: string): string[] {
 	return [...(doItPlanCache.get(path.resolve(cwd)) ?? [])];
+}
+
+export async function refreshDoItPlanObservationCache(cwd: string, runner: WorkflowGitRunner, signal?: AbortSignal): Promise<string[]> {
+	try {
+		const discovered = await discoverWorkflows({ cwd, runner, signal });
+		if (!discovered.complete) throw new Error(discovered.errors.slice(0, 8).map((error) => error.message).join("; ") || "workflow observation incomplete");
+		const active = discovered.observations
+			.filter((observation) => observation.selection !== "conflict" && observation.selected?.routing && !observation.selected.routing.complete && !observation.selected.routing.needsReconciliation)
+			.filter((observation) => validatePlanContract(observation.selected?.content ?? "", observation.canonicalPath, "execution-preflight").valid)
+			.map((observation) => observation.canonicalPath)
+			.sort();
+		doItPlanCache.set(path.resolve(cwd), active);
+		return [...active];
+	} catch (error) {
+		console.error(`Workflow plan observation cache refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+		return getCachedDoItPlans(cwd);
+	}
 }
 
 export function getDoItArgumentCompletions(prefix: string, plans: string[]): DoItCompletion[] | null {

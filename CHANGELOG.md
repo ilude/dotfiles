@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-05: Resolve workflow state consistently across inspection and execution
+
+**Added:** A shared read-only workflow observation and source-selection module plus the root-only `workflow_inspect` tool. It reports primary, owned, and archived plan evidence, ownership and Git registration, separate routing claims, conflicts, and bounded errors without changing repository or session state.
+
+**Changed:** Native `/do-it` completion snapshots refresh asynchronously at lifecycle boundaries and no longer perform discovery during completion filtering. Execution and closeout retain fresh action-specific ownership, target, and merge checks.
+
 ## 2026-09-05: Make Team Lead model and effort selectable
 
 **Changed:** `subagent_teamlead` accepts a model override on each item and now applies its existing effort option to the actual child launch. Omitted values use the selected profile; the shipped Team Lead defaults to `openai-codex/gpt-6-astra` with low effort. Parallel items retain independent selections, and continuation fingerprints include the effective choices.
