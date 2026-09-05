@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { readLinkedPlan } from "./plan-state.js";
+import { parseLinkedPlan, readLinkedPlan } from "./plan-state.js";
 import type { GoalMergeReceipt } from "./goal-state.js";
 
 const OWNERSHIP_VERSION = 1;
@@ -432,6 +432,33 @@ export async function materializePlanInWorkflowWorktree(input: {
 	return "transferred";
 }
 
+function assertOwnedWorkflowWorktreeTarget(ownership: WorkflowWorktreeOwnership): void {
+	const target = path.resolve(ownership.worktree);
+	const expected = path.resolve(ownership.repoRoot, ".worktrees", path.basename(target));
+	if (normalize(target) !== normalize(expected))
+		throw new Error("workflow worktree target is outside repository-root .worktrees");
+	if (!fs.existsSync(target)) throw new Error("workflow worktree is missing; recovery worktree preserved");
+	const canonicalWorktrees = fs.realpathSync(path.join(ownership.repoRoot, ".worktrees"));
+	const canonicalTarget = fs.realpathSync(target);
+	if (path.dirname(canonicalTarget) !== canonicalWorktrees)
+		throw new Error("workflow worktree target traverses a link outside repository-root .worktrees");
+	const stat = fs.lstatSync(target);
+	if (!stat.isDirectory() || stat.isSymbolicLink())
+		throw new Error("workflow worktree target is not an owned directory");
+}
+
+async function findWorkflowMergeCommit(primaryWorktree: string, branchHead: string, runner: WorkflowGitRunner): Promise<string> {
+	const history = parseLine(
+		await runner(primaryWorktree, ["rev-list", "--first-parent", "--parents", "HEAD"]),
+		"inspect primary first-parent merge history",
+	);
+	for (const line of history.split(/\r?\n/)) {
+		const commits = line.split(/\s+/);
+		if (commits.length === 3 && commits[2] === branchHead) return commits[0];
+	}
+	throw new Error("primary first-parent history has no required --no-ff merge of the workflow branch; recovery worktree preserved");
+}
+
 function removeOwnedResidualWorktree(ownership: WorkflowWorktreeOwnership): void {
 	const residual = path.resolve(ownership.worktree);
 	const expected = path.resolve(ownership.repoRoot, ".worktrees", path.basename(residual));
@@ -454,11 +481,10 @@ export async function verifyAndCleanupWorkflowWorktree(input: {
 }): Promise<WorkflowWorktreeOwnership> {
 	const ownership = input.worktree.ownership;
 	if (ownership.state !== "active") throw new Error("workflow worktree is already complete");
-	if (!fs.existsSync(ownership.worktree)) throw new Error("workflow worktree is missing; recovery worktree preserved");
+	assertOwnedWorkflowWorktreeTarget(ownership);
 	const planPath = input.planPath?.replace(/^@/, "").replace(/\\/g, "/");
 	if (ownership.planPath && planPath && ownership.planPath !== planPath)
 		throw new Error("workflow closeout plan path does not match ownership");
-	let expectedArchivedPlan: string | undefined;
 	if (planPath) {
 		const slug = workflowSlugFromPlan(planPath);
 		const source = path.join(ownership.worktree, planPath);
@@ -467,30 +493,49 @@ export async function verifyAndCleanupWorkflowWorktree(input: {
 			throw new Error("completed plan was not archived in the workflow worktree; recovery worktree preserved");
 		const plan = readLinkedPlan(archived);
 		if (!plan.complete) throw new Error(`archived plan is not complete: ${plan.blockers.join("; ")}`);
-		expectedArchivedPlan = fs.readFileSync(archived, "utf8");
 	}
 	const status = await input.runner(ownership.worktree, ["status", "--porcelain=v1"]);
 	if (status.code !== 0) throw new Error(`inspect workflow worktree: ${status.stderr.trim()}`);
 	if (status.stdout.trim()) throw new Error("workflow worktree is not clean after model closeout; recovery worktree preserved");
 	const unmerged = await input.runner(ownership.worktree, ["diff", "--name-only", "--diff-filter=U"]);
 	if (unmerged.code !== 0 || unmerged.stdout.trim()) throw new Error("workflow worktree has unmerged paths; recovery worktree preserved");
-	const primary = await primaryState(ownership.primaryWorktree, input.runner, true, true);
-	if (primary.branch !== ownership.primaryBranch) throw new Error("primary branch changed; recovery worktree preserved");
+	const primary = await primaryState(ownership.primaryWorktree, input.runner, false, true);
+	if (normalize(primary.worktree) !== normalize(ownership.primaryWorktree) || primary.branch !== ownership.primaryBranch)
+		throw new Error("primary worktree or branch changed; recovery worktree preserved");
+	const listedBeforeCleanup = await listWorktrees(primary.worktree, input.runner);
+	const listedTarget = listedBeforeCleanup.find((entry) => normalize(entry.path) === normalize(ownership.worktree));
+	if (!listedTarget || listedTarget.branch !== ownership.branch)
+		throw new Error("workflow worktree ownership or registration changed; recovery worktree preserved");
+	if (planPath) {
+		const slug = workflowSlugFromPlan(planPath);
+		const primaryOwnedStatus = await input.runner(primary.worktree, [
+			"status", "--porcelain=v1", "--untracked-files=all", "--",
+			`.specs/${slug}`, `.specs/archive/${slug}`,
+		]);
+		if (primaryOwnedStatus.code !== 0)
+			throw new Error(`inspect primary archived plan state: ${primaryOwnedStatus.stderr.trim() || primaryOwnedStatus.stdout.trim()}`);
+		if (primaryOwnedStatus.stdout.trim())
+			throw new Error("primary workflow archive paths are dirty; recovery worktree preserved");
+	}
 	const branchHead = parseLine(await input.runner(primary.worktree, ["rev-parse", ownership.branch]), "resolve workflow branch before closeout");
 	const merged = await input.runner(primary.worktree, ["merge-base", "--is-ancestor", ownership.branch, "HEAD"]);
 	if (merged.code !== 0) throw new Error("workflow branch is not merged into the primary branch; recovery worktree preserved");
-	const mergedHead = parseLine(await input.runner(primary.worktree, ["rev-parse", "HEAD"]), "verify merged HEAD");
-	const parents = parseLine(await input.runner(primary.worktree, ["rev-list", "--parents", "-n", "1", "HEAD"]), "verify merge commit").split(/\s+/).slice(1);
-	if (parents.length < 2 || !parents.includes(branchHead))
-		throw new Error("primary HEAD is not the required --no-ff merge of the workflow branch; recovery worktree preserved");
-	if (planPath && expectedArchivedPlan !== undefined) {
+	const mergedHead = await findWorkflowMergeCommit(primary.worktree, branchHead, input.runner);
+	if (planPath) {
 		const slug = workflowSlugFromPlan(planPath);
 		const primarySource = path.join(ownership.primaryWorktree, planPath);
 		const primaryArchive = path.join(ownership.primaryWorktree, ".specs", "archive", slug, "plan.md");
 		if (fs.existsSync(primarySource) || !fs.existsSync(primaryArchive))
 			throw new Error("merged primary tree does not contain the required archived plan state; recovery worktree preserved");
-		if (fs.readFileSync(primaryArchive, "utf8") !== expectedArchivedPlan)
-			throw new Error("merged primary archive does not match the completed workflow plan; recovery worktree preserved");
+		const archiveInMerge = await input.runner(primary.worktree, ["cat-file", "-e", `${mergedHead}:.specs/archive/${slug}/plan.md`]);
+		if (archiveInMerge.code !== 0)
+			throw new Error("merged primary tree does not contain the required archived plan state; recovery worktree preserved");
+		const sourceInMerge = await input.runner(primary.worktree, ["cat-file", "-e", `${mergedHead}:${planPath}`]);
+		if (sourceInMerge.code === 0)
+			throw new Error("merged primary tree still contains the source plan; recovery worktree preserved");
+		const mergedArchive = parseLine(await input.runner(primary.worktree, ["show", `${mergedHead}:.specs/archive/${slug}/plan.md`]), "read merged archive");
+		if (!parseLinkedPlan(`.specs/archive/${slug}/plan.md`, mergedArchive).complete || !readLinkedPlan(primaryArchive).complete)
+			throw new Error("merged primary archive is not complete; recovery worktree preserved");
 	}
 	let listed = await listWorktrees(primary.worktree, input.runner);
 	if (listed.some((entry) => normalize(entry.path) === normalize(ownership.worktree))) {

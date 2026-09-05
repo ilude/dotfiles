@@ -420,18 +420,78 @@ describe("workflow worktree lifecycle", () => {
 		git(worktree.ownership.worktree, ["add", "--", "result.txt"]);
 		git(worktree.ownership.worktree, ["commit", "-q", "-m", "feat: model closeout"]);
 		git(root, ["merge", "--no-ff", "workflow/fixture", "-m", "Merge workflow/fixture"]);
+		const mergeCommit = git(root, ["rev-parse", "HEAD"]);
+		fs.writeFileSync(path.join(root, "later.txt"), "later\n");
+		git(root, ["add", "later.txt"]);
+		git(root, ["commit", "-q", "-m", "test: later primary commit"]);
 		const otherPlan = path.join(root, ".specs", "other", "plan.md");
 		fs.mkdirSync(path.dirname(otherPlan), { recursive: true });
 		fs.writeFileSync(otherPlan, "other plan\n");
+		fs.writeFileSync(path.join(root, "README.md"), "unrelated primary edit\n");
 		const completed = await verifyAndCleanupWorkflowWorktree({ worktree, runner });
-		expect(completed.state).toBe("complete");
+		expect(completed).toMatchObject({ state: "complete", mergedHead: mergeCommit });
 		expect(fs.existsSync(worktree.ownership.worktree)).toBe(false);
 		expect(fs.existsSync(path.join(root, ".worktrees", "fixture.workflow.json"))).toBe(false);
 		expect(fs.readFileSync(otherPlan, "utf8")).toBe("other plan\n");
+		expect(fs.readFileSync(path.join(root, "README.md"), "utf8")).toBe("unrelated primary edit\n");
 		expect(git(root, ["show", "HEAD:result.txt"])).toBe("done");
 	});
 
-	it("rejects cleanup when merged primary state does not contain the exact archive", async () => {
+	it("rejects cleanup when the owned worktree target is outside the repository worktree root", async () => {
+		const root = repo();
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:unsafe", slug: "unsafe", runner });
+		const outside = path.join(root, "outside");
+		fs.mkdirSync(outside);
+		await expect(verifyAndCleanupWorkflowWorktree({
+			worktree: { ownership: { ...worktree.ownership, worktree: outside }, resumed: true },
+			runner,
+		})).rejects.toThrow("outside repository-root .worktrees");
+		expect(fs.existsSync(outside)).toBe(true);
+		expect(fs.existsSync(path.join(root, ".worktrees", "unsafe.workflow.json"))).toBe(true);
+	});
+
+	it("accepts a complete archive reconciled in the merged primary tree", async () => {
+		const root = repo();
+		const planPath = ".specs/fixture/plan.md";
+		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });
+		fs.writeFileSync(path.join(root, planPath), completePlan());
+		git(root, ["add", "--", planPath]);
+		git(root, ["commit", "-q", "-m", "test: add plan"]);
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", planPath, runner });
+		fs.mkdirSync(path.join(worktree.ownership.worktree, ".specs", "archive"), { recursive: true });
+		fs.renameSync(path.join(worktree.ownership.worktree, ".specs", "fixture"), path.join(worktree.ownership.worktree, ".specs", "archive", "fixture"));
+		git(worktree.ownership.worktree, ["add", "-A"]);
+		git(worktree.ownership.worktree, ["commit", "-q", "-m", "chore: archive plan"]);
+		git(root, ["merge", "--no-ff", "workflow/fixture", "-m", "Merge workflow/fixture"]);
+		fs.appendFileSync(path.join(root, ".specs", "archive", "fixture", "plan.md"), "\n## Merge reconciliation\n\nUpdated by primary merge policy.\n");
+		git(root, ["add", "-A"]);
+		git(root, ["commit", "--amend", "--no-edit"]);
+
+		const completed = await verifyAndCleanupWorkflowWorktree({ worktree, planPath, runner });
+		expect(completed.state).toBe("complete");
+		expect(fs.existsSync(path.join(root, ".specs", "archive", "fixture", "plan.md"))).toBe(true);
+	});
+
+	it("rejects an unrelated side-branch merge even when the workflow tip is an ancestor", async () => {
+		const root = repo();
+		const worktree = await ensureWorkflowWorktree({ cwd: root, workflow: "do-it", workflowId: "do-it:fixture", slug: "fixture", runner });
+		fs.writeFileSync(path.join(worktree.ownership.worktree, "result.txt"), "done\n");
+		git(worktree.ownership.worktree, ["add", "result.txt"]);
+		git(worktree.ownership.worktree, ["commit", "-q", "-m", "feat: model closeout"]);
+		git(root, ["merge", "--ff-only", "workflow/fixture"]);
+		git(root, ["checkout", "-q", "-b", "side"]);
+		fs.writeFileSync(path.join(root, "side.txt"), "side\n");
+		git(root, ["add", "side.txt"]);
+		git(root, ["commit", "-q", "-m", "test: side branch"]);
+		git(root, ["checkout", "-q", "main"]);
+		git(root, ["merge", "--no-ff", "side", "-m", "Merge side"]);
+
+		await expect(verifyAndCleanupWorkflowWorktree({ worktree, runner })).rejects.toThrow("required --no-ff merge");
+		expect(fs.existsSync(worktree.ownership.worktree)).toBe(true);
+		expect(readWorkflowOwnershipRecord(root, "fixture")?.state).toBe("active");
+	});
+
+	it("rejects cleanup when merged primary state does not contain the required archive", async () => {
 		const root = repo();
 		const planPath = ".specs/fixture/plan.md";
 		fs.mkdirSync(path.join(root, ".specs", "fixture"), { recursive: true });

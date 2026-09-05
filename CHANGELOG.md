@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-05: Preserve unrelated primary dirt during merged workflow cleanup
+
+**Fixed:** The post-merge `plan_archive` verifier no longer treats unrelated dirty primary files as a cleanup failure. It still requires pre-merge primary cleanliness, rejects dirty workflow-owned archive/source paths, verifies the registered owned worktree and expected branch, and validates the complete archive in the merged tree without rejecting legitimate archive reconciliation.
+
+**Preserved:** Unrelated primary edits remain byte-for-byte untouched and are never staged or removed. The existing ownership, ancestry, archive, target-worktree, and failed-closeout recovery checks remain enforced.
+
 ## 2026-09-05: Prefer complete Pi solutions over smallest diffs
 
 **Changed:** Pi solution-selection guidance compares meaningful alternatives by correctness, failure coverage, clarity, maintenance burden, and change risk instead of stopping at a fixed reuse rank or preferring one-line implementations. Smaller changes are a tie-breaker between comparably sound solutions, not the primary objective. Necessary restructuring is permitted; unrelated cleanup and speculative generalization remain excluded.
