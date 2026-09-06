@@ -2,6 +2,10 @@
 
 Status: Broadened investigation complete. The operator has clarified the direction as radical simplification, not incremental trimming; the main proposal now reflects removal of whole procedural subsystems. No implementation or runtime verification performed.
 
+## Executable plan
+
+[The development-flow reset plan](../pi-development-flow-reset/plan.md) passed adversarial/subtractive review disposition and deterministic readiness validation. It preserves the user's existing flags/defaults, damage control and commit behavior, adds default worktree planning, and removes procedural controllers. Its accepted decisions supersede earlier proposals below. Implementation has not started.
+
 ## Read first
 
 1. [System-wide diagnosis and proposal](system-wide-proposal.md): how requirements and procedure accumulate, why simplification regenerates machinery, minimal operating model, and removal/retention decisions.

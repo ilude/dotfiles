@@ -2,6 +2,8 @@
 
 ## Accepted direction
 
+Subsequent planning clarification: retain `plan-it` and `do-it` as instruction sets, including useful adversarial planning reviews and parallel subagents. Planning, execution, and `/goal` work use a worktree by default unless the operator requests otherwise. This supersedes any current-checkout or no-default-worktree recommendation below. Worktree isolation does not require retaining procedural controllers. The operator subsequently selected preservation of existing flags/defaults, including fresh-session execution, automatic archive/commit/merge/cleanup and existing exceptions. Those choices supersede suggestions below to make these operations opt-in or remove all command adapters. The ready [reset plan](../pi-development-flow-reset/plan.md) retains only necessary host transport around instruction-guided work; its accepted behavior governs implementation. No operator closeout decision remains open.
+
 The operator has clarified that incremental cleanup is insufficient. The goal is a substantially smaller system that relies on the agent to do the work, test it, diagnose and address failures, and continue to completion. Remove existing ceremony; reintroduce a mechanism only if experience demonstrates that it is needed.
 
 The operator further identified damage control and `/commit` as satisfactory, with only some parts of the subagent system worth retaining. The current `/do-it`, workflow systems, and development-flow instructions/skills are rejected as the design baseline.
