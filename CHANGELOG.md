@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-06: Port selected legacy commands to default Pi
+
+**Added:** Default-profile Pi now includes `/branch`, `/new-instance`, `/new-terminal`, and `/effort` runtime commands. Terminal-launching commands use the repository `pp` launcher with the current profile name and retain Herdr tab behavior when running inside Herdr.
+
+**Added:** Default-profile Pi now includes native prompt templates for `/handoff`, `/init`, `/summarize`, and `/war-report`. `/summarize` uses the simpler prompt-only behavior rather than the legacy evidence-packet implementation.
+
 ## 2026-09-06: Add default-profile clear alias
 
 **Added:** Default-profile Pi now registers `/clear` as a direct alias for `/new`, starting a fresh session without invoking the model or changing legacy behavior. When the footer reload monitor shows `[reload]`, `/clear` runs the same runtime reload flow in the replacement session.

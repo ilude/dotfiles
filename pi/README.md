@@ -16,9 +16,13 @@ The operator footer shows repository, model, context, and provider usage. `[relo
 
 ## Default profile commands
 
+- `/branch` opens a branched copy of the current session in a new terminal tab.
 - `/bro` restates the last response in plain language.
 - `/clear` starts a new session, matching `/new`, and reloads profile resources when the footer shows `[reload]`.
 - `/commit` quietly delegates review, grouping/messages, staging, and commits to `gpt-5.6-luna` at low reasoning. Unclear grouping falls back to one commit for all eligible changes. Only likely `.gitignore` candidates require a question; completion lists each short hash and commit subject.
+- `/effort [level]` shows or sets thinking effort.
+- `/handoff`, `/init`, `/summarize`, and `/war-report` are native prompt templates.
+- `/new-instance` opens a new Pi instance for the current profile; `/new-terminal` opens a plain shell.
 - `/commit push` additionally pushes the current branch to `origin`, including existing outgoing commits, without force-pushing.
 
 The [profile-local command system](profiles/default/docs/commands.md) uses an explicit TS registry, Markdown prompts, and optional command-scoped tools. Commands print an invocation and add errors to model context, using the current conversation and model. `/commit` runs the complete Git workflow privately in Luna; the main thread shows progress, ignore-file questions, failures, and the actual commit summary, not routine Git commands/output. Luna flags new files that likely belong in `.gitignore`; dedicated secret handling is deferred. There is no extra test, typecheck, lint, or build phase. Normal Git hooks remain enabled, and actual failures surface and stop the workflow. The workflow targets 30 seconds, with a 30-second active-work budget paused for user decisions and 15-second Git/shell timeouts; no extra staging-ambiguity, path-accounting, or busy-command gates. There are no inventory/report files or custom prepare/execute tools. See [the command contract](profiles/default/docs/commit.md). Use `/reload` to activate changes. The legacy profile's existing command is unchanged.
