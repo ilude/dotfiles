@@ -1,0 +1,5 @@
+# Profile-local credentials, generated catalogs, and usage state.
+/auth.json
+/models-store.json
+/operator-footer-usage.json
+/sessions/

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-05: Add the default profile operator footer
+
+**Added:** The default profile footer shows repository, model, context, and provider usage information. Its reload monitor checks active-profile resources, trusted project resources, literal configured resource paths, and loaded command/tool/theme provenance every two seconds rather than scanning during rendering. Runtime catalogs, credentials, sessions, and usage ledgers are excluded; monitoring errors are surfaced separately. This is advisory monitoring, not a complete dependency graph for extension imports or package glob discovery.
+
 ## 2026-09-05: Scope migrated Pi documentation to legacy
 
 **Preserved:** Relocated source, curated datasets, and fixtures remain tracked. Profile-local ignore rules retain caches, browser configuration, expertise snapshots, and generated classifier experiments as local state instead of exposing them as new source files after the move.
