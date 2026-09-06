@@ -23,8 +23,13 @@ const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
 let bedrockMonthCost = 0;
 let cachedPiVersion: string | null | undefined;
 let codexRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let codexRefreshGeneration = 0;
 const reloadMonitor = new ReloadMonitor();
 let reloadTimer: ReturnType<typeof setInterval> | undefined;
+
+export function isProfileReloadNeeded(): boolean {
+	return reloadMonitor.needed && !reloadMonitor.error;
+}
 let requestFooterRender: (() => void) | undefined;
 const cachedStatusDirectories = new Map<string, string>();
 
@@ -389,10 +394,11 @@ function formatCodexStatus(usageResponse: CodexUsageResponse): string {
 	return `codex: ${parts.join(" | ")}`;
 }
 
-async function refreshCodexStatus(ctx: ExtensionContext): Promise<void> {
+async function refreshCodexStatus(ctx: ExtensionContext, generation: number): Promise<void> {
+	const current = () => generation === codexRefreshGeneration;
 	const auth = resolveCodexAuth();
 	if (!auth) {
-		ctx.ui.setStatus("codex", "codex: login needed");
+		if (current()) ctx.ui.setStatus("codex", "codex: login needed");
 		return;
 	}
 	const controller = new AbortController();
@@ -408,9 +414,10 @@ async function refreshCodexStatus(ctx: ExtensionContext): Promise<void> {
 			},
 		});
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
-		ctx.ui.setStatus("codex", formatCodexStatus(await response.json() as CodexUsageResponse));
+		const status = formatCodexStatus(await response.json() as CodexUsageResponse);
+		if (current()) ctx.ui.setStatus("codex", status);
 	} catch {
-		ctx.ui.setStatus("codex", "codex: unavailable");
+		if (current()) ctx.ui.setStatus("codex", "codex: unavailable");
 	} finally {
 		clearTimeout(timeout);
 	}
@@ -418,11 +425,13 @@ async function refreshCodexStatus(ctx: ExtensionContext): Promise<void> {
 
 function startCodexRefresh(ctx: ExtensionContext): void {
 	if (codexRefreshTimer) clearInterval(codexRefreshTimer);
-	void refreshCodexStatus(ctx);
-	codexRefreshTimer = setInterval(() => void refreshCodexStatus(ctx), 5 * 60 * 1000);
+	const generation = ++codexRefreshGeneration;
+	void refreshCodexStatus(ctx, generation);
+	codexRefreshTimer = setInterval(() => void refreshCodexStatus(ctx, generation), 5 * 60 * 1000);
 }
 
 function stopCodexRefresh(): void {
+	codexRefreshGeneration += 1;
 	if (!codexRefreshTimer) return;
 	clearInterval(codexRefreshTimer);
 	codexRefreshTimer = null;

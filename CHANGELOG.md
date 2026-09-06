@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-06: Add default-profile clear alias
+
+**Added:** Default-profile Pi now registers `/clear` as a direct alias for `/new`, starting a fresh session without invoking the model or changing legacy behavior. When the footer reload monitor shows `[reload]`, `/clear` runs the same runtime reload flow in the replacement session.
+
 ## 2026-09-05: Hide expanded commit completion duplicates
 
 **Fixed:** Successful `/commit` tool results are now hidden even with expanded tools, leaving the final reply as the sole completion-summary display. Progress remains transient and errors remain visible if cancellation prevents a reply. The tool result still reaches model context.
