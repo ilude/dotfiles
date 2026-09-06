@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-06: Default default-profile Pi to Sol low
+
+**Changed:** New default-profile Pi sessions, including `/clear`, now start on `openai-codex/gpt-5.6-sol` with low thinking instead of `gpt-5.5`.
+
 ## 2026-09-06: Add default-profile exit command
 
 **Added:** Default-profile Pi now supports both `exit` and `/exit` for graceful shutdown, matching the legacy profile behavior. Pi's built-in shutdown resume hint remains the only resume line. The `pp` launchers now accept `--resume` as a profile-aware alias for Pi's `--session` startup option.
