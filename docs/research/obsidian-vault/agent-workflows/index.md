@@ -15,6 +15,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 
 ## Source captures
 
+- [SearXNG search reliability](projects/searxng-search-reliability.md) - controlled engine/proxy/solver findings, managed rollout, and evidence limits.
+
 - [claude_prompts](claude_prompts.md) - source-based extraction of Claude Code system-prompt text and prompt-selection rules.
 - [source-control-and-agentic-dev-services](projects/source-control-and-agentic-dev-services.md) - GitHub-alternative and agentic developer-tool services discussed positively in the GitHub alternatives video.
 - [agent-skills-ecosystem](projects/agent-skills-ecosystem.md) - skill standards, repositories, validators, and meta-skill patterns.
@@ -55,6 +57,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [patterns/openai-compatible-chat-providers](patterns/openai-compatible-chat-providers.md)
 
 ## Specs synthesis
+
+- [Web research acquisition](workflow-ideas/web-research-acquisition.md) - candidate search, CAPTCHA, browser, and paywall-access experiments; not a build mandate.
 
 - [workflow-ideas/specs-workflow-trajectory](workflow-ideas/specs-workflow-trajectory.md) - where active and archived specs show the workflow has been heading.
 - [workflow-ideas/specs-derived-roadmap](workflow-ideas/specs-derived-roadmap.md) - concrete roadmap ideas from specs + ecosystem research.

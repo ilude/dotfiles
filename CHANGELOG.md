@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-06: Refresh managed SearXNG and inherit server engine defaults
+
+**Changed:** The standalone SearXNG service now uses a tested September image and Google + Brave general-search defaults. Other upstream engines remain explicitly selectable. Pi inherits the server defaults instead of forcing the intermittent DuckDuckGo Web workaround; endpoint overrides, error reporting, private/local fetching, automatic public Jina fallback, and annotation-only Luna screening are preserved.
+
+**Changed:** SearXNG alone has an operator-approved 24-hour OCI hold and rolling date-tag discovery; other OCI targets retain seven days. Fixed the infrastructure `just update` wrapper dropping service selectors, with a real CLI regression test. Unrelated desired-pin changes exposed by that bug were reverted and verified before deployment. The separate Onclave SearXNG service was not upgraded.
+
+**Verified and documented:** Managed service backup, exact deployed digest, preserved secret, service endpoints, and four live Pi search → fetch → Luna query classes. The research vault now preserves version/engine/proxy/Trawl findings, counterexamples, and future CAPTCHA/paywall-access experiments. No proxy or solver service was added.
+
+## 2026-09-06: Restore usable default-profile web search
+
+**Fixed:** Web search now explicitly requests SearXNG's working `duckduckgo web` engine instead of the deployed defaults, which returned empty responses amid CAPTCHA and rate-limit failures. Optional engine selection preserves research flexibility without changing the shared service or introducing automatic retries. Engine failures now accompany partial results and produce a clear error when no results survive. A live research smoke test requires relevant OWASP results and fetches a returned page through Luna screening, rather than accepting an empty search as success.
+
+## 2026-09-06: Port web tools with lightweight Luna screening
+
+**Added:** The default profile now independently owns SearXNG `web_search` and Readability-based `web_fetch`, with local pnpm extraction dependencies. Automatic public-URL Jina fallback, private/local fetching, and existing metadata checks are preserved without approval prompts or new domain policies. The port fixes stale script resolution, cancellation and process-error handling, accepts short pages and text/JSON responses, reports redirected sources, and bounds returned content.
+
+**Added:** A tool-free Luna low-reasoning call screens returned content for prompt injection before it reaches conversation context. It receives no conversation history and annotates rather than redacts or blocks. Unavailable, timed-out, or malformed reviews explicitly return unscreened content; cancellation still stops the tool. Screening is best-effort, not a security boundary. Private fetched content is also sent to the configured Luna provider. Legacy behavior is unchanged.
+
 ## 2026-09-06: Default default-profile Pi to Sol low
 
 **Changed:** New default-profile Pi sessions, including `/clear`, now start on `openai-codex/gpt-5.6-sol` with low thinking instead of `gpt-5.5`.

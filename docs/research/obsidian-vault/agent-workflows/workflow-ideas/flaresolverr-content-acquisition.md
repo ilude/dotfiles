@@ -91,6 +91,9 @@ Keep this as a fallback design reference. If content gathering becomes a repeate
 
 ## Related notes
 
+- [SearXNG search reliability](../projects/searxng-search-reliability.md)
+- [Future web research acquisition](web-research-acquisition.md)
+
 - [Browser-use browser harness](../projects/browser-use-browser-harness.md)
 - [Menos](../projects/menos.md)
 - [Menos research storage](../projects/menos-research-storage.md)
