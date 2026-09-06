@@ -247,6 +247,7 @@ function startReloadMonitor(ctx: ExtensionContext, pi: ExtensionAPI): void {
 			...pi.getAllTools().map((tool) => tool.sourceInfo.path),
 			...ctx.ui.getAllThemes().flatMap((theme) => theme.path ? [theme.path] : []),
 			path.join(profileDir(), "lib"),
+			path.join(profileDir(), "commands"),
 		],
 	});
 	let reportedError: string | undefined;

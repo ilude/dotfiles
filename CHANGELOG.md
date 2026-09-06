@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-05: Hide expanded commit completion duplicates
+
+**Fixed:** Successful `/commit` tool results are now hidden even with expanded tools, leaving the final reply as the sole completion-summary display. Progress remains transient and errors remain visible if cancellation prevents a reply. The tool result still reaches model context.
+
+## 2026-09-05: Remove duplicate commit completion output
+
+**Changed:** Default-profile `/commit` now presents one completion summary from actual Git results, instead of concatenating Luna's second summary and displaying it again in the tool output. Successful tool progress clears; details remain expandable. The final response lists hashes/subjects, confirms a push only when applicable, and shows remaining changes, skipped files, or errors only when present—without clean-tree, not-pushed, success, or “None” boilerplate.
+
+## 2026-09-05: Let Luna complete commits privately
+
+**Changed:** Default-profile `/commit` now delegates review, staging, commits, and authorized pushes to the same Luna task instead of handing Git mutations back to the current model. Routine commands/output remain private; users see progress, likely-ignore-file decisions, errors, and actual short hashes/subjects with remaining status. Ignore questions resume the same agent and pause its 30-second active-work budget. Native shell tools keep ordinary Git hooks and cancellation behavior; completed commits or staging are not rolled back on failure. Read-only Git reporting after the task surfaces actual partial results rather than claiming cancellation changed nothing. No new validation gates, saved reports, staging executor, or general agent router are introduced. Legacy remains unchanged.
+
+## 2026-09-05: Delegate commit review quietly to Luna
+
+**Changed:** Default-profile `/commit` delegates diff review, grouping, and commit subjects to a read-only, in-memory `openai-codex/gpt-5.6-luna` agent at low reasoning. The user sees compact progress instead of internal reads/reasoning; the current model receives its handoff and performs ordinary Git commits. Grouping/messages need no approval, and uncertain grouping falls back to one commit of eligible changes. Questions are limited to likely `.gitignore` candidates; dedicated secret handling is deferred. Assistant-added path-accounting, exhaustive-review, staging-ambiguity, busy-command, turn-count, handoff-length, and repository-only-read gates are removed. Completion lists actual short hashes and commit subjects, remaining changes, and push status. The workflow targets 30 seconds; the reviewer has a 30-second budget and Git reads retain a 15-second timeout. Initial status is supplied directly to avoid a model/tool round trip, review completion shows elapsed seconds, and ignore-file answers resume from the existing recommendation rather than restarting Luna. Further budget changes await normal-run timing. Actual failures, including hooks and unavailable Luna, surface and stop without fallback; missing optional instructions files are normal. Existing hooks are unchanged. No saved reports, extra validation phases, general agent router, or job scheduler are introduced. Legacy and the selected conversation model are unchanged.
+
+## 2026-09-05: Add a profile-local slash command system
+
+**Changed:** Default-profile commands now share a small TS registry and Markdown prompts, with optional tools active only during the owning command run. Invocations are visible and handled errors reach model context. `/bro` restates the last response in plain language; `/commit` gains compact status and paginated, path-specific Git diff review without adding staging automation, saved reports, or validation gates. Ordinary Git mutations and hooks are preserved. The footer watches command sources. Commands keep the current conversation and selected model; separate-agent dispatch is deliberately deferred, with its future context-policy decision recorded at the dispatch point. Other profiles remain independent.
+
+## 2026-09-05: Simplify default-profile grouped commits
+
+**Changed:** A thin native `/commit` extension supplies the agent with ordinary Git status, diff review, explicit staging, and grouped commits. Extra screening is limited to secrets and newly created files that likely belong in `.gitignore`; no test, typecheck, lint, build, or separate whitespace gate is added. Normal Git hooks remain enabled. The command no longer creates JSON inventories, saved reports, plan IDs, custom prepare/execute tools, or isolated indexes. Existing staging is preserved; ambiguous staging requires clarification instead of automatic patching or file splitting. `/commit push` requests a normal explicit-branch push to origin. Legacy remains independent.
+
 ## 2026-09-05: Add the default profile operator footer
 
 **Added:** The default profile footer shows repository, model, context, and provider usage information. Its reload monitor checks active-profile resources, trusted project resources, literal configured resource paths, and loaded command/tool/theme provenance every two seconds rather than scanning during rendering. Runtime catalogs, credentials, sessions, and usage ledgers are excluded; monitoring errors are surfaced separately. This is advisory monitoring, not a complete dependency graph for extension imports or package glob discovery.
@@ -13,6 +37,10 @@
 ## 2026-09-05: Separate global working rules from dotfiles instructions
 
 **Changed:** Root `AGENTS.md` now retains repository-specific ownership, tooling, configuration, and navigation. General communication, implementation, validation, worktree-safety, and incident rules moved to `pi/AGENT_GLOBAL.md` without changing their wording. The new file is staged for future global configuration, not automatically loaded or linked into any Pi profile. The legacy extension/tool contract instruction now lives in `pi/profiles/legacy/AGENTS.md` with a profile-relative index link, rather than imposing legacy contracts on every profile.
+
+## 2026-09-05: Add grouped commits to the default Pi profile
+
+**Added:** `/commit` is a native prompt workflow that inspects current changes and commits related change sets separately, keeping implementation, tests, and documentation together. `/commit push` also publishes the current branch and existing outgoing commits to `origin` using non-force pushes. The workflow requires staging isolation, secret review, repository validation, child-first submodule handling, and explicit reporting of exclusions and failures. Classification and execution remain agent-driven; the legacy command is unchanged.
 
 ## 2026-09-05: Add isolated Pi profile launcher
 
@@ -2977,6 +3005,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 - **Fixed**: Bug fixes or corrections
 
 ## Pi runtime history
+
 
 ### 2026-07-15: Ground typed workflows in end-to-end design
 
