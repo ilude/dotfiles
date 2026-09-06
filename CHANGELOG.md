@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-06: Clarify ambiguous planning requests
+
+**Changed:** Default Pi's planning skill now briefly presents plausible interpretations when unresolved ambiguity would produce materially different plans, then asks which applies instead of choosing silently. Minor or discoverable details retain the existing evidence-first, proportional workflow.
+
+## 2026-09-06: Port YouTube workflows to default Pi
+
+**Added:** Default Pi now provides `/yt` for Onclave-backed YouTube ingestion, retrieval, and repository comparison, plus the explicit `/yt-local` transcript and metadata workflow. The commands reuse the repository-owned `tools/onclave-youtube` implementation, preserve the no-automatic-local-fallback rule, and treat video content as untrusted data. Legacy behavior is unchanged.
+
+## Default Pi instruction scope and testing guidance
+
+**Changed:** Default-profile instructions explicitly exclude invented requirements, limit fixes to demonstrated task-relevant problems, and require a reason to repeat checks. The existing stopping rule is preserved; the root instruction file now points to the active profile rules rather than deleted `pi/AGENT_GLOBAL.md`.
+
+**Added:** A small on-demand `testing` skill covers observable behavior, justified mocks, and the limits of mocked evidence. Test selection includes required behavior, demonstrated defects, and credible changed-path risks, not merely imaginable cases. Testing detail stays out of global instructions; no automatic audit, new testing framework, or Pi runtime changes are introduced.
+
+**Planning:** Generated plans now exclude unapproved optional work from tasks and completion criteria, check proposed scope expansion, and include brief checkpoints at meaningful phase boundaries. Recovery removes unnecessary task-owned additions while preserving pre-existing and concurrent work, then resumes required work without routine approval requests or another audit. This is instruction-only guidance, not automatic prompt injection; existing plans are not bulk-rewritten.
+
+## 2026-09-06: Add simple one-shot scheduling to default Pi
+
+**Added:** The agent-facing `schedule` tool creates, lists, and cancels delayed follow-up prompts using native timers. This deliberately narrows the legacy scheduler to the one-shot behavior used in practice: no cron, slash commands, persistence, metrics, editing, or new dependencies. Legacy is unchanged.
+
+**Preserved:** Schedules survive conversation changes and reloads within the same Pi process, then deliver into the active conversation without steering current work. Process exit discards them. Cancellation stops only prompts not yet handed to Pi; changes use cancel/reschedule. The footer displays only the next local injection time, never pending/error states. Failed synchronous handoffs are inspectable through the tool without automatic retries or extra prompts.
+
 ## 2026-09-06: Refresh managed SearXNG and inherit server engine defaults
 
 **Changed:** The standalone SearXNG service now uses a tested September image and Google + Brave general-search defaults. Other upstream engines remain explicitly selectable. Pi inherits the server defaults instead of forcing the intermittent DuckDuckGo Web workaround; endpoint overrides, error reporting, private/local fetching, automatic public Jina fallback, and annotation-only Luna screening are preserved.

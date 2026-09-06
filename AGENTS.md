@@ -4,7 +4,7 @@ Repository-wide rules for this cross-platform dotfiles repository: Linux, Window
 
 - Claude Code: `CLAUDE.md`
 - OpenCode/Codex: `opencode/AGENTS.md`
-- General working rules have been moved to `pi/AGENT_GLOBAL.md` for future global configuration; that file is not automatically loaded or wired into a Pi profile yet.
+- Default Pi's profile-wide working rules live in `pi/profiles/default/AGENTS.md`, loaded through `PI_CODING_AGENT_DIR` by bare `pp`. Other profiles keep their own instructions.
 - Claude global instructions: `claude/CLAUDE.md` (independent from Pi instructions, no symlink)
 - Pi runtime: [`pi/README.md`](pi/README.md)
 

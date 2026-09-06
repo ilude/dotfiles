@@ -45,6 +45,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 
 ## Patterns
 
+- [Agent scope and stopping](patterns/agent-scope-and-stopping.md) - evidence on scope drift, excessive verification, and bounded harness controls; not approved policy.
 - [patterns/self-healing-harnesses](patterns/self-healing-harnesses.md)
 - [patterns/agent-terminal-workspaces](patterns/agent-terminal-workspaces.md)
 - [patterns/markdown-skills-memory](patterns/markdown-skills-memory.md)

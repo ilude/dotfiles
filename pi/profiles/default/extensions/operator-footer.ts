@@ -544,7 +544,7 @@ function installFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
 				width,
 			});
 			const second = formatSecondFooterLine(
-				statusText(statuses.get("usage")),
+				[statusText(statuses.get("schedule")), statusText(statuses.get("usage"))].filter(Boolean).join(" | "),
 				statusText(statuses.get("bedrock")),
 				width,
 			);
