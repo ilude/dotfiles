@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-06: Add default-profile exit command
+
+**Added:** Default-profile Pi now supports both `exit` and `/exit` for graceful shutdown, matching the legacy profile behavior. Pi's built-in shutdown resume hint remains the only resume line. The `pp` launchers now accept `--resume` as a profile-aware alias for Pi's `--session` startup option.
+
 ## 2026-09-06: Port selected legacy commands to default Pi
 
 **Added:** Default-profile Pi now includes `/branch`, `/new-instance`, `/new-terminal`, and `/effort` runtime commands. Terminal-launching commands use the repository `pp` launcher with the current profile name and retain Herdr tab behavior when running inside Herdr.

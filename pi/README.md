@@ -4,6 +4,7 @@
 
 - `pp` uses `pi/profiles/default/`.
 - `pp -p legacy` uses `pi/profiles/legacy/`, which contains the previous customized Pi setup and its local runtime state.
+- `pp -p <name> --resume <session-id-or-path>` resumes a saved session in that profile.
 - Other named profiles use `~/.pi/profiles/<name>/`.
 
 ## Documentation ownership
@@ -20,6 +21,7 @@ The operator footer shows repository, model, context, and provider usage. `[relo
 - `/bro` restates the last response in plain language.
 - `/clear` starts a new session, matching `/new`, and reloads profile resources when the footer shows `[reload]`.
 - `/commit` quietly delegates review, grouping/messages, staging, and commits to `gpt-5.6-luna` at low reasoning. Unclear grouping falls back to one commit for all eligible changes. Only likely `.gitignore` candidates require a question; completion lists each short hash and commit subject.
+- `exit` or `/exit` gracefully quits Pi; Pi prints its built-in resume hint on shutdown.
 - `/effort [level]` shows or sets thinking effort.
 - `/handoff`, `/init`, `/summarize`, and `/war-report` are native prompt templates.
 - `/new-instance` opens a new Pi instance for the current profile; `/new-terminal` opens a plain shell.

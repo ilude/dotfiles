@@ -6,6 +6,7 @@
 - `/bro`: sends the plain-language restatement prompt, without additional tools.
 - `/clear`: starts a new session, matching `/new`, and reloads profile resources when the footer shows `[reload]`.
 - `/commit [push]`: sends the [commit workflow](commit.md) and temporarily enables `commit_run`, which delegates the complete Git workflow privately to Luna/low.
+- `exit` or `/exit`: gracefully quits Pi; Pi prints its built-in resume hint on shutdown.
 - `/effort [level]`: shows or sets thinking effort. Levels: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
 - `/new-instance [title]`: opens a new Pi instance for the current `pp` profile in a new terminal tab.
 - `/new-terminal [title]`: opens a plain shell in this cwd in a new terminal tab.
@@ -17,7 +18,7 @@ Command tools are registered but inactive initially. They are enabled only for t
 
 ## Add a command
 
-Prompt-backed profile commands use the registry below. Direct runtime commands, such as `/clear`, `/effort`, and terminal launchers, can instead register their own handler in `extensions/` when they need Pi command context methods. `/clear` checks the same reload monitor used by the footer and calls the runtime reload flow in the replacement session when the monitor has marked reload as needed. Native Pi prompt templates can be added as `prompts/<name>.md` with frontmatter.
+Prompt-backed profile commands use the registry below. Direct runtime commands, such as `/clear`, `/exit`, `/effort`, and terminal launchers, can instead register their own handler in `extensions/` when they need Pi command context methods. `/clear` checks the same reload monitor used by the footer and calls the runtime reload flow in the replacement session when the monitor has marked reload as needed. Native Pi prompt templates can be added as `prompts/<name>.md` with frontmatter.
 
 1. Add `commands/<name>/prompt.md` containing plain Markdown instructions (no frontmatter or template syntax required).
 2. Add `{ name, description }` to `commands/index.ts`.

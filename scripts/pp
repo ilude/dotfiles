@@ -4,13 +4,14 @@ set -euo pipefail
 
 usage() {
     cat >&2 <<'EOF'
-usage: pp [-p|--profile <name>] [--] [pi arguments...]
+usage: pp [-p|--profile <name>] [--resume|--session <path-or-id>] [--] [pi arguments...]
 EOF
     exit 2
 }
 
 profile="default"
 pi_args=()
+resume_session=""
 
 while (($#)); do
     case "$1" in
@@ -21,6 +22,15 @@ while (($#)); do
             ;;
         --profile=*)
             profile="${1#*=}"
+            shift
+            ;;
+        --resume|--session)
+            (($# >= 2)) || usage
+            resume_session="$2"
+            shift 2
+            ;;
+        --resume=*|--session=*)
+            resume_session="${1#*=}"
             shift
             ;;
         --)
@@ -57,5 +67,9 @@ case "$profile" in
 esac
 profile_dir="$(cd "$profile_dir" && pwd)"
 export PI_CODING_AGENT_DIR="$profile_dir"
+
+if [[ -n "$resume_session" ]]; then
+    pi_args=(--session "$resume_session" "${pi_args[@]}")
+fi
 
 TMPDIR=/tmp exec pi "${pi_args[@]}"

@@ -1,4 +1,5 @@
 $profileName = 'default'
+$resumeSession = $null
 $piArguments = [System.Collections.Generic.List[string]]::new()
 
 for ($index = 0; $index -lt $args.Count; $index++) {
@@ -17,6 +18,27 @@ for ($index = 0; $index -lt $args.Count; $index++) {
 
   if ($argument -like '--profile=*') {
     $profileName = $argument.Substring('--profile='.Length)
+    continue
+  }
+
+  if ($argument -eq '--resume' -or $argument -eq '--session') {
+    if ($index + 1 -ge $args.Count) {
+      Write-Error 'usage: pp [-p|--profile <name>] [--resume|--session <path-or-id>] [--] [pi arguments...]'
+      exit 2
+    }
+
+    $index++
+    $resumeSession = $args[$index]
+    continue
+  }
+
+  if ($argument -like '--resume=*') {
+    $resumeSession = $argument.Substring('--resume='.Length)
+    continue
+  }
+
+  if ($argument -like '--session=*') {
+    $resumeSession = $argument.Substring('--session='.Length)
     continue
   }
 
@@ -46,6 +68,11 @@ if ($profileName -in 'default', 'legacy') {
   New-Item -ItemType Directory -Path $profileDirectory -Force | Out-Null
 }
 $env:PI_CODING_AGENT_DIR = (Resolve-Path $profileDirectory).Path
+
+if ($resumeSession) {
+  $piArguments.Insert(0, $resumeSession)
+  $piArguments.Insert(0, '--session')
+}
 
 & pi @piArguments
 exit $LASTEXITCODE
