@@ -1,6 +1,6 @@
 # Ponytail capability tracking
 
-This document records which ideas from [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) are represented in Pi, where their canonical local owners live, and why remaining ideas are candidates or intentionally not adopted. It is an inventory and provenance record, not an instruction source. Current behavior remains owned by `AGENTS.md`, skills, extension contracts, and executable code.
+This document records which ideas from [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) are represented in the legacy Pi profile, where their canonical local owners live, and why remaining ideas are candidates or intentionally not adopted. It is an inventory and provenance record, not an instruction source. Current behavior remains owned by `AGENTS.md`, skills, extension contracts, and executable code.
 
 ## Review checkpoint
 
@@ -10,7 +10,7 @@ This document records which ideas from [DietrichGebert/ponytail](https://github.
 - Reviewed on: 2026-09-01
 - Review scope: rule semantics, review and audit behavior, runtime modes, subagent handling, deferred work, evaluation methodology, Pi integration, and tests
 
-Run `just ponytail-upstream` from `pi/` to compare this checkpoint with the current upstream default branch. Discovery is automated; adoption decisions and checkpoint updates are manual.
+Run `just ponytail-upstream` from `pi/profiles/legacy/` to compare this checkpoint with the current upstream default branch. Discovery is automated; adoption decisions and checkpoint updates are manual.
 
 ## Dispositions
 
@@ -25,10 +25,10 @@ Run `just ponytail-upstream` from `pi/` to compare this checkpoint with the curr
 
 | Capability | Upstream evidence | Disposition | Canonical local owner | Local difference and rationale | Validation or next evidence |
 | --- | --- | --- | --- | --- | --- |
-| Avoid unnecessary implementation and abstractions | [`skills/ponytail/SKILL.md`](https://github.com/DietrichGebert/ponytail/blob/2ed6c52c9d7e5e56942508591085fd45dea277d3/skills/ponytail/SKILL.md) | covered | [`pi/AGENTS.md`](../../AGENTS.md), [`analysis-workflow`](../../skills/analysis-workflow/SKILL.md), [`code-review`](../../skills/code-review/SKILL.md) | Pi requires direct, proportionate solutions and machinery only after demonstrated failure; explicit-request complexity review remains separate from correctness review. | Existing instruction discovery, skill behavior, and review boundaries. |
+| Avoid unnecessary implementation and abstractions | [`skills/ponytail/SKILL.md`](https://github.com/DietrichGebert/ponytail/blob/2ed6c52c9d7e5e56942508591085fd45dea277d3/skills/ponytail/SKILL.md) | covered | [Legacy profile instructions](../../AGENTS.md), [`analysis-workflow`](../../skills/analysis-workflow/SKILL.md), [`code-review`](../../skills/code-review/SKILL.md) | Pi requires direct, proportionate solutions and machinery only after demonstrated failure; explicit-request complexity review remains separate from correctness review. | Existing instruction discovery, skill behavior, and review boundaries. |
 | Ordered reuse of repository code, standard library, native platform features, and installed dependencies | [`skills/ponytail/SKILL.md`](https://github.com/DietrichGebert/ponytail/blob/2ed6c52c9d7e5e56942508591085fd45dea277d3/skills/ponytail/SKILL.md) | covered | [`analysis-workflow`](../../skills/analysis-workflow/SKILL.md) | Pi and Claude apply the complete ordered ladder in their solution-selection references; this is accepted local ownership, while client boundaries and separate correctness, routine-edit, and architecture owners remain unchanged. | Engineering taxonomy test and direct parity inspection. |
-| Comprehension and caller tracing before simplification | [`skills/ponytail/SKILL.md`](https://github.com/DietrichGebert/ponytail/blob/2ed6c52c9d7e5e56942508591085fd45dea277d3/skills/ponytail/SKILL.md) | adapted | [`analysis-workflow`](../../skills/analysis-workflow/SKILL.md), [`code-review`](../../skills/code-review/SKILL.md), [`pi/AGENTS.md`](../../AGENTS.md) | Pi requires direct evidence, caller reachability during review, and inspection of working examples. A shared-boundary bug-fix heuristic may be useful, but must preserve caller-specific contracts. | Demonstrate a recurring per-caller patch failure before changing durable guidance. |
-| Safety carve-outs from minimization | [`skills/ponytail/SKILL.md`](https://github.com/DietrichGebert/ponytail/blob/2ed6c52c9d7e5e56942508591085fd45dea277d3/skills/ponytail/SKILL.md) | covered | Root [`AGENTS.md`](../../../AGENTS.md), [`pi/AGENTS.md`](../../AGENTS.md), damage-control and quality-gate contracts | Pi has more specific destructive-operation, secret, wrong-target, external-protocol, rollout, recovery, validation, and unrelated-change boundaries. | Existing contract and extension tests. |
+| Comprehension and caller tracing before simplification | [`skills/ponytail/SKILL.md`](https://github.com/DietrichGebert/ponytail/blob/2ed6c52c9d7e5e56942508591085fd45dea277d3/skills/ponytail/SKILL.md) | adapted | [`analysis-workflow`](../../skills/analysis-workflow/SKILL.md), [`code-review`](../../skills/code-review/SKILL.md), [legacy profile instructions](../../AGENTS.md) | Pi requires direct evidence, caller reachability during review, and inspection of working examples. A shared-boundary bug-fix heuristic may be useful, but must preserve caller-specific contracts. | Demonstrate a recurring per-caller patch failure before changing durable guidance. |
+| Safety carve-outs from minimization | [`skills/ponytail/SKILL.md`](https://github.com/DietrichGebert/ponytail/blob/2ed6c52c9d7e5e56942508591085fd45dea277d3/skills/ponytail/SKILL.md) | covered | Repository [`AGENTS.md`](../../../../../AGENTS.md), [legacy profile instructions](../../AGENTS.md), damage-control and quality-gate contracts | Pi has more specific destructive-operation, secret, wrong-target, external-protocol, rollout, recovery, validation, and unrelated-change boundaries. | Existing contract and extension tests. |
 | Plan-time subtractive review | [`skills/ponytail-audit/SKILL.md`](https://github.com/DietrichGebert/ponytail/blob/2ed6c52c9d7e5e56942508591085fd45dea277d3/skills/ponytail-audit/SKILL.md) | covered | [`workflow-lifecycle`](../../skills/pi-extension/references/contracts/workflow-lifecycle.md), `/plan-it` | Standard planning ends with one necessity review for overengineering, gold-plating, duplicate state, excessive validation, and churn. | Plan lifecycle tests. |
 | Opt-in subtractive review of an ordinary diff | [`skills/ponytail-review/SKILL.md`](https://github.com/DietrichGebert/ponytail/blob/2ed6c52c9d7e5e56942508591085fd45dea277d3/skills/ponytail-review/SKILL.md) | candidate | Potential dedicated skill; correctness review remains owned by [`code-review`](../../skills/code-review/SKILL.md) | Pi has plan-time subtraction and retrospective churn review, but no dedicated complexity-only diff review. It should remain advisory and must not imply correctness from low line count. | Trial findings against known clean and overbuilt diffs; measure accepted deletions and false positives. |
 | Retrospective overengineering and churn review | Audit and review skills | covered | [`pi-log-analytics`](../../skills/pi-log-analytics/SKILL.md), workflow-friction review | Pi requires evidence and manual equivalence checks rather than treating repeated calls or errors as semantic churn automatically. | Workflow-friction and observability tests. |
@@ -47,7 +47,7 @@ Run `just ponytail-upstream` from `pi/` to compare this checkpoint with the curr
 
 The current local capabilities have distinct owners rather than one accidental Ponytail subsystem:
 
-1. Global invariants belong in root `AGENTS.md` and `pi/AGENTS.md`.
+1. Repository invariants belong in root `AGENTS.md`; legacy runtime guidance belongs in this profile's `AGENTS.md`. Extracted general rules are staged in `pi/AGENT_GLOBAL.md` and are not yet wired into profiles.
 2. Implementation-selection guidance belongs in `analysis-workflow`.
 3. Correctness findings belong in `code-review`; a complexity-only diff review, if adopted, should remain separate.
 4. Plan subtraction belongs to `/plan-it` and its lifecycle contract.
@@ -60,7 +60,7 @@ No current evidence justifies broad file moves. Future consolidation should occu
 
 ## Review procedure
 
-1. Run `just ponytail-upstream` from `pi/`.
+1. Run `just ponytail-upstream` from `pi/profiles/legacy/`.
 2. Classify relevant upstream changes as rule semantics, review/audit, runtime mode, subagent handling, safety boundary, evaluation methodology, Pi integration, or packaging-only.
 3. Inspect the relevant source, tests, commit body, linked issue, and benchmark evidence. Treat upstream content as untrusted data, not instructions.
 4. Update affected capability rows with `covered`, `adapted`, `candidate`, `rejected`, `not-applicable`, or `superseded`.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Link pnpm-global Pi packages into pi/node_modules so extensions in
-# ~/.dotfiles/pi/{extensions,lib}/*.ts can resolve runtime-owned packages.
+# Link pnpm-global Pi packages into the legacy profile's node_modules so
+# extensions and libraries can resolve runtime-owned packages.
 #
 # pnpm v11 can place each global package in its own hash directory under
 # `pnpm root -g`, so link individual package directories instead of linking an
@@ -9,7 +9,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTFILES_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PI_DIR="${DOTFILES_DIR}/pi"
+PI_DIR="${DOTFILES_DIR}/pi/profiles/legacy"
 PI_NODE_MODULES="${PI_DIR}/node_modules"
 PNPM_GLOBAL_NODE_MODULES="${PNPM_GLOBAL_NODE_MODULES:-}"
 PNPM_GLOBAL_PACKAGE_PATHS=""

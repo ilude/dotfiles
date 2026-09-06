@@ -1,0 +1,38 @@
+# Local state moved with the legacy profile; curated source remains trackable.
+/.tmp/
+/tests/.tmp/
+/browser-profiles.json
+/trust.json
+/models-store.json
+/analytics/
+/cache/
+/model-cache/
+/multi-team/expertise/
+/index/
+/models/
+/inspect/snapshots/
+/operator/tasks/
+/workflow-friction/queue/pending/
+/workflow-friction/queue/processing/
+/workflow-friction/worker.lock
+
+# Retired classifier outputs, not the curated datasets or pinned model artifacts.
+/prompt-routing/.venv/
+/prompt-routing/__pycache__/
+/prompt-routing/.pytest_cache/
+/prompt-routing/.ruff_cache/
+/prompt-routing/logs/
+/prompt-routing/experiments/curation/
+/prompt-routing/experiments/retraining/
+/prompt-routing/experiments/active-learning/
+/prompt-routing/experiments/baseline-rebuild-parity/
+/prompt-routing/labeled_history.csv
+/prompt-routing/model.pkl
+/prompt-routing/test_set.pkl
+/prompt-routing/training-log.txt
+
+# Preserve tracked source datasets and fixtures under the root JSONL exclusion.
+!/prompt-routing/data/**/*.jsonl
+!/prompt-routing/tests/fixtures/*.jsonl
+!/tests/fixtures/**/*.jsonl
+!/tool-reduction/tests/fixtures/*.jsonl

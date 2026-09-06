@@ -190,3 +190,4 @@ menos/
 /pi/.tmp/
 /pi/tests/.tmp/
 /pi/browser-profiles.json
+/pi/profiles/legacy/.awaiting-migration

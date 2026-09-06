@@ -4,7 +4,7 @@ Workflow telemetry records slash-command dispatch facts mechanically. It does no
 
 ## Ownership
 
-`pi/lib/workflow-telemetry.ts` owns the writer. `pi/scripts/workflow-eval-query.py` reads the resulting JSONL for command and event counts. Runtime files remain local under `~/.pi/workflow-telemetry/` and are not committed.
+[`workflow-telemetry.ts`](../lib/workflow-telemetry.ts) owns the legacy profile writer. [`workflow-eval-query.py`](../scripts/workflow-eval-query.py) reads the resulting JSONL for command and event counts. Runtime files remain local under `~/.pi/workflow-telemetry/` and are not committed.
 
 Orchestration telemetry separately owns delegation topology, usage, cost, output handling, and run status. The two streams are not joined by inferred timestamps or names.
 
@@ -58,13 +58,13 @@ Dispatch event fields:
 From the repository root:
 
 ```bash
-python pi/scripts/workflow-eval-query.py
+python pi/profiles/legacy/scripts/workflow-eval-query.py
 ```
 
 Use a separate telemetry root for isolated validation:
 
 ```bash
-python pi/scripts/workflow-eval-query.py --telemetry-dir .tmp/workflow-telemetry --no-duckdb
+python pi/profiles/legacy/scripts/workflow-eval-query.py --telemetry-dir .tmp/workflow-telemetry --no-duckdb
 ```
 
 The helper reads episode and event JSONL and reports command and event counts. DuckDB is optional and remains a rebuildable query engine rather than a write target.
@@ -72,6 +72,7 @@ The helper reads episode and event JSONL and reports command and event counts. D
 ## Validation
 
 ```bash
-cd pi && pnpm test workflow-telemetry.test.ts workflow-dispatch.test.ts
-cd pi && pnpm run typecheck
+cd pi/profiles/legacy
+pnpm test workflow-telemetry.test.ts workflow-dispatch.test.ts
+pnpm run typecheck
 ```

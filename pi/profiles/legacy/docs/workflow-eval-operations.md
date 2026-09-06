@@ -1,10 +1,10 @@
 # Workflow Dispatch Telemetry Operations
 
-This document covers the mechanically recorded dispatch data described in `pi/docs/workflow-eval-telemetry.md`.
+This document covers the legacy profile's mechanically recorded dispatch data described in [workflow dispatch telemetry](workflow-eval-telemetry.md).
 
 ## Current scope
 
-`pi/lib/workflow-telemetry.ts` appends one episode and one dispatch event when `/plan-it` or `/do-it` runs. It does not infer whether implementation, validation, review, manual gates, or archiving later completed.
+[`workflow-telemetry.ts`](../lib/workflow-telemetry.ts) appends one episode and one dispatch event when `/plan-it` or `/do-it` runs. It does not infer whether implementation, validation, review, manual gates, or archiving later completed.
 
 Plans and workflow prompts record ordinary bounded evidence in their checklist and Execution Status. They do not emit telemetry-shaped prose.
 
@@ -24,13 +24,13 @@ This directory is local runtime state. Do not commit it. DuckDB files are option
 Run the repository reader:
 
 ```bash
-python pi/scripts/workflow-eval-query.py
+python pi/profiles/legacy/scripts/workflow-eval-query.py
 ```
 
 Use a separate root when validating fixtures:
 
 ```bash
-python pi/scripts/workflow-eval-query.py \
+python pi/profiles/legacy/scripts/workflow-eval-query.py \
   --telemetry-dir .tmp/workflow-telemetry \
   --no-duckdb
 ```
@@ -56,7 +56,6 @@ Dispatch records contain command arguments but no command output. Keep secrets o
 ## Validation
 
 ```bash
-cd pi && pnpm test workflow-telemetry.test.ts workflow-dispatch.test.ts
-cd pi && pnpm run typecheck
-python pi/scripts/workflow-eval-query.py --telemetry-dir .tmp/workflow-telemetry --no-duckdb
+(cd pi/profiles/legacy && pnpm test workflow-telemetry.test.ts workflow-dispatch.test.ts && pnpm run typecheck)
+python pi/profiles/legacy/scripts/workflow-eval-query.py --telemetry-dir .tmp/workflow-telemetry --no-duckdb
 ```

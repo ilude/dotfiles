@@ -210,24 +210,24 @@ format-python:
 	uv run ruff check --fix
 	@echo "Python format complete."
 
-# Pi extension validation: pi/package.json owns typecheck and Vitest.
-# See pi/README.md for the full extension conventions.
+# Pi extension validation: the legacy profile owns typecheck and Vitest.
+# See pi/profiles/legacy/README.md for the full extension conventions.
 check-pi-ci:
 	@echo "==> Running CI-safe Pi Vitest suite"
-	cd pi && pnpm install --frozen-lockfile
+	cd pi/profiles/legacy && pnpm install --frozen-lockfile
 	scripts/pi-deps-link-setup
-	cd pi && pnpm test
+	cd pi/profiles/legacy && pnpm test
 	@echo "Pi CI checks passed."
 
 check-pi-extensions:
 	@echo "==> Type-checking Pi extensions"
-	cd pi && pnpm install --frozen-lockfile
+	cd pi/profiles/legacy && pnpm install --frozen-lockfile
 	scripts/pi-deps-link-setup
-	cd pi && pnpm run typecheck
+	cd pi/profiles/legacy && pnpm run typecheck
 	@echo "==> Running Pi Vitest suite (includes runtime smoke checks)"
-	cd pi && pnpm test --exclude tests/commit-mutation.test.ts
+	cd pi/profiles/legacy && pnpm test --exclude tests/commit-mutation.test.ts
 	@echo "==> Running subprocess-heavy Pi commit mutation tests in isolation"
-	cd pi && pnpm run test:commit-mutation
+	cd pi/profiles/legacy && pnpm run test:commit-mutation
 	@echo "Pi extension checks passed."
 
 # Run configured quality validators once for an explicit file list.

@@ -4,7 +4,7 @@
 
 Use this reference to screen settled Pi sessions for known overengineering and churn patterns. Use `analysis-workflow` for an active failure and this skill's general workflow for unrelated log analysis.
 
-Historical evidence, decisions, baselines, and experiments live in [`pi/docs/pi-research-report.md`](../../docs/pi-research-report.md). This reference defines the screening method; it does not replace that historical record.
+Historical evidence, decisions, baselines, and experiments live in [the legacy Pi research report](../../docs/pi-research-report.md). This reference defines the screening method; it does not replace that historical record.
 
 ## Failure classes
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-05: Scope migrated Pi documentation to legacy
+
+**Preserved:** Relocated source, curated datasets, and fixtures remain tracked. Profile-local ignore rules retain caches, browser configuration, expertise snapshots, and generated classifier experiments as local state instead of exposing them as new source files after the move.
+
+**Changed:** The customized runtime documentation is explicitly owned by `pi/profiles/legacy/docs/`, with a local index and cross-profile navigation from `pi/README.md`. Expertise guidance now belongs to legacy instructions, and active doc references, repository-root command examples, and links back to repository files account for the relocated profile. Local checkout telemetry guidance also names the legacy paths. Historical research citations and past changelog paths remain provenance rather than being rewritten as current locations.
+
+## 2026-09-05: Separate global working rules from dotfiles instructions
+
+**Changed:** Root `AGENTS.md` now retains repository-specific ownership, tooling, configuration, and navigation. General communication, implementation, validation, worktree-safety, and incident rules moved to `pi/AGENT_GLOBAL.md` without changing their wording. The new file is staged for future global configuration, not automatically loaded or linked into any Pi profile. The legacy extension/tool contract instruction now lives in `pi/profiles/legacy/AGENTS.md` with a profile-relative index link, rather than imposing legacy contracts on every profile.
+
+## 2026-09-05: Add isolated Pi profile launcher
+
+**Added:** The cross-platform `pp` launcher accepts `--profile <name>` or `-p <name>`, creates named directories under `~/.pi/profiles/` on first use, and launches Pi with the selected directory as `PI_CODING_AGENT_DIR`. Running `pp` without an option selects the standalone `default` profile. Arguments after `--` pass through unchanged, including Pi's own short `-p` print flag.
+
+**Added:** `scripts/migrate-pi-profiles.ps1` performs the stopped-process migration of the existing Pi tree into `pi/profiles/legacy/`, creates the repository-owned clean `default` profile, removes only verified old profile links, and repoints the compatibility `~/.pi/agent` junction to legacy. It rejects active Pi processes, target conflicts, non-link compatibility paths, and non-empty external default state before the affected mutation.
+
+**Changed:** `pp` resolves `default` and `legacy` from the repository-owned profile tree while keeping arbitrary named profiles under `~/.pi/profiles/`. Install, dependency-link, CI bootstrap, and Makefile entrypoints target the relocated legacy profile.
+
+**Preserved:** Direct `pi` invocations retain the previous customized behavior through `~/.pi/agent`. Standalone profile settings, authentication, packages, extensions, sessions, and generated state remain isolated.
+
 ## 2026-09-05: Deliver background completions through SDK receipts
 
 **Changed:** Subagent and background-terminal completions now capture the parent session and canonical parent workspace, route only to that origin, and retain manager-owned completion state until an acknowledged inserted receipt or explicit `bg_kill` consumption. In-flight sends are not resubmitted by settlement hooks; queue-cleared, aborted, and replacement outcomes pause retry until interactive input, rejected outcomes retry only at a later lifecycle boundary, and uncertain outcomes remain held.
@@ -2953,7 +2973,6 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 - **Fixed**: Bug fixes or corrections
 
 ## Pi runtime history
-
 
 ### 2026-07-15: Ground typed workflows in end-to-end design
 

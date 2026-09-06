@@ -4,12 +4,12 @@ description: Check Ponytail for relevant changes and compare them with Pi
 
 # Pi /ponytail-updates workflow
 
-Check the Ponytail repository for changes since the commit recorded in `pi/docs/upstream/ponytail.md`.
+Check the Ponytail repository for changes since the commit recorded in `pi/profiles/legacy/docs/upstream/ponytail.md`.
 
 1. Run:
 
 ```bash
-cd ~/.dotfiles/pi && just ponytail-upstream
+cd ~/.dotfiles/pi/profiles/legacy && just ponytail-upstream
 ```
 
 2. If the checkpoint is current, report that there are no updates and stop.
@@ -21,7 +21,7 @@ cd ~/.dotfiles/pi && just ponytail-upstream
    - safety boundaries;
    - benchmark methods.
 4. Ignore packaging, translations, client-specific adapters, and cosmetic documentation unless they change behavior relevant to Pi.
-5. Compare each relevant change with the canonical local owners listed in `pi/docs/upstream/ponytail.md`.
+5. Compare each relevant change with the canonical local owners listed in `pi/profiles/legacy/docs/upstream/ponytail.md`.
 6. Return a concise report containing:
    - what changed upstream;
    - what we already cover;

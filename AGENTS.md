@@ -4,7 +4,8 @@ Repository-wide rules for this cross-platform dotfiles repository: Linux, Window
 
 - Claude Code: `CLAUDE.md`
 - OpenCode/Codex: `opencode/AGENTS.md`
-- Pi global instructions: [`pi/AGENTS.md`](pi/AGENTS.md); Claude global instructions: `claude/CLAUDE.md` (independent files, no symlink)
+- General working rules have been moved to `pi/AGENT_GLOBAL.md` for future global configuration; that file is not automatically loaded or wired into a Pi profile yet.
+- Claude global instructions: `claude/CLAUDE.md` (independent from Pi instructions, no symlink)
 - Pi runtime: [`pi/README.md`](pi/README.md)
 
 Claude hooks, commands, settings, runtime workarounds, and content ingestion are Claude-only. Follow the owning surface rather than blending client, shell, PowerShell, WSL, or platform conventions.
@@ -25,23 +26,20 @@ Installation entrypoints and options live in [`README.md#installation`](README.m
 Tooling rules:
 
 - Python tooling uses `uv`; tests use `pytest`, Python lint/format uses `ruff`, shell lint uses `shellcheck`, shell format uses `shfmt`, and `pyproject.toml` sets Python 3.9 as the floor.
-- Prefer `bun` for general JavaScript/TypeScript work. Never use `npm` or create/commit `package-lock.json`.
-- Pi TypeScript is pnpm-only, with `pi/package.json` as the dependency, typecheck, and Vitest source of truth. Never use `bun add`, `bun install`, `bun run`, or `bun test` for Pi packages/tests. Use `cd pi && pnpm install --frozen-lockfile` only when dependencies need installation; available checks include `pnpm run typecheck` and `pnpm test`.
-- For one Vitest file, pass the filter directly, for example `cd pi && pnpm test operator-status.test.ts`; never insert `--`, because the script passes it through to Vitest and would run the full suite.
-- `@earendil-works/*` and `typebox` are intentionally absent from `pi/package.json`; `scripts/pi-deps-link-setup` links them from pnpm-global into `pi/node_modules` so they match the installed Pi binary. See [`pi/README.md#javascript-package-manager-policy`](pi/README.md#javascript-package-manager-policy).
-- Validation must directly exercise the changed contract or regression. Start with the cheapest focused check. Run broader or aggregate gates only when shared impact, applicable repository policy, or requested release or merge readiness requires them. When the request explicitly requires preserving a user workflow, validate its relevant entrypoint and sequence when available. Identify smoke tests as smoke tests and never claim unobserved behavior.
-- Before substantive work, state the observable completion evidence and how the outcome could fail.
-- Ask only when a missing operator-owned decision materially changes correctness, direction, destructive scope, rollback risk, or intended outcome; otherwise inspect available state and proceed.
-- Tests protect executable behavior, parsed schemas, normalized configuration meaning, or external protocols. Do not use assertions as the primary store for policy prose, prompt wording, comments, source spelling, or internal file layout. A test may cover policy through its executable parser or enforcement behavior.
-- Keep durable policy and design intent in the applicable `AGENTS.md` or owning skill/tooling contract so instruction discovery delivers it as context; do not encode it indirectly in tests.
-- For bug fixes, define the expected successful outcome before editing. If a contract-required workflow check is unavailable, report what remains unvalidated instead of substituting unrelated checks.
+- Pi TypeScript is pnpm-only, with `pi/profiles/legacy/package.json` as the dependency, typecheck, and Vitest source of truth for the customized legacy Pi setup. Never use `bun add`, `bun install`, `bun run`, or `bun test` for Pi packages/tests. Use `cd pi/profiles/legacy && pnpm install --frozen-lockfile` only when dependencies need installation; available checks include `pnpm run typecheck` and `pnpm test`.
+- For one Vitest file in the legacy Pi profile, pass the filter directly, for example `cd pi/profiles/legacy && pnpm test operator-status.test.ts`; never insert `--`, because the script passes it through to Vitest and would run the full suite.
+- `@earendil-works/*` and `typebox` are intentionally absent from `pi/profiles/legacy/package.json`; `scripts/pi-deps-link-setup` links them from pnpm-global into `pi/profiles/legacy/node_modules` so they match the installed Pi binary. See [`pi/README.md`](pi/README.md) and [`pi/profiles/legacy/README.md`](pi/profiles/legacy/README.md).
 
 ## Repository invariants
 
-### Install, links, and shells
+### Install, links, shells, and Pi profiles
 
 The installer entrypoints and supporting paths are indexed in [`README.md#structure`](README.md#structure).
 
+- `pp` is the cross-platform Pi profile launcher. Use `pp` for the clean repository-owned default profile, `pp -p legacy` or `pp --profile legacy` for the customized legacy setup, and `pp -p <name>` or `pp --profile <name>` for other isolated profiles.
+- `scripts/pp` and `scripts/pp.ps1` reserve `-p` for profile selection, validate profile names as `[A-Za-z0-9][A-Za-z0-9._-]*`, set `PI_CODING_AGENT_DIR`, and pass remaining arguments to `pi`. Put Pi's own short `-p` argument after `--`, or prefer Pi's long spelling when available.
+- Repository-owned Pi profiles live under `pi/profiles/`: `default/` is the clean default selected by bare `pp`, and `legacy/` contains the previous customized Pi setup plus its local runtime state. Arbitrary named profiles are created on first use under `~/.pi/profiles/<name>/` and are not repository-owned.
+- The compatibility path `~/.pi/agent` points at `pi/profiles/legacy/` so direct `pi` invocations retain the previous customized behavior. Use `scripts/migrate-pi-profiles.ps1` with Pi stopped to perform or repair the stopped-process migration into `pi/profiles/{default,legacy}/`.
 - `wsl/install.conf.yaml` must mirror every relevant cross-platform link from `install.conf.yaml`. Add the WSL equivalent with each cross-platform link; exclude Windows-only targets such as the PowerShell profile and Windows VS Code paths.
 - All terminals converge through `.bash_profile -> .zshenv -> .zshrc`; see the [shell architecture](README.md#shell-architecture).
 - In MSYS2 and Git Bash, pass `ZDOTDIR` through `env` when execing zsh.
@@ -54,7 +52,6 @@ The installer entrypoints and supporting paths are indexed in [`README.md#struct
 - Personal SSH key priority is `id_ed25519-personal`, then generic `id_ed25519`.
 - Work SSH key priority is `id_ed25519-work`, then `id_ed25519-eagletg`; work must not fall back to generic `id_ed25519`.
 - Never force-push a submodule repository. Never amend or rebase an already-pushed submodule commit. Pull inside the submodule before updating the parent repository's pinned reference.
-- Treat every worktree as potentially shared. Never use `git restore`, `git checkout`, `git reset`, `git clean`, file deletion, or overwrite to discard a change unless the current task created it or the user explicitly authorizes its removal. This does not prohibit editing a file that already has unrelated changes; preserve those changes in the resulting file and diff.
 - If `git pull` fails on a submodule fetch, recover with:
 
 ```bash
@@ -64,30 +61,12 @@ git submodule update --init --recursive
 
 ### Change history
 
-- Keep commit messages concise, but make them specific enough to capture the delivered outcome and relevant user intent. Use a short body only when the subject cannot preserve an important constraint or distinction; leave detailed rationale to the changelog.
 - Update the root `CHANGELOG.md` for material user-facing, operator-facing, workflow, compatibility, or architectural changes. Record the context needed to understand what changed, why it changed, important constraints, and deliberately preserved behavior without duplicating implementation details.
-- Do not invent rationale. Skip changelog entries for mechanical changes that do not alter supported behavior.
 
-### Implementation and workflow
+### Repository configuration
 
-- All scripts must be idempotent. Use LF line endings only.
 - VS Code is the default editor, diff tool, and merge tool. The default branch is `main`.
 - Dotbot link defaults rely on `force: true`, `relink: true`, and `create: true`.
-- In Onramp/Caddy stack variables, a service `port` is the container/service port reachable on the Docker Compose network. Do not reinterpret it as host publishing, split it into host/internal ports, or assume a host bind unless explicitly requested.
-- Use only tools, workflows, permissions, and memory/task systems available in the active harness. If a capability is absent, adapt instead of assuming or naming it.
-- Use deterministic mechanisms when they enforce a known invariant or make an external contract observable; preserve contextual judgment where no such invariant exists.
-- Missing data and dependencies must fail explicitly. Do not hide them with broad exception wrappers, guard flags, or fallback paths; remove redundant paths rather than preserving them behind switches.
-- Keep planning proportional: brief prose for complex work and none for simple work.
-- Delegate only bounded work that is independently executable or materially benefits from specialization, verification independence, or context isolation; keep decomposition, integration, and acceptance with the root.
-- For lists or batches, track every item to completed, explicitly skipped with reason, or blocked before finalizing.
-- Stop research when the core question is answered and further retrieval is unlikely to change the conclusion; be exhaustive only when requested.
-
-### Rollout and incident discipline
-
-- For live stateful infrastructure, replace or migrate one independent service per rollout until the canary is healthy. Before changing existing state, require a current backup, a known restore path, an explicit rollback boundary, and a reviewed plan naming every create, update, replace, and delete. First-time provisioning requires no backup.
-- The first failed live mutation enters incident mode: stop roadmap work, broad applies, parallel recovery, and unrelated refactoring. Diagnose directly, recover one service, preserve healthy services, and exit incident mode only after the original endpoint and state checks pass.
-- Direct command output, saved logs, and endpoint checks outrank summaries. The parent executing or coordinating live work must independently verify critical plan and health claims.
-- Reuse the user's authorization for repeated in-scope, non-destructive recovery steps. Ask again only when the target, destructive scope, rollback risk, or intended outcome materially changes.
 
 ### Windows process churn
 
@@ -103,6 +82,8 @@ Key paths:
 | --- | --- |
 | `install`, `install.ps1`, `wsl/` | Primary installers and WSL install/config/validation |
 | `install.conf.yaml` | Cross-platform Dotbot links |
+| `scripts/pp`, `scripts/pp.ps1` | Cross-platform Pi profile launchers |
+| `pi/profiles/default/`, `pi/profiles/legacy/` | Repository-owned clean and customized Pi profiles |
 | `zsh/env.d/`, `zsh/rc.d/` | Environment and interactive zsh modules; platform helpers start in `zsh/rc.d/00-helpers.zsh` |
 | `config/git/`, `powershell/profile.ps1` | Git and PowerShell configuration |
 | `test/` | Repository tests |
@@ -110,7 +91,3 @@ Key paths:
 | `docs/research/obsidian-vault/` | Research vault; obey its local `AGENTS.md` and topic instructions |
 
 Windows packages live in `winget/configuration/{core,work,dev}.dsc.yaml`; edit the applicable file and preserve `id: <id>  # <Display Name>` with two spaces before `#` so `install.ps1 -ListPackages` continues to work.
-
-Current Pi expertise ownership and implementation notes live in [`pi/docs/expertise-layering.md`](pi/docs/expertise-layering.md); do not duplicate them here.
-
-Pi extension and tool contracts are indexed in [`pi/skills/pi-extension/references/tooling-contracts.md`](pi/skills/pi-extension/references/tooling-contracts.md). Before changing stable public, cross-cutting, or operator-facing Pi behavior, read the owning contract. When an explicit user decision changes that behavior, update the owning contract in the same change so it preserves the accepted current intent. Do not update contracts for implementation-only changes, transient session choices, or speculative future behavior; Git history preserves superseded decisions.

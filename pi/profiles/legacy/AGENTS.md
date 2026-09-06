@@ -54,6 +54,10 @@ Delete unnecessary choices; prefer direct code; enforce consequential invariants
 
 ## Pi ownership
 
+Documentation for this customized profile lives in [`docs/README.md`](docs/README.md), not a shared `pi/docs/` directory. Current expertise ownership and implementation notes live in [`docs/expertise-layering.md`](docs/expertise-layering.md); do not duplicate them here. Keep profile documentation and its links relative to this profile; repository-level links must account for the `pi/profiles/legacy/` nesting.
+
+Legacy profile extension and tool contracts are indexed in [`skills/pi-extension/references/tooling-contracts.md`](skills/pi-extension/references/tooling-contracts.md). Before changing stable public, cross-cutting, or operator-facing behavior in this profile, read the owning contract. When an explicit user decision changes that behavior, update the owning contract in the same change so it preserves the accepted current intent. Do not update contracts for implementation-only changes, transient session choices, or speculative future behavior; Git history preserves superseded decisions.
+
 - Onclave discovery and messaging are user-directed. Use them only when the user explicitly requests Onclave communication or to continue an already user-directed Onclave workflow. Never use Onclave as a substitute for Pi subagents, reviewers, failed delegation, provider fallback, local execution, or autonomous workload distribution.
 - Pi runtime, workflow, safety, routing, status, and tools belong in `pi/` unless another client or cross-client support is requested.
 - Track curated Pi source and configuration. Do not commit generated sessions, histories, logs, caches, indexes, local events, or tool state.

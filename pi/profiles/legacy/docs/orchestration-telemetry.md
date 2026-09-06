@@ -1,6 +1,6 @@
 # Orchestration Telemetry
 
-Orchestration telemetry records bounded, metadata-only measurements for delegated
+Legacy profile orchestration telemetry records bounded, metadata-only measurements for delegated
 work. It uses the existing metrics JSONL stream and has four event names:
 `orchestration_run`, `orchestration_interaction`,
 `orchestration_experiment_assignment`, and `orchestration_experiment_outcome`.
@@ -257,11 +257,11 @@ Use the Node runner instead of shell-specific path conversion. It passes native 
 Run deterministic checks before using a provider:
 
 ```bash
-cd pi
+cd pi/profiles/legacy
 pnpm test pi-smoke-runner.test.ts workflow-friction.test.ts orchestration-stats.test.ts secret-scan.test.ts
 pnpm run typecheck
-cd ..
-node pi/scripts/run-isolated-pi-smoke.mjs
+cd ../../..
+node pi/profiles/legacy/scripts/run-isolated-pi-smoke.mjs
 ```
 
 The default smoke starts the real Pi CLI in RPC mode without a model request. It also leaves a legacy task sentinel at the project default and points `PI_LEGACY_TODO_SOURCE_DIR` at an empty scratch source, proving isolated startup does not import unrelated task state.
@@ -269,7 +269,7 @@ The default smoke starts the real Pi CLI in RPC mode without a model request. It
 After focused checks and the full Pi suite pass, run the live gate once:
 
 ```bash
-node pi/scripts/run-isolated-pi-smoke.mjs orchestration-telemetry --live
+node pi/profiles/legacy/scripts/run-isolated-pi-smoke.mjs orchestration-telemetry --live
 ```
 
 The live scenario performs one delegated interaction, then starts a no-tools Pi process with the same native scratch roots and invokes `/orchestration-stats`. It passes only when the report shows one delegated interaction and one referenced run ID. A failed deterministic gate blocks the live gate. Repeat the live gate only after changing the failed code path or producing new evidence that the prior cause was repaired.

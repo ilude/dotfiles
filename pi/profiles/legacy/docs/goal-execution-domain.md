@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Goal Execution stores durable work state for Pi workflows. It represents Goals, Tasks, and explicit Dependencies as a Dependency Graph. It does not execute work and it does not schedule prompts.
+Goal Execution stores durable work state for legacy Pi workflows. It represents Goals, Tasks, and explicit Dependencies as a Dependency Graph. It does not execute work and it does not schedule prompts.
 
 Prompt Scheduling is a separate domain owned by the `schedule` tool and `scheduler.ts`. Scheduling controls when Pi receives a prompt. Goal Execution records what work exists, what it depends on, and its lifecycle state.
 
@@ -31,7 +31,7 @@ A summary-only Task can be created, queried, updated, transitioned, removed, mig
 
 This ordering is a projection. It does not reserve, execute, schedule, lease, or transition a Task. Readiness selects eligible work only; it never dispatches it.
 
-Lifecycle transitions remain defined by `pi/lib/operator-state.ts`. For tracked work, a parent records and assigns the task, invokes a root tool or separate process, validates the result, and records the terminal state. Assignment means selected work, not live process activity. Child processes do not own Task transitions. Create, batch, and assignment acknowledgements report recording only and do not monitor work.
+Lifecycle transitions remain defined by [`operator-state.ts`](../lib/operator-state.ts). For tracked work, a parent records and assigns the task, invokes a root tool or separate process, validates the result, and records the terminal state. Assignment means selected work, not live process activity. Child processes do not own Task transitions. Create, batch, and assignment acknowledgements report recording only and do not monitor work.
 
 ## Storage and transaction boundary
 
@@ -43,11 +43,11 @@ The store records its schema and authority metadata. Normal Task operations refu
 
 ## Migration and rollback
 
-The migration CLI is `pi/scripts/task-store-migrate.ts`:
+The migration CLI is [`task-store-migrate.ts`](../scripts/task-store-migrate.ts). From the repository root:
 
 ```bash
-node --experimental-strip-types pi/scripts/task-store-migrate.ts import --operator-dir <path>
-node --experimental-strip-types pi/scripts/task-store-migrate.ts export --operator-dir <path>
+node --experimental-strip-types pi/profiles/legacy/scripts/task-store-migrate.ts import --operator-dir <path>
+node --experimental-strip-types pi/profiles/legacy/scripts/task-store-migrate.ts export --operator-dir <path>
 ```
 
 Exit codes are printed by `--help`: 2 for usage, 3 for an active migration lock, 4 for a conflicting migration destination, 5 for semantic refusal, and 1 for other I/O or commit failures.

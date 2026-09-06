@@ -1,6 +1,6 @@
 # Session watchdog
 
-The session watchdog records each request's footprint and interrupts repeated command failures. It never pauses work solely because a request runs for a long time, uses many tools, or delegates repeatedly.
+The legacy profile's session watchdog records each request's footprint and interrupts repeated command failures. It never pauses work solely because a request runs for a long time, uses many tools, or delegates repeatedly.
 
 ## Interaction epochs
 
@@ -40,7 +40,7 @@ Cancelling the dialog leaves the hard gate pending. In non-interactive modes, ea
 
 ## Configure or disable
 
-The user-owned `sessionBudget` object in `~/.pi/agent/settings.json` controls the watchdog. In this dotfiles installation that file is linked from `pi/settings.json`.
+The user-owned `sessionBudget` object in `~/.pi/agent/settings.json` controls the watchdog. In this dotfiles installation that file is linked from `pi/profiles/legacy/settings.json`.
 
 ```json
 {
@@ -79,4 +79,4 @@ The design follows these references:
 - [Harness engineering](https://www.faros.ai/blog/harness-engineering)
 - [Agent harness engineering](https://addyosmani.com/blog/agent-harness-engineering/)
 
-Rejected and deferred sensors, their rationale, and the evidence required to revisit them are recorded in [the archived plan's "Not implemented and why" section](../../.specs/archive/pi-session-budget/plan.md#not-implemented-and-why).
+Rejected and deferred sensors, their rationale, and the evidence required to revisit them are recorded in [the archived plan's "Not implemented and why" section](../../../../.specs/archive/pi-session-budget/plan.md#not-implemented-and-why).

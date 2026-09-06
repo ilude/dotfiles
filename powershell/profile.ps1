@@ -125,6 +125,7 @@ function Add-PathIfNotExists {
 # User binary directories. Add .local first, then pnpm so pnpm-managed
 # development CLIs take precedence over WinGet shims and legacy installs.
 Add-PathIfNotExists -PathToAdd "$env:USERPROFILE\.local\bin"
+Add-PathIfNotExists -PathToAdd "$env:USERPROFILE\.dotfiles\scripts"
 if ($env:LOCALAPPDATA) {
   $env:PNPM_HOME = "$env:LOCALAPPDATA\pnpm"
   $pnpmBin = "$env:PNPM_HOME\bin"

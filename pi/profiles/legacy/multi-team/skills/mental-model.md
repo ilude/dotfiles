@@ -26,7 +26,7 @@ Each agent has a **two-layer** expertise system. Each layer has its own log and 
 - Any future model-assisted similarity remains provider-gated, optional, and disabled by default.
 
 Full layering spec (repo ID derivation, read order, dedupe rules, migration, safety):
-`pi/docs/expertise-layering.md`
+[Legacy expertise storage and retrieval](../../docs/expertise-layering.md)
 
 ### Write routing
 

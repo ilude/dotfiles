@@ -1970,7 +1970,7 @@ try {
     # Install pi runtime dependencies (web-tree-sitter, tree-sitter-bash, jsdom, etc.)
     # pnpm install must run BEFORE pi-deps-link-setup because pnpm recreates
     # node_modules and would wipe the @earendil-works/typebox symlinks otherwise.
-    $piDir = Join-Path $BASEDIR "pi"
+    $piDir = Join-Path $BASEDIR "pi\profiles\legacy"
     $piPackageJson = Join-Path $piDir "package.json"
     if ((Test-Path $piPackageJson) -and (Get-Command pnpm -ErrorAction SilentlyContinue)) {
         Write-Host "  Installing pi runtime dependencies..." -ForegroundColor Cyan
@@ -2024,7 +2024,7 @@ try {
     }
     Write-Host "  Onclave private configuration: ready" -ForegroundColor Green
 
-    # Set up Pi directory link and plant pnpm-global symlinks into pi/node_modules.
+    # Link the legacy Pi profile and plant its pnpm-global dependency symlinks.
     # pi-deps-link-setup must run AFTER pnpm install (above) so the symlinks are
     # not wiped when pnpm recreates node_modules.
     if ($gitBash) {

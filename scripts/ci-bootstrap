@@ -63,7 +63,7 @@ fi
 
 mkdir -p "$HOME/.pi"
 ln -sfn "$repo_root" "$HOME/.dotfiles"
-ln -sfn "$repo_root/pi" "$HOME/.pi/agent"
+ln -sfn "$repo_root/pi/profiles/legacy" "$HOME/.pi/agent"
 
 printf 'dotfiles_link=%s\n' "$(readlink "$HOME/.dotfiles" 2>/dev/null || echo unavailable)"
 printf 'pi_agent_link=%s\n' "$(readlink "$HOME/.pi/agent" 2>/dev/null || echo unavailable)"

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+    cat >&2 <<'EOF'
+usage: pp [-p|--profile <name>] [--] [pi arguments...]
+EOF
+    exit 2
+}
+
+profile="default"
+pi_args=()
+
+while (($#)); do
+    case "$1" in
+        -p|--profile)
+            (($# >= 2)) || usage
+            profile="$2"
+            shift 2
+            ;;
+        --profile=*)
+            profile="${1#*=}"
+            shift
+            ;;
+        --)
+            shift
+            pi_args+=("$@")
+            break
+            ;;
+        *)
+            pi_args+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ ! "$profile" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$profile" == "." ]] || [[ "$profile" == ".." ]]; then
+    echo "pp: invalid profile name: $profile" >&2
+    exit 2
+fi
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+case "$profile" in
+    default|legacy)
+        profile_dir="${script_dir}/../pi/profiles/${profile}"
+        if [[ ! -d "$profile_dir" ]]; then
+            echo "pp: repository profile is not initialized: $profile" >&2
+            echo "run scripts/migrate-pi-profiles.ps1 after closing Pi" >&2
+            exit 1
+        fi
+        ;;
+    *)
+        profile_dir="${HOME}/.pi/profiles/${profile}"
+        mkdir -p "$profile_dir"
+        ;;
+esac
+profile_dir="$(cd "$profile_dir" && pwd)"
+export PI_CODING_AGENT_DIR="$profile_dir"
+
+TMPDIR=/tmp exec pi "${pi_args[@]}"

@@ -518,10 +518,10 @@ fi
 completed_steps+=("Pi coding agent install")
 
 current_step="pi runtime deps"
-# Install pi's consolidated runtime + dev dependencies declared at pi/package.json.
-# Must run BEFORE pi-deps-link-setup -- pnpm install will recreate pi/node_modules
+# Install the legacy Pi profile's consolidated runtime + dev dependencies.
+# Must run before pi-deps-link-setup -- pnpm install recreates node_modules.
 # and would wipe @earendil-works/typebox symlinks if planted first.
-PI_DIR="${BASEDIR}/pi"
+PI_DIR="${BASEDIR}/pi/profiles/legacy"
 if [[ -f "$PI_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
     echo "Installing pi runtime dependencies..."
     pnpm install --dir "$PI_DIR"
@@ -588,7 +588,7 @@ fi
 
 current_step="pi extension deps link"
 # Plant @earendil-works/* and typebox symlinks from pnpm-global into
-# pi/node_modules. Intentionally not listed in pi/package.json -- their version
+# pi/profiles/legacy/node_modules. They remain absent from that package.json -- their version
 # is tied to the pnpm-global pi-coding-agent install.
 "${BASEDIR}/scripts/pi-deps-link-setup"
 completed_steps+=("pi extension deps link")
@@ -600,7 +600,7 @@ completed_steps+=("pi agent directory link")
 current_step="pi model catalog check"
 # The openai-codex catalog is fetched at runtime and cached outside version
 # control, so a fresh checkout has no record of the gpt-5.6 models named in
-# pi/settings.json. Without it pi warns on every start and falls back off the
+# pi/profiles/legacy/settings.json. Without it pi warns on every start and falls back off the
 # configured default model.
 if [[ ! -f "${PI_DIR}/model-cache/refresh-models/openai-codex.json" ]]; then
     echo "[warn] No cached openai-codex model catalog."
