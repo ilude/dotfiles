@@ -1,5 +1,23 @@
 # Agent instruction feedback log
 
+## AIF-010 — Identify the timed-out commit operation
+
+- **Reference:** Operator follow-up after the submodule-aware `/commit` failed with only “Command timed out after 15 seconds.”
+- **Feedback:** Commit failures must provide enough diagnostics to identify which timeout tripped.
+- **Finding:** Successful tool details were intentionally private, but failure handling retained only the generic tool result and omitted tool name, target, command and elapsed time.
+- **Decision:** Keep successful activity private; on failure report the tool plus repository/path or a 300-character shell-command excerpt and measured elapsed time. After the diagnostic exposed an unnecessary parent-directory `find`, the runner was further bounded to a supplied tracked-instruction inventory, broad recursive discovery was blocked, and first-failure reporting was preserved without queued-call noise.
+- **Related:** AIF-009 (submodule commit workflow).
+- **Status:** Implementation updated; behavioral effectiveness remains unverified.
+
+## AIF-009 — Complete submodule commits before parent gitlinks
+
+- **Reference:** Operator follow-up after `/commit` committed the dotfiles parent but left `modules/homelab-infra` dirty.
+- **Feedback:** The commit command should handle submodule commit workflows directly and easily.
+- **Finding:** The reviewer was told only to keep submodules separate. It received parent status and reported only parent HEAD movement, so the instruction did not make independent submodule review, deepest-first commit order, parent gitlink staging, or multi-repository results explicit.
+- **Decision:** Inventory initialized submodules at workflow start, allow repository-scoped diff review, require independent deepest-first submodule commits before parent gitlinks, and report commits/remaining changes per repository. Push remains explicit and orders submodules before parents without recursive push.
+- **Related:** AIF-004 (narrow workflow changes), repository submodule boundaries.
+- **Status:** Implementation updated; behavioral effectiveness remains unverified.
+
 ## AIF-008 — Do not invent rollback work
 
 - **Reference:** Operator correction during web-fetch gateway plan execution.

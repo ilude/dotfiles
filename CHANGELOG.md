@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-07: Commit command handles submodule workflows
+
+**Changed:** `/commit` now inventories initialized submodules, reviews and commits dirty nested repositories independently from deepest to shallowest, then commits updated parent gitlinks. Results and remaining changes cover every inventoried repository; requested pushes preserve submodule-before-parent order without recursive pushing. Failed private tool calls now identify the tool, target or bounded command excerpt, and elapsed time so per-command timeouts are diagnosable. The runner supplies tracked instruction paths, blocks broad recursive discovery, and preserves the first failure without queued-call noise.
+
+
 ## 2026-09-07: Consolidate default Pi Amazon Bedrock integration
 
 **Added:** Default Pi now owns a curated `bedrock-mantle` provider with provider-scoped authentication, independent Mantle/Runtime regions, native inventory persistence, latest-family Claude and GPT routing, `/bedrock` inspection/refresh, and no post-failure cross-transport replay. Pi's native `amazon-bedrock` provider remains available and Codex startup remains independent of AWS configuration.

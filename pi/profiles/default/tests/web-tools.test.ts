@@ -112,9 +112,10 @@ describe("tool integration", () => {
     exec.mockResolvedValue({ code: 0, killed: false, stdout: "page", stderr: "" });
     const signal = new AbortController().signal;
     await registered.get("web_fetch").execute("id", { url: "https://example.com" }, signal);
-    expect(exec.mock.calls[0][0]).toBe(process.execPath);
-    expect(exec.mock.calls[0][1][0]).toBe(fileURLToPath(new URL("../extensions/web-tools/fetch.js", import.meta.url)));
-    expect(exec.mock.calls[0][2].signal).toBe(signal);
+    const local = exec.mock.calls.find((call) => call[0] === process.execPath);
+    expect(local).toBeTruthy();
+    expect(local![1][0]).toBe(fileURLToPath(new URL("../extensions/web-tools/fetch.js", import.meta.url)));
+    expect(local![2].signal).toBe(signal);
   });
   it("throws on fetch process failure instead of screening stderr", async () => {
     const { registered, exec } = tools();
