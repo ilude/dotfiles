@@ -10,6 +10,7 @@ import { formatStatus, gitReviewTool, page } from "./tools.ts";
 
 const PROVIDER = "openai-codex";
 const MODEL = "gpt-5.6-luna";
+const WORKFLOW_TIMEOUT_MS = 180_000;
 
 export function commitReviewerTool(pi: ExtensionAPI, pushRequested: () => boolean): ToolDefinition {
 	return {
@@ -21,7 +22,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: () => boolea
 			const push = pushRequested();
 			const deadline = new AbortController();
 			const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
-			let remaining = 30_000;
+			let remaining = WORKFLOW_TIMEOUT_MS;
 			let activeSince = Date.now();
 			let timer: ReturnType<typeof setTimeout>;
 			const resumeTimer = () => { activeSince = Date.now(); timer = setTimeout(() => deadline.abort(), Math.max(0, remaining)); };
@@ -147,7 +148,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: () => boolea
 			const publication = push ? (/^Pushed\.?$/i.test(outcome) ? "Pushed." : "Push completion not confirmed.") : "";
 			const report = [summary, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
-			return { content: [{ type: "text", text: report }], details: { elapsedMs: 30_000 - remaining, model: `${PROVIDER}/${MODEL}:low` }, usage };
+			return { content: [{ type: "text", text: report }], details: { elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${PROVIDER}/${MODEL}:low` }, usage };
 		},
 		renderCall: () => new Container(),
 		renderResult(result, { isPartial }, theme, context) {

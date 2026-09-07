@@ -16,7 +16,7 @@ it.skipIf(process.env.PI_WEB_LIVE !== "1").each(cases)("search → fetch → Lun
     registerTool: (tool: any) => tools.set(tool.name, tool),
     exec: async (command: string, args: string[], options: any) => ({ ...await promisify(execFile)(command, args, options), code: 0, killed: false }),
   } as any);
-  const signal = AbortSignal.timeout(60_000);
+  const signal = AbortSignal.timeout(85_000);
   const search = await tools.get("web_search").execute("live-search", { ...params, num_results: 5 }, signal);
   const text = search.content[0].text;
   const urls = [...text.matchAll(/^URL: (https?:\/\/\S+)/gm)].map((match) => new URL(match[1]));
@@ -35,4 +35,33 @@ it.skipIf(process.env.PI_WEB_LIVE !== "1").each(cases)("search → fetch → Lun
   expect(page.content[0].text).toMatch(official ? /readability/i : /prompt injection/i);
   expect(["screened", "flagged"]).toContain(page.details.screening);
   console.log(`${name}: search=${search.details.screening}, fetch=${page.details.screening}; review tokens=${(search.usage?.totalTokens ?? 0) + (page.usage?.totalTokens ?? 0)}`);
-}, 65_000);
+}, 90_000);
+
+it.skipIf(process.env.PI_WEB_LIVE !== "1")("gateway fetch → follow link → Luna", async () => {
+  const tools = new Map<string, any>();
+  webTools({
+    registerTool: (tool: any) => tools.set(tool.name, tool),
+    exec: async (command: string, args: string[], options: any) => ({ ...await promisify(execFile)(command, args, options), code: 0, killed: false }),
+  } as any);
+  const signal = AbortSignal.timeout(85_000);
+  const page = await tools.get("web_fetch").execute("live-page", { url: "https://example.com/" }, signal);
+  expect(page.content[0].text).toContain("Gateway backend: direct");
+  expect(["screened", "flagged"]).toContain(page.details.screening);
+  const link = [...page.content[0].text.matchAll(/\]\((https:\/\/[^\s)]+)\)/g)].map(match => new URL(match[1])).find(url => url.hostname === "www.iana.org" || url.hostname === "iana.org");
+  expect(link, "Example Domain should retain its IANA link").toBeTruthy();
+  const followed = await tools.get("web_fetch").execute("live-follow", { url: link!.href }, signal);
+  expect(followed.content[0].text).toMatch(/example domains|reserved domains/i);
+  expect(["screened", "flagged"]).toContain(followed.details.screening);
+}, 90_000);
+
+it.skipIf(process.env.PI_WEB_LIVE !== "1")("gateway explicit browser → Luna", async () => {
+  const tools = new Map<string, any>();
+  webTools({
+    registerTool: (tool: any) => tools.set(tool.name, tool),
+    exec: async (command: string, args: string[], options: any) => ({ ...await promisify(execFile)(command, args, options), code: 0, killed: false }),
+  } as any);
+  const page = await tools.get("web_fetch").execute("live-browser", { url: "https://quotes.toscrape.com/js/", backend: "trawl" }, AbortSignal.timeout(85_000));
+  expect(page.content[0].text).toContain("Gateway backend: trawl");
+  expect(page.content[0].text).toContain("The world as we have created it");
+  expect(["screened", "flagged"]).toContain(page.details.screening);
+}, 90_000);

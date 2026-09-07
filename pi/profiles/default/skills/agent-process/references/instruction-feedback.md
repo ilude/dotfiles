@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-008 — Do not invent rollback work
+
+- **Reference:** Operator correction during web-fetch gateway plan execution.
+- **Feedback:** Plans must not include rollback steps unless the user requests them.
+- **Finding:** The agent added rollback-path verification to the gateway plan and later treated it as required completion work without an operator request.
+- **Decision:** Added a direct boundary to the planning skill and template, and removed rollback verification from the active gateway plan. Drift-recovery guidance is unchanged because it governs agent scope control, not product rollback.
+- **Related:** AIF-002 (requirements versus proposals), AIF-003/APR-002 (bounded completion).
+- **Status:** Instruction updated; behavioral effectiveness remains unverified.
+
 Factual history for refining agent instructions. This log is not executable policy; active rules belong in the owning `AGENTS.md` or skill. Record concise operator feedback and the resulting decision without storing raw session transcripts or private task content.
 
 ## AIF-007 — Present materially different planning interpretations

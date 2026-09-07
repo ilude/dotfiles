@@ -12,6 +12,12 @@
 
 **Restored:** Legacy path exclusions and generated-file restrictions, command-rule Docker behavior, `/dc on|off`, `/dc mode default|noshell`, deterministic sensitive-read/upload sequence checks, and bounded loop handling. There is no `/dc status`, shadow evaluation, labeling workflow, or large telemetry system.
 
+## 2026-09-07: Remove extra web-fetch workflow machinery
+
+**Removed:** The task-added Pi credential launcher, custom OCI archive publication/build workflow, release-manifest machinery, partial artifacts and disposable build leftovers. Gateway configuration uses existing Pi environment settings; the retained Ansible role accepts locally built immutable image IDs and preserves upstream age checks.
+
+**Preserved:** Gateway acquisition, SQLite routing, browser isolation, Pi circuit/curl recovery, service authentication and existing service-state integration. The BWS client credential remains intact. Deployment is paused and unverified; neither SearXNG instance, legacy Pi nor concurrent Damage Control work was changed by this cleanup.
+
 ## 2026-09-06: Remove invented Damage Control prompts from read-only searches
 
 **Fixed:** Default Damage Control no longer recursively inventories every descendant of read-only shell searches or escalates symlinks, large trees, and incomplete filename inventory into speculative prohibited effects. Explicit protected targets and actually destructive search/delete operations retain their existing checks.
@@ -57,6 +63,10 @@
 **Added:** Default Pi's on-demand `planning` skill creates and maintains `.specs/<stub>/plan.md` handoffs with ordered checkboxes, concrete inputs and finish criteria, explicit user requirements versus proposals, and relevant planning/execution profile evidence. It follows the concise, bounded agent-process guidance without adding a workflow controller, automatic monitoring, or blanket approval gates.
 
 **Lifecycle:** Completed work receives an internal `completed: YYYY-MM-DD` date and moves with its supporting files to `.specs/archive/<stub>/`. Incomplete plans stay active; writing a plan does not complete its implementation. Archiving does not authorize commit or push, and existing plans are not bulk-migrated.
+
+**Moved and clarified:** The web-fetch gateway proposal now lives at `.specs/web-fetch-gateway/plan.md`, with task dependencies, interface/SQLite proposals, scoped validation, profile context, and unresolved decisions. Infrastructure still owns implementation/deployment; Pi wiring remains in dotfiles. No gateway implementation or live deployment occurred, and paywall/alternate-copy features remain excluded.
+
+**Preflight:** The operator subsequently approved a bounded disposable browser/runtime trial and early publication/credential-path inspection. The plan now explicitly describes a client-side gateway circuit breaker, local Node/native curl recovery, preserved extraction/Luna behavior, and measured findings kept separately from implementation claims. Shell/native curl transport and Linux Node/SQLite compatibility passed isolated checks. Correcting Trawl's fresh-browser tier produced useful JavaScript and sampled Cloudflare retrieval, but exposed browser isolation/deadline gaps; hedging remains deferred pending containment. Trial containers were removed and both SearXNG services were unchanged. The gateway and breaker are not implemented.
 
 ## 2026-09-06: Refresh managed SearXNG and inherit server engine defaults
 

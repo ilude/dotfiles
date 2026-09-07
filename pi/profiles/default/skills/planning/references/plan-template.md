@@ -9,7 +9,7 @@ completed: null
 ## Goal and scope
 
 - User requirements: <requested outcomes and preserved behavior>.
-- Non-goals: <important exclusions, not speculative restrictions>.
+- Non-goals: <important exclusions, not speculative restrictions>. Do not add rollback work unless the user requested it.
 - Authorization: <planning, implementation, deployment, and Git actions actually requested>.
 
 The user's request and subsequent changes are authoritative. Keep unapproved

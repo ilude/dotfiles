@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import dns from "node:dns/promises";
-import net from "node:net";
+import { classifyUrl } from "./destinations.js";
+import { curlResponse } from "./curl.js";
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import TurndownService from "turndown";
@@ -20,6 +20,16 @@ const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 const MIN_USEFUL_CONTENT = 500; // Used only for optional dynamic-page data.
+const backendIndex = args.indexOf("--backend");
+const selectedBackend = backendIndex < 0 ? "auto" : args[backendIndex + 1];
+const budgetIndex = args.indexOf("--budget-ms");
+const budgetMs = budgetIndex < 0 ? 60000 : Number(args[budgetIndex + 1]);
+if (!Number.isFinite(budgetMs) || budgetMs <= 0 || budgetMs > 60000) throw new Error("Invalid fetch budget");
+const deadline = performance.now() + budgetMs;
+const controller = new AbortController();
+const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(Math.ceil(budgetMs))]);
+for (const event of ["SIGTERM", "SIGINT"]) process.once(event, () => controller.abort());
+const remaining = () => Math.max(1, Math.floor(deadline - performance.now()));
 
 let maxChars = DEFAULT_MAX_CHARS;
 const maxCharsIndex = args.indexOf("--max-chars");
@@ -32,78 +42,9 @@ if (maxCharsIndex !== -1 && args[maxCharsIndex + 1]) {
 	maxChars = Math.min(Math.floor(parsed), MAX_CHARS_LIMIT);
 }
 
-function parseHttpUrl(targetUrl) {
-	let parsed;
-	try {
-		parsed = new URL(targetUrl);
-	} catch {
-		throw new Error("URL must be valid");
-	}
-	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-		throw new Error("Only http and https URLs are supported");
-	}
-	return parsed;
-}
-
-function isIpv4InCidr(address, prefix, bits) {
-	const toInt = (value) => value.split(".").reduce((acc, part) => (acc << 8) + Number(part), 0) >>> 0;
-	const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
-	return (toInt(address) & mask) === (toInt(prefix) & mask);
-}
-
-const PRIVATE_IPV4_RANGES = [
-	["10.0.0.0", 8],
-	["127.0.0.0", 8],
-	["169.254.0.0", 16],
-	["172.16.0.0", 12],
-	["192.168.0.0", 16],
-];
-
-function isPrivateOrLocalIpv6(address) {
-	const lower = address.toLowerCase();
-	return lower === "::1" || lower === "::" || lower.startsWith("fe80:") || lower.startsWith("fc") || lower.startsWith("fd");
-}
-
-function isPrivateOrLocalAddress(address) {
-	if (net.isIPv4(address))
-		return address === "0.0.0.0" || PRIVATE_IPV4_RANGES.some(([prefix, bits]) => isIpv4InCidr(address, prefix, bits));
-	if (net.isIPv6(address)) return isPrivateOrLocalIpv6(address);
-	return false;
-}
-
-function isMetadataAddress(address) {
-	return address === "169.254.169.254" || address.toLowerCase() === "fd00:ec2::254";
-}
-
-function isMetadataHostname(hostname) {
-	const lower = hostname.toLowerCase();
-	return lower === "metadata.google.internal" || lower === "metadata";
-}
-
-async function classifyHost(parsed) {
-	const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
-	if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-		return { metadata: false, privateOrLocal: true };
-	}
-	if (isMetadataHostname(hostname)) return { metadata: true, privateOrLocal: true };
-	if (net.isIP(hostname)) {
-		return {
-			metadata: isMetadataAddress(hostname),
-			privateOrLocal: isPrivateOrLocalAddress(hostname),
-		};
-	}
-	const records = await dns.lookup(hostname, { all: true });
-	return {
-		metadata: records.some((record) => isMetadataAddress(record.address)),
-		privateOrLocal: records.some((record) => isPrivateOrLocalAddress(record.address)),
-	};
-}
-
 async function assertFetchUrl(targetUrl) {
-	const parsed = parseHttpUrl(targetUrl);
-	const classification = await classifyHost(parsed);
-	if (classification.metadata) throw new Error("Cloud metadata endpoints are not allowed");
-	return { parsed, classification };
+	const classification = await classifyUrl(targetUrl);
+	return { parsed: classification.parsed, classification };
 }
 
 function htmlToMarkdown(html) {
@@ -185,27 +126,38 @@ async function responseTextWithLimit(response) {
 	return new TextDecoder().decode(buffer);
 }
 
-async function fetchText(targetUrl) {
+async function fetchText(targetUrl, allowCurl = true) {
 	let currentUrl = targetUrl;
+	let nativeCurl = false;
 	for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
+		signal.throwIfAborted();
 		await assertFetchUrl(currentUrl);
-		const response = await fetch(currentUrl, {
-			redirect: "manual",
-			headers: {
-				"User-Agent": USER_AGENT,
-				"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-				"Accept-Language": "en-US,en;q=0.9",
-			},
-			signal: AbortSignal.timeout(15000),
-		});
+		let response;
+		let nodeText;
+		if (!nativeCurl) {
+			try {
+				response = await fetch(currentUrl, {
+					redirect: "manual", headers: { "User-Agent": USER_AGENT,
+						"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" },
+					signal: AbortSignal.any([signal, AbortSignal.timeout(Math.min(15000, remaining()))]),
+				});
+				if (response.ok) nodeText = await responseTextWithLimit(response);
+			} catch (error) {
+				signal.throwIfAborted();
+				if (!allowCurl || !["TypeError", "AbortError", "TimeoutError"].includes(error.name)) throw error;
+				nativeCurl = true;
+			}
+		}
+		if (nativeCurl) response = await curlResponse(currentUrl, signal, Math.min(10000, remaining()));
 		const nextUrl = redirectTarget(currentUrl, response);
 		if (nextUrl) {
 			await response.body?.cancel();
 			currentUrl = nextUrl;
 			continue;
 		}
-		if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-		return { text: await responseTextWithLimit(response), url: currentUrl, contentType: response.headers.get("content-type") ?? "" };
+		if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText ?? "target error"}`);
+		return { text: nativeCurl ? response.text : nodeText, url: currentUrl,
+			contentType: response.headers.get("content-type") ?? "", nativeCurl };
 	}
 	throw new Error(`Too many redirects; limit is ${MAX_REDIRECTS}`);
 }
@@ -213,9 +165,10 @@ async function fetchText(targetUrl) {
 async function extractWithReadability(targetUrl) {
 	const response = await fetchText(targetUrl);
 	const html = response.text;
+	const provenance = `Source: ${response.url}${response.nativeCurl ? "\nTransport: native curl after Node transport failure" : ""}`;
 	if (/^(text\/(plain|markdown|csv)|application\/(json|[^;]+\+json|xml))/i.test(response.contentType)) {
 		if (!html.trim()) throw new Error("Empty response");
-		return `Source: ${response.url}\n\n${html}`;
+		return `${provenance}\n\n${html}`;
 	}
 	const rsc = extractRscContent(html);
 	const dom = new JSDOM(html, { url: response.url });
@@ -240,7 +193,7 @@ async function extractWithReadability(targetUrl) {
 	dom.window.close();
 	if (rsc && rsc.length > output.length) output = `${output}\n\n---\n\n## Dynamic page data\n\n${rsc}`.trim();
 	if (!output.trim()) throw new Error("Could not extract readable content from this page.");
-	return `Source: ${response.url}\n\n${output}`;
+	return `${provenance}\n\n${output}`;
 }
 
 async function allowJinaFallback(targetUrl) {
@@ -254,15 +207,18 @@ async function extractWithJina(targetUrl) {
 	}
 	const parsed = new URL(targetUrl);
 	const readerUrl = `https://r.jina.ai/${parsed.protocol}//${parsed.host}${parsed.pathname}${parsed.search}`;
-	return (await fetchText(readerUrl)).text;
+	return (await fetchText(readerUrl, false)).text;
 }
 
 try {
 	await assertFetchUrl(url);
+	if (!["auto", "direct", "jina"].includes(selectedBackend)) throw new Error("Backend requires a configured gateway");
 	let output;
 	try {
-		output = await extractWithReadability(url);
+		output = selectedBackend === "jina" ? await extractWithJina(url) : await extractWithReadability(url);
 	} catch (primaryError) {
+		signal.throwIfAborted();
+		if (selectedBackend !== "auto") throw primaryError;
 		try {
 			output = await extractWithJina(url);
 			output = `<!-- Fetched via Jina Reader fallback after primary extraction failed: ${primaryError.message} -->\n\n${output}`;

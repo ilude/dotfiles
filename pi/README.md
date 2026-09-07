@@ -19,6 +19,8 @@ Use `/skill:agent-process` after reload to capture or review operator feedback, 
 
 Use `/skill:planning` after reload to create, review, resume, or close a plan. The [skill](profiles/default/skills/planning/SKILL.md) uses repository-local `.specs/<stub>/plan.md` files with ordered checkboxes, fresh-context inputs, explicit decisions, bounded checks, and relevant planning/execution Pi profiles. Completed work receives an internal completion date and moves as a directory to `.specs/archive/<stub>/`; incomplete plans stay active. This is an on-demand instruction workflow, not an automatic archiver or permission to implement, deploy, commit, or push.
 
+The [web-fetch gateway plan](../.specs/web-fetch-gateway/plan.md) records implemented acquisition, SQLite routing and default Pi circuit/curl recovery. Deployment is paused. Extra launcher and archive-publication machinery were removed; paywall and archive retrieval remain excluded.
+
 ## Default profile safety port
 
 Damage Control is enabled for normal default-profile `pp` launches. Use `/reload` to load it into an existing session. Legacy ask/block and path behavior is the baseline; Luna may dismiss non-executing false positives but cannot authorize an actual ask-tier operation. `/dc on`, `/dc off`, and `/dc mode default|noshell` provide the legacy session controls; there is no status command. The explicit `pp --dc-recovery` maintenance path remains available. `/commit` internals and direct operator shell commands remain exempt. See [setup and behavior](profiles/default/docs/damage-control-setup.md) and the [completed restoration plan](../.specs/archive/damage-control-provenance-audit/plan.md).

@@ -3,6 +3,10 @@ import { fileURLToPath } from "node:url";
 import { getAgentDir, ModelRuntime, truncateHead, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { SCREEN_PROMPT, screenContent, type Reviewer } from "./screen.ts";
+import { GatewayCircuit } from "./circuit.ts";
+import { GatewayError, gatewayText, requestGateway, withinSignal } from "./gateway.ts";
+import { gatewayCredentials } from "./credentials.ts";
+import { classifyUrl } from "./destinations.js";
 
 const directory = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SEARCH_URL = "https://searxng.ilude.com/search";
@@ -27,6 +31,7 @@ export function searchQuery(params: { query: string; exact_phrases?: string[]; e
 }
 
 export default function webTools(pi: ExtensionAPI) {
+	const circuit = new GatewayCircuit();
 	// Reuse only a successfully initialized runtime. Reload creates a fresh instance.
 	let runtime: ModelRuntime | undefined;
 	const review: Reviewer = async (text, signal) => {
@@ -95,18 +100,54 @@ export default function webTools(pi: ExtensionAPI) {
 	});
 	pi.registerTool({
 		name: "web_fetch", label: "Web Fetch",
-		description: "Fetch HTTP(S) content as readable Markdown or plain text. Uses local extraction with automatic Jina Reader fallback for public URLs. Local/private URLs are supported directly. Best-effort Luna injection screening annotates but never blocks content. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
+		description: "Fetch readable HTTP(S) content through the optional adaptive gateway, or locally with public Jina fallback. Local/private URLs stay local. Auto mode recovers locally on gateway outages; explicit backends stay strict. Luna annotates without blocking. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
 		promptSnippet: "Fetch a web page as readable text",
 		parameters: Type.Object({
 			url: Type.String({ description: "HTTP or HTTPS URL" }),
 			max_chars: Type.Optional(Type.Integer({ minimum: 1, maximum: 50_000 })),
+			backend: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina")], { description: "Default auto; explicit backend selection never substitutes another backend." })),
 		}),
 		async execute(_id, params, signal) {
-			const result = await pi.exec(process.execPath, [join(directory, "fetch.js"), params.url, "--max-chars", String(params.max_chars ?? 8000)], { timeout: 30_000, signal });
+			const deadline = performance.now() + 60_000;
+			const acquisition = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(60_000)]);
+			const backend = params.backend ?? "auto";
+			let note = "";
+			const destination = await withinSignal(classifyUrl(params.url), acquisition);
+			acquisition.throwIfAborted();
+			if (destination.privateOrLocal) {
+				if (backend === "trawl" || backend === "jina") throw new Error("Remote backends are disabled for local/private URLs");
+			} else {
+				let credentials;
+				try { credentials = await gatewayCredentials(pi.exec.bind(pi), acquisition); }
+				catch (error) {
+					if (backend === "trawl" || backend === "jina") throw new Error("Gateway credential unavailable", { cause: error });
+					note = "Gateway credential unavailable; used workstation-local fetching.\n\n";
+				}
+				if (credentials) {
+					const { endpoint, token } = credentials;
+					circuit.configure(endpoint, token);
+					if (backend !== "auto" || circuit.acquire()) {
+						try {
+							const reply = await requestGateway(endpoint, token, { url: params.url, max_chars: params.max_chars ?? 8000, backend }, acquisition);
+							circuit.reachable();
+							return finish(bounded(gatewayText(reply)), signal, `Requested URL: ${params.url}\n\n`);
+						} catch (error) {
+							if (signal?.aborted) { circuit.cancelled(); signal.throwIfAborted(); }
+							if (!(error instanceof GatewayError) || error.kind !== "availability") { circuit.reachable(); throw error; }
+							circuit.unavailable();
+							if (backend !== "auto") throw error;
+							note = "Gateway unavailable; recovered through workstation-local fetching.\n\n";
+						}
+					} else note = "Gateway circuit open or recovery probe in progress; used workstation-local fetching.\n\n";
+				}
+			}
+			acquisition.throwIfAborted();
+			const remaining = Math.max(1, Math.floor(deadline - performance.now()));
+			const result = await pi.exec(process.execPath, [join(directory, "fetch.js"), params.url, "--max-chars", String(params.max_chars ?? 8000), "--backend", backend, "--budget-ms", String(Math.max(1, remaining - 250))], { timeout: remaining, signal });
 			signal?.throwIfAborted();
 			if (result.killed || result.code !== 0) throw new Error(result.killed ? "Web fetch timed out" : result.stderr.trim() || `Web fetch failed (${result.code})`);
 			if (!result.stdout.trim()) throw new Error("No content extracted");
-			return finish(bounded(result.stdout.trim()), signal, `Requested URL: ${params.url}\n\n`);
+			return finish(bounded(note + result.stdout.trim()), signal, `Requested URL: ${params.url}\n\n`);
 		},
 	});
 }

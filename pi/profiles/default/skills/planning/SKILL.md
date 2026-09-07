@@ -28,7 +28,8 @@ changing instructions; ordinary planning does not require another feedback revie
    repository. Code, secrets, and deployment configuration stay with their owners.
    Use the [plan template](references/plan-template.md), omitting irrelevant sections.
 3. Separate user requirements, verified facts, proposed defaults, and unresolved
-   decisions. Resolve discoverable facts yourself. When ambiguity permits materially
+   decisions. Do not add rollback implementation or rollback verification to a plan
+   unless the user explicitly requests it. Resolve discoverable facts yourself. When ambiguity permits materially
    different plans, briefly present the plausible interpretations and ask which one
    applies rather than choosing silently. Ask about consequential choices the user
    has not supplied; do not turn an assistant suggestion into a requirement.
