@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-07: Consolidate default Pi Amazon Bedrock integration
+
+**Added:** Default Pi now owns a curated `bedrock-mantle` provider with provider-scoped authentication, independent Mantle/Runtime regions, native inventory persistence, latest-family Claude and GPT routing, `/bedrock` inspection/refresh, and no post-failure cross-transport replay. Pi's native `amazon-bedrock` provider remains available and Codex startup remains independent of AWS configuration.
+
+**Changed:** Bedrock observations now use one lock-protected profile-local ledger and exact-target catalog estimates fixed at observation time. `/usage`, `/context`, and the footer consume that basis and disclose unpriced or unavailable coverage. The old footer aggregate is retained read-only as a separately labeled pre-port baseline. No legacy state, credentials, prompts, responses, billing controls, or cloud resources are migrated.
+
 ## 2026-09-06: Restore default Damage Control to the selected legacy baseline
 
 **Changed:** Restored operator authority for all 225 legacy ask rules. Luna may dismiss non-executing false positives but cannot authorize an actual ask-tier operation. Removed parser-uncertainty restrictions, strict tool-source/schema gates, speculative filesystem/search inventory, session creation ledgers, Docker daemon/mount inference, and expanded self-integrity. The explicit `pp --dc-recovery` maintenance path remains available.

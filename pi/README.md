@@ -37,6 +37,10 @@ Footer line 2 shows live output throughput, first-token latency, token count and
 
 `/context` shows estimated prompt components, tool schemas, context files, skills, messages, thinking, tool results, summaries, cache usage and session spend. It uses Pi's compaction-aware active entries and separates component estimates from provider-backed context totals. These are not exact tokenizer measurements or an inspection of the final provider payload. `/context widget` shows a snapshot above the editor; `/context hide` and `/context clear` remove it without clearing the conversation.
 
+## Default profile Amazon Bedrock
+
+The default profile owns one curated `bedrock-mantle` provider while leaving Pi's native `amazon-bedrock` provider available. Authentication is provider-scoped under `/login`; Mantle and Runtime regions remain independent. `/bedrock` inspects routes and local estimates, `/bedrock refresh` refreshes only this provider, and `/usage` includes month-to-date model/token estimates with explicit unpriced coverage. The footer consumes the same ledger and no longer writes a separate total. See [setup, routing, accounting, and rollback](profiles/default/docs/bedrock.md).
+
 Focused checks from `pi/profiles/default/`:
 
 ```sh

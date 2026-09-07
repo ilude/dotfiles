@@ -11,6 +11,10 @@ import clear from "../extensions/clear.ts";
 import { formatCacheUsage, formatQuota, formatUsage, paceColor, readCacheUsage, recordCacheUsage, REFRESH_MS, USAGE_PAGE } from "../lib/codex-usage.ts";
 
 vi.mock("../extensions/operator-footer.ts", () => ({ isProfileReloadNeeded: () => true }));
+vi.mock("../lib/bedrock/ledger.ts", () => ({
+  summarize: async () => ({ month: "test", records: [], cost: 0, unpriced: 0, baseline: 0 }),
+  formatUsage: () => "Bedrock: no local usage recorded this month.",
+}));
 
 function runtime(register: (pi: ExtensionAPI) => void, sm = SessionManager.inMemory()) {
   const hooks = new Map<string, ((event: any, ctx: any) => any)[]>();

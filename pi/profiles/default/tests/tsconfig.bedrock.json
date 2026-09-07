@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "include": [
+    "../extensions/bedrock/index.ts",
+    "../lib/bedrock/**/*.ts",
+    "bedrock-provider.test.ts",
+    "bedrock-accounting.test.ts",
+    "bedrock-reporting.test.ts",
+    "pi-web-api.ts"
+  ]
+}

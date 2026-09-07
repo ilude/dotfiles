@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { fetchCodexUsage, formatCacheUsage, formatQuota, formatUsage, readCacheUsage, recordCacheUsage, REFRESH_MS, USAGE_PAGE, type CodexUsage } from "../lib/codex-usage.ts";
+import { formatUsage as formatBedrockUsage, summarize as summarizeBedrock } from "../lib/bedrock/ledger.ts";
 
 const REPORT = "codex-usage-report";
 const START = "codex-usage-start";
@@ -47,7 +48,10 @@ export default function codexStatus(pi: ExtensionAPI): void {
       content = `Codex usage unavailable: ${error instanceof Error ? error.message : "request failed"}\n${USAGE_PAGE}`;
     }
     if (report) {
-      const text = `${content}\n\n${cacheReport()}`;
+      let bedrock: string;
+      try { bedrock = formatBedrockUsage(await summarizeBedrock()); }
+      catch (error) { bedrock = `Bedrock local estimate unavailable: ${error instanceof Error ? error.message : "cannot read ledger"}`; }
+      const text = `${content}\n\n${cacheReport()}\n\n${bedrock}`;
       pi.appendEntry(REPORT, { text, marker: report.marker });
       if (ctx.mode !== "tui") ctx.ui.notify(text, "info");
     }

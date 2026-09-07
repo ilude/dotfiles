@@ -39,6 +39,7 @@ it("renders the scheduler status in the actual footer alongside provider usage a
   statuses.set("schedule", "sched@ 9:00am");
   statuses.set("tps", "~42 tok/s | first 1.2s | ~84 tok / 2.0s streaming");
   statuses.set("codex", "codex: 5h 25% | wk 75%");
+  statuses.set("bedrock", "bedrock: $0.00");
   const lines = footer!.render(160);
   expect(lines).toHaveLength(2);
   expect(lines[0]).toContain("codex: 5h 25%");

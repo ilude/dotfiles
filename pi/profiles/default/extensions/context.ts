@@ -371,11 +371,13 @@ function collectSessionUsage(entries: AnyEntry[]) {
 	let cacheWrite = 0;
 	let cost = 0;
 	let assistantMessages = 0;
+	let unpricedBedrockMessages = 0;
 
 	for (const entry of entries) {
 		const message = entry.message;
 		if (entry.type === "message" && message?.role === "assistant" && message.usage) {
 			assistantMessages += 1;
+			if (message.bedrockPricing?.status === "unpriced") unpricedBedrockMessages += 1;
 			input += message.usage.input ?? 0;
 			output += message.usage.output ?? 0;
 			cacheRead += message.usage.cacheRead ?? 0;
@@ -384,7 +386,7 @@ function collectSessionUsage(entries: AnyEntry[]) {
 		}
 	}
 
-	return { input, output, cacheRead, cacheWrite, cost, assistantMessages };
+	return { input, output, cacheRead, cacheWrite, cost, assistantMessages, unpricedBedrockMessages };
 }
 
 export function buildContextBuckets(
@@ -627,7 +629,7 @@ function buildReport(pi: ExtensionAPI, ctx: any): string[] {
 		line("Output", formatTokens(sessionUsage.output)),
 		line("Cache read", formatTokens(sessionUsage.cacheRead)),
 		line("Cache write", formatTokens(sessionUsage.cacheWrite)),
-		line("Cost", formatCost(sessionUsage.cost)),
+		line("Cost", formatCost(sessionUsage.cost), sessionUsage.unpricedBedrockMessages ? `${sessionUsage.unpricedBedrockMessages} unpriced Bedrock response(s) excluded` : ""),
 	];
 }
 

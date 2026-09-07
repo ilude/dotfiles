@@ -11,7 +11,9 @@
     "eval:damage-control": "tsx scripts/damage-control-eval.ts"
   },
   "dependencies": {
+    "@aws/bedrock-token-generator": "1.1.0",
     "jiti": "2.7.0",
+    "proper-lockfile": "4.1.2",
     "tree-sitter-bash": "0.25.1",
     "tree-sitter-javascript": "0.25.0",
     "tree-sitter-powershell": "0.26.4",
@@ -22,6 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "25.0.3",
+    "@types/proper-lockfile": "4.1.4",
     "tsx": "4.21.0",
     "typescript": "5.9.3",
     "vitest": "4.1.9"

@@ -19,9 +19,7 @@ const ANSI = {
 	yellow: "\x1b[33m",
 } as const;
 
-const BEDROCK_PROVIDERS = new Set(["amazon-bedrock", "bedrock-mantle"]);
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
-let bedrockMonthCost = 0;
 let cachedPiVersion: string | null | undefined;
 const reloadMonitor = new ReloadMonitor();
 let reloadTimer: ReturnType<typeof setInterval> | undefined;
@@ -271,34 +269,6 @@ function formatMainFooter(options: {
 }
 
 
-function formatBedrockStatus(): string {
-	return `bedrock: ${money(bedrockMonthCost)}`;
-}
-
-function ledgerPath(): string {
-	return path.join(profileDir(), "operator-footer-usage.json");
-}
-
-function readLedger(): Record<string, number> {
-	try {
-		const parsed = JSON.parse(fs.readFileSync(ledgerPath(), "utf-8")) as unknown;
-		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, number> : {};
-	} catch {
-		return {};
-	}
-}
-
-function writeLedger(ledger: Record<string, number>): void {
-	const file = ledgerPath();
-	fs.mkdirSync(path.dirname(file), { recursive: true });
-	fs.writeFileSync(file, `${JSON.stringify(ledger, null, 2)}\n`, "utf-8");
-}
-
-function currentMonth(): string {
-	const date = new Date();
-	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
 function finiteNumber(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -309,7 +279,7 @@ function usageFromMessage(message: unknown): UsageLike | null {
 	return raw && typeof raw === "object" ? raw as UsageLike : null;
 }
 
-function addUsage(message: { provider?: string; usage?: UsageLike }, options: { recordLedger?: boolean } = {}): void {
+function addUsage(message: { provider?: string; usage?: UsageLike }): void {
 	const item = message.usage;
 	if (!item) return;
 	usage.input += finiteNumber(item.input);
@@ -317,15 +287,6 @@ function addUsage(message: { provider?: string; usage?: UsageLike }, options: { 
 	usage.cacheRead += finiteNumber(item.cacheRead);
 	usage.cacheWrite += finiteNumber(item.cacheWrite);
 	usage.cost += finiteNumber(item.cost?.total);
-	if (options.recordLedger === false) return;
-	if (!message.provider || !BEDROCK_PROVIDERS.has(message.provider)) return;
-	const cost = finiteNumber(item.cost?.total);
-	if (cost <= 0) return;
-	const ledger = readLedger();
-	const month = currentMonth();
-	ledger[month] = finiteNumber(ledger[month]) + cost;
-	bedrockMonthCost = ledger[month];
-	writeLedger(ledger);
 }
 
 function initializeUsage(ctx: ExtensionContext): void {
@@ -334,7 +295,6 @@ function initializeUsage(ctx: ExtensionContext): void {
 	usage.cacheRead = 0;
 	usage.cacheWrite = 0;
 	usage.cost = 0;
-	bedrockMonthCost = finiteNumber(readLedger()[currentMonth()]);
 	for (const entry of ctx.sessionManager.getEntries()) {
 		if (!entry || typeof entry !== "object") continue;
 		const message = (entry as { message?: unknown }).message;
@@ -344,7 +304,7 @@ function initializeUsage(ctx: ExtensionContext): void {
 		addUsage({
 			provider: (message as { provider?: string }).provider,
 			usage: usageFromMessage(message) ?? undefined,
-		}, { recordLedger: false });
+		});
 	}
 }
 
@@ -359,7 +319,6 @@ function formatSecondFooterLine(left: string, right: string, width: number): str
 
 function refreshStatuses(ctx: ExtensionContext): void {
 	ctx.ui.setStatus("usage", undefined);
-	ctx.ui.setStatus("bedrock", formatBedrockStatus());
 }
 
 function installFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
