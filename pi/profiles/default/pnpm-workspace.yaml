@@ -1,0 +1,12 @@
+minimumReleaseAge: 4320
+blockExoticSubdeps: true
+strictDepBuilds: true
+autoInstallPeers: false
+allowBuilds:
+  esbuild: true
+  tree-sitter: false
+  tree-sitter-bash: false
+  tree-sitter-javascript: false
+  tree-sitter-powershell: false
+  tree-sitter-python: false
+  tree-sitter-typescript: false

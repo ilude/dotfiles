@@ -1,0 +1,31 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { afterEach, vi } from "vitest";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { registerGate, type GateDependencies } from "../../../lib/damage-control/enforcement.ts";
+import { analyzeShell } from "../../../lib/damage-control/shell.ts";
+import { parsePolicy, parseSettings } from "../../../lib/damage-control/policy.ts";
+const policy = parsePolicy(readFileSync(new URL("../../../damage-control-rules.yaml", import.meta.url), "utf8"));
+const settings = parseSettings(readFileSync(new URL("../../../damage-control-settings.json", import.meta.url), "utf8"));
+const dirs: string[] = [];
+afterEach(async () => { for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true }); });
+export async function harness(dependencies: Partial<GateDependencies> = {}) {
+  const cwd = await mkdtemp(join(tmpdir(), "dc-gate-")); dirs.push(cwd);
+  const handlers = new Map<string, ((event: unknown, ctx: ExtensionContext) => unknown)[]>();
+  const notify = vi.fn(); const abort = vi.fn(); const select = vi.fn(async () => "Allow once");
+  const input = vi.fn(async () => "rewrite");
+  const review = vi.fn(dependencies.review ?? (async () => ({ status: "valid" as const, verdict: "allow" as const, reason: "synthetic", dismissedCandidates: [] })));
+  const getAllTools = vi.fn(() => ["read", "bash", "powershell", "write", "edit", "grep", "find", "ls"].map(name => ({ name, sourceInfo: { source: "builtin" } })));
+  const api = { on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => handlers.set(name, [...handlers.get(name) ?? [], handler]), getAllTools, sendMessage: vi.fn() } as unknown as ExtensionAPI;
+  const ctx = { cwd, mode: "tui", hasUI: true, signal: undefined, abort, ui: { notify, select, input, theme: { fg: (_color: string, text: string) => text } } } as unknown as ExtensionContext;
+  const gate = registerGate(api, join(cwd, "profile"), cwd, { policy, settings, analyze: (request, options) => analyzeShell(request, { ...options, now: () => 0 }), ...dependencies, review });
+  api.on("tool_call", gate.handle);
+  const emit = async (name: string, event: unknown = {}) => {
+    let result: unknown;
+    for (const handler of handlers.get(name) ?? []) result = await handler(event, ctx);
+    return result;
+  };
+  return { ctx, api, gate, emit, cwd, notify, abort, select, input, review, getAllTools };
+}

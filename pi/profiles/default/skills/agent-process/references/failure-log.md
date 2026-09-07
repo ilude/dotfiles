@@ -2,6 +2,17 @@
 
 Factual incident history for operator review; not executable policy. Append incidents and link related patterns. Instruction changes require operator approval.
 
+## APR-003 — Scheduler used for ordinary continuation
+
+- **Reference:** Operator report from a Pi web-tools implementation session on 2026-09-06.
+- **Expected:** Continue ordinary implementation directly. Use timed follow-ups only for a user-requested reminder or work that genuinely depends on a known future wall-clock time.
+- **Observed:** The agent created three overlapping scheduled prompts telling itself to continue the implementation and plan. They later appeared as queued user messages while the agent was busy. No external timed event required them.
+- **Impact:** Unrequested prompts entered the active conversation, confused the operator, and risked duplicate work.
+- **Cause confidence:** The scheduler instruction explicitly recommended delayed continuation and waits over 60 seconds, so it permitted this behavior. The reason the agent created three jobs rather than one is not verified.
+- **Related:** APR-001 concerns premature stopping. Scheduling another turn is not a remedy for ordinary continuation.
+- **Remediation:** Narrow the tool description and model guidelines to genuine wall-clock reminders, explicitly exclude implementation and plan continuation, and require checking existing jobs before creation. Document the same boundary and add a contract assertion.
+- **Status:** Instruction and documentation updated; behavioral effectiveness remains unverified.
+
 ## APR-001 — Premature handoff without a concrete blocker
 
 - **Reference:** Damage Control implementation conversation, following the 2026-09-06 implementation evidence. Operator follow-up: “why did you stop?”

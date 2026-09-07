@@ -165,6 +165,10 @@ make test-docker   # Run portable tests in Ubuntu 24.04
 make test-quick    # Run core tests only
 ```
 
+### Default Pi validation
+
+Default dependencies are installed with `pnpm --dir pi/profiles/default install --frozen-lockfile`, then linked with `bash scripts/pi-deps-link-setup --profile default`. Run `make check-pi-default` for grammar/loader readiness, typecheck, and tests. Existing legacy Pi targets remain independent. Damage Control loads on normal default-profile `pp` launches; use `/reload` for an existing session. See [default setup, explicit recovery and verification limits](pi/profiles/default/docs/damage-control-setup.md).
+
 ### Linting
 
 ```bash

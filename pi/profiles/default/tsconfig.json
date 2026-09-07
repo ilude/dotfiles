@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "erasableSyntaxOnly": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "types": ["node", "vitest/globals"],
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@earendil-works/*": ["node_modules/@earendil-works/*"]
+    }
+  },
+  "include": ["extensions/**/*.ts", "commands/**/*.ts", "lib/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["extensions/web-tools/node_modules"]
+}

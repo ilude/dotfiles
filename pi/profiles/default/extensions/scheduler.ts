@@ -28,12 +28,14 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "schedule",
     label: "Schedule",
-    description: "Create, list, or cancel one-shot process-local prompts. No recurrence or persistence. List shows up to 64 jobs with 80-character prompt previews.",
-    promptSnippet: "Schedule a one-shot follow-up instead of shell waits or polling",
+    description: "Create, list, or cancel one-shot process-local prompts for genuine wall-clock reminders. Not for continuing ordinary agent work. No recurrence or persistence. List shows up to 64 jobs with 80-character prompt previews.",
+    promptSnippet: "Schedule a one-shot prompt only when the task requires a genuine wall-clock delay",
     promptGuidelines: [
-      "Use schedule for delayed continuation or waits of 60 seconds or longer without extra confirmation; ask only if timing is missing or ambiguous.",
-      "Schedule prompts follow the active conversation across session changes and reloads; include enough context to identify the work. They run as follow-ups, never steering, and disappear when Pi exits.",
-      "After using schedule, continue useful work or end the turn if the scheduled follow-up is the intended next step. Cancel unneeded schedules; to change one, cancel and reschedule.",
+      "Use schedule only when the user explicitly requests a future reminder or the requested outcome requires waiting for a real external event until a known future time.",
+      "Never schedule prompts to continue implementation, advance a plan, extend the current turn, wait for normal tool or agent work, retry ordinary work, or compensate for stopping early. Continue that work directly instead.",
+      "Before creating a schedule, list existing jobs and do not create a duplicate or overlapping reminder. Ask when required timing is missing or ambiguous.",
+      "Schedule prompts follow the active conversation across session changes and reloads; include enough context to identify the external event. They run as follow-ups, never steering, and disappear when Pi exits.",
+      "After using schedule, continue any work that does not depend on the future event. Cancel unneeded schedules; to change one, cancel and reschedule.",
     ],
     parameters: Type.Object({
       action: StringEnum(["create_at", "list", "cancel"] as const),

@@ -210,7 +210,13 @@ format-python:
 	uv run ruff check --fix
 	@echo "Python format complete."
 
-# Pi extension validation: the legacy profile owns typecheck and Vitest.
+.PHONY: check-pi-default
+check-pi-default:
+	cd pi/profiles/default && pnpm run check:runtime
+	cd pi/profiles/default && pnpm run typecheck
+	cd pi/profiles/default && pnpm test
+
+# Legacy Pi extension validation remains independent of default.
 # See pi/profiles/legacy/README.md for the full extension conventions.
 check-pi-ci:
 	@echo "==> Running CI-safe Pi Vitest suite"

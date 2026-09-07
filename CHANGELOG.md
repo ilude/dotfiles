@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-06: Restore default Damage Control to the selected legacy baseline
+
+**Changed:** Restored operator authority for all 225 legacy ask rules. Luna may dismiss non-executing false positives but cannot authorize an actual ask-tier operation. Removed parser-uncertainty restrictions, strict tool-source/schema gates, speculative filesystem/search inventory, session creation ledgers, Docker daemon/mount inference, and expanded self-integrity. The explicit `pp --dc-recovery` maintenance path remains available.
+
+**Restored:** Legacy path exclusions and generated-file restrictions, command-rule Docker behavior, `/dc on|off`, `/dc mode default|noshell`, deterministic sensitive-read/upload sequence checks, and bounded loop handling. There is no `/dc status`, shadow evaluation, labeling workflow, or large telemetry system.
+
+## 2026-09-06: Remove invented Damage Control prompts from read-only searches
+
+**Fixed:** Default Damage Control no longer recursively inventories every descendant of read-only shell searches or escalates symlinks, large trees, and incomplete filename inventory into speculative prohibited effects. Explicit protected targets and actually destructive search/delete operations retain their existing checks.
+
+**Changed:** Damage Control approval and review dialogs now use bounded `Deny` / `Allow once` choices. They never require the operator to type a clarification. Legacy remains unchanged.
+
+## 2026-09-06: Restrict Pi scheduling to genuine timed work
+
+**Changed:** Default Pi now instructs agents to schedule prompts only for user-requested reminders or work that genuinely depends on a known future wall-clock time. Ordinary implementation, plan progression, turn continuation, normal tool or agent waits, retries, and premature stopping must continue directly. Agents check existing jobs before scheduling to avoid duplicate or overlapping reminders.
+
+## 2026-09-06: Restore default Pi usage reports, context reporting, and live generation metrics
+
+**Added:** Default Pi now displays Codex subscription limits, reset times, credits/additional limits, and the OpenAI usage link at startup and after new-session creation, including `/clear`. GPT-5.3-Codex-Spark's additional-limit section is intentionally omitted from both report paths. `/usage` refreshes the report. The concise `Codex cache` section shows only cache-read share, calculated from a small profile-local append-only log of observed Codex input/cache counts across sessions, without importing legacy history or diagnostic infrastructure. `/cache-doctor`, request-shape analysis, and hidden datetime injection remain excluded.
+
+**Restored:** Footer line 2 renders live first-token latency, estimated tokens/second and streaming duration, then retains official final throughput statistics. Tool time and first-token waiting do not enter streaming TPS. Scheduler and Bedrock displays remain; the footer consumes Codex status from one owning extension instead of running a second quota fetcher. Missing quota data is unavailable, and failed refreshes mark previous quota stale.
+
+**Added:** `/context` provides the legacy component/detail breakdown and optional widget controls, using native compaction-aware entries and explicitly labeled estimates. Usage/context reports are display-only session entries, excluded from model context. Session replacement aborts old quota work; a pending startup marker lets `/clear` followed by reload show exactly one completed report. Legacy remains unchanged.
+
 ## 2026-09-06: Clarify ambiguous planning requests
 
 **Changed:** Default Pi's planning skill now briefly presents plausible interpretations when unresolved ambiguity would produce materially different plans, then asks which applies instead of choosing silently. Minor or discoverable details retain the existing evidence-first, proportional workflow.
@@ -22,6 +46,12 @@
 
 **Preserved:** Schedules survive conversation changes and reloads within the same Pi process, then deliver into the active conversation without steering current work. Process exit discards them. Cancellation stops only prompts not yet handed to Pi; changes use cancel/reschedule. The footer displays only the next local injection time, never pending/error states. Failed synchronous handoffs are inspectable through the tool without automatic retries or extra prompts.
 
+## 2026-09-06: Add fresh-context planning and spec archival guidance
+
+**Added:** Default Pi's on-demand `planning` skill creates and maintains `.specs/<stub>/plan.md` handoffs with ordered checkboxes, concrete inputs and finish criteria, explicit user requirements versus proposals, and relevant planning/execution profile evidence. It follows the concise, bounded agent-process guidance without adding a workflow controller, automatic monitoring, or blanket approval gates.
+
+**Lifecycle:** Completed work receives an internal `completed: YYYY-MM-DD` date and moves with its supporting files to `.specs/archive/<stub>/`. Incomplete plans stay active; writing a plan does not complete its implementation. Archiving does not authorize commit or push, and existing plans are not bulk-migrated.
+
 ## 2026-09-06: Refresh managed SearXNG and inherit server engine defaults
 
 **Changed:** The standalone SearXNG service now uses a tested September image and Google + Brave general-search defaults. Other upstream engines remain explicitly selectable. Pi inherits the server defaults instead of forcing the intermittent DuckDuckGo Web workaround; endpoint overrides, error reporting, private/local fetching, automatic public Jina fallback, and annotation-only Luna screening are preserved.
@@ -29,6 +59,22 @@
 **Changed:** SearXNG alone has an operator-approved 24-hour OCI hold and rolling date-tag discovery; other OCI targets retain seven days. Fixed the infrastructure `just update` wrapper dropping service selectors, with a real CLI regression test. Unrelated desired-pin changes exposed by that bug were reverted and verified before deployment. The separate Onclave SearXNG service was not upgraded.
 
 **Verified and documented:** Managed service backup, exact deployed digest, preserved secret, service endpoints, and four live Pi search → fetch → Luna query classes. The research vault now preserves version/engine/proxy/Trawl findings, counterexamples, and future CAPTCHA/paywall-access experiments. No proxy or solver service was added.
+
+## 2026-09-06: Complete and activate default Damage Control
+
+**Activated:** Normal default-profile `pp` launches now load the fail-closed bootstrap. Existing sessions need `/reload`. Both launchers support explicit `--dc-recovery`, which starts locked and requires actual terminal confirmation before releasing tools. Missing/malformed bootstrap or recovery code uses tools-disabled, extensions-disabled repair mode. Recovery never persists; exit and relaunch normally after repair. `/commit`, direct operator shell, web tools and legacy behavior remain intentionally unchanged.
+
+**Added:** Independent default policy, grammar-backed analysis, native-tool adapters, deterministic protection tiers, call-specific Luna review, labeled prompts, lifecycle invalidation, and a bounded loop breaker. Packaging, explicit default dependency linking, installer phases and a separate default CI job preserve legacy behavior. Default setup now reports required missing peers rather than silently skipping them; linking also handles import-only peers and Windows paths with spaces.
+
+**Verified:** A finite live Luna/high synthetic corpus matched all nine expected outcomes without executing submitted actions. Real loader fixtures preserve fail-closed guards through dependency/WASM/policy/initialization failures and restore readiness after repair. Those tests exposed native TypeScript/module-cache issues, addressed with explicit uncached loading. No reusable approvals or production decision logging were introduced.
+
+**Refactored:** Resource analysis is separate from Pi lifecycle handling; duplicate operand/root inspection and grammar loading are removed. Search effects and filename inventory share argument interpretation, while SQL text classification is isolated. Current effects and historical observations retain separate call identities. Safe text redaction/history omissions reach Luna as warnings when current facts suffice; lost current target/rule identity still requires input. Luna's approval authority, database blocks, protected descendants and unresolved remote-bind behavior remain intact.
+
+**Validation and limits:** Windows default: 219 tests passed, seven skipped; all 33 Damage Control TypeScript roots compile cleanly. Full-profile typecheck still reports two unrelated concurrent gateway-test `this.emit` errors, left untouched. Native Linux focused checks: 66 passed. Production startup/reload, command/footer coexistence, five loader failure/repair cases, 28 shared launcher/setup tests and nine recovery tests passed. Terminal colors/Escape/recovery interaction remain visually unverified. Tests now consume production bootstrap/launchers; staged copies and the invented fixture-command handoff were removed. The completed plan is `.specs/archive/damage-control-port/plan.md`.
+
+## Agent process skill
+
+**Added:** Default Pi owns an on-demand `agent-process` skill with separate instruction-feedback and failure logs. It captures operator feedback, reviews workflow failures, and guides concise, evidence-based instruction refinements. Workflows retain model judgment while using deterministic checks for narrow factual questions where they add value. Instruction changes still require operator approval; no automatic monitoring, promotion, commit, or push is implied.
 
 ## 2026-09-06: Restore usable default-profile web search
 
@@ -39,6 +85,26 @@
 **Added:** The default profile now independently owns SearXNG `web_search` and Readability-based `web_fetch`, with local pnpm extraction dependencies. Automatic public-URL Jina fallback, private/local fetching, and existing metadata checks are preserved without approval prompts or new domain policies. The port fixes stale script resolution, cancellation and process-error handling, accepts short pages and text/JSON responses, reports redirected sources, and bounds returned content.
 
 **Added:** A tool-free Luna low-reasoning call screens returned content for prompt injection before it reaches conversation context. It receives no conversation history and annotates rather than redacts or blocks. Unavailable, timed-out, or malformed reviews explicitly return unscreened content; cancellation still stops the tool. Screening is best-effort, not a security boundary. Private fetched content is also sent to the configured Luna provider. Legacy behavior is unchanged.
+
+## 2026-09-06: Add an executable Damage Control implementation plan
+
+**Documented:** Added an ordered checkbox plan for implementing default-profile Damage Control with a smaller, low-reasoning coding model. It specifies component boundaries, dependency/API proof, policy migration, concrete safety and productivity tests, Luna evidence handling, per-call prompts without approval reuse, repairable fail-closed startup, and platform/model validation. Acceptance cases and adversarial findings map to implementation steps and verification, with an explicit definition of done. No runtime or dependency changes have been made.
+
+## 2026-09-06: Settle Damage Control approval and prompt boundaries
+
+**Documented:** The planned default-profile port now excludes approval reuse and inferred task/session grants because subjective scope could expand permission. Existing database blocks remain, including for disposable tests. Prompts will distinguish deterministic user-approval requirements from review uncertainty or failure using both color and explicit labels; unknown protected effects require clarification, not an override. Ordinary blocked calls report their reason to the model without user alerts or aborting the run, allowing safe alternatives; the independent loop breaker remains. These are design decisions only; runtime behavior remains unchanged.
+
+## 2026-09-06: Adversarially review the default Damage Control design
+
+**Documented:** Four independent read-only specialist reviews examined authorization, shell/filesystem effects, Pi lifecycle/dependencies, and productivity. The consolidated findings distinguish source-backed legacy gaps from untested scenarios and proposed policy changes, including single-use versus task-scoped approval, disposable database cleanup, and the actual scope of the preserved `/commit` exemption. No runtime, policy, dependencies, or commit behavior changed.
+
+## 2026-09-06: Record the default-profile Damage Control port contract
+
+**Documented:** Audited the legacy safety policy and enforcement as the baseline for an independent default-profile port. The contract distinguishes hard blocks, mandatory user approval, Luna-reviewable operations, and quiet disposable cleanup; it records session-scoped approval reuse, operator recovery, and explicit `/commit` and direct-shell exemptions. Findings cover credential exclusions, approval short-circuits, generated-file restrictions, and tool/sequence coverage rather than requiring a new operator inventory. This is a design-only change: no safety extension, dependencies, or policy have been installed or changed, and legacy behavior is preserved.
+
+## 2026-09-06: Require evidence-first investigation in default Pi
+
+**Added:** The default profile now has its own global `AGENTS.md`, requiring investigation before answers or actions, cheap early experiments, and explicit uncertainty or verification blockers. Legacy instructions and the inactive `pi/AGENT_GLOBAL.md` reference backup remain unchanged.
 
 ## 2026-09-06: Default default-profile Pi to Sol low
 

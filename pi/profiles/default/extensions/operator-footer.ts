@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { ReloadMonitor } from "../lib/reload-monitor.ts";
 
 const ANSI = {
@@ -22,8 +23,6 @@ const BEDROCK_PROVIDERS = new Set(["amazon-bedrock", "bedrock-mantle"]);
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
 let bedrockMonthCost = 0;
 let cachedPiVersion: string | null | undefined;
-let codexRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-let codexRefreshGeneration = 0;
 const reloadMonitor = new ReloadMonitor();
 let reloadTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -76,43 +75,6 @@ interface UsageLike {
 	cacheRead?: number;
 	cacheWrite?: number;
 	cost?: { total?: number };
-}
-
-interface CodexWindow {
-	used_percent?: number;
-	limit_window_seconds?: number;
-	reset_after_seconds?: number;
-	reset_at?: number;
-}
-
-interface CodexUsageResponse {
-	rate_limit?: {
-		primary_window?: CodexWindow | null;
-		secondary_window?: CodexWindow | null;
-	} | null;
-}
-
-function visibleWidth(text: string): number {
-	return text.replace(/\x1b\[[0-9;]*m/g, "").length;
-}
-
-function truncateToWidth(text: string, width: number): string {
-	if (width <= 0) return "";
-	if (visibleWidth(text) <= width) return text;
-	let output = "";
-	let visible = 0;
-	for (let index = 0; index < text.length; index += 1) {
-		const ansi = text.slice(index).match(/^\x1b\[[0-9;]*m/);
-		if (ansi) {
-			output += ansi[0];
-			index += ansi[0].length - 1;
-			continue;
-		}
-		if (visible >= width) break;
-		output += text[index];
-		visible += 1;
-	}
-	return `${output}${ANSI.reset}`;
 }
 
 function compactTokens(tokens: number): string {
@@ -313,130 +275,6 @@ function formatBedrockStatus(): string {
 	return `bedrock: ${money(bedrockMonthCost)}`;
 }
 
-function readJsonObject(filePath: string): Record<string, unknown> | null {
-	try {
-		const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as unknown;
-		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
-	} catch {
-		return null;
-	}
-}
-
-function stringField(value: unknown): string | undefined {
-	return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function objectField(value: unknown): Record<string, unknown> | undefined {
-	return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-}
-
-function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
-	const payload = token.split(".")[1];
-	if (!payload) return undefined;
-	try {
-		const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-		const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-		return objectField(JSON.parse(Buffer.from(padded, "base64").toString("utf8")));
-	} catch {
-		return undefined;
-	}
-}
-
-function accountIdFromToken(token: string): string | undefined {
-	const payload = decodeJwtPayload(token);
-	const authClaim = objectField(payload?.["https://api.openai.com/auth"]);
-	return stringField(authClaim?.chatgpt_account_id);
-}
-
-function resolveCodexAuth(): { accessToken: string; accountId?: string } | null {
-	const profileAuth = readJsonObject(path.join(profileDir(), "auth.json"));
-	const piEntry = objectField(profileAuth?.["openai-codex"]);
-	const piAccess = stringField(piEntry?.access);
-	if (piAccess) {
-		return {
-			accessToken: piAccess,
-			accountId: stringField(piEntry?.accountId) ?? accountIdFromToken(piAccess),
-		};
-	}
-	const codexAuth = readJsonObject(path.join(os.homedir(), ".codex", "auth.json"));
-	const tokens = objectField(codexAuth?.tokens);
-	const codexAccess = stringField(tokens?.access_token);
-	if (!codexAccess) return null;
-	return {
-		accessToken: codexAccess,
-		accountId: stringField(tokens?.account_id) ?? accountIdFromToken(codexAccess),
-	};
-}
-
-function usedPercent(window: CodexWindow | null | undefined): number | undefined {
-	if (typeof window?.used_percent !== "number" || !Number.isFinite(window.used_percent)) return undefined;
-	return Math.max(0, Math.min(100, window.used_percent));
-}
-
-function codexWindows(usageResponse: CodexUsageResponse): { fiveHour?: CodexWindow; weekly?: CodexWindow } {
-	const windows = [usageResponse.rate_limit?.primary_window, usageResponse.rate_limit?.secondary_window].filter(Boolean) as CodexWindow[];
-	return {
-		fiveHour: windows.find((item) => item.limit_window_seconds === 5 * 60 * 60),
-		weekly: windows.find((item) => item.limit_window_seconds === 7 * 24 * 60 * 60),
-	};
-}
-
-function formatCodexWindow(label: string, window: CodexWindow | null | undefined): string | undefined {
-	const used = usedPercent(window);
-	if (used === undefined) return undefined;
-	const color = used >= 90 ? ANSI.red : used >= 67 ? ANSI.yellow : ANSI.green;
-	return `${label} ${color}${used.toFixed(Number.isInteger(used) ? 0 : 1)}%${ANSI.reset}`;
-}
-
-function formatCodexStatus(usageResponse: CodexUsageResponse): string {
-	const windows = codexWindows(usageResponse);
-	const parts = [formatCodexWindow("5h", windows.fiveHour) ?? `5h ${ANSI.cyan}0%${ANSI.reset}`, formatCodexWindow("wk", windows.weekly)].filter(Boolean);
-	return `codex: ${parts.join(" | ")}`;
-}
-
-async function refreshCodexStatus(ctx: ExtensionContext, generation: number): Promise<void> {
-	const current = () => generation === codexRefreshGeneration;
-	const auth = resolveCodexAuth();
-	if (!auth) {
-		if (current()) ctx.ui.setStatus("codex", "codex: login needed");
-		return;
-	}
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), 15_000);
-	try {
-		const response = await fetch("https://chatgpt.com/backend-api/wham/usage", {
-			signal: controller.signal,
-			headers: {
-				authorization: `Bearer ${auth.accessToken}`,
-				...(auth.accountId ? { "chatgpt-account-id": auth.accountId } : {}),
-				accept: "application/json",
-				"user-agent": "dotfiles-pi-footer/0.1",
-			},
-		});
-		if (!response.ok) throw new Error(`HTTP ${response.status}`);
-		const status = formatCodexStatus(await response.json() as CodexUsageResponse);
-		if (current()) ctx.ui.setStatus("codex", status);
-	} catch {
-		if (current()) ctx.ui.setStatus("codex", "codex: unavailable");
-	} finally {
-		clearTimeout(timeout);
-	}
-}
-
-function startCodexRefresh(ctx: ExtensionContext): void {
-	if (codexRefreshTimer) clearInterval(codexRefreshTimer);
-	const generation = ++codexRefreshGeneration;
-	void refreshCodexStatus(ctx, generation);
-	codexRefreshTimer = setInterval(() => void refreshCodexStatus(ctx, generation), 5 * 60 * 1000);
-}
-
-function stopCodexRefresh(): void {
-	codexRefreshGeneration += 1;
-	if (!codexRefreshTimer) return;
-	clearInterval(codexRefreshTimer);
-	codexRefreshTimer = null;
-}
-
 function ledgerPath(): string {
 	return path.join(profileDir(), "operator-footer-usage.json");
 }
@@ -512,7 +350,7 @@ function initializeUsage(ctx: ExtensionContext): void {
 
 function formatSecondFooterLine(left: string, right: string, width: number): string | null {
 	if (!left && !right) return null;
-	if (!left) return rightAlign(right, width);
+	if (!left) return truncateToWidth(rightAlign(right, width), width);
 	if (!right) return visibleWidth(left) > width ? truncateToWidth(left, width) : left;
 	const anchored = rightAnchor(left, right, width);
 	if (anchored !== left) return anchored;
@@ -544,7 +382,10 @@ function installFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
 				width,
 			});
 			const second = formatSecondFooterLine(
-				[statusText(statuses.get("schedule")), statusText(statuses.get("usage"))].filter(Boolean).join(" | "),
+				Array.from(statuses.entries())
+					.filter(([key]) => key !== "codex" && key !== "bedrock" && key !== "pi")
+					.sort(([a], [b]) => (a === "schedule" ? -1 : b === "schedule" ? 1 : a === "tps" ? -1 : b === "tps" ? 1 : a.localeCompare(b)))
+					.map(([, value]) => statusText(value)).filter(Boolean).join(" | "),
 				statusText(statuses.get("bedrock")),
 				width,
 			);
@@ -561,14 +402,12 @@ export default function operatorFooter(pi: ExtensionAPI): void {
 		initializeUsage(ctx);
 		if (!installFooter(ctx, pi)) ctx.ui.setStatus("pi", `π v${resolvePiVersion() ?? "?"}`);
 		refreshStatuses(ctx);
-		startCodexRefresh(ctx);
 	});
 
 	pi.on("session_shutdown", async () => {
 		if (reloadTimer) clearInterval(reloadTimer);
 		reloadTimer = undefined;
 		requestFooterRender = undefined;
-		stopCodexRefresh();
 	});
 
 	pi.on("message_end", async (event: { message: { role?: string; provider?: string } }, ctx: ExtensionContext) => {

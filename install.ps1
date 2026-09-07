@@ -2042,6 +2042,27 @@ try {
         }
     }
 
+    # Default safety setup is strict and does not inherit legacy build overrides.
+    $defaultPiDir = Join-Path $BASEDIR 'pi\profiles\default'
+    if (Test-Path (Join-Path $defaultPiDir 'package.json')) {
+        if (-not (Get-Command pnpm -ErrorAction SilentlyContinue) -or -not $gitBash) {
+            throw 'pnpm and Git Bash are required for default Pi setup'
+        }
+        Push-Location $defaultPiDir
+        try {
+            pnpm install --frozen-lockfile
+            if ($LASTEXITCODE -ne 0) { throw 'Default Pi dependency installation failed' }
+            pnpm --dir extensions/web-tools --ignore-workspace install --frozen-lockfile
+            if ($LASTEXITCODE -ne 0) { throw 'Default Pi web-tool dependency installation failed' }
+            & $gitBash (ConvertTo-GitBashPath (Join-Path $BASEDIR 'scripts/pi-deps-link-setup')) --profile default
+            if ($LASTEXITCODE -ne 0) { throw 'Default Pi runtime linking failed' }
+            pnpm run check:runtime
+            if ($LASTEXITCODE -ne 0) { throw 'Default Pi readiness failed' }
+        } finally {
+            Pop-Location
+        }
+    }
+
     # ========================================================================
     # WinGet Links Maintenance (ensure shims exist for packages with long PATH entries)
     # Runs independently of Install-Packages so optimization works on every run

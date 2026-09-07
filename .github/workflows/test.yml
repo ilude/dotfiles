@@ -71,6 +71,40 @@ jobs:
         shell: bash
         run: uv run pytest test/ -m zsh -v --tb=short
 
+  pi-default:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 25.9.0
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 11.23.0
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: false
+      - name: Install matching Pi runtime
+        shell: bash
+        run: pnpm add -g @earendil-works/pi-coding-agent@0.85.0
+      - name: Install default profile and link runtime
+        shell: bash
+        run: |
+          pnpm --dir pi/profiles/default install --frozen-lockfile
+          pnpm --dir pi/profiles/default/extensions/web-tools --ignore-workspace install --frozen-lockfile
+          bash scripts/pi-deps-link-setup --profile default
+      - name: Verify default profile
+        shell: bash
+        run: |
+          pnpm --dir pi/profiles/default run check:runtime
+          pnpm --dir pi/profiles/default run typecheck
+          pnpm --dir pi/profiles/default test
+          uv run pytest test/test_pi_profile_setup.py
+
   pi-vitest:
     runs-on: ubuntu-latest
     steps:

@@ -593,6 +593,17 @@ current_step="pi extension deps link"
 "${BASEDIR}/scripts/pi-deps-link-setup"
 completed_steps+=("pi extension deps link")
 
+current_step="default pi dependencies"
+DEFAULT_PI_DIR="${BASEDIR}/pi/profiles/default"
+if [[ -f "$DEFAULT_PI_DIR/package.json" ]]; then
+    command -v pnpm >/dev/null || { echo "Error: pnpm is required for default Pi setup" >&2; exit 1; }
+    pnpm install --dir "$DEFAULT_PI_DIR" --frozen-lockfile || exit 1
+    pnpm --dir "$DEFAULT_PI_DIR/extensions/web-tools" --ignore-workspace install --frozen-lockfile || exit 1
+    "${BASEDIR}/scripts/pi-deps-link-setup" --profile default || exit 1
+    (cd "$DEFAULT_PI_DIR" && pnpm run check:runtime) || exit 1
+fi
+completed_steps+=("default pi dependencies")
+
 current_step="pi agent directory link"
 "${BASEDIR}/scripts/pi-link-setup"
 completed_steps+=("pi agent directory link")

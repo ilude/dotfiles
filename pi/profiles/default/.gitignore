@@ -1,5 +1,12 @@
+# Reproducible dependency and test artifacts.
+/node_modules/
+/coverage/
+/.vitest/
+*.tsbuildinfo
+
 # Profile-local credentials, generated catalogs, and usage state.
 /auth.json
 /models-store.json
 /operator-footer-usage.json
+/codex-cache.jsonl
 /sessions/

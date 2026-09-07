@@ -1,0 +1,36 @@
+{
+  "name": "pi-default-profile",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.23.0",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:runtime": "node scripts/damage-control-smoke.mjs",
+    "eval:damage-control": "tsx scripts/damage-control-eval.ts"
+  },
+  "dependencies": {
+    "jiti": "2.7.0",
+    "tree-sitter-bash": "0.25.1",
+    "tree-sitter-javascript": "0.25.0",
+    "tree-sitter-powershell": "0.26.4",
+    "tree-sitter-python": "0.25.0",
+    "tree-sitter-typescript": "0.23.2",
+    "web-tree-sitter": "0.26.9",
+    "yaml": "2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "25.0.3",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.9"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}

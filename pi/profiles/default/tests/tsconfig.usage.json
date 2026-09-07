@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "include": [
+    "../extensions/codex-status.ts",
+    "../extensions/context.ts",
+    "../extensions/tps-tracker.ts",
+    "../extensions/operator-footer.ts",
+    "../extensions/clear.ts",
+    "../lib/codex-usage.ts",
+    "usage-context-tps.test.ts",
+    "scheduler-footer.test.ts",
+    "pi-web-api.ts"
+  ]
+}

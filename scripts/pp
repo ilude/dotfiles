@@ -3,73 +3,149 @@
 set -euo pipefail
 
 usage() {
-    cat >&2 <<'EOF'
-usage: pp [-p|--profile <name>] [--resume|--session <path-or-id>] [--] [pi arguments...]
+	cat >&2 <<'EOF'
+usage: pp [-p|--profile <name>] [--dc-recovery] [--resume|--session <path-or-id>] [--] [pi arguments...]
 EOF
-    exit 2
+	exit 2
+}
+
+sanitized_args=()
+sanitize_pi_args() {
+	local remove_tool_selection="$1"
+	shift
+	sanitized_args=()
+	while (($#)); do
+		case "$1" in
+		--)
+			sanitized_args+=("$@")
+			break
+			;;
+		-e | --extension)
+			(($# >= 2)) || usage
+			shift 2
+			;;
+		--extension=*)
+			shift
+			;;
+		-t | --tools)
+			if [[ "$remove_tool_selection" == true ]]; then
+				(($# >= 2)) || usage
+				shift 2
+			else
+				sanitized_args+=("$1")
+				shift
+			fi
+			;;
+		--tools=*)
+			if [[ "$remove_tool_selection" == true ]]; then
+				shift
+			else
+				sanitized_args+=("$1")
+				shift
+			fi
+			;;
+		*)
+			sanitized_args+=("$1")
+			shift
+			;;
+		esac
+	done
 }
 
 profile="default"
 pi_args=()
 resume_session=""
+dc_recovery=false
 
 while (($#)); do
-    case "$1" in
-        -p|--profile)
-            (($# >= 2)) || usage
-            profile="$2"
-            shift 2
-            ;;
-        --profile=*)
-            profile="${1#*=}"
-            shift
-            ;;
-        --resume|--session)
-            (($# >= 2)) || usage
-            resume_session="$2"
-            shift 2
-            ;;
-        --resume=*|--session=*)
-            resume_session="${1#*=}"
-            shift
-            ;;
-        --)
-            shift
-            pi_args+=("$@")
-            break
-            ;;
-        *)
-            pi_args+=("$1")
-            shift
-            ;;
-    esac
+	case "$1" in
+	-p | --profile)
+		(($# >= 2)) || usage
+		profile="$2"
+		shift 2
+		;;
+	--profile=*)
+		profile="${1#*=}"
+		shift
+		;;
+	--dc-recovery)
+		dc_recovery=true
+		shift
+		;;
+	--resume | --session)
+		(($# >= 2)) || usage
+		resume_session="$2"
+		shift 2
+		;;
+	--resume=* | --session=*)
+		resume_session="${1#*=}"
+		shift
+		;;
+	--)
+		shift
+		pi_args+=("$@")
+		break
+		;;
+	*)
+		pi_args+=("$1")
+		shift
+		;;
+	esac
 done
 
 if [[ ! "$profile" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$profile" == "." ]] || [[ "$profile" == ".." ]]; then
-    echo "pp: invalid profile name: $profile" >&2
-    exit 2
+	echo "pp: invalid profile name: $profile" >&2
+	exit 2
+fi
+if [[ "$dc_recovery" == true && "$profile" != "default" ]]; then
+	echo "pp: --dc-recovery is available only for the default profile" >&2
+	exit 2
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 case "$profile" in
-    default|legacy)
-        profile_dir="${script_dir}/../pi/profiles/${profile}"
-        if [[ ! -d "$profile_dir" ]]; then
-            echo "pp: repository profile is not initialized: $profile" >&2
-            echo "run scripts/migrate-pi-profiles.ps1 after closing Pi" >&2
-            exit 1
-        fi
-        ;;
-    *)
-        profile_dir="${HOME}/.pi/profiles/${profile}"
-        mkdir -p "$profile_dir"
-        ;;
+default | legacy)
+	profile_dir="${script_dir}/../pi/profiles/${profile}"
+	if [[ ! -d "$profile_dir" ]]; then
+		echo "pp: repository profile is not initialized: $profile" >&2
+		echo "run scripts/migrate-pi-profiles.ps1 after closing Pi" >&2
+		exit 1
+	fi
+	;;
+*)
+	profile_dir="${HOME}/.pi/profiles/${profile}"
+	mkdir -p "$profile_dir"
+	;;
 esac
 profile_dir="$(cd "$profile_dir" && pwd)"
 export PI_CODING_AGENT_DIR="$profile_dir"
 
 if [[ -n "$resume_session" ]]; then
-    pi_args=(--session "$resume_session" "${pi_args[@]}")
+	pi_args=(--session "$resume_session" "${pi_args[@]}")
+fi
+
+if [[ "$profile" == "default" ]]; then
+	preflight="${script_dir}/pi-damage-control-preflight.mjs"
+	bootstrap="${profile_dir}/extensions/damage-control/index.js"
+	recovery_helper="${script_dir}/pi-damage-control-recovery.js"
+
+	if [[ "$dc_recovery" == true ]]; then
+		if node "$preflight" "$recovery_helper"; then
+			sanitize_pi_args false "${pi_args[@]}"
+			recovery_args=("${sanitized_args[@]}")
+			TMPDIR=/tmp exec pi --no-extensions --extension "$recovery_helper" "${recovery_args[@]}"
+		fi
+		echo "pp: recovery helper is unavailable; starting tools-disabled, extensions-disabled repair mode" >&2
+	elif node "$preflight" "$bootstrap"; then
+		TMPDIR=/tmp exec pi "${pi_args[@]}"
+	else
+		echo "pp: default damage-control bootstrap is unavailable; starting tools-disabled, extensions-disabled repair mode" >&2
+		echo "pp: repair the default profile, exit Pi, then relaunch pp normally; recovery is never selected automatically" >&2
+	fi
+
+	sanitize_pi_args true "${pi_args[@]}"
+	repair_args=("${sanitized_args[@]}")
+	TMPDIR=/tmp exec pi --no-tools --no-extensions "${repair_args[@]}"
 fi
 
 TMPDIR=/tmp exec pi "${pi_args[@]}"
