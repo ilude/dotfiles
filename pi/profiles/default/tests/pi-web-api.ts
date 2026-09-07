@@ -4,3 +4,4 @@ export { formatSkillsForPrompt } from "../node_modules/@earendil-works/pi-coding
 export { CONFIG_DIR_NAME, getAgentDir } from "../node_modules/@earendil-works/pi-coding-agent/dist/config.js";
 export { ModelRuntime } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/model-runtime.js";
 export { truncateHead } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/truncate.js";
+export { withFileMutationQueue } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/file-mutation-queue.js";

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-07: Port deferred image tools to default Pi
+
+**Added:** The default Pi profile now provides Sharp-backed `image_inspect` and `image_transform` tools for bounded local inspection, crop, resize, auto-orientation, quarter-turn rotation, and JPEG/PNG/WebP conversion. Transform publication preserves the source and existing destinations, enforces byte/dimension/pixel/frame limits, strips covered metadata, and reopens outputs for verification.
+
+**Added:** A focused `tool_search` discovery flow keeps both image tools inactive at session start, activates matching tools for the current session without removing unrelated tools, and resets them on the next session. Legacy telemetry and unrelated workflow visibility policy were not ported.
+
 ## 2026-09-07: Port Brave control to default Pi in TypeScript
 
 **Added:** The default Pi profile now provides ownership-verified isolated and explicitly aliased real-profile Brave control through `browser_session`, `browser_page`, and `/browser-setup`. Existing legacy aliases are copied once into the default profile; browser sessions, process identity, tabs, and browser data remain profile-local and are not migrated.

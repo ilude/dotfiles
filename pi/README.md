@@ -75,6 +75,10 @@ The default profile provides `web_search` (SearXNG) and `web_fetch` (local reada
 
 The default profile provides `browser_session`, `browser_page`, and `/browser-setup` for one ownership-verified Brave session. Isolated mode stores browser data under the active profile. Real-profile mode accepts only configured aliases discovered from Brave `Local State`; the legacy aliases are copied once into the default profile, while sessions and browser data are not migrated. Browser launch, lifecycle, and page operations use TypeScript and direct CDP. Windows process identity uses a narrow PowerShell CIM adapter; the default browser tools do not invoke Python, `agent-browser`, or `npx`. Credential, CAPTCHA, cookie, storage, and arbitrary-evaluation surfaces remain unavailable. See [`profiles/default/skills/browser-tools/SKILL.md`](profiles/default/skills/browser-tools/SKILL.md).
 
+## Default profile image tools
+
+The default profile provides deferred `image_inspect` and `image_transform` tools backed by Sharp. Use `tool_search` with image, crop, resize, rotate, convert, compress, or metadata terms to activate both tools for the current session; a new session hides them again. Transforms accept local single-frame images, never overwrite a source or existing destination, enforce byte/dimension/pixel limits, strip covered metadata, and reopen outputs before publication. The initial operations are crop, resize, auto-orient, quarter-turn rotation, and JPEG/PNG/WebP conversion with bounded quality. Screenshots, OCR, generation, drawing, annotation, remote images, and animation editing are excluded. See [`profiles/default/skills/image-editing/SKILL.md`](profiles/default/skills/image-editing/SKILL.md).
+
 ## Default profile commands
 
 - `/branch` opens a branched copy of the current session in a new terminal tab.
