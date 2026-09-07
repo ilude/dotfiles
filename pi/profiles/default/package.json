@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@aws/bedrock-token-generator": "1.1.0",
+    "@duckdb/node-api": "1.5.5-r.4",
     "jiti": "2.7.0",
     "proper-lockfile": "4.1.2",
     "sharp": "^0.35.4",

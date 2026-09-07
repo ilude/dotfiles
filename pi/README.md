@@ -73,6 +73,12 @@ Schedules live only in the current Pi process. They survive `/new`, `/resume`, `
 
 The footer shows only the next injection time (`sched@ 9:00am`, local time), clearing when none remains. It does not show pending states or errors. Synchronous handoff failures remain inspectable through `list`, with no automatic retries or injected error prompts; cancel and reschedule them. Limits remain 64 outstanding schedules and 4,000 characters per prompt; slash-command prompts are rejected. Use `/reload` to activate the tool.
 
+## Default profile log analytics
+
+The default profile provides deferred `log_analytics` for existing sessions and usage records. Activate it through `tool_search` with `session analytics`, inspect `catalog`, then use metadata-only `sessions` discovery or bounded DuckDB `query`. Searches default to the active registered profile; select `profiles: ["legacy"]` or `["default", "legacy"]` explicitly. Exact session references reduce staging. Event-time SQL filters still scan the selected files so old resumed sessions are not missed.
+
+The port preserves invocation-local DuckDB, serialized staging, input/deadline/thread/memory limits, and incremental bounded output. It adds no telemetry, persistent index, disk spill, history import, or legacy report commands. Existing default Bedrock and Codex ledgers remain unchanged; Codex observations have no timestamp/session metadata. See the [skill and query reference](profiles/default/skills/pi-log-analytics/SKILL.md) for source support, coverage, limits, installation, and offline checks. Use `/reload` or a fresh `pp` session after installation; analytics starts deferred.
+
 ## Default profile web tools
 
 The default profile provides `web_search` (SearXNG) and `web_fetch` (local readable extraction with automatic public-URL Jina fallback). A tool-free Luna call adds best-effort prompt-injection annotations before results enter context; screening failures are marked, not blocked. See [setup, behavior, and limitations](profiles/default/docs/web-tools.md).

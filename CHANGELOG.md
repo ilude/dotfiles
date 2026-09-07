@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-07: Port bounded cross-profile log analytics to default Pi
+
+**Added:** Deferred `log_analytics` supports schema discovery, metadata-only session listing, and read-only DuckDB queries over explicitly selected default, legacy, or combined session histories. Exact session references narrow staging without copying historical files. Existing default Bedrock and Codex ledgers are queryable without changing their producers or inventing missing Codex timestamps/session IDs.
+
+**Preserved:** Invocation-local DuckDB, serialized staging, resource/deadline limits, streaming bounded results, and legacy runtime behavior. Queries report scope and scan costs; input-limit failures do not silently select a smaller corpus. Event-time filters include old resumed sessions, and timestamp casts use UTC consistently across loader/query connections. There is no persistent analytics index, disk spill, new logging, or legacy telemetry/report workflow. Use `tool_search` to activate analytics after `/reload` or a fresh default-profile launch.
+
 ## 2026-09-07: Clarify unavailable Codex quota windows
 
 **Changed:** The default Pi footer now renders a missing or disabled Codex quota window as a blue `0%` instead of `unavailable`, distinguishing it from observed quota consumption while keeping the compact percentage layout.
