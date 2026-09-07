@@ -7,6 +7,7 @@
 # Profile-local credentials, generated catalogs, and usage state.
 /auth.json
 /models-store.json
+/model-cache/
 /operator-footer-usage.json
 /codex-cache.jsonl
 /sessions/

@@ -1,0 +1,519 @@
+import { getSettingsPath } from "../lib/settings-file.ts";
+import * as fs from "node:fs";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+type ModelLike = {
+	provider: string;
+	id: string;
+	name: string;
+	api: string;
+	baseUrl: string;
+	reasoning: boolean;
+	input: ("text" | "image")[];
+	cost: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	};
+	contextWindow: number;
+	maxTokens: number;
+	headers?: Record<string, string>;
+	thinkingLevelMap?: Record<string, string | null>;
+	compat?: unknown;
+};
+
+const TARGET_PROVIDERS = [
+	"openai-codex",
+	"opencode",
+	"opencode-go",
+	"openrouter",
+	"amazon-bedrock",
+] as const;
+
+const ALLOW_EXACT_IDS = {
+	"amazon-bedrock": new Set([
+		"us.anthropic.claude-fable-5-1",
+		"us.anthropic.claude-opus-5",
+		"us.anthropic.claude-sonnet-5",
+		"us.anthropic.claude-haiku-4-5-20251001-v1:0",
+	]),
+} as const;
+
+const HIDE_EXACT_IDS = {
+	"openai-codex": new Set(["codex-auto-review"]),
+	opencode: new Set([
+		"claude-3-5-haiku",
+		"claude-haiku-4-5",
+		"claude-opus-4-1",
+		"claude-opus-4-5",
+		"claude-opus-4-6",
+		"claude-opus-4-7",
+		"claude-sonnet-4",
+		"claude-sonnet-4-5",
+		"claude-sonnet-4-6",
+		"qwen3.5-plus",
+	]),
+	"opencode-go": new Set<string>(),
+	openrouter: new Set([
+		"ai21/jamba-large-1.7",
+		"alibaba/tongyi-deepresearch-30b-a3b",
+		"allenai/olmo-3.1-32b-instruct",
+		"arcee-ai/trinity-large-thinking",
+		"arcee-ai/trinity-mini",
+		"arcee-ai/virtuoso-large",
+		"amazon/nova-2-lite-v1",
+		"amazon/nova-lite-v1",
+		"amazon/nova-micro-v1",
+		"amazon/nova-premier-v1",
+		"amazon/nova-pro-v1",
+		"anthropic/claude-3-haiku",
+		"anthropic/claude-3.5-haiku",
+		"anthropic/claude-3.7-sonnet",
+		"anthropic/claude-3.7-sonnet:thinking",
+		"anthropic/claude-opus-4",
+		"anthropic/claude-opus-4.1",
+		"baidu/ernie-4.5-21b-a3b",
+		"baidu/ernie-4.5-vl-28b-a3b",
+		"bytedance-seed/seed-1.6",
+		"bytedance-seed/seed-1.6-flash",
+		"bytedance-seed/seed-2.0-lite",
+		"bytedance-seed/seed-2.0-mini",
+		"deepseek/deepseek-chat",
+		"deepseek/deepseek-chat-v3-0324",
+		"deepseek/deepseek-chat-v3.1",
+		"deepseek/deepseek-r1",
+		"deepseek/deepseek-r1-0528",
+		"deepseek/deepseek-v3.1-terminus",
+		"deepseek/deepseek-v3.2",
+		"deepseek/deepseek-v3.2-exp",
+		"essentialai/rnj-1-instruct",
+		"google/gemini-2.0-flash-001",
+		"google/gemini-2.0-flash-lite-001",
+		"google/gemini-2.5-flash",
+		"google/gemini-2.5-flash-lite",
+		"google/gemini-2.5-flash-lite-preview-09-2025",
+		"google/gemini-2.5-pro",
+		"google/gemini-2.5-pro-preview",
+		"google/gemini-2.5-pro-preview-05-06",
+		"google/gemini-3-flash-preview",
+		"google/gemini-3.1-flash-lite-preview",
+		"google/gemini-3.1-pro-preview",
+		"google/gemini-3.1-pro-preview-customtools",
+		"google/gemma-3-12b-it",
+		"google/gemma-3-27b-it",
+		"ibm-granite/granite-4.1-8b",
+		"inception/mercury-2",
+		"inclusionai/ling-2.6-1t",
+		"inclusionai/ling-2.6-flash",
+		"inclusionai/ling-2.6-flash:free",
+		"inclusionai/ring-2.6-1t",
+		"kwaipilot/kat-coder-pro-v2",
+		"minimax/minimax-m1",
+		"minimax/minimax-m2",
+		"minimax/minimax-m2.1",
+		"minimax/minimax-m2.5",
+		"moonshotai/kimi-k2",
+		"moonshotai/kimi-k2-0905",
+		"moonshotai/kimi-k2-thinking",
+		"nex-agi/deepseek-v3.1-nex-n1",
+		"nvidia/llama-3.1-nemotron-70b-instruct",
+		"nvidia/llama-3.3-nemotron-super-49b-v1.5",
+		"nvidia/nemotron-3-nano-30b-a3b",
+		"nvidia/nemotron-3-super-120b-a12b",
+		"nvidia/nemotron-nano-9b-v2",
+		"openrouter/owl-alpha",
+		"openai/gpt-3.5-turbo",
+		"openai/gpt-3.5-turbo-0613",
+		"openai/gpt-3.5-turbo-16k",
+		"openai/gpt-4",
+		"openai/gpt-4-0314",
+		"openai/gpt-4-1106-preview",
+		"openai/gpt-4-turbo",
+		"openai/gpt-4-turbo-preview",
+		"openai/gpt-4.1",
+		"openai/gpt-audio",
+		"openai/gpt-audio-mini",
+		"openai/gpt-4.1-mini",
+		"openai/gpt-4.1-nano",
+		"openai/gpt-4o",
+		"openai/gpt-4o-2024-05-13",
+		"openai/gpt-4o-2024-08-06",
+		"openai/gpt-4o-2024-11-20",
+		"openai/gpt-4o-audio-preview",
+		"openai/gpt-4o-mini",
+		"openai/gpt-4o-mini-2024-07-18",
+		"openai/o1",
+		"openai/o3",
+		"openai/o3-deep-research",
+		"openai/o3-mini",
+		"openai/o3-mini-high",
+		"openai/o3-pro",
+		"openai/o4-mini",
+		"openai/o4-mini-deep-research",
+		"openai/o4-mini-high",
+		"poolside/laguna-m.1:free",
+		"poolside/laguna-xs.2:free",
+		"prime-intellect/intellect-3",
+		"qwen/qwen3.5-122b-a10b",
+		"qwen/qwen3.5-27b",
+		"qwen/qwen3.5-35b-a3b",
+		"qwen/qwen3.5-397b-a17b",
+		"qwen/qwen3.5-9b",
+		"qwen/qwen3.5-flash-02-23",
+		"qwen/qwen3.5-plus-02-15",
+		"qwen/qwen-2.5-72b-instruct",
+		"qwen/qwen-2.5-7b-instruct",
+		"qwen/qwen-max",
+		"qwen/qwen-plus",
+		"qwen/qwen-plus-2025-07-28",
+		"qwen/qwen-plus-2025-07-28:thinking",
+		"qwen/qwen-turbo",
+		"qwen/qwen-vl-max",
+		"qwen/qwen3-14b",
+		"qwen/qwen3-235b-a22b",
+		"qwen/qwen3-235b-a22b-2507",
+		"qwen/qwen3-235b-a22b-thinking-2507",
+		"qwen/qwen3-30b-a3b",
+		"qwen/qwen3-30b-a3b-instruct-2507",
+		"qwen/qwen3-30b-a3b-thinking-2507",
+		"qwen/qwen3-32b",
+		"qwen/qwen3-8b",
+		"qwen/qwen3-coder",
+		"qwen/qwen3-coder-30b-a3b-instruct",
+		"qwen/qwen3-coder-flash",
+		"qwen/qwen3-coder-next",
+		"qwen/qwen3-coder-plus",
+		"qwen/qwen3-coder:free",
+		"qwen/qwen3-max",
+		"qwen/qwen3-max-thinking",
+		"qwen/qwen3-next-80b-a3b-instruct",
+		"qwen/qwen3-next-80b-a3b-instruct:free",
+		"qwen/qwen3-next-80b-a3b-thinking",
+		"qwen/qwen3-vl-235b-a22b-instruct",
+		"qwen/qwen3-vl-235b-a22b-thinking",
+		"qwen/qwen3-vl-30b-a3b-instruct",
+		"qwen/qwen3-vl-30b-a3b-thinking",
+		"qwen/qwen3-vl-32b-instruct",
+		"qwen/qwen3-vl-8b-instruct",
+		"qwen/qwen3-vl-8b-thinking",
+		"qwen/qwq-32b",
+		"rekaai/reka-edge",
+		"relace/relace-search",
+		"sao10k/l3-euryale-70b",
+		"sao10k/l3.1-euryale-70b",
+		"stepfun/step-3.5-flash",
+		"thedrummer/rocinante-12b",
+		"thedrummer/unslopnemo-12b",
+		"tngtech/deepseek-r1t2-chimera",
+		"upstage/solar-pro-3",
+		"x-ai/grok-3",
+		"x-ai/grok-3-beta",
+		"x-ai/grok-3-mini",
+		"x-ai/grok-3-mini-beta",
+		"x-ai/grok-4",
+		"x-ai/grok-4-fast",
+		"z-ai/glm-4-32b",
+		"z-ai/glm-4.5",
+		"z-ai/glm-4.5-air",
+		"z-ai/glm-4.5-air:free",
+		"z-ai/glm-4.5v",
+		"z-ai/glm-4.6",
+		"z-ai/glm-4.6v",
+		"z-ai/glm-4.7",
+		"z-ai/glm-4.7-flash",
+		"z-ai/glm-5",
+		"z-ai/glm-5-turbo",
+		"z-ai/glm-5.1",
+		"z-ai/glm-5v-turbo",
+		"~anthropic/claude-haiku-latest",
+		"~anthropic/claude-opus-latest",
+		"~anthropic/claude-sonnet-latest",
+		"~google/gemini-flash-latest",
+		"~google/gemini-pro-latest",
+		"~moonshotai/kimi-latest",
+		"~openai/gpt-latest",
+		"~openai/gpt-mini-latest",
+	]),
+	"amazon-bedrock": new Set([
+		"moonshot.kimi-k2-thinking",
+		"us.deepseek.r1-v1:0",
+	]),
+} as const;
+
+const HIDE_PREFIXES = {
+	openrouter: [
+		"anthropic/claude-",
+		"meta-llama/",
+		"mistralai/",
+		"nvidia/nemotron-",
+		"openai/gpt-",
+		"xiaomi/",
+	],
+	"openai-codex": [] as string[],
+	opencode: ["gpt-"],
+	"opencode-go": [] as string[],
+	"amazon-bedrock": [] as string[],
+} as const;
+
+const HIDE_PATTERNS = {
+	openrouter: [] as RegExp[],
+	"openai-codex": [] as RegExp[],
+	opencode: [] as RegExp[],
+	"opencode-go": [] as RegExp[],
+	"amazon-bedrock": [
+		/^anthropic\./,
+		/^global\.anthropic\./,
+		/^(?!us\.)[a-z]{2}\.anthropic\./,
+		/^meta\./,
+		/^mistral\./,
+		/^nvidia\./,
+		/^deepseek\.(?:r1|v3)-v1:0$/,
+		/^minimax\.minimax-m2(?:\.1)?$/,
+		/^us\.anthropic\.claude-(?:opus-4-1-20250805|sonnet-4-5-20250929)-v1:0$/,
+		/^us\.meta\.llama4-(?:maverick|scout)-17b-instruct-v1:0$/,
+		/^writer\.palmyra-x[45]-v1:0$/,
+		/^zai\.glm-4\.7(?:-flash)?$/,
+	],
+} as const;
+
+function isDatedOrVersionSuffix(id: string): boolean {
+	const lowered = id.toLowerCase();
+	if (/-(?:19|20)\d{2}-\d{2}-\d{2}$/.test(lowered)) return true; // yyyy-mm-dd
+	if (/-(?:19|20)\d{6}$/.test(lowered)) return true; // yyyymmdd
+	if (/-\d{4}$/.test(lowered)) return true; // legacy short snapshots like -0613
+	return false;
+}
+
+function isPreviewSnapshot(id: string, name: string): boolean {
+	const combined = `${id} ${name}`.toLowerCase();
+	return combined.includes("preview");
+}
+
+function shouldHideByCustomRules(
+	provider: string,
+	id: string,
+	allowedOverride?: ReadonlySet<string>,
+): boolean {
+	const allowed =
+		allowedOverride ??
+		ALLOW_EXACT_IDS[provider as keyof typeof ALLOW_EXACT_IDS];
+	if (allowed && !allowed.has(id)) return true;
+	const exact = HIDE_EXACT_IDS[provider as keyof typeof HIDE_EXACT_IDS];
+	if (exact?.has(id)) return true;
+	const prefixes = HIDE_PREFIXES[provider as keyof typeof HIDE_PREFIXES] ?? [];
+	if (prefixes.some((prefix) => id.startsWith(prefix))) return true;
+	const patterns = HIDE_PATTERNS[provider as keyof typeof HIDE_PATTERNS] ?? [];
+	return patterns.some((pattern) => pattern.test(id));
+}
+
+export function shouldHideModel(
+	provider: string,
+	model: Pick<ModelLike, "id" | "name">,
+	allowedOverride?: ReadonlySet<string>,
+): boolean {
+	if (shouldHideByCustomRules(provider, model.id, allowedOverride)) return true;
+	return (
+		isDatedOrVersionSuffix(model.id) || isPreviewSnapshot(model.id, model.name)
+	);
+}
+
+function compatWithoutReasoningEffortMap(compat: unknown): unknown {
+	if (!compat || typeof compat !== "object" || Array.isArray(compat))
+		return compat;
+	const { reasoningEffortMap: _reasoningEffortMap, ...rest } = compat as Record<
+		string,
+		unknown
+	>;
+	return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+function getThinkingLevelMap(
+	model: ModelLike,
+): Record<string, string | null> | undefined {
+	const compat = model.compat as { reasoningEffortMap?: unknown } | undefined;
+	const legacyMap =
+		compat?.reasoningEffortMap &&
+		typeof compat.reasoningEffortMap === "object" &&
+		!Array.isArray(compat.reasoningEffortMap)
+			? (compat.reasoningEffortMap as Record<string, string | null>)
+			: undefined;
+	return model.thinkingLevelMap ?? legacyMap;
+}
+
+function toProviderModelDef(model: ModelLike): Record<string, unknown> {
+	return {
+		id: model.id,
+		name: model.name,
+		api: model.api,
+		reasoning: model.reasoning,
+		input: model.input,
+		cost: model.cost,
+		contextWindow: model.contextWindow,
+		maxTokens: model.maxTokens,
+		headers: model.headers,
+		thinkingLevelMap: getThinkingLevelMap(model),
+		compat: compatWithoutReasoningEffortMap(model.compat),
+	};
+}
+
+type ModelRegistryLike = {
+	getAll(): ModelLike[];
+	getApiKeyForProvider(provider: string): Promise<string | undefined>;
+	registerProvider(provider: string, definition: Record<string, unknown>): void;
+};
+
+type VisibilityContext = { modelRegistry: ModelRegistryLike };
+type FilterResult = { before: number; after: number };
+type ProviderPlan = {
+	provider: string;
+	models: ModelLike[];
+	filtered: ModelLike[];
+	credentialRequired: boolean;
+	apiKeyEnv: string | undefined;
+};
+
+export function getConfiguredBedrockModelIds(): Set<string> {
+	const settings = JSON.parse(
+		fs.readFileSync(getSettingsPath(), "utf-8"),
+	) as Record<string, unknown>;
+	const refresh =
+		settings.bedrockRefresh &&
+		typeof settings.bedrockRefresh === "object" &&
+		!Array.isArray(settings.bedrockRefresh)
+			? (settings.bedrockRefresh as Record<string, unknown>)
+			: undefined;
+	const catalog = Array.isArray(refresh?.catalog) ? refresh.catalog : [];
+	const catalogIds = catalog.flatMap((entry) => {
+		if (!entry || typeof entry !== "object") return [];
+		const id = (entry as Record<string, unknown>).id;
+		return typeof id === "string" && id.startsWith("us.anthropic.claude-")
+			? [id]
+			: [];
+	});
+	const models = Array.isArray(refresh?.models) ? refresh.models : [];
+	const configured = new Set(
+		(catalogIds.length > 0 ? catalogIds : models).filter(
+			(model): model is string =>
+				typeof model === "string" && model.startsWith("us.anthropic.claude-"),
+		),
+	);
+	return configured.size > 0
+		? configured
+		: new Set(ALLOW_EXACT_IDS["amazon-bedrock"]);
+}
+
+function planProvider(
+	models: ModelLike[],
+	provider: string,
+	bedrockAllowedIds?: ReadonlySet<string>,
+): ProviderPlan | undefined {
+	const providerModels = models.filter((model) => model.provider === provider);
+	if (providerModels.length === 0) return undefined;
+	const filtered = providerModels.filter(
+		(model) =>
+			!shouldHideModel(
+				provider,
+				model,
+				provider === "amazon-bedrock" ? bedrockAllowedIds : undefined,
+			),
+	);
+	const changed = filtered.length !== providerModels.length;
+	return {
+		provider,
+		models: providerModels,
+		filtered,
+		credentialRequired:
+			changed &&
+			filtered.length > 0 &&
+			(provider === "openai-codex" || provider === "amazon-bedrock"),
+		apiKeyEnv:
+			provider === "opencode" || provider === "opencode-go"
+				? "$OPENCODE_API_KEY"
+				: provider === "openrouter"
+					? "$OPENROUTER_API_KEY"
+					: undefined,
+	};
+}
+
+function planResult(plan: ProviderPlan): FilterResult {
+	return { before: plan.models.length, after: plan.filtered.length };
+}
+
+async function applyPlans(
+	ctx: VisibilityContext,
+	plans: ProviderPlan[],
+): Promise<Array<FilterResult | undefined>> {
+	const credentials = await Promise.all(
+		plans.map((plan) =>
+			plan.credentialRequired
+				? ctx.modelRegistry.getApiKeyForProvider(plan.provider)
+				: Promise.resolve("available"),
+		),
+	);
+	return plans.map((plan, index) => {
+		if (plan.credentialRequired && !credentials[index])
+			return { before: plan.models.length, after: plan.models.length };
+		const result = planResult(plan);
+		if (result.after > 0 && result.after < result.before) {
+			const first = plan.models[0];
+			const definition: Record<string, unknown> = {
+				baseUrl: first.baseUrl,
+				models: plan.filtered.map(toProviderModelDef),
+			};
+			if (plan.apiKeyEnv || plan.provider === "amazon-bedrock") {
+				definition.apiKey = plan.apiKeyEnv ?? "$AWS_BEARER_TOKEN_BEDROCK";
+				definition.api = first.api;
+			}
+			ctx.modelRegistry.registerProvider(plan.provider, definition);
+		}
+		return result;
+	});
+}
+
+export async function applyProviderFilter(
+	ctx: VisibilityContext,
+	provider: string,
+): Promise<FilterResult | undefined> {
+	const plan = planProvider(
+		ctx.modelRegistry.getAll(),
+		provider,
+		provider === "amazon-bedrock" ? getConfiguredBedrockModelIds() : undefined,
+	);
+	if (!plan) return undefined;
+	return (await applyPlans(ctx, [plan]))[0];
+}
+
+async function applyProviderFilters(
+	ctx: VisibilityContext,
+): Promise<Array<{ provider: string; result: FilterResult }>> {
+	const models = ctx.modelRegistry.getAll();
+	const bedrockAllowedIds = getConfiguredBedrockModelIds();
+	const plans = TARGET_PROVIDERS.map((provider) =>
+		planProvider(models, provider, bedrockAllowedIds),
+	).filter(
+		(plan): plan is ProviderPlan => plan !== undefined,
+	);
+	const results = await applyPlans(ctx, plans);
+	return plans.flatMap((plan, index) => {
+		const result = results[index];
+		return result ? [{ provider: plan.provider, result }] : [];
+	});
+}
+
+export default function registerModelVisibilityExtension(pi: ExtensionAPI) {
+	pi.on("session_start", async (_event, ctx) => {
+		const messages: string[] = [];
+		for (const { provider, result } of await applyProviderFilters(ctx)) {
+			if (result.after < result.before) {
+				messages.push(`${provider}: ${result.before} -> ${result.after}`);
+			}
+		}
+		if (messages.length > 0) {
+			ctx.ui.notify(
+				`[model-visibility] Hidden older/blocked models (${messages.join(", ")})`,
+				"info",
+			);
+		}
+	});
+}

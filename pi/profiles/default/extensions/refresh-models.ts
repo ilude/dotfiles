@@ -1,0 +1,1086 @@
+import { registerSlashCommand } from "../lib/slash-command-echo.js";
+import {
+	getConfiguredBedrockModelIds,
+	shouldHideModel,
+} from "./model-visibility.ts";
+
+// Convention exception: this extension is a single user-initiated slash
+//   command (`/refresh-models`) whose UI is a sequence of progress messages
+//   followed by a per-provider success/error summary; the messages are part
+//   of the command's own output flow, not ambient notifications.
+// Risk: a future reader assumes uiNotify is required and either swaps every
+//   site (breaking the existing assertion shapes in refresh-models.test.ts
+//   like `expect.stringContaining("Done. Refreshed 2")`) or splits the call
+//   sites between the helper and direct ctx.ui.notify, producing inconsistent
+//   prefix behavior inside one command flow.
+// Why shared helper is inappropriate: the helper's prefix wrapper exists for
+//   ambient/background notifications. A user who just typed `/refresh-models`
+//   already knows the source; a `[refresh-models]` prefix on every progress
+//   line would only add noise. The handler's own `notify(...)` closure
+//   already centralizes the call site.
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { getModels } from "@earendil-works/pi-ai/compat";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+	ProviderModelConfig,
+} from "@earendil-works/pi-coding-agent";
+import {
+	getAgentDir,
+	getSettingsPath,
+	updateJsonObjectAtomic,
+	writeJsonObjectAtomic,
+} from "../lib/settings-file.ts";
+
+const CODEX_CLIENT_VERSION_CANDIDATES = ["999.0.0", "1.0.0", "0.99.0"];
+const SUPPORTED_REFRESH_PROVIDERS = new Set([
+	"amazon-bedrock",
+	"bedrock-mantle",
+	"anthropic",
+	"openai-codex",
+	"openrouter",
+	"opencode",
+	"opencode-go",
+]);
+
+type RefreshScope = {
+	provider?: string;
+};
+
+type InputKind = "text" | "image";
+
+type ThinkingLevelMap = Record<string, string | null>;
+
+type ModelLike = {
+	provider: string;
+	id: string;
+	name: string;
+	api: string;
+	baseUrl: string;
+	reasoning: boolean;
+	input: InputKind[];
+	cost: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	};
+	contextWindow: number;
+	maxTokens: number;
+	headers?: Record<string, string>;
+	thinkingLevelMap?: ThinkingLevelMap;
+	compat?: unknown;
+};
+
+type ProviderModelDef = ProviderModelConfig & {
+	api: NonNullable<ProviderModelConfig["api"]>;
+};
+
+type RemoteModelInfo = {
+	id: string;
+	name?: string;
+	api?: string;
+	reasoning?: boolean;
+	input?: InputKind[];
+	contextWindow?: number;
+	maxTokens?: number;
+	thinkingLevelMap?: ThinkingLevelMap;
+};
+
+type ProviderCatalogCache = {
+	schemaVersion: 2;
+	provider: string;
+	fetchedAt: string;
+	models: RemoteModelInfo[];
+};
+
+const MODEL_CACHE_SCHEMA_VERSION = 2;
+const DEFAULT_REFRESH_CONTEXT_WINDOW = 256_000;
+
+export function parseRefreshModelsArgs(raw: string): RefreshScope {
+	const trimmed = raw.trim();
+	if (!trimmed) return {};
+	const parts = trimmed.split(/\s+/).filter(Boolean);
+	if (parts.length > 1) {
+		throw new Error("Usage: /refresh-models [provider]");
+	}
+	return { provider: parts[0] };
+}
+
+type ModelRegistryWithAuthStatus = {
+	getAll(): Array<{ provider: string }>;
+	getProviderAuthStatus(provider: string): { configured: boolean };
+};
+
+type LegacyModelRegistryWithAuth = {
+	authStorage: {
+		list(): string[];
+		get(provider: string): { type?: string } | undefined;
+	};
+};
+
+export function getCurrentRefreshableProviders(
+	modelRegistry: ModelRegistryWithAuthStatus | LegacyModelRegistryWithAuth,
+): string[] {
+	if ("authStorage" in modelRegistry) {
+		return modelRegistry.authStorage.list().filter((provider) => {
+			const type = modelRegistry.authStorage.get(provider)?.type;
+			return type === "oauth" || type === "api_key";
+		});
+	}
+	const providers = new Set(
+		modelRegistry.getAll().map((model) => model.provider),
+	);
+	return [...providers]
+		.filter(
+			(provider) => modelRegistry.getProviderAuthStatus(provider).configured,
+		)
+		.sort();
+}
+
+export const getCurrentSubscriptionProviders = getCurrentRefreshableProviders;
+
+function normalizeBaseUrl(raw: string): string {
+	return raw.replace(/\/+$/, "");
+}
+
+function asString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
+}
+
+function asStringArray(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return value.filter((item): item is string => typeof item === "string");
+}
+
+function asReasoningLevelArray(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((item) => {
+			if (typeof item === "string") return item;
+			if (!item || typeof item !== "object") return undefined;
+			return asString((item as Record<string, unknown>).effort);
+		})
+		.filter((item): item is string => !!item);
+}
+
+function defaultCost() {
+	return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+}
+
+function refreshCacheDir(): string {
+	return path.join(getAgentDir(), "model-cache", "refresh-models");
+}
+
+function cachePath(provider: string): string {
+	return path.join(refreshCacheDir(), `${provider}.json`);
+}
+
+async function writeProviderCache(
+	provider: string,
+	models: RemoteModelInfo[],
+): Promise<void> {
+	await writeJsonObjectAtomic(cachePath(provider), {
+		schemaVersion: MODEL_CACHE_SCHEMA_VERSION,
+		provider,
+		fetchedAt: new Date().toISOString(),
+		models,
+	});
+}
+
+function legacyCacheModels(models: unknown[]): RemoteModelInfo[] {
+	return models.flatMap((model) => {
+		if (!model || typeof model !== "object") return [];
+		const record = model as Record<string, unknown>;
+		const id = asString(record.id);
+		if (!id) return [];
+		return [
+			{
+				id,
+				name: asString(record.name),
+				api: asString(record.api),
+				reasoning:
+					typeof record.reasoning === "boolean" ? record.reasoning : undefined,
+				input: asStringArray(record.input).filter(
+					(value): value is InputKind => value === "text" || value === "image",
+				),
+				contextWindow: asNumber(record.contextWindow),
+				maxTokens: asNumber(record.maxTokens),
+				thinkingLevelMap:
+					record.thinkingLevelMap &&
+					typeof record.thinkingLevelMap === "object" &&
+					!Array.isArray(record.thinkingLevelMap)
+						? (record.thinkingLevelMap as ThinkingLevelMap)
+						: undefined,
+			},
+		];
+	});
+}
+
+function loadProviderCache(provider: string): ProviderCatalogCache | undefined {
+	const filePath = cachePath(provider);
+	if (!fs.existsSync(filePath)) return undefined;
+	const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<
+		string,
+		unknown
+	>;
+	if (!Array.isArray(parsed.models)) {
+		throw new Error(`Invalid cached model catalog: ${filePath}`);
+	}
+	if (parsed.schemaVersion === MODEL_CACHE_SCHEMA_VERSION) {
+		if (
+			parsed.provider !== provider ||
+			typeof parsed.fetchedAt !== "string"
+		) {
+			throw new Error(`Invalid cached model catalog: ${filePath}`);
+		}
+		return parsed as ProviderCatalogCache;
+	}
+	return {
+		schemaVersion: MODEL_CACHE_SCHEMA_VERSION,
+		provider,
+		fetchedAt: "legacy",
+		models: legacyCacheModels(parsed.models),
+	};
+}
+
+const PI_THINKING_LEVELS = [
+	"off",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+] as const;
+
+function buildThinkingLevelMap(
+	supportedLevels: string[],
+): ThinkingLevelMap | undefined {
+	const supported = new Set(supportedLevels.filter(Boolean));
+	if (supported.size === 0) return undefined;
+	return Object.fromEntries(
+		PI_THINKING_LEVELS.map((level) => [
+			level,
+			supported.has(level) ? level : null,
+		]),
+	) as ThinkingLevelMap;
+}
+
+function compatWithoutReasoningEffortMap(compat: unknown): unknown {
+	if (!compat || typeof compat !== "object" || Array.isArray(compat))
+		return compat;
+	const { reasoningEffortMap: _reasoningEffortMap, ...rest } = compat as Record<
+		string,
+		unknown
+	>;
+	return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+function getThinkingLevelMap(
+	existing?: ModelLike,
+	remote?: RemoteModelInfo,
+): ThinkingLevelMap | undefined {
+	const compat = existing?.compat as
+		| { reasoningEffortMap?: unknown }
+		| undefined;
+	const legacyMap =
+		compat?.reasoningEffortMap &&
+		typeof compat.reasoningEffortMap === "object" &&
+		!Array.isArray(compat.reasoningEffortMap)
+			? (compat.reasoningEffortMap as ThinkingLevelMap)
+			: undefined;
+	return remote?.thinkingLevelMap ?? existing?.thinkingLevelMap ?? legacyMap;
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
+	const parts = token.split(".");
+	if (parts.length !== 3) return undefined;
+	try {
+		const payload = Buffer.from(parts[1], "base64url").toString("utf8");
+		const parsed = JSON.parse(payload);
+		if (parsed && typeof parsed === "object")
+			return parsed as Record<string, unknown>;
+	} catch {
+		return undefined;
+	}
+	return undefined;
+}
+
+function extractChatGptAccountId(token: string): string | undefined {
+	const payload = decodeJwtPayload(token);
+	const authClaim = payload?.["https://api.openai.com/auth"];
+	if (!authClaim || typeof authClaim !== "object") return undefined;
+	return asString((authClaim as Record<string, unknown>).chatgpt_account_id);
+}
+
+function extractModelIds(payload: unknown): string[] {
+	const extractFromArray = (arr: unknown[]): string[] => {
+		const ids: string[] = [];
+		for (const item of arr) {
+			if (typeof item === "string" && item.trim()) {
+				ids.push(item.trim());
+				continue;
+			}
+			if (!item || typeof item !== "object") continue;
+			const record = item as Record<string, unknown>;
+			const id =
+				asString(record.id) ?? asString(record.model) ?? asString(record.slug);
+			if (id) ids.push(id);
+		}
+		return ids;
+	};
+
+	if (Array.isArray(payload))
+		return Array.from(new Set(extractFromArray(payload)));
+	if (!payload || typeof payload !== "object") return [];
+
+	const record = payload as Record<string, unknown>;
+	const listCandidates = [record.models, record.data, record.items].filter(
+		Array.isArray,
+	) as unknown[][];
+	for (const list of listCandidates) {
+		const ids = extractFromArray(list);
+		if (ids.length > 0) return Array.from(new Set(ids));
+	}
+	return [];
+}
+
+async function fetchJson(
+	url: string,
+	headers: Record<string, string>,
+): Promise<unknown> {
+	const response = await fetch(url, { method: "GET", headers });
+	const text = await response.text().catch(() => "");
+	const snippet = text.replace(/\s+/g, " ").trim().slice(0, 120);
+	if (!response.ok) {
+		const detail = /^<!doctype html|^<html/i.test(snippet)
+			? "HTML response"
+			: snippet;
+		throw new Error(
+			`${url} returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`,
+		);
+	}
+	if (!text) return {};
+	try {
+		return JSON.parse(text) as unknown;
+	} catch {
+		throw new Error(
+			`${url} returned non-JSON response${snippet ? `: ${snippet}` : ""}`,
+		);
+	}
+}
+
+async function fetchOpenAICodexCatalog(
+	baseUrl: string,
+	apiKey: string,
+	headers?: Record<string, string>,
+) {
+	const accountId = extractChatGptAccountId(apiKey);
+	if (!accountId) {
+		throw new Error(
+			"Could not extract chatgpt_account_id from OpenAI Codex token",
+		);
+	}
+
+	const normalized = normalizeBaseUrl(baseUrl);
+	const requestHeaders: Record<string, string> = {
+		Accept: "application/json",
+		Authorization: `Bearer ${apiKey}`,
+		"chatgpt-account-id": accountId,
+		originator: "pi",
+		"User-Agent": "pi",
+		...(headers ?? {}),
+	};
+
+	let lastError = "Unknown error";
+	for (const clientVersion of CODEX_CLIENT_VERSION_CANDIDATES) {
+		const url = `${normalized}/codex/models?client_version=${encodeURIComponent(clientVersion)}`;
+		try {
+			const payload = await fetchJson(url, requestHeaders);
+			const ids = extractModelIds(payload);
+			if (ids.length === 0) {
+				lastError = `${url} returned no model ids`;
+				continue;
+			}
+			return payload;
+		} catch (error) {
+			lastError = error instanceof Error ? error.message : String(error);
+		}
+	}
+
+	throw new Error(lastError);
+}
+
+async function fetchAnthropicCatalog(
+	baseUrl: string,
+	apiKey: string,
+	headers?: Record<string, string>,
+) {
+	const normalized = normalizeBaseUrl(baseUrl);
+	const requestHeaders: Record<string, string> = {
+		Accept: "application/json",
+		...(headers ?? {}),
+		"x-api-key": apiKey,
+		"anthropic-version": "2023-06-01",
+		"anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
+		"user-agent": "claude-cli/2.1.75",
+		"x-app": "cli",
+	};
+	return fetchJson(`${normalized}/v1/models?limit=100`, requestHeaders);
+}
+
+async function fetchProviderCatalog(params: {
+	provider: string;
+	baseUrl: string;
+	apiKey: string;
+	headers?: Record<string, string>;
+}): Promise<unknown> {
+	if (params.provider === "openai-codex") {
+		return fetchOpenAICodexCatalog(
+			params.baseUrl,
+			params.apiKey,
+			params.headers,
+		);
+	}
+	if (params.provider === "anthropic") {
+		return fetchAnthropicCatalog(params.baseUrl, params.apiKey, params.headers);
+	}
+
+	const normalized = normalizeBaseUrl(params.baseUrl);
+	const catalogUrl =
+		params.provider === "opencode" || params.provider === "opencode-go"
+			? `${normalized}/v1/models`
+			: `${normalized}/models`;
+	const headers: Record<string, string> = {
+		Accept: "application/json",
+		Authorization: `Bearer ${params.apiKey}`,
+		...(params.headers ?? {}),
+	};
+	return fetchJson(catalogUrl, headers);
+}
+
+function parseOpenAICodexRemoteModels(payload: unknown): RemoteModelInfo[] {
+	if (!payload || typeof payload !== "object") return [];
+	const models = (payload as Record<string, unknown>).models;
+	if (!Array.isArray(models)) return [];
+
+	const parsed: RemoteModelInfo[] = [];
+	for (const item of models) {
+		if (!item || typeof item !== "object") continue;
+		const record = item as Record<string, unknown>;
+		const id =
+			asString(record.slug) ?? asString(record.id) ?? asString(record.model);
+		if (!id) continue;
+
+		const visibility = asString(record.visibility)?.toLowerCase();
+		if (visibility === "hide" || visibility === "hidden") continue;
+		if (record.supported_in_api === false) continue;
+
+		const inputModalities = asStringArray(record.input_modalities);
+		const input: InputKind[] = inputModalities.includes("image")
+			? ["text", "image"]
+			: ["text"];
+		const supportedReasoning = asReasoningLevelArray(
+			record.supported_reasoning_levels,
+		);
+		const reasoning =
+			supportedReasoning.length > 0 ||
+			!!asString(record.default_reasoning_level);
+
+		parsed.push({
+			id,
+			name: asString(record.display_name) ?? asString(record.name),
+			api: "openai-codex-responses",
+			reasoning,
+			input,
+			contextWindow:
+				asNumber(record.context_window) ?? asNumber(record.max_context_window),
+			thinkingLevelMap: buildThinkingLevelMap(supportedReasoning),
+		});
+	}
+	return parsed;
+}
+
+function parseAnthropicRemoteModels(payload: unknown): RemoteModelInfo[] {
+	if (!payload || typeof payload !== "object") return [];
+	const data = (payload as Record<string, unknown>).data;
+	if (!Array.isArray(data)) return [];
+
+	const parsed: RemoteModelInfo[] = [];
+	for (const item of data) {
+		if (!item || typeof item !== "object") continue;
+		const record = item as Record<string, unknown>;
+		const id =
+			asString(record.id) ?? asString(record.model) ?? asString(record.slug);
+		if (!id) continue;
+
+		const capabilities =
+			record.capabilities && typeof record.capabilities === "object"
+				? (record.capabilities as Record<string, unknown>)
+				: undefined;
+		const effort =
+			capabilities?.effort && typeof capabilities.effort === "object"
+				? (capabilities.effort as Record<string, unknown>)
+				: undefined;
+		const effortSupported =
+			typeof effort?.supported === "boolean" ? effort.supported : undefined;
+
+		parsed.push({
+			id,
+			name: asString(record.display_name) ?? asString(record.name),
+			api: "anthropic-messages",
+			reasoning: effortSupported,
+			contextWindow: asNumber(record.max_input_tokens),
+			maxTokens: asNumber(record.max_tokens),
+		});
+	}
+	return parsed;
+}
+
+function parseGenericRemoteModels(payload: unknown): RemoteModelInfo[] {
+	const ids = extractModelIds(payload);
+	return ids.map((id) => ({ id }));
+}
+
+function parseRemoteModels(
+	provider: string,
+	payload: unknown,
+): RemoteModelInfo[] {
+	if (provider === "openai-codex") return parseOpenAICodexRemoteModels(payload);
+	if (provider === "anthropic") return parseAnthropicRemoteModels(payload);
+	return parseGenericRemoteModels(payload);
+}
+
+function toProviderModelDefinition(model: ModelLike): ProviderModelDef {
+	return {
+		id: model.id,
+		name: model.name,
+		api: model.api as ProviderModelDef["api"],
+		reasoning: model.reasoning,
+		input: model.input,
+		cost: model.cost,
+		contextWindow: model.contextWindow,
+		maxTokens: model.maxTokens,
+		headers: model.headers,
+		thinkingLevelMap: model.thinkingLevelMap,
+		compat: compatWithoutReasoningEffortMap(
+			model.compat,
+		) as ProviderModelDef["compat"],
+	};
+}
+
+function buildProviderModelDefinitions(
+	_provider: string,
+	existingModels: ModelLike[],
+	remoteModels: RemoteModelInfo[],
+): ProviderModelDef[] {
+	if (existingModels.length === 0) return [];
+
+	const template = existingModels[0];
+	const existingById = new Map(
+		existingModels.map((model) => [model.id, model]),
+	);
+	const effectiveRemote = remoteModels;
+
+	return effectiveRemote.map((remote) => {
+		const existing = existingById.get(remote.id);
+		const api = remote.api ?? existing?.api ?? template.api;
+		const contextWindow =
+			remote.contextWindow ??
+			existing?.contextWindow ??
+			DEFAULT_REFRESH_CONTEXT_WINDOW;
+		const maxTokens =
+			remote.maxTokens ??
+			existing?.maxTokens ??
+			template.maxTokens ??
+			Math.min(16384, contextWindow);
+		const compat = compatWithoutReasoningEffortMap(
+			existing?.compat,
+		) as ProviderModelDef["compat"];
+		const thinkingLevelMap = getThinkingLevelMap(existing, remote);
+
+		return {
+			id: remote.id,
+			name: remote.name ?? existing?.name ?? remote.id,
+			api,
+			reasoning:
+				remote.reasoning ?? existing?.reasoning ?? template.reasoning ?? false,
+			input: remote.input ?? existing?.input ?? template.input ?? ["text"],
+			cost: existing?.cost ?? template.cost ?? defaultCost(),
+			contextWindow,
+			maxTokens,
+			headers: existing?.headers ?? template.headers,
+			thinkingLevelMap,
+			compat,
+		};
+	});
+}
+
+function buildCachedProviderModelDefinitions(
+	provider: string,
+	existingModels: ModelLike[],
+	remoteModels: RemoteModelInfo[],
+	applyKnownContextWindows: boolean,
+): ProviderModelDef[] {
+	const existingIds = new Set(existingModels.map((model) => model.id));
+	const remoteById = new Map(remoteModels.map((model) => [model.id, model]));
+	const knownModels = existingModels.map((model) => {
+		const definition = toProviderModelDefinition(model);
+		const remoteContextWindow = remoteById.get(model.id)?.contextWindow;
+		return applyKnownContextWindows && remoteContextWindow !== undefined
+			? { ...definition, contextWindow: remoteContextWindow }
+			: definition;
+	});
+	const discoveredModels = buildProviderModelDefinitions(
+		provider,
+		existingModels,
+		remoteModels,
+	).filter((model) => !existingIds.has(model.id));
+	return [...knownModels, ...discoveredModels];
+}
+
+async function refreshProviderAvailability(
+	ctx: Pick<ExtensionContext, "modelRegistry">,
+	provider: string,
+): Promise<{
+	provider: string;
+	before: number;
+	after: number;
+	added: number;
+	removed: number;
+	addedIds: string[];
+	removedIds: string[];
+}> {
+	const allModels = (ctx.modelRegistry.getAll() as ModelLike[]).filter(
+		(model) => model.provider === provider,
+	);
+	if (allModels.length === 0) {
+		throw new Error(`No models registered for provider "${provider}"`);
+	}
+
+	const apiKey = await ctx.modelRegistry.getApiKeyForProvider(provider);
+	if (!apiKey) {
+		throw new Error(`No active subscription token for "${provider}"`);
+	}
+
+	const modelWithHeaders = allModels.find(
+		(model) => model.headers && Object.keys(model.headers).length > 0,
+	);
+	const payload = await fetchProviderCatalog({
+		provider,
+		baseUrl: allModels[0].baseUrl,
+		apiKey,
+		headers: modelWithHeaders?.headers,
+	});
+	const remoteModels = parseRemoteModels(provider, payload);
+	if (remoteModels.length === 0) {
+		throw new Error("Provider endpoint returned no model data");
+	}
+
+	const refreshedModels = buildProviderModelDefinitions(
+		provider,
+		allModels,
+		remoteModels,
+	);
+	if (refreshedModels.length === 0) {
+		throw new Error("Could not build refreshed model definitions");
+	}
+
+	// Pi composes this model overlay with the built-in provider authentication.
+	ctx.modelRegistry.registerProvider(provider, {
+		baseUrl: allModels[0].baseUrl,
+		api: allModels[0].api,
+		models: refreshedModels,
+	});
+	await writeProviderCache(provider, remoteModels);
+
+	const beforeIds = new Set(allModels.map((model) => model.id));
+	const afterIds = new Set(refreshedModels.map((model) => model.id));
+	const addedIds = [...afterIds].filter((id) => !beforeIds.has(id)).sort();
+	const removedIds = [...beforeIds].filter((id) => !afterIds.has(id)).sort();
+
+	return {
+		provider,
+		before: beforeIds.size,
+		after: afterIds.size,
+		added: addedIds.length,
+		removed: removedIds.length,
+		addedIds,
+		removedIds,
+	};
+}
+
+function resolveProvider(
+	requestedProvider: string,
+	knownProviders: string[],
+): string | undefined {
+	const exact = knownProviders.find(
+		(provider) => provider === requestedProvider,
+	);
+	if (exact) return exact;
+	const ci = knownProviders.find(
+		(provider) => provider.toLowerCase() === requestedProvider.toLowerCase(),
+	);
+	return ci;
+}
+
+function isRefreshSupportedProvider(provider: string): boolean {
+	return SUPPORTED_REFRESH_PROVIDERS.has(provider);
+}
+
+function formatModelIdList(ids: string[], maxItems = 12): string {
+	if (ids.length <= maxItems) return ids.join(", ");
+	const shown = ids.slice(0, maxItems);
+	return `${shown.join(", ")} ... (+${ids.length - maxItems} more)`;
+}
+
+const CURATED_PROVIDER_ORDER = [
+	"openrouter",
+	"opencode",
+	"opencode-go",
+] as const;
+
+export async function syncCuratedModelScope(
+	ctx: ExtensionContext,
+	bedrockModelIds: readonly string[],
+): Promise<{ scope: string[]; changed: boolean }> {
+	const available = ctx.modelRegistry.getAll() as ModelLike[];
+	const configured = new Set(getCurrentRefreshableProviders(ctx.modelRegistry));
+	let scope: string[] = [];
+	let changed = false;
+	await updateJsonObjectAtomic(getSettingsPath(), (settings) => {
+		const existing = Array.isArray(settings.enabledModels)
+			? settings.enabledModels.filter(
+					(value): value is string => typeof value === "string",
+				)
+			: [];
+		const existingCodex = existing.filter((id) =>
+			id.startsWith("openai-codex/"),
+		);
+		const availableCodex = available
+			.filter(
+				(model) =>
+					model.provider === "openai-codex" &&
+					!shouldHideModel("openai-codex", model),
+			)
+			.map((model) => `openai-codex/${model.id}`);
+		const codex = configured.has("openai-codex")
+			? availableCodex
+			: existingCodex;
+		const bedrock =
+			configured.has("amazon-bedrock") || configured.has("bedrock-mantle")
+				? bedrockModelIds.map((id) => {
+						const logicalId = id
+							.replace(/^us[.]/, "")
+							.replace(/-\d{8}-v\d+:\d+$/, "");
+						return `bedrock-mantle/${logicalId}`;
+					})
+				: [];
+		const orderedProviders = [
+			...CURATED_PROVIDER_ORDER.filter((provider) => configured.has(provider)),
+			...[...new Set(available.map((model) => model.provider))]
+				.filter(
+					(provider) =>
+						configured.has(provider) &&
+						provider !== "openai-codex" &&
+						provider !== "amazon-bedrock" &&
+						provider !== "bedrock-mantle" &&
+						!CURATED_PROVIDER_ORDER.includes(
+							provider as (typeof CURATED_PROVIDER_ORDER)[number],
+						),
+				)
+				.sort(),
+		];
+		const remaining = orderedProviders.flatMap((provider) =>
+			available
+				.filter(
+					(model) =>
+						model.provider === provider && !shouldHideModel(provider, model),
+				)
+				.sort((left, right) => left.id.localeCompare(right.id))
+				.map((model) => `${provider}/${model.id}`),
+		);
+		scope = [...new Set([...codex, ...bedrock, ...remaining])];
+		if (JSON.stringify(existing) === JSON.stringify(scope)) return settings;
+		changed = true;
+		return { ...settings, enabledModels: scope };
+	});
+	return { scope, changed };
+}
+
+export function formatRefreshFailure(provider: string, error: unknown): string {
+	const detail = error instanceof Error ? error.message : String(error);
+	if (
+		/HTTP 401|authentication_error|invalid x-api-key|invalid api key/i.test(
+			detail,
+		)
+	) {
+		return `${provider}: authentication failed (token may be expired or invalid); re-authenticate this provider and retry. Details: ${detail}`;
+	}
+	return `${provider}: ${detail}`;
+}
+
+function registerCachedProvider(
+	pi: ExtensionAPI,
+	provider: "openai-codex" | "openrouter" | "opencode" | "opencode-go",
+): void {
+	const cache = loadProviderCache(provider);
+	if (!cache) return;
+	const builtInModels = getModels(provider) as ModelLike[];
+	if (builtInModels.length === 0) return;
+	const models = buildCachedProviderModelDefinitions(
+		provider,
+		builtInModels,
+		cache.models,
+		cache.fetchedAt !== "legacy",
+	);
+	pi.registerProvider(provider, {
+		baseUrl: builtInModels[0].baseUrl,
+		api: builtInModels[0].api as ProviderModelDef["api"],
+		models,
+	});
+}
+
+export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
+	for (const provider of [
+		"openai-codex",
+		"openrouter",
+		"opencode",
+		"opencode-go",
+	] as const) {
+		registerCachedProvider(pi, provider);
+	}
+
+	registerSlashCommand(pi)("refresh-models", {
+		description:
+			"Refresh available models for one configured provider or all configured providers",
+		handler: async (args, ctx) => {
+			const notify = (
+				message: string,
+				level: "info" | "warning" | "error" = "info",
+			) => {
+				ctx.ui.notify(message, level);
+			};
+
+			let parsed: RefreshScope;
+			try {
+				parsed = parseRefreshModelsArgs(args);
+			} catch (error) {
+				notify(error instanceof Error ? error.message : String(error), "error");
+				return;
+			}
+
+			const configuredProviders = getCurrentRefreshableProviders(
+				ctx.modelRegistry,
+			);
+			if (configuredProviders.length === 0) {
+				notify(
+					"No configured OAuth or API-key providers found in auth.json",
+					"warning",
+				);
+				return;
+			}
+
+			const requestedProvider = parsed.provider;
+			const requestedProviders = requestedProvider
+				? (() => {
+						const resolved = resolveProvider(
+							requestedProvider,
+							configuredProviders,
+						);
+						return resolved ? [resolved] : [];
+					})()
+				: configuredProviders;
+
+			if (parsed.provider && requestedProviders.length === 0) {
+				const message = `Provider "${parsed.provider}" is not configured. Configured: ${configuredProviders.join(", ")}`;
+				notify(message, "error");
+				return;
+			}
+
+			const providers = [
+				...new Set(
+					requestedProviders
+						.filter(isRefreshSupportedProvider)
+						.map((provider) =>
+							provider === "amazon-bedrock" ? "bedrock-mantle" : provider,
+						),
+				),
+			];
+			const skipped = requestedProviders.filter(
+				(provider) => !isRefreshSupportedProvider(provider),
+			);
+
+			if (parsed.provider && providers.length === 0) {
+				const message = `Provider "${requestedProviders[0]}" is configured but not yet supported by /refresh-models. Supported: ${[
+					...SUPPORTED_REFRESH_PROVIDERS,
+				].join(", ")}`;
+				notify(message, "error");
+				return;
+			}
+
+			if (skipped.length > 0) {
+				notify(
+					`Skipping unsupported providers: ${skipped.join(", ")} (supported: ${[
+						...SUPPORTED_REFRESH_PROVIDERS,
+					].join(", ")})`,
+					"warning",
+				);
+			}
+
+			if (providers.length === 0) {
+				notify("No supported configured providers to refresh.", "warning");
+				return;
+			}
+
+			notify(
+				`Refreshing model availability for ${providers.join(", ")}...`,
+				"info",
+			);
+			let refreshedBedrockIds = [...getConfiguredBedrockModelIds()];
+			const outcomes: Array<
+				| {
+						provider: string;
+						ok: true;
+						message: string;
+						addedIds: string[];
+						removedIds: string[];
+						details?: string[];
+						changed?: boolean;
+				  }
+				| {
+						provider: string;
+						ok: false;
+						message: string;
+				  }
+			> = [];
+
+			for (const provider of providers) {
+				try {
+					if (provider === "bedrock-mantle") {
+						const beforeIds = new Set(
+							(ctx.modelRegistry.getAll() as ModelLike[])
+								.filter((model) => model.provider === provider)
+								.map((model) => model.id),
+						);
+						const refresh = await ctx.modelRegistry.refresh({
+							providers: [provider],
+							allowNetwork: true,
+							force: true,
+						});
+						if (refresh.errors.size > 0) throw [...refresh.errors.values()][0];
+						refreshedBedrockIds = (ctx.modelRegistry.getAll() as ModelLike[])
+							.filter((model) => model.provider === provider)
+							.map((model) => model.id);
+						const afterIds = new Set(refreshedBedrockIds);
+						const addedIds = [...afterIds].filter((id) => !beforeIds.has(id)).sort();
+						const removedIds = [...beforeIds].filter((id) => !afterIds.has(id)).sort();
+						outcomes.push({
+							provider,
+							ok: true,
+							message: `${provider}: ${beforeIds.size} -> ${afterIds.size} models (added ${addedIds.length}, removed ${removedIds.length})`,
+							addedIds,
+							removedIds,
+						});
+						continue;
+					}
+					const result = await refreshProviderAvailability(ctx, provider);
+					outcomes.push({
+						provider,
+						ok: true,
+						message: `${provider}: ${result.before} -> ${result.after} models (added ${result.added}, removed ${result.removed})`,
+						addedIds: result.addedIds,
+						removedIds: result.removedIds,
+					});
+				} catch (error) {
+					outcomes.push({
+						provider,
+						ok: false,
+						message: formatRefreshFailure(provider, error),
+					});
+				}
+			}
+
+			const successes = outcomes.filter(
+				(
+					outcome,
+				): outcome is Extract<(typeof outcomes)[number], { ok: true }> =>
+					outcome.ok,
+			);
+			const failures = outcomes.filter(
+				(
+					outcome,
+				): outcome is Extract<(typeof outcomes)[number], { ok: false }> =>
+					!outcome.ok,
+			);
+
+			let changedModelState = false;
+			for (const success of successes) {
+				notify(success.message, "info");
+				if (
+					success.changed ||
+					success.addedIds.length > 0 ||
+					success.removedIds.length > 0
+				) {
+					changedModelState = true;
+				}
+				if (success.details && success.details.length > 0) {
+					notify(
+						`${success.provider} selection/routing: ${formatModelIdList(success.details)}`,
+						"info",
+					);
+				}
+				if (success.addedIds.length > 0) {
+					notify(
+						`${success.provider} added: ${formatModelIdList(success.addedIds)}`,
+						"info",
+					);
+				}
+				if (success.removedIds.length > 0) {
+					notify(
+						`${success.provider} removed: ${formatModelIdList(success.removedIds)}`,
+						"info",
+					);
+				}
+			}
+			for (const failure of failures) notify(failure.message, "warning");
+
+			const scopeUpdate = await syncCuratedModelScope(
+				ctx,
+				refreshedBedrockIds,
+			);
+			if (scopeUpdate.changed) {
+				changedModelState = true;
+				notify(
+					`Curated model scope updated: ${scopeUpdate.scope.length} models ordered Codex, Bedrock, OpenRouter, then other providers.`,
+					"info",
+				);
+			}
+
+			if (failures.length === 0) {
+				notify(`Done. Refreshed ${successes.length} provider(s).`, "info");
+			} else {
+				notify(
+					`Refresh completed with errors (${successes.length} succeeded, ${failures.length} failed).`,
+					"warning",
+				);
+			}
+
+			if (changedModelState) {
+				notify(
+					"Model catalog changed; reloading Pi resources so /models can see updates.",
+					"info",
+				);
+				if (typeof ctx.reload === "function") await ctx.reload();
+			}
+		},
+	});
+}

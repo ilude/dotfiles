@@ -39,9 +39,15 @@ Footer line 2 shows live output throughput, first-token latency, token count and
 
 `/context` shows estimated prompt components, tool schemas, context files, skills, messages, thinking, tool results, summaries, cache usage and session spend. It uses Pi's compaction-aware active entries and separates component estimates from provider-backed context totals. These are not exact tokenizer measurements or an inspection of the final provider payload. `/context widget` shows a snapshot above the editor; `/context hide` and `/context clear` remove it without clearing the conversation.
 
+## Default profile model catalogs
+
+`/refresh-models [provider]` refreshes model availability for configured Anthropic, OpenAI Codex, OpenRouter, OpenCode, OpenCode Go, and Bedrock providers without repeating `/login`. With no provider it refreshes every configured supported provider and isolates per-provider failures. Non-Bedrock providers use their authenticated catalog endpoints; Bedrock delegates to the default profile's native `bedrock-mantle` refresh. Refreshed non-Bedrock catalogs are restored from the gitignored `model-cache/refresh-models/` directory, and changed catalogs or curated scope trigger a resource reload.
+
+At startup, the default profile hides the same obsolete, preview, snapshot, unsupported, and noisy models as the legacy profile for Codex, OpenRouter, OpenCode, OpenCode Go, and native Amazon Bedrock. Refresh also rewrites `enabledModels` in curated provider order while preserving unrelated settings. Generated catalogs contain model metadata, not credentials or authorization headers. Use `/reload` after changing the extension or policy source itself. Focused offline validation from `pi/profiles/default/` is `pnpm test model-visibility.test.ts refresh-models.test.ts && node scripts/model-catalog-smoke.mjs`.
+
 ## Default profile Amazon Bedrock
 
-The default profile owns one curated `bedrock-mantle` provider while leaving Pi's native `amazon-bedrock` provider available. Authentication is provider-scoped under `/login`; Mantle and Runtime regions remain independent. `/bedrock` inspects routes and local estimates, `/bedrock refresh` refreshes only this provider, and `/usage` includes month-to-date model/token estimates with explicit unpriced coverage. The footer consumes the same ledger and no longer writes a separate total. See [setup, routing, accounting, and rollback](profiles/default/docs/bedrock.md).
+The default profile owns one curated `bedrock-mantle` provider while leaving Pi's native `amazon-bedrock` provider available. Authentication is provider-scoped under `/login`; Mantle and Runtime regions remain independent. `/bedrock` inspects routes and local estimates, `/bedrock refresh` refreshes only this provider, and `/refresh-models` delegates Bedrock discovery to that same native refresh path. `/usage` includes month-to-date model/token estimates with explicit unpriced coverage. The footer consumes the same ledger and no longer writes a separate total. See [setup, routing, accounting, and rollback](profiles/default/docs/bedrock.md).
 
 Focused checks from `pi/profiles/default/`:
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-07: Port model refresh and visibility to default Pi
+
+**Added:** The default Pi profile now provides `/refresh-models [provider]` for authenticated Anthropic, OpenAI Codex, OpenRouter, OpenCode, OpenCode Go, and Bedrock catalog refresh without another login. It preserves the legacy endpoint, cache-composition, curated-scope, failure-isolation, summary, and conditional-reload behavior; Bedrock delegates to the default profile's existing native `bedrock-mantle` refresh rather than restoring the legacy AWS CLI inventory path.
+
+**Added:** Default-profile startup now applies the legacy model visibility policy unchanged for Codex, OpenRouter, OpenCode, OpenCode Go, and native Amazon Bedrock. Generated refresh catalogs remain profile-local and gitignored, contain no credentials, and the legacy profile remains unchanged.
+
 ## 2026-09-07: Commit command handles submodule workflows
 
 **Changed:** `/commit` now inventories initialized submodules, reviews and commits dirty nested repositories independently from deepest to shallowest, then commits updated parent gitlinks. Results and remaining changes cover every inventoried repository; requested pushes preserve submodule-before-parent order without recursive pushing. Failed private tool calls now identify the tool, target or bounded command excerpt, and elapsed time so per-command timeouts are diagnosable. The runner supplies tracked instruction paths, blocks broad recursive discovery, and preserves the first failure without queued-call noise.
