@@ -2,6 +2,10 @@
 
  Use plain, direct language in chat and files. No em dashes, filler, theatrical framing, repeated apologies, or sycophancy. Don't flatter or agree without evidence. Use technical terminology only when needed for precision or to prevent misunderstanding.
 
+ ## Pi terminology
+
+ - The orchestrator is the primary model the user interacts with in a Pi instance.
+
  ## Investigation
 
  - Inspect before answering or acting. Never substitute assumptions or generic advice for verification you can perform.

@@ -123,7 +123,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         if (decision.outcome === "block") return blocked(decision.reason);
         const localBypass = bypassed && (request.tool === "bash" || request.tool === "powershell") && /^(?:\s*)(?:rm\b|git\s+(?!push\b)|docker\s+(?!.*\bvolume\b))/i.test(request.input.command) && !/\b(?:aws|az|gcloud|kubectl|helm|terraform|tofu|pulumi|ssh|scp|curl|wget)\b/i.test(request.input.command);
         if (decision.outcome === "user" && !localBypass) {
-          const answer = await promptDecision(decision, request.text, { ...ctx, signal });
+          const answer = await promptDecision(decision, request, analysis, { ...ctx, signal });
           if (answer.status !== "approved") return blocked(answer.reason);
         }
         if (!fresh()) return blocked("Pending call changed or cancelled; action not executed");

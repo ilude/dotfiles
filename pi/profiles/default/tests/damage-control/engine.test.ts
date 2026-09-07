@@ -16,6 +16,15 @@ describe("complete-invocation decisions", () => {
     expect(run([]).outcome).toBe("allow");
     for (let i = 0; i < 3; i++) expect(run([match("persistent", "user"), match("lower", "review")]).outcome).toBe("user");
   });
+  it("explains only the rules responsible for the decision in plain language", () => {
+    const duplicate = { ...match("legacy-008", "user"), reason: "rm with recursive or force flags" };
+    const decision = run([
+      { ...match("legacy-007", "user"), reason: "rm with recursive or force flags" },
+      duplicate,
+      { ...match("unrelated", "review"), reason: "unrelated candidate" },
+    ], undefined, { uncertainties: ["cat is missing a required operand"] });
+    expect(decision).toEqual({ outcome: "user", reason: "- rm with recursive or force flags" });
+  });
   it("reviews false positives without authorizing actual hard effects", () => {
     const candidate = match("regex", "block", "candidate");
     expect(run([candidate]).outcome).toBe("review");

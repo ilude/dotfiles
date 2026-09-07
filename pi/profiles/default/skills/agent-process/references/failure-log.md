@@ -2,6 +2,15 @@
 
 Factual incident history for operator review; not executable policy. Append incidents and link related patterns. Instruction changes require operator approval.
 
+## APR-004 — Approval prompt obscured the requested decision
+
+- **Reference:** Operator report with a default-profile Damage Control prompt showing a multiline shell operation.
+- **Expected:** State what is being approved, distinguish the policy reasons from the pending operation, and make the intended approval choice the initial selection while Escape continues to deny.
+- **Observed:** The prompt placed terse parser reasons above a long raw operation under an “untrusted data” label, without saying that approval covered the complete operation. Its initial selection was `Deny`.
+- **Impact:** The operator could not determine what approval meant and reported that the default selection was wrong.
+- **Remediation:** Operator approved a less-is-more redesign: compact reason, matched command, targets and whole-call scope; restrained color; full Details opening at the trigger; duplicate-reason grouping without losing distinct targets; and useful denial context. Rule IDs and analysis notes remain inspectable rather than being discarded. Review failures are distinguished from rule violations. `Allow once` stays first; cancellation and Escape remain fail-closed. No enforcement policy or global instruction changes.
+- **Status:** Implemented. Real parser-to-presentation mapping, component rendering/navigation, narrow layouts, and cancellation are covered by tests. All 112 Damage Control tests, default typecheck, and the offline production-loader smoke check pass. Live operator comprehension remains unverified.
+
 ## APR-003 — Scheduler used for ordinary continuation
 
 - **Reference:** Operator report from a Pi web-tools implementation session on 2026-09-06.

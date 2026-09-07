@@ -19,7 +19,9 @@ export async function harness(dependencies: Partial<GateDependencies> = {}) {
   const review = vi.fn(dependencies.review ?? (async () => ({ status: "valid" as const, verdict: "allow" as const, reason: "synthetic", dismissedCandidates: [] })));
   const getAllTools = vi.fn(() => ["read", "bash", "powershell", "write", "edit", "grep", "find", "ls"].map(name => ({ name, sourceInfo: { source: "builtin" } })));
   const api = { on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => handlers.set(name, [...handlers.get(name) ?? [], handler]), getAllTools, sendMessage: vi.fn() } as unknown as ExtensionAPI;
-  const ctx = { cwd, mode: "tui", hasUI: true, signal: undefined, abort, ui: { notify, select, input, theme: { fg: (_color: string, text: string) => text } } } as unknown as ExtensionContext;
+  // Gate fixtures use the supported RPC dialog boundary. Real TUI rendering
+  // and key handling are exercised separately in prompt.test.ts.
+  const ctx = { cwd, mode: "rpc", hasUI: true, signal: undefined, abort, ui: { notify, select, input } } as unknown as ExtensionContext;
   const gate = registerGate(api, join(cwd, "profile"), cwd, { policy, settings, analyze: (request, options) => analyzeShell(request, { ...options, now: () => 0 }), ...dependencies, review });
   api.on("tool_call", gate.handle);
   const emit = async (name: string, event: unknown = {}) => {

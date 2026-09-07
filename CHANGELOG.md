@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-07: Define Pi orchestrator terminology
+
+**Clarified:** Default Pi's global instructions define the orchestrator as the primary model the user interacts with. Onclave and subagent behavior belongs in the respective tooling instructions when implemented, not global instructions. Runtime behavior and the legacy profile are unchanged.
+
+## 2026-09-07: Clarify Damage Control approval prompts
+
+**Changed:** Default Damage Control replaces the script-sized selector title with a compact approval panel: reason, matched command, affected targets, working directory, and whole-call scope. Amber highlights reasons and flags; bold amber marks scope and additional identified changes. `Allow once` remains initially selected. Duplicate reasons are combined without merging distinct targets. Review failures are not presented as confirmed rule violations.
+
+**Details:** `D` opens a scrollable, full-operation view at the triggering source line, with rule IDs and analysis notes kept out of the main question. Returning from Details never approves. RPC retains plain dialogs with paged details. Denials identify the declined operation and discourage repeat or disguised attempts. Escape, cancellation, UI failures, per-call freshness checks, existing enforcement rules, and the legacy profile remain unchanged.
+
+**Verified:** 112 Damage Control tests, default-profile typecheck, and the offline production-loader smoke check pass. Tests exercise the real parser-to-presentation mapping and component rendering/navigation at narrow widths. Live terminal appearance and operator comprehension remain unverified.
+
 ## 2026-09-07: Port bounded cross-profile log analytics to default Pi
 
 **Added:** Deferred `log_analytics` supports schema discovery, metadata-only session listing, and read-only DuckDB queries over explicitly selected default, legacy, or combined session histories. Exact session references narrow staging without copying historical files. Existing default Bedrock and Codex ledgers are queryable without changing their producers or inventing missing Codex timestamps/session IDs.

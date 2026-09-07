@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-011 — Define orchestrator and Onclave ownership
+
+- **Reference:** Operator clarification before planning the default-profile Onclave port.
+- **Feedback:** The orchestrator is the primary model the user interacts with in a Pi instance. Onclave connects orchestrators across independent Pi instances, not subagents.
+- **Decision:** Record only the orchestrator definition in default Pi's global `AGENTS.md`. Following operator correction, removed the Onclave and subagent rules from that file; those belong in their respective tooling instructions when implemented. The orchestrator-only Onclave communication boundary remains an implementation requirement. This change does not implement the port or runtime enforcement.
+- **Planning decisions:** Trusted incoming requests may start a turn when idle and queue when busy; informs remain non-turn-triggering. Restart recovery is not required for the initial port. The operator will perform live two-instance validation after implementation, outside the plan. Prefer minimal ceremony for the protected VLAN/tailnet environment rather than automatically preserving legacy gates.
+- **Related:** AIF-004 (narrow instruction changes), AIF-002 (requirements versus proposals).
+- **Status:** Instruction updated; runtime enforcement remains future work.
+
 ## AIF-010 — Identify the timed-out commit operation
 
 - **Reference:** Operator follow-up after the submodule-aware `/commit` failed with only “Command timed out after 15 seconds.”

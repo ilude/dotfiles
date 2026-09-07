@@ -1,10 +1,13 @@
 ---
 created: 2026-08-31
-updated: 2026-09-05
-status: ready
+updated: 2026-09-07
+status: cancelled
+archived: 2026-09-07
 ---
 
 # Add visible Herdr execution surfaces for governed Pi subagents and background terminals
+
+> Cancelled and archived at the user's request on 2026-09-07. Ignore this plan; do not resume its remaining tasks. The historical implementation and evidence below are retained for reference, not execution authority. This archival does not remove or modify its worktree or implementation.
 
 ## Objective
 
