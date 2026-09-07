@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-07: Port Brave control to default Pi in TypeScript
+
+**Added:** The default Pi profile now provides ownership-verified isolated and explicitly aliased real-profile Brave control through `browser_session`, `browser_page`, and `/browser-setup`. Existing legacy aliases are copied once into the default profile; browser sessions, process identity, tabs, and browser data remain profile-local and are not migrated.
+
+**Changed:** Default-profile browser launch, lifecycle, and bounded page operations use TypeScript and direct CDP instead of the Python and `agent-browser` compatibility path. Full process-tuple checks and protected credential, CAPTCHA, cookie, storage, and evaluation boundaries are preserved. Windows retains a narrow PowerShell CIM process-inspection adapter.
+
 ## 2026-09-07: Port model refresh and visibility to default Pi
 
 **Added:** The default Pi profile now provides `/refresh-models [provider]` for authenticated Anthropic, OpenAI Codex, OpenRouter, OpenCode, OpenCode Go, and Bedrock catalog refresh without another login. It preserves the legacy endpoint, cache-composition, curated-scope, failure-isolation, summary, and conditional-reload behavior; Bedrock delegates to the default profile's existing native `bedrock-mantle` refresh rather than restoring the legacy AWS CLI inventory path.

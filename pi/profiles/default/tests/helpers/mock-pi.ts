@@ -3,9 +3,10 @@ import { vi } from "vitest";
 export function createMockPi() {
 	const hooks: Array<{ event: string; handler: Function }> = [];
 	const commands: Array<{ name: string; handler: Function }> = [];
+	const tools: Array<{ name: string; parameters?: any; execute?: Function }> = [];
 	const mockPi = {
 		events: { emit: vi.fn(), on: vi.fn(() => () => {}) },
-		registerTool: vi.fn(),
+		registerTool: vi.fn((tool: { name: string; parameters?: any; execute?: Function }) => tools.push(tool)),
 		on: vi.fn((event: string, handler: Function) => hooks.push({ event, handler })),
 		exec: vi.fn(async () => ({ code: 0, stdout: "", stderr: "" })),
 		registerCommand: vi.fn((name: string, definition: { handler: Function }) =>
@@ -13,6 +14,8 @@ export function createMockPi() {
 		),
 		appendEntry: vi.fn(),
 		_commands: commands,
+		_tools: tools,
+		_getTool: (name: string) => tools.find((tool) => tool.name === name),
 		_getHook: (event: string) => hooks.filter((hook) => hook.event === event),
 	};
 	return mockPi;

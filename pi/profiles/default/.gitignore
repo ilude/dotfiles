@@ -10,4 +10,6 @@
 /model-cache/
 /operator-footer-usage.json
 /codex-cache.jsonl
+/browser-profiles.json
+/browser/
 /sessions/

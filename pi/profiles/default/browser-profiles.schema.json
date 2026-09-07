@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pi.local/schemas/browser-profiles.schema.json",
+  "title": "Pi Brave browser profile aliases",
+  "description": "Identity-free contract for local aliases. Values are resolved against Brave Local State at runtime.",
+  "type": "object",
+  "required": ["version", "profiles"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "profiles": {
+      "type": "object",
+      "description": "Alias names are operator-facing and are not profile directory names.",
+      "propertyNames": {
+        "pattern": "^[^\\s]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["profileDirectory"],
+        "properties": {
+          "profileDirectory": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact directory key expected in Brave Local State profile.info_cache."
+          },
+          "userDataDir": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional configured Brave root; it is verified against Local State before launch."
+          },
+          "extensionsExpected": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, enabled mode requires an observable chrome-extension:// runtime target."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

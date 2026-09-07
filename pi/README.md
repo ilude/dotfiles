@@ -71,6 +71,10 @@ The footer shows only the next injection time (`sched@ 9:00am`, local time), cle
 
 The default profile provides `web_search` (SearXNG) and `web_fetch` (local readable extraction with automatic public-URL Jina fallback). A tool-free Luna call adds best-effort prompt-injection annotations before results enter context; screening failures are marked, not blocked. See [setup, behavior, and limitations](profiles/default/docs/web-tools.md).
 
+## Default profile browser control
+
+The default profile provides `browser_session`, `browser_page`, and `/browser-setup` for one ownership-verified Brave session. Isolated mode stores browser data under the active profile. Real-profile mode accepts only configured aliases discovered from Brave `Local State`; the legacy aliases are copied once into the default profile, while sessions and browser data are not migrated. Browser launch, lifecycle, and page operations use TypeScript and direct CDP. Windows process identity uses a narrow PowerShell CIM adapter; the default browser tools do not invoke Python, `agent-browser`, or `npx`. Credential, CAPTCHA, cookie, storage, and arbitrary-evaluation surfaces remain unavailable. See [`profiles/default/skills/browser-tools/SKILL.md`](profiles/default/skills/browser-tools/SKILL.md).
+
 ## Default profile commands
 
 - `/branch` opens a branched copy of the current session in a new terminal tab.
