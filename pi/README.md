@@ -1,6 +1,6 @@
 # Pi Profiles
 
-`pp` launches Pi with an isolated profile directory.
+`pp` launches Pi with an isolated profile directory. New and resumed default-profile sessions record that active profile once as a metadata-only `session-profile` custom entry in the session JSONL; it is excluded from model context.
 
 - `pp` uses `pi/profiles/default/`.
 - `pp -p legacy` uses `pi/profiles/legacy/`, which contains the previous customized Pi setup and its local runtime state.
@@ -10,6 +10,12 @@
 ## Documentation ownership
 
 This file owns cross-profile launcher and directory guidance. Customized legacy runtime documentation lives in [`profiles/legacy/docs/README.md`](profiles/legacy/docs/README.md), with the full setup guide in [`profiles/legacy/README.md`](profiles/legacy/README.md). Those documents do not describe the default profile. Keep new profile-specific documentation with its owning profile rather than recreating a shared `pi/docs/` tree.
+
+## Default profile implementation ownership
+
+Default customization uses native `getAgentDir()` for active-profile paths and `profiles/default/lib/profile.ts` for profile labels. Model catalog requests, cache persistence, reconciliation and compatibility conversion live under `profiles/default/lib/models/`; the refresh extension coordinates command output and settings updates. Context analysis and report formatting live in `lib/context-analysis.ts` and `lib/context-report.ts`, with Pi state collection in the command extension.
+
+`extensions/profile-reload.ts` binds session lifecycle to `lib/profile-reload.ts`, which owns reload state and polling independently of the footer. The footer subscribes to changes and `/clear` reads the same state. `lib/model-runtime.ts` shares profile-local runtime creation configuration for web screening and commit review, but each feature retains its own runtime lifetime, cancellation and permissions. These modules belong to the default profile, not a cross-profile framework.
 
 ## Default profile process review
 
@@ -89,6 +95,7 @@ The default profile provides deferred `image_inspect` and `image_transform` tool
 - `/effort [level]` shows or sets thinking effort.
 - `/handoff`, `/init`, `/summarize`, and `/war-report` are native prompt templates.
 - `/new-instance` opens a new Pi instance for the current profile; `/new-terminal` opens a plain shell.
+- `/astra` switches to GPT-6 Astra, and `/sol` and `/luna` switch to their GPT-5.6 models through the Codex subscription; `/fable` switches to Claude Fable through Amazon Bedrock.
 - `/yt <request>` ingests, searches, lists, or fetches YouTube content through Onclave, then compares ingested videos with the current repository without modifying it.
 - `/yt-local <url-or-id> [transcript|metadata] [options]` explicitly fetches local YouTube artifacts without uploading them to Onclave.
 - `/commit push` additionally pushes the current branch to `origin`, including existing outgoing commits, without force-pushing.

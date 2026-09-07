@@ -1,3 +1,4 @@
+import { getThinkingLevelMap, toModelDefinition } from "../lib/models/compat.ts";
 import { getSettingsPath } from "../lib/settings-file.ts";
 import * as fs from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -318,43 +319,8 @@ export function shouldHideModel(
 	);
 }
 
-function compatWithoutReasoningEffortMap(compat: unknown): unknown {
-	if (!compat || typeof compat !== "object" || Array.isArray(compat))
-		return compat;
-	const { reasoningEffortMap: _reasoningEffortMap, ...rest } = compat as Record<
-		string,
-		unknown
-	>;
-	return Object.keys(rest).length > 0 ? rest : undefined;
-}
-
-function getThinkingLevelMap(
-	model: ModelLike,
-): Record<string, string | null> | undefined {
-	const compat = model.compat as { reasoningEffortMap?: unknown } | undefined;
-	const legacyMap =
-		compat?.reasoningEffortMap &&
-		typeof compat.reasoningEffortMap === "object" &&
-		!Array.isArray(compat.reasoningEffortMap)
-			? (compat.reasoningEffortMap as Record<string, string | null>)
-			: undefined;
-	return model.thinkingLevelMap ?? legacyMap;
-}
-
 function toProviderModelDef(model: ModelLike): Record<string, unknown> {
-	return {
-		id: model.id,
-		name: model.name,
-		api: model.api,
-		reasoning: model.reasoning,
-		input: model.input,
-		cost: model.cost,
-		contextWindow: model.contextWindow,
-		maxTokens: model.maxTokens,
-		headers: model.headers,
-		thinkingLevelMap: getThinkingLevelMap(model),
-		compat: compatWithoutReasoningEffortMap(model.compat),
-	};
+	return { ...toModelDefinition(model), thinkingLevelMap: getThinkingLevelMap(model) };
 }
 
 type ModelRegistryLike = {

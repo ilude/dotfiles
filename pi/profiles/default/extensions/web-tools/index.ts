@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getAgentDir, ModelRuntime, truncateHead, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { truncateHead, type ModelRuntime, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { Type } from "typebox";
 import { SCREEN_PROMPT, screenContent, type Reviewer } from "./screen.ts";
 import { GatewayCircuit } from "./circuit.ts";
@@ -36,8 +37,7 @@ export default function webTools(pi: ExtensionAPI) {
 	let runtime: ModelRuntime | undefined;
 	const review: Reviewer = async (text, signal) => {
 		if (!runtime) {
-			const profile = getAgentDir();
-			runtime = await ModelRuntime.create({ authPath: join(profile, "auth.json"), modelsPath: join(profile, "models.json"), modelsStorePath: join(profile, "models-store.json"), allowModelNetwork: false, signal });
+			runtime = await createProfileModelRuntime(signal);
 		}
 		const model = runtime.getModel("openai-codex", "gpt-5.6-luna");
 		if (!model) throw new Error("Luna unavailable");

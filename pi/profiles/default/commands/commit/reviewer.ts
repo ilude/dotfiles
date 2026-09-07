@@ -3,7 +3,8 @@ import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { ImageContent, TextContent, Usage } from "@earendil-works/pi-ai";
-import { createBashTool, createReadTool, getAgentDir, ModelRuntime, type ExtensionAPI, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createBashTool, createReadTool, type ExtensionAPI, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { formatStatus, gitReviewTool, page } from "./tools.ts";
@@ -84,11 +85,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: () => boolea
 					const instructions = (await git(["ls-files", "--", "AGENTS.md", ":(glob)**/AGENTS.md"], combined, repository)).split("\n").filter(Boolean);
 					inventory.push(`Repository: ${relative(root, repository) || "."}\nInstruction files: ${instructions.length ? instructions.join(", ") : "none"}\n${status}`);
 				}
-				const profile = getAgentDir();
-				const runtime = await ModelRuntime.create({
-					authPath: join(profile, "auth.json"), modelsPath: join(profile, "models.json"),
-					modelsStorePath: join(profile, "models-store.json"), allowModelNetwork: false, signal: combined,
-				});
+				const runtime = await createProfileModelRuntime(combined);
 				const model = runtime.getModel(PROVIDER, MODEL);
 				if (!model) throw new Error(`${PROVIDER}/${MODEL} is unavailable. No fallback model was used.`);
 				const review = gitReviewTool(pi, repositories);

@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { activeProfileName } from "../lib/profile.ts";
 
 interface LaunchPlan {
 	executable?: string;
@@ -18,7 +19,7 @@ interface CommandContext {
 }
 
 function profileDir(): string {
-	return path.resolve(process.env.PI_CODING_AGENT_DIR || path.join(process.env.HOME || process.env.USERPROFILE || "", ".pi", "agent"));
+	return path.resolve(getAgentDir());
 }
 
 function repoRoot(): string {
@@ -30,7 +31,7 @@ function ppScript(): string {
 }
 
 function currentProfileName(): string {
-	const name = path.basename(profileDir());
+	const name = activeProfileName();
 	if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) || name === "." || name === "..") {
 		throw new Error(`Cannot derive pp profile name from ${profileDir()}.`);
 	}

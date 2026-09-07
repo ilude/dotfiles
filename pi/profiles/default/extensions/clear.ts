@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { isProfileReloadNeeded } from "./operator-footer.ts";
+import { isProfileReloadNeeded } from "../lib/profile-reload.ts";
 
 export default function clearCommand(pi: ExtensionAPI): void {
 	pi.registerCommand("clear", {

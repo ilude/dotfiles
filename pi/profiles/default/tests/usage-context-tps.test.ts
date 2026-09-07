@@ -10,7 +10,7 @@ import tps from "../extensions/tps-tracker.ts";
 import clear from "../extensions/clear.ts";
 import { formatCacheUsage, formatQuota, formatUsage, paceColor, readCacheUsage, recordCacheUsage, REFRESH_MS, USAGE_PAGE } from "../lib/codex-usage.ts";
 
-vi.mock("../extensions/operator-footer.ts", () => ({ isProfileReloadNeeded: () => true }));
+vi.mock("../lib/profile-reload.ts", () => ({ isProfileReloadNeeded: () => true }));
 vi.mock("../lib/bedrock/ledger.ts", () => ({
   summarize: async () => ({ month: "test", records: [], cost: 0, unpriced: 0, baseline: 0 }),
   formatUsage: () => "Bedrock: no local usage recorded this month.",
@@ -163,7 +163,11 @@ describe("Codex usage", () => {
 
   it("keeps missing quotas unknown and colors observed quota by elapsed window pace", () => {
     expect(formatQuota({})).toBe("codex: unknown");
-    expect(formatQuota({ rate_limit: { secondary_window: usage.rate_limit.secondary_window } })).toContain("5h unavailable");
+    const partial = formatQuota(
+      { rate_limit: { secondary_window: usage.rate_limit.secondary_window } },
+      (color, text) => `<${color}>${text}</${color}>`,
+    );
+    expect(partial).toContain("5h <accent>0%</accent>");
     const window = { limit_window_seconds: 18000, reset_at: Date.now() / 1000 + 9000 };
     expect(paceColor({ ...window, used_percent: 25 })).toBe("success");
     expect(paceColor({ ...window, used_percent: 50 })).toBe("warning");

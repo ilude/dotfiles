@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
+import { getAgentDir as profileDir } from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import { lock } from "proper-lockfile";
@@ -12,7 +12,6 @@ export interface UsageRecord {
 	usage: Required<TokenUsage>; pricing: PriceResult;
 }
 export interface UsageSummary { month: string; records: UsageRecord[]; cost: number; unpriced: number; baseline: number; error?: string }
-const profileDir = () => process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
 export const ledgerPath = () => path.join(profileDir(), LEDGER_FILE);
 const monthKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 const finite = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;

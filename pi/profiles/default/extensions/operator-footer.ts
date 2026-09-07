@@ -1,10 +1,8 @@
 import * as childProcess from "node:child_process";
-import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { ReloadMonitor } from "../lib/reload-monitor.ts";
+import { profileReload } from "../lib/profile-reload.ts";
 
 const ANSI = {
 	cyan: "\x1b[36m",
@@ -21,12 +19,6 @@ const ANSI = {
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
 let cachedPiVersion: string | null | undefined;
-const reloadMonitor = new ReloadMonitor();
-let reloadTimer: ReturnType<typeof setInterval> | undefined;
-
-export function isProfileReloadNeeded(): boolean {
-	return reloadMonitor.needed && !reloadMonitor.error;
-}
 let requestFooterRender: (() => void) | undefined;
 const cachedStatusDirectories = new Map<string, string>();
 
@@ -196,42 +188,8 @@ function statusText(value: string | undefined): string {
 	return (value ?? "").replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
 }
 
-function profileDir(): string {
-	return process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
-}
-
-function startReloadMonitor(ctx: ExtensionContext, pi: ExtensionAPI): void {
-	if (reloadTimer) clearInterval(reloadTimer);
-	reloadMonitor.reset({
-		agentDir: profileDir(),
-		cwd: ctx.cwd,
-		projectTrusted: ctx.isProjectTrusted(),
-		projectConfigDir: CONFIG_DIR_NAME,
-		loadedPaths: [
-			...pi.getCommands().map((command) => command.sourceInfo.path),
-			...pi.getAllTools().map((tool) => tool.sourceInfo.path),
-			...ctx.ui.getAllThemes().flatMap((theme) => theme.path ? [theme.path] : []),
-			path.join(profileDir(), "lib"),
-			path.join(profileDir(), "commands"),
-		],
-	});
-	let reportedError: string | undefined;
-	const check = () => {
-		const before = `${reloadMonitor.needed}:${reloadMonitor.error}`;
-		reloadMonitor.check();
-		if (reloadMonitor.error && reloadMonitor.error !== reportedError) {
-			ctx.ui.notify(`Reload monitor: ${reloadMonitor.error}`, "warning");
-		}
-		reportedError = reloadMonitor.error;
-		if (before !== `${reloadMonitor.needed}:${reloadMonitor.error}`) requestFooterRender?.();
-	};
-	check();
-	reloadTimer = setInterval(check, 2000);
-	reloadTimer.unref();
-}
-
 function formatReloadIndicator(reloadNeeded: boolean): string {
-	if (reloadMonitor.error) return `${ANSI.red}[reload check failed]${ANSI.reset}`;
+	if (profileReload.error) return `${ANSI.red}[reload check failed]${ANSI.reset}`;
 	return reloadNeeded ? `${ANSI.white}[${ANSI.pink}reload${ANSI.white}]${ANSI.reset}` : "";
 }
 
@@ -336,7 +294,7 @@ function installFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
 				model: ctx.model,
 				pi,
 				contextUsage: ctx.getContextUsage?.() ?? null,
-				reloadNeeded: reloadMonitor.needed,
+				reloadNeeded: profileReload.needed,
 				rightStatus: codexStatus,
 				width,
 			});
@@ -356,16 +314,18 @@ function installFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
 }
 
 export default function operatorFooter(pi: ExtensionAPI): void {
+	let unsubscribeReload: (() => void) | undefined;
 	pi.on("session_start", async (_event: { reason?: string }, ctx: ExtensionContext) => {
-		startReloadMonitor(ctx, pi);
+		unsubscribeReload?.();
+		unsubscribeReload = profileReload.subscribe(() => requestFooterRender?.());
 		initializeUsage(ctx);
 		if (!installFooter(ctx, pi)) ctx.ui.setStatus("pi", `π v${resolvePiVersion() ?? "?"}`);
 		refreshStatuses(ctx);
 	});
 
 	pi.on("session_shutdown", async () => {
-		if (reloadTimer) clearInterval(reloadTimer);
-		reloadTimer = undefined;
+		unsubscribeReload?.();
+		unsubscribeReload = undefined;
 		requestFooterRender = undefined;
 	});
 

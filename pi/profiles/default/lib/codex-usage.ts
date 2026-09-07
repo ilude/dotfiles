@@ -2,6 +2,7 @@
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync, fstatSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { getAgentDir as profileDir } from "@earendil-works/pi-coding-agent";
 
 export const USAGE_PAGE = "https://chatgpt.com/codex/settings/usage";
 export const USAGE_ENDPOINT = "https://chatgpt.com/backend-api/wham/usage";
@@ -14,7 +15,7 @@ export interface CodexUsage {
   credits?: { unlimited?: boolean; balance?: string | number; has_credits?: boolean };
   additional_rate_limits?: { limit_name?: string; metered_feature?: string; rate_limit?: Limit | null }[];
 }
-export function profileDir(): string { return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"); }
+export { profileDir };
 function object(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
@@ -76,13 +77,13 @@ export function paceColor(window: Window): "success" | "warning" | "error" | "mu
   if (elapsed <= 2 || percent <= 2) return "success";
   return percent - elapsed > 3 ? "error" : percent - elapsed >= -3 ? "warning" : "success";
 }
-export function formatQuota(usage: CodexUsage, paint: (color: ReturnType<typeof paceColor>, text: string) => string = (_, text) => text): string {
+export function formatQuota(usage: CodexUsage, paint: (color: ReturnType<typeof paceColor> | "accent", text: string) => string = (_, text) => text): string {
   const all = windows(usage.rate_limit);
   if (!all.length) return "codex: unknown";
   return "codex: " + [["5h", 18000], ["wk", 604800]].map(([label, seconds]) => {
     const window = all.find(w => w.limit_window_seconds === seconds);
     const percent = used(window);
-    return `${label} ${window && percent !== undefined ? paint(paceColor(window), `${percent}%`) : "unavailable"}`;
+    return `${label} ${window && percent !== undefined ? paint(paceColor(window), `${percent}%`) : paint("accent", "0%")}`;
   }).join(" | ");
 }
 export function formatUsage(usage: CodexUsage): string {

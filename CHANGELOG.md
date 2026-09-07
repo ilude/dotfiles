@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-09-07: Clarify unavailable Codex quota windows
+
+**Changed:** The default Pi footer now renders a missing or disabled Codex quota window as a blue `0%` instead of `unavailable`, distinguishing it from observed quota consumption while keeping the compact percentage layout.
+
+## 2026-09-07: Add Astra model shortcut to default Pi
+
+**Added:** `/astra` switches to `openai-codex/gpt-6-astra` through the existing model-shortcut handler, with the same availability checks and argument handling as `/sol` and `/luna`. It does not start a model turn.
+
+## 2026-09-07: Allow repository-wide commit review diffs
+
+**Fixed:** The private commit review tool now accepts omitted or empty diff paths, matching ordinary Git behavior within the selected inventory repository. Previously the schema allowed omitted paths but execution rejected them, aborting the commit workflow on a read-only inspection request. Explicit filters, staged/worktree selection, pagination, untracked-file handling, repository restrictions and fail-fast behavior remain unchanged.
+
+## 2026-09-07: Consolidate default Pi customization ownership
+
+**Changed:** Default-profile consumers now use Pi's native profile-directory resolution and one profile-label helper. Model compatibility conversion is shared, model refresh separates catalog requests, cache storage and reconciliation, and context reporting separates pure analysis/formatting from Pi state collection. Reload state and polling have a non-UI owner consumed by the footer and `/clear`. Web screening and commit review share runtime creation configuration, not runtime instances or policy.
+
+**Preserved:** Commands, report output, session metadata, cache formats, provider precedence, two-second reload polling and per-feature cancellation/permissions remain unchanged. Legacy and other profiles are untouched. Use `/reload` or a fresh default-profile launch to activate the refactored extensions.
+
+## 2026-09-07: Add direct model-switch commands to default Pi
+
+**Added:** `/sol` and `/luna` switch the active session to their GPT-5.6 models through the Codex subscription. `/fable` switches to the newest configured Claude Fable model through Amazon Bedrock, preferring the curated `bedrock-mantle` route and falling back to Pi's native Bedrock provider. The commands preserve the current thinking effort and do not start a model turn.
+
+## 2026-09-07: Record the active default Pi profile in sessions
+
+**Added:** Default-profile session JSONL now records the active profile once as a metadata-only `session-profile` custom entry. Reloading or resuming does not duplicate the entry, and the metadata is excluded from model context.
+
 ## 2026-09-07: Port deferred image tools to default Pi
 
 **Added:** The default Pi profile now provides Sharp-backed `image_inspect` and `image_transform` tools for bounded local inspection, crop, resize, auto-orientation, quarter-turn rotation, and JPEG/PNG/WebP conversion. Transform publication preserves the source and existing destinations, enforces byte/dimension/pixel/frame limits, strips covered metadata, and reopens outputs for verification.
