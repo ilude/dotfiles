@@ -304,7 +304,10 @@ function installFooter(ctx: ExtensionContext, pi: ExtensionAPI, reloadState: () 
 			const second = formatSecondFooterLine(
 				Array.from(statuses.entries())
 					.filter(([key]) => key !== "codex" && key !== "bedrock" && key !== "pi")
-					.sort(([a], [b]) => (a === "schedule" ? -1 : b === "schedule" ? 1 : a === "tps" ? -1 : b === "tps" ? 1 : a.localeCompare(b)))
+					.sort(([a], [b]) => {
+						const priority = (key: string): number => key === "onclave-v2" ? 0 : key === "schedule" ? 1 : key === "tps" ? 2 : 3;
+						return priority(a) - priority(b) || a.localeCompare(b);
+					})
 					.map(([, value]) => statusText(value)).filter(Boolean).join(" | "),
 				statusText(statuses.get("bedrock")),
 				width,

@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-018 - Use scheduling instead of long shell sleeps
+
+- **Reference:** Operator correction during GitLab deployment monitoring on 2026-09-08.
+- **Feedback:** A Bash or PowerShell sleep longer than 10–15 seconds is an anti-pattern when waiting for a real external event or performing user-requested monitoring; use the scheduling tool instead.
+- **Finding:** The scheduler guidance distinguished genuine external waits from ordinary continuation, but did not state that long blocking shell sleeps are the wrong waiting mechanism. The agent attempted `sleep 120` while monitoring a pipeline after the operator had already requested scheduled monitoring.
+- **Decision:** Add one tool-owned guideline: for genuine external waits or user-requested monitoring, use `schedule` instead of Bash or PowerShell sleeps longer than 15 seconds. Keep waits of 15 seconds or less available for cheap immediate checks. This does not permit scheduling ordinary implementation continuation.
+- **Related:** APR-009 (long blocking pipeline wait), APR-003 (scheduler used for ordinary continuation), AIF-011 (tool-owned instructions).
+- **Status:** Approved and implemented in the default scheduler extension; effectiveness remains unverified.
+
 ## AIF-017 - Preserve default subagent visibility
 
 - **Reference:** Operator investigation of headless development workers on 2026-09-08 and approval to address tool instructions before discussing headless UX changes.

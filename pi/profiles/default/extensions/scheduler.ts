@@ -41,6 +41,7 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use schedule only when the user explicitly requests a future reminder or the requested outcome requires waiting for a real external event until a known future time.",
       "Never schedule prompts to continue implementation, advance a plan, extend the current turn, wait for normal tool or agent work, retry ordinary work, or compensate for stopping early. Continue that work directly instead.",
+      "For genuine external waits or user-requested monitoring, do not occupy bash or PowerShell with sleep commands longer than 15 seconds; use schedule instead. Short waits of 15 seconds or less may remain inline.",
       "Before creating a schedule, list existing jobs and do not create a duplicate or overlapping reminder. Ask when required timing is missing or ambiguous.",
       "Schedule prompts follow the active conversation across session changes and reloads; include enough context to identify the external event. They run as follow-ups, never steering, and disappear when Pi exits.",
       "After using schedule, continue any work that does not depend on the future event. Cancel unneeded schedules; to change one, cancel and reschedule.",

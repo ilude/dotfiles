@@ -40,6 +40,7 @@ it("renders the scheduler status in the actual footer alongside provider usage a
   await hooks.get("session_start")!({}, ctx);
   statuses.set("schedule", "sched@ 9:00am");
   statuses.set("tps", "~42 tok/s | first 1.2s | ~84 tok / 2.0s streaming");
+  statuses.set("onclave-v2", "Onclave[4]: pi-01a082");
   statuses.set("codex", "codex: 5h 25% | wk 75%");
   statuses.set("bedrock", "bedrock: $0.00");
   const lines = footer!.render(160);
@@ -47,6 +48,7 @@ it("renders the scheduler status in the actual footer alongside provider usage a
   expect(lines[0]).toContain("codex: 5h 25%");
   expect(lines[1]).toContain("~42 tok/s | first 1.2s");
   expect(lines[1]).toContain("sched@");
+  expect(lines[1]).toMatch(/^Onclave\[4\]: pi-01a082 \| sched@/);
   expect(lines[1]).toContain("bedrock:");
   statuses.set("unicode", "状态 🟢");
   for (const width of [1, 10, 30, 80, 160]) {
@@ -54,7 +56,7 @@ it("renders the scheduler status in the actual footer alongside provider usage a
   }
   expect(footer!.render(160).join("\n")).toContain("sched@ 9:00am");
   expect(footer!.render(160).join("\n")).toContain("bedrock:");
-  expect(footer!.render(30).join("\n")).toContain("sched@ 9:00am");
+  expect(footer!.render(30)[1]).toContain("Onclave[4]: pi-01a082");
   statuses.delete("schedule");
   expect(footer!.render(160).join("\n")).not.toContain("sched@");
   await hooks.get("session_shutdown")!({}, ctx);

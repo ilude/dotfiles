@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-009 - Long shell sleep used for deployment monitoring
+
+- **Reference:** Monorepo CPAM deployment monitoring on 2026-09-08.
+- **Expected:** Use the operator-requested scheduling workflow for a real external pipeline/deployment wait.
+- **Observed:** After pushing the change, the agent attempted a blocking `sleep 120` Bash command instead of scheduling the next check. The command was aborted, and the operator had to correct the tool choice.
+- **Impact:** The turn was occupied by an opaque wait and monitoring did not follow the requested workflow.
+- **Remediation:** Operator approved a scheduler-owned instruction treating Bash or PowerShell sleeps over 15 seconds as an anti-pattern for genuine external waits and user-requested monitoring. Ordinary implementation continuation remains excluded from scheduling.
+- **Related:** AIF-018, APR-003.
+- **Status:** Instruction updated; effectiveness remains unverified.
+
 ## APR-008 - Invisible delegation appeared hung
 
 - **Reference:** Default session `01a0818c-e3ed-7513-b01d-1df64d202704`, 2026-09-08; operator investigation of three development workers.
