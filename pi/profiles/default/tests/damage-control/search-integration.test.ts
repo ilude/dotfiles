@@ -7,8 +7,11 @@ it("keeps read-only search pipelines quiet", async () => {
   expect(h.review).not.toHaveBeenCalled();
   expect(h.select).not.toHaveBeenCalled();
 });
-it("retains actual legacy SQL destruction blocks while inert output stays quiet", async () => {
-  const h = await harness();
+it("reviews actual SQL destruction while inert output stays quiet", async () => {
+  const h = await harness({ review: async () => ({ status: "valid", verdict: "ask", reason: "Database environment unresolved", dismissedCandidates: [] }) });
   expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "literal", input: { command: "echo 'DROP DATABASE harmless'" } })).toBeUndefined();
-  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "drop", input: { command: `psql -c "DROP DATABASE disposable"` } })).toMatchObject({ block: true });
+  expect(h.review).not.toHaveBeenCalled();
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "drop", input: { command: `psql -c "DROP DATABASE disposable"` } })).toBeUndefined();
+  expect(h.review).toHaveBeenCalledOnce();
+  expect(h.select).toHaveBeenCalledOnce();
 });

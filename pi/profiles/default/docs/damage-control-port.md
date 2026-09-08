@@ -1,13 +1,16 @@
 # Default Damage Control behavior contract
 
-The selected baseline is legacy Damage Control behavior, with these approved differences:
+The baseline is legacy Damage Control, with these operator-approved departures:
 
-- All legacy blocks remain blocks and all 225 legacy asks remain operator decisions.
-- Luna may dismiss a non-executing false-positive candidate. It cannot authorize an actual ask-tier operation.
-- Tool compatibility follows legacy behavior. Deep interpreter analysis is limited to concealed file/process mutations and loads grammars on demand.
-- Filesystem/search and Docker decisions follow legacy policy behavior exactly, without authorization inventory subprocesses, creation ledgers, daemon inspection, mount translation, or synthetic resource rules.
-- `/dc on`, `/dc off`, `/dc mode default`, and `/dc mode noshell` are supported. There is no `/dc status`. The explicit `pp --dc-recovery` maintenance path remains available.
-- Bounded operational diagnostics, deterministic sensitive-read/upload sequence protection, and repeated-call protection remain. Shadow evaluation, labels, large telemetry, and diagnostic slash commands are excluded.
-- Prompts use `Deny` / `Allow once`; no Damage Control prompt requires typed input.
+- Of 335 migrated command rules, 34 use contextual Luna review, 204 require operator approval, and 97 remain blocks. The migration fixture records history; tests explicitly enumerate current authority changes rather than rewriting that history.
+- Luna may dismiss non-executing false-positive candidates and allow selected review-tier operations in an established local development environment. It cannot waive a remaining confirmed block or user-only rule. Shared/production impact, meaningful data loss, unresolved target scope, or review failure requires approval.
+- Contextual families are plain Compose teardown (`141`); Kubernetes apply/scoped delete/restart/scale/port-forward (`153–157`); Helm install/uninstall/delete/rollback and local repo/plugin removal (`159–164`); database reset/delete/restore (`168–176`, `257–263`); and targeted process termination (`043`, `044`, `309`, `310`, `312`, `329`). IDs have the `legacy-` prefix. See the [review contract](../lib/damage-control/judge-prompt.md) for the boundaries.
+- Known read-only `crontab -l` and `schtasks /query` forms do not prompt. Mutations, unresolved/unsupported query forms, substitutions, other commands in the call, and protected redirections retain their checks. Kubernetes/Helm leading environment options are normalized for command-rule matching, with the original operation retained for review.
+- Context consists of up to 16 direct interactive/RPC inputs and eight successful covered tool observations, each collection limited to 16 KiB and 30 minutes. Tool operation, cwd, output, call ID, and time remain untrusted evidence. Queued input is withheld until delivery. Context expires or clears on session changes, tree navigation, reload, shutdown, or cancellation; it is not reconstructed from session history. Outbound evidence is redacted and bounded. No resource ownership or approval is cached.
+- Other command and path rules remain unchanged, including Compose volume/image-removal approval, broad cluster deletion, secret protection, destructive Git operations, and system-file protections. No daemon inspection, filesystem authorization inventory, mount translation, or mandatory environment scans were added.
+- Deep interpreter analysis remains limited to concealed file/process mutations and loads grammars on demand.
+- `/dc on`, `/dc off`, `/dc mode default`, and `/dc mode noshell` remain supported. There is no `/dc status`. The explicit `pp --dc-recovery` maintenance path remains available.
+- Bounded operational diagnostics, deterministic sensitive-read/upload sequence protection, and repeated-call protection remain. No background shadow evaluator, labels, persistent telemetry, or diagnostic slash commands are added.
+- Prompts use `Deny` / `Allow once`; no prompt requires typed input. Use `/reload` to activate the changes in an existing default session. Legacy is unchanged.
 
-The full 30-finding audit and operator dispositions are in [the completed restoration plan](../../../../.specs/archive/damage-control-provenance-audit/plan.md) and [audit report](../../../../.specs/archive/damage-control-provenance-audit/full-audit.md).
+The earlier parity audit is historical: [restoration plan](../../../../.specs/archive/damage-control-provenance-audit/plan.md) and [audit report](../../../../.specs/archive/damage-control-provenance-audit/full-audit.md). The approved environmental changes above supersede its exact-parity decisions only for the named behavior.

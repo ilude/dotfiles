@@ -10,6 +10,13 @@ const migration = JSON.parse(readFileSync(new URL("./fixtures/policy-migration.j
   removedBroadExclusions: string[];
 };
 
+// Operator-approved departures from the historical migration, not a blanket authority downgrade.
+const contextualRules = new Set([
+  43, 44, 141, 153, 154, 155, 156, 157, 159, 160, 161, 162, 163, 164,
+  168, 169, 170, 171, 172, 173, 174, 175, 176, 257, 258, 259, 260, 261, 262, 263,
+  309, 310, 312, 329,
+].map(n => `legacy-${String(n).padStart(3, "0")}`));
+
 describe("independent policy", () => {
   it("maps every audited rule with explicit authority and preserves all six implicit blocks", () => {
     const policy = parsePolicy(yaml);
@@ -22,17 +29,20 @@ describe("independent policy", () => {
       const rule = policy.commands.find(r => r.id === row.id)!;
       expect(rule).toBeDefined();
       expect(rule.regex).toBe(row.original.regex);
-      expect(rule.action).toBe(row.action);
-      if (row.original.action !== "ask") expect(rule.action).toBe("block");
+      // Preserve the migration fixture as historical evidence; this is an approved policy departure.
+      expect(rule.action).toBe(contextualRules.has(row.id) ? "review" : row.action);
+      if (row.original.action !== "ask" && !contextualRules.has(row.id)) expect(rule.action).toBe("block");
     }
   });
-  it("restores operator authority for every legacy ask rule", () => {
+  it("preserves unrelated rules and grants review authority only to the selected families", () => {
     const policy = parsePolicy(yaml);
-    for (const [id, action] of [["legacy-019", "user"], ["legacy-110", "user"], ["legacy-137", "user"], ["legacy-007", "user"], ["legacy-141", "user"]]) {
+    for (const [id, action] of [["legacy-019", "user"], ["legacy-110", "user"], ["legacy-137", "user"], ["legacy-007", "user"], ["legacy-141", "review"]]) {
       expect(policy.commands.find(r => r.id === id)?.action).toBe(action);
     }
     expect(policy.commands.find(r => r.id === "legacy-139")?.languages).toEqual(["bash"]);
-    for (const rule of policy.commands.filter(r => ["legacy-168", "legacy-169", "legacy-172", "legacy-262", "legacy-330"].includes(r.id))) expect(rule.action).toBe("block");
+    expect(new Set(policy.commands.filter(r => r.action === "review").map(r => r.id))).toEqual(contextualRules);
+    for (const id of ["legacy-014", "legacy-042", "legacy-180", "legacy-330"]) expect(policy.commands.find(r => r.id === id)?.action).toBe("block");
+    for (const id of ["legacy-137", "legacy-139", "legacy-140", "legacy-150", "legacy-151", "legacy-152", "legacy-158", "legacy-165", "legacy-166", "legacy-167", "legacy-311"]) expect(policy.commands.find(r => r.id === id)?.action).toBe("user");
   });
   it("restores legacy path inventories and exclusions", () => {
     const { paths } = parsePolicy(yaml);

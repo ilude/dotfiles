@@ -16,11 +16,15 @@ Confirmed blocks, remote/cloud/live operations, Docker volumes, exfiltration, dy
 
 ## Behavior
 
-Legacy ask rules require an `Allow once` / `Deny` operator choice. Luna may dismiss a non-executing false-positive candidate but cannot authorize an actual ask-tier operation. Parser uncertainty alone does not add a restriction.
+User-only rules require an `Allow once` / `Deny` operator choice. Selected operations instead receive contextual Luna review: plain Compose teardown; local-development Kubernetes/Helm operations; disposable local database resets; and targeted termination of task-owned development processes. Local cwd, host OS, loopback addresses, or names such as `dev` alone do not establish safety. Shared/production impact, meaningful data loss, unresolved targets, and review failure still require approval. Separate Compose volume/image-removal rules and all other remaining user/block rules retain their authority. Luna may also dismiss non-executing false-positive candidates. Parser uncertainty alone does not add a restriction. See the [behavior contract](damage-control-port.md) for the exact selected rules.
 
-Read-only searches use their explicit targets and do not pre-enumerate descendants. Filesystem exclusions, generated-file restrictions, scoped cleanup, and Docker command rules follow legacy behavior. Deep interpreter parsing is reserved for concealed file/process mutations and loads its grammar on demand.
+Known read-only `crontab -l` and `schtasks /query` forms pass directly. Their substitutions, redirections, and accompanying commands are still checked. Leading Kubernetes/Helm context and namespace options no longer hide the operation from rule matching.
 
-Damage Control keeps bounded in-memory operational evidence for deterministic sensitive-read/upload sequence checks and repeated-call protection. It does not expose status, statistics, labels, shadow evaluation, or a persistent telemetry ledger.
+Read-only searches use their explicit targets and do not pre-enumerate descendants. Filesystem exclusions, generated-file restrictions, scoped cleanup, and other Docker command rules follow legacy behavior. Deep interpreter parsing is reserved for concealed file/process mutations and loads its grammar on demand.
+
+Luna receives bounded session-local context: up to 16 direct interactive/RPC inputs and eight successful covered tool observations, each collection limited to 16 KiB and 30 minutes. Observations retain the originating operation and cwd with the output; they remain untrusted, not authorization. Queued input is used only after delivery. Context is redacted before transmission and cleared on session changes, tree navigation, reload, shutdown, or cancellation. No history is imported after reload, so missing environment facts may require a prompt. There are no mandatory environment scans, resource ledgers, or reusable approvals.
+
+Existing deterministic sensitive-read/upload sequence checks and repeated-call protection remain. The runtime does not expose status, statistics, labels, background shadow evaluation, or a persistent telemetry ledger.
 
 ## Approval prompts
 
@@ -33,7 +37,7 @@ The default TUI shows the reason, matched command, affected target, working dire
 - Review failures are labeled as review problems, not confirmed policy violations. Denials give the agent the reason and triggering action, with instructions not to repeat or disguise the declined operation.
 - RPC uses plain choice dialogs and paged Details with a Back option. Noninteractive runs report `needs_approval`; cancellation and UI failures never approve. Approval remains tied to the unchanged pending call.
 
-No new permissions, approval reuse, policy settings, or legacy-profile changes are introduced. Use `/reload` to activate changes in an existing default session.
+Contextual authority is limited to the selected review-tier rules. No approval reuse, new policy settings, or legacy-profile changes are introduced. Use `/reload` to activate changes in an existing default session.
 
 ## Checks
 
@@ -42,4 +46,13 @@ From `pi/profiles/default/`:
 ```sh
 pnpm test tests/damage-control
 pnpm run typecheck
+pnpm run check:runtime
 ```
+
+Opt-in live synthetic Luna checks use production rules and parser but never execute the submitted operations:
+
+```sh
+pnpm run eval:damage-control --environment
+```
+
+This makes provider calls using the configured Luna account. It checks sampled judgment, not a guarantee for every environment.

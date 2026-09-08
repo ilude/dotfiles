@@ -1,5 +1,16 @@
 # Agent instruction feedback log
 
+## AIF-012 — Assess command risk in its environment
+
+- **Reference:** Operator feedback on the `docker compose down` approval reason.
+- **Feedback:** Routine local Docker teardown should not be treated as inherently dangerous. Risk depends on the target environment and effects, not just the command name.
+- **Finding:** Default Damage Control rule `legacy-141` requests approval for plain `docker compose down` without an environment condition. Separate rules cover volume and image removal.
+- **Decision:** Operator approved the change. `legacy-141` now uses existing contextual Luna review, allowing established intended local development teardown without a prompt. Shared/production disruption, material container-local data loss, unresolved environment, and review failure still require approval. Separate volume/image user rules remain. No daemon inspection or resource ledger was added.
+- **Related findings:** Legacy's six Compose/down rules had Linux-only scope, lost in the default migration. Other inherited context-blind candidates include Kubernetes/Helm operations, database resets, forced process termination, and scheduler query matches. The earlier parity audit did not establish that inherited policy was proportionate. The operator subsequently approved extending contextual review to selected Kubernetes/Helm, database, and process rules, plus direct allowance for known read-only scheduler queries.
+- **Related:** AIF-004 (narrow, judgment-based changes).
+- **Follow-up:** Investigation found the context collector was a no-op, so the first Compose change could not supply prior environment facts. Added bounded session-local direct inputs and successful tool observations, keeping output untrusted and applying outbound redaction. No scans, persistent history, resource ledgers, or approval cache. Corrected leading Kubernetes/Helm context-option matching so selected operations reach review.
+- **Status:** Implemented in default only. All 166 Damage Control tests, default typecheck, and loader smoke pass. Eleven live synthetic Luna cases passed with no submitted operations executed; this verifies sampled judgment, not every environment. Operator requested a commit of this work.
+
 ## AIF-011 — Define orchestrator and Onclave ownership
 
 - **Reference:** Operator clarification before planning the default-profile Onclave port.

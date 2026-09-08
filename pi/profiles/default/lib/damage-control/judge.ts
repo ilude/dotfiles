@@ -73,7 +73,7 @@ function redactEffect(effect: Effect): { effect: Effect; lossy: boolean; identit
 
 function evidenceItemCount(evidence: Evidence): number {
   const effects = [...evidence.untrusted.effects, ...(evidence.untrusted.priorEffects ?? []).map(item => item.effect)];
-  return evidence.operator.length + effects.length + evidence.untrusted.matches.length
+  return evidence.operator.length + effects.length + (evidence.untrusted.observations?.length ?? 0) + evidence.untrusted.matches.length
     + evidence.untrusted.uncertainties.length + evidence.omissions.length
     + effects.reduce((count, effect) => count + effect.sources.length + effect.targets.length + effect.destinations.length, 0)
     + evidence.untrusted.matches.reduce((count, match) => count + match.effects.length, 0);
@@ -81,7 +81,7 @@ function evidenceItemCount(evidence: Evidence): number {
 
 /** Produces the only representation that may be serialized for Luna. */
 export function projectEvidence(evidence: Evidence): EvidenceProjection {
-  const currentOnly = { ...evidence, untrusted: { ...evidence.untrusted, priorEffects: [] } };
+  const currentOnly = { ...evidence, untrusted: { ...evidence.untrusted, priorEffects: [], observations: [] } };
   if (evidence.operator.length > MAX_OPERATOR_ENTRIES || evidenceItemCount(currentOnly) > MAX_EVIDENCE_ITEMS) {
     return { status: "needs-input", reason: "Review evidence exceeds the safe item-count limit." };
   }
@@ -107,12 +107,19 @@ export function projectEvidence(evidence: Evidence): EvidenceProjection {
     const result = redactEffect(item.effect); lossy ||= result.lossy;
     return { callId: item.callId === undefined ? undefined : text(item.callId), timestamp: item.timestamp, effect: result.effect };
   });
+  const observations = (evidence.untrusted.observations ?? []).map(item => ({
+    callId: text(item.callId), tool: text(item.tool), operation: text(item.operation), cwd: text(item.cwd), output: text(item.output), timestamp: item.timestamp,
+  }));
   if (lossy) omissions.push("Sensitive text was redacted. Ask if the missing values are necessary to assess this call; never infer them.");
-  const projected: Evidence = { callId, operation, operator, untrusted: { effects, priorEffects, matches, uncertainties }, omissions };
+  const projected: Evidence = { callId, operation, operator, untrusted: { effects, priorEffects, observations, matches, uncertainties }, omissions };
   const oversized = () => evidenceItemCount(projected) > MAX_EVIDENCE_ITEMS || Buffer.byteLength(JSON.stringify(projected), "utf8") > MAX_EVIDENCE_BYTES;
   if (priorEffects.length && oversized()) {
     omissions.push("Older historical effects omitted to fit the review budget; current effects are complete.");
     while (priorEffects.length && oversized()) priorEffects.shift();
+  }
+  if (observations.length && oversized()) {
+    omissions.push("Older tool observations omitted to fit the review budget; current effects are complete.");
+    while (observations.length && oversized()) observations.shift();
   }
   if (evidenceItemCount(projected) > MAX_EVIDENCE_ITEMS) return { status: "needs-input", reason: "Review evidence exceeds the safe item-count limit." };
   if (Buffer.byteLength(JSON.stringify(projected), "utf8") > MAX_EVIDENCE_BYTES) return { status: "needs-input", reason: "Review evidence exceeds the safe total-size limit." };
