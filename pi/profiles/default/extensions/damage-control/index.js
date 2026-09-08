@@ -30,4 +30,15 @@ export default async function (pi) {
   pi.registerCommand("damage-control", command);
   pi.registerCommand("dc", command);
   pi.on("tool_call", (event, ctx) => gate.handle(event, ctx));
+  // CLI-backed Herdr commands use the same gate with verified remote-pane
+  // shell/cwd, not the orchestrator's cwd or a nested `herdr pane run` string.
+  let unsubscribe;
+  const bindHerdr = () => {
+    unsubscribe?.();
+    unsubscribe = pi.events.on("herdr:check-command", (request) => {
+      request.accept(gate.handle(request.event, request.ctx));
+    });
+  };
+  pi.on("session_start", bindHerdr);
+  pi.on("session_shutdown", () => { unsubscribe?.(); unsubscribe = undefined; });
 }

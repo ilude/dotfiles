@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-08: Add default Herdr process tools and direct Pi tabs
+
+**Added:** Repository-owned, deferred Herdr layout/pane tools call the installed CLI with concise schemas and bounded output. A thin skill dynamically loads installed documentation and uses visible panes automatically for requested long-running processes. Command submission verifies an idle Bash/PowerShell shell and cwd, uses existing Damage Control, and rechecks identity. Silent-success mutations are not misclassified or retried.
+
+**Changed:** Herdr `/new-instance` and `/branch` use a local argv plugin and Node bootstrap instead of a shell-hosted `pp`. The bootstrap preserves default preflight/repair behavior and explicitly retires its plugin pane on exit because the installed preview can otherwise replace focused exited terminals with shells. Setup generates machine-local executable paths and must be rerun after moving/updating the runtime.
+
+**Preserved:** Plain `/new-terminal`, non-Herdr launchers, default UI, and sound/desktop settings. Herdr's generated lifecycle integration plus a native prompt bridge reports operator waits without a second notification layer. Services are not stopped on Pi exit; log-viewer closure does not imply container teardown. No third-party Pi extension, delegation, supervisor, or process registry.
+
 ## 2026-09-08: Bound planning uncertainty and integrate work through task worktrees
 
 **Changed:** Default Pi planning pairs consequential uncertainty with focused questions and recommendations, distinguishes required outcomes from proposed mechanisms, and bounds assumption checks to useful decisions. Simplification must preserve required functions, and handoffs must replace stale status with current evidence.
