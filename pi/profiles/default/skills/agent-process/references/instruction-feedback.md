@@ -1,5 +1,23 @@
 # Agent instruction feedback log
 
+## AIF-015 — Do not substitute promises for authorized execution
+
+- **Reference:** Operator feedback after the default-subagents plan was twice followed by a response promising continuation while no further implementation was performed.
+- **Feedback:** Use the concise principle “show, don't tell.” Brief explanations of the next action and its reason are useful for monitoring; the problem is ending the turn after promising actionable work instead of doing it.
+- **Finding:** Existing planning and proportionality guidance already says to continue actionable authorized work, but APR-006 recurred immediately after correction. The failure mode is specifically substituting future-tense intent for available tool actions, not giving progress context.
+- **Recommendation:** Add one short rule to the default profile's global `AGENTS.md`: “Show, don't tell: brief intent updates are fine, but do not end a turn by promising actionable work. Do it or state the concrete blocker.”
+- **Related:** APR-001 and APR-006 (premature handoffs), AIF-003 (bounded completion), AIF-014 (authorized plan execution).
+- **Status:** Proposed. Instruction change requires operator approval.
+
+## AIF-015 - Damage Control prevents unrecoverable harm, not suspicious-looking activity
+
+- **Reference:** Operator discussion of dependency-link setup approval, `/dc scan`, contextual variable handling, and helper dependency tracking on 2026-09-08.
+- **Feedback:** Damage Control should stop meaningful unrecoverable damage, not act as a general security guard. Routine recoverable work should pass; unfamiliar syntax, variables, helpers, and generic flags are not independent reasons for approval or new machinery. Avoid approval ceremony and speculative dependency frameworks.
+- **Decision:** Operator requested a bounded review before implementation and an explicit high-level design requirement. Updated default `docs/damage-control-port.md` with the governing purpose, linked it from setup/runtime navigation, and recorded findings plus the requested preapproval design in `docs/damage-control-risk-review.md`. Do not treat legacy parity or agent-authored tests as proof that restrictions are proportionate.
+- **Follow-up decisions:** Operator chose broad alignment of all identified policy families, with no inherited restriction exempt from consequence-based review merely because of its history. Preserve an unattended failed-call watchdog, not limits on successful repetition. The operator reports a June 2026 repeated-failure loop consuming roughly half a weekly Codex allowance; this review did not independently verify that incident. Proposed tolerance is around 12 consecutive failures of the same exact command/tool call. Settle reset/interleaving and halt semantics before planning; no fuzzy loop detector or productivity controller is implied. Resolve breadth concerns before writing the implementation plan.
+- **Related:** AIF-012 (environment-aware risk), AIF-004 (narrow changes), AIF-003/APR-002 (bounded review), APR-007 (overbuilt preapproval proposal).
+- **Status:** Review and design-context update complete. Synthetic parser/engine probes exercised current policy without executing submitted commands or calling models. Runtime rules, judge prompt/authority, legacy, and subagent implementation remain unchanged. `/dc scan` and persistent preapproval are not implemented.
+
 ## AIF-014 — Pair planning uncertainty with questions and recommendations
 
 - **Reference:** Operator follow-up to the successful-plan versus gateway comparison.

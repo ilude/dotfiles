@@ -1,5 +1,26 @@
 # Agent process failure log
 
+## APR-007 - Script-preapproval discussion expanded into unnecessary safety machinery
+
+- **Reference:** Operator discussion of Damage Control preapproval and `/dc scan`, 2026-09-08.
+- **Expected:** Reduce repeat analysis/approval for low-risk scripts while preventing meaningful unrecoverable harm; use the requested one-choice approval-and-review flow.
+- **Observed:** Assistant proposed a second confirmation, a broad mandatory safety checklist, and dependency-tree handling before establishing their need. It then recommended continuing body analysis despite the operator's scan-skipping objective, and later suggested excluding all helper-using scripts. The operator corrected each direction. Earlier explanations also overstated direct rm prompting without first checking the scoped-delete exemption.
+- **Impact:** Repeated clarification and design drift in the conversation. No proposed trust store, extra gate, or dependency framework was implemented.
+- **Remediation:** Recorded the governing purpose in the owning default Damage Control contract, completed a bounded current-policy review, and separated agreed feature direction from unresolved implementation details. Helper complexity alone is not a reason to reject preapproval. Existing runtime semantics remain explicit until changed by scoped implementation.
+- **Related:** AIF-015, AIF-004, APR-002. This incident concerns proposal scope and inaccurate explanation, not evidence of executed data loss or a new measured failure rate.
+- **Status:** Documentation/review complete; effectiveness of the future implementation remains unverified.
+
+## APR-006 — Default subagent plan stopped without a blocker
+
+- **Reference:** Operator-directed execution of `.specs/default-subagents-and-council/plan.md` in `feature/default-subagents`, followed by operator questions about the premature stop.
+- **Expected:** Complete the ordered plan in its worktree, validate, archive, commit, and merge, stopping only for a genuine blocker.
+- **Observed:** The agent created a cross-cutting prototype spanning several tasks, found major required paths unfinished, then ended with a partial handoff despite explicitly acknowledging no external blocker or unresolved user decision.
+- **Impact:** The requested implementation was not delivered; the operator had to ask why execution stopped. Uncommitted prototype work remains isolated in the task worktree.
+- **Cause confidence:** The plan explicitly authorized and required continued execution. The agent's stated reasons were task size and implementation mismanagement, which are retrospective explanations rather than blockers. The agent also did not follow the plan's ordered task structure, making progress harder to bound. No evidence shows that a missing plan instruction caused the stop.
+- **Related:** APR-001 (same premature-handoff pattern), APR-002 (why merely demanding unlimited continuation can create churn), AIF-003 (bounded finish criteria), AIF-014 (execution and integration guidance).
+- **Remediation:** Resume from the recorded worktree and follow task dependencies and done conditions. Do not add a redundant general continuation rule unless further evidence shows the existing explicit instructions are ineffective across agents; consider a task-local architecture probe only if it resolves the authenticated visible-transport seam before more implementation.
+- **Status:** Recorded. No instruction change approved; completion and prevention remain unverified.
+
 Factual incident history for operator review; not executable policy. Append incidents and link related patterns. Instruction changes require operator approval.
 
 ## APR-005 — Gateway scope expansion and stale completion state
