@@ -1,7 +1,7 @@
 ---
 created: 2026-09-08
 updated: 2026-09-08
-status: draft
+status: in-progress
 completed: null
 ---
 
@@ -29,7 +29,7 @@ Make default Pi Damage Control prevent meaningful unrecoverable harm without tre
 Repository-root-relative paths below refer to `C:/Users/mglenn/.dotfiles`. In abbreviated task/input lists, **default** means `pi/profiles/default/`, and bare Damage Control source filenames mean `pi/profiles/default/lib/damage-control/`. Default `extensions/`, `docs/`, `tests/` and `scripts/` paths are profile-relative; root `scripts/pi-deps-link-setup`, `pi/README.md`, `.specs/` and `CHANGELOG.md` are repository-relative. Read root/default `AGENTS.md`, `pi/README.md`, planning/testing skills, and `pi/profiles/default/docs/damage-control-{port,setup}.md` and the co-located [risk review](damage-control-risk-review.md). Read only the installed Pi API docs/examples needed for the next task, completely, including relevant cross-references.
 
 - Baseline: `15c7aee6`, branch `main`, inspected 2026-09-08. Recheck current source and status before execution; do not reset to this historical commit.
-- Proposed execution worktree/branch: `.worktrees/damage-control-risk-alignment`, `feature/damage-control-risk-alignment`, merge target `main`. Neither was created during planning.
+- Execution worktree/branch: `.worktrees/damage-control-risk-alignment`, `feature/damage-control-risk-alignment`. Recorded parent integration checkout/branch: `C:/Users/mglenn/.dotfiles`, `main` at execution start (`cfd15d4a`).
 - Existing runtime: default `extensions/damage-control/index.js`; `lib/damage-control/{adapters,analysis,shell,paths,engine,enforcement,context,sequence,breaker,policy,types,judge,prompt,approval,approval-view}.ts`; `lib/damage-control/judge-prompt.md`; `damage-control-{rules.yaml,settings.json}`.
 - Existing checks: default `tests/damage-control/`, `scripts/damage-control-{eval.ts,smoke.mjs}`; pnpm owns dependencies. YAML and `proper-lockfile` are already installed. Do not add a database or dependency merely for trust storage.
 - Carry this uncommitted plan and this task's earlier risk-review/design-context changes into the worktree. They include the co-located `damage-control-risk-review.md`, contract/setup/navigation/changelog updates, AIF-015 and APR-007. The same failure log also contains a concurrent APR-006 about subagent execution: preserve it and do not claim it as this task's change. Preserve unrelated target-checkout and module work.
@@ -101,7 +101,7 @@ The following is the recommended concrete contract, with one operator choice sti
 - Observe all model-callable tool events, including tools without a Damage Control policy adapter, without inventing policy adapters for them. Count each call ID once. Native shell nonzero exit/timeout uses the tool's real failure signal; verify this through the actual hook path.
 - Threshold: allow at most 12 failed attempts, then refuse the next equivalent attempt and halt the affected agent run with the tool, command/input summary, cwd and count. No unattended confirmation loop or automatic resume. Do not terminate unrelated servers or Pi instances. Apply in child instances through their normal Damage Control loading; report failure to their owner through the existing runtime rather than adding cross-process counters.
 - No limits on repeated successes. The same call succeeding clears its failure streak. Counts are session-owned, not persistent global history; ordinary assistant turns or compaction must not reset an ongoing loop. A tripped run stays stopped until a new direct operator instruction resumes it; queued automatic follow-ups must not immediately undo the stop. Verify reload/session lifecycle using the installed API, without a durable watchdog service.
-- **D1, unresolved:** Do unrelated calls reset the streak? Recommend **no**, so repeated `failing command -> read log -> failing command` is covered. Reset the same signature on success or direct operator resumption; keep different calls independent. Alternative: only adjacent identical failures count, which is simpler but misses that interleaved loop. The operator asked for the plan without explicitly choosing between these interpretations. Settle D1 before T4; do not silently treat this recommendation as an accepted requirement.
+- **D1, resolved by operator:** Unrelated calls reset the streak. Only adjacent exact failures count; the same signature also resets on success or direct operator resumption.
 
 ## Execution guidance
 
@@ -115,7 +115,7 @@ When assumptions fail, choose a simpler mechanism within these requirements and 
   - Inputs: current policy/risk-review table, `enforcement.ts`, `adapters.ts`, installed native shell/tool event source, and the delivered status of the separate subagent plan.
   - Do: establish/resume the task worktree; carry this plan/design context. Make one small harmless native-shell probe using a synthetic inherited variable to choose the minimal evidence hook. Confirm where prefixes/spawn hooks/Herdr contexts differ; record the chosen interface here. Identify the subagent launch/result API to consume when delivered. Extend the existing risk-review table with a concise rule-family disposition, including retained concrete prohibitions and helper-hash representation. Do not rerun the prior audit.
   - Verify: one variable probe that prints only the synthetic value, plus source/API inspection; no scripts under review execute. Existing local dependencies suffice. If native environment parity needs a wrapper, use the supported factory/operations boundary rather than rewriting process execution.
-  - Done when T2/T3/T5 have concrete inputs and T6's external API dependency is named. Missing subagents do not block independent work. Evidence: not started.
+  - Done when T2/T3/T5 have concrete inputs and T6's external API dependency is named. Missing subagents do not block independent work. Evidence: in progress. Created the recorded worktree and carried task-owned planning/design docs. A harmless native Bash probe printed only `synthetic-inherited-value` from `DC_T1_PROBE`, confirming inherited process environment reaches an ordinary child shell. The delivered subagent API remains unavailable because `feature/default-subagents` is still uncommitted and absent from the recorded integration target.
 
 - [ ] **T2 - Align all reviewed command/path families.** Depends on T1.
   - Inputs: `damage-control-rules.yaml`, `lib/damage-control/{policy,paths,analysis,engine,shell}.ts`, and existing policy/path/shell/enforcement tests.
@@ -135,7 +135,7 @@ Scope checkpoint: broader policy alignment is required, not a new security frame
   - Inputs: `breaker.ts`, `enforcement.ts`, extension registration, `breaker.test.ts` and gate fixtures. Add a small owner module only if needed to observe all tool events outside policy adaptation.
   - Do: implement the watchdog contract, remove success/polling restrictions and identical-output dependence, preserve effective cwd/call identity, and stop the run rather than feed another retry loop. Keep failure state separate from sequence/context clearing. Handle actual Pi parallel preflight/result ordering without inventing a global scheduler.
   - Verify: synthetic throwing tool/native nonzero-exit fixtures through real hooks; 12 failures then prevented attempt 13, changed error text, repeated successes, same-call recovery, D1 interleaving, and stop/reset lifecycle including queued continuation. Demonstrate that mixed batches cannot silently restart the stopped loop. Do not consume a real model subscription to simulate 12 failures.
-  - Done when the run halts unattended and ordinary successful polling is unrestricted. Evidence: not started.
+  - Done when the run halts unattended and ordinary successful polling is unrestricted. Evidence: in progress. Replaced result-text/success polling limits with exact tool/input/cwd failure counting, including uncovered tools; twelve failures are allowed and attempt thirteen aborts. Success and operator-selected unrelated calls reset the streak. Focused breaker/enforcement tests and typecheck pass. Actual native nonzero and mixed-batch lifecycle acceptance remains for T7.
 
 - [ ] **T5 - Add source identity and a shared preapproval store.** Depends on T1/T2; no live subagent dependency.
   - Inputs: `types.ts`, `shell.ts`, `analysis.ts`, `approval.ts`, existing YAML/locking dependencies. Proposed new `lib/damage-control/{script-trust,script-review}.ts` and focused tests, split only by actual responsibility.
@@ -173,10 +173,9 @@ Focused task checks may run as implementation settles. Repeat checks only after 
 
 ## Current handoff
 
-- Status: draft, planning only. No implementation worktree or product changes created by this plan.
-- One operator decision remains: D1, whether unrelated calls reset a repeated-failure streak. Recommendation is no; counts reset on that signature's success or direct operator resumption. The rest of the requested scope is recorded.
-- External dependency: default subagent runtime is still under implementation. Do not label its changing worktree API ready; T1-T5 do not depend on live reviewer launch.
-- Next: settle D1 and accept the plan; when assigned, establish/resume the dedicated worktree and start T1. Missing subagents does not justify stopping independent authorized work.
+- Status: implementation in progress in the recorded task worktree. D1 is resolved: unrelated calls reset the streak.
+- External dependency: default subagent runtime remains uncommitted in its separate worktree and absent from `main`; T6 and live T7 acceptance cannot start against a delivered API.
+- Current result: T4 implementation is substantially complete with focused tests; T1 remains partial. T2, T3, and T5 are the next independent work.
 - Planning checks: source/docs/profile inspection and plan consistency only. Prior risk probes are historical evidence; none of the new behavior has been tested.
 
 ## Completion and archive

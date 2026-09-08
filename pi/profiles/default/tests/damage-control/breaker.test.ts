@@ -1,38 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { adapt } from "../../lib/damage-control/adapters.ts";
-import { Breaker, isPolling } from "../../lib/damage-control/breaker.ts";
-function request(command: string) { const r = adapt("bash", "id", { command }, "/cwd"); if (r.status !== "adapted") throw new Error(); return r.request; }
-describe("bounded repeated-call breaker", () => {
-  it("stops before fifth equivalent failure or sixth ordinary unchanged success", () => {
-    for (const [failure, threshold] of [[true, 4], [false, 5]] as const) {
-      const breaker = new Breaker();
-      const r = request("echo unchanged");
-      for (let i = 0; i < threshold; i++) { expect(breaker.before(r)).toBeUndefined(); breaker.result(r, { output: "same" }, failure); }
-      expect(breaker.before(r)).toContain("change the approach");
+import { Breaker, type WatchdogRequest } from "../../lib/damage-control/breaker.ts";
+
+const request = (command: string): WatchdogRequest => ({ tool: "bash", input: { command }, cwd: "/cwd" });
+
+describe("failed-call watchdog", () => {
+  it("allows twelve exact failures and stops attempt thirteen despite changed errors", () => {
+    const breaker = new Breaker();
+    const call = request("false");
+    for (let i = 0; i < 12; i++) {
+      expect(breaker.before(call)).toBeUndefined();
+      breaker.result(call, true);
     }
+    expect(breaker.before(call)).toContain("attempt 13");
   });
-  it("allows finite status polling and eventually stops a stuck poll", () => {
-    let now = 0;
-    const breaker = new Breaker(() => now);
-    const r = request("git status --short");
-    for (let i = 0; i < 10; i++) { expect(breaker.before(r)).toBeUndefined(); breaker.result(r, "pending", false); now += 1000; }
-    now = 120_001;
-    expect(breaker.before(r)).toContain("loop stopped");
-    breaker.reset(); now = 0;
-    for (let i = 0; i < 20; i++) breaker.result(r, "pending", false);
-    expect(breaker.before(r)).toBeDefined();
+
+  it("never limits repeated successes and success clears a failure streak", () => {
+    const breaker = new Breaker();
+    const call = request("status");
+    for (let i = 0; i < 100; i++) { expect(breaker.before(call)).toBeUndefined(); breaker.result(call, false); }
+    for (let i = 0; i < 11; i++) breaker.result(call, true);
+    breaker.result(call, false);
+    expect(breaker.before(call)).toBeUndefined();
   });
-  it("rejects compound mutations and arbitrary reads as polling", () => {
-    expect(isPolling(request("git status; rm file"))).toBe(false);
-    expect(isPolling(request("cat status.txt"))).toBe(false);
-    expect(isPolling(request("docker inspect anything"))).toBe(false);
+
+  it("resets on an unrelated call as selected by the operator", () => {
+    const breaker = new Breaker();
+    const failing = request("false");
+    for (let i = 0; i < 12; i++) breaker.result(failing, true);
+    expect(breaker.before(request("read-log"))).toBeUndefined();
+    expect(breaker.before(failing)).toBeUndefined();
   });
-  it("changed outcomes break the streak; explicit resets clear evidence", () => {
-    const breaker = new Breaker(); const r = request("echo test");
-    for (let i = 0; i < 4; i++) breaker.result(r, "failure", true);
-    breaker.result(r, "different", true);
-    expect(breaker.before(r)).toBeUndefined();
-    for (let i = 0; i < 4; i++) breaker.result(r, "same", true);
-    breaker.reset(); expect(breaker.before(r)).toBeUndefined();
+
+  it("includes cwd in identity and explicit reset clears evidence", () => {
+    const breaker = new Breaker();
+    const call = request("false");
+    for (let i = 0; i < 12; i++) breaker.result(call, true);
+    expect(breaker.before({ ...call, cwd: "/other" })).toBeUndefined();
+    for (let i = 0; i < 12; i++) breaker.result(call, true);
+    breaker.reset();
+    expect(breaker.before(call)).toBeUndefined();
   });
 });

@@ -37,13 +37,14 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
   const sequence = new DamageControlSessionState();
   const breaker = new Breaker();
   const completed = new Map<string, { request: ToolRequest; effects: Effect[]; created: string[]; generation: number }>();
+  const watchdogCalls = new Map<string, { tool: string; input: unknown; cwd: string }>();
   const pending = new Map<string, AbortController>();
   const abortListeners = new Map<AbortSignal, () => void>();
   const clearAbortListeners = () => { for (const [signal, handler] of abortListeners) signal.removeEventListener("abort", handler); abortListeners.clear(); };
   let mode: "default" | "noshell" = "default";
   let bypassed = false;
   let deferred: { source: "interactive" | "rpc"; text: string }[] = [];
-  const invalidate = () => { clearAbortListeners(); for (const controller of pending.values()) controller.abort(); pending.clear(); completed.clear(); deferred = []; context.invalidate(); breaker.reset(); };
+  const invalidate = () => { clearAbortListeners(); for (const controller of pending.values()) controller.abort(); pending.clear(); completed.clear(); watchdogCalls.clear(); deferred = []; context.invalidate(); breaker.reset(); };
   pi.on("session_start", () => { bypassed = false; invalidate(); });
   pi.on("session_tree", invalidate);
   pi.on("session_shutdown", invalidate);
@@ -68,12 +69,14 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
       context.recordDirectInput(input.source, input.text);
     }
   });
-  pi.on("agent_settled", () => { breaker.reset(); clearAbortListeners(); });
+  pi.on("agent_settled", () => { clearAbortListeners(); });
   pi.on("tool_result", async event => {
+    const watchdogCall = watchdogCalls.get(event.toolCallId);
+    watchdogCalls.delete(event.toolCallId);
+    if (watchdogCall) breaker.result(watchdogCall, event.isError);
     const record = completed.get(event.toolCallId);
     completed.delete(event.toolCallId);
     if (!record || record.generation !== context.generation) return;
-    breaker.result(record.request, { content: event.content, isError: event.isError }, event.isError);
     if (event.isError) return;
     context.recordSuccess(event.toolCallId, record.effects, Date.now(), record.created);
     if (event.content.some(part => part.type !== "text")) context.noteOmission();
@@ -85,6 +88,15 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
     async handle(event, ctx) {
       // Only the actual command-scoped tool is exempt, not arbitrary names containing commit.
       if (event.toolName === "commit_git_review") return;
+      const watchdogCall = { tool: event.toolName, input: event.input, cwd: ctx.cwd };
+      const stop = breaker.before(watchdogCall);
+      if (stop) {
+        pi.sendMessage({ customType: "damage-control-loop", content: stop, display: false }, { deliverAs: "nextTurn" });
+        ctx.abort();
+        return blocked(stop);
+      }
+      watchdogCalls.set(event.toolCallId, watchdogCall);
+      while (watchdogCalls.size > 50) watchdogCalls.delete(watchdogCalls.keys().next().value!);
       const normalized = adapt(event.toolName, event.toolCallId, event.input, ctx.cwd);
       if (normalized.status === "uncovered") return;
       if (normalized.status === "unsupported") return blocked(normalized.reason);
@@ -94,12 +106,6 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
       if (ctx.signal && !abortListeners.has(ctx.signal)) {
         abortListeners.set(ctx.signal, invalidate);
         ctx.signal.addEventListener("abort", invalidate, { once: true });
-      }
-      const stop = breaker.before(request);
-      if (stop) {
-        pi.sendMessage({ customType: "damage-control-loop", content: stop, display: false }, { deliverAs: "nextTurn" });
-        ctx.abort();
-        return blocked(stop);
       }
       // Tool-result events also account for denied calls; failed calls never
       // become creation evidence. No approval state is retained here.

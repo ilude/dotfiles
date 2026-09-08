@@ -22,3 +22,13 @@ it("leaves unadapted tools uncovered instead of inventing a block", async () => 
   const h = await harness();
   expect(await h.emit("tool_call", { toolName: "glob", toolCallId: "glob", input: { pattern: "*.ts" } })).toBeUndefined();
 });
+it("watches failures from uncovered tools and aborts attempt thirteen", async () => {
+  const h = await harness();
+  for (let i = 0; i < 12; i++) {
+    const toolCallId = `glob-${i}`;
+    expect(await h.emit("tool_call", { toolName: "glob", toolCallId, input: { pattern: "*.ts" } })).toBeUndefined();
+    await h.emit("tool_result", { toolName: "glob", toolCallId, input: { pattern: "*.ts" }, content: [{ type: "text", text: `error ${i}` }], isError: true });
+  }
+  expect(await h.emit("tool_call", { toolName: "glob", toolCallId: "glob-13", input: { pattern: "*.ts" } })).toMatchObject({ block: true, reason: expect.stringContaining("attempt 13") });
+  expect(h.abort).toHaveBeenCalledOnce();
+});
