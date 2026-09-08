@@ -16,7 +16,7 @@ export default function subagents(pi:ExtensionAPI){
  let origin="",catalog=loadDefinitions(process.cwd(),false),current:ExtensionContext|undefined;
  let timer:ReturnType<typeof setInterval>|undefined,lastView="";
  const modernRuntime=typeof runtime.wait==="function";
- const upgradeNotice="Existing subagents still belong to the pre-upgrade runtime. Finish/cancel them before restarting Pi to enable the new runtime; /reload does not replace live owners.";
+ const upgradeNotice="This Pi process still has the pre-upgrade subagent runtime. Use /clear to reset it, or restart Pi; active subagents will be stopped.";
  const requireModernRuntime=()=>{if(!modernRuntime)throw new Error(upgradeNotice)};
  const render=()=>{
   if(!current?.hasUI||current.sessionManager.getSessionId()!==origin)return;

@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import subagents from "../extensions/subagents.ts";
-import { getSubagentRuntime } from "../lib/subagents/runtime.ts";
+import { getSubagentRuntime, resetSubagentRuntime } from "../lib/subagents/runtime.ts";
 import { statusLines, outcomeText } from "../lib/subagents/status.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
 const here=dirname(fileURLToPath(import.meta.url));
@@ -15,16 +15,25 @@ it("renders inactivity separately from contact, redacts control characters and s
  const many=statusLines([...Array.from({length:8},()=>r),...Array.from({length:3},()=>ended)]);
  expect(many.length).toBeLessThanOrEqual(10);expect(many.filter(line=>line.includes("cleanup")).length).toBe(3);
 });
-it("keeps older live owners intact and reports the process-upgrade boundary",async()=>{
+it("resets a process-global legacy owner without manual child cleanup",async()=>{
+ const key=Symbol.for("dotfiles.pi.default.subagents.v1"),globals=globalThis as any,previous=globals[key];
+ const shutdown=vi.fn(async()=>{});globals[key]={shutdown};
+ try{
+  const replacement=await resetSubagentRuntime();
+  expect(shutdown).toHaveBeenCalledWith("clear");expect(replacement).toBe(getSubagentRuntime());expect(typeof replacement.wait).toBe("function");
+ }finally{globals[key]=previous}
+});
+it("keeps older live owners intact on reload and reports the automatic reset paths",async()=>{
  const runtime=getSubagentRuntime(),wait=runtime.wait,handlers:Record<string,Function>={},tools:Record<string,any>={},widgets:any[]=[];
  (runtime as any).wait=undefined;
  const pi:any={on:(name:string,handler:Function)=>{handlers[name]=handler},registerTool:(tool:any)=>{tools[tool.name]=tool},registerCommand:()=>{},sendMessage:()=>{}};
  const ctx:any={cwd:here,hasUI:true,isProjectTrusted:()=>false,isIdle:()=>true,sessionManager:{getSessionId:()=>"old-owner"},ui:{setWidget:(_key:string,lines:any)=>widgets.push(lines)}};
  try{
   subagents(pi);await handlers.session_start({},ctx);
-  expect(widgets.at(-1)[0]).toContain("pre-upgrade runtime");
+  expect(widgets.at(-1)[0]).toContain("pre-upgrade subagent runtime");
+  expect(widgets.at(-1)[0]).toContain("/clear");
   const response=await tools.subagent.execute("call",{agent:"probe",instructions:"work"},undefined,undefined,ctx);
-  expect(response.isError).toBe(true);expect(response.content[0].text).toContain("restarting Pi");
+  expect(response.isError).toBe(true);expect(response.content[0].text).toContain("restart Pi");
  }finally{await handlers.session_shutdown?.({reason:"reload"},ctx);runtime.wait=wait}
 });
 it("updates the origin's UI during silence and busy failure without sending progress to the model",async()=>{

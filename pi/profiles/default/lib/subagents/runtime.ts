@@ -124,4 +124,10 @@ export class SubagentRuntime {
  async shutdown(reason:string){for(const child of this.children.values()){const record=child.snapshot();if(reason==="quit"&&record.surface==="visible"&&record.userOwned)continue;if(record.status!=="settled"||record.retained)await child.cancel()}await this.transport.close()}
 }
 const key=Symbol.for("dotfiles.pi.default.subagents.v1");
-export function getSubagentRuntime(){const g=globalThis as typeof globalThis&{[key]?:SubagentRuntime};return g[key]??=new SubagentRuntime()}
+type RuntimeGlobal=typeof globalThis&{[key]?:SubagentRuntime};
+export function getSubagentRuntime(){const g=globalThis as RuntimeGlobal;return g[key]??=new SubagentRuntime()}
+export async function resetSubagentRuntime(reason="clear"){
+ const g=globalThis as RuntimeGlobal,current=g[key];
+ if(current)await current.shutdown(reason);
+ const replacement=new SubagentRuntime();g[key]=replacement;return replacement;
+}

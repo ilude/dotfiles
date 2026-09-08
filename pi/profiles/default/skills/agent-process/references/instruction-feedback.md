@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-019 - Reset stale subagent owners without manual ceremony
+
+- **Reference:** Operator correction to the pre-upgrade runtime notice on 2026-09-08.
+- **Feedback:** `/clear` or stopping and restarting Pi should handle stale process-global subagent owners; operators should not need to finish or cancel every child first.
+- **Finding:** Pi exit already shut down ordinary owned children, but the notice incorrectly presented manual cleanup as required. `/clear` created and reloaded a session without replacing the process-global subagent runtime.
+- **Decision:** Make `/clear` stop all owned children, replace the singleton runtime, then create the clean session. Keep `/reload` non-destructive. Clarify that restart already performs cleanup automatically.
+- **Related:** AIF-004 (minimal ceremony), APR-008 (subagent UX).
+- **Status:** Implemented. Targeted clear/subagent tests, default typecheck, and runtime smoke check pass.
+
 ## AIF-018 - Use scheduling instead of long shell sleeps
 
 - **Reference:** Operator correction during GitLab deployment monitoring on 2026-09-08.
