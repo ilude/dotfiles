@@ -1,8 +1,8 @@
 ---
 created: 2026-09-07
 updated: 2026-09-08
-status: draft
-completed: null
+status: completed
+completed: 2026-09-08
 ---
 
 # Default Pi: Herdr process tools and shell-free launches
@@ -18,7 +18,7 @@ Build a repository-owned Herdr integration for the default Pi profile:
 
 **Selected architecture:** repository-owned Pi tool extension → installed Herdr CLI. No third-party Pi extensions, package forks, or Bellwether installation. Borrow design ideas only. Herdr's own generated Pi lifecycle integration is separate from the tool extension.
 
-Authorization covers planning and the completed disposable investigation. Production implementation, permanent installation, upgrades, commits, and pushes are not yet authorized.
+The user authorized implementation in a dedicated worktree, local commits, archival on completion, and merge back into the originating checkout. Push and upgrades are not authorized. Worktree: `.worktrees/default-herdr`, branch `feature/default-herdr`; merge target: `main` in `C:/Users/mglenn/.dotfiles`.
 
 Non-goals: subagents or delegation, a process/service registry, restart supervision, automatic service teardown on Pi exit, a new footer, legacy-profile migration, or model/task metadata publishing. The archived `.specs/archive/herdr-visible-subagents/plan.md` is not execution guidance; do not resume it or import its work.
 
@@ -59,7 +59,7 @@ Test servers were stopped, the temporary plugin unlinked, and disposable contain
 | --- | --- | --- |
 | D1 | User selected | Own CLI-backed structured tools plus the dynamic skill. No third-party Pi extension installation or adaptation. |
 | D2 | User selected | Deferred discovery through `tool_search`; concise descriptions and schema guidance, no duplicated manuals, bounded results. |
-| D3 | Unresolved preference | Should a request such as “start the dev server” automatically use Herdr when inside it, or only when the user explicitly requests Herdr? Recommendation: automatic for requested long-running processes, preserving focus. This recommendation is not yet approved. |
+| D3 | User approved 2026-09-08 | Automatically use Herdr for requested long-running servers/logs when inside it, preserving focus. |
 | D4 | Proposed workflow default | Development processes use a sibling pane in the project cwd without moving focus. Explicit `/new-instance` and `/branch` preserve their existing focused new-tab behavior and titles. |
 | D5 | Preservation | `/new-terminal` remains a shell. Non-Herdr Windows Terminal/Ghostty behavior stays unchanged. No silent shell fallback for a failed direct Pi launch. |
 | D6 | Preservation/proposed integration | Keep Pi UI and current sound/desktop settings. Use Herdr's generated lifecycle publisher plus our native prompt bridge, without adding a competing bell/notification layer. Operator observation verifies actual delivery during acceptance. |
@@ -137,26 +137,26 @@ The installed generated version 8 handles TUI state, `agent_start`, `agent_settl
   - Result: requested core design works on installed Herdr; no upgrade or third-party extension required.
   - Evidence: [investigation.md](investigation.md). Do not repeat unchanged capability probes.
 
-- [ ] **T1b — Record invocation policy**
+- [x] **T1b — Record invocation policy**
   - Input: user choice D3, not further technical investigation.
   - Change: record explicit versus automatic use and reflect it in the skill.
   - Done when: the remaining preference is stated. Independent launcher work does not depend on this choice.
 
-- [ ] **T2 — Implement concise deferred tools and dynamic skill**
+- [x] **T2 — Implement concise deferred tools and dynamic skill**
   - Depends on: implementation authorization; T1b for skill invocation wording.
   - Files: proposed tool/CLI/skill files above, default `extensions/tool-visibility.ts`, `lib/tool-activation.ts`, relevant Damage Control adapters/analysis, and `tests/herdr-tools.test.ts` plus existing visibility/search tests.
   - Change: implement only the bounded operations and prompt-efficiency/safety contracts above. No third-party package installation.
   - Verify: creation/query JSON, silent mutation success, no blind retries, cancellation/timeouts, bounded results, exact targeting, command safety, own-pane closure refusal, and additive deferred activation. Review injected schemas for duplicated documentation.
   - Done when: tools are concise, discoverable, correctly bounded and safety-covered; the skill dynamically uses installed docs without copying them.
 
-- [ ] **T3 — Implement local plugin setup and safe Node bootstrap**
+- [x] **T3 — Implement local plugin setup and safe Node bootstrap**
   - Depends on: implementation authorization and completed T1a. Independent of T1b.
   - Files: proposed plugin/setup/bootstrap files above; `scripts/pi-damage-control-preflight.mjs` and existing launcher behavior as inputs; proposed default `tests/herdr-launch.test.ts`.
   - Change: resolve local executable paths, validate launch inputs, preserve preflight/repair behavior, and run Pi without a shell. Keep existing `pp` working. Mirror install/WSL links only if adding a cross-platform link is necessary.
   - Verify: paths with spaces, profile/cwd/session propagation, child identity, and failed-preflight repair mode using fixtures, not a broken production bootstrap.
   - Done when: the actual bootstrap launches default Pi directly and preserves launcher safety semantics.
 
-- [ ] **T4 — Switch the two Herdr Pi-launch commands**
+- [x] **T4 — Switch the two Herdr Pi-launch commands**
   - Depends on: T3.
   - Files: `pi/profiles/default/extensions/session-launch.ts`; proposed default `tests/session-launch.test.ts`.
   - Change: use plugin tabs for `/new-instance` and `/branch`, preserving titles/focus/cwd/profile and branch restoration. Leave `/new-terminal` and non-Herdr paths unchanged.
@@ -165,19 +165,27 @@ The installed generated version 8 handles TUI state, `agent_start`, `agent_settl
 
 Scope checkpoint: T2-T4 must remain process tools and operator-launched Pi sessions, not a process registry or delegation system.
 
-- [ ] **T5 — Integrate lifecycle and prompt attention without UI changes**
+- [x] **T5 — Integrate lifecycle and prompt attention without UI changes**
   - Depends on: implementation authorization and T1a; coordinate with current Damage Control code. Use T3 for final direct-launch verification.
   - Files: generated default `extensions/herdr-agent-state.ts`, new `extensions/herdr-ui-prompt-state.ts`, and `tests/herdr-ui-prompt-state.test.ts`.
   - Change: install one generated reporter and the native prompt bridge. Preserve generated ownership and existing UI/settings.
   - Verify: prompt start/end/denial/cancellation, coalesced prompts, session/reload teardown, correct TUI gating, and settled-state semantics. No duplicate reporter or bell path.
   - Done when: Herdr receives correctly attributed state and operator waits without altering default UI.
 
-- [ ] **T6 — Validate the implementation and document usage**
+- [x] **T6 — Validate the implementation and document usage**
   - Depends on: T2, T4, T5.
   - Files: relevant default tests, `pi/README.md`, proposed `pi/profiles/default/docs/herdr.md`, root `CHANGELOG.md`, this plan.
   - Change: document setup, deferred tools, dynamic skill, safety boundaries, direct-launch exit behavior, Docker ownership, and attention behavior. Preserve unrelated documentation edits.
   - Verify: the finite checks below; fix relevant demonstrated failures only.
   - Done when: agreed checks pass, task resources are cleaned, limits are recorded, and documentation matches behavior.
+
+## Execution status
+
+T1b-T5 are implemented in the task worktree. [execution.md](execution.md) records actual profile runs, 21 passing targeted tests, typecheck/runtime results, live production-tool/gate checks, real fresh/branch launches, approval state, Compose ownership, and cleanup. Source paths described as proposed above now exist.
+
+T6 documentation and automated/headless live checks are complete. On 2026-09-08 the user explicitly accepted physical sound/desktop delivery as an unverified limitation and authorized archival/merge. It is not claimed as tested. No acceptance blocker remains.
+
+A live preview-specific exit issue required the bootstrap to explicitly retire its own plugin pane on process exit, preventing replacement with a shell. Focused exit and exact-identity cleanup tests passed. The temporary validation extension has been removed.
 
 ## Validation and finish
 
@@ -196,9 +204,10 @@ Use isolated named sessions, pinned sockets and returned resource IDs. Reinspect
 
 ## Handoff and archive
 
-- Status: updated draft. User-selected architecture and implementation tasks are written; only D3's invocation preference remains open.
-- Investigation is complete. No further third-party package selection or broad research is needed.
-- Production implementation is not authorized by this planning request and has not been performed.
-- Generated-code limitations and unverified delivery behavior are recorded in investigation.md; do not claim automatic session-restoration or desktop-alert parity from headless probes.
+- Status: completed 2026-09-08. The user accepted unverified physical sound/desktop delivery and approved archival/merge.
+- Automatic invocation is approved and implemented. Investigation is closed; no third-party extension is used.
+- Tests, live checks, corrections, and cleanup are recorded in execution.md. Do not repeat unchanged checks or expand scope.
+- Delivery: archive this directory with the implementation in the task branch and merge into `main` in the originating checkout, preserving unrelated work. Run local plugin setup from that lasting checkout, not the worktree. No push.
+- Do not claim audible/desktop delivery from headless state evidence or archive the agreed acceptance check as passed without evidence/user acceptance.
 
 When implementation and agreed checks finish, set `status: completed` and `completed: YYYY-MM-DD`, record actual profile/results, and move this directory to `.specs/archive/default-herdr-processes-and-direct-launch/`. Verify the destination does not exist and repair affected links. Leave blocked/incomplete work active. Archival does not authorize commits, pushes, or unrelated cleanup.

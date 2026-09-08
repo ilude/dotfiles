@@ -83,6 +83,12 @@ The port preserves invocation-local DuckDB, serialized staging, input/deadline/t
 
 The default profile provides `web_search` (SearXNG) and `web_fetch` (local readable extraction with automatic public-URL Jina fallback). A tool-free Luna call adds best-effort prompt-injection annotations before results enter context; screening failures are marked, not blocked. See [setup, behavior, and limitations](profiles/default/docs/web-tools.md).
 
+## Default profile Herdr
+
+Repository-owned deferred `herdr_layout` and `herdr_pane` tools use the installed CLI for visible servers and logs, with concise descriptions, bounded output, and explicit command-safety handling. The thin `herdr` skill loads installed documentation dynamically and uses Herdr automatically for requested long-running processes while inside it. No third-party Pi extension or service supervisor is added.
+
+Run `node scripts/pi-herdr-setup.mjs` from the lasting checkout to link the local argv plugin. Herdr `/new-instance` and `/branch` then launch Pi through a preflight-preserving Node bootstrap without a shell host; `/new-terminal` and non-Herdr behavior stay unchanged. Generated lifecycle reporting and a native prompt bridge preserve Pi UI and existing sound/desktop settings. See [setup, ownership, limitations, and checks](profiles/default/docs/herdr.md).
+
 ## Default profile browser control
 
 The default profile provides `browser_session`, `browser_page`, and `/browser-setup` for one ownership-verified Brave session. Isolated mode stores browser data under the active profile. Real-profile mode accepts only configured aliases discovered from Brave `Local State`; the legacy aliases are copied once into the default profile, while sessions and browser data are not migrated. Browser launch, lifecycle, and page operations use TypeScript and direct CDP. Windows process identity uses a narrow PowerShell CIM adapter; the default browser tools do not invoke Python, `agent-browser`, or `npx`. Credential, CAPTCHA, cookie, storage, and arbitrary-evaluation surfaces remain unavailable. See [`profiles/default/skills/browser-tools/SKILL.md`](profiles/default/skills/browser-tools/SKILL.md).
