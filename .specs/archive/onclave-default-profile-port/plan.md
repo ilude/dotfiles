@@ -1,7 +1,7 @@
 ---
 created: 2026-09-07
-status: in_progress
-completed: null
+status: completed
+completed: 2026-09-07
 ---
 
 # Port Onclave orchestrator communication to default Pi
@@ -77,7 +77,7 @@ At planning time, unrelated Damage Control code/tests/docs and its failure-log e
 | --- | --- | --- | --- |
 | 2026-09-07 | default / `pi/profiles/default/` | Source inspection and planning | No implementation, runtime test, network/service validation, or dependency installation |
 | 2026-09-07 | default; code under `.worktrees/onclave-default-port/` | Module typecheck/unit suite, default typecheck/3 tests | Passed: 229 module tests, 1 existing skip; affected 27 tests repeated after test-output isolation |
-| 2026-09-07 | isolated temporary empty profile, installed Pi 0.85.0 | Default Onclave loader smoke | Passed; registered real module tools/command/hooks with no session, credentials, provider, or service calls |
+| 2026-09-07 | isolated temporary empty profile, installed Pi 0.85.0 | Default Onclave loader smoke | Passed in worktree and original checkout after merge/dependency setup; registered real module tools/command/hooks with no session, credentials, provider, or service calls |
 
 ## Decisions and contracts
 
@@ -172,12 +172,12 @@ No new user decision blocks plan authoring. T1 resolves factual compatibility/br
 
 **Scope checkpoint:** Stop when the agreed offline checks pass. Live service testing belongs to the operator and must not delay completion. Do not begin another security or edge-case audit.
 
-- [ ] **T6 — Record implementation results and archive the plan**
+- [x] **T6 — Record implementation results and archive the plan**
   - Depends on: T5.
   - Files: this plan and any inbound links to it.
   - Do: summarize changes by owning repository, actual profile/version used for validation, check results, and remaining limitations. Explicitly state that no live verification was performed. Record module and parent integration commits under the later worktree/merge authorization.
   - Done when: all required implementation/check evidence is recorded, no scope-required task remains, and the plan is completed/archived as below. The operator's later live check is not outstanding implementation work.
-  - Evidence: Not started.
+  - Evidence: Adapter `ceed8c3` committed, merged to tracking feature/v2-broker-core, and published before parent integration `985d748e`. Concurrent main commits were merged into the worktree, then original main fast-forwarded to `20e43e89`. Changelog conflict retained both entries; concurrent Damage Control work and dirty Herdr plan/investigation were preserved. Canonical module frozen dependencies installed and original-checkout offline smoke passed. Plan archived on 2026-09-07. Dotfiles was not pushed; no live validation performed.
 
 ## Agreed validation and finish
 
@@ -189,10 +189,11 @@ If Git actions are later authorized, follow repository rules: pull inside the mo
 
 ## Current handoff
 
-- Status: implementation and agreed offline checks complete; merge/archive in progress.
-- T1–T5 complete. Onclave commit `ceed8c3` was fast-forwarded into canonical `feature/v2-broker-core` and pushed before the parent gitlink commit.
+- Status: completed on 2026-09-07; all tasks and offline checks complete, merged back and archived.
+- T1–T6 complete. Onclave commit `ceed8c3` was fast-forwarded into canonical `feature/v2-broker-core` and pushed before the parent gitlink commit.
 - Worktrees: dotfiles `.worktrees/onclave-default-port` (`feature/onclave-default-port`), nested module worktree (`feature/default-profile-port`). Original checkout remains `main`; unrelated concurrent edits must be preserved during merge.
-- Next: merge the parent integration into the original checkout, record merge evidence, and archive (T6).
+- Parent integration `985d748e` reached original `main` through `20e43e89`. Original-checkout installed-Pi smoke passed after frozen module dependency setup. No implementation steps remain.
+- Live verification remains operator-owned after implementation and is outside plan acceptance.
 - Verification limits: no live service, credentials, or broker-backed suite validated. The operator handles live verification separately; no restart/reload recovery promised.
 
 ## Completion and archive
