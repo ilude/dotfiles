@@ -1,4 +1,4 @@
-export type SequenceAction = "ask" | "block";
+export type SequenceAction = "review" | "block";
 
 type SensitiveCategory =
 	| "env"
@@ -14,6 +14,8 @@ type NetworkSink =
 	| "remote_copy"
 	| "remote_shell"
 	| "dns_lookup";
+
+import type { Effect } from "./types.ts";
 
 interface BaseSessionEvent {
 	toolName: string;
@@ -68,8 +70,8 @@ export interface SequenceDecision {
 const HISTORY_LIMIT = 50;
 const HISTORY_EXPIRY_MS = 30 * 60 * 1000;
 
-function classifySensitivePath(path: string): SensitiveCategory | undefined {
-	if (/\.env(?:$|[./\\])/i.test(path)) return "env";
+export function classifySensitivePath(path: string): SensitiveCategory | undefined {
+	if (/\.env(?:$|[./\\'"})\],\s])/i.test(path)) return "env";
 	if (/id_(?:rsa|ed25519|ecdsa)$|\.(?:pem|key)$/i.test(path)) return "ssh_key";
 	if (/\.aws[\\/](?:credentials|config)$/i.test(path)) return "aws_creds";
 	if (/\.tfstate$/i.test(path)) return "tfstate";
@@ -224,13 +226,29 @@ export class DamageControlSessionState {
 		while (this.history.length > HISTORY_LIMIT) this.history.shift();
 	}
 
-	check(toolName: string, summary: string): SequenceDecision | undefined {
+	check(toolName: string, summary: string, effects: readonly Effect[] = []): SequenceDecision | undefined {
 		this.prune();
 		if (toolName !== "bash") return undefined;
 		const currentEvent = classifyEvent(toolName, summary);
 		if (currentEvent?.kind !== "network_sink") return undefined;
 		if (currentEvent.sink === "dns_lookup") return undefined;
 		const now = Date.now();
+		const uploadSources = effects
+			.filter((effect) => effect.operation === "upload")
+			.flatMap((effect) => effect.sources)
+			.filter((target): target is { resolution: "static"; path: string } => target.resolution === "static")
+			.map((target) => target.path);
+		const directSensitiveSource = uploadSources.find((source) => classifySensitivePath(source));
+		if (directSensitiveSource) {
+			return makeDecision({
+				action: "block",
+				name: "sensitive_source_upload",
+				reason: "The current upload directly names a sensitive source.",
+				priorEvents: [],
+				currentEvent,
+				now,
+			});
+		}
 		const envRead = this.findSensitive("env");
 		const envDiscovery = this.findDiscovery("glob");
 		if (
@@ -239,7 +257,7 @@ export class DamageControlSessionState {
 			["http_upload", "cloud_upload", "remote_copy"].includes(currentEvent.sink)
 		) {
 			return makeDecision({
-				action: "block",
+				action: "review",
 				name: "env_enumeration_to_exfil",
 				reason:
 					"Environment file discovery and read followed by an upload-capable command.",
@@ -253,10 +271,30 @@ export class DamageControlSessionState {
 		);
 		if (
 			sensitive &&
+			uploadSources.some((source) => {
+				const normalizedSource = source.replaceAll("\\\\", "/");
+				const basename = normalizedSource.slice(normalizedSource.lastIndexOf("/") + 1);
+				const readText = sensitive.path.replaceAll("\\\\", "/");
+				return readText.includes(normalizedSource) || (basename.length > 1 && readText.includes(basename));
+			}) &&
 			["http_upload", "cloud_upload", "remote_copy"].includes(currentEvent.sink)
 		) {
 			return makeDecision({
-				action: "ask",
+				action: "block",
+				name: "sensitive_file_to_upload",
+				reason:
+					"The current upload names a sensitive file that was recently read.",
+				priorEvents: [sensitive],
+				currentEvent,
+				now,
+			});
+		}
+		if (
+			sensitive &&
+			["http_upload", "cloud_upload", "remote_copy"].includes(currentEvent.sink)
+		) {
+			return makeDecision({
+				action: "review",
 				name: "sensitive_file_to_upload",
 				reason:
 					"Sensitive file was recently read and the current command can upload data.",
@@ -274,7 +312,7 @@ export class DamageControlSessionState {
 			["http_upload", "cloud_upload", "remote_copy"].includes(currentEvent.sink)
 		) {
 			return makeDecision({
-				action: "ask",
+				action: "review",
 				name: "credential_search_to_upload",
 				reason: "Credential search followed by an upload-capable command.",
 				priorEvents: [discovery],
@@ -287,7 +325,7 @@ export class DamageControlSessionState {
 		);
 		if (dbDump && currentEvent.sink === "cloud_upload") {
 			return makeDecision({
-				action: "ask",
+				action: "review",
 				name: "db_dump_to_cloud",
 				reason: "Database dump followed by cloud upload.",
 				priorEvents: [dbDump],
@@ -324,6 +362,10 @@ export class DamageControlSessionState {
 			if (predicate(event)) return event;
 		}
 		return undefined;
+	}
+
+	reset(): void {
+		this.history.length = 0;
 	}
 
 	private prune(): void {

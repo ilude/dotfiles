@@ -103,9 +103,15 @@ export function matchesPath(pattern: string, target: string, facts: PathFacts): 
   return regex.test(target);
 }
 
+export function isScratchPath(target: string, policy: PathPolicy, facts: PathFacts): boolean {
+  return policy.scratch.some(pattern => matchesPath(pattern, target, facts) || matchesPath(`${pattern.replace(/[\\/]+$/, "")}/`, target, facts));
+}
+
 export function pathMatches(target: string, operation: "read" | "metadata" | "write" | "delete" | "truncate", policy: PathPolicy, facts: PathFacts, effectId: string): RuleMatch[] {
-  if (policy.exclusions.some(pattern => matchesPath(pattern, target, facts))) return [];
   const result: RuleMatch[] = [];
+  // Exclusions are only an interoperability escape hatch. They must never
+  // bypass the home/root floor or a protected credential path.
+  const excluded = policy.exclusions.some(pattern => matchesPath(pattern, target, facts));
   const add = (key: keyof PathPolicy, action: RuleMatch["action"], reason: string) => {
     policy[key].forEach((pattern, i) => {
       const anchor = expanded(pattern, facts);
@@ -125,7 +131,9 @@ export function pathMatches(target: string, operation: "read" | "metadata" | "wr
     if (contains(target, facts.home, facts) || target === "/" || /^[a-z]:\/?$/i.test(target)) result.push({ ruleId: "protected-floor", action: "block", applicability: "confirmed", reason: "Home/root destruction is prohibited", effects: [effectId] });
   }
   if (operation === "read") add("readConfirm", "user", "Sensitive file content requires approval for this call");
-  return result;
+  // A broad exclusion may suppress a legacy inventory entry, but never a
+  // concrete floor/credential match established above.
+  return excluded && !result.some(match => match.action === "block") ? [] : result;
 }
 
 // Bounded metadata inspection, never opening file contents. Deleting an ancestor

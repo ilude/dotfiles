@@ -5,10 +5,11 @@ import type { Analysis, ToolRequest } from "./types.ts";
 
 export type PromptContext = Pick<ExtensionContext, "hasUI" | "mode" | "signal"> & {
   ui: Pick<ExtensionContext["ui"], "select" | "custom">;
+  allowReview?: boolean;
 };
-export type PromptResult = { status: "approved" } | { status: "denied"; reason: string };
+export type PromptResult = { status: "approved"; review?: boolean } | { status: "denied"; reason: string };
 
-async function rpcPrompt(approval: Approval, ctx: PromptContext): Promise<boolean> {
+async function rpcPrompt(approval: Approval, ctx: PromptContext): Promise<"allow" | "review" | "deny"> {
   const summary = `${approval.title}\n${approval.summary.map(line => line.text).join("\n")}`;
   const detailText = approval.details.map(line => line.text).join("\n");
   const pageSize = 3000;
@@ -16,8 +17,12 @@ async function rpcPrompt(approval: Approval, ctx: PromptContext): Promise<boolea
   const trigger = approval.details.findIndex(line => line.trigger);
   const triggerOffset = trigger < 0 ? 0 : approval.details.slice(0, trigger).reduce((length, line) => length + line.text.length + 1, 0);
   while (!ctx.signal?.aborted) {
-    const answer = await ctx.ui.select(summary.length > 3000 ? `${summary.slice(0, 2900)}\n[More in Details. Approval covers the whole tool call.]` : summary, ["Allow once", "Deny", "Details"], { signal: ctx.signal });
-    if (answer !== "Details") return answer === "Allow once" && !ctx.signal?.aborted;
+    const answer = await ctx.ui.select(summary.length > 3000 ? `${summary.slice(0, 2900)}\n[More in Details. Approval covers the whole tool call.]` : summary, ["Allow once", ...(ctx.allowReview ? ["Allow once and review for future use"] : []), "Deny", "Details"], { signal: ctx.signal });
+    if (answer !== "Details") {
+      if (ctx.signal?.aborted) return "deny";
+      if (answer === "Allow once and review for future use") return "review";
+      return answer === "Allow once" ? "allow" : "deny";
+    }
     let page = Math.floor(triggerOffset / pageSize);
     while (!ctx.signal?.aborted) {
       const choices = ["Back", ...(page > 0 ? ["Previous page"] : []), ...(page < count - 1 ? ["Next page"] : [])];
@@ -25,10 +30,10 @@ async function rpcPrompt(approval: Approval, ctx: PromptContext): Promise<boolea
       if (navigation === "Back") break;
       if (navigation === "Next page" && page < count - 1) page++;
       else if (navigation === "Previous page" && page > 0) page--;
-      else return false;
+      else return "deny";
     }
   }
-  return false;
+  return "deny";
 }
 
 export async function promptDecision(decision: ApprovalDecision, request: ToolRequest, analysis: Analysis, ctx: PromptContext): Promise<PromptResult> {
@@ -38,11 +43,11 @@ export async function promptDecision(decision: ApprovalDecision, request: ToolRe
   let removeAbortListener: (() => void) | undefined;
   try {
     const allowed = ctx.mode === "tui"
-      ? await ctx.ui.custom<"allow" | "deny">((tui, theme, keys, done) => {
+      ? await ctx.ui.custom<"allow" | "review" | "deny">((tui, theme, keys, done) => {
         let settled = false;
-        const finish = (answer: "allow" | "deny") => { if (!settled) { settled = true; done(answer); } };
+        const finish = (answer: "allow" | "review" | "deny") => { if (!settled) { settled = true; done(answer); } };
         const abort = () => finish("deny");
-        const view = createApprovalView(approval, theme, keys, finish, () => tui.terminal.rows);
+        const view = createApprovalView(approval, theme, keys, finish, () => tui.terminal.rows, ctx.allowReview);
         ctx.signal?.addEventListener("abort", abort, { once: true });
         removeAbortListener = () => ctx.signal?.removeEventListener("abort", abort);
         if (ctx.signal?.aborted) abort();
@@ -54,7 +59,7 @@ export async function promptDecision(decision: ApprovalDecision, request: ToolRe
         };
       }) === "allow"
       : await rpcPrompt(approval, ctx);
-    if (allowed && !ctx.signal?.aborted) return { status: "approved" };
+    if ((allowed === "allow" || allowed === "review") && !ctx.signal?.aborted) return allowed === "review" ? { status: "approved", review: true } : { status: "approved" };
     if (ctx.signal?.aborted) return { status: "denied", reason: "Pending call cancelled; action not executed" };
     return { status: "denied", reason: approval.denial };
   } catch {

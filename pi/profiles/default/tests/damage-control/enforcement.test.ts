@@ -5,11 +5,11 @@ it.each(["rm -rf ~", "rm -rf /"])("retains legacy hard block: %s", async command
   expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "block", input: { command } })).toMatchObject({ block: true });
   expect(h.select).not.toHaveBeenCalled();
 });
-it("requires operator choice for a legacy ask and never delegates authority to Luna", async () => {
-  const h = await harness();
+it("requires operator choice when contextual review retains a consequential Git reset", async () => {
+  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "ask" as const, reason: "uncommitted work may be lost", dismissedCandidates: [] }) });
   expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "ask", input: { command: "git reset --hard HEAD" } })).toBeUndefined();
   expect(h.select).toHaveBeenCalledOnce();
-  expect(h.review).not.toHaveBeenCalled();
+  expect(h.review).toHaveBeenCalledOnce();
 });
 it("keeps scoped local cleanup and read-only pipelines quiet", async () => {
   const h = await harness();

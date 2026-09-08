@@ -10,9 +10,12 @@ it("keeps canonical path and containment checks", async () => {
   expect(contains("/work", "/other/file", facts)).toBe(false);
   expect(normalizePath("~/file", facts)).toBe("/home/operator/file");
 });
-it("restores legacy exclusions and direct path protections", () => {
-  expect(pathMatches("/work/serviceAccountKey.json", "read", policy.paths, facts, "e")).toEqual([]);
+it("pairs recoverable artifacts with retained disclosure and recovery floors", () => {
+  expect(pathMatches("/work/serviceAccountKey.json", "read", policy.paths, facts, "e")[0].action).toBe("block");
+  expect(pathMatches("/work/public-cert.pem", "read", policy.paths, facts, "e")).toEqual([]);
   expect(pathMatches("/home/operator/.ssh/id_ed25519", "read", policy.paths, facts, "e")[0].action).toBe("block");
-  expect(pathMatches("/work/README.md", "delete", policy.paths, facts, "e")[0].action).toBe("block");
-  expect(pathMatches("/work/pnpm-lock.yaml", "write", policy.paths, facts, "e")[0].action).toBe("block");
+  expect(pathMatches("/work/README.md", "delete", policy.paths, facts, "e")).toEqual([]);
+  expect(pathMatches("/work/pnpm-lock.yaml", "write", policy.paths, facts, "e")).toEqual([]);
+  expect(pathMatches("/work/.git/objects/pack", "delete", policy.paths, facts, "e")[0].action).toBe("block");
+  expect(pathMatches("/", "delete", policy.paths, facts, "e")).toContainEqual(expect.objectContaining({ ruleId: "protected-floor", action: "block" }));
 });

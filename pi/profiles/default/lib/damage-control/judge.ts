@@ -74,7 +74,8 @@ function redactEffect(effect: Effect): { effect: Effect; lossy: boolean; identit
 function evidenceItemCount(evidence: Evidence): number {
   const effects = [...evidence.untrusted.effects, ...(evidence.untrusted.priorEffects ?? []).map(item => item.effect)];
   return evidence.operator.length + effects.length + (evidence.untrusted.observations?.length ?? 0) + evidence.untrusted.matches.length
-    + evidence.untrusted.uncertainties.length + evidence.omissions.length
+    + evidence.untrusted.uncertainties.length + evidence.omissions.length + (evidence.untrusted.variables?.length ?? 0)
+    + (evidence.untrusted.sequence?.priorEvents.length ?? 0) + (evidence.untrusted.sequence ? 1 : 0)
     + effects.reduce((count, effect) => count + effect.sources.length + effect.targets.length + effect.destinations.length, 0)
     + evidence.untrusted.matches.reduce((count, match) => count + match.effects.length, 0);
 }
@@ -98,6 +99,16 @@ export function projectEvidence(evidence: Evidence): EvidenceProjection {
   const effects = evidence.untrusted.effects.map(effect => {
     const result = redactEffect(effect); lossy ||= result.lossy; identityLost ||= result.identityLost; return result.effect;
   });
+  const variables = (evidence.untrusted.variables ?? []).map(variable => {
+    const name = identity(variable.name);
+    const value = text(variable.value);
+    const provenance = text(variable.provenance);
+    return { name, value, source: variable.source, provenance };
+  });
+  const sequence = evidence.untrusted.sequence === undefined ? undefined : {
+    priorEvents: evidence.untrusted.sequence.priorEvents.map(event => ({ ...event, category: event.category === undefined ? undefined : text(event.category), summary: text(event.summary) })),
+    currentEvent: { ...evidence.untrusted.sequence.currentEvent, category: evidence.untrusted.sequence.currentEvent.category === undefined ? undefined : text(evidence.untrusted.sequence.currentEvent.category), summary: text(evidence.untrusted.sequence.currentEvent.summary) },
+  };
   const matches = evidence.untrusted.matches.map(match => ({ ...match, ruleId: identity(match.ruleId), reason: text(match.reason), effects: match.effects.map(identity) }));
   const uncertainties = evidence.untrusted.uncertainties.map(text);
   const omissions = evidence.omissions.map(text);
@@ -111,7 +122,7 @@ export function projectEvidence(evidence: Evidence): EvidenceProjection {
     callId: text(item.callId), tool: text(item.tool), operation: text(item.operation), cwd: text(item.cwd), output: text(item.output), timestamp: item.timestamp,
   }));
   if (lossy) omissions.push("Sensitive text was redacted. Ask if the missing values are necessary to assess this call; never infer them.");
-  const projected: Evidence = { callId, operation, operator, untrusted: { effects, priorEffects, observations, matches, uncertainties }, omissions };
+  const projected: Evidence = { callId, operation, operator, untrusted: { effects, priorEffects, observations, variables, ...(sequence ? { sequence } : {}), matches, uncertainties }, omissions };
   const oversized = () => evidenceItemCount(projected) > MAX_EVIDENCE_ITEMS || Buffer.byteLength(JSON.stringify(projected), "utf8") > MAX_EVIDENCE_BYTES;
   if (priorEffects.length && oversized()) {
     omissions.push("Older historical effects omitted to fit the review budget; current effects are complete.");

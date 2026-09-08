@@ -35,6 +35,16 @@ describe("Luna evidence projection", () => {
     expect(result.text).not.toContain(secret);
   });
 
+  it("redacts referenced variable values while preserving source provenance", () => {
+    const value = evidence({ untrusted: { effects: [], variables: [{ name: "TARGET", value: "token=SYNTHETIC_SENTINEL", source: "inherited", provenance: "synthetic shell boundary" }], matches: [], uncertainties: [] } });
+    const projected = projectEvidence(value);
+    expect(projected.status).toBe("ready");
+    if (projected.status === "ready") {
+      expect(projected.evidence.untrusted.variables).toEqual([{ name: "TARGET", value: "token=[REDACTED]", source: "inherited", provenance: "synthetic shell boundary" }]);
+      expect(JSON.stringify(projected)).not.toContain("SYNTHETIC_SENTINEL");
+    }
+  });
+
   it("requires input when redaction obscures a current target", () => {
     const value = evidence({ operator: [{ source: "rpc", text: "password=SYNTHETIC_SENTINEL" }], untrusted: { effects: [effect("api_key=SYNTHETIC_SENTINEL")], matches: [{ ruleId: "candidate", action: "review", applicability: "candidate", reason: "Authorization: Bearer SYNTHETIC_SENTINEL", effects: ["effect-1"] }], uncertainties: ["token=SYNTHETIC_SENTINEL"] } });
     expect(projectEvidence(value)).toMatchObject({ status: "needs-input" });

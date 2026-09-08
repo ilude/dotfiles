@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { open, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -5,7 +6,7 @@ import { createRequire } from "node:module";
 import * as TreeSitter from "web-tree-sitter";
 import { parseSearchArguments, type SearchArgument } from "./search.ts";
 import { sqlExecutableText } from "./sql.ts";
-import type { Analysis, CompiledRule, DockerEndpoint, DockerEnvironmentKey, DockerInvocation, Effect, Language, RuleMatch, ShellSearch, Target, ToolRequest } from "./types.ts";
+import type { Analysis, CompiledRule, DockerEndpoint, DockerEnvironmentKey, DockerInvocation, Effect, Language, RuleMatch, ShellSearch, ScriptSourceIdentity, Target, ToolRequest, VariableEvidence } from "./types.ts";
 
 const SCRIPT_BYTE_LIMIT = 64 * 1024;
 const NESTING_LIMIT = 8;
@@ -24,6 +25,10 @@ export type ShellDependencies = {
   canReadScript?: (absolutePath: string) => Promise<boolean>;
   /** Effective default Docker context/daemon, when established by the host. */
   dockerContext?: string;
+  /** Environment visible at the shell boundary. Only referenced variables are evidence. */
+  environment?: Readonly<Record<string, string | undefined>>;
+  environmentProvenance?: string;
+  scriptTrust?: (absolutePath: string, argv: readonly string[], cwd: string) => Promise<boolean>;
 };
 
 const require = createRequire(import.meta.url);
@@ -73,7 +78,7 @@ function resourceTarget(value: string, scheme: string): Target {
   return { resolution: "static", path: `${scheme}://${value}` };
 }
 
-type Scope = { cwd: string; stdinOwner?: number; variables: Map<string, string>; unknownVariables: Set<string>; functions: Map<string, TreeSitter.Node> };
+type Scope = { cwd: string; stdinOwner?: number; variables: Map<string, string>; unknownVariables: Set<string>; functions: Map<string, TreeSitter.Node>; inheritedVariables: Set<string>; literalVariables?: Set<string>; variableEvidence: Map<string, VariableEvidence>; environmentProvenance?: string };
 type Value = SearchArgument;
 type CommandRecord = { text: string; language: Language; executableEnd: number; effects: string[]; matchable: boolean };
 type State = {
@@ -89,6 +94,8 @@ type State = {
   docker: DockerInvocation[];
   searches: ShellSearch[];
   semanticMatches: RuleMatch[];
+  scripts: ScriptSourceIdentity[];
+  variables: Map<string, VariableEvidence>;
 };
 
 function valueTarget(value: Value, cwd: string, home: string): Target {
@@ -136,12 +143,26 @@ function addOpaqueExecution(state: State, scope: Scope, language: Language, exec
 }
 
 function cloneScope(scope: Scope): Scope {
-  return { cwd: scope.cwd, stdinOwner: scope.stdinOwner, variables: new Map(scope.variables), unknownVariables: new Set(scope.unknownVariables), functions: new Map(scope.functions) };
+  return { cwd: scope.cwd, stdinOwner: scope.stdinOwner, variables: new Map(scope.variables), unknownVariables: new Set(scope.unknownVariables), functions: new Map(scope.functions), inheritedVariables: new Set(scope.inheritedVariables), literalVariables: new Set(scope.literalVariables), variableEvidence: scope.variableEvidence, environmentProvenance: scope.environmentProvenance };
+}
+
+function recordVariable(scope: Scope, name: string, value: string, source: VariableEvidence["source"], provenance: string): void {
+  scope.variableEvidence.set(name, { name, value, source, provenance });
+}
+
+function assignVariable(scope: Scope, name: string, value: string): void {
+  scope.variables.set(name, value);
+  scope.unknownVariables.delete(name);
+  scope.inheritedVariables.delete(name);
+  scope.literalVariables?.add(name);
 }
 
 function shellVariable(name: string, scope: Scope): Value {
   const key = name.replace(/^\$\{?|\}$/g, "");
   const found = scope.variables.get(key);
+  if (found !== undefined && !scope.variableEvidence.has(key)) {
+    recordVariable(scope, key, found, scope.inheritedVariables.has(key) ? "inherited" : "literal", scope.inheritedVariables.has(key) ? (scope.environmentProvenance ?? "process environment at the shell boundary") : "literal assignment in command");
+  }
   return found === undefined
     ? { known: false, expression: name, reason: `variable ${name} is ${scope.unknownVariables.has(key) ? "not statically resolved" : "not statically assigned"}` }
     : { known: true, value: found };
@@ -192,6 +213,7 @@ function decodePowerShellText(text: string, scope: Scope): Value {
     const key = (braced ?? plain).toLowerCase();
     const found = scope.variables.get(key);
     if (found === undefined) { unresolved = { known: false, expression: whole, reason: `variable ${whole} is not statically assigned` }; return whole; }
+    if (!scope.variableEvidence.has(key)) recordVariable(scope, key, found, scope.inheritedVariables.has(key) ? "inherited" : "literal", scope.inheritedVariables.has(key) ? (scope.environmentProvenance ?? "process environment at the shell boundary") : "literal assignment in command");
     return found;
   });
   if (unresolved) return unresolved;
@@ -376,8 +398,16 @@ function dockerEnvironment(scope?: Scope): { values: Partial<Record<DockerEnviro
     const candidates = [key, key.toLowerCase(), `env:${key.toLowerCase()}`];
     const unknownKey = candidates.find(candidate => scope.unknownVariables.has(candidate));
     if (unknownKey) return { values, unresolved: `${key} is assigned but not statically resolved` };
-    const found = candidates.map(candidate => scope.variables.get(candidate)).find(value => value !== undefined);
-    if (found !== undefined) values[key] = found;
+    const foundCandidate = candidates.find(candidate => scope.variables.has(candidate));
+    if (foundCandidate !== undefined) {
+      const found = scope.variables.get(foundCandidate);
+      if (typeof found === "string") {
+        values[key] = found;
+        const source = scope.inheritedVariables.has(foundCandidate) ? "inherited" : "literal";
+        const provenance = source === "inherited" ? (scope.environmentProvenance ?? "process environment at the shell boundary") : "literal assignment in command";
+        if (!scope.variableEvidence.has(foundCandidate)) recordVariable(scope, foundCandidate, found, source, provenance);
+      }
+    }
   }
   return { values };
 }
@@ -636,12 +666,16 @@ async function analyzeEmbedded(language: Language, source: string, state: State,
   } finally { parsed.tree.delete(); }
 }
 
-async function analyzeScript(language: Language, fileValue: Value, state: State, scope: Scope, depth: number, range: { start: number; end: number }, executable: string, shareScope = false): Promise<void> {
+async function analyzeScript(language: Language, fileValue: Value, state: State, scope: Scope, depth: number, range: { start: number; end: number }, executable: string, argv: readonly Value[] = [], shareScope = false): Promise<void> {
   const loaded = await scriptSource(fileValue, scope, state);
   addEffect(state, "filesystem", "read", scope, language, executable, range, [loaded.file]);
   addEffect(state, "execution", "execute", scope, language, executable, range, [loaded.file]);
-  if (loaded.source !== undefined) await analyzeEmbedded(language, loaded.source, state, shareScope ? scope : cloneScope(scope), depth + 1, range);
-  else addUnknown(state, scope, language, executable, range, loaded.reason ?? "script source is unresolved", fileValue.known ? fileValue.value : fileValue.expression);
+  if (loaded.source !== undefined && loaded.file.resolution === "static") {
+    const identity: ScriptSourceIdentity = { path: loaded.file.path, sha256: createHash("sha256").update(loaded.source).digest("hex"), range, argv: argv.filter(item => item.known).map(item => item.value) };
+    state.scripts.push(identity);
+    const approved = state.dependencies.scriptTrust && await state.dependencies.scriptTrust(loaded.file.path, identity.argv, scope.cwd);
+    if (!approved) await analyzeEmbedded(language, loaded.source, state, shareScope ? scope : cloneScope(scope), depth + 1, range);
+  } else addUnknown(state, scope, language, executable, range, loaded.reason ?? "script source is unresolved", fileValue.known ? fileValue.value : fileValue.expression);
 }
 
 async function processRedirection(node: TreeSitter.Node, language: Language, state: State, scope: Scope, executable: string, offset: number, forced?: { start: number; end: number }): Promise<void> {
@@ -863,8 +897,7 @@ async function processInvocation(
   } else if (["docker", "podman"].includes(executable)) {
     const dockerScope = environmentAssignments.size ? cloneScope(scope) : scope;
     for (const [name, value] of environmentAssignments) {
-      dockerScope.variables.set(name, value);
-      dockerScope.unknownVariables.delete(name);
+      assignVariable(dockerScope, name, value);
     }
     const facts = dockerFacts(actualArgs, state.dependencies.dockerContext, dockerScope);
     if (!facts.subcommand) addUnknown(state, scope, language, executable, range, facts.uncertain ?? "container command is missing or unresolved", originalText);
@@ -1040,7 +1073,7 @@ async function processInvocation(
     } else {
       const script = optionOperands(actualArgs, new Set()).find((item) => !item.known || !item.value.startsWith("-"));
       if (!script) addUnknown(state, scope, nestedLanguage, executable, range, `${executable} has no statically analyzable command or script`, "<missing>");
-      else await analyzeScript(nestedLanguage, script, state, scope, depth, range, executable);
+      else await analyzeScript(nestedLanguage, script, state, scope, depth, range, executable, actualArgs);
     }
   } else if (["python", "python3", "node", "nodejs", "bun", "deno", "tsx"].includes(executable)) {
     const inline = actualArgs.findIndex((item) => item.known && ["-c", "-e", "--eval"].includes(item.value));
@@ -1053,12 +1086,12 @@ async function processInvocation(
     } else {
       const script = optionOperands(actualArgs, new Set(["--loader", "--require", "-r"])).find((item) => !item.known || /\.(?:py|js|mjs|cjs|ts|tsx)$/i.test(item.value));
       if (!script) addUnknown(state, scope, nestedLanguage, executable, range, `${executable} invocation is not a supported inline or repository script form`, originalText);
-      else await analyzeScript(nestedLanguage, script, state, scope, depth, range, executable);
+      else await analyzeScript(nestedLanguage, script, state, scope, depth, range, executable, actualArgs);
     }
   } else if (["source", "."].includes(executable)) {
     const script = actualArgs[0];
     if (!script) addUnknown(state, scope, language, executable, range, `${executable} is missing a script operand`, "<missing>");
-    else await analyzeScript(language, script, state, scope, depth, range, executable, true);
+    else await analyzeScript(language, script, state, scope, depth, range, executable, actualArgs, true);
   } else if (["eval", "invoke-expression", "iex"].includes(executable)) {
     const payload = actualArgs[0];
     addEffect(state, "execution", "execute", scope, language, executable, range);
@@ -1095,8 +1128,8 @@ async function processBashCommand(node: TreeSitter.Node, state: State, scope: Sc
     const valueNode = assignment.childForFieldName("value");
     if (!variable) continue;
     const value = valueNode ? decoded(valueNode, "bash", scope) : { known: true as const, value: "" };
-    if (value.known) { commandScope.variables.set(variable, value.value); commandScope.unknownVariables.delete(variable); }
-    else { commandScope.variables.delete(variable); commandScope.unknownVariables.add(variable); }
+    if (value.known) assignVariable(commandScope, variable, value.value);
+    else { commandScope.variables.delete(variable); commandScope.inheritedVariables.delete(variable); commandScope.unknownVariables.add(variable); }
   }
   const argsNodes = commandArguments(node, "bash");
   const executable = decoded(name, "bash", commandScope);
@@ -1121,8 +1154,8 @@ async function walkBash(node: TreeSitter.Node, state: State, scope: Scope, depth
     const valueNode = node.childForFieldName("value");
     if (name && valueNode) {
       const value = decoded(valueNode, "bash", scope);
-      if (value.known) { scope.variables.set(name, value.value); scope.unknownVariables.delete(name); }
-      else { scope.variables.delete(name); scope.unknownVariables.add(name); }
+      if (value.known) assignVariable(scope, name, value.value);
+      else { scope.variables.delete(name); scope.inheritedVariables.delete(name); scope.unknownVariables.add(name); }
     }
     return;
   }
@@ -1168,10 +1201,11 @@ function psAssignment(node: TreeSitter.Node, scope: Scope): boolean {
   if (variable) {
     if (valueNode) {
       const value = decodePowerShellText(valueNode.text, scope);
-      if (value.known) { scope.variables.set(variable, value.value); scope.unknownVariables.delete(variable); }
-      else { scope.variables.delete(variable); scope.unknownVariables.add(variable); }
+      if (value.known) assignVariable(scope, variable, value.value);
+      else { scope.variables.delete(variable); scope.inheritedVariables.delete(variable); scope.unknownVariables.add(variable); }
     } else {
       scope.variables.delete(variable);
+      scope.inheritedVariables.delete(variable);
       scope.unknownVariables.add(variable);
     }
   }
@@ -1304,21 +1338,33 @@ export async function analyzeShell(request: ToolRequest, dependencies: ShellDepe
     home: dependencies.home ?? os.homedir(),
     dependencies,
     repositoryRoot: path.resolve(dependencies.repositoryRoot ?? request.cwd),
-    docker: [], searches: [], semanticMatches: [],
+    docker: [], searches: [], semanticMatches: [], scripts: [], variables: new Map(),
   };
   try {
     const parsed = await parse(request.language, request.input.command, state);
     if (!parsed.tree) {
-      addUnknown(state, { cwd: request.cwd, variables: new Map(), unknownVariables: new Set(), functions: new Map() }, request.language, "parser", { start: 0, end: request.input.command.length }, `Parsing valid or unresolved ${request.language} input exceeded the ${state.budget} ms budget`, "<parse deadline>");
-      return { effects: state.effects, matches: [], uncertainties: state.uncertainties, health: { status: "ready" }, internal: { docker: [] } };
+      addUnknown(state, { cwd: request.cwd, variables: new Map(), unknownVariables: new Set(), functions: new Map(), inheritedVariables: new Set(), variableEvidence: state.variables }, request.language, "parser", { start: 0, end: request.input.command.length }, `Parsing valid or unresolved ${request.language} input exceeded the ${state.budget} ms budget`, "<parse deadline>");
+      return { effects: state.effects, matches: [], uncertainties: state.uncertainties, health: { status: "ready" }, internal: { docker: [], scripts: state.scripts, variables: [...state.variables.values()] } };
     }
     const parseHadError = parsed.tree.rootNode.hasError;
     try {
       if (parseHadError) {
         state.uncertainties.push(`${request.language} input contains unresolved syntax`);
-        addEffect(state, "execution", "unknown", { cwd: request.cwd, variables: new Map(), unknownVariables: new Set(), functions: new Map() }, request.language, "parser", { start: 0, end: request.input.command.length }, [unknown("<syntax>", `${request.language} syntax could not be fully resolved`)], [], [], `${request.language} syntax could not be fully resolved`);
+        addEffect(state, "execution", "unknown", { cwd: request.cwd, variables: new Map(), unknownVariables: new Set(), functions: new Map(), inheritedVariables: new Set(), variableEvidence: state.variables }, request.language, "parser", { start: 0, end: request.input.command.length }, [unknown("<syntax>", `${request.language} syntax could not be fully resolved`)], [], [], `${request.language} syntax could not be fully resolved`);
       }
-      const scope: Scope = { cwd: request.cwd, variables: new Map(), unknownVariables: new Set(), functions: new Map() };
+      const variables = new Map<string, string>();
+      const inheritedVariables = new Set<string>();
+      for (const [rawName, value] of Object.entries(dependencies.environment ?? process.env)) {
+        if (value === undefined) continue;
+        const name = request.language === "powershell" ? rawName.toLowerCase() : rawName;
+        variables.set(name, value);
+        inheritedVariables.add(name);
+        if (request.language === "powershell") {
+          variables.set(`env:${name}`, value);
+          inheritedVariables.add(`env:${name}`);
+        }
+      }
+      const scope: Scope = { cwd: request.cwd, variables, unknownVariables: new Set(), functions: new Map(), inheritedVariables, literalVariables: new Set(), variableEvidence: state.variables, environmentProvenance: dependencies.environmentProvenance };
       if (request.language === "bash") await walkBash(parsed.tree.rootNode, state, scope, 0, 0);
       else await walkPowerShell(parsed.tree.rootNode, state, scope, 0, 0);
     } finally { parsed.tree.delete(); }
@@ -1332,8 +1378,8 @@ export async function analyzeShell(request: ToolRequest, dependencies: ShellDepe
     }] : []));
     const directCreation = state.docker.length === 1 && state.records.length === 1 && state.effects.length === 1 && !parseHadError;
     for (const invocation of state.docker) invocation.directCreation &&= directCreation;
-    return { effects: state.effects, matches: [...matches, ...state.semanticMatches], uncertainties: [...new Set(state.uncertainties)], health: { status: "ready" }, internal: { docker: state.docker, searches: state.searches } };
+    return { effects: state.effects, matches: [...matches, ...state.semanticMatches], uncertainties: [...new Set(state.uncertainties)], health: { status: "ready" }, internal: { docker: state.docker, searches: state.searches, scripts: state.scripts, variables: [...state.variables.values()] } };
   } catch (error) {
-    return { effects: [], matches: [], uncertainties: [], health: { status: "failed", reason: error instanceof Error ? error.message : String(error) }, internal: { docker: [] } };
+    return { effects: [], matches: [], uncertainties: [], health: { status: "failed", reason: error instanceof Error ? error.message : String(error) }, internal: { docker: [], scripts: state.scripts, variables: [...state.variables.values()] } };
   }
 }

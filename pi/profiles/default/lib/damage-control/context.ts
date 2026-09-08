@@ -1,4 +1,4 @@
-import type { Effect, Evidence, RuleMatch, ToolRequest } from "./types.ts";
+import type { Effect, Evidence, RuleMatch, SequenceEvidence, ToolRequest, VariableEvidence } from "./types.ts";
 
 export const DIRECT_INPUT_LIMIT = 16;
 const CONTEXT_BYTES = 16 * 1024;
@@ -47,9 +47,9 @@ export class Context {
   }
   wasCreated(_path?: unknown, _timestamp?: unknown): boolean { return false; }
   wasDockerCreated(_daemon?: unknown, _container?: unknown, _timestamp?: unknown): boolean { return false; }
-  buildEvidence(callId: string, operation: string, effects: Effect[], matches: RuleMatch[], uncertainties: string[]): Evidence {
+  buildEvidence(callId: string, operation: string, effects: Effect[], matches: RuleMatch[], uncertainties: string[], variables: VariableEvidence[] = [], sequence?: { priorEvents: SequenceEvidence[]; currentEvent: SequenceEvidence }): Evidence {
     const operator = this.directInputs();
-    return { callId, operation, operator, untrusted: { effects, priorEffects: [], observations: this.observations.map(item => ({ ...item })), matches, uncertainties }, omissions: this.omitted ? ["Some session context expired or was omitted by bounds; do not infer missing intent or environment facts"] : [] };
+    return { callId, operation, operator, untrusted: { effects, priorEffects: [], observations: this.observations.map(item => ({ ...item })), variables: variables.map(item => ({ ...item })), ...(sequence ? { sequence } : {}), matches, uncertainties }, omissions: this.omitted ? ["Some session context expired or was omitted by bounds; do not infer missing intent or environment facts"] : [] };
   }
   invalidate(): number {
     this.inputs = []; this.observations = []; this.omitted = false;

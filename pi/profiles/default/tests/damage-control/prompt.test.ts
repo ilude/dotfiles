@@ -143,6 +143,14 @@ describe("per-call prompts", () => {
     expect(select.mock.calls.every(call => call[0].length < 3200)).toBe(true);
     expect(ctx.ui.custom).not.toHaveBeenCalled();
   });
+  it("offers conditional future review without delaying the one-time approval", async () => {
+    const ctx = context();
+    ctx.allowReview = true;
+    vi.mocked(ctx.ui.select).mockResolvedValueOnce("Allow once and review for future use");
+    const result = await promptDecision(decision, operation, analysis, ctx);
+    expect(result).toEqual({ status: "approved", review: true });
+    expect(vi.mocked(ctx.ui.select).mock.calls[0][1]).toEqual(["Allow once", "Allow once and review for future use", "Deny", "Details"]);
+  });
   it("returns useful denial context without inviting the same operation again", async () => {
     const ctx = context();
     vi.mocked(ctx.ui.select).mockResolvedValueOnce("Deny");

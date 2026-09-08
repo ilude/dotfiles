@@ -6,8 +6,9 @@ export function createApprovalView(
   approval: Approval,
   theme: Pick<Theme, "fg" | "bold">,
   keys: Pick<KeybindingsManager, "matches" | "getKeys">,
-  done: (answer: "allow" | "deny") => void,
+  done: (answer: "allow" | "review" | "deny") => void,
   rows: () => number,
+  allowReview = false,
 ): Component {
   let expanded = false;
   let scroll = 0;
@@ -16,7 +17,11 @@ export function createApprovalView(
   let page = 1;
   let selected = 0;
   let detailCache: { width: number; lines: string[]; trigger: number } | undefined;
-  const choices = new SelectList([{ value: "allow", label: "Allow once" }, { value: "deny", label: "Deny" }], 2, {
+  const choices = new SelectList([
+    { value: "allow", label: "Allow once" },
+    ...(allowReview ? [{ value: "review" as const, label: "Allow once and review for future use" }] : []),
+    { value: "deny", label: "Deny" },
+  ], allowReview ? 3 : 2, {
     selectedPrefix: text => theme.fg("accent", text),
     selectedText: text => theme.fg("accent", text),
     description: text => theme.fg("muted", text),
@@ -84,9 +89,9 @@ export function createApprovalView(
         else if (keys.matches(data, "tui.select.pageDown")) scroll = Math.min(Math.max(0, total - page), scroll + page);
         else if (matchesKey(data, "home")) scroll = 0;
         else if (matchesKey(data, "end")) scroll = Math.max(0, total - page);
-      } else if (keys.matches(data, "tui.select.confirm")) done(selected === 0 ? "allow" : "deny");
-      else if (keys.matches(data, "tui.select.up")) { selected = 0; choices.setSelectedIndex(selected); }
-      else if (keys.matches(data, "tui.select.down")) { selected = 1; choices.setSelectedIndex(selected); }
+      } else if (keys.matches(data, "tui.select.confirm")) done(selected === 0 ? "allow" : allowReview && selected === 1 ? "review" : "deny");
+      else if (keys.matches(data, "tui.select.up")) { selected = Math.max(0, selected - 1); choices.setSelectedIndex(selected); }
+      else if (keys.matches(data, "tui.select.down")) { selected = Math.min(allowReview ? 2 : 1, selected + 1); choices.setSelectedIndex(selected); }
     },
     invalidate() { detailCache = undefined; choices.invalidate(); },
   };

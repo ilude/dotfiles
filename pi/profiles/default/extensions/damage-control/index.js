@@ -13,6 +13,10 @@ export default async function (pi) {
     description: "Switch session-local Damage Control controls",
     async handler(args, ctx) {
       const value = args.trim();
+      if (value === "scan") {
+        await gate.scan(ctx);
+        return;
+      }
       if (value === "on" || value === "off") {
         gate.setBypass(value === "off");
         ctx.ui.setStatus("damage-control", value === "off" ? "damage-control: bypassed" : undefined);
@@ -24,7 +28,7 @@ export default async function (pi) {
         ctx.ui.notify(`damage-control ${value}`, "info");
         return;
       }
-      ctx.ui.notify("Usage: /dc on | /dc off | /dc mode default | /dc mode noshell", "warning");
+      ctx.ui.notify("Usage: /dc scan | /dc on | /dc off | /dc mode default | /dc mode noshell", "warning");
     },
   };
   pi.registerCommand("damage-control", command);

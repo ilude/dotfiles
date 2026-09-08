@@ -64,15 +64,18 @@ export type DockerMetadataResult =
   | { status: "resolved"; daemonId: string; context?: string; host?: string; containers: DockerContainerIdentity[] }
   | { status: "unknown"; reason: string };
 export type DockerMetadataReader = (endpoint: DockerEndpoint, targets: readonly string[], signal?: AbortSignal) => Promise<DockerMetadataResult>;
-/** Internal is intentionally omitted by Context.buildEvidence and never serialized for Luna. */
+/** Parser internals stay local; only the bounded variable projection is copied into review evidence. */
 // Parser-resolved argv is local metadata input, never serialized for Luna.
 export type ShellSearch = { effectId: string; executable: "rg"; inventoryArgs?: string[] };
-export type Analysis = { effects: Effect[]; matches: RuleMatch[]; uncertainties: string[]; health: Health; internal?: { docker: DockerInvocation[]; searches?: ShellSearch[] } };
+export type ScriptSourceIdentity = { path: string; sha256: string; range: { start: number; end: number }; argv: string[] };
+export type VariableEvidence = { name: string; value: string; source: "literal" | "inherited"; provenance: string };
+export type Analysis = { effects: Effect[]; matches: RuleMatch[]; uncertainties: string[]; health: Health; internal?: { docker: DockerInvocation[]; searches?: ShellSearch[]; scripts?: ScriptSourceIdentity[]; variables?: VariableEvidence[] } };
+export type SequenceEvidence = { kind: string; category?: string; summary: string; ageMs: number };
 export type Evidence = {
   callId: string;
   operation: string;
   operator: { source: "interactive" | "rpc"; text: string }[];
-  untrusted: { effects: Effect[]; priorEffects?: { callId?: string; timestamp: number; effect: Effect }[]; observations?: { callId: string; tool: string; operation: string; cwd: string; output: string; timestamp: number }[]; matches: RuleMatch[]; uncertainties: string[] };
+  untrusted: { effects: Effect[]; priorEffects?: { callId?: string; timestamp: number; effect: Effect }[]; observations?: { callId: string; tool: string; operation: string; cwd: string; output: string; timestamp: number }[]; variables?: VariableEvidence[]; sequence?: { priorEvents: SequenceEvidence[]; currentEvent: SequenceEvidence }; matches: RuleMatch[]; uncertainties: string[] };
   omissions: string[];
 };
 export type Decision =

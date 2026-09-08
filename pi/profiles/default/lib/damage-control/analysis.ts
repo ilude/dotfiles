@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { editTruncates, fileEffects } from "./adapters.ts";
-import { canonicalize, contains, pathMatches, type PathFacts } from "./paths.ts";
+import { canonicalize, contains, isScratchPath, pathMatches, type PathFacts } from "./paths.ts";
 import { analyzeShell } from "./shell.ts";
+import { findTrust } from "./script-trust.ts";
 import type { Analysis, Policy, Settings, ToolRequest } from "./types.ts";
 
 export type CreationFacts = { wasCreated: (path: string) => boolean; wasDockerCreated: (daemonId: string, containerId: string) => boolean };
@@ -13,6 +14,7 @@ export async function analyzeRequest(request: ToolRequest, facts: PathFacts, _co
         rules: dependencies.policy.commands,
         parseBudgetMs: dependencies.settings.parseBudgetMs,
         repositoryRoot: facts.repo,
+        scriptTrust: async (file, argv, cwd) => (await findTrust(file, cwd, argv)).matched,
         canReadScript: async target => {
           const identity = await canonicalize(target, facts);
           return identity.status === "resolved" && pathMatches(identity.path, "read", dependencies.policy.paths, facts, "script-source").length === 0;
@@ -34,7 +36,14 @@ export async function analyzeRequest(request: ToolRequest, facts: PathFacts, _co
       if (["read", "metadata", "write", "delete", "truncate"].includes(operation)) {
         analysis.matches.push(...pathMatches(identity.path, operation as "read" | "metadata" | "write" | "delete" | "truncate", dependencies.policy.paths, facts, effect.id));
       }
-      if (effect.operation === "delete" && (!contains(effect.context.cwd, identity.path, facts) || identity.path === effect.context.cwd)) scoped = false;
+      if (effect.operation === "delete" && (
+        !contains(effect.context.cwd, identity.path, facts)
+        || identity.path === effect.context.cwd
+        // Containment is location evidence, not a recoverability proof. Only
+        // the explicitly configured disposable roots may suppress generic
+        // delete prompts; unique project data remains reviewable.
+        || !isScratchPath(identity.path, dependencies.policy.paths, { ...facts, cwd: effect.context.cwd })
+      )) scoped = false;
       if (request.tool === "edit" && !analysis.matches.some(m => m.action === "block" && m.applicability === "confirmed")) {
         const original = await readFile(identity.path, "utf8");
         if (editTruncates(original, request.input.edits)) analysis.matches.push(...pathMatches(identity.path, "truncate", dependencies.policy.paths, facts, effect.id));
@@ -42,6 +51,18 @@ export async function analyzeRequest(request: ToolRequest, facts: PathFacts, _co
     }
     if (scoped && !analysis.matches.some(match => match.effects.includes(effect.id) && match.action === "block")) scopedDeletes.add(effect.id);
   }
+  // Generic deletion and local Git-loss rules describe consequences that depend
+  // on target recoverability. Give Luna contextual authority for those matches
+  // while leaving confirmed blocks (home/root, sensitive sources, and protected
+  // files) authoritative.
+  const deletionEffects = new Set(analysis.effects.filter(effect => effect.operation === "delete").map(effect => effect.id));
+  const localGitEffects = new Set(analysis.effects
+    .filter(effect => effect.kind === "git" && effect.operation === "mutate" && !/\bgit\s+push\b/i.test(request.text))
+    .map(effect => effect.id));
+  const contextualEffects = new Set([...deletionEffects, ...localGitEffects]);
+  analysis.matches = analysis.matches.map(match => match.action === "user" && match.effects.some(id => contextualEffects.has(id))
+    ? { ...match, action: "review" as const }
+    : match);
   analysis.matches = analysis.matches.filter(match => !(match.effects.length && match.effects.every(id => scopedDeletes.has(id)) && (match.action === "user" || match.action === "review")));
   return { analysis, createdPaths: [] };
 }

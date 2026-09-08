@@ -11,17 +11,23 @@ import type { PathFacts } from "./paths.ts";
 import { promptDecision } from "./prompt.ts";
 import { analyzeShell, requireGrammars } from "./shell.ts";
 import { DamageControlSessionState } from "./sequence.ts";
+import type { ScriptReviewRequest } from "./script-review.ts";
 import type { Effect, PendingCall, ReviewResult, Settings, ToolRequest } from "./types.ts";
 
-export type Gate = { handle: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<{ block: true; reason: string } | undefined>; setBypass: (value: boolean) => void; setMode: (value: "default" | "noshell") => void };
+export type Gate = { handle: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<{ block: true; reason: string } | undefined>; setBypass: (value: boolean) => void; setMode: (value: "default" | "noshell") => void; scan: (ctx: ExtensionContext) => Promise<unknown> };
 export type GateDependencies = AnalysisDependencies & {
   review: (evidence: ReturnType<Context["buildEvidence"]>, ctx: ExtensionContext, settings: Settings, pending: PendingCall, generation: () => number) => Promise<ReviewResult>;
+  scriptReview?: (request: ScriptReviewRequest) => Promise<unknown>;
+  scriptScan?: (cwd: string, origin: string, notify: (message: string, level?: "info" | "warning") => void) => Promise<unknown>;
+  cancelScriptReviews?: () => void;
 };
 const blocked = (reason: string) => ({ block: true as const, reason: reason.slice(0, 4000) });
 
 export async function initialize(pi: ExtensionAPI, profile: string, repo: string): Promise<Gate> {
   const loaded = await loadPolicy(profile);
   const { review } = await import("./judge.ts");
+  const { ScriptReviewCoordinator } = await import("./script-review.ts");
+  const coordinator = new ScriptReviewCoordinator({ profile });
   // Grammar health is required even before the first model action, including
   // grammars used only by nested interpreter invocations.
   await requireGrammars();
@@ -29,7 +35,13 @@ export async function initialize(pi: ExtensionAPI, profile: string, repo: string
   if (probe.status !== "adapted") throw new Error("Native adapter unavailable");
   const ready = await analyzeShell(probe.request, { rules: loaded.policy.commands, parseBudgetMs: loaded.settings.parseBudgetMs });
   if (ready.health.status === "failed") throw new Error(ready.health.reason);
-  return registerGate(pi, profile, repo, { ...loaded, review });
+  return registerGate(pi, profile, repo, {
+    ...loaded,
+    review,
+    scriptReview: request => coordinator.review(request),
+    scriptScan: (cwd, origin, notify) => coordinator.scan(cwd, origin, notify),
+    cancelScriptReviews: () => coordinator.cancel(),
+  });
 }
 
 export function registerGate(pi: ExtensionAPI, profile: string, repo: string, dependencies: GateDependencies): Gate {
@@ -44,7 +56,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
   let mode: "default" | "noshell" = "default";
   let bypassed = false;
   let deferred: { source: "interactive" | "rpc"; text: string }[] = [];
-  const invalidate = () => { clearAbortListeners(); for (const controller of pending.values()) controller.abort(); pending.clear(); completed.clear(); watchdogCalls.clear(); deferred = []; context.invalidate(); breaker.reset(); };
+  const invalidate = () => { clearAbortListeners(); for (const controller of pending.values()) controller.abort(); pending.clear(); completed.clear(); watchdogCalls.clear(); deferred = []; dependencies.cancelScriptReviews?.(); context.invalidate(); sequence.reset(); breaker.reset(); };
   pi.on("session_start", () => { bypassed = false; invalidate(); });
   pi.on("session_tree", invalidate);
   pi.on("session_shutdown", invalidate);
@@ -123,9 +135,9 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
           wasDockerCreated: (daemonId, containerId) => context.wasDockerCreated(daemonId, containerId),
         }, dependencies);
         if (!fresh()) return blocked("Pending call cancelled or changed; action not executed");
-        const sequenceDecision = sequence.check(request.tool, request.text);
-        if (sequenceDecision) analysis.matches.push({ ruleId: sequenceDecision.name, action: sequenceDecision.action === "ask" ? "user" : "block", applicability: "confirmed", reason: sequenceDecision.reason, effects: analysis.effects.map(effect => effect.id) });
-        const evidence = context.buildEvidence(call.callId, request.text, analysis.effects, analysis.matches, analysis.uncertainties);
+        const sequenceDecision = sequence.check(request.tool, request.text, analysis.effects);
+        if (sequenceDecision) analysis.matches.push({ ruleId: sequenceDecision.name, action: sequenceDecision.action === "review" ? "review" : "block", applicability: "confirmed", reason: sequenceDecision.reason, effects: analysis.effects.map(effect => effect.id) });
+        const evidence = context.buildEvidence(call.callId, request.text, analysis.effects, analysis.matches, analysis.uncertainties, analysis.internal?.variables, sequenceDecision?.evidence);
         let decision = decide(analysis, evidence);
         if (decision.outcome === "review") {
           const result = await dependencies.review(evidence, { ...ctx, signal }, dependencies.settings, call, () => context.generation);
@@ -134,12 +146,23 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         }
         if (decision.outcome === "block") return blocked(decision.reason);
         const localBypass = bypassed && (request.tool === "bash" || request.tool === "powershell") && /^(?:\s*)(?:rm\b|git\s+(?!push\b)|docker\s+(?!.*\bvolume\b))/i.test(request.input.command) && !/\b(?:aws|az|gcloud|kubectl|helm|terraform|tofu|pulumi|ssh|scp|curl|wget)\b/i.test(request.input.command);
+        let reviewFuture = false;
+        const reviewableScript = analysis.internal?.scripts?.length === 1 ? analysis.internal.scripts[0] : undefined;
         if (decision.outcome === "user" && !localBypass) {
-          const answer = await promptDecision(decision, request, analysis, { ...ctx, signal });
+          const answer = await promptDecision(decision, request, analysis, { ...ctx, signal, allowReview: !!dependencies.scriptReview && !!reviewableScript });
           if (answer.status !== "approved") return blocked(answer.reason);
+          reviewFuture = answer.review === true;
         }
         if (!fresh()) return blocked("Pending call changed or cancelled; action not executed");
         if (decision.outcome === "review") return blocked("Review did not settle; action not executed");
+        if (reviewFuture && reviewableScript && dependencies.scriptReview) {
+          const reviewRequest: ScriptReviewRequest = { script: reviewableScript, cwd: request.cwd, scope: "invocation", origin: ctx.sessionManager.getSessionId() };
+          void dependencies.scriptReview(reviewRequest).then(result => {
+            const status = typeof result === "object" && result !== null && "status" in result ? String((result as { status: unknown }).status) : "failed";
+            if (status === "approved") ctx.ui.notify("Damage Control: future use approved for this script invocation", "info");
+            else if (status !== "nonqualifying") ctx.ui.notify("Damage Control: future review was not saved; runtime analysis remains active", "warning");
+          }).catch(() => ctx.ui.notify("Damage Control: future review was not saved; runtime analysis remains active", "warning"));
+        }
         sequence.record(request.tool, request.text);
         completed.set(call.callId, { request, effects: analysis.effects, created, generation: context.generation });
         while (completed.size > 50) completed.delete(completed.keys().next().value!);
@@ -150,6 +173,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         pending.delete(event.toolCallId);
       }
     },
+    scan: async ctx => dependencies.scriptScan?.(ctx.cwd, ctx.sessionManager.getSessionId(), (message, level = "info") => ctx.ui.notify(message, level)),
   };
   return gate;
 }

@@ -25,6 +25,27 @@ const defaultRules = parsePolicy(readFileSync(new URL("../../damage-control-rule
 const matchedIds = (analysis: Awaited<ReturnType<typeof analyzeShell>>) => analysis.matches.map((match) => match.ruleId);
 
 describe("AST shell analysis", () => {
+  it("allows established rebuildable mechanics but retains a unique-work decision", async () => {
+    const routine = [
+      "go clean -cache",
+      "uv cache clean",
+      "rmdir --ignore-fail-on-non-empty .tmp/empty",
+      "history -c",
+    ];
+    for (const command of routine) {
+      const analysis = await analyzeShell(request(command), { rules: defaultRules });
+      const evidence = { callId: "call", operation: command, operator: [], untrusted: { effects: analysis.effects, matches: analysis.matches, uncertainties: analysis.uncertainties }, omissions: [] };
+      expect(decide(analysis, evidence).outcome, command).toBe("allow");
+    }
+    const encoded = Buffer.from("Write-Output 'harmless'", "utf16le").toString("base64");
+    const encodedAnalysis = await analyzeShell(request(`powershell -EncodedCommand ${encoded}`, "powershell"), { rules: defaultRules });
+    expect(decide(encodedAnalysis, { callId: "call", operation: "encoded", operator: [], untrusted: { effects: encodedAnalysis.effects, matches: encodedAnalysis.matches, uncertainties: encodedAnalysis.uncertainties }, omissions: [] }).outcome).toBe("allow");
+
+    const unique = await analyzeShell(request("rm -rf src/unique-uncommitted", "bash"), { rules: defaultRules });
+    const uniqueEvidence = { callId: "call", operation: "unique", operator: [], untrusted: { effects: unique.effects, matches: unique.matches, uncertainties: unique.uncertainties }, omissions: [] };
+    expect(decide(unique, uniqueEvidence).outcome).toBe("user");
+  });
+
   it("reviews ordinary Compose teardown but retains volume/image and whole-call protections", async () => {
     for (const command of ["docker compose down", "docker --context dev compose -p fixture down --remove-orphans", "docker --context production compose down"]) {
       const analysis = await analyzeShell(request(command), { rules: defaultRules });
@@ -123,6 +144,17 @@ describe("AST shell analysis", () => {
       path.resolve(cwd, "assigned"), path.resolve(cwd, "escaped name"),
       path.resolve(cwd, "child/inside"), path.resolve(cwd, "outside"),
     ]);
+  });
+
+  it("gives literal and inherited variables equivalent target evidence without dumping the environment", async () => {
+    const literal = await analyzeShell(request("TARGET=.tmp/fixture; rm -rf \"$TARGET\""), { rules: defaultRules, environment: { TARGET: "ignored-by-assignment", PATH: "not referenced" } });
+    const inherited = await analyzeShell(request("rm -rf \"$TARGET\""), { rules: defaultRules, environment: { TARGET: ".tmp/fixture", PATH: "not referenced" }, environmentProvenance: "synthetic shell boundary" });
+    expect(paths(literal, "delete")).toEqual(paths(inherited, "delete"));
+    expect(inherited.internal?.variables).toEqual([{ name: "TARGET", value: ".tmp/fixture", source: "inherited", provenance: "synthetic shell boundary" }]);
+    expect(inherited.internal?.variables?.some((item) => item.name === "PATH")).toBe(false);
+    const powershell = await analyzeShell(request("Remove-Item $env:TARGET", "powershell"), { environment: { TARGET: ".tmp/fixture" }, environmentProvenance: "synthetic shell boundary" });
+    expect(paths(powershell, "delete")).toEqual([path.resolve(cwd, ".tmp/fixture")]);
+    expect(powershell.internal?.variables).toEqual([{ name: "env:target", value: ".tmp/fixture", source: "inherited", provenance: "synthetic shell boundary" }]);
   });
 
   it("normalizes PowerShell aliases plus Git and Docker global options", async () => {
