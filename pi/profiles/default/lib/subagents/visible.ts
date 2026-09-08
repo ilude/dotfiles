@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
 import type { ChildEndpoint, ApplicationMessage } from "./transport.ts";
 import { createHerdrCli, herdrContext, result, inspectPane } from "../herdr-cli.ts";
-import { LayoutPlacementError, SubagentLayout, type LayoutFocus } from "./layout.ts";
+import { LayoutPlacementError, SubagentLayout } from "./layout.ts";
 
 export class VisibleChild extends RpcChild {
  private cli=createHerdrCli();
@@ -17,7 +17,6 @@ export class VisibleChild extends RpcChild {
  private stopping=false;
  private forceStop=false;
  private closed=false;
- private focusBeforeStop?:LayoutFocus;
  private bootstrapped=false;
  private interventionReady=false;
  private commands:Array<{id:string;type:string;message?:string}>=[];
@@ -117,7 +116,6 @@ export class VisibleChild extends RpcChild {
  protected override alive(){return this.appReady&&!this.hostExited&&!this.closed}
  protected override async stopProcess(){
   if(this.record.userOwned&&!this.forceStop)return;
-  if(this.record.paneId&&!this.closed&&!this.focusBeforeStop)this.focusBeforeStop=await this.layout.captureFocus();
   this.stopping=true;
   if(this.startup)clearTimeout(this.startup);
   try{await this.launchDone}catch{ /* Exact returned pane, when available, still belongs to this launch. */ }
@@ -137,7 +135,7 @@ export class VisibleChild extends RpcChild {
    await delay(25);
   }
   if(this.record.paneId&&!this.closed){
-   await this.layout.close(this.record.origin,this.record.id,this.record.paneId,this.focusBeforeStop);
+   await this.layout.close(this.record.origin,this.record.id,this.record.paneId);
    this.closed=true;this.record.paneState="closed";
   }
  }

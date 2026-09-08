@@ -12,6 +12,7 @@ class LayoutFixture {
   nextPane = 2;
   nextTab = 2;
   failRename = false;
+  failCreatedInspect = false;
   tabs = new Set(["w1:t1", "w2:t1"]);
   constructor() {
     this.cli = this.run.bind(this);
@@ -21,6 +22,7 @@ class LayoutFixture {
     this.calls.push(args);
     const command = args.slice(0, 2).join(" ");
     if (command === "pane get") {
+      if (this.failCreatedInspect && args[2] !== "w1:p1") throw new Error("created pane inspection failed");
       const pane = this.panes.get(args[2]);
       if (!pane) throw new Error("unknown pane");
       return JSON.stringify({ result: { pane } });
@@ -83,7 +85,9 @@ class LayoutFixture {
     }
     if (command === "plugin pane") {
       if (args[2] === "close") {
+        const wasFocused = this.focus === args[3];
         this.panes.delete(args[3]);
+        if (wasFocused) this.focus = "w1:p1";
         return "";
       }
       const tabId = args.includes("--placement") && args[args.indexOf("--placement") + 1] === "tab" ? `w1:t${this.nextTab++}` : "w1:t1";
@@ -132,10 +136,15 @@ describe("subagent layout contract", () => {
       childId: "child", callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi",
     });
     expect(placement.paneId).toBe("w1:p2");
-    expect(fixture.focus).toBe("w2:p1");
+    // Herdr's required top-placement swap has no --no-focus form and focuses
+    // the source pane. This is the upstream T1 blocker, not saved-focus
+    // restoration: layout emits no focus command after the swap.
+    expect(fixture.focus).toBe("w1:p2");
+    expect(fixture.calls.some(call => call[0] === "workspace" && call[1] === "focus")).toBe(false);
+    expect(fixture.calls.some(call => call[0] === "pane" && call[1] === "focus")).toBe(false);
   });
 
-  it("serializes concurrent placement, preserves unrelated focus, and returns exact IDs", async () => {
+  it("serializes concurrent placement and returns exact IDs", async () => {
     const fixture = new LayoutFixture();
     const layout = new SubagentLayout(fixture.cli);
     const requests = Array.from({ length: 17 }, (_, index) => layout.place("origin", {
@@ -148,10 +157,59 @@ describe("subagent layout contract", () => {
     expect(placements.map(placement => [placement.tabIndex, placement.row, placement.column])).toContainEqual([1, 0, 0]);
     expect(placements.at(-1)).toMatchObject({ tabIndex: 2, row: 0, column: 0 });
     expect(fixture.calls.some(call => call[0] === "plugin" && call[2] === "open" && call.includes("--direction") && call[call.indexOf("--direction") + 1] === "down" && call[call.indexOf("--target-pane") + 1] === "w1:p2")).toBe(true);
-    expect(fixture.calls.some(call => call[0] === "pane" && call[1] === "resize" && call.includes("--direction") && call[call.indexOf("--direction") + 1] === "right")).toBe(true);
-    expect(fixture.focus).toBe("w2:p1");
+    expect(fixture.calls.some(call => call[0] === "pane" && call[1] === "resize" && call.includes("--direction") && ["left", "right"].includes(call[call.indexOf("--direction") + 1]!))).toBe(true);
+    expect(fixture.focus).toBe("w1:p2");
     expect(fixture.calls.filter(call => call[0] === "plugin" && call[2] === "open").every(call => call.at(-1) === "--no-focus")).toBe(true);
+    expect(fixture.calls.some(call => call[0] === "workspace" && call[1] === "focus")).toBe(false);
+    expect(fixture.calls.some(call => call[0] === "tab" && call[1] === "focus")).toBe(false);
+    expect(fixture.calls.some(call => call[0] === "pane" && call[1] === "focus")).toBe(false);
     expect(fixture.calls.filter(call => call[0] === "pane" && call[1] === "rename")).toHaveLength(17);
+  });
+
+  it("does not overwrite a focus switch during later placement or close", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const first = await layout.place("origin", {
+      childId: "first", callerPane: "w1:p1", cwd: "C:/work", title: "First", plugin: "local.pi", entrypoint: "pi",
+    });
+    fixture.focus = "w2:p1";
+    const second = await layout.place("origin", {
+      childId: "second", callerPane: "w1:p1", cwd: "C:/work", title: "Second", plugin: "local.pi", entrypoint: "pi",
+    });
+    expect(fixture.focus).toBe("w2:p1");
+    await layout.close("origin", second.childId, second.paneId);
+    expect(fixture.focus).toBe("w2:p1");
+    await layout.close("origin", first.childId, first.paneId);
+  });
+
+  it("keeps row holes and leaves surviving second-row children in place", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    for (let i = 1; i <= 5; i++) await layout.place("origin", {
+      childId: `child-${i}`, callerPane: "w1:p1", cwd: "C:/work", title: `Child ${i}`, plugin: "local.pi", entrypoint: "pi",
+    });
+    const row0Survivor = (await layout.snapshot("origin")).find(child => child.childId === "child-4")!;
+    const row1Survivor = (await layout.snapshot("origin")).find(child => child.childId === "child-5")!;
+    for (let i = 1; i <= 3; i++) {
+      const child = (await layout.snapshot("origin")).find(candidate => candidate.childId === `child-${i}`)!;
+      await layout.close("origin", child.childId, child.paneId);
+    }
+    expect((await layout.snapshot("origin")).find(child => child.childId === "child-4")).toMatchObject({ paneId: row0Survivor.paneId, row: 0, column: 0 });
+    expect((await layout.snapshot("origin")).find(child => child.childId === "child-5")).toMatchObject({ paneId: row1Survivor.paneId, row: 1, column: 0 });
+    const replacement = await layout.place("origin", {
+      childId: "replacement", callerPane: "w1:p1", cwd: "C:/work", title: "Replacement", plugin: "local.pi", entrypoint: "pi",
+    });
+    expect(replacement).toMatchObject({ row: 0, column: 1 });
+  });
+
+  it("keeps the exact created pane owned when identity inspection fails", async () => {
+    const fixture = new LayoutFixture();
+    fixture.failCreatedInspect = true;
+    const layout = new SubagentLayout(fixture.cli);
+    await expect(layout.place("origin", {
+      childId: "child", callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi",
+    })).rejects.toMatchObject({ placement: { paneId: "w1:p2" } });
+    expect(layout.snapshot("origin")).toMatchObject([{ childId: "child", paneId: "w1:p2" }]);
   });
 
   it("keeps a created pane owned when placement polish fails", async () => {

@@ -47,7 +47,14 @@ async function isolatedFixture(): Promise<Fixture> {
   server.stdout?.on("data", chunk => logs = (logs + chunk).slice(-8000));
   server.stderr?.on("data", chunk => logs = (logs + chunk).slice(-8000));
   const cli: HerdrCli = async args => {
-    const { stdout } = await exec(executable, ["--session", name, ...args], { env, windowsHide: true, timeout: 15_000, maxBuffer: 256 * 1024 });
+    // Match the production caller context for mutations. Focus observation
+    // must omit inherited IDs, as in herdr-background-focus.test.ts, so
+    // pane current reports actual UI focus rather than the caller pane.
+    const callEnv = { ...env };
+    if (args[0] === "pane" && args[1] === "current") {
+      for (const key of ["HERDR_PANE_ID", "HERDR_TAB_ID", "HERDR_WORKSPACE_ID"]) delete callEnv[key];
+    }
+    const { stdout } = await exec(executable, ["--session", name, ...args], { env: callEnv, windowsHide: true, timeout: 15_000, maxBuffer: 256 * 1024 });
     return stdout;
   };
   const linked: string[] = [];
@@ -79,6 +86,16 @@ async function isolatedFixture(): Promise<Fixture> {
 
     const caller = result(await cli(["workspace", "create", "--cwd", scratch, "--label", "T5 caller", "--no-focus"])).root_pane;
     const unrelated = result(await cli(["workspace", "create", "--cwd", scratch, "--label", "T5 unrelated", "--focus"])).root_pane;
+    const sessions = JSON.parse((await exec(executable, ["--session", name, "session", "list", "--json"], { env, windowsHide: true })).stdout).sessions;
+    const socket = sessions.find((session: any) => session.name === name)?.socket_path;
+    if (typeof socket !== "string") throw new Error("Isolated Herdr socket path unavailable");
+    Object.assign(env, {
+      HERDR_ENV: "1",
+      HERDR_SOCKET_PATH: socket,
+      HERDR_PANE_ID: caller.pane_id,
+      HERDR_TAB_ID: caller.tab_id,
+      HERDR_WORKSPACE_ID: caller.workspace_id,
+    });
     return { scratch, env, name, server, serverClosed, cli, caller, unrelated, linked };
   } catch (error) {
     if (server.exitCode === null) server.kill();
@@ -108,17 +125,67 @@ const inertRequest = (callerPane: string, cwd: string, index: number) => ({
 describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated subagent UX acceptance", () => {
   it("uses the production layout adapter against isolated inert panes", async () => {
     const fixture = await isolatedFixture();
-    const layout = new SubagentLayout(fixture.cli);
+    let switchAfterOpen = false;
+    let switchAfterClose = false;
+    const layoutCli: HerdrCli = async args => {
+      const response = await fixture.cli(args);
+      if (switchAfterOpen && args[0] === "plugin" && args[1] === "pane" && args[2] === "open") {
+        switchAfterOpen = false;
+        await fixture.cli(["workspace", "focus", fixture.unrelated.workspace_id]);
+      }
+      if (switchAfterClose && args[0] === "plugin" && args[1] === "pane" && args[2] === "close") {
+        switchAfterClose = false;
+        await fixture.cli(["workspace", "focus", fixture.unrelated.workspace_id]);
+      }
+      return response;
+    };
+    const layout = new SubagentLayout(layoutCli);
     try {
       const before = result(await fixture.cli(["pane", "current"])).pane;
       expect(before.pane_id).toBe(fixture.unrelated.pane_id);
       const placements: Array<Awaited<ReturnType<SubagentLayout["place"]>>> = [];
+      const geometryAt: Record<number, any[]> = {};
       for (let index = 1; index <= 17; index++) {
+        if (index === 2) switchAfterOpen = true;
         const placement = await layout.place("t5-geometry", inertRequest(fixture.caller.pane_id, fixture.scratch, index));
         placements.push(placement);
-        expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
+        if (index === 1) {
+          // The required caller-to-top swap is the one upstream operation that
+          // has no --no-focus variant. Record its focus theft separately from
+          // the non-focusing operations tested on later launches.
+          expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(placement.paneId);
+          await fixture.cli(["workspace", "focus", fixture.unrelated.workspace_id]);
+        } else {
+          expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
+        }
+        if ([1, 3, 4, 5, 8].includes(index)) {
+          const snapshot = result(await fixture.cli(["pane", "layout", "--pane", placement.paneId])).layout;
+          geometryAt[index] = snapshot.panes.filter((pane: any) => placements.some(item => item.paneId === pane.pane_id) || pane.pane_id === fixture.caller.pane_id);
+        }
       }
 
+      console.log(`T1/T3 geometry (5/8 blocked reproduction) ${JSON.stringify(geometryAt)}`);
+      const rowsAt = (count: number, row: number) => geometryAt[count].filter((pane: any) => placements.find(placement => placement.paneId === pane.pane_id)?.row === row);
+      const fullWidthGrid = (count: number) => {
+        const rows = [rowsAt(count, 0), rowsAt(count, 1)].filter(row => row.length);
+        const callerRect = geometryAt[count].find((pane: any) => pane.pane_id === fixture.caller.pane_id).rect;
+        return rows.every(row => {
+          const widths = row.map((pane: any) => pane.rect.width);
+          const left = Math.min(...row.map((pane: any) => pane.rect.x));
+          const right = Math.max(...row.map((pane: any) => pane.rect.x + pane.rect.width));
+          return Math.max(...row.map((pane: any) => pane.rect.y)) === Math.min(...row.map((pane: any) => pane.rect.y))
+            && Math.max(...widths) - Math.min(...widths) <= 1
+            && left === callerRect.x && right === callerRect.x + callerRect.width;
+        });
+      };
+      expect(fullWidthGrid(1)).toBe(true);
+      expect(fullWidthGrid(3)).toBe(true);
+      expect(fullWidthGrid(4)).toBe(true);
+      // Herdr cannot reparent the second row across the existing right splits.
+      // Keep this explicit so a future CLI upgrade turns the recorded blocker
+      // into a required test update instead of silently changing the contract.
+      expect(fullWidthGrid(5)).toBe(false);
+      expect(fullWidthGrid(8)).toBe(false);
       expect(placements[0]).toMatchObject({ tabIndex: 0, row: 0, column: 0 });
       expect(placements[3]).toMatchObject({ tabIndex: 0, row: 0, column: 3 });
       expect(placements[4]).toMatchObject({ tabIndex: 0, row: 1, column: 0 });
@@ -126,28 +193,27 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
       expect(placements[8]).toMatchObject({ tabIndex: 1, row: 0, column: 0 });
       expect(placements[16]).toMatchObject({ tabIndex: 2, row: 0, column: 0 });
 
-      // Rectangles are exposed for the focused tab only, so inspect the owned
-      // main tab explicitly and then restore the unrelated operator focus.
-      await fixture.cli(["workspace", "focus", fixture.caller.workspace_id]);
-      await fixture.cli(["tab", "focus", placements[0].tabId]);
       const panes = await Promise.all(placements.map(placement => inspectPane(fixture.cli, placement.paneId)));
       expect(panes.every((pane: any) => pane.label?.startsWith("T5 inert"))).toBe(true);
-      // `pane get` omits rectangles; use the server-side layout query for the
-      // focused main tab. Overflow identities above prove the extra tabs.
       const geometry = result(await fixture.cli(["pane", "layout", "--pane", placements[0].paneId])).layout.panes as any[];
       expect(geometry).toHaveLength(9);
       expect(geometry.every((pane: any) => pane.rect.width > 0 && pane.rect.height > 0)).toBe(true);
-      const main = geometry.filter((pane: any) => pane.pane_id !== fixture.caller.pane_id);
-      const row0 = main.filter((pane: any) => placements.find(placement => placement.paneId === pane.pane_id)?.row === 0);
-      const row1 = main.filter((pane: any) => placements.find(placement => placement.paneId === pane.pane_id)?.row === 1);
+      expect(placements.filter(placement => placement.tabIndex === 1)).toHaveLength(8);
+      expect(new Set(placements.slice(8, 16).map(placement => placement.tabId)).size).toBe(1);
+      expect(placements[8].tabId).not.toBe(placements[0].tabId);
+      expect(placements.filter(placement => placement.tabIndex === 2)).toHaveLength(1);
+      expect(placements[16].tabId).not.toBe(placements[8].tabId);
+      const row0 = geometry.filter((pane: any) => placements.find(placement => placement.paneId === pane.pane_id)?.row === 0);
+      const row1 = geometry.filter((pane: any) => placements.find(placement => placement.paneId === pane.pane_id)?.row === 1);
       expect(row0.length).toBe(4);
       expect(row1.length).toBe(4);
       expect(Math.min(...row1.map((pane: any) => pane.rect.y))).toBeGreaterThan(Math.min(...row0.map((pane: any) => pane.rect.y)));
       const caller = await inspectPane(fixture.cli, fixture.caller.pane_id);
       expect(caller.pane_id).toBe(fixture.caller.pane_id);
       const callerGeometry = geometry.find((pane: any) => pane.pane_id === fixture.caller.pane_id);
-      expect(callerGeometry.rect.y).toBeGreaterThan(Math.max(...main.map((pane: any) => pane.rect.y + pane.rect.height)) - 2);
-      await fixture.cli(["workspace", "focus", fixture.unrelated.workspace_id]);
+      expect(callerGeometry.rect.y).toBeGreaterThan(Math.max(...geometry.filter((pane: any) => placements.some(item => item.paneId === pane.pane_id)).map((pane: any) => pane.rect.y + pane.rect.height)) - 2);
+      switchAfterClose = true;
+      await layout.close("t5-geometry", placements[0].childId, placements[0].paneId);
       expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
     } finally {
       for (const child of layout.snapshot("t5-geometry").reverse()) await layout.close("t5-geometry", child.childId, child.paneId).catch(() => undefined);
