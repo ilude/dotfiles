@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-07: Isolate invalid session headers in default log analytics
+
+**Fixed:** A historical telemetry backfill under legacy sessions no longer prevents discovery or queries of valid sessions. Non-session, empty, malformed, and oversized headers are skipped with explicit exclusion counts and bounded file diagnostics in listing and session-query coverage. Explicit unresolved references, access errors, path escapes, cancellation, and query resource limits still fail. Historical data and the legacy runtime are unchanged.
+
 ## 2026-09-07: Port Onclave orchestrator communication to default Pi
 
 **Added:** Default Pi loads the existing Onclave adapter through a thin module-owned integration, exposing instance discovery, ask/request/inform messaging, automatic connection/reconnect, and `/onclave` status. Orchestrator-only communication rules live in tool guidance; subagents remain excluded.

@@ -34,6 +34,19 @@ describe("bounded default analytics store", () => {
 		expect(result.cost.bytesScanned).toBe((await fs.stat(file)).size);
 	});
 
+	it("reports excluded session files in broad and targeted queries", async () => {
+		await fixture.session("legacy", "valid", [recentMessage]);
+		const backfill = await fixture.session("legacy", "backfill");
+		await fs.writeFile(backfill, '{"type":"custom","customType":"skill-load"}\n');
+		for (const sessionRefs of [undefined, [{ profile: "legacy" as const, sessionId: "valid" }]]) {
+			const result = await queryAnalytics(fixture.registry, { operation: "query", profiles: ["legacy"], sources: ["session_entries"], sessionRefs, sql: "SELECT count(*) n FROM session_entries" });
+			expect(result.rows).toEqual([{ n: "2" }]);
+			expect(result.cost.filesScanned).toBe(1);
+			expect(result.coverage.discovery).toMatchObject({ excludedFiles: 1, diagnosticsTruncated: false });
+		}
+		await expect(queryAnalytics(fixture.registry, { operation: "query", profiles: ["legacy"], sources: ["session_entries"], sessionRefs: [{ profile: "legacy", sessionId: "backfill" }], sql: "SELECT 1" })).rejects.toThrow("unknown");
+	});
+
 	it("preserves large and repeated records and valid records around malformed lines", async () => {
 		const large = { type: "custom", data: "x".repeat(1_100_000) };
 		await fixture.session("default", "one", [large, "broken-json", recentMessage]);

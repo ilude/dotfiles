@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { canonicalWithin, checkCancelled, isMissing, selectedProfiles, type ProfileId, type ProfileRegistry } from "./profiles.js";
-import { discoverSessions, selectSessions, type SessionRef } from "./sessions.js";
+import { discoverSessions, selectSessions, type SessionRef, type DiscoveryCoverage } from "./sessions.js";
 
 export type SourceColumn = { name: string; type: "VARCHAR" | "BIGINT" | "DOUBLE" | "BOOLEAN"; paths: readonly string[] };
 const column = (name: string, type: SourceColumn["type"], ...paths: string[]): SourceColumn => ({ name, type, paths });
@@ -42,7 +42,7 @@ export function analyticsCatalog() {
 }
 export type SelectedFile = { file: string; root: string; profile: ProfileId; sessionId: string | null };
 export type SelectedSource = { definition: SourceDefinition; files: SelectedFile[] };
-export type SourceSelection = { registry: ProfileRegistry; profiles?: readonly ProfileId[]; sources: readonly AnalyticsSourceId[]; sessionRefs?: readonly SessionRef[]; signal?: AbortSignal };
+export type SourceSelection = { registry: ProfileRegistry; profiles?: readonly ProfileId[]; sources: readonly AnalyticsSourceId[]; sessionRefs?: readonly SessionRef[]; signal?: AbortSignal; discovery?: DiscoveryCoverage };
 
 export async function selectSources(options: SourceSelection): Promise<SelectedSource[]> {
 	const profiles = selectedProfiles(options.registry, options.profiles);
@@ -61,7 +61,7 @@ export async function selectSources(options: SourceSelection): Promise<SelectedS
 		checkCancelled(options.signal);
 		const files: SelectedFile[] = [];
 		if (definition.name === "session_entries") {
-			const all = await discoverSessions(options.registry, profiles, options.signal);
+			const all = await discoverSessions(options.registry, profiles, options.signal, options.discovery);
 			for (const item of options.sessionRefs ? selectSessions(all, options.sessionRefs, profiles) : all) {
 				files.push({ file: item.file, root: roots.get(item.ref.profile)!, profile: item.ref.profile, sessionId: item.ref.sessionId });
 			}

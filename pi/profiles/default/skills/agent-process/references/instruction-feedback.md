@@ -4,10 +4,12 @@
 
 - **Reference:** Operator assessment while discussing the historical workflow-ceremony investigation.
 - **Feedback:** Most plans run last night and today appeared to work as expected. The outstanding web-fetch-gateway plan was an exception that entered a churn loop.
-- **Evidence:** The current gateway plan records a pause after scope churn and removal of an extra launcher and bespoke archive-publication workflow. Core acquisition/routing and the Pi client remain implemented; deployment and final acceptance remain unfinished. AIF-008 separately records invented rollback work during that task. The successful recent plans have not been independently compared in this review.
+- **Initial evidence:** The gateway plan records a pause after scope churn and removal of an extra launcher and bespoke archive-publication workflow. Subsequent transcript review established that this plan snapshot is stale: later execution reports deployment and contains live-test and SQLite state evidence. Do not infer current service status or deployment absence from that plan. AIF-008 separately records invented rollback work.
 - **Decision:** Treat this as a specific failure to investigate against successful recent work, not evidence that the current planning workflow generally needs replacement. Historical legacy-workflow findings do not establish a present default-profile failure rate or the cause of this incident.
 - **Related:** AIF-008 (gateway scope expansion), AIF-004 (narrow changes), APR-002 (earlier verification churn).
-- **Status:** Operator feedback recorded. No instruction, runtime, or gateway-plan changes; no deployment resumption authorized.
+- **Comparison:** At the operator's request, screened 20 recent default-profile sessions and examined eight more closely, including successful Bedrock, model-catalog, browser/image, analytics, Onclave, and loader-repair work versus gateway and original Damage Control churn. Successes included test failures and repeated checks, so neither errors nor repetition alone explained failure. Stronger hypotheses are a stable finish line, known implementation boundaries, and treating limitations as bounded findings rather than new subsystems. Gateway combined live deployment dependencies with launcher/publication expansion, cleanup that temporarily removed credential integration, and stale handoff state. See APR-005.
+- **Limits:** Sampled histories, not a complete census or controlled model comparison. Legacy discovery failed on a malformed backfill header; default queries were narrowed after DuckDB memory-limit failures. No resource limits were raised. Some successes are implementation/offline acceptance, not verified live-service success.
+- **Status:** Comparison recorded. No instruction, runtime, or gateway-plan changes; no deployment resumption authorized.
 
 ## AIF-012 — Assess command risk in its environment
 

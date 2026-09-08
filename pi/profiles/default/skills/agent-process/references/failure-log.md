@@ -2,6 +2,16 @@
 
 Factual incident history for operator review; not executable policy. Append incidents and link related patterns. Instruction changes require operator approval.
 
+## APR-005 — Gateway scope expansion and stale completion state
+
+- **Reference:** Operator-requested comparison of recent successful plans with gateway churn. Default session `01a07781-f779-73a5-80b5-a4d166fe4691`, September 6–7, 2026; original Damage Control session `01a07873-6a51-708c-b38f-2ab95da16021` is a contrast, not another occurrence of this gateway incident.
+- **Observed:** After whole-plan approval, tool calls added an artifact-publication script/build playbook and a separate Pi launcher, then revised those additions. Operator-directed cleanup removed them. Later execution built/deployed the gateway and ran live tests, but the checked-in plan retained the earlier paused/no-deployment snapshot. Cleanup had also removed credential delivery needed by ordinary Pi, subsequently replaced after operator correction. Agent-authored rollback verification was treated as required work until explicitly removed.
+- **Evidence:** Artifact/launcher writes: `87b410d9`, `36501339`, `465d258f`; cleanup handoff: `760b6cd0`; live-test tool results: `f6ea67cd`, `3c77a342` (six passing cases); state result `1a1863a6` (six route rows, WAL). The state-check helper first failed twice on SSH host-key setup (`e442031e`, `e3289103`) before using the existing verified-key path. These records establish historical execution, not current health or complete final acceptance.
+- **Impact:** Repeated operator intervention, discarded supporting machinery, temporary loss of normal client integration, and an active plan that misstates later progress. This assistant initially repeated the stale plan's deployment claim before reviewing the transcript.
+- **Cause confidence:** New implementation surfaces and handoff drift are directly observed. The hypothesis that open deployment seams and agent-authored obligations drove expansion is supported by the sequence, not proven model-internal causation. Necessary browser containment and real infrastructure failures must not be classified wholesale as unnecessary work. Both Astra and Sol appear in the troubled sequence and in successful comparison cases.
+- **Related:** AIF-013 (successful comparisons), AIF-008 (rollback invention), APR-001/APR-002 (premature stopping and verification churn), APR-003 (scheduler misuse).
+- **Status:** Investigation only. No workflow rule changes, gateway edits, live checks, cleanup, or deployment resumption. Gateway completion state needs reconciliation if that task is resumed.
+
 ## APR-004 — Approval prompt obscured the requested decision
 
 - **Reference:** Operator report with a default-profile Damage Control prompt showing a multiline shell operation.

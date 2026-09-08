@@ -1,6 +1,6 @@
 import { analyticsCatalog } from "./registry.js";
 import { checkCancelled, selectedProfiles, type ProfileId, type ProfileRegistry } from "./profiles.js";
-import { listSessions, type SessionRef, type SessionsRequest } from "./sessions.js";
+import { discoveryCoverage, listSessions, type SessionRef, type SessionsRequest } from "./sessions.js";
 import type { AnalyticsSourceId } from "./registry.js";
 import type { AnalyticsParameter } from "./store.js";
 export { analyticsCatalog };
@@ -14,9 +14,11 @@ export async function queryAnalytics(registry: ProfileRegistry, request: Analyti
 	checkCancelled(signal);
 	// Catalog and metadata discovery do not load native DuckDB or create a database.
 	const { withAnalyticsSession } = await import("./store.js");
-	const result = await withAnalyticsSession({ registry, profiles, sources: request.sources, sessionRefs: request.sessionRefs, signal },
+	const discovery = discoveryCoverage();
+	const result = await withAnalyticsSession({ registry, profiles, sources: request.sources, sessionRefs: request.sessionRefs, signal, discovery },
 		session => session.query(request));
 	return { ...result, profiles, sources: [...new Set(request.sources)], coverage: {
+		...(request.sources.includes("session_entries") ? { discovery } : {}),
 		files: "all selected files staged", records: "valid JSON only; malformed lines excluded; live files are not a snapshot",
 	} };
 }

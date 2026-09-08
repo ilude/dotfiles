@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import { createHash } from "node:crypto";
 import { checkCancelled, selectedProfiles, sessionFiles, type ProfileId, type ProfileRegistry } from "./profiles.js";
 
@@ -8,6 +9,13 @@ export type SessionMetadata = {
 };
 export type SessionFile = SessionMetadata & { file: string };
 export type SessionsRequest = { profiles?: ProfileId[]; cwd?: string; sessionIds?: string[]; maxRows?: number; cursor?: string };
+export type DiscoveryCoverage = {
+	excludedFiles: number;
+	diagnostics: { profile: ProfileId; file: string; fileKey: string; reason: string }[];
+	diagnosticsTruncated: boolean;
+};
+export const discoveryCoverage = (): DiscoveryCoverage => ({ excludedFiles: 0, diagnostics: [], diagnosticsTruncated: false });
+class InvalidSessionHeader extends Error {}
 const HEADER_BYTES = 64 * 1024;
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -33,15 +41,15 @@ export async function readSessionHeader(file: string, signal?: AbortSignal): Pro
 			if (newline >= 0 || bytesRead === 0) {
 				let header;
 				try { header = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { /* explicit failure below */ }
-				if (header?.type !== "session" || typeof header.id !== "string" || !header.id || header.id.length > 256) throw new Error(`invalid analytics session header: ${file}`);
+				if (header?.type !== "session" || typeof header.id !== "string" || !header.id || header.id.length > 256) throw new InvalidSessionHeader(`invalid analytics session header: ${file}`);
 				return { id: header.id, cwd: typeof header.cwd === "string" ? header.cwd : null, timestamp: isoTimestamp(header.timestamp) };
 			}
 		}
-		throw new Error(`analytics session header exceeds ${HEADER_BYTES} bytes: ${file}`);
+		throw new InvalidSessionHeader(`analytics session header exceeds ${HEADER_BYTES} bytes: ${file}`);
 	} finally { await handle.close(); }
 }
 
-export async function discoverSessions(registry: ProfileRegistry, profiles?: readonly ProfileId[], signal?: AbortSignal): Promise<SessionFile[]> {
+export async function discoverSessions(registry: ProfileRegistry, profiles?: readonly ProfileId[], signal?: AbortSignal, coverage: DiscoveryCoverage = discoveryCoverage()): Promise<SessionFile[]> {
 	const result: SessionFile[] = [];
 	const seen = new Set<string>();
 	for (const profile of selectedProfiles(registry, profiles)) {
@@ -49,7 +57,18 @@ export async function discoverSessions(registry: ProfileRegistry, profiles?: rea
 		for (const file of await sessionFiles(root, signal)) {
 			if (seen.has(file)) continue;
 			seen.add(file);
-			const header = await readSessionHeader(file, signal);
+			let header;
+			try { header = await readSessionHeader(file, signal); }
+			catch (error) {
+				if (!(error instanceof InvalidSessionHeader)) throw error;
+				coverage.excludedFiles++;
+				if (coverage.diagnostics.length < 20) coverage.diagnostics.push({
+					profile, file: path.relative(root, file).replaceAll("\\", "/").slice(0, 512), fileKey: hash(file),
+					reason: error.message.startsWith("invalid") ? "missing or invalid native session header" : "session header exceeds 64 KiB",
+				});
+				else coverage.diagnosticsTruncated = true;
+				continue;
+			}
 			const stat = await fs.stat(file);
 			result.push({ ref: { profile, sessionId: header.id, fileKey: hash(file) }, file,
 				cwd: header.cwd, created: header.timestamp, modified: stat.mtime.toISOString(), bytes: stat.size });
@@ -86,7 +105,8 @@ export async function listSessions(registry: ProfileRegistry, request: SessionsR
 			after = parsed.after;
 		} catch { throw new Error("invalid analytics sessions cursor or changed scope"); }
 	}
-	const files = (await discoverSessions(registry, profiles, signal)).filter(item =>
+	const discovery = discoveryCoverage();
+	const files = (await discoverSessions(registry, profiles, signal, discovery)).filter(item =>
 		(request.cwd === undefined || item.cwd === request.cwd) &&
 		(request.sessionIds === undefined || request.sessionIds.includes(item.ref.sessionId)) && sessionKey(item).localeCompare(after, "en") > 0);
 	const sessions: SessionMetadata[] = [];
@@ -99,5 +119,5 @@ export async function listSessions(registry: ProfileRegistry, request: SessionsR
 	if (files.length && !sessions.length) throw new Error("analytics session metadata exceeds output bound");
 	const truncated = sessions.length < files.length;
 	return { profiles, sessions, truncated, nextCursor: truncated ? Buffer.from(JSON.stringify({ scope, after: sessionKey(files[sessions.length - 1]) })).toString("base64url") : null,
-		coverage: { listing: "best-effort; not a snapshot", malformedHeaders: "fail explicitly" } };
+		coverage: { listing: "best-effort; not a snapshot", discovery } };
 }

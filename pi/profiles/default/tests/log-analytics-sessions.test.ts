@@ -33,7 +33,24 @@ describe("metadata-only analytics session selection", () => {
 		await fs.writeFile(file, "x".repeat(65537));
 		await expect(readSessionHeader(file)).rejects.toThrow("exceeds");
 		await fs.writeFile(file, "invalid\n");
-		await expect(listSessions(fixture.registry, {})).rejects.toThrow("invalid analytics session header");
+		await expect(readSessionHeader(file)).rejects.toThrow("invalid analytics session header");
+		expect((await listSessions(fixture.registry, {})).coverage.discovery.excludedFiles).toBe(1);
+	});
+
+	it("lists valid sessions despite backfills and invalid headers, with bounded exclusions", async () => {
+		await fixture.session("default", "valid");
+		const bodies = ['{"type":"custom","customType":"skill-load"}\n', 'invalid\n', '', 'x'.repeat(65537)];
+		for (let i = 0; i < 24; i++) {
+			const file = await fixture.session("legacy", `bad-${i}`);
+			await fs.writeFile(file, bodies[i % bodies.length]);
+		}
+		const result = await listSessions(fixture.registry, { profiles: ["default", "legacy"] });
+		expect(result.sessions.map(item => item.ref.sessionId)).toEqual(["valid"]);
+		expect(result.coverage.discovery).toMatchObject({ excludedFiles: 24, diagnosticsTruncated: true });
+		expect(result.coverage.discovery.diagnostics).toHaveLength(20);
+		expect(result.coverage.discovery.diagnostics[0]).toMatchObject({ profile: "legacy", file: expect.any(String), fileKey: expect.any(String), reason: expect.any(String) });
+		const files = await discoverSessions(fixture.registry, ["legacy"]);
+		expect(() => selectSessions(files, [{ profile: "legacy", sessionId: "bad-0" }], ["legacy"])).toThrow("unknown");
 	});
 
 	it("requires a discriminator for duplicated native IDs and rejects unresolved or out-of-scope refs", async () => {
