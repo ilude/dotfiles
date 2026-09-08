@@ -1,6 +1,6 @@
 # Damage Control risk and proportionality review
 
-Date: 2026-09-08. Status: review complete; design context updated; enforcement unchanged.
+Date: 2026-09-08. Status: review complete; implementation completed in the associated task branch, with live acceptance still pending.
 
 ## Governing requirement
 
@@ -123,7 +123,7 @@ This review did not certify every rule spelling, platform, filesystem case, shel
 
 ## Design context for the requested features
 
-These are recorded operator requirements, not implemented commands or an execution-ready plan:
+These requirements were subsequently implemented by the associated plan:
 
 - `/dc scan` reviews project-owned scripts with parallel subagents. It never executes reviewed scripts. Repeat scans reuse unchanged qualifying results and reconsider new/changed code.
 - Store preapprovals in `<git-common-dir>/pi/damage-control-trust.yaml`, shared by the parent repository and all worktrees. Use `<project-root>/.pi/damage-control-trust.yaml` only outside Git. YAML is the current storage direction; loading/indexing and coordinated updates matter more than format choice at this scale.
@@ -146,6 +146,6 @@ The planning boundary remains default Damage Control, its policy/evidence/UI, an
 
 ## Disposition and finish
 
-The review is complete. The design-purpose requirement and links are updated. The operator selected broad policy alignment; the [implementation plan](plan.md) records tasks, contracts and finite checks. It is a draft pending the watchdog interleaving/reset decision; implementation has not started. R1-R9 provide evidence for concrete dispositions, not a reason to restart the audit or to add speculative machinery.
+The review is complete. The operator selected broad policy alignment and decided that unrelated calls reset the failed-call streak. The [implementation plan](plan.md) records tasks, contracts, implementation evidence, and finite checks. R1-R9 remain the evidence for the concrete dispositions, not a reason to restart the audit or add speculative machinery.
 
 Validation for this documentation-only change is the bounded offline probe above plus changed-document/link and `git diff --check` checks. No full suite, live model evaluation, deployment, commit or push is part of this review.

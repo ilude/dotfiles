@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-08: Align Damage Control with consequence-based risk and script reuse
+
+**Changed:** Default Damage Control now allows established recoverable maintenance without treating flags, encoding, persistence vocabulary, or ordinary generated names as danger by themselves. Contextual Luna judgment covers mixed-risk deletion, Git, container, infrastructure, publication, scheduling, database, and process operations while root/home destruction, meaningful unique work, recovery loss, sensitive disclosure, and independent push/deployment authority remain protected.
+
+**Added:** `/dc scan` uses bounded read-only subagents to review project-owned scripts without executing them. Git-common-directory YAML records bind approval to source hashes and optional exact argv/helper hashes; matching invocations skip only body analysis. Eligible prompts can allow the current call and commission future review asynchronously.
+
+**Control:** The watchdog permits twelve adjacent failures of an exact tool/input/cwd call and blocks attempt thirteen. Unrelated calls and success reset the streak, and repeated successes are unrestricted. Legacy is unchanged; this adds no mandatory scan, environment inventory, sandbox, dependency resolver, or telemetry service.
+
 ## 2026-09-08: Observable subagent work and reliable outcome delivery
 
 **Changed:** Default Pi shows origin-scoped, coalesced subagent progress in a widget without triggering model turns or flooding the transcript. It distinguishes meaningful activity from transport contact, keeps cleanup errors visible, and provides same-child wait reattachment plus explicit detach/cancel feedback. Completions, failures and factual questions return automatically to the parent agent; busy/inactive chats retain acknowledged outcomes. Coordinator leaves also return outcomes automatically, while user-only approvals still go to the originating user. No scheduler, inactivity cancellation, or automatic retry was added.

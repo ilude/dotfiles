@@ -175,7 +175,7 @@ Focused task checks may run as implementation settles. Repeat checks only after 
 
 - Status: implementation in progress in the recorded task worktree. D1 is resolved: unrelated calls reset the streak.
 - The default subagent dependency was delivered to `main` in `17948465`; this task rebased onto `4e787cd6` and integrated against its exported runtime.
-- Current result: T2-T6 are implemented with 182 Damage Control tests, typecheck, and runtime smoke passing. T7 remains incomplete because `pnpm run eval:damage-control --environment` reports `Configured Luna unavailable` for the task worktree profile. The plan's live-provider rule makes this an explicit verification blocker; no archive or integration is permitted yet.
+- Current result: after rebasing onto updated subagent integration `abfe9d4b`, T2-T6 remain implemented with 182 Damage Control tests, typecheck, and runtime smoke passing. T7 operator docs are reconciled. A renewed `pnpm run eval:damage-control --environment` still reports `Configured Luna unavailable` for the task worktree profile. The plan's live-provider rule makes this an explicit verification blocker; the live two-child scan cannot honestly substitute the lasting profile runtime, so no archive or integration is permitted yet.
 - Planning checks: source/docs/profile inspection and plan consistency only. Prior risk probes are historical evidence; none of the new behavior has been tested.
 
 ## Completion and archive
