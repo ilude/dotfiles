@@ -1,8 +1,8 @@
 # Changelog
 
-## 2026-09-08: Recover Bedrock month-to-date cost baselines
+## 2026-09-08: Recover personal Bedrock month-to-date cost baselines
 
-**Added:** Default Pi's `/bedrock reconcile` now captures a one-time, account-scoped Amazon Bedrock unblended-cost snapshot from AWS Cost Explorer when the local ledger has no AWS baseline. The footer, `/bedrock`, and `/usage` report that snapshot separately and add only local request estimates recorded after its capture time. Existing baselines are not silently replaced because Cost Explorer delay makes moving the accounting cutoff unsafe.
+**Added:** Default Pi's `/bedrock reconcile` now obtains Mike Glenn's IAM-principal-attributed Bedrock total through the existing payer CUR reader Lambda. The footer, `/bedrock`, and `/usage` label that personal AWS baseline separately and add only local request estimates recorded after capture. The command verifies the STS caller ARN, rejects mismatched or malformed results, and never falls back to account-wide Cost Explorer data. Existing baselines are not silently replaced because CUR delay makes moving the accounting cutoff unsafe.
 
 ## 2026-09-08: Reset upgraded subagents through `/clear`
 
