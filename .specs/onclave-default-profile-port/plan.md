@@ -1,6 +1,6 @@
 ---
 created: 2026-09-07
-status: planned
+status: in_progress
 completed: null
 ---
 
@@ -28,9 +28,9 @@ Make Onclave communication available between the orchestrators of independent de
 - Adding persistent adapter queues/correlation, a trust framework, or a new setup wizard.
 - Adding pause/connect/disconnect commands: these were suggestions, not selected requirements. Keep the existing `/onclave` status command.
 - Changing `/yt`, `/yt-local`, live service configuration, infrastructure, or site secrets.
-- Rollback work, deployment, live broker testing, commits, or pushes.
+- Rollback work, deployment, and live broker testing. Git authorization was expanded by the subsequent worktree/merge request.
 
-Authorization: create this plan only. Implementation requires a subsequent request. The user's subsequent decisions override this document. Keep unapproved optional work outside the checklist and completion criteria.
+Authorization: the operator subsequently requested implementation in a worktree, merge back to the original checkout, and plan archival. Local commits/merges are authorized; Onclave publication precedes the parent gitlink under repository rules. No dotfiles push or deployment is authorized. The user's subsequent decisions override this document. Keep unapproved optional work outside the checklist and completion criteria.
 
 ## Context for a fresh session
 
@@ -76,6 +76,8 @@ At planning time, unrelated Damage Control code/tests/docs and its failure-log e
 | Date | Actual profile/path | Work or check | Result |
 | --- | --- | --- | --- |
 | 2026-09-07 | default / `pi/profiles/default/` | Source inspection and planning | No implementation, runtime test, network/service validation, or dependency installation |
+| 2026-09-07 | default; code under `.worktrees/onclave-default-port/` | Module typecheck/unit suite, default typecheck/3 tests | Passed: 229 module tests, 1 existing skip; affected 27 tests repeated after test-output isolation |
+| 2026-09-07 | isolated temporary empty profile, installed Pi 0.85.0 | Default Onclave loader smoke | Passed; registered real module tools/command/hooks with no session, credentials, provider, or service calls |
 
 ## Decisions and contracts
 
@@ -115,16 +117,16 @@ No new user decision blocks plan authoring. T1 resolves factual compatibility/br
 
 ## Tasks
 
-- [ ] **T1 — Establish the owning checkout and installed-Pi compatibility**
+- [x] **T1 — Establish the owning checkout and installed-Pi compatibility**
   - Depends on: implementation authorization.
   - Inputs: repository instructions, current module Git state, both package manifests, installed Pi API/docs, module adapter and default loader-smoke pattern.
   - Do: inspect ancestry and restore the module to its required tracking `feature/v2-broker-core` branch using only a safe attachment/fast-forward that preserves the pinned commit and existing work. Fetch branch metadata if needed; no reset, force, rebase, or alternate branch. If histories differ, record the exact blocker instead of discarding commits.
   - Do: verify actual installed dependency versions, workspace resolution, lifecycle events, follow-up queue semantics, and tool-registration API using the smallest offline import/registration experiment. Record the concrete hook/stop-reason mapping for T3 here. Do not read secrets or connect to the live API.
   - Verify: branch/upstream/cleanliness evidence and an offline loader result or exact compatibility failure. Confirm available module checks from `package.json` and Vitest configuration.
   - Done when: implementation can proceed on the owning branch with a known loader path and event contract. Repair only compatibility issues required by this port in subsequent tasks. If blocked, record the cause and leave this task unchecked.
-  - Evidence: Not started.
+  - Evidence: Canonical module attached to tracking `feature/v2-broker-core` and pulled to `39150c4`; implementation used the operator-requested separate module worktree branch `feature/default-profile-port`. Pi 0.85.0 docs/source confirm native follow-up queuing, inert triggerTurn:false, and agent_settled after retries. Module dev/peer versions updated from 0.75.x to 0.85.x because old types lack agent_settled.
 
-- [ ] **T2 — Simplify adapter communication and attach the tooling guidance**
+- [x] **T2 — Simplify adapter communication and attach the tooling guidance**
   - Depends on: T1.
   - Files, relative to `modules/onclave/extensions/onclave-pi/`: `src/onclave-pi.ts`, `src/lib/{delivery,policy,framing,subagent-eligibility}.ts`, and existing `tests/`.
   - Do: remove routine cross-host confirmation and host-allowlist dependency from incoming communication. Remove policy code/tests only if now unused; do not remove unrelated service policy or audit implementation.
@@ -132,9 +134,9 @@ No new user decision blocks plan authoring. T1 resolves factual compatibility/br
   - Do: preserve direct/broadcast message contracts, automatic registration, transient reconnect, existing wire authentication, and profile-local paths. Require a registered, connected runtime when executing communication tools, including when `tool_search` has exposed them while offline.
   - Verify: focused adapter tests show a cross-host request causes no confirmation, informs remain inert, normal instances register, both existing child markers register nothing, and offline tool execution reports unavailability without publishing.
   - Done when: trusted communication has no routine adapter approval ceremony and tooling carries the role boundary.
-  - Evidence: Not started.
+  - Evidence: Removed adapter policy/confirmation path; tooling defines orchestrators and excludes subagents. Existing child markers still prevent registration. Execution checks actual connection independently of tool visibility. Tests pass.
 
-- [ ] **T3 — Make incoming turns and replies match the communication contract**
+- [x] **T3 — Make incoming turns and replies match the communication contract**
   - Depends on: T1 and T2.
   - Files, relative to `modules/onclave/extensions/onclave-pi/`: `src/onclave-pi.ts`, `src/lib/{delivery,correlation,run-summary,connection}.ts`; existing `tests/` plus focused new adapter test files as needed.
   - Do: reuse installed Pi follow-up delivery for idle/busy behavior. Do not add a parallel scheduler or queue. Verify that accepted work/replies remain matched when more than one peer message is pending; avoid acknowledging success for work not handled by the matching run.
@@ -142,11 +144,11 @@ No new user decision blocks plan authoring. T1 resolves factual compatibility/br
   - Do: ensure session replacement/shutdown closes old runtime activity before it can publish into the replacement session, and retain transient reconnect without duplicate receiver loops. No persistent recovery or exactly-once-across-restart claim.
   - Verify: exercise the real delivery/correlation logic with external transport and Pi boundaries substituted narrowly. Cover direct ask/reply, asynchronous request/outcome, inert inform, busy follow-up, success/error/abort, intermediate/unmatched status, shutdown with a pending wait, and existing reconnect behavior. Assert results and publications, not only hook registration.
   - Done when: the selected contracts work within a running session and its transient reconnect lifecycle. Record explicit limitations instead of extending task/protocol semantics.
-  - Evidence: Not started.
+  - Evidence: Native follow-up delivery retained; settled replies are partitioned by incoming messages, errors/aborts map to failed/canceled, intermediate/unmatched status does not complete asks/start turns, shutdown settles waits and stops activity. Existing trace_id carries each exchange ID in direct replies; status message_id identifies the originating exchange. No wire schema change or persistent recovery. 55 focused adapter tests passed.
 
 **Scope checkpoint:** The adapter should still be a two-tool communication integration. Do not add a trust framework, autonomous worker system, persistent inbox, extra operator controls, or a broker redesign.
 
-- [ ] **T4 — Wire the shared adapter into default Pi**
+- [x] **T4 — Wire the shared adapter into default Pi**
   - Depends on: T2 and T3.
   - New proposed files: `pi/profiles/default/extensions/onclave-pi.ts`, `pi/profiles/default/tests/onclave-pi.test.ts`, and `pi/profiles/default/scripts/onclave-smoke.mjs`.
   - Existing inputs: legacy loader, default `extensions/{tool-search,tool-visibility,operator-footer}.ts`, `vitest.config.ts`, and loader-smoke pattern.
@@ -155,9 +157,9 @@ No new user decision blocks plan authoring. T1 resolves factual compatibility/br
   - Do: use existing pnpm dependencies/workspace links where sufficient. Any necessary dependency adjustment belongs in the owning package, with lockfile changes only when needed. Do not duplicate the module package into default.
   - Verify: default test covers loader resolution/registration without requiring live services. New smoke follows the existing real installed-Pi loader pattern with a temporary isolated profile, no credentials, no provider calls, and no broker connection. Confirm both tools and `/onclave` register through the actual module import, not a mocked replacement adapter.
   - Done when: default loads the same adapter implementation, the source resolves under installed Pi, and unrelated default tools/statuses remain intact. Legacy loader/config files remain untouched.
-  - Evidence: Not started.
+  - Evidence: Added thin asynchronous default loader, 3 passing resolution tests, and real installed-Pi 0.85.0 offline loader smoke. Existing generic footer already accepts onclave-v2; footer/activation infrastructure and legacy loader were not changed.
 
-- [ ] **T5 — Document the port and finish the bounded offline checks**
+- [x] **T5 — Document the port and finish the bounded offline checks**
   - Depends on: T4.
   - Files: proposed `pi/profiles/default/docs/onclave.md`, `pi/README.md`, module `README.md` and relevant adapter contract/status docs, root `CHANGELOG.md`.
   - Do: document automatic connection, current endpoint/bootstrap prerequisites, two tools and message behavior, idle/busy delivery, `/onclave` status, errors and timeout semantics, shared-adapter effects on legacy, and no restart recovery. Correct stale loader-path references where touched. Keep secrets out of docs.
@@ -166,14 +168,14 @@ No new user decision blocks plan authoring. T1 resolves factual compatibility/br
   - Verify from `pi/profiles/default/`: `pnpm run typecheck`, `pnpm test onclave-pi.test.ts`, and proposed `node scripts/onclave-smoke.mjs`. Include an existing directly affected test file only if its production surface changed.
   - Verify: `git diff --check` separately in dotfiles and Onclave. Distinguish unrelated pre-existing failures from failures introduced by the port; do not repair unrelated Damage Control work to obtain a green aggregate result.
   - Done when: finite checks pass for the changed scope and documentation matches actual code and the operator decisions. If a pre-existing failure blocks verification, record it precisely and leave the affected check/task incomplete unless the operator changes acceptance. Do not claim a failed check passed.
-  - Evidence: Not started.
+  - Evidence: Module `pnpm run check` passed (typecheck, 229 passed/1 pre-existing skipped across 27 test files). Default typecheck, 3 loader tests, installed-Pi 0.85.0 offline smoke, and both diff checks passed. After isolating test audit output, the affected 27 tests passed again; generated test files were removed. Docs/changelog describe implemented behavior and operator-owned live verification. No live broker/service checks performed.
 
 **Scope checkpoint:** Stop when the agreed offline checks pass. Live service testing belongs to the operator and must not delay completion. Do not begin another security or edge-case audit.
 
 - [ ] **T6 — Record implementation results and archive the plan**
   - Depends on: T5.
   - Files: this plan and any inbound links to it.
-  - Do: summarize changes by owning repository, actual profile/version used for validation, check results, and remaining limitations. Explicitly state that no live verification was performed. Report uncommitted module changes and parent gitlink state without committing or pushing.
+  - Do: summarize changes by owning repository, actual profile/version used for validation, check results, and remaining limitations. Explicitly state that no live verification was performed. Record module and parent integration commits under the later worktree/merge authorization.
   - Done when: all required implementation/check evidence is recorded, no scope-required task remains, and the plan is completed/archived as below. The operator's later live check is not outstanding implementation work.
   - Evidence: Not started.
 
@@ -187,12 +189,11 @@ If Git actions are later authorized, follow repository rules: pull inside the mo
 
 ## Current handoff
 
-- Status: planned; implementation not authorized by plan creation.
-- Completed work: source/profile inspection and plan authoring only; no implementation task checked off.
-- Next: on implementation authorization, T1 branch attachment and bounded offline compatibility check.
-- Known prerequisite: module is currently detached at `7858190`; restore the required tracking branch without losing work.
-- Open product decisions: none blocking the scoped port. Automatic startup/current signed transport are preserved implementation defaults, not authorization for new security or deployment work.
-- Verification limits: no adapter tests or runtime checks run during planning; live service and current credential compatibility remain unverified by design.
+- Status: implementation and agreed offline checks complete; merge/archive in progress.
+- T1–T5 complete. Onclave commit `ceed8c3` was fast-forwarded into canonical `feature/v2-broker-core` and pushed before the parent gitlink commit.
+- Worktrees: dotfiles `.worktrees/onclave-default-port` (`feature/onclave-default-port`), nested module worktree (`feature/default-profile-port`). Original checkout remains `main`; unrelated concurrent edits must be preserved during merge.
+- Next: merge the parent integration into the original checkout, record merge evidence, and archive (T6).
+- Verification limits: no live service, credentials, or broker-backed suite validated. The operator handles live verification separately; no restart/reload recovery promised.
 
 ## Completion and archive
 

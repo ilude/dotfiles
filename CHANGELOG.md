@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-07: Port Onclave orchestrator communication to default Pi
+
+**Added:** Default Pi loads the existing Onclave adapter through a thin module-owned integration, exposing instance discovery, ask/request/inform messaging, automatic connection/reconnect, and `/onclave` status. Orchestrator-only communication rules live in tool guidance; subagents remain excluded.
+
+**Changed:** Trusted VLAN/tailnet requests no longer require host confirmation or allowlist setup. Incoming work uses native Pi follow-ups while busy. Replies wait for settled runs and distinguish completion, provider failure, and cancellation. Ask waits ignore intermediate status, exchanges remain correlated within a conversation, unmatched statuses stay inert, and shutdown settles local waits. The shared adapter now requires Pi 0.85.x; these adapter changes also apply through the legacy loader.
+
+**Preserved:** Existing signed transport, endpoint lookup, two-tool schema, profile-local audit, and separate YouTube workflows. No restart recovery, infrastructure/deployment changes, or live-service acceptance gate. Validation is offline; the operator performs live checks after implementation.
+
 ## 2026-09-07: Define Pi orchestrator terminology
 
 **Clarified:** Default Pi's global instructions define the orchestrator as the primary model the user interacts with. Onclave and subagent behavior belongs in the respective tooling instructions when implemented, not global instructions. Runtime behavior and the legacy profile are unchanged.

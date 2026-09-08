@@ -91,6 +91,10 @@ The default profile provides `browser_session`, `browser_page`, and `/browser-se
 
 The default profile provides deferred `image_inspect` and `image_transform` tools backed by Sharp. Use `tool_search` with image, crop, resize, rotate, convert, compress, or metadata terms to activate both tools for the current session; a new session hides them again. Transforms accept local single-frame images, never overwrite a source or existing destination, enforce byte/dimension/pixel limits, strip covered metadata, and reopen outputs before publication. The initial operations are crop, resize, auto-orient, quarter-turn rotation, and JPEG/PNG/WebP conversion with bounded quality. Screenshots, OCR, generation, drawing, annotation, remote images, and animation editing are excluded. See [`profiles/default/skills/image-editing/SKILL.md`](profiles/default/skills/image-editing/SKILL.md).
 
+## Default profile Onclave
+
+Default Pi loads the shared Onclave adapter for orchestrator-to-orchestrator communication between independent Pi instances. `onclave_instances` discovers peers, `onclave_message` sends asks, asynchronous requests, or inert informs, and `/onclave` reports status. Registration/reconnect is automatic; trusted-network requests start when idle or queue as follow-ups when busy, without host confirmation prompts. Subagents do not participate. See [setup, behavior, and offline checks](profiles/default/docs/onclave.md). The legacy loader shares the same adapter changes; `/yt` and `/yt-local` remain separate vault workflows.
+
 ## Default profile commands
 
 - `/branch` opens a branched copy of the current session in a new terminal tab.
