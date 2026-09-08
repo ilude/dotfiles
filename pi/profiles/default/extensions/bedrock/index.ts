@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBedrockModelProvider, resolveBedrockMantleTarget } from "../../lib/bedrock/provider.js";
-import { costExplorerQuery, costExplorerServiceQuery, parseBedrockServices, parseCostExplorerBaseline } from "../../lib/bedrock/cost-explorer.js";
+import { callerArgs, dashboardArgs, parseCaller, parseQueryId, parseResults, queryArgs, resultsArgs } from "../../lib/bedrock/cloudwatch-snapshot.js";
 import { appendRecord, formatStatus, formatUsage, makeRecord, readBaseline, summarize, writeBaseline } from "../../lib/bedrock/ledger.js";
 
 const PROVIDERS = new Set(["amazon-bedrock", "bedrock-mantle"]);
@@ -34,14 +34,24 @@ export default function bedrock(pi: ExtensionAPI): void {
 			if (command === "reconcile") {
 				const existing = await readBaseline();
 				if (existing) throw new Error(`AWS Bedrock baseline already exists for ${existing.month}; refusing to replace its accounting cutoff`);
-				const now = new Date();
-				const discovery = costExplorerServiceQuery(now, target.profile);
-				const discovered = await pi.exec("aws", discovery.args, { timeout: 30_000 });
-				if (discovered.code !== 0) throw new Error(`AWS Cost Explorer service discovery failed: ${(discovered.stderr || discovered.stdout || `exit ${discovered.code}`).trim()}`);
-				const query = costExplorerQuery(parseBedrockServices(discovered.stdout), now, target.profile);
-				const result = await pi.exec("aws", query.args, { timeout: 30_000 });
-				if (result.code !== 0) throw new Error(`AWS Cost Explorer query failed: ${(result.stderr || result.stdout || `exit ${result.code}`).trim()}`);
-				await writeBaseline(parseCostExplorerBaseline(result.stdout, query));
+				const capturedAt = new Date().toISOString();
+				const identity = await pi.exec("aws", callerArgs(target.profile), { timeout: 30_000 });
+				if (identity.code !== 0) throw new Error(`AWS caller lookup failed: ${(identity.stderr || identity.stdout || `exit ${identity.code}`).trim()}`);
+				const principal = parseCaller(identity.stdout);
+				const dashboard = await pi.exec("aws", dashboardArgs(target.profile), { timeout: 30_000 });
+				if (dashboard.code !== 0) throw new Error(`CloudWatch dashboard lookup failed: ${(dashboard.stderr || dashboard.stdout || `exit ${dashboard.code}`).trim()}`);
+				const started = await pi.exec("aws", queryArgs(dashboard.stdout, principal, new Date(capturedAt), target.profile), { timeout: 30_000 });
+				if (started.code !== 0) throw new Error(`CloudWatch Logs query failed to start: ${(started.stderr || started.stdout || `exit ${started.code}`).trim()}`);
+				const queryId = parseQueryId(started.stdout);
+				let baseline;
+				for (let attempt = 0; attempt < 20 && !baseline; attempt++) {
+					const result = await pi.exec("aws", resultsArgs(queryId, target.profile), { timeout: 30_000 });
+					if (result.code !== 0) throw new Error(`CloudWatch Logs query failed: ${(result.stderr || result.stdout || `exit ${result.code}`).trim()}`);
+					const parsed = parseResults(result.stdout, principal, capturedAt); baseline = parsed.baseline;
+					if (parsed.pending) await new Promise(resolve => setTimeout(resolve, 500));
+				}
+				if (!baseline) throw new Error("CloudWatch Logs query timed out");
+				await writeBaseline(baseline);
 				await refreshStatus(ctx);
 			}
 
