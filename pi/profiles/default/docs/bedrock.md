@@ -14,7 +14,7 @@ Discovery selects the newest supported Fable, Opus, Sonnet, and Haiku releases, 
 
 - `/bedrock` shows non-secret target configuration, current curated routes, and this month's estimate.
 - `/bedrock refresh` refreshes only `bedrock-mantle` inventory through Pi's native provider cache lifecycle.
-- `/bedrock reconcile` makes a one-time personal month-to-date snapshot through the payer CUR reader Lambda when no baseline exists. It uses the Mantle AWS profile when configured, otherwise the normal AWS CLI credential chain, and rejects a snapshot that does not match the STS caller ARN.
+- `/bedrock reconcile` makes a one-time AWS Cost Explorer month-to-date snapshot when no AWS baseline exists. It uses the Mantle AWS profile when configured, otherwise the normal AWS CLI credential chain.
 - `/usage` includes the AWS baseline, later local estimates, and unpriced coverage.
 
 Missing AWS configuration does not affect Codex startup. Inventory refresh failures retain Pi's stored provider catalog.
@@ -25,7 +25,7 @@ Missing AWS configuration does not affect Codex startup. Inventory refresh failu
 
 Prices are accepted only for an exact actual target in Pi 0.85.0's Bedrock catalog, checked against the [AWS Bedrock pricing page](https://aws.amazon.com/bedrock/pricing/) on 2026-09-07. Unknown targets remain explicitly unpriced. Recorded estimates are immutable and are not repriced when read. This is a local estimate, not AWS billing reconciliation.
 
-`/bedrock reconcile` resolves the active IAM user with STS, invokes `ccb-per-user-cost-alert` with its side-effect-free `personal-snapshot` action, and writes `bedrock-cost-baseline.json`. The local capture timestamp is the accounting cutoff: `/bedrock`, the footer, and `/usage` add only local records after it. The command refuses to replace an existing baseline because moving the cutoff could silently double-count or omit delayed CUR charges. The report labels the principal, generation time, and latest CUR usage timestamp. CUR delivery is delayed, so the result remains an estimate rather than a request-level audit. Account-wide Cost Explorer values are intentionally prohibited.
+`/bedrock reconcile` queries Cost Explorer for the account's `Amazon Bedrock` unblended cost from the start of the billing month through the query period and writes `bedrock-cost-baseline.json`. The capture timestamp is the accounting cutoff: `/bedrock`, the footer, and `/usage` add only local records after it. The command refuses to replace an existing baseline because moving the cutoff could silently double-count or omit delayed Cost Explorer charges. Cost Explorer is delayed and account-scoped, so the baseline is an aggregate recovery point rather than a request-level audit.
 
 The previous `operator-footer-usage.json` remains read-only compatibility input when no AWS baseline exists. Its current-month value appears once as a separately labeled pre-port aggregate baseline. Delete none of these files during rollback unless you intentionally want to reset local history.
 
