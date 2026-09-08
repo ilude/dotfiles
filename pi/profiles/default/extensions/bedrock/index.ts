@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBedrockModelProvider, resolveBedrockMantleTarget } from "../../lib/bedrock/provider.js";
-import { appendRecord, formatStatus, formatUsage, makeRecord, summarize } from "../../lib/bedrock/ledger.js";
+import { costExplorerQuery, costExplorerServiceQuery, parseBedrockServices, parseCostExplorerBaseline } from "../../lib/bedrock/cost-explorer.js";
+import { appendRecord, formatStatus, formatUsage, makeRecord, readBaseline, summarize, writeBaseline } from "../../lib/bedrock/ledger.js";
 
 const PROVIDERS = new Set(["amazon-bedrock", "bedrock-mantle"]);
 
@@ -21,15 +22,29 @@ export default function bedrock(pi: ExtensionAPI): void {
 		return { message: { ...message, bedrockPricing: { status: "unpriced", basis: record.pricing.basis, reason: record.pricing.reason } } };
 	});
 	pi.registerCommand("bedrock", {
-		description: "Inspect or refresh the consolidated Amazon Bedrock integration",
+		description: "Inspect, refresh, or reconcile the consolidated Amazon Bedrock integration",
 		handler: async (args, ctx) => {
 			const command = args.trim();
-			if (command && command !== "refresh") throw new Error("Usage: /bedrock [refresh]");
+			if (command && command !== "refresh" && command !== "reconcile") throw new Error("Usage: /bedrock [refresh|reconcile]");
+			const target = resolveBedrockMantleTarget();
 			if (command === "refresh") {
 				const result = await ctx.modelRegistry.refresh({ providers: ["bedrock-mantle"], allowNetwork: true, force: true });
 				if (result.errors.size) throw [...result.errors.values()][0];
 			}
-			const target = resolveBedrockMantleTarget();
+			if (command === "reconcile") {
+				const existing = await readBaseline();
+				if (existing) throw new Error(`AWS Bedrock baseline already exists for ${existing.month}; refusing to replace its accounting cutoff`);
+				const now = new Date();
+				const discovery = costExplorerServiceQuery(now, target.profile);
+				const discovered = await pi.exec("aws", discovery.args, { timeout: 30_000 });
+				if (discovered.code !== 0) throw new Error(`AWS Cost Explorer service discovery failed: ${(discovered.stderr || discovered.stdout || `exit ${discovered.code}`).trim()}`);
+				const query = costExplorerQuery(parseBedrockServices(discovered.stdout), now, target.profile);
+				const result = await pi.exec("aws", query.args, { timeout: 30_000 });
+				if (result.code !== 0) throw new Error(`AWS Cost Explorer query failed: ${(result.stderr || result.stdout || `exit ${result.code}`).trim()}`);
+				await writeBaseline(parseCostExplorerBaseline(result.stdout, query));
+				await refreshStatus(ctx);
+			}
+
 			const models = ctx.modelRegistry.getAll().filter((model: any) => model.provider === "bedrock-mantle");
 			const report = [`Amazon Bedrock`, `Mantle region: ${target.region}`, `Mantle profile: ${target.profile || "default credential chain"}`, `Runtime region: provider-scoped AWS region (fallback us-east-2)`, `Routes:`, ...models.map((model: any) => `  ${model.id} (${model.api})`), "", formatUsage(await summarize())].join("\n");
 			ctx.ui.notify(report, "info");

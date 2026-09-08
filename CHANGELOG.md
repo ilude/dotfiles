@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-08: Recover Bedrock month-to-date cost baselines
+
+**Added:** Default Pi's `/bedrock reconcile` now captures a one-time, account-scoped Amazon Bedrock unblended-cost snapshot from AWS Cost Explorer when the local ledger has no AWS baseline. The footer, `/bedrock`, and `/usage` report that snapshot separately and add only local request estimates recorded after its capture time. Existing baselines are not silently replaced because Cost Explorer delay makes moving the accounting cutoff unsafe.
+
 ## 2026-09-08: Reset upgraded subagents through `/clear`
 
 **Changed:** Default Pi's `/clear` now stops owned subagents and replaces the process-global subagent runtime before opening the clean chat. A stale pre-upgrade owner can therefore be cleared without manually finishing or cancelling each child. Restarting Pi remains sufficient because normal shutdown already cleans up owned children; `/reload` alone continues to preserve live owners.

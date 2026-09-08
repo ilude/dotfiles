@@ -6,13 +6,19 @@ import { lock } from "proper-lockfile";
 import { estimateUsage, type PriceResult, type TokenUsage } from "./pricing.js";
 
 export const LEDGER_FILE = "bedrock-usage.jsonl";
+export const BASELINE_FILE = "bedrock-cost-baseline.json";
 export interface UsageRecord {
 	id: string; timestamp: string; month: string; session?: string;
 	provider: string; model: string; target?: string; transport: string; region?: string;
 	usage: Required<TokenUsage>; pricing: PriceResult;
 }
-export interface UsageSummary { month: string; records: UsageRecord[]; cost: number; unpriced: number; baseline: number; error?: string }
+export interface CostBaseline {
+	schemaVersion: 1; month: string; amount: number; capturedAt: string;
+	periodStart: string; periodEnd: string; source: "aws-cost-explorer"; metric: "UnblendedCost";
+}
+export interface UsageSummary { month: string; records: UsageRecord[]; cost: number; unpriced: number; baseline: number; baselineDetails?: CostBaseline; error?: string }
 export const ledgerPath = () => path.join(profileDir(), LEDGER_FILE);
+export const baselinePath = () => path.join(profileDir(), BASELINE_FILE);
 const monthKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 const finite = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
 
@@ -40,9 +46,29 @@ export async function appendRecord(record: UsageRecord, file = ledgerPath()): Pr
 async function oldBaseline(month: string): Promise<number> {
 	try { const value = JSON.parse(await fs.readFile(path.join(profileDir(), "operator-footer-usage.json"), "utf8")); return finite(value?.[month]); } catch { return 0; }
 }
+export async function readBaseline(file = baselinePath()): Promise<CostBaseline | undefined> {
+	try {
+		const value = JSON.parse(await fs.readFile(file, "utf8"));
+		if (value?.schemaVersion !== 1 || value?.source !== "aws-cost-explorer" || value?.metric !== "UnblendedCost" || !/^\d{4}-\d{2}$/.test(value?.month) || !Number.isFinite(value?.amount) || value.amount < 0 || !Number.isFinite(Date.parse(value?.capturedAt))) throw new Error(`Invalid Bedrock cost baseline at ${file}`);
+		return value as CostBaseline;
+	} catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+}
+export async function writeBaseline(baseline: CostBaseline, file = baselinePath()): Promise<void> {
+	await fs.mkdir(path.dirname(file), { recursive: true });
+	await fs.writeFile(file, "", { flag: "a" });
+	const release = await lock(file, { realpath: false, retries: { retries: 40, minTimeout: 10, maxTimeout: 25 } });
+	try {
+		const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
+		await fs.writeFile(temporary, `${JSON.stringify(baseline, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+		await fs.rename(temporary, file);
+	} finally { await release(); }
+}
 export async function summarize(month = monthKey()): Promise<UsageSummary> {
-	const records = (await readRecords()).filter(record => record.month === month);
-	return { month, records, cost: records.reduce((sum, record) => sum + (record.pricing.total ?? 0), 0), unpriced: records.filter(record => record.pricing.status === "unpriced").length, baseline: await oldBaseline(month) };
+	const baselineDetails = await readBaseline();
+	const cutoff = baselineDetails?.month === month ? Date.parse(baselineDetails.capturedAt) : undefined;
+	const records = (await readRecords()).filter(record => record.month === month && (cutoff === undefined || Date.parse(record.timestamp) > cutoff));
+	const legacyBaseline = baselineDetails?.month === month ? 0 : await oldBaseline(month);
+	return { month, records, cost: records.reduce((sum, record) => sum + (record.pricing.total ?? 0), 0), unpriced: records.filter(record => record.pricing.status === "unpriced").length, baseline: baselineDetails?.month === month ? baselineDetails.amount : legacyBaseline, baselineDetails: baselineDetails?.month === month ? baselineDetails : undefined };
 }
 export function formatStatus(summary: UsageSummary): string { const total = summary.cost + summary.baseline; const suffix = summary.unpriced ? ` + ${summary.unpriced} unpriced` : ""; return `bedrock: $${total.toFixed(2)}${suffix}`; }
 export function formatUsage(summary: UsageSummary): string {
@@ -51,7 +77,8 @@ export function formatUsage(summary: UsageSummary): string {
 	for (const record of summary.records) { const key = `${record.provider}/${record.model}`; const g = groups.get(key) ?? { input: 0, output: 0, read: 0, write: 0, cost: 0, count: 0, unpriced: 0 }; g.input += record.usage.input; g.output += record.usage.output; g.read += record.usage.cacheRead; g.write += record.usage.cacheWrite; g.cost += record.pricing.total ?? 0; g.count++; if (record.pricing.status === "unpriced") g.unpriced++; groups.set(key, g); }
 	const lines = [`Bedrock local estimate (${summary.month}):`];
 	for (const [name, g] of groups) lines.push(`  ${name}: $${g.cost.toFixed(4)} | ${g.input} in, ${g.output} out, ${g.read} cache read, ${g.write} cache write | ${g.count} request(s)${g.unpriced ? `, ${g.unpriced} unpriced` : ""}`);
-	if (summary.baseline) lines.push(`  Pre-port aggregate baseline: $${summary.baseline.toFixed(4)}`);
+	if (summary.baselineDetails) lines.push(`  AWS Cost Explorer baseline through ${summary.baselineDetails.capturedAt}: $${summary.baseline.toFixed(4)}`);
+	else if (summary.baseline) lines.push(`  Pre-port aggregate baseline: $${summary.baseline.toFixed(4)}`);
 	lines.push(`  Total known estimate: $${(summary.cost + summary.baseline).toFixed(4)}${summary.unpriced ? ` (${summary.unpriced} request(s) excluded)` : ""}`);
 	return lines.join("\n");
 }

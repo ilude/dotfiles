@@ -55,7 +55,7 @@ At startup, the default profile hides the same obsolete, preview, snapshot, unsu
 
 ## Default profile Amazon Bedrock
 
-The default profile owns one curated `bedrock-mantle` provider while leaving Pi's native `amazon-bedrock` provider available. Authentication is provider-scoped under `/login`; Mantle and Runtime regions remain independent. `/bedrock` inspects routes and local estimates, `/bedrock refresh` refreshes only this provider, and `/refresh-models` delegates Bedrock discovery to that same native refresh path. `/usage` includes month-to-date model/token estimates with explicit unpriced coverage. The footer consumes the same ledger and no longer writes a separate total. See [setup, routing, accounting, and rollback](profiles/default/docs/bedrock.md).
+The default profile owns one curated `bedrock-mantle` provider while leaving Pi's native `amazon-bedrock` provider available. Authentication is provider-scoped under `/login`; Mantle and Runtime regions remain independent. `/bedrock` inspects routes and estimates, `/bedrock refresh` refreshes only this provider, `/bedrock reconcile` captures a one-time AWS Cost Explorer baseline, and `/refresh-models` delegates Bedrock discovery to that same native refresh path. `/usage` combines that baseline with later local model/token estimates and explicit unpriced coverage. The footer consumes the same ledger and no longer writes a separate total. See [setup, routing, accounting, and rollback](profiles/default/docs/bedrock.md).
 
 Focused checks from `pi/profiles/default/`:
 
