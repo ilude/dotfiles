@@ -108,9 +108,9 @@ T1's small reproduction and T3/T4's focused checks are the validation scope. Rep
 
 ## Current handoff
 
-- Status: Implementation and agreed checks completed in `.worktrees/default-extension-state`, branch `fix/default-extension-state`; merge requested by user.
+- Status: Completed in `.worktrees/default-extension-state`, branch `fix/default-extension-state`; implementation commit `5919d8b2` merged into primary as `596f1ad5`.
 - Completed: T1-T4. See execution evidence below.
-- Next: Merge the committed worktree result into primary while preserving concurrent work. No push or operator-session reload.
+- Next: None. No push or operator-session reload. The implementation worktree remains available with its dependency junctions.
 - Open technical decisions: None.
 
 ## Execution evidence, 2026-09-07
@@ -120,7 +120,7 @@ Actual validation used the default profile's dependencies, Pi 0.85.0, isolated t
 - T1: Original primary-checkout monitor/footer entrypoints loaded through the production bundle reproduced the bug: a temporary `lib/approval.ts` change followed by 2.2 seconds still rendered no `[reload]`. Installed event-bus dispatch is synchronous and subscription registration returns an unsubscribe function. Loader wrappers track subscriptions. Session replacement constructs new resource loaders; their first load can reuse same-cwd cached factories. Reloading an already-loaded resource loader clears the factory cache. Tests prove both cached and reevaluated paths.
 - T2: The owner now instantiates its service inside the factory and retains only its own baseline within the evaluated source generation. Its timer/subscriptions are session-owned. Footer and clear use the small event/snapshot contract. No generic framework or other extension refactor was needed.
 - T3: Five production-bundle integration cases pass, including both startup orders, captured narrow footer rendering, clear's fresh replacement context, cached new/resume/fork events, errors, absent owner, imported source markers before/after reevaluation, and timer cleanup. Existing focused tests now use a real event bus rather than a mocked singleton. The suite simulates lifecycle event delivery around real resource loading; it does not drive the interactive session selector.
-- T4: Typecheck passed; five focused test files / 36 tests passed; `check:runtime` passed actual Damage Control bootstrap, grammar and native schema checks with network disabled. Source activation and Codex/approval behavior were verified offline. Actual operator terminal appearance remains unverified. Final diff whitespace check and scope review are recorded at merge closeout.
+- T4: Typecheck passed; five focused test files / 36 tests passed; `check:runtime` passed actual Damage Control bootstrap, grammar and native schema checks with network disabled. Source activation and Codex/approval behavior were verified offline. Actual operator terminal appearance remains unverified. Final committed diff whitespace check and scope review passed. Merge used an autostash to preserve concurrent primary edits; the one changelog conflict was resolved by retaining both entries. Restored tracked files were compared against the autostash snapshot: only this task's intended README/changelog additions differed. Concurrent work remained unstaged, including the dirty Onclave gitlink and existing untracked investigation.
 
 Bounded state-ownership inspection:
 
