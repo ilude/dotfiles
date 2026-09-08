@@ -101,6 +101,10 @@ The default profile provides deferred `image_inspect` and `image_transform` tool
 
 Default Pi loads the shared Onclave adapter for orchestrator-to-orchestrator communication between independent Pi instances. `onclave_instances` discovers peers, `onclave_message` sends asks, asynchronous requests, or inert informs, and `/onclave` reports status. Registration/reconnect is automatic; trusted-network requests start when idle or queue as follow-ups when busy, without host confirmation prompts. Subagents do not participate. See [setup, behavior, and offline checks](profiles/default/docs/onclave.md). The legacy loader shares the same adapter changes; `/yt` and `/yt-local` remain separate vault workflows.
 
+## Default profile subagents
+
+The default profile provides Markdown-defined `subagent` delegation with frozen tool and delegation authority, retained conversations, origin-scoped results, Team Lead roles, and explicitly requested councils. Children use native Herdr panes by default inside Herdr and RPC elsewhere; direct user intervention has explicit handback, and parent reload/chat changes preserve child ownership. Trusted project definitions may override profile roles without unsafe fallback when invalid. See [definitions, tools, lifecycle, and limitations](profiles/default/docs/subagents.md).
+
 ## Default profile commands
 
 - `/branch` opens a branched copy of the current session in a new terminal tab.

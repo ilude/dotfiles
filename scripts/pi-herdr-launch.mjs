@@ -27,6 +27,12 @@ export async function main() {
   if (process.argv.length !== 3 || !entry || !isAbsolute(entry) || !existsSync(entry)) throw new Error("Expected setup-owned absolute Pi entrypoint");
   const { profile, args } = launchArguments();
   process.env.PI_CODING_AGENT_DIR = profile;
+  if (process.env.PI_HERDR_SUBAGENT) {
+    if (args.length) throw new Error("Restricted subagent launch cannot enter repair mode or resume an external session");
+    const { hostSubagent } = await import("./pi-subagent-host.mjs");
+    await hostSubagent(entry, profile, process.env.PI_HERDR_SUBAGENT);
+    return;
+  }
   delete process.env.PI_HERDR_PROFILE_DIR;
   delete process.env.PI_HERDR_SESSION_FILE;
   if (process.platform !== "win32") process.env.TMPDIR = "/tmp";

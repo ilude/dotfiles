@@ -2,7 +2,7 @@
 
 The default profile owns two deferred tools, `herdr_layout` and `herdr_pane`, backed by the installed Herdr CLI. No third-party Pi extension is installed. The `herdr` skill dynamically reads `herdr --skill` and adds local workflow conventions rather than copying its manual.
 
-When Pi is inside Herdr, use it automatically for requested long-running development servers and visible logs. New process panes preserve focus. `tool_search` discovers and activates the tools; session replacement hides them again. Descriptions remain short and results are bounded. There is no background supervisor, service registry, asynchronous watch daemon, or agent delegation.
+When Pi is inside Herdr, use it automatically for requested long-running development servers and visible logs. New process panes preserve focus. `tool_search` discovers and activates the tools; session replacement hides them again. Descriptions remain short and results are bounded. These process tools provide no background supervisor, service registry, asynchronous watch daemon, or agent delegation. Defined agent work uses the separate [subagent runtime](subagents.md).
 
 ## Setup
 
@@ -33,9 +33,15 @@ Reload Pi after source changes. An already-running Pi does not acquire the launc
 
 Inside Herdr, `/new-instance [title]` and `/branch [title]` open a focused plugin tab with the same profile/cwd. Branch launch passes the exact created session file. Launch failures retain that file and report a resume path; an ambiguous result never automatically submits another launch.
 
-The process chain is Herdr → Node running the repository bootstrap and Pi. No PowerShell/Bash/cmd wrapper is used. The bootstrap runs the existing default Damage Control syntax preflight; failure enters tools-disabled/extensions-disabled repair mode. It accepts only profile and optional session inputs, not arbitrary extension/tool flags or automatic recovery.
+The process chain is Herdr → Node running the repository bootstrap and Pi. No PowerShell/Bash/cmd wrapper is used. The bootstrap runs the existing default Damage Control syntax preflight; failure enters tools-disabled/extensions-disabled repair mode. Ordinary tabs accept only profile and optional session inputs, not arbitrary extension/tool flags or automatic recovery. Restricted subagents additionally supply a per-child authenticated endpoint; the bootstrap obtains the frozen assignment from its parent and constructs the restricted argv itself. A per-launch host owns the child process handle and terminal streams. A failed safety preflight rejects a restricted launch rather than entering an unrestricted or misleading repair conversation.
 
 The installed preview can replace an exited focused terminal with a shell. The bootstrap explicitly retires its own `local.pi` pane at process exit to prevent this. It does not close other panes or stop services. `/new-terminal` still opens a shell, and non-Herdr Windows Terminal/Ghostty launch behavior is unchanged.
+
+## Defined subagents
+
+`subagent` uses native TUI children by default inside Herdr, with an explicit headless override. It verifies the configured `local.pi` bootstrap belongs to the active profile's repository, preserves focus, and owns only returned pane IDs. Children have no general Herdr control tools. Parent reload/chat changes preserve this separate process-local ownership; ordinary process-tool ownership still expires as documented above.
+
+Assignment results travel through authenticated local messages, not terminal scraping or Herdr status. Finished panes close immediately after result capture and process settlement, even if that removes zoom elsewhere. Direct user help suspends parent steering and requires explicit handback. Parent exit stops ordinary children but preserves directly helped visible children as parent-unavailable. See [authority, controls, and validation](subagents.md).
 
 ## UI and attention
 

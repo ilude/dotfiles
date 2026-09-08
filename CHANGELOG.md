@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-08: Add default-profile subagent delegation
+
+**Added:** Markdown-defined default roles, direct and coordinator delegation, retained conversations, bounded origin-scoped results, explicit control commands, Team Lead guidance, and councils only when requested. Native Herdr children preserve focus; RPC is the default outside Herdr and an explicit override inside it. The existing shell-free bootstrap gains a per-launch process owner and authenticated parent communication, not a permanent worker service.
+
+**Lifecycle:** Parent reload/chat changes preserve children and deliver results once to the originating journal. Factual questions and user-only prompts have distinct paths. Direct user help suspends parent steering until handback; parent exit stops ordinary children but preserves directly helped visible children as parent-unavailable. Result capture, process exit, and pane cleanup remain separate; finished panes close immediately without zoom restoration.
+
+**Safety:** Definitions freeze tool and delegation authority per child. Trusted project overrides fail closed, empty tool lists remain empty, selected child resources retain Damage Control, and children do not load Onclave or general Herdr authority. Tool ceilings are not represented as OS sandboxes.
+
+**Preserved:** Counts and council structure remain instructions rather than quotas or workflow gates. Legacy and Onclave module code are unchanged.
+
 ## 2026-09-08: Complete and reconcile web-fetch gateway acceptance
 
 **Completed:** Reconciled the stale paused gateway plan against implemented deployment and BWS credential delivery. Current checks passed for ordinary default Pi direct/link-following and browser retrieval with Luna without gateway overrides, HTTPS authentication and anonymous rejection, and all 15 observed SQLite route rows surviving a gateway-only restart with WAL enabled. The browser container was unchanged; no redeployment or new acquisition machinery was needed.
