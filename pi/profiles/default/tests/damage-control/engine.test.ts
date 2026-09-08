@@ -17,9 +17,9 @@ describe("complete-invocation decisions", () => {
     for (let i = 0; i < 3; i++) expect(run([match("persistent", "user"), match("lower", "review")]).outcome).toBe("user");
   });
   it("explains only the rules responsible for the decision in plain language", () => {
-    const duplicate = { ...match("legacy-008", "user"), reason: "rm with recursive or force flags" };
+    const duplicate = { ...match("filesystem-rm-recursive-or-force-short", "user"), reason: "rm with recursive or force flags" };
     const decision = run([
-      { ...match("legacy-007", "user"), reason: "rm with recursive or force flags" },
+      { ...match("filesystem-rm-recursive-or-force", "user"), reason: "rm with recursive or force flags" },
       duplicate,
       { ...match("unrelated", "review"), reason: "unrelated candidate" },
     ], undefined, { uncertainties: ["cat is missing a required operand"] });

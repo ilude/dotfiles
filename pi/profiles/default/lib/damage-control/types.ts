@@ -68,8 +68,9 @@ export type DockerMetadataReader = (endpoint: DockerEndpoint, targets: readonly 
 // Parser-resolved argv is local metadata input, never serialized for Luna.
 export type ShellSearch = { effectId: string; executable: "rg"; inventoryArgs?: string[] };
 export type ScriptSourceIdentity = { path: string; sha256: string; range: { start: number; end: number }; argv: string[] };
-export type VariableEvidence = { name: string; value: string; source: "literal" | "inherited"; provenance: string };
+export type VariableEvidence = { name: string; value: string; source: "literal" | "inherited" | "process"; provenance: string };
 export type Analysis = { effects: Effect[]; matches: RuleMatch[]; uncertainties: string[]; health: Health; internal?: { docker: DockerInvocation[]; searches?: ShellSearch[]; scripts?: ScriptSourceIdentity[]; variables?: VariableEvidence[] } };
+export type EnvironmentEvidence = Readonly<Record<string, string | undefined>>;
 export type SequenceEvidence = { kind: string; category?: string; summary: string; ageMs: number };
 export type Evidence = {
   callId: string;

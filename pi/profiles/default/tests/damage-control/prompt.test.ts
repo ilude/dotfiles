@@ -18,7 +18,7 @@ let analysis: Analysis;
 beforeAll(async () => {
   analysis = await analyzeShell(operation, {
     now: () => 0,
-    rules: ["legacy-007", "legacy-008"].map(id => ({ id, action: "user", reason: decision.reason, regex: "\\brm\\s+-[rRf]", compiled: /\brm\s+-[rRf]/, languages: ["bash"] })),
+    rules: ["filesystem-rm-recursive-or-force", "filesystem-rm-recursive-or-force-short"].map(id => ({ id, action: "user", reason: decision.reason, regex: "\\brm\\s+-[rRf]", compiled: /\brm\s+-[rRf]/, languages: ["bash"] })),
   });
   expect(analysis.health.status).toBe("ready");
   expect(analysis.matches).toHaveLength(2);
@@ -47,8 +47,8 @@ describe("approval presentation", () => {
     expect(summary).not.toContain("legacy-");
     expect(approval.summary.filter(line => line.emphasis === "reason")).toHaveLength(1);
     const details = approval.details.map(line => line.text).join("\n");
-    expect(details).toContain("legacy-007");
-    expect(details).toContain("legacy-008");
+    expect(details).toContain("filesystem-rm-recursive-or-force");
+    expect(details).toContain("filesystem-rm-recursive-or-force-short");
     expect(details).toContain("cat is missing a required operand");
     expect(approval.details.find(line => line.trigger)?.text).toContain("rm -f");
   });
@@ -99,7 +99,7 @@ describe("approval presentation", () => {
     view.handleInput?.("d");
     expect(plain(view.render(80))).toContain("rm -f /tmp/pi-rebase-todo.py");
     view.handleInput?.("\x1b[H");
-    expect(plain(view.render(80))).toContain("legacy-007");
+    expect(plain(view.render(80))).toContain("filesystem-rm-recursive-or-force");
     view.handleInput?.("\x1b[F");
     expect(plain(view.render(80))).toContain("git status --short");
     view.handleInput?.("\r");

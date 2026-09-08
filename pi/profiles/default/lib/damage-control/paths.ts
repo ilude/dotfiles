@@ -112,11 +112,18 @@ export function pathMatches(target: string, operation: "read" | "metadata" | "wr
   // Exclusions are only an interoperability escape hatch. They must never
   // bypass the home/root floor or a protected credential path.
   const excluded = policy.exclusions.some(pattern => matchesPath(pattern, target, facts));
+  const semanticId = (key: keyof PathPolicy, pattern: string): string => {
+    // Path protections are policy identities, not list positions. Keep the
+    // identifying pattern in evidence so reordering YAML cannot change the
+    // authority presented to the judge or Details view.
+    const slug = pattern.trim().replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+    return `path-${String(key).toLowerCase()}-${slug || "root"}`;
+  };
   const add = (key: keyof PathPolicy, action: RuleMatch["action"], reason: string) => {
-    policy[key].forEach((pattern, i) => {
+    policy[key].forEach(pattern => {
       const anchor = expanded(pattern, facts);
       const deletesAncestor = (operation === "delete" || operation === "truncate") && !anchor.includes("*") && /^(?:\/|[a-z]:\/)/i.test(anchor) && contains(target, anchor, facts);
-      if (matchesPath(pattern, target, facts) || deletesAncestor) result.push({ ruleId: `path-${key.toLowerCase()}-${i + 1}`, action, applicability: "confirmed", reason, effects: [effectId] });
+      if (matchesPath(pattern, target, facts) || deletesAncestor) result.push({ ruleId: semanticId(key, pattern), action, applicability: "confirmed", reason: `${reason}; pattern: ${pattern}`, effects: [effectId] });
     });
   };
   if (operation !== "metadata" || !contains(facts.home + "/.ssh", target, facts)) add("zeroAccess", "block", "Protected credential/content path; use non-sensitive evidence instead");

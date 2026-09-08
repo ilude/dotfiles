@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-wo
 import { adapt } from "./adapters.ts";
 import { analyzeRequest, type AnalysisDependencies } from "./analysis.ts";
 import { Breaker, fingerprint } from "./breaker.ts";
-import { Context, DIRECT_INPUT_LIMIT } from "./context.ts";
+import { Context, DIRECT_INPUT_LIMIT, processVariableEvidence } from "./context.ts";
 import { decide } from "./engine.ts";
 import { loadPolicy } from "./policy.ts";
 import type { PathFacts } from "./paths.ts";
@@ -18,7 +18,7 @@ export type Gate = { handle: (event: ToolCallEvent, ctx: ExtensionContext) => Pr
 export type GateDependencies = AnalysisDependencies & {
   review: (evidence: ReturnType<Context["buildEvidence"]>, ctx: ExtensionContext, settings: Settings, pending: PendingCall, generation: () => number) => Promise<ReviewResult>;
   scriptReview?: (request: ScriptReviewRequest) => Promise<unknown>;
-  scriptScan?: (cwd: string, origin: string, notify: (message: string, level?: "info" | "warning") => void) => Promise<unknown>;
+  scriptScan?: (cwd: string, origin: string, notify: (message: string, level?: "info" | "warning") => void, signal?: AbortSignal) => Promise<unknown>;
   cancelScriptReviews?: () => void;
 };
 const blocked = (reason: string) => ({ block: true as const, reason: reason.slice(0, 4000) });
@@ -39,7 +39,7 @@ export async function initialize(pi: ExtensionAPI, profile: string, repo: string
     ...loaded,
     review,
     scriptReview: request => coordinator.review(request),
-    scriptScan: (cwd, origin, notify) => coordinator.scan(cwd, origin, notify),
+    scriptScan: (cwd, origin, notify, signal) => coordinator.scan(cwd, origin, notify, signal),
     cancelScriptReviews: () => coordinator.cancel(),
   });
 }
@@ -137,7 +137,8 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         if (!fresh()) return blocked("Pending call cancelled or changed; action not executed");
         const sequenceDecision = sequence.check(request.tool, request.text, analysis.effects);
         if (sequenceDecision) analysis.matches.push({ ruleId: sequenceDecision.name, action: sequenceDecision.action === "review" ? "review" : "block", applicability: "confirmed", reason: sequenceDecision.reason, effects: analysis.effects.map(effect => effect.id) });
-        const evidence = context.buildEvidence(call.callId, request.text, analysis.effects, analysis.matches, analysis.uncertainties, analysis.internal?.variables, sequenceDecision?.evidence);
+        const variables = [...(analysis.internal?.variables ?? []), ...processVariableEvidence(analysis.effects, process.env)];
+        const evidence = context.buildEvidence(call.callId, request.text, analysis.effects, analysis.matches, analysis.uncertainties, variables, sequenceDecision?.evidence);
         let decision = decide(analysis, evidence);
         if (decision.outcome === "review") {
           const result = await dependencies.review(evidence, { ...ctx, signal }, dependencies.settings, call, () => context.generation);
@@ -156,12 +157,19 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         if (!fresh()) return blocked("Pending call changed or cancelled; action not executed");
         if (decision.outcome === "review") return blocked("Review did not settle; action not executed");
         if (reviewFuture && reviewableScript && dependencies.scriptReview) {
-          const reviewRequest: ScriptReviewRequest = { script: reviewableScript, cwd: request.cwd, scope: "invocation", origin: ctx.sessionManager.getSessionId() };
+          // The approval itself is for this call; future-use review must not
+          // hold up execution. Bind its result to the session and generation
+          // that commissioned it so a late child cannot notify a new turn.
+          const origin = ctx.sessionManager.getSessionId();
+          const generation = context.generation;
+          const reviewRequest: ScriptReviewRequest = { script: reviewableScript, cwd: request.cwd, scope: "invocation", origin, signal };
+          const current = () => !signal.aborted && context.generation === generation && ctx.sessionManager.getSessionId() === origin;
           void dependencies.scriptReview(reviewRequest).then(result => {
+            if (!current()) return;
             const status = typeof result === "object" && result !== null && "status" in result ? String((result as { status: unknown }).status) : "failed";
             if (status === "approved") ctx.ui.notify("Damage Control: future use approved for this script invocation", "info");
             else if (status !== "nonqualifying") ctx.ui.notify("Damage Control: future review was not saved; runtime analysis remains active", "warning");
-          }).catch(() => ctx.ui.notify("Damage Control: future review was not saved; runtime analysis remains active", "warning"));
+          }).catch(() => { if (current()) ctx.ui.notify("Damage Control: future review was not saved; runtime analysis remains active", "warning"); });
         }
         sequence.record(request.tool, request.text);
         completed.set(call.callId, { request, effects: analysis.effects, created, generation: context.generation });
@@ -173,7 +181,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         pending.delete(event.toolCallId);
       }
     },
-    scan: async ctx => dependencies.scriptScan?.(ctx.cwd, ctx.sessionManager.getSessionId(), (message, level = "info") => ctx.ui.notify(message, level)),
+    scan: async ctx => dependencies.scriptScan?.(ctx.cwd, ctx.sessionManager.getSessionId(), (message, level = "info") => ctx.ui.notify(message, level), ctx.signal),
   };
   return gate;
 }

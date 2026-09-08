@@ -3,10 +3,10 @@ import { editTruncates, fileEffects } from "./adapters.ts";
 import { canonicalize, contains, isScratchPath, pathMatches, type PathFacts } from "./paths.ts";
 import { analyzeShell } from "./shell.ts";
 import { findTrust } from "./script-trust.ts";
-import type { Analysis, Policy, Settings, ToolRequest } from "./types.ts";
+import type { Analysis, EnvironmentEvidence, Policy, Settings, ToolRequest } from "./types.ts";
 
 export type CreationFacts = { wasCreated: (path: string) => boolean; wasDockerCreated: (daemonId: string, containerId: string) => boolean };
-export type AnalysisDependencies = { policy: Policy; settings: Settings; analyze?: typeof analyzeShell };
+export type AnalysisDependencies = { policy: Policy; settings: Settings; analyze?: typeof analyzeShell; environment?: EnvironmentEvidence; environmentProvenance?: string };
 
 export async function analyzeRequest(request: ToolRequest, facts: PathFacts, _context: CreationFacts, dependencies: AnalysisDependencies): Promise<{ analysis: Analysis; createdPaths: string[] }> {
   const analysis: Analysis = request.tool === "bash" || request.tool === "powershell"
@@ -14,6 +14,13 @@ export async function analyzeRequest(request: ToolRequest, facts: PathFacts, _co
         rules: dependencies.policy.commands,
         parseBudgetMs: dependencies.settings.parseBudgetMs,
         repositoryRoot: facts.repo,
+        home: facts.home,
+        // Do not silently substitute the gate process environment for the
+        // eventual native-shell environment. Callers must provide a snapshot
+        // from the supported execution boundary when inherited values are
+        // authoritative; otherwise unresolved variables remain evidence.
+        environment: dependencies.environment,
+        environmentProvenance: dependencies.environmentProvenance,
         scriptTrust: async (file, argv, cwd) => (await findTrust(file, cwd, argv)).matched,
         canReadScript: async target => {
           const identity = await canonicalize(target, facts);
@@ -51,18 +58,8 @@ export async function analyzeRequest(request: ToolRequest, facts: PathFacts, _co
     }
     if (scoped && !analysis.matches.some(match => match.effects.includes(effect.id) && match.action === "block")) scopedDeletes.add(effect.id);
   }
-  // Generic deletion and local Git-loss rules describe consequences that depend
-  // on target recoverability. Give Luna contextual authority for those matches
-  // while leaving confirmed blocks (home/root, sensitive sources, and protected
-  // files) authoritative.
-  const deletionEffects = new Set(analysis.effects.filter(effect => effect.operation === "delete").map(effect => effect.id));
-  const localGitEffects = new Set(analysis.effects
-    .filter(effect => effect.kind === "git" && effect.operation === "mutate" && !/\bgit\s+push\b/i.test(request.text))
-    .map(effect => effect.id));
-  const contextualEffects = new Set([...deletionEffects, ...localGitEffects]);
-  analysis.matches = analysis.matches.map(match => match.action === "user" && match.effects.some(id => contextualEffects.has(id))
-    ? { ...match, action: "review" as const }
-    : match);
-  analysis.matches = analysis.matches.filter(match => !(match.effects.length && match.effects.every(id => scopedDeletes.has(id)) && (match.action === "user" || match.action === "review")));
+  // The policy owns review authority. An explicitly configured scratch root
+  // may suppress contextual deletion matches, never a human-only boundary.
+  analysis.matches = analysis.matches.filter(match => !(match.effects.length && match.effects.every(id => scopedDeletes.has(id)) && match.action === "review"));
   return { analysis, createdPaths: [] };
 }

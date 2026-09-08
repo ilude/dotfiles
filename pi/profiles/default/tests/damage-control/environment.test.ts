@@ -57,12 +57,20 @@ describe("environment-aware routing (review verdicts supplied, not model judgmen
   it.each([
     "docker compose down --volumes", "docker compose down --rmi all", "kubectl delete namespace fixture",
     "kubectl create secret generic fixture", "helm uninstall fixture --no-hooks", "helm upgrade fixture ./chart --force",
-    "taskkill /F /IM *", "dropdb fixture; git reset --hard", "dropdb fixture; sudo rm fixture",
-  ])("keeps unrelated protections ahead of review: %s", async command => {
-    const hardProtected = ["taskkill /F /IM *", "dropdb fixture; sudo rm fixture"].includes(command);
-    const h = await harness(hardProtected ? {} : { review: async () => ({ status: "valid" as const, verdict: "ask" as const, reason: "Shared or consequential target", dismissedCandidates: [] }) }); h.select.mockResolvedValue("Deny");
+    "taskkill /F /IM *", "dropdb fixture; git push --force-with-lease origin fixture", "dropdb fixture; sudo rm fixture",
+  ])("keeps independent protections ahead of contextual review: %s", async command => {
+    const directBoundary = ["taskkill /F /IM *", "dropdb fixture; git push --force-with-lease origin fixture"].includes(command);
+    const h = await harness(directBoundary ? {} : { review: async () => ({ status: "valid" as const, verdict: "ask" as const, reason: "Shared or consequential target", dismissedCandidates: [] }) }); h.select.mockResolvedValue("Deny");
     expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "protected", input: { command } })).toMatchObject({ block: true });
-    if (hardProtected) expect(h.review).not.toHaveBeenCalled(); else expect(h.review).toHaveBeenCalledOnce();
+    if (directBoundary) { expect(h.review).not.toHaveBeenCalled(); expect(h.select).toHaveBeenCalledOnce(); }
+    else { expect(h.review).toHaveBeenCalledOnce(); expect(h.select).toHaveBeenCalledOnce(); }
+  });
+
+  it.each(["rm -rf /", "rm -rf ~"])("blocks actual root/home destruction before judgment: %s", async command => {
+    const h = await harness();
+    expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "catastrophic", input: { command } })).toMatchObject({ block: true });
+    expect(h.review).not.toHaveBeenCalled();
+    expect(h.select).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -76,12 +84,12 @@ describe("environment-aware routing (review verdicts supplied, not model judgmen
 
   it.each([
     "crontab -r", "crontab -l fixture", "crontab -l -e", "schtasks /Query /Create", "schtasks /Delete /TN fixture",
-    "crontab -l; git reset --hard", "crontab -u $(sudo rm fixture) -l", "crontab -l > ~/.ssh/id_ed25519",
+    "crontab -l; git push --force-with-lease origin fixture", "crontab -u $(sudo rm fixture) -l", "crontab -l > ~/.ssh/id_ed25519",
   ])("query exceptions never clear mutations or protected redirections: %s", async command => {
-    const hardProtected = ["crontab -u $(sudo rm fixture) -l", "crontab -l > ~/.ssh/id_ed25519"].includes(command);
-    const h = await harness(hardProtected ? {} : { review: async () => ({ status: "valid" as const, verdict: "ask" as const, reason: "Mutation requires operator choice", dismissedCandidates: [] }) }); h.select.mockResolvedValue("Deny");
+    const directBoundary = command === "crontab -l; git push --force-with-lease origin fixture" || command === "crontab -l > ~/.ssh/id_ed25519";
+    const h = await harness(directBoundary ? {} : { review: async () => ({ status: "valid" as const, verdict: "ask" as const, reason: "Mutation requires operator choice", dismissedCandidates: [] }) }); h.select.mockResolvedValue("Deny");
     expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "not-query", input: { command } })).toMatchObject({ block: true });
-    if (hardProtected) expect(h.review).not.toHaveBeenCalled(); else expect(h.review).toHaveBeenCalledOnce();
+    if (directBoundary) expect(h.review).not.toHaveBeenCalled(); else expect(h.review).toHaveBeenCalledOnce();
   });
 });
 

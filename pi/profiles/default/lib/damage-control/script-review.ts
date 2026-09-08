@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { addTrustRecord, gitCommonDir, loadTrust, scriptIdentity, sha256 } from "./script-trust.ts";
+import { addTrustRecord, gitCommonDir, gitWorktreeRoot, loadTrust, scriptIdentity, sha256 } from "./script-trust.ts";
 import type { ScriptSourceIdentity } from "./types.ts";
 
 const execFileAsync = promisify(execFile);
@@ -29,6 +29,7 @@ export type ScriptReviewRequest = {
   scope: "whole-script" | "invocation";
   source?: string;
   origin?: string;
+  signal?: AbortSignal;
 };
 export type ReviewerResult =
   | { status: "complete"; qualifying: boolean; reason: string; scope?: "whole-script" | "invocation" }
@@ -92,8 +93,8 @@ export async function discoverScripts(cwd: string): Promise<ScriptCandidate[]> {
   return candidates;
 }
 
-function recordPath(cwd: string, file: string, common?: string): string {
-  const root = common ? path.dirname(common) : normalized(cwd);
+async function recordPath(cwd: string, file: string): Promise<string> {
+  const root = await gitWorktreeRoot(cwd);
   return path.relative(root, normalized(file)).replaceAll(path.sep, "/");
 }
 function jsonResult(text: string): unknown {
@@ -116,24 +117,33 @@ function parseReviewerResult(value: unknown): ReviewerResult {
 
 export async function runScriptReview(request: ScriptReviewRequest, runner: ReviewRunner, signal = new AbortController().signal): Promise<ScriptReviewResult> {
   if (signal.aborted) return { status: "cancelled", reason: "Reviewer was cancelled." };
+  // Freeze the reviewed identity before handing control to the runner. A
+  // runner is untrusted with respect to the approval decision and must not be
+  // able to change the path/hash/argv used by the post-review commit.
+  const reviewedScript: ScriptSourceIdentity = Object.freeze({
+    path: normalized(request.script.path),
+    sha256: request.script.sha256.toLowerCase(),
+    range: Object.freeze({ ...request.script.range }),
+    argv: Object.freeze([...request.script.argv]) as unknown as string[],
+  });
+  const reviewedRequest: ScriptReviewRequest = Object.freeze({ ...request, script: reviewedScript });
   let before;
-  try { before = await scriptIdentity(request.script.path); } catch { return { status: "failed", reason: "Script source could not be read." }; }
-  if (before.sha256 !== request.script.sha256) return { status: "stale", reason: "Script changed before review started." };
+  try { before = await scriptIdentity(reviewedScript.path); } catch { return { status: "failed", reason: "Script source could not be read." }; }
+  if (before.sha256 !== reviewedScript.sha256) return { status: "stale", reason: "Script changed before review started." };
   let result: ReviewerResult;
-  try { result = await runner({ ...request, source: before.bytes }, signal); }
+  try { result = await runner(Object.freeze({ ...reviewedRequest, source: before.bytes }), signal); }
   catch (error) { return signal.aborted ? { status: "cancelled", reason: "Reviewer was cancelled." } : { status: "failed", reason: error instanceof Error ? error.message.slice(0, 1000) : "Reviewer failed." }; }
   if (result.status !== "complete") return result;
   if (signal.aborted) return { status: "cancelled", reason: "Reviewer was cancelled." };
   let after;
-  try { after = await scriptIdentity(request.script.path); } catch { return { status: "stale", reason: "Script disappeared during review." }; }
-  if (after.sha256 !== request.script.sha256) return { status: "stale", reason: "Script changed during review." };
-  const common = await gitCommonDir(request.cwd);
-  const recordPathValue = recordPath(request.cwd, request.script.path, common);
-  const scope = result.scope ?? request.scope;
-  const qualifying = result.qualifying && !(request.scope === "whole-script" && scope !== "whole-script");
-  const conditions = request.scope === "invocation" && scope === "invocation" ? [{ argv: request.script.argv }] : undefined;
+  try { after = await scriptIdentity(reviewedScript.path); } catch { return { status: "stale", reason: "Script disappeared during review." }; }
+  if (after.sha256 !== reviewedScript.sha256) return { status: "stale", reason: "Script changed during review." };
+  const recordPathValue = await recordPath(reviewedRequest.cwd, reviewedScript.path);
+  const scope = result.scope ?? reviewedRequest.scope;
+  const qualifying = result.qualifying && !(reviewedRequest.scope === "whole-script" && scope !== "whole-script");
+  const conditions = reviewedRequest.scope === "invocation" && scope === "invocation" ? [{ argv: [...reviewedScript.argv] }] : undefined;
   try {
-    await addTrustRecord(request.cwd, { path: recordPathValue, sha256: request.script.sha256, outcome: qualifying ? "approved" : "review", reason: qualifying ? result.reason : `${result.reason} (whole-script scope was not established)`, conditions });
+    await addTrustRecord(reviewedRequest.cwd, { path: recordPathValue, sha256: reviewedScript.sha256, outcome: qualifying ? "approved" : "review", reason: qualifying ? result.reason : `${result.reason} (whole-script scope was not established)`, conditions });
   } catch (error) {
     return { status: "failed", reason: error instanceof Error ? error.message.slice(0, 1000) : "Review result could not be stored." };
   }
@@ -144,6 +154,7 @@ export type CoordinatorOptions = { profile: string; runner?: ReviewRunner; notif
 export class ScriptReviewCoordinator {
   private readonly controllers = new Set<AbortController>();
   private readonly options: CoordinatorOptions;
+  private cancelled = false;
   constructor(options: CoordinatorOptions) { this.options = options; }
   private runner(): ReviewRunner {
     if (this.options.runner) return this.options.runner;
@@ -155,6 +166,15 @@ export class ScriptReviewCoordinator {
       const catalog = loadDefinitions(request.cwd, true, profile);
       const definition = catalog.agents.get("reviewer");
       if (!definition) return { status: "failed", reason: `Read-only reviewer is unavailable. ${catalog.errors.join("; ")}` };
+      // Do not inherit the general reviewer's network, telemetry, or delegation
+      // tools for untrusted source review. The child still uses the delivered
+      // runtime and the profile's normal authority checks, but its frozen
+      // ceiling is limited to local read-only inspection.
+      const readOnlyDefinition = {
+        ...definition,
+        tools: definition.tools.filter(tool => ["read", "grep", "find", "ls", "tool_search", "subagent_parent"].includes(tool)),
+        delegates: [],
+      };
       const runtime = getSubagentRuntime();
       const origin = request.origin;
       if (!origin) return { status: "failed", reason: "Reviewer origin is unavailable." };
@@ -167,7 +187,8 @@ export class ScriptReviewCoordinator {
         `SCRIPT JSON: ${JSON.stringify({ path: request.script.path, sha256: request.script.sha256, argv: request.script.argv, scope: request.scope, source: request.source })}`,
         "Return only JSON: {\"qualifying\":boolean,\"scope\":\"whole-script\"|\"invocation\",\"reason\":string}. Qualifying requires a concrete, recoverable low-risk conclusion. Unresolved consequential behavior is nonqualifying.",
       ].join("\n");
-      const record = await runtime.launch({ definition, instructions, cwd: request.cwd, model: definition.model!, effort: definition.effort ?? "low", skills, origin, retained: false, surface: process.env.HERDR_ENV === "1" ? "visible" : "headless", catalog: catalog.agents }, profile, childExtension, false, signal);
+      if (!readOnlyDefinition.model) return { status: "failed", reason: "Read-only reviewer has no explicit model; no fallback is permitted." };
+      const record = await runtime.launch({ definition: readOnlyDefinition, instructions, cwd: request.cwd, model: readOnlyDefinition.model, effort: readOnlyDefinition.effort ?? "low", skills, origin, retained: false, surface: process.env.HERDR_ENV === "1" ? "visible" : "headless", catalog: new Map([[readOnlyDefinition.name, readOnlyDefinition]]) }, profile, childExtension, false, signal);
       if (signal.aborted) return { status: "cancelled", reason: "Reviewer was cancelled." };
       if (record.status !== "settled" || record.error) return { status: "failed", reason: record.error ?? "Reviewer did not complete." };
       return parseReviewerResult(jsonResult(record.result ?? ""));
@@ -175,18 +196,27 @@ export class ScriptReviewCoordinator {
   }
   async review(request: ScriptReviewRequest): Promise<ScriptReviewResult> {
     const controller = new AbortController(); this.controllers.add(controller);
-    try { return await runScriptReview(request, this.runner(), controller.signal); }
+    const signal = request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal;
+    try { return await runScriptReview(request, this.runner(), signal); }
     finally { this.controllers.delete(controller); }
   }
-  cancel(): void { for (const controller of this.controllers) controller.abort(); }
-  async scan(cwd: string, origin: string, notify: Notify = this.options.notify ?? (() => {})): Promise<{ discovered: number; reused: number; reviewed: number; approved: number; nonqualifying: number; failed: number }> {
+  cancel(): void { this.cancelled = true; for (const controller of this.controllers) controller.abort(); }
+  async scan(cwd: string, origin: string, notify: Notify = this.options.notify ?? (() => {}), signal?: AbortSignal): Promise<{ discovered: number; reused: number; reviewed: number; approved: number; nonqualifying: number; failed: number }> {
+    this.cancelled = false;
+    if (signal?.aborted) return { discovered: 0, reused: 0, reviewed: 0, approved: 0, nonqualifying: 0, failed: 0 };
+    const cancel = () => this.cancel();
+    signal?.addEventListener("abort", cancel, { once: true });
     const candidates = await discoverScripts(cwd);
-    const common = await gitCommonDir(cwd);
+    if (signal?.aborted || this.cancelled) {
+      signal?.removeEventListener("abort", cancel);
+      return { discovered: 0, reused: 0, reviewed: 0, approved: 0, nonqualifying: 0, failed: 0 };
+    }
     const store = (await loadTrust(cwd)).store;
     const reused = new Set<string>();
     const pending: ScriptCandidate[] = [];
     for (const candidate of candidates) {
-      const relative = recordPath(cwd, candidate.path, common);
+      if (signal?.aborted || this.cancelled) break;
+      const relative = await recordPath(cwd, candidate.path);
       const existing = store.records.find(record => record.path === relative && record.sha256 === candidate.sha256 && (!record.conditions || record.conditions.length === 0));
       if (existing) reused.add(candidate.path); else pending.push(candidate);
     }
@@ -194,8 +224,10 @@ export class ScriptReviewCoordinator {
     let cursor = 0;
     const worker = async () => {
       for (;;) {
+        if (this.cancelled) return;
         const candidate = pending[cursor++]; if (!candidate) return;
-        const result = await this.review({ script: { path: candidate.path, sha256: candidate.sha256, range: { start: 0, end: candidate.bytes.length }, argv: [] }, cwd, scope: "whole-script", origin });
+        const result = await this.review({ script: { path: candidate.path, sha256: candidate.sha256, range: { start: 0, end: candidate.bytes.length }, argv: [] }, cwd, scope: "whole-script", origin, signal });
+        if (this.cancelled) return;
         reviewed++;
         if (result.status === "approved") approved++;
         else if (result.status === "nonqualifying") nonqualifying++;
@@ -203,7 +235,12 @@ export class ScriptReviewCoordinator {
       }
     };
     await Promise.all(Array.from({ length: Math.min(PARALLEL, pending.length) }, () => worker()));
-    notify(`Damage Control scan complete: ${candidates.length} scripts, ${reused.size} reused, ${approved} approved, ${nonqualifying} retained for runtime review${failed ? `, ${failed} unavailable` : ""}.`, failed ? "warning" : "info");
+    signal?.removeEventListener("abort", cancel);
+    if (signal?.aborted || this.cancelled) {
+      notify("Damage Control scan cancelled; no cancelled review was saved.", "warning");
+    } else {
+      notify(`Damage Control scan complete: ${candidates.length} scripts, ${reused.size} reused, ${approved} approved, ${nonqualifying} retained for runtime review${failed ? `, ${failed} unavailable` : ""}.`, failed ? "warning" : "info");
+    }
     return { discovered: candidates.length, reused: reused.size, reviewed, approved, nonqualifying, failed };
   }
 }

@@ -18,9 +18,21 @@ export type ScriptIdentity = { path: string; sha256: string; bytes: string };
 export type TrustMatch = { matched: boolean; record?: ScriptTrustRecord; identity: ScriptIdentity; storePath: string };
 
 const EMPTY: ScriptTrustStore = { version: 1, records: [] };
+const storeCache = new Map<string, { stamp: string; store: ScriptTrustStore }>();
 
 function hash(bytes: string | Uint8Array): string { return createHash("sha256").update(bytes).digest("hex"); }
 function normalize(p: string): string { return path.resolve(p); }
+
+/** Resolve the working-tree root separately from the shared Git common directory. */
+export async function gitWorktreeRoot(cwd: string): Promise<string> {
+  let dir = normalize(cwd);
+  while (true) {
+    try { await stat(path.join(dir, ".git")); return dir; } catch { /* continue toward filesystem root */ }
+    const parent = path.dirname(dir);
+    if (parent === dir) return normalize(cwd);
+    dir = parent;
+  }
+}
 
 /** Resolve the shared Git common directory without invoking Git or reading a repository's contents. */
 export async function gitCommonDir(cwd: string): Promise<string | undefined> {
@@ -54,23 +66,52 @@ export async function scriptIdentity(file: string): Promise<ScriptIdentity> {
   return { path: normalize(file), sha256: hash(bytes), bytes: bytes.toString("utf8") };
 }
 
-async function readStore(file: string): Promise<ScriptTrustStore> {
-  try {
-    const raw = parse(await readFile(file, "utf8"));
-    if (!raw || raw.version !== 1 || !Array.isArray(raw.records)) return EMPTY;
-    const records = raw.records.filter((r: any) => typeof r?.path === "string" && typeof r?.sha256 === "string" && (r.outcome === "approved" || r.outcome === "review") && typeof r.reason === "string");
-    return { version: 1, records };
-  } catch { return EMPTY; }
+function validCondition(value: unknown): value is ScriptCondition {
+  if (!value || typeof value !== "object" || !Array.isArray((value as any).argv) || !(value as any).argv.every((arg: unknown) => typeof arg === "string")) return false;
+  const helpers = (value as any).helpers;
+  return helpers === undefined || (!!helpers && typeof helpers === "object" && !Array.isArray(helpers) && Object.entries(helpers).every(([key, digest]) => typeof key === "string" && typeof digest === "string"));
 }
 
-function conditionMatches(record: ScriptTrustRecord, argv: readonly string[], helpers: Record<string, string>): boolean {
+async function readStore(file: string): Promise<ScriptTrustStore> {
+  let info;
+  try { info = await stat(file); } catch { storeCache.delete(file); return EMPTY; }
+  const stamp = `${info.ino}:${info.size}:${info.mtimeMs}`;
+  const cached = storeCache.get(file);
+  if (cached?.stamp === stamp) return cached.store;
+  try {
+    const raw = parse(await readFile(file, "utf8"));
+    if (!raw || raw.version !== 1 || !Array.isArray(raw.records)) { storeCache.set(file, { stamp, store: EMPTY }); return EMPTY; }
+    const records = raw.records.filter((r: any) =>
+      typeof r?.path === "string" && !path.isAbsolute(r.path) && !r.path.split(/[\\/]/).includes("..") &&
+      /^[a-f0-9]{64}$/i.test(r.sha256) && (r.outcome === "approved" || r.outcome === "review") &&
+      typeof r.reason === "string" && (r.conditions === undefined || (Array.isArray(r.conditions) && r.conditions.every(validCondition)))
+    ).map((r: any) => ({ ...r, sha256: r.sha256.toLowerCase() }));
+    const store = { version: 1 as const, records };
+    storeCache.set(file, { stamp, store });
+    return store;
+  } catch { storeCache.set(file, { stamp, store: EMPTY }); return EMPTY; }
+}
+
+async function conditionMatches(record: ScriptTrustRecord, argv: readonly string[], helpers: Record<string, string>, root: string): Promise<boolean> {
   if (!record.conditions?.length) return true;
-  return record.conditions.some(condition => condition.argv.length === argv.length && condition.argv.every((arg, i) => arg === argv[i]) && (!("helpers" in condition) || Object.entries(condition.helpers).every(([p, digest]) => helpers[p] === digest)));
+  for (const condition of record.conditions) {
+    if (condition.argv.length !== argv.length || !condition.argv.every((arg, i) => arg === argv[i])) continue;
+    if (!("helpers" in condition)) return true;
+    let matches = true;
+    for (const [helper, expected] of Object.entries(condition.helpers)) {
+      let actual = helpers[helper];
+      if (actual === undefined) {
+        try { actual = hash(await readFile(path.resolve(root, helper))); } catch { actual = ""; }
+      }
+      if (actual !== expected) { matches = false; break; }
+    }
+    if (matches) return true;
+  }
+  return false;
 }
 
 export async function trustRecordPath(file: string, cwd: string): Promise<string> {
-  const common = await gitCommonDir(cwd);
-  const root = common ? path.dirname(common) : normalize(cwd);
+  const root = await gitWorktreeRoot(cwd);
   return path.relative(root, normalize(file)).replaceAll(path.sep, "/");
 }
 
@@ -79,7 +120,15 @@ export async function findTrust(file: string, cwd: string, argv: readonly string
   const storePath = await trustPath(cwd);
   const store = await readStore(storePath);
   const relative = await trustRecordPath(identity.path, cwd);
-  const record = store.records.find(item => item.path === relative && item.sha256 === identity.sha256 && item.outcome === "approved" && conditionMatches(item, argv, helpers));
+  const root = await gitWorktreeRoot(cwd);
+  // A record outside this repository must never become a grant through a ../ path.
+  const isRelative = relative !== "" && relative !== "." && !relative.split(/[\\/]/).includes("..") && !path.isAbsolute(relative);
+  let record: ScriptTrustRecord | undefined;
+  if (isRelative) {
+    for (const candidate of store.records) {
+      if (candidate.path === relative && candidate.sha256 === identity.sha256 && candidate.outcome === "approved" && await conditionMatches(candidate, argv, helpers, root)) { record = candidate; break; }
+    }
+  }
   return { matched: !!record, record, identity, storePath };
 }
 
@@ -97,6 +146,7 @@ export async function addTrustRecord(cwd: string, record: ScriptTrustRecord): Pr
     const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
     await writeFile(temp, stringify({ version: 1, records: next }), "utf8");
     await rename(temp, file);
+    storeCache.delete(file);
   } finally { await release(); }
 }
 

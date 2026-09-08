@@ -43,29 +43,31 @@ describe("AST shell analysis", () => {
 
     const unique = await analyzeShell(request("rm -rf src/unique-uncommitted", "bash"), { rules: defaultRules });
     const uniqueEvidence = { callId: "call", operation: "unique", operator: [], untrusted: { effects: unique.effects, matches: unique.matches, uncertainties: unique.uncertainties }, omissions: [] };
-    expect(decide(unique, uniqueEvidence).outcome).toBe("user");
+    expect(decide(unique, uniqueEvidence).outcome).toBe("review");
+    expect(decide(unique, uniqueEvidence, { status: "valid", verdict: "ask", reason: "Unique uncommitted work", dismissedCandidates: [] }).outcome).toBe("user");
   });
 
   it("reviews ordinary Compose teardown but retains volume/image and whole-call protections", async () => {
     for (const command of ["docker compose down", "docker --context dev compose -p fixture down --remove-orphans", "docker --context production compose down"]) {
       const analysis = await analyzeShell(request(command), { rules: defaultRules });
       const evidence = { callId: "call", operation: command, operator: [], untrusted: { effects: analysis.effects, matches: analysis.matches, uncertainties: analysis.uncertainties }, omissions: [] };
-      expect(analysis.matches).toContainEqual(expect.objectContaining({ ruleId: "legacy-141", action: "review", applicability: "confirmed" }));
+      expect(analysis.matches).toContainEqual(expect.objectContaining({ ruleId: "container-compose-teardown", action: "review", applicability: "confirmed" }));
       expect(decide(analysis, evidence).outcome).toBe("review");
       expect(decide(analysis, evidence, { status: "valid", verdict: "allow", reason: "Established local development teardown", dismissedCandidates: [] }).outcome).toBe("allow");
       expect(decide(analysis, evidence, { status: "valid", verdict: "ask", reason: "Shared target or unresolved environment", dismissedCandidates: [] }).outcome).toBe("user");
       expect(decide(analysis, evidence, { status: "timeout", reason: "deadline" }).outcome).toBe("user");
     }
     for (const [command, outcome] of [
-      ["docker compose down -v", "user"],
-      ["docker compose down --volumes", "user"],
-      ["docker compose down --rmi all", "user"],
-      ["docker compose down; git reset --hard", "user"],
-      ["docker compose down; sudo rm fixture", "block"],
+      ["docker compose down -v", "allow"],
+      ["docker compose down --volumes", "allow"],
+      ["docker compose down --rmi all", "allow"],
+      ["docker compose down; git reset --hard", "allow"],
+      ["docker compose down; rm -rf ~", "block"],
     ]) {
       const analysis = await analyzeShell(request(command), { rules: defaultRules });
       const evidence = { callId: "call", operation: command, operator: [], untrusted: { effects: analysis.effects, matches: analysis.matches, uncertainties: analysis.uncertainties }, omissions: [] };
-      expect(decide(analysis, evidence, { status: "valid", verdict: "allow", reason: "Local teardown", dismissedCandidates: [] }).outcome).toBe(outcome);
+      expect(decide(analysis, evidence).outcome).toBe(outcome === "block" ? "block" : "review");
+      expect(decide(analysis, evidence, { status: "valid", verdict: "allow", reason: "The complete call is established recoverable work", dismissedCandidates: [] }).outcome).toBe(outcome);
     }
   });
   it("distinguishes direct piped rg input from implicit filesystem search", async () => {
@@ -173,13 +175,13 @@ describe("AST shell analysis", () => {
     const docker = await analyzeShell(request("/usr/bin/docker --context prod volume rm data"), { rules: defaultRules });
     const compose = await analyzeShell(request("/usr/bin/docker --context prod compose -p fixture down -v"), { rules: defaultRules });
     const wrappedRm = await analyzeShell(request("/usr/bin/sudo -u fixture /bin/rm -rf harmless.fixture"), { rules: defaultRules });
-    expect(git.matches).toContainEqual(expect.objectContaining({ ruleId: "legacy-019", action: "user", applicability: "confirmed" }));
+    expect(git.matches).toContainEqual(expect.objectContaining({ ruleId: "git-reset-hard", action: "review", applicability: "confirmed" }));
     expect(git.effects.find((effect) => effect.kind === "git")?.context.cwd).toBe(path.resolve(cwd, "repo"));
-    expect(docker.matches).toContainEqual(expect.objectContaining({ ruleId: "legacy-137", action: "user", applicability: "confirmed" }));
+    expect(docker.matches).toContainEqual(expect.objectContaining({ ruleId: "container-volume-remove", action: "review", applicability: "confirmed" }));
     expect(docker.effects.find((effect) => effect.kind === "docker")).toMatchObject({ operation: "delete", context: { daemon: "prod", resourceId: "data" } });
-    expect(compose.matches).toContainEqual(expect.objectContaining({ ruleId: "legacy-139", action: "user", applicability: "confirmed" }));
+    expect(compose.matches).toContainEqual(expect.objectContaining({ ruleId: "container-compose-remove-volumes", action: "review", applicability: "confirmed" }));
     expect(compose.effects.find((effect) => effect.kind === "docker")).toMatchObject({ operation: "delete", context: { daemon: "prod", mountedData: true } });
-    expect(matchedIds(wrappedRm)).toEqual(expect.arrayContaining(["legacy-007", "legacy-014"]));
+    expect(matchedIds(wrappedRm)).toEqual(expect.arrayContaining(["filesystem-rm-recursive-or-force", "filesystem-sudo-rm"]));
   });
 
   it("confirms actual Git, database, and PowerShell operations but not inert search/output arguments", async () => {
@@ -189,13 +191,13 @@ describe("AST shell analysis", () => {
     const inertBash = await analyzeShell(request("rg 'git reset --hard|dropdb|rm -rf' README.md"), { rules: defaultRules });
     const inertPowerShell = await analyzeShell(request("Write-Output 'Remove-Item harmless.fixture -Recurse'", "powershell"), { rules: defaultRules });
     expect(paths(git, "delete")).toEqual([path.resolve(cwd, "one"), path.resolve(cwd, "two")]);
-    expect(matchedIds(git)).toContain("legacy-001");
-    expect(matchedIds(git)).toContain("legacy-023");
-    expect(matchedIds(git)).not.toContain("legacy-021");
+    expect(matchedIds(git)).toContain("git-remove-working-tree");
+    expect(matchedIds(git)).toContain("git-push-force-with-lease");
+    expect(matchedIds(git)).not.toContain("git-push-force");
     expect(database.effects.filter((effect) => effect.kind === "database" && effect.operation === "delete")).toHaveLength(3);
-    expect(matchedIds(database)).toEqual(expect.arrayContaining(["legacy-172", "legacy-173", "legacy-169"]));
-    expect(database.matches.filter((match) => ["legacy-172", "legacy-173", "legacy-169"].includes(match.ruleId)).every((match) => match.applicability === "confirmed")).toBe(true);
-    expect(powershell.matches).toContainEqual(expect.objectContaining({ ruleId: "legacy-326", applicability: "confirmed" }));
+    expect(matchedIds(database)).toEqual(expect.arrayContaining(["database-postgres-drop", "database-mysql-drop", "database-redis-flush-database"]));
+    expect(database.matches.filter((match) => ["database-postgres-drop", "database-mysql-drop", "database-redis-flush-database"].includes(match.ruleId)).every((match) => match.applicability === "confirmed")).toBe(true);
+    expect(powershell.matches).toContainEqual(expect.objectContaining({ ruleId: "powershell-recursive-deletion-can-cause-irreversible-data-loss", applicability: "confirmed" }));
     expect(inertBash.matches).toEqual([]);
     expect(inertPowerShell.matches).toEqual([]);
   });
@@ -206,10 +208,10 @@ describe("AST shell analysis", () => {
     const reads = await analyzeShell(request("git status; git diff --cached; git log -n 2; git grep 'rm -rf'"), { rules: defaultRules });
     expect(paths(cached, "delete")).toEqual([]);
     expect(cached.effects).toContainEqual(expect.objectContaining({ kind: "git", operation: "mutate" }));
-    expect(matchedIds(cached)).not.toContain("legacy-001");
+    expect(matchedIds(cached)).not.toContain("git-remove-working-tree");
     expect(paths(actual, "write")).toEqual([cwd]);
     expect(paths(actual, "delete")).toEqual([cwd, path.resolve(cwd, "one"), path.resolve(cwd, "two")]);
-    expect(matchedIds(actual)).toEqual(expect.arrayContaining(["legacy-019", "legacy-020", "legacy-001"]));
+    expect(matchedIds(actual)).toEqual(expect.arrayContaining(["git-reset-hard", "git-clean-forced", "git-remove-working-tree"]));
     expect(reads.uncertainties).toEqual([]);
     expect(reads.effects.every((effect) => effect.resolution === "static")).toBe(true);
     expect(reads.effects.some((effect) => effect.operation === "read")).toBe(true);
@@ -225,14 +227,14 @@ describe("AST shell analysis", () => {
     expect(paths(bash, "delete")).toEqual([path.resolve(cwd, "nested"), path.resolve(cwd, "later")]);
     expect(paths(bash, "truncate")).toEqual([path.resolve(cwd, "preview.txt")]);
     expect(bash.effects.some((effect) => effect.kind === "git")).toBe(false);
-    expect(matchedIds(bash)).not.toContain("legacy-020");
+    expect(matchedIds(bash)).not.toContain("git-clean-forced");
     expect(paths(powershell, "delete")).toEqual([path.resolve(cwd, "actual"), path.resolve(cwd, "false-switch")]);
     expect(paths(powershell, "truncate")).toEqual([path.resolve(cwd, "preview.txt")]);
-    expect(powershell.matches.filter((match) => match.ruleId === "legacy-296")).toHaveLength(0);
+    expect(powershell.matches.filter((match) => match.action === "block")).toHaveLength(0);
     expect(paths(literalDryRun, "delete")).toEqual([path.resolve(cwd, "--dry-run")]);
     expect(kubectlDryRun.effects).toEqual([]);
     expect(kubectlDryRun.matches).toEqual([]);
-    expect(matchedIds(kubectlActual)).toContain("legacy-150");
+    expect(matchedIds(kubectlActual)).toContain("cluster-delete-namespace");
   });
 
   it("keeps ordinary developer commands quiet while recursively analyzing package executors", async () => {
@@ -245,9 +247,9 @@ describe("AST shell analysis", () => {
     const pnpmExec = await analyzeShell(request("pnpm exec rm -rf generated"), { rules: defaultRules });
     const npmExec = await analyzeShell(request("npm exec -- rm generated"), { rules: defaultRules });
     expect(paths(pnpmExec, "delete")).toEqual([path.resolve(cwd, "generated")]);
-    expect(matchedIds(pnpmExec)).toContain("legacy-007");
+    expect(matchedIds(pnpmExec)).toContain("filesystem-rm-recursive-or-force");
     expect(paths(npmExec, "delete")).toEqual([path.resolve(cwd, "generated")]);
-    expect(matchedIds(npmExec)).toContain("legacy-011");
+    expect(matchedIds(npmExec)).toContain("filesystem-rm-file");
   });
 
   it("treats unresolved destructive operands as protected unknown targets, not opaque execution", async () => {

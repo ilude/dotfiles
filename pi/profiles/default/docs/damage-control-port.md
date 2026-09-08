@@ -12,11 +12,11 @@ This is the operator's governing design requirement, clarified on 2026-09-08. Le
 
 ## Current runtime behavior
 
-The implementation retains the legacy rule inventory as migration history while changing authority according to actual consequences:
+The historical migration fixture remains evidence, not active policy authority. Runtime IDs name operations and path protections, while the task disposition table records old-to-new identities. Policy actions, not numeric ranges or matching reason text, determine review authority:
 
 - Established rebuildable caches, empty-directory removal, ordinary generated artifacts and lockfiles, harmless decoded output, and public certificates do not prompt merely because of syntax or names.
 - Root/home destruction, meaningful unique or uncommitted work, recovery mechanisms, important system state, sensitive disclosure, and consequential remote mutations remain protected. Independent push and deployment authorization still applies.
-- Mixed-risk deletion, Git, container, infrastructure, publication, scheduling, database, and process operations can use contextual Luna judgment. Relevant inherited/static variable evidence is bounded and redacted; unknown syntax or names alone are not danger.
+- Mixed-risk deletion, Git, container, infrastructure, scheduling, database, and process operations use contextual Luna judgment. Explicit publication and shared-history human boundaries remain. Generic recursive/forced deletion reaches the existing judge with the whole call, including same-call temporary-resource creation. No mktemp parser exception or diagnostic-only judge is added. Relevant variable evidence is bounded and redacted; gate-process observations are not asserted as final shell values, and unknown syntax or names alone are not danger.
 - Sensitive-read/upload correlation is review evidence. Actual sensitive-source upload retains direct intervention, and sequence state clears with its session.
 - Matching script preapproval is bound to source SHA-256 and optional exact argv/helper hashes. It skips only that body analysis; substitutions, redirects, and adjacent commands remain checked. Git repositories store records under their common Git directory; non-Git projects use the current cwd's `.pi/` directory.
 - `/dc scan` discovers tracked and nonignored project scripts, excludes generated/dependency output, and uses bounded parallel read-only subagents without executing scripts. Completed unchanged results are reused.

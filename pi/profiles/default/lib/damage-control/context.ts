@@ -7,6 +7,23 @@ const CONTEXT_AGE_MS = 30 * 60 * 1000;
 type DirectInput = Evidence["operator"][number] & { timestamp: number };
 type Observation = NonNullable<Evidence["untrusted"]["observations"]>[number];
 
+/** Relevant host observations, not a claim about a later shell/pane environment. */
+export function processVariableEvidence(effects: readonly Effect[], environment: Readonly<Record<string, string | undefined>>): VariableEvidence[] {
+  const names = new Set<string>();
+  for (const effect of effects) for (const target of [...effect.sources, ...effect.targets, ...effect.destinations]) {
+    if (target.resolution !== "unknown") continue;
+    for (const match of target.expression.matchAll(/\$(?:\{)?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%/gi)) {
+      if (names.size < 16) names.add(match[1] ?? match[2]);
+    }
+  }
+  return [...names].flatMap(name => {
+    const value = environment[name];
+    if (value === undefined || value.length > 1024) return [];
+    return [{ name, value: /password|passwd|pwd|secret|token|(?:api|access|private)_?key|credential|authorization/i.test(name) ? "[REDACTED]" : value,
+      source: "process" as const, provenance: "Observed in the gate process only; shell startup, command prefixes, spawn hooks, and remote panes may override it. Not a resolved target or authorization." }];
+  });
+}
+
 /** Bounded session-local evidence, never an approval cache or resource ownership ledger. */
 export class Context {
   private generationValue = 0;

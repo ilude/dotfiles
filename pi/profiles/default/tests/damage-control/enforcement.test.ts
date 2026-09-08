@@ -1,16 +1,115 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { harness } from "./fixtures/fake-pi.ts";
 it.each(["rm -rf ~", "rm -rf /"])("retains legacy hard block: %s", async command => {
   const h = await harness();
   expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "block", input: { command } })).toMatchObject({ block: true });
   expect(h.select).not.toHaveBeenCalled();
 });
-it("requires operator choice when contextual review retains a consequential Git reset", async () => {
-  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "ask" as const, reason: "uncommitted work may be lost", dismissedCandidates: [] }) });
-  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "ask", input: { command: "git reset --hard HEAD" } })).toBeUndefined();
+it("keeps the independent human boundary for force-with-lease", async () => {
+  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "allow" as const, reason: "not consulted", dismissedCandidates: [] }) });
+  h.select.mockResolvedValue("Deny");
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "ask", input: { command: "git push --force-with-lease origin fixture" } })).toMatchObject({ block: true });
   expect(h.select).toHaveBeenCalledOnce();
-  expect(h.review).toHaveBeenCalledOnce();
+  expect(h.review).not.toHaveBeenCalled();
 });
+
+it("runs the reported Herdr reproduction only as inert gate input", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const command = await readFile(new URL("./fixtures/reported-herdr-command.txt", import.meta.url), "utf8");
+  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "allow" as const, reason: "inert local fixture lifecycle", dismissedCandidates: [] }) });
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "herdr", input: { command } })).toBeUndefined();
+  expect(h.review).toHaveBeenCalledOnce();
+  expect(h.select).not.toHaveBeenCalled();
+});
+
+it("allows a complete mktemp lifecycle without a parser special case", async () => {
+  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "allow" as const, reason: "temporary lifecycle", dismissedCandidates: [] }) });
+  const command = 'scratch=$(mktemp -d); printf fixture > "$scratch/item"; rm -rf "$scratch"';
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "mktemp", input: { command } })).toBeUndefined();
+  expect(h.review).toHaveBeenCalledOnce();
+  expect(h.select).not.toHaveBeenCalled();
+});
+
+it("reviews reassigned meaningful data, while cancellation prevents execution", async () => {
+  const controller = new AbortController();
+  let release!: () => void;
+  const h = await harness({
+    review: async () => {
+      await new Promise<void>(resolve => { release = resolve; });
+      return { status: "valid" as const, verdict: "allow" as const, reason: "target is safe", dismissedCandidates: [] };
+    },
+  });
+  (h.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+  const pending = h.emit("tool_call", { toolName: "bash", toolCallId: "unique", input: { command: 'target="$PWD/important"; rm -rf "$target"' } });
+  await vi.waitFor(() => expect(h.review).toHaveBeenCalledOnce());
+  controller.abort();
+  release();
+  expect(await pending).toMatchObject({ block: true, reason: expect.stringContaining("stale") });
+  expect(h.select).not.toHaveBeenCalled();
+});
+it("blocks a protected member of a mixed cleanup before judgment", async () => {
+  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "allow" as const, reason: "not consulted", dismissedCandidates: [] }) });
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "mixed", input: { command: 'scratch=$(mktemp -d); rm -rf "$scratch" /' } })).toMatchObject({ block: true });
+  expect(h.review).not.toHaveBeenCalled();
+  expect(h.select).not.toHaveBeenCalled();
+});
+it("does not wait for current future-use review", async () => {
+  let release!: () => void;
+  const scriptReview = vi.fn(async () => {
+    await new Promise<void>(resolve => { release = resolve; });
+    return { status: "approved", reason: "fixture", recordPath: "trust.yaml" };
+  });
+  const h = await harness({
+    analyze: async () => ({
+      effects: [], uncertainties: [], health: { status: "ready" as const },
+      matches: [{ ruleId: "git-push-force-with-lease", action: "user" as const, applicability: "confirmed" as const, reason: "force-with-lease changes remote history", effects: [] }],
+      internal: { docker: [], scripts: [{ path: "fixture.sh", sha256: "a".repeat(64), range: { start: 0, end: 1 }, argv: ["fixture.sh"] }] },
+    }),
+    scriptReview,
+  });
+  let session = "old-session";
+  (h.ctx as unknown as { sessionManager: { getSessionId: () => string } }).sessionManager = { getSessionId: () => session };
+  h.select.mockResolvedValue("Allow once and review for future use");
+  const started = Date.now();
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "future", input: { command: "git push --force-with-lease origin fixture" } })).toBeUndefined();
+  expect(Date.now() - started).toBeLessThan(1000);
+  expect(scriptReview).toHaveBeenCalledOnce();
+  session = "new-session";
+  release();
+  await vi.waitFor(() => expect(scriptReview.mock.results[0]?.type).toBe("return"));
+  expect(h.notify).not.toHaveBeenCalled();
+});
+
+it("drops late future-use notifications after the session changes", async () => {
+  let release!: () => void;
+  const scriptReview = vi.fn(async () => {
+    await new Promise<void>(resolve => { release = resolve; });
+    return { status: "approved", reason: "fixture", recordPath: "trust.yaml" };
+  });
+  const h = await harness({
+    analyze: async () => ({ effects: [], uncertainties: [], health: { status: "ready" as const }, matches: [{ ruleId: "git-push-force-with-lease", action: "user" as const, applicability: "confirmed" as const, reason: "force-with-lease changes remote history", effects: [] }], internal: { docker: [], scripts: [{ path: "fixture.sh", sha256: "b".repeat(64), range: { start: 0, end: 1 }, argv: ["fixture.sh"] }] } }),
+    scriptReview,
+  });
+  let session = "origin-a";
+  (h.ctx as unknown as { sessionManager: { getSessionId: () => string } }).sessionManager = { getSessionId: () => session };
+  h.select.mockResolvedValue("Allow once and review for future use");
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "late", input: { command: "git push --force-with-lease origin fixture" } })).toBeUndefined();
+  session = "origin-b";
+  release();
+  await vi.waitFor(() => expect(scriptReview.mock.results[0]?.type).toBe("return"));
+  expect(h.notify).not.toHaveBeenCalled();
+});
+
+it("passes scan cancellation through the gate", async () => {
+  const signal = new AbortController().signal;
+  const scriptScan = vi.fn(async (_cwd: string, _origin: string, _notify: unknown, received?: AbortSignal) => expect(received).toBe(signal));
+  const h = await harness({ scriptScan });
+  (h.ctx as unknown as { signal: AbortSignal }).signal = signal;
+  (h.ctx as unknown as { sessionManager: { getSessionId: () => string } }).sessionManager = { getSessionId: () => "scan-session" };
+  await h.gate.scan(h.ctx);
+  expect(scriptScan).toHaveBeenCalledOnce();
+});
+
 it("keeps scoped local cleanup and read-only pipelines quiet", async () => {
   const h = await harness();
   expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "cleanup", input: { command: "rm -rf .tmp/output" } })).toBeUndefined();

@@ -1354,7 +1354,11 @@ export async function analyzeShell(request: ToolRequest, dependencies: ShellDepe
       }
       const variables = new Map<string, string>();
       const inheritedVariables = new Set<string>();
-      for (const [rawName, value] of Object.entries(dependencies.environment ?? process.env)) {
+      // An omitted boundary is intentionally an empty inherited scope. The
+      // native shell may construct a different environment (and extensions do
+      // not receive that final spawn context at tool_call time), so process.env
+      // must not be presented as a fact about the submitted command.
+      for (const [rawName, value] of Object.entries(dependencies.environment ?? {})) {
         if (value === undefined) continue;
         const name = request.language === "powershell" ? rawName.toLowerCase() : rawName;
         variables.set(name, value);

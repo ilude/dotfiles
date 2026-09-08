@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { discoverScripts, runScriptReview, ScriptReviewCoordinator } from "../../lib/damage-control/script-review.ts";
+import { discoverScripts, runScriptReview, ScriptReviewCoordinator, type ReviewerResult } from "../../lib/damage-control/script-review.ts";
 import { loadTrust, scriptIdentity } from "../../lib/damage-control/script-trust.ts";
 
 async function temp() { return mkdtemp(path.join(tmpdir(), "dc-review-")); }
@@ -58,6 +58,26 @@ describe("script review coordinator", () => {
     const second = await coordinator.scan(root, "fixture");
     expect(second).toMatchObject({ discovered: 2, reused: 2, reviewed: 0 });
     expect(calls).toBe(2);
+  });
+
+  it("cancels an in-flight scan and does not persist cancelled reviews", async () => {
+    const root = await temp();
+    await writeFile(path.join(root, "one.sh"), "echo one\n");
+    let markStarted!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    const controller = new AbortController();
+    const coordinator = new ScriptReviewCoordinator({ profile: root, runner: async (_request, signal) => {
+      markStarted();
+      return await new Promise<ReviewerResult>(resolve => signal.addEventListener("abort", () => resolve({ status: "cancelled", reason: "cancelled fixture" }), { once: true }));
+    }});
+    const scan = coordinator.scan(root, "fixture", () => {}, controller.signal);
+    await started;
+    controller.abort();
+    const result = await scan;
+    expect(result.reviewed).toBe(0);
+    expect(result.approved).toBe(0);
+    expect(result.nonqualifying).toBe(0);
+    expect((await loadTrust(root)).store.records).toHaveLength(0);
   });
 
   it("finds extensionless supported shebang scripts and excludes dependency trees", async () => {

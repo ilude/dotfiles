@@ -4,6 +4,8 @@
 
 **Changed:** Default Damage Control now allows established recoverable maintenance without treating flags, encoding, persistence vocabulary, or ordinary generated names as danger by themselves. Contextual Luna judgment covers mixed-risk deletion, Git, container, infrastructure, publication, scheduling, database, and process operations while root/home destruction, meaningful unique work, recovery loss, sensitive disclosure, and independent push/deployment authority remain protected.
 
+**Policy repair:** Active rule identities now describe operations rather than migration order, including path-protection evidence. Generic recursive/forced cleanup reaches the existing Luna reviewer with the complete temporary-resource lifecycle; no new temp-path parser or diagnostic judge is added. The evaluator now follows full production analysis and reports routing separately from live judgment, including explicit unverified outcomes when its task profile lacks Luna authentication.
+
 **Added:** `/dc scan` uses bounded read-only subagents to review project-owned scripts without executing them. Git-common-directory YAML records bind approval to source hashes and optional exact argv/helper hashes; matching invocations skip only body analysis. Eligible prompts can allow the current call and commission future review asynchronously.
 
 **Control:** The watchdog permits twelve adjacent failures of an exact tool/input/cwd call and blocks attempt thirteen. Unrelated calls and success reset the streak, and repeated successes are unrestricted. Legacy is unchanged; this adds no mandatory scan, environment inventory, sandbox, dependency resolver, or telemetry service.

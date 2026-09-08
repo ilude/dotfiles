@@ -10,6 +10,14 @@ it("keeps canonical path and containment checks", async () => {
   expect(contains("/work", "/other/file", facts)).toBe(false);
   expect(normalizePath("~/file", facts)).toBe("/home/operator/file");
 });
+it("uses semantic protection IDs rather than list ordinals", () => {
+  const matches = pathMatches("/work/.git/config", "delete", {
+    zeroAccess: [], exclusions: [], readOnly: [], noDelete: [".git/"], writeConfirm: [],
+    readConfirm: [], generated: [], scratch: [], integrity: [],
+  }, facts, "effect-1");
+  expect(matches).toEqual([expect.objectContaining({ ruleId: "path-nodelete-git" })]);
+});
+
 it("pairs recoverable artifacts with retained disclosure and recovery floors", () => {
   expect(pathMatches("/work/serviceAccountKey.json", "read", policy.paths, facts, "e")[0].action).toBe("block");
   expect(pathMatches("/work/public-cert.pem", "read", policy.paths, facts, "e")).toEqual([]);
