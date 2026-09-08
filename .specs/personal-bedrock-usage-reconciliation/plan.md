@@ -1,6 +1,6 @@
 ---
 created: 2026-09-08
-status: draft
+status: active
 completed: null
 ---
 
@@ -32,8 +32,8 @@ Paths are relative to `C:/Users/mglenn/.dotfiles` unless explicitly prefixed wit
   - `gitlab-helm` owns the AWS CUR reader, alert Lambda, IAM permissions, Terraform deployment, and its tests.
   - Do not copy payer inventory, account configuration, or secrets into dotfiles.
 - Proposed execution worktrees:
-  - Dotfiles: `.worktrees/personal-bedrock-usage-reconciliation`, branch `task/personal-bedrock-usage-reconciliation`, merge target `main`.
-  - `gitlab-helm`: sibling worktree chosen at execution start, branch `task/personal-bedrock-usage-api`, merge target `main`.
+  - Dotfiles: `.worktrees/personal-bedrock-usage-reconciliation`, branch `task/personal-bedrock-usage-reconciliation`, recorded parent checkout `C:/Users/mglenn/.dotfiles` on merge target `main`.
+  - `gitlab-helm`: `.worktrees/personal-bedrock-usage-api`, branch `task/personal-bedrock-usage-api`, recorded parent checkout `C:/Projects/Work/Gitlab/gitlab-helm` on merge target `main`.
 - Required reading:
   - `AGENTS.md`
   - `pi/README.md`
@@ -130,7 +130,7 @@ The exact Lambda event envelope and CLI payload are routine implementation detai
 
 ## Tasks
 
-- [ ] **T1 — Finalize a secure personal-usage query contract and resolve live drift**
+- [x] **T1 — Finalize a secure personal-usage query contract and resolve live drift**
   - Depends on: none.
   - Inputs/files: required `gitlab-helm` Lambda, Terraform, IAM, payer-reader, and tests listed above; read-only AWS function/IAM/state inspection.
   - Do:
@@ -140,9 +140,9 @@ The exact Lambda event envelope and CLI payload are routine implementation detai
   - Verify: bounded AWS read-only inspection plus targeted Terraform state/source comparison from `gitlab-helm`.
   - Done when: the actual function target, caller binding, permissions, response schema, and deployment delta are concrete enough for T2 and T3 without guessing.
   - If blocked: stop and ask before broadening payer-role trust or exposing other users' CUR data.
-  - Evidence: Not started.
+  - Evidence: Completed in the task worktrees; see current handoff and validation record.
 
-- [ ] **T2 — Add the read-only per-user snapshot action in `gitlab-helm`**
+- [x] **T2 — Add the read-only per-user snapshot action in `gitlab-helm`**
   - Depends on: T1.
   - Inputs/files: `gitlab-helm:regions/us-east-2/claude-code-bedrock/terraform/lambda/per_user_cost_alert.py`, its existing tests, and only the Terraform/IAM files identified by T1.
   - Do:
@@ -153,9 +153,9 @@ The exact Lambda event envelope and CLI payload are routine implementation detai
   - Verify: `uv run pytest` for the Lambda test file, Python lint/format required by the repository, `terraform fmt -check`, `terraform validate`, and a targeted `just plan bedrock` or equivalent non-mutating plan.
   - Done when: tests prove caller/principal isolation, no SNS/DynamoDB side effects, correct empty/present CUR handling, bounded output, and unchanged scheduled alert behavior; Terraform plan shows only the intended interface/deployment delta.
   - If blocked: preserve the existing alert path and return to T1 rather than weakening identity checks.
-  - Evidence: Not started.
+  - Evidence: Completed in the task worktrees; see current handoff and validation record.
 
-- [ ] **T3 — Replace Pi's account-wide reconciliation with personal CUR reconciliation**
+- [x] **T3 — Replace Pi's account-wide reconciliation with personal CUR reconciliation**
   - Depends on: T1 contract; may proceed against a tested mock before T2 deployment.
   - Inputs/files: `pi/profiles/default/extensions/bedrock/index.ts`, `pi/profiles/default/lib/bedrock/ledger.ts`, proposed replacement for `pi/profiles/default/lib/bedrock/cost-explorer.ts`, `.gitignore`, and Bedrock tests.
   - Do:
@@ -167,9 +167,9 @@ The exact Lambda event envelope and CLI payload are routine implementation detai
   - Verify: targeted Vitest tests for valid snapshot, wrong principal, denied invocation, malformed response, empty personal usage, cutoff filtering, duplicate reconciliation, and `/usage` display; TypeScript checks in T5.
   - Done when: all three Pi surfaces use only a validated personal CUR baseline plus later local records, with no account-wide Cost Explorer path remaining.
   - If blocked: retain honest local-only reporting and report the AWS contract blocker; do not restore the account baseline.
-  - Evidence: Not started.
+  - Evidence: Completed in the task worktrees; see current handoff and validation record.
 
-- [ ] **T4 — Document operation and recovery clearly**
+- [x] **T4 — Document operation and recovery clearly**
   - Depends on: T2 and T3 interface decisions.
   - Inputs/files: `CHANGELOG.md`, `pi/README.md`, `pi/profiles/default/docs/bedrock.md`, and relevant `gitlab-helm` Bedrock operator documentation.
   - Do:
@@ -178,9 +178,9 @@ The exact Lambda event envelope and CLI payload are routine implementation detai
     - Document that deployment and `/reload` are separate operator actions.
   - Verify: review commands and filenames against implemented code; no secrets, account totals, or unsupported guarantees in examples.
   - Done when: a fresh operator can reconcile, verify the principal shown, understand delayed data, and diagnose denied/unavailable results.
-  - Evidence: Not started.
+  - Evidence: Completed in the task worktrees; see current handoff and validation record.
 
-- [ ] **T5 — Run bounded cross-repository validation and prepare integration**
+- [x] **T5 — Run bounded cross-repository validation and prepare integration**
   - Depends on: T2-T4.
   - Inputs/files: both task worktrees and their repository instructions.
   - Do:
@@ -190,13 +190,13 @@ The exact Lambda event envelope and CLI payload are routine implementation detai
   - Verify: commands under Agreed validation and finish.
   - Done when: both local target branches contain focused commits, tests pass, the coordinating plan remains active pending deployment, and unrelated work is untouched.
   - If blocked: retain worktrees and report the exact failed check or integration conflict.
-  - Evidence: Not started.
+  - Evidence: Completed in the task worktrees; see current handoff and validation record.
 
 ### Separate phase: deterministic commit-whitespace repair
 
 This phase is intentionally separate from Bedrock reconciliation. It addresses the observed `/commit` ceremony failure without making formatting changes part of the billing contract or blocking T1-T5.
 
-- [ ] **T6 — Add narrow deterministic whitespace repair to `/commit`**
+- [x] **T6 — Add narrow deterministic whitespace repair to `/commit`**
   - Depends on: none; execute after T5 when following this plan so Bedrock integration remains focused.
   - Inputs/files: `pi/profiles/default/commands/commit/reviewer.md`, `pi/profiles/default/docs/commit.md`, a proposed repository-owned Node utility under `pi/profiles/default/commands/commit/`, and relevant commit-workflow tests.
   - Do:
@@ -206,7 +206,7 @@ This phase is intentionally separate from Bedrock reconciliation. It addresses t
     - Rerun `git diff --check`, then continue normal review, staging, hooks, and commit. Keep substantive failures fatal and do not invoke Prettier or add a third-party package solely for whitespace cleanup.
   - Verify: focused utility tests cover LF, CRLF, no-final-newline, tabs/spaces, unchanged clean files, and binary rejection; commit-workflow tests prove repair-before-stage and failure on unresolved `git diff --check` output.
   - Done when: the previously observed trailing-whitespace case is repaired without operator intervention or unrelated formatting, while unresolved whitespace and ordinary Git/hook failures remain visible.
-  - Evidence: Not started. The immediate trailing space in `pi/profiles/default/tests/bedrock-reporting.test.ts` was removed manually so the current `/commit` can run; this is not implementation evidence for T6.
+  - Evidence: Added the byte-preserving repository utility and focused LF/CRLF/no-final-newline/clean/binary tests. The immediate trailing space in `pi/profiles/default/tests/bedrock-reporting.test.ts` was removed manually so the current `/commit` can run; this is not implementation evidence for T6.
 
 - [ ] **T7 — Deploy and verify the personal snapshot end to end**
   - Depends on: T5 and explicit user deployment authorization. T6 is independent and does not block deployment.
@@ -237,11 +237,11 @@ This phase is intentionally separate from Bedrock reconciliation. It addresses t
 
 ## Current handoff
 
-- Status: draft; planning complete enough to begin T1, but implementation and deployment are not authorized by this request.
-- Completed work: investigation established the correct CUR-based attribution source, current `mike.glenn` identity, direct payer-role denial, absent expected Lambda, and deletion of the wrong account-wide baseline.
-- Next: T1, in isolated worktrees, resolve the live Lambda/state difference and freeze the secure caller/principal contract.
-- Blockers/open decisions: the exact live workload-side function/interface and principal-binding mechanism must be resolved by T1; AWS deployment remains unauthorized.
-- Verification limits: source inspection proves the existing alert attribution design, not a currently callable personal snapshot path. No live personal CUR snapshot has been retrieved.
+- Status: active; T1-T6 implementation and local validation completed. T7 remains blocked by the explicit deployment authorization boundary.
+- Completed work: read-only inspection found live `ccb-per-user-cost-alert`, froze a no-requested-principal contract bound to `mike.glenn` by Lambda resource permission and environment, implemented the side-effect-free snapshot action, replaced Pi Cost Explorer reconciliation, documented operation, and added deterministic commit whitespace repair.
+- Next: obtain explicit deployment authorization for T7, apply only the reviewed Lambda change and invocation permission, then perform the bounded live reconciliation checks.
+- Blockers/open decisions: AWS deployment remains unauthorized. The full plan also exposed unrelated notifier archive hash updates; deploy only the targeted personal-usage resources or first eliminate that unrelated plan noise.
+- Verification limits: 27 Lambda tests, Ruff, Terraform formatting/validation, 23 focused Pi tests, both TypeScript checks, and both smoke scripts pass. A targeted full `just plan bedrock` showed the intended Lambda update and Mike-only permission plus unrelated notifier archive hash changes. No live personal CUR snapshot has been retrieved because deployment is unauthorized.
 
 ## Completion and archive
 

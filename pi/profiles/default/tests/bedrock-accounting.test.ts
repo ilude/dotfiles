@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendRecord, formatStatus, formatUsage, makeRecord, readRecords, summarize, writeBaseline } from "../lib/bedrock/ledger.ts";
-import { costExplorerQuery, costExplorerServiceQuery, parseBedrockServices, parseCostExplorerBaseline } from "../lib/bedrock/cost-explorer.ts";
+import { parseCallerArn, parsePersonalSnapshot, personalSnapshotQuery } from "../lib/bedrock/personal-snapshot.ts";
 import { estimateUsage } from "../lib/bedrock/pricing.ts";
 
 const dirs: string[] = [];
@@ -26,16 +26,15 @@ describe("Bedrock accounting", () => {
 		writeFileSync(join(dir, "operator-footer-usage.json"), JSON.stringify({ [records[0].month]: 1.25 }));
 		const summary = await summarize(records[0].month); expect(summary.records).toHaveLength(3); expect(summary.unpriced).toBe(3); expect(summary.baseline).toBe(1.25); expect(formatStatus(summary)).toContain("unpriced");
 	});
-	it("uses an AWS snapshot as the baseline and counts only later local records", async () => {
-		temp(); const capturedAt = new Date(); const before = makeRecord({ timestamp: capturedAt.getTime() - 1, provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", usage: { input: 100 } }); const after = makeRecord({ timestamp: capturedAt.getTime() + 1, provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", usage: { input: 200 } });
+	it("uses a matching personal CUR snapshot and counts only later local records", async () => {
+		temp(); const cutoff = new Date(); const before = makeRecord({ timestamp: cutoff.getTime() - 1, provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", usage: { input: 100 } }); const after = makeRecord({ timestamp: cutoff.getTime() + 1, provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", usage: { input: 200 } });
 		await appendRecord(before); await appendRecord(after);
-		const services = parseBedrockServices(JSON.stringify({ DimensionValues: [{ Value: "OpenAI GPT-5.6 Sol (Amazon Bedrock Edition)" }] }));
-		expect(costExplorerServiceQuery(capturedAt, "billing").args).toContain("get-dimension-values");
-		const query = costExplorerQuery(services, capturedAt, "billing");
-		expect(query.args).toContain("billing");
-		const baseline = parseCostExplorerBaseline(JSON.stringify({ ResultsByTime: [{ Total: { UnblendedCost: { Amount: "2.50", Unit: "USD" } } }] }), query);
+		const caller = parseCallerArn(JSON.stringify({ Arn: "arn:aws:iam::058264305403:user/mike.glenn" }));
+		expect(personalSnapshotQuery("billing").callerArgs).toContain("billing");
+		const baseline = parsePersonalSnapshot(JSON.stringify({ schemaVersion: 1, billingMonth: after.month, principal: caller, displayName: "mike.glenn", amount: 2.5, models: [{ name: "Claude", amount: 2.5 }], source: "payer-cur-2-athena", generatedAt: cutoff.toISOString(), latestUsageAt: cutoff.toISOString() }), caller, cutoff.toISOString());
 		await writeBaseline(baseline);
 		const summary = await summarize(baseline.month); expect(summary.baseline).toBe(2.5); expect(summary.records.map(record => record.id)).toEqual([after.id]);
-		expect(formatUsage(summary)).toContain("AWS Cost Explorer baseline through");
+		expect(formatUsage(summary)).toContain("Personal AWS CUR baseline for mike.glenn");
+		expect(() => parsePersonalSnapshot(JSON.stringify({ ...baseline, billingMonth: baseline.month, principal: "arn:aws:iam::058264305403:user/other" }), caller, cutoff.toISOString())).toThrow();
 	});
 });
