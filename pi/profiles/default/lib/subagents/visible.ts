@@ -68,7 +68,11 @@ export class VisibleChild extends RpcChild {
    if(!Array.isArray(tools)||JSON.stringify([...tools].sort())!==JSON.stringify([...this.spec.definition.tools].sort())){this.fail("Visible child tool ceiling mismatch");throw new Error("Tool ceiling mismatch")}
    this.record.readyCount=(this.record.readyCount??0)+1;this.appReady=true;this.record.processState="running";if(this.startup)clearTimeout(this.startup);return{accepted:true};
   }
-  if(message.type==="app-poll")return{commands:this.record.userOwned?this.commands.filter(c=>c.type==="handback"||c.type==="intervene"):this.commands};
+  if(message.type==="app-poll"){
+   const progress=message.payload as {phase?:unknown;toolName?:unknown}|undefined;
+   if(this.record.status!=="settled"&&(progress?.phase==="model"||progress?.phase==="tool"))this.activity(progress.phase,typeof progress.toolName==="string"?progress.toolName.slice(0,128):undefined);
+   return{commands:this.record.userOwned?this.commands.filter(c=>c.type==="handback"||c.type==="intervene"):this.commands};
+  }
   if(message.type==="app-ack"){this.commands=this.commands.filter(c=>c.id!==message.payload);return{accepted:true}}
   if(message.type==="intervene"){
    if(this.forceStop)throw new Error("Child cancellation is already committed");

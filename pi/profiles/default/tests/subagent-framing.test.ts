@@ -20,6 +20,7 @@ describe("subagent LF framing", () => {
   });
   it("rejects oversized, blank, malformed and incomplete frames", () => {
     expect(() => new JsonLines(() => {}, 2).push(Buffer.from('123'))).toThrow(/limit/);
+    expect(() => new JsonLines(() => {}, 256 * 1024).push(Buffer.from(JSON.stringify({ type: 'native-event', payload: 'x'.repeat(300000) }) + '\n'))).toThrow(/limit/);
     expect(() => new JsonLines(() => {}).push(Buffer.from('\n'))).toThrow(/Empty/);
     expect(() => new JsonLines(() => {}).push(Buffer.from('bad\n'))).toThrow();
     const parser = new JsonLines(() => {});

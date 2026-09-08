@@ -8,31 +8,114 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { childLaunch } from "./launch.ts";
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 export type Outcome = "complete" | "partial" | "blocked" | "failed" | "cancelled";
-export interface ChildRecord { id: string; agent: string; origin: string; surface: "headless" | "visible"; status: "running" | "waiting" | "settled"; outcome?: Outcome; result?: string; error?: string; sessionFile?: string; retained: boolean; parentId?: string; userOwned: boolean; process?: ChildProcessWithoutNullStreams; paneId?: string; createdAt: string; updatedAt: string; turns: number; readyCount?: number; processState: "starting" | "running" | "exited"; paneState?: "open" | "closed" }
+export type Phase = "starting" | "model" | "tool" | "waiting-parent" | "waiting-user" | "waiting-children" | "cleanup" | "settled";
+export interface ChildRecord {
+  id: string; agent: string; origin: string; surface: "headless" | "visible";
+  status: "running" | "waiting" | "settled"; outcome?: Outcome; result?: string; error?: string;
+  sessionFile?: string; retained: boolean; parentId?: string; userOwned: boolean;
+  process?: ChildProcessWithoutNullStreams; paneId?: string; createdAt: string; updatedAt: string;
+  turns: number; readyCount?: number; processState: "starting" | "running" | "exited";
+  phase?: Phase; phaseStartedAt?: string; assignmentStartedAt?: string; lastActivityAt?: string; lastContactAt?: string;
+  toolName?: string; transportState?: "starting" | "connected" | "closed" | "failed";
+  waitState?: "attached" | "detached" | "background"; notice?: string; paneState?: "open" | "closed";
+}
 export interface LaunchSpec { definition: AgentDefinition; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible" }
 const LIMIT = 24_000;
+// Native agent_end contains all messages for the assignment, not just its final text.
+// Keep authenticated application messages at their existing 256 KiB bound; RPC gets a
+// separate finite allowance for native aggregate/image events. Final text stays 24k.
+export const RPC_FRAME_LIMIT = 16 * 1024 * 1024;
 function text(message: any): string { return Array.isArray(message?.content) ? message.content.filter((x:any)=>x?.type==="text").map((x:any)=>x.text).join("\n") : ""; }
 export class RpcChild {
-  readonly record: ChildRecord; private pending = new Map<string, (r:any)=>void>(); protected settled?: ()=>void; protected last = "";
+  readonly record: ChildRecord;
+  private pending = new Map<string, (r:any)=>void>();
+  protected settled?: ()=>void;
+  protected last = "";
   onUpdate?: (record: ChildRecord) => void;
+  onProgress?: (record: ChildRecord) => void;
+  hasOutstandingChildren?: () => boolean;
+  private waiters = new Set<() => void>();
   private processClosed?: Promise<void>;
   private uiRequest?:{id:string;method:string;title?:string;message?:string;options?:string[];prefill?:string};
   private question?: { id: string; message: string; answer?: string };
   protected spec: LaunchSpec; protected profileDir: string;
-  constructor(spec: LaunchSpec, childExtension: string, profileDir: string) { this.spec = spec; void childExtension; this.profileDir = profileDir; const now = new Date().toISOString(); this.record = { id: randomUUID(), agent: spec.definition.name, origin: spec.origin, surface: spec.surface, status: "running", retained: spec.retained, parentId: spec.parentId, userOwned: false, processState: "starting", turns: 0, createdAt: now, updatedAt: now }; }
+  constructor(spec: LaunchSpec, childExtension: string, profileDir: string) {
+    this.spec = spec; void childExtension; this.profileDir = profileDir;
+    const now = new Date().toISOString();
+    this.record = { id: randomUUID(), agent: spec.definition.name, origin: spec.origin, surface: spec.surface,
+      status: "running", retained: spec.retained, parentId: spec.parentId, userOwned: false,
+      processState: "starting", transportState: "starting", phase: "starting", phaseStartedAt: now,
+      assignmentStartedAt: now, turns: 0, createdAt: now, updatedAt: now };
+  }
+  contact() { this.record.lastContactAt = new Date().toISOString(); if(this.record.transportState!=="failed")this.record.transportState="connected"; }
+  activity(phase: Phase, toolName?: string) {
+    const now = new Date().toISOString();
+    if (this.record.phase !== phase || this.record.toolName !== toolName) this.record.phaseStartedAt = now;
+    this.record.phase = phase; this.record.toolName = toolName;
+    this.record.lastActivityAt = now; this.record.updatedAt = now;
+    this.onProgress?.(this.snapshot());
+  }
+  private rpcActivity(e:any) {
+    this.contact();
+    if(this.record.status === "settled") return;
+    if(e.type === "tool_execution_start" || e.type === "tool_execution_update") this.activity("tool", typeof e.toolName === "string" ? e.toolName : this.record.toolName);
+    else if(e.type === "tool_execution_end" || e.type === "agent_start" || e.type === "turn_start") this.activity("model");
+    else if(e.type === "message_update" || (e.type === "message_start" && e.message?.role === "assistant")) this.activity("model");
+  }
   start(endpoint?: ChildEndpoint): Promise<ChildRecord> {
-    const d=this.spec.definition, config=childLaunch(this.spec,this.record.id,this.profileDir,endpoint),args=config.args;
-    const env={...process.env,...config.env};
+    const config=childLaunch(this.spec,this.record.id,this.profileDir,endpoint);
     const manifestPath=join(this.profileDir,"node_modules/@earendil-works/pi-coding-agent/package.json");
     const prefix=process.env.PI_SUBAGENT_BIN_ARGS?JSON.parse(process.env.PI_SUBAGENT_BIN_ARGS):[resolve(dirname(manifestPath),JSON.parse(readFileSync(manifestPath,"utf8")).bin.pi)];
-    const p=spawn(process.env.PI_SUBAGENT_BIN||process.execPath,[...prefix,...args],{cwd:this.spec.cwd,env,shell:false,detached:process.platform!=="win32",windowsHide:true,stdio:["pipe","pipe","pipe"]}); this.record.process=p;
-    p.once("spawn",()=>{this.record.processState="running"});
-    this.processClosed=new Promise(done=>p.once("close",()=>{this.record.processState="exited";done()}));
-    const frames = new JsonLines((value)=>{const e = value as any; if(e.type==="response"&&e.id)this.pending.get(e.id)?.(e); if(e.type==="message_end"&&e.message?.role==="assistant"){if(e.message.stopReason==="error"||e.message.stopReason==="aborted")this.fail(e.message.errorMessage||`Child model ${e.message.stopReason}`);else this.last=text(e.message)} if(e.type==="agent_settled")this.finishFromTurn(); if(e.type==="extension_ui_request"&&["input","confirm","select","editor"].includes(e.method)){this.uiRequest=e;this.record.status="waiting";this.record.result=`User-only ${e.method}: ${e.title||e.message||"input required"}. Use escalate to show the originating user the actual prompt.`;this.record.updatedAt=new Date().toISOString();this.done();}});
-    p.stdout.on("data", (chunk: Buffer) => { try { frames.push(chunk); } catch (error) { this.fail(`Invalid child RPC: ${String(error)}`); p.kill(); } });
-    p.stdout.on("end", () => { try { frames.end(); } catch (error) { this.fail(String(error)); } });
-    let stderr="";p.stderr.on("data",c=>stderr=(stderr+c).slice(-4000)); p.on("error",e=>this.fail(e.message)); p.on("exit",code=>{if(this.record.status!=="settled")this.fail(code===0?"Child exited without reporting completion":stderr||`Child exited ${code}`);});
-    this.send("prompt",{message:`${d.prompt}\n\nAssignment:\n${this.spec.instructions}\n\nConclude with a non-empty result. Use subagent_parent to report partial or blocked work when needed.`}); return new Promise(r=>this.settled=()=>r(this.snapshot()));
+    const p=spawn(process.env.PI_SUBAGENT_BIN||process.execPath,[...prefix,...config.args],{cwd:this.spec.cwd,env:{...process.env,...config.env},shell:false,detached:process.platform!=="win32",windowsHide:true,stdio:["pipe","pipe","pipe"]});
+    this.record.process=p;
+    const waiting = new Promise<ChildRecord>(r=>{this.settled=()=>r(this.snapshot())});
+    p.once("spawn",()=>{this.record.processState="running";this.onProgress?.(this.snapshot())});
+    this.processClosed=new Promise(done=>p.once("close",()=>{
+      this.record.processState="exited";
+      if(this.record.transportState!=="failed")this.record.transportState="closed";
+      for(const respond of [...this.pending.values()])respond({success:false,error:"Child process closed"});
+      this.pending.clear();done();this.onProgress?.(this.snapshot());
+    }));
+    const frames = new JsonLines(value=>{
+      const e=value as any;
+      if(!e || typeof e.type !== "string")throw new Error("Child RPC event has no type");
+      this.rpcActivity(e);
+      if(e.type==="response"&&e.id)this.pending.get(e.id)?.(e);
+      if(e.type==="message_end"&&e.message?.role==="assistant"){
+        if(e.message.stopReason==="error"||e.message.stopReason==="aborted")this.fail(e.message.errorMessage||`Child model ${e.message.stopReason}`);
+        else this.last=text(e.message).slice(0,LIMIT);
+      }
+      if(e.type==="agent_settled")void this.finishFromTurn();
+      if(e.type==="extension_ui_request"&&["input","confirm","select","editor"].includes(e.method)){
+        this.uiRequest=e;this.record.status="waiting";
+        this.record.result=`User-only ${e.method}: ${e.title||e.message||"input required"}. Use escalate to show the originating user the actual prompt.`;
+        this.activity("waiting-user");this.done();
+      }
+    },RPC_FRAME_LIMIT);
+    let invalid=false;
+    p.stdout.on("data",(chunk:Buffer)=>{if(invalid)return;try{frames.push(chunk)}catch(error){invalid=true;this.record.transportState="failed";this.fail(`Invalid child RPC: ${String(error)}`)}});
+    p.stdout.on("end",()=>{if(invalid)return;try{frames.end()}catch(error){this.record.transportState="failed";this.fail(String(error))}});
+    let stderr="";p.stderr.on("data",c=>stderr=(stderr+c).slice(-4000));
+    p.on("error",e=>this.fail(e.message));
+    p.stdin.on("error",e=>this.fail(`Child RPC input failed: ${e.message}`));
+    p.on("exit",code=>{if(this.record.status!=="settled")this.fail(code===0?"Child exited without reporting completion":stderr||`Child exited ${code}`)});
+    // Observe authoritative preflight rejection. No assignment timeout: a silent child
+    // stays inspectable/cancellable with honest activity age rather than invented failure.
+    const id=randomUUID();
+    this.pending.set(id,e=>{this.pending.delete(id);if(!e.success)this.fail(`Initial prompt rejected: ${e.error||"unknown rejection"}`)});
+    this.send("prompt",{id,message:`${this.spec.definition.prompt}\n\nAssignment:\n${this.spec.instructions}\n\nConclude with a non-empty result. Use subagent_parent to report partial or blocked work when needed.`});
+    return waiting;
+  }
+  wait(signal?:AbortSignal, toolResult=true):Promise<ChildRecord> {
+    if(this.record.status!=="running" && this.record.phase!=="cleanup")return Promise.resolve(this.snapshot());
+    return new Promise(resolve=>{
+      const finish=()=>{this.waiters.delete(finish);signal?.removeEventListener("abort",detach);resolve(this.snapshot())};
+      const detach=()=>{this.record.waitState="detached";this.record.notice="Stopped waiting; child continues running. Inspect, wait again, or cancel explicitly.";this.onProgress?.(this.snapshot());finish()};
+      this.waiters.add(finish);
+      if(toolResult)this.record.waitState="attached";
+      this.record.notice=undefined;this.onProgress?.(this.snapshot());
+      if(signal?.aborted)detach();else signal?.addEventListener("abort",detach,{once:true});
+    });
   }
   async command(type:string,data:Record<string,unknown>={}):Promise<any>{const id=randomUUID();const response=new Promise<any>((resolve,reject)=>{const t=setTimeout(()=>{this.pending.delete(id);reject(new Error(`RPC ${type} timed out`))},10000);this.pending.set(id,r=>{clearTimeout(t);this.pending.delete(id);r.success?resolve(r.data):reject(new Error(r.error||`RPC ${type} failed`))})});this.send(type,{id,...data});return response;}
   async message(value:string){
@@ -40,8 +123,9 @@ export class RpcChild {
     if (this.record.userOwned) throw new Error("Direct user intervention suspends parent steering");
     if (this.record.status !== "settled") throw new Error("Child is already working or waiting for an answer");
     if (!value.trim()) throw new Error("Message must be nonblank");
-    this.last="";this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;
-    this.record.status="running";await this.command("prompt",{message:value});
+    this.last="";this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
+    this.record.assignmentStartedAt=new Date().toISOString();this.record.status="running";this.activity("starting");
+    try{await this.command("prompt",{message:value})}catch(error){this.fail(`Follow-up prompt rejected: ${String(error)}`);throw error}
   }
   async answer(value:string){
     if(this.record.userOwned)throw new Error("Parent steering is suspended during user intervention");
@@ -55,13 +139,13 @@ export class RpcChild {
     this.record.userOwned=true;
     try{
       const title=request.title||"Subagent input";
-      let response:Record<string,unknown>={id:request.id};
+      const response:Record<string,unknown>={id:request.id};
       if(request.method==="confirm")response.confirmed=await ctx.ui.confirm(title,request.message||"");
       else if(request.method==="select")response.value=await ctx.ui.select(title,request.options||[]);
       else if(request.method==="editor")response.value=await ctx.ui.editor(title,request.prefill||"");
       else response.value=await ctx.ui.input(title,request.message);
       if(response.value===undefined&&response.confirmed===undefined)response.cancelled=true;
-      this.uiRequest=undefined;this.record.status="running";this.record.result=undefined;this.send("extension_ui_response",response);
+      this.uiRequest=undefined;this.record.status="running";this.record.result=undefined;this.activity("model");this.send("extension_ui_response",response);
     }finally{this.record.userOwned=false}
   }
   parentMessage(message: ApplicationMessage): unknown {
@@ -71,33 +155,24 @@ export class RpcChild {
       if (typeof message.payload !== "string" || !message.payload.trim()) throw new Error("Question must be nonblank");
       if (this.question) throw new Error("A question is already pending");
       this.question={id:randomUUID(),message:message.payload.slice(0,LIMIT)};
-      this.record.status="waiting";
-      this.record.result=this.question.message;
-      this.done();
-      return {id:this.question.id};
+      this.record.status="waiting";this.record.result=this.question.message;this.activity("waiting-parent");this.done();return {id:this.question.id};
     }
     if (message.type === "poll-answer") {
       if (!this.question || message.payload !== this.question.id) throw new Error("Unknown question");
       if (this.question.answer === undefined) return {pending:true};
-      const answer=this.question.answer;
-      this.question=undefined;
-      this.record.status="running";
-      this.record.result=undefined;
-      return {answer};
+      const answer=this.question.answer;this.question=undefined;this.record.status="running";this.record.result=undefined;this.activity("model");return {answer};
     }
     if (message.type === "partial" || message.type === "blocked") {
       if (typeof message.payload !== "string" || !message.payload.trim()) throw new Error("Result must be nonblank");
-      this.record.outcome=message.type;
-      this.record.result=message.payload.slice(0,LIMIT);
-      return {accepted:true};
+      this.record.outcome=message.type;this.record.result=message.payload.slice(0,LIMIT);return {accepted:true};
     }
     throw new Error(`Unsupported parent message: ${message.type}`);
   }
   async cancel(){
     const terminal=this.record.status==="settled";
-    if(!terminal){this.record.outcome="cancelled";this.record.status="settled";try{await this.command("abort")}catch{}}
-    await this.stopProcess();
-    if(!terminal)this.done();
+    if(!terminal){this.record.outcome="cancelled";this.record.status="settled";this.activity("cleanup");try{await this.command("abort")}catch{/* Owned termination below is authoritative. */}}
+    try{await this.stopProcess()}catch(error){this.record.error=`Cancellation cleanup failed: ${String(error)}`}
+    if(!terminal)this.done();else this.onProgress?.(this.snapshot());
   }
   protected alive(){return this.record.process?.exitCode===null&&this.record.process?.signalCode===null}
   protected async stopProcess(){
@@ -111,10 +186,34 @@ export class RpcChild {
     try{await Promise.race([this.processClosed,new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error("Owned child process did not settle after termination")),5000)})])}
     finally{if(timer)clearTimeout(timer)}
   }
-  async finish(){if(this.record.status!=="settled")throw new Error("Cannot finish a conversation while work is active");if(this.record.userOwned)throw new Error("Return user intervention before finishing");await this.stopProcess();this.record.retained=false;}
+  async finish(){if(this.record.status!=="settled")throw new Error("Cannot finish a conversation while work is active");if(this.record.userOwned)throw new Error("Return user intervention before finishing");await this.stopProcess();this.record.retained=false;this.onProgress?.(this.snapshot());}
   snapshot():ChildRecord{const {process:_,...r}=this.record;return {...r};}
-  private send(type:string,data:Record<string,unknown>){this.record.process?.stdin.write(JSON.stringify({type,...data})+"\n");}
-  protected async finishFromTurn(){if(this.record.status!=="running")return;this.record.turns++;if(!this.last.trim()&&!this.record.result?.trim())return this.fail("Blank output is not assignment completion");this.record.result=((this.record.outcome === "partial" || this.record.outcome === "blocked") ? this.record.result||this.last : this.last||this.record.result||"").slice(0,LIMIT);this.record.outcome=this.record.outcome??"complete";this.record.status="settled";this.record.updatedAt=new Date().toISOString();if(!this.record.retained&&!this.record.userOwned){try{await this.stopProcess()}catch(error){this.record.error=String(error)}}this.done();}
-  protected fail(error:string){if(this.record.status==="settled")return;this.record.error=error;this.record.outcome="failed";this.record.status="settled";this.record.updatedAt=new Date().toISOString();void this.stopProcess().catch(cleanup=>{this.record.error+=`; ${String(cleanup)}`}).finally(()=>this.done());}
-  protected done(){this.settled?.();this.settled=undefined;this.onUpdate?.(this.snapshot());}
+  private send(type:string,data:Record<string,unknown>){this.record.process?.stdin.write(JSON.stringify({type,...data})+"\n")}
+  protected async finishFromTurn(){
+    if(this.record.status!=="running")return;
+    this.record.turns++;
+    if(this.hasOutstandingChildren?.()){
+      this.record.notice="Waiting for commissioned children; their outcomes return automatically.";
+      this.activity("waiting-children");return;
+    }
+    if(!this.last.trim()&&!this.record.result?.trim())return this.fail("Blank output is not assignment completion");
+    this.record.result=((this.record.outcome === "partial" || this.record.outcome === "blocked") ? this.record.result||this.last : this.last||this.record.result||"").slice(0,LIMIT);
+    this.record.outcome=this.record.outcome??"complete";this.record.status="settled";this.activity("cleanup");
+    if(!this.record.retained&&!this.record.userOwned){try{await this.stopProcess()}catch(error){this.record.error=`Cleanup failed: ${String(error)}`}}
+    this.done();
+  }
+  launchFailed(error:unknown){this.fail(`Child launch failed: ${String(error)}`)}
+  protected fail(error:string){
+    if(this.record.status==="settled")return;
+    this.record.error=error;this.record.outcome="failed";this.record.status="settled";this.activity("cleanup");
+    void this.stopProcess().catch(cleanup=>{this.record.error+=`; cleanup failed: ${String(cleanup)}`}).finally(()=>this.done());
+  }
+  protected done(){
+    if(this.record.status==="settled"){this.record.phase="settled";this.record.toolName=undefined;this.record.notice=undefined}
+    this.record.updatedAt=new Date().toISOString();
+    this.settled?.();this.settled=undefined;
+    // Notify runtime before resolving waits so foreground delivery stays a tool result.
+    this.onUpdate?.(this.snapshot());
+    for(const resolve of [...this.waiters])resolve();
+  }
 }
