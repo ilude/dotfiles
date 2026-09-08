@@ -2,6 +2,7 @@ import { writeFileSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { requestParent, type ChildEndpoint } from "./transport.ts";
 import { outcomeText } from "./status.ts";
+import { presentationDetails } from "./presentation.ts";
 import type { Delivery } from "./runtime.ts";
 interface State { generation:number;seen:Set<string>;ctx?:ExtensionContext;tick?:()=>Promise<void>;timer?:ReturnType<typeof setInterval>;busy:boolean;userOwned:boolean;parentGone:boolean;turn:number;last:string;error?:string;prompt:boolean;unbind?:()=>void;activity?:{phase:"model"|"tool";toolName?:string};delivered?:Set<string>;queuedDelivery?:string }
 const key=Symbol.for("dotfiles.pi.subagent.surface.v1");
@@ -19,7 +20,7 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   }
   if(!state.ctx.isIdle()||state.queuedDelivery===delivery.deliveryId)return;
   state.queuedDelivery=delivery.deliveryId;
-  pi.sendMessage({customType:"subagent-result",content:outcomeText(delivery),display:true,details:{deliveryId:delivery.deliveryId,parentId:endpoint.child}},{triggerTurn:true,deliverAs:"followUp"});
+  pi.sendMessage({customType:"subagent-result",content:outcomeText(delivery),display:true,details:{deliveryId:delivery.deliveryId,parentId:endpoint.child,...presentationDetails(delivery)}},{triggerTurn:true,deliverAs:"followUp"});
  };
  const mark=(owned:boolean)=>{
   state.userOwned=owned;

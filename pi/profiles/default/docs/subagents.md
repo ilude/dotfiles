@@ -2,9 +2,11 @@
 
 `subagent` launches a bounded specialist assignment. Omit `surface` for normal delegation: children are visible inside Herdr by default and headless elsewhere; coordinator children inherit their coordinator's surface. Inside Herdr, select `surface: "headless"` only when the user requests it, not merely because work is parallel, unattended, or in a worktree. This is tool guidance, not a runtime authorization check. Visible launch never falls back to headless.
 
-## Agreed UX changes (pending implementation)
+## Agreed UX changes (implemented with bounded validation)
 
-This section records operator decisions for the next subagent UX update. Consult it before proposing lifecycle or layout changes. It is not a description of implemented behavior.
+This section records the implemented operator decisions for the subagent UX update. The focused unit/component checks and the opt-in isolated Herdr geometry test pass with the default profile. `PI_SUBAGENT_UX_LIVE=1 pnpm test subagent-ux-live.test.ts` uses a named scratch Herdr session, isolated config, disposable workspaces, inert plugin processes, and exact cleanup; it does not touch the shared server or production plugin links. The test verifies the production layout adapter's 1/4/5/8/9/17 slot topology, server-side rectangles for the focused main tab, pane titles, stable caller identity, and unchanged unrelated focus. The adapter test does not prove physical keyboard or attached-client focus behavior.
+
+A bundled-Pi visible launch/follow-up/completion case is present behind the additional `PI_SUBAGENT_UX_LIVE_REAL=1` opt-in. With the worktree's local ignored auth/model store populated, `PI_SUBAGENT_UX_LIVE=1 PI_SUBAGENT_UX_LIVE_REAL=1 pnpm test subagent-ux-live.test.ts -t 'bundled Pi'` passed (1 test, 1 geometry test skipped). It checks the human title, metadata, retained identity, follow-up result, completion, exact pane cleanup, and preservation of unrelated focus. `SubagentLayout` obtains focus from the focused workspace, tab, and pane list records, not caller-context `pane current`; the regression test covers that distinction.
 
 - Give each child a familiar human name from a predefined pool, stable across follow-ups and not reused within the orchestrator session. Keep UUIDs internally. Use the name consistently in tool-call presentation, pane titles, and controls; show the role and assignment separately.
 - Improve the subagent tool-call transcript, not the `/subagents` inspector: resolved launch configuration, assignment preview, readable lifecycle/result/error information, timing, and expanded details. Background launch acknowledgement is not child completion; detached waits must say the child continues.
@@ -13,7 +15,7 @@ This section records operator decisions for the next subagent UX update. Consult
 
 **Source correction:** The older cancelled `.specs/archive/herdr-visible-subagents/plan.md` prescribed failed-pane retention and zoom-deferred cleanup. Those rules were superseded by the completed default-subagents plan. An earlier version of this section incorrectly promoted the older rules; that was an assistant retrieval error, not a user-requested lifecycle change.
 
-Implementation plan: `.specs/subagent-transcript-and-pane-ux/plan.md` (repository-root-relative; move this reference to its archive at closeout).
+Implementation plan: `.specs/archive/subagent-transcript-and-pane-ux/plan.md` (repository-root-relative; move this reference to its archive at closeout).
 
 ## Definitions and authority
 
@@ -95,3 +97,5 @@ pnpm run check:runtime
 `PI_HERDR_FOCUS_LIVE=1 pnpm test herdr-background-focus.test.ts` checks plugin-split preflight, creation and cleanup while another tab or workspace is focused, using an isolated server and inert process. This verifies server-side focus state, not an attached client's physical focus behavior.
 
 `PI_SUBAGENT_LIVE=1 pnpm test subagent-live.test.ts` enables bounded headless model acceptance. `PI_SUBAGENT_HERDR_LIVE=1 pnpm test subagent-herdr-live.test.ts` creates an isolated Herdr server/config/plugin registry and disposable Git repository, tests both surfaces, visible Team Lead/council conversations, reload, intervention, parent loss, and exact cleanup, then removes its resources. These tests require installed Herdr and working profile model credentials. They do not relink the production plugin or prove physical keyboard experience, notifications, or model reasoning quality.
+
+`PI_SUBAGENT_UX_LIVE=1 pnpm test subagent-ux-live.test.ts` runs the bounded inert geometry acceptance. Add `PI_SUBAGENT_UX_LIVE_REAL=1` to run the bundled-Pi model case; its passing result is recorded above.

@@ -10,16 +10,17 @@ import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 export type Outcome = "complete" | "partial" | "blocked" | "failed" | "cancelled";
 export type Phase = "starting" | "model" | "tool" | "waiting-parent" | "waiting-user" | "waiting-children" | "cleanup" | "settled";
 export interface ChildRecord {
-  id: string; agent: string; origin: string; surface: "headless" | "visible";
+  id: string; agent: string; displayName?: string; assignment?: string; model?: string; effort?: AgentEffort; cwd?: string; skills?: string[];
+  origin: string; surface: "headless" | "visible";
   status: "running" | "waiting" | "settled"; outcome?: Outcome; result?: string; error?: string;
   sessionFile?: string; retained: boolean; parentId?: string; userOwned: boolean;
   process?: ChildProcessWithoutNullStreams; paneId?: string; createdAt: string; updatedAt: string;
   turns: number; readyCount?: number; processState: "starting" | "running" | "exited";
-  phase?: Phase; phaseStartedAt?: string; assignmentStartedAt?: string; lastActivityAt?: string; lastContactAt?: string;
+  phase?: Phase; phaseStartedAt?: string; assignmentStartedAt?: string; assignmentFinishedAt?: string; lastActivityAt?: string; lastContactAt?: string;
   toolName?: string; transportState?: "starting" | "connected" | "closed" | "failed";
   waitState?: "attached" | "detached" | "background"; notice?: string; paneState?: "open" | "closed";
 }
-export interface LaunchSpec { definition: AgentDefinition; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible" }
+export interface LaunchSpec { definition: AgentDefinition; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible" }
 const LIMIT = 24_000;
 // Native agent_end contains all messages for the assignment, not just its final text.
 // Keep authenticated application messages at their existing 256 KiB bound; RPC gets a
@@ -42,10 +43,11 @@ export class RpcChild {
   constructor(spec: LaunchSpec, childExtension: string, profileDir: string) {
     this.spec = spec; void childExtension; this.profileDir = profileDir;
     const now = new Date().toISOString();
-    this.record = { id: randomUUID(), agent: spec.definition.name, origin: spec.origin, surface: spec.surface,
-      status: "running", retained: spec.retained, parentId: spec.parentId, userOwned: false,
-      processState: "starting", transportState: "starting", phase: "starting", phaseStartedAt: now,
-      assignmentStartedAt: now, turns: 0, createdAt: now, updatedAt: now };
+    this.record = { id: randomUUID(), agent: spec.definition.name, displayName: spec.displayName,
+      assignment: spec.instructions, model: spec.model, effort: spec.effort, cwd: spec.cwd, skills: [...spec.skills],
+      origin: spec.origin, surface: spec.surface, status: "running", retained: spec.retained,
+      parentId: spec.parentId, userOwned: false, processState: "starting", transportState: "starting",
+      phase: "starting", phaseStartedAt: now, assignmentStartedAt: now, turns: 0, createdAt: now, updatedAt: now };
   }
   contact() { this.record.lastContactAt = new Date().toISOString(); if(this.record.transportState!=="failed")this.record.transportState="connected"; }
   activity(phase: Phase, toolName?: string) {
@@ -124,7 +126,8 @@ export class RpcChild {
     if (this.record.status !== "settled") throw new Error("Child is already working or waiting for an answer");
     if (!value.trim()) throw new Error("Message must be nonblank");
     this.last="";this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
-    this.record.assignmentStartedAt=new Date().toISOString();this.record.status="running";this.activity("starting");
+    this.record.assignment=value;this.record.assignmentStartedAt=new Date().toISOString();this.record.assignmentFinishedAt=undefined;
+    this.record.status="running";this.activity("starting");
     try{await this.command("prompt",{message:value})}catch(error){this.fail(`Follow-up prompt rejected: ${String(error)}`);throw error}
   }
   async answer(value:string){
@@ -187,7 +190,7 @@ export class RpcChild {
     finally{if(timer)clearTimeout(timer)}
   }
   async finish(){if(this.record.status!=="settled")throw new Error("Cannot finish a conversation while work is active");if(this.record.userOwned)throw new Error("Return user intervention before finishing");await this.stopProcess();this.record.retained=false;this.onProgress?.(this.snapshot());}
-  snapshot():ChildRecord{const {process:_,...r}=this.record;return {...r};}
+  snapshot():ChildRecord{const {process:_,skills,...r}=this.record;return skills?{...r,skills:[...skills]}:{...r};}
   private send(type:string,data:Record<string,unknown>){this.record.process?.stdin.write(JSON.stringify({type,...data})+"\n")}
   protected async finishFromTurn(){
     if(this.record.status!=="running")return;
@@ -209,7 +212,10 @@ export class RpcChild {
     void this.stopProcess().catch(cleanup=>{this.record.error+=`; cleanup failed: ${String(cleanup)}`}).finally(()=>this.done());
   }
   protected done(){
-    if(this.record.status==="settled"){this.record.phase="settled";this.record.toolName=undefined;this.record.notice=undefined}
+    if(this.record.status==="settled"){
+      this.record.assignmentFinishedAt??=new Date().toISOString();
+      this.record.phase="settled";this.record.toolName=undefined;this.record.notice=undefined
+    }
     this.record.updatedAt=new Date().toISOString();
     this.settled?.();this.settled=undefined;
     // Notify runtime before resolving waits so foreground delivery stays a tool result.

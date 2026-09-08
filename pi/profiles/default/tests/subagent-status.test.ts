@@ -10,6 +10,8 @@ it("renders inactivity separately from contact, redacts control characters and s
  const r:ChildRecord={id:"12345678-rest",agent:"probe",origin:"a",surface:"headless",status:"running",retained:false,userOwned:false,turns:0,createdAt:"2026-09-08T00:00:00Z",updatedAt:"2026-09-08T00:00:00Z",assignmentStartedAt:"2026-09-08T00:00:00Z",lastActivityAt:"2026-09-08T00:00:01Z",lastContactAt:"2026-09-08T00:02:00Z",phase:"tool",toolName:"bash",processState:"running",transportState:"connected",waitState:"detached"};
  expect(statusLines([r],Date.parse("2026-09-08T00:02:00Z")).join("\n")).toContain("activity 1m 59s ago");
  expect(statusLines([r]).join("\n")).toContain("wait detached; child continues");
+ expect(statusLines([{...r,displayName:"Clara"}]).join("\n")).toContain("Clara · probe");
+ expect(outcomeText({...r,displayName:"Clara",status:"settled",outcome:"complete",result:"answer"})).toContain("Subagent Clara · probe");
  const ended={...r,status:"settled" as const,outcome:"complete" as const,result:"answer",error:"cleanup\u001b failed"};
  expect(outcomeText(ended)).toContain("answer\nError:");expect(statusLines([ended]).join("\n")).not.toContain("\u001b");
  const many=statusLines([...Array.from({length:8},()=>r),...Array.from({length:3},()=>ended)]);

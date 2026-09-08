@@ -44,8 +44,9 @@ describe("subagent RPC lifecycle",()=>{
   expect(await instance.start()).toMatchObject({outcome:"complete",result:"first answer",error:expect.stringContaining("tree termination denied")});
  });
  it("uses a retained process for a follow-up and preserves its completed outcome on shutdown",async()=>{
-  const instance=child();const first=await instance.start();expect(first).toMatchObject({origin:"origin-a",outcome:"complete",result:"first answer"});
-  const reply=new Promise<ChildRecord>(resolve=>instance.onUpdate=resolve);await instance.message("follow-up");expect((await reply).result).toBe("second answer");
+  const instance=child();const first=await instance.start();expect(first).toMatchObject({origin:"origin-a",outcome:"complete",result:"first answer",assignment:"first",model:"openai-codex/test",effort:"low",cwd:here,skills:[],assignmentFinishedAt:expect.any(String)});
+  expect(first.displayName).toBeUndefined();
+  const reply=new Promise<ChildRecord>(resolve=>instance.onUpdate=resolve);await instance.message("follow-up");expect((await reply)).toMatchObject({assignment:"follow-up",assignmentFinishedAt:expect.any(String)});
   await instance.cancel();expect(instance.snapshot().outcome).toBe("complete");
  });
  it.each(["[blank]","[exit]"])("does not invent success from %s",async input=>{
