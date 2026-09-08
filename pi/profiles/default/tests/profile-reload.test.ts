@@ -3,13 +3,15 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ProfileReload, profileReload } from "../lib/profile-reload.ts";
+import { ProfileReload } from "../lib/profile-reload.ts";
 import registerReload from "../extensions/profile-reload.ts";
+import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
+import { requestReloadState } from "../lib/profile-reload-events.ts";
 
 let dir: string;
 let service: ProfileReload;
 beforeEach(() => { vi.useFakeTimers(); dir = mkdtempSync(join(tmpdir(), "profile-reload-")); service = new ProfileReload(); });
-afterEach(() => { service.stop(); profileReload.stop(); vi.useRealTimers(); vi.unstubAllEnvs(); rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => { service.stop(); vi.useRealTimers(); vi.unstubAllEnvs(); rmSync(dir, { recursive: true, force: true }); });
 const scope = () => ({ agentDir: dir, cwd: dir, home: dir, projectTrusted: false, projectConfigDir: ".pi" });
 
 it("detects changes at two seconds, resets the baseline and cleans up subscriptions/timers", () => {
@@ -38,11 +40,12 @@ it("registers independent session lifecycle and watches profile lib files withou
 	vi.stubEnv("PI_CODING_AGENT_DIR", dir);
 	mkdirSync(join(dir, "lib")); const file = join(dir, "lib", "example.ts"); writeFileSync(file, "before");
 	const hooks = new Map<string, (...args: any[]) => any>();
-	registerReload({ on: (name: string, hook: (...args: any[]) => any) => hooks.set(name, hook), getCommands: () => [], getAllTools: () => [] } as unknown as ExtensionAPI);
+	const events = createEventBus();
+	registerReload({ events, on: (name: string, hook: (...args: any[]) => any) => hooks.set(name, hook), getCommands: () => [], getAllTools: () => [] } as unknown as ExtensionAPI);
 	const ctx = { cwd: dir, isProjectTrusted: () => false, ui: { getAllThemes: () => [], notify: vi.fn() } };
 	await hooks.get("session_start")!({}, ctx);
 	writeFileSync(file, "after, changed"); vi.advanceTimersByTime(2000);
-	expect(profileReload.shouldReload).toBe(true);
+	expect(requestReloadState({ events })?.needed).toBe(true);
 	await hooks.get("session_shutdown")!({}, ctx); expect(vi.getTimerCount()).toBe(0);
-	await hooks.get("session_start")!({ reason: "reload" }, ctx); expect(profileReload.needed).toBe(false);
+	expect(requestReloadState({ events })).toBeUndefined();
 });

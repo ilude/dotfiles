@@ -2,7 +2,8 @@ import { ReloadMonitor, type ReloadScope } from "./reload-monitor.ts";
 
 /** Session-scoped monitoring, independent of whether a footer is installed. */
 export class ProfileReload {
-	private readonly monitor = new ReloadMonitor();
+	private readonly monitor: ReloadMonitor;
+	constructor(monitor = new ReloadMonitor()) { this.monitor = monitor; }
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private readonly listeners = new Set<() => void>();
 
@@ -15,9 +16,9 @@ export class ProfileReload {
 		return () => { this.listeners.delete(listener); };
 	}
 
-	start(scope: ReloadScope, reportError: (error: string) => void): void {
+	start(scope: ReloadScope, reportError: (error: string) => void, reset = true): void {
 		this.stop();
-		this.monitor.reset(scope);
+		if (reset) this.monitor.reset(scope);
 		let reportedError: string | undefined;
 		const check = () => {
 			const before = `${this.needed}:${this.error}`;
@@ -41,6 +42,3 @@ export class ProfileReload {
 		for (const listener of this.listeners) listener();
 	}
 }
-
-export const profileReload = new ProfileReload();
-export function isProfileReloadNeeded(): boolean { return profileReload.shouldReload; }
