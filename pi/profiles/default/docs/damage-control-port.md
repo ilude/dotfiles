@@ -1,6 +1,18 @@
 # Default Damage Control behavior contract
 
-The baseline is legacy Damage Control, with these operator-approved departures:
+## Design purpose
+
+Damage Control exists to prevent meaningful unrecoverable harm, not to block every suspicious-looking action. Routine recoverable work should proceed without approval. Judge the actual effects, target and available recovery, not merely command names, flags, unfamiliar syntax, variables, helper scripts, or whether an operation is local or remote.
+
+Intervene when there is a credible risk of losing meaningful data or uncommitted work, destroying recovery mechanisms or important system state, irreversible sensitive disclosure, or other substantial irreversible consequences. Uncertainty warrants intervention when it materially affects that risk; an analysis limitation alone is not evidence of danger. Do not require universal proof of harmlessness or turn routine maintenance into a security review.
+
+Prefer the least intrusive effective response: allow established low-risk work, use contextual judgment where consequences need interpretation, and require operator approval or block when consequential risk or an explicit retained prohibition justifies it. Known recovery matters; merely being Git-tracked or named `temp` does not prove current contents disposable. Independent user/project authorization requirements still apply.
+
+This is the operator's governing design requirement, clarified on 2026-09-08. Legacy parity is historical compatibility evidence, not the philosophical goal. The [risk and proportionality review](../../../../.specs/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md) records current mismatches and the requested `/dc scan` design context. This documentation update does not change enforcement or grant Luna authority beyond current rules; those changes require implementation. Historical decisions remain recorded rather than rewritten.
+
+## Current runtime behavior
+
+The implemented baseline is legacy Damage Control, with these operator-approved departures:
 
 - Of 335 migrated command rules, 34 use contextual Luna review, 204 require operator approval, and 97 remain blocks. The migration fixture records history; tests explicitly enumerate current authority changes rather than rewriting that history.
 - Luna may dismiss non-executing false-positive candidates and allow selected review-tier operations in an established local development environment. It cannot waive a remaining confirmed block or user-only rule. Shared/production impact, meaningful data loss, unresolved target scope, or review failure requires approval.

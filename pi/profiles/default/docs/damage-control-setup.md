@@ -1,6 +1,6 @@
 # Default Damage Control
 
-Damage Control loads with the default profile. Legacy ask/block authority and path behavior are the baseline.
+Damage Control loads with the default profile. Its [design purpose](damage-control-port.md#design-purpose) is to prevent meaningful unrecoverable harm while leaving routine recoverable work quiet. Current enforcement still uses legacy ask/block authority and path behavior with selected contextual exceptions. The [risk review](../../../../.specs/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md) distinguishes that implementation from the clarified goal; `/dc scan` and persistent script preapproval are design work, not available commands yet.
 
 ## Operator controls
 

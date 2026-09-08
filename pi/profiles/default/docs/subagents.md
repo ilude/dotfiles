@@ -1,6 +1,6 @@
 # Subagents
 
-`subagent` launches a bounded specialist assignment. Children are visible inside Herdr by default and headless elsewhere; `surface: "headless"` is an explicit override. Visible launch never falls back to headless.
+`subagent` launches a bounded specialist assignment. Omit `surface` for normal delegation: children are visible inside Herdr by default and headless elsewhere; coordinator children inherit their coordinator's surface. Inside Herdr, select `surface: "headless"` only when the user requests it, not merely because work is parallel, unattended, or in a worktree. This is tool guidance, not a runtime authorization check. Visible launch never falls back to headless.
 
 ## Definitions and authority
 

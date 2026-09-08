@@ -134,13 +134,28 @@ describe("schedule tool", () => {
     await h.call({ action: "create_at", when: "1m", prompt: "earlier" });
     const [first] = getProcessScheduler().list();
     expect(h.ctx.ui.setStatus).toHaveBeenLastCalledWith("schedule", formatScheduleFooterStatus([first]));
-    expect((await h.call({ action: "list" })).content[0].text).toContain(first.id);
+    expect((await h.call({ action: "list" })).content[0].text).toContain(first.id.slice(0, 8));
     await h.call({ action: "cancel", id: first.id });
     expect(h.ctx.ui.setStatus).toHaveBeenLastCalledWith("schedule", formatScheduleFooterStatus(getProcessScheduler().list()));
     h.event("session_shutdown", "quit");
     expect(getProcessScheduler().list()).toEqual([]);
     await vi.advanceTimersByTimeAsync(7_200_000);
     expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("shows concise local times, short cancellation ids, and marked previews", async () => {
+    const h = harness();
+    const result = await h.call({ action: "create_at", when: "1m", prompt: "Check pipeline\n" + "x".repeat(90) });
+    const [job] = getProcessScheduler().list();
+    const localTime = new Intl.DateTimeFormat(undefined, {
+      year: "numeric", month: "short", day: "numeric",
+      hour: "numeric", minute: "2-digit", timeZoneName: "short",
+    }).format(new Date(job.runAt));
+    const summary = `${localTime} [${job.id.slice(0, 8)}]\n  Check pipeline ${"x".repeat(64)}…`;
+    expect(result.content[0].text).toBe(`Scheduled for ${summary}\nRequires Pi to stay open.`);
+    expect((await h.call({ action: "list" })).content[0].text).toBe(summary);
+    expect((await h.call({ action: "cancel", id: job.id.slice(0, 8) })).content[0].text).toBe(`Cancelled: ${summary}`);
+    expect((await h.call({ action: "list" })).content[0].text).toBe("No scheduled reminders.");
   });
 
   it("throws normal Pi tool errors for missing/invalid inputs", async () => {

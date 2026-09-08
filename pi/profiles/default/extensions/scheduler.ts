@@ -4,8 +4,16 @@ import { Type } from "typebox";
 import { formatScheduleFooterStatus, getProcessScheduler, type ScheduledPrompt } from "../lib/process-scheduler.ts";
 
 function describe(job: ScheduledPrompt): string {
-  const preview = job.prompt.replace(/\s+/g, " ").slice(0, 80);
-  return `${job.id} at ${job.runAt} ${preview}${job.error ? ` — delivery failed: ${job.error}` : ""}`;
+  const prompt = job.prompt.replace(/\s+/g, " ");
+  const preview = prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt;
+  const time = new Intl.DateTimeFormat(undefined, {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit", timeZoneName: "short",
+  }).format(new Date(job.runAt));
+  const peers = getProcessScheduler().list();
+  let length = 8;
+  while (peers.some(peer => peer.id !== job.id && peer.id.startsWith(job.id.slice(0, length)))) length++;
+  return `${time} [${job.id.slice(0, length)}]\n  ${preview}${job.error ? `\n  Delivery failed: ${job.error}` : ""}`;
 }
 
 export default function schedulerExtension(pi: ExtensionAPI): void {
@@ -50,12 +58,12 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
       if (params.action === "create_at") {
         if (!params.when || !params.prompt) throw new Error("create_at requires when and prompt");
         const job = scheduler.create(params.when, params.prompt);
-        text = `Scheduled ${describe(job)}. At that time the prompt is handed to Pi as a follow-up in the active conversation, waiting behind current work. Survives session changes and reloads; stops when Pi exits.`;
+        text = `Scheduled for ${describe(job)}\nRequires Pi to stay open.`;
       } else if (params.action === "cancel") {
         if (!params.id) throw new Error("cancel requires id");
-        text = `Cancelled ${describe(scheduler.cancel(params.id))}.`;
+        text = `Cancelled: ${describe(scheduler.cancel(params.id))}`;
       } else if (params.action === "list") {
-        text = scheduler.list().map(describe).join("\n") || "No process-local schedules.";
+        text = scheduler.list().map(describe).join("\n") || "No scheduled reminders.";
       } else {
         throw new Error(`Unknown schedule action: ${params.action}`);
       }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-08: Simplify schedule tool output
+
+**Changed:** Default Pi schedule confirmations, lists, and cancellations show local dates and times with timezone labels, short cancellation IDs, and separate prompt previews with explicit truncation. Confirmations replace the lifecycle paragraph with a brief reminder to keep Pi open. Scheduling and follow-up delivery behavior are unchanged.
+
+## 2026-09-08: Clarify subagent visibility selection
+
+**Changed:** Default root and coordinator delegation tools instruct models to omit surface for normal delegation and select headless inside Herdr only on user request, not for parallel, unattended, or worktree tasks. Coordinator children continue to inherit their parent's surface. Runtime selection and authority are unchanged; this instruction correction does not resolve the separately reported headless progress and transport failures.
+
 ## 2026-09-08: Add default-profile subagent delegation
 
 **Added:** Markdown-defined default roles, direct and coordinator delegation, retained conversations, bounded origin-scoped results, explicit control commands, Team Lead guidance, and councils only when requested. Native Herdr children preserve focus; RPC is the default outside Herdr and an explicit override inside it. The existing shell-free bootstrap gains a per-launch process owner and authenticated parent communication, not a permanent worker service.
@@ -9,6 +17,20 @@
 **Safety:** Definitions freeze tool and delegation authority per child. Trusted project overrides fail closed, empty tool lists remain empty, selected child resources retain Damage Control, and children do not load Onclave or general Herdr authority. Tool ceilings are not represented as OS sandboxes.
 
 **Preserved:** Counts and council structure remain instructions rather than quotas or workflow gates. Legacy and Onclave module code are unchanged.
+
+## 2026-09-08: Add bounded plan execution through /do-it
+
+**Added:** Default Pi's native `/do-it [--no-merge] [plan-path]` prompt template completes the current or specified plan using the existing planning skill and task worktree. Scope and agreed checks stay fixed; the whole completed spec directory, including reviews, is archived and committed before local integration into the recorded parent checkout's branch.
+
+**Control:** `--no-merge` is accepted before or after the plan selector and retains the committed task worktree without merging. Missing or ambiguous plans and consequential blockers are surfaced rather than guessed away. This is an instruction workflow, not a new execution engine; push and deployment remain separately authorized. Legacy is unchanged.
+
+## 2026-09-08: Clarify Damage Control's purpose and review inherited restrictions
+
+**Design:** Default Damage Control's governing requirement is prevention of meaningful unrecoverable harm, not blanket intervention on suspicious-looking or unfamiliar actions. Routine recoverable work should remain quiet; uncertainty matters when it changes the risk of consequential loss or disclosure. Legacy parity is compatibility history, not the design objective.
+
+**Reviewed:** A bounded policy/decision-path review separates inherited and explicitly preserved rules from port implementation choices. Offline parser/engine probes confirm unnecessary restrictions on recoverable cleanup and encoding, inconsistent path/sequence handling, and an overly broad cwd-based deletion exemption. Recorded `/dc scan`, shared-worktree preapproval storage, and the single-script review choice as future design context without adding a dependency framework or approval ceremony.
+
+**Unchanged:** Runtime code, policy YAML, judge authority/prompts, legacy, and ongoing subagent implementation. No reviewed commands executed, no live model calls, and no enforcement relaxation. The findings guide subsequent scoped implementation rather than authorize a general rewrite.
 
 ## 2026-09-08: Complete and reconcile web-fetch gateway acceptance
 

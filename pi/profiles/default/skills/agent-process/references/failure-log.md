@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-008 - Invisible delegation appeared hung
+
+- **Reference:** Default session `01a0818c-e3ed-7513-b01d-1df64d202704`, 2026-09-08; operator investigation of three development workers.
+- **Expected:** Visible Herdr children by default and enough information to distinguish activity, waiting, and failure.
+- **Observed:** The orchestrator explicitly supplied headless overrides. Interrupted foreground waits returned opaque running snapshots; two children later completed and one failed on the RPC frame-size limit. Later completion did not resolve the user-facing hang experience.
+- **Remediation:** Operator approved clarifying root/coordinator tool instructions to preserve default visibility (AIF-017). No surface enforcement or headless UX changes are included. Visible panes alone are not proof of progress; headless observability, detached-wait feedback, and transport failure handling remain for a separate discussion.
+- **Related:** AIF-010 (diagnostic clarity), AIF-004 (bounded correction).
+- **Status:** Instruction correction implemented; effectiveness unverified. UX and transport failures remain unresolved.
+
 ## APR-007 - Script-preapproval discussion expanded into unnecessary safety machinery
 
 - **Reference:** Operator discussion of Damage Control preapproval and `/dc scan`, 2026-09-08.

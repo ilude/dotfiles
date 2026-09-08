@@ -29,6 +29,8 @@ The [completed web-fetch gateway plan](../.specs/archive/web-fetch-gateway/plan.
 
 ## Default profile safety port
 
+Damage Control's [governing design requirement](profiles/default/docs/damage-control-port.md#design-purpose) is to prevent meaningful unrecoverable harm, not to block every suspicious-looking action. The [risk and proportionality review](../.specs/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md) identifies inherited and port-specific mismatches and records the requested `/dc scan`/script-preapproval direction. These are design changes; runtime enforcement remains as described below.
+
 Damage Control is enabled for normal default-profile `pp` launches. Use `/reload` to load it into an existing session. Legacy policy is the baseline, with contextual Luna review for selected Compose, Kubernetes/Helm, database, and process operations in established local development environments. Bounded direct input and untrusted tool observations inform review; no mandatory environment scans or approval cache are added. Luna cannot waive remaining user-only or block rules. Known read-only scheduler queries pass directly. `/dc on`, `/dc off`, and `/dc mode default|noshell` provide the legacy session controls; there is no status command. The explicit `pp --dc-recovery` maintenance path remains available. `/commit` internals and direct operator shell commands remain exempt. See [setup and behavior](profiles/default/docs/damage-control-setup.md) and the [completed restoration plan](../.specs/archive/damage-control-provenance-audit/plan.md).
 
 ## Default profile footer
@@ -113,6 +115,7 @@ The default profile provides Markdown-defined `subagent` delegation with frozen 
 - `/commit` quietly delegates review, grouping/messages, staging, and commits to `gpt-5.6-luna` at low reasoning. Unclear grouping falls back to one commit for all eligible changes. Only likely `.gitignore` candidates require a question; completion lists each short hash and commit subject.
 - `exit` or `/exit` gracefully quits Pi; Pi prints its built-in resume hint on shutdown.
 - `/effort [level]` shows or sets thinking effort.
+- `/do-it [--no-merge] [plan-path]` is a native prompt template that executes the supplied or current plan in its task worktree without expanding scope, archives the whole spec directory, commits, and merges into the recorded parent checkout's branch. `--no-merge` works before or after the plan selector and retains the committed task worktree without merging. Push and deployment remain separately authorized. Use `/reload` to load it.
 - `/handoff`, `/init`, `/summarize`, and `/war-report` are native prompt templates.
 - `/new-instance` opens a new Pi instance for the current profile; `/new-terminal` opens a plain shell.
 - `/astra` switches to GPT-6 Astra, and `/sol` and `/luna` switch to their GPT-5.6 models through the Codex subscription; `/fable` switches to Claude Fable through Amazon Bedrock.

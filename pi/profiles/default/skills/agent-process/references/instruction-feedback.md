@@ -1,5 +1,20 @@
 # Agent instruction feedback log
 
+## AIF-017 - Preserve default subagent visibility
+
+- **Reference:** Operator investigation of headless development workers on 2026-09-08 and approval to address tool instructions before discussing headless UX changes.
+- **Finding:** Recorded launch arguments explicitly selected headless; tool descriptions stated defaults but did not explain when to override them. No user request for headless development workers was found. Wording as the cause of model selection remains unproven.
+- **Decision:** Root and coordinator tool descriptions now say to omit surface for normal delegation and select headless inside Herdr only on user request, not because work is parallel, unattended, or in a worktree. Coordinator omission inherits its existing parent surface. Keep guidance at the owning tools, not global AGENTS.md.
+- **Related:** AIF-004 (narrow changes), AIF-011 (tool-owned instructions), APR-008 (invisible delegation and opaque progress).
+- **Status:** Approved instruction/documentation change only. Runtime enforcement and headless UX are unchanged; model adherence remains unverified.
+
+## AIF-016 - Execute the selected plan through /do-it
+
+- **Reference:** Operator requested and approved `/do-it`, with common forms `/do-it --no-merge` and `/do-it --no-merge <plan-path>`.
+- **Decision:** Add a default native prompt template that reuses planning guidance, completes only the selected scope in its task worktree, and archives the whole spec directory with local task commits. Merge into the recorded parent checkout by default; accept `--no-merge` in either position and retain the committed worktree. Push and deployment remain separate. No extension or new execution system.
+- **Related:** AIF-014 (worktree integration), AIF-005 (archival), AIF-003/APR-002 (bounded scope and checks), APR-006 (premature handoff).
+- **Status:** Template and documentation added. Loader/argument-expansion verification is recorded in the implementation handoff; end-to-end agent adherence remains unverified.
+
 ## AIF-015 — Do not substitute promises for authorized execution
 
 - **Reference:** Operator feedback after the default-subagents plan was twice followed by a response promising continuation while no further implementation was performed.
@@ -13,7 +28,7 @@
 
 - **Reference:** Operator discussion of dependency-link setup approval, `/dc scan`, contextual variable handling, and helper dependency tracking on 2026-09-08.
 - **Feedback:** Damage Control should stop meaningful unrecoverable damage, not act as a general security guard. Routine recoverable work should pass; unfamiliar syntax, variables, helpers, and generic flags are not independent reasons for approval or new machinery. Avoid approval ceremony and speculative dependency frameworks.
-- **Decision:** Operator requested a bounded review before implementation and an explicit high-level design requirement. Updated default `docs/damage-control-port.md` with the governing purpose, linked it from setup/runtime navigation, and recorded findings plus the requested preapproval design in `docs/damage-control-risk-review.md`. Do not treat legacy parity or agent-authored tests as proof that restrictions are proportionate.
+- **Decision:** Operator requested a bounded review before implementation and an explicit high-level design requirement. Updated default `docs/damage-control-port.md` with the governing purpose, linked it from setup/runtime navigation, and recorded findings plus the requested preapproval design in `.specs/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md` (repository-root-relative; archived with its plan). Do not treat legacy parity or agent-authored tests as proof that restrictions are proportionate.
 - **Follow-up decisions:** Operator chose broad alignment of all identified policy families, with no inherited restriction exempt from consequence-based review merely because of its history. Preserve an unattended failed-call watchdog, not limits on successful repetition. The operator reports a June 2026 repeated-failure loop consuming roughly half a weekly Codex allowance; this review did not independently verify that incident. Proposed tolerance is around 12 consecutive failures of the same exact command/tool call. Settle reset/interleaving and halt semantics before planning; no fuzzy loop detector or productivity controller is implied. Resolve breadth concerns before writing the implementation plan.
 - **Related:** AIF-012 (environment-aware risk), AIF-004 (narrow changes), AIF-003/APR-002 (bounded review), APR-007 (overbuilt preapproval proposal).
 - **Status:** Review and design-context update complete. Synthetic parser/engine probes exercised current policy without executing submitted commands or calling models. Runtime rules, judge prompt/authority, legacy, and subagent implementation remain unchanged. `/dc scan` and persistent preapproval are not implemented.
