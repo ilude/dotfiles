@@ -7,16 +7,25 @@ import { loadDefinitions, resolveModel, EFFORTS, type AgentEffort } from "../lib
 import { VisibleChild } from "../lib/subagents/visible.ts";
 import { getSubagentRuntime, type Delivery } from "../lib/subagents/runtime.ts";
 import { outcomeText, statusLines } from "../lib/subagents/status.ts";
+import { presentationDetails, progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
+import type { ChildRecord } from "../lib/subagents/rpc.ts";
 const Surface=Type.Union([Type.Literal("headless"),Type.Literal("visible")]);
 const Effort=Type.Union(EFFORTS.map(x=>Type.Literal(x)) as any);
 function output(value:unknown,error=false){return{content:[{type:"text" as const,text:JSON.stringify(value,null,2)}],details:value,isError:error}}
+function updates(onUpdate:((value:any)=>void)|undefined){
+ let active=true,pending:ChildRecord|undefined,timer:ReturnType<typeof setTimeout>|undefined;
+ const emit=()=>{timer=undefined;if(!active||!pending)return;const record=pending;pending=undefined;onUpdate?.(progressResult(record));};
+ const push=(record:ChildRecord)=>{if(!active)return;pending=record;if(!timer)timer=setTimeout(emit,100);};
+ const stop=()=>{active=false;if(timer)clearTimeout(timer);timer=undefined;pending=undefined;};
+ return {push,stop};
+}
 export default function subagents(pi:ExtensionAPI){
  if(process.env.PI_SUBAGENT_AUTHORITY)return;
  const runtime=getSubagentRuntime(),profile=resolve(getAgentDir()),childExt=join(dirname(fileURLToPath(import.meta.url)),"subagent-child.ts");
  let origin="",catalog=loadDefinitions(process.cwd(),false),current:ExtensionContext|undefined;
  let timer:ReturnType<typeof setInterval>|undefined,lastView="";
  const modernRuntime=typeof runtime.wait==="function";
- const upgradeNotice="Existing subagents still belong to the pre-upgrade runtime. Finish/cancel them before restarting Pi to enable the new runtime; /reload does not replace live owners.";
+ const upgradeNotice="This Pi process still has the pre-upgrade subagent runtime. Use /clear to reset it, or restart Pi; active subagents will be stopped.";
  const requireModernRuntime=()=>{if(!modernRuntime)throw new Error(upgradeNotice)};
  const render=()=>{
   if(!current?.hasUI||current.sessionManager.getSessionId()!==origin)return;
@@ -28,12 +37,13 @@ export default function subagents(pi:ExtensionAPI){
  };
  const deliver=(r:Delivery)=>{
   if(r.origin!==origin||!current||current.sessionManager.getSessionId()!==origin||!current.isIdle())return false;
-  pi.sendMessage({customType:"subagent-result",details:{deliveryId:r.deliveryId,origin:r.origin},content:outcomeText(r),display:true},{triggerTurn:true,deliverAs:"followUp"});
+  pi.sendMessage({customType:"subagent-result",details:{deliveryId:r.deliveryId,origin:r.origin,...presentationDetails(r)},content:outcomeText(r),display:true},{triggerTurn:true,deliverAs:"followUp"});
   return true;
  };
  // Progress never invokes sendMessage. The one-second view refresh coalesces streaming
  // events and advances inactivity age even when absolutely nothing is arriving.
  const binding={deliver};
+ (pi as any).registerMessageRenderer?.("subagent-result",renderSubagentMessage);
  pi.on("session_start",(_e,ctx)=>{
   if(origin)runtime.unbind(origin,binding);
   current=ctx;origin=ctx.sessionManager.getSessionId();lastView="";
@@ -52,20 +62,26 @@ export default function subagents(pi:ExtensionAPI){
  });
  pi.on("agent_settled",()=>{runtime.flush(origin);render()});
  pi.on("before_agent_start",event=>({systemPrompt:`${event.systemPrompt}\n\nDelegation: use subagent for bounded specialist work. Use a teamlead only when coordination helps. Councils are only on explicit user request. Normally use at most four Team Leads, eight leaves per lead, or twelve direct workers where a lead adds no value. Prefer small jobs that finish relatively quickly. These counts and council structure are guidance, not runtime quotas. Inspect and continue retained conversations with subagent_control.`}));
- pi.registerTool({name:"subagent",label:"Subagent",description:"Launch one defined subagent. Omit surface for normal delegation: visible in Herdr, headless elsewhere. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree. Interrupting a foreground wait does not cancel the child; outcomes return automatically.",parameters:Type.Object({agent:Type.String(),instructions:Type.String(),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String()),effort:Type.Optional(Effort),skills:Type.Optional(Type.Array(Type.String())),background:Type.Optional(Type.Boolean()),surface:Type.Optional(Surface),retain:Type.Optional(Type.Boolean())}),async execute(_id,p,signal,_update,ctx){try{
+ pi.registerTool({name:"subagent",label:"Subagent",description:"Launch one defined subagent. Omit surface for normal delegation: visible in Herdr, headless elsewhere. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree. Interrupting a foreground wait does not cancel the child; outcomes return automatically.",parameters:Type.Object({agent:Type.String(),instructions:Type.String(),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String()),effort:Type.Optional(Effort),skills:Type.Optional(Type.Array(Type.String())),background:Type.Optional(Type.Boolean()),surface:Type.Optional(Surface),retain:Type.Optional(Type.Boolean())}),renderCall:renderSubagentCall,renderResult:renderSubagentResult,async execute(_id,p,signal,onUpdate,ctx){try{
   requireModernRuntime();
   catalog=loadDefinitions(ctx.cwd,ctx.isProjectTrusted());const d=catalog.agents.get(p.agent);if(!d)throw new Error(`Unknown or invalid agent ${p.agent}. ${catalog.errors.join("; ")}`);
   const chosen=p.model??d.model;resolveModel(chosen,undefined);const skills=resolveSkills(profile,d.skills,p.skills);
   const surface=p.surface??(process.env.HERDR_ENV==="1"?"visible":"headless");
-  const r=await runtime.launch({definition:d,instructions:p.instructions,cwd:resolve(ctx.cwd,p.cwd||"."),model:chosen!,effort:(p.effort??d.effort??"low") as AgentEffort,skills,origin:ctx.sessionManager.getSessionId(),retained:p.retain??false,surface,catalog:catalog.agents},profile,childExt,p.background??false,signal);
-  render();return output(r,r.outcome==="failed");
+  const attached=!(p.background??false),bridge=attached?updates(onUpdate):undefined;
+  try{
+   const r=await runtime.launch({definition:d,instructions:p.instructions,cwd:resolve(ctx.cwd,p.cwd||"."),model:chosen!,effort:(p.effort??d.effort??"low") as AgentEffort,skills,origin:ctx.sessionManager.getSessionId(),retained:p.retain??false,surface,catalog:catalog.agents,progress:bridge?.push},profile,childExt,p.background??false,signal);
+   render();return output(r,r.outcome==="failed");
+  }finally{bridge?.stop()}
  }catch(e){return output({error:e instanceof Error?e.message:String(e)},true)}}});
- pi.registerTool({name:"subagent_control",label:"Subagent control",description:"Inspect, wait again, continue, answer, finish, or cancel an owned subagent. wait reattaches to the same assignment; interrupting it only stops waiting. cancel stops owned work. Completion and failure return automatically; progress is UI-only.",parameters:Type.Object({action:Type.Union([Type.Literal("inspect"),Type.Literal("wait"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("escalate"),Type.Literal("finish"),Type.Literal("cancel")]),id:Type.Optional(Type.String()),message:Type.Optional(Type.String())}),async execute(_id,p,signal,_update,ctx){try{
+ pi.registerTool({name:"subagent_control",label:"Subagent control",description:"Inspect, wait again, continue, answer, finish, or cancel an owned subagent. wait reattaches to the same assignment; interrupting it only stops waiting. cancel stops owned work. Completion and failure return automatically; progress is UI-only.",parameters:Type.Object({action:Type.Union([Type.Literal("inspect"),Type.Literal("wait"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("escalate"),Type.Literal("finish"),Type.Literal("cancel")]),id:Type.Optional(Type.String()),message:Type.Optional(Type.String())}),renderCall:renderSubagentControlCall,renderResult:renderSubagentResult,async execute(_id,p,signal,onUpdate,ctx){try{
   const owner=ctx.sessionManager.getSessionId();
   if(p.action==="inspect")return output(p.id?runtime.get(p.id,owner).snapshot():runtime.list(owner));
-  if(!p.id)throw new Error(`${p.action} requires id`);
+  if(!p.id)throw new Error(`${p.action} requires id or name`);
   const c=runtime.get(p.id,owner);
-  if(p.action==="wait"){requireModernRuntime();return output(await runtime.wait(p.id,owner,signal))}
+  if(p.action==="wait"){
+   requireModernRuntime();const bridge=updates(onUpdate),unsubscribe=runtime.subscribe(p.id,owner,bridge.push),refresh=setInterval(()=>bridge.push(c.snapshot()),1000);refresh.unref();
+   try{return output(await runtime.wait(p.id,owner,signal))}finally{clearInterval(refresh);unsubscribe();bridge.stop()}
+  }
   if(c.record.userOwned&&p.action!=="escalate")throw new Error("Parent control is suspended during direct user intervention; the user can use /subagents cancel");
   if(p.action==="message"){if(!p.message)throw new Error("message requires text");await c.message(p.message)}
   else if(p.action==="answer"){if(!p.message)throw new Error("answer requires text");await c.answer(p.message)}
@@ -81,14 +97,15 @@ export default function subagents(pi:ExtensionAPI){
     // A cancellable user dialog detaches the wait, not the child. Tool callers use
     // subagent_control wait with their normal AbortSignal instead.
     const abort=new AbortController();
+    const child=runtime.get(id,owner);
     const pending=runtime.wait(id,owner,abort.signal,false);
     const dialogAbort=new AbortController();
-    const dialog=ctx.ui.select(`Waiting for ${id}. Stopping this wait does not cancel the child.`,["Stop waiting"],{signal:dialogAbort.signal});
+    const dialog=ctx.ui.select(`Waiting for ${child.record.displayName??id}. Stopping this wait does not cancel the child.`,["Stop waiting"],{signal:dialogAbort.signal});
     try{await Promise.race([pending,dialog]);}finally{abort.abort();dialogAbort.abort();await pending;}
-   }else if(cmd&&cmd!=="inspect"&&cmd!=="cancel")throw new Error("Use /subagents inspect [id], wait <id>, or cancel <id>");
+   }else if(cmd&&cmd!=="inspect"&&cmd!=="cancel")throw new Error("Use /subagents inspect [id-or-name], wait <id-or-name>, or cancel <id-or-name>");
    else if(cmd==="cancel")throw new Error("cancel requires id");
    render();ctx.ui.notify(JSON.stringify(id?runtime.get(id,owner).snapshot():runtime.list(owner),null,2),"info");
   }catch(error){ctx.ui.notify(String(error),"error")}
  }});
- pi.registerCommand("subagent-return",{description:"Return an intervened visible child to parent control",handler:async(args,ctx)=>{const c=runtime.get(args.trim(),ctx.sessionManager.getSessionId());if(!(c instanceof VisibleChild))throw new Error("Only visible children have direct user handback");c.handback();ctx.ui.notify(`Returned ${c.record.id} to parent control`,"info")}});
+ pi.registerCommand("subagent-return",{description:"Return an intervened visible child to parent control",handler:async(args,ctx)=>{const c=runtime.get(args.trim(),ctx.sessionManager.getSessionId());if(!(c instanceof VisibleChild))throw new Error("Only visible children have direct user handback");c.handback();ctx.ui.notify(`Returned ${c.record.displayName??c.record.id} to parent control`,"info")}});
 }

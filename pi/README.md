@@ -17,6 +17,10 @@ Default customization uses native `getAgentDir()` for active-profile paths and `
 
 `extensions/profile-reload.ts` owns reload polling independently of the footer. It publishes state and answers snapshot requests over Pi's shared event bus; the footer and `/clear` never rely on shared imported singleton identity. Each extension gets a separate loader. The monitor baseline belongs to the evaluated owner factory: same-cwd session replacements that reuse cached factories retain it, while actual resource reload reevaluates source and establishes a new baseline. Timers and subscriptions are session-owned and cleaned up on shutdown. `lib/model-runtime.ts` shares profile-local runtime creation configuration for web screening and commit review, but each feature retains its own runtime lifetime, cancellation and permissions. These modules belong to the default profile, not a cross-profile framework.
 
+## Default profile subagents
+
+Default-profile delegation uses stable human display names while UUIDs remain canonical ownership and transport identities. Tool rows and automatic outcomes expose bounded assignment, resolved execution metadata, activity, timing, result, and error details. Inside Herdr, visible descendants share an origin-owned layout above the orchestrator, with two rows of four per tab and non-focused overflow tabs. Existing retention, intervention, process-settlement, cleanup, and no-headless-fallback semantics remain unchanged. See [subagent behavior and validation](profiles/default/docs/subagents.md).
+
 ## Default profile process review
 
 Use `/skill:agent-process` after reload to capture or review operator feedback, workflow failures, and agent-instruction refinements. The [skill](profiles/default/skills/agent-process/SKILL.md) maintains separate [instruction feedback](profiles/default/skills/agent-process/references/instruction-feedback.md) and [failure](profiles/default/skills/agent-process/references/failure-log.md) logs. Instruction changes require operator approval; review is on demand, not automatic.
@@ -55,7 +59,7 @@ At startup, the default profile hides the same obsolete, preview, snapshot, unsu
 
 ## Default profile Amazon Bedrock
 
-The default profile owns one curated `bedrock-mantle` provider while leaving Pi's native `amazon-bedrock` provider available. Authentication is provider-scoped under `/login`; Mantle and Runtime regions remain independent. `/bedrock` inspects routes and local estimates, `/bedrock refresh` refreshes only this provider, and `/refresh-models` delegates Bedrock discovery to that same native refresh path. `/usage` includes month-to-date model/token estimates with explicit unpriced coverage. The footer consumes the same ledger and no longer writes a separate total. See [setup, routing, accounting, and rollback](profiles/default/docs/bedrock.md).
+The default profile owns one curated `bedrock-mantle` provider while leaving Pi's native `amazon-bedrock` provider available. Authentication is provider-scoped under `/login`; Mantle and Runtime regions remain independent. `/bedrock` inspects routes and estimates, `/bedrock refresh` refreshes only this provider, `/bedrock reconcile` captures a one-time AWS Cost Explorer baseline, and `/refresh-models` delegates Bedrock discovery to that same native refresh path. `/usage` combines that baseline with later local model/token estimates and explicit unpriced coverage. The footer consumes the same ledger and no longer writes a separate total. See [setup, routing, accounting, and rollback](profiles/default/docs/bedrock.md).
 
 Focused checks from `pi/profiles/default/`:
 

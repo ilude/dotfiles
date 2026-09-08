@@ -6,6 +6,9 @@ export function duration(since: string | undefined, now = Date.now()): string {
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 const clean = (value: string) => value.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
+function identity(r: ChildRecord): string {
+  return r.displayName ? `${r.displayName} · ${r.agent}` : r.agent;
+}
 export function statusLines(records: ChildRecord[], now = Date.now()): string[] {
   const active = records.filter(r => r.status !== "settled" || r.phase === "cleanup");
   const ended = records.filter(r => r.status === "settled" && r.phase !== "cleanup").slice(-3);
@@ -18,7 +21,7 @@ export function statusLines(records: ChildRecord[], now = Date.now()): string[] 
   for (const r of shown) {
     if(lines.length+(r.error?2:1)>10)break;
     const state = r.phase === "cleanup" ? "cleanup" : r.status === "settled" ? r.outcome ?? "settled" : r.phase ?? r.status;
-    const summary=`${r.id.slice(0, 8)} ${r.agent} [${r.surface}] ${state}${r.toolName ? `: ${r.toolName}` : ""}`;
+    const summary=`${r.id.slice(0, 8)} ${identity(r)} [${r.surface}] ${state}${r.toolName ? `: ${r.toolName}` : ""}`;
     lines.push(clean(r.status==="settled"&&r.phase!=="cleanup" ? summary : `${summary} | elapsed ${duration(r.assignmentStartedAt ?? r.createdAt, now)} | activity ${r.lastActivityAt ? `${duration(r.lastActivityAt, now)} ago` : "none observed"} | process ${r.processState} / transport ${r.transportState ?? "unknown"}${r.waitState === "detached" ? " | wait detached; child continues" : ""}`));
     if (r.error) lines.push(`  ${clean(r.error).slice(0, 240)}`);
   }
@@ -26,5 +29,5 @@ export function statusLines(records: ChildRecord[], now = Date.now()): string[] 
 }
 export function outcomeText(r: ChildRecord): string {
   const state = r.status === "waiting" ? (r.phase === "waiting-user" ? "needs user-only input; use escalate" : "asks a factual question") : r.outcome ?? r.status;
-  return `Subagent ${r.agent} (${r.id}) ${state}:\n${r.result || ""}${r.error ? `${r.result ? "\n" : ""}Error: ${r.error}` : ""}${!r.result && !r.error ? "No result" : ""}${r.notice ? `\n${r.notice}` : ""}`;
+  return `Subagent ${identity(r)} (${r.id}) ${state}:\n${r.result || ""}${r.error ? `${r.result ? "\n" : ""}Error: ${r.error}` : ""}${!r.result && !r.error ? "No result" : ""}${r.notice ? `\n${r.notice}` : ""}`;
 }

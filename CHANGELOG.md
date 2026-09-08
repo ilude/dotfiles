@@ -8,13 +8,27 @@
 
 **Control:** The watchdog permits twelve adjacent failures of an exact tool/input/cwd call and blocks attempt thirteen. Unrelated calls and success reset the streak, and repeated successes are unrestricted. Legacy is unchanged; this adds no mandatory scan, environment inventory, sandbox, dependency resolver, or telemetry service.
 
+## 2026-09-08: Add human-readable subagents and stable visible layout
+
+**Changed:** Default-profile subagents receive stable session-scoped human names while retaining UUID transport identities. Launch, progress, control, question, and outcome rows now show bounded readable assignment, resolved model/effort, surface, timing, activity, result, and error details instead of generic labels and raw JSON. Exact case-insensitive names work anywhere the caller already has UUID-based authority.
+
+**Layout:** Visible descendants share an origin-owned layout above the unchanged orchestrator, filling two rows of four before using non-focused overflow tabs in groups of eight. Placement and cleanup use exact returned IDs, serialize mutations, preserve unrelated focus and panes, and keep existing process-settlement, retention, intervention, and no-headless-fallback behavior. Isolated Herdr geometry and one bundled-Pi launch/follow-up/completion run passed; physical attached-client keyboard behavior remains outside automated acceptance.
+
+## 2026-09-08: Recover Bedrock month-to-date cost baselines
+
+**Added:** Default Pi's `/bedrock reconcile` now captures a one-time, IAM-user-scoped Amazon Bedrock usage estimate from the user-scoped CloudWatch Bedrock invocation logs when the local ledger has no AWS baseline. The footer, `/bedrock`, and `/usage` report that snapshot separately and add only local request estimates recorded after its capture time. Existing baselines are not silently replaced because Cost Explorer delay makes moving the accounting cutoff unsafe.
+
+## 2026-09-08: Reset upgraded subagents through `/clear`
+
+**Changed:** Default Pi's `/clear` now stops owned subagents and replaces the process-global subagent runtime before opening the clean chat. A stale pre-upgrade owner can therefore be cleared without manually finishing or cancelling each child. Restarting Pi remains sufficient because normal shutdown already cleans up owned children; `/reload` alone continues to preserve live owners.
+
 ## 2026-09-08: Observable subagent work and reliable outcome delivery
 
 **Changed:** Default Pi shows origin-scoped, coalesced subagent progress in a widget without triggering model turns or flooding the transcript. It distinguishes meaningful activity from transport contact, keeps cleanup errors visible, and provides same-child wait reattachment plus explicit detach/cancel feedback. Completions, failures and factual questions return automatically to the parent agent; busy/inactive chats retain acknowledged outcomes. Coordinator leaves also return outcomes automatically, while user-only approvals still go to the originating user. No scheduler, inactivity cancellation, or automatic retry was added.
 
 **Fixed:** Native RPC aggregate events could exceed the old 1 MiB frame limit after a child had already produced its final answer. A synthetic native `agent_end` reproduces this mechanism; incident journal timing and sizes support it, although the original wire frame was not retained. RPC now uses a bounded growing buffer with a separate 16 MiB frame allowance, concrete non-payload diagnostics, observed prompt rejection, and owned process-tree cleanup. Application-channel and final-result limits are unchanged.
 
-**Focus constraint:** Background Herdr launches must preserve the user's currently focused pane, tab and workspace, not restore the caller. Isolated regression checks cover preflight, plugin creation and cleanup across tabs/workspaces. The reported attached-client focus jump remains unreproduced; these checks do not establish that it is fixed. Production Herdr wiring was not changed. Upgrading an already-running pre-change Pi owner requires finishing its current work and starting a fresh Pi process; `/reload` preserves that old owner instead of replacing live children, and now reports this boundary explicitly.
+**Focus constraint:** Background Herdr launches must preserve the user's currently focused pane, tab and workspace, not restore the caller. Isolated regression checks cover preflight, plugin creation and cleanup across tabs/workspaces. The reported attached-client focus jump remains unreproduced; these checks do not establish that it is fixed. Production Herdr wiring was not changed. `/reload` preserves an already-running pre-change owner instead of replacing live children and reports this boundary explicitly; `/clear` or a Pi restart now performs the required cleanup without manual per-child steps.
 
 ## 2026-09-08: Simplify schedule tool output
 

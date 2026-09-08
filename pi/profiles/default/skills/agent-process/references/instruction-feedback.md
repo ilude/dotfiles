@@ -1,5 +1,26 @@
 # Agent instruction feedback log
 
+## AIF-020 - Restore useful subagent tool-call presentation
+
+- **Reference:** Operator review of the information presented in the transcript when default-profile subagent tools start and complete, on 2026-09-08.
+- **Feedback:** Review the user-facing subagent tool-call presentation against legacy. This does not concern the `/subagents` command or its inspector.
+- **Finding:** Legacy defines dedicated `renderCall` and `renderResult` functions. A call shows the agent, assignment, scope, model/effort when known, background state, and start timing. A completed result shows success/failure, agent/source, execution label, elapsed timing, bounded output, errors, usage, model, duration, and activity; expanded mode separates task and full output. The default `subagent` and `subagent_control` tools define neither renderer, so Pi falls back to generic tool presentation. The earlier review incorrectly treated the passive status widget and `/subagents inspect` as the requested surface.
+- **Recommendation:** Add narrow renderers to the default subagent tools, adapted to their simpler records. The start view should show agent, assignment, model/effort, surface/background state, and timing. The result view should show outcome, duration, bounded result/error, and relevant execution metadata, with expanded detail where useful. Do not redesign the command inspector or passive widget as part of this correction.
+- **Related:** APR-008 (opaque progress), AIF-017 (visibility), AIF-010 (diagnostic clarity).
+- **Confirmed UX decisions:** Use pregenerated human names consistently in transcript rows, pane titles, and controls; retain UUIDs internally. Put child panes above the unchanged bottom orchestrator, fill left to right, four children per row and two rows; more than eight children moves to a new tab. This supersedes the archived fifth-child tab threshold, not authorization for silent headless overflow.
+- **Existing lifecycle decision (corrected during planning):** The newer completed `.specs/archive/default-subagents-and-council/plan.md` explicitly supersedes the cancelled Herdr plan: capture results, settle owned processes, then close finished panes immediately, including failed work, without zoom-deferred cleanup. Preserve retained conversations and direct intervention under current lifecycle rules. The assistant first cited the older archive and incorrectly recorded its failed-pane/zoom policy as reaffirmed; the operator had not requested that change. The owning `docs/subagents.md` now records the correct source and preserved behavior.
+- **Review failure:** The assistant asked the operator to decide pane closure again without consulting the archived plan. The answer was recorded; the failure was retrieval, not missing operator direction. Consult this reference when implementing and document the resulting behavior in the owning default runtime documentation, rather than relying only on an archive or feedback log.
+- **Status:** Corrected review and operator decisions recorded. No runtime change implemented yet.
+
+## AIF-019 - Reset stale subagent owners without manual ceremony
+
+- **Reference:** Operator correction to the pre-upgrade runtime notice on 2026-09-08.
+- **Feedback:** `/clear` or stopping and restarting Pi should handle stale process-global subagent owners; operators should not need to finish or cancel every child first.
+- **Finding:** Pi exit already shut down ordinary owned children, but the notice incorrectly presented manual cleanup as required. `/clear` created and reloaded a session without replacing the process-global subagent runtime.
+- **Decision:** Make `/clear` stop all owned children, replace the singleton runtime, then create the clean session. Keep `/reload` non-destructive. Clarify that restart already performs cleanup automatically.
+- **Related:** AIF-004 (minimal ceremony), APR-008 (subagent UX).
+- **Status:** Implemented. Targeted clear/subagent tests, default typecheck, and runtime smoke check pass.
+
 ## AIF-018 - Use scheduling instead of long shell sleeps
 
 - **Reference:** Operator correction during GitLab deployment monitoring on 2026-09-08.

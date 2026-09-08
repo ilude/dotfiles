@@ -2,6 +2,21 @@
 
 `subagent` launches a bounded specialist assignment. Omit `surface` for normal delegation: children are visible inside Herdr by default and headless elsewhere; coordinator children inherit their coordinator's surface. Inside Herdr, select `surface: "headless"` only when the user requests it, not merely because work is parallel, unattended, or in a worktree. This is tool guidance, not a runtime authorization check. Visible launch never falls back to headless.
 
+## Agreed UX changes (implemented with bounded validation)
+
+This section records the implemented operator decisions for the subagent UX update. The focused unit/component checks and the opt-in isolated Herdr geometry test pass with the default profile. `PI_SUBAGENT_UX_LIVE=1 pnpm test subagent-ux-live.test.ts` uses a named scratch Herdr session, isolated config, disposable workspaces, inert plugin processes, and exact cleanup; it does not touch the shared server or production plugin links. The test verifies the production layout adapter's 1/4/5/8/9/17 slot topology, server-side rectangles for the focused main tab, pane titles, stable caller identity, and unchanged unrelated focus. The adapter test does not prove physical keyboard or attached-client focus behavior.
+
+A bundled-Pi visible launch/follow-up/completion case is present behind the additional `PI_SUBAGENT_UX_LIVE_REAL=1` opt-in. With the worktree's local ignored auth/model store populated, `PI_SUBAGENT_UX_LIVE=1 PI_SUBAGENT_UX_LIVE_REAL=1 pnpm test subagent-ux-live.test.ts -t 'bundled Pi'` passed (1 test, 1 geometry test skipped). It checks the human title, metadata, retained identity, follow-up result, completion, exact pane cleanup, and preservation of unrelated focus. `SubagentLayout` obtains focus from the focused workspace, tab, and pane list records, not caller-context `pane current`; the regression test covers that distinction.
+
+- Give each child a familiar human name from a predefined pool, stable across follow-ups and not reused within the orchestrator session. Keep UUIDs internally. Use the name consistently in tool-call presentation, pane titles, and controls; show the role and assignment separately.
+- Improve the subagent tool-call transcript, not the `/subagents` inspector: resolved launch configuration, assignment preview, readable lifecycle/result/error information, timing, and expanded details. Background launch acknowledgement is not child completion; detached waits must say the child continues.
+- Split above the existing orchestrator. Children fill left to right, four per row, up to two rows. More than eight children moves to a new tab. Preserve focus and the orchestrator's bottom placement. This replaces the archived fifth-child migration threshold.
+- Pane closure was already decided in the newer `.specs/archive/default-subagents-and-council/plan.md`, Required behavior / Temporary panes: capture results and settle owned processes, then close finished panes immediately, including failed work, without waiting for zoom restoration. Preserve explicitly retained conversations and direct user intervention under their existing lifecycle. Do not ask the operator to decide closure again.
+
+**Source correction:** The older cancelled `.specs/archive/herdr-visible-subagents/plan.md` prescribed failed-pane retention and zoom-deferred cleanup. Those rules were superseded by the completed default-subagents plan. An earlier version of this section incorrectly promoted the older rules; that was an assistant retrieval error, not a user-requested lifecycle change.
+
+Implementation plan: `.specs/archive/subagent-transcript-and-pane-ux/plan.md` (repository-root-relative; move this reference to its archive at closeout).
+
 ## Definitions and authority
 
 Editable profile roles live in `agents/*.md`. Trusted projects can override them through the nearest `.pi/agents/` directory. Invalid overrides disable the affected names rather than restoring a more powerful profile definition. Each filename must match its `name`.
@@ -57,9 +72,9 @@ Run the existing Herdr setup from the lasting checkout as described in [Herdr se
 
 The bootstrap hosts native Pi through exact argv and inherited terminal handles, without a shell wrapper. A per-launch host owns the actual child process handle. Authenticated process-local loopback messages carry questions, delegation, replies, and control; Herdr state and terminal text are not completion evidence. Results are captured and owned processes settled before immediate pane closure. Cleanup does not wait for zoom restoration.
 
-Upgrading from the earlier runtime requires a fresh Pi process after current work is finished: process-global live owners are deliberately not replaced by `/reload`. An older owner remains inspectable/cancellable and continues its existing outcome delivery; the reloaded tools show an upgrade notice and refuse new launches/waits rather than silently running the old implementation. Do not quit while work or directly helped children need that parent.
+If `/reload` encounters the earlier process-global runtime, it preserves that owner and reports the upgrade boundary rather than replacing live children. Use `/clear` to stop those children, reset the process-global runtime, and start a clean chat, or restart Pi; manual finish/cancel steps are not required. Directly helped visible children are also stopped by `/clear`, while a normal Pi exit leaves them open as parent-unavailable.
 
-Once this runtime is loaded, parent `/reload` and same-process chat changes preserve children. Background results wait for their originating chat, with journal-event acknowledgement preventing repeat delivery. Results are not delivered into whichever chat happens to be active. There is no durable registry or parent recreation after process exit.
+Once this runtime is loaded, parent `/reload` and same-process chat changes other than `/clear` preserve children. Background results wait for their originating chat, with journal-event acknowledgement preventing repeat delivery. Results are not delivered into whichever chat happens to be active. There is no durable registry or parent recreation after process exit.
 
 Closing the parent stops ordinary children. Visible children under acknowledged direct user intervention stay open and show **Parent unavailable**; the user can continue directly or exit. Headless children do not remain waiting after their parent disappears. User-help state has a temporary per-launch marker for the host's parent-loss handling; it is removed when the child exits and is not restart recovery.
 
@@ -82,3 +97,5 @@ pnpm run check:runtime
 `PI_HERDR_FOCUS_LIVE=1 pnpm test herdr-background-focus.test.ts` checks plugin-split preflight, creation and cleanup while another tab or workspace is focused, using an isolated server and inert process. This verifies server-side focus state, not an attached client's physical focus behavior.
 
 `PI_SUBAGENT_LIVE=1 pnpm test subagent-live.test.ts` enables bounded headless model acceptance. `PI_SUBAGENT_HERDR_LIVE=1 pnpm test subagent-herdr-live.test.ts` creates an isolated Herdr server/config/plugin registry and disposable Git repository, tests both surfaces, visible Team Lead/council conversations, reload, intervention, parent loss, and exact cleanup, then removes its resources. These tests require installed Herdr and working profile model credentials. They do not relink the production plugin or prove physical keyboard experience, notifications, or model reasoning quality.
+
+`PI_SUBAGENT_UX_LIVE=1 pnpm test subagent-ux-live.test.ts` runs the bounded inert geometry acceptance. Add `PI_SUBAGENT_UX_LIVE_REAL=1` to run the bundled-Pi model case; its passing result is recorded above.
