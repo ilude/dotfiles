@@ -59,7 +59,7 @@ Council defaults are prompt guidance: three relevant perspectives, independent o
 All code paths are repository-root-relative. Read root/default `AGENTS.md`, `pi/README.md`, and the planning/testing skills, then only the source and installed API docs needed for the next task.
 
 - Repository/merge target: `C:/Users/mglenn/.dotfiles`, `main`. Reviewed baseline: `15c7aee6`; recheck status at execution start and preserve unrelated work.
-- Active worktree/branch: `C:/Users/mglenn/.dotfiles/.worktrees/default-subagents`, `feature/default-subagents`, targeting `main`. Created from `15c7aee6`; the uncommitted plan was copied into it and the original remains untouched pending integration.
+- Implementation used `C:/Users/mglenn/.dotfiles/.worktrees/default-subagents`, branch `feature/default-subagents`, from `15c7aee6`. It was merged into `main` and removed after verification. The original task-owned untracked plan was reconciled to this archive.
 - Planning used `pi/profiles/default/`. Implementation and validation must use the task worktree's absolute default-profile path, not a launcher resolving to the lasting checkout. Legacy stays unchanged.
 - Existing launcher/UI: `scripts/pi-herdr-{launch,setup}.mjs`, `pi/herdr/herdr-plugin.toml.in`, default `extensions/session-launch.ts`, `lib/herdr-cli.ts`, `extensions/herdr-ui-prompt-state.ts`, and `docs/herdr.md`. Leave generated `extensions/herdr-agent-state.ts` unchanged.
 - Existing runtime/safety: default `lib/process-scheduler.ts`, `extensions/tool-{search,visibility}.ts`, `lib/tool-activation.ts`, and `extensions/damage-control/`. Borrow process-lifetime ownership, not the scheduler's follow-active-chat delivery behavior.
@@ -96,7 +96,7 @@ Proposed new code lives under default `extensions/subagents.ts`, `extensions/sub
 Scope check: keep this a delegation runtime. Remove task-created workflow, quota, layout, or unnecessary testing machinery before continuing; do not start another audit or approval stage.
 
 - [x] **T5 - Roles and council.** Add the eight default `agents/*.md` files and concise orchestrator guidance. Done when the real definitions load, a Team Lead delegates and integrates, and a requested council retains member contexts through rebuttal/synthesis using ordinary tools. Counts and discussion structure must remain instructions only.
-- [ ] **T6 - Validate, document, and integrate.** Complete the finite checks below. Add default `docs/subagents.md`; update `pi/README.md`, relevant Herdr docs/skill, and root `CHANGELOG.md`. Record results here, archive, commit, and merge. Done when code, docs, and archived plan are delivered to `main`, with no task-owned running resources or unsafe worktree/plugin links left.
+- [x] **T6 - Validate, document, and integrate.** Complete the finite checks below. Add default `docs/subagents.md`; update `pi/README.md`, relevant Herdr docs/skill, and root `CHANGELOG.md`. Record results here, archive, commit, and merge. Done when code, docs, and archived plan are delivered to `main`, with no task-owned running resources or unsafe worktree/plugin links left.
 
 ## Validation and finish
 
@@ -130,4 +130,6 @@ Final finite checks:
 
 These checks do not prove physical keyboard experience, audible/desktop notifications, model reasoning quality, Linux live behavior, or OS sandboxing. Production sockets, plugin wiring, and credentials were not modified or published.
 
-**Integration:** implementation and validation are complete. Archive and local task commit are prepared; T6's main-branch delivery checkbox will be completed only after merge and verification. Preserve unrelated main-checkout edits and reconcile the original task-owned untracked plan. Do not push.
+**Integration completed:** implementation/archive commit `69f427d8` was merged into `main` as `17948465`. Normal merge refused the unrelated working edits in `CHANGELOG.md` and `pi/README.md`; integration used Git's exact computed merge tree while preserving those edits unstaged. The staged tree was verified against `git merge-tree`, and all pre-existing modified/untracked files were verified byte-for-byte after subtracting the task's two documentation insertions. Nothing unrelated was stashed, discarded, or committed.
+
+The original task-owned active plan was removed after archive verification. The clean, merged task worktree was removed. Production Herdr session/plugin inspection confirmed the original main-checkout link remained unchanged and no test session was left in that registry. No push, production relink, or deployment was performed. The task worktree needed its existing Dolos hook binary built before its commit; the normal hook then passed on both implementation and merge commits.
