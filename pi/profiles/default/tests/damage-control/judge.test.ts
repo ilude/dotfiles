@@ -134,7 +134,8 @@ describe("Luna review", () => {
     for (let i = 0; i <= DIRECT_INPUT_LIMIT; i++) history.recordDirectInput("interactive", "Remove the scratch fixture. token=SYNTHETIC_SENTINEL");
     const input = history.buildEvidence("call-1", "rm ./scratch # token=SYNTHETIC_SENTINEL", [], evidence().untrusted.matches, []);
     input.untrusted.priorEffects = [{ callId: "prior-call", timestamp: 0, effect: { id: "effect-1", kind: "filesystem", operation: "read", sources: [], targets: [{ resolution: "static", path: "token=SYNTHETIC_SENTINEL" }], destinations: [], context: { cwd: "/work" }, range: { start: 0, end: 1 }, resolution: "static" } }];
-    expect(input.operator).toEqual([]);
+    expect(input.operator).toHaveLength(DIRECT_INPUT_LIMIT);
+    expect(input.omissions.join(" ")).toContain("omitted");
     const complete = vi.fn().mockResolvedValue(textResponse(valid));
     expect(await review(input, context(complete), settings, pending, () => 3)).toEqual({ status: "valid", ...valid });
     expect(complete).toHaveBeenCalledOnce();

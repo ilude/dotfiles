@@ -72,7 +72,7 @@ export type Evidence = {
   callId: string;
   operation: string;
   operator: { source: "interactive" | "rpc"; text: string }[];
-  untrusted: { effects: Effect[]; priorEffects?: { callId?: string; timestamp: number; effect: Effect }[]; matches: RuleMatch[]; uncertainties: string[] };
+  untrusted: { effects: Effect[]; priorEffects?: { callId?: string; timestamp: number; effect: Effect }[]; observations?: { callId: string; tool: string; operation: string; cwd: string; output: string; timestamp: number }[]; matches: RuleMatch[]; uncertainties: string[] };
   omissions: string[];
 };
 export type Decision =

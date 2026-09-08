@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parsePolicy } from "../../lib/damage-control/policy.ts";
+import { decide } from "../../lib/damage-control/engine.ts";
 import { analyzeShell as analyzeShellRuntime, type ShellDependencies } from "../../lib/damage-control/shell.ts";
 import type { CompiledRule, Language } from "../../lib/damage-control/types.ts";
 
@@ -24,6 +25,28 @@ const defaultRules = parsePolicy(readFileSync(new URL("../../damage-control-rule
 const matchedIds = (analysis: Awaited<ReturnType<typeof analyzeShell>>) => analysis.matches.map((match) => match.ruleId);
 
 describe("AST shell analysis", () => {
+  it("reviews ordinary Compose teardown but retains volume/image and whole-call protections", async () => {
+    for (const command of ["docker compose down", "docker --context dev compose -p fixture down --remove-orphans", "docker --context production compose down"]) {
+      const analysis = await analyzeShell(request(command), { rules: defaultRules });
+      const evidence = { callId: "call", operation: command, operator: [], untrusted: { effects: analysis.effects, matches: analysis.matches, uncertainties: analysis.uncertainties }, omissions: [] };
+      expect(analysis.matches).toContainEqual(expect.objectContaining({ ruleId: "legacy-141", action: "review", applicability: "confirmed" }));
+      expect(decide(analysis, evidence).outcome).toBe("review");
+      expect(decide(analysis, evidence, { status: "valid", verdict: "allow", reason: "Established local development teardown", dismissedCandidates: [] }).outcome).toBe("allow");
+      expect(decide(analysis, evidence, { status: "valid", verdict: "ask", reason: "Shared target or unresolved environment", dismissedCandidates: [] }).outcome).toBe("user");
+      expect(decide(analysis, evidence, { status: "timeout", reason: "deadline" }).outcome).toBe("user");
+    }
+    for (const [command, outcome] of [
+      ["docker compose down -v", "user"],
+      ["docker compose down --volumes", "user"],
+      ["docker compose down --rmi all", "user"],
+      ["docker compose down; git reset --hard", "user"],
+      ["docker compose down; sudo rm fixture", "block"],
+    ]) {
+      const analysis = await analyzeShell(request(command), { rules: defaultRules });
+      const evidence = { callId: "call", operation: command, operator: [], untrusted: { effects: analysis.effects, matches: analysis.matches, uncertainties: analysis.uncertainties }, omissions: [] };
+      expect(decide(analysis, evidence, { status: "valid", verdict: "allow", reason: "Local teardown", dismissedCandidates: [] }).outcome).toBe(outcome);
+    }
+  });
   it("distinguishes direct piped rg input from implicit filesystem search", async () => {
     expect(paths(await analyzeShell(request("printf needle | rg needle")), "read")).toEqual([]);
     expect(paths(await analyzeShell(request("Write-Output needle | rg needle", "powershell")), "read")).toEqual([]);

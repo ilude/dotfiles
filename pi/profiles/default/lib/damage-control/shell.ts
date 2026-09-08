@@ -462,7 +462,31 @@ function knownOptions(args: Value[]): string[] {
   return options;
 }
 
+function isSchedulerQuery(executable: string, args: Value[]): boolean {
+  if (!["crontab", "schtasks"].includes(executable) || args.some(item => !item.known)) return false;
+  const values = args.map(valueText);
+  if (executable === "crontab") {
+    let list = false;
+    for (let i = 0; i < values.length; i++) {
+      if (values[i] === "-l" && !list) list = true;
+      else if (values[i] === "-u" && values[i + 1] && !values[i + 1].startsWith("-")) i++;
+      else return false;
+    }
+    return list;
+  }
+  if (values[0]?.toLowerCase() !== "/query") return false;
+  for (let i = 1; i < values.length; i++) {
+    const option = values[i].toLowerCase();
+    if (["/v", "/nh"].includes(option)) continue;
+    if (option === "/xml") { if (values[i + 1]?.toLowerCase() === "one") i++; continue; }
+    if (["/tn", "/s", "/u", "/p", "/fo"].includes(option) && values[i + 1] && !values[i + 1].startsWith("/")) { i++; continue; }
+    return false;
+  }
+  return true;
+}
+
 function hasKnownNoEffect(executable: string, args: Value[], language: Language): boolean {
+  if (isSchedulerQuery(executable, args)) return true;
   const options = knownOptions(args);
   const whatIfCommands = new Set([
     "remove-item", "rmdir", "set-content", "add-content", "out-file", "new-item", "copy-item", "move-item", "rename-item",
@@ -505,6 +529,17 @@ function policyRecord(rawExecutable: Value, args: Value[], language: Language, e
     if (docker.subcommand) {
       const operation = dockerOperation(docker.subcommand, docker.rest);
       policyArgs = [...operation.subcommand.split(" ").map((value) => ({ known: true as const, value })), ...operation.rest];
+    }
+  } else if (["kubectl", "helm"].includes(executable)) {
+    const operation = operationAfterOptions(actualArgs, new Set([
+      "--context", "--kube-context", "--kubeconfig", "--namespace", "-n", "--cluster", "--user", "--server", "-s",
+      "--token", "--certificate-authority", "--client-certificate", "--client-key", "--request-timeout",
+      "--as", "--as-group", "--as-uid", "--kube-apiserver", "--kube-token", "--kube-ca-file",
+      "--kube-as-user", "--kube-as-group", "--registry-config", "--repository-config", "--repository-cache",
+    ]));
+    if (operation.command) {
+      const globals = actualArgs.slice(0, actualArgs.length - operation.rest.length - 1);
+      policyArgs = [{ known: true, value: operation.command }, ...operation.rest, ...globals];
     }
   } else if (executable === "mysqladmin") {
     const operation = operationAfterOptions(actualArgs, new Set(["-h", "--host", "-u", "--user", "-p", "--password", "-P", "--port", "-S", "--socket", "--protocol"]));

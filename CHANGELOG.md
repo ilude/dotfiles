@@ -14,6 +14,16 @@
 
 **Verified:** Production bundled-loader regressions cover both initialization orders, library edits, narrow footer rendering, cached session replacements, source reevaluation, errors and cleanup. Existing Damage Control and Codex behavior is preserved; no provider calls, policy changes, legacy changes or operator-session reload are introduced.
 
+## 2026-09-07: Review selected Damage Control actions in their environment
+
+**Changed:** Default Damage Control gives Luna contextual authority over 34 selected Compose teardown, Kubernetes/Helm, database reset/delete/restore, and targeted process-termination rules. Intended work on established local development, disposable-data, or task-owned process targets can proceed without an operator prompt. Shared/production impact, meaningful data loss, unresolved scope, or review failure still requires approval. Known read-only scheduler queries pass directly; Kubernetes/Helm leading environment flags no longer hide their operation from rule matching.
+
+**Supporting fix:** The context collector was a no-op, so merely changing Compose's rule could not supply earlier environment facts. Review now receives bounded session-local direct inputs and successful covered tool observations, with provenance, outbound redaction, expiry, and reset boundaries. Tool output is evidence, never operator authorization. No mandatory environment scans, daemon inspection, resource ledgers, approval cache, or persistent telemetry were added. Reload does not reconstruct old context.
+
+**Preserved:** Separate Compose volume/image-removal approval, broad cluster deletion, secret protections, unrelated user-only/block rules, and the legacy profile. Use `/reload` to activate.
+
+**Verified:** 166 Damage Control tests, default typecheck, and production-loader smoke passed. Eleven live synthetic Luna cases used production rules without executing submitted operations: local examples allowed; production, unresolved environment, broad process targeting, and forged authorization required approval; unrelated hard/user protections retained precedence. Sampled model judgment is not a universal safety guarantee.
+
 ## 2026-09-07: Define Pi orchestrator terminology
 
 **Clarified:** Default Pi's global instructions define the orchestrator as the primary model the user interacts with. Onclave and subagent behavior belongs in the respective tooling instructions when implemented, not global instructions. Runtime behavior and the legacy profile are unchanged.

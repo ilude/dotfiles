@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-wo
 import { adapt } from "./adapters.ts";
 import { analyzeRequest, type AnalysisDependencies } from "./analysis.ts";
 import { Breaker, fingerprint } from "./breaker.ts";
-import { Context } from "./context.ts";
+import { Context, DIRECT_INPUT_LIMIT } from "./context.ts";
 import { decide } from "./engine.ts";
 import { loadPolicy } from "./policy.ts";
 import type { PathFacts } from "./paths.ts";
@@ -43,25 +43,30 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
   let mode: "default" | "noshell" = "default";
   let bypassed = false;
   let deferred: { source: "interactive" | "rpc"; text: string }[] = [];
-  let contextOmitted = false;
-  const invalidate = () => { clearAbortListeners(); for (const controller of pending.values()) controller.abort(); pending.clear(); completed.clear(); deferred = []; contextOmitted = false; context.invalidate(); breaker.reset(); };
+  const invalidate = () => { clearAbortListeners(); for (const controller of pending.values()) controller.abort(); pending.clear(); completed.clear(); deferred = []; context.invalidate(); breaker.reset(); };
   pi.on("session_start", () => { bypassed = false; invalidate(); });
   pi.on("session_tree", invalidate);
   pi.on("session_shutdown", invalidate);
   pi.on("input", (event) => {
     if (event.source !== "interactive" && event.source !== "rpc") return;
     breaker.reset();
-    if (context.directInputs().length >= 16 || Buffer.byteLength(event.text, "utf8") > 16 * 1024) contextOmitted = true;
     if (event.streamingBehavior) {
       deferred.push({ source: event.source, text: event.text });
-      while (deferred.length > 16 || deferred.reduce((n, item) => n + Buffer.byteLength(item.text, "utf8"), 0) > 16 * 1024) {
-        deferred.shift(); contextOmitted = true;
+      while (deferred.length > DIRECT_INPUT_LIMIT || deferred.reduce((n, item) => n + Buffer.byteLength(item.text, "utf8"), 0) > 16 * 1024) {
+        deferred.shift(); context.noteOmission();
       }
     } else context.recordDirectInput(event.source, event.text);
   });
-  pi.on("before_agent_start", () => {
-    for (const input of deferred) context.recordDirectInput(input.source, input.text);
-    deferred = [];
+  pi.on("message_start", event => {
+    // Queued steering/follow-ups are evidence only after actual delivery, not at enqueue time.
+    if (event.message.role !== "user") return;
+    const content = event.message.content;
+    const text = typeof content === "string" ? content : content.filter(part => part.type === "text").map(part => part.text).join("\n");
+    const index = deferred.findIndex(input => input.text === text);
+    if (index >= 0) {
+      const [input] = deferred.splice(index, 1);
+      context.recordDirectInput(input.source, input.text);
+    }
   });
   pi.on("agent_settled", () => { breaker.reset(); clearAbortListeners(); });
   pi.on("tool_result", async event => {
@@ -71,6 +76,8 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
     breaker.result(record.request, { content: event.content, isError: event.isError }, event.isError);
     if (event.isError) return;
     context.recordSuccess(event.toolCallId, record.effects, Date.now(), record.created);
+    if (event.content.some(part => part.type !== "text")) context.noteOmission();
+    context.recordToolResult(record.request, event.content.filter(part => part.type === "text").map(part => part.text).join("\n"));
   });
   const gate: Gate = {
     setBypass: value => { bypassed = value; },
@@ -113,7 +120,6 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         const sequenceDecision = sequence.check(request.tool, request.text);
         if (sequenceDecision) analysis.matches.push({ ruleId: sequenceDecision.name, action: sequenceDecision.action === "ask" ? "user" : "block", applicability: "confirmed", reason: sequenceDecision.reason, effects: analysis.effects.map(effect => effect.id) });
         const evidence = context.buildEvidence(call.callId, request.text, analysis.effects, analysis.matches, analysis.uncertainties);
-        if (contextOmitted) evidence.omissions.push("Some direct input was omitted by context bounds; intent may be incomplete");
         let decision = decide(analysis, evidence);
         if (decision.outcome === "review") {
           const result = await dependencies.review(evidence, { ...ctx, signal }, dependencies.settings, call, () => context.generation);

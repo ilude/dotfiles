@@ -253,13 +253,13 @@ commands:
     languages:
       - bash
   - id: legacy-043
-    action: user
+    action: review
     regex: \bkillall\s+-9\b
     reason: killall -9
     languages:
       - bash
   - id: legacy-044
-    action: user
+    action: review
     regex: \bpkill\s+-9\b
     reason: pkill -9
     languages:
@@ -841,9 +841,9 @@ commands:
     languages:
       - bash
   - id: legacy-141
-    action: user
+    action: review
     regex: \bdocker\s+compose\s+down\b
-    reason: docker compose down (stops and removes containers)
+    reason: Assess Compose teardown against the target environment; routine local development teardown does not require approval
     languages:
       - bash
   - id: legacy-142
@@ -913,31 +913,31 @@ commands:
     languages:
       - bash
   - id: legacy-153
-    action: user
+    action: review
     regex: \bkubectl\s+apply\b
     reason: kubectl apply (modifies cluster resources)
     languages:
       - bash
   - id: legacy-154
-    action: user
+    action: review
     regex: \bkubectl\s+delete\s+(?!namespace|all)
     reason: kubectl delete (removes resources)
     languages:
       - bash
   - id: legacy-155
-    action: user
+    action: review
     regex: \bkubectl\s+rollout\s+restart\b
     reason: kubectl rollout restart (restarts pods)
     languages:
       - bash
   - id: legacy-156
-    action: user
+    action: review
     regex: \bkubectl\s+scale\b
     reason: kubectl scale (changes replica count)
     languages:
       - bash
   - id: legacy-157
-    action: user
+    action: review
     regex: \bkubectl\s+port-forward\b
     reason: kubectl port-forward (network access)
     languages:
@@ -949,37 +949,37 @@ commands:
     languages:
       - bash
   - id: legacy-159
-    action: user
+    action: review
     regex: \bhelm\s+uninstall\b
     reason: helm uninstall (removes release)
     languages:
       - bash
   - id: legacy-160
-    action: user
+    action: review
     regex: \bhelm\s+install\b
     reason: helm install (deploys to cluster)
     languages:
       - bash
   - id: legacy-161
-    action: user
+    action: review
     regex: \bhelm\s+rollback\b
     reason: helm rollback (reverts release)
     languages:
       - bash
   - id: legacy-162
-    action: user
+    action: review
     regex: \bhelm\s+delete\b
     reason: helm delete (alias for uninstall, removes release and resources)
     languages:
       - bash
   - id: legacy-163
-    action: user
+    action: review
     regex: \bhelm\s+repo\s+remove\b
     reason: helm repo remove (removes chart repository reference)
     languages:
       - bash
   - id: legacy-164
-    action: user
+    action: review
     regex: \bhelm\s+plugin\s+uninstall\b
     reason: helm plugin uninstall (removes plugin)
     languages:
@@ -1003,55 +1003,55 @@ commands:
     languages:
       - bash
   - id: legacy-168
-    action: block
+    action: review
     regex: \bredis-cli\s+FLUSHALL
     reason: redis-cli FLUSHALL (wipes ALL data)
     languages:
       - bash
   - id: legacy-169
-    action: block
+    action: review
     regex: \bredis-cli\s+FLUSHDB
     reason: redis-cli FLUSHDB (wipes database)
     languages:
       - bash
   - id: legacy-170
-    action: block
+    action: review
     regex: \bmongosh.*dropDatabase
     reason: MongoDB dropDatabase
     languages:
       - bash
   - id: legacy-171
-    action: block
+    action: review
     regex: \bmongo.*dropDatabase
     reason: MongoDB dropDatabase
     languages:
       - bash
   - id: legacy-172
-    action: block
+    action: review
     regex: \bdropdb\b
     reason: PostgreSQL dropdb
     languages:
       - bash
   - id: legacy-173
-    action: block
+    action: review
     regex: \bmysqladmin\s+drop\b
     reason: MySQL drop database
     languages:
       - bash
   - id: legacy-174
-    action: block
+    action: review
     regex: \bREMOVE\s+(NAMESPACE|DATABASE)\b
     reason: SurrealDB REMOVE NAMESPACE/DATABASE (destroys namespace or database and all data)
     languages:
       - bash
   - id: legacy-175
-    action: user
+    action: review
     regex: \bREMOVE\s+TABLE\b
     reason: SurrealDB REMOVE TABLE (deletes table and all data)
     languages:
       - bash
   - id: legacy-176
-    action: user
+    action: review
     regex: \bpg_restore\s+.*--clean\b
     reason: pg_restore --clean (drops all objects before restoring)
     languages:
@@ -1537,43 +1537,43 @@ commands:
     languages:
       - bash
   - id: legacy-257
-    action: block
+    action: review
     regex: DELETE\s+FROM\s+\w+\s*;
     reason: DELETE without WHERE clause (will delete ALL rows)
     languages:
       - bash
   - id: legacy-258
-    action: block
+    action: review
     regex: DELETE\s+FROM\s+\w+\s*$
     reason: DELETE without WHERE clause (will delete ALL rows)
     languages:
       - bash
   - id: legacy-259
-    action: block
+    action: review
     regex: DELETE\s+\*\s+FROM
     reason: DELETE * (will delete ALL rows)
     languages:
       - bash
   - id: legacy-260
-    action: block
+    action: review
     regex: \bTRUNCATE\s+TABLE\b
     reason: TRUNCATE TABLE (will delete ALL rows)
     languages:
       - bash
   - id: legacy-261
-    action: block
+    action: review
     regex: \bDROP\s+TABLE\b
     reason: DROP TABLE
     languages:
       - bash
   - id: legacy-262
-    action: block
+    action: review
     regex: \bDROP\s+DATABASE\b
     reason: DROP DATABASE
     languages:
       - bash
   - id: legacy-263
-    action: user
+    action: review
     regex: \bDELETE\s+FROM\s+\w+\s+WHERE\b.*\bid\s*=
     reason: SQL DELETE with specific ID
     languages:
@@ -1849,13 +1849,13 @@ commands:
     languages:
       - bash
   - id: legacy-309
-    action: user
+    action: review
     regex: \bStop-Process\s+.*-Force
     reason: Stop-Process -Force (PowerShell kill -9)
     languages:
       - bash
   - id: legacy-310
-    action: user
+    action: review
     regex: \btaskkill\s+/[fF]
     reason: taskkill /F (force kill)
     languages:
@@ -1867,7 +1867,7 @@ commands:
     languages:
       - bash
   - id: legacy-312
-    action: user
+    action: review
     regex: \bkill\s+.*-Force
     reason: kill alias with -Force
     languages:
@@ -1970,7 +1970,7 @@ commands:
     languages:
       - powershell
   - id: legacy-329
-    action: user
+    action: review
     regex: \b(?:Stop-Process|kill)\b[^|;&]*-Force|\btaskkill\b[^|;&]*/[fF]
     reason: Forced process termination can interrupt active work
     languages:
