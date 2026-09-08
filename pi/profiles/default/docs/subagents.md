@@ -2,6 +2,19 @@
 
 `subagent` launches a bounded specialist assignment. Omit `surface` for normal delegation: children are visible inside Herdr by default and headless elsewhere; coordinator children inherit their coordinator's surface. Inside Herdr, select `surface: "headless"` only when the user requests it, not merely because work is parallel, unattended, or in a worktree. This is tool guidance, not a runtime authorization check. Visible launch never falls back to headless.
 
+## Agreed UX changes (pending implementation)
+
+This section records operator decisions for the next subagent UX update. Consult it before proposing lifecycle or layout changes. It is not a description of implemented behavior.
+
+- Give each child a familiar human name from a predefined pool, stable across follow-ups and not reused within the orchestrator session. Keep UUIDs internally. Use the name consistently in tool-call presentation, pane titles, and controls; show the role and assignment separately.
+- Improve the subagent tool-call transcript, not the `/subagents` inspector: resolved launch configuration, assignment preview, readable lifecycle/result/error information, timing, and expanded details. Background launch acknowledgement is not child completion; detached waits must say the child continues.
+- Split above the existing orchestrator. Children fill left to right, four per row, up to two rows. More than eight children moves to a new tab. Preserve focus and the orchestrator's bottom placement. This replaces the archived fifth-child migration threshold.
+- Pane closure was already decided in the newer `.specs/archive/default-subagents-and-council/plan.md`, Required behavior / Temporary panes: capture results and settle owned processes, then close finished panes immediately, including failed work, without waiting for zoom restoration. Preserve explicitly retained conversations and direct user intervention under their existing lifecycle. Do not ask the operator to decide closure again.
+
+**Source correction:** The older cancelled `.specs/archive/herdr-visible-subagents/plan.md` prescribed failed-pane retention and zoom-deferred cleanup. Those rules were superseded by the completed default-subagents plan. An earlier version of this section incorrectly promoted the older rules; that was an assistant retrieval error, not a user-requested lifecycle change.
+
+Implementation plan: `.specs/subagent-transcript-and-pane-ux/plan.md` (repository-root-relative; move this reference to its archive at closeout).
+
 ## Definitions and authority
 
 Editable profile roles live in `agents/*.md`. Trusted projects can override them through the nearest `.pi/agents/` directory. Invalid overrides disable the affected names rather than restoring a more powerful profile definition. Each filename must match its `name`.
