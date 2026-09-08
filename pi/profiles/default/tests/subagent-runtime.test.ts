@@ -13,6 +13,18 @@ function fixture(){process.env.PI_SUBAGENT_BIN=process.execPath;process.env.PI_S
 const definition:AgentDefinition={name:"probe",description:"probe",tools:[],delegates:[],skills:[],prompt:"probe",source:"profile",filePath:"probe.md"};
 const input={definition,instructions:"first",cwd:here,model:"openai-codex/test",effort:"low" as const,skills:[],origin:"origin-a",retained:false,surface:"headless" as const};
 describe("process-local descendant ownership",()=>{
+ it("gives same-role children distinct names and resolves names within their origin",async()=>{
+  const runtime=fixture();
+  const first=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  const second=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  expect(first.displayName).toBeTruthy();expect(second.displayName).toBeTruthy();
+  expect(first.displayName).not.toBe(second.displayName);
+  expect(runtime.get(first.displayName!.toUpperCase(),input.origin).record.id).toBe(first.id);
+  expect(()=>runtime.get(first.displayName!,"different-origin")).toThrow(/Unknown/);
+  await runtime.get(first.id).cancel();await runtime.get(second.id).cancel();
+  const third=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  expect(third.displayName).not.toBe(first.displayName);expect(third.displayName).not.toBe(second.displayName);
+ });
  it("routes leaf failure to its coordinator and keeps that process alive until it consumes the outcome",async()=>{
   const runtime=fixture(),delivered:Delivery[]=[],scratch=mkdtempSync(join(tmpdir(),"coordinator-outcomes-"));
   runtime.bind(input.origin,{deliver:r=>{delivered.push(r);return true}});
@@ -30,6 +42,7 @@ describe("process-local descendant ownership",()=>{
    const identity={child:parent.id,origin:input.origin,run:"fixture"};
    const response=await dispatch(identity,{type:"heartbeat"});
    expect(response.delivery).toMatchObject({id:leaf.id,outcome:"failed"});
+   expect(await dispatch(identity,{type:"control",payload:{action:"inspect",id:runtime.get(leaf.id).record.displayName!.toUpperCase()}})).toMatchObject({id:leaf.id});
    await expect(dispatch({...identity,child:leaf.id},{type:"outcome-ack",payload:response.delivery.deliveryId})).rejects.toThrow(/ownership/);
    await dispatch(identity,{type:"outcome-ack",payload:response.delivery.deliveryId});
    await dispatch(identity,{type:"outcome-ack",payload:response.delivery.deliveryId});
@@ -38,6 +51,15 @@ describe("process-local descendant ownership",()=>{
    await vi.waitFor(()=>expect(delivered).toHaveLength(1),{timeout:7000});
    expect(delivered[0]).toMatchObject({id:parent.id,outcome:"complete",result:"second answer",processState:"exited"});
   }finally{rmSync(scratch,{recursive:true,force:true})}
+ });
+ it("marks a coordinator's foreground leaf wait as attached",async()=>{
+  const runtime=fixture();
+  const coordinator={...definition,name:"coordinator",tools:["subagent","subagent_control"],delegates:["probe"]};
+  const parent=await runtime.launch({...input,definition:coordinator,catalog:new Map([["coordinator",coordinator],["probe",definition]])},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  const response=await (runtime as any).dispatch({child:parent.id,origin:input.origin,run:"fixture"},{type:"delegate",payload:{agent:"probe",instructions:"[hold]",model:"openai-codex/test",effort:"low",background:false}});
+  expect(response.waitState).toBe("attached");
+  const leaf=runtime.list(input.origin).find(record=>record.parentId===parent.id)!;
+  await runtime.get(leaf.id).cancel();
  });
  it("routes a coordinator leaf's user-only approval to the originating user, never factual answering",async()=>{
   const runtime=fixture(),delivered:Delivery[]=[];

@@ -5,8 +5,11 @@ import { bindChildSurface } from "../lib/subagents/child-surface.ts";
 import { requestParent, type ChildEndpoint } from "../lib/subagents/transport.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { guardNativePath, workspaceRoot } from "../lib/subagents/workspace.ts";
+import { progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentResult, renderSubagentMessage } from "../lib/subagents/presentation.ts";
+import type { ChildRecord } from "../lib/subagents/rpc.ts";
 interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; cwd:string; skills:string[]; surface?:string }
 export default function childAuthority(pi:ExtensionAPI){
+ (pi as any).registerMessageRenderer?.("subagent-result",renderSubagentMessage);
  if(!process.env.PI_SUBAGENT_AUTHORITY){if(process.env.PI_SUBAGENT_ENDPOINT)throw new Error("Subagent authority is missing");return}
  let authority:Authority;try{authority=JSON.parse(process.env.PI_SUBAGENT_AUTHORITY||"")}catch{throw new Error("Subagent authority is missing or invalid")}
  if (!authority || !Array.isArray(authority.tools) || !authority.tools.every(t=>typeof t==="string") || !Array.isArray(authority.delegates) || !Array.isArray(authority.skills)) throw new Error("Invalid frozen authority");
@@ -27,26 +30,30 @@ export default function childAuthority(pi:ExtensionAPI){
   if(!endpoint||endpoint.child!==authority.id)throw new Error("Authenticated parent unavailable");
   return endpoint;
  };
- const waitForChild=async(value:unknown,signal?:AbortSignal)=>{
-  let record=value as {id:string;status:string;retained:boolean;userOwned:boolean;processState:string;paneState?:string;error?:string};
+ const waitForChild=async(value:unknown,signal?:AbortSignal,onUpdate?: (value:any)=>void)=>{
+  let record=value as ChildRecord;
+  let lastView="",lastUpdate=0;
   while(record.status==="running"||(record.status==="settled"&&!record.retained&&!record.userOwned&&!record.error&&(record.processState!=="exited"||record.paneState==="open"))){
+   const view=JSON.stringify([record.status,record.phase,record.toolName,record.waitState,record.outcome,record.error]);
+   if(view!==lastView||Date.now()-lastUpdate>=1000){onUpdate?.(progressResult(record));lastView=view;lastUpdate=Date.now()}
    await delay(250,undefined,{signal});
-   record=await requestParent(parentEndpoint(),{type:"control",payload:{action:"inspect",id:record.id}}) as typeof record;
+   record=await requestParent(parentEndpoint(),{type:"control",payload:{action:"inspect",id:record.id}}) as ChildRecord;
   }
+  onUpdate?.(progressResult(record));
   return record;
  };
- pi.registerTool({name:"subagent",label:"Delegate to leaf",description:"Commission a permitted leaf under the frozen coordinator authority. Omit surface for normal delegation to inherit the coordinator's surface. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree.",parameters:Type.Object({agent:Type.String(),instructions:Type.String(),retain:Type.Optional(Type.Boolean()),background:Type.Optional(Type.Boolean()),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String()),effort:Type.Optional(Type.Union(EFFORTS.map(value=>Type.Literal(value)))),skills:Type.Optional(Type.Array(Type.String())),surface:Type.Optional(Type.Union([Type.Literal("visible"),Type.Literal("headless")]))}),async execute(_id,p,signal){
+ pi.registerTool({name:"subagent",label:"Delegate to leaf",description:"Commission a permitted leaf under the frozen coordinator authority. Omit surface for normal delegation to inherit the coordinator's surface. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree.",parameters:Type.Object({agent:Type.String(),instructions:Type.String(),retain:Type.Optional(Type.Boolean()),background:Type.Optional(Type.Boolean()),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String()),effort:Type.Optional(Type.Union(EFFORTS.map(value=>Type.Literal(value)))),skills:Type.Optional(Type.Array(Type.String())),surface:Type.Optional(Type.Union([Type.Literal("visible"),Type.Literal("headless")]))}),async execute(_id,p,signal,onUpdate){
   if(!allowed.has("subagent")||!authority.delegates.includes(p.agent))throw new Error("Delegation is outside frozen authority");
   let result=await requestParent(parentEndpoint(),{type:"delegate",payload:p});
-  if(!p.background)result=await waitForChild(result,signal);
-  return{content:[{type:"text",text:JSON.stringify(result)}],details:{}};
- }});
- pi.registerTool({name:"subagent_control",label:"Control direct leaf",description:"Inspect, continue, answer factual questions, or cancel a directly commissioned leaf.",parameters:Type.Object({id:Type.String(),action:Type.Union([Type.Literal("inspect"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("finish"),Type.Literal("cancel")]),message:Type.Optional(Type.String()),background:Type.Optional(Type.Boolean())}),async execute(_id,p,signal){
+  if(!p.background)result=await waitForChild(result,signal,onUpdate);
+  return{content:[{type:"text",text:JSON.stringify(result)}],details:result};
+ },renderCall:renderSubagentCall,renderResult:renderSubagentResult});
+ pi.registerTool({name:"subagent_control",label:"Control direct leaf",description:"Inspect, continue, answer factual questions, or cancel a directly commissioned leaf.",parameters:Type.Object({id:Type.String(),action:Type.Union([Type.Literal("inspect"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("finish"),Type.Literal("cancel")]),message:Type.Optional(Type.String()),background:Type.Optional(Type.Boolean())}),async execute(_id,p,signal,onUpdate){
   if(!allowed.has("subagent_control"))throw new Error("Control is outside frozen authority");
   let result=await requestParent(parentEndpoint(),{type:"control",payload:p});
-  if((p.action==="message"||p.action==="answer")&&!p.background)result=await waitForChild(result,signal);
-  return{content:[{type:"text",text:JSON.stringify(result)}],details:{}};
- }});
+  if((p.action==="message"||p.action==="answer")&&!p.background)result=await waitForChild(result,signal,onUpdate);
+  return{content:[{type:"text",text:JSON.stringify(result)}],details:result};
+ },renderCall:renderSubagentControlCall,renderResult:renderSubagentResult});
  pi.registerTool({name:"tool_search",label:"Search permitted tools",description:"Inspect only the tools in this conversation's frozen authority. Cannot activate additional tools.",parameters:Type.Object({query:Type.Optional(Type.String())}),async execute(_id,p){
   const tools=pi.getAllTools().filter(t=>allowed.has(t.name)&&(!p.query||`${t.name} ${t.description}`.toLowerCase().includes(p.query.toLowerCase()))).map(t=>({name:t.name,description:t.description}));
   return{content:[{type:"text",text:JSON.stringify(tools)}],details:{tools}};

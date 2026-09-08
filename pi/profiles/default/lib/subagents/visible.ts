@@ -2,12 +2,14 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { RpcChild, type ChildRecord } from "./rpc.ts";
+import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
 import type { ChildEndpoint, ApplicationMessage } from "./transport.ts";
 import { createHerdrCli, herdrContext, result, inspectPane } from "../herdr-cli.ts";
+import { LayoutPlacementError, SubagentLayout, type LayoutFocus } from "./layout.ts";
 
 export class VisibleChild extends RpcChild {
  private cli=createHerdrCli();
+ private layout:SubagentLayout;
  private endpoint?:ChildEndpoint;
  private hostPid?:number;
  private hostExited=false;
@@ -15,9 +17,11 @@ export class VisibleChild extends RpcChild {
  private stopping=false;
  private forceStop=false;
  private closed=false;
+ private focusBeforeStop?:LayoutFocus;
  private bootstrapped=false;
  private interventionReady=false;
  private commands:Array<{id:string;type:string;message?:string}>=[];
+ constructor(spec:LaunchSpec,childExtension:string,profileDir:string,layout?:SubagentLayout){super(spec,childExtension,profileDir);this.layout=layout??new SubagentLayout(this.cli)}
  private enqueue(command:{type:string;message?:string}){this.commands.push({id:randomUUID(),...command})}
  private startup?:ReturnType<typeof setTimeout>;
  private launchDone?:Promise<void>;
@@ -34,16 +38,16 @@ export class VisibleChild extends RpcChild {
    const expected=resolve(this.profileDir,"../../../scripts/pi-herdr-launch.mjs");
    if(!Array.isArray(command)||command.length!==3||typeof command[1]!=="string"||realpathSync.native(command[1])!==realpathSync.native(expected))throw new Error("local.pi is not linked to this profile's repository bootstrap; refusing an unrestricted launch");
    await inspectPane(this.cli,context.pane);
-   const layout=result(await this.cli(["pane","layout","--pane",context.pane])).layout;
-   const rect=layout?.panes?.find((pane:any)=>pane.pane_id===context.pane)?.rect;
-   if(!rect||!Number.isFinite(rect.width)||!Number.isFinite(rect.height))throw new Error("Herdr omitted caller geometry");
-   const direction=rect.width>=rect.height*2?"right":"down";
-   const opened=result(await this.cli(["plugin","pane","open","--plugin","local.pi","--entrypoint","pi","--placement","split","--direction",direction,"--target-pane",context.pane,"--cwd",this.spec.cwd,"--env",`PI_HERDR_PROFILE_DIR=${this.profileDir}`,"--env",`PI_HERDR_SUBAGENT=${JSON.stringify(endpoint)}`,"--no-focus"]));
-   const pane=opened.plugin_pane?.pane??opened.pane??opened.root_pane;
-   if(typeof pane?.pane_id!=="string")throw new Error("Herdr did not return the created pane identity");
-   this.record.paneId=pane.pane_id;this.record.paneState="open";
+   const placement=await this.layout.place(this.record.origin,{childId:this.record.id,callerPane:context.pane,cwd:this.spec.cwd,title:`${this.spec.displayName ?? this.spec.definition.name} · ${this.spec.definition.name}`,plugin:"local.pi",entrypoint:"pi",env:[`PI_HERDR_PROFILE_DIR=${this.profileDir}`,`PI_HERDR_SUBAGENT=${JSON.stringify(endpoint)}`]});
+   this.record.paneId=placement.paneId;this.record.paneState="open";
   })();
-  void this.launchDone.catch(error=>this.fail(String(error)));
+  void this.launchDone.catch(error=>{
+   if(error instanceof LayoutPlacementError&&error.placement){
+    this.record.paneId=error.placement.paneId;
+    this.record.paneState="open";
+   }
+   this.fail(String(error));
+  });
   return waiting;
  }
  override parentMessage(message:ApplicationMessage):unknown{
@@ -113,11 +117,15 @@ export class VisibleChild extends RpcChild {
  protected override alive(){return this.appReady&&!this.hostExited&&!this.closed}
  protected override async stopProcess(){
   if(this.record.userOwned&&!this.forceStop)return;
+  if(this.record.paneId&&!this.closed&&!this.focusBeforeStop)this.focusBeforeStop=await this.layout.captureFocus();
   this.stopping=true;
   if(this.startup)clearTimeout(this.startup);
   try{await this.launchDone}catch{ /* Exact returned pane, when available, still belongs to this launch. */ }
   const deadline=Date.now()+10_000;
-  while(this.hostPid&&!this.hostExited){
+  // A layout polish failure can happen after Herdr has created the pane but
+  // before the bootstrap reports its pid. Do not close that pane until the
+  // launcher has explicitly reported process settlement.
+  while(this.record.paneId&&!this.hostExited){
    if(this.record.userOwned&&!this.forceStop)return;
    if(Date.now()>deadline)throw new Error("Visible launcher did not settle its owned child");
    await delay(50);
@@ -129,7 +137,7 @@ export class VisibleChild extends RpcChild {
    await delay(25);
   }
   if(this.record.paneId&&!this.closed){
-   await this.cli(["plugin","pane","close",this.record.paneId]);
+   await this.layout.close(this.record.origin,this.record.id,this.record.paneId,this.focusBeforeStop);
    this.closed=true;this.record.paneState="closed";
   }
  }
