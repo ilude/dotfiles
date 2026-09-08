@@ -1,8 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { createBedrockModelProvider, resolveBedrockMantleTarget } from "../../lib/bedrock/provider.js";
-import { parseCallerArn, parsePersonalSnapshot, personalSnapshotQuery } from "../../lib/bedrock/personal-snapshot.js";
+import { costExplorerQuery, costExplorerServiceQuery, parseBedrockServices, parseCostExplorerBaseline } from "../../lib/bedrock/cost-explorer.js";
 import { appendRecord, formatStatus, formatUsage, makeRecord, readBaseline, summarize, writeBaseline } from "../../lib/bedrock/ledger.js";
 
 const PROVIDERS = new Set(["amazon-bedrock", "bedrock-mantle"]);
@@ -36,17 +34,14 @@ export default function bedrock(pi: ExtensionAPI): void {
 			if (command === "reconcile") {
 				const existing = await readBaseline();
 				if (existing) throw new Error(`AWS Bedrock baseline already exists for ${existing.month}; refusing to replace its accounting cutoff`);
-				const query = personalSnapshotQuery(target.profile);
-				const identity = await pi.exec("aws", query.callerArgs, { timeout: 30_000 });
-				if (identity.code !== 0) throw new Error(`AWS caller identity lookup failed: ${(identity.stderr || identity.stdout || `exit ${identity.code}`).trim()}`);
-				const callerArn = parseCallerArn(identity.stdout);
-				const cutoff = new Date().toISOString();
-				const outputFile = path.join(process.env.PI_CODING_AGENT_DIR || ".", `.bedrock-snapshot-${process.pid}-${Date.now()}.json`);
-				try {
-					const result = await pi.exec("aws", query.invokeArgs(outputFile), { timeout: 300_000 });
-					if (result.code !== 0) throw new Error(`Personal Bedrock snapshot invocation failed: ${(result.stderr || result.stdout || `exit ${result.code}`).trim()}`);
-					await writeBaseline(parsePersonalSnapshot(await fs.readFile(outputFile, "utf8"), callerArn, cutoff));
-				} finally { await fs.rm(outputFile, { force: true }); }
+				const now = new Date();
+				const discovery = costExplorerServiceQuery(now, target.profile);
+				const discovered = await pi.exec("aws", discovery.args, { timeout: 30_000 });
+				if (discovered.code !== 0) throw new Error(`AWS Cost Explorer service discovery failed: ${(discovered.stderr || discovered.stdout || `exit ${discovered.code}`).trim()}`);
+				const query = costExplorerQuery(parseBedrockServices(discovered.stdout), now, target.profile);
+				const result = await pi.exec("aws", query.args, { timeout: 30_000 });
+				if (result.code !== 0) throw new Error(`AWS Cost Explorer query failed: ${(result.stderr || result.stdout || `exit ${result.code}`).trim()}`);
+				await writeBaseline(parseCostExplorerBaseline(result.stdout, query));
 				await refreshStatus(ctx);
 			}
 
