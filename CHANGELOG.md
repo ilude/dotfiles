@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-07: Repair default Pi reload state across extension loaders
+
+**Fixed:** The footer and `/clear` now obtain reload state from the monitoring extension through Pi's shared event bus. Separate extension loaders previously created separate imported singletons, leaving consumers permanently unaware of changed source. Polling and subscriptions have explicit session owners; cached-factory session replacements retain the baseline until source is reevaluated. `/clear` warns if monitoring is unavailable rather than silently treating it as clean.
+
+**Verified:** Production bundled-loader regressions cover both initialization orders, library edits, narrow footer rendering, cached session replacements, source reevaluation, errors and cleanup. Existing Damage Control and Codex behavior is preserved; no provider calls, policy changes, legacy changes or operator-session reload are introduced.
+
 ## 2026-09-07: Define Pi orchestrator terminology
 
 **Clarified:** Default Pi's global instructions define the orchestrator as the primary model the user interacts with. Onclave and subagent behavior belongs in the respective tooling instructions when implemented, not global instructions. Runtime behavior and the legacy profile are unchanged.

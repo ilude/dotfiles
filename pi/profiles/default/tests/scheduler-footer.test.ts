@@ -9,6 +9,7 @@ vi.mock("../lib/reload-monitor.ts", () => ({ ReloadMonitor: class {
   check() {}
 } }));
 
+import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
 import registerFooter from "../extensions/operator-footer.ts";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
@@ -20,6 +21,7 @@ it("renders the scheduler status in the actual footer alongside provider usage a
   const statuses = new Map<string, string>();
   let footer: { render: (width: number) => string[] };
   const pi = {
+    events: createEventBus(),
     on: (name: string, hook: (...args: any[]) => any) => hooks.set(name, hook),
     getCommands: () => [], getAllTools: () => [],
   };

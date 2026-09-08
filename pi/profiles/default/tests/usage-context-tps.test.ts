@@ -10,7 +10,8 @@ import tps from "../extensions/tps-tracker.ts";
 import clear from "../extensions/clear.ts";
 import { formatCacheUsage, formatQuota, formatUsage, paceColor, readCacheUsage, recordCacheUsage, REFRESH_MS, USAGE_PAGE } from "../lib/codex-usage.ts";
 
-vi.mock("../lib/profile-reload.ts", () => ({ isProfileReloadNeeded: () => true }));
+import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
+import { RELOAD_REQUEST } from "../lib/profile-reload-events.ts";
 vi.mock("../lib/bedrock/ledger.ts", () => ({
   summarize: async () => ({ month: "test", records: [], cost: 0, unpriced: 0, baseline: 0 }),
   formatUsage: () => "Bedrock: no local usage recorded this month.",
@@ -34,7 +35,10 @@ function runtime(register: (pi: ExtensionAPI) => void, sm = SessionManager.inMem
     getContextUsage: () => ({ tokens: 100, contextWindow: 10000, percent: 1 }),
     model: { provider: "openai-codex", id: "test", contextWindow: 10000 },
   };
+  const events = createEventBus();
+  events.on(RELOAD_REQUEST, reply => (reply as Function)({ needed: true }));
   const pi = {
+    events,
     on: (name: string, handler: any) => hooks.set(name, [...(hooks.get(name) ?? []), handler]),
     registerCommand: (name: string, command: any) => commands.set(name, command),
     registerEntryRenderer: (name: string, renderer: any) => renderers.set(name, renderer),

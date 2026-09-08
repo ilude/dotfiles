@@ -1,7 +1,7 @@
 ---
 created: 2026-09-07
-status: ready
-completed: null
+status: completed
+completed: 2026-09-07
 ---
 
 # Repair default Pi cross-extension state and reload reporting
@@ -11,7 +11,7 @@ completed: null
 - User requirements: Address the demonstrated cross-extension state failure, inspect related default extensions for the same assumption, and verify integration through Pi's real loader rather than shared test imports.
 - Required outcome: A watched source change reaches the footer and `/clear`; the indicator accurately reflects whether loaded resources need reloading. Reloaded Damage Control and Codex display behavior must be distinguishable from stale code.
 - Non-goals: A profile-wide rewrite, a generic service framework, changes to Damage Control policy or Codex quota semantics, legacy-profile migration, upstream Pi modifications, or live provider calls.
-- Authorization: Planning only. This plan does not authorize implementation, commits, pushes, or reloading the operator's current session.
+- Authorization: User authorized implementation in a worktree, merge back into the primary checkout, and archival. No push or operator-session reload.
 
 ## Context for a fresh session
 
@@ -66,24 +66,24 @@ Verified findings:
 
 ## Tasks
 
-- [ ] **T1 — Establish runtime ownership and lifecycle boundaries**
+- [x] **T1 — Establish runtime ownership and lifecycle boundaries**
   - Depends on: none.
   - Inputs/files: Sources and installed Pi paths above; default extension imports and their directly imported stateful libraries.
   - Do: Inspect event-bus sharing/dispatch/unsubscription and factory caching across startup, reload, new, resume and fork. Reproduce the reload mismatch using Pi's production loader with separate extension entrypoints. Make one bounded pass over default extensions for mutable imports consumed across loaders, timer ownership, and stale lifecycle closures. Record a compact findings table in this plan: producer, consumers, state lifetime, evidence, fix/no-change disposition. Inspect direct dependencies only, not all legacy or upstream code.
   - Verify: Demonstrate a watched temporary `lib` edit that changes owner state but fails to reach the current footer/clear path. Record whether each session transition reevaluates changed source or reuses a cached factory. Confirm the bus protocol can return state without relying on load order.
   - Done when: The concrete protocol and baseline transition rules are recorded, the known failure is reproduced, and additional required changes are limited to demonstrated same-class defects.
   - If blocked: Record the exact unavailable loader/API behavior; do not substitute a shared-import mock as integration evidence.
-  - Evidence: Not started.
+  - Evidence: Completed; see T1 execution evidence.
 
-- [ ] **T2 — Replace implicit sharing with explicit owner/consumer integration**
+- [x] **T2 — Replace implicit sharing with explicit owner/consumer integration**
   - Depends on: T1.
   - Files: Existing `extensions/{profile-reload,operator-footer,clear}.ts`, `lib/{profile-reload,reload-monitor}.ts`; a new `lib/profile-reload-events.ts` only if useful for the small stateless contract. Other paths only as supported by T1 findings.
   - Do: Instantiate the service in the owner factory, wire the verified bus contract, deliver initial/update/error snapshots, and remove singleton imports from consumers. Implement T1's baseline generation behavior and cleanup without changing existing feature semantics. Repair any additional demonstrated state-sharing failures with the smallest owning change.
   - Verify: Owner-before-consumer and consumer-before-owner initialization both converge; stopped owners cannot update replacement consumers; `/clear` reads the owner's state and uses only the replacement context after switching.
   - Done when: No required communication depends on shared Jiti module identity, each timer/subscription has one lifecycle owner, and no speculative refactors were added.
-  - Evidence: Not started.
+  - Evidence: Completed; see T2 execution evidence.
 
-- [ ] **T3 — Add loader-boundary and lifecycle regressions**
+- [x] **T3 — Add loader-boundary and lifecycle regressions**
   - Depends on: T2.
   - Files: Existing `tests/profile-reload.test.ts`, applicable footer/clear tests; proposed new `tests/profile-reload-integration.test.ts` and a minimal production-loader driver only if the existing test process cannot host it safely.
   - Do: Exercise production extension entrypoints through separate Pi loaders. Use temporary profile files and captured UI rendering at the terminal boundary, not a mocked singleton or mocked event bus. Keep real filesystem changes, real state transport, and actual loader caching in the behavior under test; stub provider/network calls and terminal presentation where necessary.
@@ -91,16 +91,16 @@ Verified findings:
   - Do: In the isolated loader fixture, verify a changed imported formatter/approval marker is old before reload and new afterward. Reuse existing Damage Control and Codex behavior tests to verify their current output, without editing operator sources or making real approval/provider requests.
   - Verify: The central delivery regression fails against the old integration and passes with the fix. Tests must not import the producer's singleton to assert consumer behavior.
   - Done when: Tests demonstrate externally observable state delivery and source activation across the actual loader boundary, with deterministic owned cleanup.
-  - Evidence: Not started.
+  - Evidence: Completed; see T3 execution evidence.
 
-- [ ] **T4 — Document, validate, and close**
+- [x] **T4 — Document, validate, and close**
   - Depends on: T3.
   - Files: `pi/README.md`, root `CHANGELOG.md`, this plan.
   - Do: Describe single ownership, explicit cross-extension communication, actual baseline/reset semantics, and the remaining watch-coverage limits. Record the runtime loader regression and why shared-import tests missed it. Do not modify agent instructions or add a generic framework.
   - Verify from `pi/profiles/default/`: `pnpm run typecheck`; `pnpm test profile-reload scheduler-footer usage-context-tps damage-control/prompt.test.ts` (filters directly after `test`, no `--`). Include the existing clear/footer test filter if its filename is outside those filters, plus only test files for additional demonstrated T1 repairs. Confirm new integration tests were collected, not silently skipped. Run `pnpm run check:runtime` for the existing offline Damage Control loader check.
   - Verify from root: `git diff --check` for this task's changes; inspect final scope and unrelated-change preservation.
   - Done when: Agreed offline checks pass, limitations are documented, and this spec is completed and archived. No live account access or operator-session reload is required for acceptance.
-  - Evidence: Not started.
+  - Evidence: Completed; see T4 execution evidence.
 
 ## Agreed validation and finish
 
@@ -108,11 +108,33 @@ T1's small reproduction and T3/T4's focused checks are the validation scope. Rep
 
 ## Current handoff
 
-- Status: Ready for implementation after authorization.
-- Completed: Plan and bounded source/documentation inspection only.
-- Next: T1, starting with installed event-bus and cached-factory/session replacement behavior.
-- Open technical decisions: Exact bus reply semantics and baseline lifetime across cached versus reevaluated factories. These are discoverable in T1, not user preference questions.
-- No production files were changed or current sessions reloaded by this planning task.
+- Status: Implementation and agreed checks completed in `.worktrees/default-extension-state`, branch `fix/default-extension-state`; merge requested by user.
+- Completed: T1-T4. See execution evidence below.
+- Next: Merge the committed worktree result into primary while preserving concurrent work. No push or operator-session reload.
+- Open technical decisions: None.
+
+## Execution evidence, 2026-09-07
+
+Actual validation used the default profile's dependencies, Pi 0.85.0, isolated temporary profiles and the installed self-contained bundled resource loader. The worktree's dependency directory is a junction to the existing default dependencies. pnpm's automatic dependency verification tried to reinstall through that junction and refused; checks used `pnpm --config.verify-deps-before-run=false` without modifying shared dependencies. Importing the unbundled production loader failed on absent `pi-server`; the integration test uses the advertised self-contained bundle instead, matching the existing loader-smoke approach.
+
+- T1: Original primary-checkout monitor/footer entrypoints loaded through the production bundle reproduced the bug: a temporary `lib/approval.ts` change followed by 2.2 seconds still rendered no `[reload]`. Installed event-bus dispatch is synchronous and subscription registration returns an unsubscribe function. Loader wrappers track subscriptions. Session replacement constructs new resource loaders; their first load can reuse same-cwd cached factories. Reloading an already-loaded resource loader clears the factory cache. Tests prove both cached and reevaluated paths.
+- T2: The owner now instantiates its service inside the factory and retains only its own baseline within the evaluated source generation. Its timer/subscriptions are session-owned. Footer and clear use the small event/snapshot contract. No generic framework or other extension refactor was needed.
+- T3: Five production-bundle integration cases pass, including both startup orders, captured narrow footer rendering, clear's fresh replacement context, cached new/resume/fork events, errors, absent owner, imported source markers before/after reevaluation, and timer cleanup. Existing focused tests now use a real event bus rather than a mocked singleton. The suite simulates lifecycle event delivery around real resource loading; it does not drive the interactive session selector.
+- T4: Typecheck passed; five focused test files / 36 tests passed; `check:runtime` passed actual Damage Control bootstrap, grammar and native schema checks with network disabled. Source activation and Codex/approval behavior were verified offline. Actual operator terminal appearance remains unverified. Final diff whitespace check and scope review are recorded at merge closeout.
+
+Bounded state-ownership inspection:
+
+| Producer / consumers | Lifetime and disposition |
+| --- | --- |
+| Reload monitor / footer / clear | Demonstrated separate-singleton failure; repaired with explicit bus transport. |
+| Codex and TPS / footer | Extension-owned request/timer state; Pi `setStatus` carries display data. Existing shutdown handlers and focused tests cover replacement. No shared singleton requirement; unchanged. |
+| Scheduler / footer | Deliberate process-owned `Symbol.for` state with session rebinding; footer receives Pi status strings. Not the demonstrated defect; unchanged. |
+| Bedrock ledger / Codex/context/footer consumers | File-backed accounting and stateless formatting, not shared mutable import identity; unchanged. |
+| Model runtime and tool activation helpers / their extension consumers | Factories/stateless functions operating on supplied Pi APIs; unchanged. |
+| Browser CDP counter and settings-file counter | Internal identifiers rather than state exchanged between extensions; file writes have owning locks. No same-class failure demonstrated; unchanged. |
+| Log analytics staging queue | Owned by the analytics tool's import graph, no second extension consumer relying on shared identity; unchanged. |
+
+No legacy changes, live account calls, runtime policy changes, or operator-session reload were introduced.
 
 ## Completion and archive
 
