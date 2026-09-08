@@ -1,5 +1,15 @@
 # Agent instruction feedback log
 
+## AIF-014 — Pair planning uncertainty with questions and recommendations
+
+- **Reference:** Operator follow-up to the successful-plan versus gateway comparison.
+- **Feedback:** Ask questions and provide recommendations when uncertainty is found while planning.
+- **Recommendation:** Investigate readily discoverable facts first. For uncertainty that could materially change the plan, explain the unresolved choice and consequences, recommend an approach with reasons, and ask a focused question. Keep routine implementation details within agent judgment; do not silently turn recommendations into requirements.
+- **Related:** AIF-007 (materially different interpretations), AIF-002 (requirements versus proposals), AIF-013/APR-005 (gateway comparison).
+- **Decision:** Operator approved narrow edits to `planning/SKILL.md` and its template: pair consequential uncertainty with questions and recommendations, bound factual investigations, preserve required functions during simplification, and reconcile stale handoffs. No mandatory uncertainty phase or registry.
+- **Execution addition:** Operator requested dedicated task worktrees, local commits and merge back to recorded targets, with plan archival included in that integration. Execution authorization includes those local Git actions unless restricted; planning alone does not. Deployment/push stay separately authorized. Preserve unrelated work, module-first ordering and repository branch/publication rules; retain blocked worktrees and report pending integration.
+- **Status:** Implemented in default planning guidance and documentation. Prose consistency and local integration are checked at closeout; effectiveness in subsequent tasks remains unverified. No global, legacy, runtime, or existing-plan changes.
+
 ## AIF-013 — Distinguish recent successful plans from the gateway exception
 
 - **Reference:** Operator assessment while discussing the historical workflow-ceremony investigation.

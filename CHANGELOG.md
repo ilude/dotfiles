@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-08: Bound planning uncertainty and integrate work through task worktrees
+
+**Changed:** Default Pi planning pairs consequential uncertainty with focused questions and recommendations, distinguishes required outcomes from proposed mechanisms, and bounds assumption checks to useful decisions. Simplification must preserve required functions, and handoffs must replace stale status with current evidence.
+
+**Workflow:** Authorized plan execution uses dedicated task worktrees and branches. Local task commits and merge are included unless explicitly restricted; completed implementation and its dated archived plan integrate together. Cross-repository work retains module-first ordering and repository branch/publication rules. Blocked integration is reported separately, unrelated changes are preserved, and task worktrees are removed only after clean integration. Planning alone does not authorize execution; deployment and push remain separately authorized.
+
+**Scope:** Skill, template, and documentation only. No new runtime, mandatory investigation phase, reviewer loop, or changes to legacy or existing plans. Prose consistency and Git integration are checked; reduced future supervision is not yet verified.
+
 ## 2026-09-07: Isolate invalid session headers in default log analytics
 
 **Fixed:** A historical telemetry backfill under legacy sessions no longer prevents discovery or queries of valid sessions. Non-session, empty, malformed, and oversized headers are skipped with explicit exclusion counts and bounded file diagnostics in listing and session-query coverage. Explicit unresolved references, access errors, path escapes, cancellation, and query resource limits still fail. Historical data and the legacy runtime are unchanged.

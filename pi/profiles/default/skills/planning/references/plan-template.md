@@ -10,7 +10,7 @@ completed: null
 
 - User requirements: <requested outcomes and preserved behavior>.
 - Non-goals: <important exclusions, not speculative restrictions>. Do not add rollback work unless the user requested it.
-- Authorization: <planning, implementation, deployment, and Git actions actually requested>.
+- Authorization: <planning or execution; explicit deployment/push permission and any Git restrictions>. Plan execution includes local task commits and merge unless the user says otherwise; planning alone does not.
 
 The user's request and subsequent changes are authoritative. Keep unapproved
 optional work outside the task checklist and completion criteria; do not generate
@@ -22,6 +22,7 @@ All code paths below are relative to <selected repository root>, unless stated
 otherwise. Read current applicable AGENTS.md files before acting.
 
 - Owning repositories and paths: <existing source and deployment boundaries>.
+- Execution worktrees: <per repository: task worktree path, task branch, merge target; proposed until execution starts>.
 - Required reading: <small, relevant file list; label proposed new files separately>.
 - Verified starting behavior: <facts, relevant revision/date, and evidence limits>.
 - Existing work to preserve: <known overlapping work; recheck on resume>.
@@ -38,17 +39,30 @@ otherwise. Read current applicable AGENTS.md files before acting.
 
 ## Decisions and contracts
 
-Distinguish user-selected behavior from assistant proposals. Resolve factual gaps
-by inspection or a bounded investigation task; don't invent user preferences.
+Keep required outcomes distinct from proposed mechanisms. Resolve discoverable
+facts yourself. For uncertainty that could materially change the plan, explain
+the choice and consequences, recommend an approach with reasons, and ask a focused
+question. Record consequential decisions below, not routine implementation details.
+Use the smallest practical investigation where useful, naming the question and
+decision it enables. Record a fallback only where needed; don't invent preferences.
 
 | Decision | Source/status | Choice or exact question | Affected tasks |
 | --- | --- | --- | --- |
-| <D1> | <user requirement / proposed / unresolved / verified> | <choice, evidence, or question> | <T1> |
+| <D1> | <user requirement / proposed / unresolved / verified> | <choice/evidence, or recommendation with reasons and focused question> | <T1> |
 
 <Define necessary interface shapes, errors, defaults, ownership, and behavior
 branches here. Don't manufacture precision for choices not made yet.>
 
 ## Execution guidance
+
+**Worktree isolation:** At execution start, create a dedicated worktree and task
+branch per changed repository, or resume those recorded above. Work and validate
+there. Preserve other checkout changes and carry any uncommitted plan into the task
+worktree without losing the original. Respect repository and submodule branch rules.
+
+**When an assumption fails:** Reassess the mechanism against the existing
+requirement. Use a simpler approach within scope; ask before materially expanding
+scope or changing acceptance.
 
 **Before expanding work:** Which existing requirement needs this addition, and
 what evidence justifies it? Do not turn optional improvements into tasks or
@@ -60,9 +74,10 @@ unnecessary complexity. Continue required work without starting another audit.
 
 **Recovery when drift is found:** Stop the detour and remove unnecessary code,
 tests, and plan items you introduced during this task without disturbing
-pre-existing or concurrent work. Resolve cleanup independently; note anything
-that cannot be safely removed in the final handoff. Restore the agreed completion
-criteria and resume the next required step.
+pre-existing or concurrent work. Preserve the required function of any removed
+mechanism, replacing it with a simpler approach if needed. Resolve cleanup
+independently; note anything that cannot be safely removed in the final handoff.
+Restore the agreed completion criteria and resume the next required step.
 
 ## Tasks
 
@@ -89,7 +104,10 @@ Fix demonstrated failures and rerun affected checks, not an expanding audit.>
 
 ## Current handoff
 
-- Status: <consistent with frontmatter>.
+Replace superseded pause/blocker statements with the latest execution evidence;
+distinguish historical results from current health and unverified acceptance.
+
+- Status: <consistent with frontmatter; distinguish implementation complete from integration pending>.
 - Completed work: <task IDs and concise evidence>.
 - Next: <first actionable unchecked task>.
 - Blockers/open decisions: <specific unresolved issues or none>.
@@ -99,6 +117,18 @@ Fix demonstrated failures and rerun affected checks, not an expanding audit.>
 
 When the described work and agreed checks finish, set `status: completed` and
 `completed: YYYY-MM-DD` above, record the result and actual profile runs, and move
-this entire directory to `REPO_ROOT/.specs/archive/<stub>/`. Repair inbound links
-and never overwrite an existing archive. Leave incomplete work active. Archiving
-does not authorize committing, pushing, deploying, or deleting unrelated work.
+this entire directory to `REPO_ROOT/.specs/archive/<stub>/` in the task worktree.
+Repair inbound links and never overwrite an existing archive. Leave unfinished
+implementation active; writing the plan is not completing the work.
+
+Commit the implementation and archived plan together, then merge into the recorded
+target. Integrate modules before parent gitlinks; archive the coordinating plan
+with final parent integration. Respect repository publication rules and explicit
+no-commit/no-merge instructions. Deployment and push require separate authorization.
+
+Preserve unrelated target-checkout changes. If blocked, retain the task worktree
+and report pending integration rather than claiming delivery. After merging,
+verify the target contains the changes and archive with no active plan copy left;
+reconcile any task-owned original without losing concurrent edits. Rerun affected
+checks if conflict resolution changed implementation, not just because of a merge.
+Remove the task worktree only once integrated with no uncommitted or unmerged work.
