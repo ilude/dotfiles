@@ -2,7 +2,7 @@ import * as childProcess from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { profileReload } from "../lib/profile-reload.ts";
+import { RELOAD_CHANGED, requestReloadState, type ReloadState } from "../lib/profile-reload-events.ts";
 
 const ANSI = {
 	cyan: "\x1b[36m",
@@ -23,6 +23,7 @@ let requestFooterRender: (() => void) | undefined;
 const cachedStatusDirectories = new Map<string, string>();
 
 interface ExtensionAPI {
+	events: import("@earendil-works/pi-coding-agent").ExtensionAPI["events"];
 	on(event: string, handler: (event: any, ctx: ExtensionContext) => void | Promise<void>): void;
 	getThinkingLevel?: () => string;
 	getCommands: () => { sourceInfo: { path: string } }[];
@@ -188,8 +189,8 @@ function statusText(value: string | undefined): string {
 	return (value ?? "").replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
 }
 
-function formatReloadIndicator(reloadNeeded: boolean): string {
-	if (profileReload.error) return `${ANSI.red}[reload check failed]${ANSI.reset}`;
+function formatReloadIndicator(reloadNeeded: boolean, error?: string): string {
+	if (error) return `${ANSI.red}[reload check failed]${ANSI.reset}`;
 	return reloadNeeded ? `${ANSI.white}[${ANSI.pink}reload${ANSI.white}]${ANSI.reset}` : "";
 }
 
@@ -200,6 +201,7 @@ function formatMainFooter(options: {
 	pi: ExtensionAPI;
 	contextUsage: ContextUsage | null;
 	reloadNeeded: boolean;
+	reloadError?: string;
 	rightStatus: string | null;
 	width: number;
 }): string {
@@ -211,14 +213,14 @@ function formatMainFooter(options: {
 	const thinkingLabel = `${ANSI.white}[${colorForThinkingLevel(model, thinking)}${thinking}${ANSI.white}]${ANSI.reset}`;
 	const providerLabel = provider ? `${ANSI.dim}${ANSI.grey}${provider}/${ANSI.reset}` : "";
 	const contextLabel = formatContextUsageSegment(options.contextUsage);
-	const versionLabel = `${ANSI.dim}π v${resolvePiVersion() ?? "?"}${ANSI.reset}${formatReloadIndicator(options.reloadNeeded)}`;
+	const versionLabel = `${ANSI.dim}π v${resolvePiVersion() ?? "?"}${ANSI.reset}${formatReloadIndicator(options.reloadNeeded, options.reloadError)}`;
 	let left = `${ANSI.green}${directory}${ANSI.reset}${branch} | ${providerLabel}${ANSI.orange}${model}${ANSI.reset}${thinkingLabel}`;
 	if (contextLabel) left += ` | ${contextLabel}`;
 	left += ` | ${versionLabel}`;
 	let composed = rightAnchor(left, options.rightStatus, options.width);
 	if (options.rightStatus && composed === left && contextLabel) composed = rightAnchor(contextLabel, options.rightStatus, options.width);
 	if (options.rightStatus && composed === contextLabel) composed = rightAlign(options.rightStatus, options.width);
-	const reloadIndicator = formatReloadIndicator(options.reloadNeeded);
+	const reloadIndicator = formatReloadIndicator(options.reloadNeeded, options.reloadError);
 	if (reloadIndicator && !composed.includes(reloadIndicator)) composed = `${reloadIndicator} ${composed}`;
 	if (reloadIndicator && visibleWidth(composed) > options.width) {
 		composed = `${reloadIndicator} ${truncateToWidth(left.replace(reloadIndicator, ""), Math.max(0, options.width - visibleWidth(reloadIndicator) - 1))}`;
@@ -279,7 +281,7 @@ function refreshStatuses(ctx: ExtensionContext): void {
 	ctx.ui.setStatus("usage", undefined);
 }
 
-function installFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
+function installFooter(ctx: ExtensionContext, pi: ExtensionAPI, reloadState: () => ReloadState): boolean {
 	if (typeof ctx.ui.setFooter !== "function") return false;
 	ctx.ui.setFooter((tui, _theme: unknown, footerData: ReadonlyFooterDataProvider) => {
 		requestFooterRender = () => tui.requestRender();
@@ -294,7 +296,8 @@ function installFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
 				model: ctx.model,
 				pi,
 				contextUsage: ctx.getContextUsage?.() ?? null,
-				reloadNeeded: profileReload.needed,
+				reloadNeeded: reloadState().needed,
+				reloadError: reloadState().error,
 				rightStatus: codexStatus,
 				width,
 			});
@@ -315,11 +318,16 @@ function installFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
 
 export default function operatorFooter(pi: ExtensionAPI): void {
 	let unsubscribeReload: (() => void) | undefined;
+	let reloadState: ReloadState = { needed: false };
 	pi.on("session_start", async (_event: { reason?: string }, ctx: ExtensionContext) => {
 		unsubscribeReload?.();
-		unsubscribeReload = profileReload.subscribe(() => requestFooterRender?.());
+		unsubscribeReload = pi.events.on(RELOAD_CHANGED, data => {
+			reloadState = data as ReloadState;
+			requestFooterRender?.();
+		});
+		reloadState = requestReloadState(pi) ?? { needed: false };
 		initializeUsage(ctx);
-		if (!installFooter(ctx, pi)) ctx.ui.setStatus("pi", `π v${resolvePiVersion() ?? "?"}`);
+		if (!installFooter(ctx, pi, () => reloadState)) ctx.ui.setStatus("pi", `π v${resolvePiVersion() ?? "?"}`);
 		refreshStatuses(ctx);
 	});
 
