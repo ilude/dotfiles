@@ -1,6 +1,7 @@
 ---
 created: 2026-09-05
-status: ready
+status: cancelled
+cancelled: 2026-09-08
 ---
 
 # Benchmark DuckDB and SQLite log-analytics pipelines
@@ -110,9 +111,9 @@ Keep incomplete work at `.specs/duckdb-sqlite-log-analytics-benchmark/plan.md`. 
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
-- Blocker: None.
+- State: Cancelled and archived at the operator's request on 2026-09-08; implementation did not start.
+- Blocker: None; this plan is retained for historical reference only.
 - Next: T1.
 - Current frontier: T1; authored adapter and oracle work precedes fixture and runner tasks; final validation and live measurements remain pending.
 - Validation progress: No checks run; one shared deterministic repair batch and targeted rerun remain; live attempts remain one each for T6 and T7.
-- Resume: `/do-it .specs/duckdb-sqlite-log-analytics-benchmark/plan.md`
+- Resume: Not applicable unless the operator explicitly reopens the archived plan.

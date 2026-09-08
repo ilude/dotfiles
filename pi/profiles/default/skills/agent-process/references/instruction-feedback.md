@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-013 — Distinguish recent successful plans from the gateway exception
+
+- **Reference:** Operator assessment while discussing the historical workflow-ceremony investigation.
+- **Feedback:** Most plans run last night and today appeared to work as expected. The outstanding web-fetch-gateway plan was an exception that entered a churn loop.
+- **Evidence:** The current gateway plan records a pause after scope churn and removal of an extra launcher and bespoke archive-publication workflow. Core acquisition/routing and the Pi client remain implemented; deployment and final acceptance remain unfinished. AIF-008 separately records invented rollback work during that task. The successful recent plans have not been independently compared in this review.
+- **Decision:** Treat this as a specific failure to investigate against successful recent work, not evidence that the current planning workflow generally needs replacement. Historical legacy-workflow findings do not establish a present default-profile failure rate or the cause of this incident.
+- **Related:** AIF-008 (gateway scope expansion), AIF-004 (narrow changes), APR-002 (earlier verification churn).
+- **Status:** Operator feedback recorded. No instruction, runtime, or gateway-plan changes; no deployment resumption authorized.
+
 ## AIF-012 — Assess command risk in its environment
 
 - **Reference:** Operator feedback on the `docker compose down` approval reason.

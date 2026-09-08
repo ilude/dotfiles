@@ -4,7 +4,7 @@ Status: Broadened investigation complete. The operator has clarified the directi
 
 ## Executable plan
 
-[The development-flow reset plan](../pi-development-flow-reset/plan.md) passed adversarial/subtractive review disposition and deterministic readiness validation. It preserves the user's existing flags/defaults, damage control and commit behavior, adds default worktree planning, and removes procedural controllers. Its accepted decisions supersede earlier proposals below. Implementation has not started.
+[The archived development-flow reset plan](../archive/pi-development-flow-reset/plan.md) passed adversarial/subtractive review disposition and deterministic readiness validation before it was cancelled at the operator's request. It preserves the user's existing flags/defaults, damage control and commit behavior, adds default worktree planning, and removes procedural controllers. Its accepted decisions supersede earlier proposals below. Implementation has not started.
 
 ## Read first
 

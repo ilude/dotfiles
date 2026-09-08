@@ -1,6 +1,7 @@
 ---
 created: 2026-09-05
-status: ready
+status: cancelled
+cancelled: 2026-09-08
 ---
 
 # Simplify development to prompt-guided planning and execution
@@ -105,9 +106,9 @@ Keep incomplete work at `.specs/pi-development-flow-reset/plan.md` in the primar
 
 ## Execution Status
 
-- State: Ready; implementation has not started.
-- Blocker: None; operator selected worktrees by default and preservation of existing flags/defaults.
+- State: Cancelled and archived at the operator's request on 2026-09-08; implementation did not start.
+- Blocker: None; this plan is retained for historical reference only.
 - Next: T1 and T2; independent packages suitable for parallel subagents.
 - Current frontier: T1/T2; source inspection establishes authored completion; final behavioral validation pending.
 - Validation progress: No development checks run; one shared repair batch and targeted rerun remain for implementation. Adversarial findings were dispositioned: clarified worktree lookup, installed session outcomes, legacy-state fixtures and option grammar; rejected a replacement transactional closeout controller. Subtractive review removed speculative intermediate commit-test work and narrowed instruction/reporting obligations; retained explicit user-requested extension guidance and this transition's concise recovery notes.
-- Resume: `/do-it .specs/pi-development-flow-reset/plan.md`
+- Resume: Not applicable unless the operator explicitly reopens the archived plan.

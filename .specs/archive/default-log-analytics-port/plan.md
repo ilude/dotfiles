@@ -24,7 +24,7 @@ All code paths below are relative to the dotfiles repository root unless explici
 - Existing default writers: `pi/profiles/default/lib/bedrock/ledger.ts`, `pi/profiles/default/lib/codex-usage.ts`; native Pi writes sessions. Default Damage Control deliberately has no persistent telemetry ledger, per `pi/profiles/default/docs/damage-control-setup.md`.
 - Existing discovery integration: `pi/profiles/default/extensions/{tool-search,tool-visibility}.ts`, `pi/profiles/default/lib/tool-activation.ts`.
 - Existing performance context: `.specs/archive/source-selective-log-analytics/plan.md` and `.specs/archive/log-analytics-resource-bounds/plan.md`. Their old `pi/lib`, `pi/extensions`, and `pi/tests` paths now live under `pi/profiles/legacy/`. These are historical evidence, not current workflow instructions.
-- Separate experiment: `.specs/duckdb-sqlite-log-analytics-benchmark/plan.md` is unimplemented according to its current checklist. Do not execute, merge, or inherit its benchmark matrix, worktree rules, retry rules, or database-replacement scope.
+- Separate experiment: `.specs/archive/duckdb-sqlite-log-analytics-benchmark/plan.md` was cancelled before implementation and is retained for historical reference. Do not execute, merge, or inherit its benchmark matrix, worktree rules, retry rules, or database-replacement scope.
 - Existing work to preserve at planning time: changes to `CHANGELOG.md`, `pi/README.md`, `pi/profiles/default/docs/commands.md`, `pi/profiles/default/extensions/model-shortcuts.ts`, and `pi/profiles/default/tests/model-shortcuts.test.ts`. Recheck Git status before editing; documentation changes may overlap.
 
 ### Verified findings and limits
