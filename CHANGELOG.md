@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-08: Complete and reconcile web-fetch gateway acceptance
+
+**Completed:** Reconciled the stale paused gateway plan against implemented deployment and BWS credential delivery. Current checks passed for ordinary default Pi direct/link-following and browser retrieval with Luna without gateway overrides, HTTPS authentication and anonymous rejection, and all 15 observed SQLite route rows surviving a gateway-only restart with WAL enabled. The browser container was unchanged; no redeployment or new acquisition machinery was needed.
+
+**Corrected:** Infrastructure documentation now reflects the implemented digest-specific age exception and lazy BWS discovery. Existing validation exposed standard-address scanner annotations, stale service-catalog test expectations, and gateway-role lint issues; these were corrected without changing application behavior or widening global validation exemptions. The single final `just validate` invocation initially failed; its constituent checks were completed through affected retries and unfinished stages, not another full validation loop.
+
+**Integrated:** Infrastructure changes were merged and published before the dotfiles gitlink and dated plan archive. Task worktrees isolate the work. Legacy, SearXNG, Onclave, image pins, and credentials are preserved; no dotfiles push. Results are dated acceptance evidence, not ongoing-health or injection-resistance guarantees.
+
 ## 2026-09-08: Bound planning uncertainty and integrate work through task worktrees
 
 **Changed:** Default Pi planning pairs consequential uncertainty with focused questions and recommendations, distinguishes required outcomes from proposed mechanisms, and bounds assumption checks to useful decisions. Simplification must preserve required functions, and handoffs must replace stale status with current evidence.
