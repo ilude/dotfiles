@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-09: Make plan action shortcuts work from either view
+
+**Fixed:** `/plans` no longer silently ignores action keys in Browse. `o` Open in VS Code, `c` Copy command, `r` Run here, `d` Run in new tab, and `a` Archive operate on the selected plan directly from either Browse or Details. Enter remains optional inspection. The browse legend now says Actions rather than In details. Herdr launch requirements, current-instance routing, and archive checks and confirmation remain unchanged.
+
 ## 2026-09-09: Separate plan browsing from plan actions
 
 **Changed:** Default Pi's `/plans` now uses a framed, padded overlay with full-row selection highlighting, aligned status and task columns, and height-bounded scrolling. List entries are labeled and sorted by `.specs/` directory stub rather than prose title; the selected preview shows the human-readable title, directory path, and summary to make the mapping explicit. Enter opens a separate details screen with Open in VS Code, Copy command, Run here, Run in new tab, and Archive actions. `c` copies `/do-it .specs/<stub>/plan.md` without executing it; `r` closes the picker and submits that command in the current instance with native template expansion, queuing behind any active work; `d` retains the focused Herdr new-tab launch. Both views clearly distinguish the two execution destinations. The high-contrast browse legend advertises these details-only shortcuts alongside navigation; cramped layouts reduce preview text and metadata before clipping controls. Esc returns to the selected list row; `q` closes either view. The temporary picker does not become transcript content, and action errors or archive cancellation return to the same plan's details.

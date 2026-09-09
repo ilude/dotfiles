@@ -74,7 +74,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					const taskWidth = Math.min(11, Math.max(5, ...plans.map(plan => visibleWidth(progress(plan)))));
 					const stubWidth = inner - statusWidth - taskWidth - 6;
 					const cells = (stub: string, status: string, tasks: string) => `${fit(stub, stubWidth)}  ${fit(status, statusWidth)}  ${fit(tasks, taskWidth)}`;
-					const help = ["↑↓ Select · Enter Details · Esc/q Close", `In details: ${planActions.map(action => `${action.key} ${action.hint}`).join(" · ")}`]
+					const help = ["↑↓ Select · Enter Details · Esc/q Close", `Actions: ${planActions.map(action => `${action.key} ${action.hint}`).join(" · ")}`]
 						.flatMap(text => wrapTextWithAnsi(text, inner));
 					const metadata = columns ? [] : [`Status: ${clean(current.status ?? "unknown")}`, `Tasks: ${progress(current)}`];
 					// Very short, narrow panels retain all shortcuts before optional metadata.
@@ -107,18 +107,16 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 			},
 			invalidate() {},
 			handleInput(data: string) {
+				const action = planActions.find(action => action.key === data);
 				if (data === "q") return onDone({ action: "close", index: selected });
 				if (matchesKey(data, Key.escape)) {
 					if (!details) return onDone({ action: "close", index: selected });
 					details = false;
 				} else if (!plans.length || !usable) return;
+				else if (action) return onDone({ action: action.action, index: selected });
 				else if (details) {
 					if (matchesKey(data, Key.up)) scroll = Math.max(0, scroll - 1);
 					else if (matchesKey(data, Key.down)) scroll = Math.min(maxScroll, scroll + 1);
-					else {
-						const action = planActions.find(action => action.key === data);
-						if (action) return onDone({ action: action.action, index: selected });
-					}
 				} else if (matchesKey(data, Key.up)) selected = Math.max(0, selected - 1);
 				else if (matchesKey(data, Key.down)) selected = Math.min(plans.length - 1, selected + 1);
 				else if (matchesKey(data, Key.enter)) { details = true; scroll = 0; }

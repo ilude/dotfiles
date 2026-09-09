@@ -44,7 +44,7 @@ it("renders width-safe rows and dispatches only approved keys", () => {
   component.handleInput("d"); expect(done).toHaveBeenCalledWith({ action: "do-it", index: 1 });
 });
 
-it("gates list actions until Enter and aligns the list columns", () => {
+it("aligns the list columns and opens the selected plan without entering details", () => {
   const base = root();
   const plans = [parsePlan(add(base, "alpha", complete.replace("Zebra", "Alpha")), "alpha", base), parsePlan(add(base, "beta", complete.replace("Zebra", "Beta")), "beta", base)];
   const bg = vi.fn((_: string, value: string) => value);
@@ -58,10 +58,21 @@ it("gates list actions until Enter and aligns the list columns", () => {
   expect(planRows[0]!.indexOf("completed")).toBe(planRows[1]!.indexOf("completed"));
   expect(bg).toHaveBeenCalledWith("selectedBg", expect.stringContaining("▶ beta"));
   expect(visibleWidth(bg.mock.calls.find(([color]) => color === "selectedBg")![1])).toBe(78);
-  for (const key of ["o", "c", "r", "d", "a"]) component.handleInput(key);
-  expect(done).not.toHaveBeenCalled();
-  component.handleInput("\r"); component.handleInput("o");
+  component.handleInput("o");
   expect(done).toHaveBeenCalledWith({ action: "open", index: 1 });
+});
+
+it.each([["o", "open"], ["c", "copy"], ["r", "run-here"], ["d", "do-it"], ["a", "archive"]])("dispatches %s from both browse and details", (key, action) => {
+  const base = root(); const plan = parsePlan(add(base, "selected", complete), "selected", base);
+  for (const details of [false, true]) {
+    const done = vi.fn();
+    const component = planSelector([plan, { ...plan, stub: "second" }], 0, done)({ requestRender() {} }, testTheme());
+    component.handleInput("\x1b[B");
+    if (details) component.handleInput("\r");
+    component.render(100);
+    component.handleInput(key);
+    expect(done).toHaveBeenCalledExactlyOnceWith({ action, index: 1 });
+  }
 });
 
 it.each([40, 100])("maps duplicate titles to their directory stubs in a %i-column list", width => {
@@ -95,10 +106,10 @@ it("enters details, preserves selection on Esc, and exposes detail actions", () 
   expect(details).toContain("Open in VS Code"); expect(details).toContain("Copy command");
   expect(details).toContain("Run here"); expect(details).toContain("Run in new tab"); expect(details).toContain("Archive");
   expect(details).toContain("Beta"); expect(details).not.toContain("Alpha");
-  component.handleInput("\x1b"); component.handleInput("d");
+  component.handleInput("\x1b");
   expect(done).not.toHaveBeenCalled();
   expect(component.render(64).join("\n")).toContain("▶ beta");
-  component.handleInput("\r"); component.handleInput("d");
+  component.handleInput("d");
   expect(done).toHaveBeenCalledWith({ action: "do-it", index: 1 });
 });
 
@@ -128,12 +139,12 @@ it.each([[24, 18], [40, 18], [100, 35]])("keeps a readable shortcut legend visib
   const text = rendered.map(line => stripTerminalSequences(line).slice(2, -2).trim()).join(" ");
   expect(text).toContain("▶ spec-29");
   expect(text).toContain("↑↓ Select · Enter Details · Esc/q Close");
-  expect(text).toContain("In details: o VS Code · c Copy command · r Run here · d Run in new tab · a Archive");
+  expect(text).toContain("Actions: o VS Code · c Copy command · r Run here · d Run in new tab · a Archive");
   expect(rendered.length).toBeLessThanOrEqual(Math.floor(rows * 0.8));
   expect(rendered.every(line => visibleWidth(line) <= width)).toBe(true);
-  expect(theme.fg).toHaveBeenCalledWith("text", expect.stringContaining("In details:"));
-  for (const key of ["o", "c", "r", "d", "a"]) component.handleInput(key);
-  expect(done).not.toHaveBeenCalled();
+  expect(theme.fg).toHaveBeenCalledWith("text", expect.stringContaining("Actions:"));
+  component.handleInput("d");
+  expect(done).toHaveBeenCalledExactlyOnceWith({ action: "do-it", index: 29 });
 });
 
 it("keeps the selected plan visible in a short list viewport", () => {
@@ -175,7 +186,10 @@ it.each(["rpc", "json", "print"])("rejects %s mode without opening terminal UI",
 it("renders an empty closable state", () => {
   const done = vi.fn(); const theme = testTheme();
   const component = planSelector([], 0, done)({ requestRender() {} }, theme);
-  expect(component.render(80).join("\n")).toContain("No open plans"); component.handleInput("q");
+  expect(component.render(80).join("\n")).toContain("No open plans");
+  for (const key of ["o", "c", "r", "d", "a"]) component.handleInput(key);
+  expect(done).not.toHaveBeenCalled();
+  component.handleInput("q");
   expect(done).toHaveBeenCalledWith({ action: "close", index: 0 });
 });
 
@@ -257,15 +271,15 @@ it("runs here through the registered command with template expansion and closes 
   expect(copyToClipboard).not.toHaveBeenCalled(); expect(spawnSync).not.toHaveBeenCalled();
 });
 
-it("keeps d as a focused new-tab launch without sending to the current instance", async () => {
+it.each([false, true])("launches the selected plan in a focused new tab with details=%s", async details => {
   vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_WORKSPACE_ID", "test-workspace");
-  const base = root(); add(base, "new-tab", complete); let calls = 0;
+  const base = root(); add(base, "aaa-other", complete); add(base, "new-tab", complete); let calls = 0;
   vi.mocked(spawnSync).mockReturnValue({ status: 0, stdout: JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "tab-test" } } } }) } as any);
   const sendUserMessage = vi.fn(); const notify = vi.fn();
   const custom = vi.fn(async (factory: any) => {
     let value: any;
     const component = factory({ requestRender() {} }, testTheme(), {}, (result: any) => { value = result; });
-    if (calls++ === 0) { component.handleInput("\r"); component.handleInput("d"); } else component.handleInput("q");
+    if (calls++ === 0) { component.handleInput("\x1b[B"); if (details) component.handleInput("\r"); component.handleInput("d"); } else component.handleInput("q");
     return value;
   });
   await executePlans({ mode: "tui", cwd: base, ui: { custom, notify } } as any, { sendUserMessage });
