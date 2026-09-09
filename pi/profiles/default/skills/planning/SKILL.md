@@ -10,6 +10,11 @@ not authorize execution. Authorization to execute a plan includes local task
 commits and merge into its recorded target unless the user says otherwise.
 Deployment and push require separate authorization. Keep guidance proportional.
 
+Questions about a plan do not authorize rewriting an existing plan. During
+execution, update progress and evidence, but do not change scope, acceptance
+criteria, or settled operator decisions without explicit approval. Reconcile
+stale drafts against recorded decisions instead of reopening them.
+
 ## Why this workflow exists
 
 A fresh-context model needs more than broad phases: it must know the accepted

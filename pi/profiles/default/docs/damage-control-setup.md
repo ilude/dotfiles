@@ -1,6 +1,6 @@
 # Default Damage Control
 
-Damage Control loads with the default profile. Its [design purpose](damage-control-port.md#design-purpose) is to prevent meaningful unrecoverable harm while leaving routine recoverable work quiet. Policy now uses deterministic allowances for established routine cases and contextual Luna review where recoverability or consequences need judgment. The [risk review](../../../../.specs/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md) records the reasons for the alignment.
+Damage Control loads with the default profile. Its [design purpose](damage-control-port.md#design-purpose) is to prevent meaningful unrecoverable harm while leaving routine recoverable work quiet. Policy now uses deterministic allowances for established routine cases and contextual Luna review where recoverability or consequences need judgment. The [risk review](../../../../.specs/archive/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md) records the reasons for the alignment.
 
 ## Operator controls
 
@@ -29,7 +29,7 @@ Luna receives bounded session-local context: up to 16 direct interactive/RPC inp
 
 Approved script records live in the repository common Git directory at `pi/damage-control-trust.yaml`, shared by its worktrees. Outside Git they live only at `<cwd>/.pi/damage-control-trust.yaml`. Records bind repository-relative source, SHA-256 bytes, review result, and optional exact argv/helper hashes. Matching approval skips that script body's parsing and model review; surrounding operations remain checked. Missing, changed, unreadable, or malformed records fall back to normal runtime analysis.
 
-Sensitive-read/upload correlation is review evidence unless the submitted source itself establishes disclosure. The failed-call watchdog allows twelve adjacent failures of an exact tool/input/cwd call and stops attempt thirteen. Any unrelated call, success, or direct operator resumption resets the streak; repeated successes are unrestricted.
+Sensitive-read/upload correlation is review evidence unless the submitted source itself establishes disclosure. The failed-call watchdog allows twelve adjacent failures of an exact tool/input/cwd call and stops attempt thirteen. Before it trips, an unrelated call or success resets the streak. Once tripped, sibling results, queued continuations, and reload do not resume the run; new direct operator input does. Repeated successes are unrestricted.
 
 ## Approval prompts
 
@@ -62,4 +62,4 @@ pnpm run eval:damage-control --environment
 
 This uses full production request analysis, path checks, sequence classification, and the decision engine with synthetic path/context facts. It includes the reported complete Herdr lifecycle, mktemp cleanup, and consequential contrasts. Output distinguishes initial route, whether Luna was called, and final outcome. Missing authentication/model availability is reported as unverified with a failing exit status, never as a successful simulated verdict.
 
-This makes provider calls using the configured Luna account when available. It checks sampled judgment, not a guarantee for every environment. Task-branch live acceptance remains pending while its profile authentication/model catalog is unavailable; offline checks alone do not establish Luna judgment or two-child scan integration.
+This makes provider calls using the configured Luna account when available. It checks sampled judgment, not a guarantee for every environment. On 2026-09-09 the full 25-case environment corpus passed with 20 real Luna reviews and no mismatches; no submitted action executed. The isolated live scan also passed with two real read-only children, unchanged and cross-worktree reuse, changed-version fallback, and an invocation review. It used task code with the active default profile's existing authentication and normal Herdr-visible child behavior; no production relinking or credential copy was performed. These are sampled acceptance results, not exhaustive safety proof.

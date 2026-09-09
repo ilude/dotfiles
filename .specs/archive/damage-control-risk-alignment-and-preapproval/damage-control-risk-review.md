@@ -1,16 +1,16 @@
 # Damage Control risk and proportionality review
 
-Date: 2026-09-08. Status: review complete; implementation and offline checks recorded in the active plan. Watchdog decision/lifecycle completion and live acceptance remain pending.
+Date: 2026-09-08. Status: review complete; implementation and acceptance completed on 2026-09-09 and recorded in the archived plan.
 
 ## Governing requirement
 
-Damage Control exists to prevent meaningful unrecoverable harm, not to block every suspicious-looking action. Routine recoverable work should proceed without approval. Uncertainty warrants intervention when it materially affects the risk of that harm, not merely because syntax, a tool, a variable, or a helper is unfamiliar. The [behavior contract](../../pi/profiles/default/docs/damage-control-port.md#design-purpose) owns this requirement.
+Damage Control exists to prevent meaningful unrecoverable harm, not to block every suspicious-looking action. Routine recoverable work should proceed without approval. Uncertainty warrants intervention when it materially affects the risk of that harm, not merely because syntax, a tool, a variable, or a helper is unfamiliar. The [behavior contract](../../../pi/profiles/default/docs/damage-control-port.md#design-purpose) owns this requirement.
 
 This review asks what concrete harm each restriction prevents and whether intervention is proportional. It does not ask how to make all actions provably safe or all restrictions harder to bypass.
 
 ## Scope and evidence
 
-Reviewed default at dotfiles `15c7aee6`: all 335 command rules and path inventories, decision precedence, scoped deletion, nested-script loading, variable resolution, judge evidence/authority, sequence checks, repeated-call handling, and relevant existing tests. Compared the legacy scoped-delete implementation and rule sources, the [port plan](../archive/damage-control-port/plan.md), the [provenance audit and operator dispositions](../archive/damage-control-provenance-audit/full-audit.md), the historical [adversarial review](../../pi/profiles/default/docs/damage-control-adversarial-review.md), and AIF-012/AIF-013 and APR-002/APR-004 in the agent-process logs.
+Reviewed default at dotfiles `15c7aee6`: all 335 command rules and path inventories, decision precedence, scoped deletion, nested-script loading, variable resolution, judge evidence/authority, sequence checks, repeated-call handling, and relevant existing tests. Compared the legacy scoped-delete implementation and rule sources, the [port plan](../damage-control-port/plan.md), the [provenance audit and operator dispositions](../damage-control-provenance-audit/full-audit.md), the historical [adversarial review](../../pi/profiles/default/docs/damage-control-adversarial-review.md), and AIF-012/AIF-013 and APR-002/APR-004 in the agent-process logs.
 
 The reviewed baseline contained 204 user-only rules, 97 blocks, 34 contextual-review rules, and 68 path exclusions. Counts describe configuration, not effective outcomes: language applicability, path rules, exemptions, and overlapping matches matter.
 
@@ -146,6 +146,6 @@ The planning boundary remains default Damage Control, its policy/evidence/UI, an
 
 ## Disposition and finish
 
-The review is complete. The operator selected broad policy alignment. Earlier implementation recorded adjacent-only failure resets, but the selected plan refresh still marks D1 unresolved; confirmation was requested rather than silently choosing between the records. The [implementation plan](plan.md) records current tasks, evidence and blockers, and [policy dispositions](policy-dispositions.md) maps all historical command rules to the active semantic identities or removals. R1-R9 remain the evidence for the concrete dispositions, not a reason to restart the audit or add speculative machinery.
+The review is complete. The operator selected broad policy alignment. Earlier implementation recorded adjacent-only failure resets, but the selected plan refresh still marks D1 unresolved; confirmation was requested rather than silently choosing between the records. The [implementation plan](plan.md) records completed tasks and evidence, and [policy dispositions](policy-dispositions.md) maps all historical command rules to the active semantic identities or removals. R1-R9 remain the evidence for the concrete dispositions, not a reason to restart the audit or add speculative machinery.
 
 Validation for this documentation-only change is the bounded offline probe above plus changed-document/link and `git diff --check` checks. No full suite, live model evaluation, deployment, commit or push is part of this review.

@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 import { adapt } from "./adapters.ts";
 import { analyzeRequest, type AnalysisDependencies } from "./analysis.ts";
-import { Breaker, fingerprint } from "./breaker.ts";
+import { Breaker, fingerprint, type BreakerSnapshot } from "./breaker.ts";
 import { Context, DIRECT_INPUT_LIMIT, processVariableEvidence } from "./context.ts";
 import { decide } from "./engine.ts";
 import { loadPolicy } from "./policy.ts";
@@ -14,14 +14,15 @@ import { DamageControlSessionState } from "./sequence.ts";
 import type { ScriptReviewRequest } from "./script-review.ts";
 import type { Effect, PendingCall, ReviewResult, Settings, ToolRequest } from "./types.ts";
 
-export type Gate = { handle: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<{ block: true; reason: string } | undefined>; setBypass: (value: boolean) => void; setMode: (value: "default" | "noshell") => void; scan: (ctx: ExtensionContext) => Promise<unknown> };
+export type Gate = { handle: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<{ block: true; reason: string; terminate?: true } | undefined>; setBypass: (value: boolean) => void; setMode: (value: "default" | "noshell") => void; scan: (ctx: ExtensionContext) => Promise<unknown> };
 export type GateDependencies = AnalysisDependencies & {
   review: (evidence: ReturnType<Context["buildEvidence"]>, ctx: ExtensionContext, settings: Settings, pending: PendingCall, generation: () => number) => Promise<ReviewResult>;
   scriptReview?: (request: ScriptReviewRequest) => Promise<unknown>;
   scriptScan?: (cwd: string, origin: string, notify: (message: string, level?: "info" | "warning") => void, signal?: AbortSignal) => Promise<unknown>;
   cancelScriptReviews?: () => void;
 };
-const blocked = (reason: string) => ({ block: true as const, reason: reason.slice(0, 4000) });
+const WATCHDOG_STATE = "damage-control-watchdog";
+const blocked = (reason: string, terminate = false) => ({ block: true as const, reason: reason.slice(0, 4000), ...(terminate ? { terminate: true as const } : {}) });
 
 export async function initialize(pi: ExtensionAPI, profile: string, repo: string): Promise<Gate> {
   const loaded = await loadPolicy(profile);
@@ -56,13 +57,19 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
   let mode: "default" | "noshell" = "default";
   let bypassed = false;
   let deferred: { source: "interactive" | "rpc"; text: string }[] = [];
-  const invalidate = () => { clearAbortListeners(); for (const controller of pending.values()) controller.abort(); pending.clear(); completed.clear(); watchdogCalls.clear(); deferred = []; dependencies.cancelScriptReviews?.(); context.invalidate(); sequence.reset(); breaker.reset(); };
-  pi.on("session_start", () => { bypassed = false; invalidate(); });
-  pi.on("session_tree", invalidate);
+  const invalidate = () => { clearAbortListeners(); for (const controller of pending.values()) controller.abort(); pending.clear(); completed.clear(); watchdogCalls.clear(); deferred = []; dependencies.cancelScriptReviews?.(); context.invalidate(); sequence.reset(); };
+  const saveBreaker = () => pi.appendEntry(WATCHDOG_STATE, breaker.snapshot());
+  const restoreBreaker = (ctx: ExtensionContext) => {
+    breaker.reset();
+    const entry = [...ctx.sessionManager.getBranch()].reverse().find(item => item.type === "custom" && item.customType === WATCHDOG_STATE);
+    if (entry?.type === "custom") breaker.restore(entry.data as BreakerSnapshot);
+  };
+  pi.on("session_start", (_event, ctx) => { bypassed = false; invalidate(); restoreBreaker(ctx); });
+  pi.on("session_tree", (_event, ctx) => { invalidate(); restoreBreaker(ctx); });
   pi.on("session_shutdown", invalidate);
   pi.on("input", (event) => {
     if (event.source !== "interactive" && event.source !== "rpc") return;
-    breaker.reset();
+    if (!event.streamingBehavior) { breaker.reset(); saveBreaker(); }
     if (event.streamingBehavior) {
       deferred.push({ source: event.source, text: event.text });
       while (deferred.length > DIRECT_INPUT_LIMIT || deferred.reduce((n, item) => n + Buffer.byteLength(item.text, "utf8"), 0) > 16 * 1024) {
@@ -85,7 +92,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
   pi.on("tool_result", async event => {
     const watchdogCall = watchdogCalls.get(event.toolCallId);
     watchdogCalls.delete(event.toolCallId);
-    if (watchdogCall) breaker.result(watchdogCall, event.isError);
+    if (watchdogCall) { breaker.result(watchdogCall, event.isError); saveBreaker(); }
     const record = completed.get(event.toolCallId);
     completed.delete(event.toolCallId);
     if (!record || record.generation !== context.generation) return;
@@ -103,9 +110,10 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
       const watchdogCall = { tool: event.toolName, input: event.input, cwd: ctx.cwd };
       const stop = breaker.before(watchdogCall);
       if (stop) {
+        saveBreaker();
         pi.sendMessage({ customType: "damage-control-loop", content: stop, display: false }, { deliverAs: "nextTurn" });
         ctx.abort();
-        return blocked(stop);
+        return blocked(stop, true);
       }
       watchdogCalls.set(event.toolCallId, watchdogCall);
       while (watchdogCalls.size > 50) watchdogCalls.delete(watchdogCalls.keys().next().value!);

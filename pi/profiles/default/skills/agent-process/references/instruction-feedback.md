@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-021 - Preserve plan authority during discussion and execution
+
+- **Reference:** Operator correction after Damage Control execution reopened a settled watchdog decision and treated worktree-local credentials as a new setup prerequisite.
+- **Finding:** The assistant rewrote an existing plan after a question about what a plan would look like, then treated that draft as authority over recorded operator decisions. Existing guidance already prohibited invented requirements; the failure was applying it at the discussion-to-execution boundary.
+- **Decision:** Operator approved one planning-skill rule: questions do not authorize rewriting existing plans; execution may update progress/evidence, but scope, acceptance criteria and settled decisions require explicit approval to change. Reconcile stale drafts against recorded decisions.
+- **Task correction:** Restore the recorded adjacent-failures-only watchdog decision, remove the separate-login requirement, preserve valid code, and complete the original authorized scope and checks using existing authentication.
+- **Related:** AIF-014, AIF-016, APR-001, APR-007. Repository-root-relative task: `.specs/archive/damage-control-risk-alignment-and-preapproval/plan.md`.
+- **Status:** Approved rule added to the planning skill. Task correction resumed; this does not establish future adherence or task completion.
+
 ## AIF-020 - Restore useful subagent tool-call presentation
 
 - **Reference:** Operator review of the information presented in the transcript when default-profile subagent tools start and complete, on 2026-09-08.
@@ -58,7 +67,7 @@
 
 - **Reference:** Operator discussion of dependency-link setup approval, `/dc scan`, contextual variable handling, and helper dependency tracking on 2026-09-08.
 - **Feedback:** Damage Control should stop meaningful unrecoverable damage, not act as a general security guard. Routine recoverable work should pass; unfamiliar syntax, variables, helpers, and generic flags are not independent reasons for approval or new machinery. Avoid approval ceremony and speculative dependency frameworks.
-- **Decision:** Operator requested a bounded review before implementation and an explicit high-level design requirement. Updated default `docs/damage-control-port.md` with the governing purpose, linked it from setup/runtime navigation, and recorded findings plus the requested preapproval design in `.specs/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md` (repository-root-relative; archived with its plan). Do not treat legacy parity or agent-authored tests as proof that restrictions are proportionate.
+- **Decision:** Operator requested a bounded review before implementation and an explicit high-level design requirement. Updated default `docs/damage-control-port.md` with the governing purpose, linked it from setup/runtime navigation, and recorded findings plus the requested preapproval design in `.specs/archive/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md` (repository-root-relative; archived with its plan). Do not treat legacy parity or agent-authored tests as proof that restrictions are proportionate.
 - **Follow-up decisions:** Operator chose broad alignment of all identified policy families, with no inherited restriction exempt from consequence-based review merely because of its history. Preserve an unattended failed-call watchdog, not limits on successful repetition. The operator reports a June 2026 repeated-failure loop consuming roughly half a weekly Codex allowance; this review did not independently verify that incident. Proposed tolerance is around 12 consecutive failures of the same exact command/tool call. Settle reset/interleaving and halt semantics before planning; no fuzzy loop detector or productivity controller is implied. Resolve breadth concerns before writing the implementation plan.
 - **Related:** AIF-012 (environment-aware risk), AIF-004 (narrow changes), AIF-003/APR-002 (bounded review), APR-007 (overbuilt preapproval proposal).
 - **Status:** Review and design-context update complete. Synthetic parser/engine probes exercised current policy without executing submitted commands or calling models. Runtime rules, judge prompt/authority, legacy, and subagent implementation remain unchanged. `/dc scan` and persistent preapproval are not implemented.

@@ -7,7 +7,7 @@
 - **Observed:** Damage Control requested whole-call approval for `rm -rf "$scratch"` and displayed unresolved temporary variables. The issue is authority, not a missing special-case parser: confirmed generic deletion `user` rules return before Luna can review the same-call `mktemp` pattern.
 - **Follow-up:** The operator clarified that the existing shadow judge should recognize the pattern, and rejected migration-order IDs as active policy names. The selected risk-alignment plan was authorized for execution, including semantic identities and real policy-to-judge routing checks. No new diagnostic judge or temporary-directory recognizer is intended.
 - **Evidence:** The original submitted command was recovered as inert regression data. Running real baseline `main` analysis without executing the command returned `user` with confirmed `legacy-007`/`legacy-008`. The task implementation now routes it to review. No actual Luna verdict is verified because the task profile has no configured authentication/model catalog.
-- **Related:** AIF-015, APR-004; repository-root-relative `.specs/damage-control-risk-alignment-and-preapproval/plan.md`.
+- **Related:** AIF-015, APR-004; repository-root-relative `.specs/archive/damage-control-risk-alignment-and-preapproval/plan.md`.
 - **Status:** Implementation and offline checks in the task worktree; live acceptance and integration remain pending. The original report was not a captured runtime judge trace, and the baseline probe did not execute the operation.
 
 ## APR-009 - Long shell sleep used for deployment monitoring

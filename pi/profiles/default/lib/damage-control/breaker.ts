@@ -11,30 +11,40 @@ export function fingerprint(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
 }
 
-type Entry = { count: number; last: number };
+export type BreakerSnapshot = {
+  key?: string;
+  request?: WatchdogRequest;
+  count: number;
+  stopped: boolean;
+};
 
 /** Stops attempt 13 after twelve adjacent failures of the exact effective call. */
 export class Breaker {
-  private readonly entries = new Map<string, Entry>();
-  private activeKey: string | undefined;
-  private readonly now: () => number;
-  constructor(now: () => number = Date.now) { this.now = now; }
-  reset(): void { this.entries.clear(); this.activeKey = undefined; }
+  private state: BreakerSnapshot = { count: 0, stopped: false };
+
+  reset(): void { this.state = { count: 0, stopped: false }; }
+  restore(snapshot: BreakerSnapshot): void {
+    if (snapshot.count < 0 || !Number.isInteger(snapshot.count)) return;
+    if (snapshot.key && snapshot.request && fingerprint(snapshot.request) !== snapshot.key) return;
+    this.state = structuredClone(snapshot);
+  }
+  snapshot(): BreakerSnapshot { return structuredClone(this.state); }
   before(request: WatchdogRequest): string | undefined {
     const key = fingerprint(request);
-    if (this.activeKey !== undefined && this.activeKey !== key) this.reset();
-    this.activeKey = key;
-    const entry = this.entries.get(key);
-    if (!entry) return;
-    if (this.now() - entry.last > 30 * 60_000) { this.reset(); this.activeKey = key; return; }
-    if (entry.count >= 12) return `Failed-call watchdog stopped attempt 13 after ${entry.count} equivalent failures. Tool: ${request.tool}; cwd: ${request.cwd}; input: ${JSON.stringify(request.input).slice(0, 1000)}. A direct operator instruction is required before retrying.`;
+    if (this.state.stopped) return this.reason(this.state.request ?? request);
+    if (this.state.key !== undefined && this.state.key !== key) this.reset();
+    if (this.state.count < 12) return;
+    this.state = { ...this.state, key, request: structuredClone(request), stopped: true };
+    return this.reason(request);
   }
   result(request: WatchdogRequest, failed: boolean): void {
+    if (this.state.stopped) return;
     const key = fingerprint(request);
-    if (this.activeKey !== undefined && this.activeKey !== key) this.reset();
-    this.activeKey = key;
-    if (!failed) { this.entries.delete(key); return; }
-    const previous = this.entries.get(key);
-    this.entries.set(key, { count: (previous?.count ?? 0) + 1, last: this.now() });
+    if (this.state.key !== undefined && this.state.key !== key) this.reset();
+    if (!failed) { this.reset(); return; }
+    this.state = { key, request: structuredClone(request), count: this.state.count + 1, stopped: false };
+  }
+  private reason(request: WatchdogRequest): string {
+    return `Failed-call watchdog stopped attempt 13 after ${this.state.count} equivalent failures. Tool: ${request.tool}; cwd: ${request.cwd}; input: ${JSON.stringify(request.input).slice(0, 1000)}. A direct operator instruction is required before retrying.`;
   }
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-08: Preserve settled implementation-plan decisions
+
+**Changed:** The default planning skill now distinguishes questions about a plan from authorization to rewrite it. Execution updates progress and evidence; changing scope, acceptance criteria, or settled operator decisions requires explicit approval. This corrects a Damage Control handoff that reopened an already-decided watchdog reset policy and mistook isolated worktree code for a requirement to establish a separate login. Existing authentication is reused for worktree validation without copying credentials.
+
 ## 2026-09-08: Align Damage Control with consequence-based risk and script reuse
 
 **Changed:** Default Damage Control now allows established recoverable maintenance without treating flags, encoding, persistence vocabulary, or ordinary generated names as danger by themselves. Contextual Luna judgment covers mixed-risk deletion, Git, container, infrastructure, publication, scheduling, database, and process operations while root/home destruction, meaningful unique work, recovery loss, sensitive disclosure, and independent push/deployment authority remain protected.

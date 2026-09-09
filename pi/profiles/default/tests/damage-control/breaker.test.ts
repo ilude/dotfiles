@@ -40,4 +40,19 @@ describe("failed-call watchdog", () => {
     breaker.reset();
     expect(breaker.before(call)).toBeUndefined();
   });
+
+  it("latches after attempt thirteen until an explicit reset", () => {
+    const breaker = new Breaker();
+    const call = request("false");
+    for (let i = 0; i < 12; i++) breaker.result(call, true);
+    expect(breaker.before(call)).toContain("attempt 13");
+    breaker.result(request("unrelated"), false);
+    expect(breaker.before(request("unrelated"))).toContain("attempt 13");
+    const saved = breaker.snapshot();
+    const restored = new Breaker();
+    restored.restore(saved);
+    expect(restored.before(call)).toContain("attempt 13");
+    restored.reset();
+    expect(restored.before(call)).toBeUndefined();
+  });
 });

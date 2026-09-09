@@ -127,7 +127,37 @@ it("watches failures from uncovered tools and aborts attempt thirteen", async ()
     const toolCallId = `glob-${i}`;
     expect(await h.emit("tool_call", { toolName: "glob", toolCallId, input: { pattern: "*.ts" } })).toBeUndefined();
     await h.emit("tool_result", { toolName: "glob", toolCallId, input: { pattern: "*.ts" }, content: [{ type: "text", text: `error ${i}` }], isError: true });
+    await h.emit("tool_result", { toolName: "glob", toolCallId, input: { pattern: "*.ts" }, content: [{ type: "text", text: "duplicate" }], isError: true });
   }
-  expect(await h.emit("tool_call", { toolName: "glob", toolCallId: "glob-13", input: { pattern: "*.ts" } })).toMatchObject({ block: true, reason: expect.stringContaining("attempt 13") });
+  expect(await h.emit("tool_call", { toolName: "glob", toolCallId: "glob-13", input: { pattern: "*.ts" } })).toMatchObject({ block: true, terminate: true, reason: expect.stringContaining("attempt 13") });
   expect(h.abort).toHaveBeenCalledOnce();
+});
+
+it("keeps a tripped run stopped across sibling results, queued input, and reload", async () => {
+  const h = await harness();
+  for (let i = 0; i < 12; i++) {
+    const toolCallId = `fail-${i}`;
+    await h.emit("tool_call", { toolName: "glob", toolCallId, input: { pattern: "*.ts" } });
+    await h.emit("tool_result", { toolName: "glob", toolCallId, input: { pattern: "*.ts" }, content: [], isError: true });
+  }
+  await h.emit("tool_call", { toolName: "glob", toolCallId: "trip", input: { pattern: "*.ts" } });
+  await h.emit("tool_result", { toolName: "read", toolCallId: "sibling", input: { path: "README.md" }, content: [{ type: "text", text: "ok" }], isError: false });
+  await h.emit("input", { source: "interactive", text: "queued", streamingBehavior: "followUp" });
+  expect(await h.emit("tool_call", { toolName: "read", toolCallId: "after-queue", input: { path: "README.md" } })).toMatchObject({ block: true, terminate: true });
+  await h.emit("session_start", { reason: "reload" });
+  expect(await h.emit("tool_call", { toolName: "read", toolCallId: "after-reload", input: { path: "README.md" } })).toMatchObject({ block: true, terminate: true });
+});
+
+it("resumes a tripped watchdog only after new direct operator input", async () => {
+  const h = await harness();
+  for (let i = 0; i < 12; i++) {
+    const toolCallId = `fail-${i}`;
+    await h.emit("tool_call", { toolName: "glob", toolCallId, input: { pattern: "*.ts" } });
+    await h.emit("tool_result", { toolName: "glob", toolCallId, input: { pattern: "*.ts" }, content: [], isError: true });
+  }
+  await h.emit("tool_call", { toolName: "glob", toolCallId: "trip", input: { pattern: "*.ts" } });
+  await h.emit("input", { source: "extension", text: "automatic" });
+  expect(await h.emit("tool_call", { toolName: "read", toolCallId: "blocked", input: { path: "README.md" } })).toMatchObject({ block: true });
+  await h.emit("input", { source: "interactive", text: "continue" });
+  expect(await h.emit("tool_call", { toolName: "read", toolCallId: "resumed", input: { path: "README.md" } })).toBeUndefined();
 });

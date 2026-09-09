@@ -1107,7 +1107,7 @@ async function processInvocation(
       state.records.push(policyRecord(actualArgs[start], nestedArgs, language, nestedEffects));
     }
   } else {
-    addOpaqueExecution(state, scope, language, executable || "<missing>", range, `effects of executable ${rawExecutable.value} require review because they are unsupported`);
+    addOpaqueExecution(state, scope, language, executable || "<missing>", range, `effects of executable ${rawExecutable.value} are not statically modeled`);
   }
 
   // Substitutions are executable even when the outer command treats arguments as data.
