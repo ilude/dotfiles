@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
-status: ready
-completed: null
+status: completed
+completed: 2026-09-09
 ---
 
 # Separate intent refinement from plan execution
@@ -104,18 +104,18 @@ Before adding work, identify which existing requirement requires it. At the T3-t
   - Done when: T1-T3's manual checks and the scoped consistency/whitespace checks pass, documentation agrees, and the diff contains only task-owned changes. No full test suite, TypeScript build, live model trial, runtime changes, or generated fixture-plan project is required for this prose-only refactor.
   - Evidence: Updated README, changelog, and only AIF-023. Scoped diff/stat review, `git diff --check`, reference search, complete three-instruction-file review, and manual-testing/blocked-merge traces passed. Scope checkpoint found only the six authorized source files plus this spec.
 
-- [ ] **T5: Archive, commit, and integrate the authorized work**
+- [x] **T5: Archive, commit, and integrate the authorized work**
   - Depends on: T4.
   - Follow the closeout instructions below. Update actual profile/check evidence before archival; do not declare plan completion before successful integration. Include only task-owned implementation, documentation, feedback, and this spec.
   - Done when: the archived plan and changes are committed and verified in the recorded integration target, or committed in the retained task worktree when `--no-merge` applies. Report an actual integration blocker separately rather than claiming delivery.
-  - Evidence: Not started.
+  - Evidence: Archived the whole spec and committed task changes as `0f5ba07f`, merged branch `feature/planning-execution-separation` into the recorded `main` checkout, verified the archive and source changes, then committed final completion metadata.
 
 ## Current handoff and evidence
 
-- Status: integration pending; implementation and agreed checks complete.
-- Completed: T1-T4. The skill is authoring-only, plans carry a standalone execution contract, `/do-it` is execution-only, and affected documentation and AIF-023 agree.
+- Status: completed and integrated into the recorded `main` checkout.
+- Completed: T1-T5. The skill is authoring-only, plans carry a standalone execution contract, `/do-it` is execution-only, affected documentation and AIF-023 agree, and the archived task commit was merged locally.
 - Actual runs: planning and execution on 2026-09-09 in the default profile at `C:/Users/mglenn/.dotfiles/pi/profiles/default`; scoped prose and Git checks passed. No runtime or live model trial was required.
-- Next: archive and commit on the task branch, merge into the recorded `main` checkout, then record completion metadata.
+- Next: none.
 - Open decisions/blockers: none.
 - Limitation: prose consistency checks establish instruction separation, not guaranteed future model compliance. Sol-low execution effectiveness remains unverified.
 
