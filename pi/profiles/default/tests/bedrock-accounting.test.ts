@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendRecord, formatStatus, formatUsage, makeRecord, readRecords, summarize, writeBaseline } from "../lib/bedrock/ledger.ts";
+import { appendRecord, createBaseline, formatStatus, formatUsage, makeRecord, readBaseline, readRecords, summarize } from "../lib/bedrock/ledger.ts";
 import { parseCaller, parseResults } from "../lib/bedrock/cloudwatch-snapshot.ts";
 import { estimateUsage } from "../lib/bedrock/pricing.ts";
 
@@ -30,8 +30,24 @@ describe("Bedrock accounting", () => {
 		temp(); const capturedAt = new Date(); const before = makeRecord({ timestamp: capturedAt.getTime() - 1, provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", usage: { input: 100 } }); const after = makeRecord({ timestamp: capturedAt.getTime() + 1, provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", usage: { input: 200 } }); await appendRecord(before); await appendRecord(after);
 		const principal = parseCaller(JSON.stringify({ Arn: "arn:aws:iam::058264305403:user/mike.glenn" }));
 		const row = [[{ field: "userArn", value: principal }, { field: "estimatedCost", value: "2.50" }, { field: "invocations", value: "4" }]];
-		const baseline = parseResults(JSON.stringify({ status: "Complete", results: row }), principal, capturedAt.toISOString()).baseline!; await writeBaseline(baseline);
+		const baseline = parseResults(JSON.stringify({ status: "Complete", results: row }), principal, capturedAt.toISOString()).baseline!; expect(await createBaseline(baseline)).toBe(true);
 		const summary = await summarize(baseline.month); expect(summary.baseline).toBe(2.5); expect(summary.records.map(record => record.id)).toEqual([after.id]);
 		expect(formatUsage(summary)).toBe("Bedrock local estimate:\n  CloudWatch baseline: $2.50 (4 invocation(s))\n  Total:  $2.50");
+	});
+	it("publishes exactly one competing baseline and never alters existing state", async () => {
+		const dir = temp(); const file = join(dir, "baseline.json");
+		const first = { schemaVersion: 1, month: "2026-09", principal: "first", amount: 1, invocations: 1, capturedAt: "2026-09-01T00:00:00.000Z", source: "cloudwatch-bedrock-invocation-logs" } as const;
+		const second = { ...first, month: "2026-10", principal: "second", amount: 2 };
+		const results = await Promise.all([createBaseline(first, file), createBaseline(second, file)]);
+		expect(results.sort()).toEqual([false, true]);
+		const published = readFileSync(file, "utf8"); expect([first.principal, second.principal]).toContain((await readBaseline(file))?.principal);
+		expect(await createBaseline(first, file)).toBe(false); expect(readFileSync(file, "utf8")).toBe(published);
+		writeFileSync(file, "malformed"); expect(await createBaseline(second, file)).toBe(false); expect(readFileSync(file, "utf8")).toBe("malformed");
+		expect(readdirSync(dir).filter(name => name.endsWith(".tmp"))).toEqual([]);
+	});
+	it("validates before publication without leaving blocking state", async () => {
+		const dir = temp(); const file = join(dir, "baseline.json");
+		await expect(createBaseline({ schemaVersion: 1 } as any, file)).rejects.toThrow("Invalid Bedrock cost baseline");
+		expect(readdirSync(dir)).toEqual([]);
 	});
 });

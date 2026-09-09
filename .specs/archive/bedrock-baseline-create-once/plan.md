@@ -1,6 +1,6 @@
 ---
 created: 2026-09-09
-status: planned
+status: implemented
 completed: null
 ---
 
@@ -44,29 +44,29 @@ Create/resume the dedicated worktree at execution start and carry this uncommitt
 
 ## Tasks
 
-- [ ] **T1 - Implement transactional baseline creation**
+- [x] **T1 - Implement transactional baseline creation**
   - Depends on: execution authorization/worktree setup.
   - Files: default `lib/bedrock/ledger.ts`, `extensions/bedrock/index.ts`.
   - Do: replace unconditional baseline publication with the create-once operation, use a suitable stable lock, and retain the command's early check. Keep locks out of network work and ensure failure cleanup preserves pre-existing content.
   - Verify: author T2 cases against the actual filesystem/lock implementation, including the currently failing concurrent scenario.
   - Done when: every production baseline mutation enforces create-once at publication and an unsuccessful attempt cannot alter a prior snapshot.
-  - Evidence: Not started.
+  - Evidence: `createBaseline` validates before mutation, locks a stable sibling target, rechecks destination existence, and atomically links a complete temporary file without replacement. The command retains its preflight check and rejects a lost publication race.
 
-- [ ] **T2 - Cover contention and accounting through public boundaries**
+- [x] **T2 - Cover contention and accounting through public boundaries**
   - Depends on: T1.
   - Files: existing `tests/bedrock-accounting.test.ts`, `tests/bedrock-reporting.test.ts`; proposed `tests/bedrock-baseline.test.ts` only if isolation improves clarity.
   - Do: use a temporary profile and real filesystem/locks. Exercise two competing creators, existing valid/malformed state, failed publication cleanup, and unchanged cutoff totals. Add a command case whose inert AWS response is delayed while another creator publishes; ensure the command cannot replace the winner.
   - Verify: first publication remains byte-identical after rejected later writes; exactly one contender succeeds; rejected commands surface failure; no real AWS or operator files are touched.
   - Done when: both the mutation and command paths demonstrate the invariant, not merely a mocked writer call count.
   - Scope checkpoint: no pricing, catalog, monthly rollover, or historical repair changes.
-  - Evidence: Not started.
+  - Evidence: Focused tests use temporary profiles and real filesystem locks for competing creators, valid and malformed existing state, validation cleanup, unchanged cutoff accounting, and a delayed command race. Exactly one creator succeeds and the winner remains unchanged.
 
-- [ ] **T3 - Document, validate, archive and integrate**
+- [x] **T3 - Document, validate, archive and integrate**
   - Depends on: T2.
   - Files: default `docs/bedrock.md`, root `CHANGELOG.md`, this plan.
   - Do: document concurrent create-once behavior; run the agreed checks, record actual source/profile/results, archive and merge locally.
   - Done when: required checks pass and `main` contains the implementation and dated archive, or integration is explicitly blocked with the task worktree retained.
-  - Evidence: Not started.
+  - Evidence: Default-profile documentation and root changelog updated. On 2026-09-09 from the task worktree default profile, 8 focused Vitest cases passed, `pnpm run typecheck` passed, and `node scripts/bedrock-smoke.mjs` loaded the provider, command, and accounting lifecycle offline.
 
 ## Agreed validation and finish
 
@@ -82,8 +82,8 @@ If T2 creates `bedrock-baseline.test.ts`, add that exact filter before running t
 
 ## Current handoff and dependencies
 
-- Status: planned; implementation not authorized or started. No open operator decisions.
-- Next: T1 after authorization.
+- Status: implementation and agreed offline validation complete; archive and local integration are in progress. No open operator decisions.
+- Verification limit: no live AWS calls or billing-accuracy acceptance were performed, as agreed.
 - Independent of other default correctness plans. No blanket dependency on or from the revised default DRY draft: baseline publication and model-selection helpers are different contracts. Any later selected refactor must establish a dependency from actual source/contract overlap before requiring this plan's code in its worktree.
 
 ## Completion and archive

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-09: Preserve the first Bedrock accounting baseline
+
+**Fixed:** Bedrock reconciliation now enforces create-once semantics at final filesystem publication, not only during the command's early check. Concurrent sessions cannot replace the first complete personal CloudWatch snapshot or move its accounting cutoff.
+
+**Failure handling:** Existing valid, malformed, or empty destinations remain untouched. Rejected contenders report that a baseline already exists, and failed creation removes task-owned temporary files without leaving an empty baseline that blocks a later capture. AWS queries remain outside the lock.
+
 ## 2026-09-09: Preserve subagent ownership through cleanup failures
 
 **Fixed:** Default subagent assignment outcomes are now recorded separately from process and visible-pane cleanup. Failed termination or pane closure remains observable with bounded cleanup errors and can be retried without losing the owned child.
