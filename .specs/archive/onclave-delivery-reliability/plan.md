@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
-status: planned
-completed: null
+status: completed
+completed: 2026-09-09
 ---
 
 # Preserve Onclave deliveries across handling failures
@@ -100,10 +100,12 @@ The HTTP test is proposed. Add a proposed delivery-specific test filter only if 
 
 ## Current handoff and dependencies
 
-- Status: implementation, offline validation, module publication, and parent task-branch preparation complete. Next: archive and integrate dotfiles, then record final completion metadata on the target branch.
+- Status: completed 2026-09-09. Onclave implementation and module integration are published; the dotfiles target contains the archived plan and changelog with no active duplicate.
 - Independent of dotfiles correctness/refactoring plans; can run in its own module worktree concurrently. Parent changelog/gitlink merges remain serialized.
 - Known execution preflight: restore required Onclave tracking checkout safely; publication needs separate push authorization. No branch/publication changes made now.
 
 ## Completion and archive
 
 When module work/checks and required publication are complete, update the parent gitlink in the dotfiles task worktree. Set actual completion date and move this directory to dotfiles `.specs/archive/onclave-delivery-reliability/`, never overwriting an archive; repair links. Commit coordinating docs/changelog/gitlink/archive and merge into dotfiles `main` preserving unrelated work. Verify both owning targets and the archived plan, with no active duplicate. Keep worktrees if integration/publication is blocked. Remove only clean, fully integrated worktrees. Never force-push or amend/rebase published module commits. Deployment remains unauthorized.
+
+Closeout evidence: Onclave `9ce7599` was merged and pushed as `8f73446` on `feature/v2-broker-core`. Dotfiles archived this plan on `main`; focused validation passed 53 tests and `pnpm run typecheck`. No live broker, model call, deployment, or operator manual acceptance was performed.
