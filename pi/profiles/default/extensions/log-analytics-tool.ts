@@ -5,6 +5,7 @@ import { Check } from "typebox/value";
 import { analyticsCatalog, queryAnalytics, sessionAnalytics, type AnalyticsRequest } from "../lib/log-analytics/api.js";
 import { PROFILE_IDS, runtimeProfiles, type ProfileRegistry } from "../lib/log-analytics/profiles.js";
 import { SOURCE_IDS } from "../lib/log-analytics/registry.js";
+import { renderAnalyticsCall, renderAnalyticsResult } from "../lib/log-analytics/render.js";
 
 export const analyticsSchema = Type.Object({
 	operation: StringEnum(["catalog", "sessions", "query"] as const),
@@ -29,6 +30,8 @@ export function registerLogAnalytics(pi: ExtensionAPI, resolveProfiles: () => Pr
 		name: "log_analytics", label: "Log Analytics",
 		description: "Search Pi session history and existing usage logs with bounded read-only DuckDB SQL. Catalog schemas, list session metadata, or query default, legacy, or both profiles. Exact sessionRefs reduce scans; SQL time filters do not. At most 1000 rows and 256 KiB encoded rows; corpus bounds fail explicitly.",
 		parameters: analyticsSchema,
+		renderCall: renderAnalyticsCall,
+		renderResult: renderAnalyticsResult,
 		async execute(_id, params, signal) {
 			// Hooks may mutate tool arguments after Pi validation.
 			if (!Check(analyticsSchema, params)) throw new Error("invalid log_analytics arguments");

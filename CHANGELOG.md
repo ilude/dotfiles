@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-09: Make log analytics tool output readable
+
+**Changed:** Default Pi's `log_analytics` now renders operation and search scope, readable source/session summaries, and query results as compact tables or labeled records rather than dumping arguments and a single JSON string. Collapsed results preview three rows; expansion shows all returned values, full SQL and parameters, session references, and scan diagnostics. Query truncation, session pagination, excluded-file warnings, empty results, and failures remain explicit. Long preview values are marked with an ellipsis, and terminal control sequences in stored history are removed from display.
+
+**Preserved:** Model-facing JSON, query behavior, resource limits, deferred activation, and the legacy profile are unchanged. Expanding a result does not fetch another page or recover rows omitted by backend limits. Use `/reload` to load the new renderer.
+
 ## 2026-09-09: Make plan execution outcomes explicit
 
 **Changed:** `/do-it` and generated plans now lead their final response with a colored symbol and explicit outcome: completed, merge blocked, user input required, merge intentionally skipped, or cleanup pending. Blocked results put the reason and required next action before implementation successes, including who must act and where work is retained. Passing tests and archival alone do not imply completed integration; unfinished integration/cleanup checkboxes remain unchecked.

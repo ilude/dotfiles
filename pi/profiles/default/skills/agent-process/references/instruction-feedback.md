@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-024 - Keep subagent messaging simple and low ceremony
+
+- **Reference:** Operator discussion of parent-question hangs, actor-style messaging, and possible SQLite storage, 2026-09-09.
+- **Feedback:** KISS and low ceremony are explicit priorities. Do not surround ordinary subagent messaging with excessive safety gates, approvals, or operator bookkeeping.
+- **Direction:** Prefer a small message/reply lifecycle with runtime-managed correlation and clear waiting states. Do not add completion gates, repeated reminders, or speculative recovery machinery as requirements. Basic routing/state correctness is distinct from new authorization ceremony. SQLite and restart recovery were discussed, not selected for implementation.
+- **Related:** AIF-004, AIF-015 (risk proportionality), APR-007, APR-016.
+- **Status:** Design constraint recorded. No implementation, global instruction change, or new storage/recovery requirement authorized by this entry.
+
 ## AIF-023 - Separate intent refinement from plan execution
 
 - **Reference:** Operator discussion of the default planning skill and `/do-it` opening.
