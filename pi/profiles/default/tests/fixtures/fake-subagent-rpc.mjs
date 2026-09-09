@@ -22,6 +22,7 @@ process.stdin.on('data',chunk=>{
     if(command.message.includes('[aggregate]'))process.stdout.write(JSON.stringify({type:'agent_end',messages:Array.from({length:24},()=>({role:'toolResult',content:[{type:'text',text:'x'.repeat(50000)}]}))})+'\n');
     process.stdout.write('{"type":"agent_settled"}\n');
    };
+   if(command.message.includes('[live]')){reply();continue;}
    const marker=/WAIT_FILE:([^\n]+)/.exec(command.message)?.[1];
    if(marker){const timer=setInterval(()=>{if(existsSync(marker)){clearInterval(timer);reply()}},10)}else reply();
   }else if(command.type==='extension_ui_response'){

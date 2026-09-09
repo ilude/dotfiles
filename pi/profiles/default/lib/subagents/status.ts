@@ -45,6 +45,10 @@ export function outcomeText(record: ChildRecord): string {
   if (record.result) lines.push(bounded(record.result));
   else if (!record.error) lines.push("No result");
   if (record.error) lines.push(`Error: ${bounded(record.error)}`);
+  if (record.cleanup && !record.cleanup.complete) {
+    const detail = record.cleanup.errors.at(-1) ?? "owned resources remain open";
+    lines.push(`Cleanup: unresolved (${clean(detail)})`);
+  }
   if (record.notice) lines.push(clean(record.notice));
   const started = record.assignmentStartedAt ?? record.createdAt;
   if (started) lines.push(`Started: ${started} · ${timing(record, Date.now())}`);

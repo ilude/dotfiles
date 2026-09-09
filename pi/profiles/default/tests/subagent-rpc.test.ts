@@ -39,9 +39,10 @@ describe("subagent RPC lifecycle",()=>{
   await instance.cancel();expect((await next).outcome).toBe("cancelled");
  });
  it("preserves concrete cleanup errors alongside a completed result",async()=>{
-  const instance=child("first",false);
-  vi.spyOn(instance as any,"stopProcess").mockRejectedValueOnce(new Error("fixture tree termination denied"));
-  expect(await instance.start()).toMatchObject({outcome:"complete",result:"first answer",error:expect.stringContaining("tree termination denied")});
+  const instance=child("[live]",false);
+  const stop=vi.spyOn(instance as any,"stopProcess").mockRejectedValueOnce(new Error("fixture tree termination denied"));
+  expect(await instance.start()).toMatchObject({outcome:"complete",result:"first answer",processState:"running",cleanup:{complete:false,errors:[expect.stringContaining("fixture tree termination denied")]}});
+  stop.mockRestore();
  });
  it("uses a retained process for a follow-up and preserves its completed outcome on shutdown",async()=>{
   const instance=child();const first=await instance.start();expect(first).toMatchObject({origin:"origin-a",outcome:"complete",result:"first answer",assignment:"first",model:"openai-codex/test",effort:"low",cwd:here,skills:[],assignmentFinishedAt:expect.any(String)});

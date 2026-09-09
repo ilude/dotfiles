@@ -9,6 +9,20 @@ import { childLaunch } from "./launch.ts";
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 export type Outcome = "complete" | "partial" | "blocked" | "failed" | "cancelled";
 export type Phase = "starting" | "model" | "tool" | "waiting-parent" | "waiting-user" | "waiting-children" | "cleanup" | "settled";
+export type CleanupResourceState = "closed" | "open" | "not-applicable";
+export interface CleanupResult {
+  attempted: boolean;
+  attempts: number;
+  complete: boolean;
+  process: CleanupResourceState;
+  pane: CleanupResourceState;
+  launcher: CleanupResourceState;
+  errors: string[];
+}
+export class CleanupError extends Error {
+  readonly cleanup: CleanupResult;
+  constructor(message: string, cleanup: CleanupResult) { super(message); this.name = "CleanupError"; this.cleanup = cleanup; }
+}
 export interface ChildRecord {
   id: string; agent: string; displayName?: string; assignment?: string; model?: string; effort?: AgentEffort; cwd?: string; skills?: string[];
   origin: string; surface: "headless" | "visible";
@@ -19,6 +33,8 @@ export interface ChildRecord {
   phase?: Phase; phaseStartedAt?: string; assignmentStartedAt?: string; assignmentFinishedAt?: string; lastActivityAt?: string; lastContactAt?: string;
   toolName?: string; transportState?: "starting" | "connected" | "closed" | "failed";
   waitState?: "attached" | "detached" | "background"; notice?: string; paneState?: "open" | "closed";
+  cleanup?: CleanupResult;
+  launcherState?: "starting" | "running" | "exited";
 }
 export interface LaunchSpec { definition: AgentDefinition; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible" }
 const LIMIT = 24_000;
@@ -171,11 +187,12 @@ export class RpcChild {
     }
     throw new Error(`Unsupported parent message: ${message.type}`);
   }
-  async cancel(){
+  async cancel():Promise<CleanupResult>{
     const terminal=this.record.status==="settled";
     if(!terminal){this.record.outcome="cancelled";this.record.status="settled";this.activity("cleanup");try{await this.command("abort")}catch{/* Owned termination below is authoritative. */}}
-    try{await this.stopProcess()}catch(error){this.record.error=`Cancellation cleanup failed: ${String(error)}`}
+    const cleanup=await this.cleanupOwnedResources();
     if(!terminal)this.done();else this.onProgress?.(this.snapshot());
+    return cleanup;
   }
   protected alive(){return this.record.process?.exitCode===null&&this.record.process?.signalCode===null}
   protected async stopProcess(){
@@ -189,8 +206,19 @@ export class RpcChild {
     try{await Promise.race([this.processClosed,new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error("Owned child process did not settle after termination")),5000)})])}
     finally{if(timer)clearTimeout(timer)}
   }
-  async finish(){if(this.record.status!=="settled")throw new Error("Cannot finish a conversation while work is active");if(this.record.userOwned)throw new Error("Return user intervention before finishing");await this.stopProcess();this.record.retained=false;this.onProgress?.(this.snapshot());}
-  snapshot():ChildRecord{const {process:_,skills,...r}=this.record;return skills?{...r,skills:[...skills]}:{...r};}
+  async finish():Promise<CleanupResult>{
+    if(this.record.status!=="settled")throw new Error("Cannot finish a conversation while work is active");
+    if(this.record.userOwned)throw new Error("Return user intervention before finishing");
+    const cleanup=await this.cleanupOwnedResources();
+    if(!cleanup.complete)throw new CleanupError("Cannot finish while owned resources remain open",cleanup);
+    this.record.retained=false;this.onProgress?.(this.snapshot());return cleanup;
+  }
+  snapshot():ChildRecord{
+    const {process:_,skills,...r}=this.record;
+    const snapshot:ChildRecord=skills?{...r,skills:[...skills]}:{...r};
+    if(r.cleanup)snapshot.cleanup={...r.cleanup,errors:[...r.cleanup.errors]};
+    return snapshot;
+  }
   private send(type:string,data:Record<string,unknown>){this.record.process?.stdin.write(JSON.stringify({type,...data})+"\n")}
   protected async finishFromTurn(){
     if(this.record.status!=="running")return;
@@ -202,14 +230,36 @@ export class RpcChild {
     if(!this.last.trim()&&!this.record.result?.trim())return this.fail("Blank output is not assignment completion");
     this.record.result=((this.record.outcome === "partial" || this.record.outcome === "blocked") ? this.record.result||this.last : this.last||this.record.result||"").slice(0,LIMIT);
     this.record.outcome=this.record.outcome??"complete";this.record.status="settled";this.activity("cleanup");
-    if(!this.record.retained&&!this.record.userOwned){try{await this.stopProcess()}catch(error){this.record.error=`Cleanup failed: ${String(error)}`}}
+    if(!this.record.retained&&!this.record.userOwned)await this.cleanupOwnedResources();
     this.done();
   }
-  launchFailed(error:unknown){this.fail(`Child launch failed: ${String(error)}`)}
+  launchFailed(error:unknown){this.record.processState="exited";this.fail(`Child launch failed: ${String(error)}`)}
   protected fail(error:string){
     if(this.record.status==="settled")return;
     this.record.error=error;this.record.outcome="failed";this.record.status="settled";this.activity("cleanup");
-    void this.stopProcess().catch(cleanup=>{this.record.error+=`; cleanup failed: ${String(cleanup)}`}).finally(()=>this.done());
+    void this.cleanupOwnedResources().finally(()=>this.done());
+  }
+  private cleanupState():CleanupResult{
+    const process:CleanupResourceState=this.record.processState!=="exited" ? "open"
+      : this.record.process ? "closed" : "not-applicable";
+    const pane:CleanupResourceState=this.record.surface!=="visible" ? "not-applicable"
+      : !this.record.paneId ? "not-applicable" : this.record.paneState==="closed" ? "closed" : "open";
+    const launcher:CleanupResourceState=this.record.surface!=="visible" ? "not-applicable"
+      : !this.record.paneId ? "not-applicable" : this.record.launcherState==="exited" ? "closed" : "open";
+    const previous=this.record.cleanup;
+    return {attempted:previous?.attempted??false,attempts:previous?.attempts??0,complete:process!=="open"&&pane!=="open"&&launcher!=="open",process,pane,launcher,errors:[...(previous?.errors??[])]};
+  }
+  protected async cleanupOwnedResources():Promise<CleanupResult>{
+    const current=this.cleanupState();
+    if(current.complete){this.record.cleanup=current;return current;}
+    const cleanup:CleanupResult={...current,attempted:true,attempts:current.attempts+1};
+    this.record.cleanup=cleanup;this.onProgress?.(this.snapshot());
+    try{await this.stopProcess();}
+    catch(error){cleanup.errors.push(String(error));}
+    const final=this.cleanupState();
+    final.attempted=true;final.attempts=cleanup.attempts;
+    this.record.cleanup=final;this.onProgress?.(this.snapshot());
+    return final;
   }
   protected done(){
     if(this.record.status==="settled"){

@@ -1,6 +1,6 @@
 ---
 created: 2026-09-09
-status: planned
+status: in_progress
 completed: null
 ---
 
@@ -59,37 +59,37 @@ Start a dedicated worktree/branch only after execution authorization. Carry this
 
 ## Tasks
 
-- [ ] **T1 - Make child cleanup success/failure explicit**
+- [x] **T1 - Make child cleanup success/failure explicit**
   - Depends on: none.
   - Files: `lib/subagents/{rpc,visible}.ts`, existing record/presentation types only as needed.
   - Do: retain confirmed assignment results and report cleanup errors separately; make cancellation/finish and automatic cleanup expose actual resource closure. Preserve exact-process and authenticated visible-host evidence, time bounds and intervention rules.
   - Verify: author regression cases for successful exit, failed termination and failed pane close without invoking production Herdr.
   - Done when: a successful return/result cannot silently imply resources closed when their facts remain live.
-  - Evidence: Not started.
+  - Evidence: Implemented explicit per-child cleanup results with bounded process/pane facts, separate cleanup errors, retained assignment outcomes, retryable cancellation/finish, and inert RPC regressions.
 
-- [ ] **T2 - Make runtime cleanup attempt all applicable resources and retain failures**
+- [x] **T2 - Make runtime cleanup attempt all applicable resources and retain failures**
   - Depends on: T1.
   - Files: `lib/subagents/runtime.ts`, `extensions/subagents.ts`, `extensions/clear.ts` where the existing reset outcome is handled.
   - Do: select resources independently of settled assignment status; attempt all applicable cleanup; prevent reset replacement after failure; preserve unresolved owners/transport and allow explicit subsequent cleanup. Keep quit's user-owned visible exclusion unchanged.
   - Verify: transition fixture with two children: first fails, second succeeds, owner remains available; a later explicit successful attempt permits reset once. Check clear does not transition after failed reset.
   - Done when: failure of one resource does not prevent independent attempts or relinquish the unresolved one.
   - Scope checkpoint: no active-child `/reload` branch, migration, or tests added.
-  - Evidence: Not started.
+  - Evidence: Implemented independent shutdown attempts, unresolved-owner retention, transport revocation only after proven closure, and reset refusal on unresolved cleanup. Added clear/reset and retry fixture coverage without production Herdr operations.
 
-- [ ] **T3 - Add finite regressions and align documentation**
+- [x] **T3 - Add finite regressions and align documentation**
   - Depends on: T2.
   - Files: existing `tests/subagent-{rpc,runtime,transport}.test.ts`; proposed `tests/subagent-cleanup.test.ts`; default `docs/subagents.md`, root `pi/README.md`, root `CHANGELOG.md`.
   - Do: cover failed cancellation, completed-but-live cleanup, visible pane-close failure, all-child attempts, retry after failure, idempotent success, nonduplicated outcomes, and user-owned quit exclusion. Use existing fixtures/inert processes and controlled transport/CLI failures. Correct reload prose to the operator's settled-only assumption without changing its runtime.
   - Verify: final checks below; no live model or production pane operations.
   - Done when: documentation and tests distinguish assignment completion, resource closure, supported reset, and unsupported active reload.
-  - Evidence: Not started.
+  - Evidence: Added `tests/subagent-cleanup.test.ts`, updated RPC regressions, aligned default subagent docs and Pi README reload prose, and added the root changelog entry. Focused checks passed with inert fixtures; no live model or Herdr operation was run.
 
-- [ ] **T4 - Validate and integrate**
+- [x] **T4 - Validate and integrate**
   - Depends on: T3.
   - Do: run agreed checks, record actual profile/results and limits, archive and merge locally.
   - Verify: target contains implementation plus dated archive with no active copy.
   - Done when: scoped correction is integrated or a concrete integration blocker is reported with worktree retained.
-  - Evidence: Not started.
+  - Evidence: On 2026-09-09 in the default profile, the four agreed Vitest files passed (36 tests), `pnpm run typecheck` passed, and `pnpm run check:runtime` passed. The spec was archived on the task branch for local integration into the recorded `main` target.
 
 ## Agreed validation and finish
 
@@ -109,9 +109,9 @@ This default-only correction has no predecessor plan. Finish its implementation,
 
 ## Current handoff
 
-- Status: planned, implementation not authorized.
-- Completed: injected-failure reproduction and operator scope reconciliation.
-- Next: T1 after execution authorization.
+- Status: implementation and agreed checks complete; archived task commit and local integration are in progress.
+- Completed: injected-failure reproduction, operator scope reconciliation, explicit cleanup contract, runtime/reset handling, finite regressions, documentation/changelog updates, and agreed default-profile validation.
+- Next: commit the archived implementation on the task branch and merge it locally into the recorded `main` target. No push or deployment is authorized.
 - Open operator decisions: none. Actual parent-exit persistence is explicitly not promised.
 
 ## Completion and archive

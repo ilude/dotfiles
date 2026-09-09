@@ -44,7 +44,10 @@ export default function subagents(pi:ExtensionAPI){
  pi.on("session_shutdown",async(e)=>{
   const owner=runtime;
   if(origin&&owner)owner.unbind(origin,binding);current=undefined;
-  if(e.reason==="quit"&&owner)await owner.shutdown("quit");
+  if(e.reason==="quit"&&owner){
+   const cleanup=await owner.shutdown("quit");
+   if(!cleanup.complete)console.error(`[subagent cleanup] ${cleanup.failures.map(f=>`${f.id}: ${f.error}`).join("; ")}`);
+  }
   if(e.reason==="reload"&&owner)await retireSubagentRuntime();
   if(e.reason==="quit"||e.reason==="reload"){unsubscribeReset();unsubscribeReset=()=>{};}
  });
