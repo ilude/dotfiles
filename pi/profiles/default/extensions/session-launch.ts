@@ -138,12 +138,14 @@ function createHerdrTab(cwd: string, title: string): string {
 	return paneId;
 }
 
-export function createHerdrPiTab(cwd: string, title: string, sessionFile?: string): void {
+export function createHerdrPiTab(cwd: string, title: string, sessionFile?: string, planPath?: string): void {
 	const workspace = process.env.HERDR_WORKSPACE_ID;
 	if (!workspace) throw new Error("HERDR_WORKSPACE_ID is not set.");
+	if (sessionFile && planPath) throw new Error("A Herdr Pi tab cannot resume a session and launch a plan together.");
 	const args = ["plugin", "pane", "open", "--plugin", "local.pi", "--entrypoint", "pi", "--placement", "tab", "--workspace", workspace,
 		"--cwd", process.platform === "win32" ? msysPathToWindows(cwd) : cwd,
-		"--env", `PI_HERDR_PROFILE_DIR=${profileDir()}`, "--env", `PI_HERDR_SESSION_FILE=${sessionFile || ""}`, "--focus"];
+		"--env", `PI_HERDR_PROFILE_DIR=${profileDir()}`, "--env", `PI_HERDR_SESSION_FILE=${sessionFile || ""}`,
+		"--env", `PI_HERDR_PLAN_PATH=${planPath || ""}`, "--focus"];
 	const parsed = extractJsonObject(runHerdr(args, cwd)) as { result?: { plugin_pane?: { pane?: { tab_id?: string } } } };
 	const tab = parsed.result?.plugin_pane?.pane?.tab_id;
 	if (!tab) throw new Error("Herdr launch response omitted tab identity; inspect before retrying. Setup: node scripts/pi-herdr-setup.mjs");

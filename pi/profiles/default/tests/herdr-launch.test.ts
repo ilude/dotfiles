@@ -18,6 +18,20 @@ it.each([true, false])("real Node bootstrap preserves argv/env and preflight (va
   expect(data.args).toEqual([...(valid ? [] : ["--no-tools", "--no-extensions"]), "--session", session]);
   expect(data.profile).toBe(profile); expect(data.pane).toBe("new-pane"); expect(data.leaked).toBeUndefined();
 });
+it("constructs a constrained do-it message for a direct-child plan", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr plan ")); roots.push(root);
+  const profile = join(root, "fixture"); mkdirSync(profile);
+  mkdirSync(join(root, ".specs", "space-plan"), { recursive: true }); writeFileSync(join(root, ".specs", "space-plan", "plan.md"), "# Plan");
+  const entry = join(root, "entry.mjs"); writeFileSync(entry, "console.log(JSON.stringify({args:process.argv.slice(2),leaked:process.env.PI_HERDR_PLAN_PATH}))");
+  const run = spawnSync(process.execPath, [resolve("../../../scripts/pi-herdr-launch.mjs"), entry], { cwd: root, env: { ...process.env, PI_HERDR_PROFILE_DIR: profile, PI_HERDR_SESSION_FILE: "", PI_HERDR_PLAN_PATH: ".specs/space-plan/plan.md", HERDR_PLUGIN_ID: "" }, encoding: "utf8" });
+  expect(run.status, run.stderr).toBe(0); expect(JSON.parse(run.stdout)).toEqual({ args: ["/do-it .specs/space-plan/plan.md"] });
+});
+it.each(["../plan.md", ".specs/archive/old/plan.md", ".specs/missing/plan.md"])("rejects unsafe plan launch input: %s", plan => {
+  const root = mkdtempSync(join(tmpdir(), "herdr unsafe ")); roots.push(root); const profile = join(root, "fixture"); mkdirSync(profile);
+  const entry = join(root, "entry.mjs"); writeFileSync(entry, "");
+  const run = spawnSync(process.execPath, [resolve("../../../scripts/pi-herdr-launch.mjs"), entry], { cwd: root, env: { ...process.env, PI_HERDR_PROFILE_DIR: profile, PI_HERDR_PLAN_PATH: plan, HERDR_PLUGIN_ID: "" }, encoding: "utf8" });
+  expect(run.status).toBe(1);
+});
 it("rejects arbitrary launch flags and nonabsolute session inputs", () => {
   const run = spawnSync(process.execPath, [resolve("../../../scripts/pi-herdr-launch.mjs"), "--extension", "bad"], { encoding: "utf8" });
   expect(run.status).toBe(1);

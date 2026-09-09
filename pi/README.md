@@ -122,6 +122,7 @@ The default profile provides Markdown-defined `subagent` delegation with frozen 
 - `/do-it [--no-merge] [plan-path]` is a native prompt template that executes the supplied or current plan in its task worktree without expanding scope, archives the whole spec directory, commits, and merges into the recorded parent checkout's branch. `--no-merge` works before or after the plan selector and retains the committed task worktree without merging. Push and deployment remain separately authorized. Use `/reload` to load it.
 - `/handoff`, `/init`, `/summarize`, and `/war-report` are native prompt templates.
 - `/new-instance` opens a new Pi instance for the current profile; `/new-terminal` opens a plain shell.
+- `/plans` interactively browses direct-child implementation plans, opens details or VS Code, starts `/do-it` in a focused Herdr Pi tab, and conservatively archives completed plans. The execution action has no non-Herdr terminal fallback.
 - `/astra`, `/sol`, `/luna`, and `/fable` switch to their named models. Each accepts an optional autocompleted `low`, `medium`, `high`, or `xhigh` effort argument.
 - `/yt <request>` ingests, searches, lists, or fetches YouTube content through Onclave, then compares ingested videos with the current repository without modifying it.
 - `/yt-local <url-or-id> [transcript|metadata] [options]` explicitly fetches local YouTube artifacts without uploading them to Onclave.

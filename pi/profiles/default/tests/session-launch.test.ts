@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
-import register from "../extensions/session-launch.ts";
+import register, { createHerdrPiTab } from "../extensions/session-launch.ts";
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
 afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); });
 function fixture() {
@@ -17,11 +17,19 @@ it("launches fresh/branched Pi via plugin argv and renames the exact returned ta
   await commands.branch.handler("branch", ctx);
   const args = vi.mocked(spawnSync).mock.calls.map(c => c[1] as string[]);
   expect(args[0]).toContain("PI_HERDR_SESSION_FILE=");
+  expect(args[0]).toContain("PI_HERDR_PLAN_PATH=");
   expect(args[2]).toContain("PI_HERDR_SESSION_FILE=C:/branch path/session.jsonl");
   expect(args[0]).not.toContain("--target-pane");
   expect(args[0]).toContain("--focus");
   expect(args[1]).toEqual(["tab", "rename", "w9:t4", "fresh"]);
   expect(args.some(a => a.includes("run"))).toBe(false);
+});
+it("passes only a constrained plan path to a focused Pi plugin tab", () => {
+  fixture();
+  createHerdrPiTab(process.cwd(), "do-it", undefined, ".specs/example/plan.md");
+  const args = vi.mocked(spawnSync).mock.calls[0][1] as string[];
+  expect(args).toContain("PI_HERDR_PLAN_PATH=.specs/example/plan.md");
+  expect(args).toContain("--focus"); expect(args).not.toContain("run");
 });
 it("keeps plain terminal launch as a shell tab", async () => {
   const { commands, ctx } = fixture();

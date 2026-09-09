@@ -10,6 +10,7 @@
 - `/effort [level]`: shows or sets thinking effort. Levels: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
 - `/new-instance [title]`: opens a new Pi instance for the current `pp` profile in a new terminal tab.
 - `/new-terminal [title]`: opens a plain shell in this cwd in a new terminal tab.
+- `/plans`: opens an interactive list of direct-child `.specs/*/plan.md` files. Use `↑`/`↓` to navigate, `Enter` for details, `o` for VS Code, `d` to launch `/do-it` in a focused Herdr Pi tab, `a` to archive an eligible completed plan, and `Esc`/`q` to close. Plan execution has no non-Herdr terminal fallback. Archive requires completed status, a completion date, no unchecked tasks, confirmation, and a free destination.
 - `/sol [low|medium|high|xhigh]`: switches to `openai-codex/gpt-5.6-sol` through the Codex subscription and optionally sets effort.
 - `/astra [low|medium|high|xhigh]`: switches to `openai-codex/gpt-6-astra` through the Codex subscription and optionally sets effort.
 - `/luna [low|medium|high|xhigh]`: switches to `openai-codex/gpt-5.6-luna` through the Codex subscription and optionally sets effort.
