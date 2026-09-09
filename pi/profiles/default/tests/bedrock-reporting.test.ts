@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import bedrock from "../extensions/bedrock/index.ts";
+import { createBaseline, readBaseline } from "../lib/bedrock/ledger.ts";
 
 let dir: string;
 afterEach(() => { vi.unstubAllEnvs(); rmSync(dir, { recursive: true, force: true }); });
@@ -28,4 +29,25 @@ it("registers one management command, records once, normalizes cost, and reports
 	await command.handler("refresh", ctx); expect(ctx.modelRegistry.refresh).toHaveBeenCalledWith(expect.objectContaining({ providers: ["bedrock-mantle"] }));
 	await command.handler("reconcile", ctx); expect(exec).toHaveBeenCalledWith("aws", expect.arrayContaining(["logs", "start-query"]), { timeout: 30_000 }); expect(notify.mock.calls.at(-1)?.[0]).toContain("CloudWatch baseline: $1.75 (2 invocation(s))");
 	await expect(command.handler("reconcile", ctx)).rejects.toThrow("already exists");
+});
+
+it("rejects a delayed reconciliation when another creator publishes first", async () => {
+	dir = mkdtempSync(join(tmpdir(), "bedrock-report-")); vi.stubEnv("PI_CODING_AGENT_DIR", dir);
+	let releaseResults!: () => void; let resultsRequested!: () => void;
+	const requested = new Promise<void>(resolve => resultsRequested = resolve); const released = new Promise<void>(resolve => releaseResults = resolve);
+	const exec = vi.fn(async (_command: string, args: string[]) => {
+		if (args.includes("get-caller-identity")) return { code: 0, stdout: JSON.stringify({ Arn: "arn:aws:iam::058264305403:user/mike.glenn" }), stderr: "" };
+		if (args.includes("get-dashboard")) return { code: 0, stdout: JSON.stringify({ DashboardBody: JSON.stringify({ widgets: [{ properties: { title: "Estimated Bedrock Cost by User", query: `SOURCE '/aws/bedrock/ccb'
+| fields identity.arn as userArn
+| stats coalesce(sum(inputCost), 0) + coalesce(sum(outputCost), 0) + coalesce(sum(cacheWriteCost), 0) + coalesce(sum(cacheReadCost), 0) as estimatedCost, count() as invocations by userArn` } }] }) }), stderr: "" };
+		if (args.includes("start-query")) return { code: 0, stdout: JSON.stringify({ queryId: "q1" }), stderr: "" };
+		resultsRequested(); await released;
+		return { code: 0, stdout: JSON.stringify({ status: "Complete", results: [[{ field: "userArn", value: "arn:aws:iam::058264305403:user/mike.glenn" }, { field: "estimatedCost", value: "1.75" }, { field: "invocations", value: "2" }]] }), stderr: "" };
+	});
+	const commands = new Map<string, any>(); const pi: any = { registerProvider: () => {}, on: () => {}, registerCommand: (name: string, command: any) => commands.set(name, command), exec };
+	bedrock(pi); const ctx: any = { ui: { setStatus: () => {}, notify: () => {} }, modelRegistry: { getAll: () => [] } };
+	const reconciliation = commands.get("bedrock").handler("reconcile", ctx); await requested;
+	const winner = { schemaVersion: 1, month: "2026-08", principal: "winner", amount: 9, invocations: 3, capturedAt: "2026-08-20T00:00:00.000Z", source: "cloudwatch-bedrock-invocation-logs" } as const;
+	expect(await createBaseline(winner)).toBe(true); releaseResults();
+	await expect(reconciliation).rejects.toThrow("already exists"); expect(await readBaseline()).toEqual(winner);
 });

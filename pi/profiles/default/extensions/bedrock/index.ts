@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBedrockModelProvider, resolveBedrockMantleTarget } from "../../lib/bedrock/provider.js";
 import { callerArgs, dashboardArgs, parseCaller, parseQueryId, parseResults, queryArgs, resultsArgs } from "../../lib/bedrock/cloudwatch-snapshot.js";
-import { appendRecord, formatStatus, formatUsage, makeRecord, readBaseline, summarize, writeBaseline } from "../../lib/bedrock/ledger.js";
+import { appendRecord, createBaseline, formatStatus, formatUsage, makeRecord, readBaseline, summarize } from "../../lib/bedrock/ledger.js";
 
 const PROVIDERS = new Set(["amazon-bedrock", "bedrock-mantle"]);
 
@@ -51,7 +51,7 @@ export default function bedrock(pi: ExtensionAPI): void {
 					if (parsed.pending) await new Promise(resolve => setTimeout(resolve, 500));
 				}
 				if (!baseline) throw new Error("CloudWatch Logs query timed out");
-				await writeBaseline(baseline);
+				if (!await createBaseline(baseline)) throw new Error("AWS Bedrock baseline already exists; refusing to replace its accounting cutoff");
 				await refreshStatus(ctx);
 			}
 

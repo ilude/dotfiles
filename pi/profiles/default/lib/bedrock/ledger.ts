@@ -46,22 +46,32 @@ export async function appendRecord(record: UsageRecord, file = ledgerPath()): Pr
 async function oldBaseline(month: string): Promise<number> {
 	try { const value = JSON.parse(await fs.readFile(path.join(profileDir(), "operator-footer-usage.json"), "utf8")); return finite(value?.[month]); } catch { return 0; }
 }
-export async function readBaseline(file = baselinePath()): Promise<CostBaseline | undefined> {
-	try {
-		const value = JSON.parse(await fs.readFile(file, "utf8"));
-		if (value?.schemaVersion !== 1 || value?.source !== "cloudwatch-bedrock-invocation-logs" || typeof value?.principal !== "string" || !/^\d{4}-\d{2}$/.test(value?.month) || !Number.isFinite(value?.amount) || value.amount < 0 || !Number.isInteger(value?.invocations) || value.invocations < 0 || !Number.isFinite(Date.parse(value?.capturedAt))) throw new Error(`Invalid Bedrock cost baseline at ${file}`);
-		return value as CostBaseline;
-	} catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+function validateBaseline(value: unknown, file: string): CostBaseline {
+	const baseline = value as Partial<CostBaseline> | null;
+	if (baseline?.schemaVersion !== 1 || baseline.source !== "cloudwatch-bedrock-invocation-logs" || typeof baseline.principal !== "string" || !/^\d{4}-\d{2}$/.test(baseline.month ?? "") || !Number.isFinite(baseline.amount) || baseline.amount! < 0 || !Number.isInteger(baseline.invocations) || baseline.invocations! < 0 || !Number.isFinite(Date.parse(baseline.capturedAt ?? ""))) throw new Error(`Invalid Bedrock cost baseline at ${file}`);
+	return baseline as CostBaseline;
 }
-export async function writeBaseline(baseline: CostBaseline, file = baselinePath()): Promise<void> {
+export async function readBaseline(file = baselinePath()): Promise<CostBaseline | undefined> {
+	try { return validateBaseline(JSON.parse(await fs.readFile(file, "utf8")), file); }
+	catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+}
+export async function createBaseline(baseline: CostBaseline, file = baselinePath()): Promise<boolean> {
+	validateBaseline(baseline, file);
 	await fs.mkdir(path.dirname(file), { recursive: true });
-	await fs.writeFile(file, "", { flag: "a" });
-	const release = await lock(file, { realpath: false, retries: { retries: 40, minTimeout: 10, maxTimeout: 25 } });
+	const release = await lock(`${file}.creation`, { realpath: false, retries: { retries: 40, minTimeout: 10, maxTimeout: 25 } });
+	let temporary: string | undefined;
 	try {
-		const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
-		await fs.writeFile(temporary, `${JSON.stringify(baseline, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-		await fs.rename(temporary, file);
-	} finally { await release(); }
+		try { await fs.lstat(file); return false; }
+		catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+		temporary = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+		await fs.writeFile(temporary, `${JSON.stringify(baseline, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
+		try { await fs.link(temporary, file); }
+		catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") return false; throw error; }
+		return true;
+	} finally {
+		if (temporary) await fs.rm(temporary, { force: true });
+		await release();
+	}
 }
 export async function summarize(month = monthKey()): Promise<UsageSummary> {
 	const baselineDetails = await readBaseline();

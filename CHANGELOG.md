@@ -8,6 +8,12 @@
 
 **Scope and checks:** Tracking requires the updated extension before launch and covers `/plans` plus observed explicit direct-child `/do-it` paths. Older untracked runs, implicit selectors, other profiles, and separate worktree copies are not inferred or globally locked. Tests cover filesystem claims, lifecycle and queue semantics, and UI guards. Isolated native Pi/Herdr acceptance uses a deterministic loopback model response to verify real startup, running/waiting status, duplicate suppression, and process-death cleanup without executing a real plan.
 
+## 2026-09-09: Preserve the first Bedrock accounting baseline
+
+**Fixed:** Bedrock reconciliation now enforces create-once semantics at final filesystem publication, not only during the command's early check. Concurrent sessions cannot replace the first complete personal CloudWatch snapshot or move its accounting cutoff.
+
+**Failure handling:** Existing valid, malformed, or empty destinations remain untouched. Rejected contenders report that a baseline already exists, and failed creation removes task-owned temporary files without leaving an empty baseline that blocks a later capture. AWS queries remain outside the lock.
+
 ## 2026-09-09: Preserve subagent ownership through cleanup failures
 
 **Fixed:** Default subagent assignment outcomes are now recorded separately from process and visible-pane cleanup. Failed termination or pane closure remains observable with bounded cleanup errors and can be retried without losing the owned child.
