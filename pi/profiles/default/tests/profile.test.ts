@@ -27,11 +27,12 @@ it("retains the native agent fallback", () => {
 it("passes the active profile to a new instance without launching a real terminal", async () => {
 	vi.stubEnv("PI_CODING_AGENT_DIR", join(homedir(), ".pi", "profiles", "work"));
 	vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_WORKSPACE_ID", "test-workspace");
-	vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ result: { root_pane: { pane_id: "test-pane" } } }) } as ReturnType<typeof spawnSync>);
+	vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "test-tab" } } } }) } as ReturnType<typeof spawnSync>);
 	const commands = new Map<string, any>();
 	sessionLaunch({ registerCommand: (name: string, command: unknown) => commands.set(name, command) } as unknown as ExtensionAPI);
 	await commands.get("new-instance").handler("", { cwd: process.cwd(), ui: { notify: vi.fn() } });
-	const args = vi.mocked(spawnSync).mock.calls[1]?.[1] as string[];
-	expect(args.slice(0, 3)).toEqual(["pane", "run", "test-pane"]);
-	expect(args[3]).toContain("-p 'work'");
+	const launchArgs = vi.mocked(spawnSync).mock.calls[0]?.[1] as string[];
+	expect(launchArgs.slice(0, 4)).toEqual(["plugin", "pane", "open", "--plugin"]);
+	expect(launchArgs).toContain(`PI_HERDR_PROFILE_DIR=${join(homedir(), ".pi", "profiles", "work")}`);
+	expect(vi.mocked(spawnSync).mock.calls[1]?.[1]).toEqual(["tab", "rename", "test-tab", expect.any(String)]);
 });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-09: Add an interactive implementation-plan browser
+
+**Added:** The default Pi profile now provides `/plans` to browse direct-child `.specs/*/plan.md` files, inspect concise details, open a selected plan in VS Code, launch its `/do-it` workflow in a new focused Herdr Pi tab, or archive an already-completed plan after strict eligibility checks and confirmation.
+
+**Safety and compatibility:** Herdr plan launch accepts only a validated repository-relative plan selector and constructs the initial `/do-it` message in the setup-owned bootstrap. It does not expose arbitrary argv or prompt forwarding and has no non-Herdr terminal fallback. Archival requires completed status, a completion date, no unchecked tasks, and a free destination. Legacy and `/review-it` remain unchanged.
+
 ## 2026-09-09: Label the startup Herdr pane as Orchestrator
 
 **Changed:** Initial interactive default-profile Pi startup in Herdr labels its own inherited pane `Orchestrator` and its tab with the working directory's basename, such as `.dotfiles`, without changing focus. Subagent labels and later user renames are preserved; chat replacement and reload do not reset either label. A bounded labeling failure warns without preventing startup. Non-Herdr and noninteractive helpers remain unchanged.

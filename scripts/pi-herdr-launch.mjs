@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, statSync } from "node:fs";
-import { basename, isAbsolute, resolve } from "node:path";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -11,7 +11,20 @@ export function launchArguments(env = process.env) {
   if (!profile || !isAbsolute(profile) || !statSync(profile).isDirectory()) throw new Error("Absolute Pi profile directory required");
   const session = env.PI_HERDR_SESSION_FILE;
   if (session && (!isAbsolute(session) || !statSync(session).isFile())) throw new Error("Absolute existing branch session file required");
-  const args = session ? ["--session", session] : [];
+  const plan = env.PI_HERDR_PLAN_PATH;
+  if (session && plan) throw new Error("Session and plan launch inputs are mutually exclusive");
+  let initialMessage;
+  if (plan) {
+    if (!/^\.specs\/[A-Za-z0-9][A-Za-z0-9._-]*\/plan\.md$/.test(plan)) throw new Error("Direct-child .specs plan path required");
+    const root = realpathSync(resolve(env.PI_HERDR_CWD || process.cwd()));
+    const file = resolve(root, plan);
+    if (!statSync(file).isFile()) throw new Error("Existing plan file required");
+    const resolved = realpathSync(file);
+    const inside = relative(root, resolved);
+    if (!inside || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) throw new Error("Plan path escapes launch cwd");
+    initialMessage = `/do-it ${plan}`;
+  }
+  const args = session ? ["--session", session] : initialMessage ? [initialMessage] : [];
   const preflight = fileURLToPath(new URL("./pi-damage-control-preflight.mjs", import.meta.url));
   if (basename(resolve(profile)) === "default") {
     const checked = spawnSync(process.execPath, [preflight, resolve(profile, "extensions/damage-control/index.js")], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true, timeout: 10_000 });
@@ -35,6 +48,7 @@ export async function main() {
   }
   delete process.env.PI_HERDR_PROFILE_DIR;
   delete process.env.PI_HERDR_SESSION_FILE;
+  delete process.env.PI_HERDR_PLAN_PATH;
   if (process.platform !== "win32") process.env.TMPDIR = "/tmp";
   // Herdr's preview can replace an exited focused terminal with a shell.
   // Explicitly retire only this plugin-owned pane at process exit instead.
