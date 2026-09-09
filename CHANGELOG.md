@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-09: Make plan execution outcomes explicit
+
+**Changed:** `/do-it` and generated plans now lead their final response with a colored symbol and explicit outcome: completed, merge blocked, user input required, merge intentionally skipped, or cleanup pending. Blocked results put the reason and required next action before implementation successes, including who must act and where work is retained. Passing tests and archival alone do not imply completed integration; unfinished integration/cleanup checkboxes remain unchecked.
+
+**Preserved:** Routine problems remain agent-owned, `--no-merge` is intentional rather than an error, and manual testing remains non-blocking. Symbols supplement text rather than replace it; appearance depends on the terminal. This changes instructions only, not runtime tracking, rendering, or Git authority.
+
+## 2026-09-09: Preserve Onclave deliveries across handling failures
+
+**Fixed:** The shared Onclave Pi adapter now checkpoints bounded per-delivery effects instead of treating receipt as completion. Transient failures remain available for lease-expiry redelivery, completed injections are not replayed after audit or acknowledgement failures, concurrent duplicates are not acknowledged prematurely, and retained task identity is reused during retries.
+
+**Validation:** HTTP and AMQP task-status handling now share one normalized parser that rejects malformed protocol fields before correlation or UI delivery. Focused adapter, envelope, and core tests passed without a live broker, credentials, model calls, or deployment.
+
 ## 2026-09-09: Prevent duplicate plan execution across Pi tabs
 
 **Changed:** `/plans` now overlays live execution status and the owning tab/process on the saved plan metadata. Both run shortcuts are disabled for owned plans in Browse and Details, including after reopening the picker. Atomic profile-local reservations also close the race between two already-open pickers; tab creation and current-instance queueing reserve before submitting work.

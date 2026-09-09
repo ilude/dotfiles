@@ -53,7 +53,12 @@ reopening them.
    is blocked, retain the worktree and report integration pending. Preserve explicit
    no-merge instructions as an intentional exception. Operator manual or live testing
    happens after completion and never blocks archival, commit, or authorized merge;
-   record it only as a non-blocking verification limit.
+   record it only as a non-blocking verification limit. Require accurate unfinished
+   integration/cleanup checkboxes and blocker, next-action, and action-owner records.
+   Include the template's outcome-first response contract: 🟢 completed, 🔴 merge
+   blocked or user input required, 🔵 merge intentionally skipped, or 🟡 cleanup
+   pending, always with explicit text. Blocked results must foreground the reason
+   and action needed, not passed checks. Routine merge conflicts remain agent-owned.
 7. When Pi behavior matters, record the verified planning profile and intended
    execution profile. Keep actual runs separate by date, profile/path, scope, and
    result. Never claim intended profiles or model behavior were tested.

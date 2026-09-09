@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-015 - Blocked `/do-it` integration was easy to mistake for completion
+
+- **Reference:** Bedrock baseline create-once plan execution and operator follow-up, 2026-09-09.
+- **Expected:** A fully closed plan is unmistakably complete; a task that passed checks but did not merge clearly demands operator action.
+- **Observed:** Implementation, checks, archival, and the task commit succeeded, but dirty target `CHANGELOG.md` state blocked the merge. The final answer led with "Implemented and validated" and placed "Integration: Pending" later, without an explicit overall outcome or required next action. The worktree was correctly retained under the existing contract, but the operator had to ask why it remained.
+- **Correction:** A retry after the target became clean produced one narrow changelog conflict. Both entries were preserved, merge commit `94502cc5` and completion metadata commit `cfd46adf` were created, and the worktree was removed. Initial Git cleanup left an unregistered directory because of a Windows long-path error; task-owned remnants were then removed with Node filesystem cleanup.
+- **Approved remediation:** `/do-it`, the planning skill, and its template now require outcome-first reporting with colored symbols plus explicit text: green COMPLETED, red NOT COMPLETE: MERGE BLOCKED or USER INPUT REQUIRED, blue IMPLEMENTED: MERGE SKIPPED AS REQUESTED, and yellow CLEANUP PENDING. Blocked/cleanup-pending results foreground Reason and Action needed, including who must act. Routine problems remain agent-owned; intentional no-merge is not a failure. Integration/cleanup checkboxes must remain accurate. No new state registry or renderer.
+- **Related:** AIF-016, AIF-023, AIF-010.
+- **Status:** Operator approved and instruction changes implemented on 2026-09-09. Scoped wording/contract and whitespace checks passed; live rendering and future model adherence remain unverified.
+
 ## APR-014 - Reopened the settled active-subagent reload assumption
 
 - **Reference:** Extension-refactor review and planning discussion, 2026-09-09.

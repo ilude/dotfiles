@@ -52,6 +52,9 @@ At meaningful phase boundaries, remove only task-introduced drift and resume the
 next required step.
 
 Keep checkbox state, concise evidence, current blockers, and the next action accurate.
+Leave unfinished integration/cleanup checkboxes unchecked. For blockers, record the
+specific issue, next action, and who must act; archival and passing tests alone are
+not whole-plan completion.
 Do not stop at a phase boundary or substitute a promise for available work. Fix
 demonstrated task-relevant failures and stop testing when the finite agreed checks pass.
 
@@ -93,14 +96,39 @@ task branch. Do not archive unfinished implementation.
 
 Unless explicitly disabled, merge the task branch into its recorded originating
 checkout and branch without stashing, discarding, or committing unrelated target
-changes. If integration is blocked, retain the worktree and report implementation
+changes. Resolve routine merge conflicts within settled intent yourself; ask only
+for consequential decisions or prerequisites outside your authority.
+If integration is blocked, retain the worktree and report implementation
 and checks separately from pending delivery. If `--no-merge` applies, keep the
 committed worktree and report integration as intentionally pending.
 
 After a successful merge, verify the target contains the changes and archive and no
 active plan copy remains. Then set the archived plan's `status: completed` and
-`completed: YYYY-MM-DD`, mark closeout done, and commit that final metadata update on
-the target. Only then declare completion. Rerun affected checks only if conflict
-resolution changed checked content. Remove the task worktree only when integration
+`completed: YYYY-MM-DD`, record integration evidence, and commit that metadata update
+on the target. Do not mark a task containing cleanup done before cleanup succeeds;
+if cleanup remains unfinished, report CLEANUP PENDING rather than COMPLETED.
+Rerun affected checks only if conflict resolution changed checked content. Remove the task worktree only when integration
 succeeded and it has no uncommitted or unmerged work. Push and deployment require
 separate authorization. Operator manual testing does not block this closeout.
+
+### Final response
+
+Start with one overall outcome, using the colored symbol and explicit text together:
+
+- 🟢 **COMPLETED**: checks passed, integrated, completion metadata committed, and
+  task worktree cleanup verified.
+- 🔴 **NOT COMPLETE: MERGE BLOCKED**: implementation committed, integration blocked.
+- 🔴 **NOT COMPLETE: USER INPUT REQUIRED**: a consequential decision or prerequisite
+  prevents finishing; state the precise question and recommendation where applicable.
+- 🔵 **IMPLEMENTED: MERGE SKIPPED AS REQUESTED**: checks passed and changes committed
+  under `--no-merge`; retained worktree is intentional, not a failure or required fix.
+- 🟡 **CLEANUP PENDING**: changes and completion metadata are already on the target,
+  but worktree cleanup is unfinished.
+
+For blocked or cleanup-pending outcomes, immediately give **Reason** and
+**Action needed**, naming the issue, who must act, and the exact next action before successes.
+Do not imply automatic resumption or hand available agent-owned work to the user.
+If several issues remain, lead with the blocking outcome and list required actions.
+Then give concise checks, spec location, branch/commits, merge result, and retained
+worktree or cleanup remnants. Never rely on color alone or lead a blocked result
+with a success summary. These are response labels, not new frontmatter states.
