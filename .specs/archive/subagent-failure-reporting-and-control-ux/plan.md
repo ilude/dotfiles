@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
-status: in-progress
-completed: null
+status: completed
+completed: 2026-09-09
 ---
 
 # Deliver subagent messages during work and report outcomes accurately
@@ -207,11 +207,11 @@ Keep task checkboxes and concise evidence current. At phase boundaries remove ta
   - Done when: named agent-owned checks pass with actual profile/source evidence and truthful limitations. Attached-client/manual testing remains non-blocking and no live model call is required.
   - Evidence: Updated default subagent documentation, `pi/README.md`, and the root changelog with message defaults, lifecycle behavior, question/reply handling, approval ownership, failure provenance, and explicit exclusions. From the default profile with the repository dependency links active and `PI_SUBAGENT_AUTHORITY`/`PI_SUBAGENT_ENDPOINT` cleared: the named focused suite passed 69 tests across 11 files on 2026-09-09; `pnpm run typecheck` passed; `pnpm run check:runtime` passed; and root `git diff --check` passed. No live model, attached-client, archive, commit, merge, or push was performed. Remaining limit: physical visible-client UX is not claimed from offline tests.
 
-- [ ] **T7: Archive, commit, integrate, and clean the task worktree**
+- [x] **T7: Archive, commit, integrate, and clean the task worktree**
   - Depends on: T6 and execution authorization covering local integration.
   - Change: follow the closeout contract below, preserving unrelated checkout work. Archive and commit implementation on the task branch before merging; record completed metadata only after integration. Keep this task unchecked while required integration or cleanup remains unfinished.
   - Done when: target contains implementation and dated archive, metadata is committed, and integrated task worktree cleanup is verified; otherwise record the exact blocker, next action, action owner, and retained worktree.
-  - Evidence: Implementation and agreed checks passed; spec archived on the task branch. Integration, completion metadata, and worktree cleanup remain pending.
+  - Evidence: Task commit `dc1448cb` was merged into recorded target `main` by merge commit `eda32344`; routine changelog conflict markers were removed in follow-up commit `f737804`. The target contains the implementation and archive and has no active plan copy. Completion metadata was recorded on 2026-09-09; task worktree cleanup was then verified.
 
 ## Agreed validation and current handoff
 
@@ -226,12 +226,13 @@ The first three filters are now implemented files. Reuse existing dependencies; 
 
 The T1/T2 installed-runtime fixture must exercise real message ingestion, tool finalization and settlement with scripted external boundaries. The focused surface tests must cover both child adapters. No new exhaustive fake runtime, production Herdr changes, or layout test campaign. Passing offline tests establishes those paths, not universal model compliance or physical attached-client UX. Operator testing happens after completion and does not block archive/commit/merge.
 
-- Status: T1-T6 implemented and validated; archived and ready for authorized integration. T7 remains pending until merge, completion metadata, and cleanup finish.
+- Status: completed on 2026-09-09 after implementation, focused validation, archival, integration into `main`, completion metadata, and task worktree cleanup.
 - Completed planning: reconciled original failure scope with the agreed messaging design, verified native lifecycle mechanisms in installed source/docs, and verified cleanup integration in `main`.
 - Execution profile: default profile in the dedicated `fix/subagent-failure-reporting` checkout. The checkout was clean before implementation; unrelated changes were preserved.
 - Open user decisions: none. Working interaction names remain implementation details under the settled contract.
-- Validation evidence: 69 focused tests across 11 files, typecheck, runtime smoke, and `git diff --check` passed with the authority/endpoint environment cleared. No live model, production Herdr pane, archive, commit, merge, or push was performed.
-- Limits: offline evidence does not claim physical attached-client UX or universal model compliance. T7 remains the explicit archive/integration boundary.
+- Validation evidence: 69 focused tests across 11 files, typecheck, runtime smoke, and `git diff --check` passed with the authority/endpoint environment cleared. Integration did not change checked implementation files after validation.
+- Integration evidence: task commit `dc1448cb`, merge commit `eda32344`, and changelog conflict cleanup commit `f737804` are on recorded target `main`. No push or deployment was performed.
+- Limits: offline evidence does not claim physical attached-client UX or universal model compliance.
 
 ## Closeout
 
