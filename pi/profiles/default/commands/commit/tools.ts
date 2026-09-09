@@ -29,7 +29,7 @@ export function gitReviewTool(pi: ExtensionAPI, repositories?: readonly string[]
 	return {
 		name: "commit_git_review",
 		label: "Commit Git Review",
-		description: "Read-only Git status, diff summary, or diff in the root or an initialized submodule. Omitted or empty paths includes all tracked changes in the selected repository; explicit paths filters the diff. Use repo='.' for root or an inventory path supplied by the workflow. Returns at most 12000 characters per page; use offset to read all pages. staged selects index vs worktree diffs. Untracked file contents are NOT in diffs: use read. No secret redaction or automatic file exclusions. Binary diffs report metadata only.",
+		description: "Use this tool, not shell Git commands, for status refreshes and diff inspection. Initial status is already supplied by the workflow. Read-only Git status, diff summary, or diff in the root or an initialized submodule. Omitted or empty paths includes all tracked changes in the selected repository; explicit paths filters the diff. Use repo='.' for root or an inventory path supplied by the workflow. Returns at most 12000 characters per page; use offset to read all pages. staged selects index vs worktree diffs. Untracked file contents are NOT in diffs: use read. No secret redaction or automatic file exclusions. Binary diffs report metadata only.",
 		parameters: Type.Object({
 			action: StringEnum(["status", "summary", "diff"] as const),
 			repo: Type.Optional(Type.String({ minLength: 1, description: "Root-relative repository path from the supplied inventory; default: ." })),

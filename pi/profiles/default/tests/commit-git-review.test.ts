@@ -31,6 +31,19 @@ async function review(params: Parameters<ReturnType<typeof gitReviewTool>["execu
 	return (await gitReviewTool(pi, repositories).execute("test", params, undefined, undefined, { cwd: root })).content[0]!.text;
 }
 
+it("refreshes status with exact quoted paths in the selected inventory repository", async () => {
+	writeFileSync(join(root, "path with spaces.txt"), "new contents\n");
+	const status = await review({ action: "status", repo: "." });
+	expect(status).toContain('AM "first.txt"');
+	expect(status).toContain('?? "path with spaces.txt"');
+	const nested = join(root, "nested"); mkdirSync(nested); git(nested, "init", "--quiet");
+	writeFileSync(join(nested, "child.txt"), "child\n");
+	const child = await review({ action: "status", repo: "nested" }, [root, nested]);
+	expect(child).toContain('?? "child.txt"');
+	expect(child).not.toContain('"first.txt"');
+	await expect(review({ action: "status", repo: "nested" })).rejects.toThrow("Repository is not in the supplied inventory");
+});
+
 it.each([undefined, []])("allows pathless worktree and staged diffs (paths=%s)", async paths => {
 	const worktree = await review({ action: "diff", paths });
 	expect(worktree).toContain("+first worktree");

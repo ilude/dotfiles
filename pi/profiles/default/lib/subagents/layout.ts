@@ -1,4 +1,5 @@
 import type { HerdrCli } from "../herdr-cli.ts";
+import { createPaneFocus, focusedPane, type FocusPane } from "./herdr-layout-api.ts";
 import { compactPane, inspectLayout, inspectPane, result } from "../herdr-cli.ts";
 
 export const CHILDREN_PER_TAB = 4;
@@ -46,8 +47,8 @@ const paneFromOpen = (value: any) => value?.plugin_pane?.pane ?? value?.pane ?? 
 
 /**
  * Children sit above the caller, left to right, with four children per tab.
- * Overflow tabs avoid restructuring live pane trees and every creation uses
- * Herdr's non-focusing operations.
+ * Overflow tabs avoid restructuring live pane trees. Creation is non-focusing;
+ * the initial swap restores observed focus because Herdr's swap focuses its source.
  *
  * This class owns only panes it opened and tabs it created through placement.
  * It never closes a caller, an unrelated pane, or a pre-existing tab.
@@ -55,7 +56,8 @@ const paneFromOpen = (value: any) => value?.plugin_pane?.pane ?? value?.pane ?? 
 export class SubagentLayout {
   private groups = new Map<string, Group>();
   private readonly cli: HerdrCli;
-  constructor(cli: HerdrCli) { this.cli = cli; }
+  private readonly focusPane: FocusPane;
+  constructor(cli: HerdrCli, focusPane: FocusPane = createPaneFocus()) { this.cli = cli; this.focusPane = focusPane; }
 
   snapshot(origin: string): LayoutChild[] {
     return [...(this.groups.get(origin)?.children.values() ?? [])].map(child => ({ ...child }));
@@ -137,9 +139,15 @@ export class SubagentLayout {
       if (!group.tabs.has(slot.tabIndex)) group.tabs.set(slot.tabIndex, tabId);
       try {
         if (slot.tabIndex === 0 && slot.column === 0) {
-          // Plugin splits only support right/down. Move the existing caller
-          // below the new child without replacing its process or taking focus.
-          await this.cli(["pane", "move", group.callerPane, "--target-pane", paneId, "--split", "down", "--no-focus"]);
+          // Herdr 0.9 has no upward plugin split or non-focusing swap.
+          // Observe focus immediately before swapping, not before launch.
+          const focused = await focusedPane(this.cli);
+          try {
+            await this.cli(["pane", "swap", "--source-pane", group.callerPane, "--target-pane", paneId]);
+          } finally {
+            // Do not overwrite a subsequent user focus change to another pane.
+            if (focused !== group.callerPane && await focusedPane(this.cli) === group.callerPane) await this.focusPane(focused);
+          }
         }
         const pane = await inspectPane(this.cli, paneId);
         if (pane.workspace_id !== group.workspaceId || pane.tab_id !== tabId) throw new Error("Created pane identity changed");

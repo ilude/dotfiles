@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspectPane, result, type HerdrCli } from "../lib/herdr-cli.ts";
 import { SubagentLayout } from "../lib/subagents/layout.ts";
+import { createPaneFocus } from "../lib/subagents/herdr-layout-api.ts";
 import { SubagentRuntime } from "../lib/subagents/runtime.ts";
 import type { AgentDefinition } from "../lib/subagents/definitions.ts";
 
@@ -134,7 +135,7 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
       }
       return response;
     };
-    const layout = new SubagentLayout(layoutCli);
+    const layout = new SubagentLayout(layoutCli, createPaneFocus(fixture.env));
     try {
       const before = result(await fixture.cli(["pane", "current"])).pane;
       expect(before.pane_id).toBe(fixture.unrelated.pane_id);
@@ -193,10 +194,22 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
       expect(Math.abs(callerGeometry.rect.height - totalHeight * 2 / 3)).toBeLessThanOrEqual(1);
       await layout.close("t5-geometry", placements[0].childId, placements[0].paneId);
       expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
+      // Recreate the upper row while overflow survives, this time with the
+      // orchestrator itself focused. Its exact pane must remain the caller.
+      for (const child of layout.snapshot("t5-geometry").filter(child => child.tabIndex === 0)) await layout.close("t5-geometry", child.childId, child.paneId);
+      await createPaneFocus(fixture.env)(fixture.caller.pane_id);
+      const replacement = await layout.place("t5-geometry", inertRequest(fixture.caller.pane_id, fixture.scratch, 18));
+      expect(replacement.tabIndex).toBe(0);
+      expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.caller.pane_id);
+      const recreated = result(await fixture.cli(["pane", "layout", "--pane", replacement.paneId])).layout.panes;
+      const upper = recreated.find((pane: any) => pane.pane_id === replacement.paneId).rect;
+      const lower = recreated.find((pane: any) => pane.pane_id === fixture.caller.pane_id).rect;
+      expect(upper.y + upper.height).toBeLessThanOrEqual(lower.y + 1);
     } finally {
-      for (const child of layout.snapshot("t5-geometry").reverse()) await layout.close("t5-geometry", child.childId, child.paneId).catch(() => undefined);
-      expect(layout.snapshot("t5-geometry")).toHaveLength(0);
-      await closeFixture(fixture);
+      try {
+        for (const child of layout.snapshot("t5-geometry").reverse()) await layout.close("t5-geometry", child.childId, child.paneId);
+        expect(layout.snapshot("t5-geometry")).toHaveLength(0);
+      } finally { await closeFixture(fixture); }
     }
   }, 120_000);
 

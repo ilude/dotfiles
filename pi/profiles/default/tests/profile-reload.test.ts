@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -25,6 +25,63 @@ it("detects changes at two seconds, resets the baseline and cleans up subscripti
 	unsubscribe(); changed.mockClear(); writeFileSync(settings, "{}"); vi.advanceTimersByTime(2000);
 	expect(changed).not.toHaveBeenCalled();
 	service.stop(); service.stop(); expect(vi.getTimerCount()).toBe(0);
+});
+
+it("ignores metadata-only changes but detects same-size content edits with restored mtime", () => {
+	mkdirSync(join(dir, "extensions"));
+	const file = join(dir, "extensions", "example.ts");
+	writeFileSync(file, "before");
+	service.start(scope(), vi.fn());
+	const original = statSync(file);
+	utimesSync(file, original.atime, new Date(original.mtimeMs + 60_000));
+	vi.advanceTimersByTime(2000);
+	expect(service.needed).toBe(false);
+	writeFileSync(file, "after!");
+	utimesSync(file, original.atime, original.mtime);
+	vi.advanceTimersByTime(2000);
+	expect(service.needed).toBe(true);
+	writeFileSync(file, "before");
+	vi.advanceTimersByTime(2000);
+	expect(service.needed).toBe(false);
+});
+
+it("ignores live settings and formatting but retains resource and catalog changes", () => {
+	const file = join(dir, "settings.json");
+	writeFileSync(file, JSON.stringify({ extensions: ["extension.ts"], enabledModels: ["provider/model"] }));
+	service.start(scope(), vi.fn());
+	const settings = {
+		enabledModels: ["provider/model"], extensions: ["extension.ts"],
+		defaultModel: "new-model", defaultProvider: "new-provider", defaultThinkingLevel: "high", lastChangelogVersion: "new-version",
+	};
+	writeFileSync(file, JSON.stringify(settings, null, 2));
+	vi.advanceTimersByTime(2000);
+	expect(service.needed).toBe(false);
+	for (const change of [{ extensions: ["other.ts"] }, { enabledModels: ["provider/other"] }, { providers: { custom: {} } }]) {
+		writeFileSync(file, JSON.stringify({ ...settings, ...change }));
+		vi.advanceTimersByTime(2000);
+		expect(service.needed).toBe(true);
+	}
+	writeFileSync(file, "invalid JSON");
+	vi.advanceTimersByTime(2000);
+	expect(service.error).toBeTruthy();
+	writeFileSync(file, JSON.stringify(settings));
+	vi.advanceTimersByTime(2000);
+	expect(service.error).toBeUndefined();
+	expect(service.needed).toBe(false);
+});
+
+it("detects resource additions and deletions regardless of their timestamps", () => {
+	mkdirSync(join(dir, "extensions"));
+	const file = join(dir, "extensions", "example.ts");
+	service.start(scope(), vi.fn());
+	writeFileSync(file, "resource");
+	utimesSync(file, new Date(0), new Date(0));
+	vi.advanceTimersByTime(2000);
+	expect(service.needed).toBe(true);
+	service.start(scope(), vi.fn());
+	rmSync(file);
+	vi.advanceTimersByTime(2000);
+	expect(service.needed).toBe(true);
 });
 
 it("reports initialization errors once and clears them after a successful reset", () => {

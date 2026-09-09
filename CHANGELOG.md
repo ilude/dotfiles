@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-09: Specify Luna's commit tool and command workflow
+
+**Changed:** The default commit reviewer now uses supplied initial status and the existing Git-review tool for status refreshes and diffs, instead of improvising shell status options. Its ordered instructions include concrete tool examples, per-repository command templates, quoting, staged/unstaged review, pagination, submodule ordering, and explicit push handling. Runtime input supplies exact root and whitespace-utility paths; utility arguments no longer suggest an unsupported `--` separator.
+
+**Preserved:** Automatic grouping, ignore-file questions, quiet results, normal hooks, three transient provider retries, and stopping on actual Git/tool failures. This addresses the invalid `git status --submodules=short` failure without adding a generic executor or promising failure-free model behavior.
+
+## 2026-09-09: Keep the Herdr orchestrator below subagents
+
+**Changed:** Default-profile subagent panes now form a row above the orchestrator, leaving it at the bottom with approximately two-thirds of the height. Four-per-tab placement, overflow tabs, pane/process identities, and owned cleanup remain unchanged. An empty primary child row can be recreated while overflow children remain.
+
+**Compatibility:** Herdr 0.9.0 supports only downward plugin splits and focuses the source of a pane swap. Initial placement swaps the first child above the caller and restores the previously viewed pane through the public focus API when no later focus change is observed. This restoration is best effort, not atomic. Isolated inert-pane geometry/focus acceptance passed; attached-client confirmation is still needed. Reload Pi with subagents settled to activate the source change.
+
+## 2026-09-09: Avoid noisy reload indicators
+
+**Changed:** Default Pi's reload monitor compares resource contents instead of file timestamps and size. Metadata-only touches and settings formatting or key-order changes no longer request reload. Immediate default model, provider, thinking-level selections and the last-seen changelog version are ignored; resource configuration and enabled-model scope remain watched. Additions, deletions, monitoring errors, two-second polling, and existing lifecycle/event-bus ownership are preserved.
+
 ## 2026-09-09: Keep existing conversations quiet on startup
 
 **Changed:** Default Pi no longer appends the automatic Codex/cache/Bedrock usage report when `/branch` opens copied history or startup resumes an existing conversation. Footer refreshes and explicit `/usage` remain available; fresh-session startup, `/new`, and `/clear` retain their reports. Existing transcript entries are preserved.

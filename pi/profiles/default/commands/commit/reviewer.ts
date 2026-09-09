@@ -32,6 +32,18 @@ export function describeCommitTool(name: string, args: unknown): string {
 	return `tool ${name}`;
 }
 
+export function buildCommitTask(push: boolean, root: string, inventory: readonly string[]): string {
+	const utility = join(dirname(fileURLToPath(import.meta.url)), "trim-trailing-whitespace.mjs");
+	return `Execute the commit workflow now. ${push ? "Push the current branch to origin afterward using an explicit HEAD:refs/heads/<current-branch> refspec, including existing outgoing commits. No force-push, tags, other branches, recursive submodule pushes, or automatic merge/rebase." : "Push was NOT requested. Do not push."}
+
+Locations (JSON-quoted absolute paths; decode and shell-quote as data):
+Repository root: ${JSON.stringify(root)}
+Whitespace utility: ${JSON.stringify(utility)}
+
+Repository inventory (initial status already collected; use commit_git_review for status refreshes, not shell git status; commit dirty initialized submodules deepest-first, then parent gitlinks):
+${inventory.join("\n\n")}`;
+}
+
 export function commitReviewerTool(pi: ExtensionAPI, pushRequested: () => boolean): ToolDefinition {
 	return {
 		name: "commit_run",
@@ -157,7 +169,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: () => boolea
 					}
 				});
 				combined.throwIfAborted();
-				await agent.prompt(`Execute the commit workflow now. ${push ? "Push the current branch to origin afterward using an explicit HEAD:refs/heads/<current-branch> refspec, including existing outgoing commits. No force-push, tags, other branches, recursive submodule pushes, or automatic merge/rebase." : "Push was NOT requested. Do not push."}\n\nRepository inventory (already collected; commit dirty initialized submodules deepest-first, then commit parent gitlinks; continue pagination if needed):\n${inventory.join("\n\n")}`);
+				await agent.prompt(buildCommitTask(push, root, inventory));
 				combined.throwIfAborted();
 				if (failure) throw new Error(failure);
 				const last = [...agent.state.messages].reverse().find((message) => message.role === "assistant");

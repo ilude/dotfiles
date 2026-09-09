@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { createHash } from "node:crypto";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -76,6 +77,25 @@ export function reloadRoots(scope: ReloadScope): string[] {
 	return [...roots].sort();
 }
 
+// These selections take effect immediately; resource/catalog configuration still needs reload.
+const LIVE_SETTINGS = new Set(["defaultModel", "defaultProvider", "defaultThinkingLevel", "lastChangelogVersion"]);
+
+function resourceFingerprint(file: string): string {
+	let content: Buffer | string = fs.readFileSync(file);
+	if (path.basename(file) === "settings.json") {
+		const settings = JSON.parse(content.toString("utf8").replace(/^\uFEFF/, ""));
+		if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+			throw new Error(`Invalid settings in ${file}`);
+		}
+		const relevant = Object.fromEntries(Object.entries(settings).filter(([key]) => !LIVE_SETTINGS.has(key)));
+		content = JSON.stringify(relevant, (_key, value) =>
+			value && typeof value === "object" && !Array.isArray(value)
+				? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)))
+				: value);
+	}
+	return createHash("sha256").update(content).digest("hex");
+}
+
 export function reloadSnapshot(roots: string[]): Map<string, string> {
 	const snapshot = new Map<string, string>();
 	const visited = new Set<string>();
@@ -97,7 +117,7 @@ export function reloadSnapshot(roots: string[]): Map<string, string> {
 		if (stat.isDirectory()) {
 			for (const entry of fs.readdirSync(file).sort()) visit(path.join(file, entry));
 		} else if (stat.isFile()) {
-			snapshot.set(real, `${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`);
+			snapshot.set(real, resourceFingerprint(file));
 		}
 	};
 	for (const root of roots) visit(root);

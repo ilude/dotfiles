@@ -1,9 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createPaneFocus } from "../lib/subagents/herdr-layout-api.ts";
+
+vi.mock("../lib/subagents/herdr-layout-api.ts", async importOriginal => ({
+  ...await importOriginal<typeof import("../lib/subagents/herdr-layout-api.ts")>(),
+  createPaneFocus: vi.fn(),
+}));
 import type { HerdrCli } from "../lib/herdr-cli.ts";
 import { CHILDREN_PER_ROW, CHILDREN_PER_TAB, SubagentLayout, layoutSlot } from "../lib/subagents/layout.ts";
 
 class LayoutFixture {
   calls: string[][] = [];
+  focusRequests: string[] = [];
+  focusAfterOpen?: string;
+  focusAfterSwap?: string;
   panes = new Map<string, any>([
     ["w1:p1", { pane_id: "w1:p1", tab_id: "w1:t1", workspace_id: "w1", rect: { x: 0, y: 0, width: 100, height: 40 } }],
     ["w2:p1", { pane_id: "w2:p1", tab_id: "w2:t1", workspace_id: "w2", rect: { x: 0, y: 0, width: 100, height: 40 } }],
@@ -16,6 +25,7 @@ class LayoutFixture {
   tabs = new Set(["w1:t1", "w2:t1"]);
   constructor() {
     this.cli = this.run.bind(this);
+    vi.mocked(createPaneFocus).mockReturnValue(async paneId => { this.focusRequests.push(paneId); this.focus = paneId; });
   }
   readonly cli: HerdrCli;
   private async run(args: string[]): Promise<string> {
@@ -80,7 +90,7 @@ class LayoutFixture {
     if (command === "pane rename") { if (this.failRename) throw new Error("rename failed"); return ""; }
     if (command === "pane resize") return "";
     if (command === "pane swap") {
-      this.focus = args[3];
+      this.focus = this.focusAfterSwap ?? args[3];
       return "";
     }
     if (command === "plugin pane") {
@@ -94,6 +104,7 @@ class LayoutFixture {
       this.tabs.add(tabId);
       const paneId = `w1:p${this.nextPane++}`;
       this.panes.set(paneId, { pane_id: paneId, tab_id: tabId, workspace_id: "w1", label: "Pi", rect: { x: 0, y: 0, width: 50, height: 20 } });
+      if (this.focusAfterOpen) this.focus = this.focusAfterOpen;
       return JSON.stringify({ result: { plugin_pane: { pane: this.panes.get(paneId) } } });
     }
     if (command === "tab close") {
@@ -136,11 +147,34 @@ describe("subagent layout contract", () => {
       childId: "child", callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi",
     });
     expect(placement.paneId).toBe("w1:p2");
-    // Downward placement uses Herdr's non-focusing split and preserves the
-    // pane the user is currently viewing.
+    // The first downward split is swapped above the caller. Restore the actual
+    // viewed pane, not the inherited caller context.
+    expect(fixture.calls).toContainEqual(["pane", "swap", "--source-pane", "w1:p1", "--target-pane", placement.paneId]);
+    expect(fixture.focusRequests).toEqual(["w2:p1"]);
     expect(fixture.focus).toBe("w2:p1");
     expect(fixture.calls.some(call => call[0] === "workspace" && call[1] === "focus")).toBe(false);
     expect(fixture.calls.some(call => call[0] === "pane" && call[1] === "focus")).toBe(false);
+  });
+
+  it("observes a user focus change after opening and does not restore an older snapshot", async () => {
+    const fixture = new LayoutFixture();
+    fixture.focus = "w1:p1";
+    fixture.focusAfterOpen = "w2:p1";
+    await new SubagentLayout(fixture.cli).place("origin", {
+      childId: "child", callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi",
+    });
+    expect(fixture.focus).toBe("w2:p1");
+    expect(fixture.focusRequests).toEqual(["w2:p1"]);
+  });
+
+  it("does not restore focus if the user moved away after the swap", async () => {
+    const fixture = new LayoutFixture();
+    fixture.focusAfterSwap = "w1:p2";
+    await new SubagentLayout(fixture.cli).place("origin", {
+      childId: "child", callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi",
+    });
+    expect(fixture.focus).toBe("w1:p2");
+    expect(fixture.focusRequests).toEqual([]);
   });
 
   it("serializes concurrent placement and returns exact IDs", async () => {
@@ -199,6 +233,21 @@ describe("subagent layout contract", () => {
       childId: "replacement", callerPane: "w1:p1", cwd: "C:/work", title: "Replacement", plugin: "local.pi", entrypoint: "pi",
     });
     expect(replacement).toMatchObject({ row: 0, column: 1 });
+  });
+
+  it("recreates the upper row when only overflow children remain", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    for (let i = 1; i <= 5; i++) await layout.place("origin", {
+      childId: `child-${i}`, callerPane: "w1:p1", cwd: "C:/work", title: `Child ${i}`, plugin: "local.pi", entrypoint: "pi",
+    });
+    for (const child of layout.snapshot("origin").filter(child => child.tabIndex === 0)) await layout.close("origin", child.childId, child.paneId);
+    const replacement = await layout.place("origin", {
+      childId: "replacement", callerPane: "w1:p1", cwd: "C:/work", title: "Replacement", plugin: "local.pi", entrypoint: "pi",
+    });
+    expect(replacement).toMatchObject({ tabIndex: 0, column: 0 });
+    expect(fixture.calls).toContainEqual(["pane", "swap", "--source-pane", "w1:p1", "--target-pane", replacement.paneId]);
+    expect(layout.snapshot("origin").find(child => child.childId === "child-5")).toMatchObject({ tabIndex: 1 });
   });
 
   it("keeps the exact created pane owned when identity inspection fails", async () => {

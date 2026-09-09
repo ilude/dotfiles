@@ -4,7 +4,9 @@
 
 ## Agreed UX changes (implemented with bounded validation)
 
-**Acceptance status:** The non-focusing downward layout, four-per-tab overflow, reload lifecycle, model-backed execution, process settlement, cleanup, and attached-client presentation passed bounded acceptance on Herdr 0.9.0.
+**Layout correction, 2026-09-09:** Children now occupy a full-width row above the orchestrator; the orchestrator stays at the bottom with approximately two-thirds of the height. Four children remain supported per tab, with overflow beginning at child five. Focused tests and isolated Herdr 0.9.0 geometry/focus checks cover this correction; attached-client acceptance of the corrected order remains unverified.
+
+**Earlier acceptance:** The previous downward layout, four-per-tab overflow, reload lifecycle, model-backed execution, process settlement, cleanup, and attached-client presentation passed bounded acceptance on Herdr 0.9.0. The operator subsequently corrected the required vertical ordering.
 
 The focused automated suite, isolated Herdr geometry test, model-backed retained follow-up, and attached-client three-child runs passed. The operator observed the final merged runtime after `/reload` and reported that everything appeared to work as expected. The baseline unrelated TypeScript declaration error in `tests/commit-whitespace.test.ts` remains outside this work; runtime checks passed 335 rules and 8 schemas.
 
@@ -59,7 +61,7 @@ Native RPC `agent_end` carries an aggregate message array and can exceed 1 MiB a
 
 ## Visibility and lifetime
 
-Run the existing Herdr setup from the lasting checkout as described in [Herdr setup](herdr.md). The runtime verifies that `local.pi` uses that profile's repository bootstrap before opening a pane. Do not link a disposable worktree into production. Background creation must preserve the user's currently focused pane, tab and workspace, not switch back to the caller. It uses `--no-focus`; no restore-to-caller command is issued.
+Run the existing Herdr setup from the lasting checkout as described in [Herdr setup](herdr.md). The runtime verifies that `local.pi` uses that profile's repository bootstrap before opening a pane. Do not link a disposable worktree into production. Background creation should preserve the user's currently focused pane, tab and workspace, not assume the caller is focused. Plugin creation uses `--no-focus`. Herdr 0.9.0 lacks upward plugin splits and a non-focusing swap: initial placement swaps the new child above the caller, then restores the pane observed immediately before the swap if focus still points to the caller. A subsequent observed user focus change is left alone. Restoration uses the public exact-pane focus API and is not atomic; a brief focus change or a concurrent switch in the final check/restore window remains possible. No layout replay or caller-process replacement is used.
 
 The bootstrap hosts native Pi through exact argv and inherited terminal handles, without a shell wrapper. A per-launch host owns the actual child process handle. Authenticated process-local loopback messages carry questions, delegation, replies, and control; Herdr state and terminal text are not completion evidence. Results are captured and owned processes settled before immediate pane closure. Cleanup does not wait for zoom restoration.
 

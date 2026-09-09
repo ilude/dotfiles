@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-013 - Commit reviewer invented an invalid status flag
+
+- **Reference:** Default `/commit` after the Herdr pane-order correction, 2026-09-09.
+- **Observed:** Luna ran `git status --short --submodules=short`; Git rejected the unsupported option. The runner stopped as designed, created no commits, and preserved pending changes.
+- **Finding:** Initial status was already supplied and `commit_git_review` supported status refreshes, but the prompt emphasized that tool for diffs and left ordinary Git commands to Bash. The whitespace utility instruction also suggested a `--` separator that the utility does not accept.
+- **Remediation:** Operator approved a more explicit command-owned workflow. Added tool-selection rules and examples, exact runtime-supplied root/utility paths, staging/commit/push templates, quoting and pagination guidance, and the correct utility arguments. Preserve automatic grouping, deepest-first submodules, quiet output, normal hooks, and existing failure/retry policy. No Git-flag blacklist or general recovery executor.
+- **Related:** AIF-004, AIF-009, AIF-010, APR-012. Unlike APR-012, this was a deterministic command error, not a transient provider failure.
+- **Status:** Implemented; focused offline checks are recorded in the task result. No live Luna commit retry performed; future adherence remains unverified.
+
 ## APR-012 - Commit workflow stopped on a transient WebSocket failure
 
 - **Reference:** Default-profile `/commit` invocation on 2026-09-09.
