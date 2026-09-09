@@ -55,37 +55,37 @@ Create the isolated worktrees only after execution authorization; carry the coor
 
 ## Tasks
 
-- [ ] **T1 - Establish retry and side-effect checkpoints**
+- [x] **T1 - Establish retry and side-effect checkpoints**
   - Depends on: execution authorization and repository/worktree preflight.
   - Inputs: adapter consume/delivery/correlation; core delivery leases and create-task implementation/tests.
   - Do: document the narrow transition table in this plan and author deterministic regressions for pre-effect failure, post-correlation failure, post-send audit failure, failed ACK, and concurrent duplicates. Establish task-creation reuse and the point where Pi accepts an injected message. Use actual production handlers with inert Pi/API boundaries.
   - Verify: the tests expose terminal rejection on transient failure and early seen-ID suppression without live broker calls. Include core lease/disposition behavior using its existing controllable channel/timer fixtures.
   - Done when: each required effect has a retry/commit rule and irreversible effects cannot be retried blindly.
-  - Evidence: Not started.
+  - Evidence: Regression coverage committed in Onclave `9ce7599`; focused tests passed 2026-09-09.
 
-- [ ] **T2 - Implement bounded effect-aware delivery handling**
+- [x] **T2 - Implement bounded effect-aware delivery handling**
   - Depends on: T1.
   - Files: adapter `src/lib/{dedup,delivery,correlation}.ts`, `src/onclave-pi.ts`; narrowly scoped proposed helper only if simpler.
   - Do: replace early seen insertion with effect-aware records, resume missing effects, preserve correlation results, use lease-based redelivery for transient failures and ACK completed duplicates. Reuse known task identity, preserve inert/status routing and surface bounded failures.
   - Verify: T1 regression matrix plus capacity, shutdown cleanup and duplicate pending handling. No global correlation-store redesign.
   - Done when: transient failure cannot silently dead-letter valid work or suppress unfinished delivery, while post-delivery failure does not cause another turn within retained history.
-  - Evidence: Not started.
+  - Evidence: Effect-aware bounded delivery records and retry/ACK behavior committed in Onclave `9ce7599`; focused tests passed 2026-09-09.
 
-- [ ] **T3 - Centralize task-status validation**
+- [x] **T3 - Centralize task-status validation**
   - Depends on: T1; may be authored independently of T2 before combined acceptance.
   - Files: envelope `src/{a2a,amqp,index}.ts`; adapter `src/lib/http-client.ts`; envelope/adapter tests.
   - Do: export one normalized status parser and route AMQP reconstruction and HTTP status responses through it. Remove unsafe casts/coercions for malformed optional fields, preserving valid producer output.
   - Verify: valid shared fixtures accepted through both transports; wrong version/state/identity/timestamp and invalid optional body/usage rejected before correlation or UI calls. Use proposed `extensions/onclave-pi/tests/http-client.test.ts` for the HTTP boundary.
   - Done when: both transports enforce one maintained normalized status contract.
   - Scope checkpoint: no protocol version change, new retry disposition or unrelated envelope rewrite.
-  - Evidence: Not started.
+  - Evidence: Shared parser and HTTP/AMQP validation tests committed in Onclave `9ce7599`; focused tests passed 2026-09-09.
 
 - [ ] **T4 - Validate, document and integrate module then parent**
   - Depends on: T2/T3.
   - Files: owning adapter docs, dotfiles `CHANGELOG.md`, this plan and final parent gitlink.
   - Do: run finite offline checks; record module commit/profile results and lease/dedup limitations. Integrate into the required module branch. Publish only if separately authorized; then update the parent gitlink, archive the coordinating plan and integrate dotfiles.
   - Done when: module implementation/checks and publication-dependent parent archive/integration are complete, or the exact remaining publication/integration blocker is reported. No deployment is required.
-  - Evidence: Not started.
+  - Evidence: Onclave implementation commit `9ce7599` merged locally into `feature/v2-broker-core` as `8f73446`. Six focused files (53 tests) and `pnpm run typecheck` passed 2026-09-09. Publication, parent gitlink update, archive, and dotfiles integration remain blocked because push was not authorized.
 
 ## Agreed validation and finish
 
@@ -100,7 +100,7 @@ The HTTP test is proposed. Add a proposed delivery-specific test filter only if 
 
 ## Current handoff and dependencies
 
-- Status: planned; no implementation authorization. Next: T1 after authorization.
+- Status: implementation and offline validation complete; local module integration complete. Next: obtain push authorization, publish Onclave `feature/v2-broker-core`, then update the parent gitlink, changelog, archive, and integrate dotfiles.
 - Independent of dotfiles correctness/refactoring plans; can run in its own module worktree concurrently. Parent changelog/gitlink merges remain serialized.
 - Known execution preflight: restore required Onclave tracking checkout safely; publication needs separate push authorization. No branch/publication changes made now.
 
