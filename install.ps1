@@ -989,6 +989,44 @@ function Test-ClaudeSmoke {
     }
 }
 
+function Install-Herdr {
+    $minimumVersion = [version]'0.9.0'
+    $command = Get-Command herdr -ErrorAction SilentlyContinue
+    if ($command) {
+        $versionText = (& $command.Source --version 2>$null | Select-Object -First 1)
+        if ($versionText -match '(\d+\.\d+\.\d+)') {
+            $installedVersion = [version]$Matches[1]
+            if ($installedVersion -ge $minimumVersion) {
+                Write-Host "  Herdr: $installedVersion" -ForegroundColor Green
+                return $true
+            }
+        }
+    }
+
+    Write-Host "  Herdr: installing stable release (minimum $minimumVersion)..." -ForegroundColor Cyan
+    $installer = Join-Path ([System.IO.Path]::GetTempPath()) "herdr-install-$PID.ps1"
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri 'https://herdr.dev/install.ps1' -OutFile $installer
+        & $installer
+
+        $herdrPath = Join-Path $env:LOCALAPPDATA 'Programs\Herdr\bin\herdr.exe'
+        if (-not (Test-Path $herdrPath)) {
+            throw "Herdr installer did not create $herdrPath"
+        }
+        $versionText = (& $herdrPath --version 2>$null | Select-Object -First 1)
+        if ($versionText -notmatch '(\d+\.\d+\.\d+)' -or [version]$Matches[1] -lt $minimumVersion) {
+            throw "Herdr $minimumVersion or newer was not installed (reported: $versionText)"
+        }
+        Write-Host "  Herdr: $($Matches[1]) installed" -ForegroundColor Green
+        return $true
+    } catch {
+        Write-Host "  Herdr: installation failed: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    } finally {
+        Remove-Item $installer -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Install-Packages {
     param([switch]$Work, [switch]$Dev, [switch]$ITAdmin)
 
@@ -1026,6 +1064,14 @@ function Install-Packages {
     # what installs pnpm in the first place.
     Write-Host "`n--- pnpm Setup ---" -ForegroundColor Cyan
     Initialize-PnpmGlobalConfig
+
+    # Herdr is distributed through its official direct installer rather than
+    # an official WinGet package. Keep this in the core path because default Pi
+    # uses Herdr for visible subagents and long-running processes.
+    Write-Host "`n--- Herdr Setup ---" -ForegroundColor Cyan
+    if (-not (Install-Herdr)) {
+        $script:failed += 'herdr:install-failed'
+    }
 
     # Git for Windows re-adds "Open Git GUI/Bash Here" context menu entries on
     # every (re)install. DSC can't pass /COMPONENTS overrides, so strip the

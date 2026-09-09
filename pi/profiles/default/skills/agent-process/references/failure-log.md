@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-011 - Subagent UX completion did not establish active-session behavior
+
+- **Reference:** Operator's three-child live test and screenshot following integration of the subagent transcript/pane UX plan, 2026-09-08.
+- **Expected:** Human names, readable transcript rows, children in an upper grid, unchanged bottom orchestrator, and no focus theft from another tab after reload.
+- **Observed:** Launch responses lacked new display metadata; the screenshot showed generic titles, UUID widget rows, and vertically stacked children below the orchestrator. The operator reported repeated focus theft and confirmed a reload. The assistant had declared completion based on source tests and isolated runs without verifying the active owner.
+- **Findings:** The process-global runtime survives reload, and its compatibility check only tests for a method already present in the old owner. Separately, the new layout code explicitly restores earlier focus snapshots after asynchronous operations, so stale code is not a sufficient explanation for every failure. Geometry tests assert logical slots and weak rectangle relationships rather than the full requested grid.
+- **Correction:** The operator will not reload during running subagent work. The follow-up plan proposes fresh executable runtime ownership on reload, non-focusing layout operations, physical geometry assertions, completed transcript details, and bounded reload-to-live acceptance. Residual retained-process policy remains a proposal requiring agreement.
+- **Related:** AIF-019, AIF-020, APR-008, APR-002. Repository-root-relative plan: `.specs/archive/subagent-reload-and-live-ux/plan.md`.
+- **Status:** Planning only. Historical passing checks remain valid for what they exercised; successful operator acceptance was not established. No runtime or global instruction changes made by this entry.
+
 ## APR-010 - Temporary Herdr smoke test reached the operator approval UI
 
 - **Reference:** Operator report of an isolated Herdr focus-context smoke test on 2026-09-08.

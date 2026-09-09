@@ -157,8 +157,12 @@ Run `git diff --check` from the repository root. Renderer tests establish actual
 
 ## Current handoff
 
-- Status: implementation and agreed validation completed on 2026-09-08.
+- Status: implementation and agreed historical validation completed on 2026-09-08.
 - Completed: stable human identity, readable tool/outcome rendering, origin-owned pane placement, isolated geometry acceptance, and a real bundled-Pi visible launch/follow-up/completion check.
 - Next: archive, commit, and integrate into the recorded originating `main` checkout.
-- Verification limit: server-side geometry and focus are tested; physical attached-client keyboard experience was not claimed.
+- Verification limit: server-side geometry and focus were tested; physical attached-client keyboard experience was not claimed.
 - Actual checks: agreed focused suite 95 passed with 6 opt-in skips; typecheck and runtime check passed; isolated geometry passed; separately opted-in bundled-Pi case passed.
+
+## Post-archive correction
+
+The historical checks above did not establish successful operator acceptance. The subsequent operator acceptance failed and reported stale reload ownership, focus/layout, and transcript defects. This archived plan must not be used as proof that the live UX was complete. The active `.specs/subagent-reload-and-live-ux/plan.md` reconciles the evidence: T1, T2, and T4 have bounded evidence, while T3 and T5 remain blocked and unfinished. The initial swap focuses the child, the 5+ child second row has incorrect physical geometry, and no model-backed or attached-client T5 run occurred. Its parent-resolved D1 requires explicit `/reload` to leave no active subagent runtime, conversation, or process, including idle retained children, with no special unsupported-active migration behavior. Source edits do not upgrade an already-running operator session, and the first transition from the earlier lifecycle was not live-tested.

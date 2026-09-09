@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-09: Remove persistent subagent status output
+
+**Changed:** Default-profile subagents no longer render an always-visible status widget or repeat settled result previews above the editor. Active tool rows, transcript outcomes, and explicit `/subagents inspect` retain progress, results, errors, and controls without persistent duplicated output.
+
+## 2026-09-09: Install stable Herdr on Windows
+
+**Changed:** The Windows installer now installs the official stable Herdr release when Herdr is missing or older than 0.9.0. It uses Herdr's official PowerShell installer, verifies the resulting binary and version, and reports failures through the existing package-install failure summary. Existing 0.9.0-or-newer installations are preserved.
+
+## 2026-09-08: Reconcile subagent UX acceptance status
+
+**Corrected:** Earlier subagent layout/transcript checks were server-side and opt-in historical evidence, not proof of attached-client acceptance. The subsequent operator acceptance failed on reload activation and reported focus/layout defects; the bounded follow-up remains incomplete.
+
+**Lifecycle boundary:** Explicit `/reload` must end every subagent runtime, conversation, and process, including idle retained children, before loading replacement code. No unsupported-active migration or special cleanup path is required. Source edits do not upgrade an already-running operator session, and the first transition from the earlier lifecycle was not live-tested.
+
+**Validation boundary:** The final sanitized task-profile suite passed 118 tests with 6 skips and no failures; runtime checks passed 335 rules and 8 schemas. Typecheck retains the baseline commit-whitespace TS7016 error. No model-backed or attached-client acceptance run occurred because the initial swap focus theft and 5+ child second-row geometry blocker remain unresolved. Archive, commit, merge, push, and deployment remain separately unauthorized.
 ## 2026-09-08: Preserve settled implementation-plan decisions
 
 **Changed:** The default planning skill now distinguishes questions about a plan from authorization to rewrite it. Execution updates progress and evidence; changing scope, acceptance criteria, or settled operator decisions requires explicit approval. This corrects a Damage Control handoff that reopened an already-decided watchdog reset policy and mistook isolated worktree code for a requirement to establish a separate login. Existing authentication is reused for worktree validation without copying credentials.
@@ -19,6 +34,10 @@
 **Changed:** Default-profile subagents receive stable session-scoped human names while retaining UUID transport identities. Launch, progress, control, question, and outcome rows now show bounded readable assignment, resolved model/effort, surface, timing, activity, result, and error details instead of generic labels and raw JSON. Exact case-insensitive names work anywhere the caller already has UUID-based authority.
 
 **Layout:** Visible descendants share an origin-owned layout above the unchanged orchestrator, filling two rows of four before using non-focused overflow tabs in groups of eight. Placement and cleanup use exact returned IDs, serialize mutations, preserve unrelated focus and panes, and keep existing process-settlement, retention, intervention, and no-headless-fallback behavior. Isolated Herdr geometry and one bundled-Pi launch/follow-up/completion run passed; physical attached-client keyboard behavior remains outside automated acceptance.
+
+## 2026-09-08: Compact default Pi Bedrock usage output
+
+**Changed:** Default Pi's `/usage` and `/bedrock` reports now use the legacy profile's compact Bedrock presentation: short model totals, compact token counts, two-decimal costs, a concise CloudWatch baseline, and a simple total. Accounting cutoffs and unpriced-request warnings are unchanged.
 
 ## 2026-09-08: Recover Bedrock month-to-date cost baselines
 

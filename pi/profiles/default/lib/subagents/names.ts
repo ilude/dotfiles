@@ -42,6 +42,10 @@ export class NameAllocator {
     return name;
   }
 
+  snapshot(): string[] {
+    return [...this.used];
+  }
+
   has(name: string): boolean {
     return this.used.has(key(name));
   }

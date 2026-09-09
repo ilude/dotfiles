@@ -24,8 +24,8 @@ it("registers one management command, records once, normalizes cost, and reports
 	const message: any = { role: "assistant", provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", timestamp: Date.now(), usage: { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } } };
 	const onMessage = hooks.get("message_end")?.[0]!; const command = commands.get("bedrock")!;
 	const result = await onMessage({ message }, ctx); expect(result.message.usage.cost.total).toBeCloseTo(0.22); expect(statuses.get("bedrock")).toContain("$0.22");
-	await onMessage({ message }, ctx); await command.handler("", ctx); expect(notify.mock.calls.at(-1)?.[0]).toContain("1 request(s)");
+	await onMessage({ message }, ctx); await command.handler("", ctx); expect(notify.mock.calls.at(-1)?.[0]).toContain("openai.gpt-5.6-luna: $0.22 Tokens: 1.0M in");
 	await command.handler("refresh", ctx); expect(ctx.modelRegistry.refresh).toHaveBeenCalledWith(expect.objectContaining({ providers: ["bedrock-mantle"] }));
-	await command.handler("reconcile", ctx); expect(exec).toHaveBeenCalledWith("aws", expect.arrayContaining(["logs", "start-query"]), { timeout: 30_000 }); expect(notify.mock.calls.at(-1)?.[0]).toContain("Personal CloudWatch estimate");
+	await command.handler("reconcile", ctx); expect(exec).toHaveBeenCalledWith("aws", expect.arrayContaining(["logs", "start-query"]), { timeout: 30_000 }); expect(notify.mock.calls.at(-1)?.[0]).toContain("CloudWatch baseline: $1.75 (2 invocation(s))");
 	await expect(command.handler("reconcile", ctx)).rejects.toThrow("already exists");
 });

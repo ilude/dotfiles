@@ -47,6 +47,11 @@ export async function inspectPane(cli: HerdrCli, pane: string, signal?: AbortSig
   if (value?.pane_id !== pane) throw new Error("Herdr target identity changed");
   return value;
 }
+export async function inspectLayout(cli: HerdrCli, pane: string, signal?: AbortSignal) {
+  const value = result(await cli(["pane", "layout", "--pane", pane], { signal })).layout;
+  if (!value || !Array.isArray(value.panes)) throw new Error("Herdr omitted pane layout");
+  return value;
+}
 export async function inspectShell(cli: HerdrCli, pane: string, signal?: AbortSignal) {
   const info = result(await cli(["pane", "process-info", "--pane", pane], { signal })).process_info;
   if (info?.pane_id !== pane || !info.shell_pid) throw new Error("Cannot verify shell identity");
