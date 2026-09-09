@@ -14,7 +14,7 @@ node scripts/pi-herdr-setup.mjs
 
 Setup generates the gitignored default `.herdr-plugin/herdr-plugin.toml` and links `local.pi`. It resolves the actual Node executable and installed Pi `bin.pi`, so rerun setup after moving the checkout or updating Node/Pi. The manifest contains local executable paths, not credentials. Linking registers an executable plugin for the current Herdr user; do not link a disposable worktree into your production session.
 
-Herdr's generated `extensions/herdr-agent-state.ts` is checked in unmodified. To refresh it with an installed Herdr update, run `herdr integration install pi` with `PI_CODING_AGENT_DIR` explicitly pointing to default, inspect its diff, and avoid overwriting concurrent changes. The repository prompt bridge is separate and must not be copied into generated code. No Herdr upgrade is required by this feature; live validation used the installed 0.8.2 preview with Pi 0.85.0 on Windows.
+Herdr's generated `extensions/herdr-agent-state.ts` is checked in unmodified. To refresh it with an installed Herdr update, run `herdr integration install pi` with `PI_CODING_AGENT_DIR` explicitly pointing to default, inspect its diff, and avoid overwriting concurrent changes. The repository prompt bridge is separate and must not be copied into generated code. Windows installation now ensures the official stable Herdr 0.9.0 or newer. The layout remains compatible with 0.8.x APIs; upgrading a client does not update an already-running server until that session is restarted.
 
 Reload Pi after source changes. An already-running Pi does not acquire the launcher's process-exit hook until started through the plugin.
 

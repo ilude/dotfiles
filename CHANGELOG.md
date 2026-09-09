@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-09: Install stable Herdr on Windows
+
+**Changed:** The Windows installer now installs the official stable Herdr release when Herdr is missing or older than 0.9.0. It uses Herdr's official PowerShell installer, verifies the resulting binary and version, and reports failures through the existing package-install failure summary. Existing 0.9.0-or-newer installations are preserved.
+
 ## 2026-09-08: Reconcile subagent UX acceptance status
 
 **Corrected:** Earlier subagent layout/transcript checks were server-side and opt-in historical evidence, not proof of attached-client acceptance. The subsequent operator acceptance failed on reload activation and reported focus/layout defects; the bounded follow-up remains incomplete.
