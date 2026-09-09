@@ -1,114 +1,66 @@
 ---
 name: planning
-description: Create, review, resume, and close implementation plans in .specs. Resolve consequential uncertainty, execute in task worktrees, and merge completed work with dated archived plans.
+description: Create, review, or explicitly revise standalone implementation plans in .specs.
 ---
 
 # Planning
 
-Use this for implementation planning and plan maintenance. Planning alone does
-not authorize execution. Authorization to execute a plan includes local task
-commits and merge into its recorded target unless the user says otherwise.
-Deployment and push require separate authorization. Keep guidance proportional.
+Use this skill to turn user intent into a bounded implementation plan. The user
+supplies desired outcomes, priorities, and consequential judgment. The agent
+investigates the implementation, recommends choices, and supplies technical
+reasoning. Planning does not authorize execution.
 
-Questions about a plan do not authorize rewriting an existing plan. During
-execution, update progress and evidence, but do not change scope, acceptance
-criteria, or settled operator decisions without explicit approval. Reconcile
-stale drafts against recorded decisions instead of reopening them.
+A plan should stand alone for a fresh-context Sol session at low reasoning. It
+must preserve intent and make each next step and its finish observable without
+requiring the executor to load this skill or reconstruct the planning discussion.
+Keep detail proportional and leave routine implementation choices flexible.
 
-## Why this workflow exists
-
-A fresh-context model needs more than broad phases: it must know the accepted
-scope, source files, decisions, checks, and next step without inventing requirements.
-Prior feedback also identified premature handoffs and open-ended testing. A plan
-should make useful continuation and a bounded finish clear, not add a controller.
-See [agent-process](../agent-process/SKILL.md) when reviewing workflow feedback or
-changing instructions; ordinary planning does not require another feedback review.
+Questions about an existing plan do not authorize rewriting it. Revise a plan
+only when explicitly asked. The user's request and subsequent changes are
+authoritative; reconcile stale drafts against recorded decisions rather than
+reopening them.
 
 ## Create or revise
 
 1. Establish the selected repository root and read its applicable instructions.
    Inspect the actual implementation and relevant feedback before proposing changes.
-   Preserve unrelated work; existing plans from another client/profile are context,
-   not current policy. Do not impose reviewers or a new execution system.
+   Preserve unrelated work. Existing plans from another client or profile are
+   context, not current policy. Do not impose reviewers or a new execution system.
 2. Put the canonical plan at `REPO_ROOT/.specs/<descriptive-kebab-case-stub>/plan.md`.
    For cross-repository work, keep one coordinating plan and identify each owning
    repository. Code, secrets, and deployment configuration stay with their owners.
-   Use the [plan template](references/plan-template.md), omitting irrelevant sections.
-3. Separate user requirements, verified facts, proposals, and unresolved decisions;
-   keep required outcomes distinct from proposed mechanisms. Resolve discoverable
-   facts yourself. When remaining uncertainty could materially change scope,
-   architecture, or acceptance, explain the choice and consequences, recommend an
-   approach with reasons, and ask a focused question. Handle routine implementation
-   details using judgment; recommendations are not requirements until agreed.
-   The user's request and subsequent changes are authoritative. Keep unapproved
-   optional work outside the task checklist and completion criteria; do not generate
-   speculative optional-work backlogs. Do not add rollback work unless requested.
-   For technical assumptions that could materially change the plan, use the smallest
-   practical investigation where useful, naming the question and decision it enables.
-   Record a fallback or operator decision boundary only where needed. Investigation
-   may be a bounded first task; not every implementation detail must be settled.
-4. Write ordered Markdown checkboxes with useful task IDs. Each task names its
-   dependencies, existing/new paths, concrete change or decision, verification, and
-   done condition. Include exact contracts where another task depends on them.
-   Mark future files/commands as proposed, not already available. Avoid vague steps
-   such as "integrate appropriately" or "test thoroughly." Include the template's
-   execution guidance and place brief scope checkpoints at meaningful phase
-   boundaries, not after every task or tool call. These are not approval gates.
-5. Include only the context needed to restart: goal, non-goals, required reading,
-   relevant behavior, repository/profile identity, authorization, open decisions,
-   and next task. Use repository-root-relative code paths, explicitly labeled, so
-   moving the spec into archive does not break them. Do not duplicate whole docs.
-6. Record the planning profile and intended execution/test profile when Pi behavior
-   matters. Inspect `PI_CODING_AGENT_DIR` and the repository's launcher mapping;
-   don't infer a profile from a model name or a `pi/` directory. Record `unknown`
-   if unverified. Keep actual runs separate: date, profile/path, scope, result, and
-   model/settings only when relevant. Never claim intended profiles were tested.
-7. Review once as a fresh reader: can each next task be started from its named
-   inputs, and is its finish observable? Fix consequential gaps. Leave a plan draft
-   with explicit unresolved decisions rather than falsely calling it executable.
-   Do not add speculative edge cases or blanket approval gates to make it look complete.
+   Use the [plan template](references/plan-template.md), combining or omitting
+   sections that add no useful information.
+3. Separate user requirements, verified facts, proposals, and unresolved decisions.
+   Investigate discoverable facts. When uncertainty could materially change scope,
+   architecture, or acceptance, explain the choices and consequences, recommend
+   one with reasons, and ask a focused question. Handle routine technical details
+   using judgment. Recommendations do not become requirements until agreed. Do not
+   call a plan ready while a consequential decision remains open.
+4. Write ordered Markdown checkboxes with concrete changes, dependencies, relevant
+   paths or contracts, finite checks, and observable done conditions. Include only
+   context needed to restart. Label paths repository-root-relative and future files
+   as proposed. Do not invent optional work, rollback tasks, exhaustive contingencies,
+   approval gates, or manual acceptance requirements.
+5. Record authorization and preservation constraints. Execution normally includes
+   dedicated task worktrees, local task commits, and merge into a recorded target;
+   push and deployment require separate permission. Plans must tell the executor to
+   continue independent work around blockers, adapt mechanisms within settled intent,
+   and ask before changing scope, decisions, or acceptance.
+6. Include a bounded closeout contract. After implementation and agreed agent-owned
+   checks, archive the whole spec and commit it with the task changes on the task
+   branch, then merge into the recorded target before declaring completion. If merge
+   is blocked, retain the worktree and report integration pending. Preserve explicit
+   no-merge instructions as an intentional exception. Operator manual or live testing
+   happens after completion and never blocks archival, commit, or authorized merge;
+   record it only as a non-blocking verification limit.
+7. When Pi behavior matters, record the verified planning profile and intended
+   execution profile. Keep actual runs separate by date, profile/path, scope, and
+   result. Never claim intended profiles or model behavior were tested.
+8. Review once as a fresh executor: can Sol at low reasoning start each task, preserve
+   fixed intent while choosing routine mechanisms, handle blockers, run finite checks,
+   and complete authorized closeout from the plan alone? Fix consequential gaps, then
+   stop. A draft with explicit open decisions is more honest than false readiness.
 
-## Maintain and finish
-
-- At execution start, create a dedicated Git worktree and task branch in each
-  repository being changed, or resume the plan's existing worktrees. Record paths,
-  branches, and merge targets in the plan; resolve unclear targets before editing.
-  Work and validate there. Planning alone does not require a worktree. Bring any
-  uncommitted plan into the task worktree without discarding the original or other
-  work; reconcile that task-owned copy during integration.
-- Respect each repository's branch and submodule rules. For coordinated work,
-  integrate module changes before parent gitlinks and archive the coordinating
-  plan with the final parent integration. Required submodule publication remains
-  subject to explicit push authorization; report a blocker rather than bypass it.
-- On resume, inspect the current checkout and task evidence. Start the next unmet
-  dependency; don't repeat completed checks without a related change or stale evidence.
-- Before adding tasks or completion requirements, apply the plan's scope check.
-  At checkpoints, use its recovery guidance if work has drifted; resume required
-  work rather than starting another audit.
-- Check off work only when its done condition is met. Record a concise result by
-  the task, including the actual Pi profile for profile-sensitive execution.
-- Keep status, concrete blockers, and next step consistent with latest execution
-  evidence; replace superseded pause/blocker statements. Distinguish historical
-  results from current health and unverified acceptance. Continue authorized
-  independent work; stop testing when agreed checks pass. Do not invent more
-  requirements to avoid finishing or call unfinished work complete.
-- Once the work described by the plan and its agreed checks are complete, set
-  `status: completed` and `completed: YYYY-MM-DD` inside `plan.md`, summarize the
-  result and relevant profile runs, and move the whole directory to
-  `REPO_ROOT/.specs/archive/<stub>/`. Use the actual completion date, not creation date.
-- Verify the destination doesn't already contain another plan before moving; never
-  overwrite it. Repair affected links and confirm the active copy is gone. Keep
-  unfinished implementation plans active. Completed work awaiting integration
-  remains in the task branch; writing the plan is not completing its implementation.
-- Archive in the task branch and commit the implementation and archived plan
-  together before merging into the recorded target. Explicit no-commit/no-merge
-  instructions take precedence; report pending integration rather than bypass them.
-  Preserve unrelated target-checkout work; do not stash, discard, or commit it to
-  make a merge possible. If integration is blocked, retain the task worktree and
-  report implementation/validation separately from delivery.
-- Verify the target contains the task changes and archived plan and no active copy
-  remains. Check affected behavior if conflict resolution changed implementation;
-  do not repeat unchanged checks solely because of the merge. Remove the task
-  worktree only after successful integration and with no uncommitted or unmerged work.
-- Use ordinary Git and file operations. No daemon, manifest, runtime hook, automatic
-  push, or migration of unrelated old plans is implied.
+See [agent-process](../agent-process/SKILL.md) when reviewing workflow feedback or
+changing instructions. Ordinary planning does not require another feedback review.

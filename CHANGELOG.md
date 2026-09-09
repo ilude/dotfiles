@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-09: Separate plan authoring from execution
+
+**Changed:** The default planning skill now only creates, reviews, and explicitly revises standalone implementation plans. Plans preserve user intent for fresh-context Sol execution at low reasoning while leaving routine technical mechanisms flexible and keeping consequential decisions in planning.
+
+**Execution and closeout:** `/do-it` now executes the selected plan directly without loading the planning skill or reopening settled decisions. Existing selector and `--no-merge` behavior, dedicated worktrees, local commits, recorded merge targets, unrelated-change preservation, and separate push/deployment authority remain unchanged. Completion follows archive and task-branch commit, successful merge, then final completion metadata. Operator manual testing is a non-blocking verification limit after agent-owned checks, not a closeout gate.
+
 ## 2026-09-09: Add an interactive implementation-plan browser
 
 **Added:** The default Pi profile now provides `/plans` to browse direct-child `.specs/*/plan.md` files, inspect concise details, open a selected plan in VS Code, launch its `/do-it` workflow in a new focused Herdr Pi tab, or archive an already-completed plan after strict eligibility checks and confirmation.

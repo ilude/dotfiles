@@ -3,7 +3,7 @@ description: Complete a plan in its task worktree, archive and commit it, then m
 argument-hint: "[--no-merge] [plan-path]"
 ---
 
-Complete the selected implementation plan using the active planning skill. Read that skill and the plan before acting.
+Execute the selected implementation plan through its authorized closeout. Do not start another planning or review phase. Use technical judgment to adapt mechanisms within the plan's settled intent; changing intent, scope, settled decisions, or acceptance requires user approval.
 
 Invocation arguments: $ARGUMENTS
 
@@ -11,12 +11,11 @@ Interpret the arguments as an optional `--no-merge` flag and an optional plan pa
 
 This invocation authorizes execution of the selected plan and local task commits. It also authorizes local integration unless `--no-merge` is present. It does not authorize push or deployment or silently resolve the plan's open consequential decisions.
 
-- Create or resume the plan's dedicated task worktree and branch. Implement and validate there, preserving existing and unrelated work.
-- For a new task worktree, record the originating checkout and branch as its parent integration target. For an existing task, use its recorded target; Git does not record worktree parentage. Resolve missing or conflicting target information before merging, rather than assuming `main`.
-- Complete the existing scope and agreed checks. Do not add optional improvements, speculative fixes, new audits or extra acceptance requirements. Fix demonstrated task-relevant failures and stop testing when the agreed checks pass.
-- Follow task dependencies, update completion evidence, and continue actionable work until complete or concretely blocked. If a blocker remains, continue independent tasks and report what prevents completion. Do not archive unfinished implementation or substitute a promise to continue for execution.
-- Once implementation and its agreed checks are complete, record the actual completion date and archive the whole spec directory, including reviews and supporting files, under `.specs/archive/<stub>/`. Repair affected links and commit the task changes and archived spec in the task branch.
-- By default, merge the task branch back into the recorded parent checkout's branch without stashing, discarding or committing unrelated changes. Verify integration and remove the task worktree only when it has no uncommitted or unmerged work. If integration is blocked, retain it and report the blocker separately from implementation completion.
-- With `--no-merge`, archive and commit in the task branch but do not merge or remove the task worktree. Record integration as intentionally pending, not as unfinished implementation; this flag overrides merge and cleanup steps in the plan.
+- Create or resume the plan's dedicated task worktree and branch. Implement and validate there, preserving existing and unrelated work. Record a new worktree's originating checkout and branch as its integration target; for an existing task, use its recorded target. Resolve missing or conflicting target information before merging rather than assuming `main`.
+- Complete the existing scope and agreed agent-owned checks. Resolve routine implementation problems and demonstrated task-relevant failures, continue independent work around blockers, and stop testing when the agreed checks pass. Do not add optional improvements, speculative fixes, audits, acceptance requirements, or promises in place of available work.
+- Keep plan progress and evidence current without redefining requirements. Pending operator manual or live testing is a non-blocking verification limit, not a reason to delay authorized closeout.
+- Once implementation and checks pass, archive the whole spec directory under `.specs/archive/<stub>/`, repair links, and commit the task changes and archive on the task branch. Do not mark the plan completed yet.
+- By default, merge into the recorded parent checkout's branch without stashing, discarding, or committing unrelated changes. Verify the target contains the changes and archive and no active plan remains. Then record the actual completion date/status and closeout evidence in the archived plan, commit that metadata on the target, and only then declare completion. Remove the task worktree only when it has no uncommitted or unmerged work.
+- If integration is blocked, retain the worktree and report implementation/check results separately from pending integration. With `--no-merge`, do not merge or remove the committed task worktree; record integration as intentionally pending. This flag overrides merge and cleanup steps in the plan.
 
-Finish with a concise result: completed work and checks, archived spec path, task branch and commit(s), and either the merge target/result or the retained worktree and reason integration is pending.
+Finish concisely with completed work and checks, archived spec path, task branch and commits, and either the merge target/result or the retained worktree and reason integration is pending.
