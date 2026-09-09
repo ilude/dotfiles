@@ -124,3 +124,8 @@ cd pi/profiles/default && PI_SUBAGENT_UX_LIVE=1 pnpm test subagent-ux-live.test.
 ```
 
 `PI_SUBAGENT_UX_LIVE_REAL` was not set. No model-backed launch was run. The first-swap focus theft and the 5/8 geometry reproduction remain diagnostics/blockers, not acceptance claims.
+
+
+## Operator-approved layout revision, 2026-09-09
+
+The operator accepted children below the unchanged orchestrator, four per tab, with child five starting an owned overflow tab. This supersedes the earlier upper two-row blocker. The updated isolated production-adapter test passed with 1/3/4 children aligned below the caller, equal columns within one cell, full caller width, unrelated focus preserved, and overflow at children 5/9/17. The model-backed case connected its visible child but timed out after 100 seconds in `phase: starting` before a first turn; cleanup completed. Attached-client acceptance has not run.

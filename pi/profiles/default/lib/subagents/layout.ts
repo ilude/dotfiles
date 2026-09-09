@@ -1,7 +1,7 @@
 import type { HerdrCli } from "../herdr-cli.ts";
 import { compactPane, inspectLayout, inspectPane, result } from "../herdr-cli.ts";
 
-export const CHILDREN_PER_TAB = 8;
+export const CHILDREN_PER_TAB = 4;
 export const CHILDREN_PER_ROW = 4;
 
 type SplitDirection = "right" | "down";
@@ -45,8 +45,9 @@ const asResult = (text: string) => result(text) as any;
 const paneFromOpen = (value: any) => value?.plugin_pane?.pane ?? value?.pane ?? value?.root_pane;
 
 /**
- * Herdr has no split-up operation. A down split followed by an exact pane swap
- * is the smallest composition that puts the first pane above the caller.
+ * Children split below the caller, left to right, with four children per tab.
+ * Overflow tabs avoid restructuring live pane trees and every creation uses
+ * Herdr's non-focusing operations.
  *
  * This class owns only panes it opened and tabs it created through placement.
  * It never closes a caller, an unrelated pane, or a pre-existing tab.
@@ -115,22 +116,16 @@ export class SubagentLayout {
     const slot = this.nextSlot(group);
     let paneId: string | undefined;
     let tabId: string | undefined;
-    if (slot.tabIndex === 0 && slot.row === 0 && slot.column === 0 && !group.children.size) {
+    if (slot.tabIndex === 0 && slot.column === 0 && !group.children.size) {
         const opened = await this.openSplit(request, request.callerPane, "down");
         paneId = opened.paneId; tabId = opened.tabId;
-        await this.swap(opened.paneId, request.callerPane);
-      } else if (slot.tabIndex === 0 && slot.column === 0) {
-        const target = this.targetFor(group, slot.tabIndex, slot.row, slot.column);
-        if (!target) throw new Error("No owned pane available for a new layout row");
-        const opened = await this.openSplit(request, target.paneId, "down");
-        paneId = opened.paneId; tabId = opened.tabId;
-      } else if (slot.column === 0 && slot.tabIndex > 0 && slot.row === 0) {
+      } else if (slot.column === 0 && slot.tabIndex > 0) {
         const opened = await this.openTab(request);
         paneId = opened.paneId; tabId = opened.tabId;
       } else {
         const target = this.targetFor(group, slot.tabIndex, slot.row, slot.column);
         if (!target) throw new Error("No owned pane available for a new layout slot");
-        const opened = await this.openSplit(request, target.paneId, slot.column === 0 ? "down" : "right");
+        const opened = await this.openSplit(request, target.paneId, "right");
         paneId = opened.paneId; tabId = opened.tabId;
       }
       if (!paneId || !tabId) throw new Error("Herdr did not return the created pane identity");
@@ -156,19 +151,14 @@ export class SubagentLayout {
     const used = new Set([...group.children.values()].map(child => child.tabIndex * CHILDREN_PER_TAB + child.row * CHILDREN_PER_ROW + child.column));
     for (let ordinal = 0; ; ordinal++) if (!used.has(ordinal)) return {
       tabIndex: Math.floor(ordinal / CHILDREN_PER_TAB),
-      row: Math.floor((ordinal % CHILDREN_PER_TAB) / CHILDREN_PER_ROW),
+      row: 0,
       column: ordinal % CHILDREN_PER_ROW,
     };
   }
 
   private targetFor(group: Group, tabIndex: number, row: number, column: number): LayoutChild | undefined {
     const rowChildren = [...group.children.values()].filter(child => child.tabIndex === tabIndex && child.row === row);
-    if (column === 0) {
-      if (row === 1) return rowChildren.length
-        ? rowChildren[0]
-        : [...group.children.values()].find(child => child.tabIndex === tabIndex && child.row === 0 && child.column === 0);
-      return undefined;
-    }
+    if (column === 0) return undefined;
     // Split the rightmost occupied slot so child identities remain left to
     // right. Herdr's split ratio is a default rather than a stable pixel
     // contract; preserving the operator's assignment order is more important.
@@ -200,10 +190,6 @@ export class SubagentLayout {
   private requirePane(pane: any) {
     if (!pane || typeof pane.pane_id !== "string" || typeof pane.tab_id !== "string") throw new Error("Herdr did not return a complete pane identity");
     return { paneId: pane.pane_id as string, tabId: pane.tab_id as string };
-  }
-
-  private async swap(sourcePane: string, targetPane: string) {
-    await this.cli(["pane", "swap", "--source-pane", sourcePane, "--target-pane", targetPane]);
   }
 
   private compactRow(group: Group, removed: LayoutChild) {
@@ -261,10 +247,9 @@ export class SubagentLayout {
     const bottom = Math.max(...rects.map((rect: any) => rect.y + rect.height));
     const total = bottom - top;
     if (!(total > 0)) return;
-    const rows = Math.max(...mainTab.map(child => child.row)) + 1;
-    const desiredCaller = (rows === 1 ? 2 / 3 : 1 / 3) * total;
+    const desiredCaller = (2 / 3) * total;
     const delta = (desiredCaller - caller.rect.height) / total;
-    if (Math.abs(delta) >= 0.005) await this.cli(["pane", "resize", "--direction", "up", "--amount", delta.toFixed(6), "--pane", group.callerPane]);
+    if (Math.abs(delta) >= 0.005) await this.cli(["pane", "resize", "--direction", "down", "--amount", Math.abs(delta).toFixed(6), "--pane", group.callerPane]);
   }
 
   private async removeEmptyTab(group: Group, child: LayoutChild) {
@@ -283,7 +268,7 @@ export function layoutSlot(occupied: Array<Pick<LayoutChild, "tabIndex" | "row" 
   const used = new Set(occupied.map(child => child.tabIndex * CHILDREN_PER_TAB + child.row * CHILDREN_PER_ROW + child.column));
   for (let ordinal = 0; ; ordinal++) if (!used.has(ordinal)) return {
     tabIndex: Math.floor(ordinal / CHILDREN_PER_TAB),
-    row: Math.floor((ordinal % CHILDREN_PER_TAB) / CHILDREN_PER_ROW),
+    row: 0,
     column: ordinal % CHILDREN_PER_ROW,
   };
 }

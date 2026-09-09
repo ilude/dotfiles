@@ -37,3 +37,8 @@ Passed.
 ## Acceptance boundary
 
 No model-backed or attached-client T5 run occurred. T3/T5 remain blocked and unfinished: the initial swap focuses the child, and the required 5+ child second row has incorrect physical geometry. the isolated diagnostic probe intentionally EXPECTS the initial focus theft and is diagnostic evidence, not acceptance. The integrated checks do not upgrade an already-running operator session; the first transition from the earlier lifecycle was not live-tested. No unsupported active-child migration was built. No task-owned test resource remains.
+
+
+## Operator-approved layout revision, 2026-09-09
+
+The operator accepted children below the unchanged orchestrator, four per tab, with child five starting an owned overflow tab. This supersedes the earlier upper two-row blocker. The updated isolated production-adapter test passed with 1/3/4 children aligned below the caller, equal columns within one cell, full caller width, unrelated focus preserved, and overflow at children 5/9/17. The model-backed case connected its visible child but timed out after 100 seconds in `phase: starting` before a first turn; cleanup completed. Attached-client acceptance has not run.

@@ -8,7 +8,7 @@ completed: null
 
 ## Goal and scope
 
-Repair the default-profile subagent experience reported after the previous UX implementation was merged. Reload must activate the new implementation; children must have human names and readable tool rows, occupy the requested upper grid, and never pull the user back from another tab or workspace.
+Repair the default-profile subagent experience reported after the previous UX implementation was merged. Reload must activate the new implementation; children must have human names and readable tool rows, use the operator-approved downward four-per-tab layout, and never pull the user back from another tab or workspace.
 
 Authorization: user authorizes T1-T5 only, including runtime implementation, documentation reconciliation, and bounded checks. Explicitly not authorized: archive/T6, commit, merge, push, deployment, or unannounced mutation of the operator's attached panes. Parent confirms no task-specific authorization or model/credential copies are available or permitted. Preserve all existing changes.
 
@@ -16,7 +16,7 @@ User requirements:
 
 - The operator will not run `/reload` while a subagent is running. Do not preserve executable runtime instances across reload merely to support that unwanted scenario.
 - Retain the original UX contract: familiar human names, role/assignment separately, readable launch/activity/control/outcome rows, and bounded expanded details.
-- Put children above the unchanged bottom orchestrator, left to right, four per row and two rows per group. Keep the first eight in the caller tab; use additional owned tabs in groups of eight without focusing them.
+- Operator revision, 2026-09-09: put children below the unchanged orchestrator, left to right, four per tab. Child five starts an owned overflow tab. This supersedes the upper two-row requirement.
 - Preserve the user's current focus, including tab switches during asynchronous launch, work, and cleanup. Restoring an earlier focus snapshot is not equivalent to preserving focus.
 - Capture results, prove process settlement, and close ordinary finished panes immediately. Preserve existing origin/direct-child authority, explicit retention and intervention during normal operation, and no silent headless fallback.
 
@@ -88,7 +88,7 @@ The earlier assistant suggestion to reject reload on active children is not an a
 - Test the current Herdr API with caller-context environment set and a simulated user switch during the operation. A read/check/restore sequence alone is not atomic protection from user input.
 - If Herdr itself changes focus during swap/exit/close and available APIs cannot satisfy the contract, record the exact command and response as a blocker. Do not silently patch the Herdr product, defer ordinary cleanup, or select headless.
 - When the user is viewing the exact pane that must close, allow normal surviving-pane selection. This does not permit redirecting a user who has switched to another surviving pane/tab/workspace.
-- Use actual returned pane/tab/workspace IDs and actual topology/rectangles. Align child rows across the original caller region; keep caller ID/process and width. Defaults remain one-third child height for one row and two-thirds for two rows, with equal columns within rounding tolerance. Do not continuously override manual resizing.
+- Use actual returned pane/tab/workspace IDs and actual topology/rectangles. Keep caller ID/process and width, with one equal-width child row below it. Use owned overflow tabs in groups of four. Do not continuously override manual resizing.
 - Serialize owned mutations; handle holes and empty rows/tabs without moving surviving children between tabs or disturbing unrelated panes.
 
 ### Transcript
@@ -121,13 +121,13 @@ At the checkpoints below, remove task-introduced detours, preserve necessary beh
   - Done when: one reload activates changed launch/layout code with no stale instance fallback or restart requirement in the supported new lifecycle.
   - Evidence: Done. Repaired `evidence/runtime.md` proves the actual registered-owner loader/ACK/new-resume/name-nonreuse source reload path, cleanup guard, fresh owner rejection of the disposed old tool, and exactly-once journal acknowledgement. The repaired test ran with the absolute task profile and installed Pi 0.85.1 dependencies. No credential copies were made; shared `.codex` catalog fallback was available.
 
-- [ ] **T3: Remove focus theft and establish physical grid placement**
+- [x] **T3: Remove focus theft and establish physical grid placement**
   - Depends on: T1 Herdr findings; independent of T2 code edits.
   - Files: `lib/subagents/{layout,visible}.ts`, `lib/herdr-cli.ts` if needed, existing layout/live tests; host/launcher changes only if process-exit behavior requires them.
-  - Do: replace saved-focus restoration with the proven non-focusing operations; remove the long-lived `focusBeforeStop` behavior. Fix full-width row construction and real geometry acquisition; retain exact resource identity as soon as creation succeeds so partial failure can settle processes before pane closure.
-  - Verify: rectangles at 1/3/4/5/8 children; overflow tab membership at 9/17; aligned tops, left-to-right equal columns, caller width and bottom position, holes/empty rows, concurrent launch/cleanup, and unrelated panes intact. Include focus switches during launch and delayed settlement. Reuse existing tests rather than adding a second planner harness.
+  - Do: replace saved-focus restoration with the proven non-focusing operations; remove the long-lived `focusBeforeStop` behavior. Use the approved downward four-per-tab construction and real geometry acquisition; retain exact resource identity as soon as creation succeeds so partial failure can settle processes before pane closure.
+  - Verify: rectangles at 1/3/4 children; overflow tab membership at 5/9/17; aligned tops, left-to-right equal columns, caller width and top position, holes/empty tabs, concurrent launch/cleanup, and unrelated panes intact. Include focus switches during launch and delayed settlement. Reuse existing tests rather than adding a second planner harness.
   - Done when: the physical layout and no-focus contract pass, not just returned slot records.
-  - Evidence: Layout evidence is available in `evidence/layout.md`. Genuine 1/3/4-child first-row geometry and later focus preservation passed, but the initial swap focus theft and 5+ second-row physical blocker remain unresolved. T3 is incomplete.
+  - Evidence: Done under the operator-approved revision. The isolated production-adapter run passed 1/3/4-child equal-width geometry below the unchanged caller, preserved unrelated focus during launch and cleanup, and placed children 5/9/17 in owned overflow tabs 1/2/4. No swap or focus-restoration command remains.
 
 Scope checkpoint: reload and background layout repair only; no persistent worker manager, focus-restoration controller, or Herdr product rewrite.
 
@@ -142,7 +142,7 @@ Scope checkpoint: reload and background layout repair only; no persistent worker
 - [ ] **T5: Run bounded reload-to-live acceptance and reconcile documentation**
   - Depends on: T2, T3, T4.
   - Files: existing `tests/subagent-ux-live.test.ts`, owning subagent docs, `pi/README.md`, `CHANGELOG.md`, AIF-019/AIF-020, and a correction note in the previous archived plan.
-  - Do: run the finite checks below. Use an isolated real Pi parent with the task profile, exercise one reload after children settle, then launch three concurrent bounded children through its registered tools. Verify names/titles/tool rows, upper grid/bottom caller, and user focus on a different tab through launch and closure. Do not substitute three agents running source unit tests for testing this runtime.
+  - Do: run the finite checks below. Use an isolated real Pi parent with the task profile, exercise one reload after children settle, then launch three concurrent bounded children through its registered tools. Verify names/titles/tool rows, downward row/top caller, and user focus on a different tab through launch and closure. Do not substitute three agents running source unit tests for testing this runtime.
   - Verify: record loaded source/profile and before/after owner identity, screenshots or rendered transcript evidence, actual geometry, and focus changes during work. An attached-client test is required for the reported keyboard/tab behavior; coordinate its bounded execution with the operator instead of mutating their current panes unannounced. If only server automation is available, leave this acceptance item pending rather than declare complete UX.
   - Update: distinguish historical passing checks from failed operator acceptance, document the new reload boundary, and remove superseded restart-only advice for the fixed lifecycle. Determine from T1 whether the first transition out of the already-loaded old lifecycle needs special handling; do not claim the running session was upgraded by merging files.
   - Done when: agreed automated and live checks pass with exact resource cleanup and truthful documentation.
@@ -175,9 +175,9 @@ Include the existing clear/reload test file identified in T1 if not selected abo
 
 ## Current handoff
 
-- Status: in_progress. T1, T2, and T4 are complete with bounded evidence; T3 and T5 are blocked and unfinished. `completed: null` remains; no archive is authorized.
+- Status: in_progress. T1-T4 are complete with bounded evidence; T5 remains unfinished after the model-backed child timed out in startup. `completed: null` remains; no archive is authorized.
 - Completed: applicable instructions, owning docs, AIF-019/AIF-020, APR-008/APR-002, prior archive, actual cwd/branch/baseline/profile, and existing-change precondition inspected. Historical checks are separated from failed operator acceptance.
 - D1: resolved by parent. Explicit `/reload` is invoked only when no subagent runtime, conversation, or process remains active, including idle retained children; no unsupported active-child migration or special cleanup behavior was added.
 - Next: no further broad checks. T3/T5 require resolution of the exact Herdr blockers and a separately authorized model/attached-client acceptance. Do not claim T5 complete.
 - Stale documentation corrected in this pass: `pi/profiles/default/docs/subagents.md`, `pi/profiles/default/docs/herdr.md`, `pi/README.md`, `CHANGELOG.md`, AIF-019/AIF-020 entries, and the archived plan correction note. Runtime, layout, transcript, test, and documentation changes are present. The unfinished plan is not archived or merged; no push or deployment was performed.
-- Remaining coordination risk: T3/T5 retain the initial swap focus-theft and 5+ second-row physical blockers. No model-backed or attached-client T5 run occurred. Maya's developer process is under direct user intervention and is not coordinator-controlled; no task-owned test resources remain.
+- Remaining coordination risk: the revised T3 blocker is resolved. The 2026-09-09 model-backed T5 child connected but timed out in `phase: starting` before its first turn; attached-client T5 has not run. Maya's developer process is under direct user intervention and is not coordinator-controlled; no task-owned test resources remain.

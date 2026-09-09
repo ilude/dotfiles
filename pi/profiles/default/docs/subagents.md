@@ -4,7 +4,7 @@
 
 ## Agreed UX changes (implemented with bounded validation)
 
-**Acceptance warning:** Nora's passing live probe EXPECTED the initial focus theft caused by the exact caller-to-upper pane swap. It is not operator acceptance. The T5 real/model-backed and attached-client run was fail-fast stopped after confirming that blocker and the physical 5+ child second-row blocker.
+**Acceptance status:** The operator accepted a non-focusing downward layout with four children in the caller tab and child five starting an owned overflow tab. The isolated inert geometry test passes this revised contract. Model-backed and attached-client acceptance remain separate checks.
 
 This section records the historical implementation and automated evidence for the subagent UX update. The focused unit/component checks and opt-in isolated Herdr geometry test passed with the default profile, but the subsequent operator acceptance failed. These checks are not proof of a successful live UX repair. `PI_SUBAGENT_UX_LIVE=1 pnpm test subagent-ux-live.test.ts` used a named scratch Herdr session, isolated config, disposable workspaces, inert plugin processes, and exact cleanup; it did not touch the shared server or production plugin links. It verified topology, server-side rectangles, titles, caller identity, and unrelated focus, but not attached-client keyboard or physical focus behavior.
 
@@ -12,7 +12,7 @@ A bundled-Pi visible launch/follow-up/completion case also passed historically w
 
 - Give each child a familiar human name from a predefined pool, stable across follow-ups and not reused within the orchestrator session. Keep UUIDs internally. Use the name consistently in tool-call presentation, pane titles, and controls; show the role and assignment separately.
 - Improve the subagent tool-call transcript, not the `/subagents` inspector: resolved launch configuration, assignment preview, readable lifecycle/result/error information, timing, and expanded details. Background launch acknowledgement is not child completion; detached waits must say the child continues.
-- Split above the existing orchestrator. Children fill left to right, four per row, up to two rows. More than eight children moves to a new tab. Preserve focus and the orchestrator's bottom placement. This replaces the archived fifth-child migration threshold.
+- Split children below the existing orchestrator. Children fill left to right, four per tab; child five starts an owned overflow tab. All creation is non-focusing, and the orchestrator pane and process remain unchanged.
 - Pane closure was already decided in the newer `.specs/archive/default-subagents-and-council/plan.md`, Required behavior / Temporary panes: capture results and settle owned processes, then close finished panes immediately, including failed work, without waiting for zoom restoration. Preserve explicitly retained conversations and direct user intervention under their existing lifecycle. Do not ask the operator to decide closure again.
 
 **Source correction:** The older cancelled `.specs/archive/herdr-visible-subagents/plan.md` prescribed failed-pane retention and zoom-deferred cleanup. Those rules were superseded by the completed default-subagents plan. An earlier version of this section incorrectly promoted the older rules; that was an assistant retrieval error, not a user-requested lifecycle change.

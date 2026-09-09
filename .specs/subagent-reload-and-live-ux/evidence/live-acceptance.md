@@ -28,3 +28,8 @@ PI_SUBAGENT_UX_LIVE=1 PI_SUBAGENT_UX_LIVE_REAL=1 pnpm test subagent-ux-live.test
 ```
 
 The command alone is not attached-client acceptance. Until the required test replacement exists and the operator observes the coordinated run, record automation and physical UX acceptance separately as pending.
+
+
+## Operator-approved layout revision, 2026-09-09
+
+The operator accepted children below the unchanged orchestrator, four per tab, with child five starting an owned overflow tab. This supersedes the earlier upper two-row blocker. The updated isolated production-adapter test passed with 1/3/4 children aligned below the caller, equal columns within one cell, full caller width, unrelated focus preserved, and overflow at children 5/9/17. The model-backed case connected its visible child but timed out after 100 seconds in `phase: starting` before a first turn; cleanup completed. Attached-client acceptance has not run.
