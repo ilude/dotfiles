@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
-status: in_progress
-completed: null
+status: completed
+completed: 2026-09-09
 ---
 
 # Preserve ownership through ordinary subagent cleanup failures
@@ -89,7 +89,7 @@ Start a dedicated worktree/branch only after execution authorization. Carry this
   - Do: run agreed checks, record actual profile/results and limits, archive and merge locally.
   - Verify: target contains implementation plus dated archive with no active copy.
   - Done when: scoped correction is integrated or a concrete integration blocker is reported with worktree retained.
-  - Evidence: On 2026-09-09 in the default profile, the four agreed Vitest files passed (36 tests), `pnpm run typecheck` passed, and `pnpm run check:runtime` passed. The spec was archived on the task branch for local integration into the recorded `main` target.
+  - Evidence: On 2026-09-09 in the default profile, the four agreed Vitest files passed (36 tests), `pnpm run typecheck` passed, and `pnpm run check:runtime` passed. Task commit `c25864f1` archived the spec and was merged locally into recorded target `main` as `1dff1628`.
 
 ## Agreed validation and finish
 
@@ -109,10 +109,10 @@ This default-only correction has no predecessor plan. Finish its implementation,
 
 ## Current handoff
 
-- Status: implementation and agreed checks complete; archived task commit and local integration are in progress.
-- Completed: injected-failure reproduction, operator scope reconciliation, explicit cleanup contract, runtime/reset handling, finite regressions, documentation/changelog updates, and agreed default-profile validation.
-- Next: commit the archived implementation on the task branch and merge it locally into the recorded `main` target. No push or deployment is authorized.
-- Open operator decisions: none. Actual parent-exit persistence is explicitly not promised.
+- Status: completed and locally integrated on 2026-09-09.
+- Completed: injected-failure reproduction, operator scope reconciliation, explicit cleanup contract, runtime/reset handling, finite regressions, documentation/changelog updates, agreed default-profile validation, task commit `c25864f1`, and merge `1dff1628` into recorded target `main`.
+- Verification limit: no live model, production Herdr operation, physical focus check, or universal OS termination guarantee was exercised.
+- Open operator decisions: none. Actual parent-exit persistence is explicitly not promised. No push or deployment was performed.
 
 ## Completion and archive
 
