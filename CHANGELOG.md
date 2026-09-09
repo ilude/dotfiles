@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-09: Remove persistent subagent status output
+
+**Changed:** Default-profile subagents no longer render an always-visible status widget or repeat settled result previews above the editor. Active tool rows, transcript outcomes, and explicit `/subagents inspect` retain progress, results, errors, and controls without persistent duplicated output.
+
 ## 2026-09-09: Install stable Herdr on Windows
 
 **Changed:** The Windows installer now installs the official stable Herdr release when Herdr is missing or older than 0.9.0. It uses Herdr's official PowerShell installer, verifies the resulting binary and version, and reports failures through the existing package-install failure summary. Existing 0.9.0-or-newer installations are preserved.
