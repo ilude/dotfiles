@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
-status: implemented
-completed: null
+status: completed
+completed: 2026-09-09
 ---
 
 # Create the Bedrock accounting baseline exactly once
@@ -82,7 +82,8 @@ If T2 creates `bedrock-baseline.test.ts`, add that exact filter before running t
 
 ## Current handoff and dependencies
 
-- Status: implementation and agreed offline validation complete; archive and local integration are in progress. No open operator decisions.
+- Status: completed and locally integrated into `main` on 2026-09-09. No open operator decisions.
+- Closeout evidence: task commit `d3002f27`; merge commit `94502cc5`. The merge conflict in `CHANGELOG.md` was resolved by preserving both independently added entries. The target contains the implementation and archived plan, and no active plan copy remains.
 - Verification limit: no live AWS calls or billing-accuracy acceptance were performed, as agreed.
 - Independent of other default correctness plans. No blanket dependency on or from the revised default DRY draft: baseline publication and model-selection helpers are different contracts. Any later selected refactor must establish a dependency from actual source/contract overlap before requiring this plan's code in its worktree.
 
