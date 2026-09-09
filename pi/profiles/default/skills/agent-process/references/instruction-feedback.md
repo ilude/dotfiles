@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-025 - Treat CI/CD and deployment monitoring as scheduler work
+
+- **Reference:** Operator correction during monorepo GitLab pipeline and EKS deployment monitoring, 2026-09-09.
+- **Feedback:** Waiting for GitLab or GitHub pipelines and deployment rollouts is exactly the kind of external wall-clock wait the scheduling tool should handle. The prior distinction between external waits and ordinary continuation was too easy to misread as excluding CI/CD when completion time was unknown.
+- **Decision:** Scheduler guidance now names GitLab/GitHub pipelines, deployment rollouts, and cloud operations as intended uses. It permits scheduling the next reasonable check without knowing the exact completion time, excludes only work that can continue immediately, and explicitly rejects delegating an external wait to subagents.
+- **Related:** AIF-018, APR-003, APR-009, APR-018.
+- **Status:** Approved and implemented in the default scheduler extension. Effectiveness remains unverified.
+
 ## AIF-024 - Keep subagent messaging simple and low ceremony
 
 - **Reference:** Operator discussion of parent-question hangs, actor-style messaging, and possible SQLite storage, 2026-09-09.

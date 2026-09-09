@@ -1,5 +1,23 @@
 # Agent process failure log
 
+## APR-018 - External pipeline monitoring was delegated to tool-less subagents
+
+- **Reference:** Monorepo CAC redirect push and GitLab/EKS deployment monitoring, 2026-09-09.
+- **Observed:** After pushing to `dev`, the orchestrator launched an explorer and then a team lead to monitor the GitLab pipeline. Neither had shell, GitLab, or Kubernetes authority, so both failed while the external pipeline continued. The orchestrator then inaccurately described scheduler guidance as prohibiting this use.
+- **Finding:** The scheduler wording required a “known future time” and prohibited waiting for “normal tool or agent work” without naming CI/CD as an external wait. That ambiguity contributed to misclassification, but it did not justify team-lead coordination for a simple timed check.
+- **Remediation:** Name GitLab/GitHub pipelines, deployment rollouts, and cloud operations as intended scheduler uses; allow a reasonable check time when completion is unknown; distinguish them from work that can continue now; and explicitly avoid subagent delegation for the wait.
+- **Related:** AIF-025, AIF-018, APR-009, APR-003.
+- **Status:** Instruction correction implemented. Future adherence remains unverified.
+
+## APR-017 - Subagent outcomes arrived as repetitive post-closeout follow-ups
+
+- **Reference:** Operator's two screenshots of planning and implementation closeout, 2026-09-09.
+- **Observed:** Completion cards appeared after the orchestrator's final summary, followed by repeated statements that the findings were already incorporated. One sequence replayed an initial review finding and its later withdrawal after final validation had already been reported.
+- **Finding:** Current root delivery explicitly refuses delivery while the parent is busy, flushes on `agent_settled`, and uses turn-triggering `followUp` messages. Coordinator reception also requires idle and uses `followUp`. The installed Pi runtime supports steering delivery at model-loop boundaries instead. Explicit inspection does not acknowledge pending automatic outcomes, providing another route for already-read results to appear later; the exact read path in these screenshots has not been reconstructed from session logs.
+- **Direction:** Deliver substantive outcomes during active work through native steering, preserve idle wakeup for genuinely new results, and avoid automatically redelivering the same outcome already supplied through a tool result. Integrate evidence without ritual acknowledgement chatter. Keep routing origin-scoped and progress UI-only; add no completion gates or reminder loop.
+- **Related:** APR-016, AIF-024, AIF-020.
+- **Status:** Screenshot/source investigation and proposed direction only. No runtime edits or live delivery test performed.
+
 ## APR-016 - Orchestrator closeout left children waiting for parent answers
 
 - **Reference:** Operator screenshot and default session `01a08798-ea1f-715c-829f-acec8f9c4dd8`, 2026-09-09.

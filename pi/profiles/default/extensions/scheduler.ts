@@ -36,11 +36,11 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "schedule",
     label: "Schedule",
-    description: "Create, list, or cancel one-shot process-local prompts for genuine wall-clock reminders. Not for continuing ordinary agent work. No recurrence or persistence. List shows up to 64 jobs with 80-character prompt previews.",
-    promptSnippet: "Schedule a one-shot prompt only when the task requires a genuine wall-clock delay",
+    description: "Create, list, or cancel one-shot process-local prompts for reminders and external wall-clock waits, including CI/CD pipeline and deployment monitoring. Not for deferring work that can continue now. No recurrence or persistence. List shows up to 64 jobs with 80-character prompt previews.",
+    promptSnippet: "Schedule a one-shot prompt for a reminder or external wall-clock wait",
     promptGuidelines: [
-      "Use schedule only when the user explicitly requests a future reminder or the requested outcome requires waiting for a real external event until a known future time.",
-      "Never schedule prompts to continue implementation, advance a plan, extend the current turn, wait for normal tool or agent work, retry ordinary work, or compensate for stopping early. Continue that work directly instead.",
+      "Use schedule when the user requests a future reminder or work must wait for an external event. GitLab/GitHub pipeline completion, deployment rollouts, and cloud operations are intended uses; schedule the next reasonable check even when the event's exact completion time is unknown.",
+      "Do not use schedule to postpone implementation, planning, retries, or other work that can continue now. External CI/CD and deployment monitoring is not ordinary continuation: schedule follow-up checks instead of delegating the wait to subagents.",
       "For genuine external waits or user-requested monitoring, do not occupy bash or PowerShell with sleep commands longer than 15 seconds; use schedule instead. Short waits of 15 seconds or less may remain inline.",
       "Before creating a schedule, list existing jobs and do not create a duplicate or overlapping reminder. Ask when required timing is missing or ambiguous.",
       "Schedule prompts follow the active conversation across session changes and reloads; include enough context to identify the external event. They run as follow-ups, never steering, and disappear when Pi exits.",

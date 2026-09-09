@@ -108,6 +108,15 @@ describe("one-shot scheduler", () => {
 });
 
 describe("schedule tool", () => {
+  it("identifies CI/CD and deployment monitoring as external waits", () => {
+    const { tool } = harness();
+    const guidance = tool.promptGuidelines.join("\n");
+    expect(guidance).toContain("GitLab/GitHub pipeline completion");
+    expect(guidance).toContain("deployment rollouts");
+    expect(guidance).toContain("exact completion time is unknown");
+    expect(guidance).toContain("instead of delegating the wait to subagents");
+  });
+
   it.each(["new", "resume", "reload", "fork"])("survives %s with follow-up delivery into the active session", async reason => {
     const first = harness();
     first.event("session_start", "startup");
