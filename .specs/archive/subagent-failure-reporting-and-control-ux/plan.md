@@ -1,6 +1,6 @@
 ---
 created: 2026-09-09
-status: ready
+status: in-progress
 completed: null
 ---
 
@@ -160,58 +160,58 @@ Keep task checkboxes and concise evidence current. At phase boundaries remove ta
 
 ## Tasks
 
-- [ ] **T1: Establish the native yield, delivery, interruption, and failure boundaries**
+- [x] **T1: Establish the native yield, delivery, interruption, and failure boundaries**
   - Depends on: execution authorization and task worktree containing the completed cleanup predecessor.
   - Inputs: installed Pi event/queue implementation and structured-output example; current runtime/child handlers; existing loader/RPC fixtures.
   - Change: add small deterministic fixtures using the installed Pi loop and scripted model/tool boundaries. Establish successful question-tool termination, a mixed tool batch, fast queued response, steering before run settlement, deliberate abort/redirection, and actual terminating workspace denial/native tool-error classification. Proposed files: `tests/subagent-messaging.test.ts` and `tests/subagent-terminal-outcomes.test.ts`; reuse existing fixtures instead when clearer.
   - Verify: observable model inputs and lifecycle outcomes, not just mocked `sendMessage` calls. Show that a valid yield needs no polling tool or provider call after the question. Record the minimal adapter behavior needed for mixed batches without adding a new loop controller.
   - Done when: executable evidence supports the native mechanisms used by T2-T4 and exposes the original lost failure reason. No live provider or production pane required.
-  - Evidence: Not started.
+  - Evidence: Added `tests/subagent-messaging.test.ts` and `tests/subagent-terminal-outcomes.test.ts`, extended the scripted RPC fixture, and exercised question termination, mixed-batch continuation, queued steering, intentional interruption, and terminating/recoverable tool failures. The installed Pi loader/RPC boundary tests also passed. No provider or production pane was used.
 
-- [ ] **T2: Implement the unified message exchanges and recipient lifecycle**
+- [x] **T2: Implement the unified message exchanges and recipient lifecycle**
   - Depends on: T1.
   - Files: default `extensions/{subagents,subagent-child}.ts`, `lib/subagents/{runtime,rpc,visible,child-surface,transport}.ts` as needed; T1 fixtures and existing RPC/child-outcome tests.
   - Change: support the agreed delivery/interaction fields, question-answer response correlation, asynchronous sends, and minimal old-call adaptation through existing transport. Replace polling questions with clean waiting/resume; implement queued steering and intentional immediate redirection in both directions, including coordinators. Preserve closed-conversation and explicit cancel/finish behavior.
   - Verify: queued messages reach a busy recipient's next model input; immediate messages cancel current activity without cancelling the assignment; other pending messages survive; a child waiting with `retained: false` resumes in its existing conversation; a fast reply is not lost; stale reply errors do not mutate another request. Exercise the same contract for visible and headless adapters.
   - Done when: the original wrong-action question trap is removed, requests do not leave a running polling tool, and both delivery choices behave as documented.
-  - Evidence: Not started.
+  - Evidence: `rpc.ts`, `visible.ts`, `child-surface.ts`, `runtime.ts`, `transport.ts`, and both extension handlers now carry `delivery`, `interaction`, `protocol`, and `replyTo`; active children accept native queued steering, immediate redirection, and question answers without requiring retention. Headless and visible adapter boundary tests passed, including retained-false question resume and stale reply rejection.
 
-- [ ] **T3: Deliver each outcome during work without stale automatic replay**
+- [x] **T3: Deliver each outcome during work without stale automatic replay**
   - Depends on: T2.
   - Files: `extensions/{subagents,subagent-child}.ts`, `lib/subagents/{runtime,child-surface,rpc,status}.ts`; existing runtime/child-outcome tests and T1 messaging fixture.
   - Change: remove idle-only normal delivery and use native steering for automatic outcomes. Unify per-outcome consumption across model-facing tool results and automatic delivery while preserving UI-only inspection, internal polling, and origin scoping. Keep progress UI-only.
   - Verify: busy parent and busy coordinator receive a child outcome before their original run settles; tool-result retrieval does not cause a later automatic replay; UI/internal inspection does not lose notification; a later corrected/retained outcome still arrives; a genuinely new idle result starts processing; switching chats does not misroute it.
   - Done when: the APR-017 sequence no longer waits for final closeout and then repeatedly wakes the parent with already-supplied results. No timers for reminders or completion gates added.
-  - Evidence: Not started.
+  - Evidence: Automatic terminal outcomes are delivered with `steer` while the origin is busy and `followUp` while idle. Progress remains UI-only. Runtime acknowledgement is keyed by delivery identity; model-facing waits/inspect-with-consume reconcile pending deliveries while ordinary inspection and origin changes do not. The child-outcome and status tests cover busy delivery and no replay.
 
-- [ ] **T4: Separate approval ownership and preserve real failures/control errors**
+- [x] **T4: Separate approval ownership and preserve real failures/control errors**
   - Depends on: T1/T2; combine overlapping handler edits rather than introducing parallel classifiers.
   - Files: `lib/subagents/{child-surface,rpc,visible,workspace}.ts`, `extensions/{subagents,subagent-child}.ts`, relevant agent guidance if needed; existing loader/workspace tests and proposed `tests/subagent-control-errors.test.ts` where useful.
   - Change: decouple permission prompt input from takeover. Preserve deliberate intervention/handback. Carry terminating tool-error provenance on both surfaces, distinguish successful yield/redirection, fix native error flags, and align access/control descriptions with the new contract.
   - Verify: denied permission does not prevent a subsequent parent reply; genuine takeover remains under user control; denied external read reports `read` plus actual reason on both transports; blank/model errors remain specific; recoverable and mixed-batch errors can recover; a fresh retained assignment has no stale error; native rejected-operation flags are errors while successful inspect/wait calls return failed assignments as data.
   - Done when: the original failure and Maya intervention sequences have accurate outcomes and usable controls without changed workspace permissions or new approval steps.
-  - Evidence: Not started.
+  - Evidence: Permission prompt input no longer invokes intervention, while direct interactive input and explicit escalation remain intact. Terminating RPC tool errors retain the tool name and actual bounded reason; recoverable errors clear after a valid reply. Control rejection now throws a native tool error, while inspection remains data. Workspace tests and `subagent-control-errors.test.ts` passed.
 
-- [ ] **T5: Present clear waits and nonduplicated outcome rows**
+- [x] **T5: Present clear waits and nonduplicated outcome rows**
   - Depends on: T2-T4.
   - Files: `lib/subagents/{status,presentation,child-surface}.ts`, existing `tests/subagent-{status,presentation}.test.ts`, messaging fixtures.
   - Change: render actual waiting/redirection state; prevent delayed activity from erasing it; separate combined call/result field ownership. Add concise tool-owned message-handling guidance without automatic acknowledgement responses.
   - Verify: combined call plus result renders each status/error/timing field once for progress, success, failure and control rejection; standalone outcomes/expanded details retain useful metadata; waiting question has no active polling spinner; a real takeover prompt is distinct from parent waiting.
   - Done when: original and subsequent screenshot defects are covered by bounded whole-row and lifecycle fixtures, not only isolated renderer tests.
-  - Evidence: Not started.
+  - Evidence: Waiting and redirecting states are rendered explicitly, activity cannot overwrite a parent wait, and call rows now own identity/assignment/configuration while result rows own state, activity, outcome, error, and timing. Presentation coverage includes whole-row waiting, redirecting, success, failure, cancellation, cleanup, and automatic outcome rendering.
 
-- [ ] **T6: Run finite acceptance and document the delivered contract**
+- [x] **T6: Run finite acceptance and document the delivered contract**
   - Depends on: T2-T5.
   - Files: default `docs/subagents.md`, `pi/README.md` if its summary needs updating, root `CHANGELOG.md`, tests and this plan's evidence.
   - Change: document fields/defaults, lifecycle mapping, question/reply use, permissions versus takeover, real failure provenance, and excluded durability/enforcement. Update stale statements about idle-only outcomes and settled-only messages. Run the finite checks below and fix only demonstrated task-relevant failures.
   - Done when: named agent-owned checks pass with actual profile/source evidence and truthful limitations. Attached-client/manual testing remains non-blocking and no live model call is required.
-  - Evidence: Not started.
+  - Evidence: Updated default subagent documentation, `pi/README.md`, and the root changelog with message defaults, lifecycle behavior, question/reply handling, approval ownership, failure provenance, and explicit exclusions. From the default profile with the repository dependency links active and `PI_SUBAGENT_AUTHORITY`/`PI_SUBAGENT_ENDPOINT` cleared: the named focused suite passed 69 tests across 11 files on 2026-09-09; `pnpm run typecheck` passed; `pnpm run check:runtime` passed; and root `git diff --check` passed. No live model, attached-client, archive, commit, merge, or push was performed. Remaining limit: physical visible-client UX is not claimed from offline tests.
 
 - [ ] **T7: Archive, commit, integrate, and clean the task worktree**
   - Depends on: T6 and execution authorization covering local integration.
   - Change: follow the closeout contract below, preserving unrelated checkout work. Archive and commit implementation on the task branch before merging; record completed metadata only after integration. Keep this task unchecked while required integration or cleanup remains unfinished.
   - Done when: target contains implementation and dated archive, metadata is committed, and integrated task worktree cleanup is verified; otherwise record the exact blocker, next action, action owner, and retained worktree.
-  - Evidence: Not started.
+  - Evidence: Implementation and agreed checks passed; spec archived on the task branch. Integration, completion metadata, and worktree cleanup remain pending.
 
 ## Agreed validation and current handoff
 
@@ -222,16 +222,16 @@ pnpm test subagent-messaging.test.ts subagent-terminal-outcomes.test.ts subagent
 pnpm run typecheck
 ```
 
-The first three filters are proposed files. If their cases fit existing named files better, record the actual filters instead of implying nonexistent coverage. Reuse existing dependencies; use repository pnpm/link setup only if needed. From the worktree root run `git diff --check`.
+The first three filters are now implemented files. Reuse existing dependencies; the repository Pi dependency-link setup was run once before validation. From the worktree root run `git diff --check`.
 
 The T1/T2 installed-runtime fixture must exercise real message ingestion, tool finalization and settlement with scripted external boundaries. The focused surface tests must cover both child adapters. No new exhaustive fake runtime, production Herdr changes, or layout test campaign. Passing offline tests establishes those paths, not universal model compliance or physical attached-client UX. Operator testing happens after completion and does not block archive/commit/merge.
 
-- Status: ready for separate execution authorization; implementation not started.
+- Status: T1-T6 implemented and validated; archived and ready for authorized integration. T7 remains pending until merge, completion metadata, and cleanup finish.
 - Completed planning: reconciled original failure scope with the agreed messaging design, verified native lifecycle mechanisms in installed source/docs, and verified cleanup integration in `main`.
-- Next after authorization: create/resume the task worktree, carry this revised plan, then execute T1.
-- Open user decisions: none. Working interaction names may be adjusted later without redesign; do not make naming a blocker.
-- Technical verification still to perform: native yield/mixed-batch/fast-reply integration and intentional interrupt handling in the actual child adapters. These are T1/T2 work, not additional product decisions.
-- Limits: no implementation or new runtime acceptance performed during planning. Historical screenshot/log findings do not prove future model adherence or every failure cause.
+- Execution profile: default profile in the dedicated `fix/subagent-failure-reporting` checkout. The checkout was clean before implementation; unrelated changes were preserved.
+- Open user decisions: none. Working interaction names remain implementation details under the settled contract.
+- Validation evidence: 69 focused tests across 11 files, typecheck, runtime smoke, and `git diff --check` passed with the authority/endpoint environment cleared. No live model, production Herdr pane, archive, commit, merge, or push was performed.
+- Limits: offline evidence does not claim physical attached-client UX or universal model compliance. T7 remains the explicit archive/integration boundary.
 
 ## Closeout
 

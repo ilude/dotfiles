@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { ChildTransport, type ChildIdentity, type ApplicationMessage } from "./transport.ts";
+import { ChildTransport, type ChildIdentity, type ApplicationMessage, type MessageOptions } from "./transport.ts";
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 import { VisibleChild } from "./visible.ts";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
@@ -43,9 +43,9 @@ class InertChild {
  snapshot(): ChildRecord { return { ...this.record, skills: this.record.skills ? [...this.record.skills] : undefined }; }
  wait(): Promise<ChildRecord> { return Promise.resolve(this.snapshot()); }
  private unavailable(): never { throw new Error("This settled subagent is no longer controllable after reload"); }
- async message(_value: string): Promise<void> { this.unavailable(); }
+ async message(_value: string, _options?: MessageOptions): Promise<void> { this.unavailable(); }
  async command(_type: string, _data: Record<string, unknown> = {}): Promise<never> { return this.unavailable(); }
- async answer(_value: string): Promise<void> { this.unavailable(); }
+ async answer(_value: string, _replyTo?: string): Promise<void> { this.unavailable(); }
  async cancel(): Promise<void> { this.unavailable(); }
  async finish(): Promise<void> { this.unavailable(); }
  async escalate(_ctx: unknown): Promise<void> { this.unavailable(); }
@@ -79,8 +79,16 @@ export class SubagentRuntime {
  flush(origin:string){const binding=this.bindings.get(origin);if(!binding)return;for(const [id,record] of this.pending){if(record.origin===origin&&!record.parentId&&!this.queued.has(id)&&binding.deliver(record)&&this.pending.has(id))this.queued.add(id)}}
  private publish(origin:string){this.bindings.get(origin)?.status?.(this.list(origin));}
  acknowledge(origin:string,id:string){if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.queued.delete(id);this.inert.delete(id)}
+ acknowledgeRecord(origin:string,recordId:string){
+  let found=false;
+  for(const [deliveryId,record] of [...this.pending]){
+   if(record.origin===origin&&record.id===recordId){this.acknowledge(origin,deliveryId);found=true;}
+  }
+  return found;
+ }
  unbind(origin:string,binding:BoundOrigin){if(this.bindings.get(origin)===binding)this.bindings.delete(origin)}
  private deliver(record:ChildRecord){
+  if(record.status!=="settled"&&record.status!=="waiting")return;
   const parent=record.parentId?this.children.get(record.parentId):undefined;
   const delivery={...record,deliveryId:randomUUID()};
   if(record.parentId&&record.phase==="waiting-user"){
@@ -121,18 +129,22 @@ export class SubagentRuntime {
   }
   if(message.type==="control"){
    if(!context.input.definition.tools.includes("subagent_control"))throw new Error("Control is outside frozen authority");
-   const payload=message.payload as {id?:unknown;action?:unknown;message?:unknown};
+   const payload=message.payload as {id?:unknown;action?:unknown;message?:unknown;delivery?:unknown;interaction?:unknown;protocol?:unknown;replyTo?:unknown;consume?:unknown};
    if(!payload||typeof payload.id!=="string")throw new Error("Child id or name required");
    const target=this.getDirectChild(payload.id,identity.child,identity.origin);
    if(!target)throw new Error("Only direct children may be controlled");
    if(target.record.userOwned&&payload.action!=="inspect")throw new Error("Parent control is suspended during direct user intervention");
    if(payload.action==="message"||payload.action==="answer"){
     if(typeof payload.message!=="string")throw new Error("Message required");
-    await target[payload.action](payload.message);
+    if(payload.action==="answer")await target.answer(payload.message,typeof payload.replyTo==="string"?payload.replyTo:undefined);
+    else if(typeof payload.replyTo==="string")await target.answer(payload.message,payload.replyTo);
+    else await target.message(payload.message,{delivery:payload.delivery as "queued"|"immediate"|undefined,interaction:payload.interaction as "notify"|"request"|undefined,protocol:payload.protocol as "question-answer"|undefined});
    }else if(payload.action==="cancel")await target.cancel();
    else if(payload.action==="finish")await target.finish();
    else if(payload.action!=="inspect")throw new Error("Unsupported child control");
-   return target.snapshot();
+   const snapshot=target.snapshot();
+   if(payload.consume===true&&snapshot.status!=="running")this.acknowledgeRecord(identity.origin,snapshot.id);
+   return snapshot;
   }
   return child.parentMessage(message);
  }
@@ -167,7 +179,7 @@ export class SubagentRuntime {
    this.publish(record.origin);
    input.progress?.(record);
    for(const observer of this.observers.get(record.id)??[])observer(record);
-   if(record.waitState!=="attached")this.deliver(record);
+   if(record.waitState!=="attached"&&(record.status==="settled"||record.status==="waiting"))this.deliver(record);
    if(record.status==="settled"){
     for(const pending of this.pending.values())if(pending.parentId===record.id){pending.parentId=undefined;pending.notice=`Coordinator ${record.id} ended before receiving this outcome; forwarded to originating orchestrator.`}
     this.flush(record.origin);
@@ -191,7 +203,11 @@ export class SubagentRuntime {
  }
  async wait(id:string,origin:string,signal?:AbortSignal,toolResult=true):Promise<ChildRecord>{
   const child=this.get(id,origin);
-  try{return await child.wait(signal,toolResult)}finally{
+  try{
+   const result=await child.wait(signal,toolResult);
+   if(toolResult&&result.status!=="running")this.acknowledgeRecord(origin,result.id);
+   return result;
+  }finally{
    if(child.record.waitState==="attached")child.record.waitState="background";
    this.publish(origin);
   }

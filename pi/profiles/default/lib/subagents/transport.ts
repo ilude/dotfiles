@@ -4,6 +4,15 @@ import { JsonLines } from "./framing.ts";
 
 export interface ChildIdentity { child: string; run: string; origin: string }
 export interface ChildEndpoint extends ChildIdentity { port: number; token: string }
+export type DeliveryMode = "queued" | "immediate";
+export type InteractionMode = "notify" | "request";
+export type MessageProtocol = "question-answer";
+export interface MessageOptions {
+  delivery?: DeliveryMode;
+  interaction?: InteractionMode;
+  protocol?: MessageProtocol;
+  replyTo?: string;
+}
 export interface ApplicationMessage { type: string; payload?: unknown }
 type Handler = (identity: Readonly<ChildIdentity>, message: ApplicationMessage) => Promise<unknown>;
 const FRAME_LIMIT = 256 * 1024;

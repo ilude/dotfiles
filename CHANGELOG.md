@@ -1,10 +1,20 @@
 # Changelog
 
+<<<<<<< ours
 ## 2026-09-09: Avoid accidental commit push completion
 
 **Fixed:** Default Pi's `/commit` argument completion no longer suggests `push` for an empty argument or an already-complete `push`. Enter submits `/commit ` without adding push, and `/commit push` without an extra completion-selection step. Partial arguments such as `/commit p` still offer `push`.
 
 **Preserved:** Luna's private commit workflow and explicit push authorization are unchanged. Use `/reload` to load the fix.
+=======
+## 2026-09-09: Deliver subagent messages and failures during work
+
+**Changed:** Default-profile subagent messages now use native queued steering by default, with explicit immediate redirection and question-answer request correlation. Parent questions yield cleanly into a visible waiting state without a polling tool, and retained status is no longer required for an active child to receive a message. Automatic outcomes reach busy parent/coordinator conversations during work and are acknowledged once without replay or receipt chatter.
+
+**Fixed:** Permission-dialog input no longer implicitly takes over a visible child. Native terminating tool failures preserve the tool name and bounded reason on headless and visible surfaces, while recoverable tool failures clear when a valid final reply follows. Control rejections now use native tool errors; successful inspection still returns failed assignments as data. Call rows own identity, assignment, and configuration, while result rows own activity, outcomes, errors, and timing.
+
+**Preserved:** Workspace and selected-skill read boundaries, explicit intervention handback, origin scoping, cleanup ownership, retained conversations, and the settled-only reload boundary. No durable message store, retry/reminder loop, approval layer, or live provider acceptance was added.
+>>>>>>> theirs
 
 ## 2026-09-09: Make log analytics tool output readable
 

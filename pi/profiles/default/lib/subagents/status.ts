@@ -38,7 +38,7 @@ function timing(record: ChildRecord, now: number): string {
 
 export function outcomeText(record: ChildRecord): string {
   const stateText = record.status === "waiting"
-    ? record.phase === "waiting-user" ? "needs user-only input; use escalate" : record.phase === "waiting-parent" ? "asks a factual question" : "waiting"
+    ? record.phase === "waiting-user" ? "needs user-only input; use escalate" : record.phase === "waiting-parent" ? "waiting for parent reply" : "waiting"
     : record.outcome ?? record.status;
   const lines = [`Subagent ${identity(record)} (${record.id}) ${stateText}:`];
   if (record.assignment) lines.push(`Assignment: ${clean(record.assignment)}`);

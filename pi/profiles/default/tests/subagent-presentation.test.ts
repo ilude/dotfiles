@@ -37,6 +37,7 @@ describe("subagent presentation", () => {
     ["running", { status: "running", phase: "model" }],
     ["background started", { status: "running", waitState: "background" }],
     ["detached", { status: "running", waitState: "detached" }],
+    ["redirecting", { status: "running", phase: "redirecting", notice: "Redirecting the current turn" }],
     ["question", { status: "waiting", phase: "waiting-parent", result: "Should I include generated files?" }],
     ["complete", { status: "settled", outcome: "complete", result: "**Done**\n\n- one\n- two" }],
     ["partial", { status: "settled", outcome: "partial", result: "Finished the safe portion." }],
@@ -52,6 +53,8 @@ describe("subagent presentation", () => {
   it("keeps question content and start/activity state visible", () => {
     const question = plain(result({ status: "waiting", phase: "waiting-parent", result: "Should generated files be included?" }), 80);
     expect(question).toContain("Question: Should generated files be included?");
+    expect(question).toContain("question for parent");
+    expect(plain(result({ status: "running", phase: "redirecting" }), 80)).toContain("redirecting current turn");
     const starting = plain(result({ status: "running", phase: "starting", toolName: undefined }), 80);
     expect(starting).toContain("Activity: starting assignment");
   });
@@ -88,10 +91,10 @@ describe("subagent presentation", () => {
     renderSubagentResult({ details: finished }, {}, theme, context);
     expect(plain(call, 120)).toContain("subagent · Clara · explorer");
     expect(plain(call, 120)).toContain("Config: openai-codex/test · effort low · headless");
-    expect(plain(call, 120)).toContain("Duration: 4s");
+    expect(plain(call, 120)).not.toContain("Duration:");
     const rerender = renderSubagentCall(args, theme, { ...context, lastComponent: call });
     expect(rerender).toBe(call);
-    expect(plain(rerender, 120)).toContain("Duration: 4s");
+    expect(plain(rerender, 120)).not.toContain("Duration:");
     expect(context.invalidate).not.toHaveBeenCalled();
     const legacy = { ...finished, assignmentFinishedAt: undefined };
     const terminal = plain(renderSubagentResult({ details: legacy }, {}, theme, {}), 120);
@@ -142,7 +145,7 @@ it("executes registered tools against an inert RPC child and renders their live 
     const name = runtime.list("presentation-origin")[0].displayName!;
     expect(plain(call, 120)).toContain(`subagent · ${name} · probe`);
     expect(plain(call, 120)).toContain("Config: openai-codex/test · effort low · headless");
-    expect(plain(call, 120)).toContain("Started:");
+    expect(plain(call, 120)).not.toContain("Started:");
     expect(messages).not.toHaveBeenCalled();
     abort.abort();
     const detached = await pending;
@@ -155,10 +158,11 @@ it("executes registered tools against an inert RPC child and renders their live 
     const controlContext: any = { state: {}, args: controlArgs };
     const control = tools.subagent_control.renderCall(controlArgs, theme, controlContext);
     const cancelled = await tools.subagent_control.execute("cancel", controlArgs, undefined, undefined, ctx);
-    tools.subagent_control.renderResult(cancelled, {}, theme, controlContext);
+    const cancelledView = tools.subagent_control.renderResult(cancelled, {}, theme, controlContext);
     expect(plain(control, 120)).toContain(`subagent control · cancel · ${name} · probe`);
-    expect(plain(control, 120)).toContain("cancelled");
-    expect(plain(control, 120)).not.toContain("child continues");
+    expect(plain(control, 120)).not.toContain("cancelled");
+    expect(plain(cancelledView, 120)).toContain("cancelled");
+    expect(plain(cancelledView, 120)).not.toContain("child continues");
 
     const backgroundArgs = { agent: "probe", instructions: "[hold]", background: true };
     const background = await tools.subagent.execute("background", backgroundArgs, undefined, undefined, ctx);
@@ -176,7 +180,8 @@ it("executes registered tools against an inert RPC child and renders their live 
       expect(text).toContain("LAST REQUESTED LINE");
       expect(plain(tools.subagent.renderResult(failed, {}, theme, {}), width).replace(/\s+/g, " ")).toContain("preflight rejected");
     }
-    expect(messages).not.toHaveBeenCalled();
+    expect(messages.mock.calls).toHaveLength(3);
+    expect(messages.mock.calls.every(([message]: any[]) => message.content.includes("cancelled"))).toBe(true);
   } finally {
     await handlers.session_shutdown?.({ reason: "quit" }, ctx);
     await runtime.shutdown("quit");

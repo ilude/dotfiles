@@ -4,7 +4,7 @@ import { requestParent, type ChildEndpoint } from "./transport.ts";
 import { outcomeText } from "./status.ts";
 import { presentationDetails } from "./presentation.ts";
 import type { Delivery } from "./runtime.ts";
-interface State { generation:number;seen:Set<string>;ctx?:ExtensionContext;tick?:()=>Promise<void>;timer?:ReturnType<typeof setInterval>;busy:boolean;userOwned:boolean;parentGone:boolean;turn:number;last:string;error?:string;prompt:boolean;unbind?:()=>void;activity?:{phase:"model"|"tool";toolName?:string};delivered?:Set<string>;queuedDelivery?:string }
+interface State { generation:number;seen:Set<string>;ctx?:ExtensionContext;tick?:()=>Promise<void>;timer?:ReturnType<typeof setInterval>;busy:boolean;userOwned:boolean;parentGone:boolean;turn:number;last:string;error?:string;toolError?:string;prompt:boolean;redirectMessage?:string;unbind?:()=>void;activity?:{phase:"model"|"tool";toolName?:string};delivered?:Set<string>;queuedDelivery?:string }
 const key=Symbol.for("dotfiles.pi.subagent.surface.v1");
 export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
  const raw=process.env.PI_SUBAGENT_ENDPOINT;
@@ -18,9 +18,9 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   if(state.delivered!.has(delivery.deliveryId)){
    await requestParent(endpoint,{type:"outcome-ack",payload:delivery.deliveryId});return;
   }
-  if(!state.ctx.isIdle()||state.queuedDelivery===delivery.deliveryId)return;
+  if(state.queuedDelivery===delivery.deliveryId)return;
   state.queuedDelivery=delivery.deliveryId;
-  pi.sendMessage({customType:"subagent-result",content:outcomeText(delivery),display:true,details:{deliveryId:delivery.deliveryId,parentId:endpoint.child,...presentationDetails(delivery)}},{triggerTurn:true,deliverAs:"followUp"});
+  pi.sendMessage({customType:"subagent-result",content:outcomeText(delivery),display:true,details:{deliveryId:delivery.deliveryId,parentId:endpoint.child,...presentationDetails(delivery)}},{triggerTurn:true,deliverAs:state.ctx.isIdle()?"followUp":"steer"});
  };
  const mark=(owned:boolean)=>{
   state.userOwned=owned;
@@ -41,11 +41,10 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   await requestParent(endpoint,{type:"handback"});mark(false);
  };
  pi.on("session_start",async(_event,ctx)=>{
-  state.ctx=ctx;state.queuedDelivery=undefined;
+  state.ctx=ctx;state.userOwned=false;state.parentGone=false;state.prompt=false;state.redirectMessage=undefined;state.error=undefined;state.toolError=undefined;state.last="";state.queuedDelivery=undefined;
   const generation=++state.generation;
   state.unbind?.();
   if(visible){
-   state.unbind=ctx.ui.onTerminalInput(()=>{if(state.prompt&&!state.userOwned)void intervene();return undefined});
    try{await requestParent(endpoint,{type:"app-ready",payload:{tools:pi.getActiveTools()}})}catch{unavailable()}
   }
   state.tick=async()=>{
@@ -53,7 +52,7 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
    try{
     if(!visible){const response=await requestParent(endpoint,{type:"heartbeat"}) as {delivery?:Delivery};await receiveOutcome(response.delivery);return}
     const activity=state.activity;
-    const response=await requestParent(endpoint,{type:"app-poll",payload:activity}) as {commands:Array<{id:string;type:string;message?:string}>;delivery?:Delivery};
+    const response=await requestParent(endpoint,{type:"app-poll",payload:activity}) as {commands:Array<{id:string;type:string;message?:string;delivery?:"queued"|"immediate"}>;delivery?:Delivery};
     if(state.activity===activity)state.activity=undefined;
     await receiveOutcome(response.delivery);
     for(const command of response.commands){
@@ -61,7 +60,8 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
      if(!state.seen.has(command.id)){
       if(command.type==="intervene"){mark(true);await requestParent(endpoint,{type:"intervention-ready"})}
       else if(command.type==="handback")await handback();
-      else if(command.type==="message"&&!state.userOwned&&command.message){state.last="";pi.sendUserMessage(command.message,{deliverAs:"followUp"})}
+      else if(command.type==="redirect"&&command.message&&!state.userOwned){state.redirectMessage=command.message;state.ctx.abort()}
+      else if(command.type==="message"&&!state.userOwned&&command.message){state.last="";pi.sendUserMessage(command.message,{deliverAs:command.delivery==="queued"?"steer":"followUp"})}
       else continue;
       state.seen.add(command.id);
      }
@@ -79,7 +79,7 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   state.delivered!.add(id);state.queuedDelivery=undefined;
   try{await requestParent(endpoint,{type:"outcome-ack",payload:id})}catch{unavailable()}
  });
- pi.on("input",async event=>{if(visible&&event.source==="interactive")await intervene();return{action:"continue"}});
+ pi.on("input",async event=>{if(visible&&event.source==="interactive"&&!state.prompt)await intervene();return{action:"continue"}});
  pi.on("ui_prompt_start",()=>{state.prompt=true});
  pi.on("ui_prompt_end",()=>{state.prompt=false});
  if(visible){
@@ -87,12 +87,24 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   pi.on("message_update",()=>{state.activity={phase:"model"}});
   pi.on("tool_execution_start",event=>{state.activity={phase:"tool",toolName:event.toolName}});
   pi.on("tool_execution_update",event=>{state.activity={phase:"tool",toolName:event.toolName}});
-  pi.on("tool_execution_end",()=>{state.activity={phase:"model"}});
+  pi.on("tool_execution_end",event=>{
+   state.activity={phase:"model"};
+   if((event as any).isError)state.toolError=(event as any).toolName?`${(event as any).toolName} failed: ${String((event as any).result?.content?.filter?.((part:any)=>part.type==="text").map?.((part:any)=>part.text).join?.("\n")||"tool returned an error")}`:"Tool failed";
+  });
  }
- pi.on("message_end",event=>{if(event.message.role==="assistant"){state.error=event.message.stopReason==="error"||event.message.stopReason==="aborted"?event.message.errorMessage||`Child model ${event.message.stopReason}`:undefined;state.last=event.message.content.filter(part=>part.type==="text").map(part=>part.text).join("\n").slice(0,24_000)}});
+ pi.on("message_end",event=>{if(event.message.role==="assistant"){
+  state.error=event.message.stopReason==="error"||event.message.stopReason==="aborted"?event.message.errorMessage||`Child model ${event.message.stopReason}`:undefined;
+  state.last=event.message.content.filter(part=>part.type==="text").map(part=>part.text).join("\n").slice(0,24_000);
+  if(!state.error)state.toolError=undefined;
+ }});
  pi.on("agent_settled",async()=>{
   if(!visible||state.parentGone)return;
-  try{await requestParent(endpoint,{type:"turn",payload:{turn:++state.turn,text:state.last,error:state.error}})}catch{unavailable()}
+  if(state.redirectMessage){
+   const message=state.redirectMessage;state.redirectMessage=undefined;state.last="";state.error=undefined;state.toolError=undefined;
+   pi.sendUserMessage(message,{deliverAs:"followUp"});return;
+  }
+  const error=state.error??state.toolError;
+  try{await requestParent(endpoint,{type:"turn",payload:{turn:++state.turn,text:state.last,error}})}catch{unavailable()}
  });
  pi.on("session_shutdown",event=>{
   state.unbind?.();state.unbind=undefined;state.ctx=undefined;
