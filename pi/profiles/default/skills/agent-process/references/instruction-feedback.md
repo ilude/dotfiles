@@ -1,5 +1,18 @@
 # Agent instruction feedback log
 
+## AIF-023 - Separate intent refinement from plan execution
+
+- **Reference:** Operator discussion of the default planning skill and `/do-it` opening.
+- **Feedback:** The user supplies intent and consequential judgment; the agent supplies technical reasoning and implementation. Planning should refine and capture intent in a standalone, bounded plan that Sol at low reasoning can execute without guessing desired outcomes. Keep routine implementation choices flexible and ceremony low.
+- **Requested direction:** Do not load the planning skill during execution, including as a lifecycle fallback. `/do-it` authorizes completion of the selected plan and its authorized closeout. Resolve routine problems within scope; seek user input only for issues the agent cannot resolve within that authority, continuing independent work first. Progress updates must not redefine requirements or reopen settled decisions.
+- **Closeout clarification:** Operator approved updating the plan, not executing it: after implementation and agent-owned checks, archive and commit on the task branch, merge into `main`, then declare completion. Archival or a task-branch commit alone must not produce a completed-plan claim. Preserve explicit `--no-merge` behavior and report omitted integration honestly.
+- **Manual-testing clarification:** Operator explicitly requested that generated plans never block completion or authorized closeout on remaining manual acceptance. The operator will test through normal use after completion and address issues found then. The implementation plan now requires this boundary in the skill, template, and `/do-it`, preserving agent-owned checks and truthful, non-blocking verification limits. AIF-011 previously recorded post-implementation operator testing for Onclave; this clarification applies to generated plans generally. No live instruction changes yet.
+- **Finding:** The skill currently advertises resume and closeout, and `/do-it` explicitly loads it. The template already contains execution and closeout guidance. This mixes authoring and execution instructions; its causal contribution to churn is not established.
+- **Related:** AIF-002 (fresh-context handoffs), AIF-004 (low ceremony), AIF-016 (original skill reuse), AIF-021 (plan authority), APR-002/APR-005 (scope churn), APR-006 (premature stopping).
+- **Implementation:** The planning skill is now authoring-only, its flexible template carries the full standalone execution/closeout contract, and `/do-it` executes without loading planning guidance. Documentation records archive/commit, merge, then completion metadata, while manual testing remains a non-blocking evidence limit. Command argument forms, worktree preservation, local integration authority, and separate push/deployment authority remain intact.
+- **Checks:** Scoped prose review, argument-path tracing, reference search, `git diff --check`, and task-owned diff inspection passed on 2026-09-09 in the default profile. These checks establish instruction consistency, not future model adherence or Sol-low effectiveness.
+- **Status:** Implemented and locally integrated with the archived plan on 2026-09-09. No runtime or live model trial was required.
+
 ## AIF-022 - Preserve settled reload assumptions and interactive steering
 
 - **Reference:** Operator correction during extension-refactor planning, 2026-09-09.

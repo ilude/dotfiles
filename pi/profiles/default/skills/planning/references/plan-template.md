@@ -8,127 +8,99 @@ completed: null
 
 ## Goal and scope
 
-- User requirements: <requested outcomes and preserved behavior>.
-- Non-goals: <important exclusions, not speculative restrictions>. Do not add rollback work unless the user requested it.
-- Authorization: <planning or execution; explicit deployment/push permission and any Git restrictions>. Plan execution includes local task commits and merge unless the user says otherwise; planning alone does not.
+- User requirements and settled decisions: <requested outcomes and preserved behavior>.
+- Non-goals: <important exclusions, not speculative restrictions>. Do not add rollback work unless requested.
+- Authorization: <planning or execution; local Git restrictions; explicit push/deployment permission>.
 
 The user's request and subsequent changes are authoritative. Keep unapproved
-optional work outside the task checklist and completion criteria; do not generate
-speculative optional-work backlogs.
+recommendations and optional work outside tasks and completion criteria.
 
-## Context for a fresh session
+## Fresh-context handoff
 
-All code paths below are relative to <selected repository root>, unless stated
-otherwise. Read current applicable AGENTS.md files before acting.
+All paths are relative to <repository root> unless stated otherwise. Read current
+applicable `AGENTS.md` files before acting.
 
-- Owning repositories and paths: <existing source and deployment boundaries>.
-- Execution worktrees: <per repository: task worktree path, task branch, merge target; proposed until execution starts>.
-- Required reading: <small, relevant file list; label proposed new files separately>.
-- Verified starting behavior: <facts, relevant revision/date, and evidence limits>.
-- Existing work to preserve: <known overlapping work; recheck on resume>.
+- Owning repositories and boundaries: <where changes belong>.
+- Required reading: <small relevant list; label proposed files>.
+- Verified starting behavior: <revision/date, facts, and evidence limits>.
+- Work to preserve: <known overlapping changes; recheck before editing>.
+- Worktree and integration target: <originating checkout/branch, proposed task path
+  and branch until execution records actual values>.
+- Profiles, when relevant: <verified planning profile, intended execution profile,
+  and dated actual runs kept distinct>.
 
-### Pi profiles (omit if irrelevant)
+## Decisions and implementation contract
 
-- Planning profile: <verified name and portable profile path, or unknown>.
-- Intended implementation/validation profile: <name/path; distinguish from actual runs>.
-- Other affected profiles: <what must remain unchanged>.
-
-| Date | Actual profile/path | Work or check | Result / relevant model settings |
-| --- | --- | --- | --- |
-| <date> | <verified profile> | Planning | No implementation or runtime verification |
-
-## Decisions and contracts
-
-Keep required outcomes distinct from proposed mechanisms. Resolve discoverable
-facts yourself. For uncertainty that could materially change the plan, explain
-the choice and consequences, recommend an approach with reasons, and ask a focused
-question. Record consequential decisions below, not routine implementation details.
-Use the smallest practical investigation where useful, naming the question and
-decision it enables. Record a fallback only where needed; don't invent preferences.
-
-| Decision | Source/status | Choice or exact question | Affected tasks |
-| --- | --- | --- | --- |
-| <D1> | <user requirement / proposed / unresolved / verified> | <choice/evidence, or recommendation with reasons and focused question> | <T1> |
-
-<Define necessary interface shapes, errors, defaults, ownership, and behavior
-branches here. Don't manufacture precision for choices not made yet.>
+State fixed outcomes, interfaces, defaults, ownership, and behavior branches needed
+by later tasks. Distinguish them from adaptable technical approaches. Resolve
+consequential uncertainty while authoring; if user judgment is still needed, keep
+`status: draft`, explain the choices and recommendation, and ask a focused question.
+Do not predetermine routine implementation details.
 
 ## Execution guidance
 
-**Worktree isolation:** At execution start, create a dedicated worktree and task
-branch per changed repository, or resume those recorded above. Work and validate
-there. Preserve other checkout changes and carry any uncommitted plan into the task
-worktree without losing the original. Respect repository and submodule branch rules.
+Create or resume the recorded dedicated task worktree and branch. Record the actual
+path, branch, and originating integration target before editing. Preserve unrelated
+work and carry task-owned uncommitted plan content without deleting its source.
 
-**When an assumption fails:** Reassess the mechanism against the existing
-requirement. Use a simpler approach within scope; ask before materially expanding
-scope or changing acceptance.
+Implement the settled intent through the agreed checks. Adapt technical mechanisms
+when repository evidence requires it, but do not change user intent, scope, settled
+decisions, or acceptance without approval. When blocked, continue independent tasks
+and ask only for the specific consequential input or external prerequisite. Do not
+add audits, optional improvements, speculative fixes, or acceptance requirements.
+At meaningful phase boundaries, remove only task-introduced drift and resume the
+next required step.
 
-**Before expanding work:** Which existing requirement needs this addition, and
-what evidence justifies it? Do not turn optional improvements into tasks or
-completion criteria.
-
-**At scope checkpoints:** Check whether recent work advances the agreed
-requirements or has drifted into repeated verification, speculative cases, or
-unnecessary complexity. Continue required work without starting another audit.
-
-**Recovery when drift is found:** Stop the detour and remove unnecessary code,
-tests, and plan items you introduced during this task without disturbing
-pre-existing or concurrent work. Preserve the required function of any removed
-mechanism, replacing it with a simpler approach if needed. Resolve cleanup
-independently; note anything that cannot be safely removed in the final handoff.
-Restore the agreed completion criteria and resume the next required step.
+Keep checkbox state, concise evidence, current blockers, and the next action accurate.
+Do not stop at a phase boundary or substitute a promise for available work. Fix
+demonstrated task-relevant failures and stop testing when the finite agreed checks pass.
 
 ## Tasks
 
-- [ ] **T1 — <specific outcome>**
+- [ ] **T1: <specific outcome>**
   - Depends on: <none or task IDs>.
-  - Inputs/files: <existing sources; explicitly label files to create>.
-  - Do: <bounded change or investigation and its concrete output>.
-  - Verify: <command and working directory, or specific manual comparison>.
-  - Done when: <observable completion criterion>.
-  - If blocked: <concrete branch; don't guess a consequential choice>.
+  - Files/inputs: <existing or proposed paths>.
+  - Change: <bounded work and any contract consumed later>.
+  - Verify: <command and cwd, or exact comparison>.
+  - Done when: <observable result>.
+  - If blocked: <specific branch without guessing consequential intent>.
   - Evidence: Not started.
 
-<Repeat for independently useful steps, including integration and final checks.
-Place brief scope-checkpoint steps at meaningful phase boundaries, referring to
-Execution guidance above. Do not add them after every task or tool call or require
-user approval. Don't create a second task-state registry or mandatory per-file
-task graph.>
+<Repeat only as needed. Combine fields or sections when that improves clarity. Include
+an integration/closeout task when execution is authorized; do not create a second
+state registry, mandatory reviewer sequence, or user-acceptance gate.>
 
-## Agreed validation and finish
+## Agreed validation and current handoff
 
-<Finite checks tied to requirements; include expected results, execution profile,
-and relevant limitations. Reference task checks rather than duplicating checkboxes.
-Fix demonstrated failures and rerun affected checks, not an expanding audit.>
+List finite agent-owned checks tied to requirements, with expected results and actual
+profile where relevant. Record limitations honestly. Unperformed operator manual or
+live testing is a non-blocking verification limit, not remaining work or a reason to
+keep implementation active.
 
-## Current handoff
-
-Replace superseded pause/blocker statements with the latest execution evidence;
-distinguish historical results from current health and unverified acceptance.
-
-- Status: <consistent with frontmatter; distinguish implementation complete from integration pending>.
-- Completed work: <task IDs and concise evidence>.
+- Status: <draft / ready / in progress / integration pending / completed>.
+- Completed work and evidence: <task IDs and concise results>.
 - Next: <first actionable unchecked task>.
-- Blockers/open decisions: <specific unresolved issues or none>.
-- Verification limits: <what hasn't been tested; no guarantees from prose review>.
+- Blockers/open decisions: <specific issues or none>.
+- Verification limits: <unverified behavior without claiming it passed>.
 
-## Completion and archive
+## Closeout
 
-When the described work and agreed checks finish, set `status: completed` and
-`completed: YYYY-MM-DD` above, record the result and actual profile runs, and move
-this entire directory to `REPO_ROOT/.specs/archive/<stub>/` in the task worktree.
-Repair inbound links and never overwrite an existing archive. Leave unfinished
-implementation active; writing the plan is not completing the work.
+After implementation and agreed agent-owned checks pass, update task evidence and
+record integration as pending. Confirm `.specs/archive/<stub>/` does not contain
+another plan, then move this entire spec directory there in the task worktree and
+repair affected links. Commit the implementation and archived spec together on the
+task branch. Do not archive unfinished implementation.
 
-Commit the implementation and archived plan together, then merge into the recorded
-target. Integrate modules before parent gitlinks; archive the coordinating plan
-with final parent integration. Respect repository publication rules and explicit
-no-commit/no-merge instructions. Deployment and push require separate authorization.
+Unless explicitly disabled, merge the task branch into its recorded originating
+checkout and branch without stashing, discarding, or committing unrelated target
+changes. If integration is blocked, retain the worktree and report implementation
+and checks separately from pending delivery. If `--no-merge` applies, keep the
+committed worktree and report integration as intentionally pending.
 
-Preserve unrelated target-checkout changes. If blocked, retain the task worktree
-and report pending integration rather than claiming delivery. After merging,
-verify the target contains the changes and archive with no active plan copy left;
-reconcile any task-owned original without losing concurrent edits. Rerun affected
-checks if conflict resolution changed implementation, not just because of a merge.
-Remove the task worktree only once integrated with no uncommitted or unmerged work.
+After a successful merge, verify the target contains the changes and archive and no
+active plan copy remains. Then set the archived plan's `status: completed` and
+`completed: YYYY-MM-DD`, mark closeout done, and commit that final metadata update on
+the target. Only then declare completion. Rerun affected checks only if conflict
+resolution changed checked content. Remove the task worktree only when integration
+succeeded and it has no uncommitted or unmerged work. Push and deployment require
+separate authorization. Operator manual testing does not block this closeout.
