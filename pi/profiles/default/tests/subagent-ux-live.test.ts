@@ -126,15 +126,10 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
   it("uses the production layout adapter against isolated inert panes", async () => {
     const fixture = await isolatedFixture();
     let switchAfterOpen = false;
-    let switchAfterClose = false;
     const layoutCli: HerdrCli = async args => {
       const response = await fixture.cli(args);
       if (switchAfterOpen && args[0] === "plugin" && args[1] === "pane" && args[2] === "open") {
         switchAfterOpen = false;
-        await fixture.cli(["workspace", "focus", fixture.unrelated.workspace_id]);
-      }
-      if (switchAfterClose && args[0] === "plugin" && args[1] === "pane" && args[2] === "close") {
-        switchAfterClose = false;
         await fixture.cli(["workspace", "focus", fixture.unrelated.workspace_id]);
       }
       return response;
@@ -194,7 +189,6 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
       expect(caller.pane_id).toBe(fixture.caller.pane_id);
       const callerGeometry = geometry.find((pane: any) => pane.pane_id === fixture.caller.pane_id);
       expect(callerGeometry.rect.y + callerGeometry.rect.height).toBeLessThanOrEqual(Math.min(...row0.map((pane: any) => pane.rect.y)) + 1);
-      switchAfterClose = true;
       await layout.close("t5-geometry", placements[0].childId, placements[0].paneId);
       expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
     } finally {
@@ -239,7 +233,12 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
       let launchTimer: ReturnType<typeof setTimeout> | undefined;
       const first = await Promise.race([
         runtime.launch(input, profile, childExtension, false),
-        new Promise<never>((_, reject) => { launchTimer = setTimeout(() => reject(new Error(`Bundled Pi did not complete; snapshot=${JSON.stringify(runtime.list("t5-visible"))}`)), 100_000); }),
+        new Promise<never>((_, reject) => { launchTimer = setTimeout(async () => {
+          const snapshot = runtime.list("t5-visible");
+          const paneId = snapshot[0]?.paneId;
+          const pane = paneId ? await fixture.cli(["pane", "read", paneId, "--lines", "80"]).catch(error => ({ error: String(error) })) : undefined;
+          reject(new Error(`Bundled Pi did not complete; snapshot=${JSON.stringify(snapshot)}; pane=${JSON.stringify(pane)}`));
+        }, 100_000); }),
       ]);
       if (launchTimer) clearTimeout(launchTimer);
       expect(first).toMatchObject({ surface: "visible", agent: "probe", outcome: "complete", turns: 1, paneState: "open" });

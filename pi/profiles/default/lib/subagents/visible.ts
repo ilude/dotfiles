@@ -128,15 +128,18 @@ export class VisibleChild extends RpcChild {
    if(Date.now()>deadline)throw new Error("Visible launcher did not settle its owned child");
    await delay(50);
   }
-  // The bootstrap reports child close, then exits. Never terminate a PID found by probing.
-  while(this.hostPid){
-   try{process.kill(this.hostPid,0)}catch(error){if((error as NodeJS.ErrnoException).code==="ESRCH")break;throw error}
-   if(Date.now()>deadline)throw new Error("Visible launcher exit was not observed; pane retained for inspection");
-   await delay(25);
-  }
+  // host-exit proves the actual child process settled. The launcher deliberately
+  // remains alive briefly so closing its still-live, non-focused plugin pane
+  // cannot make Herdr focus the caller workspace as a side effect of PTY exit.
   if(this.record.paneId&&!this.closed){
    await this.layout.close(this.record.origin,this.record.id,this.record.paneId);
    this.closed=true;this.record.paneState="closed";
+  }
+  // Pane closure owns launcher termination. Never terminate a PID found by probing.
+  while(this.hostPid){
+   try{process.kill(this.hostPid,0)}catch(error){if((error as NodeJS.ErrnoException).code==="ESRCH")break;throw error}
+   if(Date.now()>deadline)throw new Error("Visible launcher exit was not observed after pane closure");
+   await delay(25);
   }
  }
 }

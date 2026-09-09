@@ -38,3 +38,12 @@ The operator accepted children below the unchanged orchestrator, four per tab, w
 ## Herdr 0.9.0 verification, 2026-09-09
 
 The installed binary was verified as `herdr 0.9.0`. The revised isolated production-layout acceptance passed again: the caller remained unchanged above one full-width child region; 1/3/4 child columns were equal; child five used an owned overflow tab; and unrelated focus remained unchanged. The model-backed visible-child check was repeated because the external runtime changed, but again timed out after 100 seconds with transport connected, `readyCount: 1`, `phase: starting`, and zero turns. Herdr 0.9.0 therefore validates the layout workaround but does not resolve the separate child-startup blocker. Cleanup completed.
+
+
+## Startup and cleanup investigation, 2026-09-09
+
+Pane capture established that the apparent startup hang was not a Herdr failure: the isolated task profile contained an ignored empty `auth.json`, so Pi reported `No API key found for openai-codex` after accepting the queued assignment. With the existing default-profile authentication made temporarily available for this bounded test (restored immediately afterward and not committed), the initial model turn and retained follow-up both completed in about 10 seconds.
+
+That run exposed a second issue hidden by the earlier diagnostic fixture: finishing the retained child moved focus from the unrelated workspace to the caller. The inert fixture had switched focus back *after* pane close, masking ordinary cleanup focus theft. The actual child process settled first, then the launcher PTY exited before its pane was closed; Herdr focused the plugin workspace on PTY exit. The host now reports actual child settlement but keeps its wrapper PTY alive briefly while the parent closes the still-live non-focused pane, then verifies wrapper exit. The corrected model-backed launch/follow-up/finish test passed and retained unrelated focus. The inert fixture now tests ordinary close without restoring focus after the close response.
+
+Focused lifecycle/layout checks passed 21 tests with 2 opt-in skips; `check:runtime` passed 335 rules and eight schemas; `git diff --check` passed. The current operator Herdr server still reports protocol 21 to the 0.9.0 client (protocol 22), so it must be restarted before this running client can exercise the new runtime.
