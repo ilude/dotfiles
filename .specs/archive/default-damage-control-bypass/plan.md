@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
-status: implemented
-completed: null
+status: completed
+completed: 2026-09-09
 ---
 
 # Parsed Damage Control bypass eligibility
@@ -75,7 +75,7 @@ Before expanding scope, name the required behavior and demonstrated reason. If a
   - Do: run the agreed checks once, repair only demonstrated relevant failures, and rerun affected checks. Record actual profile/results. Archive and integrate using the finish instructions below.
   - Verify: required checks pass and `main` contains the implementation plus dated archive, without an active copy.
   - Done when: correction is integrated locally; report push/deployment as unperformed, not required.
-  - Evidence: On 2026-09-09 under the default profile, `pnpm test tests/damage-control` passed 19 files and 198 tests (1 skipped), `pnpm run typecheck` passed, and `pnpm run check:runtime` passed. Integration evidence is recorded during closeout.
+  - Evidence: On 2026-09-09 under the default profile, `pnpm test tests/damage-control` passed 19 files and 198 tests (1 skipped), `pnpm run typecheck` passed, and `pnpm run check:runtime` passed. Task commit `c15f6584` was merged into recorded target `main` by merge commit `ad03f24e`; target verification confirmed the implementation and archive are present and the active plan is absent.
 
 ## Agreed validation and finish
 
@@ -91,9 +91,9 @@ These are offline checks, not a guarantee of every Luna judgment. Classify unrel
 
 ## Current handoff
 
-- Status: implementation and agreed agent-owned checks passed; archived task commit and local integration remain.
-- Completed work: T1-T3 implementation and offline validation.
-- Next: archive, task commit, merge to recorded `main`, then completion metadata commit.
+- Status: completed and integrated locally on 2026-09-09.
+- Completed work: T1-T3 implementation, offline validation, archival, task commit, and merge to recorded `main`.
+- Verification limit: no live Luna run was required; offline production-parser and gate regressions supplied model responses without executing submitted operations.
 - Open operator decisions: none.
 
 ## Completion and archive
