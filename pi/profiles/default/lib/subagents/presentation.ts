@@ -69,6 +69,7 @@ function outcomeLabel(record: Partial<ChildRecord>): string {
     return "waiting";
   }
   if (record.status !== "settled") {
+    if (record.phase === "redirecting") return "redirecting current turn";
     if (record.phase === "tool") return record.toolName ? `using ${record.toolName}` : "using a tool";
     if (record.phase === "waiting-children") return "waiting for children";
     if (record.phase === "model") return "working";
@@ -112,6 +113,7 @@ function details(record: Partial<ChildRecord>, now = Date.now()): string[] {
 
 function activeDescription(record: Partial<ChildRecord>): string {
   if (record.userOwned) return "user intervention; parent control suspended";
+  if (record.phase === "redirecting") return "redirecting current turn";
   const state = outcomeLabel(record);
   if (record.status === "waiting" && record.result) return `Question: ${oneLine(record.result)}`;
   if (record.status !== "settled" && record.waitState === "detached") return `${state} · wait detached; child continues`;
@@ -131,14 +133,11 @@ function callLines(args: Record<string, unknown>, record: Partial<ChildRecord> |
   if (record) {
     lines.push(`Role: ${record.agent ?? "unknown"}`);
     lines.push(`Assignment: ${assignment(record, context.expanded)}`);
-    lines.push(`State: ${activeDescription(record)}`);
-    const timing = startLine(record);
-    if (timing) lines.push(timing);
+    if (record.waitState) lines.push(`Wait: ${record.waitState}`);
     const model = record.model || value(args.model) || "default";
     const effort = record.effort || value(args.effort) || "default";
     const surface = record.surface || value(args.surface) || "unknown";
     lines.push(`Config: ${model} · effort ${effort} · ${surface}`);
-    if (record.error) lines.push(theme.fg("error", `Error: ${oneLine(record.error)}`));
   } else {
     const instructions = value(args?.instructions);
     if (instructions) lines.push(`Assignment: ${context.expanded ? bounded(instructions, Infinity) : oneLine(instructions)}`);
@@ -240,6 +239,7 @@ export function presentationDetails(record: Partial<ChildRecord>): Record<string
     phase: record.phase,
     toolName: record.toolName,
     waitState: record.waitState,
+    requestId: record.requestId,
     retained: record.retained,
     assignmentStartedAt: record.assignmentStartedAt,
     assignmentFinishedAt: record.assignmentFinishedAt,

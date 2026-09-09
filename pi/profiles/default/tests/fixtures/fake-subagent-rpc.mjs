@@ -13,6 +13,11 @@ process.stdin.on('data',chunk=>{
     process.stdout.write(JSON.stringify({type:'tool_execution_start',toolName:'bash',args:{private:'must not appear in progress'}})+'\n');
    }
    if(command.message.includes('[provider-error]')){process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'error',errorMessage:'fixture provider unavailable'}})+'\n');continue}
+   if(command.message.includes('[tool-error]')){
+    process.stdout.write(JSON.stringify({type:'tool_execution_end',toolName:'read',isError:true,result:{content:[{type:'text',text:'Native path is outside the assigned workspace'}]}})+'\n');
+    if(command.message.includes('[recoverable]'))process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',content:[{type:'text',text:'recovered after the read failed'}]}})+'\n');
+    process.stdout.write('{"type":"agent_settled"}\n');continue;
+   }
    if(command.message.includes('[oversize]')){process.stdout.write(JSON.stringify({type:'agent_end',messages:['x'.repeat(17*1024*1024)]})+'\n');continue}
    if(command.message.includes('[exit]'))process.exit(0);
    if(command.message.includes('[hold]'))continue;
@@ -25,6 +30,10 @@ process.stdin.on('data',chunk=>{
    if(command.message.includes('[live]')){reply();continue;}
    const marker=/WAIT_FILE:([^\n]+)/.exec(command.message)?.[1];
    if(marker){const timer=setInterval(()=>{if(existsSync(marker)){clearInterval(timer);reply()}},10)}else reply();
+  }else if(command.type==='steer'){
+   process.stdout.write(JSON.stringify({type:'response',id:command.id,success:true})+'\n');
+   process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',content:[{type:'text',text:`steered: ${command.message}`}]}})+'\n');
+   process.stdout.write('{"type":"agent_settled"}\n');
   }else if(command.type==='extension_ui_response'){
    process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',content:[{type:'text',text:command.confirmed===false?'denied':'approved'}]}})+'\n');process.stdout.write('{"type":"agent_settled"}\n');
   }else if(command.type==='abort')process.stdout.write(JSON.stringify({type:'response',id:command.id,success:true})+'\n');

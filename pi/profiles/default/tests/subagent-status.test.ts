@@ -53,8 +53,9 @@ it("delivers outcomes without a persistent status widget or progress messages",a
   expect(messages).toEqual([]);
   expect(setWidget).not.toHaveBeenCalled();
   await vi.waitFor(()=>expect(runtime.get(b.id).record).toMatchObject({phase:"settled",processState:"exited"}),{timeout:7000});
+  expect(messages).toHaveLength(1);expect(messages[0].content).toContain("preflight rejected");
   await handlers.session_shutdown({reason:"switch"},ctx);owner="status-b";await handlers.session_start({},ctx);idle=true;await handlers.agent_settled();
-  expect(messages).toEqual([]);expect(setWidget).not.toHaveBeenCalled();
+  expect(messages).toHaveLength(1);expect(setWidget).not.toHaveBeenCalled();
   await handlers.session_shutdown({reason:"switch"},ctx);owner="status-a";await handlers.session_start({},ctx);
   expect(messages).toHaveLength(1);expect(messages[0].content).toContain("preflight rejected");
   await handlers.message_end({message:{role:"custom",...messages[0]}},ctx);

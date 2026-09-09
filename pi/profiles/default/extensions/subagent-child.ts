@@ -24,7 +24,7 @@ export default function childAuthority(pi:ExtensionAPI){
   try { guardNativePath(root,authority.skills,event.toolName,event.input); }
   catch(error){return{block:true,terminate:true,reason:error instanceof Error?error.message:String(error)}}
  });
- pi.on("before_agent_start",event=>({systemPrompt:`${event.systemPrompt}\n\nYou are subagent ${authority.agent}. Your authority is frozen to tools [${[...allowed].join(", ")||"none"}]. You may not activate or request other tools. A normal final reply automatically completes your assignment; no reporting tool is needed for success. Use partial only for genuinely unfinished work and blocked only when you cannot proceed. ${process.env.PI_SUBAGENT_PROMPT||""}`}));
+ pi.on("before_agent_start",event=>({systemPrompt:`${event.systemPrompt}\n\nYou are subagent ${authority.agent}. Your authority is frozen to tools [${[...allowed].join(", ")||"none"}]. You may not activate or request other tools. A normal final reply automatically completes your assignment; no reporting tool is needed for success. Use partial only for genuinely unfinished work and blocked only when you cannot proceed. Parent notifications are evidence to incorporate, not receipts to acknowledge. Use the question action for a question-answer request; it yields cleanly and the parent answer resumes this conversation. ${process.env.PI_SUBAGENT_PROMPT||""}`}));
  const parentEndpoint=()=>{
   const endpoint=JSON.parse(process.env.PI_SUBAGENT_ENDPOINT||"null") as ChildEndpoint|null;
   if(!endpoint||endpoint.child!==authority.id)throw new Error("Authenticated parent unavailable");
@@ -37,7 +37,7 @@ export default function childAuthority(pi:ExtensionAPI){
    const view=JSON.stringify([record.status,record.phase,record.toolName,record.waitState,record.outcome,record.error]);
    if(view!==lastView||Date.now()-lastUpdate>=1000){onUpdate?.(progressResult(record));lastView=view;lastUpdate=Date.now()}
    await delay(250,undefined,{signal});
-   record=await requestParent(parentEndpoint(),{type:"control",payload:{action:"inspect",id:record.id}}) as ChildRecord;
+   record=await requestParent(parentEndpoint(),{type:"control",payload:{action:"inspect",id:record.id,consume:true}}) as ChildRecord;
   }
   onUpdate?.(progressResult(record));
   return record;
@@ -48,7 +48,7 @@ export default function childAuthority(pi:ExtensionAPI){
   if(!p.background)result=await waitForChild(result,signal,onUpdate);
   return{content:[{type:"text",text:JSON.stringify(result)}],details:result};
  },renderCall:renderSubagentCall,renderResult:renderSubagentResult});
- pi.registerTool({name:"subagent_control",label:"Control direct leaf",description:"Inspect, continue, answer factual questions, or cancel a directly commissioned leaf.",parameters:Type.Object({id:Type.String(),action:Type.Union([Type.Literal("inspect"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("finish"),Type.Literal("cancel")]),message:Type.Optional(Type.String()),background:Type.Optional(Type.Boolean())}),async execute(_id,p,signal,onUpdate){
+ pi.registerTool({name:"subagent_control",label:"Control direct leaf",description:"Inspect, message, request an answer, or cancel a directly commissioned leaf. Messages use native queued steering by default; immediate is an intentional redirect.",parameters:Type.Object({id:Type.String(),action:Type.Union([Type.Literal("inspect"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("finish"),Type.Literal("cancel")]),message:Type.Optional(Type.String()),delivery:Type.Optional(Type.Union([Type.Literal("queued"),Type.Literal("immediate")])),interaction:Type.Optional(Type.Union([Type.Literal("notify"),Type.Literal("request")])),protocol:Type.Optional(Type.Literal("question-answer")),replyTo:Type.Optional(Type.String()),background:Type.Optional(Type.Boolean())}),async execute(_id,p,signal,onUpdate){
   if(!allowed.has("subagent_control"))throw new Error("Control is outside frozen authority");
   let result=await requestParent(parentEndpoint(),{type:"control",payload:p});
   if((p.action==="message"||p.action==="answer")&&!p.background)result=await waitForChild(result,signal,onUpdate);
@@ -58,17 +58,12 @@ export default function childAuthority(pi:ExtensionAPI){
   const tools=pi.getAllTools().filter(t=>allowed.has(t.name)&&(!p.query||`${t.name} ${t.description}`.toLowerCase().includes(p.query.toLowerCase()))).map(t=>({name:t.name,description:t.description}));
   return{content:[{type:"text",text:JSON.stringify(tools)}],details:{tools}};
  }});
- pi.registerTool({name:"subagent_parent",label:"Report to parent",description:"Ask the originating parent a factual question or report genuinely unfinished/blocked work. Do not use this tool for successful completion; give a normal final reply instead.",parameters:Type.Object({action:Type.Union([Type.Literal("question"),Type.Literal("partial"),Type.Literal("blocked")]),message:Type.String()}),async execute(_id,p,signal){
+ pi.registerTool({name:"subagent_parent",label:"Report to parent",description:"Ask the originating parent a factual question or report genuinely unfinished/blocked work. A question yields cleanly and returns a request ID; do not poll for the answer. Do not use this tool for successful completion; give a normal final reply instead.",parameters:Type.Object({action:Type.Union([Type.Literal("question"),Type.Literal("partial"),Type.Literal("blocked")]),message:Type.String()}),async execute(_id,p,signal){
   if (!allowed.has("subagent_parent")) throw new Error("Parent helper is outside frozen authority");
   const endpoint = JSON.parse(process.env.PI_SUBAGENT_ENDPOINT || "null") as ChildEndpoint | null;
   if (!endpoint || endpoint.child !== authority.id) throw new Error("Authenticated parent unavailable");
-  const response = await requestParent(endpoint, {type:p.action,payload:p.message}) as {id?:string};
-  if (p.action !== "question") return {content:[{type:"text",text:"Report accepted by parent"}],details:{}};
-  for (;;) {
-    if (signal?.aborted) throw new Error("Parent question interrupted");
-    const reply = await requestParent(endpoint, {type:"poll-answer",payload:response.id}) as {answer?:string};
-    if (reply.answer !== undefined) return {content:[{type:"text",text:reply.answer}],details:{}};
-    await delay(250, undefined, {signal});
-  }
+  const response = await requestParent(endpoint, {type:p.action,payload:p.action==="question"?{message:p.message,protocol:"question-answer"}:p.message}) as {id?:string};
+  if (p.action !== "question") return {content:[{type:"text",text:"Report accepted by parent"}],details:{requestId:undefined as string|undefined,protocol:undefined as "question-answer"|undefined}};
+  return {content:[{type:"text",text:`Question sent to parent${response.id?` (request ${response.id})`:""}. Waiting for the parent's reply.`}],details:{requestId:response.id,protocol:"question-answer" as const},terminate:true};
  }});
 }

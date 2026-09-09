@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
-import type { ChildEndpoint, ApplicationMessage } from "./transport.ts";
+import type { ChildEndpoint, ApplicationMessage, MessageOptions } from "./transport.ts";
 import { createHerdrCli, herdrContext, result, inspectPane } from "../herdr-cli.ts";
 import { LayoutPlacementError, SubagentLayout } from "./layout.ts";
 
@@ -19,9 +19,9 @@ export class VisibleChild extends RpcChild {
  private closed=false;
  private bootstrapped=false;
  private interventionReady=false;
- private commands:Array<{id:string;type:string;message?:string}>=[];
+ private commands:Array<{id:string;type:string;message?:string;delivery?:"queued"|"immediate"}>=[];
  constructor(spec:LaunchSpec,childExtension:string,profileDir:string,layout?:SubagentLayout){super(spec,childExtension,profileDir);this.layout=layout??new SubagentLayout(this.cli)}
- private enqueue(command:{type:string;message?:string}){this.commands.push({id:randomUUID(),...command})}
+ private enqueue(command:{type:string;message?:string;delivery?:"queued"|"immediate"}){this.commands.push({id:randomUUID(),...command})}
  private startup?:ReturnType<typeof setTimeout>;
  private launchDone?:Promise<void>;
  override start(endpoint?:ChildEndpoint):Promise<ChildRecord>{
@@ -100,9 +100,23 @@ export class VisibleChild extends RpcChild {
   return super.parentMessage(message);
  }
  override async command(type:string,data:Record<string,unknown>={}){
-  if(type==="prompt"){if(typeof data.message!=="string")throw new Error("Message required");this.enqueue({type:"message",message:data.message});return}
+  if(type==="prompt"||type==="steer"){
+   if(typeof data.message!=="string")throw new Error("Message required");
+   this.enqueue({type:"message",message:data.message,delivery:type==="steer"?"queued":undefined});return;
+  }
   if(type==="abort"){this.forceStop=true;this.stopping=true;return}
   throw new Error(`Unsupported visible command ${type}`);
+ }
+ override async message(value:string,options:MessageOptions={}){
+  if(options.delivery==="immediate"&&this.record.status!=="settled"){
+   if(!value.trim())throw new Error("Message must be nonblank");
+   if(this.record.userOwned)throw new Error("Direct user intervention suspends parent steering");
+   this.record.notice="Redirecting the current turn; the assignment continues with the new message.";
+   this.activity("redirecting");
+   this.enqueue({type:"redirect",message:value,delivery:"immediate"});
+   return;
+  }
+  return super.message(value,options);
  }
  override async escalate(_ctx:Parameters<RpcChild["escalate"]>[0]){await this.intervene()}
  async intervene(){

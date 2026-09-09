@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-09: Deliver subagent messages and failures during work
+
+**Changed:** Default-profile subagent messages now use native queued steering by default, with explicit immediate redirection and question-answer request correlation. Parent questions yield cleanly into a visible waiting state without a polling tool, and retained status is no longer required for an active child to receive a message. Automatic outcomes reach busy parent/coordinator conversations during work and are acknowledged once without replay or receipt chatter.
+
+**Fixed:** Permission-dialog input no longer implicitly takes over a visible child. Native terminating tool failures preserve the tool name and bounded reason on headless and visible surfaces, while recoverable tool failures clear when a valid final reply follows. Control rejections now use native tool errors; successful inspection still returns failed assignments as data. Call rows own identity, assignment, and configuration, while result rows own activity, outcomes, errors, and timing.
+
+**Preserved:** Workspace and selected-skill read boundaries, explicit intervention handback, origin scoping, cleanup ownership, retained conversations, and the settled-only reload boundary. No durable message store, retry/reminder loop, approval layer, or live provider acceptance was added.
+
 ## 2026-09-09: Make log analytics tool output readable
 
 **Changed:** Default Pi's `log_analytics` now renders operation and search scope, readable source/session summaries, and query results as compact tables or labeled records rather than dumping arguments and a single JSON string. Collapsed results preview three rows; expansion shows all returned values, full SQL and parameters, session references, and scan diagnostics. Query truncation, session pagination, excluded-file warnings, empty results, and failures remain explicit. Long preview values are marked with an ellipsis, and terminal control sequences in stored history are removed from display.
