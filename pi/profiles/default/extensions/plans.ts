@@ -5,6 +5,8 @@ import { copyToClipboard, type ExtensionAPI, type ExtensionCommandContext, type 
 import { Key, matchesKey, stripTerminalSequences, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { containedRealPath, discoverPlans, parsePlan, type PlanRecord } from "../lib/plans.ts";
 import { createHerdrPiTab, HerdrPiTabLaunchError } from "./session-launch.ts";
+import { getPlanRunRuntime, registerPlanRunTracking } from "../lib/plan-run-runtime.ts";
+import type { PlanRun } from "../lib/plan-runs.ts";
 
 const planActions = [
 	{ key: "o", action: "open", label: "Open in VS Code", hint: "VS Code" },
@@ -20,6 +22,7 @@ interface SelectorOptions {
 	onViewChange?: (details: boolean) => void;
 	launch?: (plan: PlanRecord) => Promise<unknown>;
 	blockedLaunches?: Map<string, string>;
+	getRun?: (plan: PlanRecord) => PlanRun | undefined;
 }
 
 function clean(value: string): string { return stripTerminalSequences(value).replace(/\s+/g, " ").trim(); }
@@ -41,9 +44,21 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 		let finished = false;
 		let launchError: string | undefined;
 		const blockedLaunches = options.blockedLaunches ?? new Map<string, string>();
+		const activity = (plan: PlanRecord) => {
+			try {
+				const run = options.getRun?.(plan);
+				return run ? { state: run.state, owner: `${run.state} in ${run.tabId ? `tab ${run.tabId}` : `Pi process ${run.pid}`}` } : undefined;
+			} catch (error) {
+				return { state: "unknown", owner: `Execution check failed: ${error instanceof Error ? error.message : String(error)}` };
+			}
+		};
+		// Refresh only while this picker exists. Launch authorization still rechecks atomically.
+		const refresh = options.getRun ? setInterval(() => { if (!finished) tui.requestRender(); }, 1000) : undefined;
+		refresh?.unref();
 		const finish = (action: Action) => {
 			if (finished) return;
 			finished = true;
+			clearInterval(refresh);
 			onDone({ action, index: selected });
 		};
 		const launch = async () => {
@@ -70,7 +85,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 				.flatMap(text => wrapTextWithAnsi(text, width));
 			const blocked = blockedLaunches.get(plans[selected]?.path ?? "");
 			const error = blocked ?? launchError;
-			if (!error) return;
+			if (!error || (!blocked && plans[selected] && activity(plans[selected]!))) return;
 			return [
 				...wrapTextWithAnsi(blocked ? "Launch may exist. Do not retry." : "Launch failed. Safe to retry.", width),
 				...wrapTextWithAnsi(clean(error), width).slice(0, 2),
@@ -92,6 +107,9 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					+ theme.fg("borderAccent", "│");
 				const muted = (text: string) => theme.fg("muted", text);
 				const current = plans[selected];
+				const runs = plans.map(activity);
+				const currentRun = runs[selected];
+				const status = (plan: PlanRecord, index: number) => clean(runs[index]?.state ?? plan.status ?? "unknown");
 				const notice = feedback(inner);
 				const output = [border("╭", "╮"), row(theme.bold(theme.fg("accent",
 					`Plans · ${details && current ? "Details" : "Browse"} · ${current ? `${selected + 1}/${plans.length}` : "0 plans"}`))), border("├", "┤")];
@@ -101,7 +119,8 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 				}
 				if (details) {
 					const content = [theme.bold(clean(current.title)), "",
-						`Status: ${clean(current.status ?? "unknown")} · Tasks: ${progress(current)}`, "",
+						`Status: ${status(current, selected)} · Tasks: ${progress(current)}`,
+						...(currentRun ? [`Saved plan status: ${clean(current.status ?? "unknown")}`, clean(currentRun.owner)] : []), "",
 						clean(current.description), "", `Path: ${clean(current.relativePath)}`,
 						`Modified: ${current.modified.toISOString().slice(0, 10)}`];
 					if (current.firstUnchecked) content.push(`Next: ${clean(current.firstUnchecked)}`);
@@ -115,17 +134,17 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					scroll = Math.min(scroll, maxScroll);
 					for (let index = 0; index < capacity; index++) output.push(row(wrapped[scroll + index] ?? ""));
 					output.push(row(muted(maxScroll ? `Lines ${scroll + 1}-${Math.min(scroll + capacity, wrapped.length)}/${wrapped.length}` : "")), border("├", "┤"));
-					output.push(...actions.map(action => row(`${action.key}  ${action.label}`)));
+					output.push(...actions.map(action => row(`${action.key}  ${currentRun && (action.key === "r" || action.key === "d") ? "Disabled: owned run" : action.label}`)));
 					output.push(...help.map(text => row(theme.fg("text", text))));
 				} else {
 					const columns = inner >= 56;
-					const statusWidth = Math.min(16, Math.max(8, ...plans.map(plan => visibleWidth(clean(plan.status ?? "unknown")))));
+					const statusWidth = Math.min(16, Math.max(8, ...plans.map((plan, index) => visibleWidth(status(plan, index)))));
 					const taskWidth = Math.min(11, Math.max(5, ...plans.map(plan => visibleWidth(progress(plan)))));
 					const stubWidth = inner - statusWidth - taskWidth - 6;
 					const cells = (stub: string, status: string, tasks: string) => `${fit(stub, stubWidth)}  ${fit(status, statusWidth)}  ${fit(tasks, taskWidth)}`;
-					const help = notice ?? ["↑↓ Select · Enter Details · Esc/q Close", `Actions: ${planActions.map(action => `${action.key} ${action.hint}`).join(" · ")}`]
+					const help = notice ?? ["↑↓ Select · Enter Details · Esc/q Close", `Actions: ${planActions.filter(action => !currentRun || (action.key !== "r" && action.key !== "d")).map(action => `${action.key} ${action.hint}`).join(" · ")}${currentRun ? " · r/d Disabled" : ""}`]
 						.flatMap(text => wrapTextWithAnsi(text, inner));
-					const metadata = columns ? [] : [`Status: ${clean(current.status ?? "unknown")}`, `Tasks: ${progress(current)}`];
+					const metadata = columns ? [] : [`Status: ${status(current, selected)}`, `Tasks: ${progress(current)}`];
 					// Very short, narrow panels retain all shortcuts before optional metadata.
 					metadata.splice(Math.max(0, height - 6 - (columns ? 1 : 0) - help.length));
 					// Reserve controls and one selectable row before allocating preview space.
@@ -134,6 +153,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					if (available < 4) preview.pop();
 					if (available < 3) preview.shift();
 					if (available < 2) preview.pop();
+					if (currentRun && available > preview.length + 1) preview.push(muted(clean(currentRun.owner)));
 					const capacity = Math.min(plans.length, Math.max(1, available - preview.length));
 					start = Math.max(0, Math.min(start, selected, plans.length - capacity));
 					if (selected >= start + capacity) start = selected - capacity + 1;
@@ -143,7 +163,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 						const plan = plans[index];
 						if (!plan) { output.push(row("")); continue; }
 						const active = index === selected;
-						const text = `${active ? "▶" : " "} ${columns ? cells(clean(plan.stub), clean(plan.status ?? "unknown"), progress(plan)) : clean(plan.stub)}`;
+						const text = `${active ? "▶" : " "} ${columns ? cells(clean(plan.stub), status(plan, index), progress(plan)) : clean(plan.stub)}`;
 						output.push(row(active ? theme.bold(theme.fg("accent", text)) : text, active));
 					}
 					output.push(border("├", "┤"));
@@ -155,7 +175,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 				return output;
 			},
 			invalidate() {},
-			dispose() { finished = true; },
+			dispose() { finished = true; clearInterval(refresh); },
 			handleInput(data: string) {
 				if (pending || finished) return;
 				const action = planActions.find(action => action.key === data);
@@ -165,7 +185,10 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					details = false;
 				} else if (!plans.length || !usable) return;
 				else if (action) {
-					if ((action.action === "do-it" || action.action === "run-here") && blockedLaunches.has(plans[selected]!.path)) return;
+					if (action.action === "do-it" || action.action === "run-here") {
+						if (blockedLaunches.has(plans[selected]!.path)) return;
+						if (activity(plans[selected]!)) { tui.requestRender(); return; }
+					}
 					if (action.action === "do-it" && options.launch) { void launch(); return; }
 					return finish(action.action);
 				}
@@ -205,7 +228,7 @@ export function archivePlan(plan: PlanRecord, root: string): string {
 	return destination;
 }
 
-export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<ExtensionAPI, "sendUserMessage">): Promise<void> {
+export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<ExtensionAPI, "sendUserMessage">, runtime = getPlanRunRuntime()): Promise<void> {
 	if (ctx.mode !== "tui") throw new Error("/plans requires interactive Pi terminal mode.");
 	const root = path.resolve(ctx.cwd ?? process.cwd());
 	let selected = 0;
@@ -219,9 +242,28 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 		if (selectedIndex >= 0) selected = selectedIndex;
 		const result = await ctx.ui.custom<Selection>((tui, theme, _keybindings, done) => planSelector(discovery.plans, selected, done, {
 			details, onViewChange: value => { details = value; }, blockedLaunches,
+			getRun: plan => runtime.store.get(plan.path),
 			launch: async plan => {
 				if (process.env.HERDR_ENV !== "1") throw new HerdrPiTabLaunchError("Plan execution from /plans requires a Herdr-managed Pi session.", { mayHaveLaunched: false });
-				return createHerdrPiTab(root, `do-it · ${plan.stub}`.slice(0, 80), undefined, plan.relativePath);
+				let run: PlanRun;
+				try { run = runtime.store.claim(plan.path, { pid: process.pid, state: "launching" }); }
+				catch (error) { throw new HerdrPiTabLaunchError(String(error), { mayHaveLaunched: false }); }
+				try {
+					const receipt = await createHerdrPiTab(root, `do-it · ${plan.stub}`.slice(0, 80), undefined, plan.relativePath, run.token);
+					// The child can adopt ownership before this response. Never overwrite its PID/state.
+					if (runtime.store.get(plan.path)?.token === run.token) runtime.store.update(plan.path, run.token, receipt);
+					return receipt;
+				} catch (error) {
+					if (error instanceof HerdrPiTabLaunchError && !error.mayHaveLaunched) runtime.store.release(plan.path, run.token);
+					else {
+						const current = runtime.store.get(plan.path);
+						if (current?.token === run.token && current.pid === process.pid) runtime.store.update(plan.path, run.token, {
+							state: "unknown",
+							...(error instanceof HerdrPiTabLaunchError ? { tabId: error.tabId, paneId: error.paneId } : {}),
+						});
+					}
+					throw error;
+				}
 			},
 		})(tui, theme), {
 			overlay: true, overlayOptions: { anchor: "center", width: "90%", maxHeight: "80%", margin: 1 },
@@ -237,7 +279,14 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 				await copyToClipboard(`/do-it ${plan.relativePath}`);
 				ctx.ui.notify(`Copied /do-it command for ${plan.stub}.`, "info");
 			} else if (result.action === "run-here") {
-				pi.sendUserMessage(`/do-it ${plan.relativePath}`, { expandPromptTemplates: true, deliverAs: "followUp" });
+				// Reserve before enqueueing, so another picker cannot win the same plan.
+				const run = runtime.store.claim(plan.path, { pid: process.pid, state: "waiting",
+					tabId: process.env.HERDR_TAB_ID, paneId: process.env.HERDR_PANE_ID,
+					sessionId: ctx.sessionManager?.getSessionId(),
+				});
+				runtime.track(run);
+				try { pi.sendUserMessage(`/do-it ${plan.relativePath}`, { expandPromptTemplates: true, deliverAs: "followUp" }); }
+				catch (error) { runtime.forget(run); throw error; }
 				return;
 			} else if (result.action === "archive") {
 				const destination = path.join(root, ".specs", "archive", plan.stub);
@@ -249,8 +298,10 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 }
 
 export default function plansCommand(pi: ExtensionAPI): void {
+	const runtime = getPlanRunRuntime();
+	registerPlanRunTracking(pi, runtime);
 	pi.registerCommand("plans", { description: "Browse open implementation plans", handler: async (args, ctx) => {
 		if (args.trim()) throw new Error("Usage: /plans");
-		await executePlans(ctx, pi);
+		await executePlans(ctx, pi, runtime);
 	} });
 }

@@ -1,7 +1,9 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { getPlanRunRuntime } from "../lib/plan-run-runtime.ts";
+import { PlanRunStore } from "../lib/plan-runs.ts";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import plansCommand, { archivePlan, executePlans, openPlanInCode, planSelector } from "../extensions/plans.ts";
 import { copyToClipboard } from "@earendil-works/pi-coding-agent";
@@ -16,6 +18,7 @@ vi.mock("@earendil-works/pi-coding-agent", async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(), copyToClipboard: vi.fn(),
 }));
 const roots: string[] = [];
+beforeEach(() => { vi.stubEnv("PI_CODING_AGENT_DIR", root()); });
 afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function root() { const value = mkdtempSync(join(tmpdir(), "plans ")); roots.push(value); return value; }
 function add(base: string, stub: string, body: string) { const dir = join(base, ".specs", stub); mkdirSync(dir, { recursive: true }); const file = join(dir, "plan.md"); writeFileSync(file, body); return file; }
@@ -268,7 +271,7 @@ it("runs here through the registered command with template expansion and closes 
   vi.stubEnv("HERDR_ENV", "0");
   const base = root(); add(base, "run-this", complete);
   const sendUserMessage = vi.fn(); const registerCommand = vi.fn();
-  plansCommand({ registerCommand, sendUserMessage } as any);
+  plansCommand({ registerCommand, sendUserMessage, on: vi.fn() } as any);
   const custom = vi.fn(async (factory: any) => {
     let value: any;
     const component = factory({ requestRender() {} }, testTheme(), {}, (result: any) => { value = result; });
@@ -298,7 +301,7 @@ it.each([false, true])("acknowledges a delayed launch, ignores repeats, and dism
   expect(createHerdrPiTab).not.toHaveBeenCalled();
   for (const key of ["d", "d", "\r", "r", "c", "o", "a", "q", "\x1b"]) component.handleInput(key);
   await nextTurn();
-  expect(createHerdrPiTab).toHaveBeenCalledExactlyOnceWith(base, "do-it · new-tab", undefined, ".specs/new-tab/plan.md");
+  expect(createHerdrPiTab).toHaveBeenCalledExactlyOnceWith(base, "do-it · new-tab", undefined, ".specs/new-tab/plan.md", expect.any(String));
   component.handleInput("d");
   expect(custom).toHaveBeenCalledOnce(); expect(notify).not.toHaveBeenCalled();
   completeLaunch({ tabId: "tab-test" }); await execution;
@@ -366,6 +369,97 @@ it("does not finish or redraw a disposed picker when a launch settles", async ()
   component.handleInput("d"); await nextTurn(); component.dispose(); requestRender.mockClear();
   resolveLaunch(); await nextTurn();
   expect(done).not.toHaveBeenCalled(); expect(requestRender).not.toHaveBeenCalled();
+});
+
+it.each([false, true])("shows live state without changing frontmatter and blocks both execution shortcuts (details=%s)", details => {
+  const base = root(); const file = add(base, "active", complete);
+  const plan = parsePlan(file, "active", base); const store = new PlanRunStore(join(root(), "runs"));
+  const run = store.claim(file, { pid: process.pid, state: "running", tabId: "w1:t9" });
+  const done = vi.fn(); const launch = vi.fn();
+  const component = planSelector([plan], 0, done, { details, launch, getRun: p => store.get(p.path) })({ requestRender() {} }, testTheme());
+  for (const state of ["running", "waiting", "blocked", "launching", "unknown"] as const) {
+    store.update(file, run.token, { state });
+    const output = component.render(100).join("\n");
+    expect(output).toContain(state); expect(output).toContain("w1:t9"); expect(output).toContain("Disabled");
+    component.handleInput("r"); component.handleInput("d");
+    expect(done).not.toHaveBeenCalled(); expect(launch).not.toHaveBeenCalled();
+  }
+  expect(plan.status).toBe("completed"); expect(readFileSync(file, "utf8")).toBe(complete);
+  component.handleInput("c"); expect(done).toHaveBeenCalledWith({ action: "copy", index: 0 });
+});
+
+it("rechecks ownership at keypress and allows execution again after release", () => {
+  const base = root(); const file = add(base, "active", complete); const plan = parsePlan(file, "active", base);
+  const store = new PlanRunStore(join(root(), "runs")); const done = vi.fn();
+  const component = planSelector([plan], 0, done, { getRun: p => store.get(p.path) })({ requestRender() {} }, testTheme());
+  component.render(100);
+  const run = store.claim(file, { pid: process.pid, state: "running", tabId: "other-tab" });
+  component.handleInput("r"); expect(done).not.toHaveBeenCalled();
+  store.release(file, run.token);
+  component.handleInput("r"); expect(done).toHaveBeenCalledWith({ action: "run-here", index: 0 });
+});
+
+it.each([[24, 18], [40, 18], [100, 35]])("keeps live status and disabled legends bounded at %i columns/%i rows", (width, rows) => {
+  const base = root(); const file = add(base, "active", complete); const plan = parsePlan(file, "active", base);
+  const store = new PlanRunStore(join(root(), "runs")); store.claim(file, { pid: process.pid, state: "running", tabId: "other-tab" });
+  for (const details of [false, true]) {
+    const component = planSelector([plan], 0, vi.fn(), { details, getRun: p => store.get(p.path) })({ requestRender() {}, terminal: { rows } }, testTheme());
+    const lines = component.render(width);
+    expect(lines.length).toBeLessThanOrEqual(Math.floor(rows * 0.8)); expect(lines.every(line => visibleWidth(line) <= width)).toBe(true);
+    expect(lines.join("\n")).toContain("Disabled"); component.dispose();
+  }
+});
+
+it("refreshes live state while open and stops refreshing on disposal", () => {
+  vi.useFakeTimers();
+  try {
+    const base = root(); const file = add(base, "active", complete); const plan = parsePlan(file, "active", base);
+    const requestRender = vi.fn();
+    const component = planSelector([plan], 0, vi.fn(), { getRun: () => undefined })({ requestRender }, testTheme());
+    vi.advanceTimersByTime(1000); expect(requestRender).toHaveBeenCalledOnce();
+    component.dispose(); vi.advanceTimersByTime(3000); expect(requestRender).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); }
+});
+
+it("fails closed when live execution state cannot be read", () => {
+  const base = root(); const plan = parsePlan(add(base, "active", complete), "active", base);
+  const done = vi.fn(); const component = planSelector([plan], 0, done, {
+    getRun() { throw new Error("Registry unreadable"); },
+  })({ requestRender() {} }, testTheme());
+  expect(component.render(100).join("\n")).toContain("Execution check failed");
+  component.handleInput("d"); component.handleInput("r"); expect(done).not.toHaveBeenCalled();
+  component.handleInput("q");
+});
+
+it("preserves run protection across fresh picker invocations", async () => {
+  const base = root(); const file = add(base, "active", complete);
+  getPlanRunRuntime().store.claim(file, { pid: process.pid, state: "running", tabId: "other-tab" });
+  const sendUserMessage = vi.fn();
+  const custom = vi.fn((factory: any) => new Promise(resolve => {
+    const picker = factory({ requestRender() {} }, testTheme(), {}, resolve);
+    expect(picker.render(100).join("\n")).toContain("running");
+    picker.handleInput("r"); picker.handleInput("d"); picker.handleInput("q");
+  }));
+  for (let count = 0; count < 2; count++) await executePlans({ mode: "tui", cwd: base, ui: { custom, notify: vi.fn() } } as any, { sendUserMessage });
+  expect(custom).toHaveBeenCalledTimes(2); expect(sendUserMessage).not.toHaveBeenCalled(); expect(createHerdrPiTab).not.toHaveBeenCalled();
+});
+
+it("reserves before async tab submission so two open pickers cannot launch the same plan", async () => {
+  vi.stubEnv("HERDR_ENV", "1"); const base = root(); add(base, "active", complete);
+  let finishLaunch!: (value: { tabId: string }) => void;
+  vi.mocked(createHerdrPiTab).mockReturnValue(new Promise(resolve => { finishLaunch = resolve; }));
+  const pickers: Picker[] = []; const sendUserMessage = vi.fn();
+  const custom = vi.fn((factory: any) => new Promise(resolve => {
+    const picker = factory({ requestRender() {} }, testTheme(), {}, resolve);
+    pickers.push(picker); picker.handleInput("d");
+  }));
+  const ctx = { mode: "tui", cwd: base, ui: { custom, notify: vi.fn() } } as any;
+  const first = executePlans(ctx, { sendUserMessage }); const second = executePlans(ctx, { sendUserMessage });
+  await nextTurn();
+  expect(createHerdrPiTab).toHaveBeenCalledOnce();
+  pickers[1]!.handleInput("d"); pickers[1]!.handleInput("r"); pickers[1]!.handleInput("q");
+  await second; finishLaunch({ tabId: "new-tab" }); await first;
+  expect(createHerdrPiTab).toHaveBeenCalledOnce(); expect(sendUserMessage).not.toHaveBeenCalled();
 });
 
 it("opens the exact plan path in VS Code without a shell", () => {

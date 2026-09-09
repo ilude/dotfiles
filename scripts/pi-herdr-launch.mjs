@@ -12,6 +12,9 @@ export function launchArguments(env = process.env) {
   const session = env.PI_HERDR_SESSION_FILE;
   if (session && (!isAbsolute(session) || !statSync(session).isFile())) throw new Error("Absolute existing branch session file required");
   const plan = env.PI_HERDR_PLAN_PATH;
+  const planToken = env.PI_HERDR_PLAN_RUN_TOKEN;
+  if (planToken && (!plan || !/^[a-f0-9-]{36}$/i.test(planToken))) throw new Error("A plan reservation requires a plan path and UUID token");
+  let planFile;
   if (session && plan) throw new Error("Session and plan launch inputs are mutually exclusive");
   let initialMessage;
   if (plan) {
@@ -22,6 +25,7 @@ export function launchArguments(env = process.env) {
     const resolved = realpathSync(file);
     const inside = relative(root, resolved);
     if (!inside || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) throw new Error("Plan path escapes launch cwd");
+    planFile = resolved;
     initialMessage = `/do-it ${plan}`;
   }
   const args = session ? ["--session", session] : initialMessage ? [initialMessage] : [];
@@ -33,12 +37,12 @@ export function launchArguments(env = process.env) {
       args.unshift("--no-tools", "--no-extensions");
     }
   }
-  return { profile: resolve(profile), args };
+  return { profile: resolve(profile), args, planFile, planToken };
 }
 export async function main() {
   const entry = process.argv[2];
   if (process.argv.length !== 3 || !entry || !isAbsolute(entry) || !existsSync(entry)) throw new Error("Expected setup-owned absolute Pi entrypoint");
-  const { profile, args } = launchArguments();
+  const { profile, args, planFile, planToken } = launchArguments();
   process.env.PI_CODING_AGENT_DIR = profile;
   if (process.env.PI_HERDR_SUBAGENT) {
     if (args.length) throw new Error("Restricted subagent launch cannot enter repair mode or resume an external session");
@@ -49,6 +53,14 @@ export async function main() {
   delete process.env.PI_HERDR_PROFILE_DIR;
   delete process.env.PI_HERDR_SESSION_FILE;
   delete process.env.PI_HERDR_PLAN_PATH;
+  delete process.env.PI_HERDR_PLAN_RUN_TOKEN;
+  delete process.env.PI_PLANS_LAUNCH_PLAN;
+  delete process.env.PI_PLANS_LAUNCH_TOKEN;
+  if (planFile && planToken) {
+    // Private one-use handoff consumed by the plan lifecycle extension at startup.
+    process.env.PI_PLANS_LAUNCH_PLAN = planFile;
+    process.env.PI_PLANS_LAUNCH_TOKEN = planToken;
+  }
   if (process.platform !== "win32") process.env.TMPDIR = "/tmp";
   // Herdr's preview can replace an exited focused terminal with a shell.
   // Explicitly retire only this plugin-owned pane at process exit instead.

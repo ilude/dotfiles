@@ -1,12 +1,16 @@
 ---
 created: 2026-09-09
-status: deferred
+status: retired
 completed: null
 ---
 
 # Legacy web-fetch path, error and connection correctness
 
-## Workstream disposition
+## Retirement disposition
+
+Archived at the operator's request after the default-profile scope review. This legacy-only repair is no longer queued. No fix was implemented or validated by this retirement; `completed` remains null and unfinished tasks remain unchecked. The following proposal and earlier handoff are retained as historical evidence, not current execution instructions. This disposition supersedes their earlier directions to defer without archiving. Resumption requires a separately requested scope.
+
+## Workstream disposition (historical)
 
 Deferred by the operator's default-profile scope correction. The demonstrated defects and retained proposal below concern legacy only; they are not part of the current default workstream or prerequisites for its plans. Preserve this plan as unfinished, not completed or archived. Its tasks/checks are inactive until legacy work is separately requested and the plan is revalidated. No implementation or live fetch is authorized by the current plan-correction request.
 

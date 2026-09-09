@@ -26,6 +26,19 @@ it("constructs a constrained do-it message for a direct-child plan", () => {
   const run = spawnSync(process.execPath, [resolve("../../../scripts/pi-herdr-launch.mjs"), entry], { cwd: root, env: { ...process.env, PI_HERDR_PROFILE_DIR: profile, PI_HERDR_SESSION_FILE: "", PI_HERDR_PLAN_PATH: ".specs/space-plan/plan.md", HERDR_PLUGIN_ID: "" }, encoding: "utf8" });
   expect(run.status, run.stderr).toBe(0); expect(JSON.parse(run.stdout)).toEqual({ args: ["/do-it .specs/space-plan/plan.md"] });
 });
+it("hands a validated reservation to the child without leaking launcher inputs", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr reserved plan ")); roots.push(root);
+  const profile = join(root, "fixture"); mkdirSync(profile);
+  const file = join(root, ".specs", "owned", "plan.md"); mkdirSync(join(root, ".specs", "owned"), { recursive: true }); writeFileSync(file, "# Plan");
+  const token = "c49d3dd5-d769-4e37-a4a7-f147c1d2b02d";
+  const entry = join(root, "entry.mjs"); writeFileSync(entry, "console.log(JSON.stringify({args:process.argv.slice(2),plan:process.env.PI_PLANS_LAUNCH_PLAN,token:process.env.PI_PLANS_LAUNCH_TOKEN,leaked:process.env.PI_HERDR_PLAN_RUN_TOKEN}))");
+  const run = spawnSync(process.execPath, [resolve("../../../scripts/pi-herdr-launch.mjs"), entry], {
+    cwd: root, env: { ...process.env, PI_HERDR_PROFILE_DIR: profile, PI_HERDR_SESSION_FILE: "", PI_HERDR_PLAN_PATH: ".specs/owned/plan.md", PI_HERDR_PLAN_RUN_TOKEN: token, HERDR_PLUGIN_ID: "" }, encoding: "utf8",
+  });
+  expect(run.status, run.stderr).toBe(0);
+  expect(JSON.parse(run.stdout)).toEqual({ args: ["/do-it .specs/owned/plan.md"], plan: file, token });
+});
+
 it.each(["../plan.md", ".specs/archive/old/plan.md", ".specs/missing/plan.md"])("rejects unsafe plan launch input: %s", plan => {
   const root = mkdtempSync(join(tmpdir(), "herdr unsafe ")); roots.push(root); const profile = join(root, "fixture"); mkdirSync(profile);
   const entry = join(root, "entry.mjs"); writeFileSync(entry, "");

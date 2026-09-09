@@ -8,11 +8,12 @@ These plans can start concurrently in separate worktrees after execution authori
 
 | Priority | Plan | Starting requirements |
 | --- | --- | --- |
-| 1 | [Damage Control bypass](default-damage-control-bypass/plan.md) | Default policy boundary; no prerequisite plan. |
 | 2 | [Command invocation ownership](default-command-invocation-ownership/plan.md) | Default invocation/tool authority; no prerequisite plan. |
 | 3 | [Subagent cleanup failures](default-subagent-cleanup-failures/plan.md) | Default process/pane cleanup error handling; no prerequisite plan. Not a live orphan-removal task. |
 | 4 | [Onclave delivery reliability](onclave-delivery-reliability/plan.md) | Included because default loads this adapter. Use its owning module worktree and repository preflight. |
 | 5 | [Bedrock baseline create-once](bedrock-baseline-create-once/plan.md) | Default accounting mutation boundary; no prerequisite plan. |
+
+Already completed and archived: [Damage Control bypass](archive/default-damage-control-bypass/plan.md).
 
 ## Work requiring predecessor code
 
@@ -22,21 +23,16 @@ Finish and merge cleanup first. Before UX implementation starts, create its work
 
 UX can then run alongside any still-active independent plans above. Shared documentation edits alone are merge coordination, not implementation dependencies.
 
-## DRY draft: scope reassessment before implementation
+## Retired and archived
 
-The existing [DRY plan](pi-stateless-extension-deduplication/plan.md) remains at its current path, but is now a default-only draft. Its previous cross-profile extraction tasks and legacy truncation work are withdrawn. No new plan set or replacement refactoring requirements are implied.
+At the operator's request, these plans are archived as `retired`, not completed. Their findings and unfinished tasks are preserved, but none remains queued or a prerequisite for default work:
 
-The next step is a bounded review of actual default-local benefit. This read-only planning work may run alongside the correctness plans. Before any refactor is made executable, name its exact source/contract overlap and required predecessor commits. There are no blanket prerequisites on command ownership, Bedrock baseline, legacy web-fetch or legacy task evidence. If a selected refactor changes subagent runtime code, sequence it after the owning cleanup/UX work rather than implementing against stale contracts. No concrete refactor has been selected by this scope correction.
+- [Legacy web-fetch correctness](archive/legacy-web-fetch-correctness/plan.md): legacy-only fetch repair.
+- [Legacy task-completion evidence](archive/legacy-task-completion-evidence/plan.md): legacy-only task parser repair.
+- [Herdr state-delivery consolidation](archive/herdr-state-delivery-consolidation/plan.md): the demonstrated unbounded queue was legacy-only; default already coalesces pending state. The generated default reporter remains unchanged, with no ownership question blocking this workstream.
+- [Stateless extension deduplication](archive/pi-stateless-extension-deduplication/plan.md): cross-profile extraction was withdrawn and no concrete default-local refactor was selected. Its proposed reassessment is no longer queued.
 
-## Deferred, outside this workstream
-
-These plans are preserved, not deleted, completed or queued for default implementation:
-
-- [Legacy web-fetch correctness](legacy-web-fetch-correctness/plan.md).
-- [Legacy task-completion evidence](legacy-task-completion-evidence/plan.md).
-- [Herdr state-delivery consolidation](herdr-state-delivery-consolidation/plan.md). The demonstrated unbounded queue was legacy-only; default already coalesces pending state. No default defect justifies this consolidation, and the generated default reporter remains unchanged. There is no Herdr ownership question blocking this workstream.
-
-Resuming any deferred plan requires a separately requested scope, not completion of a default prerequisite.
+Retirement does not claim implementation or validation. Resuming any of these requires a separately requested scope, not completion of a default prerequisite.
 
 ## Worktree and integration rules
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-09: Prevent duplicate plan execution across Pi tabs
+
+**Changed:** `/plans` now overlays live execution status and the owning tab/process on the saved plan metadata. Both run shortcuts are disabled for owned plans in Browse and Details, including after reopening the picker. Atomic profile-local reservations also close the race between two already-open pickers; tab creation and current-instance queueing reserve before submitting work.
+
+**Lifecycle:** New tabs adopt a token-bound reservation. Actual prompt delivery marks work running, rather than assuming a created tab or a prequeue input event means execution started. Waiting and blocked work remain protected. Settled completion/archival, session replacement/exit, and confirmed dead owners release ownership; reload preserves it. Uncertain launches and unreadable state fail closed. Plan frontmatter, copy/open actions, and existing archive eligibility remain unchanged.
+
+**Scope and checks:** Tracking requires the updated extension before launch and covers `/plans` plus observed explicit direct-child `/do-it` paths. Older untracked runs, implicit selectors, other profiles, and separate worktree copies are not inferred or globally locked. Tests cover filesystem claims, lifecycle and queue semantics, and UI guards. Isolated native Pi/Herdr acceptance uses a deterministic loopback model response to verify real startup, running/waiting status, duplicate suppression, and process-death cleanup without executing a real plan.
+
 ## 2026-09-09: Preserve subagent ownership through cleanup failures
 
 **Fixed:** Default subagent assignment outcomes are now recorded separately from process and visible-pane cleanup. Failed termination or pane closure remains observable with bounded cleanup errors and can be retried without losing the owned child.

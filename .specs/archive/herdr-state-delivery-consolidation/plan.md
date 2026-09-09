@@ -1,12 +1,16 @@
 ---
 created: 2026-09-09
-status: deferred
+status: retired
 completed: null
 ---
 
 # Bound Herdr state delivery without losing integration ownership
 
-## Workstream disposition
+## Retirement disposition
+
+Archived at the operator's request after the default-profile scope review. The demonstrated queue defect belongs to legacy; default already coalesces pending state and its generated reporter remains unchanged. No consolidation was implemented or validated by this retirement; `completed` remains null and unfinished tasks remain unchecked. The following proposal and earlier handoff are historical evidence, not current execution instructions. This disposition supersedes their earlier directions to defer without archiving. Resumption requires a separately requested scope; no ownership decision blocks default work.
+
+## Workstream disposition (historical)
 
 Deferred and removed from the default-profile execution order by operator scope correction. The demonstrated unbounded queue is in legacy; default already coalesces pending state. No default defect was established that requires this consolidation. Keep the generated default reporter and its ownership unchanged.
 

@@ -1,12 +1,16 @@
 ---
 created: 2026-09-09
-status: deferred
+status: retired
 completed: null
 ---
 
 # Preserve evidence in legacy task completion commands
 
-## Workstream disposition
+## Retirement disposition
+
+Archived at the operator's request after the default-profile scope review. This legacy-only repair is no longer queued. No fix was implemented or validated by this retirement; `completed` remains null and unfinished tasks remain unchecked. The following proposal and earlier handoff are retained as historical evidence, not current execution instructions. This disposition supersedes their earlier directions to defer without archiving. Resumption requires a separately requested scope.
+
+## Workstream disposition (historical)
 
 Deferred by the operator's default-profile scope correction. This is a legacy-only defect and is neither active default work nor a prerequisite for default refactoring. Retain the proposal and evidence without deleting, completing or archiving the plan. The tasks/checks below are inactive until legacy work is separately requested and the plan is revalidated. The current request authorizes only plan corrections.
 

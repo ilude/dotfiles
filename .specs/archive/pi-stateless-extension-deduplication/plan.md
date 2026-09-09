@@ -1,12 +1,16 @@
 ---
 created: 2026-09-09
-status: draft
+status: retired
 completed: null
 ---
 
 # Reassess DRY opportunities within the default profile
 
-## Goal and scope
+## Retirement disposition
+
+Archived at the operator's request after the default-profile scope review. Cross-profile extraction was withdrawn and no concrete default-local refactor was selected. The proposed reassessment is no longer queued. No refactor or reassessment was completed by this retirement; `completed` remains null and unfinished tasks remain unchecked. All sections below preserve the former draft as historical context, not current execution instructions. This disposition supersedes its earlier direction to remain unarchived pending reassessment. Resumption requires a separately requested scope.
+
+## Goal and scope (historical)
 
 Correct the existing DRY draft to the operator's default-profile workstream. Select refactoring only where inspection establishes a concrete benefit to `pi/profiles/default/` without changing its behavior. This is the same plan at the same path, not a new plan set.
 
