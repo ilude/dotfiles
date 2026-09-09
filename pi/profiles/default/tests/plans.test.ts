@@ -2,22 +2,28 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { visibleWidth } from "@earendil-works/pi-tui";
-import { archivePlan, executePlans, openPlanInCode, planSelector } from "../extensions/plans.ts";
+import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
+import plansCommand, { archivePlan, executePlans, openPlanInCode, planSelector } from "../extensions/plans.ts";
+import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { discoverPlans, parsePlan } from "../lib/plans.ts";
 import { spawnSync } from "node:child_process";
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
+vi.mock("@earendil-works/pi-coding-agent", async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(), copyToClipboard: vi.fn(),
+}));
 const roots: string[] = [];
 afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function root() { const value = mkdtempSync(join(tmpdir(), "plans ")); roots.push(value); return value; }
 function add(base: string, stub: string, body: string) { const dir = join(base, ".specs", stub); mkdirSync(dir, { recursive: true }); const file = join(dir, "plan.md"); writeFileSync(file, body); return file; }
 const complete = `---\nstatus: completed\ncompleted: 2026-09-09\n---\n# Zebra\n\n## Goal and scope\n\n- Ship the selector.\n\n## Tasks\n- [x] First\n- [x] Second\n\n## Current handoff\nDone.\n`;
+const testTheme = (bg = vi.fn((_: string, value: string) => value)) => ({ bold: (x:string)=>x, fg: (_:string,x:string)=>x, bg });
 
-it("discovers direct active plans, parses summaries and sorts by title", () => {
-  const base = root(); add(base, "z", complete); add(base, "a", complete.replace("Zebra", "Alpha").replace("[x] Second", "[ ] Next"));
+it("discovers direct active plans, parses summaries and sorts by stub", () => {
+  const base = root(); add(base, "z", complete.replace("Zebra", "Alpha")); add(base, "a", complete.replace("[x] Second", "[ ] Next"));
   add(base, "archive/old", complete); add(base, "deep/nested", complete);
   const found = discoverPlans(base);
-  expect(found.errors).toEqual([]); expect(found.plans.map(p => p.title)).toEqual(["Alpha", "Zebra"]);
+  expect(found.errors).toEqual([]); expect(found.plans.map(p => p.stub)).toEqual(["a", "z"]);
+  expect(found.plans.map(p => p.title)).toEqual(["Zebra", "Alpha"]);
   expect(found.plans[0]).toMatchObject({ description: "Ship the selector.", status: "completed", tasks: { total: 2, checked: 1 }, firstUnchecked: "Next" });
 });
 
@@ -29,17 +35,145 @@ it("keeps malformed plans visible with bounded warnings", () => {
 
 it("renders width-safe rows and dispatches only approved keys", () => {
   const base = root(); const plans = [parsePlan(add(base, "a", complete.replace("Zebra", "A".repeat(100))), "a", base), parsePlan(add(base, "b", complete), "b", base)];
-  const done = vi.fn(); const render = vi.fn(); const theme = { bold: (x:string)=>x, fg: (_:string,x:string)=>x };
+  const done = vi.fn(); const render = vi.fn(); const theme = testTheme();
   const component = planSelector(plans, 0, done)({ requestRender: render }, theme);
   component.handleInput("\x1b[B"); component.handleInput("\r");
   expect(component.render(32).every(value => visibleWidth(value) <= 32)).toBe(true);
-  for (const key of ["D", "r", "v"]) component.handleInput(key);
+  for (const key of ["D", "R", "v"]) component.handleInput(key);
   expect(done).not.toHaveBeenCalled();
   component.handleInput("d"); expect(done).toHaveBeenCalledWith({ action: "do-it", index: 1 });
 });
 
+it("gates list actions until Enter and aligns the list columns", () => {
+  const base = root();
+  const plans = [parsePlan(add(base, "alpha", complete.replace("Zebra", "Alpha")), "alpha", base), parsePlan(add(base, "beta", complete.replace("Zebra", "Beta")), "beta", base)];
+  const bg = vi.fn((_: string, value: string) => value);
+  const done = vi.fn();
+  const component = planSelector(plans, 1, done)({ requestRender() {}, terminal: { rows: 24 } }, testTheme(bg));
+  const rows = component.render(80);
+  expect(rows.every(row => visibleWidth(row) === 80)).toBe(true);
+  expect(rows.map(stripTerminalSequences).join("\n")).toMatch(/Spec stub\s+Status\s+Tasks/);
+  const planRows = rows.filter(row => /(?:alpha|beta)\s+completed/.test(row));
+  expect(planRows).toHaveLength(2);
+  expect(planRows[0]!.indexOf("completed")).toBe(planRows[1]!.indexOf("completed"));
+  expect(bg).toHaveBeenCalledWith("selectedBg", expect.stringContaining("▶ beta"));
+  expect(visibleWidth(bg.mock.calls.find(([color]) => color === "selectedBg")![1])).toBe(78);
+  for (const key of ["o", "c", "r", "d", "a"]) component.handleInput(key);
+  expect(done).not.toHaveBeenCalled();
+  component.handleInput("\r"); component.handleInput("o");
+  expect(done).toHaveBeenCalledWith({ action: "open", index: 1 });
+});
+
+it.each([40, 100])("maps duplicate titles to their directory stubs in a %i-column list", width => {
+  const base = root();
+  const plans = ["alpha-fix", "beta-fix"].map(stub => parsePlan(add(base, stub, complete), stub, base));
+  const done = vi.fn();
+  const component = planSelector(plans, 0, done)({ requestRender() {}, terminal: { rows: 35 } }, testTheme());
+  const first = component.render(width).join("\n");
+  expect(first).toContain("▶ alpha-fix");
+  expect(first).toContain("beta-fix");
+  expect(first).toContain("Zebra");
+  expect(first).toContain(".specs/alpha-fix/");
+  expect(first).toContain("Ship the selector.");
+  expect(first).not.toContain(".specs/beta-fix/");
+  component.handleInput("\x1b[B");
+  const second = component.render(width).join("\n");
+  expect(second).toContain("▶ beta-fix");
+  expect(second).toContain(".specs/beta-fix/");
+  expect(second).not.toContain(".specs/alpha-fix/");
+  component.handleInput("\r"); component.handleInput("o");
+  expect(done).toHaveBeenCalledWith({ action: "open", index: 1 });
+});
+
+it("enters details, preserves selection on Esc, and exposes detail actions", () => {
+  const base = root();
+  const plans = [parsePlan(add(base, "alpha", complete.replace("Zebra", "Alpha")), "alpha", base), parsePlan(add(base, "beta", complete.replace("Zebra", "Beta")), "beta", base)];
+  const done = vi.fn();
+  const component = planSelector(plans, 0, done)({ requestRender() {}, terminal: { rows: 24 } }, testTheme());
+  component.handleInput("\x1b[B"); component.handleInput("\r");
+  const details = component.render(64).map(stripTerminalSequences).join("\n");
+  expect(details).toContain("Open in VS Code"); expect(details).toContain("Copy command");
+  expect(details).toContain("Run here"); expect(details).toContain("Run in new tab"); expect(details).toContain("Archive");
+  expect(details).toContain("Beta"); expect(details).not.toContain("Alpha");
+  component.handleInput("\x1b"); component.handleInput("d");
+  expect(done).not.toHaveBeenCalled();
+  expect(component.render(64).join("\n")).toContain("▶ beta");
+  component.handleInput("\r"); component.handleInput("d");
+  expect(done).toHaveBeenCalledWith({ action: "do-it", index: 1 });
+});
+
+it("scrolls details without changing plan selection and remains width safe", () => {
+  const base = root(); const plan = parsePlan(add(base, "long", complete), "long", base);
+  plan.description = Array.from({ length: 80 }, (_, i) => `description-word-${i}`).join(" ");
+  const done = vi.fn(); const tui = { requestRender: vi.fn(), terminal: { rows: 24 } };
+  const component = planSelector([plan], 0, done)(tui, testTheme()); component.handleInput("\r");
+  const before = component.render(36).join("\n"); component.handleInput("\x1b[B"); const after = component.render(36).join("\n");
+  expect(after).not.toBe(before); expect(component.render(36).every(row => visibleWidth(row) <= 36)).toBe(true);
+  let seen = before + after;
+  for (let index = 0; index < 100; index++) { component.handleInput("\x1b[B"); seen += component.render(36).join("\n"); }
+  expect(seen).toContain("description-word-79");
+  expect(component.render(36).join("\n")).toContain("Open in VS Code");
+  expect(component.render(36).join("\n")).toContain("Esc Back");
+  expect(component.render(36).length).toBeLessThanOrEqual(19);
+  component.handleInput("d"); expect(done).toHaveBeenCalledWith({ action: "do-it", index: 0 });
+});
+
+it.each([[24, 18], [40, 18], [100, 35]])("keeps a readable shortcut legend visible at %i columns and %i rows", (width, rows) => {
+  const base = root(); const plan = parsePlan(add(base, "example", complete), "example", base);
+  const plans = Array.from({ length: 30 }, (_, index) => ({ ...plan, stub: `spec-${index}` }));
+  const theme = { ...testTheme(), fg: vi.fn((_: string, value: string) => value) };
+  const done = vi.fn();
+  const component = planSelector(plans, 29, done)({ requestRender() {}, terminal: { rows } }, theme);
+  const rendered = component.render(width);
+  const text = rendered.map(line => stripTerminalSequences(line).slice(2, -2).trim()).join(" ");
+  expect(text).toContain("▶ spec-29");
+  expect(text).toContain("↑↓ Select · Enter Details · Esc/q Close");
+  expect(text).toContain("In details: o VS Code · c Copy command · r Run here · d Run in new tab · a Archive");
+  expect(rendered.length).toBeLessThanOrEqual(Math.floor(rows * 0.8));
+  expect(rendered.every(line => visibleWidth(line) <= width)).toBe(true);
+  expect(theme.fg).toHaveBeenCalledWith("text", expect.stringContaining("In details:"));
+  for (const key of ["o", "c", "r", "d", "a"]) component.handleInput(key);
+  expect(done).not.toHaveBeenCalled();
+});
+
+it("keeps the selected plan visible in a short list viewport", () => {
+  const base = root(); const plans = Array.from({ length: 12 }, (_, i) => {
+    const title = `Plan ${String(i).padStart(2, "0")}`; return parsePlan(add(base, `p${i}`, complete.replace("Zebra", title)), `p${i}`, base);
+  });
+  const tui = { requestRender() {}, terminal: { rows: 18 } };
+  const component = planSelector(plans, 0, vi.fn())(tui, testTheme());
+  for (let index = 0; index < 11; index++) { component.handleInput("\x1b[B"); component.render(40); }
+  const rendered = component.render(40).map(stripTerminalSequences).join("\n");
+  expect(rendered).toContain("▶ p11"); expect(rendered).not.toContain("Plan 00");
+  expect(rendered).toContain("Enter Details");
+  expect(component.render(40).length).toBeLessThanOrEqual(14);
+  tui.terminal.rows = 30;
+  expect(component.render(80).join("\n")).toContain("▶ p11");
+});
+
+it.each([[24, 18], [32, 24], [80, 35], [20, 10]])("fits a %i-column, %i-row terminal", (width, rows) => {
+  const base = root(); const stub = "long-spec-".repeat(8);
+  const plan = parsePlan(add(base, stub, complete.replace("Zebra", "界面 ".repeat(40))), stub, base);
+  const done = vi.fn();
+  const component = planSelector([plan], 0, done)({ requestRender() {}, terminal: { rows } }, testTheme());
+  for (let view = 0; view < 2; view++) {
+    const rendered = component.render(width);
+    expect(rendered.length).toBeLessThanOrEqual(Math.floor(rows * 0.8));
+    expect(rendered.every(row => visibleWidth(row) <= width)).toBe(true);
+    if (width >= 32 && view === 0) expect(rendered.join("\n")).toContain("Tasks");
+    component.handleInput("\r");
+  }
+  component.handleInput("q"); expect(done).toHaveBeenCalledWith({ action: "close", index: 0 });
+});
+
+it.each(["rpc", "json", "print"])("rejects %s mode without opening terminal UI", async mode => {
+  const custom = vi.fn();
+  await expect(executePlans({ mode, ui: { custom } } as any, { sendUserMessage: vi.fn() })).rejects.toThrow("interactive Pi terminal mode");
+  expect(custom).not.toHaveBeenCalled();
+});
+
 it("renders an empty closable state", () => {
-  const done = vi.fn(); const theme = { bold: (x:string)=>x, fg: (_:string,x:string)=>x };
+  const done = vi.fn(); const theme = testTheme();
   const component = planSelector([], 0, done)({ requestRender() {} }, theme);
   expect(component.render(80).join("\n")).toContain("No open plans"); component.handleInput("q");
   expect(done).toHaveBeenCalledWith({ action: "close", index: 0 });
@@ -50,10 +184,13 @@ it("refuses do-it outside Herdr without launching a fallback", async () => {
   const base = root(); add(base, "ready", complete); let calls = 0;
   const notify = vi.fn();
   const custom = vi.fn(async (factory: any) => {
-    let value: any; const component = factory({ requestRender() {} }, { bold:(x:string)=>x, fg:(_:string,x:string)=>x }, {}, (result:any) => { value = result; });
-    component.handleInput(calls++ === 0 ? "d" : "q"); return value;
+    let value: any; const component = factory({ requestRender() {}, terminal: { rows: 24 } }, testTheme(), {}, (result:any) => { value = result; });
+    if (calls++ === 0) { component.handleInput("\r"); component.handleInput("d"); }
+    else { expect(component.render(80).join("\n")).toContain("Plans · Details"); component.handleInput("q"); }
+    return value;
   });
-  await executePlans({ cwd: base, ui: { custom, notify, confirm: vi.fn() } } as any);
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify, confirm: vi.fn() } } as any, { sendUserMessage: vi.fn() });
+  expect(custom).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ overlay: true }));
   expect(notify).toHaveBeenCalledWith("Plan execution from /plans requires a Herdr-managed Pi session.", "error");
   expect(spawnSync).not.toHaveBeenCalled();
 });
@@ -61,11 +198,80 @@ it("refuses do-it outside Herdr without launching a fallback", async () => {
 it("cancels archive without changing the plan", async () => {
   const base = root(); const file = add(base, "done", complete); let calls = 0;
   const custom = vi.fn(async (factory: any) => {
-    let value: any; const component = factory({ requestRender() {} }, { bold:(x:string)=>x, fg:(_:string,x:string)=>x }, {}, (result:any) => { value = result; });
-    component.handleInput(calls++ === 0 ? "a" : "q"); return value;
+    let value: any; const component = factory({ requestRender() {}, terminal: { rows: 24 } }, testTheme(), {}, (result:any) => { value = result; });
+    if (calls++ === 0) { component.handleInput("\r"); component.handleInput("a"); } else component.handleInput("q");
+    return value;
   });
-  await executePlans({ cwd: base, ui: { custom, notify: vi.fn(), confirm: vi.fn(async () => false) } } as any);
+  const confirm = vi.fn(async () => false);
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify: vi.fn(), confirm } } as any, { sendUserMessage: vi.fn() });
+  expect(confirm).toHaveBeenCalledOnce();
   expect(readFileSync(file, "utf8")).toContain("status: completed");
+});
+
+it("copies the exact do-it command without running or launching it", async () => {
+  vi.stubEnv("HERDR_ENV", "0");
+  const base = root(); add(base, "copy-this", complete); let calls = 0;
+  const notify = vi.fn(); const sendUserMessage = vi.fn();
+  vi.mocked(copyToClipboard).mockResolvedValue(undefined);
+  const custom = vi.fn(async (factory: any) => {
+    let value: any;
+    const component = factory({ requestRender() {}, terminal: { rows: 35 } }, testTheme(), {}, (result: any) => { value = result; });
+    if (calls++ === 0) { component.handleInput("\r"); component.handleInput("c"); }
+    else { expect(component.render(100).join("\n")).toContain("Plans · Details"); component.handleInput("q"); }
+    return value;
+  });
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify } } as any, { sendUserMessage });
+  expect(copyToClipboard).toHaveBeenCalledExactlyOnceWith("/do-it .specs/copy-this/plan.md");
+  expect(notify).toHaveBeenCalledWith("Copied /do-it command for copy-this.", "info");
+  expect(sendUserMessage).not.toHaveBeenCalled(); expect(spawnSync).not.toHaveBeenCalled();
+});
+
+it("reports a clipboard failure without claiming success or executing", async () => {
+  const base = root(); add(base, "copy-this", complete); let calls = 0;
+  const notify = vi.fn(); const sendUserMessage = vi.fn();
+  vi.mocked(copyToClipboard).mockRejectedValue(new Error("Clipboard unavailable"));
+  const custom = vi.fn(async (factory: any) => {
+    let value: any;
+    const component = factory({ requestRender() {} }, testTheme(), {}, (result: any) => { value = result; });
+    if (calls++ === 0) { component.handleInput("\r"); component.handleInput("c"); } else component.handleInput("q");
+    return value;
+  });
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify } } as any, { sendUserMessage });
+  expect(notify).toHaveBeenCalledExactlyOnceWith("Clipboard unavailable", "error");
+  expect(sendUserMessage).not.toHaveBeenCalled(); expect(spawnSync).not.toHaveBeenCalled();
+});
+
+it("runs here through the registered command with template expansion and closes the picker", async () => {
+  vi.stubEnv("HERDR_ENV", "0");
+  const base = root(); add(base, "run-this", complete);
+  const sendUserMessage = vi.fn(); const registerCommand = vi.fn();
+  plansCommand({ registerCommand, sendUserMessage } as any);
+  const custom = vi.fn(async (factory: any) => {
+    let value: any;
+    const component = factory({ requestRender() {} }, testTheme(), {}, (result: any) => { value = result; });
+    component.handleInput("\r"); component.handleInput("r"); return value;
+  });
+  await registerCommand.mock.calls[0]![1].handler("", { mode: "tui", cwd: base, ui: { custom, notify: vi.fn() } });
+  expect(sendUserMessage).toHaveBeenCalledExactlyOnceWith("/do-it .specs/run-this/plan.md", { expandPromptTemplates: true, deliverAs: "followUp" });
+  expect(custom).toHaveBeenCalledOnce();
+  expect(copyToClipboard).not.toHaveBeenCalled(); expect(spawnSync).not.toHaveBeenCalled();
+});
+
+it("keeps d as a focused new-tab launch without sending to the current instance", async () => {
+  vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_WORKSPACE_ID", "test-workspace");
+  const base = root(); add(base, "new-tab", complete); let calls = 0;
+  vi.mocked(spawnSync).mockReturnValue({ status: 0, stdout: JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "tab-test" } } } }) } as any);
+  const sendUserMessage = vi.fn(); const notify = vi.fn();
+  const custom = vi.fn(async (factory: any) => {
+    let value: any;
+    const component = factory({ requestRender() {} }, testTheme(), {}, (result: any) => { value = result; });
+    if (calls++ === 0) { component.handleInput("\r"); component.handleInput("d"); } else component.handleInput("q");
+    return value;
+  });
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify } } as any, { sendUserMessage });
+  expect(spawnSync).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining(["--placement", "tab", "PI_HERDR_PLAN_PATH=.specs/new-tab/plan.md", "--focus"]), expect.objectContaining({ cwd: base }));
+  expect(notify).toHaveBeenCalledWith("Opened /do-it for new-tab in a Herdr Pi tab.", "info");
+  expect(sendUserMessage).not.toHaveBeenCalled(); expect(copyToClipboard).not.toHaveBeenCalled();
 });
 
 it("opens the exact plan path in VS Code without a shell", () => {

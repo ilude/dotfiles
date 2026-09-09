@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-09: Separate plan browsing from plan actions
+
+**Changed:** Default Pi's `/plans` now uses a framed, padded overlay with full-row selection highlighting, aligned status and task columns, and height-bounded scrolling. List entries are labeled and sorted by `.specs/` directory stub rather than prose title; the selected preview shows the human-readable title, directory path, and summary to make the mapping explicit. Enter opens a separate details screen with Open in VS Code, Copy command, Run here, Run in new tab, and Archive actions. `c` copies `/do-it .specs/<stub>/plan.md` without executing it; `r` closes the picker and submits that command in the current instance with native template expansion, queuing behind any active work; `d` retains the focused Herdr new-tab launch. Both views clearly distinguish the two execution destinations. The high-contrast browse legend advertises these details-only shortcuts alongside navigation; cramped layouts reduce preview text and metadata before clipping controls. Esc returns to the selected list row; `q` closes either view. The temporary picker does not become transcript content, and action errors or archive cancellation return to the same plan's details.
+
+**Preserved:** Exact plan selectors, archive eligibility checks and confirmation, and legacy behavior remain unchanged. New-tab execution remains Herdr-only with no terminal fallback; copying and running here do not require Herdr. Terminals too small for the controls show a closable resize notice. Non-terminal modes reject the picker instead of attempting unsupported custom UI.
+
 ## 2026-09-09: Separate plan authoring from execution
 
 **Changed:** The default planning skill now only creates, reviews, and explicitly revises standalone implementation plans. Plans preserve user intent for fresh-context Sol execution at low reasoning while leaving routine technical mechanisms flexible and keeping consequential decisions in planning.

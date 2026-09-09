@@ -86,7 +86,7 @@ export function discoverPlans(root: string): PlanDiscovery {
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") errors.push(`${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
-	plans.sort((a, b) => a.title.localeCompare(b.title) || a.stub.localeCompare(b.stub));
+	plans.sort((a, b) => a.stub.localeCompare(b.stub));
 	return { plans, errors };
 }
 
