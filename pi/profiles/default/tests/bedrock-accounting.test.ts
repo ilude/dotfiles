@@ -31,6 +31,7 @@ describe("Bedrock accounting", () => {
 		const principal = parseCaller(JSON.stringify({ Arn: "arn:aws:iam::058264305403:user/mike.glenn" }));
 		const row = [[{ field: "userArn", value: principal }, { field: "estimatedCost", value: "2.50" }, { field: "invocations", value: "4" }]];
 		const baseline = parseResults(JSON.stringify({ status: "Complete", results: row }), principal, capturedAt.toISOString()).baseline!; await writeBaseline(baseline);
-		const summary = await summarize(baseline.month); expect(summary.baseline).toBe(2.5); expect(summary.records.map(record => record.id)).toEqual([after.id]); expect(formatUsage(summary)).toContain("Personal CloudWatch estimate");
+		const summary = await summarize(baseline.month); expect(summary.baseline).toBe(2.5); expect(summary.records.map(record => record.id)).toEqual([after.id]);
+		expect(formatUsage(summary)).toBe("Bedrock local estimate:\n  CloudWatch baseline: $2.50 (4 invocation(s))\n  Total:  $2.50");
 	});
 });

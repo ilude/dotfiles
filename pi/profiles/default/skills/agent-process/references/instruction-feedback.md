@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-021 - Preserve plan authority during discussion and execution
+
+- **Reference:** Operator correction after Damage Control execution reopened a settled watchdog decision and treated worktree-local credentials as a new setup prerequisite.
+- **Finding:** The assistant rewrote an existing plan after a question about what a plan would look like, then treated that draft as authority over recorded operator decisions. Existing guidance already prohibited invented requirements; the failure was applying it at the discussion-to-execution boundary.
+- **Decision:** Operator approved one planning-skill rule: questions do not authorize rewriting existing plans; execution may update progress/evidence, but scope, acceptance criteria and settled decisions require explicit approval to change. Reconcile stale drafts against recorded decisions.
+- **Task correction:** Restore the recorded adjacent-failures-only watchdog decision, remove the separate-login requirement, preserve valid code, and complete the original authorized scope and checks using existing authentication.
+- **Related:** AIF-014, AIF-016, APR-001, APR-007. Repository-root-relative task: `.specs/damage-control-risk-alignment-and-preapproval/plan.md`.
+- **Status:** Approved rule added to the planning skill. Task correction resumed; this does not establish future adherence or task completion.
+
 ## AIF-020 - Restore useful subagent tool-call presentation
 
 - **Reference:** Operator review of the information presented in the transcript when default-profile subagent tools start and complete, on 2026-09-08.

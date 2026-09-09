@@ -6,6 +6,10 @@
 
 **Layout:** Visible descendants share an origin-owned layout above the unchanged orchestrator, filling two rows of four before using non-focused overflow tabs in groups of eight. Placement and cleanup use exact returned IDs, serialize mutations, preserve unrelated focus and panes, and keep existing process-settlement, retention, intervention, and no-headless-fallback behavior. Isolated Herdr geometry and one bundled-Pi launch/follow-up/completion run passed; physical attached-client keyboard behavior remains outside automated acceptance.
 
+## 2026-09-08: Compact default Pi Bedrock usage output
+
+**Changed:** Default Pi's `/usage` and `/bedrock` reports now use the legacy profile's compact Bedrock presentation: short model totals, compact token counts, two-decimal costs, a concise CloudWatch baseline, and a simple total. Accounting cutoffs and unpriced-request warnings are unchanged.
+
 ## 2026-09-08: Recover Bedrock month-to-date cost baselines
 
 **Added:** Default Pi's `/bedrock reconcile` now captures a one-time, IAM-user-scoped Amazon Bedrock usage estimate from the user-scoped CloudWatch Bedrock invocation logs when the local ledger has no AWS baseline. The footer, `/bedrock`, and `/usage` report that snapshot separately and add only local request estimates recorded after its capture time. Existing baselines are not silently replaced because Cost Explorer delay makes moving the accounting cutoff unsafe.
