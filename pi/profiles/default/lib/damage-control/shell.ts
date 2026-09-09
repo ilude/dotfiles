@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import * as TreeSitter from "web-tree-sitter";
 import { parseSearchArguments, type SearchArgument } from "./search.ts";
 import { sqlExecutableText } from "./sql.ts";
-import type { Analysis, CompiledRule, DockerEndpoint, DockerEnvironmentKey, DockerInvocation, Effect, Language, RuleMatch, ShellSearch, ScriptSourceIdentity, Target, ToolRequest, VariableEvidence } from "./types.ts";
+import type { Analysis, CompiledRule, DockerEndpoint, DockerEnvironmentKey, DockerInvocation, Effect, GitInvocation, Language, RuleMatch, ShellSearch, ScriptSourceIdentity, Target, ToolRequest, VariableEvidence } from "./types.ts";
 
 const SCRIPT_BYTE_LIMIT = 64 * 1024;
 const NESTING_LIMIT = 8;
@@ -92,6 +92,7 @@ type State = {
   dependencies: ShellDependencies;
   repositoryRoot: string;
   docker: DockerInvocation[];
+  git: GitInvocation[];
   searches: ShellSearch[];
   semanticMatches: RuleMatch[];
   scripts: ScriptSourceIdentity[];
@@ -873,7 +874,13 @@ async function processInvocation(
         const opaque = addUnknown(state, gitScope, language, executable, range, "Unrecognized Git subcommand or alias requires contextual review", originalText);
         opaque.operation = "execute";
       } else {
-        addEffect(state, "git", "mutate", gitScope, language, executable, range, gitTargets);
+        const effect = addEffect(state, "git", "mutate", gitScope, language, executable, range, gitTargets);
+        state.git.push({
+          effectId: effect.id,
+          subcommand: git.subcommand,
+          remote: ["clone", "fetch", "pull", "push"].includes(git.subcommand),
+          endpointOverride: actualArgs.some(item => item.known && (item.value === "-c" || item.value.startsWith("--config-env"))),
+        });
         if (git.subcommand === "rm" && !lowerOperands.includes("--cached")) {
           const files = optionOperands(git.operands, new Set(["--pathspec-from-file"]));
           requireOperands(state, targets(files, gitScope, state), gitScope, language, executable, range, "delete");
@@ -1338,13 +1345,13 @@ export async function analyzeShell(request: ToolRequest, dependencies: ShellDepe
     home: dependencies.home ?? os.homedir(),
     dependencies,
     repositoryRoot: path.resolve(dependencies.repositoryRoot ?? request.cwd),
-    docker: [], searches: [], semanticMatches: [], scripts: [], variables: new Map(),
+    docker: [], git: [], searches: [], semanticMatches: [], scripts: [], variables: new Map(),
   };
   try {
     const parsed = await parse(request.language, request.input.command, state);
     if (!parsed.tree) {
       addUnknown(state, { cwd: request.cwd, variables: new Map(), unknownVariables: new Set(), functions: new Map(), inheritedVariables: new Set(), variableEvidence: state.variables }, request.language, "parser", { start: 0, end: request.input.command.length }, `Parsing valid or unresolved ${request.language} input exceeded the ${state.budget} ms budget`, "<parse deadline>");
-      return { effects: state.effects, matches: [], uncertainties: state.uncertainties, health: { status: "ready" }, internal: { docker: [], scripts: state.scripts, variables: [...state.variables.values()] } };
+      return { effects: state.effects, matches: [], uncertainties: state.uncertainties, health: { status: "ready" }, internal: { docker: [], git: state.git, scripts: state.scripts, variables: [...state.variables.values()] } };
     }
     const parseHadError = parsed.tree.rootNode.hasError;
     try {
@@ -1382,8 +1389,8 @@ export async function analyzeShell(request: ToolRequest, dependencies: ShellDepe
     }] : []));
     const directCreation = state.docker.length === 1 && state.records.length === 1 && state.effects.length === 1 && !parseHadError;
     for (const invocation of state.docker) invocation.directCreation &&= directCreation;
-    return { effects: state.effects, matches: [...matches, ...state.semanticMatches], uncertainties: [...new Set(state.uncertainties)], health: { status: "ready" }, internal: { docker: state.docker, searches: state.searches, scripts: state.scripts, variables: [...state.variables.values()] } };
+    return { effects: state.effects, matches: [...matches, ...state.semanticMatches], uncertainties: [...new Set(state.uncertainties)], health: { status: "ready" }, internal: { docker: state.docker, git: state.git, searches: state.searches, scripts: state.scripts, variables: [...state.variables.values()] } };
   } catch (error) {
-    return { effects: [], matches: [], uncertainties: [], health: { status: "failed", reason: error instanceof Error ? error.message : String(error) }, internal: { docker: [], scripts: state.scripts, variables: [...state.variables.values()] } };
+    return { effects: [], matches: [], uncertainties: [], health: { status: "failed", reason: error instanceof Error ? error.message : String(error) }, internal: { docker: [], git: state.git, scripts: state.scripts, variables: [...state.variables.values()] } };
   }
 }

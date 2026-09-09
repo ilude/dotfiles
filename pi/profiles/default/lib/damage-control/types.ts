@@ -43,6 +43,7 @@ export type DockerEndpoint = {
   hostOverride?: string;
   unresolved?: string;
 };
+export type GitInvocation = { effectId: string; subcommand: string; remote: boolean; endpointOverride: boolean };
 export type DockerInvocation = {
   effectId: string;
   operation: "metadata" | "create" | "delete-container" | "delete-volume" | "exec" | "other";
@@ -69,7 +70,7 @@ export type DockerMetadataReader = (endpoint: DockerEndpoint, targets: readonly 
 export type ShellSearch = { effectId: string; executable: "rg"; inventoryArgs?: string[] };
 export type ScriptSourceIdentity = { path: string; sha256: string; range: { start: number; end: number }; argv: string[] };
 export type VariableEvidence = { name: string; value: string; source: "literal" | "inherited" | "process"; provenance: string };
-export type Analysis = { effects: Effect[]; matches: RuleMatch[]; uncertainties: string[]; health: Health; internal?: { docker: DockerInvocation[]; searches?: ShellSearch[]; scripts?: ScriptSourceIdentity[]; variables?: VariableEvidence[] } };
+export type Analysis = { effects: Effect[]; matches: RuleMatch[]; uncertainties: string[]; health: Health; internal?: { docker: DockerInvocation[]; git?: GitInvocation[]; searches?: ShellSearch[]; scripts?: ScriptSourceIdentity[]; variables?: VariableEvidence[] } };
 export type EnvironmentEvidence = Readonly<Record<string, string | undefined>>;
 export type SequenceEvidence = { kind: string; category?: string; summary: string; ageMs: number };
 export type Evidence = {
@@ -82,7 +83,7 @@ export type Evidence = {
 export type Decision =
   | { outcome: "allow" }
   | { outcome: "block"; reason: string }
-  | { outcome: "user"; reason: string; origin?: "policy" | "review" }
+  | { outcome: "user"; reason: string; origin?: "policy" | "review"; reviewDisposition?: "ask" | "failure" }
   | { outcome: "review"; evidence: Evidence };
 export type ReviewResult =
   | { status: "valid"; verdict: "allow" | "ask"; reason: string; dismissedCandidates: string[] }

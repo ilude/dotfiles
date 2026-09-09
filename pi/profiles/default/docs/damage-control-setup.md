@@ -13,7 +13,7 @@ Damage Control loads with the default profile. Its [design purpose](damage-contr
 - There is no `/dc status` command.
 - `pp --dc-recovery` remains available as an explicit maintenance path.
 
-Confirmed blocks, remote/cloud/live operations, Docker volumes, exfiltration, dynamic targets, and protected paths are not bypassed.
+Confirmed blocks, remote/cloud/live operations, Docker volumes, exfiltration, dynamic targets, and protected paths are not bypassed. Eligibility comes from parsed effects and canonical path facts for the whole invocation; a local command prefix does not make accompanying or unresolved effects eligible. Review failures retain the approval path.
 
 ## Behavior
 

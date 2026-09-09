@@ -4,6 +4,7 @@ import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-wo
 import { adapt } from "./adapters.ts";
 import { analyzeRequest, type AnalysisDependencies } from "./analysis.ts";
 import { Breaker, fingerprint, type BreakerSnapshot } from "./breaker.ts";
+import { bypassEligibility } from "./bypass.ts";
 import { Context, DIRECT_INPUT_LIMIT, processVariableEvidence } from "./context.ts";
 import { decide } from "./engine.ts";
 import { loadPolicy } from "./policy.ts";
@@ -154,7 +155,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
           decision = decide(analysis, evidence, result);
         }
         if (decision.outcome === "block") return blocked(decision.reason);
-        const localBypass = bypassed && (request.tool === "bash" || request.tool === "powershell") && /^(?:\s*)(?:rm\b|git\s+(?!push\b)|docker\s+(?!.*\bvolume\b))/i.test(request.input.command) && !/\b(?:aws|az|gcloud|kubectl|helm|terraform|tofu|pulumi|ssh|scp|curl|wget)\b/i.test(request.input.command);
+        const localBypass = bypassed && bypassEligibility(request, analysis, decision, facts).eligible;
         let reviewFuture = false;
         const reviewableScript = analysis.internal?.scripts?.length === 1 ? analysis.internal.scripts[0] : undefined;
         if (decision.outcome === "user" && !localBypass) {
