@@ -45,6 +45,8 @@ Assignment results travel through authenticated local messages, not terminal scr
 
 ## UI and attention
 
+On initial interactive Pi startup inside Herdr, the default profile labels its inherited pane **Orchestrator** and its inherited tab with the working directory's basename, for example `.dotfiles`, without changing focus. Restricted subagents keep their human assignment labels and do not rename tabs; RPC/print helpers do not rename either surface. New, resumed, forked, and reloaded chats within the same process do not reset user-renamed panes or tabs. Label failures produce a warning without blocking startup. These labels do not change agent identity.
+
 The existing footer, reload indicator, dialogs, and notices remain Pi-owned. The generated Herdr integration publishes TUI working/settled state. The repository bridge maps native prompt start/end to operator-waiting state, including the current Damage Control custom dialog. Headless helper sessions do not claim the parent's pane.
 
 There is no additional bell or desktop-notification layer and no sound/desktop settings change. In the isolated live test, an unfocused actual approval dialog reported `blocked`; denial cleared it to background `done`. Headless API evidence does not prove audible or desktop delivery. Those require an attached client and operator observation under the user's Herdr settings.

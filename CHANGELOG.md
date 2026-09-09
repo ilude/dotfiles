@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-09: Label the startup Herdr pane as Orchestrator
+
+**Changed:** Initial interactive default-profile Pi startup in Herdr labels its own inherited pane `Orchestrator` and its tab with the working directory's basename, such as `.dotfiles`, without changing focus. Subagent labels and later user renames are preserved; chat replacement and reload do not reset either label. A bounded labeling failure warns without preventing startup. Non-Herdr and noninteractive helpers remain unchanged.
+
 ## 2026-09-09: Specify Luna's commit tool and command workflow
 
 **Changed:** The default commit reviewer now uses supplied initial status and the existing Git-review tool for status refreshes and diffs, instead of improvising shell status options. Its ordered instructions include concrete tool examples, per-repository command templates, quoting, staged/unstaged review, pagination, submodule ordering, and explicit push handling. Runtime input supplies exact root and whitespace-utility paths; utility arguments no longer suggest an unsupported `--` separator.
