@@ -45,7 +45,7 @@ const asResult = (text: string) => result(text) as any;
 const paneFromOpen = (value: any) => value?.plugin_pane?.pane ?? value?.pane ?? value?.root_pane;
 
 /**
- * Children split below the caller, left to right, with four children per tab.
+ * Children sit above the caller, left to right, with four children per tab.
  * Overflow tabs avoid restructuring live pane trees and every creation uses
  * Herdr's non-focusing operations.
  *
@@ -116,7 +116,7 @@ export class SubagentLayout {
     const slot = this.nextSlot(group);
     let paneId: string | undefined;
     let tabId: string | undefined;
-    if (slot.tabIndex === 0 && slot.column === 0 && !group.children.size) {
+    if (slot.tabIndex === 0 && slot.column === 0) {
         const opened = await this.openSplit(request, request.callerPane, "down");
         paneId = opened.paneId; tabId = opened.tabId;
       } else if (slot.column === 0 && slot.tabIndex > 0) {
@@ -136,6 +136,11 @@ export class SubagentLayout {
       group.children.set(request.childId, owned);
       if (!group.tabs.has(slot.tabIndex)) group.tabs.set(slot.tabIndex, tabId);
       try {
+        if (slot.tabIndex === 0 && slot.column === 0) {
+          // Plugin splits only support right/down. Move the existing caller
+          // below the new child without replacing its process or taking focus.
+          await this.cli(["pane", "move", group.callerPane, "--target-pane", paneId, "--split", "down", "--no-focus"]);
+        }
         const pane = await inspectPane(this.cli, paneId);
         if (pane.workspace_id !== group.workspaceId || pane.tab_id !== tabId) throw new Error("Created pane identity changed");
         await this.cli(["pane", "rename", paneId, request.title.slice(0, 160)]);
@@ -249,7 +254,7 @@ export class SubagentLayout {
     if (!(total > 0)) return;
     const desiredCaller = (2 / 3) * total;
     const delta = (desiredCaller - caller.rect.height) / total;
-    if (Math.abs(delta) >= 0.005) await this.cli(["pane", "resize", "--direction", "down", "--amount", Math.abs(delta).toFixed(6), "--pane", group.callerPane]);
+    if (Math.abs(delta) >= 0.005) await this.cli(["pane", "resize", "--direction", delta > 0 ? "up" : "down", "--amount", Math.abs(delta).toFixed(6), "--pane", group.callerPane]);
   }
 
   private async removeEmptyTab(group: Group, child: LayoutChild) {
