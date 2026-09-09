@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-016 - Orchestrator closeout left children waiting for parent answers
+
+- **Reference:** Operator screenshot and default session `01a08798-ea1f-715c-829f-acec8f9c4dd8`, 2026-09-09.
+- **Observed:** Clara's second parent question returned through a foreground wait. The orchestrator tried `message` instead of `answer`, received a non-retained-conversation error, and launched another worker without resolving or cancelling Clara. Maya later asked for help after a denied deletion prompt. Her record had `userOwned: true`; the orchestrator's answer was rejected because intervention suspended parent control. The orchestrator completed the remaining repository work itself and reported implementation/check completion without settling either child.
+- **Finding:** `subagent_parent` questions poll until answered or aborted; ending the orchestrator turn does not cancel them. Visible prompt input marks a child user-owned and prompt closure does not hand it back. The screenshot's generic Working spinners obscure these waits. Source also permits delayed tool activity to overwrite `waiting-parent` phase, as shown in an earlier question's recorded answer snapshot. No process crash or lost question delivery is established by this evidence.
+- **Recommended direction:** Make pending parent/user waits explicit in the child UI and give control errors the applicable recovery action. Review approval-prompt ownership separately from deliberate direct intervention. Closeout should resolve or explicitly report remaining children, not silently abandon them. Preserve genuine background work and user-owned panes rather than auto-cancelling on every parent turn end.
+- **Related:** APR-008, APR-011, AIF-010, AIF-020. This is an ordinary question/intervention lifecycle issue, not active-child reload recovery.
+- **Status:** Investigation only. Default-profile exact-session queries verified the sequence; no live child controls, runtime changes, or instruction changes performed. Recurrence beyond this reported example is not independently counted.
+
 ## APR-015 - Blocked `/do-it` integration was easy to mistake for completion
 
 - **Reference:** Bedrock baseline create-once plan execution and operator follow-up, 2026-09-09.
