@@ -1,4 +1,5 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -122,6 +123,35 @@ function runHerdr(args: string[], cwd: string): string {
 	return result.stdout;
 }
 
+const execFileAsync = promisify(execFile);
+const HERDR_LAUNCH_TIMEOUT_MS = 10_000;
+
+export class HerdrPiTabLaunchError extends Error {
+	readonly mayHaveLaunched: boolean;
+	readonly tabId?: string;
+	readonly paneId?: string;
+
+	constructor(message: string, fields: { mayHaveLaunched: boolean; tabId?: string; paneId?: string }) {
+		super(message);
+		this.name = "HerdrPiTabLaunchError";
+		this.mayHaveLaunched = fields.mayHaveLaunched;
+		this.tabId = fields.tabId;
+		this.paneId = fields.paneId;
+	}
+}
+
+async function runHerdrAsync(args: string[], cwd: string): Promise<string> {
+	const result = await execFileAsync(process.env.HERDR_BIN_PATH || "herdr", args, {
+		cwd,
+		encoding: "utf8",
+		windowsHide: true,
+		shell: false,
+		timeout: HERDR_LAUNCH_TIMEOUT_MS,
+		maxBuffer: 256 * 1024,
+	});
+	return result.stdout;
+}
+
 function extractJsonObject(text: string): Record<string, unknown> {
 	const start = text.search(/[\[{]/);
 	if (start < 0) throw new Error("Herdr returned no JSON.");
@@ -138,19 +168,41 @@ function createHerdrTab(cwd: string, title: string): string {
 	return paneId;
 }
 
-export function createHerdrPiTab(cwd: string, title: string, sessionFile?: string, planPath?: string): void {
+export async function createHerdrPiTab(cwd: string, title: string, sessionFile?: string, planPath?: string): Promise<{ tabId: string; paneId?: string }> {
 	const workspace = process.env.HERDR_WORKSPACE_ID;
-	if (!workspace) throw new Error("HERDR_WORKSPACE_ID is not set.");
-	if (sessionFile && planPath) throw new Error("A Herdr Pi tab cannot resume a session and launch a plan together.");
+	if (!workspace) throw new HerdrPiTabLaunchError("HERDR_WORKSPACE_ID is not set.", { mayHaveLaunched: false });
+	if (sessionFile && planPath) throw new HerdrPiTabLaunchError("A Herdr Pi tab cannot resume a session and launch a plan together.", { mayHaveLaunched: false });
 	const args = ["plugin", "pane", "open", "--plugin", "local.pi", "--entrypoint", "pi", "--placement", "tab", "--workspace", workspace,
 		"--cwd", process.platform === "win32" ? msysPathToWindows(cwd) : cwd,
 		"--env", `PI_HERDR_PROFILE_DIR=${profileDir()}`, "--env", `PI_HERDR_SESSION_FILE=${sessionFile || ""}`,
-		"--env", `PI_HERDR_PLAN_PATH=${planPath || ""}`, "--focus"];
-	const parsed = extractJsonObject(runHerdr(args, cwd)) as { result?: { plugin_pane?: { pane?: { tab_id?: string } } } };
-	const tab = parsed.result?.plugin_pane?.pane?.tab_id;
-	if (!tab) throw new Error("Herdr launch response omitted tab identity; inspect before retrying. Setup: node scripts/pi-herdr-setup.mjs");
-	try { runHerdr(["tab", "rename", tab, title], cwd); }
-	catch (error) { throw new Error(`Pi tab ${tab} was created, but renaming failed. Do not relaunch. ${String(error)}`); }
+		"--env", `PI_HERDR_PLAN_PATH=${planPath || ""}`];
+	let output: string;
+	try {
+		output = await runHerdrAsync(args, cwd);
+	} catch (error) {
+		throw new HerdrPiTabLaunchError(`Herdr Pi launch request failed; inspect before retrying. ${String(error)}`, { mayHaveLaunched: true });
+	}
+	let tab: string | undefined;
+	let pane: string | undefined;
+	try {
+		const parsed = extractJsonObject(output) as { result?: { plugin_pane?: { pane?: { tab_id?: string; pane_id?: string } } } };
+		tab = parsed.result?.plugin_pane?.pane?.tab_id;
+		pane = parsed.result?.plugin_pane?.pane?.pane_id;
+		if (!tab) throw new Error("Herdr launch response omitted tab identity");
+	} catch (error) {
+		throw new HerdrPiTabLaunchError(`Herdr Pi launch result was ambiguous; inspect before retrying. ${String(error)}`, { mayHaveLaunched: true, tabId: tab, paneId: pane });
+	}
+	try {
+		await runHerdrAsync(["tab", "focus", tab], cwd);
+	} catch (error) {
+		throw new HerdrPiTabLaunchError(`Pi tab ${tab} was created, but focusing failed. Do not relaunch. ${String(error)}`, { mayHaveLaunched: true, tabId: tab, paneId: pane });
+	}
+	try {
+		await runHerdrAsync(["tab", "rename", tab, title], cwd);
+	} catch (error) {
+		throw new HerdrPiTabLaunchError(`Pi tab ${tab} was created, but renaming failed. Do not relaunch. ${String(error)}`, { mayHaveLaunched: true, tabId: tab, paneId: pane });
+	}
+	return { tabId: tab, paneId: pane };
 }
 
 function isHerdr(): boolean {
@@ -162,7 +214,7 @@ async function executeNewInstance(args: string, ctx: CommandContext): Promise<vo
 	const title = args.trim() || defaultTitle(cwd);
 	ctx.ui.notify(isHerdr() ? `Opening new Pi instance in a Herdr tab: ${title}` : `Opening new Pi instance in a new terminal tab: ${title}`, "info");
 	if (isHerdr()) {
-		createHerdrPiTab(cwd, title);
+		await createHerdrPiTab(cwd, title);
 		ctx.ui.notify(`Opened new Pi instance in a Herdr tab: ${title}`, "info");
 		return;
 	}
@@ -196,7 +248,7 @@ async function executeBranch(args: string, ctx: CommandContext): Promise<void> {
 	const branchSessionFile = ctx.sessionManager.createBranchedSession(leafId);
 	if (!branchSessionFile) throw new Error("Cannot branch this session: session persistence is unavailable.");
 	if (isHerdr()) {
-		try { createHerdrPiTab(cwd, title, branchSessionFile); }
+		try { await createHerdrPiTab(cwd, title, branchSessionFile); }
 		catch (error) { throw new Error(`${String(error)}\nBranch retained: ${branchSessionFile}\nResume with pp --session ${quotePowerShell(branchSessionFile)}`); }
 		ctx.ui.notify(`Opened branched Pi session in a Herdr tab: ${title}`, "info");
 		return;

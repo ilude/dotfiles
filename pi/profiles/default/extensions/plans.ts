@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { copyToClipboard, type ExtensionAPI, type ExtensionCommandContext, type Theme } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, stripTerminalSequences, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { containedRealPath, discoverPlans, parsePlan, type PlanRecord } from "../lib/plans.ts";
-import { createHerdrPiTab } from "./session-launch.ts";
+import { createHerdrPiTab, HerdrPiTabLaunchError } from "./session-launch.ts";
 
 const planActions = [
 	{ key: "o", action: "open", label: "Open in VS Code", hint: "VS Code" },
@@ -15,6 +15,12 @@ const planActions = [
 ] as const;
 type Action = typeof planActions[number]["action"] | "close";
 interface Selection { action: Action; index: number }
+interface SelectorOptions {
+	details?: boolean;
+	onViewChange?: (details: boolean) => void;
+	launch?: (plan: PlanRecord) => Promise<unknown>;
+	blockedLaunches?: Map<string, string>;
+}
 
 function clean(value: string): string { return stripTerminalSequences(value).replace(/\s+/g, " ").trim(); }
 function fit(value: string, width: number): string {
@@ -23,21 +29,62 @@ function fit(value: string, width: number): string {
 }
 function progress(plan: PlanRecord): string { return plan.tasks.total ? `${plan.tasks.checked}/${plan.tasks.total}` : "none"; }
 
-export function planSelector(plans: PlanRecord[], initial: number, onDone: (value: Selection) => void, options: { details?: boolean } = {}) {
-	return (tui: { requestRender(): void; terminal?: { rows: number } }, theme: Pick<Theme, "fg" | "bg" | "bold">) => {
+export function planSelector(plans: PlanRecord[], initial: number, onDone: (value: Selection) => void, options: SelectorOptions = {}) {
+	return (tui: { requestRender(force?: boolean): void; terminal?: { rows: number } }, theme: Pick<Theme, "fg" | "bg" | "bold">) => {
 		let selected = Math.min(Math.max(initial, 0), Math.max(plans.length - 1, 0));
 		let details = options.details ?? false;
 		let scroll = 0;
 		let maxScroll = 0;
 		let start = 0;
 		let usable = true;
+		let pending = false;
+		let finished = false;
+		let launchError: string | undefined;
+		const blockedLaunches = options.blockedLaunches ?? new Map<string, string>();
+		const finish = (action: Action) => {
+			if (finished) return;
+			finished = true;
+			onDone({ action, index: selected });
+		};
+		const launch = async () => {
+			pending = true;
+			launchError = undefined;
+			tui.requestRender(true);
+			// Let Pi paint the acknowledgment before starting any process work.
+			await new Promise<void>(resolve => setImmediate(resolve));
+			if (finished) return;
+			const plan = plans[selected]!;
+			try {
+				await options.launch!(plan);
+				if (!finished) finish("close");
+			} catch (error) {
+				if (finished) return;
+				launchError = error instanceof Error ? error.message : String(error);
+				if (!(error instanceof HerdrPiTabLaunchError) || error.mayHaveLaunched) blockedLaunches.set(plan.path, launchError);
+				pending = false;
+				tui.requestRender(true);
+			}
+		};
+		const feedback = (width: number): string[] | undefined => {
+			if (pending) return ["Launching new tab...", "Opening and focusing Pi for this plan.", "Please wait. Repeated keys are ignored."]
+				.flatMap(text => wrapTextWithAnsi(text, width));
+			const blocked = blockedLaunches.get(plans[selected]?.path ?? "");
+			const error = blocked ?? launchError;
+			if (!error) return;
+			return [
+				...wrapTextWithAnsi(blocked ? "Launch may exist. Do not retry." : "Launch failed. Safe to retry.", width),
+				...wrapTextWithAnsi(clean(error), width).slice(0, 2),
+				...wrapTextWithAnsi(blocked ? "Esc/q Close; inspect the tab." : "d Retry · Esc/q Close", width),
+			];
+		};
 		return {
 			render(width: number): string[] {
 				const rows = tui.terminal?.rows ?? 35;
 				// Match the overlay height limit so Pi never clips the controls or selection.
 				const height = Math.max(1, Math.min(28, Math.floor(rows * 0.8), rows - 2));
 				usable = width >= 24 && height >= 14;
-				if (!usable) return ["Plans · q close", "Enlarge terminal to browse."].slice(0, height).map(text => fit(text, width));
+				if (!usable) return (pending ? ["Launching new tab...", "Please wait."] : ["Plans · q close", "Enlarge terminal to browse."])
+					.slice(0, height).map(text => fit(text, width));
 				const inner = width - 4;
 				const border = (left: string, right: string) => theme.fg("borderAccent", left + "─".repeat(width - 2) + right);
 				const row = (text: string, active = false) => theme.fg("borderAccent", "│")
@@ -45,6 +92,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					+ theme.fg("borderAccent", "│");
 				const muted = (text: string) => theme.fg("muted", text);
 				const current = plans[selected];
+				const notice = feedback(inner);
 				const output = [border("╭", "╮"), row(theme.bold(theme.fg("accent",
 					`Plans · ${details && current ? "Details" : "Browse"} · ${current ? `${selected + 1}/${plans.length}` : "0 plans"}`))), border("├", "┤")];
 				if (!current) {
@@ -60,13 +108,14 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					if (current.handoff) content.push(`Handoff: ${clean(current.handoff)}`);
 					if (current.warnings.length) content.push(theme.fg("warning", `Warning: ${clean(current.warnings.join("; "))}`));
 					const wrapped = content.flatMap(text => wrapTextWithAnsi(text, inner));
-					const help = wrapTextWithAnsi("↑↓ Scroll · Esc Back · q Close", inner);
-					const capacity = Math.min(wrapped.length, Math.max(1, height - 6 - planActions.length - help.length));
+					const help = notice ?? wrapTextWithAnsi("↑↓ Scroll · Esc Back · q Close", inner);
+					const actions = notice ? [] : planActions;
+					const capacity = Math.min(wrapped.length, Math.max(1, height - 6 - actions.length - help.length));
 					maxScroll = Math.max(0, wrapped.length - capacity);
 					scroll = Math.min(scroll, maxScroll);
 					for (let index = 0; index < capacity; index++) output.push(row(wrapped[scroll + index] ?? ""));
 					output.push(row(muted(maxScroll ? `Lines ${scroll + 1}-${Math.min(scroll + capacity, wrapped.length)}/${wrapped.length}` : "")), border("├", "┤"));
-					output.push(...planActions.map(action => row(`${action.key}  ${action.label}`)));
+					output.push(...actions.map(action => row(`${action.key}  ${action.label}`)));
 					output.push(...help.map(text => row(theme.fg("text", text))));
 				} else {
 					const columns = inner >= 56;
@@ -74,7 +123,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					const taskWidth = Math.min(11, Math.max(5, ...plans.map(plan => visibleWidth(progress(plan)))));
 					const stubWidth = inner - statusWidth - taskWidth - 6;
 					const cells = (stub: string, status: string, tasks: string) => `${fit(stub, stubWidth)}  ${fit(status, statusWidth)}  ${fit(tasks, taskWidth)}`;
-					const help = ["↑↓ Select · Enter Details · Esc/q Close", `Actions: ${planActions.map(action => `${action.key} ${action.hint}`).join(" · ")}`]
+					const help = notice ?? ["↑↓ Select · Enter Details · Esc/q Close", `Actions: ${planActions.map(action => `${action.key} ${action.hint}`).join(" · ")}`]
 						.flatMap(text => wrapTextWithAnsi(text, inner));
 					const metadata = columns ? [] : [`Status: ${clean(current.status ?? "unknown")}`, `Tasks: ${progress(current)}`];
 					// Very short, narrow panels retain all shortcuts before optional metadata.
@@ -106,20 +155,28 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 				return output;
 			},
 			invalidate() {},
+			dispose() { finished = true; },
 			handleInput(data: string) {
+				if (pending || finished) return;
 				const action = planActions.find(action => action.key === data);
-				if (data === "q") return onDone({ action: "close", index: selected });
+				if (data === "q") return finish("close");
 				if (matchesKey(data, Key.escape)) {
-					if (!details) return onDone({ action: "close", index: selected });
+					if (!details) return finish("close");
 					details = false;
 				} else if (!plans.length || !usable) return;
-				else if (action) return onDone({ action: action.action, index: selected });
+				else if (action) {
+					if ((action.action === "do-it" || action.action === "run-here") && blockedLaunches.has(plans[selected]!.path)) return;
+					if (action.action === "do-it" && options.launch) { void launch(); return; }
+					return finish(action.action);
+				}
 				else if (details) {
 					if (matchesKey(data, Key.up)) scroll = Math.max(0, scroll - 1);
 					else if (matchesKey(data, Key.down)) scroll = Math.min(maxScroll, scroll + 1);
 				} else if (matchesKey(data, Key.up)) selected = Math.max(0, selected - 1);
 				else if (matchesKey(data, Key.down)) selected = Math.min(plans.length - 1, selected + 1);
 				else if (matchesKey(data, Key.enter)) { details = true; scroll = 0; }
+				launchError = undefined;
+				options.onViewChange?.(details);
 				tui.requestRender();
 			},
 		};
@@ -152,20 +209,28 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 	if (ctx.mode !== "tui") throw new Error("/plans requires interactive Pi terminal mode.");
 	const root = path.resolve(ctx.cwd ?? process.cwd());
 	let selected = 0;
-	let detailStub: string | undefined;
+	let selectedStub: string | undefined;
+	let details = false;
+	const blockedLaunches = new Map<string, string>();
 	while (true) {
 		const discovery = discoverPlans(root);
 		for (const error of discovery.errors) ctx.ui.notify(error, "warning");
-		const detailIndex = discovery.plans.findIndex(plan => plan.stub === detailStub);
-		if (detailIndex >= 0) selected = detailIndex;
-		const result = await ctx.ui.custom<Selection>((tui, theme, _keybindings, done) => planSelector(discovery.plans, selected, done, { details: detailIndex >= 0 })(tui, theme), {
+		const selectedIndex = discovery.plans.findIndex(plan => plan.stub === selectedStub);
+		if (selectedIndex >= 0) selected = selectedIndex;
+		const result = await ctx.ui.custom<Selection>((tui, theme, _keybindings, done) => planSelector(discovery.plans, selected, done, {
+			details, onViewChange: value => { details = value; }, blockedLaunches,
+			launch: async plan => {
+				if (process.env.HERDR_ENV !== "1") throw new HerdrPiTabLaunchError("Plan execution from /plans requires a Herdr-managed Pi session.", { mayHaveLaunched: false });
+				return createHerdrPiTab(root, `do-it · ${plan.stub}`.slice(0, 80), undefined, plan.relativePath);
+			},
+		})(tui, theme), {
 			overlay: true, overlayOptions: { anchor: "center", width: "90%", maxHeight: "80%", margin: 1 },
 		});
 		if (!result || result.action === "close") return;
 		selected = result.index;
 		const plan = discovery.plans[selected];
 		if (!plan) continue;
-		detailStub = plan.stub;
+		selectedStub = plan.stub;
 		try {
 			if (result.action === "open") openPlanInCode(plan, root);
 			else if (result.action === "copy") {
@@ -174,14 +239,10 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 			} else if (result.action === "run-here") {
 				pi.sendUserMessage(`/do-it ${plan.relativePath}`, { expandPromptTemplates: true, deliverAs: "followUp" });
 				return;
-			} else if (result.action === "do-it") {
-				if (process.env.HERDR_ENV !== "1") throw new Error("Plan execution from /plans requires a Herdr-managed Pi session.");
-				createHerdrPiTab(root, `do-it · ${plan.stub}`.slice(0, 80), undefined, plan.relativePath);
-				ctx.ui.notify(`Opened /do-it for ${plan.stub} in a Herdr Pi tab.`, "info");
-			} else {
+			} else if (result.action === "archive") {
 				const destination = path.join(root, ".specs", "archive", plan.stub);
 				const confirmed = await ctx.ui.confirm("Archive completed plan?", `${plan.relativePath}\n→ ${path.relative(root, destination).replace(/\\/g, "/")}`);
-				if (confirmed) { archivePlan(plan, root); detailStub = undefined; ctx.ui.notify(`Archived ${plan.stub}.`, "info"); }
+				if (confirmed) { archivePlan(plan, root); selectedStub = undefined; details = false; ctx.ui.notify(`Archived ${plan.stub}.`, "info"); }
 			}
 		} catch (error) { ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
 	}
