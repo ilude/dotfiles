@@ -1,7 +1,7 @@
 ---
 created: 2026-09-08
-status: in_progress
-completed: null
+status: completed
+completed: 2026-09-09
 ---
 
 # Make reloaded subagents match the requested live UX
@@ -10,7 +10,7 @@ completed: null
 
 Repair the default-profile subagent experience reported after the previous UX implementation was merged. Reload must activate the new implementation; children must have human names and readable tool rows, use the operator-approved downward four-per-tab layout, and never pull the user back from another tab or workspace.
 
-Authorization: user authorizes T1-T5 only, including runtime implementation, documentation reconciliation, and bounded checks. Explicitly not authorized: archive/T6, commit, merge, push, deployment, or unannounced mutation of the operator's attached panes. Parent confirms no task-specific authorization or model/credential copies are available or permitted. Preserve all existing changes.
+Authorization: implementation, bounded live acceptance, local commits, provisional merge, archival, and final integration were authorized. Push and deployment remain unauthorized. Preserve all unrelated changes.
 
 User requirements:
 
@@ -50,7 +50,7 @@ Required reading:
 
 D1 is resolved by the parent: `/reload` guarantees that no subagent runtime, conversation, or process remains active, including idle retained children. There is no special unsupported-active migration or cleanup behavior to document. This is an explicit reload lifecycle boundary, distinct from normal retention and intervention during ordinary operation.
 
-T5 is not complete. No attached-client acceptance evidence is available in this worktree, and no live UX pass is claimed. Historical automated checks remain historical evidence only. The prior operator acceptance is failed, not pending proof of success: the reported stale reload owner, focus theft, and layout/transcript defects require the bounded T1-T5 work. Initial documentation reconciliation must correct those preconditions, then await settled specialist evidence and attached-client acceptance.
+T5 is complete. After the Herdr 0.9.0 server restart and `/reload`, the operator observed two bounded three-child runs using the merged runtime and reported that everything appeared to work as expected. All children completed and their panes closed; server inspection confirmed the requested downward geometry and exact cleanup.
 
 ### Verified findings and limits
 
@@ -139,18 +139,18 @@ Scope checkpoint: reload and background layout repair only; no persistent worker
   - Done when: the original transcript contract works through loaded tools and is not merely present in an unused helper.
   - Evidence: Done. T4 implementation and scoped registered-tool/component checks completed in the task default profile; see `evidence/presentation.md`. The affected scoped rerun passed 17/17. Real inert RPC launches exercise active header identity/config, detach, background, questions, terminal output and name controls at narrow/normal widths. The concurrent task-layout type error is distinct from the baseline commit-whitespace TS7016 error. No attached-client acceptance is implied.
 
-- [ ] **T5: Run bounded reload-to-live acceptance and reconcile documentation**
+- [x] **T5: Run bounded reload-to-live acceptance and reconcile documentation**
   - Depends on: T2, T3, T4.
   - Files: existing `tests/subagent-ux-live.test.ts`, owning subagent docs, `pi/README.md`, `CHANGELOG.md`, AIF-019/AIF-020, and a correction note in the previous archived plan.
   - Do: run the finite checks below. Use an isolated real Pi parent with the task profile, exercise one reload after children settle, then launch three concurrent bounded children through its registered tools. Verify names/titles/tool rows, downward row/top caller, and user focus on a different tab through launch and closure. Do not substitute three agents running source unit tests for testing this runtime.
   - Verify: record loaded source/profile and before/after owner identity, screenshots or rendered transcript evidence, actual geometry, and focus changes during work. An attached-client test is required for the reported keyboard/tab behavior; coordinate its bounded execution with the operator instead of mutating their current panes unannounced. If only server automation is available, leave this acceptance item pending rather than declare complete UX.
   - Update: distinguish historical passing checks from failed operator acceptance, document the new reload boundary, and remove superseded restart-only advice for the fixed lifecycle. Determine from T1 whether the first transition out of the already-loaded old lifecycle needs special handling; do not claim the running session was upgraded by merging files.
   - Done when: agreed automated and live checks pass with exact resource cleanup and truthful documentation.
-  - Evidence: Blocked and incomplete, not merely unstarted. `evidence/live-acceptance.md` records the fail-fast stop: no T5 real/model-backed or attached-client run occurred after the isolated diagnostic probe confirmed the initial swap focus theft and the 5+ child second-row physical blocker. Do not spend model calls to bypass these blockers or claim acceptance from the isolated diagnostic probe. No credentials were copied; shared `.codex` catalog fallback was present, so authentication was not the blocker.
+  - Evidence: Done. After provisional merge `a04620e`, Herdr 0.9.0 server restart, and `/reload`, six model-backed children completed in two groups of three with human names, readable outcomes, downward three-column geometry under the unchanged orchestrator, process settlement, and pane cleanup. The operator reported that everything appeared to work as expected. See `evidence/live-acceptance.md`.
 
 Scope checkpoint: stop after these repairs and checks pass; no additional benchmark, council run, or verification campaign.
 
-- [ ] **T6: Archive and integrate**
+- [x] **T6: Archive and integrate**
   - Depends on: T5.
   - Do: set actual completion date, archive the whole directory to `.specs/archive/subagent-reload-and-live-ux/`, repair links, and commit implementation and evidence together in the task branch. Merge into the recorded parent branch while preserving unrelated work. No push.
   - Verify: target contains code/archive and no active copy, `git diff --check`, task branch merged and clean before worktree removal. Keep a blocked worktree and report integration separately if needed.
@@ -175,9 +175,9 @@ Include the existing clear/reload test file identified in T1 if not selected abo
 
 ## Current handoff
 
-- Status: in_progress. T1-T4 are complete with bounded evidence; T5 remains unfinished after the model-backed child timed out in startup. `completed: null` remains; no archive is authorized.
+- Status: completed. T1-T6 passed under the revised operator-approved layout contract; completion and archival are dated 2026-09-09.
 - Completed: applicable instructions, owning docs, AIF-019/AIF-020, APR-008/APR-002, prior archive, actual cwd/branch/baseline/profile, and existing-change precondition inspected. Historical checks are separated from failed operator acceptance.
 - D1: resolved by parent. Explicit `/reload` is invoked only when no subagent runtime, conversation, or process remains active, including idle retained children; no unsupported active-child migration or special cleanup behavior was added.
-- Next: no further broad checks. T3/T5 require resolution of the exact Herdr blockers and a separately authorized model/attached-client acceptance. Do not claim T5 complete.
+- Next: archive this completed spec, commit the final documentation state, and remove the clean task worktree. No push or deployment is authorized.
 - Stale documentation corrected in this pass: `pi/profiles/default/docs/subagents.md`, `pi/profiles/default/docs/herdr.md`, `pi/README.md`, `CHANGELOG.md`, AIF-019/AIF-020 entries, and the archived plan correction note. Runtime, layout, transcript, test, and documentation changes are present. The unfinished plan is not archived or merged; no push or deployment was performed.
-- Remaining coordination risk: the revised T3 blocker is resolved. The apparent model-backed startup timeout was traced to the task worktree’s ignored empty `auth.json`. With existing default-profile authentication temporarily available, launch, retained follow-up, result capture, process settlement, pane closure, and focus preservation passed. Attached-client three-child acceptance has not run, and the operator Herdr server must be restarted from protocol 21 to the installed 0.9.0 protocol 22 first. Maya's developer process is under direct user intervention and is not coordinator-controlled; no task-owned test resources remain.
+- Remaining coordination risk: none for local integration. The work remains unpushed and undeployed.
