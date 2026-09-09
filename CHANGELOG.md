@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-09: Preserve Onclave deliveries across handling failures
+
+**Fixed:** The shared Onclave Pi adapter now checkpoints bounded per-delivery effects instead of treating receipt as completion. Transient failures remain available for lease-expiry redelivery, completed injections are not replayed after audit or acknowledgement failures, concurrent duplicates are not acknowledged prematurely, and retained task identity is reused during retries.
+
+**Validation:** HTTP and AMQP task-status handling now share one normalized parser that rejects malformed protocol fields before correlation or UI delivery. Focused adapter, envelope, and core tests passed without a live broker, credentials, model calls, or deployment.
+
 ## 2026-09-09: Preserve subagent ownership through cleanup failures
 
 **Fixed:** Default subagent assignment outcomes are now recorded separately from process and visible-pane cleanup. Failed termination or pane closure remains observable with bounded cleanup errors and can be retried without losing the owned child.

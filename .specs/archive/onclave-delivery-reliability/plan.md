@@ -80,12 +80,12 @@ Create the isolated worktrees only after execution authorization; carry the coor
   - Scope checkpoint: no protocol version change, new retry disposition or unrelated envelope rewrite.
   - Evidence: Shared parser and HTTP/AMQP validation tests committed in Onclave `9ce7599`; focused tests passed 2026-09-09.
 
-- [ ] **T4 - Validate, document and integrate module then parent**
+- [x] **T4 - Validate, document and integrate module then parent**
   - Depends on: T2/T3.
   - Files: owning adapter docs, dotfiles `CHANGELOG.md`, this plan and final parent gitlink.
   - Do: run finite offline checks; record module commit/profile results and lease/dedup limitations. Integrate into the required module branch. Publish only if separately authorized; then update the parent gitlink, archive the coordinating plan and integrate dotfiles.
   - Done when: module implementation/checks and publication-dependent parent archive/integration are complete, or the exact remaining publication/integration blocker is reported. No deployment is required.
-  - Evidence: Onclave implementation commit `9ce7599` merged locally into `feature/v2-broker-core` as `8f73446`. Six focused files (53 tests) and `pnpm run typecheck` passed 2026-09-09. Publication, parent gitlink update, archive, and dotfiles integration remain blocked because push was not authorized.
+  - Evidence: Onclave implementation commit `9ce7599` merged into `feature/v2-broker-core` as `8f73446` and pushed to `origin/feature/v2-broker-core`. Six focused files (53 tests) and `pnpm run typecheck` passed 2026-09-09. The parent gitlink and changelog are prepared for archival and dotfiles integration.
 
 ## Agreed validation and finish
 
@@ -100,7 +100,7 @@ The HTTP test is proposed. Add a proposed delivery-specific test filter only if 
 
 ## Current handoff and dependencies
 
-- Status: implementation and offline validation complete; local module integration complete. Next: obtain push authorization, publish Onclave `feature/v2-broker-core`, then update the parent gitlink, changelog, archive, and integrate dotfiles.
+- Status: implementation, offline validation, module publication, and parent task-branch preparation complete. Next: archive and integrate dotfiles, then record final completion metadata on the target branch.
 - Independent of dotfiles correctness/refactoring plans; can run in its own module worktree concurrently. Parent changelog/gitlink merges remain serialized.
 - Known execution preflight: restore required Onclave tracking checkout safely; publication needs separate push authorization. No branch/publication changes made now.
 
