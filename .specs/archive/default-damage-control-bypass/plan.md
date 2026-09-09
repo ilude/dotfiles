@@ -1,6 +1,6 @@
 ---
 created: 2026-09-09
-status: planned
+status: implemented
 completed: null
 ---
 
@@ -53,29 +53,29 @@ Before expanding scope, name the required behavior and demonstrated reason. If a
 
 ## Tasks
 
-- [ ] **T1 - Replace regex eligibility at the decision boundary**
+- [x] **T1 - Replace regex eligibility at the decision boundary**
   - Depends on: none.
   - Inputs: `enforcement.ts`, `analysis.ts`, `types.ts`, `paths.ts`, current setup contract.
   - Do: add the proposed pure bypass helper, expose only missing parsed facts necessary for D1/D2, and call it from enforcement. Delete the independent regex eligibility path. Keep existing review routing and approval semantics outside this substitution.
   - Verify: trace each D1/D2 case through the new predicate; author regression cases for T2, without executing submitted operations.
   - Done when: no command-prefix-only path can suppress a user decision and all eligibility inputs have identified provenance.
-  - Evidence: Not started.
+  - Evidence: Added pure `bypassEligibility` over parsed analysis, canonical path facts, final review disposition, and parser-owned Git facts; enforcement no longer uses command-prefix eligibility.
 
-- [ ] **T2 - Prove policy boundaries and update owning documentation**
+- [x] **T2 - Prove policy boundaries and update owning documentation**
   - Depends on: T1.
   - Files: proposed `tests/damage-control/bypass.test.ts`; existing `tests/damage-control/enforcement.test.ts`, setup documentation; root `CHANGELOG.md`.
   - Do: cover a documented eligible local ask; unresolved deletion after failed review; a mixed local/remote invocation; protected/out-of-repository target; Git remote override; Docker volume operation; hard-block precedence; bypass off. Use production parser/engine for gate regressions, substituting only model response and UI. Record the operator-visible correction without rewriting unrelated policy.
   - Verify: final commands below. No actual deletion, remote mutation, or credential access is needed.
   - Done when: eligible work retains bypass, excluded cases retain approval/block, and denial/cancellation cannot become approval.
   - Scope checkpoint: stop if work is becoming a general policy rewrite or provenance ledger.
-  - Evidence: Not started.
+  - Evidence: Added unit and production-gate regressions for eligible local cleanup, failed review with unresolved target, mixed remote effects, Git endpoint override, Docker volume operation, protected/outside targets, hard-block precedence, and bypass off; updated setup documentation and changelog.
 
-- [ ] **T3 - Validate and integrate the bounded correction**
+- [x] **T3 - Validate and integrate the bounded correction**
   - Depends on: T2.
   - Do: run the agreed checks once, repair only demonstrated relevant failures, and rerun affected checks. Record actual profile/results. Archive and integrate using the finish instructions below.
   - Verify: required checks pass and `main` contains the implementation plus dated archive, without an active copy.
   - Done when: correction is integrated locally; report push/deployment as unperformed, not required.
-  - Evidence: Not started.
+  - Evidence: On 2026-09-09 under the default profile, `pnpm test tests/damage-control` passed 19 files and 198 tests (1 skipped), `pnpm run typecheck` passed, and `pnpm run check:runtime` passed. Integration evidence is recorded during closeout.
 
 ## Agreed validation and finish
 
@@ -91,10 +91,10 @@ These are offline checks, not a guarantee of every Luna judgment. Classify unrel
 
 ## Current handoff
 
-- Status: planned, not authorized for implementation.
-- Completed work: bounded investigation and plan drafting only.
-- Next: T1 after execution authorization.
-- Open operator decisions: none. Proposed helper shape is an implementation choice within the stated policy.
+- Status: implementation and agreed agent-owned checks passed; archived task commit and local integration remain.
+- Completed work: T1-T3 implementation and offline validation.
+- Next: archive, task commit, merge to recorded `main`, then completion metadata commit.
+- Open operator decisions: none.
 
 ## Completion and archive
 

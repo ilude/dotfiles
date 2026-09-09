@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-09: Bound Damage Control bypass to parsed local effects
+
+**Fixed:** Default-profile `/dc off` now bypasses only valid contextual asks whose complete parsed invocation is an eligible local rm, Git, Docker, or contained environment-file operation. Dynamic or out-of-repository targets, mixed remote effects, Git remote operations or endpoint overrides, Docker volumes, confirmed policy boundaries, and review failures retain approval or blocking behavior. `/dc on`, ordinary recoverable work, and legacy behavior are unchanged.
+
 ## 2026-09-09: Make plan action shortcuts work from either view
 
 **Fixed:** `/plans` no longer silently ignores action keys in Browse. `o` Open in VS Code, `c` Copy command, `r` Run here, `d` Run in new tab, and `a` Archive operate on the selected plan directly from either Browse or Details. Enter remains optional inspection. The browse legend now says Actions rather than In details. Herdr launch requirements, current-instance routing, and archive checks and confirmation remain unchanged.

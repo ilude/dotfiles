@@ -13,6 +13,48 @@ it("keeps the independent human boundary for force-with-lease", async () => {
   expect(h.review).not.toHaveBeenCalled();
 });
 
+it("bypasses only a parsed, contained local ask when /dc off is active", async () => {
+  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "ask" as const, reason: "confirm local cleanup", dismissedCandidates: [] }) });
+  h.gate.setBypass(true);
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "local-bypass", input: { command: "rm -rf build-output" } })).toBeUndefined();
+  expect(h.review).toHaveBeenCalledOnce();
+  expect(h.select).not.toHaveBeenCalled();
+});
+
+it("does not bypass unresolved deletion after failed review", async () => {
+  const h = await harness({ review: async () => ({ status: "unavailable" as const, reason: "injected failure" }) });
+  h.gate.setBypass(true);
+  h.select.mockResolvedValue("Deny");
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "unresolved", input: { command: 'rm -rf "$UNRESOLVED_REVIEW_TARGET"' } })).toMatchObject({ block: true });
+  expect(h.select).toHaveBeenCalledOnce();
+});
+
+it("keeps mixed local and remote operations on the approval path with bypass active", async () => {
+  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "ask" as const, reason: "mixed consequences", dismissedCandidates: [] }) });
+  h.gate.setBypass(true);
+  h.select.mockResolvedValue("Deny");
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "mixed-remote", input: { command: "rm -rf build-output; curl https://example.test" } })).toMatchObject({ block: true });
+  expect(h.select).toHaveBeenCalledOnce();
+});
+
+it.each([
+  "git -c remote.origin.url=https://example.test/repo reset --hard",
+  "docker volume rm fixture",
+])("does not bypass excluded parsed operation: %s", async command => {
+  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "ask" as const, reason: "excluded operation", dismissedCandidates: [] }) });
+  h.gate.setBypass(true);
+  h.select.mockResolvedValue("Deny");
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "excluded", input: { command } })).toMatchObject({ block: true });
+  expect(h.select).toHaveBeenCalledOnce();
+});
+
+it("keeps bypass-off local asks on the approval path", async () => {
+  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "ask" as const, reason: "confirm local cleanup", dismissedCandidates: [] }) });
+  h.select.mockResolvedValue("Deny");
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "bypass-off", input: { command: "rm -rf build-output" } })).toMatchObject({ block: true });
+  expect(h.select).toHaveBeenCalledOnce();
+});
+
 it("runs the reported Herdr reproduction only as inert gate input", async () => {
   const { readFile } = await import("node:fs/promises");
   const command = await readFile(new URL("./fixtures/reported-herdr-command.txt", import.meta.url), "utf8");
