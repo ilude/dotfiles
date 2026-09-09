@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-09: Make plan-tab launch an acknowledged, single action
+
+**Fixed:** `/plans` now shows Launching immediately in the originating view and ignores repeated input until the launch settles. Herdr Pi-tab requests no longer block the UI thread. Successful creation explicitly focuses the returned tab and dismisses the picker rather than reopening Details with another active launch action. Copy/open actions and failures also preserve the originating Browse or Details view.
+
+**Failure handling:** Clearly prelaunch failures allow retry; uncertain requests and failures after tab creation warn that a launch may already exist and block further execution of that plan within the current picker. There is no automatic relaunch or focus restoration. Existing clipboard behavior, current-instance execution, archive checks/confirmation, and Herdr-only new-tab support remain unchanged. The shared fresh-instance and branch launch callers now await the same asynchronous tab handoff.
+
+**Validation boundary:** Delayed-launch tests cover immediate feedback, duplicate suppression, dismissal, preserved view/selection, and failure handling. Isolated real-Herdr acceptance verifies one focused destination tab and the exact bootstrap `/do-it` command with an inert child. It does not execute a plan or establish attached-client rendering or model readiness.
+
 ## 2026-09-09: Bound Damage Control bypass to parsed local effects
 
 **Fixed:** Default-profile `/dc off` now bypasses only valid contextual asks whose complete parsed invocation is an eligible local rm, Git, Docker, or contained environment-file operation. Dynamic or out-of-repository targets, mixed remote effects, Git remote operations or endpoint overrides, Docker volumes, confirmed policy boundaries, and review failures retain approval or blocking behavior. `/dc on`, ordinary recoverable work, and legacy behavior are unchanged.

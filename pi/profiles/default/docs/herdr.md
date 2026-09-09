@@ -33,7 +33,11 @@ Reload Pi after source changes. An already-running Pi does not acquire the launc
 
 Inside Herdr, `/new-instance [title]` and `/branch [title]` open a focused plugin tab with the same profile/cwd. Branch launch passes the exact created session file. Launch failures retain that file and report a resume path; an ambiguous result never automatically submits another launch.
 
-The default profile's `/plans` selector can launch the highlighted direct-child `.specs/<stub>/plan.md` through `/do-it` in a new focused Pi plugin tab. This action is unavailable outside Herdr and has no terminal fallback. The plugin bootstrap accepts only the constrained repository-relative plan path, validates it under the launch cwd, and constructs the `/do-it` message itself. It does not accept arbitrary initial prompts or argv.
+The default profile's `/plans` selector can launch the highlighted direct-child `.specs/<stub>/plan.md` through `/do-it` in a new focused Pi plugin tab. Pressing `d` shows Launching in the existing picker before starting process work. Herdr Pi-tab requests are asynchronous and bounded; the launcher explicitly focuses the exact returned tab instead of relying on creation defaults. Repeated input is ignored while the request is pending, and success dismisses the originating picker rather than reopening Details. Focus is not restored to the origin.
+
+Safe prelaunch failures preserve the view and selection and allow retry. A timeout, uncertain response, or failure after tab creation warns that the launch may exist and blocks further `d`/`r` execution of that plan within the current picker, including after copy/open actions. Inspect the reported tab before retrying through a fresh `/plans` invocation. Tab creation/focus is not a readiness acknowledgment from Pi or proof that the model has begun executing the plan.
+
+New-tab execution is unavailable outside Herdr and has no terminal fallback. The plugin bootstrap accepts only the constrained repository-relative plan path, validates it under the launch cwd, and constructs the `/do-it` message itself. It does not accept arbitrary initial prompts or argv.
 
 The process chain is Herdr → Node running the repository bootstrap and Pi. No PowerShell/Bash/cmd wrapper is used. The bootstrap runs the existing default Damage Control syntax preflight; failure enters tools-disabled/extensions-disabled repair mode. Ordinary tabs accept only profile and optional session inputs, not arbitrary extension/tool flags or automatic recovery. Restricted subagents additionally supply a per-child authenticated endpoint; the bootstrap obtains the frozen assignment from its parent and constructs the restricted argv itself. A per-launch host owns the child process handle and terminal streams. A failed safety preflight rejects a restricted launch rather than entering an unrestricted or misleading repair conversation.
 
@@ -62,5 +66,7 @@ pnpm test herdr-tools.test.ts herdr-launch.test.ts session-launch.test.ts herdr-
 pnpm run typecheck
 pnpm run check:runtime
 ```
+
+The plan launch interaction has focused checks in `plans.test.ts` and `session-launch.test.ts`. Run `PI_PLANS_HERDR_LIVE=1 pnpm test plans-herdr-live.test.ts` from the default profile for an isolated real-Herdr check of the complete `/plans` launch path: pending feedback, repeated-key suppression, one created tab, focused destination, original-picker dismissal, and bootstrap delivery of the exact `/do-it` command. Its child entrypoint is inert: it records argv without loading Pi, calling a model, or executing a plan. It verifies server-side focus, not attached-client rendering or model startup readiness.
 
 Live acceptance uses isolated named Herdr sessions, an isolated config/plugin registry, and uniquely named disposable Compose projects. Pin the test socket explicitly: merely overriding config paths while inheriting a production `HERDR_SOCKET_PATH` can route plugin operations to the wrong running server. Never stop a shared server. Tests distinguish CLI submission, actual readiness, and user-observed notifications.

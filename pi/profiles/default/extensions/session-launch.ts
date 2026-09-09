@@ -175,12 +175,14 @@ export async function createHerdrPiTab(cwd: string, title: string, sessionFile?:
 	const args = ["plugin", "pane", "open", "--plugin", "local.pi", "--entrypoint", "pi", "--placement", "tab", "--workspace", workspace,
 		"--cwd", process.platform === "win32" ? msysPathToWindows(cwd) : cwd,
 		"--env", `PI_HERDR_PROFILE_DIR=${profileDir()}`, "--env", `PI_HERDR_SESSION_FILE=${sessionFile || ""}`,
-		"--env", `PI_HERDR_PLAN_PATH=${planPath || ""}`];
+		"--env", `PI_HERDR_PLAN_PATH=${planPath || ""}`, "--no-focus"];
 	let output: string;
 	try {
 		output = await runHerdrAsync(args, cwd);
 	} catch (error) {
-		throw new HerdrPiTabLaunchError(`Herdr Pi launch request failed; inspect before retrying. ${String(error)}`, { mayHaveLaunched: true });
+		const code = (error as NodeJS.ErrnoException).code;
+		const notStarted = code === "ENOENT" || code === "EACCES" || code === "ENOTDIR";
+		throw new HerdrPiTabLaunchError(`Herdr Pi launch request failed${notStarted ? " before the CLI started" : "; inspect before retrying"}. ${String(error)}`, { mayHaveLaunched: !notStarted });
 	}
 	let tab: string | undefined;
 	let pane: string | undefined;

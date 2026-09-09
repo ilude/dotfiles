@@ -57,6 +57,7 @@ it("preserves branch session and plan inputs", async () => {
 	const planOpen = vi.mocked(execFile).mock.calls[0][1] as string[];
 	expect(planOpen).toContain("PI_HERDR_PLAN_PATH=.specs/example/plan.md");
 	expect(planOpen).not.toContain("run");
+	expect(planOpen).toContain("--no-focus");
 });
 
 it("reports missing workspace as a safe prelaunch failure", async () => {
@@ -66,6 +67,16 @@ it("reports missing workspace as a safe prelaunch failure", async () => {
 		mayHaveLaunched: false, tabId: undefined, paneId: undefined,
 	});
 	expect(execFile).not.toHaveBeenCalled();
+});
+
+it.each(["ENOENT", "EACCES"])("allows a safe retry when the CLI never started (%s)", async code => {
+	fixture();
+	vi.mocked(execFile).mockImplementationOnce((_command: any, _args: any, _options: any, callback: any) => {
+		callback(Object.assign(new Error("Cannot start CLI"), { code }));
+		return {} as any;
+	});
+	await expect(createHerdrPiTab(process.cwd(), "fresh")).rejects.toMatchObject({ mayHaveLaunched: false });
+	expect(execFile).toHaveBeenCalledTimes(1);
 });
 
 it("marks timeout as ambiguous and does not retry", async () => {
