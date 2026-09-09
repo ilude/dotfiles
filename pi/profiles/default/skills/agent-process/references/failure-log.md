@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-014 - Reopened the settled active-subagent reload assumption
+
+- **Reference:** Extension-refactor review and planning discussion, 2026-09-09.
+- **Observed:** The assistant treated active-child reload as required functionality, investigated teardown/recovery, and asked the operator to choose its behavior again. It also recommended finish-first command queuing rather than preserving active interaction.
+- **Evidence:** APR-011 already says the operator will not reload during running subagent work. Current runtime documentation was interpreted as requiring active teardown instead of reconciling it with that recorded decision. The operator reaffirmed the assumption and explicitly selected interactive steering.
+- **Correction:** Exclude active-child reload handling from the plans. Keep ordinary failed-termination cleanup separate. Preserve steering while binding command authority to the relevant invocation. See AIF-022.
+- **Related:** AIF-021, APR-011, APR-007.
+- **Status:** Scope corrected and decisions recorded. No runtime changes; future adherence unverified.
+
 ## APR-013 - Commit reviewer invented an invalid status flag
 
 - **Reference:** Default `/commit` after the Herdr pane-order correction, 2026-09-09.

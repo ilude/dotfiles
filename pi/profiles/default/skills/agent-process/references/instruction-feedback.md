@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-022 - Preserve settled reload assumptions and interactive steering
+
+- **Reference:** Operator correction during extension-refactor planning, 2026-09-09.
+- **Decision:** The operator will not invoke `/reload` while subagents are active. Active-child reload teardown, migration, and recovery are outside these plans; do not reopen that decision. The earlier APR-011 already records this operating assumption.
+- **Command behavior:** Preserve active interaction and steering while the orchestrator works. Do not impose waiting until the current command finishes. Correct invocation-specific authority without turning command delivery into a finish-first queue.
+- **Scope:** Four focused plans only: Damage Control bypass, command ownership, ordinary subagent cleanup, and legacy web-fetch correctness. Onclave, Bedrock, and stateless deduplication remain separate. Failed termination during ordinary cleanup remains distinct from unsupported active-child reload.
+- **Related:** APR-011, APR-014, AIF-019, AIF-021.
+- **Status:** Operator decisions recorded for planning. No implementation or global instruction changes.
+
 ## AIF-021 - Preserve plan authority during discussion and execution
 
 - **Reference:** Operator correction after Damage Control execution reopened a settled watchdog decision and treated worktree-local credentials as a new setup prerequisite.
