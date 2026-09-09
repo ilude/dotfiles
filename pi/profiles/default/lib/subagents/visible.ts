@@ -56,7 +56,7 @@ export class VisibleChild extends RpcChild {
   if(message.type==="host-started"){
    const pid=(message.payload as {pid?:unknown})?.pid;
    if(this.hostPid||!Number.isSafeInteger(pid)||(pid as number)<=0)throw new Error("Invalid or duplicate host identity");
-   this.hostPid=pid as number;return{accepted:true};
+   this.hostPid=pid as number;this.record.launcherState="running";return{accepted:true};
   }
   if(message.type==="host-poll")return{stop:this.stopping,force:this.forceStop};
   if(message.type==="host-exit"){
@@ -86,7 +86,7 @@ export class VisibleChild extends RpcChild {
   }
   if(message.type==="handback"){
    this.record.userOwned=false;this.interventionReady=false;
-   if(this.record.status==="settled"&&!this.record.retained)void this.stopProcess().catch(error=>{this.record.error=String(error)});
+   if(this.record.status==="settled"&&!this.record.retained)void this.cleanupOwnedResources();
    return{accepted:true};
   }
   if(message.type==="turn"){
@@ -112,7 +112,7 @@ export class VisibleChild extends RpcChild {
   while(!this.interventionReady){if(Date.now()>deadline)throw new Error("Child did not acknowledge user intervention");await delay(25)}
  }
  handback(){if(!this.record.userOwned)throw new Error("Child is not under user intervention");this.enqueue({type:"handback"})}
- override async cancel(){this.forceStop=true;await super.cancel()}
+ override async cancel(){this.forceStop=true;return super.cancel()}
  protected override alive(){return this.appReady&&!this.hostExited&&!this.closed}
  protected override async stopProcess(){
   if(this.record.userOwned&&!this.forceStop)return;
@@ -137,9 +137,10 @@ export class VisibleChild extends RpcChild {
   }
   // Pane closure owns launcher termination. Never terminate a PID found by probing.
   while(this.hostPid){
-   try{process.kill(this.hostPid,0)}catch(error){if((error as NodeJS.ErrnoException).code==="ESRCH")break;throw error}
+   try{process.kill(this.hostPid,0)}catch(error){if((error as NodeJS.ErrnoException).code==="ESRCH"){this.record.launcherState="exited";break}throw error}
    if(Date.now()>deadline)throw new Error("Visible launcher exit was not observed after pane closure");
    await delay(25);
   }
+  if(!this.hostPid)this.record.launcherState="exited";
  }
 }

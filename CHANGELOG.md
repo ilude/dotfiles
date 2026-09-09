@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-09: Preserve subagent ownership through cleanup failures
+
+**Fixed:** Default subagent assignment outcomes are now recorded separately from process and visible-pane cleanup. Failed termination or pane closure remains observable with bounded cleanup errors and can be retried without losing the owned child.
+
+**Lifecycle:** Cleanup attempts all applicable children, keeps authenticated controls available for unresolved resources, and does not replace the runtime during `/clear` until cleanup succeeds. Successful cleanup is idempotent and does not duplicate outcomes. Parent shutdown still makes a bounded attempt and reports failures; acknowledged user-owned visible children remain excluded by the existing quit contract.
+
+**Scope:** The operator's settled-only `/reload` assumption and active-child reload behavior are unchanged. Validation uses inert fixtures and injected cleanup failures, not production Herdr operations or live orphan recovery.
+
 ## 2026-09-09: Make plan-tab launch an acknowledged, single action
 
 **Fixed:** `/plans` now shows Launching immediately in the originating view and ignores repeated input until the launch settles. Herdr Pi-tab requests no longer block the UI thread. Successful creation explicitly focuses the returned tab and dismisses the picker rather than reopening Details with another active launch action. Copy/open actions and failures also preserve the originating Browse or Details view.

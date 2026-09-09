@@ -10,7 +10,12 @@ export default function clearCommand(pi: ExtensionAPI): void {
 			const state = requestReloadState(pi);
 			if (!state) ctx.ui.notify("Reload monitoring unavailable; starting a new session without automatic reload.", "warning");
 			const reloadNeeded = Boolean(state?.needed && !state.error);
-			await requestSubagentRuntimeReset(pi);
+			try {
+				await requestSubagentRuntimeReset(pi);
+			} catch (error) {
+				ctx.ui.notify(`Cannot clear while subagent cleanup is unresolved: ${error instanceof Error ? error.message : String(error)}`, "error");
+				return;
+			}
 			await ctx.newSession({
 				withSession: async (ctx) => {
 					if (reloadNeeded) await ctx.reload();

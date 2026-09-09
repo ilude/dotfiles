@@ -11,6 +11,11 @@ import { SubagentLayout } from "./layout.ts";
 import { createHerdrCli } from "../herdr-cli.ts";
 export interface Delivery extends ChildRecord { deliveryId: string }
 export interface BoundOrigin { deliver: (record: Delivery) => boolean; status?: (records: ChildRecord[]) => void }
+export interface CleanupSummary { complete: boolean; attempted: number; failures: Array<{ id: string; error: string }> }
+export class RuntimeCleanupError extends Error {
+ readonly summary: CleanupSummary;
+ constructor(summary: CleanupSummary) { super("Subagent cleanup did not close every owned resource"); this.name = "RuntimeCleanupError"; this.summary = summary; }
+}
 interface Input { definition:AgentDefinition;instructions:string;cwd:string;model:string;effort:AgentEffort;skills:string[];origin:string;retained:boolean;parentId?:string;surface:"headless"|"visible";catalog?:Map<string,AgentDefinition>;progress?:(record:ChildRecord)=>void }
 interface Context { input:Input;profile:string;extension:string;catalog:Map<string,AgentDefinition> }
 export interface InertRuntimeState { names: Record<string, string[]>; outcomes: Delivery[] }
@@ -153,6 +158,7 @@ export class SubagentRuntime {
   child.hasOutstandingChildren=()=>[...this.children.values()].some(c=>c.record.parentId===child.record.id&&(c.record.status!=="settled"||c.record.phase==="cleanup"))||[...this.pending.values()].some(r=>r.parentId===child.record.id);
   child.record.waitState=initialWaitState??(background?"background":"attached");
   child.onProgress=record=>{
+   this.reconcileCleanup(record);
    this.publish(record.origin);
    input.progress?.(record);
    for(const observer of this.observers.get(record.id)??[])observer(record);
@@ -165,7 +171,7 @@ export class SubagentRuntime {
    if(record.status==="settled"){
     for(const pending of this.pending.values())if(pending.parentId===record.id){pending.parentId=undefined;pending.notice=`Coordinator ${record.id} ended before receiving this outcome; forwarded to originating orchestrator.`}
     this.flush(record.origin);
-    if(!record.retained&&!record.userOwned)this.transport.revoke(record.id);
+    this.reconcileCleanup(record);
    }
   };
   try{
@@ -220,15 +226,30 @@ export class SubagentRuntime {
     return record.status!=="settled"||record.phase!=="settled"||record.retained||record.processState!=="exited"||record.paneState==="open";
   });
  }
- async shutdown(reason:string){
-  if(this.disposed)return;
+ private resourcesOpen(record:ChildRecord){
+  return record.processState!=="exited"||record.paneState==="open";
+ }
+ private reconcileCleanup(record:ChildRecord){
+  if(record.status==="settled"&&!record.retained&&!record.userOwned&&record.cleanup?.complete&&!this.resourcesOpen(record))this.transport.revoke(record.id);
+ }
+ async shutdown(reason:string):Promise<CleanupSummary>{
+  if(this.disposed)return {complete:true,attempted:0,failures:[]};
+  const failures:Array<{id:string;error:string}>=[];let attempted=0;
+  // Each child gets its own attempt. A failed child must not skip independent ones.
   for(const child of this.children.values()){
    const record=child.snapshot();
    if(reason==="quit"&&record.surface==="visible"&&record.userOwned)continue;
-   if(record.status!=="settled"||record.retained)await child.cancel();
+   const needs=record.status!=="settled"||record.retained||this.resourcesOpen(record)||!record.cleanup?.complete;
+   if(!needs)continue;
+   attempted++;
+   const cleanup=await child.cancel();
+   if(!cleanup.complete)failures.push({id:record.id,error:cleanup.errors.at(-1)??"owned resources remain open"});
   }
+  const summary={complete:failures.length===0,attempted,failures};
+  if(!summary.complete)return summary;
   await this.transport.close();
   this.bindings.clear();this.observers.clear();this.layouts.clear();this.disposed=true;
+  return summary;
  }
  /**
   * Ends this executable owner at a source reload. Reload is supported only after
@@ -262,7 +283,10 @@ export function getSubagentRuntime(){
 }
 export async function resetSubagentRuntime(reason="clear"){
  const current=runtime;
- if(current)await current.shutdown(reason);
+ if(current){
+  const summary=await current.shutdown(reason);
+  if(!summary.complete)throw new RuntimeCleanupError(summary);
+ }
  clearInertState();
  runtime=new SubagentRuntime();
  return runtime;
