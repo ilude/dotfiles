@@ -100,6 +100,36 @@ describe("Codex usage", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it.each(["resume", "branch"])("keeps startup quiet for an existing %s conversation while retaining footer and /usage", async (kind) => {
+    const sm = SessionManager.create(dir, join(dir, "sessions"));
+    sm.appendMessage({ role: "user", content: "Existing conversation", timestamp: Date.now() });
+    sm.appendMessage(assistant() as any);
+    sm.appendCustomEntry("codex-usage-report", { text: "Previous usage report" });
+    const file = kind === "branch" ? sm.createBranchedSession(sm.getLeafId()!)! : sm.getSessionFile()!;
+    const r = runtime(codex, SessionManager.open(file));
+    const before = r.sm.getEntries();
+    await r.emit("session_start", { reason: "startup" });
+    await flush();
+    expect(r.sm.getEntries()).toEqual(before);
+    expect(r.ctx.ui.notify).not.toHaveBeenCalled();
+    expect(r.statuses.get("codex")).toContain("5h 25%");
+    await r.commands.get("usage").handler("", r.ctx);
+    expect(r.reports()).toHaveLength(2);
+    await r.emit("session_shutdown");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not announce usage for a branch containing only metadata", async () => {
+    const sm = SessionManager.inMemory(dir, { parentSession: join(dir, "parent.jsonl") });
+    sm.appendCustomEntry("session-profile", { profile: "default" });
+    const r = runtime(codex, sm);
+    await r.emit("session_start", { reason: "startup" });
+    await flush();
+    expect(r.reports()).toHaveLength(0);
+    expect(r.statuses.get("codex")).toContain("5h 25%");
+    await r.emit("session_shutdown");
+  });
+
   it("completes one report after /clear immediately reloads, discarding the old request", async () => {
     let finishOld!: (value: Response) => void;
     vi.mocked(fetch).mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));

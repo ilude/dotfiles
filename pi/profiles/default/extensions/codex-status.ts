@@ -73,7 +73,10 @@ export default function codexStatus(pi: ExtensionAPI): void {
     // can complete an interrupted report without emitting a second finished report.
     let marker = [...entries].reverse().find(entry => entry.type === "custom" && entry.customType === START && (entry.data as { sessionId?: string })?.sessionId === sessionId)?.id;
     const complete = marker && entries.some(entry => entry.type === "custom" && entry.customType === REPORT && (entry.data as { marker?: string })?.marker === marker);
-    if (event.reason === "startup" || event.reason === "new") {
+    // /branch launches a new process with existing history, so it also receives
+    // "startup". Refresh its footer without appending another transcript report.
+    const existingConversation = !!ctx.sessionManager.getHeader()?.parentSession || entries.some(entry => entry.type === "message");
+    if ((event.reason === "startup" && !existingConversation) || event.reason === "new") {
       pi.appendEntry(START, { sessionId });
       marker = ctx.sessionManager.getEntries().at(-1)?.id;
     } else if (event.reason !== "reload" || complete) marker = undefined;

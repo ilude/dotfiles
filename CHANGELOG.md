@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-09: Keep existing conversations quiet on startup
+
+**Changed:** Default Pi no longer appends the automatic Codex/cache/Bedrock usage report when `/branch` opens copied history or startup resumes an existing conversation. Footer refreshes and explicit `/usage` remain available; fresh-session startup, `/new`, and `/clear` retain their reports. Existing transcript entries are preserved.
+
 ## 2026-09-09: Retry transient commit transport failures
 
 **Changed:** Default-profile `/commit` now gives transient provider and transport failures up to three retries before returning a hard failure. Deterministic Git, hook, cancellation, and timeout failures still stop immediately, and final reporting continues to inspect actual repository state.
