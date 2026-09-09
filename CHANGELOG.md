@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-09: Install stable Herdr on Windows
+
+**Changed:** The Windows installer now installs the official stable Herdr release when Herdr is missing or older than 0.9.0. It uses Herdr's official PowerShell installer, verifies the resulting binary and version, and reports failures through the existing package-install failure summary. Existing 0.9.0-or-newer installations are preserved.
+
+## 2026-09-08: Reconcile subagent UX acceptance status
+
+**Corrected:** Earlier subagent layout/transcript checks were server-side and opt-in historical evidence, not proof of attached-client acceptance. The subsequent operator acceptance failed on reload activation and reported focus/layout defects; the bounded follow-up remains incomplete.
+
+**Lifecycle boundary:** Explicit `/reload` must end every subagent runtime, conversation, and process, including idle retained children, before loading replacement code. No unsupported-active migration or special cleanup path is required. Source edits do not upgrade an already-running operator session, and the first transition from the earlier lifecycle was not live-tested.
+
+**Validation boundary:** The final sanitized task-profile suite passed 118 tests with 6 skips and no failures; runtime checks passed 335 rules and 8 schemas. Typecheck retains the baseline commit-whitespace TS7016 error. No model-backed or attached-client acceptance run occurred because the initial swap focus theft and 5+ child second-row geometry blocker remain unresolved. Archive, commit, merge, push, and deployment remain separately unauthorized.
+
 ## 2026-09-08: Add human-readable subagents and stable visible layout
 
 **Changed:** Default-profile subagents receive stable session-scoped human names while retaining UUID transport identities. Launch, progress, control, question, and outcome rows now show bounded readable assignment, resolved model/effort, surface, timing, activity, result, and error details instead of generic labels and raw JSON. Exact case-insensitive names work anywhere the caller already has UUID-based authority.

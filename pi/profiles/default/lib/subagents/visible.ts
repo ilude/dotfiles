@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
 import type { ChildEndpoint, ApplicationMessage } from "./transport.ts";
 import { createHerdrCli, herdrContext, result, inspectPane } from "../herdr-cli.ts";
-import { LayoutPlacementError, SubagentLayout, type LayoutFocus } from "./layout.ts";
+import { LayoutPlacementError, SubagentLayout } from "./layout.ts";
 
 export class VisibleChild extends RpcChild {
  private cli=createHerdrCli();
@@ -17,7 +17,6 @@ export class VisibleChild extends RpcChild {
  private stopping=false;
  private forceStop=false;
  private closed=false;
- private focusBeforeStop?:LayoutFocus;
  private bootstrapped=false;
  private interventionReady=false;
  private commands:Array<{id:string;type:string;message?:string}>=[];
@@ -117,7 +116,6 @@ export class VisibleChild extends RpcChild {
  protected override alive(){return this.appReady&&!this.hostExited&&!this.closed}
  protected override async stopProcess(){
   if(this.record.userOwned&&!this.forceStop)return;
-  if(this.record.paneId&&!this.closed&&!this.focusBeforeStop)this.focusBeforeStop=await this.layout.captureFocus();
   this.stopping=true;
   if(this.startup)clearTimeout(this.startup);
   try{await this.launchDone}catch{ /* Exact returned pane, when available, still belongs to this launch. */ }
@@ -130,15 +128,18 @@ export class VisibleChild extends RpcChild {
    if(Date.now()>deadline)throw new Error("Visible launcher did not settle its owned child");
    await delay(50);
   }
-  // The bootstrap reports child close, then exits. Never terminate a PID found by probing.
+  // host-exit proves the actual child process settled. The launcher deliberately
+  // remains alive briefly so closing its still-live, non-focused plugin pane
+  // cannot make Herdr focus the caller workspace as a side effect of PTY exit.
+  if(this.record.paneId&&!this.closed){
+   await this.layout.close(this.record.origin,this.record.id,this.record.paneId);
+   this.closed=true;this.record.paneState="closed";
+  }
+  // Pane closure owns launcher termination. Never terminate a PID found by probing.
   while(this.hostPid){
    try{process.kill(this.hostPid,0)}catch(error){if((error as NodeJS.ErrnoException).code==="ESRCH")break;throw error}
-   if(Date.now()>deadline)throw new Error("Visible launcher exit was not observed; pane retained for inspection");
+   if(Date.now()>deadline)throw new Error("Visible launcher exit was not observed after pane closure");
    await delay(25);
-  }
-  if(this.record.paneId&&!this.closed){
-   await this.layout.close(this.record.origin,this.record.id,this.record.paneId,this.focusBeforeStop);
-   this.closed=true;this.record.paneState="closed";
   }
  }
 }

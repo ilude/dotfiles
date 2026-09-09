@@ -39,7 +39,12 @@ export async function hostSubagent(entry, profile, rawEndpoint) {
   })();
   const code=await closed;
   await watch;
-  try{await requestParent(endpoint,{type:"host-exit",payload:{code}})}catch{parentGone=true}
+  try{
+   await requestParent(endpoint,{type:"host-exit",payload:{code}});
+   // Keep the wrapper PTY alive until the parent closes its owned pane. This
+   // avoids Herdr focusing that workspace when a non-focused plugin PTY exits.
+   await delay(5_000);
+  }catch{parentGone=true}
  }finally{
   if(child&&!exited){await stop();await new Promise(resolve=>child.once("close",resolve))}
   rmSync(scratch,{recursive:true,force:true});

@@ -14,7 +14,7 @@ node scripts/pi-herdr-setup.mjs
 
 Setup generates the gitignored default `.herdr-plugin/herdr-plugin.toml` and links `local.pi`. It resolves the actual Node executable and installed Pi `bin.pi`, so rerun setup after moving the checkout or updating Node/Pi. The manifest contains local executable paths, not credentials. Linking registers an executable plugin for the current Herdr user; do not link a disposable worktree into your production session.
 
-Herdr's generated `extensions/herdr-agent-state.ts` is checked in unmodified. To refresh it with an installed Herdr update, run `herdr integration install pi` with `PI_CODING_AGENT_DIR` explicitly pointing to default, inspect its diff, and avoid overwriting concurrent changes. The repository prompt bridge is separate and must not be copied into generated code. No Herdr upgrade is required by this feature; live validation used the installed 0.8.2 preview with Pi 0.85.0 on Windows.
+Herdr's generated `extensions/herdr-agent-state.ts` is checked in unmodified. To refresh it with an installed Herdr update, run `herdr integration install pi` with `PI_CODING_AGENT_DIR` explicitly pointing to default, inspect its diff, and avoid overwriting concurrent changes. The repository prompt bridge is separate and must not be copied into generated code. Windows installation now ensures the official stable Herdr 0.9.0 or newer. The layout remains compatible with 0.8.x APIs; upgrading a client does not update an already-running server until that session is restarted.
 
 Reload Pi after source changes. An already-running Pi does not acquire the launcher's process-exit hook until started through the plugin.
 
@@ -39,7 +39,7 @@ The installed preview can replace an exited focused terminal with a shell. The b
 
 ## Defined subagents
 
-`subagent` uses native TUI children by default inside Herdr, with an explicit headless override. It verifies the configured `local.pi` bootstrap belongs to the active profile's repository, preserves focus, and owns only returned pane IDs. Children have no general Herdr control tools. Parent reload/chat changes preserve this separate process-local ownership; ordinary process-tool ownership still expires as documented above.
+`subagent` uses native TUI children by default inside Herdr, with an explicit headless override. It verifies the configured `local.pi` bootstrap belongs to the active profile's repository and owns only returned pane IDs. Children split below the orchestrator through non-focusing operations, four per tab, with child five starting an owned overflow tab. Children have no general Herdr control tools. Ordinary parent chat changes preserve separate subagent ownership, but explicit `/reload` is supported only when no active or idle retained child remains and replaces the executable runtime owner. Ordinary process-tool ownership still expires as documented above.
 
 Assignment results travel through authenticated local messages, not terminal scraping or Herdr status. Finished panes close immediately after result capture and process settlement, even if that removes zoom elsewhere. Direct user help suspends parent steering and requires explicit handback. Parent exit stops ordinary children but preserves directly helped visible children as parent-unavailable. See [authority, controls, and validation](subagents.md).
 

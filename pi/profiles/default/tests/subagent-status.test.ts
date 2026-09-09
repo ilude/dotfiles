@@ -2,6 +2,8 @@ import { expect, it, vi } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import subagents from "../extensions/subagents.ts";
+import clearCommand from "../extensions/clear.ts";
+import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
 import { getSubagentRuntime, resetSubagentRuntime } from "../lib/subagents/runtime.ts";
 import { statusLines, outcomeText } from "../lib/subagents/status.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
@@ -17,26 +19,27 @@ it("renders inactivity separately from contact, redacts control characters and s
  const many=statusLines([...Array.from({length:8},()=>r),...Array.from({length:3},()=>ended)]);
  expect(many.length).toBeLessThanOrEqual(10);expect(many.filter(line=>line.includes("cleanup")).length).toBe(3);
 });
-it("resets a process-global legacy owner without manual child cleanup",async()=>{
- const key=Symbol.for("dotfiles.pi.default.subagents.v1"),globals=globalThis as any,previous=globals[key];
- const shutdown=vi.fn(async()=>{});globals[key]={shutdown};
- try{
-  const replacement=await resetSubagentRuntime();
-  expect(shutdown).toHaveBeenCalledWith("clear");expect(replacement).toBe(getSubagentRuntime());expect(typeof replacement.wait).toBe("function");
- }finally{globals[key]=previous}
+it("replaces the module-local owner on an explicit reset",async()=>{
+ const before=getSubagentRuntime();
+ const replacement=await resetSubagentRuntime();
+ expect(replacement).toBe(getSubagentRuntime());expect(replacement.ownerId).not.toBe(before.ownerId);
 });
-it("keeps older live owners intact on reload and reports the automatic reset paths",async()=>{
- const runtime=getSubagentRuntime(),wait=runtime.wait,handlers:Record<string,Function>={},tools:Record<string,any>={},widgets:any[]=[];
- (runtime as any).wait=undefined;
- const pi:any={on:(name:string,handler:Function)=>{handlers[name]=handler},registerTool:(tool:any)=>{tools[tool.name]=tool},registerCommand:()=>{},sendMessage:()=>{}};
- const ctx:any={cwd:here,hasUI:true,isProjectTrusted:()=>false,isIdle:()=>true,sessionManager:{getSessionId:()=>"old-owner"},ui:{setWidget:(_key:string,lines:any)=>widgets.push(lines)}};
- try{
-  subagents(pi);await handlers.session_start({},ctx);
-  expect(widgets.at(-1)[0]).toContain("pre-upgrade subagent runtime");
-  expect(widgets.at(-1)[0]).toContain("/clear");
-  const response=await tools.subagent.execute("call",{agent:"probe",instructions:"work"},undefined,undefined,ctx);
-  expect(response.isError).toBe(true);expect(response.content[0].text).toContain("restart Pi");
- }finally{await handlers.session_shutdown?.({reason:"reload"},ctx);runtime.wait=wait}
+it("does not advertise the obsolete pre-upgrade runtime path",async()=>{
+ const handlers:Record<string,Function>={},widgets:any[]=[];
+ const pi:any={events:{on:()=>()=>{}},on:(name:string,handler:Function)=>{handlers[name]=handler},registerTool:()=>{},registerCommand:()=>{},sendMessage:()=>{}};
+ const ctx:any={cwd:here,hasUI:true,isProjectTrusted:()=>false,isIdle:()=>true,sessionManager:{getSessionId:()=>"fresh-owner"},ui:{setWidget:(_key:string,lines:any)=>widgets.push(lines)}};
+ subagents(pi);await handlers.session_start({},ctx);
+ expect(JSON.stringify(widgets)).not.toContain("pre-upgrade subagent runtime");
+ await handlers.session_shutdown?.({reason:"reload"},ctx);
+});
+it("resets the owning runtime through the shared clear event",async()=>{
+ const events=createEventBus(),handlers:Record<string,Function>={},commands:Record<string,any>={};
+ const pi:any={events,on:(name:string,handler:Function)=>{handlers[name]=handler},registerTool:()=>{},registerCommand:(name:string,command:any)=>{commands[name]=command},sendMessage:()=>{}};
+ const ctx:any={cwd:here,hasUI:true,isProjectTrusted:()=>false,isIdle:()=>true,sessionManager:{getSessionId:()=>"clear-owner"},ui:{setWidget:()=>{},notify:vi.fn()},newSession:vi.fn(async(options:any)=>options.withSession({}))};
+ subagents(pi);clearCommand(pi);await handlers.session_start({},ctx);const before=getSubagentRuntime().ownerId;
+ await commands.clear.handler("",ctx);
+ expect(getSubagentRuntime().ownerId).not.toBe(before);expect(ctx.newSession).toHaveBeenCalledOnce();
+ await handlers.session_shutdown?.({reason:"reload"},ctx);
 });
 it("updates the origin's UI during silence and busy failure without sending progress to the model",async()=>{
  const oldBin=process.env.PI_SUBAGENT_BIN,oldArgs=process.env.PI_SUBAGENT_BIN_ARGS;
@@ -56,12 +59,13 @@ it("updates the origin's UI during silence and busy failure without sending prog
   const viewsBefore=widgets.length;
   await vi.waitFor(()=>expect(widgets.length).toBeGreaterThan(viewsBefore),{timeout:2500});
   expect(messages).toEqual([]);
+  // An error widget is progress during cleanup, not final outcome delivery.
+  await vi.waitFor(()=>expect(runtime.get(b.id).record).toMatchObject({phase:"settled",processState:"exited"}),{timeout:7000});
   await handlers.session_shutdown({reason:"switch"},ctx);owner="status-b";await handlers.session_start({},ctx);idle=true;await handlers.agent_settled();
   expect(messages).toEqual([]);expect(widgets.at(-1)).toBeUndefined();
   await handlers.session_shutdown({reason:"switch"},ctx);owner="status-a";await handlers.session_start({},ctx);
   expect(messages).toHaveLength(1);expect(messages[0].content).toContain("preflight rejected");
   await handlers.message_end({message:{role:"custom",...messages[0]}},ctx);
-  await handlers.session_shutdown({reason:"reload"},ctx);await handlers.session_start({},ctx);await handlers.agent_settled();expect(messages).toHaveLength(1);
   await runtime.get(a.id).cancel();expect(messages).toHaveLength(2);expect(runtime.get(b.id).record.outcome).toBe("failed");
  }finally{
   await handlers.session_shutdown?.({reason:"quit"},ctx);

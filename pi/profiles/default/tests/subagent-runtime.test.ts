@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { SubagentRuntime, type Delivery } from "../lib/subagents/runtime.ts";
+import { SubagentRuntime, getSubagentRuntime, resetSubagentRuntime, retireSubagentRuntime, type Delivery } from "../lib/subagents/runtime.ts";
 import type { AgentDefinition } from "../lib/subagents/definitions.ts";
 const here=dirname(fileURLToPath(import.meta.url));
 const oldBin=process.env.PI_SUBAGENT_BIN,oldArgs=process.env.PI_SUBAGENT_BIN_ARGS;
@@ -117,5 +117,36 @@ describe("process-local descendant ownership",()=>{
   const previous=process.env.HERDR_ENV;process.env.HERDR_ENV="0";
   try{await expect(runtime.launch({...input,surface:"visible"},here,here,true)).rejects.toThrow(/no headless substitution/)}finally{process.env.HERDR_ENV=previous}
   expect(runtime.list()).toEqual([]);
+ });
+ it("reloads a settled owner with only names and undelivered outcomes",async()=>{
+  process.env.PI_SUBAGENT_BIN=process.execPath;
+  process.env.PI_SUBAGENT_BIN_ARGS=JSON.stringify([join(here,"fixtures/fake-subagent-rpc.mjs")]);
+  await resetSubagentRuntime();
+  const runtime=getSubagentRuntime();
+  runtime.bind(input.origin,{deliver:()=>false});
+  const first=await runtime.launch({...input,instructions:"[reject]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  let exitedCleanupActive:boolean|undefined;
+  const unsubscribe=runtime.subscribe(first.id,input.origin,record=>{
+   if(record.processState==="exited"&&record.phase==="cleanup")exitedCleanupActive=runtime.hasActiveResources();
+  });
+  await vi.waitFor(()=>expect(runtime.get(first.id).record).toMatchObject({status:"settled",processState:"exited",phase:"settled"}),{timeout:7000});
+  unsubscribe();
+  expect(exitedCleanupActive).toBe(true);
+  expect(runtime.hasActiveResources()).toBe(false);
+  const firstName=first.displayName;
+  await retireSubagentRuntime();
+  const replacement=getSubagentRuntime();
+  expect(replacement.ownerId).not.toBe(runtime.ownerId);
+  expect(replacement.list(input.origin).some(record=>record.id===first.id&&record.outcome==="failed")).toBe(true);
+  const carried:Delivery[]=[];
+  replacement.bind(input.origin,{deliver:record=>{carried.push(record);return true}});
+  expect(carried).toHaveLength(1);
+  expect(carried[0]).toMatchObject({id:first.id,outcome:"failed",phase:"settled",processState:"exited"});
+  replacement.acknowledge(input.origin,carried[0].deliveryId);
+  replacement.flush(input.origin);expect(carried).toHaveLength(1);
+  const second=await replacement.launch({...input,instructions:"[reject]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  expect(second.displayName).not.toBe(firstName);
+  await vi.waitFor(()=>expect(replacement.get(second.id).record.phase).toBe("settled"),{timeout:7000});
+  await resetSubagentRuntime();
  });
 });

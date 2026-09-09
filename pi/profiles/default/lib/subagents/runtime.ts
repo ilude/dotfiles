@@ -13,6 +13,39 @@ export interface Delivery extends ChildRecord { deliveryId: string }
 export interface BoundOrigin { deliver: (record: Delivery) => boolean; status?: (records: ChildRecord[]) => void }
 interface Input { definition:AgentDefinition;instructions:string;cwd:string;model:string;effort:AgentEffort;skills:string[];origin:string;retained:boolean;parentId?:string;surface:"headless"|"visible";catalog?:Map<string,AgentDefinition>;progress?:(record:ChildRecord)=>void }
 interface Context { input:Input;profile:string;extension:string;catalog:Map<string,AgentDefinition> }
+export interface InertRuntimeState { names: Record<string, string[]>; outcomes: Delivery[] }
+
+const inertStateKey = Symbol.for("dotfiles.pi.default.subagents.state.v2");
+type InertStateGlobal = typeof globalThis & { [inertStateKey]?: InertRuntimeState };
+
+function takeInertState(): InertRuntimeState | undefined {
+ const g = globalThis as InertStateGlobal;
+ const state = g[inertStateKey];
+ delete g[inertStateKey];
+ return state;
+}
+function saveInertState(state: InertRuntimeState): void {
+ (globalThis as InertStateGlobal)[inertStateKey] = state;
+}
+function clearInertState(): void {
+ delete (globalThis as InertStateGlobal)[inertStateKey];
+}
+
+/** A settled record carried over reload without its process, transport, or controls. */
+class InertChild {
+ readonly record: ChildRecord;
+ constructor(record: ChildRecord) { this.record = { ...record, skills: record.skills ? [...record.skills] : undefined }; }
+ snapshot(): ChildRecord { return { ...this.record, skills: this.record.skills ? [...this.record.skills] : undefined }; }
+ wait(): Promise<ChildRecord> { return Promise.resolve(this.snapshot()); }
+ private unavailable(): never { throw new Error("This settled subagent is no longer controllable after reload"); }
+ async message(_value: string): Promise<void> { this.unavailable(); }
+ async command(_type: string, _data: Record<string, unknown> = {}): Promise<never> { return this.unavailable(); }
+ async answer(_value: string): Promise<void> { this.unavailable(); }
+ async cancel(): Promise<void> { this.unavailable(); }
+ async finish(): Promise<void> { this.unavailable(); }
+ async escalate(_ctx: unknown): Promise<void> { this.unavailable(); }
+}
+
 export class SubagentRuntime {
  private children=new Map<string,RpcChild>();
  private contexts=new Map<string,Context>();
@@ -22,11 +55,25 @@ export class SubagentRuntime {
  private names=new Map<string,NameAllocator>();
  private layouts=new Map<string,SubagentLayout>();
  private observers=new Map<string,Set<(record:ChildRecord)=>void>>();
+ private inert=new Map<string,InertChild>();
  private transport=new ChildTransport((identity,message)=>this.dispatch(identity,message));
+ private disposed=false;
+ readonly ownerId=randomUUID();
+ constructor(seed?:InertRuntimeState) {
+  for(const [origin,used] of Object.entries(seed?.names??{})) {
+   const allocator=new NameAllocator();
+   for(const name of used)allocator.reserve(name);
+   this.names.set(origin,allocator);
+  }
+  for(const outcome of seed?.outcomes??[]) {
+   this.pending.set(outcome.deliveryId,{...outcome,skills:outcome.skills?[...outcome.skills]:undefined});
+   this.inert.set(outcome.id,new InertChild(outcome));
+  }
+ }
  bind(origin:string,binding:BoundOrigin){this.bindings.set(origin,binding);this.publish(origin);this.flush(origin)}
  flush(origin:string){const binding=this.bindings.get(origin);if(!binding)return;for(const [id,record] of this.pending){if(record.origin===origin&&!record.parentId&&!this.queued.has(id)&&binding.deliver(record)&&this.pending.has(id))this.queued.add(id)}}
  private publish(origin:string){this.bindings.get(origin)?.status?.(this.list(origin));}
- acknowledge(origin:string,id:string){if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.queued.delete(id)}
+ acknowledge(origin:string,id:string){if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.queued.delete(id);this.inert.delete(id)}
  unbind(origin:string,binding:BoundOrigin){if(this.bindings.get(origin)===binding)this.bindings.delete(origin)}
  private deliver(record:ChildRecord){
   const parent=record.parentId?this.children.get(record.parentId):undefined;
@@ -85,6 +132,7 @@ export class SubagentRuntime {
   return child.parentMessage(message);
  }
  async launch(input:Input,profileDir:string,childExtension:string,background:boolean,signal?:AbortSignal,initialWaitState?:"attached"|"background"):Promise<ChildRecord>{
+  if(this.disposed)throw new Error("Subagent runtime is no longer active");
   const cwd=workspaceRoot(resolve(input.cwd));
   if(input.parentId){
    const parent=this.children.get(input.parentId),context=this.contexts.get(input.parentId);
@@ -100,6 +148,7 @@ export class SubagentRuntime {
    ?new VisibleChild(frozen as LaunchSpec,resolve(childExtension),resolve(profileDir),this.layoutFor(input.origin))
    :new RpcChild(frozen as LaunchSpec,resolve(childExtension),resolve(profileDir));
   this.children.set(child.record.id,child);
+  this.inert.delete(child.record.id);
   this.contexts.set(child.record.id,{input:frozen,profile:resolve(profileDir),extension:resolve(childExtension),catalog:new Map(input.catalog??[[input.definition.name,input.definition]])});
   child.hasOutstandingChildren=()=>[...this.children.values()].some(c=>c.record.parentId===child.record.id&&(c.record.status!=="settled"||c.record.phase==="cleanup"))||[...this.pending.values()].some(r=>r.parentId===child.record.id);
   child.record.waitState=initialWaitState??(background?"background":"attached");
@@ -141,32 +190,86 @@ export class SubagentRuntime {
    this.publish(origin);
   }
  }
- list(origin?:string){return [...this.children.values()].map(c=>c.snapshot()).filter(c=>!origin||c.origin===origin)}
+ list(origin?:string){
+  return [...this.children.values()].map(c=>c.snapshot()).concat([...this.inert.values()].map(c=>c.snapshot())).filter(c=>!origin||c.origin===origin);
+ }
  get(idOrName:string,origin?:string){
   const exactName=idOrName.toLocaleLowerCase("en-US");
-  const names=[...this.children.values()].filter(child=>child.record.displayName?.toLocaleLowerCase("en-US")===exactName&&(!origin||child.record.origin===origin));
+  const all=[...this.children.values(),...this.inert.values()];
+  const names=all.filter(child=>child.record.displayName?.toLocaleLowerCase("en-US")===exactName&&(!origin||child.record.origin===origin));
   if(names.length===1)return names[0];
-  const matches=[...this.children.entries()].filter(([key,child])=>key.startsWith(idOrName)&&(!origin||child.record.origin===origin));
+  const matches=all.filter(child=>child.record.id.startsWith(idOrName)&&(!origin||child.record.origin===origin));
   if(matches.length!==1)throw new Error(matches.length||names.length>1?`Ambiguous child id or name: ${idOrName}`:`Unknown child: ${idOrName}`);
-  return matches[0][1];
+  return matches[0];
  }
  private getDirectChild(idOrName:string,parentId:string,origin:string){
   const exactName=idOrName.toLocaleLowerCase("en-US");
-  const names=[...this.children.values()].filter(child=>child.record.parentId===parentId&&child.record.origin===origin&&child.record.displayName?.toLocaleLowerCase("en-US")===exactName);
+  const all=[...this.children.values(),...this.inert.values()];
+  const names=all.filter(child=>child.record.parentId===parentId&&child.record.origin===origin&&child.record.displayName?.toLocaleLowerCase("en-US")===exactName);
   if(names.length===1)return names[0];
-  const matches=[...this.children.entries()].filter(([key,child])=>key.startsWith(idOrName)&&child.record.parentId===parentId&&child.record.origin===origin);
-  if(matches.length===1)return matches[0][1];
+  const matches=all.filter(child=>child.record.id.startsWith(idOrName)&&child.record.parentId===parentId&&child.record.origin===origin);
+  if(matches.length===1)return matches[0];
   if(names.length>1||matches.length>1)throw new Error(`Ambiguous child id or name: ${idOrName}`);
   return undefined;
  }
  private layoutFor(origin:string){let layout=this.layouts.get(origin);if(!layout){layout=new SubagentLayout(createHerdrCli());this.layouts.set(origin,layout)}return layout}
- async shutdown(reason:string){for(const child of this.children.values()){const record=child.snapshot();if(reason==="quit"&&record.surface==="visible"&&record.userOwned)continue;if(record.status!=="settled"||record.retained)await child.cancel()}await this.transport.close()}
+ hasActiveResources(){
+  return [...this.children.values()].some(child=>{
+   const record=child.record;
+   // Status/process exit can precede done(), which queues the final outcome.
+    return record.status!=="settled"||record.phase!=="settled"||record.retained||record.processState!=="exited"||record.paneState==="open";
+  });
+ }
+ async shutdown(reason:string){
+  if(this.disposed)return;
+  for(const child of this.children.values()){
+   const record=child.snapshot();
+   if(reason==="quit"&&record.surface==="visible"&&record.userOwned)continue;
+   if(record.status!=="settled"||record.retained)await child.cancel();
+  }
+  await this.transport.close();
+  this.bindings.clear();this.observers.clear();this.layouts.clear();this.disposed=true;
+ }
+ /**
+  * Ends this executable owner at a source reload. Reload is supported only after
+  * all conversations, child processes, and retained children have settled.
+  * Pending outcomes and allocated names are plain data; transports and children
+  * are deliberately not migrated.
+  */
+ async retireForReload(){
+  if(this.hasActiveResources())throw new Error("Subagent reload requires all child conversations and processes to be settled first");
+  const outcomes=[...this.pending.values()].map(record=>({...record,skills:record.skills?[...record.skills]:undefined}));
+  const names:Record<string,string[]>={};
+  for(const [origin,allocator] of this.names)names[origin]=allocator.snapshot();
+  await this.transport.close();
+  this.bindings.clear();this.observers.clear();this.layouts.clear();this.children.clear();this.contexts.clear();this.inert.clear();this.pending.clear();this.queued.clear();
+  this.disposed=true;
+  saveInertState({names,outcomes});
+ }
 }
-const key=Symbol.for("dotfiles.pi.default.subagents.v1");
-type RuntimeGlobal=typeof globalThis&{[key]?:SubagentRuntime};
-export function getSubagentRuntime(){const g=globalThis as RuntimeGlobal;return g[key]??=new SubagentRuntime()}
+export const SUBAGENT_RUNTIME_RESET="default:subagents:reset";
+interface RuntimeEvents { emit(type:string,data?:unknown):void }
+export async function requestSubagentRuntimeReset(pi: { events: RuntimeEvents }): Promise<boolean> {
+ let operation:Promise<unknown>|undefined;
+ pi.events.emit(SUBAGENT_RUNTIME_RESET,(value:Promise<unknown>)=>{operation=Promise.resolve(value)});
+ if(!operation)return false;
+ await operation;
+ return true;
+}
+let runtime:SubagentRuntime|undefined;
+export function getSubagentRuntime(){
+ return runtime??=(new SubagentRuntime(takeInertState()));
+}
 export async function resetSubagentRuntime(reason="clear"){
- const g=globalThis as RuntimeGlobal,current=g[key];
+ const current=runtime;
  if(current)await current.shutdown(reason);
- const replacement=new SubagentRuntime();g[key]=replacement;return replacement;
+ clearInertState();
+ runtime=new SubagentRuntime();
+ return runtime;
+}
+export async function retireSubagentRuntime(){
+ const current=runtime;
+ if(!current)return;
+ await current.retireForReload();
+ runtime=undefined;
 }
