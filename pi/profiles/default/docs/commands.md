@@ -10,10 +10,10 @@
 - `/effort [level]`: shows or sets thinking effort. Levels: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
 - `/new-instance [title]`: opens a new Pi instance for the current `pp` profile in a new terminal tab.
 - `/new-terminal [title]`: opens a plain shell in this cwd in a new terminal tab.
-- `/sol`: switches to `openai-codex/gpt-5.6-sol` through the Codex subscription.
-- `/astra`: switches to `openai-codex/gpt-6-astra` through the Codex subscription.
-- `/luna`: switches to `openai-codex/gpt-5.6-luna` through the Codex subscription.
-- `/fable`: switches to the newest configured Claude Fable route through Amazon Bedrock, preferring `bedrock-mantle` over Pi's native provider.
+- `/sol [low|medium|high|xhigh]`: switches to `openai-codex/gpt-5.6-sol` through the Codex subscription and optionally sets effort.
+- `/astra [low|medium|high|xhigh]`: switches to `openai-codex/gpt-6-astra` through the Codex subscription and optionally sets effort.
+- `/luna [low|medium|high|xhigh]`: switches to `openai-codex/gpt-5.6-luna` through the Codex subscription and optionally sets effort.
+- `/fable [low|medium|high|xhigh]`: switches to the newest configured Claude Fable route through Amazon Bedrock, preferring `bedrock-mantle` over Pi's native provider, and optionally sets effort. These effort arguments autocomplete.
 - `/handoff [next-session focus]`, `/init [focus]`, `/summarize [focus]`, and `/war-report [extra instructions]`: native Pi prompt templates.
 
 Each invocation prints only `/name` in the transcript, without a label or “Running” prefix. Prompt text is added to model context without filling the screen. Commands use the current conversation and selected model. There is no extra busy-command rejection gate. Dispatch/usage errors are visible and added to model context; idle failures trigger a response so the model can discuss them. Tool execution errors use Pi's normal visible, model-readable error results. Registration failures caught by this extension are reported at session start and invocation. Syntax/import failures that prevent the extension itself from loading remain Pi loader errors, outside this handler.

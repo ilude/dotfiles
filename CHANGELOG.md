@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-09: Retry transient commit transport failures
+
+**Changed:** Default-profile `/commit` now gives transient provider and transport failures up to three retries before returning a hard failure. Deterministic Git, hook, cancellation, and timeout failures still stop immediately, and final reporting continues to inspect actual repository state.
+
+## 2026-09-09: Add effort options to model shortcuts
+
+**Changed:** Default-profile `/astra`, `/fable`, `/luna`, and `/sol` now accept an optional `low`, `medium`, `high`, or `xhigh` effort argument with autocomplete. Invocations without an effort preserve the existing model-switch behavior.
+
 ## 2026-09-09: Remove persistent subagent status output
 
 **Changed:** Default-profile subagents no longer render an always-visible status widget or repeat settled result previews above the editor. Active tool rows, transcript outcomes, and explicit `/subagents inspect` retain progress, results, errors, and controls without persistent duplicated output.

@@ -25,8 +25,17 @@ const SHORTCUTS = {
 	},
 } as const;
 
+const EFFORT_LEVELS = ["low", "medium", "high", "xhigh"] as const;
+
 type ShortcutName = keyof typeof SHORTCUTS;
+type EffortLevel = typeof EFFORT_LEVELS[number];
 type AvailableModel = Model<any>;
+
+function parseEffort(args: string): EffortLevel | undefined {
+	const requested = args.trim().toLowerCase();
+	if (!requested) return undefined;
+	return EFFORT_LEVELS.find((level) => level === requested);
+}
 
 function findCandidate(ctx: ExtensionCommandContext, name: ShortcutName): AvailableModel | undefined {
 	const available = ctx.modelRegistry.getAvailable();
@@ -41,10 +50,16 @@ export default function modelShortcuts(pi: ExtensionAPI): void {
 	for (const name of Object.keys(SHORTCUTS) as ShortcutName[]) {
 		const shortcut = SHORTCUTS[name];
 		pi.registerCommand(name, {
-			description: shortcut.description,
+			description: `${shortcut.description}; optionally set effort: ${EFFORT_LEVELS.join(", ")}`,
+			getArgumentCompletions: (prefix) => {
+				const normalized = prefix.trim().toLowerCase();
+				const matches = EFFORT_LEVELS.filter((level) => level.startsWith(normalized));
+				return matches.length ? matches.map((value) => ({ value, label: value })) : null;
+			},
 			handler: async (args, ctx) => {
-				if (args.trim()) {
-					ctx.ui.notify(`/${name} does not accept arguments.`, "warning");
+				const requestedEffort = parseEffort(args);
+				if (args.trim() && !requestedEffort) {
+					ctx.ui.notify(`Invalid effort level for /${name}: ${args.trim()}. Available levels: ${EFFORT_LEVELS.join(", ")}.`, "warning");
 					return;
 				}
 
@@ -59,7 +74,9 @@ export default function modelShortcuts(pi: ExtensionAPI): void {
 					return;
 				}
 
-				ctx.ui.notify(`Switched to ${model.provider}/${model.id}.`, "info");
+				if (requestedEffort) pi.setThinkingLevel(requestedEffort);
+				const effortSuffix = requestedEffort ? ` at ${pi.getThinkingLevel()} effort` : "";
+				ctx.ui.notify(`Switched to ${model.provider}/${model.id}${effortSuffix}.`, "info");
 			},
 		});
 	}

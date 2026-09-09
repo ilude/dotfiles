@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-012 - Commit workflow stopped on a transient WebSocket failure
+
+- **Reference:** Default-profile `/commit` invocation on 2026-09-09.
+- **Expected:** A transient provider transport disconnect should recover without operator intervention.
+- **Observed:** The single Luna request returned `WebSocket error`; no commit was created and all five intended files remained changed. Historical session records contain similar Codex WebSocket failures.
+- **Finding:** The commit runner safely reported actual Git state after failure but configured no provider retry budget, making one transient disconnect fatal.
+- **Remediation:** The operator required three retries for this error class before hard failure. The commit runner now forwards a three-retry provider budget; deterministic Git, hook, cancellation, and timeout failures remain terminal.
+- **Related:** AIF-010.
+- **Status:** Implemented; focused reviewer/shortcut tests and default-profile typecheck pass. Runtime recovery effectiveness remains unverified.
+
 ## APR-011 - Subagent UX completion did not establish active-session behavior
 
 - **Reference:** Operator's three-child live test and screenshot following integration of the subagent transcript/pane UX plan, 2026-09-08.

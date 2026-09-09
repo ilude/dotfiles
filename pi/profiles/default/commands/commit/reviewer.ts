@@ -12,6 +12,7 @@ import { formatStatus, gitReviewTool, page } from "./tools.ts";
 const PROVIDER = "openai-codex";
 const MODEL = "gpt-5.6-luna";
 const WORKFLOW_TIMEOUT_MS = 180_000;
+const TRANSPORT_RETRIES = 3;
 
 export function isBroadDiscoveryCommand(command: string): boolean {
 	return /(^|(?:&&|\|\||[;|])\s*)(?:command\s+)?find(?:\.exe)?\s/i.test(command)
@@ -127,7 +128,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: () => boolea
 							},
 						],
 					},
-					streamFn: runtime.streamSimple.bind(runtime),
+					streamFn: (model, context, options) => runtime.streamSimple(model, context, { ...options, maxRetries: TRANSPORT_RETRIES }),
 					toolExecution: "sequential",
 					beforeToolCall: async ({ toolCall, args }) => {
 						if (failure) return { block: true, reason: failure, terminate: true };
