@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-09: Avoid accidental commit push completion
+
+**Fixed:** Default Pi's `/commit` argument completion no longer suggests `push` for an empty argument or an already-complete `push`. Enter submits `/commit ` without adding push, and `/commit push` without an extra completion-selection step. Partial arguments such as `/commit p` still offer `push`.
+
+**Preserved:** Luna's private commit workflow and explicit push authorization are unchanged. Use `/reload` to load the fix.
+
 ## 2026-09-09: Make log analytics tool output readable
 
 **Changed:** Default Pi's `log_analytics` now renders operation and search scope, readable source/session summaries, and query results as compact tables or labeled records rather than dumping arguments and a single JSON string. Collapsed results preview three rows; expansion shows all returned values, full SQL and parameters, session references, and scan diagnostics. Query truncation, session pagination, excluded-file warnings, empty results, and failures remain explicit. Long preview values are marked with an ellipsis, and terminal control sequences in stored history are removed from display.

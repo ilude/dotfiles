@@ -49,7 +49,9 @@ export default function profileCommands(pi: ExtensionAPI): void {
 		pi.registerCommand(command.name, {
 			description: command.description,
 			getArgumentCompletions: (prefix) => {
-				const matches = command.completions?.filter((value) => value.startsWith(prefix));
+				// Empty or complete arguments must submit, not select an optional action.
+				if (!prefix.trim()) return null;
+				const matches = command.completions?.filter((value) => value !== prefix && value.startsWith(prefix));
 				return matches?.length ? matches.map((value) => ({ value, label: value })) : null;
 			},
 			handler: async (rawArgs, ctx) => {
