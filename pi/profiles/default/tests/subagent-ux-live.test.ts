@@ -151,7 +151,7 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
         }
       }
 
-      console.log(`T1/T3 downward geometry ${JSON.stringify(geometryAt)}`);
+      console.log(`Orchestrator-bottom geometry ${JSON.stringify(geometryAt)}`);
       const fullWidthRow = (count: number) => {
         const row = geometryAt[count].filter((pane: any) => placements.some(placement => placement.paneId === pane.pane_id));
         const callerRect = geometryAt[count].find((pane: any) => pane.pane_id === fixture.caller.pane_id).rect;
@@ -161,7 +161,7 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
         return Math.max(...row.map((pane: any) => pane.rect.y)) === Math.min(...row.map((pane: any) => pane.rect.y))
           && Math.max(...widths) - Math.min(...widths) <= 1
           && left === callerRect.x && right === callerRect.x + callerRect.width
-          && Math.min(...row.map((pane: any) => pane.rect.y)) >= callerRect.y + callerRect.height - 1;
+          && Math.max(...row.map((pane: any) => pane.rect.y + pane.rect.height)) <= callerRect.y + 1;
       };
       expect(fullWidthRow(1)).toBe(true);
       expect(fullWidthRow(3)).toBe(true);
@@ -188,7 +188,9 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
       const caller = await inspectPane(fixture.cli, fixture.caller.pane_id);
       expect(caller.pane_id).toBe(fixture.caller.pane_id);
       const callerGeometry = geometry.find((pane: any) => pane.pane_id === fixture.caller.pane_id);
-      expect(callerGeometry.rect.y + callerGeometry.rect.height).toBeLessThanOrEqual(Math.min(...row0.map((pane: any) => pane.rect.y)) + 1);
+      expect(Math.max(...row0.map((pane: any) => pane.rect.y + pane.rect.height))).toBeLessThanOrEqual(callerGeometry.rect.y + 1);
+      const totalHeight = callerGeometry.rect.height + row0[0].rect.height;
+      expect(Math.abs(callerGeometry.rect.height - totalHeight * 2 / 3)).toBeLessThanOrEqual(1);
       await layout.close("t5-geometry", placements[0].childId, placements[0].paneId);
       expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
     } finally {
