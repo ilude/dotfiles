@@ -37,10 +37,12 @@ describe("gateway circuit", () => {
   });
 });
 describe("Pi gateway integration", () => {
-  it("screens successful receipts and content exactly once without using the local subprocess", async () => {
+  it("screens successful content exactly once and keeps metadata out of displayed context", async () => {
     const { run, exec } = tool(); gateway.mockResolvedValue(reply);
-    expect((await run()).content[0].text).toContain("Readable article"); expect(exec).not.toHaveBeenCalled();
-    expect(complete).toHaveBeenCalledTimes(1); expect(complete.mock.calls[0][1].messages[0].content).toContain("Acquisition receipt");
+    const result = await run();
+    expect(result.content[0].text).toBe("webfetch: https://8.8.8.8/\n# Page\n\nReadable article"); expect(exec).not.toHaveBeenCalled();
+    expect(result.details).toMatchObject({ backend: "trawl", quality: "useful", finalUrl: "https://8.8.8.8/" });
+    expect(complete).toHaveBeenCalledTimes(1); expect(complete.mock.calls[0][1].messages[0].content).toBe("# Page\n\nReadable article");
   });
   it("uses immediate local recovery, then skips an open gateway circuit", async () => {
     const { run, exec } = tool(); gateway.mockRejectedValue(new GatewayError("availability", "offline"));

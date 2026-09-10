@@ -85,11 +85,7 @@ export async function requestGateway(endpoint: string, token: string,
 	});
 }
 export function gatewayText(reply: GatewayReply): string {
-	// Metadata is untrusted too and is included in the one final Luna review.
-	return [`Source: ${reply.final_url ?? reply.requested_url}`, `Gateway backend: ${reply.backend}; quality: ${reply.quality}`,
-		reply.title ? `# ${reply.title}` : "", reply.content ?? "",
+	return [reply.title ? `# ${reply.title}` : "", reply.content ?? "",
 		reply.truncated ? "[Truncated by gateway]" : "", ...(reply.warnings ?? []),
-		`Acquisition receipt: ${JSON.stringify({ request_id: reply.request_id, fetched_at: reply.fetched_at, elapsed_ms: reply.elapsed_ms,
-			attempts: reply.attempts.map(a => ({ backend: a.backend, revision: a.revision, elapsed_ms: a.elapsed_ms, outcome: a.outcome, reason: a.reason, http_status: a.http_status, tier: a.tier })) })}`,
 	].filter(Boolean).join("\n\n");
 }

@@ -52,6 +52,8 @@ export default function webTools(pi: ExtensionAPI) {
 		const result = await screenContent(text, review, signal);
 		return { content: [{ type: "text" as const, text: header + result.text }], details: { screening: result.status }, usage: result.usage };
 	};
+	const fetchHeader = (url: string) => `webfetch: ${url}\n`;
+	const localContent = (text: string) => text.replace(/^Source: [^\r\n]+\r?\n(?:\r?\n)?/, "");
 
 	pi.registerTool({
 		name: "web_search", label: "Web Search",
@@ -100,7 +102,7 @@ export default function webTools(pi: ExtensionAPI) {
 	});
 	pi.registerTool({
 		name: "web_fetch", label: "Web Fetch",
-		description: "Fetch readable HTTP(S) content through the optional adaptive gateway, or locally with public Jina fallback. Local/private URLs stay local. Auto mode recovers locally on gateway outages; explicit backends stay strict. Luna annotates without blocking. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
+		description: "Fetch readable HTTP(S) content through the optional adaptive gateway, or locally with public Jina fallback. Local/private URLs stay local. Auto mode recovers locally on gateway outages; explicit backends stay strict. Luna blocks content it flags as prompt injection. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
 		promptSnippet: "Fetch a web page as readable text",
 		parameters: Type.Object({
 			url: Type.String({ description: "HTTP or HTTPS URL" }),
@@ -111,7 +113,7 @@ export default function webTools(pi: ExtensionAPI) {
 			const deadline = performance.now() + 60_000;
 			const acquisition = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(60_000)]);
 			const backend = params.backend ?? "auto";
-			let note = "";
+			let recovery: string | undefined;
 			const destination = await withinSignal(classifyUrl(params.url), acquisition);
 			acquisition.throwIfAborted();
 			if (destination.privateOrLocal) {
@@ -121,7 +123,7 @@ export default function webTools(pi: ExtensionAPI) {
 				try { credentials = await gatewayCredentials(pi.exec.bind(pi), acquisition); }
 				catch (error) {
 					if (backend === "trawl" || backend === "jina") throw new Error("Gateway credential unavailable", { cause: error });
-					note = "Gateway credential unavailable; used workstation-local fetching.\n\n";
+					recovery = "credential-unavailable";
 				}
 				if (credentials) {
 					const { endpoint, token } = credentials;
@@ -130,15 +132,16 @@ export default function webTools(pi: ExtensionAPI) {
 						try {
 							const reply = await requestGateway(endpoint, token, { url: params.url, max_chars: params.max_chars ?? 8000, backend }, acquisition);
 							circuit.reachable();
-							return finish(bounded(gatewayText(reply)), signal, `Requested URL: ${params.url}\n\n`);
+							const result = await finish(bounded(gatewayText(reply)), signal, fetchHeader(params.url));
+							return { ...result, details: { ...result.details, backend: reply.backend, quality: reply.quality, finalUrl: reply.final_url, recovery } };
 						} catch (error) {
 							if (signal?.aborted) { circuit.cancelled(); signal.throwIfAborted(); }
 							if (!(error instanceof GatewayError) || error.kind !== "availability") { circuit.reachable(); throw error; }
 							circuit.unavailable();
 							if (backend !== "auto") throw error;
-							note = "Gateway unavailable; recovered through workstation-local fetching.\n\n";
+							recovery = "gateway-unavailable";
 						}
-					} else note = "Gateway circuit open or recovery probe in progress; used workstation-local fetching.\n\n";
+					} else recovery = "circuit-open";
 				}
 			}
 			acquisition.throwIfAborted();
@@ -147,7 +150,8 @@ export default function webTools(pi: ExtensionAPI) {
 			signal?.throwIfAborted();
 			if (result.killed || result.code !== 0) throw new Error(result.killed ? "Web fetch timed out" : result.stderr.trim() || `Web fetch failed (${result.code})`);
 			if (!result.stdout.trim()) throw new Error("No content extracted");
-			return finish(bounded(note + result.stdout.trim()), signal, `Requested URL: ${params.url}\n\n`);
+			const finished = await finish(bounded(localContent(result.stdout.trim())), signal, fetchHeader(params.url));
+			return { ...finished, details: { ...finished.details, backend: "local", quality: undefined, finalUrl: null, recovery } };
 		},
 	});
 }

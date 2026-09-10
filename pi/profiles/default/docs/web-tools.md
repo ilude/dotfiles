@@ -51,9 +51,12 @@ Explicit Trawl/Jina requests fail clearly. The deployed direct and Trawl paths w
 verified through default Pi without gateway environment overrides.
 
 Public requests can use the gateway's direct, Trawl-browser, and Jina routes.
-Private/local requests bypass it. Receipts retain source URL, backend, quality,
-timing and attempt outcomes. Raw backend cookies/headers/debug payloads are not
-forwarded. Partial content is labeled rather than presented as a complete article.
+Private/local requests bypass it. The collapsed result is `webfetch: <url>` followed
+by bounded parsed content; native tool expansion reveals the rest. Backend, quality,
+final URL, and recovery state remain structured result details instead of being
+prepended to the model-visible page. Raw backend cookies, headers, debug payloads,
+and acquisition receipts are not forwarded. Partial content is labeled rather than
+presented as a complete article.
 
 For `auto`, the first gateway availability failure immediately permits local
 recovery. Three consecutive failures open an extension-local circuit for 30 seconds;
@@ -84,21 +87,21 @@ configured Luna provider even when fetched from a private/local URL.
 The review returns a structured verdict with up to three exact suspicious
 excerpts. It looks for attempts to control the consuming assistant, not general
 subject-matter safety. Ordinary documentation and quoted attack examples are
-not inherently injections. The tool preserves source text and adds a screening
-annotation; it never automatically redacts, refuses, or asks for approval.
-Reviewer prose is not passed through as instructions. Nested usage is returned
-to Pi for accounting.
+not inherently injections. Clean content is returned without a screening banner.
+A suspicious verdict throws a generic tool error before any fetched content or
+flagged excerpt is returned to the conversation. Reviewer prose is not passed
+through as instructions. Nested usage is returned to Pi for accounting.
 
 Review has a 15-second deadline. An unavailable model, timeout, or malformed
 verdict produces an explicit "Not screened" annotation and the original
 content. User cancellation is different: it cancels the tool instead of
 returning content. No fallback reviewer or retry loop is added.
 
-This is best-effort defense, not a security boundary: Luna can miss attacks or
-be influenced by them, and flagged source text still enters the main context.
-Detection quality needs further research and evaluation against realistic
-attacks and benign documentation. This initial port does not claim measured
-injection resistance.
+This is best-effort detection, not a complete security boundary: Luna can miss
+attacks or be influenced by them. Content it flags is blocked from the main
+conversation context. Detection quality needs further research and evaluation
+against realistic attacks and benign documentation. This port does not claim
+measured injection resistance.
 
 ## Validation
 
@@ -117,6 +120,6 @@ fixtures. Linux gateway package checks run in its owning infrastructure reposito
 (network and configured profile authentication required; consumes model usage).
 The live tests cover ordinary, exact-phrase, site-restricted, and official-documentation
 queries, fetch a relevant returned URL, and check that both outputs receive
-Luna screening. A flagged result is still usable and passes the transport check. An initial live probe falsely flagged a tool-generated search
+Luna screening. A flagged result fails the tool without returning source content. An initial live probe falsely flagged a tool-generated search
 header; headers were removed from review input and empty results now bypass
 review. This is one integration check, not a detection-quality benchmark.

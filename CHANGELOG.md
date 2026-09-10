@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-10: Simplify and block flagged web-tool results
+
+**Changed:** Default Pi web fetches now display `webfetch: <url>` followed directly by bounded parsed content, with gateway and recovery metadata kept out of the model-visible page. Successful Luna screening is silent. If Luna flags possible prompt injection, the tool fails before returning fetched content or suspicious excerpts to the conversation.
+
 ## 2026-09-09: Reduce subagent tool-output clutter
 
 **Changed:** Default Pi's subagent rows remove repeated identity, role, and generic working labels while retaining the actual prompt preview, selected model/effort, readable local start time, and elapsed or completed duration. Native expansion reveals the full prompt and execution details. Routine attachment bookkeeping no longer competes with live activity, questions, errors, or results.

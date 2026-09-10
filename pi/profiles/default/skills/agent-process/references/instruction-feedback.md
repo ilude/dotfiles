@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-028 - Keep web-fetch results content-first and block flagged pages
+
+- **Reference:** Operator screenshot and correction of default `web_fetch` output, 2026-09-10.
+- **Feedback:** Collapsed results should show `webfetch: <url>` and bounded parsed content, using native expansion for more. Routine requested-URL, clean-screening, untrusted-content, backend, and receipt boilerplate should not precede every page. If Luna detects prompt injection, fail before returning any fetched source or suspicious excerpt to the conversation context.
+- **Decision:** Make clean screening silent, block suspicious verdicts with a generic error, and keep acquisition metadata in structured details rather than model-visible content. Preserve explicit not-screened reporting when review is unavailable or invalid; Luna detection remains fallible.
+- **Related:** AIF-001, AIF-004, AIF-010.
+- **Status:** Implemented. All 34 focused offline web-tool tests and the web-tools TypeScript check pass; live operator rendering after reload remains unverified.
+
 ## AIF-027 - Delegate smaller sequential units with proportional models
 
 - **Reference:** Operator review of the Herdr integration audit, 2026-09-09.

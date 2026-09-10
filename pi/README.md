@@ -89,7 +89,7 @@ The port preserves invocation-local DuckDB, serialized staging, input/deadline/t
 
 ## Default profile web tools
 
-The default profile provides `web_search` (SearXNG) and `web_fetch` (local readable extraction with automatic public-URL Jina fallback). A tool-free Luna call adds best-effort prompt-injection annotations before results enter context; screening failures are marked, not blocked. See [setup, behavior, and limitations](profiles/default/docs/web-tools.md).
+The default profile provides `web_search` (SearXNG) and `web_fetch` (local readable extraction with automatic public-URL Jina fallback). A tool-free Luna call screens results before they enter context; clean content has no banner, while content Luna flags as prompt injection is blocked. See [setup, behavior, and limitations](profiles/default/docs/web-tools.md).
 
 ## Default profile Herdr
 
