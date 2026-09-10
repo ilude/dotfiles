@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { CommandInvocationAuthority } from "../lib/command-invocations.ts";
+import { completePartialArgument } from "../lib/argument-completions.ts";
 import { commands } from "../commands/index.ts";
 
 export default function profileCommands(pi: ExtensionAPI): void {
@@ -60,12 +61,7 @@ export default function profileCommands(pi: ExtensionAPI): void {
 
 		pi.registerCommand(command.name, {
 			description: command.description,
-			getArgumentCompletions: (prefix) => {
-				// Empty or complete arguments must submit, not select an optional action.
-				if (!prefix.trim()) return null;
-				const matches = command.completions?.filter((value) => value !== prefix && value.startsWith(prefix));
-				return matches?.length ? matches.map((value) => ({ value, label: value })) : null;
-			},
+			getArgumentCompletions: (prefix) => completePartialArgument(prefix, command.completions ?? []),
 			handler: async (rawArgs, ctx) => {
 				try {
 					// A short, durable transcript entry; don't echo arbitrary arguments/secrets.

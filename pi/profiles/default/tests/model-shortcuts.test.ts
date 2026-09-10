@@ -64,13 +64,13 @@ describe("model shortcuts", () => {
 		expect(ctx.ui.notify).toHaveBeenCalledWith("Switched to openai-codex/gpt-5.6-sol at high effort.", "info");
 	});
 
-	it("autocompletes supported effort levels", () => {
+	it.each(["astra", "sol", "luna", "fable"])("/%s only autocompletes partial effort levels", (command) => {
 		const { commands } = setup([]);
+		const complete = commands.get(command)!.getArgumentCompletions!;
 
-		expect(commands.get("astra")!.getArgumentCompletions!("h")).toEqual([
-			{ value: "high", label: "high" },
-		]);
-		expect(commands.get("astra")!.getArgumentCompletions!("")).toHaveLength(4);
+		expect(complete("h")).toEqual([{ value: "high", label: "high" }]);
+		expect(complete("")).toBeNull();
+		expect(complete("high")).toBeNull();
 	});
 
 	it("rejects unsupported effort levels", async () => {

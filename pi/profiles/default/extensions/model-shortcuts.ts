@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
+import { completePartialArgument } from "../lib/argument-completions.ts";
 
 const SHORTCUTS = {
 	astra: {
@@ -51,11 +52,7 @@ export default function modelShortcuts(pi: ExtensionAPI): void {
 		const shortcut = SHORTCUTS[name];
 		pi.registerCommand(name, {
 			description: `${shortcut.description}; optionally set effort: ${EFFORT_LEVELS.join(", ")}`,
-			getArgumentCompletions: (prefix) => {
-				const normalized = prefix.trim().toLowerCase();
-				const matches = EFFORT_LEVELS.filter((level) => level.startsWith(normalized));
-				return matches.length ? matches.map((value) => ({ value, label: value })) : null;
-			},
+			getArgumentCompletions: (prefix) => completePartialArgument(prefix, EFFORT_LEVELS),
 			handler: async (args, ctx) => {
 				const requestedEffort = parseEffort(args);
 				if (args.trim() && !requestedEffort) {

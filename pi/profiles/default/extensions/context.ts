@@ -2,6 +2,7 @@ import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { CONTEXT_REPORT_MESSAGE_TYPE, type AnyEntry, type ContextUsage } from "../lib/context-analysis.ts";
 import { formatContextReport } from "../lib/context-report.ts";
+import { completePartialArgument } from "../lib/argument-completions.ts";
 // Preserve existing analysis exports for consumers of this extension.
 export { buildContextBuckets, buildContextFileDetailBuckets, buildSkillPromptDetailBuckets,
 	buildInjectedContextDetailBuckets, buildToolSchemaBuckets, type Bucket } from "../lib/context-analysis.ts";
@@ -36,11 +37,7 @@ export default function registerContextCommand(pi: ExtensionAPI) {
 
 	pi.registerCommand("context", {
 		description: "Show Pi context usage, token spend, and component breakdown",
-		getArgumentCompletions: (prefix) => {
-			const options = ["clear", "hide", "widget"];
-			const matches = options.filter((option) => option.startsWith(prefix.trim().toLowerCase()));
-			return matches.length > 0 ? matches.map((value) => ({ value, label: value })) : null;
-		},
+		getArgumentCompletions: (prefix) => completePartialArgument(prefix, ["clear", "hide", "widget"]),
 		handler: async (args, ctx) => {
 			const trimmed = args.trim().toLowerCase();
 			if (trimmed === "clear" || trimmed === "hide") {

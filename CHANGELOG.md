@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-10: Fix autocomplete submission for all argument commands
+
+**Fixed:** Default Pi now limits argument suggestions to partial input for every slash command with autocomplete. `/luna`, `/astra`, `/sol`, `/fable`, `/effort`, `/context`, and profile commands such as `/commit` submit immediately when their argument is empty or already complete, while partial arguments still autocomplete.
+
 ## 2026-09-10: Allow directly requested commit tooling
 
 **Changed:** Default Pi now permits `commit_run` when the operator requests a commit by name or intent, without requiring a synthetic `/commit` invocation first. Direct calls are commit-only. Explicit `/commit push` remains the sole way to grant that invocation push authority.
