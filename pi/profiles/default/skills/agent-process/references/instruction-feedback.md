@@ -1,5 +1,23 @@
 # Agent instruction feedback log
 
+## AIF-029 - Tools are not slash-command-only by default
+
+- **Reference:** Operator correction after an explicitly requested commit was rejected because `commit_run` lacked a delivered `/commit` invocation, 2026-09-10.
+- **Feedback:** Tools are shared operator/model capabilities. Naming or describing an action should be sufficient for the model to use its tool; slash commands must not add ceremony by acting as mandatory capability gates unless the operator has discussed and approved a concrete reason.
+- **Decision:** Permit direct `commit_run` calls with commit-only defaults. Retain invocation binding only for the distinct `/commit push` authority. Audit the remaining default-profile slash commands for comparable tool gates and document this design rule for future prompt-backed commands.
+- **Audit:** `/bro` has no tool. Other profile slash commands are direct runtime/UI handlers or native prompt templates and contain no equivalent delivered-invocation tool gate. `commit_run` was the only affected tool.
+- **Related:** AIF-004, AIF-024, AIF-028, APR-007.
+- **Status:** Implemented. All 50 focused offline command/web-tool tests and the default-profile typecheck pass; direct runtime use requires reload and remains unverified.
+
+## AIF-029 - Use direct evidence and recommended consultation without approval gates
+
+- **Reference:** Operator clarification during Strategist and Steward planning, 2026-09-10.
+- **Feedback:** Strategist advises before subagent assignments; a separate Steward checks whether reviewer/validator findings warrant more work after implementation. Both are the recommended path when applicable, not exceptional optional tools or mandatory approvals. Keep them simple, flexible, and low ceremony. Prefer direct tool/result triggers and observable facts over abstract benefits or subjective labels; the operator reports that ambiguity lets agents expand scope.
+- **Comparison:** AIF-004 already preserves judgment and narrow instruction changes; AIF-003/APR-002 record verification expansion; AIF-023 separates settled execution from planning; AIF-027/APR-020 concern assignment size. This feedback sharpens those boundaries rather than authorizing scoring, deterministic routing, or another review gate. Ambiguity as a general cause remains a hypothesis, not a measured result.
+- **Decision:** Authorized plan changes only: revise `.specs/strategist-delegation-guidance/plan.md` for normal pre-`subagent` consultation with advice reuse and evidence-based selection/retry wording; create `.specs/steward-review-guidance/plan.md` for post-finding advice before follow-up fixes. Steward compares the request/corrections and agreed checks with findings and proposed fixes, without adding requirements, audits, or required report formats.
+- **Instruction follow-up:** Discuss encoding direct, observable triggers and evidence-versus-judgment wording in the planning skill and possibly default-profile global `AGENTS.md`. No such active instruction changes are authorized yet. Objective evidence does not mean eliminating implementation judgment or asking the operator about every technical choice.
+- **Status:** Plan revision and new plan written; implementation and live effectiveness unverified. No active role, skill policy, or global instruction changed.
+
 ## AIF-028 - Keep web-fetch results content-first and block flagged pages
 
 - **Reference:** Operator screenshot and correction of default `web_fetch` output, 2026-09-10.

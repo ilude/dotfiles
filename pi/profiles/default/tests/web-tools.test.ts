@@ -64,6 +64,7 @@ describe("tool integration", () => {
     vi.stubGlobal("fetch", fetchMock);
     const result = await registered.get("web_search").execute("id", { query: "test" });
     expect(result.details.screening).toBe("screened");
+    expect(result.content[0].text).toContain("websearch: test\n--- Result 1 ---");
     expect(result.usage.totalTokens).toBe(10);
     expect(String((fetchMock.mock.calls as unknown as Array<[unknown]>)[0][0])).toContain("language=en");
     expect(new URL(String((fetchMock.mock.calls as unknown as Array<[unknown]>)[0][0])).searchParams.get("engines")).toBeNull();

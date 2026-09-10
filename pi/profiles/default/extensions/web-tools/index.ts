@@ -95,7 +95,7 @@ export default function webTools(pi: ExtensionAPI) {
 				item.publishedDate ? `Date: ${item.publishedDate}` : "",
 				item.engine ? `Engine: ${item.engine}` : "", `Snippet: ${item.content ?? "(no snippet)"}`,
 			].filter(Boolean).join("\n")).join("\n\n");
-			const header = `web_search(${JSON.stringify(query)})\n`;
+			const header = `websearch: ${query}\n`;
 			if (!results.length) return { content: [{ type: "text" as const, text: `${header}No results found.` }], details: { screening: "no-results" } };
 			return finish(bounded([warning, text].filter(Boolean).join("\n\n")), signal, header);
 		},

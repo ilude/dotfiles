@@ -48,11 +48,10 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 	return {
 		name: "commit_run",
 		label: "Commit",
-		description: "Let Luna quietly review, stage, and commit using ordinary Git. Handles ignore-file questions directly. Returns actual commit hashes/messages and status. Call once for /commit; do not perform Git work again afterward. Push permission comes from the slash invocation.",
+		description: "Let Luna quietly review, stage, and commit using ordinary Git. Handles ignore-file questions directly. Returns actual commit hashes/messages and status. Call once when the operator requests a commit or invokes /commit; do not perform Git work again afterward. Only an explicit /commit push invocation grants push permission.",
 		parameters: Type.Object({}),
 		async execute(id, _params, signal, onUpdate, ctx) {
-			const push = pushRequested(id);
-			if (push === undefined) throw new Error("commit_run has no delivered command invocation.");
+			const push = pushRequested(id) === true;
 			const deadline = new AbortController();
 			const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
 			let remaining = WORKFLOW_TIMEOUT_MS;

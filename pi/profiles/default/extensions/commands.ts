@@ -46,7 +46,7 @@ export default function profileCommands(pi: ExtensionAPI): void {
 					async execute(...args) {
 						const [toolCallId] = args;
 						const invocation = invocations.getToolCall(toolCallId);
-						if (!invocation || invocation.command !== command.name || !toolNames.has(tool.name)) {
+						if ((!invocation || invocation.command !== command.name || !toolNames.has(tool.name)) && !command.allowDirectToolCalls) {
 							throw new Error(`${tool.name} is only available during its delivered /${command.name} invocation.`);
 						}
 						return tool.execute(...args);
@@ -109,7 +109,8 @@ export default function profileCommands(pi: ExtensionAPI): void {
 		try {
 			invocations.bindToolCall(event.toolCallId, event.toolName, command, toolsByCommand);
 		} catch (error) {
-			return { block: true, reason: error instanceof Error ? error.message : String(error), terminate: true };
+			const definition = commands.find((item) => item.name === command);
+			if (!definition?.allowDirectToolCalls) return { block: true, reason: error instanceof Error ? error.message : String(error), terminate: true };
 		}
 	});
 	pi.on("tool_result", (event) => invocations.releaseToolCall(event.toolCallId));

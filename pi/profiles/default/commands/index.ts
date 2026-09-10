@@ -14,6 +14,8 @@ export interface ProfileCommand {
 	arguments?: (args: string) => ParsedCommandArguments;
 	completions?: string[];
 	tools?: (pi: ExtensionAPI, invocations?: InvocationResolver) => ToolDefinition[];
+	/** Permit model-selected tool use without requiring the slash command. */
+	allowDirectToolCalls?: boolean;
 }
 
 // Explicit, profile-local registry: no global discovery, plugin loader, or agent router.
@@ -22,6 +24,7 @@ export const commands: ProfileCommand[] = [
 		name: "commit",
 		description: "Review and commit related changes; optionally push to origin",
 		completions: ["push"],
+		allowDirectToolCalls: true,
 		tools: (pi, invocations) => [commitReviewerTool(pi, (toolCallId) => {
 			const invocation = invocations?.getToolCall(toolCallId);
 			if (!invocation || invocation.command !== "commit") return undefined;

@@ -16,7 +16,8 @@ extension; no legacy imports or global `~/.env` loading are used.
   `engines: []` to use the server defaults or, for example, `["github"]` for
   repository searches. There are no automatic engine retries or failover loops.
   Backend failures are shown alongside partial results; zero results with engine
-  failures raises an error rather than claiming there were no matches.
+  failures raises an error rather than claiming there were no matches. Results
+  begin with `websearch: <query>` followed directly by the bounded result list.
 - `web_fetch`: HTTP(S) to readable Markdown, with direct handling for plain
   text, Markdown, CSV, JSON, and XML. Supports `url` and `max_chars` (1-50000;
   default 8000), plus optional `backend`: `auto`, `direct`, `trawl`, or `jina`.

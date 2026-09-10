@@ -1,8 +1,14 @@
 # Changelog
 
+## 2026-09-10: Allow directly requested commit tooling
+
+**Changed:** Default Pi now permits `commit_run` when the operator requests a commit by name or intent, without requiring a synthetic `/commit` invocation first. Direct calls are commit-only. Explicit `/commit push` remains the sole way to grant that invocation push authority.
+
+**Reviewed:** The other default-profile slash commands do not expose command-owned tools behind comparable invocation gates. They are direct UI/runtime handlers, prompt templates, or the tool-free `/bro` prompt.
+
 ## 2026-09-10: Simplify and block flagged web-tool results
 
-**Changed:** Default Pi web fetches now display `webfetch: <url>` followed directly by bounded parsed content, with gateway and recovery metadata kept out of the model-visible page. Successful Luna screening is silent. If Luna flags possible prompt injection, the tool fails before returning fetched content or suspicious excerpts to the conversation.
+**Changed:** Default Pi web fetches now display `webfetch: <url>` followed directly by bounded parsed content, and searches display `websearch: <query>` followed by results. Gateway and recovery metadata stay out of the model-visible page. Successful Luna screening is silent. If Luna flags possible prompt injection, the tool fails before returning web content or suspicious excerpts to the conversation.
 
 ## 2026-09-09: Reduce subagent tool-output clutter
 

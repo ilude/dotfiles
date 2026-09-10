@@ -12,7 +12,7 @@ vi.mock("../commands/commit/reviewer.ts", () => ({
 		parameters: {},
 		execute: async (id: string) => ({
 			content: [{ type: "text", text: "fixture" }],
-			details: { push: resolve(id) },
+			details: { push: resolve(id) === true },
 		}),
 	}),
 }));
@@ -72,6 +72,14 @@ function runtimeToolResponse(stream: AssistantMessageEventStream, name: string, 
 
 describe("profile command lifecycle", () => {
 	beforeEach(() => vi.clearAllMocks());
+
+	it("allows a direct commit tool call without granting push authority", async () => {
+		const f = fixture();
+		await f.emit("session_start", { reason: "startup" });
+		expect(await f.emit("tool_call", { toolCallId: "direct", toolName: "commit_run", input: {} })).toBeUndefined();
+		const result = await f.tools.get("commit_run")!.execute("direct", {}, undefined, undefined, f.ctx);
+		expect(result.details.push).toBe(false);
+	});
 
 	it("uses native steering, binds calls at delivery, and preserves old options", async () => {
 		const f = fixture();
