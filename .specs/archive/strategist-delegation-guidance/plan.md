@@ -1,7 +1,7 @@
 ---
 created: 2026-09-10
-status: ready
-completed: null
+status: completed
+completed: 2026-09-10
 ---
 
 # Add Strategist and make delegation guidance discoverable
@@ -151,17 +151,17 @@ Normally delegate one implementation task below at a time. Inspect and incorpora
   - Done when finite checks pass and actual date/profile/path/results are recorded. Synthetic prompt/transport checks establish wiring, not model compliance or live Herdr behavior.
   - Evidence: 2026-09-10 default-profile typecheck passed; 47 focused tests passed across 7 files; `git diff --check` passed. Synthetic prompt checks cover wiring only; no live model or Herdr run.
 
-- [ ] **T5: Archive, commit, integrate, and clean up**
+- [x] **T5: Archive, commit, integrate, and clean up**
   - Depends on: T4 and execution authorization.
   - Follow closeout below. Keep integration/cleanup unfinished until actually verified. With `--no-merge`, record the intentional exception and retain the committed worktree.
   - Done when authorized integration and cleanup are verified, or explicitly report the applicable blocked/skipped outcome without claiming completion.
-  - Evidence: Not started.
+  - Evidence: Task commit `2007673f` merged into recorded target `C:/Users/mglenn/.dotfiles` branch `main` as `e70112a`; target contains the archive and no active plan remains. Completion metadata is recorded in this follow-up commit.
 
 ## Validation and current handoff
 
-- Status: implementation and agreed agent-owned checks complete; integration pending. Technical defaults/mechanisms above are the proposed implementation, not already active behavior.
+- Status: completed on 2026-09-10. Implementation and agreed checks passed, and integration into the recorded target is verified. Technical defaults/mechanisms above are the proposed implementation, not already active behavior.
 - Completed: planning and source inspection only. The 2026-09-10 revision received a single read-through for execution handoff, wording, and scope consistency; task-owned Markdown links and whitespace were checked. No implementation tests were run for this revision.
-- Next: archive and commit on the task branch, merge into the recorded `main` target, record completion metadata, and clean up the task worktree.
+- Next: none. Operator observation after reload remains a non-blocking verification limit.
 - Open consequential decisions: none identified. Existing reviewer and other role defaults remain unchanged.
 - Verification limits: no live Strategist run, model/effort efficacy evaluation, or live Herdr prompt inspection. These are non-blocking limits, not required operator acceptance steps. Observe ordinary assignments after rollout rather than adding evaluation infrastructure here.
 
