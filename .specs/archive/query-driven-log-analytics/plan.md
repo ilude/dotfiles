@@ -105,39 +105,51 @@ Keep checkbox evidence current. Do not turn benchmark failures into acceptable c
 
 ## Tasks
 
-- [ ] **T1: Verify the ingestion mechanism and bounded workload contract**
+- [x] **T1: Verify the ingestion mechanism and bounded workload contract**
   - Depends on: none.
   - Inputs: current store, sessions, fixture helper and perf script; installed DuckDB API. Proposed evidence file: this spec's `implementation-evidence.md` (synthetic metadata only).
   - Change: run the smallest synthetic experiment comparing repeated header discovery and one-file/chunked SQL staging with private temporary DB/spill at the existing 1 GB ceiling. Include full-record payloads rather than metadata-only rows. Confirm a grouped query and cross-file join after external access is disabled. Use existing infrastructure, not an engine-comparison framework. Record the selected ingestion mechanism, search page budgets/record bound, large-query deadline/disk budget, cache decision and expected metadata/continuation shapes for dependent tasks.
   - Verify: finite isolated Node/DuckDB probe, with known independent expected results, actual bytes, elapsed/CPU/peak-memory measurements and temporary cleanup. Run no private transcript benchmark during planning/execution acceptance.
   - Done when: the bounded path is demonstrated and subsequent tasks can implement it without guessing interfaces. Failure requires adapting ingestion within approved temporary-storage intent, not raising memory until it passes or abandoning large-query support.
-  - Evidence: not started.
+  - Evidence: complete 2026-09-10. `node scripts/log-analytics-ingestion-probe.mjs` passed against 35,225,960 bytes of generated full-record JSONL plus 240 synthetic session headers. Both sequential one-file native ingestion and bounded reader/appender disk staging produced independently expected grouped and cross-file join results after external access was disabled, under the 1 GB ceiling, and cleaned all owned temporary content. Repeated discovery reread all 240 headers, so the approved metadata cache is selected. Measurements, selected budgets, and T2/T3 request/result interfaces are recorded in `implementation-evidence.md`.
 
-- [ ] **T2: Implement streaming search, continuation and exact follow-up**
+- [x] **T2: Implement streaming search, continuation and exact follow-up**
   - Depends on: T1.
   - Files: proposed `pi/profiles/default/lib/log-analytics/search.ts` (split reader module only if useful); existing `profiles.ts`, `sessions.ts`, `registry.ts`, `api.ts`; proposed `tests/log-analytics-search.test.ts` and existing fixture helper.
   - Change: implement the search/coverage contract without DuckDB, share native field normalization, add bounded within-file continuation and occurrence follow-up. Integrate the conditional small metadata cache at discovery/scan boundaries; proposed `metadata-cache.ts` if used. No background work.
   - Verify: `pnpm test log-analytics-search.test.ts log-analytics-sessions.test.ts` from `pi/profiles/default/`. Use real temp JSONL files: nested/outer timestamps, old sessions resumed recently, repeated ID-less records, matches without profanity, user versus tool-output text, a file larger than a page budget, zero-match pages, malformed/oversized lines, cancellation and append/replacement/truncation at continuation. Assert exact stable-corpus occurrences across all pages and no repeated earlier record reads. If cached, verify warm metadata reads and changed/unknown-range inclusion, fallback on corrupt cache, and that persistent files contain no message content.
   - Done when: early search stops reading content once enough results are found, complete traversal finishes beyond a page budget, follow-up reaches the exact occurrence, and coverage cannot mistake partial work for exhausted input.
-  - Evidence: not started.
+  - Evidence: complete 2026-09-10. Added DuckDB-free bounded JSONL search, process-local cursor continuation, exact occurrence follow-up, shared native record normalization, and the disposable default-profile metadata cache. `pnpm test log-analytics-search.test.ts log-analytics-sessions.test.ts` passed (13 tests), `pnpm exec tsc --noEmit` passed, and `git diff --check` passed. The search matrix uses temporary JSONL fixtures covering nested/outer timestamps, old resumed sessions, repeated ID-less records, role/error/text filtering, paging beyond the record and byte budgets, malformed/oversized records, cancellation, cache corruption/content exclusion, append boundaries, and replacement/truncation continuation boundaries.
 
-- [ ] **T3: Support large SQL without full-corpus RAM staging**
+- [x] **T3: Support large SQL without full-corpus RAM staging**
   - Depends on: T1; reuse T2 reader if selected by the probe.
   - Files: default `lib/log-analytics/{store,api}.ts`, proposed temporary-storage helper only if needed, existing store/boundary tests, default `.gitignore` for runtime-owned artifacts/cache.
   - Change: implement the measured bounded ingestion and temporary DB/spill path plus explicit large-execution resource configuration. Keep normal SQL compatibility and cleanup/cancellation. Update tests asserting the obsolete blanket no-disk rule to distinguish standard/large execution and permanent content storage.
   - Verify: `pnpm test log-analytics-store.test.ts log-analytics-boundary.test.ts`. Real DuckDB: full JSON parity, cross-file join/global aggregate correctness, result truncation, external SQL denial after staging, active cancellation, low-memory forced spill, disk/resource-limit failure and cleanup after success/error/cancel. Reuse existing boundary coverage, not a new exhaustive SQL-security audit.
   - Done when: large selected input exceeding the old aggregate input bound can execute globally correct supported queries without raising the 1 GB memory ceiling; standard small queries still work and temporary content has an owned cleanup lifecycle.
-  - Evidence: not started.
+  - Evidence: complete 2026-09-10. Added explicit `standard`/`large` SQL execution, with large mode using a 64 KiB bounded JSONL reader and 8 MiB/1,000-record DuckDB appender flushes into an invocation-owned disk database and spill directory. Large mode retains two threads and the 1 GB default memory ceiling, has a 120-second deadline and 4 GiB owned-disk budget, reports phase/input/staging/disk/resource costs, denies external access before caller SQL, and removes only its owned invocation path after success, failure, or cancellation. Focused real-DuckDB tests cover full-record parity, global cross-profile join/aggregate semantics, explicit bypass of the standard aggregate-input bound, output truncation, external-read denial, active cancellation, low-memory spill, disk-budget failure, and cleanup. `pnpm test log-analytics-store.test.ts log-analytics-boundary.test.ts` passed (17 tests), `pnpm exec tsc --noEmit` passed, and `git diff --check` passed.
 
-- [ ] **T4: Expose usable operations, coverage and recipes**
+- [x] **T4: Expose usable operations, coverage and recipes**
   - Depends on: T2 and T3.
   - Files: default `extensions/log-analytics-tool.ts`, `lib/log-analytics/render.ts`, existing tool/render tests, `skills/pi-log-analytics/{SKILL.md,reference.md}`, `pi/README.md` analytics section, root `CHANGELOG.md`.
   - Change: wire search/follow-up/large execution into the existing deferred tool with validated operation-specific parameters. Keep catalog and listing cheap. Show compact matches, continuation/completion, exclusions and meaningful progress; expansion reveals bounded details, not another fetch. Update instructions with the four recipes and accurate costs, cache/disk ownership, cursor lifetime, and failure recovery. Remove superseded no-cache/no-spill statements from owning current docs, not historical archives.
   - Verify: `pnpm test log-analytics-tool.test.ts log-analytics-render.test.ts tool-search.test.ts tool-visibility.test.ts`. Exercise requests through registered execute with real temp records; keep mocks only for Pi host/render boundaries. Run the documented last-week recipe against known fixtures. Review prose once for scope/completeness contradictions.
   - Done when: a caller can select cheap search versus large SQL, follow returned continuation, inspect exact context and report accurate coverage using the tool/skill alone. No slash-command or repeated approval gate is introduced.
-  - Evidence: not started.
+  - Evidence: complete 2026-09-10. The registered real-boundary tool test runs the documented frozen `[2026-09-01T00:00:00Z,2026-09-08T00:00:00Z)` last-week recipe across default and legacy fixtures, pages with `maxResults:1`, confirms only `toolResult`/`isError:true` records (including a successful textual false positive and user text exclusion), follows an exact occurrence, and executes explicit `large` SQL. Operation-specific TypeBox unions reject cross-operation fields. Renderer tests cover compact matches/progress and continuation, expanded occurrence coordinates/bounded context, standard/large cost labels, truncation and exclusions; expansion performs no fetch. The skill, reference and Pi README contain targeted, last-week, complete three-month, and global SQL recipes plus event-time, coverage, cursor, cache, temporary-disk and recovery semantics; fallback guidance remains intact. Checks passed:
+    ```text
+    cd pi/profiles/default
+    pnpm test log-analytics-tool.test.ts log-analytics-render.test.ts tool-search.test.ts tool-visibility.test.ts
+    # 4 files, 17 tests passed
+    node scripts/log-analytics-smoke.mjs
+    # real Pi loader catalog, metadata discovery and combined query passed offline
+    pnpm exec tsc --noEmit
+    # passed
+    cd ../../..
+    git diff --check
+    # passed
+    ```
 
-- [ ] **T5: Prove the contrasting workloads end to end**
+- [x] **T5: Prove the contrasting workloads end to end**
   - Depends on: T4.
   - Files: default `scripts/log-analytics-perf.mjs`, `scripts/log-analytics-smoke.mjs`, fixture support where needed; implementation evidence in this spec.
   - Change: replace the old failing characterization matrix with a finite acceptance run using generated native records across both profiles. Use approximately 10 MiB and at least 600 MiB corpora, with one file larger than the search page budget and realistic padded tool outputs. Expected IDs/counts come from the fixture generator, not the implementation under test.
@@ -148,12 +160,16 @@ Keep checkbox evidence current. Do not turn benchmark failures into acceptable c
     - Large SQL: global counts and a cross-file join agree with the generator over input larger than 512 MiB; exercise temporary storage while retaining the 1 GB DuckDB ceiling.
   - Report actual files/bytes read versus selected, cache hits/pruning, records/pages, end-to-end time, CPU, process peak memory, temp-disk high-water and cleanup. Do not equate the DuckDB ceiling with RSS. Structural read/coverage assertions are acceptance; timings characterize the host rather than invent an unapproved universal latency target. Required outcomes must succeed, not merely emit an explicit OOM.
   - Done when: all named checks pass and finite workload evidence demonstrates cheap early answers and complete large scans/SQL. No private-history export, live model calls or operator testing gate.
-  - Evidence: not started.
+  - Evidence: complete 2026-09-10. `node scripts/log-analytics-smoke.mjs` and `node scripts/log-analytics-perf.mjs` passed from `pi/profiles/default`; the exact finite matrix ran one cold and one warm sample for each of the four workloads at both generated sizes (16 correct samples, no failures). The generator independently expected 9,616 records in the 11,337,048-byte corpus and 6,416 records in the 636,428,208-byte corpus, with both profiles, 16 recorded failures, 16 non-profanity feedback occurrences, 16 timestamp gaps, and cross-profile join expectations of 2,889,608 and 1,286,408 rows. The large corpus has a 39.8 MiB file, exceeds the 8 MiB search page, and exceeds the 512 MiB standard SQL bound.
+
+    Targeted search returned after 4 records from 1 of 16 files (7,145 physical bytes in the small case and 106,744 in the large case), with no DuckDB and incomplete coverage. Failure search found all 16 error-flagged tool results across both profiles and valid adjacent follow-up; it completed in 2 pages at small size and 76 pages at large size. Three-month traversal found all 16 generated feedback markers, reported all 16 timestamp gaps, and exhausted 9,600/6,400 records with 11,335,176/636,426,336 physical bytes read. Large SQL returned generator-matching global counts and cross-profile joins while staging 9,616/6,416 records; it retained the 1 GB/two-thread ceiling and observed 14,055,296 bytes small and 851,535,500 bytes large temporary high-water.
+
+    Worker measurements reported end-to-end time, CPU and peak RSS for every sample: large cold/warm were targeted 56/39 ms and 16/48 ms CPU with 82.6/82.1 MiB RSS; failures 5,051/4,682 ms and 5,203/4,438 ms CPU with 143.4/116.7 MiB RSS; traversal 5,347/4,676 ms and 5,970/4,890 ms CPU with 149.3/141.7 MiB RSS; and SQL 18,040/15,653 ms and 16,344/15,937 ms CPU with 314.7/326.9 MiB RSS. Cold cache hits were 0 and warm cache hits were 16 for every sample; safely-pruned files were 0. Every invocation-owned SQL path was absent after close/cleanup, and the scratch fixture tree was removed. During the large SQL run, bounded staging was adjusted to retain the raw disk table and lazily project typed fields, avoiding a demonstrated 1 GB transient full-copy OOM while preserving the registered JSON view and temporary-disk ownership.
 
 - [ ] **T6: Archive, commit and integrate**
   - Depends on: T5.
   - Follow the closeout contract below. Mark this task complete only after integration and cleanup succeed.
-  - Evidence: not started.
+  - Evidence: implementation and agreed checks passed; archival and task-branch commit are in progress, with integration and cleanup still pending.
 
 ## Agreed validation and current handoff
 

@@ -27,6 +27,26 @@ describe("log_analytics registered tool", () => {
 		expect(pi.getActiveTools()).toContain("log_analytics");
 	});
 
+	it("supports search, exact follow-up, and explicit large SQL through the registered boundary", async () => {
+		const failure = (id: string, text: string, isError: boolean, role = "toolResult") => ({ type: "message", id, timestamp: "2026-09-05T00:00:00Z", message: { role, toolName: "read", toolCallId: `call-${id}`, isError, content: [{ type: "text", text }] } });
+		await fixture.session("default", "last-week", [failure("bad-default", "read failed", true), failure("false-positive", "failure text but success", false), failure("user-note", "failure reported", false, "user")]);
+		await fixture.session("legacy", "last-week-legacy", [failure("bad-legacy", "permission denied", true)]);
+		const { execute } = tool();
+		const request = { operation: "search" as const, profiles: ["default", "legacy"] as const, interval: { since: "2026-09-01T00:00:00Z", until: "2026-09-08T00:00:00Z" }, filters: { messageRoles: ["toolResult"], isError: true }, maxResults: 1 };
+		const first = await execute(request);
+		expect(first.details.matches).toHaveLength(1);
+		const all = [...first.details.matches];
+		let page = first.details;
+		while (page.nextCursor) { page = (await execute({ ...request, cursor: page.nextCursor })).details; all.push(...page.matches); }
+		expect(all.map((match: { occurrence: { session: { sessionId: string } } }) => match.occurrence.session.sessionId)).toEqual(["last-week", "last-week-legacy"]);
+		expect(all.every((match: { isError: boolean }) => match.isError)).toBe(true);
+		const context = await execute({ operation: "follow_up", occurrence: all[0].occurrence, before: 1, after: 1 });
+		expect(context.details.match.record.message.content[0].text).toBe("read failed");
+		const large = await execute({ operation: "query", profiles: ["default"], sources: ["session_entries"], execution: "large", sql: "SELECT count(*) AS records FROM session_entries" });
+		expect(large.details.cost.execution).toBe("large");
+		expect(large.details.cost.diskBudgetBytes).toBe(4 * 1024 ** 3);
+	});
+
 	it("supports default, legacy, combined and exact-session queries through the tool", async () => {
 		await fixture.session("default", "one", [recentMessage]);
 		await fixture.session("legacy", "two", [recentMessage]);
@@ -47,10 +67,13 @@ describe("log_analytics registered tool", () => {
 	it("rejects wrong-operation fields, malformed parameters, unsupported pairs and abort", async () => {
 		const { execute } = tool();
 		for (const params of [
-			{ operation: "query" }, { operation: "catalog", sql: "SELECT 1" },
-			{ operation: "sessions", profiles: ["other"] }, { operation: "query", sources: ["session_entries"], sql: "SELECT 1", maxRows: 1001 },
+			{ operation: "query" }, { operation: "catalog", sql: "SELECT 1" }, { operation: "catalog", profiles: ["default"] },
+			{ operation: "sessions", profiles: ["other"] }, { operation: "sessions", sql: "SELECT 1" },
+			{ operation: "query", sources: ["session_entries"], sql: "SELECT 1", maxRows: 1001 },
 			{ operation: "query", sources: ["session_entries"], sql: "SELECT 1", parameters: { bad: {} } },
 			{ operation: "query", sources: ["session_entries"], sql: "SELECT 1", root: "/arbitrary" },
+			{ operation: "search", filters: { isError: true }, sql: "SELECT 1" },
+			{ operation: "follow_up", occurrence: { profile: "default", fileKey: "bad", byteOffset: 0, byteLength: 1, recordOrdinal: 0, recordKey: null } },
 		]) await expect(execute(params)).rejects.toThrow();
 		await expect(execute({ operation: "query", profiles: ["legacy"], sources: ["codex_cache_observations"], sql: "SELECT 1" })).rejects.toThrow("unsupported");
 		await expect(execute({ operation: "query", sources: ["session_entries"], sql: "SELECT 1" }, AbortSignal.abort())).rejects.toThrow("cancelled");

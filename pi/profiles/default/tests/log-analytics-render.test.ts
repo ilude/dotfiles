@@ -56,6 +56,22 @@ describe("log analytics user-facing rendering", () => {
 		expect(plain(tool.renderCall!({} as LogAnalyticsInput, theme, context({})))).toContain("Preparing request");
 	});
 
+	it("renders compact search progress and exact follow-up without fetching on expansion", () => {
+		const search = { profiles: ["default", "legacy"], matches: [{ occurrence: { profile: "default", session: { profile: "default", sessionId: "last-week" }, fileKey: "a".repeat(64), byteOffset: 128, byteLength: 80, recordOrdinal: 2, recordKey: "failure" }, timestamp: "2026-09-05T00:00:00.000Z", entryType: "message", messageRole: "toolResult", toolName: "read", isError: true, snippet: "read failed" }], nextCursor: "cursor-secret", complete: false, stopReason: "result_limit", coverage: { selectedFiles: 4, selectedBytes: 4096, examinedFiles: 1, examinedRecords: 3, examinedBytes: 512, safelyPrunedFiles: 0, malformedRecords: 0, oversizedRecords: 0, timestampGaps: 0, diagnostics: [], diagnosticsTruncated: false, inventoryChanges: [], page: { examinedFiles: 1, examinedRecords: 3, examinedBytes: 512, malformedRecords: 0, oversizedRecords: 0 }, cumulative: { examinedFiles: 1, examinedRecords: 3, examinedBytes: 512, malformedRecords: 0, oversizedRecords: 0 }, remainingFiles: 3, capturedHorizons: [{ fileKey: "a".repeat(64), bytes: 4096 }], exclusions: { excludedFiles: 0, diagnostics: [], diagnosticsTruncated: false } } };
+		const compact = rendered(search);
+		expect(compact).toContain("1 match returned · default + legacy");
+		expect(compact).toContain("More input available");
+		expect(compact).toContain("3 records examined");
+		expect(compact).toContain("Continue with nextCursor");
+		expect(compact).not.toContain("a".repeat(64));
+		const expanded = rendered(search, true);
+		expect(expanded).toContain("offset 128 · ordinal 2");
+		expect(expanded).toContain("Captured horizon");
+		const follow = { occurrence: search.matches[0].occurrence, before: [{ occurrence: search.matches[0].occurrence, record: { message: { content: [{ type: "text", text: "before" }] } }, timestamp: null }], match: { occurrence: search.matches[0].occurrence, record: { message: { content: [{ type: "text", text: "exact" }] } }, timestamp: null }, after: [] };
+		expect(rendered(follow)).toContain("Match:");
+		expect(rendered(follow, true)).toContain('"exact"');
+	});
+
 	it("renders scalar query results as a table and preserves values at narrow widths", () => {
 		const data = query([{ tool_name: "bash", failures: "12" }, { tool_name: "read", failures: "3" }]);
 		const text = rendered(data);

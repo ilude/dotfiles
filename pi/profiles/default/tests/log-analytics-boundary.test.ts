@@ -35,6 +35,8 @@ describe("read-only analytics boundary", () => {
 		});
 		vi.stubEnv("PI_ANALYTICS_MAX_INPUT_BYTES", "bad");
 		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"] }, async () => {})).rejects.toThrow("PI_ANALYTICS_MAX_INPUT_BYTES");
+		vi.stubEnv("PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES", "bad");
+		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large" }, async () => {})).rejects.toThrow("PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES");
 	});
 
 	it("does not discover generic root JSONL or follow ledger link escapes", async () => {

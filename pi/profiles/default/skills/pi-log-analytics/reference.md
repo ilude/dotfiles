@@ -2,7 +2,7 @@
 
 ## Operations
 
-`log_analytics` is registered by the default profile and activated through `tool_search`. `catalog` needs no profile filesystem access or DuckDB initialization:
+`log_analytics` is registered by the default profile and activated through `tool_search`. Choose `catalog` for schemas, `sessions` for metadata-only listing, `search` for bounded DuckDB-free native record lookup, `follow_up` for exact bounded context, and `query` for one native SELECT. `catalog` needs no profile filesystem access or DuckDB initialization:
 
 ```json
 {"operation":"catalog"}
@@ -18,20 +18,34 @@ Optional discovery fields: `cwd` (exact stored header string), `sessionIds` (nat
 
 Discovery validates the first physical JSONL line as a native session header. Each header read is limited to 64 KiB, with at most 511 bytes of read-ahead. Non-session, empty, malformed, or oversized headers are excluded. Listing and session-query results include `coverage.discovery`: `excludedFiles`, up to 20 `diagnostics` (profile, profile-relative file label capped at 512 characters, opaque fileKey, and reason), and `diagnosticsTruncated`. Counts cover the selected profiles before listing filters or exact session selection, not just the returned page. Explicit references to excluded sessions still fail as unresolved. Discovery never falls back to a transcript scan or native session loading that may repair files. Directory listing and header reads still cover the selected profile's session tree before pagination. Empty supported session trees are valid; missing profile roots and unreadable inputs are errors.
 
-Exact session follow-up:
+Exact session SQL follow-up:
 
 ```json
 {
   "operation":"query",
   "profiles":["legacy"],
   "sources":["session_entries"],
-  "sessionRefs":[{"profile":"legacy","sessionId":"<native-id>"}],
+  "sessionRefs":[{"profile":"legacy","sessionId":"<native-id>","fileKey":"<file-key>"}],
   "sql":"SELECT _profile, session_id, _record_key, tool_name, is_error FROM session_entries WHERE message_role = 'toolResult' AND is_error LIMIT 20",
   "maxRows":20
 }
 ```
 
 Use the complete returned `ref`, including `fileKey`, when available. An ID that matches multiple files fails as ambiguous unless its discriminator is supplied. Unknown references and references outside selected profiles fail. `sessionRefs` narrows only `session_entries` and requires that source.
+
+Streaming search and exact context:
+
+```json
+{"operation":"search","profiles":["default","legacy"],"interval":{"since":"2026-09-01T00:00:00Z","until":"2026-09-08T00:00:00Z"},"filters":{"messageRoles":["toolResult"],"isError":true},"maxResults":100}
+```
+
+Continue with the same filters and returned `nextCursor` until `complete:true`. For a returned match, pass its complete `occurrence` to:
+
+```json
+{"operation":"follow_up","occurrence":{"profile":"default","session":{"profile":"default","sessionId":"<native-id>","fileKey":"<file-key>"},"fileKey":"<file-key>","byteOffset":123,"byteLength":456,"recordOrdinal":7,"recordKey":"<id-or-null>"},"before":2,"after":2}
+```
+
+Search interval is fixed `[since,until)`, based on normalized outer/native-nested record timestamps. Search text is literal and examines message strings/text blocks only. `follow_up` revalidates the file and identity, streams to the exact occurrence without DuckDB or whole-file staging, and returns only bounded adjacent context; expansion does not fetch again.
 
 Both-profile recent-event query:
 
@@ -115,24 +129,22 @@ Codex records have no timestamp or session association; those columns stay null 
 
 ## Bounds, coverage, and performance
 
-- Default query session deadline: 5,000 ms from core discovery through staging/query; native module loading and profile-root resolution precede this timer. Metadata discovery has its own 5,000 ms default deadline.
-- Selected input: 512 MiB, checked before instance creation and staging.
-- DuckDB: 2 threads, `1GB` memory, invocation-local in-memory database, serialized staging across calls in the process, no disk spill or persistent projection.
-- Resource overrides: `PI_ANALYTICS_TIMEOUT_MS`, `PI_ANALYTICS_MAX_INPUT_BYTES`, `PI_ANALYTICS_THREADS`, `PI_ANALYTICS_MEMORY_LIMIT`. Invalid values fail. Do not increase these automatically after a failed search.
-- Returned rows: at most 1,000 and 256 KiB for the encoded rows array. This is not a bound on the whole result envelope. Rows stream incrementally and stop at the limit; no full result collection followed by truncation.
-- Native JSON ingestion retains its default per-object size limit (16 MiB in this DuckDB version). Larger objects fail explicitly rather than being silently clipped. Malformed JSON lines are excluded while valid surrounding records remain readable; excluded-line counts are not available.
+- Header discovery has a 64 KiB first-line bound and never reads transcript bodies. Search reads 64 KiB buffers, examines at most 8 MiB or 10,000 records per page, returns at most 100 matches per page, and treats 16 MiB as the maximum physical record. An oversized or malformed line is counted and disclosed while valid surrounding records remain searchable.
+- Search and metadata discovery do not initialize DuckDB. Ordinary search has a 5,000 ms deadline. Search coverage reports selected files/bytes, examined files/records/bytes, safely pruned files, remaining files, malformed/oversized records, timestamp gaps, exclusions, captured byte horizons, and inventory changes. `complete:true` means selected readable input was traversed with exclusions disclosed, not that results are a semantic review.
+- Search cursors are process-local, bounded and expiring. They bind normalized scope/filters, selected-file identity markers and captured byte horizons. They are released when complete and may expire on reload/exit. Appends beyond a captured horizon belong to a fresh scan; replacement/truncation stops continuation with an inventory-change result. Do not treat an empty early page as exhaustive.
+- Standard SQL retains the 5,000 ms deadline, 512 MiB selected-input bound, two threads, `1GB` DuckDB memory ceiling, serialized staging and invocation-local in-memory database with no spill. Overrides are `PI_ANALYTICS_TIMEOUT_MS`, `PI_ANALYTICS_MAX_INPUT_BYTES`, `PI_ANALYTICS_THREADS`, and `PI_ANALYTICS_MEMORY_LIMIT`; invalid values fail and are never raised automatically.
+- Explicit large SQL uses a bounded 64 KiB reader and 1,000-record/8 MiB appender batches, an invocation-owned disk database plus spill directory, a 120,000 ms deadline and 4 GiB owned-disk budget. It retains two threads and the `1GB` DuckDB memory ceiling. Overrides are `PI_ANALYTICS_LARGE_TIMEOUT_MS` and `PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES`, in addition to shared thread/memory settings. Runtime-owned paths are removed after success, error or cancellation; cleanup failures name the exact owned remnant.
+- Returned SQL rows remain at most 1,000 and 256 KiB for the encoded rows array. `truncated` means output hit those bounds, not that input was silently omitted. Large resource failure is explicit; it is not a partial aggregate or permission to retry standard SQL as large.
 
-Query results return `columns`, `rows`, `truncated`, `cost`, `profiles`, `sources`, and coverage notes. DuckDB serializes BIGINT values as decimal strings and JSON values as JSON text. `cost` contains `filesScanned`, `bytesScanned`, `discoveryMs`, `stagingMs`, and `queryMs`. Staging time includes queue wait, instance setup and materialization. Discovery time covers file selection and size checks. End-to-end latency also includes lazy module loading and cleanup.
+Query results return `columns`, `rows`, `truncated`, `cost`, `profiles`, `sources`, and coverage notes. DuckDB serializes BIGINT values as decimal strings and JSON values as JSON text. `cost` reports `filesScanned`, `bytesScanned`, `discoveryMs`, `stagingMs`, `queryMs`, execution/resource limits, and, for large mode, records staged, malformed records, disk high-water and disk budget. Staging includes queue wait, instance setup and materialization; end-to-end latency also includes lazy loading and cleanup.
 
-`truncated` means returned rows hit their row/byte bound, not that some input files were silently omitted. Complete file selection is distinct from malformed-record exclusion and live-file consistency. Header exclusions are reported separately in `coverage.discovery`; `files: "all selected files staged"` refers only to valid, selected session files. Unreadable, missing-during-query, over-limit (other than excluded oversized headers), or cancelled inputs fail instead of producing a claimed partial success. File sizes are measured before ingestion; concurrently appended/replaced files are not a transactional snapshot. Narrow the profile/session set after an input-limit failure.
+SQL predicates run after staging and do not prune files. Session creation dates and filename timestamps must not exclude resumed sessions with recent events. Exact session selection reduces staged files, but still performs metadata discovery. Repeated queries rebuild DuckDB and do not imply an index. File sizes are measured before ingestion; live files are not a transactional snapshot. Header exclusions are separate from malformed/oversized records and are reported in coverage.
 
-The Windows synthetic check on 2026-09-07 passed all approximately 10 MiB workloads. In the approximately 100 MiB corpus, metadata and one-session queries passed, but broad queries over approximately 50 MiB (default only) or 100 MiB (both) reached the 1 GB memory ceiling. The input-byte cap is not a promise that every smaller corpus fits in memory. Exact session selection remains the supported way to narrow these searches; limits were not raised and no index was added.
-
-SQL event-time or content predicates run after staging and do not prune files. Session creation dates and filename timestamps must not exclude resumed sessions with recent events. Exact session selection reduces staged files, but still performs metadata discovery. Repeated queries rebuild DuckDB and do not imply an index or cache. Synthetic performance results are not latency guarantees for private all-history searches.
+The disposable metadata cache is `.analytics-state/metadata.json` beneath the default runtime root. It stores only file markers, validated session header metadata and event ranges learned during requested reads. It contains no transcript content or permanent SQL projection. Missing, corrupt, stale or unwritable cache state falls back to authoritative discovery and cannot exclude a file.
 
 ## When the tool cannot answer
 
-The [skill's read-only fallback](SKILL.md#read-only-fallback) permits `find`, `rg`, `jq`, `awk`, and `sort` against the same authorized local history when `log_analytics` is unavailable, over budget, excludes relevant input, or cannot retrieve the needed evidence. Its no-filesystem-SQL boundary is not a prohibition on direct read-only shell inspection. Use parsed JSON for roles, timestamps and error flags; plain-text matches only identify candidates. Preserve source coordinates and disclose partial scans and parse/pipeline failures. The tool's current no-spill implementation does not prohibit temporary sorting space for these commands.
+The [skill's read-only fallback](SKILL.md#read-only-fallback) permits `find`, `rg`, `jq`, `awk`, and `sort` against the same authorized local history when `log_analytics` is unavailable, over budget, excludes relevant input, or cannot retrieve the needed evidence. Its no-filesystem-SQL boundary is not a prohibition on direct read-only shell inspection. Use parsed JSON for roles, timestamps and error flags; plain-text matches only identify candidates. Preserve source coordinates and disclose partial scans and parse/pipeline failures. The tool's SQL staging policy does not prohibit temporary sorting space for these commands.
 
 ## Installation and checks
 
