@@ -1,8 +1,18 @@
 # Changelog
 
+## 2026-09-10: Add focused Pi extension development guidance
+
+**Added:** The `pi-extension` skill defines the active profile from Pi's running configuration and guides extension development and review using installed APIs and comparable active-profile features. It carries concrete lessons for render callbacks, command feedback, subprocesses, and session-owned resources, plus stable prompt/tool prefixes, replaceable task context, and evidence-based cache reporting. This adds guidance only, not runtime behavior, telemetry, or an exhaustive review requirement.
+
 ## 2026-09-10: Keep simple Pi work with the orchestrator
 
 **Changed:** Default Pi now delegates only for bounded implementation, parallel investigation, specialist research, or requested independent review. Other work stays with the orchestrator. Strategist remains the normal consultation before justified delegation, defaults to Sol low, reserves Astra low for named complexity, and rejects Luna effort below high. Duplicate `/do-it` guidance was removed.
+
+## 2026-09-10: Ground Pi engineering choices in comparable repository features
+
+**Changed:** Default Pi's global guidance uses repository features with comparable purposes and operating environments as the baseline for patterns and safeguards. Generic best practices alone do not justify importing unrelated controls; departures need the request or concrete code/environment evidence. Choices affecting behavior, scope, safeguards, or workflow that remain unresolved by the request and repository evidence prompt a user question with a recommendation, while equivalent implementation details remain agent-owned.
+
+**Clarified:** Consolidated investigation and verification guidance names evidence and stopping conditions: passing checks does not dismiss known task-related defects, and code evidence can establish a defect without reproducing a failure. The `agent-process` skill now favors direct, observable wording and consolidation over repeated rules, retaining implementation judgment without scores, reports, or approval gates. Scope and preservation boundaries remain unchanged.
 
 ## 2026-09-10: Allow read-only shell fallbacks for Pi history analysis
 

@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-035 - Carry forward concrete extension lessons for the active profile
+
+- **Reference:** Operator approval to add the Pi extension skill, review prompt caching, and commit task-owned changes, 2026-09-10.
+- **Feedback:** Define the active profile from the running Pi configuration, not cwd. Name the callbacks, resources, and events a runtime rule applies to instead of using ambiguous shorthand. Start with clearly applicable lessons; consult historical material when a concrete issue supplies context, rather than making other profiles part of the new skill's standing instructions.
+- **Related:** AIF-031's comparable-feature baseline and AIF-032's concise, observable instructions.
+- **Decision:** Added `pi-extension/SKILL.md` with active-profile ownership, installed API sources, four concrete runtime lessons, and prompt-caching guidance. No historical contract tree, runtime machinery, or telemetry was imported. Caching review reports findings separately without authorizing fixes.
+- **Status:** Native skill discovery and a synthetic prompt/deferred-tool check passed. Code inspection and the synthetic check establish an image-tool prompt-prefix change. Existing Codex observations show cache reuse but cannot attribute misses to that change. No live provider comparison or model-adherence test.
+
 ## AIF-033 - Work directly unless delegation has a named purpose
 
 - **Reference:** Operator correction after Strategist was used for a simple repository lookup, 2026-09-10.
@@ -7,6 +15,22 @@
 - **Decision:** Limit delegation to bounded implementation, parallel investigation, specialist research, or requested independent review; otherwise work directly. Keep the executable rule in shared subagent guidance, summarize it in documentation, and remove the duplicate from `/do-it`. Default Strategist to Sol low, reserve Astra low for named complexity, and reject Luna effort below high for that role.
 - **Related:** AIF-004, AIF-027, APR-020, APR-022.
 - **Status:** Implemented with focused tests; future adherence remains unverified.
+
+## AIF-032 - Consolidate instructions around observable decisions and stopping conditions
+
+- **Reference:** Operator approval to consolidate global guidance and capture instruction-writing preferences in `agent-process`, 2026-09-10.
+- **Feedback:** Prefer direct, objective, token-efficient instructions over abstract labels and repeated formulations. Use workflow, not the narrower operator workflow. Ask about unresolved choices affecting behavior, scope, safeguards, or workflow, not equivalent implementation details or settled decisions. Simplicity and flexibility must not remove necessary work or verification.
+- **Comparison:** Builds on AIF-031's comparable-feature baseline, AIF-001's plain language, AIF-004's narrow changes, and AIF-003/APR-002's bounded verification. Objective evidence should guide judgment, not create deterministic routing, evidence paperwork, or approval ceremony. Source evidence can establish a defect without a reproduced failure; passing checks does not erase known task-related defects.
+- **Decision:** Consolidated investigation and verification bullets in `pi/profiles/default/AGENTS.md`, retained uncertainty disclosure, scope, and preservation rules, and limited clarification to choices unresolved by the request and repository evidence. Refined `agent-process/SKILL.md` to consolidate overlaps, name actions/triggers/evidence/stopping conditions, and preserve scope and clarification boundaries when shortening wording. Planning skill and agent plans remain unchanged.
+- **Status:** Instruction edits implemented. Scoped wording/diff review and `git diff --check` passed; no runtime changes or model-adherence test. Effectiveness remains unverified.
+
+## AIF-031 - Use comparable repository features as the engineering baseline
+
+- **Reference:** Operator approval after independent Fable and Opus wording consultations, 2026-09-10.
+- **Feedback:** Existing features demonstrate the expected solutions and safeguard level, not just reusable code. Compare purpose and operating environment: deployed authentication controls do not automatically belong in local developer tooling. Generic best practices or hypothetical concerns alone do not justify new gates. Ask with a recommendation when the applicable pattern is unclear or alternatives differ in behavior, scope, safeguards, or operator workflow; choose equivalent implementation details directly.
+- **Comparison:** Refines AIF-004's flexible, narrow workflows and AIF-029 (direct evidence and recommended consultation), with the overbuilding examples in APR-002/APR-007. Repository patterns are a baseline, not infallible: the request or concrete code/environment evidence may establish a need to depart.
+- **Decision:** Added the approved paragraph under Proportionality in `pi/profiles/default/AGENTS.md`. Preserved existing scope, verification, and preservation rules. Planning-skill and agent-plan changes remain outside this approval; no runtime gates or required reports were added.
+- **Status:** Implemented as instruction text. Scoped diff review and `git diff --check` passed; future model adherence remains unverified.
 
 ## AIF-030 - Match analytics work to the question and teach complete traversal
 
@@ -32,8 +56,8 @@
 - **Feedback:** Strategist advises before subagent assignments; a separate Steward checks whether reviewer/validator findings warrant more work after implementation. Both are the recommended path when applicable, not exceptional optional tools or mandatory approvals. Keep them simple, flexible, and low ceremony. Prefer direct tool/result triggers and observable facts over abstract benefits or subjective labels; the operator reports that ambiguity lets agents expand scope.
 - **Comparison:** AIF-004 already preserves judgment and narrow instruction changes; AIF-003/APR-002 record verification expansion; AIF-023 separates settled execution from planning; AIF-027/APR-020 concern assignment size. This feedback sharpens those boundaries rather than authorizing scoring, deterministic routing, or another review gate. Ambiguity as a general cause remains a hypothesis, not a measured result.
 - **Decision:** Authorized plan changes only: revise `.specs/strategist-delegation-guidance/plan.md` for normal pre-`subagent` consultation with advice reuse and evidence-based selection/retry wording; create `.specs/steward-review-guidance/plan.md` for post-finding advice before follow-up fixes. Steward compares the request/corrections and agreed checks with findings and proposed fixes, without adding requirements, audits, or required report formats.
-- **Instruction follow-up:** Discuss encoding direct, observable triggers and evidence-versus-judgment wording in the planning skill and possibly default-profile global `AGENTS.md`. No such active instruction changes are authorized yet. Objective evidence does not mean eliminating implementation judgment or asking the operator about every technical choice.
-- **Status:** Plan revision and new plan written; implementation and live effectiveness unverified. No active role, skill policy, or global instruction changed.
+- **Instruction follow-up:** Discuss encoding direct, observable triggers and evidence-versus-judgment wording in the planning skill and possibly default-profile global `AGENTS.md`. Those instruction changes were not authorized at this planning stage. AIF-031 records the later approved global comparable-feature rule; planning-skill changes remain proposals. Objective evidence does not mean eliminating implementation judgment or asking the operator about every technical choice.
+- **Status:** Plan revision and new plan written at this stage; implementation and live effectiveness were unverified. This entry did not change an active role, skill policy, or global instruction.
 
 ## AIF-028 - Keep web-fetch results content-first and block flagged pages
 

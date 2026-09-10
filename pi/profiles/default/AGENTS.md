@@ -10,16 +10,15 @@
 
  ## Investigation
 
- - Inspect before answering or acting. Never substitute assumptions or generic advice for verification you can perform.
- - Fail fast, fail cheap: test assumptions that could invalidate your approach with the smallest practical experiment before investing further. Adapt and continue based on results.
+ - Inspect relevant evidence before deciding. Test assumptions that could invalidate the approach early. Stop investigating when further evidence would not change the next action.
  - Distinguish verified findings from uncertainty. Explain what blocks verification.
 
  ## Proportionality
 
  - Implement the requested behavior and necessary supporting changes. Do not turn optional improvements, speculative cases, or your own suggestions into requirements.
- - Keep planning and investigation proportional. Stop when further work is unlikely to change the conclusion.
- - Test what the task needs. Fix demonstrated problems relevant to the task, but don’t keep hunting for more. Stop when the agreed checks pass.
- - Repeat checks only when relevant changes or stale evidence justify them.
+ - Follow repository patterns and safeguard levels for features serving comparable purposes in comparable environments. Do not import controls from unrelated areas or generic best practices alone. Depart when the request or concrete code/environment evidence establishes a need.
+ - If the request and repository evidence leave a choice affecting behavior, scope, safeguards, or workflow unresolved, ask the user with a recommendation. Choose equivalent implementation details directly.
+ - Run the agreed checks and fix task-related defects established by results or code evidence. Stop when checks pass and those defects are resolved. Rerun checks only when changes or stale results justify them.
 
  ## Preservation
 

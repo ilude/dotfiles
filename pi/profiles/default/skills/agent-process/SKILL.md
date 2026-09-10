@@ -10,7 +10,7 @@ Use this skill when the operator asks to capture, review, or refine agent behavi
 1. Read [the instruction feedback log](references/instruction-feedback.md) and [the failure log](references/failure-log.md) completely.
 2. Verify the relevant instructions and evidence. Separate observed behavior from suspected causes.
 3. Record general feedback in the feedback log and workflow failures in the failure log. Use a concise ID, reference, facts, related entries, decision or remediation, and status. Omit secrets, private task content, and raw transcripts.
-4. Propose the smallest clear change that addresses the evidence. Avoid speculative edge cases, ceremony, and scope expansion. Prefer flexible, judgment-based workflows; use deterministic checks for narrow factual questions when their reliability outweighs the loss of judgment.
+4. Propose the smallest clear change that addresses the evidence. Use comparable existing instructions and workflows as the baseline, matching purpose and environment. Consolidate overlapping rules rather than restating them. Prefer named actions, observable triggers, evidence, and stopping conditions over abstract or subjective labels. Keep wording concise without losing scope or clarification boundaries. Preserve implementation judgment; objective evidence does not require scores, reports, or approval gates. Avoid speculative edge cases and scope expansion. Use deterministic checks for narrow factual questions when their reliability outweighs the loss of judgment.
 5. Change instructions only with operator approval and at the owning scope. A log entry is not executable policy or permission to commit or push.
 6. Resume any interrupted task when requested. Do not claim effectiveness or prevention without evidence.
 
