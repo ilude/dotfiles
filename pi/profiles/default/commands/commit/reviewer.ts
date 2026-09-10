@@ -44,14 +44,15 @@ Repository inventory (initial status already collected; use commit_git_review fo
 ${inventory.join("\n\n")}`;
 }
 
-export function commitReviewerTool(pi: ExtensionAPI, pushRequested: () => boolean): ToolDefinition {
+export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId: string) => boolean | undefined): ToolDefinition {
 	return {
 		name: "commit_run",
 		label: "Commit",
 		description: "Let Luna quietly review, stage, and commit using ordinary Git. Handles ignore-file questions directly. Returns actual commit hashes/messages and status. Call once for /commit; do not perform Git work again afterward. Push permission comes from the slash invocation.",
 		parameters: Type.Object({}),
-		async execute(_id, _params, signal, onUpdate, ctx) {
-			const push = pushRequested();
+		async execute(id, _params, signal, onUpdate, ctx) {
+			const push = pushRequested(id);
+			if (push === undefined) throw new Error("commit_run has no delivered command invocation.");
 			const deadline = new AbortController();
 			const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
 			let remaining = WORKFLOW_TIMEOUT_MS;

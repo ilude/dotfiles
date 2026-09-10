@@ -58,30 +58,30 @@ Create the task worktree/branch only when execution is authorized. Carry and mai
 
 ## Tasks
 
-- [ ] **T1 - Introduce immutable invocation data and delivery-bound authority**
+- [x] **T1 - Introduce immutable invocation data and delivery-bound authority**
   - Depends on: none.
   - Files: existing `extensions/commands.ts`, `commands/index.ts`, `commands/commit/reviewer.ts`; proposed `lib/command-invocations.ts` only if it makes the state transitions clearer.
   - Do: implement the contract above; remove mutable `commitPushRequested` and command-name-only authorization. Keep the public `commit_run` parameters unchanged and supply resolved invocation options internally. Separate schema preparation from authority activation.
   - Verify: trace idle submission, streaming submission, delivery, tool preflight, execution, result, settlement and teardown; author T2 regressions against those transitions.
   - Done when: submission cannot change an older call's options and native steering remains the delivery path.
-  - Evidence: Not started.
+  - Evidence: Added `lib/command-invocations.ts`; command arguments now return frozen invocation options, delivery selects only process-local invocation IDs, and tool calls bind immutable invocation records before execution.
 
-- [ ] **T2 - Add finite transition regressions and runtime-boundary evidence**
+- [x] **T2 - Add finite transition regressions and runtime-boundary evidence**
   - Depends on: T1.
   - Files: proposed `tests/command-invocations.test.ts` and `tests/commands-lifecycle.test.ts`; existing `tests/commit-reviewer.test.ts`.
   - Do: test bare commit followed by push and the reverse; submission before old tool execution; `/bro` steering; ordinary user steering; invalid invocation while work is active; retries/compaction continuity; session cleanup; preservation of unrelated active tools.
   - Verify: one offline installed-Pi/Agent integration fixture with a deterministic stream and inert command tool proves the steered command and its tool schema reach the next response while the earlier workflow has not settled, and its tool reads the correct invocation. Assert old calls retain their own options. No real Git or model calls.
   - Done when: behavior is covered at the real event/tool-snapshot boundary, not solely by a fake event emitter.
   - Scope checkpoint: no finish-first queue, busy gate, or arbitrary router has been introduced.
-  - Evidence: Not started.
+  - Evidence: Added focused authority/lifecycle tests, including a deterministic installed `Agent` stream that holds an earlier tool, steers the command, observes the prepared next-turn schema, and verifies the bound push option without Git or model calls.
 
-- [ ] **T3 - Document, validate and integrate**
+- [x] **T3 - Document, validate and integrate**
   - Depends on: T2.
   - Files: `docs/commands.md`, `docs/commit.md` under default; root `CHANGELOG.md`.
   - Do: explain native steering and invocation-bound permissions, including schema availability versus authority. Run final checks, record actual profile/results, then archive and merge locally.
   - Verify: checks below pass and target contains implementation plus dated archive.
   - Done when: integrated behavior preserves D1-D3; no live commit/push acceptance is required.
-  - Evidence: Not started.
+  - Evidence: Updated default-profile command/commit documentation and root changelog. On 2026-09-09 in the default profile, 11 focused tests passed; `pnpm run typecheck`, `pnpm run check:runtime`, and `git diff --check` passed.
 
 ## Agreed validation and finish
 
@@ -97,10 +97,10 @@ The first two test files are proposed. The loader fixture must use an empty temp
 
 ## Current handoff
 
-- Status: planned, implementation not authorized.
-- Completed: scope decisions, harmless reproduction, installed API ordering inspection.
-- Next: T1 after authorization.
-- Open operator decisions: none. The integration fixture verifies the identified boundary without reopening steering semantics.
+- Status: implementation and agreed agent-owned checks passed; archive/task commit and local integration remain.
+- Completed: T1-T3 implementation, focused regressions, runtime-boundary fixture, documentation, changelog, and agreed checks.
+- Next: archive and commit on the task branch, merge into recorded target `main`, then record completion metadata on the target and clean up the task worktree.
+- Open operator decisions: none. No operator manual or live testing is required.
 
 ## Completion and archive
 

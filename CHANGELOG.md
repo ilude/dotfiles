@@ -8,6 +8,12 @@
 
 **Limit:** Pi's normal session lifecycle applies. A fresh picker-only session may not be written to disk until an assistant response is persisted, so analytics cannot recover entries from an unsaved session.
 
+## 2026-09-09: Bind command authority to delivered invocations
+
+**Fixed:** Default Pi's prompt-backed commands now prepare tool schemas before native steering while binding execution authority to the locally-created invocation delivered by Pi. `/commit` push permission is immutable per slash invocation, so overlapping bare and `push` submissions cannot change one another; retries, compaction, ordinary steering, and unrelated active tools remain supported.
+
+**Preserved:** Schema availability is not authorization, restored transcript details cannot recreate authority, and command tools are cleaned up only at settlement or session shutdown. No busy-command gate, finish-first queue, follow-up delivery substitute, Git workflow change, or legacy-profile change was added.
+
 ## 2026-09-09: Avoid accidental commit push completion
 
 **Fixed:** Default Pi's `/commit` argument completion no longer suggests `push` for an empty argument or an already-complete `push`. Enter submits `/commit ` without adding push, and `/commit push` without an extra completion-selection step. Partial arguments such as `/commit p` still offer `push`.
