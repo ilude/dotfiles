@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-10: Keep simple Pi work with the orchestrator
+
+**Changed:** Default Pi now delegates only for bounded implementation, parallel investigation, specialist research, or requested independent review. Other work stays with the orchestrator. Strategist remains the normal consultation before justified delegation, and duplicate `/do-it` guidance was removed.
+
 ## 2026-09-10: Allow read-only shell fallbacks for Pi history analysis
 
 **Changed:** The default `pi-log-analytics` skill still prefers `log_analytics`, but explicitly permits `find`, `rg`, `jq`, `awk`, and `sort` when the tool cannot retrieve the requested evidence. Guidance preserves the requested scope, JSON field semantics, source coordinates and honest coverage reporting without adding another approval gate or a duplicate skill. Runtime analytics and legacy instructions are unchanged.

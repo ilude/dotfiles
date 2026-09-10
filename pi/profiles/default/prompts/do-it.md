@@ -11,8 +11,6 @@ Interpret the arguments as an optional `--no-merge` flag and an optional plan pa
 
 This invocation authorizes execution of the selected plan and local task commits. It also authorizes local integration unless `--no-merge` is present. It does not authorize push or deployment or silently resolve the plan's open consequential decisions.
 
-Normally consult `subagent` with `agent: "strategist"` before assigning work through `subagent`. Reuse its advice for related assignments rather than consulting again for every call. Advice stays within the user's request and accepted plan; it does not reopen scope or acceptance or require approval to proceed.
-
 - Create or resume the plan's dedicated task worktree and branch. Implement and validate there, preserving existing and unrelated work. Record a new worktree's originating checkout and branch as its integration target; for an existing task, use its recorded target. Resolve missing or conflicting target information before merging rather than assuming `main`.
 - Complete the existing scope and agreed agent-owned checks. Resolve routine implementation problems and demonstrated task-relevant failures, continue independent work around blockers, and stop testing when the agreed checks pass. Do not add optional improvements, speculative fixes, audits, acceptance requirements, or promises in place of available work.
 - Keep plan progress and evidence current without redefining requirements. Leave unfinished integration/cleanup checkboxes unchecked; record any blocker, next action, and who must act. Archival and passing checks are not whole-plan completion. Pending operator manual or live testing is a non-blocking verification limit, not a reason to delay authorized closeout.

@@ -39,6 +39,8 @@ describe("delegation guidance", () => {
 
   it("contains the settled selection, consultation, and recovery guidance", () => {
     const text = delegationContext({ audience: "caller", definitions });
+    expect(text).toContain("Delegate only for bounded implementation");
+    expect(text).toContain("Otherwise work directly");
     expect(text).toContain('agent: "strategist"');
     expect(text).toContain("Reuse its advice");
     expect(text).toContain("observable facts");

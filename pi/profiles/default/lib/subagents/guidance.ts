@@ -10,7 +10,7 @@ export interface DelegationContextOptions {
 
 const SHARED_GUIDANCE = `## Delegation guidance
 
-Normally consult \`subagent\` with \`agent: "strategist"\` before assigning work through \`subagent\`. Reuse its advice for related assignments rather than consulting again for every call. Strategist advice is recommendation-only; the caller decides and proceeds without an approval gate.
+Delegate only for bounded implementation, parallel investigation, specialist research, or requested independent review. Otherwise work directly. Before delegating, normally consult \`subagent\` with \`agent: "strategist"\`. Reuse its advice for related assignments. Strategist advice is recommendation-only; the caller decides and proceeds without an approval gate.
 
 Use small assignments split by responsibility. Normally give one plan T? section to an implementation worker and bound review and validation separately. Inspect and incorporate a prerequisite worker's result before launching fresh dependent work. Independent reads and disjoint writes may run in parallel.
 

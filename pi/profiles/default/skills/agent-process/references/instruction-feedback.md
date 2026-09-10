@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-033 - Work directly unless delegation has a named purpose
+
+- **Reference:** Operator correction after Strategist was used for a simple repository lookup, 2026-09-10.
+- **Feedback:** Subagents and Strategist should support larger work that clearly benefits from delegation, not routine requests. Keep the threshold concise and objective, and avoid duplicating executable guidance across prompts.
+- **Decision:** Limit delegation to bounded implementation, parallel investigation, specialist research, or requested independent review; otherwise work directly. Keep the executable rule in shared subagent guidance, summarize it in documentation, and remove the duplicate from `/do-it`.
+- **Related:** AIF-004, AIF-027, APR-020, APR-022.
+- **Status:** Implemented with focused tests; future adherence remains unverified.
+
 ## AIF-030 - Match analytics work to the question and teach complete traversal
 
 - **Reference:** Default-profile analytics planning discussion, 2026-09-10.

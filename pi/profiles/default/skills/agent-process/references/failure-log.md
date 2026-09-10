@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-022 - Strategist was invoked for a simple lookup
+
+- **Reference:** Operator correction during a group-membership request in the wrong repository, 2026-09-10.
+- **Observed:** The orchestrator launched Strategist before performing a narrow repository search. The consultation added delay and produced an unsupported group-path assumption that direct inspection later disproved.
+- **Finding:** Shared guidance required Strategist before delegation but did not say when delegation itself was warranted.
+- **Remediation:** Shared guidance now names the limited purposes for delegation and directs other work to remain with the orchestrator. Duplicate `/do-it` wording was removed.
+- **Related:** AIF-033, AIF-004, APR-020.
+- **Status:** Instruction and tests updated; future adherence remains unverified.
+
 ## APR-021 - Sampled analytics was presented as a three-month review
 
 - **Reference:** Operator correction in default session `01a089bc-9d65-7769-b0e6-fc2167491e8d`, 2026-09-10.

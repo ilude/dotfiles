@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -23,7 +23,5 @@ describe("subagent definitions",()=>{
   expect(catalog.agents.get("strategist")).toMatchObject({model:"openai-codex/gpt-5.6-luna",effort:"high",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
   expect(catalog.agents.get("teamlead")?.delegates).toContain("strategist");
   expect(catalog.agents.get("reviewer")?.model).toBe("openai-codex/gpt-5.6-sol");
-  const doIt=readFileSync(join(profile,"prompts","do-it.md"),"utf8");
-  expect(doIt).toContain('agent: "strategist"');expect(doIt).toContain("Reuse its advice");expect(doIt).toContain("does not reopen scope or acceptance");
  });
 });
