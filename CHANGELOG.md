@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-10: Complete restricted child accounting and provenance
+
+**Fixed:** Native `amazon-bedrock` children now load an accounting-only extension, while Mantle children retain their provider-plus-accounting extension. Every restricted child records its active profile in session metadata. Operator commands, footer UI, Onclave, and general Herdr controls remain excluded.
+
 ## 2026-09-10: Preserve the system prompt when image tools activate
 
 **Changed:** Deferred image tools no longer add active-only discovery snippets to the system prompt. Their searchable descriptions, schemas, processing behavior, and safeguards are unchanged. This removes a prompt-prefix change that can undermine cache reuse even with native deferred tool loading; it does not guarantee cache hits or change fallback schema handling for other providers.

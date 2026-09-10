@@ -31,7 +31,7 @@ Required fields are `name`, `description`, and `tools`; the other fields above a
 
 Authority is frozen for the conversation, including retained turns, reload, and direct user help. Call arguments cannot widen tools or delegation. Native file tools are restricted to the assigned workspace, with read-only exceptions for selected skill files. Child workspaces cannot widen a coordinator's workspace. The restricted `tool_search` only describes already-permitted tools; it cannot activate more.
 
-Damage Control remains loaded. Direct `!` shell input is disabled in children so it cannot bypass tool safety; shell-enabled roles use the guarded shell tool instead. These tool ceilings and path checks are **not an OS sandbox**. A shell-enabled role can mutate files. Children do not load Onclave or general Herdr process/layout tools.
+Damage Control and session-profile metadata remain loaded. Bedrock children load accounting, with Mantle provider registration added only for Mantle models. Direct `!` shell input is disabled in children so it cannot bypass tool safety; shell-enabled roles use the guarded shell tool instead. These tool ceilings and path checks are **not an OS sandbox**. A shell-enabled role can mutate files. Children do not load Onclave or general Herdr process/layout tools.
 
 ## Tools and conversations
 

@@ -15,12 +15,21 @@ describe("subagent launch prompt", () => {
     expect(launch.env.PI_SUBAGENT_PROMPT).toBe("frozen composed prompt");
     expect(launch.args).toContain("provider/model");expect(launch.args).toContain("low");
     expect(launch.args.includes("rpc")).toBe(surface === "headless");
+    expect(launch.args).toContain(join(process.cwd(), "extensions", "session-profile.ts"));
   });
 
-  it("loads only the Bedrock provider extension for Mantle children", () => {
+  it("loads provider plus accounting for Mantle children without the operator extension", () => {
     const launch = childLaunch({ ...spec("headless"), model: "bedrock-mantle/anthropic.claude-sonnet-5" }, "id", process.cwd());
     expect(launch.args).toContain("--extension");
     expect(launch.args).toContain(join(process.cwd(), "extensions", "bedrock/provider.ts"));
+    expect(launch.args).not.toContain(join(process.cwd(), "extensions", "bedrock/accounting.ts"));
+    expect(launch.args).not.toContain(join(process.cwd(), "extensions", "bedrock/index.ts"));
+  });
+
+  it("loads accounting without the Mantle provider for native Bedrock children", () => {
+    const launch = childLaunch({ ...spec("headless"), model: "amazon-bedrock/us.anthropic.claude-fable-5-1" }, "id", process.cwd());
+    expect(launch.args).toContain(join(process.cwd(), "extensions", "bedrock/accounting.ts"));
+    expect(launch.args).not.toContain(join(process.cwd(), "extensions", "bedrock/provider.ts"));
     expect(launch.args).not.toContain(join(process.cwd(), "extensions", "bedrock/index.ts"));
   });
 });
