@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { loadDefinitions, resolveModel, EFFORTS, type AgentEffort } from "../lib/subagents/definitions.ts";
+import { loadDefinitions, resolveAgentEffort, resolveModel, EFFORTS, type AgentEffort } from "../lib/subagents/definitions.ts";
 import { VisibleChild } from "../lib/subagents/visible.ts";
 import { getSubagentRuntime, retireSubagentRuntime, resetSubagentRuntime, SUBAGENT_RUNTIME_RESET, type Delivery } from "../lib/subagents/runtime.ts";
 import { outcomeText } from "../lib/subagents/status.ts";
@@ -65,7 +65,7 @@ export default function subagents(pi:ExtensionAPI){
   const surface=p.surface??(process.env.HERDR_ENV==="1"?"visible":"headless");
   const attached=!(p.background??false),bridge=attached?updates(onUpdate):undefined;
   try{
-   const r=await active().launch({definition:d,instructions:p.instructions,cwd:resolve(ctx.cwd,p.cwd||"."),model:chosen!,effort:(p.effort??d.effort??"low") as AgentEffort,skills,origin:ctx.sessionManager.getSessionId(),retained:p.retain??false,surface,catalog:catalog.agents,progress:bridge?.push},profile,childExt,p.background??false,signal);
+   const r=await active().launch({definition:d,instructions:p.instructions,cwd:resolve(ctx.cwd,p.cwd||"."),model:chosen!,effort:resolveAgentEffort(d.name,chosen!,p.effort as AgentEffort|undefined,d.effort),skills,origin:ctx.sessionManager.getSessionId(),retained:p.retain??false,surface,catalog:catalog.agents,progress:bridge?.push},profile,childExt,p.background??false,signal);
    return output(r,r.outcome==="failed");
   }finally{bridge?.stop()}
  }catch(e){return output({error:e instanceof Error?e.message:String(e)},true)}}});

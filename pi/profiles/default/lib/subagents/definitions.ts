@@ -4,7 +4,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { parse as parseYaml } from "yaml";
 
 import { EFFORTS, type AgentEffort } from "./options.ts";
-export { EFFORTS, resolveModel, type AgentEffort } from "./options.ts";
+export { EFFORTS, resolveAgentEffort, resolveModel, type AgentEffort } from "./options.ts";
 export interface AgentDefinition { name: string; description: string; tools: string[]; delegates: string[]; model?: string; effort?: AgentEffort; skills: string[]; prompt: string; source: "profile" | "project"; filePath: string }
 export interface DefinitionCatalog { agents: Map<string, AgentDefinition>; errors: string[]; projectDir?: string }
 const NAME = /^[a-z][a-z0-9_-]*$/;

@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { loadDefinitions, resolveModel } from "../lib/subagents/definitions.ts";
+import { loadDefinitions, resolveAgentEffort, resolveModel } from "../lib/subagents/definitions.ts";
 const roots:string[]=[];const old=process.env.PI_CODING_AGENT_DIR;
 afterEach(()=>{process.env.PI_CODING_AGENT_DIR=old;for(const r of roots.splice(0))rmSync(r,{recursive:true,force:true})});
 function root(){const r=mkdtempSync(join(tmpdir(),"subagent-defs-"));roots.push(r);mkdirSync(join(r,"agents"),{recursive:true});process.env.PI_CODING_AGENT_DIR=r;return r}
@@ -16,6 +16,11 @@ describe("subagent definitions",()=>{
  it.each(["delegates: true", "skills: 4", "model: false", "effort: []"])("rejects malformed optional authority: %s",(field)=>{const r=root();writeFileSync(join(r,"agents","worker.md"),`---\nname: worker\ndescription: worker\ntools: []\n${field}\n---\nprompt`);const got=loadDefinitions(r,false,r);expect(got.agents.has("worker")).toBe(false);expect(got.errors).toHaveLength(1)});
  it.each(["/model", "provider/", " provider/model"])("rejects incomplete model %s",(model)=>{expect(()=>resolveModel(model,undefined)).toThrow(/Explicit/)});
  it("requires explicit provider/model",()=>{expect(()=>resolveModel(undefined,undefined)).toThrow(/Explicit/);expect(resolveModel("openai-codex/model",undefined)).toEqual({provider:"openai-codex",id:"model"})});
+ it("rejects Luna Strategist effort below high without restricting stronger models",()=>{
+  expect(()=>resolveAgentEffort("strategist","openai-codex/gpt-5.6-luna","low","high")).toThrow(/below high/);
+  expect(resolveAgentEffort("strategist","openai-codex/gpt-5.6-luna","high","low")).toBe("high");
+  expect(resolveAgentEffort("strategist","openai-codex/gpt-5.6-sol","low","high")).toBe("low");
+ });
  it("loads the bundled read-only Strategist and grants Team Lead access without changing other defaults",()=>{
   const profile=join(dirname(fileURLToPath(import.meta.url)),"..");
   const catalog=loadDefinitions(profile,false,profile);

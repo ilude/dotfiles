@@ -4,7 +4,7 @@ import { ChildTransport, type ChildIdentity, type ApplicationMessage, type Messa
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 import { VisibleChild } from "./visible.ts";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
-import { EFFORTS, resolveModel, resolveSkills } from "./options.ts";
+import { EFFORTS, resolveAgentEffort, resolveModel, resolveSkills } from "./options.ts";
 import { inside, workspaceRoot } from "./workspace.ts";
 import { NameAllocator } from "./names.ts";
 import { SubagentLayout } from "./layout.ts";
@@ -126,7 +126,7 @@ export class SubagentRuntime {
    if(payload.effort!==undefined&&!EFFORTS.includes(payload.effort as AgentEffort))throw new Error("Invalid effort");
    if(payload.surface!==undefined&&payload.surface!=="visible"&&payload.surface!=="headless")throw new Error("Invalid surface");
    const model=(payload.model as string|undefined)??definition.model;resolveModel(model,undefined);
-   return this.launch({definition,instructions:payload.instructions,cwd:resolve(context.input.cwd,(payload.cwd as string|undefined)??"."),model:model!,effort:(payload.effort as AgentEffort|undefined)??definition.effort??"low",skills:resolveSkills(context.profile,definition.skills,payload.skills),origin:identity.origin,retained:payload.retain===true,parentId:identity.child,surface:(payload.surface as "headless"|"visible"|undefined)??context.input.surface,catalog:context.catalog},context.profile,context.extension,true,undefined,payload.background===true?"background":"attached");
+   return this.launch({definition,instructions:payload.instructions,cwd:resolve(context.input.cwd,(payload.cwd as string|undefined)??"."),model:model!,effort:resolveAgentEffort(definition.name,model!,payload.effort as AgentEffort|undefined,definition.effort),skills:resolveSkills(context.profile,definition.skills,payload.skills),origin:identity.origin,retained:payload.retain===true,parentId:identity.child,surface:(payload.surface as "headless"|"visible"|undefined)??context.input.surface,catalog:context.catalog},context.profile,context.extension,true,undefined,payload.background===true?"background":"attached");
   }
   if(message.type==="control"){
    if(!context.input.definition.tools.includes("subagent_control"))throw new Error("Control is outside frozen authority");

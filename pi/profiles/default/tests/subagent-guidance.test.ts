@@ -46,7 +46,7 @@ describe("delegation guidance", () => {
     expect(text).toContain("observable facts");
     expect(text).toContain("Luna xhigh");
     expect(text).toContain("Use Sol low for Strategist");
-    expect(text).toContain("Never use Luna low or medium for Strategist");
+    expect(text).toContain("Strategist cannot use Luna below high effort");
     expect(text).toContain("Astra above high is user-selected only");
     expect(text).toContain("One automatic stronger-family retry");
     expect(text).toContain("do not chain automatic retries");

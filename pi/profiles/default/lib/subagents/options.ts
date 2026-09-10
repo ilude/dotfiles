@@ -9,6 +9,12 @@ export function resolveModel(model: string | undefined, fallback: string | undef
  if(!provider.trim()||!id.trim())throw new Error(`Explicit provider/model required, received ${value}`);
  return{provider,id};
 }
+export function resolveAgentEffort(name:string,model:string,requested:AgentEffort|undefined,fallback:AgentEffort|undefined):AgentEffort{
+ const effort=requested??fallback??"low";
+ const {id}=resolveModel(model,undefined);
+ if(name==="strategist"&&id.includes("luna")&&!(["high","xhigh","max"] as AgentEffort[]).includes(effort))throw new Error("Strategist cannot use Luna below high effort");
+ return effort;
+}
 export function resolveSkills(profile:string,defaults:readonly string[],requested:unknown=[]):string[]{
  if(!Array.isArray(requested)||!requested.every(name=>typeof name==="string"))throw new Error("Skills must be a list of names");
  return [...new Set([...defaults,...requested])].map(name=>{
