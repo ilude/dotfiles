@@ -20,7 +20,7 @@ describe("subagent definitions",()=>{
   const profile=join(dirname(fileURLToPath(import.meta.url)),"..");
   const catalog=loadDefinitions(profile,false,profile);
   expect(catalog.errors).toEqual([]);
-  expect(catalog.agents.get("strategist")).toMatchObject({model:"openai-codex/gpt-5.6-luna",effort:"high",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
+  expect(catalog.agents.get("strategist")).toMatchObject({model:"openai-codex/gpt-5.6-sol",effort:"low",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
   expect(catalog.agents.get("teamlead")?.delegates).toContain("strategist");
   expect(catalog.agents.get("reviewer")?.model).toBe("openai-codex/gpt-5.6-sol");
  });

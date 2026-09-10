@@ -4,7 +4,7 @@
 
 - **Reference:** Operator correction after Strategist was used for a simple repository lookup, 2026-09-10.
 - **Feedback:** Subagents and Strategist should support larger work that clearly benefits from delegation, not routine requests. Keep the threshold concise and objective, and avoid duplicating executable guidance across prompts.
-- **Decision:** Limit delegation to bounded implementation, parallel investigation, specialist research, or requested independent review; otherwise work directly. Keep the executable rule in shared subagent guidance, summarize it in documentation, and remove the duplicate from `/do-it`.
+- **Decision:** Limit delegation to bounded implementation, parallel investigation, specialist research, or requested independent review; otherwise work directly. Keep the executable rule in shared subagent guidance, summarize it in documentation, and remove the duplicate from `/do-it`. Default Strategist to Sol low, reserve Astra low for named complexity, and prohibit Luna low or medium for that role.
 - **Related:** AIF-004, AIF-027, APR-020, APR-022.
 - **Status:** Implemented with focused tests; future adherence remains unverified.
 

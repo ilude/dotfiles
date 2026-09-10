@@ -2,7 +2,7 @@
 
 ## 2026-09-10: Keep simple Pi work with the orchestrator
 
-**Changed:** Default Pi now delegates only for bounded implementation, parallel investigation, specialist research, or requested independent review. Other work stays with the orchestrator. Strategist remains the normal consultation before justified delegation, and duplicate `/do-it` guidance was removed.
+**Changed:** Default Pi now delegates only for bounded implementation, parallel investigation, specialist research, or requested independent review. Other work stays with the orchestrator. Strategist remains the normal consultation before justified delegation, defaults to Sol low, reserves Astra low for named complexity, and excludes Luna low or medium. Duplicate `/do-it` guidance was removed.
 
 ## 2026-09-10: Allow read-only shell fallbacks for Pi history analysis
 
