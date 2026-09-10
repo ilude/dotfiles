@@ -13,7 +13,7 @@ describe("tool_search", () => {
 
 	it("lists without activating and includes parameters when requested", async () => {
 		const pi = createMockPi();
-		register(pi, "read", "Read files"); register(pi, "image_inspect", "Inspect image metadata");
+		register(pi, "read", "Read files"); register(pi, "image_properties", "Read image dimensions, format, orientation, and metadata");
 		pi.setActiveTools(["read"]); registerToolSearch(pi as never);
 		const tool = pi._getTool("tool_search")!;
 		const result = await tool.execute!("id", { include_params: true }, undefined, undefined, {});
@@ -24,15 +24,15 @@ describe("tool_search", () => {
 
 	it("activates all image matches, persists activation, and honors activate false", async () => {
 		const pi = createMockPi();
-		register(pi, "read", "Read files"); register(pi, "image_inspect", "Inspect image metadata"); register(pi, "image_transform", "Crop resize rotate convert compress image");
+		register(pi, "read", "Read files"); register(pi, "image_properties", "Read image dimensions, format, orientation, and metadata"); register(pi, "image_transform", "Crop resize rotate convert compress image");
 		pi.setActiveTools(["read"]); registerToolSearch(pi as never);
 		const tool = pi._getTool("tool_search")!;
 		const dry = await tool.execute!("id", { query: "image", activate: false }, undefined, undefined, {});
 		expect(dry.details.activated).toEqual([]);
-		expect(pi.getActiveTools()).not.toContain("image_inspect");
+		expect(pi.getActiveTools()).not.toContain("image_properties");
 		const result = await tool.execute!("id", { query: "image crop metadata" }, undefined, undefined, {});
-		expect(result.details.activated).toEqual(expect.arrayContaining(["image_inspect", "image_transform"]));
-		expect(pi.getActiveTools()).toEqual(expect.arrayContaining(["read", "tool_search", "image_inspect", "image_transform"]));
+		expect(result.details.activated).toEqual(expect.arrayContaining(["image_properties", "image_transform"]));
+		expect(pi.getActiveTools()).toEqual(expect.arrayContaining(["read", "tool_search", "image_properties", "image_transform"]));
 		expect((await tool.execute!("id", { query: "image" }, undefined, undefined, {})).details.activated).toEqual([]);
 	});
 

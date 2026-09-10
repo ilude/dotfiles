@@ -56,8 +56,8 @@ describe("image tools", () => {
 		await start({}, {});
 		expect(pi.getActiveTools()).not.toContain("image_transform");
 		await pi._getTool("tool_search")!.execute("id", { query: "image resize convert metadata" }, undefined, undefined, {});
-		expect(pi.getActiveTools()).toEqual(expect.arrayContaining(["image_inspect", "image_transform"]));
-		await pi._getTool("image_inspect")!.execute("id", { source }, undefined, undefined, { cwd: directory });
+		expect(pi.getActiveTools()).toEqual(expect.arrayContaining(["image_properties", "image_transform"]));
+		await pi._getTool("image_properties")!.execute("id", { source }, undefined, undefined, { cwd: directory });
 		await pi._getTool("image_transform")!.execute("id", { source, destination, resize: { width: 4, height: 3 }, format: "webp" }, undefined, undefined, { cwd: directory });
 		expect(await fs.readFile(source)).toEqual(before);
 		expect(await sharp(await fs.readFile(destination)).metadata()).toMatchObject({ width: 4, height: 3, format: "webp" });
@@ -68,14 +68,12 @@ describe("image tools", () => {
 	it("registers both tools and rejects failures instead of returning error results", async () => {
 		const pi = createMockPi();
 		imageTools(pi as never);
-		const inspect = pi._getTool("image_inspect")!;
+		const inspect = pi._getTool("image_properties")!;
 		const transform = pi._getTool("image_transform")!;
 		expect(inspect).toBeDefined();
 		expect(transform).toBeDefined();
-		for (const term of ["crop", "resize", "rotate", "convert", "compress", "metadata", "image"]) {
-			expect(inspect.description.toLowerCase()).toContain(term);
-			expect(transform.description.toLowerCase()).toContain(term);
-		}
+		for (const term of ["dimensions", "format", "orientation", "metadata"]) expect(inspect.description.toLowerCase()).toContain(term);
+		for (const term of ["crop", "resize", "rotate", "convert", "compress", "image"]) expect(transform.description.toLowerCase()).toContain(term);
 		expect(transform.parameters.type).toBe("object");
 		await expect(inspect.execute("id", { source: "missing.png" }, undefined, undefined, { cwd: os.tmpdir() })).rejects.toThrow();
 		await expect(transform.execute("id", { source: "missing.png", destination: "out.png" }, undefined, undefined, { cwd: os.tmpdir() })).rejects.toThrow("operation");

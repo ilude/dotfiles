@@ -14,7 +14,7 @@ describe("deferred tool visibility", () => {
 		registerToolVisibility(pi as never);
 		await pi._getHook("session_start")[0]!.handler({}, {});
 		expect(pi.getActiveTools()).toEqual(["read", "browser_page"]);
-		expect(DEFERRED_TOOL_NAMES).toEqual(["image_inspect", "image_transform", "log_analytics", "herdr_layout", "herdr_pane"]);
+		expect(DEFERRED_TOOL_NAMES).toEqual(["image_properties", "image_transform", "log_analytics", "herdr_layout", "herdr_pane"]);
 	});
 
 	it("retains activation in a session and resets it in the next session", async () => {

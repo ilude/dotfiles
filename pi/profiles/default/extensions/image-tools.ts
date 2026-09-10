@@ -307,10 +307,10 @@ async function transformImage(params: TransformParams, signal: AbortSignal | und
 
 export default function registerImageTools(pi: ExtensionAPI): void {
 	pi.registerTool({
-		name: "image_inspect",
-		label: "Inspect Image",
-		description: "Inspect local image metadata and image properties for crop, resize, rotate, convert, and compress operations without changing it.",
-		promptSnippet: "Inspect local image properties before crop, resize, rotate, convert, or compress",
+		name: "image_properties",
+		label: "Image Properties",
+		description: "Read image dimensions, format, orientation, and metadata.",
+		promptSnippet: "Read image dimensions, format, orientation, and metadata before crop, resize, rotate, convert, or compress",
 		parameters: Type.Object({ source: Type.String() }, { additionalProperties: false }),
 		execute(_id, params, _signal, _onUpdate, ctx) {
 			return inspectImage(params.source, ctx.cwd ?? process.cwd());
