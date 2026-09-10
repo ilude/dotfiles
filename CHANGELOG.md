@@ -6,7 +6,7 @@
 
 ## 2026-09-10: Allow explicit plan ownership replacement
 
-**Fixed:** `/plans` now keeps saved plan-run ownership visible as informational status instead of disabling Run here or Run in new tab. Explicit actions replace stale or live ownership records with a new token; updates and releases from the displaced token remain fenced. Ambiguous launch failures and direct `/do-it` adoption protection are unchanged.
+**Fixed:** `/plans` now treats plan-run records as observable execution activity: Run here and Run in new tab remain available and explicitly replace stale or live ownership records with a new token. Delivered work releases its execution record when the agent loop settles idle, regardless of saved plan markdown status, so later unrelated turns cannot resurrect `running`. Queued undelivered work, prompt blocking/resume, ambiguous launch failures, and direct `/do-it` adoption protection are unchanged.
 
 ## 2026-09-10: Complete restricted child accounting and provenance
 

@@ -1,7 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import * as path from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { parsePlan } from "./plans.ts";
 import { PlanRunStore, type PlanRun, type PlanRunState } from "./plan-runs.ts";
 
 export interface PlanRunRuntime {
@@ -28,20 +27,6 @@ function planInput(text: string, cwd: string): { file: string; args: string } | 
   return { file: canonical(path.resolve(cwd, selectors[0]!)), args: args.join(" ") };
 }
 
-function complete(file: string): boolean {
-  try {
-    const plan = parsePlan(file, path.basename(path.dirname(file)), path.dirname(path.dirname(path.dirname(file))));
-    return plan.status === "completed" && plan.tasks.checked === plan.tasks.total;
-  } catch { return false; }
-}
-
-function completedRun(file: string): boolean {
-  if (existsSync(file)) return complete(file);
-  const specs = path.dirname(path.dirname(file));
-  if (path.basename(specs) !== ".specs") return false;
-  return complete(path.join(specs, "archive", path.basename(path.dirname(file)), "plan.md"));
-}
-
 class Runtime implements PlanRunRuntime {
   readonly store: PlanRunStore;
   private owned = new Map<string, Owned>();
@@ -52,6 +37,8 @@ class Runtime implements PlanRunRuntime {
 
   track(run: PlanRun): void {
     const key = canonical(run.planPath);
+    const previous = this.owned.get(key);
+    if (previous && previous.run.token !== run.token && this.current === key) this.current = undefined;
     this.owned.set(key, { run, pending: true });
   }
 
@@ -102,17 +89,29 @@ class Runtime implements PlanRunRuntime {
     });
     pi.on("agent_settled", (_event, ctx) => {
       if (!ctx.isIdle()) return;
-      for (const [key, item] of [...this.owned]) {
-        if (item.pending) continue;
-        if (completedRun(item.run.planPath)) this.forget(item.run);
-        else { item.blockedFrom = undefined; this.setState(key, "waiting"); }
+      // The registry tracks an invocation's active loop, not the semantic
+      // completion of its markdown plan. Once delivered work settles idle,
+      // retire it; a later unrelated turn must not inherit this ownership.
+      for (const [, item] of [...this.owned]) {
+        if (!item.pending) this.forget(item.run);
       }
     });
   }
 
   private setState(key: string, state: PlanRunState): void {
     const item = this.owned.get(key);
-    if (item && item.run.state !== state) item.run = this.store.update(key, item.run.token, { state });
+    if (!item) return;
+    // A /plans replacement may supersede this runtime's token. Lifecycle
+    // events from the old invocation are harmless and must not touch the new
+    // owner or surface a stale-token error.
+    let current: PlanRun | undefined;
+    try { current = this.store.get(key); } catch { return; }
+    if (!current || current.token !== item.run.token) {
+      this.owned.delete(key);
+      if (this.current === key) this.current = undefined;
+      return;
+    }
+    if (item.run.state !== state) item.run = this.store.update(key, item.run.token, { state });
   }
 
   private start(ctx: ExtensionContext): void {

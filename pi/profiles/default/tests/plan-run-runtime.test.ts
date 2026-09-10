@@ -52,11 +52,11 @@ it("keeps queued work reserved across unrelated retries and marks delivery withi
   f.emit("ui_prompt_start"); expect(f.runtime.store.get(f.file)?.state).toBe("blocked");
   f.emit("ui_prompt_end"); expect(f.runtime.store.get(f.file)?.state).toBe("running");
   f.ctx.isIdle = () => false; f.emit("agent_settled"); expect(f.runtime.store.get(f.file)?.state).toBe("running");
-  f.ctx.isIdle = () => true; f.emit("agent_settled"); expect(f.runtime.store.get(f.file)?.state).toBe("waiting");
-  f.emit("agent_start"); expect(f.runtime.store.get(f.file)?.state).toBe("running");
+  f.ctx.isIdle = () => true; f.emit("agent_settled"); expect(f.runtime.store.get(f.file)).toBeUndefined();
+  f.emit("agent_start"); expect(f.runtime.store.get(f.file)).toBeUndefined();
 });
 
-it.each([false, true])("releases only completed delivered work, including archived plans (archived=%s)", archived => {
+it.each([false, true])("releases delivered work regardless of saved plan status, including archived plans (archived=%s)", archived => {
   const f = fixture(); f.emit("input", { text: command });
   writeFileSync(f.file, completed); f.emit("agent_settled");
   expect(f.runtime.store.get(f.file)).toBeDefined(); // Not yet delivered.
@@ -86,9 +86,11 @@ it("observes explicit manual invocations with either flag position without steal
   f.emit("session_shutdown", { reason: "quit" }); expect(f.runtime.store.get(f.file)?.token).toBe(other.token);
 });
 
-it("does not release a replacement claimed after an older runtime token", () => {
-  const f = fixture(); const first = f.runtime.store.claim(f.file, { pid: process.pid, state: "waiting" }); f.runtime.track(first);
+it("retires superseded tracking without stale lifecycle errors", () => {
+  const f = fixture(); const first = f.runtime.store.claim(f.file, { pid: process.pid, state: "running" }); f.runtime.track(first);
   const replacement = f.runtime.store.claim(f.file, { pid: process.pid, state: "running" }, { replace: true });
-  f.emit("session_shutdown", { reason: "quit" });
+  expect(() => f.emit("agent_start")).not.toThrow();
+  expect(f.runtime.store.get(f.file)?.token).toBe(replacement.token);
+  expect(() => f.emit("agent_settled")).not.toThrow();
   expect(f.runtime.store.get(f.file)?.token).toBe(replacement.token);
 });
