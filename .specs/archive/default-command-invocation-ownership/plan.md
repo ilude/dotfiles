@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
-status: planned
-completed: null
+status: completed
+completed: 2026-09-09
 ---
 
 # Command invocation ownership with interactive steering
@@ -97,9 +97,9 @@ The first two test files are proposed. The loader fixture must use an empty temp
 
 ## Current handoff
 
-- Status: implementation and agreed agent-owned checks passed; archive/task commit and local integration remain.
-- Completed: T1-T3 implementation, focused regressions, runtime-boundary fixture, documentation, changelog, and agreed checks.
-- Next: archive and commit on the task branch, merge into recorded target `main`, then record completion metadata on the target and clean up the task worktree.
+- Status: implementation and local integration into recorded target `main` completed on 2026-09-09; cleanup verification remains.
+- Completed: T1-T3 implementation, focused regressions, runtime-boundary fixture, documentation, changelog, archive, task commit, and merge conflict resolution.
+- Next: commit this completion metadata on `main`, verify the target, and remove temporary/task worktrees.
 - Open operator decisions: none. No operator manual or live testing is required.
 
 ## Completion and archive
