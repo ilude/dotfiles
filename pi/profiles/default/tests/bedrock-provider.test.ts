@@ -16,7 +16,12 @@ describe("Bedrock provider routing", () => {
 		const stream = createBedrockRoutingStream(async () => "token", () => route, { openAI: adapter as any });
 		const events: any[] = []; for await (const event of stream(route.model, { systemPrompt: "", messages: [], tools: [] } as any)) events.push(event);
 		expect(events.at(-1).message).toMatchObject({ provider: "bedrock-mantle", model: route.model.id, responseModel: route.target.id });
-		expect(contextForBedrockRoute({ messages: [events.at(-1).message] } as any, route).messages[0]).toMatchObject({ provider: route.target.provider, model: route.target.id });
+		const replayed = contextForBedrockRoute({ messages: [
+			{ role: "assistant", provider: "anthropic", api: "anthropic-messages", model: "claude-opus-5", responseModel: "claude-opus-5", content: [] },
+			events.at(-1).message,
+		] } as any, route).messages;
+		expect(replayed[0]).toMatchObject({ provider: "anthropic", model: "claude-opus-5" });
+		expect(replayed[1]).toMatchObject({ provider: route.target.provider, model: route.target.id });
 		expect(adapter).toHaveBeenCalledOnce();
 	});
 	it("returns an unavailable-route error without invoking another transport", async () => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-10: Keep Mantle Anthropic requests compatible after cross-provider history
+
+**Fixed:** Mantle Claude routes now disable the inherited Anthropic mid-conversation effort capability, preventing unsupported `messages[].output_config` system entries and thinking-binding beta controls. Request-level `output_config.effort` remains intact, including low reasoning; native Anthropic and Bedrock Runtime routes are unchanged. Real-adapter serialization tests cover Codex history and the latest Haiku, Sonnet, Opus, and Fable routes. Capped live checks returned HTTP 200 for Haiku 4.5 (off), Sonnet 5 (low), Opus 5 (low), and Fable 5.1 (low, Bedrock Runtime).
+
 ## 2026-09-10: Fix autocomplete submission for all argument commands
 
 **Fixed:** Default Pi now limits argument suggestions to partial input for every slash command with autocomplete. `/luna`, `/astra`, `/sol`, `/fable`, `/effort`, `/context`, and profile commands such as `/commit` submit immediately when their argument is empty or already complete, while partial arguments still autocomplete.

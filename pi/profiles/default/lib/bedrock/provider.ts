@@ -235,6 +235,9 @@ function mantleClaudeRoute(
 		provider: PROVIDER_ID,
 		baseUrl: `${mantleOrigin(target.region)}/anthropic`,
 		name: `${source.name} (Mantle)`,
+		// Mantle accepts request-level effort, not Anthropic's mid-conversation
+		// output_config system messages or thinking-binding beta controls.
+		compat: { ...source.compat, supportsMidConvoEffort: false },
 	};
 	return { model, target: model, transport: "mantle-anthropic" };
 }
