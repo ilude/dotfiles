@@ -57,7 +57,7 @@ export async function promptDecision(decision: ApprovalDecision, request: ToolRe
           handleInput: (data: string) => { view.handleInput?.(data); tui.requestRender(); },
           dispose: () => removeAbortListener?.(),
         };
-      }) === "allow"
+      })
       : await rpcPrompt(approval, ctx);
     if ((allowed === "allow" || allowed === "review") && !ctx.signal?.aborted) return allowed === "review" ? { status: "approved", review: true } : { status: "approved" };
     if (ctx.signal?.aborted) return { status: "denied", reason: "Pending call cancelled; action not executed" };

@@ -176,6 +176,20 @@ describe("per-call prompts", () => {
     vi.mocked(ctx.ui.select).mockImplementationOnce(async () => { abort.abort(); return "Allow once"; });
     expect((await promptDecision(decision, operation, analysis, { ...ctx, signal: abort.signal })).status).toBe("denied");
   });
+  it("returns an actual custom-component Allow once selection as approved", async () => {
+    const ctx = context("tui");
+    ctx.ui.custom = async <T>(factory: Parameters<PromptContext["ui"]["custom"]>[0]): Promise<T> => {
+      let resolve!: (value: T) => void;
+      const answer = new Promise<T>(done => { resolve = done; });
+      const view = await factory({ terminal: { rows: 24 }, requestRender: vi.fn() } as never, theme as never, getKeybindings() as never, value => resolve(value as T));
+      view.render(80);
+      view.handleInput?.("\r");
+      const result = await answer;
+      view.dispose?.();
+      return result;
+    };
+    expect(await promptDecision(decision, operation, analysis, ctx)).toEqual({ status: "approved" });
+  });
   it("cancels the actual custom component and removes its abort listener", async () => {
     const ctx = context("tui");
     const abort = new AbortController();

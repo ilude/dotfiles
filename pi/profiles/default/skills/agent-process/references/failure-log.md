@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-019 - TUI approval selections were always denied
+
+- **Reference:** Operator screenshots during cleanup of the plans tab-name/action-history worktree, 2026-09-09; default session `01a08880-5994-7596-98fa-48979d2e98a6`.
+- **Observed:** The operator selected `Allow once` for task-owned cleanup, but Damage Control returned its generic operator-denied result and executed nothing. Repeated explicit approval produced the same result.
+- **Finding:** `promptDecision` compared the TUI custom result to `"allow"` inside the conditional assignment, converting it to a boolean. Its later string checks could therefore never recognize either `allow` or `review`; every non-cancelled TUI choice fell through to denial. RPC prompts were unaffected.
+- **Remediation:** Preserve the custom component's string result and add an actual component-level regression proving Enter on `Allow once` returns `approved`.
+- **Related:** APR-004, APR-010, AIF-015.
+- **Status:** Code and focused regression updated; active-session effectiveness requires reload before retrying the interrupted cleanup.
+
 ## APR-018 - External pipeline monitoring was delegated to tool-less subagents
 
 - **Reference:** Monorepo CAC redirect push and GitLab/EKS deployment monitoring, 2026-09-09.
