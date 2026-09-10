@@ -36,7 +36,7 @@ export interface ChildRecord {
   cleanup?: CleanupResult;
   launcherState?: "starting" | "running" | "exited";
 }
-export interface LaunchSpec { definition: AgentDefinition; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible" }
+export interface LaunchSpec { definition: AgentDefinition; prompt?: string; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible" }
 const LIMIT = 24_000;
 // Native agent_end contains all messages for the assignment, not just its final text.
 // Keep authenticated application messages at their existing 256 KiB bound; RPC gets a
@@ -135,7 +135,7 @@ export class RpcChild {
     // stays inspectable/cancellable with honest activity age rather than invented failure.
     const id=randomUUID();
     this.pending.set(id,e=>{this.pending.delete(id);if(!e.success)this.fail(`Initial prompt rejected: ${e.error||"unknown rejection"}`)});
-    this.send("prompt",{id,message:`${this.spec.definition.prompt}\n\nAssignment:\n${this.spec.instructions}\n\nConclude with a non-empty result. Use subagent_parent to report partial or blocked work when needed.`});
+    this.send("prompt",{id,message:`Assignment:\n${this.spec.instructions}\n\nConclude with a non-empty result. Use subagent_parent to report partial or blocked work when needed.`});
     return waiting;
   }
   wait(signal?:AbortSignal, toolResult=true):Promise<ChildRecord> {

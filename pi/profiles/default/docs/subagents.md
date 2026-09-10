@@ -74,11 +74,15 @@ Closing the parent attempts ordinary child cleanup and reports unresolved proces
 
 Assignment outcome and resource cleanup are separate. A completed or cancelled assignment may retain a cleanup error when process or pane closure was not proven. Independent children are still attempted, and the owner remains available for an explicit subsequent cleanup attempt. `/clear` does not replace the owner or enter the clean session while ordinary cleanup remains unresolved. Successful cleanup is idempotent, does not repeat result delivery, and keeps user-owned visible children excluded by the existing quit intervention contract.
 
-## Roles and councils
+## Roles, guidance, and councils
 
-The initial roles are `explorer`, `developer`, `reviewer`, `validator`, `researcher`, `advisor`, `teamlead`, and `council`. Only developer has native edit/write tools; developer and validator have shell tools. Validator's no-edit/no-autofix instruction is not a shell sandbox.
+The roles are `explorer`, `developer`, `reviewer`, `validator`, `researcher`, `advisor`, `strategist`, `teamlead`, and `council`. The orchestrator is the primary model interacting with the user; role names, running subagents, and selected model/effort values are separate concepts. Only developer has native edit/write tools; developer and validator have shell tools. Validator's no-edit/no-autofix instruction is not a shell sandbox.
 
-Use small, clear jobs. Guidance is up to four Team Leads, eight leaves per lead, or twelve direct workers where coordination adds no value. Councils require an explicit user request. Their default guidance is three independent openings, one focused rebuttal with retained member contexts, and synthesis covering strongest arguments, changed positions, disagreements, and evidence gaps. They do not force agreement or implementation.
+Normally consult Strategist with `subagent` and `agent: "strategist"` before assigning work, then reuse its advice for related assignments. This is recommendation-only, not an approval gate. Strategist advises on bounded assignments, prerequisite order, roles, and model/effort choices using observable inputs and failure evidence. It cannot dispatch or edit. Shared guidance also permits one bounded stronger-family retry after an attempted but unsolved assignment with working inputs and tools; crashes, timeouts, missing prerequisites, environment failures, and unresolved user decisions do not establish that condition.
+
+The orchestrator sees a generated catalog of all resolved roles. Coordinators see only their frozen permitted delegates, and Strategist sees only roles its caller may dispatch. Catalog visibility does not add dispatch authority. Trusted project overrides and disabled definitions are reflected when the catalog is composed. Child prompts and catalogs are frozen at launch, so definition changes require a new child; profile source changes require the normal settled-only `/reload` boundary.
+
+Use small, clear jobs, normally one plan task section per implementation worker, with dependent work launched after prerequisite results are incorporated. Independent reads and disjoint writes can remain parallel. Guidance is up to four Team Leads, eight leaves per lead, or twelve direct workers where coordination adds no value. Councils require an explicit user request. Their default guidance is three independent openings, one focused rebuttal with retained member contexts, and synthesis covering strongest arguments, changed positions, disagreements, and evidence gaps. They do not force agreement or implementation.
 
 ## Checks
 

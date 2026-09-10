@@ -4,6 +4,14 @@
 
 **Fixed:** Mantle Claude routes now disable the inherited Anthropic mid-conversation effort capability, preventing unsupported `messages[].output_config` system entries and thinking-binding beta controls. Request-level `output_config.effort` remains intact, including low reasoning; native Anthropic and Bedrock Runtime routes are unchanged. Real-adapter serialization tests cover Codex history and the latest Haiku, Sonnet, Opus, and Fable routes. Capped live checks returned HTTP 200 for Haiku 4.5 (off), Sonnet 5 (low), Opus 5 (low), and Fable 5.1 (low, Bedrock Runtime).
 
+## 2026-09-10: Add evidence-based Strategist delegation guidance
+
+**Changed:** Default Pi now normally consults a read-only Strategist before subagent assignments and exposes a generated catalog of resolved role names, descriptions, and model/effort defaults. Orchestrators see all resolved roles; coordinators and nested Strategists see only the caller's frozen permitted subset. Catalog visibility does not grant dispatch authority.
+
+**Guidance:** Assignments are split by responsibility, normally one plan task section per implementation worker, with prerequisite results incorporated before dependent launches. Model and effort recommendations cite observable inputs, interfaces, unresolved decisions, or actual failure cases. One stronger-family retry is allowed only after an attempted but unsolved assignment with required inputs and working tools. This addresses AIF-027 and APR-020 without treating the prior worker process exit as evidence of model weakness.
+
+**Preserved:** Strategist advice is recommendation-only, councils remain explicit-user-request only, existing role defaults and frozen child authority are unchanged, and `/do-it` continues executing settled intent rather than reopening planning or acceptance.
+
 ## 2026-09-10: Fix autocomplete submission for all argument commands
 
 **Fixed:** Default Pi now limits argument suggestions to partial input for every slash command with autocomplete. `/luna`, `/astra`, `/sol`, `/fable`, `/effort`, `/context`, and profile commands such as `/commit` submit immediately when their argument is empty or already complete, while partial arguments still autocomplete.
