@@ -85,3 +85,10 @@ it("observes explicit manual invocations with either flag position without steal
   expect(f.runtime.store.get(f.file)?.token).toBe(other.token);
   f.emit("session_shutdown", { reason: "quit" }); expect(f.runtime.store.get(f.file)?.token).toBe(other.token);
 });
+
+it("does not release a replacement claimed after an older runtime token", () => {
+  const f = fixture(); const first = f.runtime.store.claim(f.file, { pid: process.pid, state: "waiting" }); f.runtime.track(first);
+  const replacement = f.runtime.store.claim(f.file, { pid: process.pid, state: "running" }, { replace: true });
+  f.emit("session_shutdown", { reason: "quit" });
+  expect(f.runtime.store.get(f.file)?.token).toBe(replacement.token);
+});

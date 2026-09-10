@@ -109,8 +109,10 @@ describe.skipIf(process.env.PI_PLANS_HERDR_LIVE !== "1")("isolated plan-tab focu
       const sendUserMessage = vi.fn();
       const blockedPicker = vi.fn((factory: any) => new Promise(resolve => {
         const picker = factory({ requestRender() {} }, getThemeByName("dark"), {}, resolve);
-        expect(picker.render(100).map(stripTerminalSequences).join("\n")).toContain("Disabled");
-        picker.handleInput("r"); picker.handleInput("d"); picker.handleInput("q");
+        const output = picker.render(100).map(stripTerminalSequences).join("\n");
+        expect(output).toContain("running");
+        expect(output).not.toContain("Disabled");
+        picker.handleInput("q");
       }));
       for (let count = 0; count < 2; count++) await executePlans({ mode: "tui", cwd: scratch, ui: { custom: blockedPicker, notify: vi.fn() } } as any, { sendUserMessage });
       expect(sendUserMessage).not.toHaveBeenCalled();

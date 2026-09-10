@@ -4,7 +4,7 @@ import { EFFORTS } from "../lib/subagents/options.ts";
 import { bindChildSurface } from "../lib/subagents/child-surface.ts";
 import { requestParent, type ChildEndpoint } from "../lib/subagents/transport.ts";
 import { setTimeout as delay } from "node:timers/promises";
-import { guardNativePath, workspaceRoot } from "../lib/subagents/workspace.ts";
+import { workspaceRoot } from "../lib/subagents/workspace.ts";
 import { progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentResult, renderSubagentMessage } from "../lib/subagents/presentation.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
 interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; cwd:string; skills:string[]; surface?:string }
@@ -13,7 +13,7 @@ export default function childAuthority(pi:ExtensionAPI){
  if(!process.env.PI_SUBAGENT_AUTHORITY){if(process.env.PI_SUBAGENT_ENDPOINT)throw new Error("Subagent authority is missing");return}
  let authority:Authority;try{authority=JSON.parse(process.env.PI_SUBAGENT_AUTHORITY||"")}catch{throw new Error("Subagent authority is missing or invalid")}
  if (!authority || !Array.isArray(authority.tools) || !authority.tools.every(t=>typeof t==="string") || !Array.isArray(authority.delegates) || !Array.isArray(authority.skills)) throw new Error("Invalid frozen authority");
- const root=workspaceRoot(authority.cwd);
+ workspaceRoot(authority.cwd);
  const allowed=new Set(authority.tools);
  pi.registerCommand("exit",{description:"Exit this restricted child",handler:async(_args,ctx)=>ctx.shutdown()});
  pi.on("user_bash",()=>({result:{output:"Direct shell UI is disabled in restricted children. Use an allowed shell tool through Damage Control instead.",exitCode:1,cancelled:false,truncated:false}}));
@@ -21,8 +21,6 @@ export default function childAuthority(pi:ExtensionAPI){
  bindChildSurface(pi,authority.surface==="visible");
  pi.on("tool_call",event=>{
   if(!allowed.has(event.toolName))return{block:true,terminate:true,reason:`Tool ${event.toolName} is outside frozen ${authority.agent} authority`};
-  try { guardNativePath(root,authority.skills,event.toolName,event.input); }
-  catch(error){return{block:true,terminate:true,reason:error instanceof Error?error.message:String(error)}}
  });
  pi.on("before_agent_start",event=>({systemPrompt:`${event.systemPrompt}\n\nYou are subagent ${authority.agent}. Your authority is frozen to tools [${[...allowed].join(", ")||"none"}]. You may not activate or request other tools. A normal final reply automatically completes your assignment; no reporting tool is needed for success. Use partial only for genuinely unfinished work and blocked only when you cannot proceed. Parent notifications are evidence to incorporate, not receipts to acknowledge. Use the question action for a question-answer request; it yields cleanly and the parent answer resumes this conversation. ${process.env.PI_SUBAGENT_PROMPT||""}`}));
  const parentEndpoint=()=>{

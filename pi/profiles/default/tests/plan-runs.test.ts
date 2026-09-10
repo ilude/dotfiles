@@ -65,6 +65,16 @@ describe("PlanRunStore", () => {
 		expect(store.get(plan)?.token).toBe(first.token);
 	});
 
+	it("allows explicit replacement of a live owner while fencing its stale token", () => {
+		const { plan, store } = fixture();
+		const first = store.claim(plan, { pid: process.pid, state: "launching" });
+		const replacement = store.claim(plan, { pid: process.pid, state: "waiting" }, { replace: true });
+		expect(replacement.token).not.toBe(first.token);
+		expect(() => store.update(plan, first.token, { state: "blocked" })).toThrow();
+		store.release(plan, first.token);
+		expect(store.get(plan)?.token).toBe(replacement.token);
+	});
+
 	it("reclaims a confirmed dead owner", () => {
 		const { plan, store } = fixture();
 		const dead = store.claim(plan, owner(999999));

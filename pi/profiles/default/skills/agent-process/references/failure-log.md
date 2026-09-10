@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-024 - Native workspace restriction stopped a developer lookup
+
+- **Reference:** Operator-reported Elena developer failure, 2026-09-10, 18:10.
+- **Observed:** The supplied result reports `find failed: Native path is outside the assigned workspace` after 29 seconds. The exact requested path has not been recovered.
+- **Finding:** `lib/subagents/workspace.ts` rejects native read/search/write paths outside the assigned cwd after resolving symlinks, except reads of explicitly selected skill files. `extensions/subagent-child.ts` returns `block:true, terminate:true` on rejection. This is custom profile enforcement, not a filesystem permission error. Shell tools are not contained by this path guard.
+- **Feedback:** Operator objects to unrequested safety gates interrupting ordinary subagent work.
+- **Recommendation:** Remove the native workspace confinement rather than add approval prompts or path exceptions; retain cwd as execution context and preserve unrelated tool-role and Damage Control behavior.
+- **Related:** AIF-031, AIF-024, APR-023, APR-007.
+- **Status:** Operator approved removal. Removed the native path guard and its unused canonicalization helper; preserved role permissions, coordinator launch-directory rules, and Damage Control. All 15 focused workspace, child-outcome, CLI-loader, and terminal-outcome tests plus default-profile typecheck passed. Outside-directory and symlink cases exercise the actual child tool-call handler. Live model behavior remains unverified; existing children are not upgraded in place.
+
 ## APR-023 - Reviewer could not inspect an uncommitted diff
 
 - **Reference:** Review of the default-profile Bedrock subagent accounting fix, 2026-09-10.

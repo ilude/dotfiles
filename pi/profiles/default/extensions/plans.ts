@@ -141,7 +141,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					scroll = Math.min(scroll, maxScroll);
 					for (let index = 0; index < capacity; index++) output.push(row(wrapped[scroll + index] ?? ""));
 					output.push(row(muted(maxScroll ? `Lines ${scroll + 1}-${Math.min(scroll + capacity, wrapped.length)}/${wrapped.length}` : "")), border("├", "┤"));
-					output.push(...actions.map(action => row(`${action.key}  ${currentRun && (action.key === "r" || action.key === "d") ? "Disabled: owned run" : action.label}`)));
+					output.push(...actions.map(action => row(`${action.key}  ${action.label}`)));
 					output.push(...help.map(text => row(theme.fg("text", text))));
 				} else {
 					const columns = inner >= 56;
@@ -149,7 +149,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					const taskWidth = Math.min(11, Math.max(5, ...plans.map(plan => visibleWidth(progress(plan)))));
 					const stubWidth = inner - statusWidth - taskWidth - 6;
 					const cells = (stub: string, status: string, tasks: string) => `${fit(stub, stubWidth)}  ${fit(status, statusWidth)}  ${fit(tasks, taskWidth)}`;
-					const help = notice ?? ["↑↓ Select · Enter Details · Esc/q Close", `Actions: ${planActions.filter(action => !currentRun || (action.key !== "r" && action.key !== "d")).map(action => `${action.key} ${action.hint}`).join(" · ")}${currentRun ? " · r/d Disabled" : ""}`]
+					const help = notice ?? ["↑↓ Select · Enter Details · Esc/q Close", `Actions: ${planActions.map(action => `${action.key} ${action.hint}`).join(" · ")}`]
 						.flatMap(text => wrapTextWithAnsi(text, inner));
 					const metadata = columns ? [] : [`Status: ${status(current, selected)}`, `Tasks: ${progress(current)}`];
 					// Very short, narrow panels retain all shortcuts before optional metadata.
@@ -199,12 +199,6 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 							const attemptId = options.onActionRequest?.(semanticAction, plan);
 							options.onActionRefusal?.(attemptId, semanticAction, plan, blockedLaunches.get(plan.path)!);
 							return;
-						}
-						const run = activity(plan);
-						if (run) {
-							const attemptId = options.onActionRequest?.(semanticAction, plan);
-							options.onActionRefusal?.(attemptId, semanticAction, plan, run.owner);
-							tui.requestRender(); return;
 						}
 					}
 					if (action.action === "do-it" && options.launch) { void launch(); return; }
@@ -285,7 +279,7 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 				const attemptId = attempts.get(`run-new-tab:${plan.path}`);
 				if (process.env.HERDR_ENV !== "1") throw new HerdrPiTabLaunchError("Plan execution from /plans requires a Herdr-managed Pi session.", { mayHaveLaunched: false });
 				let run: PlanRun;
-				try { run = runtime.store.claim(plan.path, { pid: process.pid, state: "launching" }); }
+				try { run = runtime.store.claim(plan.path, { pid: process.pid, state: "launching" }, { replace: true }); }
 				catch (error) { throw new HerdrPiTabLaunchError(String(error), { mayHaveLaunched: false }); }
 				try {
 					const receipt = await createHerdrPiTab(root, plan.stub, undefined, plan.relativePath, run.token);
@@ -336,11 +330,11 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 				ctx.ui.notify(`Copied /do-it command for ${plan.stub}.`, "info");
 				recorder.outcome(attemptId, "copy", "success", { plan: eventPlan(plan) });
 			} else if (result.action === "run-here") {
-				// Reserve before enqueueing, so another picker cannot win the same plan.
+				// Explicit /plans actions replace informational ownership records.
 				const run = runtime.store.claim(plan.path, { pid: process.pid, state: "waiting",
 					tabId: process.env.HERDR_TAB_ID, paneId: process.env.HERDR_PANE_ID,
 					sessionId: ctx.sessionManager?.getSessionId(),
-				});
+				}, { replace: true });
 				runtime.track(run);
 				if (process.env.HERDR_ENV === "1") {
 					const tab = process.env.HERDR_TAB_ID;

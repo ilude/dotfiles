@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-10: Remove subagent native-path confinement
+
+**Changed:** Default-profile subagents no longer reject native file-tool paths outside their assigned working directory, including symlink targets. This removes a custom restriction that terminated ordinary read-only lookups such as `find`. The working directory remains execution context; role tool permissions, coordinator launch-directory rules, and Damage Control are unchanged. No replacement approval prompts or path allowlists were added.
+
+## 2026-09-10: Allow explicit plan ownership replacement
+
+**Fixed:** `/plans` now keeps saved plan-run ownership visible as informational status instead of disabling Run here or Run in new tab. Explicit actions replace stale or live ownership records with a new token; updates and releases from the displaced token remain fenced. Ambiguous launch failures and direct `/do-it` adoption protection are unchanged.
+
 ## 2026-09-10: Complete restricted child accounting and provenance
 
 **Fixed:** Native `amazon-bedrock` children now load an accounting-only extension, while Mantle children retain their provider-plus-accounting extension. Every restricted child records its active profile in session metadata. Operator commands, footer UI, Onclave, and general Herdr controls remain excluded.

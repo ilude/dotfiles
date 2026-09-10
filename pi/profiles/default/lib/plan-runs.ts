@@ -17,6 +17,7 @@ export interface PlanRun {
 
 type RunOwner = Omit<PlanRun, "token" | "planPath">;
 type RunPatch = Partial<Omit<PlanRun, "token" | "planPath">>;
+export interface PlanRunClaimOptions { replace?: boolean; }
 
 export class PlanRunConflictError extends Error {
 	readonly run: PlanRun;
@@ -106,12 +107,12 @@ export class PlanRunStore {
 		});
 	}
 
-	claim(planPath: string, owner: RunOwner): PlanRun {
+	claim(planPath: string, owner: RunOwner, options: PlanRunClaimOptions = {}): PlanRun {
 		const canonical = canonicalPath(planPath);
 		return this.transaction(() => {
 			const filePath = this.filePath(canonical);
 			const existing = this.read(filePath);
-			if (existing && !isDead(existing.pid)) throw new PlanRunConflictError(existing);
+			if (existing && !isDead(existing.pid) && !options.replace) throw new PlanRunConflictError(existing);
 			if (existing) this.remove(filePath);
 			this.assertOwner(owner);
 			const run: PlanRun = {
