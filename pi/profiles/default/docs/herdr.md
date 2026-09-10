@@ -47,7 +47,7 @@ Pi lifecycle events, not tab labels or generic Herdr agent badges, update execut
 
 Tracking covers starts through `/plans` and observed explicit `/do-it .specs/<stub>/plan.md` input, with optional `--no-merge`. It does not infer runs that predate loading the feature, implicit plan selectors, or arbitrary pasted execution instructions. Separate profiles and separate worktree copies have distinct ownership scopes. Load the updated extension before starting work; existing tabs alone cannot be reliably backfilled.
 
-New-tab execution is unavailable outside Herdr and has no terminal fallback. The plugin bootstrap accepts only the constrained repository-relative plan path, validates it under the launch cwd, and constructs the `/do-it` message itself. It does not accept arbitrary initial prompts or argv.
+New-tab execution is unavailable outside Herdr and has no terminal fallback. The plugin bootstrap accepts only the constrained repository-relative plan path, validates it under the launch cwd, and constructs the `/do-it` message itself. It does not accept arbitrary initial prompts or argv. `/plans` action requests and outcomes are appended as native custom session entries and rendered as compact transcript rows; they are excluded from model context. The launcher names a plan child with the selected stub; child startup renames only its pane and deliberately does not issue a second tab rename that could overwrite a manual rename. Run here renames only the inherited `HERDR_TAB_ID` and still submits execution if naming fails. Native Pi persistence applies: a fresh picker-only session may not reach disk before an assistant message, so analytics cannot recover an unsaved session.
 
 The process chain is Herdr → Node running the repository bootstrap and Pi. No PowerShell/Bash/cmd wrapper is used. The bootstrap runs the existing default Damage Control syntax preflight; failure enters tools-disabled/extensions-disabled repair mode. Ordinary tabs accept only profile and optional session inputs, not arbitrary extension/tool flags or automatic recovery. Restricted subagents additionally supply a per-child authenticated endpoint; the bootstrap obtains the frozen assignment from its parent and constructs the restricted argv itself. A per-launch host owns the child process handle and terminal streams. A failed safety preflight rejects a restricted launch rather than entering an unrestricted or misleading repair conversation.
 
@@ -61,7 +61,7 @@ Assignment results travel through authenticated local messages, not terminal scr
 
 ## UI and attention
 
-On initial interactive Pi startup inside Herdr, the default profile labels its inherited pane **Orchestrator** and its inherited tab with the working directory's basename, for example `.dotfiles`, without changing focus. Restricted subagents keep their human assignment labels and do not rename tabs; RPC/print helpers do not rename either surface. New, resumed, forked, and reloaded chats within the same process do not reset user-renamed panes or tabs. Label failures produce a warning without blocking startup. These labels do not change agent identity.
+On initial interactive Pi startup inside Herdr, the default profile labels its inherited pane **Orchestrator** and its inherited tab with the working directory's basename, for example `.dotfiles`, without changing focus. Explicit plan children are identified by `PI_HERDR_TAB_LABEL`; startup keeps their pane label but skips the tab rename because the launcher already named the tab and a late rename could overwrite a manual rename. Restricted subagents keep their human assignment labels and do not rename tabs; RPC/print helpers do not rename either surface. New, resumed, forked, and reloaded chats within the same process do not reset user-renamed panes or tabs. Label failures produce a warning without blocking startup. These labels do not change agent identity.
 
 The existing footer, reload indicator, dialogs, and notices remain Pi-owned. The generated Herdr integration publishes TUI working/settled state. The repository bridge maps native prompt start/end to operator-waiting state, including the current Damage Control custom dialog. Headless helper sessions do not claim the parent's pane.
 
@@ -80,3 +80,38 @@ pnpm run check:runtime
 Plan checks live in `plans.test.ts`, `plan-runs.test.ts`, `plan-run-runtime.test.ts`, `session-launch.test.ts`, and `herdr-launch.test.ts`. Run `PI_PLANS_HERDR_LIVE=1 pnpm test plans-herdr-live.test.ts` from the default profile for real Pi in an isolated Herdr session with a gated, deterministic loopback model endpoint. It verifies immediate feedback, one focused tab, original-picker dismissal, actual template delivery and running state, cross-picker duplicate prevention, waiting protection, and cleanup after the exact test pane closes. No external model is called and no implementation plan is executed. Attached-client rendering and real-provider behavior remain separate validation limits.
 
 Live acceptance uses isolated named Herdr sessions, an isolated config/plugin registry, and uniquely named disposable Compose projects. Pin the test socket explicitly: merely overriding config paths while inheriting a production `HERDR_SOCKET_PATH` can route plugin operations to the wrong running server. Never stop a shared server. Tests distinguish CLI submission, actual readiness, and user-observed notifications.
+
+Persisted plan history uses the existing `session_entries` view. Outcome counts:
+
+```sql
+WITH plan_events AS (
+  SELECT json_extract_string(record, '$.data.action') AS plan_action,
+         json_extract_string(record, '$.data.outcome') AS plan_outcome
+  FROM session_entries
+  WHERE entry_type = 'custom'
+    AND json_extract_string(record, '$.customType') = 'plan-action-event'
+    AND json_extract_string(record, '$.data.phase') = 'outcome'
+)
+SELECT plan_action, plan_outcome, count(*) AS records
+FROM plan_events
+GROUP BY plan_action, plan_outcome
+ORDER BY plan_action, plan_outcome;
+```
+
+A chronological invocation trace is bounded to one session reference selected through `sessions` discovery:
+
+```sql
+SELECT _timestamp,
+       json_extract_string(record, '$.data.invocationId') AS invocation_id,
+       json_extract_string(record, '$.data.action') AS action_name,
+       json_extract_string(record, '$.data.phase') AS phase,
+       json_extract_string(record, '$.data.outcome') AS outcome_name,
+       json_extract_string(record, '$.data.plan.stub') AS stub
+FROM session_entries
+WHERE entry_type = 'custom'
+  AND json_extract_string(record, '$.customType') = 'plan-action-event'
+ORDER BY _timestamp
+LIMIT 200;
+```
+
+These queries cover persisted native entries only. A picker-only session that Pi never saved has no analytics record.

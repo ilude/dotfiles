@@ -7,12 +7,12 @@ import { PlanRunStore } from "../lib/plan-runs.ts";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import plansCommand, { archivePlan, executePlans, openPlanInCode, planSelector } from "../extensions/plans.ts";
 import { copyToClipboard } from "@earendil-works/pi-coding-agent";
-import { createHerdrPiTab, HerdrPiTabLaunchError } from "../extensions/session-launch.ts";
+import { createHerdrPiTab, HerdrPiTabLaunchError, renameHerdrPiTab } from "../extensions/session-launch.ts";
 import { discoverPlans, parsePlan } from "../lib/plans.ts";
 import { spawnSync } from "node:child_process";
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn(), execFile: vi.fn() }));
 vi.mock("../extensions/session-launch.ts", async importOriginal => ({
-  ...await importOriginal<Record<string, unknown>>(), createHerdrPiTab: vi.fn(),
+  ...await importOriginal<Record<string, unknown>>(), createHerdrPiTab: vi.fn(), renameHerdrPiTab: vi.fn(),
 }));
 vi.mock("@earendil-works/pi-coding-agent", async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(), copyToClipboard: vi.fn(),
@@ -262,7 +262,7 @@ it("reports a clipboard failure without claiming success or executing", async ()
     if (calls++ === 0) { component.handleInput("\r"); component.handleInput("c"); } else component.handleInput("q");
     return value;
   });
-  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify } } as any, { sendUserMessage });
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify } } as any, { sendUserMessage, appendEntry: vi.fn() });
   expect(notify).toHaveBeenCalledExactlyOnceWith("Clipboard unavailable", "error");
   expect(sendUserMessage).not.toHaveBeenCalled(); expect(spawnSync).not.toHaveBeenCalled();
 });
@@ -283,7 +283,97 @@ it("runs here through the registered command with template expansion and closes 
   expect(copyToClipboard).not.toHaveBeenCalled(); expect(spawnSync).not.toHaveBeenCalled();
 });
 
-it.each([false, true])("acknowledges a delayed launch, ignores repeats, and dismisses without reopening (details=%s)", async details => {
+it("renames the inherited Herdr tab by exact stub and records a successful current submission once", async () => {
+  vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_TAB_ID", "origin-tab");
+  const base = root(); add(base, "stub-name", complete);
+  const appendEntry = vi.fn(); const sendUserMessage = vi.fn(); const notify = vi.fn();
+  vi.mocked(renameHerdrPiTab).mockResolvedValue(undefined);
+  let value: any;
+  const custom = vi.fn(async (factory: any) => {
+    const component = factory({ requestRender() {} }, testTheme(), {}, (result: any) => { value = result; });
+    component.handleInput("r"); return value;
+  });
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify }, sessionManager: { getSessionId: () => "session" } } as any, { sendUserMessage, appendEntry });
+  expect(renameHerdrPiTab).toHaveBeenCalledExactlyOnceWith("origin-tab", "stub-name", base);
+  expect(sendUserMessage).toHaveBeenCalledExactlyOnceWith("/do-it .specs/stub-name/plan.md", { expandPromptTemplates: true, deliverAs: "followUp" });
+  const events = appendEntry.mock.calls.filter(([type]) => type === "plan-action-event").map(([, data]) => data);
+  expect(events).toEqual(expect.arrayContaining([
+    expect.objectContaining({ action: "plans", phase: "invocation", outcome: "started" }),
+    expect.objectContaining({ action: "run-here", phase: "naming", outcome: "success", target: { tabId: "origin-tab" } }),
+    expect.objectContaining({ action: "run-here", phase: "submission", outcome: "requested" }),
+    expect.objectContaining({ action: "run-here", phase: "outcome", outcome: "success", plan: expect.objectContaining({ stub: "stub-name" }) }),
+  ]));
+  expect(notify).not.toHaveBeenCalledWith(expect.stringContaining("rename"), "warning");
+});
+
+it("records missing Herdr tab identity as a naming failure and still submits once", async () => {
+  vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_TAB_ID", "");
+  const base = root(); add(base, "missing-tab", complete);
+  const sendUserMessage = vi.fn(); const notify = vi.fn(); const appendEntry = vi.fn();
+  const custom = vi.fn(async (factory: any) => {
+    let value: any;
+    const component = factory({ requestRender() {} }, testTheme(), {}, (result: any) => { value = result; });
+    component.handleInput("r"); return value;
+  });
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify }, sessionManager: { getSessionId: () => "session" } } as any, { sendUserMessage, appendEntry });
+  expect(sendUserMessage).toHaveBeenCalledOnce();
+  expect(appendEntry.mock.calls.map(([, data]) => data)).toEqual(expect.arrayContaining([
+    expect.objectContaining({ action: "run-here", phase: "naming", outcome: "failed", error: expect.objectContaining({ stage: "identity" }) }),
+    expect.objectContaining({ action: "run-here", phase: "outcome", outcome: "success" }),
+  ]));
+});
+
+it("records one terminal failure when Run here submission throws", async () => {
+  vi.stubEnv("HERDR_ENV", "0");
+  const base = root(); add(base, "send-failure", complete);
+  const sendUserMessage = vi.fn(() => { throw new Error("send unavailable"); }); const notify = vi.fn(); const appendEntry = vi.fn();
+  let calls = 0;
+  const custom = vi.fn(async (factory: any) => {
+    let value: any;
+    const component = factory({ requestRender() {} }, testTheme(), {}, (result: any) => { value = result; });
+    if (calls++ === 0) component.handleInput("r"); else component.handleInput("q");
+    return value;
+  });
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify }, sessionManager: { getSessionId: () => "session" } } as any, { sendUserMessage, appendEntry });
+  const failures = appendEntry.mock.calls.map(([, data]) => data).filter((data: any) => data.action === "run-here" && data.outcome === "failed");
+  expect(sendUserMessage).toHaveBeenCalledOnce();
+  expect(failures).toHaveLength(1);
+  expect(failures[0]).toMatchObject({ phase: "outcome", error: { stage: "submission", message: "send unavailable" } });
+});
+
+it("records discovery and UI boundary failures", async () => {
+  const base = root(); writeFileSync(join(base, ".specs"), "not a directory");
+  const appendEntry = vi.fn(); const notify = vi.fn();
+  const custom = vi.fn(async () => { throw new Error("overlay unavailable"); });
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify } } as any, { sendUserMessage: vi.fn(), appendEntry });
+  const events = appendEntry.mock.calls.map(([, data]) => data);
+  expect(events).toEqual(expect.arrayContaining([
+    expect.objectContaining({ action: "plans", phase: "outcome", outcome: "failed", error: expect.objectContaining({ stage: "discovery" }) }),
+    expect.objectContaining({ action: "plans", phase: "outcome", outcome: "failed", error: expect.objectContaining({ stage: "ui" }) }),
+  ]));
+  expect(notify).toHaveBeenCalledWith("overlay unavailable", "error");
+});
+
+it("submits Run here once when Herdr tab naming fails", async () => {
+  vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_TAB_ID", "origin-tab");
+  const base = root(); add(base, "rename-failure", complete);
+  const sendUserMessage = vi.fn(); const notify = vi.fn(); const appendEntry = vi.fn();
+  vi.mocked(renameHerdrPiTab).mockRejectedValue(new Error("rename unavailable"));
+  const custom = vi.fn(async (factory: any) => {
+    let value: any;
+    const component = factory({ requestRender() {} }, testTheme(), {}, (result: any) => { value = result; });
+    component.handleInput("r"); return value;
+  });
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify }, sessionManager: { getSessionId: () => "session" } } as any, { sendUserMessage, appendEntry });
+  expect(sendUserMessage).toHaveBeenCalledOnce();
+  expect(notify).toHaveBeenCalledWith(expect.stringContaining("rename unavailable"), "warning");
+  expect(appendEntry.mock.calls.map(([, data]) => data)).toEqual(expect.arrayContaining([
+    expect.objectContaining({ action: "run-here", phase: "naming", outcome: "failed" }),
+    expect.objectContaining({ action: "run-here", phase: "outcome", outcome: "success" }),
+  ]));
+});
+
+it.each([false, true])( "acknowledges a delayed launch, ignores repeats, and dismisses without reopening (details=%s)", async details => {
   vi.stubEnv("HERDR_ENV", "1");
   const base = root(); add(base, "aaa-other", complete); add(base, "new-tab", complete);
   let completeLaunch!: (value: { tabId: string }) => void;
@@ -294,14 +384,14 @@ it.each([false, true])("acknowledges a delayed launch, ignores repeats, and dism
     component = factory({ requestRender }, testTheme(), {}, resolve);
     component.handleInput("\x1b[B"); if (details) component.handleInput("\r"); component.handleInput("d");
   }));
-  const execution = executePlans({ mode: "tui", cwd: base, ui: { custom, notify } } as any, { sendUserMessage });
+  const execution = executePlans({ mode: "tui", cwd: base, ui: { custom, notify } } as any, { sendUserMessage, appendEntry: vi.fn() });
   expect(component.render(100).join("\n")).toContain("Launching new tab...");
   expect(component.render(100).join("\n")).toContain(`Plans · ${details ? "Details" : "Browse"}`);
   expect(requestRender).toHaveBeenCalledWith(true);
   expect(createHerdrPiTab).not.toHaveBeenCalled();
   for (const key of ["d", "d", "\r", "r", "c", "o", "a", "q", "\x1b"]) component.handleInput(key);
   await nextTurn();
-  expect(createHerdrPiTab).toHaveBeenCalledExactlyOnceWith(base, "do-it · new-tab", undefined, ".specs/new-tab/plan.md", expect.any(String));
+  expect(createHerdrPiTab).toHaveBeenCalledExactlyOnceWith(base, "new-tab", undefined, ".specs/new-tab/plan.md", expect.any(String));
   component.handleInput("d");
   expect(custom).toHaveBeenCalledOnce(); expect(notify).not.toHaveBeenCalled();
   completeLaunch({ tabId: "tab-test" }); await execution;

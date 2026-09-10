@@ -11,9 +11,14 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
     if (!pane || !process.env.HERDR_SOCKET_PATH) return;
     const tab = process.env.HERDR_TAB_ID;
     const directory = basename(resolve(ctx.cwd));
+    // Plan children receive an explicit stub label from the launcher. Mark
+    // that boundary so late startup labeling cannot replace it with cwd.
+    const explicitChildLabel = process.env.PI_HERDR_TAB_LABEL;
     const labels = [
       { kind: "pane", args: ["pane", "rename", pane, "Orchestrator"] },
-      ...(tab && directory ? [{ kind: "tab", args: ["tab", "rename", tab, directory] }] : []),
+      // The launcher already names plan children. Do not issue a late tab
+      // rename: it can overwrite a manual rename made while startup settles.
+      ...(tab && !explicitChildLabel ? [{ kind: "tab", args: ["tab", "rename", tab, directory] }] : []),
     ];
     for (const { kind, args } of labels) {
       try {

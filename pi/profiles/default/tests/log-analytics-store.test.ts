@@ -23,6 +23,22 @@ describe("bounded default analytics store", () => {
 		expect(result.cost.filesScanned).toBe(2);
 	});
 
+	it("queries persisted plan action outcomes and invocation traces through session_entries", async () => {
+		await fixture.session("default", "plan-session", [
+			{ type: "custom", id: "event-1", timestamp: "2026-09-09T00:00:00Z", customType: "plan-action-event", data: { schemaVersion: 1, invocationId: "inv-1", action: "plans", phase: "invocation", outcome: "started" } },
+			{ type: "custom", id: "event-2", timestamp: "2026-09-09T00:00:01Z", customType: "plan-action-event", data: { schemaVersion: 1, invocationId: "inv-1", action: "run-here", phase: "outcome", outcome: "success", plan: { stub: "demo" } } },
+			{ type: "custom", id: "event-3", timestamp: "2026-09-09T00:00:02Z", customType: "plan-action-event", data: { schemaVersion: 1, invocationId: "inv-2", action: "copy", phase: "outcome", outcome: "failed" } },
+		]);
+		const counts = await queryAnalytics(fixture.registry, { operation: "query", sources: ["session_entries"], sql: "WITH plan_events AS (SELECT json_extract_string(record, '$.data.action') AS plan_action, json_extract_string(record, '$.data.outcome') AS plan_outcome FROM session_entries WHERE entry_type = 'custom' AND json_extract_string(record, '$.customType') = 'plan-action-event' AND json_extract_string(record, '$.data.phase') = 'outcome') SELECT plan_action, plan_outcome, count(*) records FROM plan_events GROUP BY plan_action, plan_outcome ORDER BY plan_action, plan_outcome" });
+		expect(counts.rows).toEqual([{ plan_action: "copy", plan_outcome: "failed", records: "1" }, { plan_action: "run-here", plan_outcome: "success", records: "1" }]);
+		const trace = await queryAnalytics(fixture.registry, { operation: "query", sources: ["session_entries"], sessionRefs: [{ profile: "default", sessionId: "plan-session" }], sql: "SELECT json_extract_string(record, '$.data.invocationId') AS invocation_id, json_extract_string(record, '$.data.action') AS action_name, json_extract_string(record, '$.data.phase') AS phase, json_extract_string(record, '$.data.outcome') AS outcome_name, json_extract_string(record, '$.data.plan.stub') AS stub FROM session_entries WHERE entry_type = 'custom' AND json_extract_string(record, '$.customType') = 'plan-action-event' ORDER BY _timestamp" });
+		expect(trace.rows).toEqual([
+			{ invocation_id: "inv-1", action_name: "plans", phase: "invocation", outcome_name: "started", stub: null },
+			{ invocation_id: "inv-1", action_name: "run-here", phase: "outcome", outcome_name: "success", stub: "demo" },
+			{ invocation_id: "inv-2", action_name: "copy", phase: "outcome", outcome_name: "failed", stub: null },
+		]);
+	});
+
 	it("stages only explicitly selected sessions and reports their bytes", async () => {
 		const file = await fixture.session("default", "one", [recentMessage]);
 		await fixture.session("default", "other");

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-09: Name plan tabs and record picker action history
+
+**Changed:** Default-profile `/plans` Run in new tab and Run here use the selected directory stub as the exact Herdr tab name. The launcher names plan children once; child startup keeps pane labeling without a second tab rename that could overwrite a manual rename. Ordinary cwd-based startup labels and later manual renames remain unchanged. Run here renames only the inherited tab identity and continues valid execution when naming is unavailable.
+
+**Added:** `/plans` invocation, picker close, and phase-distinct semantic action requests/outcomes are visible as compact native Pi session entries rendered outside model context. Records retain bounded structured identifiers, plan coordinates, tab/pane identities, elapsed outcomes, refusals, failures, and uncertain launches. Persisted history uses the existing `session_entries` analytics source; no separate logfile or telemetry source is created.
+
+**Limit:** Pi's normal session lifecycle applies. A fresh picker-only session may not be written to disk until an assistant response is persisted, so analytics cannot recover entries from an unsaved session.
+
 ## 2026-09-09: Avoid accidental commit push completion
 
 **Fixed:** Default Pi's `/commit` argument completion no longer suggests `push` for an empty argument or an already-complete `push`. Enter submits `/commit ` without adding push, and `/commit push` without an extra completion-selection step. Partial arguments such as `/commit p` still offer `push`.
