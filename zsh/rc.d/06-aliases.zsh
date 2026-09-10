@@ -4,9 +4,9 @@
 claude() { command claude "$@"; }
 opencode() { command opencode "$@"; }
 pi() {
-    # Bun-backed pi can fail if TMPDIR points at a restricted temp location.
-    # Scope the override to pi only instead of changing TMPDIR globally.
-    TMPDIR=/tmp command pi "$@"
+    # Bare pi uses the repository-owned default profile and its startup
+    # preflight. The external pp process can still resolve the real pi binary.
+    command pp "$@"
 }
 
 # Claude Code YOLO mode

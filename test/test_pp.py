@@ -10,6 +10,7 @@ DOTFILES = Path(__file__).parent.parent
 BASH = shutil.which("bash")
 PWSH = shutil.which("pwsh")
 NODE = shutil.which("node")
+ZSH = shutil.which("zsh")
 
 
 def _fake_pi_bash(bin_dir: Path) -> None:
@@ -126,6 +127,36 @@ def test_pp_passes_pi_short_print_option_after_separator(tmp_path: Path) -> None
     assert json.loads(result.stdout)["args"] == ["-p", "hello"]
 
 
+@pytest.mark.skipif(ZSH is None, reason="zsh not found")
+def test_bare_pi_zsh_function_uses_profile_launcher(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    launcher = bin_dir / "pp"
+    launcher.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 -c 'import json, sys; print(json.dumps(sys.argv[1:]))' \"$@\"\n",
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+
+    result = subprocess.run(
+        [
+            ZSH,
+            "-f",
+            "-c",
+            'source "$1"; pi --model example',
+            "test-bare-pi",
+            str(DOTFILES / "zsh" / "rc.d" / "06-aliases.zsh"),
+        ],
+        env={**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == ["--model", "example"]
+
+
 @pytest.mark.skipif(PWSH is None, reason="PowerShell not found")
 def test_pp_selects_powershell_profile_and_forwards_arguments(tmp_path: Path) -> None:
     home = tmp_path / "home"
@@ -157,6 +188,37 @@ def test_pp_selects_powershell_profile_and_forwards_arguments(tmp_path: Path) ->
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert Path(payload["dir"]) == DOTFILES / "pi" / "profiles" / "legacy"
+    assert payload["args"] == ["--model", "example"]
+
+
+@pytest.mark.skipif(PWSH is None, reason="PowerShell not found")
+def test_pp_powershell_bypasses_a_pi_function(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    bin_dir = tmp_path / "bin"
+    home.mkdir()
+    bin_dir.mkdir()
+    _fake_pi_powershell(bin_dir)
+    launcher = str(DOTFILES / "scripts" / "pp.ps1").replace("'", "''")
+
+    result = subprocess.run(
+        [
+            PWSH,
+            "-NoProfile",
+            "-Command",
+            f"function pi {{ throw 'recursive pi function called' }}; & '{launcher}' --model example",
+        ],
+        env={
+            **os.environ,
+            "USERPROFILE": str(home),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert Path(payload["dir"]) == DOTFILES / "pi" / "profiles" / "default"
     assert payload["args"] == ["--model", "example"]
 
 

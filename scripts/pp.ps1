@@ -3,6 +3,16 @@ function Write-Usage {
   exit 2
 }
 
+# Resolve the external command before profile functions can redirect bare pi
+# back through this launcher.
+$piExecutable = Get-Command pi -CommandType Application, ExternalScript -ErrorAction SilentlyContinue |
+  Select-Object -First 1
+if (-not $piExecutable) {
+  Write-Error 'pp: pi executable is unavailable'
+  exit 1
+}
+$piExecutablePath = $piExecutable.Source
+
 function Remove-UnsafeArguments {
   param(
     [string[]] $Arguments,
@@ -128,12 +138,12 @@ if ($profileName -eq 'default') {
   if ($dcRecovery) {
     if (Test-DamageControlJavaScript $preflight $recoveryHelper) {
       [string[]] $recoveryArguments = @(Remove-UnsafeArguments $piArguments.ToArray() $false)
-      & pi --no-extensions --extension $recoveryHelper @recoveryArguments
+      & $piExecutablePath --no-extensions --extension $recoveryHelper @recoveryArguments
       exit $LASTEXITCODE
     }
     Write-Error 'pp: recovery helper is unavailable; starting tools-disabled, extensions-disabled repair mode'
   } elseif (Test-DamageControlJavaScript $preflight $bootstrap) {
-    & pi @piArguments
+    & $piExecutablePath @piArguments
     exit $LASTEXITCODE
   } else {
     Write-Error 'pp: default damage-control bootstrap is unavailable; starting tools-disabled, extensions-disabled repair mode'
@@ -141,9 +151,9 @@ if ($profileName -eq 'default') {
   }
 
   [string[]] $repairArguments = @(Remove-UnsafeArguments $piArguments.ToArray() $true)
-  & pi --no-tools --no-extensions @repairArguments
+  & $piExecutablePath --no-tools --no-extensions @repairArguments
   exit $LASTEXITCODE
 }
 
-& pi @piArguments
+& $piExecutablePath @piArguments
 exit $LASTEXITCODE

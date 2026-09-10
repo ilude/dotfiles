@@ -1,18 +1,20 @@
 # Changelog
 
-## 2026-09-09: Name plan tabs and record picker action history
-
-**Changed:** Default-profile `/plans` Run in new tab and Run here use the selected directory stub as the exact Herdr tab name. The launcher names plan children once; child startup keeps pane labeling without a second tab rename that could overwrite a manual rename. Ordinary cwd-based startup labels and later manual renames remain unchanged. Run here renames only the inherited tab identity and continues valid execution when naming is unavailable.
-
-**Added:** `/plans` invocation, picker close, and phase-distinct semantic action requests/outcomes are visible as compact native Pi session entries rendered outside model context. Records retain bounded structured identifiers, plan coordinates, tab/pane identities, elapsed outcomes, refusals, failures, and uncertain launches. Persisted history uses the existing `session_entries` analytics source; no separate logfile or telemetry source is created.
-
-**Limit:** Pi's normal session lifecycle applies. A fresh picker-only session may not be written to disk until an assistant response is persisted, so analytics cannot recover entries from an unsaved session.
-
 ## 2026-09-09: Bind command authority to delivered invocations
 
 **Fixed:** Default Pi's prompt-backed commands now prepare tool schemas before native steering while binding execution authority to the locally-created invocation delivered by Pi. `/commit` push permission is immutable per slash invocation, so overlapping bare and `push` submissions cannot change one another; retries, compaction, ordinary steering, and unrelated active tools remain supported.
 
 **Preserved:** Schema availability is not authorization, restored transcript details cannot recreate authority, and command tools are cleaned up only at settlement or session shutdown. No busy-command gate, finish-first queue, follow-up delivery substitute, Git workflow change, or legacy-profile change was added.
+
+## 2026-09-09: Honor Damage Control TUI approvals
+
+**Fixed:** Damage Control now preserves the TUI approval component's string result instead of converting it to a boolean, so selecting `Allow once` or future-review approval can authorize the pending call. Denial and cancellation remain fail-closed. Use `/reload` to load the fix.
+
+## 2026-09-09: Make bare Pi use the default profile
+
+**Changed:** Interactive zsh and PowerShell now route bare `pi` invocations through the existing `pp` launcher, so the repository-owned default profile and Damage Control startup preflight no longer depend on remembering a separate command. Arguments continue to pass through unchanged, while `pp -p legacy` and other explicit profile selection remain available.
+
+**Safety:** PowerShell resolves the external Pi executable before launching it, preventing the new shell function from recursively invoking itself. Herdr plugin launches retain their separate profile-aware bootstrap.
 
 ## 2026-09-09: Avoid accidental commit push completion
 

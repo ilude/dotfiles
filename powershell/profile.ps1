@@ -137,6 +137,13 @@ if ($env:LOCALAPPDATA) {
 
 #region Aliases
 
+# Make bare pi use the repository-owned default profile and startup preflight.
+# pp remains available for explicitly selecting another profile.
+$script:PiProfileLauncher = Join-Path $PSScriptRoot '..\scripts\pp.ps1'
+function pi {
+  & $script:PiProfileLauncher @args
+}
+
 # Claude Code YOLO mode
 function Invoke-Claude {
   $claudePath = (Get-Command claude -ErrorAction Stop).Source
