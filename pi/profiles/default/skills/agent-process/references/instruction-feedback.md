@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-030 - Match analytics work to the question and teach complete traversal
+
+- **Reference:** Default-profile analytics planning discussion, 2026-09-10.
+- **Feedback:** Expensive analysis is acceptable for big questions, but small questions should answer quickly without parsing everything. Poor tool usage also points to inadequate tool instructions, not just model error.
+- **Decisions:** Plan default-only changes with both-profile reading; permit a small on-demand metadata cache if measurements justify it and temporary disk use for large SQL. No background indexing or persistent message copies. The added representative question is finding tool-call failures from the last week.
+- **Related:** AIF-013, AIF-004, APR-021. Current pagination and message-role fields already exist; resumable record scanning and cheap search execution are the missing capabilities.
+- **Fallback clarification:** Operator explicitly permits existing `find`, `rg`, `jq`, `awk`, and `sort` for read-only history investigation when analytics cannot retrieve what is needed. Prefer the tool without making it exclusive; preserve scope, source coordinates, parsed field semantics and honest coverage.
+- **Status:** Runtime changes remain planned in repository-root-relative `.specs/query-driven-log-analytics/plan.md`. The approved fallback guidance is implemented in the existing default `pi-log-analytics` skill/reference rather than a duplicate skill. No effectiveness claim.
+
 ## AIF-029 - Tools are not slash-command-only by default
 
 - **Reference:** Operator correction after an explicitly requested commit was rejected because `commit_run` lacked a delivered `/commit` invocation, 2026-09-10.

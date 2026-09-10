@@ -8,6 +8,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:runtime": "node scripts/damage-control-smoke.mjs",
+    "check:bedrock-child": "node scripts/bedrock-child-smoke.mjs",
     "eval:damage-control": "tsx scripts/damage-control-eval.ts"
   },
   "dependencies": {

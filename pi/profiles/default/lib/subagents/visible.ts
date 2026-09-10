@@ -7,6 +7,18 @@ import type { ChildEndpoint, ApplicationMessage, MessageOptions } from "./transp
 import { createHerdrCli, herdrContext, result, inspectPane } from "../herdr-cli.ts";
 import { LayoutPlacementError, SubagentLayout } from "./layout.ts";
 
+export function safeDiagnostic(value:unknown):string {
+ if(typeof value!=="string")return "";
+ const clean=value
+  .replace(/(?:\x1B\[[0-?]*[ -/]*[@-~]|\x1B\][^\x07]*(?:\x07|\x1B\\))/g,"")
+  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g,"")
+  .replace(/(authorization\s*[:=]\s*bearer\s+|(?:access[_-]?key|secret|token|password|credential)\s*[:=]\s*)[^\s,;]*/gi,"$1[redacted]")
+  .replace(/\bAKIA[0-9A-Z]{16}\b/g,"[redacted]").trim();
+ const bytes=Buffer.from(clean);
+ if(bytes.length<=4000)return clean;
+ return new TextDecoder().decode(bytes.subarray(0,4000)).replace(/\S*$/,"").trimEnd()+" [truncated]";
+}
+
 export class VisibleChild extends RpcChild {
  private cli=createHerdrCli();
  private layout:SubagentLayout;
@@ -63,7 +75,14 @@ export class VisibleChild extends RpcChild {
    if(this.hostExited)throw new Error("Duplicate process settlement");
    this.hostExited=true;this.record.processState="exited";
    if(this.startup)clearTimeout(this.startup);
-   if(this.record.status!=="settled")this.fail("Visible process exited without assignment completion");
+   const payload=message.payload as {code?:unknown;signal?:unknown;stderr?:unknown}|undefined;
+   const codeValue=payload?.code;
+   const code=Number.isInteger(codeValue)?String(codeValue):undefined;
+   const signalValue=payload?.signal;
+   const signal=typeof signalValue==="string"?signalValue:undefined;
+   const diagnostic=safeDiagnostic(payload?.stderr);
+   const detail=diagnostic||((code||signal)?`exit ${signal??code}`:"no exit status");
+   if(this.record.status!=="settled")this.fail(`Visible process exited before completing the assignment (${detail})`);
    return{accepted:true};
   }
   if(message.type==="app-ready"){

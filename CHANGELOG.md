@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-10: Allow read-only shell fallbacks for Pi history analysis
+
+**Changed:** The default `pi-log-analytics` skill still prefers `log_analytics`, but explicitly permits `find`, `rg`, `jq`, `awk`, and `sort` when the tool cannot retrieve the requested evidence. Guidance preserves the requested scope, JSON field semantics, source coordinates and honest coverage reporting without adding another approval gate or a duplicate skill. Runtime analytics and legacy instructions are unchanged.
+
+## 2026-09-10: Restore Bedrock providers in default-profile subagents
+
+**Fixed:** Default-profile children using `bedrock-mantle` now load the provider registration without loading operator Bedrock accounting commands. Visible child startup failures preserve terminal input/output, report bounded non-secret diagnostics and exit status to the parent, and retain a generic fallback when no diagnostic is available.
+
+**Preserved:** Legacy profile behavior, child isolation, and the previously committed provider payload fix remain unchanged. Reload or restart Pi before testing an already-running orchestrator; existing live children retain their loaded extensions.
+
 ## 2026-09-10: Keep Mantle Anthropic requests compatible after cross-provider history
 
 **Fixed:** Mantle Claude routes now disable the inherited Anthropic mid-conversation effort capability, preventing unsupported `messages[].output_config` system entries and thinking-binding beta controls. Request-level `output_config.effort` remains intact, including low reasoning; native Anthropic and Bedrock Runtime routes are unchanged. Real-adapter serialization tests cover Codex history and the latest Haiku, Sonnet, Opus, and Fable routes. Capped live checks returned HTTP 200 for Haiku 4.5 (off), Sonnet 5 (low), Opus 5 (low), and Fable 5.1 (low, Bedrock Runtime).

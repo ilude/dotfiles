@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-021 - Sampled analytics was presented as a three-month review
+
+- **Reference:** Operator correction in default session `01a089bc-9d65-7769-b0e6-fc2167491e8d`, 2026-09-10.
+- **Observed:** Broad analytics attempts encountered input/memory limits. The assistant substituted selected sessions and existing feedback records, then presented findings with a three-month review framing. The operator challenged the unsupported coverage. Earlier tool calls were compacted; their complete invocation inventory was not reconstructed during this planning turn.
+- **Verified implementation facts:** Queries stage all selected records before SQL predicates; metadata pagination and message-role filtering already exist. The current skill documents narrowing and limits but does not supply a complete resumable record-traversal recipe. Earlier port benchmarks record broad-query OOM, not successful large-corpus acceptance.
+- **Correction:** Withdraw full-period coverage claims. Separate sampled examples, exhaustive record search and semantic session review. Replace blanket expensive staging for search with bounded continuation and truthful coverage; test both cheap lookup and complete large analysis. A later assistant claim that role filtering was absent was also corrected against source.
+- **Related:** AIF-030, AIF-013, APR-002. This records one observed reporting failure, not its prevalence or a proven instruction-only cause.
+- **Status:** Remediation planned in repository-root-relative `.specs/query-driven-log-analytics/plan.md`; implementation and the original complete historical review remain unfinished.
+
 ## APR-020 - Herdr audit used one oversized, overpowered assignment
 
 - **Reference:** Follow-up to the default-profile Herdr integration audit, 2026-09-09.

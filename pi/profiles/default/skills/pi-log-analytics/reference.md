@@ -130,6 +130,10 @@ The Windows synthetic check on 2026-09-07 passed all approximately 10 MiB worklo
 
 SQL event-time or content predicates run after staging and do not prune files. Session creation dates and filename timestamps must not exclude resumed sessions with recent events. Exact session selection reduces staged files, but still performs metadata discovery. Repeated queries rebuild DuckDB and do not imply an index or cache. Synthetic performance results are not latency guarantees for private all-history searches.
 
+## When the tool cannot answer
+
+The [skill's read-only fallback](SKILL.md#read-only-fallback) permits `find`, `rg`, `jq`, `awk`, and `sort` against the same authorized local history when `log_analytics` is unavailable, over budget, excludes relevant input, or cannot retrieve the needed evidence. Its no-filesystem-SQL boundary is not a prohibition on direct read-only shell inspection. Use parsed JSON for roles, timestamps and error flags; plain-text matches only identify candidates. Preserve source coordinates and disclose partial scans and parse/pipeline failures. The tool's current no-spill implementation does not prohibit temporary sorting space for these commands.
+
 ## Installation and checks
 
 The default profile owns `@duckdb/node-api@1.5.5-r.4` through pnpm. From the repository root, follow the normal default setup: frozen pnpm install in `pi/profiles/default`, then `bash scripts/pi-deps-link-setup --profile default`. Use `/reload` or a fresh `pp` session to activate installed code. No live reload is performed by validation.

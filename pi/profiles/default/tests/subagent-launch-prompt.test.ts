@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { join } from "node:path";
 import { childLaunch } from "../lib/subagents/launch.ts";
 import type { AgentDefinition } from "../lib/subagents/definitions.ts";
 import type { LaunchSpec } from "../lib/subagents/rpc.ts";
@@ -14,5 +15,12 @@ describe("subagent launch prompt", () => {
     expect(launch.env.PI_SUBAGENT_PROMPT).toBe("frozen composed prompt");
     expect(launch.args).toContain("provider/model");expect(launch.args).toContain("low");
     expect(launch.args.includes("rpc")).toBe(surface === "headless");
+  });
+
+  it("loads only the Bedrock provider extension for Mantle children", () => {
+    const launch = childLaunch({ ...spec("headless"), model: "bedrock-mantle/anthropic.claude-sonnet-5" }, "id", process.cwd());
+    expect(launch.args).toContain("--extension");
+    expect(launch.args).toContain(join(process.cwd(), "extensions", "bedrock/provider.ts"));
+    expect(launch.args).not.toContain(join(process.cwd(), "extensions", "bedrock/index.ts"));
   });
 });

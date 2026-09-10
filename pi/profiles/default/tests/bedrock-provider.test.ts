@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildBedrockModelRoutes, contextForBedrockRoute, createBedrockRoutingStream, resolveBedrockMantleTarget } from "../lib/bedrock/provider.ts";
+import registerBedrockProvider from "../extensions/bedrock/provider.ts";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 
 describe("Bedrock provider routing", () => {
+	it("registers the provider-only child extension without operator commands", () => {
+		const registerProvider = vi.fn(); const registerCommand = vi.fn();
+		registerBedrockProvider({ registerProvider, registerCommand } as any);
+		expect(registerProvider).toHaveBeenCalledOnce(); expect(registerCommand).not.toHaveBeenCalled();
+	});
 	it("keeps regions scoped and curates newest supported routes", () => {
 		expect(resolveBedrockMantleTarget({ AWS_REGION: "eu-west-1" }).region).toBe("us-east-1");
 		expect(resolveBedrockMantleTarget({ BEDROCK_MANTLE_REGION: "us-west-2", AWS_PROFILE: "work" })).toMatchObject({ region: "us-west-2", profile: "work" });

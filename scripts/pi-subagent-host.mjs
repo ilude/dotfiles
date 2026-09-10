@@ -5,6 +5,35 @@ import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { createRequire } from "node:module";
 
+const DIAGNOSTIC_CAPTURE_BYTES=8192;
+const DIAGNOSTIC_PUBLISH_BYTES=4096;
+const decoder=new TextDecoder("utf-8");
+export function sanitizeHostDiagnostic(chunks,truncated=false) {
+ const text=decoder.decode(Buffer.concat(chunks))
+  .replace(/(?:\x1B\[[0-?]*[ -/]*[@-~]|\x1B\][^\x07]*(?:\x07|\x1B\\))/g,"")
+  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g,"")
+  .replace(/(authorization\s*[:=]\s*bearer\s+|(?:access[_-]?key|secret|token|password|credential)\s*[:=]\s*)[^\s,;]*/gi,"$1[redacted]")
+  .replace(/\bAKIA[0-9A-Z]{16}\b/g,"[redacted]");
+ // Captured and published byte boundaries may bisect an unknown field. Drop the
+ // final field rather than risk returning a secret fragment.
+ const bounded=(value,limit,wasCut)=>{
+  const bytes=Buffer.from(value.trim());
+  if(!wasCut&&bytes.length<=limit)return value.trim();
+  const marker=" [truncated]";
+  const prefix=decoder.decode(bytes.subarray(0,Math.min(limit-Buffer.byteLength(marker),bytes.length)));
+  return prefix.replace(/\S*$/,"").trimEnd()+marker;
+ };
+ return bounded(text,DIAGNOSTIC_PUBLISH_BYTES,truncated||Buffer.byteLength(text.trim())>DIAGNOSTIC_PUBLISH_BYTES);
+}
+
+export function createHostDiagnosticCapture(write=chunk=>process.stderr.write(chunk),limit=DIAGNOSTIC_CAPTURE_BYTES) {
+ const chunks=[];let bytes=0,truncated=false,closed=false;
+ return {
+  append(chunk){if(closed)return;write(chunk);const input=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);const remaining=limit-bytes;if(remaining<=0){truncated=true;return}const clipped=input.subarray(0,remaining);chunks.push(clipped);bytes+=clipped.length;if(clipped.length<input.length)truncated=true},
+  close(){closed=true;return sanitizeHostDiagnostic(chunks,truncated)},
+ };
+}
+
 // Called only by the existing setup-owned Herdr bootstrap. This per-launch host
 // retains the actual ChildProcess handle; it is not a worker service or registry.
 export async function hostSubagent(entry, profile, rawEndpoint) {
@@ -28,8 +57,12 @@ export async function hostSubagent(entry, profile, rawEndpoint) {
  })();
  try{
   await requestParent(endpoint,{type:"host-started",payload:{pid:process.pid}});
-  child=spawn(process.execPath,[entry,...config.args],{cwd:bootstrap.spec.cwd,env:{...process.env,...config.env,PI_SUBAGENT_INTERVENTION_FILE:intervention,PI_HERDR_SUBAGENT:""},stdio:"inherit",shell:false,detached:process.platform!=="win32"});
-  const closed=new Promise((resolve,reject)=>{child.once("error",reject);child.once("close",code=>{exited=true;resolve(code)})});
+  // Keep stdin/stdout attached to the pane, but retain a bounded stderr
+  // diagnostic so the parent can distinguish startup failure from a clean exit.
+  const stderrCapture=createHostDiagnosticCapture();
+  child=spawn(process.execPath,[entry,...config.args],{cwd:bootstrap.spec.cwd,env:{...process.env,...config.env,PI_SUBAGENT_INTERVENTION_FILE:intervention,PI_HERDR_SUBAGENT:""},stdio:["inherit","inherit","pipe"],shell:false,detached:process.platform!=="win32"});
+  child.stderr?.on("data",chunk=>stderrCapture.append(chunk));
+  const closed=new Promise((resolve,reject)=>{child.once("error",error=>{exited=true;reject(error)});child.once("close",(code,signal)=>{exited=true;resolve({code,signal})})});
   const watch=(async()=>{
    while(!exited){
     try{const state=await requestParent(endpoint,{type:"host-poll"});if(state.stop&&(state.force||!userOwned()))await stop()}
@@ -37,10 +70,12 @@ export async function hostSubagent(entry, profile, rawEndpoint) {
     if(!exited)await delay(100);
    }
   })();
-  const code=await closed;
+  let outcome;
+  try{outcome=await closed}catch(error){outcome={code:null,signal:null,error:String(error?.message||"child process could not start")}}
   await watch;
   try{
-   await requestParent(endpoint,{type:"host-exit",payload:{code}});
+   const diagnostic=stderrCapture.close();
+   await requestParent(endpoint,{type:"host-exit",payload:{code:outcome.code,signal:outcome.signal,stderr:diagnostic||outcome.error}});
    // Keep the wrapper PTY alive until the parent closes its owned pane. This
    // avoids Herdr focusing that workspace when a non-focused plugin PTY exits.
    await delay(5_000);
