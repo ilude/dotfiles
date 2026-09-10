@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-09: Reduce subagent tool-output clutter
+
+**Changed:** Default Pi's subagent rows remove repeated identity, role, and generic working labels while retaining the actual prompt preview, selected model/effort, readable local start time, and elapsed or completed duration. Native expansion reveals the full prompt and execution details. Routine attachment bookkeeping no longer competes with live activity, questions, errors, or results.
+
+**Preserved:** Model-facing payloads, subagent lifecycle, and the legacy profile are unchanged. Use `/reload` after subagents settle to load the renderer changes.
+
+## 2026-09-09: Register new Herdr Pi tabs immediately
+
+**Fixed:** Herdr `/new-instance` and `/branch` plugin tabs now register their pane with the Agents view during bootstrap, before a fresh Pi session necessarily has a persisted session reference. The generated Herdr integration still attaches session identity and owns subsequent working, blocked, and idle lifecycle updates.
+
 ## 2026-09-09: Bind command authority to delivered invocations
 
 **Fixed:** Default Pi's prompt-backed commands now prepare tool schemas before native steering while binding execution authority to the locally-created invocation delivered by Pi. `/commit` push permission is immutable per slash invocation, so overlapping bare and `push` submissions cannot change one another; retries, compaction, ordinary steering, and unrelated active tools remain supported.

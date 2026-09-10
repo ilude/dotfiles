@@ -1,9 +1,10 @@
-import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme, keyHint } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Text } from "@earendil-works/pi-tui";
 import type { ChildRecord } from "./rpc.ts";
 import { duration } from "./status.ts";
 
 const COLLAPSED_LIMIT = 420;
+const PROMPT_LIMIT = 160;
 const RESULT_LIMIT = 24_000;
 
 type Theme = any;
@@ -35,10 +36,9 @@ function identity(record: Partial<ChildRecord>): string {
   return record.displayName ? `${record.displayName} · ${record.agent ?? "subagent"}` : record.agent ?? "subagent";
 }
 
-function assignment(record: Partial<ChildRecord>, expanded = false): string {
-  return expanded
-    ? bounded(record.assignment || "No assignment text recorded", Infinity)
-    : oneLine(record.assignment || "No assignment text recorded");
+function localTimestamp(input: string | number): string {
+  const date = new Date(input);
+  return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
 function recordFrom(valueToInspect: unknown): Partial<ChildRecord> | undefined {
@@ -90,24 +90,18 @@ function assignmentTiming(record: Partial<ChildRecord>, now = Date.now()): strin
 function startLine(record: Partial<ChildRecord>, now = Date.now()): string | undefined {
   const started = record.assignmentStartedAt ?? record.createdAt;
   if (!started) return undefined;
-  return `Started: ${started} · ${assignmentTiming(record, now)}`;
+  return `Started: ${localTimestamp(started)} · ${assignmentTiming(record, now)}`;
 }
 
-function details(record: Partial<ChildRecord>, now = Date.now()): string[] {
-  const lines = [
-    `Role: ${record.agent ?? "unknown"}`,
-    `Surface: ${record.surface ?? "unknown"}`,
-    `Model: ${record.model ?? "default"} · effort: ${record.effort ?? "default"}`,
-  ];
+function details(record: Partial<ChildRecord>): string[] {
+  const lines = [`Surface: ${record.surface ?? "unknown"}`];
   if (record.cwd) lines.push(`Cwd: ${record.cwd}`);
   if (record.skills?.length) lines.push(`Skills: ${record.skills.join(", ")}`);
   if (record.parentId) lines.push(`Coordinator: ${record.parentId}`);
   if (record.waitState) lines.push(`Wait: ${record.waitState}`);
-  const timing = startLine(record, now);
-  if (timing) lines.push(timing);
-  if (record.lastActivityAt && record.status !== "settled") lines.push(`Last activity: ${duration(record.lastActivityAt, now)} ago`);
-  if (record.phase) lines.push(`Phase: ${record.phase}${record.toolName ? ` · ${record.toolName}` : ""}`);
-  if (record.processState) lines.push(`Process: ${record.processState}${record.transportState ? ` · transport ${record.transportState}` : ""}`);
+  if (record.processState || record.transportState) {
+    lines.push(`Process: ${record.processState ?? "unknown"}${record.transportState ? ` · transport ${record.transportState}` : ""}`);
+  }
   return lines;
 }
 
@@ -130,24 +124,33 @@ function callLines(args: Record<string, unknown>, record: Partial<ChildRecord> |
       ? `subagent control · ${action}`
       : `subagent · ${value(args.agent)}`;
   const lines = [theme.fg("toolTitle", theme.bold(title))];
+  const instructions = value(args?.instructions);
   if (record) {
-    lines.push(`Role: ${record.agent ?? "unknown"}`);
-    lines.push(`Assignment: ${assignment(record, context.expanded)}`);
-    if (record.waitState) lines.push(`Wait: ${record.waitState}`);
+    // Prefer the invocation argument: the prompt shown here must be the prompt sent.
+    const prompt = instructions || value(record.assignment);
+    if (prompt) {
+      lines.push(context.expanded
+        ? `Prompt:\n${bounded(prompt, Infinity)}`
+        : `Prompt: ${oneLine(prompt, PROMPT_LIMIT)} ${theme.fg("dim", keyHint("app.tools.expand", "for full prompt"))}`);
+    }
     const model = record.model || value(args.model) || "default";
     const effort = record.effort || value(args.effort) || "default";
-    const surface = record.surface || value(args.surface) || "unknown";
-    lines.push(`Config: ${model} · effort ${effort} · ${surface}`);
+    lines.push(`Model: ${model} [${effort}]`);
+    const timing = startLine(record);
+    if (timing) lines.push(timing);
   } else {
-    const instructions = value(args?.instructions);
-    if (instructions) lines.push(`Assignment: ${context.expanded ? bounded(instructions, Infinity) : oneLine(instructions)}`);
+    if (instructions) {
+      lines.push(context.expanded
+        ? `Prompt:\n${bounded(instructions, Infinity)}`
+        : `Prompt: ${oneLine(instructions, PROMPT_LIMIT)} ${theme.fg("dim", keyHint("app.tools.expand", "for full prompt"))}`);
+    }
     if (args?.id) lines.push(`Target: ${oneLine(args.id, 120)}`);
     if (args?.message) lines.push(`Message: ${oneLine(args.message)}`);
-    if (args?.agent) lines.push(`Wait: ${args?.background ? "background" : "foreground"}`);
-    const requested = ["surface", "model", "effort", "background", "retain"].filter(key => args?.[key] !== undefined).map(key => `${key}=${oneLine(args[key], 80)}`);
-    if (requested.length) lines.push(`Requested: ${requested.join(" · ")}`);
+    const model = value(args.model);
+    const effort = value(args.effort) || "default";
+    if (args?.agent && (model || args?.effort !== undefined)) lines.push(`Model: ${model || "default"} [${effort}]`);
     const startedAt = context.state?.startedAt;
-    if (startedAt) lines.push(`Started: ${new Date(startedAt).toISOString()} · Elapsed: ${duration(new Date(startedAt).toISOString())}`);
+    if (startedAt) lines.push(`Started: ${localTimestamp(startedAt)} · Elapsed: ${duration(new Date(startedAt).toISOString())}`);
   }
   return lines.join("\n");
 }
@@ -174,25 +177,38 @@ function updateCallComponent(result: any, theme: Theme, context: RenderContext):
   component.setText(callLines(state.args ?? context.args ?? {}, record, theme, context));
 }
 
-function resultComponent(record: Partial<ChildRecord>, expanded: boolean, theme: Theme): any {
-  const title = `${identity(record)} · ${outcomeLabel(record)}`;
+function resultComponent(record: Partial<ChildRecord>, expanded: boolean, theme: Theme, includeIdentity = false): any {
+  // The launch row owns identity, model, timing and prompt. Paired result rows only add state and output.
+  const state = outcomeLabel(record);
+  const title = includeIdentity ? `${identity(record)} · ${state}` : state;
   const lines = [theme.fg(record.status === "settled" && record.outcome !== "complete" ? "warning" : "accent", theme.bold(title))];
+  if (includeIdentity) {
+    lines.push(`Model: ${record.model ?? "default"} [${record.effort ?? "default"}]`);
+    const prompt = value(record.assignment);
+    if (prompt) lines.push(expanded ? `Prompt:\n${bounded(prompt, Infinity)}` : `Prompt: ${oneLine(prompt, PROMPT_LIMIT)} ${theme.fg("dim", keyHint("app.tools.expand", "for full prompt"))}`);
+    const timing = startLine(record);
+    if (timing) lines.push(timing);
+  }
   if (record.status !== "settled") {
-    lines.push(`Activity: ${activeDescription(record)}`);
+    const activity = record.userOwned
+      ? "user intervention; parent control suspended"
+      : record.waitState === "detached"
+        ? "wait detached; child continues"
+        : record.waitState === "background"
+          ? "started in background; child continues"
+          : undefined;
+    if (activity) lines.push(`Activity: ${activity}`);
     if (record.lastActivityAt) lines.push(theme.fg("dim", `Last activity ${duration(record.lastActivityAt)} ago`));
   }
   if (record.error) lines.push(theme.fg("error", `Error: ${expanded ? bounded(record.error, RESULT_LIMIT) : oneLine(record.error)}`));
   if (record.notice) lines.push(theme.fg("muted", oneLine(record.notice)));
-  if (record.status === "waiting" && record.result) lines.push(`Question: ${oneLine(record.result)}`);
+  if (!expanded && record.status === "waiting" && record.result) lines.push(`Question: ${oneLine(record.result)}`);
   const output = bounded(record.result, RESULT_LIMIT);
   if (output && record.status === "settled" && !expanded) lines.push(`Result: ${oneLine(output)}`);
-  const timing = startLine(record);
-  if (timing) lines.push(timing);
 
   if (!expanded) return new Text(lines.join("\n"), 0, 0);
   const container = new Container();
   container.addChild(new Text(lines.join("\n"), 0, 0));
-  container.addChild(new Text(`Assignment:\n${assignment(record, true)}`, 0, 0));
   if (output) container.addChild(new Markdown(output, 0, 0, getMarkdownTheme()));
   container.addChild(new Text(details(record).join("\n"), 0, 0));
   return container;
@@ -207,9 +223,14 @@ export function renderSubagentControlCall(args: Record<string, unknown>, theme: 
 }
 
 export function renderSubagentResult(result: any, options: { expanded?: boolean; isPartial?: boolean }, theme: Theme, context: RenderContext): any {
+  context.expanded = !!options?.expanded;
   updateCallComponent(result, theme, context);
   const record = recordFromResult(result);
-  if (record) return resultComponent(record, !!options?.expanded, theme);
+  if (record) {
+    const passedPrompt = value(context.state?.args?.instructions ?? context.args?.instructions);
+    const displayRecord = passedPrompt ? { ...record, assignment: passedPrompt } : record;
+    return resultComponent(displayRecord, !!options?.expanded, theme);
+  }
   if (options?.isPartial) return new Text(theme.fg("warning", "Subagent is working…"), 0, 0);
   const error = result?.details && typeof result.details.error === "string" ? result.details.error : undefined;
   if (error) return new Text(theme.fg("error", `Error: ${oneLine(error, RESULT_LIMIT)}`), 0, 0);
@@ -258,7 +279,7 @@ export function presentationDetails(record: Partial<ChildRecord>): Record<string
 
 export function renderSubagentMessage(message: any, options: { expanded?: boolean; outputPad?: number }, theme: Theme): any {
   const record = recordFromResult(message);
-  if (record) return resultComponent(record, !!options?.expanded, theme);
+  if (record) return resultComponent(record, !!options?.expanded, theme, true);
   const text = typeof message?.content === "string" ? message.content : resultText(message);
   const firstBreak = text.indexOf("\n");
   const header = firstBreak < 0 ? text : text.slice(0, firstBreak);
@@ -270,8 +291,8 @@ export function renderSubagentMessage(message: any, options: { expanded?: boolea
   if (body || !meta?.displayName) container.addChild(new Markdown(bounded(body || text, RESULT_LIMIT), 0, 0, getMarkdownTheme()));
   if (options?.expanded && meta) {
     const extra = [`Status: ${value(meta.outcome || meta.status || "settled")}`];
-    if (meta.assignment) extra.push(`Assignment:\n${bounded(meta.assignment, Infinity)}`);
-    if (meta.model || meta.effort) extra.push(`Model: ${value(meta.model || "default")} · effort: ${value(meta.effort || "default")}`);
+    if (meta.assignment) extra.push(`Prompt:\n${bounded(meta.assignment, Infinity)}`);
+    if (meta.model || meta.effort) extra.push(`Model: ${value(meta.model || "default")} [${value(meta.effort || "default")}]`);
     if (meta.surface) extra.push(`Surface: ${value(meta.surface)}`);
     if (meta.cwd) extra.push(`Cwd: ${value(meta.cwd)}`);
     if (meta.assignmentStartedAt) {

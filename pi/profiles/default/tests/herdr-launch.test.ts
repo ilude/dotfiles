@@ -2,9 +2,32 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterEach, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { afterEach, expect, it, vi } from "vitest";
+// @ts-expect-error The repository bootstrap is executable JavaScript outside this TS project.
+import { reportInitialAgentPresence } from "../../../scripts/pi-herdr-launch.mjs";
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
+it("reports a newly bootstrapped plugin pane to Herdr's agent list", () => {
+  const socket = Object.assign(new EventEmitter(), { write: vi.fn(), destroy: vi.fn() });
+  const connect = vi.fn(() => socket);
+  expect(reportInitialAgentPresence({ HERDR_ENV: "1", HERDR_PLUGIN_ID: "local.pi", HERDR_SOCKET_PATH: "fixture.sock", HERDR_PANE_ID: "w1:p2" }, connect)).toBe(true);
+  expect(connect).toHaveBeenCalledOnce();
+  socket.emit("connect");
+  const request = JSON.parse(String(socket.write.mock.calls[0][0]).trim());
+  expect(request).toMatchObject({ method: "pane.report_agent", params: { pane_id: "w1:p2", source: "herdr:pi", agent: "pi", state: "idle" } });
+  socket.emit("data", Buffer.from('{"result":{"type":"ok"}}\n'));
+  expect(socket.destroy).toHaveBeenCalledOnce();
+  socket.emit("close");
+});
+
+it("keeps initial Herdr registration best-effort", () => {
+  const connect = vi.fn(() => { throw new Error("invalid socket"); });
+  expect(reportInitialAgentPresence({ HERDR_ENV: "1", HERDR_PLUGIN_ID: "local.pi", HERDR_SOCKET_PATH: "bad", HERDR_PANE_ID: "w1:p2" }, connect)).toBe(true);
+  expect(reportInitialAgentPresence({ HERDR_ENV: "0" }, connect)).toBe(false);
+  expect(connect).toHaveBeenCalledOnce();
+});
 it.each([true, false])("real Node bootstrap preserves argv/env and preflight (valid=%s)", valid => {
   const root = mkdtempSync(join(tmpdir(), "herdr launch ")); roots.push(root);
   const profile = join(root, "default"); mkdirSync(join(profile, "extensions/damage-control"), { recursive: true });

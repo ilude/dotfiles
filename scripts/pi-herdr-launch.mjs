@@ -2,7 +2,51 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
+import net from "node:net";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+function herdrSocketEndpoint(socketPath) {
+  return process.platform === "win32" ? `\\\\.\\pipe\\${socketPath}` : socketPath;
+}
+
+export function reportInitialAgentPresence(env = process.env, connect = endpoint => net.createConnection(endpoint)) {
+  if (env.HERDR_ENV !== "1" || env.HERDR_PLUGIN_ID !== "local.pi" || !env.HERDR_SOCKET_PATH || !env.HERDR_PANE_ID) return false;
+  const retryDelays = [100, 250, 500];
+  const attempt = retry => {
+    const request = {
+      id: `herdr:pi:bootstrap:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+      method: "pane.report_agent",
+      params: { pane_id: env.HERDR_PANE_ID, source: "herdr:pi", agent: "pi", state: "idle", seq: Date.now() * 1000 + retry },
+    };
+    let settled = false;
+    const retryLater = () => {
+      if (settled) return;
+      settled = true;
+      const delay = retryDelays[retry];
+      if (delay === undefined) return;
+      const timer = setTimeout(() => attempt(retry + 1), delay);
+      timer.unref?.();
+    };
+    try {
+      const socket = connect(herdrSocketEndpoint(env.HERDR_SOCKET_PATH));
+      const timer = setTimeout(() => { socket.destroy(); retryLater(); }, 500);
+      timer.unref?.();
+      socket.on("connect", () => socket.write(`${JSON.stringify(request)}\n`));
+      socket.on("data", data => {
+        clearTimeout(timer);
+        socket.destroy();
+        if (String(data).includes('"error"')) retryLater();
+        else settled = true;
+      });
+      socket.on("error", () => { clearTimeout(timer); retryLater(); });
+      socket.on("close", () => clearTimeout(timer));
+    } catch {
+      retryLater();
+    }
+  };
+  attempt(0);
+  return true;
+}
 
 // Only the setup-owned manifest supplies the entrypoint. Per-launch input is
 // deliberately not an arbitrary argv or environment serialization surface.
@@ -62,6 +106,10 @@ export async function main() {
     process.env.PI_PLANS_LAUNCH_TOKEN = planToken;
   }
   if (process.platform !== "win32") process.env.TMPDIR = "/tmp";
+  // Register the plugin pane immediately. Fresh Pi sessions may not have a
+  // session reference when the generated lifecycle extension first runs.
+  // That extension subsequently attaches the session and owns live state.
+  reportInitialAgentPresence();
   // Herdr's preview can replace an exited focused terminal with a shell.
   // Explicitly retire only this plugin-owned pane at process exit instead.
   if (process.env.HERDR_PLUGIN_ID === "local.pi" && process.env.HERDR_PANE_ID && process.env.HERDR_SOCKET_PATH) {

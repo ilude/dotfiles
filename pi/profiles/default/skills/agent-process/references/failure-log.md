@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-020 - Herdr audit used one oversized, overpowered assignment
+
+- **Reference:** Follow-up to the default-profile Herdr integration audit, 2026-09-09.
+- **Observed:** The orchestrator assigned one reviewer registration, lifecycle, labeling, focus, cleanup, and session-identity review, overriding its default Sol-low configuration to high effort. The worker then needed parent-supplied diff context and ultimately exited without an audit result; the orchestrator completed the review itself.
+- **Finding:** The assignment combined several independently reviewable seams, and no evidence justified the high-effort Sol override. Existing delegation guidance limits counts and asks for bounded specialist work, but it does not establish small sequential units or proportional model selection.
+- **Remediation:** Proposed in AIF-027: divide audits by coherent integration seam and plan execution by one `T?` section per worker, integrate before commissioning the next dependent section, and default to the least capable configured role/model likely to succeed. Do not mechanically create one worker per file when direct inspection or a grouped seam is cheaper.
+- **Related:** AIF-027, AIF-004, APR-006, APR-008.
+- **Status:** Incident recorded. No active delegation instruction changed without operator approval.
+
 ## APR-019 - TUI approval selections were always denied
 
 - **Reference:** Operator screenshots during cleanup of the plans tab-name/action-history worktree, 2026-09-09; default session `01a08880-5994-7596-98fa-48979d2e98a6`.

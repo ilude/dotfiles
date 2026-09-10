@@ -52,7 +52,7 @@ Launch arguments include `agent`, `instructions`, optional `cwd`, `model`, `effo
 
 ## Progress and outcome delivery
 
-Subagents do not install a persistent status widget. Launch and wait progress stays in the active tool row; completions, failures, and questions appear in the transcript. `/subagents inspect [name-or-id]` provides explicit status and result details when requested.
+Subagents do not install a persistent status widget. Launch and wait progress stays in the active tool row; completions, failures, and questions appear in the transcript. Tool rows keep identity and status concise, with the selected model/effort, a readable local start time, and elapsed or completed duration. The prompt has a compact preview; native tool-output expansion (normally `Ctrl+O`) reveals its full text and execution details. Repeated role/activity labels and ordinary attached-wait bookkeeping are omitted from the compact view. Live last-activity information and meaningful questions, errors, and results remain visible. `/subagents inspect [name-or-id]` provides explicit status and result details when requested.
 
 Heartbeats establish contact, not productivity. There is no inactivity cancellation, assignment timeout, automatic retry, or progress-triggered model turn. Tool arguments and reasoning are not included in progress. Cleanup errors remain available in transcript outcomes and explicit inspection.
 

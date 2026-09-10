@@ -1,5 +1,22 @@
 # Agent instruction feedback log
 
+## AIF-027 - Delegate smaller sequential units with proportional models
+
+- **Reference:** Operator review of the Herdr integration audit, 2026-09-09.
+- **Feedback:** Broad audits and plan execution should usually be split into small bounded assignments rather than giving one strong subagent several extension areas or multiple `T?` plan sections. For plans, assign at most one task section to a worker, integrate its result, then commission the next section. Prefer Luna medium, escalating only when task evidence justifies a stronger model or higher effort.
+- **Finding:** The Herdr audit was assigned to one reviewer spanning registration, lifecycle, labels, focus, cleanup, and session identity, with an explicit high-effort override. The reviewer role already defaults to Sol low; no observed complexity justified Sol high. Current root guidance bounds specialist work and agent counts but does not guide assignment granularity, sequential plan-task delegation, or model escalation.
+- **Recommendation:** Add a short delegation rule at the default-profile scope: split work by independently reviewable seam or one plan task, normally commission the next task after integrating the prior result, and use the least capable configured role/model that can reliably do the work. Preserve judgment for tightly coupled changes and cheap orchestrator-owned checks rather than requiring one agent per file.
+- **Related:** AIF-004, AIF-017, APR-006, APR-020.
+- **Status:** Feedback recorded. Instruction change requires operator approval.
+
+## AIF-026 - Remove subagent display duplication without hiding supervision context
+
+- **Reference:** Operator screenshot and UX correction, 2026-09-09.
+- **Feedback:** Repeated role, identity, working state, and ordinary attachment bookkeeping clutter tool output. The actual prompt, selected model/effort, and start time remain important for supervising work and returning to completed assignments.
+- **Decision:** Keep compact model/effort, readable local start time and elapsed duration, and a prompt preview with native expansion for the full text. Remove repeated identity/status and hide routine transport/surface details from the collapsed view. Preserve meaningful questions, errors, results, and live last-activity information.
+- **Related:** AIF-020, APR-008, APR-011. This refines the earlier request for richer presentation rather than reversing its visibility goal.
+- **Status:** Implemented in the default presentation renderer. Focused tests (19), typecheck, and whitespace checks passed. No global instruction or lifecycle changes; the updated attached-client display still needs operator use after settled-only reload.
+
 ## AIF-025 - Treat CI/CD and deployment monitoring as scheduler work
 
 - **Reference:** Operator correction during monorepo GitLab pipeline and EKS deployment monitoring, 2026-09-09.

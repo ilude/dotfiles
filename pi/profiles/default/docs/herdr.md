@@ -31,7 +31,7 @@ Reload Pi after source changes. An already-running Pi does not acquire the launc
 
 ## Direct Pi tabs
 
-Inside Herdr, `/new-instance [title]` and `/branch [title]` open a focused plugin tab with the same profile/cwd. Branch launch passes the exact created session file. Launch failures retain that file and report a resume path; an ambiguous result never automatically submits another launch.
+Inside Herdr, `/new-instance [title]` and `/branch [title]` open a focused plugin tab with the same profile/cwd. The plugin bootstrap immediately makes a bounded, best-effort registration of the new pane with Herdr's agent list; registration transport failure does not block Pi startup. The generated lifecycle extension subsequently attaches Pi's session identity and live state. Branch launch passes the exact created session file. Launch failures retain that file and report a resume path; an ambiguous result never automatically submits another launch.
 
 The default profile's `/plans` selector can launch the highlighted direct-child `.specs/<stub>/plan.md` through `/do-it` in a new focused Pi plugin tab. Pressing `d` shows Launching in the existing picker before starting process work. Herdr Pi-tab requests are asynchronous and bounded; the launcher explicitly focuses the exact returned tab instead of relying on creation defaults. Repeated input is ignored while the request is pending, and success dismisses the originating picker rather than reopening Details. Focus is not restored to the origin.
 

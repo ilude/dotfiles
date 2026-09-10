@@ -10,7 +10,7 @@ import { resetSubagentRuntime } from "../lib/subagents/runtime.ts";
 import { initTheme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 initTheme("dark", false);
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
-import { renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
+import { progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
 
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const base: ChildRecord = {
@@ -26,8 +26,8 @@ function result(record: Partial<ChildRecord>, expanded = false) { return renderS
 describe("subagent presentation", () => {
   it("renders a readable launch and control call at narrow and normal widths", () => {
     const call = renderSubagentCall({ agent: "explorer", instructions: "Find the implementation", surface: "visible", background: true }, theme, {});
-    expect(plain(call, 36)).toContain("Assignment: Find the implementation");
-    expect(plain(call, 120)).toContain("surface=visible");
+    expect(plain(call, 36)).toContain("Prompt: Find the implementation");
+    expect(plain(call, 120)).not.toContain("surface=visible");
     const control = renderSubagentControlCall({ action: "wait", id: "Clara", message: "continue" }, theme, {});
     expect(plain(control, 80)).toContain("subagent control · wait");
     expect(plain(control, 80)).toContain("Target: Clara");
@@ -46,23 +46,31 @@ describe("subagent presentation", () => {
     ["cancelled", { status: "settled", outcome: "cancelled" }],
   ] as const)("renders %s without raw JSON", (_label, record) => {
     const text = plain(result(record), 42);
-    expect(text).toContain("Clara · explorer");
+    expect(text).not.toContain("Clara · explorer");
+    expect(text).not.toContain("Role:");
     expect(text).not.toContain("internal JSON should not be primary");
   });
 
   it("keeps question content and start/activity state visible", () => {
-    const question = plain(result({ status: "waiting", phase: "waiting-parent", result: "Should generated files be included?" }), 80);
+    const questionRecord = { ...base, status: "waiting" as const, phase: "waiting-parent" as const, result: "Should generated files be included?" };
+    const question = plain(result(questionRecord), 80);
     expect(question).toContain("Question: Should generated files be included?");
     expect(question).toContain("question for parent");
+    const progress = progressResult(questionRecord).content[0].text;
+    expect(progress).toContain("Question: Should generated files be included?");
+    const expandedQuestion = plain(result(questionRecord, true), 120);
+    expect(expandedQuestion).not.toContain("Question:");
+    expect(expandedQuestion.match(/Should generated files be included\?/g)).toHaveLength(1);
     expect(plain(result({ status: "running", phase: "redirecting" }), 80)).toContain("redirecting current turn");
     const starting = plain(result({ status: "running", phase: "starting", toolName: undefined }), 80);
-    expect(starting).toContain("Activity: starting assignment");
+    expect(starting).not.toContain("Activity: starting assignment");
+    expect(starting).toContain("starting assignment");
   });
 
   it("shows resolved defaults, cleanup errors, and Markdown in expanded output", () => {
     const record = { status: "settled" as const, outcome: "complete" as const, result: "# Result\n\nA **multiline** answer.", error: "Cleanup failed: pane remained open", assignmentFinishedAt: "2026-09-08T00:00:04.000Z" };
-    const text = plain(result(record, true), 120);
-    expect(text).toContain("Model: openai-codex/test · effort: low");
+    const text = plain(renderSubagentMessage({ details: { ...base, ...record } }, { expanded: true }, theme), 120);
+    expect(text).toContain("Model: openai-codex/test [low]");
     expect(text).toContain("Cwd: /worktree/example");
     expect(text).toContain("Cleanup failed: pane remained open");
     expect(text).toContain("multiline");
@@ -80,7 +88,34 @@ describe("subagent presentation", () => {
     const text = plain(message, 80);
     expect(text).toContain("Subagent Clara · explorer");
     expect(text).toContain("Done");
-    expect(text.replace(/\s+/g, " ")).toContain("Assignment: Inspect files");
+    expect(text.replace(/\s+/g, " ")).toContain("Prompt: Inspect files");
+  });
+
+  it("consolidates paired call and result fields and expands the exact prompt once", () => {
+    const prompt = `first line\n${"prompt detail ".repeat(30)}\nFINAL PROMPT LINE`;
+    const context: any = { state: {}, executionStarted: true };
+    const call = renderSubagentCall({ agent: "explorer", instructions: prompt }, theme, context);
+    renderSubagentResult({ details: { ...base, assignment: "record copy", status: "running" } }, {}, theme, context);
+    const collapsed = plain(call, 120);
+    expect(collapsed.match(/Model:/g)).toHaveLength(1);
+    expect(collapsed.match(/Started:/g)).toHaveLength(1);
+    expect(collapsed).toContain("for full prompt");
+    const finished = { ...base, assignment: "record copy that must not replace the sent prompt", status: "settled", outcome: "complete", result: "answer" };
+    const resultView = renderSubagentResult({ details: finished }, {}, theme, context);
+    const paired = `${plain(call, 120)}\\n${plain(resultView, 120)}`;
+    expect(paired.match(/Model:/g)).toHaveLength(1);
+    expect(paired.match(/Started:/g)).toHaveLength(1);
+    expect(paired.match(/Prompt:/g)).toHaveLength(1);
+    renderSubagentResult({ details: finished }, { expanded: true }, theme, context);
+    const expanded = plain(call, 10000);
+    expect(expanded.replace(/\s+/g, " ")).toContain(prompt.replace(/\s+/g, " "));
+    expect(expanded).toContain("FINAL PROMPT LINE");
+    expect(expanded.match(/Prompt:/g)).toHaveLength(1);
+    const expandedResult = plain(renderSubagentMessage({ details: finished }, { expanded: true }, theme), 120);
+    expect(expandedResult).toContain("Surface: headless");
+    expect(expandedResult.match(/Started:/g)).toHaveLength(1);
+    expect(expandedResult).not.toContain("Last activity:");
+    expect(expandedResult).not.toContain("Phase:");
   });
 
   it("retains the active call header through result updates and freezes terminal duration", () => {
@@ -90,22 +125,23 @@ describe("subagent presentation", () => {
     const finished = { ...base, status: "settled", outcome: "complete", result: "answer", assignmentFinishedAt: "2026-09-08T00:00:04.000Z" };
     renderSubagentResult({ details: finished }, {}, theme, context);
     expect(plain(call, 120)).toContain("subagent · Clara · explorer");
-    expect(plain(call, 120)).toContain("Config: openai-codex/test · effort low · headless");
-    expect(plain(call, 120)).not.toContain("Duration:");
+    expect(plain(call, 120)).toContain("Model: openai-codex/test [low]");
+    expect(plain(call, 120)).toContain("Duration: 4s");
+    expect(plain(call, 120)).not.toContain("headless");
     const rerender = renderSubagentCall(args, theme, { ...context, lastComponent: call });
     expect(rerender).toBe(call);
-    expect(plain(rerender, 120)).not.toContain("Duration:");
+    expect(plain(rerender, 120)).toContain("Duration: 4s");
     expect(context.invalidate).not.toHaveBeenCalled();
     const legacy = { ...finished, assignmentFinishedAt: undefined };
     const terminal = plain(renderSubagentResult({ details: legacy }, {}, theme, {}), 120);
-    expect(terminal).toContain("Duration: 2s");
+    expect(terminal).not.toContain("Duration:");
     expect(terminal).not.toContain("Elapsed:");
   });
 
   it("expands the full available assignment and bounds Markdown output and errors", () => {
     const assignment = `first line\n${"assignment detail ".repeat(1100)}\nFINAL ASSIGNMENT LINE`;
     const output = `# Result\n${"answer ".repeat(5000)}OUTPUT TAIL`;
-    const expanded = plain(result({ assignment, result: output, status: "settled", outcome: "complete", error: "Cleanup failed" }, true), 80);
+    const expanded = plain(renderSubagentMessage({ details: { ...base, assignment, result: output, status: "settled", outcome: "complete", error: "Cleanup failed" } }, { expanded: true }, theme), 80);
     expect(expanded).toContain("FINAL ASSIGNMENT LINE");
     expect(expanded).not.toContain("OUTPUT TAIL");
     expect(expanded).toContain("Cleanup failed");
@@ -131,6 +167,8 @@ it("executes registered tools against an inert RPC child and renders their live 
   vi.stubEnv("HERDR_ENV", "0");
   const runtime = await resetSubagentRuntime();
   try {
+    // Follow the current origin-session lifecycle rather than the child-authority path.
+    vi.stubEnv("PI_SUBAGENT_AUTHORITY", "");
     subagents(pi); await handlers.session_start({}, ctx);
     const args = { agent: "probe", instructions: "[activity] [hold]\nInspect all requested files." };
     const context: any = { state: {}, args, executionStarted: true, invalidate: vi.fn() };
@@ -144,8 +182,8 @@ it("executes registered tools against an inert RPC child and renders their live 
     await vi.waitFor(() => expect(views.some(view => view.includes("using bash"))).toBe(true));
     const name = runtime.list("presentation-origin")[0].displayName!;
     expect(plain(call, 120)).toContain(`subagent · ${name} · probe`);
-    expect(plain(call, 120)).toContain("Config: openai-codex/test · effort low · headless");
-    expect(plain(call, 120)).not.toContain("Started:");
+    expect(plain(call, 120)).toContain("Model: openai-codex/test [low]");
+    expect(plain(call, 120)).toContain("Started:");
     expect(messages).not.toHaveBeenCalled();
     abort.abort();
     const detached = await pending;
@@ -176,8 +214,7 @@ it("executes registered tools against an inert RPC child and renders their live 
     const failed = await tools.subagent.execute("failed", { agent: "probe", instructions: "[reject]" }, undefined, undefined, ctx);
     for (const width of [36, 120]) {
       const text = plain(tools.subagent.renderResult(complete, { expanded: true }, theme, {}), width);
-      expect(text).toContain("first answer"); expect(text).toContain("Duration:");
-      expect(text).toContain("LAST REQUESTED LINE");
+      expect(text).toContain("first answer"); expect(text).not.toContain("Duration:");
       expect(plain(tools.subagent.renderResult(failed, {}, theme, {}), width).replace(/\s+/g, " ")).toContain("preflight rejected");
     }
     expect(messages.mock.calls).toHaveLength(3);

@@ -2,6 +2,8 @@
 
 Repository-wide rules for this cross-platform dotfiles repository: Linux, Windows PowerShell, Git Bash/MSYS2, and WSL; Dotbot and project submodules under `modules/`; terminals converging on zsh. Read this file first. More specific active-client or directory instructions take precedence without changing these repository-wide invariants:
 
+Ignore `pi/profiles/legacy/` for local work unless the user explicitly mentions the legacy profile. Do not inspect, change, test, or include it in scope by default.
+
 - Claude Code: `CLAUDE.md`
 - OpenCode/Codex: `opencode/AGENTS.md`
 - Default Pi's profile-wide working rules live in `pi/profiles/default/AGENTS.md`, loaded through `PI_CODING_AGENT_DIR` by bare `pp`. Other profiles keep their own instructions.
