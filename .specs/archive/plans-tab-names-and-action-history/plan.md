@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
-status: ready
-completed: null
+status: completed
+completed: 2026-09-09
 ---
 
 # Plan tab names and session action history
@@ -109,20 +109,19 @@ After execution authorization, create/resume the recorded worktree and verify th
   - Verify bounded queries over persisted session-entry fixtures return expected outcomes and one invocation trace. Do not claim analytics can recover a picker-only session that Pi never saved. No new source, dashboard, or telemetry service.
   - Evidence: 2026-09-09, default profile, task worktree: operator docs and query reference describe native session-only storage, persistence limits, existing `session_entries` access, outcome counts, and chronological traces. `tests/log-analytics-store.test.ts` verifies persisted outcome counts and invocation traces without a new source.
 
-- [ ] **T4: Finite validation and closeout**
+- [x] **T4: Finite validation and closeout**
   - Depends on T1-T3.
   - From `pi/profiles/default`, run `pnpm test plans.test.ts session-launch.test.ts herdr-orchestrator-label.test.ts herdr-launch.test.ts plan-run-runtime.test.ts plan-runs.test.ts` plus the event-history and analytics test files actually added/changed, then `pnpm run typecheck`. Read the testing skill before changing tests.
   - Include bounded runtime-level transcript renderer/replay coverage and verify the native fresh-session persistence limitation; do not replace it with mock-call assertions alone. Reuse existing harness patterns without making provider calls or executing real plans.
   - Record actual command/date/profile/results. Attached-client Herdr visual acceptance is a non-blocking verification limit unless performed safely; do not claim it from unit tests.
   - Archive and integrate under the closeout contract below.
-  - Evidence: 2026-09-09, from `pi/profiles/default`, `pnpm test plans.test.ts session-launch.test.ts herdr-orchestrator-label.test.ts herdr-launch.test.ts plan-run-runtime.test.ts plan-runs.test.ts plan-events.test.ts log-analytics-store.test.ts` passed: 8 files, 126 tests. `pnpm run typecheck` passed. No provider calls, real plan execution, or attached-client visual acceptance performed. Archive, commit, merge, and closeout remain intentionally unfinished.
+  - Evidence: 2026-09-09, from `pi/profiles/default`, `pnpm test plans.test.ts session-launch.test.ts herdr-orchestrator-label.test.ts herdr-launch.test.ts plan-run-runtime.test.ts plan-runs.test.ts plan-events.test.ts log-analytics-store.test.ts` passed: 8 files, 126 tests. `pnpm run typecheck` passed. Task commit `e4bf2bb8` was merged into recorded target `main` by `88172627`; the archived spec and implementation were verified on the target. No provider calls, real plan execution, or attached-client visual acceptance performed.
 
 ## Current handoff
 
-- Status: implementation and finite checks pass; integration pending while the task commit is prepared. Keep `r` and use the Pi session log only.
-- Completed: source/API investigation, read-only naming investigation, offline fresh-session persistence probe, user resolution of both design decisions, T1-T3 implementation, and bounded automated validation.
-- Next: the executing agent must archive and commit the task, merge it into the recorded `main` target, record completion metadata there, and clean up the task worktree.
-- Action owner: executing agent.
+- Status: completed on 2026-09-09.
+- Completed: implementation and finite checks, task commit `e4bf2bb8`, merge to recorded `main` target as `88172627`, target verification, and completion metadata.
+- Next: none. Attached-client Herdr naming/scrollback testing remains a non-blocking verification limit.
 - Limits: no provider calls, real plan execution, or attached-client Herdr naming/scrollback test performed.
 
 ## Closeout after execution authorization
