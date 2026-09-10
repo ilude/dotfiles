@@ -8,7 +8,7 @@ completed: null
 
 ## Goal and scope
 
-Add a `steward` advisory agent to the default Pi profile. Normally consult it after reviewer or validator findings arrive, before assigning follow-up fixes. Steward compares findings and proposed fixes with the user's request, corrections, and agreed checks so review does not silently become more requirements, safety gates, or unfinished remediation.
+Add a `steward` advisory agent to the default Pi profile. Normally consult it after review or validation findings arrive, before assigning or implementing follow-up fixes. Handle obvious bounded corrections directly; do not require the caller to recognize scope uncertainty before consultation. Steward compares findings and proposed fixes with the user's request, corrections, and agreed checks so review does not silently become more requirements, safety gates, or unfinished remediation.
 
 User requirements and settled decisions:
 
@@ -18,9 +18,9 @@ User requirements and settled decisions:
 - Keep consultation concise and flexible. No required finding categories, report template, severity matrix, approval record, or repeated consultation for each finding.
 - Steward advises on existing findings, not another open-ended review. It must not add acceptance criteria or turn hypothetical risks into required infrastructure.
 
-Non-goals: changing Strategist's responsibility or other roles' model defaults; new review/validation phases; automatic invocation or blocking; new tools, tool parameters, transport, lifecycle, retry state, telemetry, evaluation frameworks, or safety systems; planning-skill/global `AGENTS.md` edits; legacy-profile and module work. General instruction wording is a separate operator discussion, not a task in this plan.
+Non-goals: changing Strategist's responsibility or other roles' model defaults; new review/validation phases; automatic invocation or blocking; new tools, tool parameters, approval tokens or storage, transport, lifecycle, retry state, telemetry, evaluation frameworks, or safety systems; edits to `/do-it`; planning-skill/global `AGENTS.md` edits; legacy-profile and module work. General instruction wording is a separate operator discussion, not a task in this plan.
 
-Authorization: planning only. No active agent or execution guidance is changed by this plan. A subsequent `/do-it` or equivalent authorizes implementation and task-local commits/integration under the closeout below, not push or deployment.
+Authorization: the original execution request authorized implementation and task-local commits/integration under the closeout below, not push or deployment. The subsequent discussion authorized this plan revision before resuming execution. This revision changes no active agent or execution guidance.
 
 ## Fresh-context handoff
 
@@ -37,7 +37,9 @@ Required reading:
 
 ### Prerequisite and verified starting state
 
-Implement and integrate [Strategist delegation guidance](../strategist-delegation-guidance/plan.md) first. It supplies the shared caller guidance/catalog used here. This is an implementation dependency, not a requirement for users to obtain Strategist approval before consulting Steward. Before execution, locate that spec at its active or archived path, read its actual checklist/status, and inspect the integrated implementation. Do not assume an archive path alone proves completion. If it has not been implemented, report that prerequisite and do not duplicate its module in this task. Repair the link when the prerequisite moves to `.specs/archive/strategist-delegation-guidance/`.
+Revision verified on 2026-09-10 at `41bfdf3c`, branch `main`: Strategist is integrated, its archived plan has completed status and T1–T5 checked, and `lib/subagents/guidance.ts` exists. Adoption commit `2007673f` was followed by `664dcaa3` (delegation threshold and removal of duplicate `/do-it` guidance), `29f5ed31` (Sol low default), and `07b98224` (Luna effort floor). The shared rule is the executable source; `/do-it` has no Strategist-specific rule. `lib/subagents/options.ts` owns `resolveAgentEffort`, used by the existing dispatch paths. Extend that validation for Steward rather than adding a parallel mechanism. The historical starting state below is context, not a current blocker.
+
+Implement and integrate [Strategist delegation guidance](../archive/strategist-delegation-guidance/plan.md) first. It supplies the shared caller guidance/catalog used here. This is an implementation dependency, not a requirement for users to obtain Strategist approval before consulting Steward. Before execution, locate that spec at its active or archived path, read its actual checklist/status, and inspect the integrated implementation. Do not assume an archive path alone proves completion. If it has not been implemented, report that prerequisite and do not duplicate its module in this task. The prerequisite link now targets its verified archive.
 
 Verified on 2026-09-10 at `40a4b771`, branch `main`:
 
@@ -50,7 +52,7 @@ Verified on 2026-09-10 at `40a4b771`, branch `main`:
 
 Planning profile verified from `PI_CODING_AGENT_DIR`: `C:/Users/mglenn/.dotfiles/pi/profiles/default`. Planning activity was file inspection and one bounded Luna-medium explorer inspection of integration points; no implementation, tests, live Steward invocation, or model efficacy evaluation was run. Source/configuration inspection establishes wiring opportunities, not proof that an advisory agent prevents churn.
 
-Preserve unrelated current edits in `CHANGELOG.md`, `pi/profiles/default/docs/web-tools.md`, `pi/profiles/default/extensions/web-tools/index.ts`, and `pi/profiles/default/tests/web-tools.test.ts`. Recheck actual Git state before execution. This session's Strategist plan revision and AIF-029 feedback entry are related context, not permission to commit other pending work.
+At revision time, unrelated pending edits include `CHANGELOG.md`, `agents/reviewer.md`, `docs/subagents.md`, `tests/subagent-definitions.test.ts`, feedback/failure records, Bedrock and image tooling, and `powershell/profile.ps1`. Paths without a root prefix here are under `pi/profiles/default/`. Recheck actual Git state before execution and preserve all unrelated work, including overlapping test and documentation edits; this plan grants no permission to include it in task commits.
 
 Proposed execution worktree: `C:/Users/mglenn/.dotfiles-worktrees/steward-review-guidance`; branch: `feat/steward-review-guidance`. Originating integration target: `C:/Users/mglenn/.dotfiles`, branch `main`. Record actual path/branch/target before implementation. Execute and test using the default profile in that worktree; do not inspect or test legacy.
 
@@ -58,12 +60,17 @@ Proposed execution worktree: `C:/Users/mglenn/.dotfiles-worktrees/steward-review
 
 ### Role and evidence
 
-Proposed implementation defaults: `name: steward`, model `openai-codex/gpt-5.6-luna`, effort `high`, tools `[read, grep, find, ls, subagent_parent]`, skills `[]`, delegates `[]`. Luna high is a starting configuration for comparing bounded findings and requirements, not a measured quality threshold. Preserve existing override behavior and all other role defaults; do not introduce a Steward-specific escalation policy.
+Settled implementation defaults: `name: steward`, model `openai-codex/gpt-5.6-luna`, effort `high`, tools `[read, grep, find, ls, subagent_parent]`, skills `[]`, delegates `[]`. Allow Luna high or xhigh only for Steward; reject other Luna effort selections through existing configuration validation. Luna xhigh needs no additional approval when supplied evidence is dense or interacting. Preserve Strategist's existing validation and other role defaults.
+
+Before selecting a larger model such as Sol or Astra for a Steward call, the caller must present a concrete justification and obtain user approval. Express this in caller instructions, not runtime approval records, tokens, storage, or tool parameters. Do not automatically retry Steward with a larger model. Without approval, use Luna high/xhigh or ask the user to resolve the underlying scope ambiguity. Reviewer severity, security terminology, finding count, or an inconclusive Luna result alone do not justify a larger model.
+
+This policy favors bounded comparison over expansive synthesis. The belief that Luna is less likely to rationalize scope expansion is a working hypothesis, not a demonstrated model-quality result; no model benchmark is required.
 
 The caller supplies the relevant user request and corrections, accepted plan/checks when present, implementation summary or diff, reviewer/validator findings, and any proposed fixes. Use existing results and file references, not a new dossier or artifact format. Do not presume children inherit the full parent conversation. Because Steward has no shell, the caller supplies Git diffs or command output when needed. Steward may read cited source to check a finding and ask its parent for missing facts; it does not launch audits or run extra checks.
 
 The role body should express these decisions in short plain language, not reproduce this plan:
 
+- Do not search for indirect rationales to make proposed work appear in scope. Identify assumptions needed to connect a proposal to the request; unstated preferences and hypothetical risks do not authorize expansion. Recommend deferral or a user question when appropriate.
 - Compare findings with the actual request, corrections, and agreed checks. Identify the affected requirement or demonstrate the task-related regression; if neither is established, say so. A reviewer severity label or use of the word security is not evidence by itself.
 - Distinguish an observed failure or source-demonstrated defect from an untested possibility. Runtime reproduction is not required for a defect that source evidence establishes. Do not require exhaustive proof before a local correction.
 - Recommend a fix that addresses the stated defect without adding unrelated behavior. If a proposed fix introduces a new subsystem, dependency, approval step, or acceptance check, explain why the requested behavior needs it; do not assume the finding authorizes it.
@@ -77,15 +84,15 @@ Advice can recommend a bounded fix, a question, deferring an improvement, or pro
 
 Add a compact recommendation to the prerequisite's shared caller guidance, delivered to the orchestrator and Team Lead through its existing composition. Use explicit tool/result names, along these lines:
 
-> Normally consult `subagent` with `agent: "steward"` after receiving reviewer or validator findings, before assigning follow-up fixes. Supply the request, agreed checks, findings, and proposed fixes together. Reuse its advice for the same findings; consult again for new findings or a changed proposed fix, not merely because another check ran. If there are no findings, continue the existing task or closeout. Steward advises; the caller decides and proceeds.
+> Normally consult `subagent` with `agent: "steward"` after receiving review or validation findings, before assigning or implementing follow-up fixes. Handle obvious bounded corrections directly. Supply the request, agreed checks, findings, and proposed fixes together. Reuse its advice for the same findings; consult again for new findings or a changed proposed fix, not merely because another check ran. If there are no findings, continue the existing task or closeout. Steward advises; the caller decides and proceeds.
 
 This does not require launching a reviewer or validator when the task did not call for one. It does not require waiting for every concurrent assignment before addressing available findings. Group available related findings instead of launching one Steward per finding. No special bypass parameter or explanation is needed when the caller handles an obvious local fix directly. Do not turn Steward unavailability into an approval blocker or automatically launch replacement advisors.
 
 Add `steward` to Team Lead's permitted delegates. Root and coordinator catalogs should discover the definition through the prerequisite's existing logic; Steward itself remains an ordinary leaf with no dispatcher guidance or recommendation catalog. No changes to child transport, authority, or runtime ordering are needed.
 
-Add one short explicit Steward consultation reference to `/do-it`, pointing to post-review/validation findings and advice reuse. Keep detailed evidence guidance in the role body and the caller rule in the shared module; do not copy them throughout role files. Preserve Strategist's pre-assignment recommendation. `/do-it` remains execution of settled intent, not another planning or review phase. Preserve argument handling, local Git authority, worktree handling, outcome labels, and closeout.
+Keep executable consultation and larger-model approval guidance only in the shared module; keep detailed evidence guidance in the role body and summarize behavior in documentation. Do not add a duplicate rule to `/do-it` or other role files. Preserve Strategist's pre-assignment recommendation and justified-delegation threshold. Steward consultation is the explicit post-finding advisory case, not a reason to create a new review assignment. `/do-it` remains unchanged, including argument handling, local Git authority, worktree handling, outcome labels, and closeout.
 
-Document both agents as recommended consultation at different points, with no mandatory approvals. Documentation must not present the role as proven churn prevention or as a deterministic finding filter.
+Document both agents as recommended consultation at different points, not work-approval gates. Distinguish the user approval required specifically for selecting a larger Steward model from ordinary Luna consultation. Documentation must not present the role as proven churn prevention or as a deterministic finding filter.
 
 ## Execution guidance
 
@@ -97,17 +104,17 @@ Normally assign one implementation task below per worker and incorporate its res
 
 - [ ] **T1: Add the Steward definition and Team Lead permission**
   - Depends on: integrated Strategist implementation.
-  - Files: proposed `pi/profiles/default/agents/steward.md`; existing `agents/teamlead.md` and `tests/subagent-definitions.test.ts` under that profile.
-  - Add the leaf with the defaults and evidence-based remit above; add Team Lead's delegate entry without changing other permissions/defaults.
+  - Files: proposed `pi/profiles/default/agents/steward.md`; existing `agents/teamlead.md`, `lib/subagents/options.ts`, and `tests/subagent-definitions.test.ts` under that profile.
+  - Add the leaf with the defaults and evidence-based remit above; add Team Lead's delegate entry without changing other permissions/defaults. Extend existing effort resolution to permit only high/xhigh for Luna Steward selections. Test accepted high/xhigh, rejected other Luna efforts, and preservation of Strategist and other-role behavior. Larger-model approval remains caller guidance, not runtime enforcement.
   - Extend the real bundled-definition loader assertions for role discovery, exact read-only tools, empty skills/delegates, model/effort, Team Lead access, and preservation of existing defaults. Do not mock away definition loading.
   - Done when `pnpm test subagent-definitions.test.ts` from the task's default profile passes with no new bundled definition errors.
   - Evidence: Not started.
 
 - [ ] **T2: Add post-finding consultation guidance and documentation**
   - Depends on: T1.
-  - Files under the default profile: `lib/subagents/guidance.ts`, `tests/subagent-guidance.test.ts`, `prompts/do-it.md`, `docs/subagents.md`; root `CHANGELOG.md`.
-  - Add the shared caller recommendation and short `/do-it` reference. Preserve Strategist guidance, ordinary-leaf prompt behavior, and all existing execution/closeout semantics. Document why review findings do not automatically authorize more requirements.
-  - Extend existing guidance tests for Steward catalog presence in the root and permitted Team Lead audiences, its absence of dispatcher context as an ordinary leaf, and the caller's explicit consultation reference. Use focused content assertions for advice reuse and `/do-it` reference/argument preservation, not full prose snapshots. No new runtime mechanism or prompt-composition path.
+  - Files under the default profile: `lib/subagents/guidance.ts`, `tests/subagent-guidance.test.ts`, `docs/subagents.md`; root `CHANGELOG.md`.
+  - Add the shared caller recommendation and larger-model justification/approval instruction, including no automatic larger-model retry. Leave `/do-it` unchanged. Preserve Strategist guidance, ordinary-leaf prompt behavior, and all existing execution/closeout semantics. Document why review findings do not automatically authorize more requirements.
+  - Extend existing guidance tests for Steward catalog presence in the root and permitted Team Lead audiences, its absence of dispatcher context as an ordinary leaf, and the caller's explicit consultation reference. Use focused content assertions for advice reuse, obvious bounded corrections, Luna defaults, and the larger-model approval/no-automatic-retry instruction, not full prose snapshots or `/do-it` prose assertions. No new approval mechanism or prompt-composition path; the effort restriction extends existing validation only.
   - Done when `pnpm test subagent-guidance.test.ts subagent-definitions.test.ts` passes and the role, shared text, and docs agree about recommended consultation rather than approval.
   - Evidence: Not started.
 
@@ -115,7 +122,7 @@ Normally assign one implementation task below per worker and incorporate its res
   - Depends on: T2.
   - From the task worktree's `pi/profiles/default`, run `pnpm run typecheck` and `pnpm test subagent-guidance.test.ts subagent-definitions.test.ts subagent-loader.test.ts`. At the task repository root run `git diff --check`. If dependencies are absent, use the repository's documented pnpm frozen-install and default-profile dependency-link setup.
   - Review the assembled caller/Steward prompts once: a failed agreed check permits a bounded correction; a speculative improvement does not create acceptance work; a pre-existing defect is evaluated by its effect on the task; no findings require no Steward call. This is a wording review, not a live-model behavior test or new fixture framework.
-  - Confirm `/do-it` argument forms, execution authority, and outcome/closeout instructions are unchanged except for the consultation reference. Fix demonstrated failures from these changes, then stop.
+  - Confirm `/do-it` argument forms, execution authority, and outcome/closeout instructions are unchanged in full. Fix demonstrated failures from these changes, then stop.
   - Done when the named checks pass and actual date/profile/path/results and verification limits are recorded. No provider benchmark, live Herdr run, operator acceptance, or exhaustive review suite is required.
   - Evidence: Not started.
 
@@ -127,9 +134,10 @@ Normally assign one implementation task below per worker and incorporate its res
 
 ## Validation and current handoff
 
-- Status: ready for review and execution authorization, with implementation ordered after Strategist integration.
+- Status: ready to resume authorized execution; Strategist integration is verified.
 - Completed: planning/source inspection and one read-through for execution handoff, wording, and scope consistency. Task-owned Markdown links and whitespace were checked. No agent, shared guidance, or execution prompt changes implemented; no implementation tests run.
-- Next: review this plan; execute Strategist first, then authorize this plan. Do not execute the prerequisite merely because this plan references it.
+- Next: execute T1 using the integrated Strategist prerequisite when resuming the previously authorized Steward execution. This revision itself changes only the plan; no implementation or implementation checks were run.
+- Revision decisions: normal post-review/validation consultation with direct handling of obvious bounded corrections; shared-only executable guidance with no `/do-it` edit; Luna high default and high/xhigh-only Luna validation; user-approved larger-model selection through instructions only, with no automatic larger-model retry. These supersede the original override and `/do-it` requirements.
 - Open user decisions: none identified. Technical defaults above are the proposed implementation, not already validated behavior.
 - Verification limits: no live Steward run or measured reduction in churn. Offline loader/prompt checks establish configuration and instruction delivery, not model compliance. Observe normal use after rollout rather than add evaluation machinery here.
 

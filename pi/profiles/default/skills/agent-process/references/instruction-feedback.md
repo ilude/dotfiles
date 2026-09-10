@@ -1,5 +1,29 @@
 # Agent instruction feedback log
 
+## AIF-039 - Preserve operator intent in changelogs and commit messages
+
+- **Reference:** Operator request to align gcc_automation changelog guidance with other local systems, 2026-09-10.
+- **Evidence:** Dotfiles `AGENTS.md` requires material changelog entries to explain what changed, why, constraints, and preserved behavior. GitLab Helm guidance also requires date, author, and relevant paths/systems. Dotfiles commit guidance requires human-style natural grammar and logical atomic grouping. The literal `C:\work` path does not exist; comparable repositories under `C:\Projects` were reviewed instead.
+- **Decision:** Align repository `AGENTS.md` and the changelog skill around operator intent, outcome, reason, constraints, preserved behavior, relevant scope, and validation. Require commit subjects/bodies to express the same intent and outcome rather than merely naming edited files.
+- **Related:** AIF-038 (approval records), AIF-032 (observable concise instructions).
+- **Status:** Approved for implementation; future adherence remains unverified.
+
+## AIF-038 - Record sensitive-artifact tracking approvals in the changelog
+
+- **Reference:** Operator requirement during the M365 recovery-state audit, 2026-09-10.
+- **Feedback:** Any approval to track normally prohibited tenant exports or sensitive artifacts must be appended to repository `CHANGELOG.md` with who approved, what was approved, where it may be tracked, and when approval was given. The repository should define AGENTS/Claude guidance and a reusable changelog-maintenance skill.
+- **Decision:** Create `CHANGELOG.md`, add repository instructions and `.claude/commands/changelog.md`, and make the required Claude files trackable. Approval records must identify exact artifacts and must not contain the sensitive payload itself.
+- **Related:** AIF-037 (local processing versus tracking), AIF-036 (recovery intent).
+- **Status:** Approved for implementation; future adherence remains unverified.
+
+## AIF-037 - Separate local sensitive-data processing from repository tracking
+
+- **Reference:** Operator clarification during the M365 recovery-state audit, 2026-09-10.
+- **Feedback:** Email exports, Teams messages, SharePoint files, eDiscovery content, and audit/sign-in logs may be downloaded and processed locally. They must remain ignored and must not be committed unless the operator explicitly approves and instructs tracking the specific material. CUI, sensitive evidence, credentials, and unrelated PII remain prohibited from normal tracked configuration; user and group identity data needed to configure M365 is allowed.
+- **Decision:** Add the explicit local-processing-versus-tracking boundary to repository `AGENTS.md` and `.claude/CLAUDE.md` at operator request.
+- **Related:** AIF-032 (observable triggers), AIF-036 (complete recovery intent).
+- **Status:** Approved for implementation; future adherence remains unverified.
+
 ## AIF-036 - Keep Teams recovery intent synchronized after live changes
 
 - **Reference:** Operator correction after an approved live Team membership removal was not reflected in tracked recovery configuration, 2026-09-10.
