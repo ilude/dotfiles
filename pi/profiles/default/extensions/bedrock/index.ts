@@ -1,9 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { accountBedrockMessage, bedrockSessionReference } from "../../lib/bedrock/accounting.js";
 import { createBedrockModelProvider, resolveBedrockMantleTarget } from "../../lib/bedrock/provider.js";
 import { callerArgs, dashboardArgs, parseCaller, parseQueryId, parseResults, queryArgs, resultsArgs } from "../../lib/bedrock/cloudwatch-snapshot.js";
-import { appendRecord, createBaseline, formatStatus, formatUsage, makeRecord, readBaseline, summarize } from "../../lib/bedrock/ledger.js";
-
-const PROVIDERS = new Set(["amazon-bedrock", "bedrock-mantle"]);
+import { createBaseline, formatStatus, formatUsage, readBaseline, summarize } from "../../lib/bedrock/ledger.js";
 
 export default function bedrock(pi: ExtensionAPI): void {
 	pi.registerProvider(createBedrockModelProvider());
@@ -13,14 +12,14 @@ export default function bedrock(pi: ExtensionAPI): void {
 	};
 	pi.on("session_start", async (_event, ctx) => refreshStatus(ctx));
 	pi.on("message_end", async (event, ctx) => {
-		const message: any = event.message;
-		if (message.role !== "assistant" || !PROVIDERS.has(message.provider) || !message.usage) return;
-		const target = message.responseModel || (message.provider === "amazon-bedrock" ? message.model : undefined);
-		const record = makeRecord({ timestamp: message.timestamp, session: ctx.sessionManager.getSessionFile?.() || ctx.sessionManager.getSessionId?.(), provider: message.provider, model: message.model, target, transport: message.provider === "amazon-bedrock" ? "runtime" : target?.startsWith("openai.") ? "mantle-openai" : "mantle-anthropic", region: message.provider === "bedrock-mantle" ? resolveBedrockMantleTarget().region : undefined, usage: message.usage });
-		try { await appendRecord(record); await refreshStatus(ctx); } catch { ctx.ui.setStatus("bedrock", "bedrock: estimate incomplete"); }
-		if (record.pricing.status === "estimated" && record.pricing.components) return { message: { ...message, bedrockPricing: { status: "estimated", basis: record.pricing.basis }, usage: { ...message.usage, cost: { ...record.pricing.components, total: record.pricing.total } } } };
-		return { message: { ...message, bedrockPricing: { status: "unpriced", basis: record.pricing.basis, reason: record.pricing.reason } } };
+		const result = await accountBedrockMessage(event.message, bedrockSessionReference(ctx), () => ctx.ui.setStatus("bedrock", "bedrock: estimate incomplete"));
+		if (!result) return;
+		if (result.persisted) await refreshStatus(ctx);
+		return { message: result.message };
 	});
+	// Child/provider processes append to the shared ledger after their own tool
+	// work. Refresh once the parent turn settles so the footer sees those writes.
+	pi.on("agent_settled", async (_event, ctx) => refreshStatus(ctx));
 	pi.registerCommand("bedrock", {
 		description: "Inspect, refresh, or reconcile the consolidated Amazon Bedrock integration",
 		handler: async (args, ctx) => {

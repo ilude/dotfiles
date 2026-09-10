@@ -1,13 +1,33 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildBedrockModelRoutes, contextForBedrockRoute, createBedrockRoutingStream, resolveBedrockMantleTarget } from "../lib/bedrock/provider.ts";
+import { readRecords } from "../lib/bedrock/ledger.ts";
 import registerBedrockProvider from "../extensions/bedrock/provider.ts";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+
+let scratch: string | undefined;
+
+afterEach(() => { vi.unstubAllEnvs(); if (scratch) rmSync(scratch, { recursive: true, force: true }); scratch = undefined; });
 
 describe("Bedrock provider routing", () => {
 	it("registers the provider-only child extension without operator commands", () => {
 		const registerProvider = vi.fn(); const registerCommand = vi.fn();
-		registerBedrockProvider({ registerProvider, registerCommand } as any);
+		registerBedrockProvider({ registerProvider, registerCommand, on: vi.fn() } as any);
 		expect(registerProvider).toHaveBeenCalledOnce(); expect(registerCommand).not.toHaveBeenCalled();
+	});
+	it("accounts and annotates finalized child responses without a status surface", async () => {
+		scratch = mkdtempSync(join(tmpdir(), "bedrock-child-accounting-")); vi.stubEnv("PI_CODING_AGENT_DIR", scratch);
+		let messageEnd: any;
+		const registerCommand = vi.fn();
+		registerBedrockProvider({ registerProvider: vi.fn(), registerCommand, on: vi.fn((name: string, handler: any) => { if (name === "message_end") messageEnd = handler; }) } as any);
+		const message: any = { role: "assistant", provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", timestamp: Date.now(), usage: { input: 1_000_000, output: 0 } };
+		const result = await messageEnd({ message }, { sessionManager: { getSessionFile: () => "child.jsonl" } });
+		expect(result.message.bedrockPricing.status).toBe("estimated");
+		expect((await readRecords()).map(record => record.session)).toEqual(["child.jsonl"]);
+		expect(readFileSync(join(scratch, "bedrock-usage.jsonl"), "utf8")).toContain("openai.gpt-5.6-luna");
+		expect(registerCommand).not.toHaveBeenCalled();
 	});
 	it("keeps regions scoped and curates newest supported routes", () => {
 		expect(resolveBedrockMantleTarget({ AWS_REGION: "eu-west-1" }).region).toBe("us-east-1");

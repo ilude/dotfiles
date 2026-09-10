@@ -72,6 +72,11 @@ describe("image tools", () => {
 		const transform = pi._getTool("image_transform")!;
 		expect(inspect).toBeDefined();
 		expect(transform).toBeDefined();
+		// Deferred tools must not change the system prompt when activated.
+		for (const tool of [inspect, transform]) {
+			expect(tool).not.toHaveProperty("promptSnippet");
+			expect(tool).not.toHaveProperty("promptGuidelines");
+		}
 		for (const term of ["dimensions", "format", "orientation", "metadata"]) expect(inspect.description.toLowerCase()).toContain(term);
 		for (const term of ["crop", "resize", "rotate", "convert", "compress", "image"]) expect(transform.description.toLowerCase()).toContain(term);
 		expect(transform.parameters.type).toBe("object");

@@ -310,7 +310,6 @@ export default function registerImageTools(pi: ExtensionAPI): void {
 		name: "image_properties",
 		label: "Image Properties",
 		description: "Read image dimensions, format, orientation, and metadata.",
-		promptSnippet: "Read image dimensions, format, orientation, and metadata before crop, resize, rotate, convert, or compress",
 		parameters: Type.Object({ source: Type.String() }, { additionalProperties: false }),
 		execute(_id, params, _signal, _onUpdate, ctx) {
 			return inspectImage(params.source, ctx.cwd ?? process.cwd());
@@ -320,7 +319,6 @@ export default function registerImageTools(pi: ExtensionAPI): void {
 		name: "image_transform",
 		label: "Transform Image",
 		description: "Safely crop, resize, rotate, convert, or compress a local image with metadata stripped by default.",
-		promptSnippet: "Crop, resize, rotate, convert, or compress a local image",
 		parameters: imageTransformSchema,
 		execute(_id, params, signal, _onUpdate, ctx) {
 			return transformImage(params, signal, ctx.cwd ?? process.cwd());

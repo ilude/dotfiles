@@ -1,12 +1,24 @@
 # Changelog
 
+## 2026-09-10: Preserve the system prompt when image tools activate
+
+**Changed:** Deferred image tools no longer add active-only discovery snippets to the system prompt. Their searchable descriptions, schemas, processing behavior, and safeguards are unchanged. This removes a prompt-prefix change that can undermine cache reuse even with native deferred tool loading; it does not guarantee cache hits or change fallback schema handling for other providers.
+
 ## 2026-09-10: Add focused Pi extension development guidance
 
 **Added:** The `pi-extension` skill defines the active profile from Pi's running configuration and guides extension development and review using installed APIs and comparable active-profile features. It carries concrete lessons for render callbacks, command feedback, subprocesses, and session-owned resources, plus stable prompt/tool prefixes, replaceable task context, and evidence-based cache reporting. This adds guidance only, not runtime behavior, telemetry, or an exhaustive review requirement.
 
+## 2026-09-10: Let default-profile reviewers inspect repository state
+
+**Changed:** General reviewers now have guarded shell access for Git status, working-tree diffs, and relevant checks. They remain non-writing reviewers with explicit no-edit/no-autofix instructions; this is a policy boundary rather than an OS sandbox.
+
 ## 2026-09-10: Keep simple Pi work with the orchestrator
 
 **Changed:** Default Pi now delegates only for bounded implementation, parallel investigation, specialist research, or requested independent review. Other work stays with the orchestrator. Strategist remains the normal consultation before justified delegation, defaults to Sol low, reserves Astra low for named complexity, and rejects Luna effort below high. Duplicate `/do-it` guidance was removed.
+
+## 2026-09-10: Account Bedrock usage from restricted default-profile subagents
+
+**Fixed:** The provider-only Bedrock extension now records and annotates finalized child responses in the shared ledger without exposing operator commands or status UI. The parent refreshes its Bedrock footer when the turn settles, after child and tool activity, so cross-process writes are visible.
 
 ## 2026-09-10: Ground Pi engineering choices in comparable repository features
 

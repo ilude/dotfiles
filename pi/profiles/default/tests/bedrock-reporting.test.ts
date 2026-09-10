@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import bedrock from "../extensions/bedrock/index.ts";
-import { createBaseline, readBaseline } from "../lib/bedrock/ledger.ts";
+import { appendRecord, createBaseline, makeRecord, readBaseline } from "../lib/bedrock/ledger.ts";
 
 let dir: string;
 afterEach(() => { vi.unstubAllEnvs(); rmSync(dir, { recursive: true, force: true }); });
@@ -26,6 +26,9 @@ it("registers one management command, records once, normalizes cost, and reports
 	const onMessage = hooks.get("message_end")?.[0]!; const command = commands.get("bedrock")!;
 	const result = await onMessage({ message }, ctx); expect(result.message.usage.cost.total).toBeCloseTo(0.22); expect(statuses.get("bedrock")).toContain("$0.22");
 	await onMessage({ message }, ctx); await command.handler("", ctx); expect(notify.mock.calls.at(-1)?.[0]).toContain("openai.gpt-5.6-luna: $0.22 Tokens: 1.0M in");
+	await appendRecord(makeRecord({ timestamp: Date.now() + 1, session: "child-session", provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", usage: { input: 1_000_000 } }));
+	for (const fn of hooks.get("agent_settled") ?? []) await fn({}, ctx);
+	expect(statuses.get("bedrock")).toContain("$0.44");
 	await command.handler("refresh", ctx); expect(ctx.modelRegistry.refresh).toHaveBeenCalledWith(expect.objectContaining({ providers: ["bedrock-mantle"] }));
 	await command.handler("reconcile", ctx); expect(exec).toHaveBeenCalledWith("aws", expect.arrayContaining(["logs", "start-query"]), { timeout: 30_000 }); expect(notify.mock.calls.at(-1)?.[0]).toContain("CloudWatch baseline: $1.75 (2 invocation(s))");
 	await expect(command.handler("reconcile", ctx)).rejects.toThrow("already exists");

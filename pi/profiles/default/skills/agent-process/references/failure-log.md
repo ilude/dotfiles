@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-023 - Reviewer could not inspect an uncommitted diff
+
+- **Reference:** Review of the default-profile Bedrock subagent accounting fix, 2026-09-10.
+- **Observed:** The reviewer had file-reading tools but no shell, so it could not run `git status`, `git diff`, or checks. It waited for parent-supplied evidence until the orchestrator cancelled it.
+- **Finding:** Git working-tree and index state are not available through ordinary file reads. The general reviewer role was less capable of repository inspection than the validator despite its evidence-based review purpose.
+- **Remediation:** Grant the reviewer guarded `bash` for inspection and checks while retaining no-edit/no-autofix instructions. Orchestrators should still match assignments to the worker's declared tools.
+- **Related:** AIF-034, APR-020, AIF-027.
+- **Status:** Role, documentation, and focused definition test updated; runtime effectiveness requires reload and a new reviewer.
+
 ## APR-022 - Strategist was invoked for a simple lookup
 
 - **Reference:** Operator correction during a group-membership request in the wrong repository, 2026-09-10.

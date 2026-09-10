@@ -139,8 +139,12 @@ if ($env:LOCALAPPDATA) {
 
 # Make bare pi use the repository-owned default profile and startup preflight.
 # pp remains available for explicitly selecting another profile.
-$script:PiProfileLauncher = Join-Path $PSScriptRoot '..\scripts\pp.ps1'
+$script:PiProfileLauncher = Get-Command pp -CommandType Application, ExternalScript -ErrorAction SilentlyContinue |
+  Select-Object -First 1 -ExpandProperty Source
 function pi {
+  if (-not $script:PiProfileLauncher) {
+    throw 'pi: pp launcher is unavailable on PATH'
+  }
   & $script:PiProfileLauncher @args
 }
 

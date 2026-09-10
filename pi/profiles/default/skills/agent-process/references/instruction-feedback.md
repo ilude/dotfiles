@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-036 - Keep Teams recovery intent synchronized after live changes
+
+- **Reference:** Operator correction after an approved live Team membership removal was not reflected in tracked recovery configuration, 2026-09-10.
+- **Observed:** The tenant change succeeded, but `TeamsGroups.json` covered only one Team per tenant. General live-wins and rebuild guidance did not explicitly require exporting all Teams and refreshing tracked owners/members after live changes. The Teams runbook allowed untracked live members to remain indefinitely and described the earlier tracked-only export workflow.
+- **Decision:** At repository scope, require a full Teams export after live Team, owner, or member changes; reconcile `Config/Tenants/<tenant>/Teams/TeamsGroups.json` to reviewed live state; and verify `-Plan` reports no changes. Update the Teams runbook to distinguish additive enforcement from complete recovery capture. Claude continues to inherit `AGENTS.md` through `.claude/CLAUDE.md`.
+- **Related:** AIF-031 (comparable repository baseline), AIF-032 (observable triggers and stopping conditions).
+- **Status:** Approved for implementation and repository commit/push; effectiveness in future work remains unverified.
+
 ## AIF-035 - Carry forward concrete extension lessons for the active profile
 
 - **Reference:** Operator approval to add the Pi extension skill, review prompt caching, and commit task-owned changes, 2026-09-10.
@@ -7,6 +15,14 @@
 - **Related:** AIF-031's comparable-feature baseline and AIF-032's concise, observable instructions.
 - **Decision:** Added `pi-extension/SKILL.md` with active-profile ownership, installed API sources, four concrete runtime lessons, and prompt-caching guidance. No historical contract tree, runtime machinery, or telemetry was imported. Caching review reports findings separately without authorizing fixes.
 - **Status:** Native skill discovery and a synthetic prompt/deferred-tool check passed. Code inspection and the synthetic check establish an image-tool prompt-prefix change. Existing Codex observations show cache reuse but cannot attribute misses to that change. No live provider comparison or model-adherence test.
+
+## AIF-034 - Let reviewers inspect Git state and run checks
+
+- **Reference:** Operator agreement after a reviewer could not inspect an uncommitted Bedrock fix, 2026-09-10.
+- **Feedback:** Reviewing source files without Git status, working-tree diffs, or checks is too restrictive for ordinary repository review.
+- **Decision:** Add guarded `bash` to the general reviewer role, matching the validator's shell access while retaining explicit no-edit/no-autofix instructions. Document that this is a policy boundary, not an OS sandbox.
+- **Related:** APR-023, APR-020, AIF-027.
+- **Status:** Implemented with a bundled-role definition assertion; future adherence remains unverified.
 
 ## AIF-033 - Work directly unless delegation has a named purpose
 
