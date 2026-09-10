@@ -1,7 +1,7 @@
 ---
 created: 2026-09-10
-status: ready
-completed: null
+status: completed
+completed: 2026-09-10
 ---
 
 # Make log analytics cheap for small questions and complete for large ones
@@ -166,18 +166,18 @@ Keep checkbox evidence current. Do not turn benchmark failures into acceptable c
 
     Worker measurements reported end-to-end time, CPU and peak RSS for every sample: large cold/warm were targeted 56/39 ms and 16/48 ms CPU with 82.6/82.1 MiB RSS; failures 5,051/4,682 ms and 5,203/4,438 ms CPU with 143.4/116.7 MiB RSS; traversal 5,347/4,676 ms and 5,970/4,890 ms CPU with 149.3/141.7 MiB RSS; and SQL 18,040/15,653 ms and 16,344/15,937 ms CPU with 314.7/326.9 MiB RSS. Cold cache hits were 0 and warm cache hits were 16 for every sample; safely-pruned files were 0. Every invocation-owned SQL path was absent after close/cleanup, and the scratch fixture tree was removed. During the large SQL run, bounded staging was adjusted to retain the raw disk table and lazily project typed fields, avoiding a demonstrated 1 GB transient full-copy OOM while preserving the registered JSON view and temporary-disk ownership.
 
-- [ ] **T6: Archive, commit and integrate**
+- [x] **T6: Archive, commit and integrate**
   - Depends on: T5.
   - Follow the closeout contract below. Mark this task complete only after integration and cleanup succeed.
-  - Evidence: implementation and agreed checks passed; archival and task-branch commit are in progress, with integration and cleanup still pending.
+  - Evidence: completed 2026-09-10. Implementation and archive were committed as `8f468451`, merged through conflict-resolved integration commit `f74bb171` into recorded target `main` as `d67682f3`, and verified present with no active spec copy. The task and temporary integration worktrees and branches were removed; cleanup was verified. Concurrent target work remained uncommitted and unchanged.
 
 ## Agreed validation and current handoff
 
-- Status: ready for execution authorization; implementation not started.
-- Completed planning work: current source/docs/test inspection, user decisions captured, one fresh-executor review of dependencies and finish conditions. Operator-approved read-only fallback guidance added to the existing analytics skill/reference rather than creating a duplicate skill, with matching plan/feedback/changelog updates. No runtime prototype or performance checks run.
-- Next: after authorization, create/resume the task worktree and start T1.
-- Blockers/open user decisions: none. Numeric budgets and native ingestion details are bounded implementation choices to verify in T1, not another approval stage.
-- Verification limits: no private corpus census, no new runtime acceptance, and no proof of future model adherence. Operator testing after reload is non-blocking.
+- Status: completed and integrated on 2026-09-10.
+- Validation: smoke and performance scripts passed; `pnpm test log-analytics-` passed 41 tests across 6 files; `pnpm run typecheck` and `git diff --check` passed. Full synthetic measurements are in `implementation-evidence.md` and T5 above.
+- Integration: task commit `8f468451`; integration commit `f74bb171`; target merge commit `d67682f3` on the recorded originating `main` checkout. The archived spec is present, the active copy is absent, and task-owned worktrees/branches were removed.
+- Blockers/open user decisions: none.
+- Verification limits: no private corpus census, no live model calls, and no proof of future model adherence. Operator testing after reload remains non-blocking.
 
 ## Closeout
 
