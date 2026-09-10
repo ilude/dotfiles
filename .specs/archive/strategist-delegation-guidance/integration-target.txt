@@ -1,0 +1,2 @@
+origin_checkout=C:/Users/mglenn/.dotfiles
+origin_branch=main

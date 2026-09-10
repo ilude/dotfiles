@@ -9,6 +9,7 @@ import { inside, workspaceRoot } from "./workspace.ts";
 import { NameAllocator } from "./names.ts";
 import { SubagentLayout } from "./layout.ts";
 import { createHerdrCli } from "../herdr-cli.ts";
+import { composedAgentPrompt } from "./guidance.ts";
 export interface Delivery extends ChildRecord { deliveryId: string }
 export interface BoundOrigin { deliver: (record: Delivery) => boolean; status?: (records: ChildRecord[]) => void }
 export interface CleanupSummary { complete: boolean; attempted: number; failures: Array<{ id: string; error: string }> }
@@ -160,13 +161,15 @@ export class SubagentRuntime {
   if(input.surface==="visible"&&process.env.HERDR_ENV!=="1")throw new Error("Visible subagents require Herdr; no headless substitution is permitted");
   const allocator=this.names.get(input.origin)??new NameAllocator();
   this.names.set(input.origin,allocator);
-  const frozen={...input,cwd,displayName:allocator.allocate()};
+  const catalog=new Map(input.catalog??[[input.definition.name,input.definition]]);
+  const parentDelegates=input.parentId?this.contexts.get(input.parentId)?.input.definition.delegates:undefined;
+  const frozen={...input,cwd,displayName:allocator.allocate(),prompt:composedAgentPrompt(input.definition,catalog,parentDelegates)};
   const child=input.surface==="visible"
    ?new VisibleChild(frozen as LaunchSpec,resolve(childExtension),resolve(profileDir),this.layoutFor(input.origin))
    :new RpcChild(frozen as LaunchSpec,resolve(childExtension),resolve(profileDir));
   this.children.set(child.record.id,child);
   this.inert.delete(child.record.id);
-  this.contexts.set(child.record.id,{input:frozen,profile:resolve(profileDir),extension:resolve(childExtension),catalog:new Map(input.catalog??[[input.definition.name,input.definition]])});
+  this.contexts.set(child.record.id,{input:frozen,profile:resolve(profileDir),extension:resolve(childExtension),catalog});
   child.hasOutstandingChildren=()=>[...this.children.values()].some(c=>c.record.parentId===child.record.id&&(c.record.status!=="settled"||c.record.phase==="cleanup"))||[...this.pending.values()].some(r=>r.parentId===child.record.id);
   child.record.waitState=initialWaitState??(background?"background":"attached");
   child.onProgress=record=>{

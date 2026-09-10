@@ -19,7 +19,7 @@ User requirements and settled intent:
 - Distinguish the orchestrator (the primary model interacting with the user), named agent roles, running subagents, and model/effort selections.
 - `/do-it` remains execution of settled intent, not another planning or review phase.
 
-Non-goals: runtime auto-routing/retries, new tools or tool parameters, telemetry, safety machinery, transport/lifecycle changes, new coordinator levels, council redesign, changing other roles' model defaults, Herdr registration fixes, legacy-profile work, and module changes. Post-review finding triage belongs to the separate [Steward plan](../steward-review-guidance/plan.md), not Strategist. This plan does not depend on Steward.
+Non-goals: runtime auto-routing/retries, new tools or tool parameters, telemetry, safety machinery, transport/lifecycle changes, new coordinator levels, council redesign, changing other roles' model defaults, Herdr registration fixes, legacy-profile work, and module changes. Post-review finding triage belongs to the separate [Steward plan](../../steward-review-guidance/plan.md), not Strategist. This plan does not depend on Steward.
 
 Authorization: this request authorizes a plan only. No active instructions or implementation have been changed. Execution requires a subsequent instruction such as `/do-it`; that invocation authorizes task-local commits and integration under its existing rules, but not push or deployment.
 
@@ -117,39 +117,39 @@ Normally delegate one implementation task below at a time. Inspect and incorpora
 
 ## Tasks
 
-- [ ] **T1: Define shared audience-aware delegation context**
+- [x] **T1: Define shared audience-aware delegation context**
   - Depends on: none.
   - Add proposed `lib/subagents/guidance.ts` and proposed `tests/subagent-guidance.test.ts`, under the default profile.
   - Implement compact policy/catalog composition with explicit dispatch versus recommendation audiences, using `AgentDefinition` data. Keep ordinary-leaf output empty. No filesystem reads or dispatch behavior in this helper.
   - Verify audience filtering, deterministic entries, absent defaults, and non-mutation using small synthetic definitions. Check policy includes recommended pre-`subagent` consultation with advice reuse, evidence-based selection, Luna xhigh, Astra's user-only above-high restriction, and one cross-family retry without a rigid ladder. Avoid full-prose snapshots.
   - Done when the helper has a clear caller contract and focused tests pass.
-  - Evidence: Not started.
+  - Evidence: Implemented and covered by focused tests.
 
-- [ ] **T2: Wire context into root and frozen child prompts**
+- [x] **T2: Wire context into root and frozen child prompts**
   - Depends on: T1.
   - Files: `extensions/subagents.ts`, `lib/subagents/{runtime,rpc,launch}.ts`; touch `extensions/subagent-child.ts` only if composition requires it. Both transports already consume the shared launcher.
   - Replace root's duplicated generic paragraph with shared guidance and its resolved catalog. Compose coordinator/Strategist launch context once; preserve definition bodies and child authority. Restrict nested Strategist recommendations using the actual parent's permitted delegates.
   - Extend focused tests at the prompt assembly/launch boundary, plus existing runtime tests where parent context matters. Use existing transport fixtures, not real model calls or a new orchestration harness.
   - Verify trusted overrides appear, untrusted/invalid overrides do not leak, coordinator catalogs match allowed delegates, nested Strategist gets the caller's subset without dispatch permission, ordinary leaves lack extra context, and an existing child's composed prompt stays frozen after later catalog changes. Check visible/headless launch composition and unchanged model/effort arguments.
   - Done when root and child launch-boundary tests demonstrate the audience contract and existing authority tests remain green.
-  - Evidence: Not started.
+  - Evidence: Root and frozen child prompt composition implemented; focused launch/runtime tests pass.
 
-- [ ] **T3: Add Strategist and document recommended consultation**
+- [x] **T3: Add Strategist and document recommended consultation**
   - Depends on: T2.
   - Add proposed `agents/strategist.md`; update `agents/teamlead.md`, `prompts/do-it.md`, `docs/subagents.md`, and root `CHANGELOG.md`.
   - Implement the role/defaults above, add Team Lead permission, and keep role-specific instructions short. Document terminology, generated catalog visibility, shared selection/recovery guidance, explicit consultation syntax, and reload/frozen-child limits. Record why this addresses AIF-027/APR-020 without attributing the process exit to model weakness.
   - Extend `tests/subagent-definitions.test.ts` for the actual bundled Strategist definition and Team Lead delegate relationship. Check the role is read-only, has no delegates, and does not alter other defaults. Use focused content assertions for `/do-it`'s explicit role reference, recommended consultation/advice reuse, and preserved execution semantics, not a large prose snapshot.
   - Done when the resolved profile loads without new definition errors, the role and recommended invocation are covered, and docs/changelog match implemented behavior.
-  - Evidence: Not started.
+  - Evidence: Bundled role, Team Lead permission, `/do-it`, docs, changelog, and definition assertions implemented.
 
-- [ ] **T4: Validate the integrated change**
+- [x] **T4: Validate the integrated change**
   - Depends on: T3.
   - From the task worktree's `pi/profiles/default`, run `pnpm run typecheck` and `pnpm test subagent-guidance.test.ts subagent-definitions.test.ts subagent-loader.test.ts subagent-runtime.test.ts subagent-rpc.test.ts subagent-child-outcomes.test.ts`, plus any new focused prompt/launch test file created in T2 or T3.
   - Run `git diff --check` at the task repository root. If worktree dependencies are absent, use the repository's documented pnpm frozen-install and default-profile dependency-link setup, not another package manager.
   - Review assembled prompt examples once for root, Team Lead, root Strategist, nested Strategist, and ordinary leaf. Confirm one shared policy copy where applicable, no catalog on ordinary leaves, and no model-family names presented as agent roles.
   - Fix demonstrated task-relevant failures. Stop when these checks pass; do not add live-provider benchmarks or unrelated suites as acceptance gates.
   - Done when finite checks pass and actual date/profile/path/results are recorded. Synthetic prompt/transport checks establish wiring, not model compliance or live Herdr behavior.
-  - Evidence: Not started.
+  - Evidence: 2026-09-10 default-profile typecheck passed; 47 focused tests passed across 7 files; `git diff --check` passed. Synthetic prompt checks cover wiring only; no live model or Herdr run.
 
 - [ ] **T5: Archive, commit, integrate, and clean up**
   - Depends on: T4 and execution authorization.
@@ -159,9 +159,9 @@ Normally delegate one implementation task below at a time. Inspect and incorpora
 
 ## Validation and current handoff
 
-- Status: ready for user review and execution authorization. Technical defaults/mechanisms above are the proposed implementation, not already active behavior.
+- Status: implementation and agreed agent-owned checks complete; integration pending. Technical defaults/mechanisms above are the proposed implementation, not already active behavior.
 - Completed: planning and source inspection only. The 2026-09-10 revision received a single read-through for execution handoff, wording, and scope consistency; task-owned Markdown links and whitespace were checked. No implementation tests were run for this revision.
-- Next: after authorization, create/record the dedicated worktree and begin T1.
+- Next: archive and commit on the task branch, merge into the recorded `main` target, record completion metadata, and clean up the task worktree.
 - Open consequential decisions: none identified. Existing reviewer and other role defaults remain unchanged.
 - Verification limits: no live Strategist run, model/effort efficacy evaluation, or live Herdr prompt inspection. These are non-blocking limits, not required operator acceptance steps. Observe ordinary assignments after rollout rather than adding evaluation infrastructure here.
 

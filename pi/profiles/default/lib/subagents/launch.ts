@@ -10,5 +10,5 @@ export function childLaunch(spec: LaunchSpec, id: string, profile: string, endpo
  if(d.tools.includes("log_analytics"))extension("log-analytics-tool.ts");
  if(spec.surface==="visible"){extension("herdr-agent-state.ts");extension("herdr-ui-prompt-state.ts")}
  for(const skill of spec.skills)args.push("--skill",skill);
- return {args,env:{PI_CODING_AGENT_DIR:resolve(profile),PI_SUBAGENT_AUTHORITY:JSON.stringify({id,agent:d.name,tools:d.tools,delegates:d.delegates,parentId:spec.parentId,cwd:spec.cwd,skills:spec.skills,surface:spec.surface}),PI_SUBAGENT_PROMPT:d.prompt,PI_SUBAGENT_ENDPOINT:endpoint?JSON.stringify(endpoint):""}};
+ return {args,env:{PI_CODING_AGENT_DIR:resolve(profile),PI_SUBAGENT_AUTHORITY:JSON.stringify({id,agent:d.name,tools:d.tools,delegates:d.delegates,parentId:spec.parentId,cwd:spec.cwd,skills:spec.skills,surface:spec.surface}),PI_SUBAGENT_PROMPT:spec.prompt??d.prompt,PI_SUBAGENT_ENDPOINT:endpoint?JSON.stringify(endpoint):""}};
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { loadDefinitions, resolveModel } from "../lib/subagents/definitions.ts";
 const roots:string[]=[];const old=process.env.PI_CODING_AGENT_DIR;
@@ -15,4 +16,14 @@ describe("subagent definitions",()=>{
  it.each(["delegates: true", "skills: 4", "model: false", "effort: []"])("rejects malformed optional authority: %s",(field)=>{const r=root();writeFileSync(join(r,"agents","worker.md"),`---\nname: worker\ndescription: worker\ntools: []\n${field}\n---\nprompt`);const got=loadDefinitions(r,false,r);expect(got.agents.has("worker")).toBe(false);expect(got.errors).toHaveLength(1)});
  it.each(["/model", "provider/", " provider/model"])("rejects incomplete model %s",(model)=>{expect(()=>resolveModel(model,undefined)).toThrow(/Explicit/)});
  it("requires explicit provider/model",()=>{expect(()=>resolveModel(undefined,undefined)).toThrow(/Explicit/);expect(resolveModel("openai-codex/model",undefined)).toEqual({provider:"openai-codex",id:"model"})});
+ it("loads the bundled read-only Strategist and grants Team Lead access without changing other defaults",()=>{
+  const profile=join(dirname(fileURLToPath(import.meta.url)),"..");
+  const catalog=loadDefinitions(profile,false,profile);
+  expect(catalog.errors).toEqual([]);
+  expect(catalog.agents.get("strategist")).toMatchObject({model:"openai-codex/gpt-5.6-luna",effort:"high",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
+  expect(catalog.agents.get("teamlead")?.delegates).toContain("strategist");
+  expect(catalog.agents.get("reviewer")?.model).toBe("openai-codex/gpt-5.6-sol");
+  const doIt=readFileSync(join(profile,"prompts","do-it.md"),"utf8");
+  expect(doIt).toContain('agent: "strategist"');expect(doIt).toContain("Reuse its advice");expect(doIt).toContain("does not reopen scope or acceptance");
+ });
 });
