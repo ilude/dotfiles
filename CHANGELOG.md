@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-10: Make default log analytics query-driven
+
+**Added:** The deferred `log_analytics` tool now exposes validated `search`, exact bounded `follow_up`, and explicit large SQL operations alongside cheap catalog/session discovery and standard SELECT queries. Results render compact matches, continuation/completion state, exclusions, bounded context, and phase/resource costs; expansion does not refetch data.
+
+**Documented:** The analytics skill, reference, and Pi README now provide targeted lookup, last-week recorded tool-error, complete three-month traversal, and large global-SQL recipes. They describe event-time coverage, process-local cursor lifetime and change boundaries, metadata-only cache contents, standard versus large cost/temporary-disk ownership, cleanup failures, and recovery actions. Existing read-only shell fallback guidance remains available when the tool cannot answer.
+
+**Preserved:** Existing JSONL writers, default/legacy read scope, read-only SQL restrictions, standard 5-second/512 MiB/1 GB/two-thread contract, and legacy profile behavior remain unchanged. Large mode is explicit and does not silently retry or raise memory limits.
+
 ## 2026-09-10: Preserve the system prompt when image tools activate
 
 **Changed:** Deferred image tools no longer add active-only discovery snippets to the system prompt. Their searchable descriptions, schemas, processing behavior, and safeguards are unchanged. This removes a prompt-prefix change that can undermine cache reuse even with native deferred tool loading; it does not guarantee cache hits or change fallback schema handling for other providers.

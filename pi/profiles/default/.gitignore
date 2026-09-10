@@ -8,6 +8,7 @@
 /auth.json
 /models-store.json
 /model-cache/
+/.analytics-state/
 /operator-footer-usage.json
 /bedrock-usage.jsonl
 /bedrock-cost-baseline.json

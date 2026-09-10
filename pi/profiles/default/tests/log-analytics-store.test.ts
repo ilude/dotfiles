@@ -1,13 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { withAnalyticsSession, setStagingObserver } from "../lib/log-analytics/store.js";
+import { withAnalyticsSession, setStagingObserver, setTemporaryStorageObserver } from "../lib/log-analytics/store.js";
 import { queryAnalytics } from "../lib/log-analytics/api.js";
 import { discoverSessions } from "../lib/log-analytics/sessions.js";
 import { analyticsFixture, recentMessage } from "./helpers/analytics-fixture.js";
 let fixture: Awaited<ReturnType<typeof analyticsFixture>>;
 beforeEach(async () => { fixture = await analyticsFixture(); });
-afterEach(async () => { setStagingObserver(undefined); await fixture.dispose(); });
+afterEach(async () => { setStagingObserver(undefined); setTemporaryStorageObserver(undefined); await fixture.dispose(); });
 const longQuery = "SELECT sum(a.i*b.i) FROM range(100000000) a(i) CROSS JOIN range(10000) b(i)";
 
 describe("bounded default analytics store", () => {
@@ -105,14 +105,63 @@ describe("bounded default analytics store", () => {
 		});
 	});
 
-	it("interrupts active queries for deadline and cancellation and closes the instance", async () => {
+	it("executes large global SQL from bounded disk staging with full records and bounded output", async () => {
+		const owned: string[] = []; setTemporaryStorageObserver(value => { owned.push(value); });
+		await fixture.session("default", "one", [
+			{ type: "message", id: "a", message: { role: "toolResult", toolName: "read", toolCallId: "shared", isError: true, content: [{ type: "text", text: "full payload" }] } },
+			"malformed",
+		]);
+		await fixture.session("legacy", "two", [{ type: "message", id: "b", message: { role: "toolResult", toolName: "read", toolCallId: "shared", isError: false } }]);
+		const result = await queryAnalytics(fixture.registry, { operation: "query", execution: "large", profiles: ["default", "legacy"], sources: ["session_entries"], maxRows: 1,
+			sql: "SELECT a._profile left_profile, b._profile right_profile, json_extract_string(a.record, '$.message.content[0].text') payload, count(*) OVER () total FROM session_entries a JOIN session_entries b USING (tool_call_id) WHERE a._profile='default' AND b._profile='legacy'" });
+		expect(result.rows).toEqual([{ left_profile: "default", right_profile: "legacy", payload: "full payload", total: "1" }]);
+		expect(result.cost).toMatchObject({ execution: "large", filesScanned: 2, recordsStaged: 4, malformedRecords: 1, memoryLimit: "1GB", threads: 2, deadlineMs: 120000, diskBudgetBytes: 4 * 1024 ** 3 });
+		expect(result.cost.peakOwnedDiskBytes).toBeGreaterThan(0);
+		expect(owned).toHaveLength(1); await expect(fs.stat(owned[0])).rejects.toThrow();
+		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large", maxInputBytes: 1 }, async session => {
+			expect((await session.query({ sql: "SELECT count(*) n FROM session_entries" })).rows).toEqual([{ n: "2" }]);
+		});
+	});
+
+	it("bounds large results and denies external SQL after staging", async () => {
+		const sentinel = path.join(fixture.scratch, "large-secret.jsonl").replaceAll("\\", "/"); await fs.writeFile(sentinel, '{"secret":true}\n');
+		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large" }, async session => {
+			const result = await session.query({ sql: "SELECT i FROM range(10000) t(i)", maxRows: 2 });
+			expect(result.rows).toHaveLength(2); expect(result.truncated).toBe(true);
+			await expect(session.query({ sql: `SELECT * FROM read_json_objects('${sentinel}')` })).rejects.toThrow();
+		});
+	});
+
+	it("interrupts active standard and large queries and cleans owned storage", async () => {
 		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], timeoutMs: 200 }, async session => session.query({ sql: longQuery }))).rejects.toThrow("exceeded 200 ms");
-		const controller = new AbortController();
-		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], signal: controller.signal }, async session => {
-			const timer = setTimeout(() => controller.abort(), 50);
-			try { return await session.query({ sql: longQuery }); } finally { clearTimeout(timer); }
-		})).rejects.toThrow("cancelled");
+		for (const execution of ["standard", "large"] as const) {
+			let owned: string | undefined; setTemporaryStorageObserver(value => { owned = value; });
+			const controller = new AbortController();
+			await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution, signal: controller.signal }, async session => {
+				const timer = setTimeout(() => controller.abort(), 50);
+				try { return await session.query({ sql: longQuery }); } finally { clearTimeout(timer); }
+			})).rejects.toThrow("cancelled");
+			if (owned) await expect(fs.stat(owned)).rejects.toThrow();
+		}
 		expect(await fs.readdir(fixture.scratch)).toEqual(["default", "legacy"]);
+	});
+
+	it("fails a large execution at its owned disk budget and removes exactly its invocation path", async () => {
+		await fixture.session("default", "one", [recentMessage]); let owned: string | undefined;
+		setTemporaryStorageObserver(value => { owned = value; });
+		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large", diskBudgetBytes: 1 }, async () => {})).rejects.toThrow("owned disk");
+		expect(owned).toBeTruthy(); await expect(fs.stat(owned!)).rejects.toThrow();
+		expect(await fs.readdir(fixture.scratch)).toEqual(["default", "legacy"]);
+	});
+
+	it("allows bounded spill under low memory without raising the ceiling", async () => {
+		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large", memoryLimit: "32MB", diskBudgetBytes: 256 * 1024 * 1024 }, async session => {
+			const settings = await session.query({ sql: "SELECT current_setting('memory_limit') memory, current_setting('temp_directory') temp_dir" });
+			expect(settings.rows[0].memory).toMatch(/30.5 MiB|32/); expect(settings.rows[0].temp_dir).not.toBe("");
+			const sorted = await session.query({ sql: "SELECT i FROM range(3000000) t(i) ORDER BY i DESC", maxRows: 1 });
+			expect(sorted.rows).toHaveLength(1); expect(sorted.truncated).toBe(true); expect(sorted.cost.memoryLimit).toBe("32MB");
+			expect(sorted.cost.peakOwnedDiskBytes).toBeGreaterThan(settings.cost.peakOwnedDiskBytes!);
+		});
 	});
 
 	it("serializes staging, releases failures, and cancels a queued operation promptly", async () => {

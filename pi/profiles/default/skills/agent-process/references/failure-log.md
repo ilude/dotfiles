@@ -25,7 +25,7 @@
 - **Verified implementation facts:** Queries stage all selected records before SQL predicates; metadata pagination and message-role filtering already exist. The current skill documents narrowing and limits but does not supply a complete resumable record-traversal recipe. Earlier port benchmarks record broad-query OOM, not successful large-corpus acceptance.
 - **Correction:** Withdraw full-period coverage claims. Separate sampled examples, exhaustive record search and semantic session review. Replace blanket expensive staging for search with bounded continuation and truthful coverage; test both cheap lookup and complete large analysis. A later assistant claim that role filtering was absent was also corrected against source.
 - **Related:** AIF-030, AIF-013, APR-002. This records one observed reporting failure, not its prevalence or a proven instruction-only cause.
-- **Status:** Remediation planned in repository-root-relative `.specs/query-driven-log-analytics/plan.md`; implementation and the original complete historical review remain unfinished.
+- **Status:** Runtime remediation and validation are recorded in repository-root-relative `.specs/archive/query-driven-log-analytics/plan.md`; the original complete historical review remains a separate unfinished deliverable.
 
 ## APR-020 - Herdr audit used one oversized, overpowered assignment
 
