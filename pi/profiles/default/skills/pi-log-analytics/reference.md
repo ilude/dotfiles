@@ -72,6 +72,45 @@ Every view exposes `_profile`, `_source_file`, `_record_key`, `_timestamp`, `ses
 
 `_record_key` uses a stored ID or raw-JSON hash. Use profile/file provenance with it. Identical ID-less observations share a hash and remain separate rows; hashes are not exact occurrence coordinates. Stored records are counted, not deduplicated events. Forks can contain shared history, and a single session file can contain multiple tree branches. Analytics does not restrict reads to the active branch or current compacted model context.
 
+### `/plans` action history
+
+Default-profile `/plans` events are native `custom` entries with `customType = 'plan-action-event'`. The payload is under `record.data` and includes a schema version, event ID, invocation and attempt IDs, action, phase, outcome, timestamp, profile/session/cwd, selected plan coordinates, exact Herdr identities when available, elapsed time for completed attempts, and bounded error details. They are display-only and excluded from model context. Use the existing source, with no additional analytics registration.
+
+Outcome counts across selected persisted sessions:
+
+```sql
+WITH plan_events AS (
+  SELECT json_extract_string(record, '$.data.action') AS plan_action,
+         json_extract_string(record, '$.data.outcome') AS plan_outcome
+  FROM session_entries
+  WHERE entry_type = 'custom'
+    AND json_extract_string(record, '$.customType') = 'plan-action-event'
+    AND json_extract_string(record, '$.data.phase') = 'outcome'
+)
+SELECT plan_action, plan_outcome, count(*) AS records
+FROM plan_events
+GROUP BY plan_action, plan_outcome
+ORDER BY plan_action, plan_outcome;
+```
+
+Chronological invocation trace for a session selected through `sessions` discovery and passed as `sessionRefs`:
+
+```sql
+SELECT _timestamp,
+       json_extract_string(record, '$.data.invocationId') AS invocation_id,
+       json_extract_string(record, '$.data.action') AS action_name,
+       json_extract_string(record, '$.data.phase') AS phase,
+       json_extract_string(record, '$.data.outcome') AS outcome_name,
+       json_extract_string(record, '$.data.plan.stub') AS stub
+FROM session_entries
+WHERE entry_type = 'custom'
+  AND json_extract_string(record, '$.customType') = 'plan-action-event'
+ORDER BY _timestamp
+LIMIT 200;
+```
+
+Only persisted native session files are searchable. Pi may keep a fresh picker-only session ephemeral until an assistant message is saved, so analytics cannot recover events from a session file that was never created.
+
 Codex records have no timestamp or session association; those columns stay null for the existing records. No metadata is invented or added to the writer. Bedrock pricing is the existing local estimate, not authoritative cloud billing. Ledger and session usage can overlap; do not sum them as independent spending.
 
 ## Bounds, coverage, and performance

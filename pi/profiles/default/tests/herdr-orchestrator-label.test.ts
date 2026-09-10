@@ -31,6 +31,13 @@ it("labels the inherited startup pane and tab without changing focus", async () 
   expect(f.notify).not.toHaveBeenCalled();
 });
 
+it("keeps pane labeling but does not late-rename an explicitly named plan child", async () => {
+  vi.stubEnv("PI_HERDR_TAB_LABEL", "plan-stub");
+  const f = fixture("/work/repository");
+  await f.start();
+  expect(f.exec).toHaveBeenCalledExactlyOnceWith("fixture-herdr", ["pane", "rename", "w1:p1", "Orchestrator"], { timeout: 2000 });
+});
+
 it("passes directory names with spaces as one literal label argument", async () => {
   const f = fixture("/work/project with spaces/");
   await f.start();

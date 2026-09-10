@@ -56,6 +56,7 @@ it("preserves branch session and plan inputs", async () => {
 	expect(receipt).toEqual({ tabId: "w9:t4", paneId: "w9:p4" });
 	const planOpen = vi.mocked(execFile).mock.calls[0][1] as string[];
 	expect(planOpen).toContain("PI_HERDR_PLAN_PATH=.specs/example/plan.md");
+	expect(planOpen).toContain("PI_HERDR_TAB_LABEL=do-it");
 	expect(planOpen).not.toContain("run");
 	expect(planOpen).toContain("--no-focus");
 });

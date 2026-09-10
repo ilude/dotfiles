@@ -158,6 +158,11 @@ function extractJsonObject(text: string): Record<string, unknown> {
 	return JSON.parse(text.slice(start)) as Record<string, unknown>;
 }
 
+export async function renameHerdrPiTab(tabId: string, title: string, cwd = process.cwd()): Promise<void> {
+	if (!tabId) throw new Error("Herdr tab identity is missing.");
+	await runHerdrAsync(["tab", "rename", tabId, title], cwd);
+}
+
 function createHerdrTab(cwd: string, title: string): string {
 	const workspace = process.env.HERDR_WORKSPACE_ID;
 	if (!workspace) throw new Error("HERDR_WORKSPACE_ID is not set.");
@@ -176,7 +181,8 @@ export async function createHerdrPiTab(cwd: string, title: string, sessionFile?:
 	const args = ["plugin", "pane", "open", "--plugin", "local.pi", "--entrypoint", "pi", "--placement", "tab", "--workspace", workspace,
 		"--cwd", process.platform === "win32" ? msysPathToWindows(cwd) : cwd,
 		"--env", `PI_HERDR_PROFILE_DIR=${profileDir()}`, "--env", `PI_HERDR_SESSION_FILE=${sessionFile || ""}`,
-		"--env", `PI_HERDR_PLAN_PATH=${planPath || ""}`, "--env", `PI_HERDR_PLAN_RUN_TOKEN=${planRunToken || ""}`, "--no-focus"];
+		"--env", `PI_HERDR_PLAN_PATH=${planPath || ""}`, "--env", `PI_HERDR_PLAN_RUN_TOKEN=${planRunToken || ""}`,
+		"--env", `PI_HERDR_TAB_LABEL=${planPath ? title : ""}`, "--no-focus"];
 	let output: string;
 	try {
 		output = await runHerdrAsync(args, cwd);
@@ -201,7 +207,7 @@ export async function createHerdrPiTab(cwd: string, title: string, sessionFile?:
 		throw new HerdrPiTabLaunchError(`Pi tab ${tab} was created, but focusing failed. Do not relaunch. ${String(error)}`, { mayHaveLaunched: true, tabId: tab, paneId: pane });
 	}
 	try {
-		await runHerdrAsync(["tab", "rename", tab, title], cwd);
+		await renameHerdrPiTab(tab, title, cwd);
 	} catch (error) {
 		throw new HerdrPiTabLaunchError(`Pi tab ${tab} was created, but renaming failed. Do not relaunch. ${String(error)}`, { mayHaveLaunched: true, tabId: tab, paneId: pane });
 	}
