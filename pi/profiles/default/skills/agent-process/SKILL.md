@@ -16,4 +16,4 @@ Use this skill when the operator asks to capture, review, or refine agent behavi
 
 ## Research reference
 
-For reviews of scope drift or excessive verification, consult [Agent scope and stopping](../../../../../docs/research/obsidian-vault/agent-workflows/patterns/agent-scope-and-stopping.md) as needed. It contains source findings and unproven control candidates, not approved policy.
+For reviews of scope drift, excessive verification, delegation sizing, dependency decomposition, or model/effort routing, consult [Agent scope and stopping](../../../../../docs/research/obsidian-vault/agent-workflows/patterns/agent-scope-and-stopping.md) as needed. It combines external research with related local feedback and incidents; its control candidates are not approved policy.
