@@ -20,7 +20,7 @@ export type FollowUpRequest = { operation: "follow_up"; occurrence: OccurrenceRe
 type SearchFile = SessionFile & { horizon: number; root: string };
 type SearchState = {
 	scope: string; profiles: ProfileId[]; files: SearchFile[]; filters: NormalizedFilters; interval?: NormalizedInterval;
-	maxResults: number; fileIndex: number; offset: number; cumulative: MutableCoverage; createdAt: number; exclusions: DiscoveryCoverage;
+	maxResults: number; fileIndex: number; offset: number; cumulative: MutableCoverage; exclusions: DiscoveryCoverage;
 };
 type NormalizedInterval = { since: string; until: string };
 type NormalizedFilters = { entryTypes?: string[]; messageRoles?: string[]; toolNames?: string[]; isError?: boolean; text?: string };
@@ -43,14 +43,11 @@ export type SearchResult = {
 	stopReason: string; coverage: SearchCoverage;
 };
 
-const PAGE_BYTES = 8 * 1024 * 1024;
-const PAGE_RECORDS = 10_000;
 const MAX_RESULTS = 100;
 const MAX_RECORD_BYTES = 16 * 1024 * 1024;
 const READ_BUFFER_BYTES = 64 * 1024;
 const MAX_DIAGNOSTICS = 20;
 const MAX_CURSOR_STATES = 128;
-const CURSOR_TTL_MS = 30 * 60 * 1000;
 const cursors = new Map<string, SearchState>();
 
 function normalizedFilters(filters: SearchFilters | undefined): NormalizedFilters {
@@ -99,7 +96,6 @@ function matches(record: ReturnType<typeof normalizeRecord>, filters: Normalized
 		(filters.text === undefined || record.text.includes(filters.text));
 }
 function snippet(text: string): string { return text.length > 500 ? `${text.slice(0, 500)}…` : text; }
-function stateExpired(state: SearchState): boolean { return Date.now() - state.createdAt > CURSOR_TTL_MS; }
 function storeCursor(state: SearchState): string {
 	const cursor = randomUUID().replaceAll("-", "");
 	cursors.set(cursor, state);
@@ -109,7 +105,7 @@ function storeCursor(state: SearchState): string {
 function takeCursor(cursor: string, requestScope: string | undefined): SearchState {
 	if (cursor.length > 1024) throw new Error("invalid or expired analytics search cursor");
 	const state = cursors.get(cursor);
-	if (!state || stateExpired(state)) { cursors.delete(cursor); throw new Error("analytics search cursor expired; start a fresh search"); }
+	if (!state) throw new Error("invalid analytics search cursor; start a fresh search");
 	if (requestScope !== undefined && requestScope !== state.scope) throw new Error("analytics search cursor scope changed");
 	cursors.delete(cursor);
 	return state;
@@ -168,7 +164,7 @@ function changedKind(initial: FileMarker, current: FileMarker, horizon: number):
 
 async function scanPage(state: SearchState, signal: AbortSignal, discovery: DiscoveryCoverage): Promise<{ matches: SearchMatch[]; page: MutableCoverage; stopReason: string; complete: boolean }> {
 	const page = emptyCoverage(state.files); page.selectedFiles = state.files.length; page.selectedBytes = state.cumulative.selectedBytes;
-	const matchesFound: SearchMatch[] = []; const started = performance.now(); const touched = new Set<number>();
+	const matchesFound: SearchMatch[] = []; const touched = new Set<number>();
 	const caches = new Map<string, MetadataCache>();
 	const ranges = new Map<number, { min: string | null; max: string | null; through: number }>();
 	let stopReason = "page_budget";
@@ -197,7 +193,7 @@ async function scanPage(state: SearchState, signal: AbortSignal, discovery: Disc
 				matchesFound.push(match);
 			}
 			state.offset = item.nextOffset;
-			if (matchesFound.length >= state.maxResults || page.examinedRecords >= PAGE_RECORDS || page.examinedBytes >= PAGE_BYTES || performance.now() - started >= 5000) { stopReason = matchesFound.length >= state.maxResults ? "result_limit" : page.examinedRecords >= PAGE_RECORDS ? "record_limit" : page.examinedBytes >= PAGE_BYTES ? "byte_limit" : "deadline"; break; }
+			if (matchesFound.length >= state.maxResults) { stopReason = "result_limit"; break; }
 		}
 		page.examinedFiles = touched.size;
 		if (stopReason !== "page_budget") break;
@@ -230,7 +226,7 @@ export async function searchLogs(registry: ProfileRegistry, request: SearchReque
 		const all = await discoverSessions(registry, profiles, signal, discovery);
 		const selected = request.sessionRefs ? selectSessions(all, request.sessionRefs, profiles) : all.filter(item => request.cwd === undefined || item.cwd === request.cwd);
 		const files = selected.filter(item => request.cwd === undefined || item.cwd === request.cwd).map(item => ({ ...item, horizon: item.bytes, root: registry.roots.default }));
-		state = { scope: scopeOf({ profiles, sessionRefs: request.sessionRefs, cwd: request.cwd, interval, filters, maxResults }), profiles, files, filters, interval, maxResults, fileIndex: 0, offset: files[0]?.headerBytes ?? 0, cumulative: emptyCoverage(files), createdAt: Date.now(), exclusions: discovery };
+		state = { scope: scopeOf({ profiles, sessionRefs: request.sessionRefs, cwd: request.cwd, interval, filters, maxResults }), profiles, files, filters, interval, maxResults, fileIndex: 0, offset: files[0]?.headerBytes ?? 0, cumulative: emptyCoverage(files), exclusions: discovery };
 		const result = await scanPage(state, signal ?? new AbortController().signal, discovery);
 		state.cumulative.examinedFiles = result.page.examinedFiles; state.cumulative.examinedBytes = result.page.examinedBytes;
 		return finish(state, result, discovery);
@@ -241,7 +237,7 @@ export async function searchLogs(registry: ProfileRegistry, request: SearchReque
 }
 function finish(state: SearchState, result: { matches: SearchMatch[]; page: MutableCoverage; stopReason: string; complete: boolean }, discovery: DiscoveryCoverage): SearchResult {
 	const complete = result.complete || result.stopReason === "inventory_changed" && false;
-	const nextCursor = complete || result.stopReason === "inventory_changed" ? null : storeCursor({ ...state, createdAt: Date.now() });
+	const nextCursor = complete || result.stopReason === "inventory_changed" ? null : storeCursor(state);
 	if (complete || result.stopReason === "inventory_changed") cursors.forEach((value, key) => { if (value === state) cursors.delete(key); });
 	return { profiles: state.profiles, matches: result.matches, nextCursor, complete, stopReason: result.stopReason, coverage: outputCoverage(state, result.page, discovery) };
 }

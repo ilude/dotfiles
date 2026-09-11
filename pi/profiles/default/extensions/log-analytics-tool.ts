@@ -63,9 +63,9 @@ export function registerLogAnalytics(pi: ExtensionAPI, resolveProfiles: () => Pr
 			switch (params.operation) {
 				case "catalog":
 					details = { sources: analyticsCatalog(),
-						defaults: { execution: "standard", profiles: "active registered profile", timeoutMs: 5000, maxInputBytes: 536870912, threads: 2, memoryLimit: "1GB", maxRows: 1000, maxRowBytes: 262144,
-							searchPageBytes: 8388608, searchPageRecords: 10000, searchMaxResults: 100, largeTimeoutMs: 120000, largeDiskBudgetBytes: 4294967296 },
-						limits: "Standard SQL is invocation-local in-memory with a 512 MiB selected-input bound and no spill. Explicit large SQL uses invocation-owned disk staging/spill with a 120 s deadline and 4 GiB disk budget while retaining the 1 GB DuckDB and two-thread ceilings. Search cursors are process-local, bounded and expire; cache state is disposable metadata only. No arbitrary roots, telemetry, or persistent transcript index." };
+						defaults: { execution: "standard", profiles: "active registered profile", threads: 2, memoryLimit: "2GB", maxRows: 1000, maxRowBytes: 262144,
+							searchMaxResults: 100, largeDiskBudgetBytes: 8589934592 },
+						limits: "Queries, discovery, and search have no internal deadline or selected-input ceiling and remain caller-cancellable. Standard SQL is invocation-local in-memory with no spill. Explicit large SQL uses invocation-owned disk staging/spill with an 8 GiB disk budget while retaining the 2 GB DuckDB and two-thread ceilings. Search cursors are process-local and capped to prevent unbounded retained state; cache state is disposable metadata only. SQL remains read-only over registered sources, with extension loading and arbitrary filesystem access disabled. Results and follow-up context remain bounded for model context." };
 					break;
 				case "sessions":
 					details = await sessionAnalytics(await resolveProfiles(), params, signal);

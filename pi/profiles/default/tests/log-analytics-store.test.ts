@@ -93,12 +93,9 @@ describe("bounded default analytics store", () => {
 		});
 	});
 
-	it("rejects excessive input before staging and enforces native resource configuration", async () => {
+	it("enforces native resource configuration", async () => {
 		await fixture.session("default", "one", [recentMessage]);
-		let staged = false; setStagingObserver(() => { staged = true; });
-		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], maxInputBytes: 1 }, async () => {})).rejects.toThrow("exceeds bound");
-		expect(staged).toBe(false);
-		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], threads: 2, memoryLimit: "1GB" }, async session => {
+		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], threads: 2, memoryLimit: "2GB" }, async session => {
 			const result = await session.query({ sql: "SELECT current_setting('threads') threads, current_setting('memory_limit') memory, current_setting('temp_directory') temp_dir" });
 			expect(result.rows[0]).toMatchObject({ threads: "2", temp_dir: "" });
 			expect(result.rows[0].memory).toMatch(/GiB|MiB/);
@@ -115,10 +112,11 @@ describe("bounded default analytics store", () => {
 		const result = await queryAnalytics(fixture.registry, { operation: "query", execution: "large", profiles: ["default", "legacy"], sources: ["session_entries"], maxRows: 1,
 			sql: "SELECT a._profile left_profile, b._profile right_profile, json_extract_string(a.record, '$.message.content[0].text') payload, count(*) OVER () total FROM session_entries a JOIN session_entries b USING (tool_call_id) WHERE a._profile='default' AND b._profile='legacy'" });
 		expect(result.rows).toEqual([{ left_profile: "default", right_profile: "legacy", payload: "full payload", total: "1" }]);
-		expect(result.cost).toMatchObject({ execution: "large", filesScanned: 2, recordsStaged: 4, malformedRecords: 1, memoryLimit: "1GB", threads: 2, deadlineMs: 120000, diskBudgetBytes: 4 * 1024 ** 3 });
+		expect(result.cost).toMatchObject({ execution: "large", filesScanned: 2, recordsStaged: 4, malformedRecords: 1, memoryLimit: "2GB", threads: 2, diskBudgetBytes: 8 * 1024 ** 3 });
+		expect(result.cost).not.toHaveProperty("deadlineMs");
 		expect(result.cost.peakOwnedDiskBytes).toBeGreaterThan(0);
 		expect(owned).toHaveLength(1); await expect(fs.stat(owned[0])).rejects.toThrow();
-		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large", maxInputBytes: 1 }, async session => {
+		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large" }, async session => {
 			expect((await session.query({ sql: "SELECT count(*) n FROM session_entries" })).rows).toEqual([{ n: "2" }]);
 		});
 	});
@@ -132,8 +130,7 @@ describe("bounded default analytics store", () => {
 		});
 	});
 
-	it("interrupts active standard and large queries and cleans owned storage", async () => {
-		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], timeoutMs: 200 }, async session => session.query({ sql: longQuery }))).rejects.toThrow("exceeded 200 ms");
+	it("honors caller cancellation for standard and large queries and cleans owned storage", async () => {
 		for (const execution of ["standard", "large"] as const) {
 			let owned: string | undefined; setTemporaryStorageObserver(value => { owned = value; });
 			const controller = new AbortController();

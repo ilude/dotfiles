@@ -1,5 +1,24 @@
 # Agent instruction feedback log
 
+## AIF-041 - Do not impose unrequested safety gates or resource ceilings
+
+- **Reference:** Operator correction after the weekly session-failure review, 2026-09-11.
+- **Feedback:** The operator did not request the custom `log_analytics` query deadlines, selected-input bound, DuckDB memory ceiling, or many other safety gates added to the default profile. These controls obstruct requested work and shift operational policy away from the operator without agreement.
+- **Finding:** The review hit the tool's configured 120-second large-query deadline and 1 GB DuckDB ceiling while performing the requested exhaustive analysis. A direct JSONL fallback completed the affected review. Existing AIF-015, AIF-024, AIF-029, AIF-031, and APR-024 already reject generic, unrequested gates and ceremony; this is another concrete occurrence involving resource limits rather than authorization prompts.
+- **Operator clarification:** Limits that protect model context size are acceptable. The objection concerns unrequested operational gates and resource ceilings that obstruct work, not bounded tool-result rendering or pagination needed to keep results usable in context.
+- **Recommendation:** Inventory custom default-profile gates and limits, identify their provenance and concrete purpose, and present removal or simplification recommendations for operator decision. Preserve context-size protections. Do not silently raise, retain, or replace operational gates with new gates. This feedback does not itself authorize runtime changes.
+- **Related:** AIF-015, AIF-024, AIF-029, AIF-031, APR-024, APR-026.
+- **Status:** Operator approved remediation. Removed internal analytics deadlines, the standard selected-input ceiling, search byte/record/deadline page gates, and cursor expiry; raised default DuckDB memory to 2 GB and large temporary disk to 8 GiB; retained two threads, serialized staging, caller cancellation, context-output bounds, bounded cursor state, bounded physical-record/header reads, and the read-only registered-source boundary. Focused analytics tests and TypeScript validation pass.
+
+## AIF-040 - Preserve approved development fixture policy across sessions
+
+- **Reference:** Operator correction during MPS EKS dev seed-data review, 2026-09-10.
+- **Feedback:** Exact development identities, claims, password hashes, and salts are intentional test fixtures when target-gated to MPS dev/staging. Do not repeatedly apply production data-minimization guidance after this policy is settled.
+- **Finding:** The active global comparable-environment rule already rejects importing controls from unrelated environments, and the current task context explicitly identified the data as dev/test. The assistant nevertheless raised a generic repository-access concern without evidence that it violated an applicable project policy. This is an adherence failure. Session clearing also makes a project decision unreliable when it remains only in chat context.
+- **Recommendation:** Record the approved fixture policy at monorepo scope: exact dev/staging test identities and authentication material may be retained when required for functional parity and constrained by existing target gates; assess them for deterministic behavior and target isolation, not production data-minimization. This instruction change requires operator approval.
+- **Related:** AIF-031, AIF-037, APR-025.
+- **Status:** Feedback recorded; repository instruction change awaiting operator approval.
+
 ## AIF-039 - Preserve operator intent in changelogs and commit messages
 
 - **Reference:** Operator request to align gcc_automation changelog guidance with other local systems, 2026-09-10.

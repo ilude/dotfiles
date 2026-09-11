@@ -71,7 +71,7 @@ describe("streaming analytics search", () => {
 	it("does not claim completion after replacement or truncation at a continuation boundary", async () => {
 		const records = Array.from({ length: 10_500 }, (_, i) => message(`id-${i}`, `${"padding ".repeat(110)}${i}`, "2026-09-01T00:00:00Z"));
 		const file = await fixture.session("default", "changed", records);
-		const request = { operation: "search" as const, filters: { text: "never-present" }, maxResults: 1 };
+		const request = { operation: "search" as const, filters: { text: "padding" }, maxResults: 1 };
 		const first = await searchAnalytics(fixture.registry, request);
 		expect(first.nextCursor).toBeTruthy();
 		const original = await fs.readFile(file);

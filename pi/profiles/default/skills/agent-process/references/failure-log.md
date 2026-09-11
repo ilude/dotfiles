@@ -1,5 +1,24 @@
 # Agent process failure log
 
+## APR-026 - Custom analytics limits obstructed an exhaustive review
+
+- **Reference:** Weekly Pi session failure and anomaly review, 2026-09-11.
+- **Observed:** A large `log_analytics` query exceeded its configured 120-second deadline. A standard query then exhausted the configured 1 GB DuckDB memory ceiling. The requested review had to fall back to direct JSONL streaming.
+- **Finding:** These were custom tool limits, not Pi platform limits. The operator states they did not request them and objects to unrequested safety gates generally. The fallback established that the work could continue without those query gates, although it does not by itself determine the best replacement architecture.
+- **Impact:** Extra failures, delay, a reviewer crash on a separate renderer defect, and additional recovery work while investigating failures.
+- **Remediation:** After operator approval, removed internal analytics deadlines, the standard selected-input ceiling, search byte/record/deadline page gates, and cursor expiry. Raised default DuckDB memory to 2 GB and large temporary disk to 8 GiB while retaining two threads, serialized staging, caller cancellation, context-output bounds, bounded cursor state, bounded physical-record/header reads, and the read-only registered-source boundary. Also fixed the partial-argument renderer crash and added regression coverage.
+- **Related:** AIF-041, AIF-030, APR-021, APR-024.
+- **Status:** Remediated; focused analytics tests and TypeScript validation pass.
+
+## APR-025 - Production-style data concern was reapplied to approved dev fixtures
+
+- **Reference:** MPS EKS dev seed-data discussion, 2026-09-10.
+- **Observed:** The assistant correctly identified a fixture as exact-target-gated to dev/staging, then warned that preserving test identities, claims, password hashes, and salts should be reviewed before commit. The operator had already established that this is development/test data intended to preserve working test users and reports the same correction is needed again after session clears.
+- **Finding:** No repository evidence established that production data-minimization controls applied to this fixture. Active guidance says to use comparable environments and not import generic controls without evidence. The warning contradicted that guidance and the known task context. Recurrence count was not independently reconstructed, but the current occurrence is verified and the operator reports recurrence across sessions.
+- **Remediation:** Stop treating the approved data shape as a defect. Evaluate this fixture on target isolation, deterministic apply/invariants/cleanup, and behavioral parity. A durable monorepo instruction is proposed in AIF-040 so the project decision survives cleared context.
+- **Related:** AIF-040, AIF-031, AIF-037.
+- **Status:** Incident recorded; current-turn correction made. Durable repository instruction requires operator approval.
+
 ## APR-024 - Native workspace restriction stopped a developer lookup
 
 - **Reference:** Operator-reported Elena developer failure, 2026-09-10, 18:10.

@@ -26,15 +26,13 @@ describe("read-only analytics boundary", () => {
 		await expect(fs.stat(output)).rejects.toThrow();
 	});
 
-	it("rejects unknown sources, unsupported pairs, unselected views, and invalid environment bounds", async () => {
+	it("rejects unknown sources, unsupported pairs, unselected views, and invalid disk configuration", async () => {
 		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["unknown" as never] }, async () => {})).rejects.toThrow("unknown analytics source");
 		await expect(withAnalyticsSession({ registry: fixture.registry, profiles: ["legacy"], sources: ["bedrock_usage"] }, async () => {})).rejects.toThrow("unsupported");
 		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["bedrock_usage"], sessionRefs: [{ profile: "default", sessionId: "one" }] }, async () => {})).rejects.toThrow("requires session_entries");
 		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"] }, async session => {
 			await expect(session.query({ sql: "SELECT * FROM bedrock_usage" })).rejects.toThrow();
 		});
-		vi.stubEnv("PI_ANALYTICS_MAX_INPUT_BYTES", "bad");
-		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"] }, async () => {})).rejects.toThrow("PI_ANALYTICS_MAX_INPUT_BYTES");
 		vi.stubEnv("PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES", "bad");
 		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large" }, async () => {})).rejects.toThrow("PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES");
 	});

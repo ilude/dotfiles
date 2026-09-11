@@ -12,14 +12,7 @@ export type AnalyticsRequest = {
 };
 
 export async function searchAnalytics(registry: ProfileRegistry, request: SearchRequest, signal?: AbortSignal) {
-	const raw = process.env.PI_ANALYTICS_TIMEOUT_MS ?? "5000";
-	const timeoutMs = /^\d+$/.test(raw) ? Number(raw) : NaN;
-	if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error("invalid analytics PI_ANALYTICS_TIMEOUT_MS");
-	const deadline = new AbortController(); const timer = setTimeout(() => deadline.abort(), timeoutMs); timer.unref();
-	const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
-	try { return await searchLogs(registry, request, combined); }
-	catch (error) { if (deadline.signal.aborted) throw new Error(`analytics search exceeded ${timeoutMs} ms`); throw error; }
-	finally { clearTimeout(timer); }
+	return await searchLogs(registry, request, signal);
 }
 
 export async function followUpAnalytics(registry: ProfileRegistry, request: FollowUpRequest, signal?: AbortSignal) {
@@ -42,15 +35,5 @@ export async function queryAnalytics(registry: ProfileRegistry, request: Analyti
 }
 
 export async function sessionAnalytics(registry: ProfileRegistry, request: SessionsRequest, signal?: AbortSignal) {
-	const raw = process.env.PI_ANALYTICS_TIMEOUT_MS ?? "5000";
-	const timeoutMs = /^\d+$/.test(raw) ? Number(raw) : NaN;
-	if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error("invalid analytics PI_ANALYTICS_TIMEOUT_MS");
-	const deadline = new AbortController();
-	const timer = setTimeout(() => deadline.abort(), timeoutMs);
-	timer.unref();
-	try { return await listSessions(registry, request, signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal); }
-	catch (error) {
-		if (deadline.signal.aborted) throw new Error(`analytics session discovery exceeded ${timeoutMs} ms`);
-		throw error;
-	} finally { clearTimeout(timer); }
+	return await listSessions(registry, request, signal);
 }

@@ -10,13 +10,13 @@ export type AnalyticsExecution = "standard" | "large";
 export type AnalyticsQuery = { sql: string; parameters?: Record<string, AnalyticsParameter>; maxRows?: number; maxBytes?: number };
 export type AnalyticsQueryCost = {
 	execution?: AnalyticsExecution; filesScanned: number; bytesScanned: number; discoveryMs: number; stagingMs: number; queryMs: number;
-	memoryLimit?: string; threads?: number; deadlineMs?: number; recordsStaged?: number; malformedRecords?: number;
+	memoryLimit?: string; threads?: number; recordsStaged?: number; malformedRecords?: number;
 	peakOwnedDiskBytes?: number; diskBudgetBytes?: number;
 };
 export type AnalyticsQueryResult = { columns: readonly string[]; rows: Record<string, unknown>[]; truncated: boolean; cost: AnalyticsQueryCost };
 export type AnalyticsSession = { query(request: AnalyticsQuery): Promise<AnalyticsQueryResult> };
 export type AnalyticsSessionOptions = SourceSelection & {
-	execution?: AnalyticsExecution; maxInputBytes?: number; timeoutMs?: number; threads?: number; memoryLimit?: string; diskBudgetBytes?: number;
+	execution?: AnalyticsExecution; threads?: number; memoryLimit?: string; diskBudgetBytes?: number;
 };
 
 type ResourceTracker = { ownedPath: string; diskBudgetBytes: number; peakOwnedDiskBytes: number; resourceError?: Error };
@@ -196,21 +196,16 @@ async function query(instance: DuckDBInstance, request: AnalyticsQuery, signal: 
 export async function withAnalyticsSession<T>(options: AnalyticsSessionOptions, callback: (session: AnalyticsSession) => Promise<T>): Promise<T> {
 	checkCancelled(options.signal); const execution = options.execution ?? "standard";
 	if (execution !== "standard" && execution !== "large") throw new Error("invalid analytics execution mode");
-	const defaultTimeout = execution === "large" ? environmentInteger("PI_ANALYTICS_LARGE_TIMEOUT_MS", 120_000) : environmentInteger("PI_ANALYTICS_TIMEOUT_MS", 5000);
-	const timeoutMs = integer(options.timeoutMs ?? defaultTimeout, "timeoutMs");
 	const threads = integer(options.threads ?? environmentInteger("PI_ANALYTICS_THREADS", 2), "threads");
-	const maxInputBytes = execution === "standard" ? integer(options.maxInputBytes ?? environmentInteger("PI_ANALYTICS_MAX_INPUT_BYTES", 512 * 1024 * 1024, true), "maxInputBytes", 0) : undefined;
-	const memoryLimit = options.memoryLimit ?? process.env.PI_ANALYTICS_MEMORY_LIMIT ?? "1GB"; if (!memoryLimit.trim()) throw new Error("invalid analytics memoryLimit");
-	const diskBudgetBytes = execution === "large" ? integer(options.diskBudgetBytes ?? environmentInteger("PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES", 4 * 1024 ** 3), "diskBudgetBytes") : undefined;
-	const controller = new AbortController(); const signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
-	const timer = setTimeout(() => controller.abort(), timeoutMs); timer.unref();
+	const memoryLimit = options.memoryLimit ?? process.env.PI_ANALYTICS_MEMORY_LIMIT ?? "2GB"; if (!memoryLimit.trim()) throw new Error("invalid analytics memoryLimit");
+	const diskBudgetBytes = execution === "large" ? integer(options.diskBudgetBytes ?? environmentInteger("PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES", 8 * 1024 ** 3), "diskBudgetBytes") : undefined;
+	const signal = options.signal ?? new AbortController().signal;
 	let instance: DuckDBInstance | undefined, setup: DuckDBConnection | undefined, ownedPath: string | undefined, tracker: ResourceTracker | undefined;
 	const cancelSetup = () => setup?.interrupt(); signal.addEventListener("abort", cancelSetup);
 	try {
 		const discoveryStarted = performance.now(); const sources = await selectSources({ ...options, signal });
 		const files = [...new Map(sources.flatMap(source => source.files).map(item => [item.file, item])).values()]; let bytesScanned = 0;
 		for (const item of files) { checkCancelled(signal); if (await canonicalWithin(item.root, item.file) !== item.file) throw new Error("analytics input changed during discovery"); bytesScanned += (await fs.stat(item.file)).size; }
-		if (execution === "standard" && bytesScanned > maxInputBytes!) throw new Error(`analytics input ${bytesScanned} bytes exceeds bound ${maxInputBytes}`);
 		const started = performance.now(); const counters = { records: 0, malformed: 0 };
 		await withStagingLock(signal, async () => {
 			await stagingObserver?.(options); checkCancelled(signal);
@@ -235,13 +230,13 @@ export async function withAnalyticsSession<T>(options: AnalyticsSessionOptions, 
 			setup.closeSync(); setup = undefined;
 		});
 		const cost: Omit<AnalyticsQueryCost, "queryMs"> = { execution, filesScanned: files.length, bytesScanned, discoveryMs: started - discoveryStarted,
-			stagingMs: performance.now() - started, memoryLimit, threads, deadlineMs: timeoutMs,
+			stagingMs: performance.now() - started, memoryLimit, threads,
 			...(tracker ? { recordsStaged: counters.records, malformedRecords: counters.malformed, peakOwnedDiskBytes: tracker.peakOwnedDiskBytes, diskBudgetBytes: tracker.diskBudgetBytes } : {}) };
 		checkCancelled(signal); return await callback({ query: request => query(instance!, request, signal, cost, tracker) });
 	} catch (error) {
-		if (controller.signal.aborted) throw new Error(`analytics session exceeded ${timeoutMs} ms`); checkCancelled(options.signal); throw resourceFailure(error, tracker);
+		checkCancelled(options.signal); throw resourceFailure(error, tracker);
 	} finally {
-		clearTimeout(timer); signal.removeEventListener("abort", cancelSetup); setup?.closeSync(); instance?.closeSync();
+		signal?.removeEventListener("abort", cancelSetup); setup?.closeSync(); instance?.closeSync();
 		if (ownedPath) {
 			try { await fs.rm(ownedPath, { recursive: true, force: true }); await fs.stat(ownedPath); throw new Error("path still exists"); }
 			catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error(`analytics cleanup failed for owned path ${ownedPath}: ${error instanceof Error ? error.message : String(error)}`); }

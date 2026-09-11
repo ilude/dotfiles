@@ -10,7 +10,7 @@ type SessionsResult = Awaited<ReturnType<typeof sessionAnalytics>>;
 type SearchResult = Awaited<ReturnType<typeof searchAnalytics>>;
 type FollowUpResult = Awaited<ReturnType<typeof followUpAnalytics>>;
 type CatalogResult = { sources: ReturnType<typeof analyticsCatalog>; defaults: Record<string, unknown>; limits: string };
-type RenderArgs = { operation?: string; profiles?: string[]; sources?: string[]; sessionRefs?: { profile: string; sessionId: string; fileKey?: string }[]; cwd?: string; sessionIds?: string[]; cursor?: string; interval?: { since: string; until: string }; filters?: Record<string, unknown>; sql?: string; execution?: string; maxRows?: number; maxBytes?: number; maxResults?: number; parameters?: Record<string, unknown>; occurrence?: { profile: string; session: { sessionId: string }; fileKey: string; byteOffset: number; recordOrdinal: number }; before?: number; after?: number };
+type RenderArgs = { operation?: string; profiles?: string[]; sources?: string[]; sessionRefs?: { profile: string; sessionId: string; fileKey?: string }[]; cwd?: string; sessionIds?: string[]; cursor?: string; interval?: { since: string; until: string }; filters?: Record<string, unknown>; sql?: string; execution?: string; maxRows?: number; maxBytes?: number; maxResults?: number; parameters?: Record<string, unknown>; occurrence?: { profile?: string; session?: { sessionId?: string }; fileKey?: string; byteOffset?: number; recordOrdinal?: number }; before?: number; after?: number };
 const sourceNames: Record<string, string> = {
 	session_entries: "session history", bedrock_usage: "Bedrock usage", codex_cache_observations: "Codex cache observations",
 };
@@ -29,6 +29,10 @@ function preview(value: unknown, limit = 160): string {
 function count(n: number, noun: string): string { return `${n} ${noun}${n === 1 ? "" : "s"}`; }
 function sources(ids: readonly string[]): string { return ids.map(id => sourceNames[id] ?? clean(id)).join(", "); }
 function bytes(n: number): string { return n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KiB` : `${(n / 1024 ** 2).toFixed(1)} MiB`; }
+function occurrenceLabel(ref: { profile?: unknown; session?: { sessionId?: unknown } } | undefined): string | null {
+	if (!ref || typeof ref.profile !== "string" || typeof ref.session?.sessionId !== "string") return null;
+	return `${clean(ref.profile)}/${clean(ref.session.sessionId)}`;
+}
 function component(build: (width: number) => string[]): Component {
 	return { render: width => width < 1 ? [] : new Text(build(width).join("\n"), 0, 0).render(width).map(line => truncateToWidth(line, width)), invalidate() {} };
 }
@@ -42,9 +46,10 @@ export const renderAnalyticsCall: NonNullable<Tool["renderCall"]> = (rawArgs, th
 	if (args.operation === "follow_up") {
 		const ref = args.occurrence;
 		if (!ref) return lines;
-		lines.push(`Occurrence: ${clean(ref.profile)}/${clean(ref.session.sessionId)}`);
+		const label = occurrenceLabel(ref);
+		if (label) lines.push(`Occurrence: ${label}`);
 		lines.push(theme.fg("muted", `Context: ${args.before ?? 2} before · ${args.after ?? 2} after`));
-		if (expanded) lines.push(`File key: ${clean(ref.fileKey)} · offset: ${ref.byteOffset} · ordinal: ${ref.recordOrdinal}`);
+		if (expanded && ref.fileKey !== undefined) lines.push(`File key: ${clean(ref.fileKey)}${ref.byteOffset !== undefined ? ` · offset: ${ref.byteOffset}` : ""}${ref.recordOrdinal !== undefined ? ` · ordinal: ${ref.recordOrdinal}` : ""}`);
 		return lines;
 	}
 	lines.push(theme.fg("muted", `Profiles: ${args.profiles?.join(" + ") || "active profile"}${args.sources?.length ? ` · ${sources(args.sources)}` : args.operation === "search" ? ` · ${searchSource}` : ""}`));
@@ -132,7 +137,8 @@ export const renderAnalyticsResult: NonNullable<Tool["renderResult"]> = (result,
 		lines.push(...coverageLines(data.coverage, expanded, theme));
 		for (const match of expanded ? data.matches : data.matches.slice(0, PREVIEW_ROWS)) {
 			const occurrence = match.occurrence;
-			lines.push(`${theme.fg("accent", `${clean(occurrence.profile)}/${clean(occurrence.session.sessionId)}`)} · ${clean(match.timestamp ?? "no timestamp")} · ${clean(match.messageRole ?? "unknown role")}${match.toolName ? ` · ${clean(match.toolName)}` : ""}${match.isError === true ? " · error" : ""}`);
+			const label = occurrenceLabel(occurrence) ?? "incomplete occurrence";
+			lines.push(`${theme.fg("accent", label)} · ${clean(match.timestamp ?? "no timestamp")} · ${clean(match.messageRole ?? "unknown role")}${match.toolName ? ` · ${clean(match.toolName)}` : ""}${match.isError === true ? " · error" : ""}`);
 			lines.push(`  ${preview(match.snippet, expanded ? 500 : 180)}`);
 			if (expanded) lines.push(theme.fg("dim", `  offset ${occurrence.byteOffset} · ordinal ${occurrence.recordOrdinal} · record ${clean(occurrence.recordKey ?? "id-less")}`));
 		}
@@ -140,7 +146,7 @@ export const renderAnalyticsResult: NonNullable<Tool["renderResult"]> = (result,
 		if (data.nextCursor) lines.push(theme.fg("warning", "Continue with nextCursor; expansion does not fetch the next page."));
 	} else if ("before" in details && "match" in details && "after" in details) {
 		const data = details as FollowUpResult;
-		lines = [theme.bold("Exact occurrence context") + ` · ${clean(data.occurrence.profile)}/${clean(data.occurrence.session.sessionId)} · ${data.before.length} before · ${data.after.length} after`];
+		lines = [theme.bold("Exact occurrence context") + ` · ${occurrenceLabel(data.occurrence) ?? "incomplete occurrence"} · ${data.before.length} before · ${data.after.length} after`];
 		lines.push(...followUpRecordLine("Match", data.match, expanded));
 		for (const item of data.before) lines.push(...followUpRecordLine("Before", item, expanded));
 		for (const item of data.after) lines.push(...followUpRecordLine("After", item, expanded));
@@ -155,7 +161,7 @@ export const renderAnalyticsResult: NonNullable<Tool["renderResult"]> = (result,
 			const cost = data.cost;
 			lines.push(theme.fg("dim", `Execution: ${cost.execution ?? "standard"} · Scanned: ${count(cost.filesScanned, "file")} · ${bytes(cost.bytesScanned)}`));
 			lines.push(theme.fg("dim", `Time: discovery ${Math.round(cost.discoveryMs)} ms · staging ${Math.round(cost.stagingMs)} ms · query ${Math.round(cost.queryMs)} ms`));
-			if (cost.execution === "large") lines.push(theme.fg("dim", `Large resources: ${cost.recordsStaged ?? 0} records · ${cost.memoryLimit} · ${cost.threads} threads · ${cost.deadlineMs} ms · disk ${bytes(cost.peakOwnedDiskBytes ?? 0)}/${bytes(cost.diskBudgetBytes ?? 0)} high-water/budget`));
+			if (cost.execution === "large") lines.push(theme.fg("dim", `Large resources: ${cost.recordsStaged ?? 0} records · ${cost.memoryLimit} · ${cost.threads} threads · disk ${bytes(cost.peakOwnedDiskBytes ?? 0)}/${bytes(cost.diskBudgetBytes ?? 0)} high-water/budget`));
 		}
 	} else if ("sessions" in details && Array.isArray(details.sessions)) {
 		const data = details as SessionsResult;

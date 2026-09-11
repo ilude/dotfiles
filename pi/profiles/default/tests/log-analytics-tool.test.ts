@@ -44,7 +44,7 @@ describe("log_analytics registered tool", () => {
 		expect(context.details.match.record.message.content[0].text).toBe("read failed");
 		const large = await execute({ operation: "query", profiles: ["default"], sources: ["session_entries"], execution: "large", sql: "SELECT count(*) AS records FROM session_entries" });
 		expect(large.details.cost.execution).toBe("large");
-		expect(large.details.cost.diskBudgetBytes).toBe(4 * 1024 ** 3);
+		expect(large.details.cost.diskBudgetBytes).toBe(8 * 1024 ** 3);
 	});
 
 	it("supports default, legacy, combined and exact-session queries through the tool", async () => {

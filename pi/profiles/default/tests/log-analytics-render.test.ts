@@ -135,6 +135,14 @@ describe("log analytics user-facing rendering", () => {
 		} finally { await fixture.dispose(); }
 	});
 
+	it("renders incomplete streamed occurrence arguments without throwing", () => {
+		const tool = registered();
+		const partial = { operation: "follow_up", occurrence: { profile: "default" } } as unknown as LogAnalyticsInput;
+		expect(plain(tool.renderCall!(partial, theme, context(partial)))).toContain("Follow up occurrence");
+		const incompleteResult = { profiles: ["default"], matches: [{ occurrence: { profile: "default" }, timestamp: null, entryType: null, messageRole: null, toolName: null, isError: null, snippet: "partial" }], nextCursor: null, complete: true, stopReason: "exhausted", coverage: { selectedFiles: 1, selectedBytes: 1, examinedFiles: 1, examinedRecords: 1, examinedBytes: 1, safelyPrunedFiles: 0, malformedRecords: 0, oversizedRecords: 0, timestampGaps: 0, diagnostics: [], diagnosticsTruncated: false, inventoryChanges: [], page: { examinedFiles: 1, examinedRecords: 1, examinedBytes: 1, malformedRecords: 0, oversizedRecords: 0 }, cumulative: { examinedFiles: 1, examinedRecords: 1, examinedBytes: 1, malformedRecords: 0, oversizedRecords: 0 }, remainingFiles: 0, capturedHorizons: [], exclusions: { excludedFiles: 0, diagnostics: [], diagnosticsTruncated: false } } };
+		expect(rendered(incompleteResult)).toContain("incomplete occurrence");
+	});
+
 	it("handles empty results, errors and progress explicitly", () => {
 		expect(rendered(query([]))).toContain("No rows matched the query");
 		expect(rendered({ profiles: ["legacy"], sessions: [], truncated: false, nextCursor: null, coverage: { listing: "best-effort; not a snapshot" } })).toContain("No sessions matched these filters");
