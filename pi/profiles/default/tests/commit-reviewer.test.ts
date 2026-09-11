@@ -12,7 +12,9 @@ it("supplies exact workflow locations and routes status refreshes to the existin
 	expect(task).toContain(inventory.join("\n\n"));
 	expect(task).toContain("use commit_git_review for status refreshes, not shell git status");
 	expect(task).toContain("Push was NOT requested. Do not push.");
-	expect(buildCommitTask(true, root, inventory)).toContain("HEAD:refs/heads/<current-branch>");
+	const pushTask = buildCommitTask(true, root, inventory);
+	expect(pushTask).toContain("--recurse-submodules=no origin HEAD:refs/heads/<own-branch>");
+	expect(pushTask).toContain("clean initialized submodules with outgoing referenced commits");
 });
 
 it("specifies usable inspection examples and the utility's actual argument contract", () => {
@@ -22,6 +24,9 @@ it("specifies usable inspection examples and the utility's actual argument contr
 	expect(examples).toContainEqual({ action: "status", repo: "modules/example" });
 	expect(examples).toContainEqual({ action: "diff", repo: ".", staged: true });
 	expect(prompt).toContain('do not insert a literal `--`');
+	expect(prompt).toContain("--recurse-submodules=no origin");
+	expect(prompt).toContain("clean submodules whose outgoing commits are referenced");
+	expect(prompt).toContain("refresh the parent status");
 	expect(prompt).toContain("Stop on any actual tool, Git, hook, cancellation, or timeout failure");
 });
 

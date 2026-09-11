@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-11: Coordinate bounded `/commit` publication across submodules
+
+**Fixed:** Default `/commit` now reviews initialized submodules deepest-first, refreshes parent status after child commits so changed gitlinks are staged, and includes clean initialized submodules with outgoing referenced commits when push is authorized. Each repository publishes to the existing `origin` with `--recurse-submodules=no` and its own branch refspec, preventing inherited on-demand recursion from breaking child-before-parent ordering without prohibiting submodule publication.
+
+**Preserved:** Bare `/commit` remains commit-only, `/commit push` remains the sole push permission, and no new remote policy or safety gates, branch switches, config changes, commits, or pushes are introduced by the implementation.
+
 ## 2026-09-11: Compact usage dashboard links
 
 **Added:** Default Pi usage reports link to the existing AWS Bedrock dashboard. The transcript renders both dashboard URLs as short OSC 8 hyperlinks, `Codex usage` and `Bedrock dashboard`; stored reports and non-terminal notifications retain plain URLs. Clicking requires terminal hyperlink support and the dashboard requires AWS console access.

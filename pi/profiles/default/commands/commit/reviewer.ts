@@ -34,7 +34,7 @@ export function describeCommitTool(name: string, args: unknown): string {
 
 export function buildCommitTask(push: boolean, root: string, inventory: readonly string[]): string {
 	const utility = join(dirname(fileURLToPath(import.meta.url)), "trim-trailing-whitespace.mjs");
-	return `Execute the commit workflow now. ${push ? "Push the current branch to origin afterward using an explicit HEAD:refs/heads/<current-branch> refspec, including existing outgoing commits. No force-push, tags, other branches, recursive submodule pushes, or automatic merge/rebase." : "Push was NOT requested. Do not push."}
+	return `Execute the commit workflow now. ${push ? "Push each repository that has outgoing commits after its local commit work, deepest-first, using --recurse-submodules=no origin HEAD:refs/heads/<own-branch>. This includes clean initialized submodules with outgoing referenced commits. Push parents only after children. No force-push, tags, other branches, or automatic merge/rebase." : "Push was NOT requested. Do not push."}
 
 Locations (JSON-quoted absolute paths; decode and shell-quote as data):
 Repository root: ${JSON.stringify(root)}

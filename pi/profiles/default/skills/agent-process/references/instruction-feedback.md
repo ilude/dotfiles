@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-042 - Override inherited submodule push recursion in coordinated commits
+
+- **Reference:** Operator request to fix bounded `/commit` publication ordering, 2026-09-11.
+- **Feedback:** The existing child-first review and push instructions did not explicitly disable inherited `push.recurseSubmodules=on-demand`, and the workflow omitted clean initialized submodules with outgoing referenced commits.
+- **Decision:** Keep the existing `origin` destination and push permission model. Review every initialized repository, commit dirty children deepest-first, refresh parent status before staging gitlinks, and publish eligible repositories with `--recurse-submodules=no origin HEAD:refs/heads/<own-branch>` in child-before-parent order. Do not add remote policy or safety gates.
+- **Related:** AIF-009 (submodule commit workflow), AIF-010 (failure diagnostics).
+- **Status:** Implemented; focused reviewer tests, default-profile typecheck, and diff check pass. Runtime effectiveness remains unverified.
+
 ## AIF-041 - Do not impose unrequested safety gates or resource ceilings
 
 - **Reference:** Operator correction after the weekly session-failure review, 2026-09-11.
