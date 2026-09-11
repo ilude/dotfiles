@@ -1,6 +1,6 @@
 ---
 created: 2026-09-10
-status: integrating
+status: merge-blocked
 completed: null
 ---
 
@@ -121,7 +121,7 @@ Implement only settled scope. Adapt equivalent technical details directly. Ask b
   - [ ] Merge into the recorded originating checkout/branch, unless explicitly `--no-merge`.
   - [ ] Verify integration and commit completed plan metadata on the target.
   - [ ] Remove the integrated, clean task worktree and verify cleanup.
-  - Evidence: not started.
+  - Evidence: implementation and archive commits are on the task branch. Integration attempted on 2026-09-11 but Git refused because the target checkout has an unrelated uncommitted `CHANGELOG.md` modification that the task branch also changes. The task worktree is retained. Next action: the operator must finish or otherwise clear their `CHANGELOG.md` work in `C:/Users/mglenn/.dotfiles`, then merge `feature/subagent-workflow-gate-removal` into `main` and complete metadata/cleanup.
 
 ## Agreed validation and current handoff
 
@@ -135,9 +135,10 @@ pnpm run check:runtime
 
 From the repository root, run `git diff --check`. Do not enable model-backed/Herdr live-test environment flags as a completion prerequisite. Existing opt-in tests can remain skipped; report that limit honestly. The regressions for changed behavior must run offline, not be hidden behind opt-in flags. Rerun only when task changes or stale results justify it.
 
-- Status: implementation and agreed offline checks passed; integration pending.
-- Completed work: T1-T4, documentation, and finite offline validation.
-- Next: archive and commit the task branch, merge to the recorded `main` checkout, record completion metadata, and clean the task worktree.
+- Status: merge blocked after implementation, archival, task commits, and agreed offline checks passed.
+- Completed work: T1-T4, documentation, finite offline validation, archival, and task-branch commits `4f55c058` and `fb1f0f80`.
+- Blocker: target checkout `C:/Users/mglenn/.dotfiles` has an unrelated uncommitted `CHANGELOG.md` modification; Git refused the merge rather than overwrite it.
+- Next: operator finishes or otherwise clears that `CHANGELOG.md` work, then merges `feature/subagent-workflow-gate-removal` into `main`; the integrating agent records completed metadata and removes the clean task worktree.
 - Open decisions: none within the four scoped improvements. Mutable role permissions are excluded, not implicitly approved.
 - Verification limits: no live/model-backed operator trial was run. Operator testing occurs after completion and does not block archival, commit, or authorized merge.
 
