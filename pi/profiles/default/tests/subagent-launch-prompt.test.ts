@@ -15,6 +15,8 @@ describe("subagent launch prompt", () => {
     expect(launch.env.PI_SUBAGENT_PROMPT).toBe("frozen composed prompt");
     expect(launch.args).toContain("provider/model");expect(launch.args).toContain("low");
     expect(launch.args.includes("rpc")).toBe(surface === "headless");
+    expect(launch.args).toContain("--approve");
+    expect(launch.args).not.toContain("--no-approve");
     expect(launch.args).toContain(join(process.cwd(), "extensions", "session-profile.ts"));
   });
 

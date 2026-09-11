@@ -3,7 +3,7 @@ import type { LaunchSpec } from "./rpc.ts";
 import type { ChildEndpoint } from "./transport.ts";
 export function childLaunch(spec: LaunchSpec, id: string, profile: string, endpoint?: ChildEndpoint) {
  const d=spec.definition;
- const args=[...(spec.surface==="headless"?["--mode","rpc"]:[]),"--no-extensions","--no-skills","--no-prompt-templates","--no-themes","--no-context-files","--no-approve",...(d.tools.length?["--tools",d.tools.join(",")]:["--no-tools"]),"--model",spec.model,"--thinking",spec.effort];
+ const args=[...(spec.surface==="headless"?["--mode","rpc"]:[]),"--no-extensions","--no-skills","--no-prompt-templates","--no-themes","--no-context-files","--approve",...(d.tools.length?["--tools",d.tools.join(",")]:["--no-tools"]),"--model",spec.model,"--thinking",spec.effort];
  const extension=(name:string)=>args.push("--extension",join(profile,"extensions",name));
  extension("subagent-child.ts");extension("damage-control/index.js");extension("session-profile.ts");
  // Bedrock children account finalized replies without loading operator commands.

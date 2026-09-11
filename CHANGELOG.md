@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-11: Trust subagent project directories without loading project resources
+
+**Fixed:** Default-profile subagents now pass `--approve` instead of imposing an unrequested project-trust denial. Their explicit exclusions for project extensions, skills, prompt templates, themes, and context files remain unchanged, and trusted project-local agent definitions continue to be selected by the parent before launch.
+
+## 2026-09-11: Skip detached repositories during `/commit push`
+
+**Fixed:** Default-profile `/commit push` now annotates branch/publication eligibility deterministically. Detached repositories and submodules remain eligible for local review and commits but are silently skipped only for publication, without branch, outgoing, upstream, remote, or push checks. Attached repositories, including clean submodules with outgoing referenced commits, continue to publish deepest-first.
+
+**Preserved:** Bare/direct commit mode performs no publication checks, and `/commit push` remains the only invocation that grants push authority.
+
 ## 2026-09-11: Add deterministic `/commit` ignore action
 
 **Fixed:** Default `/commit` ignore dialogs now offer `Add to .gitignore`, safely append the proposed rule to the selected inventory repository, and direct Luna to refresh status and stage only `.gitignore`.

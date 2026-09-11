@@ -60,9 +60,16 @@ export function describeCommitTool(name: string, args: unknown): string {
 	return `tool ${name}`;
 }
 
+export function formatPublicationEligibility(push: boolean, branch: string): string {
+	if (!push) return "";
+	return branch
+		? `Publication: eligible; attached branch ${JSON.stringify(branch)}. Check outgoing commits and publish this repository when applicable.`
+		: "Publication: ineligible; detached HEAD. Silently skip publication checks and actions for this repository; do not re-check its branch, outgoing commits, upstream, remotes, or push, and do not mention the skip.";
+}
+
 export function buildCommitTask(push: boolean, root: string, inventory: readonly string[]): string {
 	const utility = join(dirname(fileURLToPath(import.meta.url)), "trim-trailing-whitespace.mjs");
-	return `Execute the commit workflow now. ${push ? "Push each repository that has outgoing commits after its local commit work, deepest-first, using --recurse-submodules=no origin HEAD:refs/heads/<own-branch>. This includes clean initialized submodules with outgoing referenced commits. Push parents only after children. No force-push, tags, other branches, or automatic merge/rebase." : "Push was NOT requested. Do not push."}
+	return `Execute the commit workflow now. ${push ? "Use only each inventory entry's deterministic Publication annotation. For eligible attached repositories, check outgoing commits after local commit work and push deepest-first using --recurse-submodules=no origin HEAD:refs/heads/<own-branch>. This includes clean initialized submodules with outgoing referenced commits. Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output. Push parents only after children. No force-push, tags, other branches, or automatic merge/rebase." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
 
 Locations (JSON-quoted absolute paths; decode and shell-quote as data):
 Repository root: ${JSON.stringify(root)}
@@ -99,6 +106,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 			let outcome = "";
 			const activeTools = new Map<string, { description: string; startedAt: number }>();
 			const leftOut: string[] = [];
+			let publicationTargets = 0;
 			const usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 			const git = async (args: string[], requestSignal?: AbortSignal, cwd?: string) => {
 				const result = await pi.exec("git", ["-C", cwd ?? root ?? ctx.cwd, ...args], { signal: requestSignal, timeout: 15000 });
@@ -124,7 +132,10 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 					baselines.set(repository, await head(combined, repository));
 					const status = formatStatus(await git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], combined, repository));
 					const instructions = (await git(["ls-files", "--", "AGENTS.md", ":(glob)**/AGENTS.md"], combined, repository)).split("\n").filter(Boolean);
-					inventory.push(`Repository: ${relative(root, repository) || "."}\nInstruction files: ${instructions.length ? instructions.join(", ") : "none"}\n${status}`);
+					const branch = push ? await git(["branch", "--show-current"], combined, repository) : "";
+					if (branch) publicationTargets++;
+					const publication = formatPublicationEligibility(push, branch);
+					inventory.push(`Repository: ${relative(root, repository) || "."}\nInstruction files: ${instructions.length ? instructions.join(", ") : "none"}${publication ? `\n${publication}` : ""}\n${status}`);
 				}
 				const runtime = await createProfileModelRuntime(combined);
 				const model = runtime.getModel(PROVIDER, MODEL);
@@ -242,7 +253,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 					summary = [commits.join("\n") || "No commits created.", remaining.length ? `Remaining changes:\n${remaining.join("\n")}` : ""].filter(Boolean).join("\n");
 				} catch (error) { failure = [failure, `Status reporting failed: ${error instanceof Error ? error.message : String(error)}`].filter(Boolean).join("\n"); }
 			}
-			const publication = push ? (/^Pushed\.?$/i.test(outcome) ? "Pushed." : "Push completion not confirmed.") : "";
+			const publication = push && publicationTargets > 0 ? (/^Pushed\.?$/i.test(outcome) ? "Pushed." : "Push completion not confirmed.") : "";
 			const report = [summary, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
 			return { content: [{ type: "text", text: report }], details: { elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${PROVIDER}/${MODEL}:low` }, usage };

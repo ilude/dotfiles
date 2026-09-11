@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendGitignoreRule, buildCommitTask, describeCommitTool, isBroadDiscoveryCommand, validateGitignorePattern } from "../commands/commit/reviewer.ts";
+import { appendGitignoreRule, buildCommitTask, describeCommitTool, formatPublicationEligibility, isBroadDiscoveryCommand, validateGitignorePattern } from "../commands/commit/reviewer.ts";
 
 it("supplies exact workflow locations and routes status refreshes to the existing tool", () => {
 	const root = "C:/work/repository with spaces";
@@ -13,10 +13,21 @@ it("supplies exact workflow locations and routes status refreshes to the existin
 	expect(readFileSync(utility, "utf8")).toContain("trimTrailingWhitespace");
 	expect(task).toContain(inventory.join("\n\n"));
 	expect(task).toContain("use commit_git_review for status refreshes, not shell git status");
-	expect(task).toContain("Push was NOT requested. Do not push.");
+	expect(task).toContain("Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands");
 	const pushTask = buildCommitTask(true, root, inventory);
 	expect(pushTask).toContain("--recurse-submodules=no origin HEAD:refs/heads/<own-branch>");
 	expect(pushTask).toContain("clean initialized submodules with outgoing referenced commits");
+	expect(pushTask).toContain("Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output");
+	expect(task).toContain("Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands");
+	expect(task).not.toContain("Publication:");
+});
+
+it("uses deterministic publication annotations without changing local review eligibility", () => {
+	expect(formatPublicationEligibility(false, "main")).toBe("");
+	expect(formatPublicationEligibility(true, "main")).toContain('Publication: eligible; attached branch "main"');
+	const detached = formatPublicationEligibility(true, "");
+	expect(detached).toContain("Publication: ineligible; detached HEAD");
+	expect(detached).toContain("do not re-check its branch, outgoing commits, upstream, remotes, or push");
 });
 
 it("specifies usable inspection examples and the utility's actual argument contract", () => {
