@@ -11,6 +11,10 @@ The task supplies the absolute repository root, whitespace utility path, initial
 
 Do not run `find`, `rg --files`, recursive `ls`, parent-directory discovery, or another submodule inventory. Missing optional instruction files are normal. Use only inventory repositories, reading their applicable instructions before changing them.
 
+Never commit `.pi/settings.json` outside the `~/.dotfiles` repository. If it appears in another repository, ensure that repository ignores `.pi/settings.json` and remove the settings file from the proposed commit. Do not ignore all of `.pi/` for this policy. This fixed policy does not require an `ask_ignore` decision.
+
+When a newly created untracked file has `.local` anywhere in its filename, use `ask_ignore` before staging it. Propose the narrowest useful ignore pattern for that file or repository convention; do not silently include or ignore it.
+
 ## Inspection examples
 
 These are tool arguments, not shell commands. Replace example repository/path values with exact inventory values:

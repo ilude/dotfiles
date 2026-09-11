@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-044 - Keep Pi repository settings out of project repositories
+
+- **Reference:** Operator correction after the dev-setup changelog workflow commit, 2026-09-11.
+- **Feedback:** `.pi/settings.json` must never be committed outside `~/.dotfiles`. Project repositories should ignore that file specifically, not all of `.pi/`; repository-local skill setup must not add an exception for Pi settings. Newly created files with `.local` in the filename require an ignore decision during `/commit` rather than silent inclusion.
+- **Finding:** The changelog setup copied the `gcc_automation` import pattern into `dev-setup`, changed `.gitignore` to track `.pi/settings.json`, and committed it. Existing local Claude settings and planning artifacts were also tracked despite repository ignore intent.
+- **Decision:** Add a fixed rule to the default commit workflow that excludes and specifically ignores `.pi/settings.json` outside the dotfiles repository without asking the operator to resolve this settled policy. Require `ask_ignore` for newly created `.local` filenames. Amend the affected project commit to remove Pi settings, local Claude settings, and planning artifacts and correct its documentation.
+- **Related:** AIF-031, AIF-039.
+- **Status:** Instruction and affected project correction implemented; future adherence remains unverified.
+
 ## AIF-043 - Distinguish tool failures from faithfully reported failure outcomes
 
 - **Reference:** Operator correction during follow-up to the weekly Pi session review, 2026-09-11.
