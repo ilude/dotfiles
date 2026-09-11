@@ -5,6 +5,13 @@ it.each(["rm -rf ~", "rm -rf /"])("retains legacy hard block: %s", async command
   expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "block", input: { command } })).toMatchObject({ block: true });
   expect(h.select).not.toHaveBeenCalled();
 });
+it("persists judge diagnostics as a custom entry without changing approval", async () => {
+  const diagnostics = { version: 1 as const, callId: "diagnostic-call", startedAt: "2026-09-11T00:00:00.000Z", endedAt: "2026-09-11T00:00:00.010Z", elapsedMs: 10, deadlineMs: 40000, provider: "openai-codex", model: "gpt-5.6-luna", effort: "high", maxTokens: 800, retries: 0, prompt: "redacted prompt", promptTruncated: false, promptRedacted: true, status: "valid" as const, verdict: "allow" as const };
+  const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "allow" as const, reason: "safe", dismissedCandidates: [], diagnostics }) });
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "logged", input: { command: "rm -rf build-output" } })).toBeUndefined();
+  expect(h.entries).toContainEqual(expect.objectContaining({ customType: "damage-control-judge-review-v1", data: diagnostics }));
+});
+
 it("keeps the independent human boundary for force-with-lease", async () => {
   const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "allow" as const, reason: "not consulted", dismissedCandidates: [] }) });
   h.select.mockResolvedValue("Deny");

@@ -22,11 +22,11 @@ export function decide(analysis: Analysis, evidence: Evidence, review?: ReviewRe
   if (review.status === "valid") {
     const sent = new Set(evidence.untrusted.matches.filter(m => m.applicability === "candidate").map(m => m.ruleId));
     if (review.dismissedCandidates.some(id => !sent.has(id) || confirmed.some(m => m.ruleId === id))) {
-      return { outcome: "user", origin: "review", reviewDisposition: "failure", reason: "Review returned an invalid false-positive dismissal; operator approval is required" };
+      return { outcome: "user", origin: "review", reviewDisposition: "failure", review, reason: "Review returned an invalid false-positive dismissal; operator approval is required" };
     }
     const remaining = candidates.filter(m => !review.dismissedCandidates.includes(m.ruleId));
     if (remaining.length === 0 && review.verdict === "allow") return { outcome: "allow" };
-    return { outcome: "user", origin: "review", reviewDisposition: "ask", reason: bounded(`Review needs operator approval: ${review.reason}`) };
+    return { outcome: "user", origin: "review", reviewDisposition: "ask", review, reason: bounded(`Review needs operator approval: ${review.reason}`) };
   }
-  return { outcome: "user", origin: "review", reviewDisposition: "failure", reason: bounded(`Review ${review.status}: ${review.reason}`) };
+  return { outcome: "user", origin: "review", reviewDisposition: "failure", review, reason: bounded(`Review ${review.status}: ${review.reason}`) };
 }

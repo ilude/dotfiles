@@ -17,11 +17,14 @@ export function createApprovalView(
   let page = 1;
   let selected = 0;
   let detailCache: { width: number; lines: string[]; trigger: number } | undefined;
+  const scope = approval.summary.find(line => line.emphasis === "scope")?.text ?? "Approves this entire tool call once.";
+  const callDescription = scope.includes("shell call") ? "shell call" : "tool call";
   const choices = new SelectList([
-    { value: "allow", label: "Allow once" },
-    ...(allowReview ? [{ value: "review" as const, label: "Allow once and review for future use" }] : []),
-    { value: "deny", label: "Deny" },
-  ], allowReview ? 3 : 2, {
+    { value: "allow", label: "Allow once", description: scope.replace(/^Approves /, "Run ") },
+    ...(allowReview ? [{ value: "review" as const, label: "Allow once and review for future use", description: `Run this ${callDescription} and review it for future use.` }] : []),
+    { value: "deny", label: "Deny", description: "Do not run this call." },
+    { value: "details", label: "Details", description: "Show the full command, matched rules, and review." },
+  ], allowReview ? 4 : 3, {
     selectedPrefix: text => theme.fg("accent", text),
     selectedText: text => theme.fg("accent", text),
     description: text => theme.fg("muted", text),
@@ -66,11 +69,8 @@ export function createApprovalView(
           theme.fg("muted", `Home/End · ${hint("tui.select.pageUp")}/${hint("tui.select.pageDown")} page · Esc denies`),
         ];
       } else {
-        const scopeLines = approval.summary.filter(line => line.emphasis === "scope").flatMap(line => wrap(line, width));
-        const scopeBudget = Math.max(1, Math.floor((height - 8) / 2));
-        const scopes = scopeLines.length <= scopeBudget ? scopeLines : [...scopeLines.slice(0, scopeBudget - 1), theme.fg("warning", "Scope continues in Details")];
         const lines = approval.summary.filter(line => line.emphasis !== "scope").flatMap(line => wrap(line, width));
-        footer = [...scopes, "", ...choices.render(width), theme.fg("muted", `D details · ${hint("tui.select.confirm")} select · Esc denies`)];
+        footer = [...choices.render(width), theme.fg("muted", `D details · ${hint("tui.select.confirm")} select · Esc denies`)];
         const available = Math.max(1, height - footer.length - 3);
         body = lines.length <= available ? lines : [...lines.slice(0, Math.max(0, available - 1)), theme.fg("muted", `… ${lines.length - available + 1} more lines in Details`)];
       }
@@ -89,9 +89,12 @@ export function createApprovalView(
         else if (keys.matches(data, "tui.select.pageDown")) scroll = Math.min(Math.max(0, total - page), scroll + page);
         else if (matchesKey(data, "home")) scroll = 0;
         else if (matchesKey(data, "end")) scroll = Math.max(0, total - page);
-      } else if (keys.matches(data, "tui.select.confirm")) done(selected === 0 ? "allow" : allowReview && selected === 1 ? "review" : "deny");
-      else if (keys.matches(data, "tui.select.up")) { selected = Math.max(0, selected - 1); choices.setSelectedIndex(selected); }
-      else if (keys.matches(data, "tui.select.down")) { selected = Math.min(allowReview ? 2 : 1, selected + 1); choices.setSelectedIndex(selected); }
+      } else if (keys.matches(data, "tui.select.confirm")) {
+        const detailsIndex = allowReview ? 3 : 2;
+        if (selected === detailsIndex) { expanded = true; focusTrigger = true; }
+        else done(selected === 0 ? "allow" : allowReview && selected === 1 ? "review" : "deny");
+      } else if (keys.matches(data, "tui.select.up")) { selected = Math.max(0, selected - 1); choices.setSelectedIndex(selected); }
+      else if (keys.matches(data, "tui.select.down")) { selected = Math.min(allowReview ? 3 : 2, selected + 1); choices.setSelectedIndex(selected); }
     },
     invalidate() { detailCache = undefined; choices.invalidate(); },
   };

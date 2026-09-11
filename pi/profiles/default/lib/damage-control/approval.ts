@@ -1,5 +1,5 @@
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
-import type { Analysis, Decision, Effect, ToolRequest } from "./types.ts";
+import type { Analysis, Decision, Effect, ReviewResult, ToolRequest } from "./types.ts";
 
 export type ApprovalDecision = Extract<Decision, { outcome: "user" }>;
 export type ApprovalLine = { text: string; emphasis?: "reason" | "command" | "scope" | "muted"; trigger?: boolean };
@@ -13,6 +13,32 @@ const unique = (items: string[]) => [...new Set(items)];
 const targets = (effect: Effect) => unique([...effect.targets, ...effect.sources, ...effect.destinations].map(target => target.resolution === "static" ? target.path : `${target.expression} (unresolved)`));
 const source = (request: ToolRequest, effect: Effect) => request.text.slice(effect.range.start, effect.range.end);
 
+// These are presentation names for policy identities, not new policy rules.
+const policyName = (reason: string) => /rm with recursive|rm with --recursive|rm with --force/i.test(reason) ? "Recursive deletion" : oneLine(reason);
+const timeoutDuration = (review: ReviewResult): string | undefined => {
+  if (review.status !== "timeout") return undefined;
+  const deadlineMs = review.diagnostics?.deadlineMs;
+  const reasonMs = review.reason.match(/(?:after|exceeded its)\s+(\d+(?:\.\d+)?)\s*ms\b/i)?.[1];
+  const reasonSeconds = review.reason.match(/(?:after|exceeded its)\s+(\d+(?:\.\d+)?)\s*seconds?\b/i)?.[1];
+  const configuredMs = deadlineMs !== undefined && Number.isFinite(deadlineMs) && deadlineMs > 0 ? deadlineMs : undefined;
+  const milliseconds = configuredMs ?? (reasonMs === undefined ? undefined : Number(reasonMs));
+  if (milliseconds !== undefined && Number.isFinite(milliseconds) && milliseconds > 0) {
+    const seconds = milliseconds / 1000;
+    return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} seconds`;
+  }
+  return reasonSeconds === undefined ? undefined : `${reasonSeconds} seconds`;
+};
+const judgeLine = (review: ReviewResult): string => {
+  if (review.status === "timeout") {
+    const duration = timeoutDuration(review);
+    return `Judge: Review timed out${duration ? ` after ${duration}` : ""}. No verdict returned.`;
+  }
+  if (review.status === "valid") return `Judge: ${oneLine(review.reason)}`;
+  if (review.status === "unavailable") return `Judge: Review unavailable. ${oneLine(review.reason)}`;
+  if (review.status === "invalid") return `Judge: Review returned no usable verdict. ${oneLine(review.reason)}`;
+  return `Judge: Review was cancelled. ${oneLine(review.reason)}`;
+};
+
 export function buildApproval(decision: ApprovalDecision, request: ToolRequest, analysis: Analysis): Approval {
   const review = decision.origin === "review";
   const matches = analysis.matches.filter(match => review
@@ -21,42 +47,20 @@ export function buildApproval(decision: ApprovalDecision, request: ToolRequest, 
   const ids = new Set(matches.flatMap(match => match.effects));
   const triggering = analysis.effects.filter(effect => ids.has(effect.id));
   const shell = request.tool === "bash" || request.tool === "powershell";
-  const reasons = unique(review ? [decision.reason] : matches.length ? matches.map(match => {
-    if (match.reason === "rm with recursive or force flags") {
-      const flags = unique(triggering.filter(effect => match.effects.includes(effect.id)).flatMap(effect => {
-        const found = source(request, effect).match(/\brm\s+(-[rRf]+)\b/);
-        return found ? [found[1]] : [];
-      }));
-      if (flags.length) return `File deletion using ${flags.map(flag => `rm ${flag}`).join(" / ")} requires approval.`;
-    }
-    return match.reason;
-  }) : [decision.reason]);
-  const summary: ApprovalLine[] = reasons.map(reason => ({ text: short(oneLine(reason).replace(/^- /, "")), emphasis: "reason" }));
+  const policies = unique(matches.map(match => policyName(match.reason)));
+  const summary: ApprovalLine[] = policies.map(name => ({ text: `Policy: ${short(name)}`, emphasis: "reason" }));
   const commands = unique(triggering.map(effect => shell ? oneLine(source(request, effect)) : `${request.tool} ${"path" in request.input ? request.input.path ?? "." : "."}`).filter(Boolean));
-  if (!commands.length) commands.push(shell ? "Trigger not isolated. Inspect Details." : `${request.tool} ${"path" in request.input ? request.input.path ?? "." : "."}`);
-  summary.push(...commands.map(text => ({ text: short(text), emphasis: "command" as const })));
+  if (!commands.length) commands.push(shell ? "Command: Trigger not isolated. Inspect Details." : `${request.tool} ${"path" in request.input ? request.input.path ?? "." : "."}`);
+  summary.push(...commands.map(text => ({ text: `Command: ${short(text.replace(/^Command:\s*/, ""))}`, emphasis: "command" as const })));
   const affected = unique(triggering.flatMap(targets));
   summary.push(...affected.map(target => ({ text: `Target: ${short(oneLine(target))}` })));
-  summary.push({ text: `In: ${short(oneLine(request.cwd))}`, emphasis: "muted" });
-  summary.push({ text: shell ? "Approves the whole shell call, not just the highlighted command." : "Approves this entire tool call once.", emphasis: "scope" });
-  const additional = analysis.effects.filter(effect => !ids.has(effect.id) && !["read", "metadata"].includes(effect.operation));
-  const consequences = unique(additional.map(effect => {
-    if (effect.kind === "git") return "Git state change";
-    const target = targets(effect).map(oneLine).join(", ");
-    const fileAction = effect.operation === "truncate" ? "File overwrite" : effect.operation === "write" ? "File write" : effect.operation === "delete" ? "File deletion" : "Unresolved file action";
-    const action = effect.kind === "filesystem" ? fileAction : effect.kind === "execution" ? "Code execution" : `${effect.kind} ${effect.operation}`;
-    return `${action}${target ? `: ${target}` : ""}`;
-  }));
-  if (consequences.length) summary.push({ text: `Also: ${short(consequences.join("; "), 240)}`, emphasis: "scope" });
-  if (analysis.effects.some(effect => effect.resolution === "unknown" && !["read", "metadata"].includes(effect.operation))) {
-    summary.push({ text: "Some effects are unresolved. Inspect Details.", emphasis: "scope" });
-  }
+  if (decision.review) summary.push({ text: judgeLine(decision.review), emphasis: "reason" });
+  summary.push({ text: shell ? "Approves the whole shell call." : "Approves this entire tool call once.", emphasis: "scope" });
 
   const details: ApprovalLine[] = [
     { text: `${request.tool} in ${displayText(request.cwd)}`, emphasis: "muted" },
-    ...reasons.map(reason => ({ text: displayText(reason), emphasis: "reason" as const })),
-    { text: "Checks (candidate does not mean confirmed):", emphasis: "muted" },
-    ...analysis.matches.map(match => ({ text: `${match.ruleId} [${match.applicability}, ${match.action}]: ${displayText(match.reason)}` })),
+    ...analysis.matches.map(match => ({ text: `Policy ${match.ruleId} [${match.applicability}, ${match.action}]: ${displayText(match.reason)}` })),
+    ...(decision.review ? [{ text: judgeLine(decision.review), emphasis: "reason" as const }] : []),
     ...analysis.effects.flatMap(effect => [
       { text: `${ids.has(effect.id) ? "Matched" : "Other"}: ${effect.kind} ${effect.operation} in ${displayText(effect.context.cwd)}` },
       ...targets(effect).map(target => ({ text: `  Target: ${displayText(target)}` })),
@@ -71,11 +75,11 @@ export function buildApproval(decision: ApprovalDecision, request: ToolRequest, 
     details.push({ text: `${trigger ? ">" : " "} ${index + 1} | ${displayText(line)}`, emphasis: trigger ? "command" : undefined, trigger });
     offset += line.length + 1;
   });
-  const deniedAction = commands.filter(command => command !== "Trigger not isolated. Inspect Details.").join("; ");
+  const deniedAction = commands.map(command => command.replace(/^Command:\s*/, "")).filter(command => !command.startsWith("Trigger not isolated")).join("; ");
   return {
-    title: review ? "Safety review needs a decision" : "Approval required",
+    title: "Damage Control approval",
     summary,
     details,
-    denial: `Operator denied this entire ${request.tool} call. Nothing in it was executed. Reason: ${short(reasons.map(oneLine).join("; "), 800)}. Trigger: ${short(deniedAction || "not isolated", 800)}. Do not retry the same operation or disguise it; choose a genuinely different approach or ask the operator.`,
+    denial: `Operator denied this entire ${request.tool} call. Nothing in it was executed. Trigger: ${short(deniedAction || "not isolated", 800)}. Do not retry the same operation or disguise it; choose a genuinely different approach or ask the operator.`,
   };
 }

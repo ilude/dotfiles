@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
-import type { Effect, Evidence, PendingCall, ReviewResult, Settings, Target } from "./types.ts";
+import type { Effect, Evidence, JudgeDiagnostic, PendingCall, ReviewResult, Settings, Target } from "./types.ts";
 
 const MAX_OPERATION_BYTES = 16 * 1024;
 const MAX_OPERATOR_ENTRIES = 16;
@@ -9,6 +9,7 @@ const MAX_EVIDENCE_ITEMS = 256;
 const MAX_EVIDENCE_BYTES = 64 * 1024;
 const MAX_REASON_CHARS = 1_000;
 const MAX_RESPONSE_BYTES = 8 * 1024;
+const MAX_DIAGNOSTIC_TEXT_BYTES = 64 * 1024;
 const REDACTED = "[REDACTED]";
 const ABORTED = Symbol("judge-aborted");
 
@@ -163,6 +164,15 @@ function safeErrorExplanation(error: unknown): string | undefined {
   }
 }
 
+function boundedDiagnostic(value: string, maxBytes = MAX_DIAGNOSTIC_TEXT_BYTES): { text: string; truncated: boolean; redacted: boolean } {
+  const scrubbed = redactOutbound(value);
+  const redacted = scrubbed.text;
+  if (Buffer.byteLength(redacted, "utf8") <= maxBytes) return { text: redacted, truncated: false, redacted: scrubbed.lossy };
+  let text = redacted;
+  while (Buffer.byteLength(text, "utf8") > maxBytes - 16) text = text.slice(0, Math.max(0, text.length - 256));
+  return { text: `${text}…[TRUNCATED]`, truncated: true, redacted: scrubbed.lossy };
+}
+
 function unavailable(error: unknown): ReviewResult {
   const explanation = safeErrorExplanation(error);
   return { status: "unavailable", reason: explanation === undefined ? "Luna review failed without a safe error explanation." : `Luna review failed: ${explanation}` };
@@ -208,6 +218,31 @@ export async function review(
   const abortFromParent = (): void => controller.abort();
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let prompt = "";
+  let startedAt = 0;
+  const finish = (result: ReviewResult, response?: { content?: unknown[]; stopReason?: string; errorMessage?: string; usage?: unknown }): ReviewResult => {
+    const endedAt = Date.now();
+    const promptValue = boundedDiagnostic(prompt);
+    const diagnostic: JudgeDiagnostic = {
+      version: 1, callId: pending.callId, startedAt: new Date(startedAt).toISOString(), endedAt: new Date(endedAt).toISOString(),
+      elapsedMs: Math.max(0, endedAt - startedAt), deadlineMs: settings.judge.deadlineMs, provider: settings.judge.provider,
+      model: settings.judge.model, effort: settings.judge.reasoning, maxTokens: 800, retries: settings.judge.retries,
+      prompt: promptValue.text, promptTruncated: promptValue.truncated, promptRedacted: promptValue.redacted, status: result.status,
+      ...(result.status === "valid" ? { verdict: result.verdict } : {}),
+      ...(response?.stopReason === undefined ? {} : { stopReason: response.stopReason }),
+      ...(response?.usage && typeof response.usage === "object" ? { usage: Object.fromEntries(["input", "output", "totalTokens", "cacheRead", "cacheWrite"].filter(key => typeof (response.usage as Record<string, unknown>)[key] === "number").map(key => [key, (response.usage as Record<string, unknown>)[key]])) } : {}),
+    };
+    if (response?.content) {
+      const raw = response.content.filter((part): part is { type: "text"; text: string } => typeof part === "object" && part !== null && (part as { type?: unknown }).type === "text" && typeof (part as { text?: unknown }).text === "string").map(part => part.text).join("\\n");
+      const output = boundedDiagnostic(raw);
+      diagnostic.output = output.text; diagnostic.outputTruncated = output.truncated; diagnostic.outputRedacted = output.redacted;
+    }
+    if (response?.errorMessage !== undefined) {
+      const error = boundedDiagnostic(response.errorMessage, 4 * 1024);
+      diagnostic.error = error.text; diagnostic.errorTruncated = error.truncated; diagnostic.errorRedacted = error.redacted;
+    }
+    return { ...result, diagnostics: diagnostic };
+  };
   let removeAbortWait: (() => void) | undefined;
 
   try {
@@ -226,7 +261,8 @@ export async function review(
       controller.signal.addEventListener("abort", onAbort, { once: true });
       if (controller.signal.aborted) onAbort();
     });
-    const prompt = `${contract}\n\nEVIDENCE JSON:\n${JSON.stringify(projection.evidence)}`;
+    prompt = `${contract}\n\nEVIDENCE JSON:\n${JSON.stringify(projection.evidence)}`;
+    startedAt = Date.now();
     const completion = ctx.modelRegistry.complete(
       model,
       { messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] },
@@ -235,26 +271,27 @@ export async function review(
     const response = await Promise.race([completion, aborted]);
     if (response === ABORTED) {
       return timedOut
-        ? { status: "timeout", reason: "Luna review exceeded its deadline." }
-        : { status: "cancelled", reason: "Luna review was cancelled." };
+        ? finish({ status: "timeout", reason: `Luna review exceeded its ${settings.judge.deadlineMs}ms deadline.` })
+        : finish({ status: "cancelled", reason: "Luna review was cancelled." });
     }
-    if (timedOut) return { status: "timeout", reason: "Luna review exceeded its deadline." };
-    if (controller.signal.aborted || parentSignals.some((signal) => signal.aborted) || currentGeneration() !== pending.generation) return { status: "cancelled", reason: "Review was cancelled or became stale." };
-    if (response.stopReason === "aborted") return { status: "cancelled", reason: "Luna completion was aborted." };
-    if (response.stopReason === "error") return unavailable(response.errorMessage ?? "provider returned an error stop reason");
+    if (timedOut) return finish({ status: "timeout", reason: `Luna review exceeded its ${settings.judge.deadlineMs}ms deadline.` }, response);
+    if (controller.signal.aborted || parentSignals.some((signal) => signal.aborted) || currentGeneration() !== pending.generation) return finish({ status: "cancelled", reason: "Review was cancelled or became stale." }, response);
+    if (response.stopReason === "aborted") return finish({ status: "cancelled", reason: "Luna completion was aborted." }, response);
+    if (response.stopReason === "error") return finish(unavailable(response.errorMessage ?? "provider returned an error stop reason"), response);
     const text = response.content.filter((part): part is { type: "text"; text: string } => part.type === "text").map((part) => part.text).join("\n");
     const candidates = new Set(projection.evidence.untrusted.matches.filter((match) => match.applicability === "candidate").map((match) => match.ruleId));
     const confirmed = new Set(projection.evidence.untrusted.matches.filter((match) => match.applicability === "confirmed").map((match) => match.ruleId));
-    return parseResponse(text, candidates, confirmed);
+    return finish(parseResponse(text, candidates, confirmed), response);
   } catch (error) {
-    if (timedOut) return { status: "timeout", reason: "Luna review exceeded its deadline." };
-    if (controller.signal.aborted || parentSignals.some((signal) => signal.aborted)) return { status: "cancelled", reason: "Luna review was cancelled." };
+    if (timedOut) return finish({ status: "timeout", reason: `Luna review exceeded its ${settings.judge.deadlineMs}ms deadline.` });
+    if (controller.signal.aborted || parentSignals.some((signal) => signal.aborted)) return finish({ status: "cancelled", reason: "Luna review was cancelled." });
     try {
       if (currentGeneration() !== pending.generation) return { status: "cancelled", reason: "Review was cancelled or became stale." };
     } catch (generationError) {
       return unavailable(generationError);
     }
-    return unavailable(error);
+    const safeError = safeErrorExplanation(error);
+    return finish(unavailable(error), { errorMessage: safeError ?? "provider failure without a safe explanation" });
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     removeAbortWait?.();

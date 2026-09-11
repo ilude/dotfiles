@@ -64,7 +64,7 @@ export function parseSettings(source: string): Settings {
   }
   return {
     version: 1,
-    judge: { enabled: judge.enabled, provider: judge.provider, model: judge.model, reasoning: judge.reasoning, deadlineMs: integer(judge.deadlineMs, 1, 20_000, "deadlineMs"), retries: 0 },
+    judge: { enabled: judge.enabled, provider: judge.provider, model: judge.model, reasoning: judge.reasoning, deadlineMs: integer(judge.deadlineMs, 1, 40_000, "deadlineMs"), retries: 0 },
     parseBudgetMs: integer(raw.parseBudgetMs, 1, 50, "parseBudgetMs"),
   };
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-11: Extend Damage Control judge diagnostics and timeout
+
+**Changed:** Default Damage Control now presents a concise approval panel with real policy names, matched command and targets, whole-call scope, and plain judge results. Details retains the full command, matched rules, effects, review, and navigation; Allow once, Deny, Details, and the supported future script-review action remain available. Judge reviews default to a 40-second deadline and record bounded, redacted diagnostics separately from model context. Logging is best-effort and does not alter approval outcomes.
+
 ## 2026-09-11: Trust subagent project directories without loading project resources
 
 **Fixed:** Default-profile subagents now pass `--approve` instead of imposing an unrequested project-trust denial. Their explicit exclusions for project extensions, skills, prompt templates, themes, and context files remain unchanged, and trusted project-local agent definitions continue to be selected by the parent before launch.

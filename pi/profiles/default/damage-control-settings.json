@@ -5,7 +5,7 @@
     "provider": "openai-codex",
     "model": "gpt-5.6-luna",
     "reasoning": "high",
-    "deadlineMs": 20000,
+    "deadlineMs": 40000,
     "retries": 0
   },
   "parseBudgetMs": 50

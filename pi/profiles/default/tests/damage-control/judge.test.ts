@@ -24,7 +24,7 @@ describe("Luna review", () => {
   it("uses the maintained prompt, exact Luna model, high reasoning, zero retries, and one completion", async () => {
     const complete = vi.fn().mockResolvedValue(textResponse(valid, "stop"));
     const ctx = context(complete);
-    await expect(review(evidence(), ctx, settings, pending, () => 3)).resolves.toEqual({ status: "valid", ...valid });
+    await expect(review(evidence(), ctx, settings, pending, () => 3)).resolves.toMatchObject({ status: "valid", ...valid, diagnostics: { version: 1, callId: "call-1", provider: "openai-codex", model: "gpt-5.6-luna", promptTruncated: false, outputTruncated: false, stopReason: "stop", verdict: "allow" } });
     expect(complete).toHaveBeenCalledTimes(1);
     const [model, request, options] = complete.mock.calls[0] as unknown as [{ provider: string; id: string }, { messages: [{ content: [{ text: string }] }] }, { reasoningEffort: string; maxRetries: number; signal: AbortSignal }];
     const contract = readFileSync(new URL("../../lib/damage-control/judge-prompt.md", import.meta.url), "utf8").trim();
@@ -137,7 +137,7 @@ describe("Luna review", () => {
     expect(input.operator).toHaveLength(DIRECT_INPUT_LIMIT);
     expect(input.omissions.join(" ")).toContain("omitted");
     const complete = vi.fn().mockResolvedValue(textResponse(valid));
-    expect(await review(input, context(complete), settings, pending, () => 3)).toEqual({ status: "valid", ...valid });
+    expect(await review(input, context(complete), settings, pending, () => 3)).toMatchObject({ status: "valid", ...valid, diagnostics: { promptTruncated: false, outputTruncated: false } });
     expect(complete).toHaveBeenCalledOnce();
     const outbound = JSON.stringify(complete.mock.calls[0]);
     expect(outbound).not.toContain("SYNTHETIC_SENTINEL");

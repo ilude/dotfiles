@@ -83,11 +83,38 @@ export type Evidence = {
 export type Decision =
   | { outcome: "allow" }
   | { outcome: "block"; reason: string }
-  | { outcome: "user"; reason: string; origin?: "policy" | "review"; reviewDisposition?: "ask" | "failure" }
+  | { outcome: "user"; reason: string; origin?: "policy" | "review"; reviewDisposition?: "ask" | "failure"; review?: ReviewResult }
   | { outcome: "review"; evidence: Evidence };
+export type JudgeUsage = { input?: number; output?: number; totalTokens?: number; cacheRead?: number; cacheWrite?: number };
+export type JudgeDiagnostic = {
+  version: 1;
+  callId: string;
+  startedAt: string;
+  endedAt: string;
+  elapsedMs: number;
+  deadlineMs: number;
+  provider: string;
+  model: string;
+  effort: string;
+  maxTokens: number;
+  retries: number;
+  prompt: string;
+  promptTruncated: boolean;
+  promptRedacted: boolean;
+  output?: string;
+  outputTruncated?: boolean;
+  outputRedacted?: boolean;
+  error?: string;
+  errorTruncated?: boolean;
+  errorRedacted?: boolean;
+  status: ReviewResult["status"];
+  verdict?: "allow" | "ask";
+  stopReason?: string;
+  usage?: JudgeUsage;
+};
 export type ReviewResult =
-  | { status: "valid"; verdict: "allow" | "ask"; reason: string; dismissedCandidates: string[] }
-  | { status: "timeout" | "unavailable" | "invalid" | "cancelled"; reason: string };
+  | { status: "valid"; verdict: "allow" | "ask"; reason: string; dismissedCandidates: string[]; diagnostics?: JudgeDiagnostic }
+  | { status: "timeout" | "unavailable" | "invalid" | "cancelled"; reason: string; diagnostics?: JudgeDiagnostic };
 export type PendingCall = { callId: string; fingerprint: string; generation: number; signal?: AbortSignal };
 export type DockerCreation = { daemonId: string; containerId: string; timestamp: number; callId: string };
 export type CommandRule = { id: string; action: RuleAction; regex: string; reason: string; languages: Language[] };

@@ -16,7 +16,8 @@ export async function harness(dependencies: Partial<GateDependencies> = {}) {
   const handlers = new Map<string, ((event: unknown, ctx: ExtensionContext) => unknown)[]>();
   const notify = vi.fn(); const abort = vi.fn(); const select = vi.fn(async () => "Allow once");
   const input = vi.fn(async () => "rewrite");
-  const review = vi.fn(dependencies.review ?? (async () => ({ status: "valid" as const, verdict: "allow" as const, reason: "synthetic", dismissedCandidates: [] })));
+  const defaultReview: GateDependencies["review"] = async () => ({ status: "valid", verdict: "allow", reason: "synthetic", dismissedCandidates: [] });
+  const review = vi.fn<GateDependencies["review"]>(dependencies.review ?? defaultReview);
   const getAllTools = vi.fn(() => ["read", "bash", "powershell", "write", "edit", "grep", "find", "ls"].map(name => ({ name, sourceInfo: { source: "builtin" } })));
   const entries: Array<{ id: string; type: "custom"; customType: string; data: unknown }> = [];
   const appendEntry = vi.fn((customType: string, data: unknown) => entries.push({ id: `entry-${entries.length}`, type: "custom", customType, data }));

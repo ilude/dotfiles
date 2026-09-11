@@ -37,12 +37,11 @@ describe("approval presentation", () => {
   it("connects the real matched command to its target without displaying the script", () => {
     const approval = buildApproval(decision, operation, analysis);
     const summary = approval.summary.map(line => line.text).join("\n");
-    expect(summary).toContain("File deletion using rm -f requires approval.");
+    expect(summary).toContain("Policy: Recursive deletion");
     expect(summary).toContain("rm -f /tmp/pi-rebase-todo.py");
     expect(summary).toContain("Target: /tmp/pi-rebase-todo.py");
-    expect(summary).toContain("In: /project");
     expect(summary).toContain("Approves the whole shell call");
-    expect(summary).toContain("Git state change");
+    expect(approval.details.map(line => line.text).join("\n")).toContain("git status --short");
     expect(summary).not.toContain("inert script text");
     expect(summary).not.toContain("legacy-");
     expect(approval.summary.filter(line => line.emphasis === "reason")).toHaveLength(1);
@@ -71,9 +70,19 @@ describe("approval presentation", () => {
     const file = adapt("write", "write", { path: "settings.json", content: "{}" }, "/project");
     if (file.status !== "adapted") throw new Error("Invalid fixture");
     const approval = buildApproval({ outcome: "user", origin: "review", reason: "Review timeout: deadline exceeded" }, file.request, { effects: [], matches: [], uncertainties: [], health: { status: "ready" } });
-    expect(approval.title).toBe("Safety review needs a decision");
+    expect(approval.title).toBe("Damage Control approval");
     expect(approval.summary.map(line => line.text).join("\n")).toContain("write settings.json");
     expect(approval.summary.map(line => line.text).join("\n")).not.toContain("Safety rule");
+  });
+  it("shows the judge result with the configured lower timeout", () => {
+    const approval = buildApproval({ outcome: "user", origin: "review", reason: "Review needs operator approval", reviewDisposition: "failure", review: { status: "timeout", reason: "ignored", diagnostics: { deadlineMs: 5000 } as never } }, operation, analysis);
+    const text = approval.summary.map(line => line.text).join("\n");
+    expect(text).toContain("Judge: Review timed out after 5 seconds. No verdict returned.");
+    expect(text).not.toContain("40 seconds");
+  });
+  it("does not invent a timeout duration when diagnostics and reason omit it", () => {
+    const approval = buildApproval({ outcome: "user", origin: "review", reason: "Review needs operator approval", reviewDisposition: "failure", review: { status: "timeout", reason: "deadline exceeded" } }, operation, analysis);
+    expect(approval.summary.map(line => line.text).join("\n")).toContain("Judge: Review timed out. No verdict returned.");
   });
   it.each([[80, 24], [60, 20], [40, 16]])("keeps controls visible at %i columns / %i rows", (width, rows) => {
     const view = createApprovalView(buildApproval(decision, operation, analysis), theme, getKeybindings(), vi.fn(), () => rows);
@@ -86,11 +95,20 @@ describe("approval presentation", () => {
   it("uses amber reasons/flags/scope, accent selection, and usable color-free text", () => {
     const view = createApprovalView(buildApproval(decision, operation, analysis), theme, getKeybindings(), vi.fn(), () => 30);
     const rendered = view.render(100).join("\n");
-    expect(rendered).toContain("\x1b[33mFile deletion using rm -f");
+    expect(rendered).toContain("\x1b[33mPolicy: Recursive deletion");
     expect(rendered).toContain("\x1b[33m\x1b[1m-f");
-    expect(rendered).toContain("\x1b[33m\x1b[1mApproves the whole");
+    expect(stripTerminalSequences(rendered)).toContain("Run the whole shell call.");
+    expect(stripTerminalSequences(rendered)).not.toContain("Approves the whole shell call");
     expect(rendered).toContain("\x1b[36m→ Allow once");
-    expect(stripTerminalSequences(rendered)).toContain("Git state change");
+    expect(stripTerminalSequences(rendered)).not.toContain("Code execution");
+  });
+  it("describes a native tool approval as a tool call, not a shell call", () => {
+    const file = adapt("write", "write", { path: "settings.json", content: "{}" }, "/project");
+    if (file.status !== "adapted") throw new Error("Invalid fixture");
+    const view = createApprovalView(buildApproval(decision, file.request, { effects: [], matches: [], uncertainties: [], health: { status: "ready" } }), theme, getKeybindings(), vi.fn(), () => 24);
+    const rendered = plain(view.render(100));
+    expect(rendered).toContain("Run this entire tool call once.");
+    expect(rendered).not.toContain("shell call");
   });
   it("opens Details at the trigger, supports full navigation, and never approves while browsing", () => {
     const done = vi.fn();

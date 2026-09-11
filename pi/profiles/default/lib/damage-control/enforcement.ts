@@ -23,6 +23,7 @@ export type GateDependencies = AnalysisDependencies & {
   cancelScriptReviews?: () => void;
 };
 const WATCHDOG_STATE = "damage-control-watchdog";
+const JUDGE_REVIEW_LOG = "damage-control-judge-review-v1";
 const blocked = (reason: string, terminate = false) => ({ block: true as const, reason: reason.slice(0, 4000), ...(terminate ? { terminate: true as const } : {}) });
 
 export async function initialize(pi: ExtensionAPI, profile: string, repo: string): Promise<Gate> {
@@ -150,7 +151,13 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         const evidence = context.buildEvidence(call.callId, request.text, analysis.effects, analysis.matches, analysis.uncertainties, variables, sequenceDecision?.evidence);
         let decision = decide(analysis, evidence);
         if (decision.outcome === "review") {
+          const reviewSession = ctx.sessionManager.getSessionId();
           const result = await dependencies.review(evidence, { ...ctx, signal }, dependencies.settings, call, () => context.generation);
+          // Persist only while the originating session and generation are still active.
+          // Logging is diagnostic and must never change the approval outcome.
+          if (fresh() && ctx.sessionManager.getSessionId() === reviewSession && result.diagnostics) {
+            try { pi.appendEntry(JUDGE_REVIEW_LOG, result.diagnostics); } catch { /* best-effort diagnostics */ }
+          }
           if (!fresh()) return blocked("Review is stale or cancelled; action not executed");
           decision = decide(analysis, evidence, result);
         }

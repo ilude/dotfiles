@@ -67,6 +67,6 @@ describe("semantic damage-control policy", () => {
     const raw = YAML.parse(yaml) as Record<string, unknown>;
     raw.version = 2;
     expect(() => parsePolicy(YAML.stringify(raw))).toThrow();
-    expect(parseSettings(settings).judge).toEqual({ enabled: true, provider: "openai-codex", model: "gpt-5.6-luna", reasoning: "high", deadlineMs: 20000, retries: 0 });
+    expect(parseSettings(settings).judge).toEqual({ enabled: true, provider: "openai-codex", model: "gpt-5.6-luna", reasoning: "high", deadlineMs: 40000, retries: 0 });
   });
 });
