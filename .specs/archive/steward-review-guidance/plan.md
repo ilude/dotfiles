@@ -126,17 +126,17 @@ Normally assign one implementation task below per worker and incorporate its res
   - Done when the named checks pass and actual date/profile/path/results and verification limits are recorded. No provider benchmark, live Herdr run, operator acceptance, or exhaustive review suite is required.
   - Evidence: On 2026-09-10 from `C:/Users/mglenn/.dotfiles-worktrees/steward-review-guidance/pi/profiles/default`, `pnpm run typecheck` passed and 23 focused tests passed across `subagent-guidance.test.ts`, `subagent-definitions.test.ts`, and `subagent-loader.test.ts`. Root `git diff --check` passed. Assembled guidance covers bounded failed-check corrections, speculative improvements, task-affecting pre-existing defects, and no-finding closeout. `prompts/do-it.md` has no task diff. No live Steward/model behavior test was run.
 
-- [ ] **T4: Archive, commit, integrate, and clean up**
+- [x] **T4: Archive, commit, integrate, and clean up**
   - Depends on: T3 and execution authorization.
   - Follow closeout below. Keep integration and cleanup unfinished until verified; with `--no-merge`, record the intentional exception and retain the committed worktree.
   - Done when authorized integration and cleanup are verified, or report the specific blocked/skipped outcome without claiming completion.
-  - Evidence: Task commit `125fd2d6` merged into recorded target `C:/Users/mglenn/.dotfiles` branch `main` as `8c0999f`; target contains the implementation and archive with no active plan. Completion metadata is recorded in this follow-up commit. Task worktree cleanup remains pending verification.
+  - Evidence: Task commit `125fd2d6` merged into recorded target `C:/Users/mglenn/.dotfiles` branch `main` as `8c0999f`; target contains the implementation and archive with no active plan. Completion metadata was committed as `779c6640`. Git removed the worktree registration; Node filesystem cleanup removed the long-path remnant, and the absent path and worktree record were verified.
 
 ## Validation and current handoff
 
-- Status: completed on 2026-09-10. Implementation and agreed checks passed, and integration into the recorded target is verified. Task worktree cleanup remains pending verification.
-- Completed: Steward definition, Team Lead access, effort validation, shared caller guidance, focused tests, documentation, changelog, archival, task commit, and merge into the recorded target.
-- Next: verify the task worktree has no uncommitted or unmerged work, remove it, and record cleanup evidence.
+- Status: completed on 2026-09-10. Implementation and agreed checks passed, integration into the recorded target is verified, and task worktree cleanup is verified.
+- Completed: Steward definition, Team Lead access, effort validation, shared caller guidance, focused tests, documentation, changelog, archival, task commit, merge into the recorded target, completion metadata, and worktree cleanup.
+- Next: none. Operator observation after reload remains a non-blocking verification limit.
 - Revision decisions: normal post-review/validation consultation with direct handling of obvious bounded corrections; shared-only executable guidance with no `/do-it` edit; Luna high default and high/xhigh-only Luna validation; user-approved larger-model selection through instructions only, with no automatic larger-model retry. These supersede the original override and `/do-it` requirements.
 - Open user decisions: none identified. Technical defaults above are the proposed implementation, not already validated behavior.
 - Verification limits: no live Steward run or measured reduction in churn. Offline loader/prompt checks establish configuration and instruction delivery, not model compliance. Observe normal use after rollout rather than add evaluation machinery here.
