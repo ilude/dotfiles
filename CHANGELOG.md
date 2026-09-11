@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-11: Compact usage dashboard links
+
+**Added:** Default Pi usage reports link to the existing AWS Bedrock dashboard. The transcript renders both dashboard URLs as short OSC 8 hyperlinks, `Codex usage` and `Bedrock dashboard`; stored reports and non-terminal notifications retain plain URLs. Clicking requires terminal hyperlink support and the dashboard requires AWS console access.
+
+## 2026-09-11: Compact Bedrock usage reporting
+
+**Changed:** Bedrock reports replace per-model cache token counts with one weighted local cache-read percentage and omit the CloudWatch invocation count. The percentage uses locally recorded cache-read tokens divided by input plus cache-read plus cache-write tokens; the cost baseline does not contribute token data. Accounting and stored records are unchanged.
+
+## 2026-09-11: Focus WAR reports on contract outcomes
+
+**Changed:** The default Pi `/war-report` prompt now produces a concise government contracting officer summary centered on outcomes in the local development, staging, and testing environments. It consolidates activity into a few short entries, avoids low-level engineering detail, and prints the complete report in chat after saving it.
+
+## 2026-09-11: Show banked Codex reset expirations
+
+**Added:** Default Pi's startup and `/usage` reports now show the available banked Codex reset count with each expiration listed separately using short numeric dates and local times. The report uses OpenAI's detailed reset-credit endpoint alongside the existing quota endpoint; quota reporting remains available when reset-credit details cannot be fetched.
+
 ## 2026-09-11: Research missing Bedrock prices after model refresh
 
 **Added:** Successful default-profile `/refresh-models` Bedrock/Mantle discovery now runs a secondary read-only researcher phase over newly added actual route targets and existing exact targets without prices. Complete AWS-source rates for input, output, cache read, and cache write are validated and atomically merged into the profile-local gitignored pricing table with source/date provenance.

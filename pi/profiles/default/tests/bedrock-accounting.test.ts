@@ -68,7 +68,34 @@ describe("Bedrock accounting", () => {
 		const row = [[{ field: "userArn", value: principal }, { field: "estimatedCost", value: "2.50" }, { field: "invocations", value: "4" }]];
 		const baseline = parseResults(JSON.stringify({ status: "Complete", results: row }), principal, capturedAt.toISOString()).baseline!; expect(await createBaseline(baseline)).toBe(true);
 		const summary = await summarize(baseline.month); expect(summary.baseline).toBe(2.5); expect(summary.records.map(record => record.id)).toEqual([after.id]);
-		expect(formatUsage(summary)).toBe("Bedrock local estimate:\n  CloudWatch baseline: $2.50 (4 invocation(s))\n  Total:  $2.50");
+		expect(formatUsage(summary)).toBe("Bedrock: $2.50\n  baseline: $2.50\n  Cache-read: 0.0%");
+	});
+	it("shows a weighted local cache-read rate without raw cache counts", () => {
+		const records = [
+			makeRecord({ provider: "amazon-bedrock", model: "anthropic.claude-opus-5", usage: { input: 100, output: 1000, cacheRead: 800, cacheWrite: 100 } }),
+			makeRecord({ provider: "amazon-bedrock", model: "anthropic.claude-haiku-4-5", usage: { input: 1000, output: 1000 } }),
+		];
+		const report = formatUsage({ month: records[0].month, records, cost: 1, baseline: 0, unpriced: 0 });
+		expect(report.startsWith("Bedrock: $1.00\n")).toBe(true);
+		expect(report.endsWith("  Cache-read: 40.0%")).toBe(true);
+		expect(report).not.toContain("Total:");
+		expect(report).toContain("Tokens:  100 in, 1.0K out");
+		expect(report).not.toContain("cache read");
+		expect(report).not.toContain("cache write");
+		expect(formatUsage({ month: records[0].month, records: [], cost: 0, baseline: 1, unpriced: 0 })).toContain("Cache-read: unavailable");
+	});
+	it("aligns model names, costs, and token columns across different widths", () => {
+		const records = [
+			makeRecord({ provider: "amazon-bedrock", model: "opus-5", usage: { input: 8, output: 4500 } }),
+			makeRecord({ provider: "amazon-bedrock", model: "fable-5-1", usage: { input: 14, output: 10200 } }),
+		];
+		records[0].pricing = { status: "estimated", basis: "test", total: 0.17 };
+		records[1].pricing = { status: "estimated", basis: "test", total: 12.67 };
+		const report = formatUsage({ month: records[0].month, records, cost: 12.84, baseline: 0, unpriced: 0 });
+		expect(report.split("\n").slice(1, 3)).toEqual([
+			"  opus-5:     $0.17 Tokens:  8 in,  4.5K out",
+			"  fable-5-1: $12.67 Tokens: 14 in, 10.2K out",
+		]);
 	});
 	it("publishes exactly one competing baseline and never alters existing state", async () => {
 		const dir = temp(); const file = join(dir, "baseline.json");

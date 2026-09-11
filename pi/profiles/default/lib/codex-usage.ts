@@ -6,14 +6,19 @@ import { getAgentDir as profileDir } from "@earendil-works/pi-coding-agent";
 
 export const USAGE_PAGE = "https://chatgpt.com/codex/settings/usage";
 export const USAGE_ENDPOINT = "https://chatgpt.com/backend-api/wham/usage";
+export const RESET_CREDITS_ENDPOINT = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 export const REFRESH_MS = 5 * 60_000;
 const HIDDEN_ADDITIONAL_LIMITS = new Set(["GPT-5.3-Codex-Spark"]);
 export interface Window { used_percent?: number; limit_window_seconds?: number; reset_at?: number; reset_after_seconds?: number }
 interface Limit { primary_window?: Window | null; secondary_window?: Window | null }
+export interface ResetCredit { status?: string; expires_at?: string }
+export interface ResetCredits { available_count?: number; credits?: ResetCredit[] }
 export interface CodexUsage {
   rate_limit?: Limit | null;
   credits?: { unlimited?: boolean; balance?: string | number; has_credits?: boolean };
   additional_rate_limits?: { limit_name?: string; metered_feature?: string; rate_limit?: Limit | null }[];
+  rate_limit_reset_credits?: { available_count?: number };
+  reset_credits?: ResetCredits;
 }
 export { profileDir };
 function object(value: unknown): Record<string, unknown> | undefined {
@@ -39,17 +44,27 @@ export function resolveCodexAuth(): { accessToken: string; accountId?: string } 
 }
 export async function fetchCodexUsage(signal: AbortSignal): Promise<CodexUsage> {
   const auth = resolveCodexAuth();
-  const response = await fetch(USAGE_ENDPOINT, { signal, headers: {
+  const headers = {
     authorization: `Bearer ${auth.accessToken}`,
     ...(auth.accountId ? { "chatgpt-account-id": auth.accountId } : {}),
     accept: "application/json",
     "user-agent": "dotfiles-pi-usage/1",
-  } });
+  };
+  const [response, resetResponse] = await Promise.all([
+    fetch(USAGE_ENDPOINT, { signal, headers }),
+    fetch(RESET_CREDITS_ENDPOINT, { signal, headers }).catch(() => undefined),
+  ]);
   if (!response.ok) throw new Error(`HTTP ${response.status}; check /login or the usage page.`);
   const value = object(await response.json());
   if (!value) throw new Error("Invalid Codex usage response.");
   // Resolve relative reset times once, not on every cached render.
   const usage = value as CodexUsage;
+  if (resetResponse?.ok) {
+    try {
+      const resetCredits = object(await resetResponse.json());
+      if (resetCredits) usage.reset_credits = resetCredits as ResetCredits;
+    } catch { /* Keep quota reporting available when reset details are malformed. */ }
+  }
   for (const limit of [usage.rate_limit, ...(usage.additional_rate_limits ?? []).map(item => item.rate_limit)]) {
     for (const window of [limit?.primary_window, limit?.secondary_window]) {
       if (window && window.reset_at === undefined && Number.isFinite(window.reset_after_seconds))
@@ -86,20 +101,36 @@ export function formatQuota(usage: CodexUsage, paint: (color: ReturnType<typeof 
     return `${label} ${window && percent !== undefined ? paint(paceColor(window), `${percent}%`) : paint("accent", "0%")}`;
   }).join(" | ");
 }
+export function formatResetCredits(usage: CodexUsage): string | undefined {
+  const detail = usage.reset_credits;
+  const count = detail?.available_count ?? usage.rate_limit_reset_credits?.available_count;
+  if (!Number.isFinite(count) || count! < 1) return count === 0 ? "Banked resets: 0" : undefined;
+  const expirations = (detail?.credits ?? [])
+    .filter(credit => credit.status === "available" && credit.expires_at && !Number.isNaN(Date.parse(credit.expires_at)))
+    .map(credit => {
+      const date = new Date(credit.expires_at!);
+      const day = date.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "2-digit" });
+      const time = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+      return `${day.padEnd(8)}  ${time.padStart(12)}`;
+    });
+  return `Banked resets: ${count}${expirations.length ? `\n${expirations.map(date => `  - ${date}`).join("\n")}` : ""}`;
+}
 export function formatUsage(usage: CodexUsage): string {
   const section = (name: string, limit?: Limit | null): string[] => {
     const all = windows(limit);
     return [name + ":", ...(all.length ? all.map(window => {
       const seconds = window.limit_window_seconds;
-      const label = seconds === 18000 ? "5h" : seconds === 604800 ? "weekly" : seconds ? `${seconds}s` : "window";
+      const label = seconds === 18000 ? "5h" : seconds === 604800 ? "Weekly" : seconds ? `${seconds}s` : "Window";
       const percent = used(window);
       const end = reset(window);
       return `  ${label}: ${percent === undefined ? "unavailable" : `${percent}% used`}${end === undefined ? "" : `; resets ${new Date(end).toLocaleString()}`}`;
-    }) : ["  window data unavailable"])];
+    }) : ["  Window data unavailable"])];
   };
+  const bankedResets = formatResetCredits(usage);
   return [
     ...section("Codex", usage.rate_limit),
-    ...(usage.credits?.unlimited ? ["credits: unlimited"] : usage.credits?.balance !== undefined ? [`credits: ${usage.credits.balance}`] : usage.credits?.has_credits ? ["credits: available"] : []),
+    ...(bankedResets ? [bankedResets.split("\n").map(line => `  ${line}`).join("\n")] : []),
+    ...(usage.credits?.unlimited ? ["  Credits: unlimited"] : usage.credits?.balance !== undefined ? [`  Credits: ${usage.credits.balance}`] : usage.credits?.has_credits ? ["  Credits: available"] : []),
     ...(usage.additional_rate_limits ?? [])
       .filter(item => !HIDDEN_ADDITIONAL_LIMITS.has(item.limit_name ?? ""))
       .flatMap(item => ["", ...section(item.limit_name || item.metered_feature || "Additional limit", item.rate_limit)]),
@@ -151,6 +182,6 @@ export function formatCacheUsage(rows: CacheObservation[]): string {
   }
   return [
     "Codex cache:",
-    `  cache-read: ${total > 0 ? `${(read / total * 100).toFixed(1)}%` : "unavailable"}`,
+    `  Cache-read: ${total > 0 ? `${(read / total * 100).toFixed(1)}%` : "unavailable"}`,
   ].join("\n");
 }

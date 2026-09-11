@@ -5,6 +5,14 @@ import { formatUsage as formatBedrockUsage, summarize as summarizeBedrock } from
 
 const REPORT = "codex-usage-report";
 const START = "codex-usage-start";
+const BEDROCK_DASHBOARD = "https://us-east-2.console.aws.amazon.com/cloudwatch/home?region=us-east-2#dashboards:name=ccb-bedrock-usage";
+
+function reportLinks(text: string): string {
+  for (const [url, label] of [[USAGE_PAGE, "Codex usage"], [BEDROCK_DASHBOARD, "Bedrock dashboard"]]) {
+    text = text.replaceAll(url, `\x1b]8;;${url}\x1b\\\x1b[94;4m${label}\x1b[24;39m\x1b]8;;\x1b\\`);
+  }
+  return text;
+}
 
 export default function codexStatus(pi: ExtensionAPI): void {
   let alive = false;
@@ -16,7 +24,7 @@ export default function codexStatus(pi: ExtensionAPI): void {
   let generation = 0;
   let cacheError: string | undefined;
 
-  pi.registerEntryRenderer(REPORT, entry => new Text((entry.data as { text: string }).text, 0, 0));
+  pi.registerEntryRenderer(REPORT, entry => new Text(reportLinks((entry.data as { text: string }).text), 0, 0));
 
   function getUsage(force = false): Promise<CodexUsage> {
     if (request) return request;
@@ -51,7 +59,13 @@ export default function codexStatus(pi: ExtensionAPI): void {
       let bedrock: string;
       try { bedrock = formatBedrockUsage(await summarizeBedrock()); }
       catch (error) { bedrock = `Bedrock local estimate unavailable: ${error instanceof Error ? error.message : "cannot read ledger"}`; }
-      const text = `${content}\n\n${cacheReport()}\n\n${bedrock}`;
+      const cache = cacheReport().replace(/^Codex cache:\n/, "");
+      const lines = content.split("\n");
+      const weekly = lines.findIndex(line => line.startsWith("  Weekly:"));
+      const codex = lines.indexOf("Codex:");
+      if (codex >= 0) lines.splice(weekly >= 0 ? weekly + 1 : codex + 1, 0, cache);
+      else lines.push("", cacheReport());
+      const text = `${lines.join("\n")}\n\n${bedrock}\n\n${BEDROCK_DASHBOARD}`;
       pi.appendEntry(REPORT, { text, marker: report.marker });
       if (ctx.mode !== "tui") ctx.ui.notify(text, "info");
     }

@@ -102,15 +102,20 @@ export function formatUsage(summary: UsageSummary): string {
 	if (!summary.records.length && !summary.baseline) return "Bedrock: no local usage recorded this month.";
 	const groups = new Map<string, { input: number; output: number; read: number; write: number; cost: number }>();
 	for (const record of summary.records) { const key = shortModelName(record.model); const g = groups.get(key) ?? { input: 0, output: 0, read: 0, write: 0, cost: 0 }; g.input += record.usage.input; g.output += record.usage.output; g.read += record.usage.cacheRead; g.write += record.usage.cacheWrite; g.cost += record.pricing.total ?? 0; groups.set(key, g); }
-	const lines = ["Bedrock local estimate:"];
-	for (const [name, g] of groups) {
-		const cost = g.cost.toFixed(2);
-		if (cost === "0.00") continue;
-		lines.push(`  ${name}: $${cost} Tokens: ${compactTokens(g.input)} in, ${compactTokens(g.output)} out, ${compactTokens(g.read)} cache read, ${compactTokens(g.write)} cache write`);
+	const lines = [`Bedrock: $${(summary.cost + summary.baseline).toFixed(2)}`];
+	const rows = [...groups].filter(([, g]) => g.cost.toFixed(2) !== "0.00").map(([name, g]) => ({
+		name: `${name}:`, cost: `$${g.cost.toFixed(2)}`, input: compactTokens(g.input), output: compactTokens(g.output),
+	}));
+	const widths = { name: 0, cost: 0, input: 0, output: 0 };
+	for (const row of rows) {
+		for (const key of ["name", "cost", "input", "output"] as const) widths[key] = Math.max(widths[key], row[key].length);
 	}
-	if (summary.baselineDetails) lines.push(`  CloudWatch baseline: $${summary.baseline.toFixed(2)} (${summary.baselineDetails.invocations} invocation(s))`);
-	else if (summary.baseline) lines.push(`  Pre-port baseline: $${summary.baseline.toFixed(2)}`);
+	for (const row of rows) {
+		lines.push(`  ${row.name.padEnd(widths.name)} ${row.cost.padStart(widths.cost)} Tokens: ${row.input.padStart(widths.input)} in, ${row.output.padStart(widths.output)} out`);
+	}
+	const totals = [...groups.values()].reduce((sum, g) => ({ read: sum.read + g.read, input: sum.input + g.input + g.read + g.write }), { read: 0, input: 0 });
+	if (summary.baselineDetails || summary.baseline) lines.push(`  baseline: $${summary.baseline.toFixed(2)}`);
 	if (summary.unpriced) lines.push(`  Unpriced: ${summary.unpriced} request(s)`);
-	lines.push(`  Total:  $${(summary.cost + summary.baseline).toFixed(2)}`);
+	lines.push(`  Cache-read: ${totals.input > 0 ? `${(100 * totals.read / totals.input).toFixed(1)}%` : "unavailable"}`);
 	return lines.join("\n");
 }

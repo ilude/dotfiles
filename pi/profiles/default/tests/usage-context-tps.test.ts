@@ -8,7 +8,7 @@ import codex from "../extensions/codex-status.ts";
 import context from "../extensions/context.ts";
 import tps from "../extensions/tps-tracker.ts";
 import clear from "../extensions/clear.ts";
-import { formatCacheUsage, formatQuota, formatUsage, paceColor, readCacheUsage, recordCacheUsage, REFRESH_MS, USAGE_PAGE } from "../lib/codex-usage.ts";
+import { formatCacheUsage, formatQuota, formatResetCredits, formatUsage, paceColor, readCacheUsage, recordCacheUsage, REFRESH_MS, RESET_CREDITS_ENDPOINT, USAGE_PAGE } from "../lib/codex-usage.ts";
 
 import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
 import { RELOAD_REQUEST } from "../lib/profile-reload-events.ts";
@@ -59,6 +59,10 @@ const usage = { rate_limit: {
   { limit_name: "extra", rate_limit: { primary_window: { used_percent: 1, limit_window_seconds: 18000 } } },
   { limit_name: "GPT-5.3-Codex-Spark", rate_limit: { primary_window: { used_percent: 2, limit_window_seconds: 18000 } } },
 ] };
+const resetCredits = { available_count: 2, credits: [
+  { status: "available", expires_at: "2026-01-02T03:04:00Z" },
+  { status: "available", expires_at: "2026-02-03T04:05:00Z" },
+] };
 const assistant = (output = 100, stopReason = "stop") => ({ role: "assistant", provider: "openai-codex", model: "test", api: "openai-codex-responses", timestamp: Date.now(), content: [{ type: "text", text: "hello" }], usage: { input: 10, cacheRead: 90, cacheWrite: 0, output, totalTokens: 100 + output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason });
 const flush = () => vi.advanceTimersByTimeAsync(0);
 let dir: string;
@@ -67,7 +71,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "pi-usage-port-"));
   vi.stubEnv("PI_CODING_AGENT_DIR", dir);
   writeFileSync(join(dir, "auth.json"), JSON.stringify({ "openai-codex": { access: "synthetic-token", accountId: "synthetic-account" } }));
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(usage))));
+  vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => new Response(JSON.stringify(String(url) === RESET_CREDITS_ENDPOINT ? resetCredits : usage))));
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); });
 
@@ -81,20 +85,34 @@ describe("Codex usage", () => {
     expect(report.data.text).toContain(USAGE_PAGE);
     expect(report.data.text).toContain("25% used");
     expect(report.data.text).toContain("resets");
-    expect(report.data.text).toContain("credits: 3");
+    expect(report.data.text).toContain("\n  Credits: 3");
+    expect(report.data.text).toContain("\n  Banked resets: 2\n");
+    for (const credit of resetCredits.credits) {
+      const date = new Date(credit.expires_at);
+      const day = date.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "2-digit" });
+      const time = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+      expect(report.data.text).toContain(`\n    - ${day.padEnd(8)}  ${time.padStart(12)}`);
+    }
+    expect(report.data.text).not.toContain("Jan");
     expect(report.data.text).toContain("extra:");
     expect(report.data.text).not.toContain("GPT-5.3-Codex-Spark");
-    expect(r.renderers.get("codex-usage-report")(report).render(160).join("\n")).toContain(USAGE_PAGE);
+    const rendered = r.renderers.get("codex-usage-report")(report).render(160).join("\n");
+    expect(rendered).toContain(`\x1b]8;;${USAGE_PAGE}\x1b\\\x1b[94;4mCodex usage\x1b[24;39m\x1b]8;;\x1b\\`);
+    expect(rendered).toContain("\x1b[94;4mBedrock dashboard\x1b[24;39m\x1b]8;;\x1b\\");
+    expect(report.data.text).toContain("#dashboards:name=ccb-bedrock-usage");
+    expect(report.data.text).not.toContain("\x1b");
     expect(r.sm.buildSessionContext().messages).toEqual([]);
     expect(r.statuses.get("codex")).toContain("5h 25%");
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
     expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toMatchObject({ authorization: "Bearer synthetic-token", "chatgpt-account-id": "synthetic-account" });
     await r.emit("message_end", { message: assistant() });
     await r.commands.get("usage").handler("", r.ctx);
-    expect((r.reports()[1] as any).data.text).toContain("cache-read: 90.0%");
+    const refreshed = (r.reports()[1] as any).data.text;
+    expect(refreshed).toMatch(/  Weekly:[^\n]*\n  Cache-read: 90\.0%\n/);
+    expect(refreshed).not.toContain("Codex cache:");
     expect(r.commands.has("cache-doctor")).toBe(false);
     await vi.advanceTimersByTimeAsync(REFRESH_MS);
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(6);
     expect(r.reports()).toHaveLength(2);
     await r.emit("session_shutdown");
     expect(vi.getTimerCount()).toBe(0);
@@ -189,7 +207,7 @@ describe("Codex usage", () => {
     expect(readCacheUsage()).toHaveLength(100);
     expect(readFileSync(join(dir, "codex-cache.jsonl"), "utf8")).not.toContain("hello");
     const report = formatCacheUsage([{ model: "a", input: 10, cacheRead: 90 }, { model: "b", input: 900, cacheRead: 0 }, { model: "a", input: null, cacheRead: null }]);
-    expect(report).toBe("Codex cache:\n  cache-read: 9.0%");
+    expect(report).toBe("Codex cache:\n  Cache-read: 9.0%");
     expect(formatCacheUsage([])).toContain("unavailable");
     recordCacheUsage({ ...assistant(0, "error"), usage: { input: 0, cacheRead: 0 } });
     expect(readCacheUsage().at(-1)).toMatchObject({ input: null, cacheRead: null });
@@ -206,6 +224,8 @@ describe("Codex usage", () => {
     expect(paceColor({ ...window, used_percent: 25 })).toBe("success");
     expect(paceColor({ ...window, used_percent: 50 })).toBe("warning");
     expect(paceColor({ ...window, used_percent: 75 })).toBe("error");
+    expect(formatResetCredits({ rate_limit_reset_credits: { available_count: 3 } })).toBe("Banked resets: 3");
+    expect(formatResetCredits({ reset_credits: { available_count: 0, credits: [] } })).toBe("Banked resets: 0");
     expect(formatUsage({})).toContain(USAGE_PAGE);
   });
 });
