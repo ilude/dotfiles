@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-11: Research missing Bedrock prices after model refresh
+
+**Added:** Successful default-profile `/refresh-models` Bedrock/Mantle discovery now runs a secondary read-only researcher phase over newly added actual route targets and existing exact targets without prices. Complete AWS-source rates for input, output, cache read, and cache write are validated and atomically merged into the profile-local gitignored pricing table with source/date provenance.
+
+**Preserved:** Built-in and explicit Mantle aliases remain authoritative; unresolved or failed research warns without inventing rates, disabling models, or gating the settled refresh/reload lifecycle. Historical unpriced ledger records consume newly persisted exact rates on read.
+
+## 2026-09-11: Resolve Mantle prices in Bedrock usage totals
+
+**Fixed:** Mantle Opus 5 and Haiku 4.5 target IDs now map explicitly to their same-release Bedrock catalog prices instead of remaining unpriced because of naming differences. Exact regional catalog entries still take precedence, and unknown models are not assigned guessed prices.
+
+**Recovered:** The footer and usage reports calculate missing prices for existing unpriced observations on read. The original ledger, already-recorded estimates, baseline cutoff, and request deduplication remain unchanged. Reload activates both the historical-total correction and pricing for future responses; no additional history backfill is needed.
+
 ## 2026-09-10: Replace plan tracking runtimes on reload
 
 **Fixed:** Plan-run tracking now keeps only plain ownership data across extension reloads and constructs a fresh runtime, so `/reload` activates updated lifecycle methods without dropping queued work. Delivered records are retired during idle startup, while unrelated process-owned records remain untouched.

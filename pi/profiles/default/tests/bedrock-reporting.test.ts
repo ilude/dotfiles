@@ -34,6 +34,27 @@ it("registers one management command, records once, normalizes cost, and reports
 	await expect(command.handler("reconcile", ctx)).rejects.toThrow("already exists");
 });
 
+it("restores a footer with historical Mantle prices and accounts future replies", async () => {
+	dir = mkdtempSync(join(tmpdir(), "bedrock-report-")); vi.stubEnv("PI_CODING_AGENT_DIR", dir);
+	const now = Date.now();
+	const old = makeRecord({ timestamp: now, session: "old", provider: "bedrock-mantle", model: "anthropic.claude-opus-5", target: "anthropic.claude-opus-5", usage: { input: 1_000_000 } });
+	old.pricing = { status: "unpriced", basis: "old-catalog" };
+	await appendRecord(old);
+	const hooks = new Map<string, any>(); const statuses = new Map<string, string>();
+	bedrock({ registerProvider: () => {}, registerCommand: () => {}, on: (name: string, fn: any) => hooks.set(name, fn) } as any);
+	const ctx: any = { sessionManager: { getSessionFile: () => "new-session" }, ui: { setStatus: (key: string, value: string) => statuses.set(key, value) } };
+	await hooks.get("session_start")({ reason: "reload" }, ctx);
+	expect(statuses.get("bedrock")).toBe("bedrock: $5.00");
+	const message = { role: "assistant", provider: "bedrock-mantle", model: "anthropic.claude-haiku-4-5", responseModel: "anthropic.claude-haiku-4-5", timestamp: now + 1, usage: { input: 1_000_000 } };
+	const result = await hooks.get("message_end")({ message }, ctx);
+	expect(result.message.usage.cost.total).toBe(1);
+	expect(result.message.bedrockPricing.status).toBe("estimated");
+	expect(statuses.get("bedrock")).toBe("bedrock: $6.00");
+	await hooks.get("message_end")({ message }, ctx);
+	await hooks.get("agent_settled")({}, ctx);
+	expect(statuses.get("bedrock")).toBe("bedrock: $6.00");
+});
+
 it("rejects a delayed reconciliation when another creator publishes first", async () => {
 	dir = mkdtempSync(join(tmpdir(), "bedrock-report-")); vi.stubEnv("PI_CODING_AGENT_DIR", dir);
 	let releaseResults!: () => void; let resultsRequested!: () => void;

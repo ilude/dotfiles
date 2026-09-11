@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildBedrockModelRoutes, contextForBedrockRoute, createBedrockRoutingStream, resolveBedrockMantleTarget } from "../lib/bedrock/provider.ts";
+import { bedrockRouteTargetIds, buildBedrockModelRoutes, contextForBedrockRoute, createBedrockModelProvider, createBedrockRoutingStream, resolveBedrockMantleTarget } from "../lib/bedrock/provider.ts";
 import { readRecords } from "../lib/bedrock/ledger.ts";
 import registerBedrockProvider from "../extensions/bedrock/provider.ts";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
@@ -36,6 +36,21 @@ describe("Bedrock provider routing", () => {
 		expect(routes.map(route => route.model.id)).toEqual(expect.arrayContaining(["anthropic.claude-sonnet-5", "openai.gpt-5.6-luna", "openai.gpt-5.6-sol"]));
 		expect(routes.some(route => route.model.id === "anthropic.claude-sonnet-4-6")).toBe(false);
 	});
+	it("preserves the materialized Runtime fallback versus advertised Mantle target", async () => {
+		const runtimeMetadata = [{ id: "us.anthropic.claude-opus-5", kind: "inference-profile" as const, modelName: "Runtime Opus" }];
+		const runtimeProvider = createBedrockModelProvider({}, { provideToken: async () => "token", runtimeMetadata });
+		expect(bedrockRouteTargetIds(runtimeProvider, ["anthropic.claude-opus-5"])).toEqual(["us.anthropic.claude-opus-5"]);
+
+		const mantleProvider = createBedrockModelProvider({}, {
+			provideToken: async () => "token",
+			runtimeMetadata,
+			discoverModels: async () => ["anthropic.claude-opus-5"],
+		});
+		await mantleProvider.refreshModels?.({ allowNetwork: true, signal: new AbortController().signal, publish: async (event: any) => event.update?.() } as any);
+		expect(bedrockRouteTargetIds(mantleProvider, ["anthropic.claude-opus-5"])).toEqual(["anthropic.claude-opus-5"]);
+		expect(mantleProvider.getModels().find(model => model.id === "anthropic.claude-opus-5")?.provider).toBe("bedrock-mantle");
+	});
+
 	it("normalizes route identity and replays matching context through the target", async () => {
 		const route = buildBedrockModelRoutes(["openai.gpt-5.6-luna"]).find(item => item.model.id === "openai.gpt-5.6-luna")!;
 		const adapter = vi.fn((_model, _context) => { const stream = createAssistantMessageEventStream(); queueMicrotask(() => { const message: any = { role: "assistant", content: [], api: route.target.api, provider: route.target.provider, model: route.target.id, responseModel: route.target.id, usage: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 3, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 1 }; stream.push({ type: "done", reason: "stop", message }); stream.end(); }); return stream; });

@@ -6,6 +6,7 @@
     "bedrock-provider.test.ts",
     "bedrock-accounting.test.ts",
     "bedrock-reporting.test.ts",
+    "bedrock-pricing-research.test.ts",
     "pi-web-api.ts"
   ]
 }

@@ -11,9 +11,45 @@ afterEach(() => { vi.unstubAllEnvs(); for (const dir of dirs.splice(0)) rmSync(d
 function temp() { const dir = mkdtempSync(join(tmpdir(), "bedrock-ledger-")); dirs.push(dir); vi.stubEnv("PI_CODING_AGENT_DIR", dir); return dir; }
 
 describe("Bedrock accounting", () => {
-	it("prices only exact target catalog entries", () => {
+	it("keeps unknown targets unpriced", () => {
 		expect(estimateUsage("openai.gpt-5.6-luna", { input: 1_000_000 }).total).toBeCloseTo(0.22);
 		expect(estimateUsage("unknown", { input: 10 }).status).toBe("unpriced");
+	});
+	it.each([
+		["anthropic.claude-opus-5", "global.anthropic.claude-opus-5", [5, 25, 0.5, 6.25]],
+		["anthropic.claude-haiku-4-5", "global.anthropic.claude-haiku-4-5-20251001-v1:0", [1, 5, 0.1, 1.25]],
+		["eu.anthropic.claude-opus-5", "eu.anthropic.claude-opus-5", [5.5, 27.5, 0.55, 6.875]],
+	] as const)("prices %s using its explicit catalog target", (target, catalogTarget, rates) => {
+		const price = estimateUsage(target, { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 });
+		expect(price.status).toBe("estimated");
+		expect(price.catalogTarget).toBe(catalogTarget);
+		expect(price.components).toEqual({ input: rates[0], output: rates[1], cacheRead: rates[2], cacheWrite: rates[3] });
+		expect(price.total).toBeCloseTo(rates.reduce((sum, rate) => sum + rate, 0));
+	});
+	it("does not infer unknown releases, regional aliases, or missing targets", () => {
+		for (const target of ["anthropic.claude-opus-99", "eu.anthropic.claude-haiku-4-5", undefined]) {
+			expect(estimateUsage(target, { input: 100 }).status).toBe("unpriced");
+		}
+	});
+	it("recovers old unpriced observations without altering the ledger or existing estimates", async () => {
+		const dir = temp();
+		const input = { timestamp: Date.parse("2026-09-11T12:00:00Z"), provider: "bedrock-mantle", model: "anthropic.claude-opus-5", usage: { input: 1_000_000 } };
+		const oldPricing = { status: "unpriced", basis: "old-catalog", reason: "no exact catalog price" } as const;
+		const recovered = { ...makeRecord({ ...input, target: input.model, session: "recovered" }), pricing: oldPricing };
+		const missingTarget = { ...makeRecord({ ...input, session: "missing-target" }), pricing: oldPricing };
+		const unknown = { ...makeRecord({ ...input, target: "unknown", session: "unknown" }), pricing: oldPricing };
+		const preserved = makeRecord({ ...input, target: input.model, session: "preserved" });
+		preserved.pricing = { status: "estimated", basis: "recorded-price", total: 7 };
+		for (const record of [recovered, missingTarget, unknown, preserved]) await appendRecord(record);
+		const file = join(dir, "bedrock-usage.jsonl"); const original = readFileSync(file, "utf8");
+		const summary = await summarize(recovered.month);
+		expect(summary.cost).toBe(12);
+		expect(summary.unpriced).toBe(2);
+		expect(summary.records.find(record => record.id === recovered.id)?.pricing.catalogTarget).toBe("global.anthropic.claude-opus-5");
+		expect(summary.records.find(record => record.id === preserved.id)?.pricing).toEqual(preserved.pricing);
+		expect(await summarize(recovered.month)).toEqual(summary);
+		expect(readFileSync(file, "utf8")).toBe(original);
+		expect((await readRecords())[0].pricing).toEqual(oldPricing);
 	});
 	it("deduplicates records and preserves observation-time estimates", async () => {
 		temp(); const record = makeRecord({ timestamp: 1000, session: "s", provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", usage: { input: 100 } });

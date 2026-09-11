@@ -7,6 +7,9 @@ import {
 	getConfiguredBedrockModelIds,
 	shouldHideModel,
 } from "./model-visibility.ts";
+import { bedrockRouteTargetIds } from "../lib/bedrock/provider.ts";
+import { hasKnownPricing } from "../lib/bedrock/pricing.ts";
+import { researchBedrockPricing } from "../lib/bedrock/pricing-research.ts";
 
 // Convention exception: this extension is a single user-initiated slash
 //   command (`/refresh-models`) whose UI is a sequence of progress messages
@@ -396,6 +399,7 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 						message: string;
 						addedIds: string[];
 						removedIds: string[];
+						pricingTargetIds?: string[];
 						details?: string[];
 						changed?: boolean;
 				  }
@@ -426,12 +430,21 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 						const afterIds = new Set(refreshedBedrockIds);
 						const addedIds = [...afterIds].filter((id) => !beforeIds.has(id)).sort();
 						const removedIds = [...beforeIds].filter((id) => !afterIds.has(id)).sort();
+						// The native provider owns the materialized route choice. Read its
+						// metadata instead of rebuilding routes from logical registry IDs.
+						const nativeProvider = ctx.modelRegistry.getRegisteredNativeProvider?.("bedrock-mantle");
+						const actualTargets = bedrockRouteTargetIds(nativeProvider, refreshedBedrockIds);
+						const addedTargets = bedrockRouteTargetIds(nativeProvider, addedIds);
 						outcomes.push({
 							provider,
 							ok: true,
 							message: `${provider}: ${beforeIds.size} -> ${afterIds.size} models (added ${addedIds.length}, removed ${removedIds.length})`,
 							addedIds,
 							removedIds,
+							pricingTargetIds: [...new Set([
+								...addedTargets,
+								...actualTargets.filter((id) => !hasKnownPricing(id)),
+							])].sort(),
 						});
 						continue;
 					}
@@ -466,6 +479,7 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 			);
 
 			let changedModelState = false;
+			let deferReload = false;
 			for (const success of successes) {
 				notify(success.message, "info");
 				if (
@@ -496,6 +510,24 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 			}
 			for (const failure of failures) notify(failure.message, "warning");
 
+			const pricingTargets = [...new Set(successes
+				.filter((success) => success.provider === "bedrock-mantle")
+				.flatMap((success) => success.pricingTargetIds ?? []))];
+			if (pricingTargets.length > 0) {
+				notify(`Researching Bedrock pricing for ${pricingTargets.length} actual target(s)...`, "info");
+				const pricing = await researchBedrockPricing(pricingTargets, {
+					cwd: ctx.cwd,
+					origin: ctx.sessionManager?.getSessionId?.() ?? "refresh-models",
+				});
+				if (pricing.stored.length > 0) {
+					changedModelState = true;
+					notify(`Bedrock pricing updated for ${pricing.stored.length} target(s).`, "info");
+				}
+				if (pricing.deferReload) deferReload = true;
+				if (pricing.unresolved.length > 0 || pricing.error)
+					notify(`Bedrock pricing unavailable for ${formatModelIdList(pricing.unresolved.length ? pricing.unresolved : pricingTargets)}${pricing.error ? ` (${pricing.error})` : ""}; affected models remain usable but unpriced.`, "warning");
+			}
+
 			const scopeUpdate = await syncCuratedModelScope(
 				ctx,
 				refreshedBedrockIds,
@@ -518,11 +550,18 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 			}
 
 			if (changedModelState) {
-				notify(
-					"Model catalog changed; reloading Pi resources so /models can see updates.",
-					"info",
-				);
-				if (typeof ctx.reload === "function") await ctx.reload();
+				if (deferReload) {
+					notify(
+						"Model catalog changed, but reload is deferred while the pricing researcher remains active; run /refresh-models again after it settles.",
+						"warning",
+					);
+				} else {
+					notify(
+						"Model catalog changed; reloading Pi resources so /models can see updates.",
+						"info",
+					);
+					if (typeof ctx.reload === "function") await ctx.reload();
+				}
 			}
 		},
 	});

@@ -80,6 +80,22 @@ export interface BedrockModelRoute {
 	transport: BedrockTransport;
 }
 
+/** Internal metadata exposed by the native provider, rather than inferred from registry IDs. */
+export interface BedrockRouteMetadataProvider {
+	getBedrockRouteTargetIds(modelIds: readonly string[]): string[];
+}
+
+function materializedRouteTargetIds(
+	routes: readonly BedrockModelRoute[],
+	modelIds: readonly string[],
+): string[] {
+	const byModel = new Map(routes.map(route => [route.model.id, route.target.id]));
+	return [...new Set(modelIds.flatMap(id => {
+		const actual = byModel.get(id);
+		return actual ? [actual] : [];
+	}))];
+}
+
 type MantleDiscovery = (
 	target: BedrockMantleTarget,
 	provideToken: TokenProvider,
@@ -229,8 +245,10 @@ function mantleClaudeRoute(
 		(model) => model.id === anthropicId,
 	);
 	if (!source) return undefined;
+	const cost = bedrockModelCost(PROVIDER_ID, modelId);
 	const model: Model<Api> = {
 		...source,
+		...(cost ? { cost } : {}),
 		id: modelId,
 		provider: PROVIDER_ID,
 		baseUrl: `${mantleOrigin(target.region)}/anthropic`,
@@ -267,7 +285,9 @@ function runtimeClaudeRoutes(
 		const logicalId = runtimeId
 			.replace(/^us[.]/, "")
 			.replace(/-\d{8}-v\d+:\d+$/, "");
-		const cost = bedrockModelCost(PROVIDER_ID, logicalId);
+		// Runtime pricing belongs to the inference-profile target, not the
+		// logical Mantle alias that happens to be exposed in the registry.
+		const cost = bedrockModelCost(PROVIDER_ID, runtimeId);
 		const model: Model<Api> = {
 			...source,
 			id: logicalId,
@@ -317,6 +337,18 @@ export function buildBedrockModelRoutes(
 		return route ? [route] : [];
 	});
 	return [...claudeRoutes, ...gptRoutes];
+}
+
+/** Read actual targets from the provider's materialized routes. Runtime Claude
+ * models expose a logical ID, so rebuilding routes from registry IDs is unsafe:
+ * an advertised Mantle route can otherwise be mistaken for Runtime (or vice versa). */
+export function bedrockRouteTargetIds(
+	provider: unknown,
+	modelIds: readonly string[],
+): string[] {
+	if (!provider || typeof provider !== "object") return [];
+	const reader = (provider as Partial<BedrockRouteMetadataProvider>).getBedrockRouteTargetIds;
+	return typeof reader === "function" ? reader.call(provider, modelIds) : [];
 }
 
 export const BEDROCK_MANTLE_MODELS = buildBedrockModelRoutes(
@@ -514,7 +546,7 @@ export function createBedrockModelProvider(
 		tokenFactory?: TokenProviderFactory;
 		runtimeMetadata?: readonly BedrockModelMetadata[];
 	} = {},
-): Provider<Api> {
+): Provider<Api> & BedrockRouteMetadataProvider {
 	const initialTarget = resolveBedrockMantleTarget(env);
 	const provideToken: RequestTokenProvider = options.provideToken
 		? () => options.provideToken?.() ?? Promise.reject(new Error("Missing token provider"))
@@ -665,6 +697,7 @@ export function createBedrockModelProvider(
 	return {
 		id: PROVIDER_ID,
 		name: "Amazon Bedrock",
+		getBedrockRouteTargetIds: (modelIds) => materializedRouteTargetIds(routes, modelIds),
 		auth: runtimeAuth,
 		getModels: () => routes.map((route) => route.model),
 		refreshModels: async (context) => {
