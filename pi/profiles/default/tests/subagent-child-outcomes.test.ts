@@ -20,20 +20,21 @@ it("yields parent questions as terminating tool results instead of polling",asyn
  }
 });
 
-it("does not turn permission-dialog input into parent takeover",async()=>{
+it("keeps permission input local and reports ordinary interactive input without takeover",async()=>{
  vi.useFakeTimers();
  const before=process.env.PI_SUBAGENT_ENDPOINT;process.env.PI_SUBAGENT_ENDPOINT=JSON.stringify({child:"visible-child",origin:"origin",run:"run",port:1,token:"inert"});
- const handlers:Record<string,Function[]>={};const requests:any[]=[];let handbackQueued=false;
+ const handlers:Record<string,Function[]>={};const requests:any[]=[];
  const pi:any={on:(name:string,handler:Function)=>(handlers[name]??=[]).push(handler),registerCommand:()=>{},sendMessage:vi.fn()};
  const ctx:any={isIdle:()=>true,ui:{setStatus:vi.fn(),notify:vi.fn()},abort:vi.fn(),shutdown:vi.fn()};
- request.mockImplementation(async(_endpoint,message)=>{requests.push(message);if(message.type==="app-ready")return{accepted:true};if(message.type==="app-poll")return{commands:requests.some(item=>item.type==="intervene")&&!handbackQueued?(handbackQueued=true,[{id:"handback",type:"handback"}]):[]};return{accepted:true};});
+ request.mockImplementation(async(_endpoint,message)=>{requests.push(message);if(message.type==="app-ready")return{accepted:true};if(message.type==="app-poll")return{commands:[]};return{accepted:true};});
  const emit=async(name:string,event:any={})=>{for(const handler of handlers[name]??[])await handler(event,ctx)};
  try{
   bindChildSurface(pi,true);await emit("session_start");
-  await emit("ui_prompt_start");await emit("input",{source:"interactive"});
+  await emit("ui_prompt_start");await emit("input",{source:"interactive",text:"allow"});
+  expect(requests.some(message=>message.type==="operator-input")).toBe(false);
+  await emit("ui_prompt_end");await emit("input",{source:"interactive",text:"continue normally"});
+  expect(requests).toContainEqual(expect.objectContaining({type:"operator-input",payload:expect.objectContaining({text:"continue normally"})}));
   expect(requests.some(message=>message.type==="intervene")).toBe(false);
-  await emit("ui_prompt_end");await emit("input",{source:"interactive"});
-  expect(requests.some(message=>message.type==="intervene")).toBe(true);
   await vi.advanceTimersByTimeAsync(250);
  }finally{
   await emit("session_shutdown",{reason:"quit"});vi.useRealTimers();

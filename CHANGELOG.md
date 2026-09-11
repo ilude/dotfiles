@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-10: Remove unnecessary subagent workflow gates
+
+**Changed:** Default-profile coordinators may launch permitted leaves in any valid existing working directory, ordinary visible-child input stays native and parent-coordinated, and direct operator `!` and `!!` commands use Pi's native shell behavior. Out-of-role model tool calls remain blocked with an informative reason but no longer terminate the turn, allowing recovery through an allowed action.
+
+**Preserved:** Frozen role tool and delegation ceilings, same-origin routing, valid-directory checks, Damage Control for model-issued calls, explicit persistent takeover and handback, permission-prompt isolation, outcome correlation, process ownership, and cleanup behavior remain in force. These changes remove custom workflow interruptions without adding role elevation, path allowlists, or a separate shell executor.
+
 ## 2026-09-10: Remove subagent native-path confinement
 
 **Changed:** Default-profile subagents no longer reject native file-tool paths outside their assigned working directory, including symlink targets. This removes a custom restriction that terminated ordinary read-only lookups such as `find`. The working directory remains execution context; role tool permissions, coordinator launch-directory rules, and Damage Control are unchanged. No replacement approval prompts or path allowlists were added.

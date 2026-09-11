@@ -1,0 +1,4 @@
+target_checkout=C:/Users/mglenn/.dotfiles
+target_branch=main
+task_branch=feature/subagent-workflow-gate-removal
+task_worktree=C:/Users/mglenn/.dotfiles-subagent-workflow-gate-removal

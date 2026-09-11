@@ -38,8 +38,14 @@ describe("native file access uses cwd as context, not confinement", () => {
   it("preserves the role tool ceiling regardless of path", () => {
     const {root, outside} = fixture();
     const guard = toolGuard(root, ["read"]);
-    expect(guard({toolName:"write", input:{path:join(outside,"new.txt")}})).toMatchObject({
-      block:true, terminate:true, reason:"Tool write is outside frozen probe authority",
+    expect(guard({toolName:"write", input:{path:join(outside,"new.txt")}})).toEqual({
+      block:true, reason:"Tool write is outside frozen probe authority",
     });
+  });
+  it("keeps role rejection recoverable for a subsequent permitted action", () => {
+    const {root} = fixture();
+    const guard = toolGuard(root, ["read"]);
+    expect(guard({toolName:"write", input:{path:"blocked.txt"}})).toMatchObject({block:true, reason:expect.stringContaining("outside frozen")});
+    expect(guard({toolName:"read", input:{path:"allowed.txt"}})).toBeUndefined();
   });
 });
