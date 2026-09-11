@@ -1,7 +1,7 @@
 ---
 created: 2026-09-10
-status: ready
-completed: null
+status: completed
+completed: 2026-09-10
 ---
 
 # Add Steward to keep review follow-up within the agreed task
@@ -130,13 +130,13 @@ Normally assign one implementation task below per worker and incorporate its res
   - Depends on: T3 and execution authorization.
   - Follow closeout below. Keep integration and cleanup unfinished until verified; with `--no-merge`, record the intentional exception and retain the committed worktree.
   - Done when authorized integration and cleanup are verified, or report the specific blocked/skipped outcome without claiming completion.
-  - Evidence: Not started.
+  - Evidence: Task commit `125fd2d6` merged into recorded target `C:/Users/mglenn/.dotfiles` branch `main` as `8c0999f`; target contains the implementation and archive with no active plan. Completion metadata is recorded in this follow-up commit. Task worktree cleanup remains pending verification.
 
 ## Validation and current handoff
 
-- Status: implementation and agreed checks passed on 2026-09-10; integration and cleanup are pending.
-- Completed: Steward definition, Team Lead access, effort validation, shared caller guidance, focused tests, documentation, changelog, and bounded validation in the recorded task worktree.
-- Next: archive and commit the spec with implementation, merge into the recorded `main` target, record completion metadata there, and remove the clean task worktree.
+- Status: completed on 2026-09-10. Implementation and agreed checks passed, and integration into the recorded target is verified. Task worktree cleanup remains pending verification.
+- Completed: Steward definition, Team Lead access, effort validation, shared caller guidance, focused tests, documentation, changelog, archival, task commit, and merge into the recorded target.
+- Next: verify the task worktree has no uncommitted or unmerged work, remove it, and record cleanup evidence.
 - Revision decisions: normal post-review/validation consultation with direct handling of obvious bounded corrections; shared-only executable guidance with no `/do-it` edit; Luna high default and high/xhigh-only Luna validation; user-approved larger-model selection through instructions only, with no automatic larger-model retry. These supersede the original override and `/do-it` requirements.
 - Open user decisions: none identified. Technical defaults above are the proposed implementation, not already validated behavior.
 - Verification limits: no live Steward run or measured reduction in churn. Offline loader/prompt checks establish configuration and instruction delivery, not model compliance. Observe normal use after rollout rather than add evaluation machinery here.
