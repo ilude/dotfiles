@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-027 - Normal outcomes and isolated events were mislabeled as recurring tool failures
+
+- **Reference:** Follow-up discussion of the weekly Pi session review, 2026-09-11.
+- **Observed:** The review grouped nonzero command results, application/test outcomes, normal subagent handoffs, and isolated lifecycle anomalies under recurring tool-call and subagent issues. A proposed terminal-status mechanism was based on eight representative sessions, but direct inspection found six had final answers, one was a normal child waiting for its parent, and only one lacked a final response.
+- **Finding:** A tool can work correctly while reporting that the invoked command or target system failed. The review did not consistently separate tool mechanism defects, caller misuse, command/application outcomes, and agent interpretation failures. It also promoted isolated events without establishing cross-session recurrence.
+- **Remediation:** Added the `tool-call-analysis` skill with explicit categories, subagent equivalents, recurrence criteria, and evidence requirements. Its owned logs retain review coverage and operator classification corrections across sessions. Correct future review claims rather than treating raw `isError`, nonzero exit codes, HTTP errors, or failed tests as tool defects.
+- **Related:** AIF-043, APR-021, APR-026.
+- **Status:** Skill implemented; future adherence remains unverified.
+
 ## APR-026 - Custom analytics limits obstructed an exhaustive review
 
 - **Reference:** Weekly Pi session failure and anomaly review, 2026-09-11.

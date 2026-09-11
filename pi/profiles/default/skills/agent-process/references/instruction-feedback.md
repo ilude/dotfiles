@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-043 - Distinguish tool failures from faithfully reported failure outcomes
+
+- **Reference:** Operator correction during follow-up to the weekly Pi session review, 2026-09-11.
+- **Feedback:** A Bash call that faithfully returns a program's nonzero exit code is not a failure of the Bash tool. HTTP 500 can mean the HTTP tool succeeded while the target service failed. Incorrect flags, syntax, paths, or tool selection are caller tool-use failures and must be distinguished from tool implementation defects. Isolated incidents are not recurring issues.
+- **Decision:** Add an on-demand `tool-call-analysis` skill covering tool mechanism failures, tool-use failures, command/application outcomes, interpretation failures, equivalent subagent categories, cross-session recurrence, and evidence-based counting. The skill owns durable analysis and classification-feedback logs so review coverage and operator corrections survive later sessions. Do not infer systemic remediation from raw error flags or one-off events.
+- **Related:** APR-027, AIF-032, AIF-041.
+- **Status:** Skill and persistent logs implemented; future adherence remains unverified.
+
 ## AIF-042 - Override inherited submodule push recursion in coordinated commits
 
 - **Reference:** Operator request to fix bounded `/commit` publication ordering, 2026-09-11.

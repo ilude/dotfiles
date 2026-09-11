@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-11: Add deterministic `/commit` ignore action
+
+**Fixed:** Default `/commit` ignore dialogs now offer `Add to .gitignore`, safely append the proposed rule to the selected inventory repository, and direct Luna to refresh status and stage only `.gitignore`.
+
+## 2026-09-11: Classify tool-call failures by the failing layer
+
+**Added:** Default Pi now has a self-maintaining `tool-call-analysis` skill for session reviews and failure diagnosis. It separates tool mechanism defects, caller misuse, command or application outcomes, and agent interpretation errors, with matching distinctions for subagents. Owned analysis and classification-feedback logs retain each review's profiles, exact interval, coverage, artifacts, findings, limitations, remediation status, and later operator corrections.
+
+**Guidance:** Every review reads the retained history first and writes its coverage and corrections back afterward. Nonzero exits, failed tests, HTTP error responses, denials, and cancellations are not automatically tool failures. Recurring issues require the same demonstrated mechanism in at least two independent sessions; isolated incidents and recovered failures remain visible without being promoted into systemic remediation. This adds no automatic monitoring, telemetry, workflow gate, or operational limit.
+
 ## 2026-09-11: Coordinate bounded `/commit` publication across submodules
 
 **Fixed:** Default `/commit` now reviews initialized submodules deepest-first, refreshes parent status after child commits so changed gitlinks are staged, and includes clean initialized submodules with outgoing referenced commits when push is authorized. Each repository publishes to the existing `origin` with `--recurse-submodules=no` and its own branch refspec, preventing inherited on-demand recursion from breaking child-before-parent ordering without prohibiting submodule publication.

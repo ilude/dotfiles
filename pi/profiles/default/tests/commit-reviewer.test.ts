@@ -1,6 +1,8 @@
 import { expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { buildCommitTask, describeCommitTool, isBroadDiscoveryCommand } from "../commands/commit/reviewer.ts";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { appendGitignoreRule, buildCommitTask, describeCommitTool, isBroadDiscoveryCommand, validateGitignorePattern } from "../commands/commit/reviewer.ts";
 
 it("supplies exact workflow locations and routes status refreshes to the existing tool", () => {
 	const root = "C:/work/repository with spaces";
@@ -28,6 +30,21 @@ it("specifies usable inspection examples and the utility's actual argument contr
 	expect(prompt).toContain("clean submodules whose outgoing commits are referenced");
 	expect(prompt).toContain("refresh the parent status");
 	expect(prompt).toContain("Stop on any actual tool, Git, hook, cancellation, or timeout failure");
+});
+
+it("validates and appends one conservative ignore rule without duplicates", async () => {
+	const repo = mkdtempSync(join(tmpdir(), "commit-ignore-"));
+	await appendGitignoreRule(repo, "cache/");
+	await appendGitignoreRule(repo, "cache/");
+	expect(readFileSync(join(repo, ".gitignore"), "utf8")).toBe("cache/\n");
+	expect(() => validateGitignorePattern("!cache/")).toThrow(/Negated/);
+	expect(() => validateGitignorePattern("C:\\\\temp")).toThrow(/Absolute/);
+	expect(() => validateGitignorePattern("*")).toThrow(/Blanket/);
+	expect(() => validateGitignorePattern("**/*")).toThrow(/Blanket/);
+	const aborted = new AbortController();
+	aborted.abort();
+	await expect(appendGitignoreRule(repo, "other/", aborted.signal)).rejects.toThrow();
+	expect(readFileSync(join(repo, ".gitignore"), "utf8")).toBe("cache/\n");
 });
 
 it("blocks broad discovery without blocking ordinary Git commands", () => {

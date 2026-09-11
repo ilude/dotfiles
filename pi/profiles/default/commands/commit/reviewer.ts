@@ -1,9 +1,9 @@
-import { readFileSync, realpathSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { ImageContent, TextContent, Usage } from "@earendil-works/pi-ai";
-import { createBashTool, createReadTool, type ExtensionAPI, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createBashTool, createReadTool, type ExtensionAPI, type ToolDefinition, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
@@ -20,6 +20,34 @@ export function isBroadDiscoveryCommand(command: string): boolean {
 		|| /(^|(?:&&|\|\||[;|])\s*)ls\s+[^;&|]*-[^;&|]*R/i.test(command);
 }
 
+export function validateGitignorePattern(pattern: string): string {
+	if (!pattern || pattern.includes("\n") || pattern.includes("\r") || pattern.trim() !== pattern)
+		throw new Error("Proposed .gitignore rule must be one trimmed line.");
+	if (pattern.startsWith("!")) throw new Error("Negated .gitignore rules are not allowed.");
+	if (/^[A-Za-z]:/.test(pattern) && (pattern[2] === "/" || pattern[2] === "\\") || pattern.startsWith("\\\\") || pattern.startsWith("//")) throw new Error("Absolute filesystem paths are not allowed as .gitignore rules.");
+	if (/^[*/]+$/.test(pattern)) throw new Error("Blanket .gitignore rules are not allowed.");
+	return pattern;
+}
+
+export function appendGitignoreRule(repoPath: string, pattern: string, signal?: AbortSignal): Promise<boolean> {
+	const rule = validateGitignorePattern(pattern);
+	const file = join(repoPath, ".gitignore");
+	return withFileMutationQueue(file, async () => {
+		signal?.throwIfAborted();
+		let existing = "";
+		try {
+			if (lstatSync(file).isSymbolicLink()) throw new Error("Refusing to update a symlinked .gitignore.");
+			existing = readFileSync(file, "utf8");
+		} catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+		if (existing.split(/\r?\n/).some((line) => line === rule)) return false;
+		const newline = existing.includes("\r\n") ? "\r\n" : "\n";
+		const separator = existing && !existing.endsWith("\n") && !existing.endsWith("\r") ? newline : "";
+		signal?.throwIfAborted();
+		writeFileSync(file, `${existing}${separator}${rule}${newline}`, "utf8");
+		return true;
+	});
+}
+
 export function describeCommitTool(name: string, args: unknown): string {
 	const input = args && typeof args === "object" ? args as Record<string, unknown> : {};
 	if (name === "bash") {
@@ -28,7 +56,7 @@ export function describeCommitTool(name: string, args: unknown): string {
 	}
 	if (name === "commit_git_review") return `Git review action=${String(input.action ?? "unknown")} repo=${String(input.repo ?? ".")}`;
 	if (name === "read") return `file read: ${String(input.path ?? "unknown")}`;
-	if (name === "ask_ignore") return `ignore decision: ${String(input.path ?? "unknown")}`;
+	if (name === "ask_ignore") return `ignore decision: ${String(input.repo ?? ".")}/${String(input.candidate ?? input.path ?? "unknown")}`;
 	return `tool ${name}`;
 }
 
@@ -123,18 +151,28 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 							} },
 							{
 								name: "ask_ignore", label: "Ignore decision",
-								description: "Ask whether a new file likely to belong in .gitignore should be included or left out. Only use for those files, before staging them.",
-								parameters: Type.Object({ path: Type.String(), reason: Type.String() }),
+								description: "Ask whether a new file likely to belong in .gitignore should be included, added to that repository's .gitignore, or left untracked. Only use before staging it.",
+								parameters: Type.Object({ repo: Type.String(), candidate: Type.String(), reason: Type.String(), pattern: Type.String() }),
 								execute: async (_id, input) => {
-									const { path, reason } = input as { path: string; reason: string };
-									if (!ctx.hasUI) throw new Error(`User input required for ${path}: ${reason}. Run /commit interactively.`);
+									const { repo, candidate, reason, pattern } = input as { repo: string; candidate: string; reason: string; pattern: string };
+									if (!ctx.hasUI) throw new Error(`User input required for ${candidate}: ${reason}. Run /commit interactively.`);
+									const repository = repositories.find((path) => (relative(root!, path) || ".") === repo);
+									if (!repository) throw new Error(`Repository is not in the supplied inventory: ${repo}`);
+									if (!candidate || /^[\\/]/.test(candidate) || /^[A-Za-z]:/.test(candidate) || candidate.split(/[\\/]+/).includes(".."))
+										throw new Error(`Candidate must be repository-relative: ${candidate}`);
+									const rule = validateGitignorePattern(pattern);
 									pauseTimer();
 									progress("Waiting for ignore-file decision…");
 									try {
-										const answer = await ctx.ui.select(`${path}\n${reason}`, ["Include", "Leave out"], { signal: combined });
+										const answer = await ctx.ui.select(`Candidate: ${candidate}\nReason: ${reason}\nProposed rule: ${rule}`, ["Include in commit", "Add to .gitignore", "Leave untracked"], { signal: combined });
 										if (!answer) throw new Error("Ignore-file decision cancelled.");
-										if (answer === "Leave out") leftOut.push(path);
-										return { content: [{ type: "text" as const, text: `${answer}: ${path}` }], details: {} };
+										if (answer === "Leave untracked") leftOut.push(`${repo === "." ? "" : `${repo}/`}${candidate}`);
+										if (answer === "Add to .gitignore") {
+											combined.throwIfAborted();
+											const added = await appendGitignoreRule(repository, rule, combined);
+											return { content: [{ type: "text" as const, text: `Added proposed rule to ${repo}/.gitignore: ${rule}. Refresh status and stage .gitignore; do not stage ${candidate}.` }], details: { repo, candidate, pattern: rule, added } };
+										}
+										return { content: [{ type: "text" as const, text: `${answer}: ${repo}/${candidate}` }], details: {} };
 									} finally { resumeTimer(); progress("Committing…"); }
 								},
 							},

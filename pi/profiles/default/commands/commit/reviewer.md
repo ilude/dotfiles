@@ -7,7 +7,7 @@ The task supplies the absolute repository root, whitespace utility path, initial
 - `commit_git_review` owns status, diff summaries, and diffs. Use it instead of shell `git status` or shell diff inspection. Initial status is already supplied; refresh only when changes or a concrete uncertainty require it.
 - `read` owns file contents: applicable instructions and relevant untracked files, which Git diffs do not contain.
 - `bash` is for ordinary Git mutations and the specific checks below. Each call starts at the supplied root; do not assume a previous `cd` persists. Use explicit `git -C` directories for submodules.
-- `ask_ignore` is only for new files likely to belong in `.gitignore`, before staging them. Ask whether to include or leave out, then continue the same workflow. Do not edit `.gitignore` or force-add ignored files. Ask nothing about groups or commit subjects.
+- `ask_ignore` is only for new files likely to belong in `.gitignore`, before staging them. Provide the exact inventory `repo` (`.` or an inventory submodule), repository-relative `candidate`, `reason`, and one proposed `pattern`. The dialog offers `Include in commit`, `Add to .gitignore`, and `Leave untracked`; follow the returned decision. Adding a rule refreshes status and stages only that repository's `.gitignore`, never the candidate. Ask nothing about groups or commit subjects.
 
 Do not run `find`, `rg --files`, recursive `ls`, parent-directory discovery, or another submodule inventory. Missing optional instruction files are normal. Use only inventory repositories, reading their applicable instructions before changing them.
 
