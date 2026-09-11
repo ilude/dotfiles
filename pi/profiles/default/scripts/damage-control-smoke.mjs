@@ -52,7 +52,7 @@ for (const [language, source] of Object.entries(fixtures)) {
   console.log(`${language}: load ${loadMs.toFixed(1)}ms, first parse ${parseMs.toFixed(2)}ms, warm ${warmMs.toFixed(2)}ms; ${wasm}`);
 }
 
-// Use the runtime package's advertised CLI, not its unbundled dist/cli.js.
+// Resolve the supported CLI from package metadata rather than an internal module path.
 // The child has an empty profile/cwd; no credentials or project resources are copied.
 const manifestPath = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/package.json", import.meta.url));
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));

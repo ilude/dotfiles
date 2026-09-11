@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
-// The advertised bundle is self-contained; unbundled loader imports require absent pi-server.
+// Keep this loader fixture isolated from unrelated optional runtime exports.
 const bundlePath = "../node_modules/@earendil-works/pi-coding-agent/dist/bundle/index.js";
 const { DefaultResourceLoader, SettingsManager } = await import(bundlePath) as typeof import("@earendil-works/pi-coding-agent");
 let lastLoader: InstanceType<typeof DefaultResourceLoader> | undefined;

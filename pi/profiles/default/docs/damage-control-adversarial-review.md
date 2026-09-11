@@ -103,8 +103,6 @@ Conversely, reading a sensitive file and later uploading an unrelated public rep
 
 The installed Pi loader catches failed extension imports/factories and continues without that extension. The coordinator additionally verified `initializeExtension`: registrations are committed only after the factory succeeds; an uncaught factory failure discards them. Merely registering a blocker before an import is not enough if that import later throws out of the factory.
 
-The review launch itself exposed a packaging distinction: running the package's unbundled `dist/cli.js` failed on missing `@earendil-works/pi-server`; the installed `pi` shim uses `dist/bundle/cli.js`, which worked. No installed package was modified. This is not a Damage Control defect, but it confirms that deployment tests must use the actual supported entry point.
-
 **Recommended correction:** A minimal discovered bootstrap with no parser dependency; catch initialization failures inside the factory and successfully commit the failure-state handler. Test missing parser packages and actual grammar WASM assets, not just `require()` success. Missing/malformed bootstrap itself still needs launcher/readiness treatment; bootstrap code cannot catch its own absence. Keep Pi usable for explicit operator recovery, not an automatic bypass or a launch dead end.
 
 **Productivity cost:** Explicit setup/repair command and a visible failure/recovery state, not package installs or an exhaustive health check on every tool call.
