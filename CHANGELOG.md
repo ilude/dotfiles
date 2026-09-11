@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-10: Replace plan tracking runtimes on reload
+
+**Fixed:** Plan-run tracking now keeps only plain ownership data across extension reloads and constructs a fresh runtime, so `/reload` activates updated lifecycle methods without dropping queued work. Delivered records are retired during idle startup, while unrelated process-owned records remain untouched.
+
 ## 2026-09-10: Remove subagent native-path confinement
 
 **Changed:** Default-profile subagents no longer reject native file-tool paths outside their assigned working directory, including symlink targets. This removes a custom restriction that terminated ordinary read-only lookups such as `find`. The working directory remains execution context; role tool permissions, coordinator launch-directory rules, and Damage Control are unchanged. No replacement approval prompts or path allowlists were added.

@@ -86,6 +86,56 @@ it("observes explicit manual invocations with either flag position without steal
   f.emit("session_shutdown", { reason: "quit" }); expect(f.runtime.store.get(f.file)?.token).toBe(other.token);
 });
 
+it("migrates the actual v1 cached object and cleans delivered work on startup", async () => {
+  const f = fixture();
+  const delivered = f.runtime.store.claim(f.file, { pid: process.pid, state: "running" });
+  const pending = join(f.root, ".specs", "pending", "plan.md");
+  mkdirSync(join(f.root, ".specs", "pending"), { recursive: true });
+  writeFileSync(pending, "# Pending\n");
+  const pendingRun = f.runtime.store.claim(pending, { pid: process.pid, state: "waiting" });
+  const legacyKey = Symbol.for("dotfiles.pi.default.plan-run-runtime.v1");
+  const all = globalThis as typeof globalThis & { [legacyKey]?: Map<string, any> };
+  all[legacyKey] = new Map([[join(f.root, "profile"), {
+    owned: new Map([[f.file, { run: delivered, pending: false }], [pending, { run: pendingRun, pending: true, command }]]),
+    current: f.file,
+  }]]);
+  const modulePath: string = "../lib/plan-run-runtime.ts?v1-migration";
+  const reloaded = await import(/* @vite-ignore */ modulePath);
+  const replacement = reloaded.getPlanRunRuntime(join(f.root, "profile"));
+  const hooks = new Map<string, Function>();
+  reloaded.registerPlanRunTracking({ on: (name: string, handler: Function) => hooks.set(name, handler) } as any, replacement);
+  hooks.get("session_start")?.({ reason: "reload" }, f.ctx);
+  expect(replacement.store.get(f.file)).toBeUndefined();
+  expect(replacement.store.get(pending)?.token).toBe(pendingRun.token);
+  expect(all[legacyKey]).toBeUndefined();
+});
+
+it("replaces a reloaded runtime while preserving pending work and retiring delivered work", async () => {
+  const f = fixture();
+  f.emit("input", { text: command }); f.deliver();
+  const pending = join(f.root, ".specs", "pending", "plan.md");
+  mkdirSync(join(f.root, ".specs", "pending"), { recursive: true });
+  writeFileSync(pending, "---\nstatus: active\n---\n# Pending\n\n- [ ] work\n");
+  const pendingRun = f.runtime.store.claim(pending, { pid: process.pid, state: "waiting" });
+  f.runtime.track(pendingRun);
+  const modulePath: string = "../lib/plan-run-runtime.ts?reload";
+  const reloaded = await import(/* @vite-ignore */ modulePath);
+  const replacement = reloaded.getPlanRunRuntime(join(f.root, "profile"));
+  expect(replacement).not.toBe(f.runtime);
+  const hooks = new Map<string, Function>();
+  const pi = { on: (name: string, handler: Function) => hooks.set(name, handler) } as any;
+  reloaded.registerPlanRunTracking(pi, replacement);
+  hooks.get("session_start")?.({ reason: "reload" }, f.ctx);
+  expect(replacement.store.get(pending)?.token).toBe(pendingRun.token);
+  expect(replacement.store.get(f.file)).toBeUndefined();
+
+  const other = join(f.root, ".specs", "other", "plan.md");
+  mkdirSync(join(f.root, ".specs", "other"), { recursive: true }); writeFileSync(other, "# Other\n");
+  const otherRun = replacement.store.claim(other, { pid: process.pid, state: "running", tabId: "other-tab" });
+  hooks.get("session_start")?.({ reason: "reload" }, f.ctx);
+  expect(replacement.store.get(other)?.token).toBe(otherRun.token);
+});
+
 it("retires superseded tracking without stale lifecycle errors", () => {
   const f = fixture(); const first = f.runtime.store.claim(f.file, { pid: process.pid, state: "running" }); f.runtime.track(first);
   const replacement = f.runtime.store.claim(f.file, { pid: process.pid, state: "running" }, { replace: true });

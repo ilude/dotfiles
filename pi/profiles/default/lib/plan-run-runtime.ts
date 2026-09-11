@@ -10,6 +10,11 @@ export interface PlanRunRuntime {
 }
 
 type Owned = { run: PlanRun; pending: boolean; command?: string; args?: string; blockedFrom?: PlanRunState };
+type SharedOwned = Omit<Owned, "run"> & { run: PlanRun };
+type SharedState = { owned: SharedOwned[]; current?: string };
+type LegacyRuntime = { owned?: Map<string, Owned>; current?: string };
+const legacyKey = Symbol.for("dotfiles.pi.default.plan-run-runtime.v1");
+const MAX_MIGRATED_OWNED = 1000;
 
 function canonical(file: string): string {
   let resolved: string;
@@ -32,14 +37,33 @@ class Runtime implements PlanRunRuntime {
   private owned = new Map<string, Owned>();
   private current: string | undefined;
   private invalidStartup: string | undefined;
+  private readonly shared: SharedState;
 
-  constructor(profileDir: string) { this.store = new PlanRunStore(path.join(profileDir, "plan-runs")); }
+  constructor(profileDir: string, shared: SharedState) {
+    this.store = new PlanRunStore(path.join(profileDir, "plan-runs"));
+    this.shared = shared;
+    for (const item of shared.owned) this.owned.set(canonical(item.run.planPath), { ...item, run: { ...item.run } });
+    this.current = shared.current;
+  }
+
+  private save(key: string): void {
+    const item = this.owned.get(key);
+    const index = this.shared.owned.findIndex(value => canonical(value.run.planPath) === key);
+    if (!item) { if (index >= 0) this.shared.owned.splice(index, 1); return; }
+    const value = { ...item, run: { ...item.run } };
+    if (index >= 0) this.shared.owned[index] = value;
+    else this.shared.owned.push(value);
+  }
 
   track(run: PlanRun): void {
     const key = canonical(run.planPath);
     const previous = this.owned.get(key);
-    if (previous && previous.run.token !== run.token && this.current === key) this.current = undefined;
+    if (previous && previous.run.token !== run.token && this.current === key) {
+      this.current = undefined;
+      if (this.shared.current === key) this.shared.current = undefined;
+    }
     this.owned.set(key, { run, pending: true });
+    this.save(key);
   }
 
   forget(run: PlanRun): void {
@@ -47,7 +71,8 @@ class Runtime implements PlanRunRuntime {
     if (this.owned.get(key)?.run.token !== run.token) return;
     this.store.release(key, run.token);
     this.owned.delete(key);
-    if (this.current === key) this.current = undefined;
+    this.save(key);
+    if (this.current === key) { this.current = undefined; if (this.shared.current === key) this.shared.current = undefined; }
   }
 
   install(pi: ExtensionAPI): void {
@@ -70,7 +95,7 @@ class Runtime implements PlanRunRuntime {
         // previously observed invocation, never discovers plans from chat text.
         if (text.trim() === item.command || text.split(/\r?\n/).includes(`Invocation arguments: ${item.args}`)) {
           if (this.current && this.current !== key) this.setState(this.current, "waiting");
-          item.pending = false; this.current = key; this.setState(key, "running");
+          item.pending = false; this.current = key; this.shared.current = key; this.save(key); this.setState(key, "running");
           break;
         }
       }
@@ -108,10 +133,15 @@ class Runtime implements PlanRunRuntime {
     try { current = this.store.get(key); } catch { return; }
     if (!current || current.token !== item.run.token) {
       this.owned.delete(key);
-      if (this.current === key) this.current = undefined;
+      this.save(key);
+      if (this.current === key) {
+        this.current = undefined;
+        if (this.shared.current === key) this.shared.current = undefined;
+      }
       return;
     }
     if (item.run.state !== state) item.run = this.store.update(key, item.run.token, { state });
+    this.save(key);
   }
 
   private start(ctx: ExtensionContext): void {
@@ -134,7 +164,13 @@ class Runtime implements PlanRunRuntime {
         this.invalidStartup = undefined;
       } catch (error) { ctx.ui.notify(`Plan startup blocked: ${String(error)}`, "error"); }
     }
-    if (this.current) this.setState(this.current, ctx.isIdle() ? "waiting" : "running");
+    if (ctx.isIdle()) {
+      for (const item of [...this.owned.values()]) if (!item.pending) this.forget(item.run);
+    } else if (this.current) this.setState(this.current, "running");
+    if (this.current && !this.owned.has(this.current)) {
+      if (this.shared.current === this.current) this.shared.current = undefined;
+      this.current = undefined;
+    }
   }
 
   private input(text: string, ctx: ExtensionContext): { action: "handled" } | undefined {
@@ -158,17 +194,53 @@ class Runtime implements PlanRunRuntime {
         item = this.owned.get(input.file);
       } catch { return; }
     }
-    if (item) { item.command = text.trim(); item.args = input.args; item.pending = true; }
+    if (item) { item.command = text.trim(); item.args = input.args; item.pending = true; this.save(input.file); }
   }
 }
 
-const globalKey = Symbol.for("dotfiles.pi.default.plan-run-runtime.v1");
+// Keep only serializable execution data across source reloads. Runtime instances
+// contain module-owned methods and listeners, so caching one globally would pin
+// the pre-reload implementation forever.
+const sharedKey = Symbol.for("dotfiles.pi.default.plan-run-runtime.state.v2");
+const runtimes = new Map<string, Runtime>();
+
+function migrateLegacy(all: typeof globalThis & { [legacyKey]?: Map<string, LegacyRuntime> }, key: string, shared: SharedState): void {
+  const legacy = all[legacyKey];
+  const legacyEntry = legacy && [...legacy.entries()].find(([profile]) => canonical(profile) === key);
+  const old = legacyEntry?.[1];
+  if (!old?.owned) return;
+  let count = 0;
+  for (const item of old.owned.values()) {
+    if (count++ >= MAX_MIGRATED_OWNED || !item?.run?.planPath) break;
+    shared.owned.push({
+      pending: item.pending,
+      ...(item.command === undefined ? {} : { command: item.command }),
+      ...(item.args === undefined ? {} : { args: item.args }),
+      ...(item.blockedFrom === undefined ? {} : { blockedFrom: item.blockedFrom }),
+      run: { ...item.run },
+    });
+  }
+  if (old.current) shared.current = old.current;
+  // Do not repeatedly inspect or retain the old module's methods/listeners.
+  legacy!.delete(legacyEntry![0]);
+  if (legacy!.size === 0) delete all[legacyKey];
+}
+
 export function getPlanRunRuntime(profileDir = getAgentDir()): PlanRunRuntime {
-  const all = globalThis as typeof globalThis & { [globalKey]?: Map<string, Runtime> };
-  const map = all[globalKey] ??= new Map();
+  const all = globalThis as typeof globalThis & {
+    [sharedKey]?: Map<string, SharedState>;
+    [legacyKey]?: Map<string, LegacyRuntime>;
+  };
+  const states = all[sharedKey] ??= new Map();
   const key = canonical(profileDir);
-  let value = map.get(key);
-  if (!value) { value = new Runtime(key); map.set(key, value); }
+  let value = runtimes.get(key);
+  if (!value) {
+    const shared = states.get(key) ?? { owned: [] };
+    if (!shared.owned.length && shared.current === undefined) migrateLegacy(all, key, shared);
+    states.set(key, shared);
+    value = new Runtime(key, shared);
+    runtimes.set(key, value);
+  }
   return value;
 }
 
