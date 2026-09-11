@@ -8,7 +8,7 @@ import type { Evidence, PendingCall, Settings } from "../../lib/damage-control/t
 const settings: Settings = { version: 1, judge: { enabled: true, provider: "openai-codex", model: "gpt-5.6-luna", reasoning: "high", deadlineMs: 50, retries: 0 }, parseBudgetMs: 50 };
 const pending: PendingCall = { callId: "call-1", fingerprint: "fp", generation: 3 };
 function evidence(applicability: "candidate" | "confirmed" = "candidate"): Evidence {
-  return { callId: "call-1", operation: "rm ./scratch", operator: [{ source: "interactive", text: "remove the scratch fixture" }], untrusted: { effects: [], matches: [{ ruleId: "delete", action: applicability === "confirmed" ? "block" : "review", applicability, reason: "delete match", effects: [] }], uncertainties: [] }, omissions: [] };
+  return { callId: "call-1", operation: "rm ./scratch", operator: [{ source: "interactive", text: "remove the scratch fixture" }], conversation: [{ role: "user", text: "Remove the scratch fixture." }, { role: "assistant", text: "I will remove only the generated scratch output." }], pendingCall: { tool: "bash", input: { command: "rm ./scratch" }, cwd: "/work" }, untrusted: { effects: [], matches: [{ ruleId: "delete", action: applicability === "confirmed" ? "block" : "review", applicability, reason: "delete match", effects: [] }], uncertainties: ["parser detail must stay local"] }, omissions: [] };
 }
 function textResponse(value: unknown, stopReason?: "stop" | "error" | "aborted", errorMessage?: string): { content: { type: "text"; text: string }[]; stopReason?: string; errorMessage?: string } {
   return { content: [{ type: "text", text: JSON.stringify(value) }], ...(stopReason === undefined ? {} : { stopReason }), ...(errorMessage === undefined ? {} : { errorMessage }) };
@@ -31,7 +31,53 @@ describe("Luna review", () => {
     expect(model).toMatchObject({ provider: "openai-codex", id: "gpt-5.6-luna" });
     expect(options).toMatchObject({ reasoningEffort: "high", maxRetries: 0 });
     expect(request.messages[0].content[0].text.startsWith(`${contract}\n\nEVIDENCE JSON:\n`)).toBe(true);
-    expect(request.messages[0].content[0].text).toContain("remove the scratch fixture");
+    const outbound = request.messages[0].content[0].text;
+    expect(outbound).toContain("Remove the scratch fixture.");
+    expect(outbound).toContain("I will remove only the generated scratch output.");
+    expect(outbound).toContain('"tool":"bash"');
+    expect(outbound).toContain('"cwd":"/work"');
+    expect(outbound).toContain('"command":"rm ./scratch"');
+    expect(outbound).toContain('"applicableRules"');
+    const judgeJson = outbound.slice(outbound.indexOf("EVIDENCE JSON:") + "EVIDENCE JSON:".length);
+    expect(judgeJson).not.toContain("parser detail must stay local");
+    expect(judgeJson).not.toContain("toolCall");
+    expect(judgeJson).not.toContain("toolResult");
+  });
+
+  it("sends all conversation text without the former count or byte caps", async () => {
+    const input = evidence();
+    input.conversation = Array.from({ length: 40 }, (_, index) => ({ role: "user" as const, text: `message ${index}: ${"visible words ".repeat(200)}` }));
+    const complete = vi.fn().mockResolvedValue(textResponse(valid));
+    const result = await review(input, context(complete), settings, pending, () => 3);
+    expect(result.status).toBe("valid");
+    const payload = JSON.parse(complete.mock.calls[0]![1].messages[0].content[0].text.split("EVIDENCE JSON:\n")[1]);
+    expect(payload.conversation).toEqual(input.conversation);
+    expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it("trims only after provider context overflow, discloses it, and preserves the pending call", async () => {
+    const complete = vi.fn()
+      .mockResolvedValueOnce(textResponse(null, "error", "Your input exceeds the context window of this model"))
+      .mockResolvedValueOnce(textResponse(valid));
+    const input = evidence();
+    const result = await review(input, context(complete), settings, pending, () => 3);
+    expect(result.status).toBe("valid");
+    expect(complete).toHaveBeenCalledTimes(2);
+    const payloads = complete.mock.calls.map(call => JSON.parse(call[1].messages[0].content[0].text.split("EVIDENCE JSON:\n")[1]));
+    expect(payloads[0].conversation).toEqual(input.conversation);
+    expect(payloads[1].conversation).toEqual(input.conversation!.slice(1));
+    expect(payloads[1].pendingCall).toEqual(payloads[0].pendingCall);
+    expect(payloads[1].applicableRules).toEqual(payloads[0].applicableRules);
+    expect(payloads[1].omissions).toContainEqual(expect.stringContaining("omitted 1 of 2"));
+    expect(result.diagnostics?.prompt).toContain("Context window exceeded:");
+    expect(input.conversation).toHaveLength(2);
+  });
+
+  it("stops context recovery if the pending call alone still overflows", async () => {
+    const complete = vi.fn().mockResolvedValue(textResponse(null, "error", "Your input exceeds the context window of this model"));
+    const result = await review(evidence(), context(complete), settings, pending, () => 3);
+    expect(result.status).toBe("unavailable");
+    expect(complete).toHaveBeenCalledTimes(3);
   });
 
   it("rejects malformed, extra-field, unknown-ID, and confirmed override responses", async () => {
@@ -129,20 +175,23 @@ describe("Luna review", () => {
     expect(complete).not.toHaveBeenCalled();
   });
 
-  it("reviews safely redacted context and bounded-history omissions with one completion", async () => {
+  it("reviews safely redacted native conversation while ignoring old history with one completion", async () => {
     const history = new Context(() => 0);
-    for (let i = 0; i <= DIRECT_INPUT_LIMIT; i++) history.recordDirectInput("interactive", "Remove the scratch fixture. token=SYNTHETIC_SENTINEL");
-    const input = history.buildEvidence("call-1", "rm ./scratch # token=SYNTHETIC_SENTINEL", [], evidence().untrusted.matches, []);
+    for (let i = 0; i <= DIRECT_INPUT_LIMIT; i++) history.recordDirectInput("interactive", "stale direct input token=SYNTHETIC_SENTINEL");
+    const input = history.buildEvidence("call-1", "rm ./scratch # token=SYNTHETIC_SENTINEL", [], evidence().untrusted.matches, [], [], undefined, undefined, [{ type: "message", message: { role: "user", content: "Remove the scratch fixture. token=SYNTHETIC_SENTINEL" } }]);
     input.untrusted.priorEffects = [{ callId: "prior-call", timestamp: 0, effect: { id: "effect-1", kind: "filesystem", operation: "read", sources: [], targets: [{ resolution: "static", path: "token=SYNTHETIC_SENTINEL" }], destinations: [], context: { cwd: "/work" }, range: { start: 0, end: 1 }, resolution: "static" } }];
-    expect(input.operator).toHaveLength(DIRECT_INPUT_LIMIT);
-    expect(input.omissions.join(" ")).toContain("omitted");
+    input.pendingCall = { tool: "bash", input: { command: "rm ./scratch" }, cwd: "/work" };
     const complete = vi.fn().mockResolvedValue(textResponse(valid));
     expect(await review(input, context(complete), settings, pending, () => 3)).toMatchObject({ status: "valid", ...valid, diagnostics: { promptTruncated: false, outputTruncated: false } });
     expect(complete).toHaveBeenCalledOnce();
     const outbound = JSON.stringify(complete.mock.calls[0]);
     expect(outbound).not.toContain("SYNTHETIC_SENTINEL");
     expect(outbound).toContain("[REDACTED]");
-    expect(outbound).toContain("prior-call");
+    const judgeJson = outbound.slice(outbound.indexOf("EVIDENCE JSON:") + "EVIDENCE JSON:".length);
+    expect(judgeJson).not.toContain("prior-call");
+    expect(judgeJson).not.toContain("uncertainties");
+    expect(judgeJson).not.toContain("sequence");
+    expect(judgeJson).not.toContain("variables");
   });
 
   it("returns a normal needs-input ask without sending evidence when safe projection loses facts", async () => {

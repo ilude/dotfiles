@@ -1,10 +1,22 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { resolveCliModel, type ModelRegistry } from "@earendil-works/pi-coding-agent";
 export const EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type AgentEffort = typeof EFFORTS[number];
-export function resolveModel(model: string | undefined, fallback: string | undefined): { provider: string; id: string } {
+export function resolveModel(model: string | undefined, fallback: string | undefined, registry?: ModelRegistry): { provider: string; id: string } {
  const value=model??fallback;
- if(!value||!value.includes("/")||value!==value.trim())throw new Error(`Explicit provider/model required, received ${value??"none"}`);
+ if(!value||value!==value.trim())throw new Error(`Explicit provider/model required, received ${value??"none"}`);
+ if(!value.includes("/")){
+  if(!registry)throw new Error(`Explicit provider/model required, received ${value}`);
+  // Extension contexts expose the native registry facade rather than ModelRuntime.
+  // Adapt only its model catalogue/auth methods so Pi owns all matching semantics.
+  const resolved=resolveCliModel({cliModel:value,modelRuntime:{
+   getModels:()=>registry.getAll(),
+   hasConfiguredAuth:(provider:string)=>{const candidate=registry.getAll().find(model=>model.provider===provider);return candidate?registry.hasConfiguredAuth(candidate):false},
+  } as unknown as Parameters<typeof resolveCliModel>[0]["modelRuntime"]});
+  if(resolved.error||!resolved.model)throw new Error(resolved.error??`Model not found: ${value}`);
+  return{provider:resolved.model.provider,id:resolved.model.id};
+ }
  const [provider,...rest]=value.split("/"),id=rest.join("/");
  if(!provider.trim()||!id.trim())throw new Error(`Explicit provider/model required, received ${value}`);
  return{provider,id};

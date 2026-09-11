@@ -100,8 +100,6 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
     if (!record || record.generation !== context.generation) return;
     if (event.isError) return;
     context.recordSuccess(event.toolCallId, record.effects, Date.now(), record.created);
-    if (event.content.some(part => part.type !== "text")) context.noteOmission();
-    context.recordToolResult(record.request, event.content.filter(part => part.type === "text").map(part => part.text).join("\n"));
   });
   const gate: Gate = {
     setBypass: value => { bypassed = value; },
@@ -148,7 +146,10 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         const sequenceDecision = sequence.check(request.tool, request.text, analysis.effects);
         if (sequenceDecision) analysis.matches.push({ ruleId: sequenceDecision.name, action: sequenceDecision.action === "review" ? "review" : "block", applicability: "confirmed", reason: sequenceDecision.reason, effects: analysis.effects.map(effect => effect.id) });
         const variables = [...(analysis.internal?.variables ?? []), ...processVariableEvidence(analysis.effects, process.env)];
-        const evidence = context.buildEvidence(call.callId, request.text, analysis.effects, analysis.matches, analysis.uncertainties, variables, sequenceDecision?.evidence);
+        const evidence = context.buildEvidence(
+          call.callId, request.text, analysis.effects, analysis.matches, analysis.uncertainties, variables, sequenceDecision?.evidence,
+          { tool: request.tool, input: request.input, cwd: request.cwd }, typeof ctx.sessionManager.getBranch === "function" ? ctx.sessionManager.getBranch() : undefined,
+        );
         let decision = decide(analysis, evidence);
         if (decision.outcome === "review") {
           const reviewSession = ctx.sessionManager.getSessionId();

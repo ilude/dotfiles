@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-028 - Judge context and explanation obscured routine cleanup
+
+- **Reference:** Operator-reported Damage Control approval prompt and default session `01a09221-27b5-7739-bbb8-dff21f3ff2a9`, 2026-09-11.
+- **Observed:** A numbered temporary evaluation-directory cleanup received an approval request. The recorded judge input contained about 24 KB of contract, reports, hash manifests, edits, and parser details. The orchestrator initially defended the outcome without the full recorded input, repeatedly failed to show the requested prompt directly, and then reduced the problem to one clause.
+- **Remediation:** AIF-045 records the approved conversation-only context design and shorter consequence-based contract. Do not claim that any individual clause or payload size alone caused the verdict or other timeouts.
+- **Related:** APR-007, APR-010, AIF-045.
+- **Status:** Implemented. Focused tests, typecheck and runtime smoke passed. A non-executing replay with the native conversation first still asked under the shortened contract; clarifying the consequence test produced `allow` at 7.6 KB and 4.8 seconds versus the recorded 24.5 KB and 11.3 seconds. Unique-work deletion still asked and home destruction still blocked. These are sampled outcomes, not a general latency guarantee; active sessions require reload.
+
 ## APR-027 - Normal outcomes and isolated events were mislabeled as recurring tool failures
 
 - **Reference:** Follow-up discussion of the weekly Pi session review, 2026-09-11.

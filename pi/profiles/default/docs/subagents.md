@@ -35,7 +35,7 @@ Damage Control and session-profile metadata remain loaded. Bedrock children load
 
 ## Tools and conversations
 
-Launch arguments include `agent`, `instructions`, optional `cwd`, `model`, `effort`, `skills`, `background`, `surface`, and `retain`. A permitted coordinator may select any valid existing non-root directory for a leaf, including sibling worktrees and unrelated repositories; origin and delegate checks still apply. Skills are profile skill names, not arbitrary paths. Explicit model/effort overrides take precedence over the definition. The requested model must be available to the restricted bundled runtime; there is no provider fallback.
+Launch arguments include `agent`, `instructions`, optional `cwd`, `model`, `effort`, `skills`, `background`, `surface`, and `retain`. A permitted coordinator may select any valid existing non-root directory for a leaf, including sibling worktrees and unrelated repositories; origin and delegate checks still apply. Skills are profile skill names, not arbitrary paths. Model values may be bare model IDs or explicit `provider/model` references. Bare IDs use Pi's native model catalogue and authentication-aware resolution; ambiguous or unavailable IDs fail natively. Explicit model/effort overrides take precedence over the definition. Resolved launches and status records use the canonical provider/model reference. There is no provider fallback.
 
 - A normal nonblank final reply completes the assignment automatically. No manual completion command is needed.
 - `retain: true` keeps the conversation and process available for follow-ups.

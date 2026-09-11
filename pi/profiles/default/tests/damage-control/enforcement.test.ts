@@ -1,9 +1,86 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { expect, it, vi } from "vitest";
+import { review as actualReview } from "../../lib/damage-control/judge.ts";
 import { harness } from "./fixtures/fake-pi.ts";
+
+function actualJudge(complete: ReturnType<typeof vi.fn>) {
+  const modelRegistry = {
+    find: vi.fn(() => ({ provider: "openai-codex", id: "gpt-5.6-luna" })),
+    hasConfiguredAuth: vi.fn(() => true),
+    complete,
+  } as unknown as ExtensionContext["modelRegistry"];
+  return async (evidence: Parameters<typeof actualReview>[0], ctx: Parameters<typeof actualReview>[1] & ExtensionContext, settings: Parameters<typeof actualReview>[2], pending: Parameters<typeof actualReview>[3], generation: Parameters<typeof actualReview>[4]) => actualReview(evidence, { modelRegistry, signal: ctx.signal }, settings, pending, generation);
+}
+
+const reviewAnalysis = async () => ({
+  effects: [], uncertainties: [], health: { status: "ready" as const },
+  matches: [{ ruleId: "contextual-cleanup", action: "review" as const, applicability: "confirmed" as const, reason: "Contextual cleanup requires review", effects: [] }],
+});
 it.each(["rm -rf ~", "rm -rf /"])("retains legacy hard block: %s", async command => {
   const h = await harness();
   expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "block", input: { command } })).toMatchObject({ block: true });
   expect(h.select).not.toHaveBeenCalled();
+});
+
+it("integrates the native branch through the gate and actual review", async () => {
+  const complete = vi.fn().mockResolvedValue({ content: [{ type: "text", text: JSON.stringify({ verdict: "allow", reason: "The confirmed local cleanup is bounded.", dismissedCandidates: [] }) }], stopReason: "stop" });
+  const h = await harness({ analyze: reviewAnalysis, review: actualJudge(complete) });
+  const command = "rm -rf build-output";
+  h.entries.push(
+    { type: "message", message: { role: "user", content: "Remove only the generated build output." } },
+    { type: "message", message: { role: "assistant", content: [
+      { type: "thinking", thinking: "private planning" },
+      { type: "text", text: "I will remove only the generated build output." },
+      { type: "toolCall", id: "tool-1", name: "bash", arguments: { command } },
+    ] } },
+    { type: "message", message: { role: "toolResult", toolCallId: "tool-1", content: [{ type: "text", text: "ignored result" }] } },
+    { type: "custom", customType: "untrusted-history", data: "ignored custom entry" },
+  );
+  expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "native", input: { command } })).toBeUndefined();
+  expect(complete).toHaveBeenCalledOnce();
+  const prompt = complete.mock.calls[0]![1] as { messages: [{ content: [{ text: string }] }] };
+  const payload = JSON.parse(prompt.messages[0].content[0].text.split("EVIDENCE JSON:\n")[1]!);
+  expect(payload.conversation).toEqual([
+    { role: "user", text: "Remove only the generated build output." },
+    { role: "assistant", text: "I will remove only the generated build output." },
+  ]);
+  expect(payload.pendingCall).toEqual({ tool: "bash", input: { command }, cwd: h.cwd });
+  expect(payload.applicableRules).toEqual([{ ruleId: "contextual-cleanup", action: "review", applicability: "confirmed", reason: "Contextual cleanup requires review" }]);
+  expect(payload).not.toHaveProperty("operation");
+  expect(JSON.stringify(payload)).not.toContain("toolCall");
+  expect(JSON.stringify(payload)).not.toContain("toolResult");
+  expect(JSON.stringify(payload)).not.toContain("private planning");
+  expect(JSON.stringify(payload)).not.toContain("ignored custom entry");
+});
+
+it("uses only the current native branch after resume, reload, and tree navigation", async () => {
+  const complete = vi.fn().mockResolvedValue({ content: [{ type: "text", text: JSON.stringify({ verdict: "allow", reason: "The bounded call is safe.", dismissedCandidates: [] }) }], stopReason: "stop" });
+  const h = await harness({ analyze: reviewAnalysis, review: actualJudge(complete) });
+  const replaceBranch = (...values: unknown[]) => { h.entries.splice(0, h.entries.length, ...values); };
+  const call = async (id: string) => expect(await h.emit("tool_call", { toolName: "bash", toolCallId: id, input: { command: "rm -rf build-output" } })).toBeUndefined();
+  const promptPayload = (index: number) => JSON.parse((complete.mock.calls[index]![1] as { messages: [{ content: [{ text: string }] }] }).messages[0].content[0].text.split("EVIDENCE JSON:\n")[1]!);
+
+  replaceBranch({ type: "message", message: { role: "user", content: "stale branch request" } });
+  await call("before-resume");
+  replaceBranch({ type: "message", message: { role: "user", content: "resume branch request" } }, { type: "message", message: { role: "assistant", content: [{ type: "text", text: "resume branch response" }, { type: "toolCall", id: "r", name: "bash", arguments: {} }] } });
+  await h.emit("session_start", { reason: "resume" });
+  await call("after-resume");
+  replaceBranch({ type: "message", message: { role: "user", content: "reload branch request" } });
+  await h.emit("session_start", { reason: "reload" });
+  await call("after-reload");
+  replaceBranch({ type: "message", message: { role: "user", content: "tree branch request" } });
+  await h.emit("session_tree");
+  await call("after-tree");
+  expect(promptPayload(0).conversation).toEqual([{ role: "user", text: "stale branch request" }]);
+  expect(promptPayload(1).conversation).toEqual([{ role: "user", text: "resume branch request" }, { role: "assistant", text: "resume branch response" }]);
+  expect(promptPayload(2).conversation).toEqual([{ role: "user", text: "reload branch request" }]);
+  expect(promptPayload(3).conversation).toEqual([{ role: "user", text: "tree branch request" }]);
+
+  await h.emit("input", { source: "interactive", text: "stale direct input" });
+  replaceBranch();
+  await h.emit("session_tree");
+  await call("empty-current-branch");
+  expect(promptPayload(4).conversation).toEqual([]);
 });
 it("persists judge diagnostics as a custom entry without changing approval", async () => {
   const diagnostics = { version: 1 as const, callId: "diagnostic-call", startedAt: "2026-09-11T00:00:00.000Z", endedAt: "2026-09-11T00:00:00.010Z", elapsedMs: 10, deadlineMs: 40000, provider: "openai-codex", model: "gpt-5.6-luna", effort: "high", maxTokens: 800, retries: 0, prompt: "redacted prompt", promptTruncated: false, promptRedacted: true, status: "valid" as const, verdict: "allow" as const };

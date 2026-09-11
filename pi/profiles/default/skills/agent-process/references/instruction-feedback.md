@@ -1,5 +1,23 @@
 # Agent instruction feedback log
 
+## AIF-046 - Resume a Herdr Pi session in one focused tool action
+
+- **Reference:** Operator correction after reopening a stalled dotfiles session, 2026-09-11.
+- **Feedback:** Avoid separate discovery, tab creation, shell submission and repeated readiness calls. Reuse the existing tool and Pi launcher. `{"action":"resume","session":"<UUID>"}` should focus the new tab by default, without a required focus argument.
+- **Decision:** Add resume to `herdr_layout`, resolving the saved cwd/session and returning startup state and tab/pane IDs. Use structured tool schemas directly; reserve upstream CLI-document discovery for raw CLI use.
+- **Related:** AIF-004, AIF-033, AIF-045.
+- **Status:** Implemented; 21 focused resume, Herdr tool and session-launch tests plus typecheck passed. New action requires reload; attached-client use remains unverified.
+
+## AIF-045 - Give the Damage Control judge conversation context, not tool-history dumps
+
+- **Reference:** Operator correction and implementation approval in default session `01a09221-27b5-7739-bbb8-dff21f3ff2a9`, 2026-09-11.
+- **Feedback:** The shadow judge should receive session user text, visible assistant response text, the pending tool call, applicable rules, and a short harm-focused contract. Exclude prior tool calls/results, serialized edits, hash manifests, and exhaustive parser inventories. Routine cleanup should not require universal proof of disposability.
+- **Evidence:** The reported temporary evaluation-directory cleanup received `ask` after an approximately 24 KB prompt containing reports, hashes, edits, and incidental parser uncertainties. The recorded call took 11.3 seconds, not a timeout; contribution to other timeout incidents is unverified. The orchestrator repeatedly substituted summaries and file paths for the requested exact prompt, then incorrectly attributed the issue to one sentence.
+- **Decision:** Replace the outbound evidence dump with native-branch conversation text and the pending call. Keep deterministic rules and approval boundaries unchanged. Document context omissions rather than silently substituting machine-generated history.
+- **Correction:** The first implementation imposed an unrequested 16-message/16 KiB slice. The operator rejected it and approved full user/assistant session text, trimmed only when the judge's actual context window requires it. Removed both conversation caps and the separate 64 KiB outbound gate; trimming occurs only after provider-reported context overflow and discloses the omitted count.
+- **Related:** AIF-015 (meaningful harm), AIF-032 (concise instructions), AIF-041 (context-size protections), APR-007, APR-010.
+- **Status:** Implemented with focused tests, typecheck and runtime smoke passing. The reported cleanup passed a non-executing native-context Luna replay after contract refinement; meaningful unique-work and hard-block contrasts retained intervention. See APR-028 for measurements and limits. Active sessions require reload; no global instruction change.
+
 ## AIF-044 - Keep Pi repository settings out of project repositories
 
 - **Reference:** Operator correction after the dev-setup changelog workflow commit, 2026-09-11.

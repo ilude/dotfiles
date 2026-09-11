@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-11: Resume Pi sessions in one Herdr tool call
+
+**Added:** `herdr_layout` accepts `{"action":"resume","session":"<UUID>"}`. It resolves the saved session in the active profile, reuses the existing direct Pi plugin launcher, focuses the new tab by default, and returns startup state plus tab/pane IDs. This replaces separate layout, shell-command and readiness calls. Lookup reads filenames and the selected session header rather than scanning transcript bodies.
+
+**Preserved:** Existing split/shell-tab actions remain unfocused. Resume sends no prompt, creates no subagent, and does not automatically relaunch after ambiguous launch or readiness results. Structured-tool use no longer requires preparatory raw Herdr CLI discovery.
+
+## 2026-09-11: Simplify Damage Control judge context
+
+**Changed:** The default shadow judge now receives native-session user and visible assistant text, the pending tool call and execution directory, and applicable rules under a short consequence-based contract. It no longer receives prior tool outputs, serialized edits, hash manifests, or parser-effect inventories. This replaces noisy evidence dumps that obscured routine temporary cleanup with the conversation explaining the task. The full user/assistant conversation is included without fixed message or byte caps. Only provider-reported context-window overflow permits trimming older messages, with an explicit omitted count; the pending call and rules remain intact. Resume/reload/tree navigation use the selected native branch.
+
+**Preserved:** Deterministic protections, human-only approval boundaries, watchdog, cancellation, and the existing judge timeout remain unchanged. This is not a blanket TEMP-directory allowance or a claim that all timeout causes are resolved.
+
+## 2026-09-11: Resolve bare default-profile subagent model names
+
+**Changed:** Default-profile subagent definitions and overrides may now use bare model IDs. Pi's native catalogue and authentication-aware resolver selects the canonical provider/model for direct and coordinator launches, status, effort enforcement, and provider-specific child extensions. Explicit `provider/model` references retain their existing behavior. Ambiguous or unavailable bare IDs fail without provider fallback.
+
 ## 2026-09-11: Extend Damage Control judge diagnostics and timeout
 
 **Changed:** Default Damage Control now presents a concise approval panel with real policy names, matched command and targets, whole-call scope, and plain judge results. Details retains the full command, matched rules, effects, review, and navigation; Allow once, Deny, Details, and the supported future script-review action remain available. Judge reviews default to a 40-second deadline and record bounded, redacted diagnostics separately from model context. Logging is best-effort and does not alter approval outcomes.

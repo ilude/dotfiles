@@ -7,10 +7,11 @@ description: Use Herdr for requested long-running development servers, Docker/Co
 
 Use automatically for requested long-running processes when `HERDR_ENV=1`; otherwise use the existing execution workflow. Preserve focus unless the user requests otherwise.
 
-This is a local wrapper, not the upstream Herdr skill. On first use run `herdr --skill` and read its complete output, even if it says to skip when a skill is already loaded. Do not reload identical documentation for every operation; refresh after a Herdr version change or syntax mismatch. Use targeted CLI help for missing syntax. Our approved automatic invocation policy supersedes upstream's explicit-mention restriction; other targeting/safety guidance still applies.
+This is a local wrapper, not the upstream Herdr skill. For operations covered by structured tools, use their schemas directly. On first raw CLI use run `herdr --skill` and read its complete output, even if it says to skip when a skill is already loaded. Do not reload identical documentation for every operation; refresh after a Herdr version change or syntax mismatch. Use targeted CLI help for missing syntax. Our approved automatic invocation policy supersedes upstream's explicit-mention restriction; other targeting/safety guidance still applies.
 
 Discover `herdr_layout` and `herdr_pane` through `tool_search`. Use the structured tools for their covered operations rather than bypassing their safety handling with raw terminal submissions.
 
+- To reopen a saved Pi session, use `herdr_layout` with `action: "resume"` and its session UUID. It resolves the saved cwd, launches and focuses a Pi tab, and checks startup in one call. Inspect returned IDs if readiness is unconfirmed; do not blindly relaunch. No separate shell creation, command submission, or raw CLI discovery is needed.
 - Inspect existing panes before creating duplicates. Prefer a sibling pane in the project cwd; choose right/down based on available layout. New panes preserve focus.
 - Submit commands only to verified idle Bash/PowerShell shells. Unknown foreground processes or cwd are not safe command targets. Use `subagent` for defined agent work, not these process tools; see [subagents](../../docs/subagents.md).
 - Use bounded fresh readiness/log checks or a health endpoint. Old scrollback may match immediately. Submitted does not mean ready or successful.

@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { loadDefinitions, resolveAgentEffort, resolveModel } from "../lib/subagents/definitions.ts";
+function model(provider:string,id:string){return {provider,id,name:id} as any}
+function registry(models:any[],authenticated:string[]=[]){return {getAll:()=>models,hasConfiguredAuth:(m:any)=>authenticated.includes(m.provider)} as any}
 const roots:string[]=[];const old=process.env.PI_CODING_AGENT_DIR;
 afterEach(()=>{process.env.PI_CODING_AGENT_DIR=old;for(const r of roots.splice(0))rmSync(r,{recursive:true,force:true})});
 function root(){const r=mkdtempSync(join(tmpdir(),"subagent-defs-"));roots.push(r);mkdirSync(join(r,"agents"),{recursive:true});process.env.PI_CODING_AGENT_DIR=r;return r}
@@ -16,6 +18,20 @@ describe("subagent definitions",()=>{
  it.each(["delegates: true", "skills: 4", "model: false", "effort: []"])("rejects malformed optional authority: %s",(field)=>{const r=root();writeFileSync(join(r,"agents","worker.md"),`---\nname: worker\ndescription: worker\ntools: []\n${field}\n---\nprompt`);const got=loadDefinitions(r,false,r);expect(got.agents.has("worker")).toBe(false);expect(got.errors).toHaveLength(1)});
  it.each(["/model", "provider/", " provider/model"])("rejects incomplete model %s",(model)=>{expect(()=>resolveModel(model,undefined)).toThrow(/Explicit/)});
  it("requires explicit provider/model",()=>{expect(()=>resolveModel(undefined,undefined)).toThrow(/Explicit/);expect(resolveModel("openai-codex/model",undefined)).toEqual({provider:"openai-codex",id:"model"})});
+ it("resolves an authenticated exact bare model through Pi's native resolver",()=>{
+  const got=resolveModel("gpt",undefined,registry([model("one","gpt"),model("two","gpt")],["two"]));
+  expect(got).toEqual({provider:"two",id:"gpt"});
+ });
+ it("preserves native not-found errors",()=>{
+  expect(()=>resolveModel("missing",undefined,registry([model("one","gpt")]))).toThrow(/No model|not found/i);
+ });
+ it("preserves native ambiguity errors",()=>{
+  expect(()=>resolveModel("gpt",undefined,registry([model("one","gpt"),model("two","gpt")]))).toThrow(/ambiguous/i);
+ });
+ it("uses the canonical bare model before effort restrictions",()=>{
+  const resolved=resolveModel("luna",undefined,registry([model("openai-codex","luna")]));
+  expect(()=>resolveAgentEffort("strategist",`${resolved.provider}/${resolved.id}`,"low","high")).toThrow(/below high/);
+ });
  it("rejects Luna Strategist effort below high without restricting stronger models",()=>{
   expect(()=>resolveAgentEffort("strategist","openai-codex/gpt-5.6-luna","low","high")).toThrow(/below high/);
   expect(resolveAgentEffort("strategist","openai-codex/gpt-5.6-luna","high","low")).toBe("high");

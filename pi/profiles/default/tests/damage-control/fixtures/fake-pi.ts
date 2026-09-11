@@ -19,7 +19,7 @@ export async function harness(dependencies: Partial<GateDependencies> = {}) {
   const defaultReview: GateDependencies["review"] = async () => ({ status: "valid", verdict: "allow", reason: "synthetic", dismissedCandidates: [] });
   const review = vi.fn<GateDependencies["review"]>(dependencies.review ?? defaultReview);
   const getAllTools = vi.fn(() => ["read", "bash", "powershell", "write", "edit", "grep", "find", "ls"].map(name => ({ name, sourceInfo: { source: "builtin" } })));
-  const entries: Array<{ id: string; type: "custom"; customType: string; data: unknown }> = [];
+  const entries: unknown[] = [];
   const appendEntry = vi.fn((customType: string, data: unknown) => entries.push({ id: `entry-${entries.length}`, type: "custom", customType, data }));
   const api = { on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => handlers.set(name, [...handlers.get(name) ?? [], handler]), getAllTools, sendMessage: vi.fn(), appendEntry } as unknown as ExtensionAPI;
   // Gate fixtures use the supported RPC dialog boundary. Real TUI rendering

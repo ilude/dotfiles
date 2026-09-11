@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import tools, { checkedCommand } from "../extensions/herdr-tools.ts";
+import { resumeHerdrSession } from "../lib/herdr-resume.ts";
+vi.mock("../lib/herdr-resume.ts", () => ({ resumeHerdrSession: vi.fn() }));
 import { createHerdrCli, inspectShell, result, type HerdrCli } from "../lib/herdr-cli.ts";
 const json = (data: object) => JSON.stringify({ result: data });
 const shell = (cwd = process.cwd(), pid = 10, name = "pwsh.exe") => json({ process_info: { pane_id: "p2", shell_pid: pid, foreground_processes: [{ pid, cwd, name }] } });
@@ -46,6 +48,19 @@ describe("command safety boundary", () => {
     await expect(inspectShell(async () => json({ process_info: { pane_id: "p2", shell_pid: 10, foreground_processes: [{ pid: 11, name: "node" }] } }), "p2")).rejects.toThrow("idle");
   });
 });
+it("resumes from only action and session with focused launch defaults", async () => {
+  vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
+  const registered: Record<string, any> = {};
+  const cli = vi.fn<HerdrCli>();
+  vi.mocked(resumeHerdrSession).mockResolvedValue({ session: "saved-id", tab: "w1:t2", pane: "w1:p2", cwd: ctx.cwd, focused: true, ready: true, state: "idle" });
+  tools({ registerTool(t: any) { registered[t.name] = t; }, on() {} } as unknown as ExtensionAPI, cli);
+  const answer = await registered.herdr_layout.execute("id", { action: "resume", session: "saved-id" }, undefined, undefined, ctx);
+  expect(resumeHerdrSession).toHaveBeenCalledWith("saved-id", expect.stringMatching(/[\\/]sessions$/), cli, undefined);
+  expect(JSON.parse(answer.content[0].text)).toMatchObject({ focused: true, ready: true, tab: "w1:t2", pane: "w1:p2" });
+  await expect(registered.herdr_layout.execute("id", { action: "resume" }, undefined, undefined, ctx)).rejects.toThrow("session required");
+  expect(cli).not.toHaveBeenCalled();
+});
+
 it("defends ownership and own pane, bounds reads and accepts silent close", async () => {
   vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
   const registered: Record<string, any> = {}; const handlers: Record<string, () => void> = {};

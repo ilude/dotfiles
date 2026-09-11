@@ -20,7 +20,7 @@ Reload Pi after source changes. An already-running Pi does not acquire the launc
 
 ## Tools and process ownership
 
-- `herdr_layout`: list a bounded workspace pane overview, split beside the calling pane, or create a tab. Creation uses project cwd and no-focus.
+- `herdr_layout`: list a bounded workspace pane overview, split beside the calling pane, create a shell tab, or resume a Pi session. Split/tab use project cwd and no-focus. `{"action":"resume","session":"<UUID>"}` resolves the active profile's saved session, opens it in a new focused Pi plugin tab using its saved cwd, and checks the exact resumed session identity. No shell submission or extra focus argument is needed.
 - `herdr_pane`: read, submit a command, wait for output, rename, interrupt, or explicitly close a pane. Reads default to 80 lines; waits default to 30 seconds and cap at 120 seconds.
 - `run` verifies an idle Bash or PowerShell process and its cwd, submits the actual command to existing Damage Control, then rechecks shell identity before sending it once. Unknown shells, missing cwd, unavailable safety gate, denials, or changed targets fail closed. This is not a claim that terminal state cannot race after the final check.
 - Raw arbitrary keys/text and agent operations are intentionally absent. Do not bypass the tool's safety boundary with `bash("herdr pane run ...")`.
@@ -31,7 +31,7 @@ Reload Pi after source changes. An already-running Pi does not acquire the launc
 
 ## Direct Pi tabs
 
-Inside Herdr, `/new-instance [title]` and `/branch [title]` open a focused plugin tab with the same profile/cwd. The plugin bootstrap immediately makes a bounded, best-effort registration of the new pane with Herdr's agent list; registration transport failure does not block Pi startup. The generated lifecycle extension subsequently attaches Pi's session identity and live state. Branch launch passes the exact created session file. Launch failures retain that file and report a resume path; an ambiguous result never automatically submits another launch.
+Inside Herdr, `/new-instance [title]` and `/branch [title]` open a focused plugin tab with the same profile/cwd. The `herdr_layout` resume action reuses this launcher. UUID lookup examines filenames and the selected native header, not every transcript. Its single tool result contains session, tab/pane IDs, cwd, focus and readiness. Startup checking waits up to 30 seconds for Herdr to report the exact Pi session in an idle, done, working or blocked state. A blocked state means Pi started but needs user input; no input is submitted automatically. Cancellation or unconfirmed startup returns the created tab's IDs and `ready:false`, not a second launch. This resumes an independent interactive session, not a delegated subagent. The plugin bootstrap immediately makes a bounded, best-effort registration of the new pane with Herdr's agent list; registration transport failure does not block Pi startup. The generated lifecycle extension subsequently attaches Pi's session identity and live state. Branch launch passes the exact created session file. Launch failures retain that file and report a resume path; an ambiguous result never automatically submits another launch.
 
 The default profile's `/plans` selector can launch the highlighted direct-child `.specs/<stub>/plan.md` through `/do-it` in a new focused Pi plugin tab. Pressing `d` shows Launching in the existing picker before starting process work. Herdr Pi-tab requests are asynchronous and bounded; the launcher explicitly focuses the exact returned tab instead of relying on creation defaults. Repeated input is ignored while the request is pending, and success dismisses the originating picker rather than reopening Details. Focus is not restored to the origin.
 
@@ -72,7 +72,7 @@ There is no additional bell or desktop-notification layer and no sound/desktop s
 From `pi/profiles/default/`:
 
 ```sh
-pnpm test herdr-tools.test.ts herdr-launch.test.ts session-launch.test.ts herdr-ui-prompt-state.test.ts tool-visibility.test.ts tool-search.test.ts
+pnpm test herdr-tools.test.ts herdr-resume.test.ts herdr-launch.test.ts session-launch.test.ts herdr-ui-prompt-state.test.ts tool-visibility.test.ts tool-search.test.ts
 pnpm run typecheck
 pnpm run check:runtime
 ```

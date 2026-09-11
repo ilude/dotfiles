@@ -1,4 +1,6 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { join } from "node:path";
+import { resumeHerdrSession } from "../lib/herdr-resume.ts";
 import { Type } from "typebox";
 import { compactPane, createHerdrCli, herdrContext, inspectPane, inspectShell, OUTPUT_LIMIT, result, type HerdrCli } from "../lib/herdr-cli.ts";
 
@@ -29,10 +31,13 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
   pi.on("session_start", () => owned.clear());
   pi.registerTool({
     name: "herdr_layout", label: "Herdr layout",
-    description: "Inspect or create visible process panes. Background creation preserves focus.",
-    parameters: Type.Object({ action: choice(["list", "split", "tab"]), direction: Type.Optional(choice(["right", "down"])), cwd: Type.Optional(Type.String()) }),
+    description: "Inspect/create process panes, or resume a Pi session UUID in a new focused tab with one call. Resume uses the saved cwd and active profile, checks startup, and returns tab/pane IDs. Split/tab preserve focus.",
+    parameters: Type.Object({ action: choice(["list", "split", "tab", "resume"]), session: Type.Optional(Type.String({ description: "Existing session UUID, required for resume" })), direction: Type.Optional(choice(["right", "down"])), cwd: Type.Optional(Type.String()) }),
     async execute(_id, params, signal, _update, ctx) {
       const caller = herdrContext();
+      if (params.action === "resume") {
+        return text(await resumeHerdrSession(required(params.session, "session"), join(getAgentDir(), "sessions"), cli, signal));
+      }
       if (params.action === "list") {
         const panes = result(await cli(["pane", "list", "--workspace", caller.workspace], { signal })).panes;
         return text(panes.slice(0, 40).map(compactPane));

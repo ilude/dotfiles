@@ -1,21 +1,14 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
-import type { Effect, Evidence, JudgeDiagnostic, PendingCall, ReviewResult, Settings, Target } from "./types.ts";
+import { isContextOverflow } from "@earendil-works/pi-ai";
+import type { Evidence, JudgeDiagnostic, PendingCall, ReviewResult, Settings } from "./types.ts";
 
-const MAX_OPERATION_BYTES = 16 * 1024;
-const MAX_OPERATOR_ENTRIES = 16;
-const MAX_OPERATOR_BYTES = 16 * 1024;
-const MAX_EVIDENCE_ITEMS = 256;
-const MAX_EVIDENCE_BYTES = 64 * 1024;
 const MAX_REASON_CHARS = 1_000;
 const MAX_RESPONSE_BYTES = 8 * 1024;
 const MAX_DIAGNOSTIC_TEXT_BYTES = 64 * 1024;
 const REDACTED = "[REDACTED]";
+const REDACTION_OMISSION_NOTICE = "Sensitive text was redacted from the selected review context; do not infer the missing content.";
 const ABORTED = Symbol("judge-aborted");
-
-export type EvidenceProjection =
-  | { status: "ready"; evidence: Evidence }
-  | { status: "needs-input"; reason: string };
 
 const secretAssignment = /\b(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret)\b(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)/gi;
 const authHeader = /\b(authorization|proxy-authorization|x-api-key|api-key)(\s*:\s*)(?:bearer\s+|basic\s+)?[^\s,;&]+/gi;
@@ -40,102 +33,49 @@ export function redactOutbound(value: string): { text: string; lossy: boolean } 
   return { text, lossy };
 }
 
-function redactTarget(target: Target): { target: Target; lossy: boolean } {
-  if (target.resolution === "static") {
-    const path = redactOutbound(target.path);
-    return { target: { resolution: "static", path: path.text }, lossy: path.lossy };
+function redactInput(value: unknown): { value: unknown; lossy: boolean } {
+  if (typeof value === "string") {
+    const result = redactOutbound(value);
+    return { value: result.text, lossy: result.lossy };
   }
-  const expression = redactOutbound(target.expression);
-  const reason = redactOutbound(target.reason);
-  return { target: { resolution: "unknown", expression: expression.text, reason: reason.text }, lossy: expression.lossy || reason.lossy };
+  if (Array.isArray(value)) {
+    let lossy = false;
+    const items = value.map(item => { const result = redactInput(item); lossy ||= result.lossy; return result.value; });
+    return { value: items, lossy };
+  }
+  if (typeof value === "object" && value !== null) {
+    let lossy = false;
+    const object = Object.fromEntries(Object.entries(value).map(([key, item]) => {
+      const result = redactInput(item); lossy ||= result.lossy; return [key, result.value];
+    }));
+    return { value: object, lossy };
+  }
+  return { value, lossy: false };
 }
 
-function redactEffect(effect: Effect): { effect: Effect; lossy: boolean; identityLost: boolean } {
-  let lossy = false;
-  const targets = (values: Target[]): Target[] => values.map((value) => { const projected = redactTarget(value); lossy ||= projected.lossy; return projected.target; });
-  const cwd = redactOutbound(effect.context.cwd);
-  const executable = effect.context.executable === undefined ? undefined : redactOutbound(effect.context.executable);
-  const daemon = effect.context.daemon === undefined ? undefined : redactOutbound(effect.context.daemon);
-  const resourceId = effect.context.resourceId === undefined ? undefined : redactOutbound(effect.context.resourceId);
-  lossy ||= cwd.lossy || executable?.lossy === true || daemon?.lossy === true || resourceId?.lossy === true;
-  const id = redactOutbound(effect.id); lossy ||= id.lossy;
-  const base = {
-    ...effect, id: id.text,
-    sources: targets(effect.sources), targets: targets(effect.targets), destinations: targets(effect.destinations),
-    context: { ...effect.context, cwd: cwd.text, executable: executable?.text, daemon: daemon?.text, resourceId: resourceId?.text },
-  };
-  const identityLost = lossy;
-  if (effect.resolution === "unknown") {
-    const reason = redactOutbound(effect.reason); lossy ||= reason.lossy;
-    return { effect: { ...base, resolution: "unknown", reason: reason.text }, lossy, identityLost };
-  }
-  return { effect: { ...base, resolution: "static" }, lossy, identityLost };
-}
+export type JudgeContext = {
+  conversation: { role: "user" | "assistant"; text: string }[];
+  pendingCall: { tool: string; input: unknown; cwd: string };
+  applicableRules: { ruleId: string; action: string; applicability: string; reason: string }[];
+  omissions: string[];
+};
 
-function evidenceItemCount(evidence: Evidence): number {
-  const effects = [...evidence.untrusted.effects, ...(evidence.untrusted.priorEffects ?? []).map(item => item.effect)];
-  return evidence.operator.length + effects.length + (evidence.untrusted.observations?.length ?? 0) + evidence.untrusted.matches.length
-    + evidence.untrusted.uncertainties.length + evidence.omissions.length + (evidence.untrusted.variables?.length ?? 0)
-    + (evidence.untrusted.sequence?.priorEvents.length ?? 0) + (evidence.untrusted.sequence ? 1 : 0)
-    + effects.reduce((count, effect) => count + effect.sources.length + effect.targets.length + effect.destinations.length, 0)
-    + evidence.untrusted.matches.reduce((count, match) => count + match.effects.length, 0);
-}
-
-/** Produces the only representation that may be serialized for Luna. */
-export function projectEvidence(evidence: Evidence): EvidenceProjection {
-  const currentOnly = { ...evidence, untrusted: { ...evidence.untrusted, priorEffects: [], observations: [] } };
-  if (evidence.operator.length > MAX_OPERATOR_ENTRIES || evidenceItemCount(currentOnly) > MAX_EVIDENCE_ITEMS) {
-    return { status: "needs-input", reason: "Review evidence exceeds the safe item-count limit." };
-  }
-  if (Buffer.byteLength(evidence.operation, "utf8") > MAX_OPERATION_BYTES) return { status: "needs-input", reason: "Operation evidence exceeds the safe review limit." };
-  if (evidence.operator.reduce((bytes, entry) => bytes + Buffer.byteLength(entry.text, "utf8"), 0) > MAX_OPERATOR_BYTES) {
-    return { status: "needs-input", reason: "Operator evidence exceeds the safe review limit." };
-  }
+/** The one reduced, outbound-only view. Parser effects and all old history stay local. */
+export function projectJudgeEvidence(evidence: Evidence): { status: "ready"; context: JudgeContext } | { status: "needs-input"; reason: string } {
+  if (evidence.pendingCall === undefined) return { status: "needs-input", reason: "Pending call is unavailable for review." };
   let lossy = false;
   let identityLost = false;
   const text = (value: string): string => { const result = redactOutbound(value); lossy ||= result.lossy; return result.text; };
   const identity = (value: string): string => { const result = redactOutbound(value); lossy ||= result.lossy; identityLost ||= result.lossy; return result.text; };
-  const operation = text(evidence.operation);
-  const operator = evidence.operator.map(entry => ({ source: entry.source, text: text(entry.text) }));
-  const effects = evidence.untrusted.effects.map(effect => {
-    const result = redactEffect(effect); lossy ||= result.lossy; identityLost ||= result.identityLost; return result.effect;
-  });
-  const variables = (evidence.untrusted.variables ?? []).map(variable => {
-    const name = identity(variable.name);
-    const value = text(variable.value);
-    const provenance = text(variable.provenance);
-    return { name, value, source: variable.source, provenance };
-  });
-  const sequence = evidence.untrusted.sequence === undefined ? undefined : {
-    priorEvents: evidence.untrusted.sequence.priorEvents.map(event => ({ ...event, category: event.category === undefined ? undefined : text(event.category), summary: text(event.summary) })),
-    currentEvent: { ...evidence.untrusted.sequence.currentEvent, category: evidence.untrusted.sequence.currentEvent.category === undefined ? undefined : text(evidence.untrusted.sequence.currentEvent.category), summary: text(evidence.untrusted.sequence.currentEvent.summary) },
-  };
-  const matches = evidence.untrusted.matches.map(match => ({ ...match, ruleId: identity(match.ruleId), reason: text(match.reason), effects: match.effects.map(identity) }));
-  const uncertainties = evidence.untrusted.uncertainties.map(text);
-  const omissions = evidence.omissions.map(text);
-  const callId = identity(evidence.callId);
-  if (identityLost) return { status: "needs-input", reason: "Sensitive evidence was redacted from a current target or rule identity; clarify target and scope before execution." };
-  const priorEffects = (evidence.untrusted.priorEffects ?? []).map(item => {
-    const result = redactEffect(item.effect); lossy ||= result.lossy;
-    return { callId: item.callId === undefined ? undefined : text(item.callId), timestamp: item.timestamp, effect: result.effect };
-  });
-  const observations = (evidence.untrusted.observations ?? []).map(item => ({
-    callId: text(item.callId), tool: text(item.tool), operation: text(item.operation), cwd: text(item.cwd), output: text(item.output), timestamp: item.timestamp,
-  }));
-  if (lossy) omissions.push("Sensitive text was redacted. Ask if the missing values are necessary to assess this call; never infer them.");
-  const projected: Evidence = { callId, operation, operator, untrusted: { effects, priorEffects, observations, variables, ...(sequence ? { sequence } : {}), matches, uncertainties }, omissions };
-  const oversized = () => evidenceItemCount(projected) > MAX_EVIDENCE_ITEMS || Buffer.byteLength(JSON.stringify(projected), "utf8") > MAX_EVIDENCE_BYTES;
-  if (priorEffects.length && oversized()) {
-    omissions.push("Older historical effects omitted to fit the review budget; current effects are complete.");
-    while (priorEffects.length && oversized()) priorEffects.shift();
-  }
-  if (observations.length && oversized()) {
-    omissions.push("Older tool observations omitted to fit the review budget; current effects are complete.");
-    while (observations.length && oversized()) observations.shift();
-  }
-  if (evidenceItemCount(projected) > MAX_EVIDENCE_ITEMS) return { status: "needs-input", reason: "Review evidence exceeds the safe item-count limit." };
-  if (Buffer.byteLength(JSON.stringify(projected), "utf8") > MAX_EVIDENCE_BYTES) return { status: "needs-input", reason: "Review evidence exceeds the safe total-size limit." };
-  return { status: "ready", evidence: projected };
+  const input = redactInput(evidence.pendingCall.input); lossy ||= input.lossy;
+  const conversation = (evidence.conversation ?? []).map(item => ({ role: item.role, text: text(item.text) }));
+  const pendingCall = { tool: text(evidence.pendingCall.tool), input: input.value, cwd: text(evidence.pendingCall.cwd) };
+  const applicableRules = evidence.untrusted.matches.map(match => ({ ruleId: identity(match.ruleId), action: match.action, applicability: match.applicability, reason: text(match.reason) }));
+  if (identityLost) return { status: "needs-input", reason: "Sensitive rule identity was redacted; clarify the applicable rule before execution." };
+  const omissions: string[] = [];
+  if (lossy) omissions.push(REDACTION_OMISSION_NOTICE);
+  const context: JudgeContext = { conversation, pendingCall, applicableRules, omissions };
+  return { status: "ready", context };
 }
 
 function parseResponse(text: string, candidateIds: ReadonlySet<string>, confirmedIds: ReadonlySet<string>): ReviewResult {
@@ -201,7 +141,7 @@ export async function review(
     return unavailable(error);
   }
 
-  const projection = projectEvidence(evidence);
+  const projection = projectJudgeEvidence(evidence);
   if (projection.status === "needs-input") return { status: "valid", verdict: "ask", reason: projection.reason, dismissedCandidates: [] };
 
   let model: ReturnType<ExtensionContext["modelRegistry"]["find"]>;
@@ -261,27 +201,40 @@ export async function review(
       controller.signal.addEventListener("abort", onAbort, { once: true });
       if (controller.signal.aborted) onAbort();
     });
-    prompt = `${contract}\n\nEVIDENCE JSON:\n${JSON.stringify(projection.evidence)}`;
     startedAt = Date.now();
-    const completion = ctx.modelRegistry.complete(
-      model,
-      { messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] },
-      { maxTokens: 800, reasoningEffort: settings.judge.reasoning, cacheRetention: "none", maxRetries: 0, signal: controller.signal },
-    );
-    const response = await Promise.race([completion, aborted]);
-    if (response === ABORTED) {
-      return timedOut
-        ? finish({ status: "timeout", reason: `Luna review exceeded its ${settings.judge.deadlineMs}ms deadline.` })
-        : finish({ status: "cancelled", reason: "Luna review was cancelled." });
+    const originalMessages = projection.context.conversation.length;
+    while (true) {
+      prompt = `${contract}\n\nEVIDENCE JSON:\n${JSON.stringify(projection.context)}`;
+      const completion = ctx.modelRegistry.complete(
+        model,
+        { messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] },
+        { maxTokens: 800, reasoningEffort: settings.judge.reasoning, cacheRetention: "none", maxRetries: 0, signal: controller.signal },
+      );
+      const response = await Promise.race([completion, aborted]);
+      if (response === ABORTED) {
+        return timedOut
+          ? finish({ status: "timeout", reason: `Luna review exceeded its ${settings.judge.deadlineMs}ms deadline.` })
+          : finish({ status: "cancelled", reason: "Luna review was cancelled." });
+      }
+      if (timedOut) return finish({ status: "timeout", reason: `Luna review exceeded its ${settings.judge.deadlineMs}ms deadline.` }, response);
+      if (controller.signal.aborted || parentSignals.some((signal) => signal.aborted) || currentGeneration() !== pending.generation) return finish({ status: "cancelled", reason: "Review was cancelled or became stale." }, response);
+      if (response.stopReason === "aborted") return finish({ status: "cancelled", reason: "Luna completion was aborted." }, response);
+      // Send the full conversation first. Only an actual provider context overflow
+      // permits dropping older conversation text; never shorten the pending call.
+      if (isContextOverflow(response, model.contextWindow) && projection.context.conversation.length) {
+        projection.context.conversation.splice(0, Math.ceil(projection.context.conversation.length / 2));
+        projection.context.omissions = [
+          ...projection.context.omissions.filter(item => !item.startsWith("Context window exceeded:")),
+          `Context window exceeded: omitted ${originalMessages - projection.context.conversation.length} of ${originalMessages} oldest user/assistant messages after the provider reported overflow. Pending call and applicable rules are unchanged.`,
+        ];
+        continue;
+      }
+      if (response.stopReason === "error") return finish(unavailable(response.errorMessage ?? "provider returned an error stop reason"), response);
+      const text = response.content.filter((part): part is { type: "text"; text: string } => part.type === "text").map((part) => part.text).join("\n");
+      const candidates = new Set(evidence.untrusted.matches.filter((match) => match.applicability === "candidate").map((match) => match.ruleId));
+      const confirmed = new Set(evidence.untrusted.matches.filter((match) => match.applicability === "confirmed").map((match) => match.ruleId));
+      return finish(parseResponse(text, candidates, confirmed), response);
     }
-    if (timedOut) return finish({ status: "timeout", reason: `Luna review exceeded its ${settings.judge.deadlineMs}ms deadline.` }, response);
-    if (controller.signal.aborted || parentSignals.some((signal) => signal.aborted) || currentGeneration() !== pending.generation) return finish({ status: "cancelled", reason: "Review was cancelled or became stale." }, response);
-    if (response.stopReason === "aborted") return finish({ status: "cancelled", reason: "Luna completion was aborted." }, response);
-    if (response.stopReason === "error") return finish(unavailable(response.errorMessage ?? "provider returned an error stop reason"), response);
-    const text = response.content.filter((part): part is { type: "text"; text: string } => part.type === "text").map((part) => part.text).join("\n");
-    const candidates = new Set(projection.evidence.untrusted.matches.filter((match) => match.applicability === "candidate").map((match) => match.ruleId));
-    const confirmed = new Set(projection.evidence.untrusted.matches.filter((match) => match.applicability === "confirmed").map((match) => match.ruleId));
-    return finish(parseResponse(text, candidates, confirmed), response);
   } catch (error) {
     if (timedOut) return finish({ status: "timeout", reason: `Luna review exceeded its ${settings.judge.deadlineMs}ms deadline.` });
     if (controller.signal.aborted || parentSignals.some((signal) => signal.aborted)) return finish({ status: "cancelled", reason: "Luna review was cancelled." });

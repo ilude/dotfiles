@@ -73,11 +73,16 @@ export type VariableEvidence = { name: string; value: string; source: "literal" 
 export type Analysis = { effects: Effect[]; matches: RuleMatch[]; uncertainties: string[]; health: Health; internal?: { docker: DockerInvocation[]; git?: GitInvocation[]; searches?: ShellSearch[]; scripts?: ScriptSourceIdentity[]; variables?: VariableEvidence[] } };
 export type EnvironmentEvidence = Readonly<Record<string, string | undefined>>;
 export type SequenceEvidence = { kind: string; category?: string; summary: string; ageMs: number };
+export type JudgeConversationMessage = { role: "user" | "assistant"; text: string };
+export type PendingJudgeCall = { tool: string; input: unknown; cwd: string };
 export type Evidence = {
   callId: string;
   operation: string;
   operator: { source: "interactive" | "rpc"; text: string }[];
-  untrusted: { effects: Effect[]; priorEffects?: { callId?: string; timestamp: number; effect: Effect }[]; observations?: { callId: string; tool: string; operation: string; cwd: string; output: string; timestamp: number }[]; variables?: VariableEvidence[]; sequence?: { priorEvents: SequenceEvidence[]; currentEvent: SequenceEvidence }; matches: RuleMatch[]; uncertainties: string[] };
+  /** Session-native visible text, populated only for the active branch at tool_call. */
+  conversation?: JudgeConversationMessage[];
+  pendingCall?: PendingJudgeCall;
+  untrusted: { effects: Effect[]; priorEffects?: { callId?: string; timestamp: number; effect: Effect }[]; variables?: VariableEvidence[]; sequence?: { priorEvents: SequenceEvidence[]; currentEvent: SequenceEvidence }; matches: RuleMatch[]; uncertainties: string[] };
   omissions: string[];
 };
 export type Decision =
