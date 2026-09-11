@@ -39,7 +39,7 @@ Required reading:
 
 Revision verified on 2026-09-10 at `41bfdf3c`, branch `main`: Strategist is integrated, its archived plan has completed status and T1–T5 checked, and `lib/subagents/guidance.ts` exists. Adoption commit `2007673f` was followed by `664dcaa3` (delegation threshold and removal of duplicate `/do-it` guidance), `29f5ed31` (Sol low default), and `07b98224` (Luna effort floor). The shared rule is the executable source; `/do-it` has no Strategist-specific rule. `lib/subagents/options.ts` owns `resolveAgentEffort`, used by the existing dispatch paths. Extend that validation for Steward rather than adding a parallel mechanism. The historical starting state below is context, not a current blocker.
 
-Implement and integrate [Strategist delegation guidance](../archive/strategist-delegation-guidance/plan.md) first. It supplies the shared caller guidance/catalog used here. This is an implementation dependency, not a requirement for users to obtain Strategist approval before consulting Steward. Before execution, locate that spec at its active or archived path, read its actual checklist/status, and inspect the integrated implementation. Do not assume an archive path alone proves completion. If it has not been implemented, report that prerequisite and do not duplicate its module in this task. The prerequisite link now targets its verified archive.
+Implement and integrate [Strategist delegation guidance](../strategist-delegation-guidance/plan.md) first. It supplies the shared caller guidance/catalog used here. This is an implementation dependency, not a requirement for users to obtain Strategist approval before consulting Steward. Before execution, locate that spec at its active or archived path, read its actual checklist/status, and inspect the integrated implementation. Do not assume an archive path alone proves completion. If it has not been implemented, report that prerequisite and do not duplicate its module in this task. The prerequisite link now targets its verified archive.
 
 Verified on 2026-09-10 at `40a4b771`, branch `main`:
 
@@ -102,29 +102,29 @@ Normally assign one implementation task below per worker and incorporate its res
 
 ## Tasks
 
-- [ ] **T1: Add the Steward definition and Team Lead permission**
+- [x] **T1: Add the Steward definition and Team Lead permission**
   - Depends on: integrated Strategist implementation.
   - Files: proposed `pi/profiles/default/agents/steward.md`; existing `agents/teamlead.md`, `lib/subagents/options.ts`, and `tests/subagent-definitions.test.ts` under that profile.
   - Add the leaf with the defaults and evidence-based remit above; add Team Lead's delegate entry without changing other permissions/defaults. Extend existing effort resolution to permit only high/xhigh for Luna Steward selections. Test accepted high/xhigh, rejected other Luna efforts, and preservation of Strategist and other-role behavior. Larger-model approval remains caller guidance, not runtime enforcement.
   - Extend the real bundled-definition loader assertions for role discovery, exact read-only tools, empty skills/delegates, model/effort, Team Lead access, and preservation of existing defaults. Do not mock away definition loading.
   - Done when `pnpm test subagent-definitions.test.ts` from the task's default profile passes with no new bundled definition errors.
-  - Evidence: Not started.
+  - Evidence: Added `agents/steward.md`, Team Lead permission, Luna high/xhigh validation, and real bundled-definition assertions. `pnpm test subagent-definitions.test.ts` passed 15 tests on 2026-09-10 from the task worktree's default profile.
 
-- [ ] **T2: Add post-finding consultation guidance and documentation**
+- [x] **T2: Add post-finding consultation guidance and documentation**
   - Depends on: T1.
   - Files under the default profile: `lib/subagents/guidance.ts`, `tests/subagent-guidance.test.ts`, `docs/subagents.md`; root `CHANGELOG.md`.
   - Add the shared caller recommendation and larger-model justification/approval instruction, including no automatic larger-model retry. Leave `/do-it` unchanged. Preserve Strategist guidance, ordinary-leaf prompt behavior, and all existing execution/closeout semantics. Document why review findings do not automatically authorize more requirements.
   - Extend existing guidance tests for Steward catalog presence in the root and permitted Team Lead audiences, its absence of dispatcher context as an ordinary leaf, and the caller's explicit consultation reference. Use focused content assertions for advice reuse, obvious bounded corrections, Luna defaults, and the larger-model approval/no-automatic-retry instruction, not full prose snapshots or `/do-it` prose assertions. No new approval mechanism or prompt-composition path; the effort restriction extends existing validation only.
   - Done when `pnpm test subagent-guidance.test.ts subagent-definitions.test.ts` passes and the role, shared text, and docs agree about recommended consultation rather than approval.
-  - Evidence: Not started.
+  - Evidence: Added shared post-finding consultation and larger-model guidance, focused prompt/catalog assertions, default-profile documentation, and root changelog entry. `/do-it` remains unchanged.
 
-- [ ] **T3: Validate the integrated change**
+- [x] **T3: Validate the integrated change**
   - Depends on: T2.
   - From the task worktree's `pi/profiles/default`, run `pnpm run typecheck` and `pnpm test subagent-guidance.test.ts subagent-definitions.test.ts subagent-loader.test.ts`. At the task repository root run `git diff --check`. If dependencies are absent, use the repository's documented pnpm frozen-install and default-profile dependency-link setup.
   - Review the assembled caller/Steward prompts once: a failed agreed check permits a bounded correction; a speculative improvement does not create acceptance work; a pre-existing defect is evaluated by its effect on the task; no findings require no Steward call. This is a wording review, not a live-model behavior test or new fixture framework.
   - Confirm `/do-it` argument forms, execution authority, and outcome/closeout instructions are unchanged in full. Fix demonstrated failures from these changes, then stop.
   - Done when the named checks pass and actual date/profile/path/results and verification limits are recorded. No provider benchmark, live Herdr run, operator acceptance, or exhaustive review suite is required.
-  - Evidence: Not started.
+  - Evidence: On 2026-09-10 from `C:/Users/mglenn/.dotfiles-worktrees/steward-review-guidance/pi/profiles/default`, `pnpm run typecheck` passed and 23 focused tests passed across `subagent-guidance.test.ts`, `subagent-definitions.test.ts`, and `subagent-loader.test.ts`. Root `git diff --check` passed. Assembled guidance covers bounded failed-check corrections, speculative improvements, task-affecting pre-existing defects, and no-finding closeout. `prompts/do-it.md` has no task diff. No live Steward/model behavior test was run.
 
 - [ ] **T4: Archive, commit, integrate, and clean up**
   - Depends on: T3 and execution authorization.
@@ -134,9 +134,9 @@ Normally assign one implementation task below per worker and incorporate its res
 
 ## Validation and current handoff
 
-- Status: ready to resume authorized execution; Strategist integration is verified.
-- Completed: planning/source inspection and one read-through for execution handoff, wording, and scope consistency. Task-owned Markdown links and whitespace were checked. No agent, shared guidance, or execution prompt changes implemented; no implementation tests run.
-- Next: execute T1 using the integrated Strategist prerequisite when resuming the previously authorized Steward execution. This revision itself changes only the plan; no implementation or implementation checks were run.
+- Status: implementation and agreed checks passed on 2026-09-10; integration and cleanup are pending.
+- Completed: Steward definition, Team Lead access, effort validation, shared caller guidance, focused tests, documentation, changelog, and bounded validation in the recorded task worktree.
+- Next: archive and commit the spec with implementation, merge into the recorded `main` target, record completion metadata there, and remove the clean task worktree.
 - Revision decisions: normal post-review/validation consultation with direct handling of obvious bounded corrections; shared-only executable guidance with no `/do-it` edit; Luna high default and high/xhigh-only Luna validation; user-approved larger-model selection through instructions only, with no automatic larger-model retry. These supersede the original override and `/do-it` requirements.
 - Open user decisions: none identified. Technical defaults above are the proposed implementation, not already validated behavior.
 - Verification limits: no live Steward run or measured reduction in churn. Offline loader/prompt checks establish configuration and instruction delivery, not model compliance. Observe normal use after rollout rather than add evaluation machinery here.

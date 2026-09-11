@@ -13,6 +13,7 @@ export function resolveAgentEffort(name:string,model:string,requested:AgentEffor
  const effort=requested??fallback??"low";
  const {id}=resolveModel(model,undefined);
  if(name==="strategist"&&id.includes("luna")&&!(["high","xhigh","max"] as AgentEffort[]).includes(effort))throw new Error("Strategist cannot use Luna below high effort");
+ if(name==="steward"&&id.includes("luna")&&!(["high","xhigh"] as AgentEffort[]).includes(effort))throw new Error("Steward must use Luna high or xhigh effort");
  return effort;
 }
 export function resolveSkills(profile:string,defaults:readonly string[],requested:unknown=[]):string[]{

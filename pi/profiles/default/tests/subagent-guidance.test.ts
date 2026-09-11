@@ -10,7 +10,8 @@ const leaf = definition("leaf", { model: "provider/leaf" });
 const noDefault = definition("no_default");
 const coordinator = definition("coordinator", { delegates: ["leaf"] });
 const strategist = definition("strategist", { model: "provider/strategist", effort: "high" });
-const definitions = new Map([["strategist", strategist], ["no_default", noDefault], ["coordinator", coordinator], ["leaf", leaf]]);
+const steward = definition("steward", { model: "openai-codex/gpt-5.6-luna", effort: "high" });
+const definitions = new Map([["strategist", strategist], ["steward", steward], ["no_default", noDefault], ["coordinator", coordinator], ["leaf", leaf]]);
 
 describe("delegation guidance", () => {
   it("renders a deterministic compact catalog with effective defaults", () => {
@@ -26,6 +27,7 @@ describe("delegation guidance", () => {
     const strategistPrompt = composedAgentPrompt(strategist, definitions, ["leaf"]);
     expect(coordinatorPrompt).toContain("- leaf:");
     expect(coordinatorPrompt).not.toContain("- strategist:");
+    expect(coordinatorPrompt).not.toContain("- steward:");
     expect(strategistPrompt).toContain("Recommendation options");
     expect(strategistPrompt).toContain("- leaf:");
     expect(strategistPrompt).not.toContain("- coordinator:");
@@ -43,6 +45,14 @@ describe("delegation guidance", () => {
     expect(text).toContain("Otherwise work directly");
     expect(text).toContain('agent: "strategist"');
     expect(text).toContain("Reuse its advice");
+    expect(text).toContain('agent: "steward"');
+    expect(text).toContain("after receiving review or validation findings");
+    expect(text).toContain("Handle obvious bounded corrections directly");
+    expect(text).toContain("new findings or a changed proposed fix");
+    expect(text).toContain("If there are no findings");
+    expect(text).toContain("Steward uses Luna high or xhigh");
+    expect(text).toContain("obtain user approval");
+    expect(text).toContain("do not automatically retry Steward");
     expect(text).toContain("observable facts");
     expect(text).toContain("Luna xhigh");
     expect(text).toContain("Use Sol low for Strategist");
@@ -51,5 +61,12 @@ describe("delegation guidance", () => {
     expect(text).toContain("One automatic stronger-family retry");
     expect(text).toContain("do not chain automatic retries");
     expect(text).not.toContain("score each");
+  });
+
+  it("catalogs Steward for callers and permitted coordinators but not in ordinary leaf context", () => {
+    expect(delegationContext({ audience: "caller", definitions })).toContain("- steward: steward role (model default: openai-codex/gpt-5.6-luna; effort default: high)");
+    const permittedCoordinator = definition("teamlead", { delegates: ["steward"] });
+    expect(composedAgentPrompt(permittedCoordinator, definitions)).toContain("- steward:");
+    expect(composedAgentPrompt(steward, definitions)).toBe("steward prompt");
   });
 });
