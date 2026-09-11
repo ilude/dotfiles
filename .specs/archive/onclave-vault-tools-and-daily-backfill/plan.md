@@ -1,7 +1,7 @@
 ---
 created: 2026-09-11
-status: ready
-completed: null
+status: completed
+completed: 2026-09-11
 ---
 
 # Onclave vault tools and supervised daily transcript backfill
@@ -143,21 +143,20 @@ Repository publication constraint: module commits must be committed and pushed b
   - Done when there is one supported Pi API path and no detached Claude backfill fallback.
   - Evidence: Removed the superseded Python API modules/tests/dependencies and Claude API/circuit surfaces while retaining the two local fetchers. Updated default Pi, root, scheduler, Claude, environment, and changelog guidance. Active-source searches excluding archives, `uv run pytest tests/test_fetch_transcript.py` (2 passed), backfill tests (24 passed), installer tests (10 passed), and Claude link tests (15 passed) passed on 2026-09-11.
 
-- [ ] **T6: Finite integrated validation and coordinated closeout**
+- [x] **T6: Finite integrated validation and coordinated closeout**
   - Depends on: T1-T5.
   - Run `pnpm run check` from Onclave (its typecheck + Vitest); run default profile `pnpm run typecheck`, focused new/changed Vitest files via `pnpm test <filters>` without `--`, and `pnpm run check:runtime`. Add/run the offline new-tool loader smoke within those checks.
   - Run worker/client build and their focused tests under their owning pnpm packages. Run `uv run pytest` with the exact retained local-fetcher and changed installer test filters; run shellcheck and shfmt check for changed shell scripts, PowerShell parser/fixture tests for changed PowerShell. Record final exact filters/commands and results, not hypothetical passes. Run `git diff --check` in each owning repository.
   - No live uploads, deletion of real cached transcripts, task registration, or macOS/Linux live certification is necessary for agent-owned completion. Report those unperformed platform/live checks as verification limits. Fix demonstrated task defects; do not rerun unaffected checks without cause.
   - Commit Onclave work locally, resolve module publication prerequisite above, then update parent gitlink only after confirmed push. Finish archival/integration below. Leave this checkbox unchecked until integration and required cleanup are actually finished.
-  - Evidence: Agent-owned implementation checks passed on 2026-09-11: Onclave `pnpm run check` (253 passed, 1 skipped), focused cross-surface tests (46 passed), default-profile typecheck/focused tests/runtime smoke, worker typecheck/build/tests (27 passed), retained fetcher tests (2 passed), installer/config tests (37 passed), Pester tests (28 passed), PowerShell parse, shellcheck, shfmt check, and `git diff --check`. Coordinated publication, parent gitlink commit, archival, merge, metadata, and cleanup remain pending, so T6 remains unchecked.
+  - Evidence: Agent-owned implementation checks passed on 2026-09-11: Onclave `pnpm run check` (253 passed, 1 skipped), focused cross-surface tests (46 passed), default-profile typecheck/focused tests/runtime smoke, worker typecheck/build/tests (27 passed), retained fetcher tests (2 passed), installer/config tests (37 passed), Pester tests (28 passed), PowerShell parse, shellcheck, shfmt check, and `git diff --check`. Onclave commits were published through `647aff3`; dotfiles task commits `2b4a494d` and `b932905f` were merged into recorded target `main` by `e0112d6`.
 
 ## Validation status and next action
 
-- Status: implementation and agent-owned checks passed; integration is blocked on separately authorized module publication.
-- Execution target recorded 2026-09-11: originating checkout `C:/Users/mglenn/.dotfiles`, branch `main`, starting commit `e2b6f7c9`; task worktree `C:/Users/mglenn/.dotfiles-onclave-vault-tools-and-daily-backfill`, branch `task/onclave-vault-tools-and-daily-backfill`.
-- Next: user authorizes pushing Onclave commits `1f6b92b`, `037bf07`, and `647aff3` to `origin/feature/v2-broker-core`; executor then verifies publication, commits the parent gitlink, archives the spec, merges to the recorded target, records completion metadata, and cleans the task worktree.
+- Status: completed and integrated on 2026-09-11.
+- Execution target: originating checkout `C:/Users/mglenn/.dotfiles`, branch `main`, starting commit `e2b6f7c9`; task worktree `C:/Users/mglenn/.dotfiles-onclave-vault-tools-and-daily-backfill`, branch `task/onclave-vault-tools-and-daily-backfill`.
+- Integration: Onclave commits `1f6b92b`, `037bf07`, and `647aff3` were pushed to `origin/feature/v2-broker-core`; dotfiles commits `2b4a494d` and `b932905f` were merged by `e0112d6`. The task spec is archived and no active copy remains.
 - Open product decisions: none.
-- Known integration prerequisite: module push permission is separate and needed before committing the parent gitlink. Action owner: user grants publication permission; executor handles remaining Git integration.
 - Verification limits: no live API upload/deletion, credential use, scheduler registration, or macOS/Linux native certification was performed. The deployed API version and original Windows suspension cause remain unverified. An exploratory full default-profile suite had unrelated dependency/baseline failures outside the focused agreed checks; the changed default-profile checks passed.
 
 ## Closeout contract
