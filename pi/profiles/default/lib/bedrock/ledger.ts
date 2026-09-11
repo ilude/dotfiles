@@ -117,5 +117,10 @@ export function formatUsage(summary: UsageSummary): string {
 	if (summary.baselineDetails || summary.baseline) lines.push(`  baseline: $${summary.baseline.toFixed(2)}`);
 	if (summary.unpriced) lines.push(`  Unpriced: ${summary.unpriced} request(s)`);
 	lines.push(`  Cache-read: ${totals.input > 0 ? `${(100 * totals.read / totals.input).toFixed(1)}%` : "unavailable"}`);
-	return lines.join("\n");
+	const numericLines = lines.map(line => line.match(/^(.*?:)\s+(\$?\d+)(\.\d+%?)(.*)$/));
+	const decimalColumn = Math.max(0, ...numericLines.map(match => match ? match[1].length + 1 + match[2].length : 0));
+	return lines.map((line, index) => {
+		const match = numericLines[index];
+		return match ? `${match[1]}${" ".repeat(decimalColumn - match[1].length - match[2].length)}${match[2]}${match[3]}${match[4]}` : line;
+	}).join("\n");
 }

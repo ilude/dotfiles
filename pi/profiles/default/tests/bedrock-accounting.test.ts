@@ -68,7 +68,7 @@ describe("Bedrock accounting", () => {
 		const row = [[{ field: "userArn", value: principal }, { field: "estimatedCost", value: "2.50" }, { field: "invocations", value: "4" }]];
 		const baseline = parseResults(JSON.stringify({ status: "Complete", results: row }), principal, capturedAt.toISOString()).baseline!; expect(await createBaseline(baseline)).toBe(true);
 		const summary = await summarize(baseline.month); expect(summary.baseline).toBe(2.5); expect(summary.records.map(record => record.id)).toEqual([after.id]);
-		expect(formatUsage(summary)).toBe("Bedrock: $2.50\n  baseline: $2.50\n  Cache-read: 0.0%");
+		expect(formatUsage(summary)).toBe("Bedrock:     $2.50\n  baseline:  $2.50\n  Cache-read: 0.0%");
 	});
 	it("shows a weighted local cache-read rate without raw cache counts", () => {
 		const records = [
@@ -76,7 +76,7 @@ describe("Bedrock accounting", () => {
 			makeRecord({ provider: "amazon-bedrock", model: "anthropic.claude-haiku-4-5", usage: { input: 1000, output: 1000 } }),
 		];
 		const report = formatUsage({ month: records[0].month, records, cost: 1, baseline: 0, unpriced: 0 });
-		expect(report.startsWith("Bedrock: $1.00\n")).toBe(true);
+		expect(report).toMatch(/^Bedrock: +\$1\.00\n/);
 		expect(report.endsWith("  Cache-read: 40.0%")).toBe(true);
 		expect(report).not.toContain("Total:");
 		expect(report).toContain("Tokens:  100 in, 1.0K out");
@@ -92,6 +92,8 @@ describe("Bedrock accounting", () => {
 		records[0].pricing = { status: "estimated", basis: "test", total: 0.17 };
 		records[1].pricing = { status: "estimated", basis: "test", total: 12.67 };
 		const report = formatUsage({ month: records[0].month, records, cost: 12.84, baseline: 0, unpriced: 0 });
+		const decimalColumns = report.split("\n").map(line => line.indexOf(".")).filter(column => column >= 0);
+		expect(new Set(decimalColumns).size).toBe(1);
 		expect(report.split("\n").slice(1, 3)).toEqual([
 			"  opus-5:     $0.17 Tokens:  8 in,  4.5K out",
 			"  fable-5-1: $12.67 Tokens: 14 in, 10.2K out",
