@@ -114,14 +114,14 @@ Implement only settled scope. Adapt equivalent technical details directly. Ask b
   - Done when checks pass and current documentation matches the implemented contract.
   - Evidence: documentation and changelog updated. Final offline validation on 2026-09-11: `pnpm test subagent` passed 135 tests with 5 skipped after one transient failed run was rerun; `pnpm run typecheck`, `pnpm run check:runtime` (321 rules, 8 schemas), and root `git diff --check` passed. No live/model-backed flags were enabled.
 
-- [ ] **T5: Archive, commit, integrate, and clean up**
+- [x] **T5: Archive, commit, integrate, and clean up**
   - Depends on: T4 and later execution authorization.
   - Follow the closeout contract below. Leave unfinished integration or cleanup items unchecked.
   - [x] Archive the complete implemented spec and commit task-owned changes on the task branch.
   - [x] Merge into the recorded originating checkout/branch, unless explicitly `--no-merge`.
   - [x] Verify integration and commit completed plan metadata on the target.
-  - [ ] Remove the integrated, clean task worktree and verify cleanup.
-  - Evidence: task commits `4f55c058`, `fb1f0f80`, and `54ace0a7` merged into `main` as `5d14e417` on 2026-09-11. The routine `CHANGELOG.md` conflict preserved both entries. Target verification found this archive and no active plan copy; completion metadata was then committed on `main`. Task worktree cleanup remains the final closeout action.
+  - [x] Remove the integrated, clean task worktree and verify cleanup.
+  - Evidence: task commits `4f55c058`, `fb1f0f80`, and `54ace0a7` merged into `main` as `5d14e417` on 2026-09-11. The routine `CHANGELOG.md` conflict preserved both entries. Target verification found this archive and no active plan copy; completion metadata was committed as `89760045`. The clean task worktree was removed and its absence verified.
 
 ## Agreed validation and current handoff
 
@@ -136,7 +136,7 @@ pnpm run check:runtime
 From the repository root, run `git diff --check`. Do not enable model-backed/Herdr live-test environment flags as a completion prerequisite. Existing opt-in tests can remain skipped; report that limit honestly. The regressions for changed behavior must run offline, not be hidden behind opt-in flags. Rerun only when task changes or stale results justify it.
 
 - Status: completed on 2026-09-11.
-- Completed work: T1-T4 plus T5 archival, task commits, merge to recorded `main`, and completion metadata. Worktree cleanup is the remaining closeout action.
+- Completed work: T1-T5, documentation, finite offline validation, archival, task commits, merge to recorded `main`, completion metadata, and verified worktree cleanup.
 - Integration: task commits `4f55c058`, `fb1f0f80`, and `54ace0a7` merged as `5d14e417`; the `CHANGELOG.md` conflict preserved both independent entries.
 - Next: none for authorized closeout.
 - Open decisions: none within the four scoped improvements. Mutable role permissions are excluded, not implicitly approved.
