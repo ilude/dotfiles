@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { SubagentRuntime, getSubagentRuntime, resetSubagentRuntime, retireSubagentRuntime, type Delivery } from "../lib/subagents/runtime.ts";
+import { VisibleChild } from "../lib/subagents/visible.ts";
 import type { AgentDefinition } from "../lib/subagents/definitions.ts";
 const here=dirname(fileURLToPath(import.meta.url));
 const oldBin=process.env.PI_SUBAGENT_BIN,oldArgs=process.env.PI_SUBAGENT_BIN_ARGS;
@@ -50,6 +51,32 @@ describe("process-local descendant ownership",()=>{
    await runtime.get(parent.id).command("prompt",{message:"follow-up"});
    await vi.waitFor(()=>expect(delivered).toHaveLength(1),{timeout:7000});
    expect(delivered[0]).toMatchObject({id:parent.id,outcome:"complete",result:"second answer",processState:"exited"});
+  }finally{rmSync(scratch,{recursive:true,force:true})}
+ });
+ it("retires a previously pending outcome when an idle visible child accepts an operator turn",async()=>{
+  const runtime=fixture();
+  const child=new VisibleChild({...input,retained:true,surface:"visible",displayName:"visible-probe",prompt:"probe"} as any,join(here,"../extensions/subagent-child.ts"),join(here,".."));
+  child.record.status="settled";child.record.outcome="complete";child.record.result="old result";
+  (runtime as any).children.set(child.record.id,child);
+  (runtime as any).contexts.set(child.record.id,{input:{...input,retained:true,surface:"visible"},profile:join(here,".."),extension:join(here,"../extensions/subagent-child.ts"),catalog:new Map([[definition.name,definition]])});
+  const stale={...child.snapshot(),id:"prior-leaf",parentId:child.record.id,deliveryId:"prior-outcome"};
+  (runtime as any).pending.set(stale.deliveryId,stale);
+  const dispatch=(message:any)=>(runtime as any).dispatch({child:child.record.id,origin:input.origin,run:"fixture"},message);
+  expect((await dispatch({type:"app-poll"})).delivery).toMatchObject({deliveryId:"prior-outcome"});
+  await dispatch({type:"operator-input",payload:{text:"new operator turn"}});
+  expect(child.snapshot()).toMatchObject({status:"running",assignment:"new operator turn",outcome:undefined,result:undefined,userOwned:false});
+  expect((await dispatch({type:"app-poll"})).delivery).toBeUndefined();
+ });
+ it("allows a permitted leaf in a sibling directory while preserving origin and delegate checks",async()=>{
+  const runtime=fixture(),scratch=mkdtempSync(join(tmpdir(),"subagent-sibling-"));
+  try{
+   const coordinator={...definition,name:"coordinator",tools:["subagent"],delegates:["probe"]};
+   const parent=await runtime.launch({...input,definition:coordinator,instructions:"[hold]",catalog:new Map([["coordinator",coordinator],["probe",definition]])},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+   const leaf=await runtime.launch({...input,cwd:scratch,parentId:parent.id,instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+   expect(leaf.cwd).toBe(scratch);
+   await expect(runtime.launch({...input,cwd:scratch,parentId:parent.id,origin:"other-origin",instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true)).rejects.toThrow(/change origin/);
+   await expect(runtime.launch({...input,cwd:scratch,parentId:parent.id,definition:{...definition,name:"other"},instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true)).rejects.toThrow(/Delegation is outside frozen authority/);
+   await runtime.get(leaf.id).cancel();await runtime.get(parent.id).cancel();
   }finally{rmSync(scratch,{recursive:true,force:true})}
  });
  it("marks a coordinator's foreground leaf wait as attached",async()=>{

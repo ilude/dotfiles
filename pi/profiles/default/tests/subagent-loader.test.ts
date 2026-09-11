@@ -33,12 +33,13 @@ describe("bundled CLI child authority",()=>{
    expect(actual).toEqual(tools);
    if(childMode){
     const response=await new Promise<any>((resolve,reject)=>{
-     const timeout=setTimeout(()=>reject(new Error("Shell guard probe timed out")),5000);
-     const frames=new JsonLines(value=>{const event=value as any;if(event.id==="shell-probe"){clearTimeout(timeout);resolve(event)}});
+     const timeout=setTimeout(()=>reject(new Error("Native shell probe timed out")),5000);let output="";
+     const frames=new JsonLines(value=>{const event=value as any;if(event.type==="bash_execution_update"&&event.id==="shell-probe")output+=event.delta??"";if(event.type==="response"&&event.id==="shell-probe"){clearTimeout(timeout);resolve({...event,output})}});
      child.stdout.on("data",chunk=>{try{frames.push(chunk)}catch(error){clearTimeout(timeout);reject(error)}});
      child.stdin.write(JSON.stringify({type:"bash",id:"shell-probe",command:"echo shell-probe"})+"\n");
     });
-    expect(response.data).toMatchObject({exitCode:1,output:expect.stringContaining("Direct shell UI is disabled")});
+    expect(response).toMatchObject({success:true});
+    expect(response.data?.output??response.output).toContain("shell-probe");
    }
   } finally { child.kill(); await exited; rmSync(scratch,{recursive:true,force:true}); }
  },20_000);

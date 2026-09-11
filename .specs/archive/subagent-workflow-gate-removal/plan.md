@@ -1,6 +1,6 @@
 ---
 created: 2026-09-10
-status: ready
+status: merge-blocked
 completed: null
 ---
 
@@ -29,7 +29,7 @@ All paths below are relative to `C:/Users/mglenn/.dotfiles` unless absolute. Rea
 - Planning profile verified on 2026-09-10 through `PI_CODING_AGENT_DIR`: `C:/Users/mglenn/.dotfiles/pi/profiles/default`.
 - Intended execution profile: default. No implementation or model trial has run for this plan.
 - Integration target: originating checkout `C:/Users/mglenn/.dotfiles`, branch `main`.
-- Proposed task branch: `feature/subagent-workflow-gate-removal`; proposed sibling worktree: `C:/Users/mglenn/.dotfiles-subagent-workflow-gate-removal`. Record actual values before implementation.
+- Task branch: `feature/subagent-workflow-gate-removal`; sibling worktree: `C:/Users/mglenn/.dotfiles-subagent-workflow-gate-removal`. Integration target remains originating checkout `C:/Users/mglenn/.dotfiles`, branch `main`.
 - Preserve currently modified `CHANGELOG.md`, `pi/profiles/default/docs/herdr.md`, `pi/profiles/default/lib/plan-run-runtime.ts`, and `pi/profiles/default/tests/plan-run-runtime.test.ts`. Recheck current state; this list is a snapshot, not permission to discard later work.
 
 Required source reading:
@@ -81,47 +81,47 @@ Implement only settled scope. Adapt equivalent technical details directly. Ask b
 
 ## Tasks
 
-- [ ] **T1: Remove coordinator directory confinement**
+- [x] **T1: Remove coordinator directory confinement**
   - Depends on: none.
   - Update `lib/subagents/runtime.ts` to separate and preserve origin validation while dropping cwd containment. Remove now-unused containment code in `workspace.ts` if appropriate.
   - Extend existing runtime tests to allow a permitted leaf in an existing sibling directory, while still rejecting origin mismatch and invalid delegation.
   - Done when outside-cwd launch is permitted without weakening routing or delegate checks.
-  - Evidence: not started.
+  - Evidence: `runtime.ts` now preserves origin validation without coordinator-cwd containment; workspace/runtime tests cover an existing sibling directory, origin mismatch, and delegation rejection.
 
-- [ ] **T2: Restore native operator shell and recoverable role errors**
+- [x] **T2: Restore native operator shell and recoverable role errors**
   - Depends on: none; independent of T1.
   - Update `extensions/subagent-child.ts` to remove `user_bash` denial and omit termination on role-tool rejection.
   - Update the existing CLI-loader shell probe to verify harmless native shell execution for a child without model shell permission. Keep active-tool ceiling assertions.
   - Update workspace/authority assertions for recoverable rejection. Add a bounded offline extension/runtime test showing a blocked call carries the reason without terminating and a subsequent permitted action remains possible. Use existing installed-runtime test infrastructure; no provider call is required.
   - Verify child launch still loads Damage Control for model tools using the existing launch checks.
   - Done when operator shell works through native Pi while model role limits remain enforced and recoverable.
-  - Evidence: not started.
+  - Evidence: removed the child `user_bash` interceptor; role-tool rejection remains blocked without `terminate`; loader/outcome/workspace tests cover native shell, active-tool ceilings, Damage Control loading, and recoverability.
 
-- [ ] **T3: Keep ordinary child input under parent coordination**
+- [x] **T3: Keep ordinary child input under parent coordination**
   - Depends on: none; integrate after T1/T2 if working sequentially.
   - Update `lib/subagents/child-surface.ts` and only necessary visible/runtime transport handling. Remove automatic takeover from ordinary interactive input, retaining native message delivery.
   - Preserve correct active/settled state for ordinary input during active work and in idle retained children. Preserve queued parent messages and subsequent result delivery.
   - Adapt existing child-outcome/messaging tests to prove ordinary input leaves parent control available; explicit escalation still marks ownership and handback restores control; permission prompts do not take over.
   - Exercise idle-retained new-turn state and active ordinary input through existing visible lifecycle tests/harnesses. Verify non-retained cleanup and explicit takeover parent-loss behavior remain unchanged in the existing automated cases.
   - Done when direct steering needs no handback, explicit takeover still does, and parent lifecycle/outcomes remain accurate.
-  - Evidence: not started.
+  - Evidence: ordinary visible input reports native operator activity without takeover; runtime handling resets idle retained assignment state and retires stale pending outcomes. Messaging/runtime/outcome tests preserve parent controls, queued messages, explicit escalation/handback, and permission prompts.
 
-- [ ] **T4: Document and validate the bounded changes**
+- [x] **T4: Document and validate the bounded changes**
   - Depends on: T1-T3.
   - Update `pi/profiles/default/docs/subagents.md` and relevant default-profile summaries in `pi/README.md` to distinguish role limits, ordinary operator input, and explicit takeover. Remove obsolete descriptions without rewriting unrelated documentation.
   - Add a root `CHANGELOG.md` entry explaining removal of workflow gates, why, and the preserved controls. Preserve concurrent entries.
   - Run the finite validation below and record actual results and limitations.
   - Done when checks pass and current documentation matches the implemented contract.
-  - Evidence: not started.
+  - Evidence: documentation and changelog updated. Final offline validation on 2026-09-11: `pnpm test subagent` passed 135 tests with 5 skipped after one transient failed run was rerun; `pnpm run typecheck`, `pnpm run check:runtime` (321 rules, 8 schemas), and root `git diff --check` passed. No live/model-backed flags were enabled.
 
 - [ ] **T5: Archive, commit, integrate, and clean up**
   - Depends on: T4 and later execution authorization.
   - Follow the closeout contract below. Leave unfinished integration or cleanup items unchecked.
-  - [ ] Archive the complete implemented spec and commit task-owned changes on the task branch.
+  - [x] Archive the complete implemented spec and commit task-owned changes on the task branch.
   - [ ] Merge into the recorded originating checkout/branch, unless explicitly `--no-merge`.
   - [ ] Verify integration and commit completed plan metadata on the target.
   - [ ] Remove the integrated, clean task worktree and verify cleanup.
-  - Evidence: not started.
+  - Evidence: implementation and archive commits are on the task branch. Integration attempted on 2026-09-11 but Git refused because the target checkout has an unrelated uncommitted `CHANGELOG.md` modification that the task branch also changes. The task worktree is retained. Next action: the operator must finish or otherwise clear their `CHANGELOG.md` work in `C:/Users/mglenn/.dotfiles`, then merge `feature/subagent-workflow-gate-removal` into `main` and complete metadata/cleanup.
 
 ## Agreed validation and current handoff
 
@@ -135,11 +135,12 @@ pnpm run check:runtime
 
 From the repository root, run `git diff --check`. Do not enable model-backed/Herdr live-test environment flags as a completion prerequisite. Existing opt-in tests can remain skipped; report that limit honestly. The regressions for changed behavior must run offline, not be hidden behind opt-in flags. Rerun only when task changes or stale results justify it.
 
-- Status: ready for a later execution request.
-- Completed work: plan authoring and source inspection only.
-- Next: execution authorization, then record worktree and start T1.
+- Status: merge blocked after implementation, archival, task commits, and agreed offline checks passed.
+- Completed work: T1-T4, documentation, finite offline validation, archival, and task-branch commits `4f55c058` and `fb1f0f80`.
+- Blocker: target checkout `C:/Users/mglenn/.dotfiles` has an unrelated uncommitted `CHANGELOG.md` modification; Git refused the merge rather than overwrite it.
+- Next: operator finishes or otherwise clears that `CHANGELOG.md` work, then merges `feature/subagent-workflow-gate-removal` into `main`; the integrating agent records completed metadata and removes the clean task worktree.
 - Open decisions: none within the four scoped improvements. Mutable role permissions are excluded, not implicitly approved.
-- Verification limits: no implementation checks or live operator trial yet. Operator testing occurs after completion and does not block archival, commit, or authorized merge.
+- Verification limits: no live/model-backed operator trial was run. Operator testing occurs after completion and does not block archival, commit, or authorized merge.
 
 ## Closeout contract
 

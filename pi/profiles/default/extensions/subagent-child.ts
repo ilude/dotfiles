@@ -16,11 +16,10 @@ export default function childAuthority(pi:ExtensionAPI){
  workspaceRoot(authority.cwd);
  const allowed=new Set(authority.tools);
  pi.registerCommand("exit",{description:"Exit this restricted child",handler:async(_args,ctx)=>ctx.shutdown()});
- pi.on("user_bash",()=>({result:{output:"Direct shell UI is disabled in restricted children. Use an allowed shell tool through Damage Control instead.",exitCode:1,cancelled:false,truncated:false}}));
  pi.on("session_start",()=>pi.setActiveTools(pi.getAllTools().map(t=>t.name).filter(t=>allowed.has(t))));
  bindChildSurface(pi,authority.surface==="visible");
  pi.on("tool_call",event=>{
-  if(!allowed.has(event.toolName))return{block:true,terminate:true,reason:`Tool ${event.toolName} is outside frozen ${authority.agent} authority`};
+  if(!allowed.has(event.toolName))return{block:true,reason:`Tool ${event.toolName} is outside frozen ${authority.agent} authority`};
  });
  pi.on("before_agent_start",event=>({systemPrompt:`${event.systemPrompt}\n\nYou are subagent ${authority.agent}. Your authority is frozen to tools [${[...allowed].join(", ")||"none"}]. You may not activate or request other tools. A normal final reply automatically completes your assignment; no reporting tool is needed for success. Use partial only for genuinely unfinished work and blocked only when you cannot proceed. Parent notifications are evidence to incorporate, not receipts to acknowledge. Use the question action for a question-answer request; it yields cleanly and the parent answer resumes this conversation. ${process.env.PI_SUBAGENT_PROMPT||""}`}));
  const parentEndpoint=()=>{

@@ -96,6 +96,17 @@ export class VisibleChild extends RpcChild {
    return{commands:this.record.userOwned?this.commands.filter(c=>c.type==="handback"||c.type==="intervene"):this.commands};
   }
   if(message.type==="app-ack"){this.commands=this.commands.filter(c=>c.id!==message.payload);return{accepted:true}}
+  if(message.type==="operator-input"){
+   if(this.forceStop)throw new Error("Child cancellation is already committed");
+   const payload=message.payload as {text?:unknown}|undefined;
+   if(typeof payload?.text!=="string"||!payload.text.trim())throw new Error("Operator input must be nonblank");
+   if(this.record.status!=="running"){
+    this.last="";this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
+    this.record.assignment=payload.text;this.record.assignmentStartedAt=new Date().toISOString();this.record.assignmentFinishedAt=undefined;
+    this.record.status="running";this.record.phase="starting";this.record.phaseStartedAt=new Date().toISOString();this.record.requestId=undefined;
+   }
+   return{accepted:true};
+  }
   if(message.type==="intervene"){
    if(this.forceStop)throw new Error("Child cancellation is already committed");
    this.record.userOwned=true;this.interventionReady=true;this.stopping=false;

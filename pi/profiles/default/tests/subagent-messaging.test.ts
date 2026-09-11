@@ -69,6 +69,25 @@ describe("native subagent message boundaries", () => {
     expect(redirected.commands).toContainEqual(expect.objectContaining({ type: "redirect", message: "visible redirect", delivery: "immediate" }));
   });
 
+  it("keeps ordinary visible input parent-coordinated and reserves ownership for explicit escalation", async () => {
+    const instance = new VisibleChild({ definition, instructions: "visible", cwd: here, model: "openai-codex/test", effort: "low", skills: [], origin: "messaging-origin", retained: true, surface: "visible" }, "fixture-extension", "fixture-profile", {} as any);
+    (instance as any).appReady = true;
+    instance.record.status = "running";
+    await instance.message("queued parent message", { delivery: "queued" });
+    instance.record.status = "settled"; instance.record.outcome = "complete"; instance.record.result = "old result";
+    instance.parentMessage({ type: "operator-input", payload: { text: "new operator turn" } });
+    expect(instance.snapshot()).toMatchObject({ status: "running", assignment: "new operator turn", userOwned: false, outcome: undefined, result: undefined });
+    await instance.message("parent still controls", { delivery: "queued" });
+    const commands=(instance.parentMessage({ type: "app-poll" }) as any).commands;
+    expect(commands).toContainEqual(expect.objectContaining({type:"message",message:"queued parent message"}));
+    expect(commands).toContainEqual(expect.objectContaining({type:"message",message:"parent still controls"}));
+    instance.parentMessage({type:"intervene"});
+    expect(instance.snapshot().userOwned).toBe(true);
+    await expect(instance.message("parent blocked")).rejects.toThrow(/intervention/);
+    instance.parentMessage({type:"handback"});
+    expect(instance.snapshot().userOwned).toBe(false);
+  });
+
   it("does not strand a mixed tool batch after a question tool yields", async () => {
     const instance = child();
     void instance.start();

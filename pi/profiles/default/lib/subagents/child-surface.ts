@@ -79,7 +79,12 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   state.delivered!.add(id);state.queuedDelivery=undefined;
   try{await requestParent(endpoint,{type:"outcome-ack",payload:id})}catch{unavailable()}
  });
- pi.on("input",async event=>{if(visible&&event.source==="interactive"&&!state.prompt)await intervene();return{action:"continue"}});
+ pi.on("input",async event=>{
+  if(visible&&event.source==="interactive"&&!state.prompt){
+   try{await requestParent(endpoint,{type:"operator-input",payload:{text:event.text,streamingBehavior:event.streamingBehavior}})}catch{unavailable()}
+  }
+  return{action:"continue"};
+ });
  pi.on("ui_prompt_start",()=>{state.prompt=true});
  pi.on("ui_prompt_end",()=>{state.prompt=false});
  if(visible){

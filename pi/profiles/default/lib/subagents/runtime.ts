@@ -5,7 +5,7 @@ import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 import { VisibleChild } from "./visible.ts";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
 import { EFFORTS, resolveAgentEffort, resolveModel, resolveSkills } from "./options.ts";
-import { inside, workspaceRoot } from "./workspace.ts";
+import { workspaceRoot } from "./workspace.ts";
 import { NameAllocator } from "./names.ts";
 import { SubagentLayout } from "./layout.ts";
 import { createHerdrCli } from "../herdr-cli.ts";
@@ -109,6 +109,16 @@ export class SubagentRuntime {
   const delivery=child.record.userOwned?undefined:[...this.pending.values()].find(r=>r.parentId===identity.child);
   if(message.type==="heartbeat")return{alive:true,delivery};
   if(message.type==="app-poll")return{...child.parentMessage(message) as object,delivery};
+  if(message.type==="operator-input"){
+   const wasIdle=child.record.status==="settled";
+   const response=child.parentMessage(message);
+   if(wasIdle&&child.record.status==="running"){
+    for(const [deliveryId,pending] of [...this.pending]){
+     if(pending.id===child.record.id||pending.parentId===child.record.id)this.acknowledge(identity.origin,deliveryId);
+    }
+   }
+   return response;
+  }
   if(message.type==="outcome-ack"){
    if(typeof message.payload!=="string")throw new Error("Outcome acknowledgement requires an id");
    const pending=this.pending.get(message.payload);
@@ -156,7 +166,7 @@ export class SubagentRuntime {
    const parent=this.children.get(input.parentId),context=this.contexts.get(input.parentId);
    if(!parent||!context||parent.record.status==="settled")throw new Error("Delegating parent is unavailable");
    if(parent.record.parentId||!context.input.definition.delegates.includes(input.definition.name)||input.definition.delegates.length)throw new Error("Delegation is outside frozen authority");
-   if(input.origin!==parent.record.origin||!inside(context.input.cwd,cwd))throw new Error("Child cannot widen parent workspace or change origin");
+   if(input.origin!==parent.record.origin)throw new Error("Child cannot change origin");
   }
   if(input.surface==="visible"&&process.env.HERDR_ENV!=="1")throw new Error("Visible subagents require Herdr; no headless substitution is permitted");
   const allocator=this.names.get(input.origin)??new NameAllocator();
