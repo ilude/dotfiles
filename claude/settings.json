@@ -127,24 +127,6 @@
       {
         "hooks": [
           {
-            "command": "python $HOME/.claude/hooks/onclave-circuit/probe.py",
-            "timeout": 5,
-            "type": "command"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "command": "python $HOME/.claude/hooks/onclave-circuit/backfill.py --detach",
-            "timeout": 2,
-            "type": "command"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\mglenn\\.claude\\hooks\\herdr-agent-state.ps1\" session",
             "timeout": 10,
             "type": "command"

@@ -1,4 +1,4 @@
-// Onclave owns the adapter. This profile only locates and loads it.
+// Onclave owns communication and vault tools. This profile only locates and loads the adapter; vault execution remains lazy inside the owning tool definitions.
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

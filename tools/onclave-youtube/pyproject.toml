@@ -10,12 +10,9 @@ requires-python = ">=3.11"
 dependencies = [
     "youtube-transcript-api==1.2.4",
     "google-api-python-client>=2.0.0",
-    "httpx>=0.27.0",
-    "cryptography>=42.0.0",
 ]
 
 [project.scripts]
-onclave-youtube = "onclave_youtube:main"
 fetch-transcript = "fetch_transcript:main"
 fetch-metadata = "fetch_metadata:main"
 
@@ -24,24 +21,8 @@ package = true
 
 [tool.setuptools]
 py-modules = [
-    "api_config",
-    "channel_videos",
-    "check_job",
     "fetch_metadata",
     "fetch_transcript",
-    "find_content",
-    "get_content",
-    "ingest_video",
-    "job_utils",
-    "job_stats",
-    "list_videos",
-    "onclave_client",
-    "onclave_youtube",
-    "post_annotation",
-    "reindex_embeddings",
-    "reprocess",
-    "search",
-    "signing",
 ]
 
 [dependency-groups]

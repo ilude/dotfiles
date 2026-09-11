@@ -3,7 +3,7 @@ description: Fetch YouTube transcript and metadata locally (no Onclave required)
 argument-hint: <url-or-id> [--json] [--timed] [--urls-only]
 ---
 
-Local YouTube fetcher -- standalone fallback for when the Onclave API is unavailable.
+Local YouTube fetcher. This explicit workflow never uploads results to Onclave.
 Uses `youtube-transcript-api` (with optional Webshare proxy) and YouTube Data API v3.
 
 ## Usage
@@ -68,4 +68,4 @@ Given `$ARGUMENTS` (a YouTube URL or 11-char video ID):
 3. Prefer reading the saved files in `~/.dotfiles/yt/<video_id>/` for summarization, especially for long transcripts. Use stdout as a quick preview.
 4. Summarize transcript content and surface any URLs from `description_urls.txt`.
 
-If Onclave comes back online, prefer `/yt` (server-side ingestion + pipeline). This command is a local-only fallback that persists local fetched artifacts but does not ingest into the Onclave vault.
+This command is intentionally independent of Onclave and persists local fetched artifacts without ingesting them into the vault.

@@ -51,48 +51,9 @@ OpenCode reuses the shared command set from `claude/commands/`. OpenCode-specifi
 
 The repo installer pre-installs the Python hook dependencies used by Claude hooks. Hooks use bare `python` rather than `uv run` on Windows to avoid console flashing.
 
-## Onclave (Content Vault)
+## YouTube local fetching
 
-The Onclave server is deployed from `modules/onclave/services/core`. This repository contains its client tooling under `tools/onclave-youtube/`.
-
-Set `HOST_DOMAIN` to derive the API base as `https://onclave.<domain>/api/v1`. Set `ONCLAVE_API_BASE` only when the client needs an explicit endpoint override.
-
-### `/yt` Command
-
-Claude Code skill for YouTube video ingestion via Onclave API.
-
-**Ingest a video:**
-
-```text
-/yt https://youtube.com/watch?v=VIDEO_ID
-```
-
-Fetches transcript, stores in MinIO, and enqueues pipeline processing.
-
-**List recent videos:**
-
-```text
-/yt list [n]
-```
-
-Flags:
-
-- `--wait` polls the job to completion.
-- `--verbose` shows full job fields.
-
-After ingestion, follow-up questions about the video content query the API for transcript and pipeline results.
-
-### Annotations
-
-Content items can have annotations linked to a video:
-
-- `POST /api/v1/content/{id}/annotations`
-- `GET /api/v1/content/{id}/annotations`
-- Utility script: `~/.dotfiles/tools/onclave-youtube/post_annotation.py <content_id> <title> <text_file> [tags...]`
-
-### Authentication
-
-All API endpoints use RFC 9421 HTTP signatures with ed25519 keys from `~/.ssh/id_ed25519`. Client signing is handled by `~/.dotfiles/tools/onclave-youtube/signing.py`.
+Claude's supported YouTube surface is `/yt-local`, which explicitly fetches transcript or metadata artifacts under `~/.dotfiles/yt/` without uploading them. Onclave vault operations are owned by default Pi's discovered tools; Claude no longer provides a separate API wrapper or detached backfill workflow.
 
 ## Testing
 

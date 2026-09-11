@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist",
+    "declaration": false,
+    "sourceMap": false,
+    "allowImportingTsExtensions": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "../../modules/onclave/packages/client/src/index.ts",
+    "../../modules/onclave/packages/client/src/http-signer.ts"
+  ],
+  "exclude": ["tests/**/*.ts"]
+}

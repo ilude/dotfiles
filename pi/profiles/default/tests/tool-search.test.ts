@@ -36,6 +36,20 @@ describe("tool_search", () => {
 		expect((await tool.execute!("id", { query: "image" }, undefined, undefined, {})).details.activated).toEqual([]);
 	});
 
+	it("activates deferred vault matches without activating communication tools", async () => {
+		const pi = createMockPi();
+		register(pi, "read", "Read files");
+		register(pi, "onclave_vault_search", "Search YouTube transcripts and private vault content");
+		register(pi, "onclave_vault_content", "Read a transcript or vault content");
+		register(pi, "onclave_message", "Communicate with an independent Onclave instance");
+		pi.setActiveTools(["read"]); registerToolSearch(pi as never);
+		const result = await pi._getTool("tool_search")!.execute!("id", { query: "YouTube transcript" }, undefined, undefined, {});
+		expect(result.details.activated).toEqual(["onclave_vault_search", "onclave_vault_content"]);
+		expect(pi.getActiveTools()).toEqual(["read", "tool_search", "onclave_vault_search", "onclave_vault_content"]);
+		expect(pi.getActiveTools()).not.toContain("onclave_message");
+		expect(pi.exec).not.toHaveBeenCalled();
+	});
+
 	it("returns a bounded no-match result", async () => {
 		const pi = createMockPi(); register(pi, "read", "Read files"); registerToolSearch(pi as never);
 		const result = await pi._getTool("tool_search")!.execute!("id", { query: "nonexistent-capability" }, undefined, undefined, {});

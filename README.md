@@ -169,7 +169,18 @@ make test-quick    # Run core tests only
 
 Default dependencies are installed with `pnpm --dir pi/profiles/default install --frozen-lockfile`, then linked with `bash scripts/pi-deps-link-setup --profile default`. Run `make check-pi-default` for grammar/loader readiness, typecheck, and tests. Existing legacy Pi targets remain independent. Damage Control loads on normal default-profile `pi` and `pp` launches; use `/reload` for an existing session. See [default setup, explicit recovery and verification limits](pi/profiles/default/docs/damage-control-setup.md).
 
+### Onclave backfill operations
+
+The installer builds and registers the short-lived TypeScript worker in `tools/onclave-backfill` as a native per-user daily and login-triggered job. It is local-first, fail-fast, and nonfatal to the rest of installation: missing Node, endpoint configuration, or a supported native scheduler produces a warning and no cron fallback. The worker reads `~/.dotfiles/yt/onclave-backfill.json`, uses the configured key path without copying key material, catches up after missed runs, and removes local cache directories only after verified upload. Use its `--status`, `--disable`, and ownership-checked `--uninstall` operations for migration and recovery. Claude's retired API wrappers, `/yt` command, circuit hooks, and detached backfill are not compatibility fallbacks; use default Pi's discovered vault tools or explicit `/yt-local`.
+
 ### Linting
+
+The retained local fetchers are tested independently from the retired API wrappers:
+
+```bash
+cd tools/onclave-youtube && uv run pytest tests/test_fetch_transcript.py
+cd tools/onclave-backfill && pnpm test
+```
 
 ```bash
 make lint          # Run shellcheck

@@ -1,0 +1,20 @@
+{
+  "extends": "../../pi/profiles/default/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../..",
+    "baseUrl": "../..",
+    "types": ["node"],
+    "typeRoots": ["../../pi/profiles/default/node_modules/@types"],
+    "paths": {
+      "vitest": ["pi/profiles/default/node_modules/vitest"],
+      "vitest/*": ["pi/profiles/default/node_modules/vitest/*"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "../../modules/onclave/packages/client/src/index.ts",
+    "../../modules/onclave/packages/client/src/http-signer.ts",
+    "tests/**/*.ts"
+  ]
+}
