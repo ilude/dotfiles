@@ -21,12 +21,20 @@ describe("subagent definitions",()=>{
   expect(resolveAgentEffort("strategist","openai-codex/gpt-5.6-luna","high","low")).toBe("high");
   expect(resolveAgentEffort("strategist","openai-codex/gpt-5.6-sol","low","high")).toBe("low");
  });
- it("loads the bundled read-only Strategist and grants Team Lead access without changing other defaults",()=>{
+ it("restricts Luna Steward effort while preserving Strategist and stronger models",()=>{
+  for(const effort of ["off","minimal","low","medium","max"] as const)expect(()=>resolveAgentEffort("steward","openai-codex/gpt-5.6-luna",effort,"high")).toThrow(/high or xhigh/);
+  expect(resolveAgentEffort("steward","openai-codex/gpt-5.6-luna","high","low")).toBe("high");
+  expect(resolveAgentEffort("steward","openai-codex/gpt-5.6-luna","xhigh","low")).toBe("xhigh");
+  expect(resolveAgentEffort("steward","openai-codex/gpt-5.6-sol","low","high")).toBe("low");
+  expect(resolveAgentEffort("reviewer","openai-codex/gpt-5.6-luna","low","high")).toBe("low");
+ });
+ it("loads the bundled read-only Strategist and Steward and grants Team Lead access without changing other defaults",()=>{
   const profile=join(dirname(fileURLToPath(import.meta.url)),"..");
   const catalog=loadDefinitions(profile,false,profile);
   expect(catalog.errors).toEqual([]);
   expect(catalog.agents.get("strategist")).toMatchObject({model:"openai-codex/gpt-5.6-sol",effort:"low",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
-  expect(catalog.agents.get("teamlead")?.delegates).toContain("strategist");
+  expect(catalog.agents.get("steward")).toMatchObject({model:"openai-codex/gpt-5.6-luna",effort:"high",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
+  expect(catalog.agents.get("teamlead")?.delegates).toEqual(expect.arrayContaining(["strategist","steward"]));
   expect(catalog.agents.get("reviewer")).toMatchObject({model:"openai-codex/gpt-5.6-sol",tools:expect.arrayContaining(["read","bash"]),delegates:[],skills:[]});
  });
 });

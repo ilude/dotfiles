@@ -10,6 +10,12 @@
 
 **Preserved:** Frozen role tool and delegation ceilings, same-origin routing, valid-directory checks, Damage Control for model-issued calls, explicit persistent takeover and handback, permission-prompt isolation, outcome correlation, process ownership, and cleanup behavior remain in force. These changes remove custom workflow interruptions without adding role elevation, path allowlists, or a separate shell executor.
 
+## 2026-09-10: Add post-finding Steward guidance
+
+**Added:** Default Pi now offers a read-only Steward after review or validation findings arrive. Callers normally supply the request, agreed checks, findings, and proposed fixes before follow-up work, while handling obvious bounded corrections directly. Steward advises whether evidence supports a bounded fix, a user question, deferral, or closeout; it does not approve work, edit, dispatch, reopen review, or add acceptance criteria.
+
+**Guidance:** Steward defaults to Luna high and permits Luna high or xhigh. Selecting Sol or Astra for this role requires a concrete justification and user approval, with no automatic larger-model retry. Findings, severity labels, security terminology, and hypothetical risks do not independently expand task scope. Strategist remains the separate pre-assignment advisor, `/do-it` is unchanged, and no runtime approval mechanism or new review phase was added.
+
 ## 2026-09-10: Remove subagent native-path confinement
 
 **Changed:** Default-profile subagents no longer reject native file-tool paths outside their assigned working directory, including symlink targets. This removes a custom restriction that terminated ordinary read-only lookups such as `find`. The working directory remains execution context; role tool permissions, coordinator launch-directory rules, and Damage Control are unchanged. No replacement approval prompts or path allowlists were added.

@@ -19,7 +19,7 @@ User requirements and settled intent:
 - Distinguish the orchestrator (the primary model interacting with the user), named agent roles, running subagents, and model/effort selections.
 - `/do-it` remains execution of settled intent, not another planning or review phase.
 
-Non-goals: runtime auto-routing/retries, new tools or tool parameters, telemetry, safety machinery, transport/lifecycle changes, new coordinator levels, council redesign, changing other roles' model defaults, Herdr registration fixes, legacy-profile work, and module changes. Post-review finding triage belongs to the separate [Steward plan](../../steward-review-guidance/plan.md), not Strategist. This plan does not depend on Steward.
+Non-goals: runtime auto-routing/retries, new tools or tool parameters, telemetry, safety machinery, transport/lifecycle changes, new coordinator levels, council redesign, changing other roles' model defaults, Herdr registration fixes, legacy-profile work, and module changes. Post-review finding triage belongs to the separate [Steward plan](../steward-review-guidance/plan.md), not Strategist. This plan does not depend on Steward.
 
 Authorization: this request authorizes a plan only. No active instructions or implementation have been changed. Execution requires a subsequent instruction such as `/do-it`; that invocation authorizes task-local commits and integration under its existing rules, but not push or deployment.
 
