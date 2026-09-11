@@ -32,7 +32,7 @@ for arg in "$@"; do
             INSTALL_PACKAGES=true
             shift
             ;;
-        --help|-h)
+        --help | -h)
             echo "WSL Dotfiles Installer"
             echo ""
             echo "Usage: wsl/install [OPTIONS]"
@@ -138,6 +138,23 @@ if [[ "$INSTALL_PACKAGES" == "true" ]]; then
         exit 1
     fi
     bash "$PACKAGES_SCRIPT"
+fi
+
+# The WSL user owns a separate Linux cache and user scheduler. Register only
+# after an available Node/pnpm toolchain can build the worker; never invoke the
+# Windows scheduler from WSL and never fall back to cron.
+echo ""
+echo -e "${CYAN}Setting up Onclave backfill scheduler...${NC}"
+BACKFILL_DIR="$BASEDIR/tools/onclave-backfill"
+BACKFILL_ARTIFACT="$BACKFILL_DIR/dist/tools/onclave-backfill/src/main.js"
+if [[ -f "$BACKFILL_DIR/package.json" ]] && command -v node >/dev/null 2>&1 && command -v pnpm >/dev/null 2>&1; then
+    if pnpm --dir "$BACKFILL_DIR" build && node "$BACKFILL_ARTIFACT" --setup --root "$BASEDIR"; then
+        echo -e "${GREEN}Onclave backfill scheduler registered${NC}"
+    else
+        echo -e "${YELLOW}Warning: Onclave backfill build/scheduler setup failed; automatic backfill is unavailable; continuing${NC}" >&2
+    fi
+else
+    echo -e "${YELLOW}Warning: Node/pnpm or the backfill package is unavailable; automatic backfill is unavailable; continuing${NC}" >&2
 fi
 
 echo ""

@@ -1,0 +1,16 @@
+{
+  "name": "@dotfiles/onclave-backfill",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Daily local-first Onclave transcript backfill worker",
+  "main": "dist/tools/onclave-backfill/src/main.js",
+  "bin": {
+    "onclave-backfill": "dist/tools/onclave-backfill/src/main.js"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "pnpm --dir ../../pi/profiles/default exec tsc -p ../../../tools/onclave-backfill/tsconfig.json",
+    "test": "pnpm --dir ../../pi/profiles/default exec vitest run --root ../../../tools/onclave-backfill"
+  }
+}

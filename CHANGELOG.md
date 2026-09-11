@@ -6,6 +6,12 @@
 
 **Preserved:** Bare `/commit` remains commit-only, `/commit push` remains the sole push permission, and no new remote policy or safety gates, branch switches, config changes, commits, or pushes are introduced by the implementation.
 
+## 2026-09-11: Retire superseded Onclave YouTube clients
+
+**Changed:** Default Pi's discovered vault tools and the native TypeScript local-first backfill worker are now the supported Onclave API path. The old Python HTTP wrappers, shared signing/configuration helpers, their tests and dependencies, and Claude's `/yt` API command, circuit hooks, and detached backfill were removed. The explicit `/yt-local` workflow and its transcript and metadata fetchers remain available.
+
+**Operations:** Installers build and register a native per-user daily and login-triggered worker when supported. It scans local complete transcript caches before network access, fails fast per run, catches up after login, and deletes caches only after verified upload. Configuration contains endpoint and key path but never key contents. Missing prerequisites or an unsupported scheduler warn and continue without a cron or Claude fallback; disable and ownership-checked uninstall operations are available through the worker entry point.
+
 ## 2026-09-11: Compact usage dashboard links
 
 **Added:** Default Pi usage reports link to the existing AWS Bedrock dashboard. The transcript renders both dashboard URLs as short OSC 8 hyperlinks, `Codex usage` and `Bedrock dashboard`; stored reports and non-terminal notifications retain plain URLs. Clicking requires terminal hyperlink support and the dashboard requires AWS console access.

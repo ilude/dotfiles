@@ -1,7 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { deactivateTools } from "../lib/tool-activation.js";
 
-export const DEFERRED_TOOL_NAMES = ["image_properties", "image_transform", "log_analytics", "herdr_layout", "herdr_pane"] as const;
+export const DEFERRED_TOOL_NAMES = [
+	"image_properties", "image_transform", "log_analytics", "herdr_layout", "herdr_pane",
+	"onclave_vault_search", "onclave_vault_content", "onclave_vault_ingest", "onclave_vault_jobs",
+] as const;
 
 export default function registerToolVisibility(pi: ExtensionAPI): void {
 	pi.on("session_start", () => {

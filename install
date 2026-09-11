@@ -30,7 +30,7 @@ fi
 
 # Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
 is_windows() {
-  [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
+    [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
 }
 
 has_supported_go() {
@@ -596,13 +596,44 @@ completed_steps+=("pi extension deps link")
 current_step="default pi dependencies"
 DEFAULT_PI_DIR="${BASEDIR}/pi/profiles/default"
 if [[ -f "$DEFAULT_PI_DIR/package.json" ]]; then
-    command -v pnpm >/dev/null || { echo "Error: pnpm is required for default Pi setup" >&2; exit 1; }
+    command -v pnpm >/dev/null || {
+        echo "Error: pnpm is required for default Pi setup" >&2
+        exit 1
+    }
     pnpm install --dir "$DEFAULT_PI_DIR" --frozen-lockfile || exit 1
     pnpm --dir "$DEFAULT_PI_DIR/extensions/web-tools" --ignore-workspace install --frozen-lockfile || exit 1
     "${BASEDIR}/scripts/pi-deps-link-setup" --profile default || exit 1
     (cd "$DEFAULT_PI_DIR" && pnpm run check:runtime) || exit 1
 fi
 completed_steps+=("default pi dependencies")
+
+current_step="Onclave backfill scheduler"
+# Build and register the short-lived worker only after the default Node/Pi
+# prerequisites are ready. Registration is intentionally soft: an unavailable
+# endpoint, build, or native scheduler must not block unrelated setup.
+BACKFILL_DIR="${BASEDIR}/tools/onclave-backfill"
+BACKFILL_ARTIFACT="${BACKFILL_DIR}/dist/tools/onclave-backfill/src/main.js"
+if is_windows; then
+    # install.ps1 is the sole Windows registration owner; do not duplicate it
+    # from Git Bash. The worker itself remains available to that entry point.
+    echo "Skipping Onclave backfill scheduler in Git Bash; use install.ps1" >&2
+    skipped_steps+=("Onclave backfill scheduler (owned by install.ps1)")
+elif [[ -f "${BACKFILL_DIR}/package.json" ]] && command -v node >/dev/null 2>&1 && command -v pnpm >/dev/null 2>&1; then
+    if pnpm --dir "${BACKFILL_DIR}" build; then
+        if node "${BACKFILL_ARTIFACT}" --setup --root "${BASEDIR}"; then
+            completed_steps+=("Onclave backfill scheduler")
+        else
+            echo "Warning: Onclave backfill scheduler setup failed; automatic backfill is unavailable; continuing" >&2
+            skipped_steps+=("Onclave backfill scheduler (setup failed)")
+        fi
+    else
+        echo "Warning: Onclave backfill build failed; automatic backfill is unavailable; continuing" >&2
+        skipped_steps+=("Onclave backfill scheduler (build failed)")
+    fi
+else
+    echo "Warning: Node/pnpm or the backfill package is unavailable; automatic backfill is unavailable; continuing" >&2
+    skipped_steps+=("Onclave backfill scheduler (prerequisites unavailable)")
+fi
 
 current_step="pi agent directory link"
 "${BASEDIR}/scripts/pi-link-setup"

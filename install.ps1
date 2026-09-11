@@ -123,6 +123,11 @@ if ($ListPackages) {
 # ============================================================================
 
 $LOCKFILE = Join-Path $env:USERPROFILE ".dotfiles.lock"
+# Preserve the interactive account across UAC elevation so the scheduled task
+# never accidentally targets an elevated/system identity.
+if (-not $env:DOTFILES_SCHEDULER_USER) {
+    $env:DOTFILES_SCHEDULER_USER = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+}
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 # Operations requiring elevation:
@@ -2107,6 +2112,30 @@ try {
         } finally {
             Pop-Location
         }
+    }
+
+    # ========================================================================
+    # Onclave local-first backfill scheduler
+    # Build only after the default Node/Pi prerequisites, then register the
+    # per-user native task. Every failure is visible but nonfatal to install.
+    # ========================================================================
+    Write-Host "`nSetting up Onclave backfill scheduler..." -ForegroundColor Cyan
+    $backfillDir = Join-Path $BASEDIR 'tools\onclave-backfill'
+    $backfillArtifact = Join-Path $backfillDir 'dist\tools\onclave-backfill\src\main.js'
+    $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+    $pnpmCommand = Get-Command pnpm -ErrorAction SilentlyContinue
+    if ((Test-Path (Join-Path $backfillDir 'package.json')) -and $nodeCommand -and $pnpmCommand) {
+        try {
+            pnpm --dir $backfillDir build
+            if ($LASTEXITCODE -ne 0) { throw 'Onclave backfill build failed' }
+            & $nodeCommand.Source $backfillArtifact --setup --root $BASEDIR
+            if ($LASTEXITCODE -ne 0) { throw 'Onclave backfill scheduler setup failed' }
+            Write-Host '  Onclave backfill scheduler: registered' -ForegroundColor Green
+        } catch {
+            Write-Warning "Onclave backfill scheduler unavailable; continuing: $($_.Exception.Message)"
+        }
+    } else {
+        Write-Warning 'Node/pnpm or the backfill package is unavailable; automatic backfill is unavailable; continuing'
     }
 
     # ========================================================================

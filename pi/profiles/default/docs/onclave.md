@@ -81,5 +81,21 @@ node scripts/onclave-smoke.mjs
 The smoke test uses the actual installed Pi loader with an isolated temporary
 profile and no session/network calls. Offline checks do not prove live service
 compatibility. Live verification is operator-owned after implementation, not
-an implementation completion gate. `/yt` and `/yt-local` remain separate,
-unchanged vault workflows.
+an implementation completion gate.
+
+## YouTube vault and backfill
+
+`/yt` uses the deferred `onclave_vault_*` tools and does not fall back to local
+fetching. Use `/yt-local` only for an explicit local transcript or metadata
+fetch. The retained Python fetchers live in `tools/onclave-youtube` and write
+under `~/.dotfiles/yt/`.
+
+The optional `tools/onclave-backfill` worker is registered by the installer as a
+native per-user daily and login-triggered job. It scans complete local caches
+before making any request, fails fast for the run, catches up at login, and
+removes a cache only after verified upload. Configuration is written to
+`~/.dotfiles/yt/onclave-backfill.json`; it stores an endpoint and key path, not
+key contents. Unsupported schedulers produce a warning and are not replaced by
+cron. `--disable` stops future runs; `--uninstall` removes only definitions
+owned by this repository. Claude's former API command, circuit hooks, and
+Python backfill are retired.
