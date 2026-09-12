@@ -25,13 +25,14 @@ import {
 	type SessionAction,
 } from "../lib/browser-control.js";
 
-const SESSION_ACTIONS = ["discover", "status", "start", "restart", "stop"] as const;
+const SESSION_ACTIONS = ["discover", "status", "start", "attach", "restart", "stop"] as const;
 const PAGE_ACTIONS = ["list", "open", "select", "snapshot", "screenshot", "click", "fill", "close"] as const;
 
 const SessionParameters = Type.Object({
 	action: StringEnum(SESSION_ACTIONS),
 	profile_mode: Type.Optional(StringEnum(["isolated", "real"] as const)),
 	profile_alias: Type.Optional(Type.String()),
+	cdp_port: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535 })),
 	extension_mode: Type.Optional(StringEnum(["enabled", "disabled"] as const)),
 	restart_authorization: Type.Optional(Type.String()),
 	url: Type.Optional(Type.String()),
@@ -51,6 +52,7 @@ type SessionInput = {
 	action: SessionAction;
 	profile_mode?: ProfileMode;
 	profile_alias?: string;
+	cdp_port?: number;
 	extension_mode?: ExtensionMode;
 	restart_authorization?: string;
 	url?: string;
@@ -84,6 +86,7 @@ function publicState(state: BrowserSessionState | undefined): Record<string, unk
 	return {
 		sessionId: state.sessionId,
 		profileMode: state.profileMode,
+		sessionMode: state.sessionMode ?? "owned",
 		profileAlias: state.profileAlias,
 		extensionMode: state.extensionMode,
 		targetId: state.targetId,
@@ -155,7 +158,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "browser_session",
 		label: "Browser Session",
-		description: "Discover, inspect, start, restart, or stop one ownership-verified Brave session. Real-profile restart requires current tuple-bound authorization.",
+		description: "Discover, inspect, start, attach, restart, or stop one ownership-verified Brave session. Attach connects only to an operator-launched real alias on loopback CDP; restart requires an owned session.",
 		promptSnippet: "Control one profile-aware Brave session without guessing or broad process termination",
 		parameters: SessionParameters,
 		async execute(_id, rawParams, signal) {
@@ -190,9 +193,19 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 				return toolResult(command.stdout || "Browser session started.", { state: publicState(state) });
 			}
 
+			if (input.action === "attach") {
+				if (input.profile_mode !== undefined && input.profile_mode !== "real") throw new BrowserControlError("profile_mode_invalid", "Attach requires profile_mode real or no profile_mode.");
+				if (!input.profile_alias) throw new BrowserControlError("profile_required", "Attach requires a configured real-profile alias.");
+				const command = await sessions.attach({ profileAlias: input.profile_alias, cdpPort: input.cdp_port, extensionMode: input.extension_mode ?? "enabled", url: input.url, signal });
+				state = loadBrowserState();
+				if (!state) throw new BrowserControlError("state_missing", "Brave attached without a complete session record.");
+				return toolResult(command.stdout || "Attached to the operator-launched Brave browser.", { state: publicState(state) });
+			}
+
 			if (input.action === "restart") {
 				state = loadBrowserState();
 				if (!state) throw new BrowserControlError("session_required", "Restart requires a current browser session.");
+				if (state.sessionMode === "attached") throw new BrowserControlError("restart_not_supported", "Attached browsers are preserved and cannot be restarted by Pi.");
 				if (state.profileMode === "real" && input.restart_authorization !== restartAuthorization(state)) throw new BrowserControlError("authorization_required", "Real-profile restart requires current authorization bound to the resolved profile and occupied process tuple.");
 				const prior = state;
 				const stopped = await sessions.stop(signal);

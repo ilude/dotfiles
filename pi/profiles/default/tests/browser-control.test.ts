@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi";
-import registerBrowserControl, { parseSetupArgs, safeUrl } from "../extensions/browser-control";
+import registerBrowserControl, { parseSetupArgs, publicState, safeUrl } from "../extensions/browser-control";
 import {
 	BrowserControlError,
 	braveUserDataRoots,
@@ -12,6 +12,7 @@ import {
 	migrateBrowserConfig,
 	isPasswordField,
 	resolveConfiguredProfile,
+	parseSessionStatus,
 	restartAuthorization,
 	validateBrowserConfig,
 	writeBrowserConfig,
@@ -146,6 +147,15 @@ describe("session and page boundaries", () => {
 		expect(processMatches(current, { ...observed, marker: "other" })).toBe(false);
 	});
 
+	it("accepts an attached tuple without a marker but requires an explicit loopback address", () => {
+		const current = state({ sessionMode: "attached", launchMarker: undefined, executablePath: "C:/Program Files/Brave/brave.exe", userDataDir: "C:/Users/A User/Brave Data" });
+		const observed = { pid: 42, parentPid: 1, creationTime: "start-1", executablePath: "C:/Program Files/Brave/brave.exe", userDataDir: "C:/Users/A User/Brave Data", profileDirectory: "Profile 1", port: "9222", remoteDebuggingAddress: "127.0.0.1" };
+		expect(processMatches(current, observed)).toBe(true);
+		expect(processMatches(current, { ...observed, remoteDebuggingAddress: undefined })).toBe(false);
+		expect(processMatches(current, { ...observed, userDataDir: undefined })).toBe(false);
+		expect(parseSessionStatus("close-attached: preserved").outcome).toBe("preserved");
+	});
+
 	it("invalidates comparisons and drops selected targets after protected continuation", () => {
 		const invalidated = invalidateComparison(state({ comparisonGeneration: 7 }), "CAPTCHA detected");
 		expect(invalidated.comparisonGeneration).toBe(8);
@@ -158,6 +168,8 @@ describe("session and page boundaries", () => {
 		const pi = createMockPi();
 		registerBrowserControl(pi as never);
 		expect(pi._getTool("browser_session")).toBeDefined();
+		expect(pi._getTool("browser_session")?.parameters.properties.action.enum).toContain("attach");
+		expect(publicState(state({ sessionMode: "attached" })).sessionMode).toBe("attached");
 		const page = pi._getTool("browser_page");
 		expect(page).toBeDefined();
 		expect(page?.parameters.properties.action.enum).toEqual(["list", "open", "select", "snapshot", "screenshot", "click", "fill", "close"]);

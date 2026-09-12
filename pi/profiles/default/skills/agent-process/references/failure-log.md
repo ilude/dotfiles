@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-031 - Unrequested cleanup gate blocked `/clear`
+
+- **Reference:** Operator-reported `/clear` failure after two strategist launches returned `pane_not_found`, 2026-09-12.
+- **Observed:** Both launchers exited, but child records remained at `processState: "starting"`. Cleanup remained incomplete, `requestSubagentRuntimeReset()` raised `RuntimeCleanupError`, and `/clear` returned without calling `ctx.newSession()`.
+- **Finding:** Commit `c25864f1` deliberately added this refusal and a regression asserting that `ctx.newSession()` is not called after unresolved cleanup. The archived plan supplied no operator decision authorizing cleanup success as a prerequisite for clearing. The stale launch-state defect triggered the gate but did not create its policy.
+- **Remediation:** AIF-050 recommends removing the veto while preserving truthful cleanup reporting. Exact unresolved-owner disposition remains to be agreed before implementation.
+- **Related:** AIF-019, AIF-041, AIF-050, APR-030.
+- **Status:** Incident recorded; no runtime correction authorized yet.
+
 ## APR-030 - Internal model registry leaked into visible-subagent bootstrap
 
 - **Reference:** Operator-reported strategist `pane_not_found` failures, 2026-09-11.
