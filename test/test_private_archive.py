@@ -124,14 +124,21 @@ def test_hook_install_idempotent_auto_pack_and_unrelated_commit(tmp_path):
     assert not (repo / ".dolos" / "artifacts" / "private.tar.gz.age").exists()
 
 
-def test_linked_worktree_commit_skips_plaintext_status(tmp_path):
+def test_linked_worktree_commit_uses_path_dolos_and_skips_plaintext_status(tmp_path, monkeypatch):
     repo = make_hook_repo(tmp_path)
     run(script(repo / "scripts/install-dolos-hook"), cwd=repo)
     worktree = tmp_path / "worktree"
     run(["git", "worktree", "add", "-b", "worktree-test", str(worktree)], cwd=repo)
+    local_dolos = worktree / "bin" / ("dolos.exe" if os.name == "nt" else "dolos")
+    shared_bin = tmp_path / "shared-bin"
+    shared_bin.mkdir()
+    shutil.copy2(local_dolos, shared_bin / local_dolos.name)
+    local_dolos.unlink()
+    monkeypatch.setenv("PATH", str(shared_bin) + os.pathsep + os.environ["PATH"])
 
     (worktree / "README.md").write_text("worktree change\n", encoding="utf-8")
     run(["git", "add", "README.md"], cwd=worktree)
+    run(["git", "add", "-u", str(local_dolos.relative_to(worktree))], cwd=worktree)
     run(["git", "commit", "-m", "worktree commit"], cwd=worktree)
 
     args_log = (worktree / "dolos-args.log").read_text(encoding="utf-8")

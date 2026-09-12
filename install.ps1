@@ -2073,7 +2073,11 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Onclave private bootstrap failed"
     }
-    Write-Host "  Onclave private configuration: ready" -ForegroundColor Green
+    $localBin = Join-Path $env:USERPROFILE '.local\bin'
+    if (($env:PATH -split ';') -inotcontains $localBin) {
+        $env:PATH = "$localBin;$env:PATH"
+    }
+    Write-Host "  Onclave private configuration and Dolos command: ready" -ForegroundColor Green
 
     # Link the legacy Pi profile and plant its pnpm-global dependency symlinks.
     # pi-deps-link-setup must run AFTER pnpm install (above) so the symlinks are

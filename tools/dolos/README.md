@@ -13,10 +13,11 @@ Dolos belongs in this dotfiles repository because its commands, metadata, Git ho
 - `build.sh` - builds one selected platform artifact through Docker and copies it to the repository `bin/` directory.
 - `../../bin/dolos.exe` - ignored Windows runtime binary.
 - `../../bin/dolos` - ignored Unix runtime binary when built for a Unix target.
+- `~/.local/bin/dolos[.exe]` - installer-managed shared command used by linked worktrees and direct Herdr Pi launches.
 - `../../.dolos/` - tracked recipient metadata and encrypted private archive.
 - `../../private/` - ignored plaintext vault.
 
-Do not commit generated binaries or plaintext private data.
+Do not commit generated binaries or plaintext private data. The dotfiles installer refreshes the shared command from the lasting checkout. On Unix it creates a symlink; on Windows it copies the executable because ordinary symlink creation may require extra privileges. The pre-commit hook prefers a checkout-local binary and falls back to `dolos` on `PATH`.
 
 ## Build
 

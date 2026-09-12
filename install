@@ -292,7 +292,7 @@ current_step="Onclave private bootstrap"
 # (bun, Claude Code, pi, link setup) is independent of private/secrets.env, and
 # aborting here silently skipped all of them.
 onclave_bootstrap_ready=1
-if [[ ! -f "${BASEDIR}/private/secrets.env" && ! -x "${BASEDIR}/bin/dolos" && ! -x "${BASEDIR}/bin/dolos.exe" ]] &&
+if [[ ! -x "${BASEDIR}/bin/dolos" && ! -x "${BASEDIR}/bin/dolos.exe" ]] &&
     ! has_supported_go && ! command -v docker &>/dev/null; then
     if is_windows && command -v winget &>/dev/null; then
         winget install --id GoLang.Go --exact --source winget --accept-package-agreements --accept-source-agreements --disable-interactivity ||
@@ -316,7 +316,8 @@ if [[ ! -f "${BASEDIR}/private/secrets.env" && ! -x "${BASEDIR}/bin/dolos" && ! 
     fi
 fi
 if [[ -n "$onclave_bootstrap_ready" ]] && "$PYTHON_BIN" "${BASEDIR}/scripts/onclave-bootstrap.py"; then
-    completed_steps+=("Onclave private bootstrap")
+    export PATH="${HOME}/.local/bin:${PATH}"
+    completed_steps+=("Onclave private bootstrap and Dolos command")
 else
     echo "Warning: Onclave private bootstrap failed; continuing without private/ configuration" >&2
     skipped_steps+=("Onclave private bootstrap (failed)")

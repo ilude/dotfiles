@@ -5,9 +5,12 @@ if [ -x bin/dolos.exe ]; then
   dolos=bin/dolos.exe
 elif [ -x bin/dolos ]; then
   dolos=bin/dolos
+elif command -v dolos >/dev/null 2>&1; then
+  dolos=$(command -v dolos)
 else
   cat >&2 <<'EOF'
-ERROR: Dolos executable not found. Build it with:
+ERROR: Dolos executable not found in this checkout or on PATH.
+Run the dotfiles installer to place Dolos in ~/.local/bin, or build it locally:
   cd tools/dolos && go build -o ../../bin/dolos.exe .
 EOF
   exit 1

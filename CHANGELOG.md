@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-12: Share Dolos with linked worktrees and Herdr Pi
+
+**Fixed:** The installer now places the repository-built Dolos command in `~/.local/bin`, which is available to shell and direct Herdr Pi launches. Dolos pre-commit hooks prefer a checkout-local binary and fall back to that shared command, so linked worktrees no longer require separate builds.
+
+**Preserved:** The repository remains the build owner, Windows uses a copied executable instead of requiring symlink privileges, Unix uses a refreshed symlink, and existing staged-path scanning and private-archive packing behavior is unchanged.
+
 ## 2026-09-12: Make coordinator prompts smaller and cache-stable
 
 **Changed:** Default Pi now composes audience-specific delegation guidance for Strategist, Team Lead, and Council instead of injecting the full caller policy into every coordinator. Catalog and child tool ordering are deterministic so equivalent launches produce byte-stable model-visible prompts.

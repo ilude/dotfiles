@@ -79,6 +79,31 @@ def dolos_target(repo_root: Path) -> Path:
     return repo_root / "bin" / executable
 
 
+def shared_dolos_target(home: Path) -> Path:
+    executable = "dolos.exe" if platform.system().lower() == "windows" else "dolos"
+    return home / ".local" / "bin" / executable
+
+
+def install_dolos_command(repo_root: Path, home: Path) -> Path:
+    source = dolos_target(repo_root)
+    if not source.is_file():
+        build_dolos(repo_root, source)
+    target = shared_dolos_target(home)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if platform.system().lower() == "windows":
+        temporary = target.with_name(f".{target.name}.tmp")
+        shutil.copy2(source, temporary)
+        temporary.replace(target)
+    else:
+        if target.is_symlink() and target.resolve() == source.resolve():
+            return target
+        temporary = target.with_name(f".{target.name}.tmp")
+        temporary.unlink(missing_ok=True)
+        temporary.symlink_to(source.resolve())
+        temporary.replace(target)
+    return target
+
+
 def go_version(executable: str) -> tuple[int, int] | None:
     result = subprocess.run(
         [executable, "version"],
@@ -201,12 +226,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        secrets_file = restore_private(args.repo_root.resolve(), args.home.resolve())
+        repo_root = args.repo_root.resolve()
+        home = args.home.resolve()
+        command = install_dolos_command(repo_root, home)
+        secrets_file = restore_private(repo_root, home)
         validate_secrets(secrets_file)
     except (BootstrapError, OSError, subprocess.SubprocessError) as error:
         parser.exit(1, f"Onclave bootstrap failed: {error}\n")
 
-    print("Onclave bootstrap: private configuration is ready")
+    print(f"Onclave bootstrap: private configuration is ready; Dolos installed at {command}")
     return 0
 
 

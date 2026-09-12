@@ -46,6 +46,50 @@ def test_go_version_parses_supported_output(
     assert MODULE.go_version("go") == expected
 
 
+@pytest.mark.parametrize(("system", "name"), [("Windows", "dolos.exe"), ("Linux", "dolos")])
+def test_install_dolos_command_creates_shared_command_and_refreshes_it(
+    tmp_path: Path, monkeypatch, system: str, name: str
+) -> None:
+    repo = tmp_path / "repo"
+    home = tmp_path / "home"
+    source = repo / "bin" / name
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"current dolos")
+    target = home / ".local" / "bin" / name
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"stale dolos")
+    monkeypatch.setattr(MODULE.platform, "system", lambda: system)
+
+    installed = MODULE.install_dolos_command(repo, home)
+
+    assert installed == target
+    assert installed.read_bytes() == b"current dolos"
+    if system == "Windows":
+        assert not installed.is_symlink()
+    else:
+        assert installed.is_symlink()
+        assert installed.resolve() == source.resolve()
+
+
+def test_install_dolos_command_builds_missing_repository_binary(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo = tmp_path / "repo"
+    home = tmp_path / "home"
+    monkeypatch.setattr(MODULE.platform, "system", lambda: "Linux")
+
+    def fake_build(_repo: Path, target: Path) -> None:
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"built dolos")
+
+    monkeypatch.setattr(MODULE, "build_dolos", fake_build)
+
+    installed = MODULE.install_dolos_command(repo, home)
+
+    assert installed.read_bytes() == b"built dolos"
+    assert installed.resolve() == repo / "bin" / "dolos"
+
+
 def test_build_dolos_uses_darwin_docker_target_for_old_go(tmp_path: Path, monkeypatch) -> None:
     calls: list[tuple[list[str], dict[str, object]]] = []
 
