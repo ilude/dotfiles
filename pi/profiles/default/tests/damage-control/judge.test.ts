@@ -28,9 +28,9 @@ describe("Luna review", () => {
     expect(complete).toHaveBeenCalledTimes(1);
     const [model, request, options] = complete.mock.calls[0] as unknown as [{ provider: string; id: string }, { messages: [{ content: [{ text: string }] }] }, { reasoningEffort: string; maxRetries: number; signal: AbortSignal }];
     const contract = readFileSync(new URL("../../lib/damage-control/judge-prompt.md", import.meta.url), "utf8").trim();
-    expect(contract).toContain("used unchanged within that call");
+    expect(contract).toContain("uses unchanged, and then removes");
     expect(contract).toContain("confirmed `review` rule");
-    expect(contract).toContain("variable is reassigned");
+    expect(contract).toContain("identity or path is reassigned");
     expect(model).toMatchObject({ provider: "openai-codex", id: "gpt-5.6-luna" });
     expect(options).toMatchObject({ reasoningEffort: "high", maxRetries: 0 });
     expect(request.messages[0].content[0].text.startsWith(`${contract}\n\nEVIDENCE JSON:\n`)).toBe(true);

@@ -12,11 +12,11 @@
 
 ## 2026-09-12: Recognize complete temporary-file cleanup lifecycles
 
-**Changed:** Default Pi's Damage Control shadow judge now evaluates same-call data flow explicitly, allowing files or directories created by `mktemp`, used unchanged, and then removed even when a confirmed review rule matched the cleanup. Live synthetic evaluation covers both file and directory lifecycles and reassignment adversaries.
+**Changed:** Default Pi's Damage Control shadow judge now evaluates same-call data flow explicitly, allowing unchanged task-created temporary resources, isolated Compose fixtures, generated output, and narrowly guarded Git worktree or archived-path cleanup even when a confirmed review rule matched. Live synthetic evaluation pairs those workflows with reassigned, broadened, dirty, unarchived, shared-state, and meaningful-work adversaries. Generated-output and PowerShell copy lifecycles also verify the deterministic allow route when no review rule applies.
 
 **Fixed:** Approval summaries describe the shared `rm` force-or-recursive policy accurately instead of labeling every forced file deletion as recursive.
 
-**Preserved:** Confirmed block and human-only boundaries remain mandatory. Reassigned, derived, broadened, mixed, or meaningfully destructive cleanup targets still require the existing block or approval outcome.
+**Preserved:** Confirmed block and human-only boundaries remain mandatory. Reassigned, derived, broadened, mixed, unguarded, or meaningfully destructive cleanup targets still require the existing block or approval outcome. Process termination receives no lifecycle allowance and retains its existing review behavior.
 
 ## 2026-09-12: Make default Pi model resolution provider-aware
 
