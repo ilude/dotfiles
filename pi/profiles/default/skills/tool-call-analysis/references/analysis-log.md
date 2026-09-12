@@ -15,3 +15,12 @@ Durable review history for the `tool-call-analysis` skill. This log records cove
 - **Other remediated mechanism:** `log_analytics` hit custom deadline and memory controls during exhaustive work and its renderer crashed on partial streaming arguments. Limits were revised and the renderer received regression coverage under APR-026.
 - **Rejected recurring claims:** Missing terminal synthesis, unmatched calls, and several subagent lifecycle examples were promoted without sufficient cross-session evidence. Direct follow-up on eight terminal-status examples found six explicit final answers, one normal child waiting for its parent, and one genuine missing final response. The isolated event does not establish recurrence.
 - **Status:** Original report retained as historical evidence but its broad tool/subagent issue framing is superseded by APR-027, AIF-043, and the current classification skill. A new deterministic aggregation is required before claiming additional recurring mechanisms.
+
+## TCA-002 - Strategist resolved to OpenRouter Solar
+
+- **Review date:** 2026-09-12.
+- **Profiles and interval:** default; exact session `01a09676-4a94-7182-a6b2-1b99e2eb1270`, records around 2026-09-12T17:25:24Z through 17:26:27Z.
+- **Method and coverage:** Exact literal search and bounded follow-up recovered the subagent call, launch result, cancellation, and surrounding interpretation. Current default-profile model definition, resolver, shortcut, documentation, and tests were inspected. No legacy sessions were selected.
+- **Finding:** The orchestrator explicitly passed `model: "sol"`, overriding the strategist definition's `openai-codex/gpt-5.6-sol`. The subagent runtime sent the bare value through Pi's native model resolver, which selected authenticated `openrouter/upstage/solar-pro4`. The launch mechanism reported that canonical result accurately. `/sol` is a command shortcut, not a valid subagent model alias.
+- **Classification:** Subagent-use failure caused by an incorrect bare model override. This is not evidence of provider fallback or a transport/model-resolution mechanism defect. The later explanation that the documented strategist alias unexpectedly resolved was inaccurate.
+- **Recovery and status:** The operator interrupted the parent wait and the orchestrator cancelled the child before it returned advice. Current role configuration remains explicit; no runtime or instruction change is authorized by this review.

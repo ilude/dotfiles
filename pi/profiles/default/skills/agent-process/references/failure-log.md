@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-034 - Bare `sol` override launched OpenRouter Solar
+
+- **Reference:** Operator-reported strategist launch during database lifecycle plan reconciliation, 2026-09-12.
+- **Observed:** The orchestrator called `subagent` with `agent: "strategist"`, `model: "sol"`, and low effort. That override replaced the role's explicit `openai-codex/gpt-5.6-sol` default. Pi's native bare-model resolution selected authenticated `openrouter/upstage/solar-pro4`, which the launch result displayed.
+- **Finding:** `/sol` is a command shortcut that explicitly selects Codex GPT-5.6 Sol; the string `sol` is not that shortcut when supplied as a subagent model. The orchestrator invented an alias and then inaccurately described the result as an unexpected harness mapping. The launch mechanism resolved and reported the requested bare string according to its current contract.
+- **Impact:** An unintended provider/model ran for about a minute until the operator noticed and the child was cancelled before producing advice.
+- **Remediation:** For role defaults, omit `model`; for an override, pass the full canonical `provider/model`. No instruction or runtime change is authorized by this incident alone.
+- **Related:** TCA-002, AIF-033.
+- **Status:** Incident recorded; child cancelled and no result incorporated.
+
 ## APR-033 - `/do-it` overrode recorded deployment authorization
 
 - **Reference:** Execution of `.specs/database-deployment-lifecycle/plan.md`, 2026-09-12.

@@ -37,19 +37,19 @@ afterEach(async () => {
 
 describe("bare model resolution at subagent launch seams", () => {
   it.each([
-    ["definition fallback", undefined, "two/gpt"],
-    ["explicit bare override", "gpt", "two/gpt"],
-  ])("direct tool uses the native resolver for %s", async (_label, requested, expected) => {
+    ["definition fallback", undefined, "openai-codex/gpt"],
+    ["explicit bare override", "gpt", "openai-codex/gpt"],
+  ])("direct tool uses the preferred resolver for %s", async (_label, requested, expected) => {
     fixture();
     const profile = mkdtempSync(join(tmpdir(), "subagent-model-profile-"));
     const cwd = mkdtempSync(join(tmpdir(), "subagent-model-cwd-"));
     mkdirSync(join(profile, "agents"));
-    writeFileSync(join(profile, "agents", "probe.md"), `---\nname: probe\ndescription: probe\ntools: []\nskills: []\ndelegates: []\nmodel: ${requested === undefined ? "gpt" : "one/gpt"}\n---\nprobe\n`);
+    writeFileSync(join(profile, "agents", "probe.md"), `---\nname: probe\ndescription: probe\ntools: []\nskills: []\ndelegates: []\nmodel: ${requested === undefined ? "gpt" : "bedrock-mantle/gpt"}\n---\nprobe\n`);
     process.env.PI_CODING_AGENT_DIR = profile;
     const tools: Record<string, any> = {};
     const pi: any = { registerTool: (tool: any) => { tools[tool.name] = tool; }, registerCommand: () => {}, registerMessageRenderer: () => {}, on: () => {} };
     subagents(pi);
-    const ctx: any = { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "direct-model-test" }, isIdle: () => true, modelRegistry: registry([model("one", "gpt"), model("two", "gpt")], ["two"]) };
+    const ctx: any = { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "direct-model-test" }, isIdle: () => true, modelRegistry: registry([model("bedrock-mantle", "gpt"), model("openai-codex", "gpt")], ["bedrock-mantle", "openai-codex"]) };
     // The extension owns its runtime; use its normal tool seam and inspect its returned child record.
     const result = await tools.subagent.execute("call", { agent: "probe", instructions: "[live]", surface: "headless", ...(requested ? { model: requested } : {}) }, undefined, undefined, ctx);
     expect(result.isError).not.toBe(true);
@@ -57,7 +57,7 @@ describe("bare model resolution at subagent launch seams", () => {
     rmSync(profile, { recursive: true, force: true }); rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("rejects native bare-name ambiguity before direct launch", async () => {
+  it("rejects bare names that only match an unapproved provider", async () => {
     fixture();
     const profile = mkdtempSync(join(tmpdir(), "subagent-model-profile-"));
     const cwd = mkdtempSync(join(tmpdir(), "subagent-model-cwd-"));
@@ -66,22 +66,22 @@ describe("bare model resolution at subagent launch seams", () => {
     process.env.PI_CODING_AGENT_DIR = profile;
     const tools: Record<string, any> = {};
     subagents({ registerTool: (tool: any) => { tools[tool.name] = tool; }, registerCommand: () => {}, registerMessageRenderer: () => {}, on: () => {} } as any);
-    const result = await tools.subagent.execute("call", { agent: "probe", instructions: "[live]" }, undefined, undefined, { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "ambiguous-model-test" }, isIdle: () => true, modelRegistry: registry([model("one", "gpt"), model("two", "gpt")]) });
+    const result = await tools.subagent.execute("call", { agent: "probe", instructions: "[live]" }, undefined, undefined, { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "unsupported-model-test" }, isIdle: () => true, modelRegistry: registry([model("openrouter", "gpt")], ["openrouter"]) });
     expect(result.isError).toBe(true);
-    expect(result.details.error).toMatch(/ambiguous/i);
+    expect(result.details.error).toMatch(/subscription or AWS/i);
     rmSync(profile, { recursive: true, force: true }); rmSync(cwd, { recursive: true, force: true });
   });
 
   it.each([
-    ["definition fallback", undefined, "two/gpt"],
-    ["explicit bare override", "gpt", "two/gpt"],
+    ["definition fallback", undefined, "openai-codex/gpt"],
+    ["explicit bare override", "gpt", "openai-codex/gpt"],
   ])("coordinator delegate uses its propagated registry for %s", async (_label, requested, expected) => {
     fixture();
     const runtime = new SubagentRuntime(); runtimes.push(runtime);
-    const leaf = definition("leaf", { model: requested === undefined ? "gpt" : "one/gpt" });
+    const leaf = definition("leaf", { model: requested === undefined ? "gpt" : "bedrock-mantle/gpt" });
     const coordinator = definition("coordinator", { tools: ["subagent"], delegates: ["leaf"] });
-    const modelRegistry = registry([model("one", "gpt"), model("two", "gpt")], ["two"]);
-    const parent = await runtime.launch({ definition: coordinator, instructions: "[hold]", cwd: here, model: "two/gpt", effort: "low", skills: [], origin: "coordinator-model-test", surface: "headless", retained: false, catalog: new Map([["coordinator", coordinator], ["leaf", leaf]]), modelRegistry }, join(here, ".."), join(here, "../extensions/subagent-child.ts"), true);
+    const modelRegistry = registry([model("bedrock-mantle", "gpt"), model("openai-codex", "gpt")], ["bedrock-mantle", "openai-codex"]);
+    const parent = await runtime.launch({ definition: coordinator, instructions: "[hold]", cwd: here, model: "openai-codex/gpt", effort: "low", skills: [], origin: "coordinator-model-test", surface: "headless", retained: false, catalog: new Map([["coordinator", coordinator], ["leaf", leaf]]), modelRegistry }, join(here, ".."), join(here, "../extensions/subagent-child.ts"), true);
     const response = await (runtime as any).dispatch({ child: parent.id, origin: "coordinator-model-test", run: "fixture" }, { type: "delegate", payload: { agent: "leaf", instructions: "[live]", ...(requested ? { model: requested } : {}), background: true } });
     expect(response).toMatchObject({ model: expected, status: "running", parentId: parent.id });
     await runtime.get(response.id).cancel(); await runtime.get(parent.id).cancel();

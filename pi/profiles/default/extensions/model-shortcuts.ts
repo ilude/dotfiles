@@ -1,36 +1,18 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { Model } from "@earendil-works/pi-ai";
 import { completePartialArgument } from "../lib/argument-completions.ts";
+import { resolvePreferredModel } from "../lib/model-selection.ts";
 
 const SHORTCUTS = {
-	astra: {
-		description: "Switch to GPT-6 Astra through the Codex subscription",
-		candidates: [["openai-codex", "gpt-6-astra"]],
-	},
-	sol: {
-		description: "Switch to GPT-5.6 Sol through the Codex subscription",
-		candidates: [["openai-codex", "gpt-5.6-sol"]],
-	},
-	luna: {
-		description: "Switch to GPT-5.6 Luna through the Codex subscription",
-		candidates: [["openai-codex", "gpt-5.6-luna"]],
-	},
-	fable: {
-		description: "Switch to Claude Fable through Amazon Bedrock",
-		candidates: [
-			["bedrock-mantle", "anthropic.claude-fable-5-1"],
-			["bedrock-mantle", "anthropic.claude-fable-5"],
-			["amazon-bedrock", "us.anthropic.claude-fable-5-1"],
-			["amazon-bedrock", "us.anthropic.claude-fable-5"],
-		],
-	},
+	astra: "Switch to GPT-6 Astra using the preferred configured provider",
+	sol: "Switch to GPT-5.6 Sol using the preferred configured provider",
+	luna: "Switch to GPT-5.6 Luna using the preferred configured provider",
+	fable: "Switch to Claude Fable using the preferred configured provider",
 } as const;
 
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh"] as const;
 
 type ShortcutName = keyof typeof SHORTCUTS;
 type EffortLevel = typeof EFFORT_LEVELS[number];
-type AvailableModel = Model<any>;
 
 function parseEffort(args: string): EffortLevel | undefined {
 	const requested = args.trim().toLowerCase();
@@ -38,20 +20,18 @@ function parseEffort(args: string): EffortLevel | undefined {
 	return EFFORT_LEVELS.find((level) => level === requested);
 }
 
-function findCandidate(ctx: ExtensionCommandContext, name: ShortcutName): AvailableModel | undefined {
-	const available = ctx.modelRegistry.getAvailable();
-	for (const [provider, id] of SHORTCUTS[name].candidates) {
-		const model = available.find((candidate) => candidate.provider === provider && candidate.id === id);
-		if (model) return model;
+function findCandidate(ctx: ExtensionCommandContext, name: ShortcutName) {
+	try {
+		return resolvePreferredModel(name, ctx.modelRegistry);
+	} catch {
+		return undefined;
 	}
-	return undefined;
 }
 
 export default function modelShortcuts(pi: ExtensionAPI): void {
 	for (const name of Object.keys(SHORTCUTS) as ShortcutName[]) {
-		const shortcut = SHORTCUTS[name];
 		pi.registerCommand(name, {
-			description: `${shortcut.description}; optionally set effort: ${EFFORT_LEVELS.join(", ")}`,
+			description: `${SHORTCUTS[name]}; optionally set effort: ${EFFORT_LEVELS.join(", ")}`,
 			getArgumentCompletions: (prefix) => completePartialArgument(prefix, EFFORT_LEVELS),
 			handler: async (args, ctx) => {
 				const requestedEffort = parseEffort(args);
@@ -62,7 +42,7 @@ export default function modelShortcuts(pi: ExtensionAPI): void {
 
 				const model = findCandidate(ctx, name);
 				if (!model) {
-					ctx.ui.notify(`No configured ${name} model is available. Refresh models or check provider login.`, "error");
+					ctx.ui.notify(`No configured ${name} model is available through the subscription or AWS provider ladder.`, "error");
 					return;
 				}
 

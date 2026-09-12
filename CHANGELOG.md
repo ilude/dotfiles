@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-12: Make default Pi model resolution provider-aware
+
+**Changed:** Bare model names used by default-profile subagents and model shortcuts now resolve through one deterministic ladder: authenticated OpenAI Codex subscription models first, then Bedrock Mantle, then native Amazon Bedrock. Known family aliases and exact or token-aligned names are accepted; within the first tier containing the closest match, configured baseline token cost breaks equally close matches.
+
+**Preserved:** Explicit `provider/model` references remain exact and never fall through to another provider. OpenRouter, OpenCode, and other providers require explicit selection until another fallback tier is deliberately configured. Role defaults still apply when no model override is supplied.
+
 ## 2026-09-12: Add separate Herdr workspace launches
 
 **Added:** Default Pi's `herdr_layout` tool can now create a Herdr workspace directly or resume an existing Pi session into a new workspace using its saved cwd. Results capture Herdr's returned workspace, tab, and pane identities rather than predicting them.

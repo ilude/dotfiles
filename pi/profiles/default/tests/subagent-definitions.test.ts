@@ -18,18 +18,28 @@ describe("subagent definitions",()=>{
  it.each(["delegates: true", "skills: 4", "model: false", "effort: []"])("rejects malformed optional authority: %s",(field)=>{const r=root();writeFileSync(join(r,"agents","worker.md"),`---\nname: worker\ndescription: worker\ntools: []\n${field}\n---\nprompt`);const got=loadDefinitions(r,false,r);expect(got.agents.has("worker")).toBe(false);expect(got.errors).toHaveLength(1)});
  it.each(["/model", "provider/", " provider/model"])("rejects incomplete model %s",(model)=>{expect(()=>resolveModel(model,undefined)).toThrow(/Explicit/)});
  it("requires explicit provider/model",()=>{expect(()=>resolveModel(undefined,undefined)).toThrow(/Explicit/);expect(resolveModel("openai-codex/model",undefined)).toEqual({provider:"openai-codex",id:"model"})});
- it("resolves an authenticated exact bare model through Pi's native resolver",()=>{
-  const got=resolveModel("gpt",undefined,registry([model("one","gpt"),model("two","gpt")],["two"]));
-  expect(got).toEqual({provider:"two",id:"gpt"});
+ it("resolves an exact bare model through the provider ladder",()=>{
+  const got=resolveModel("gpt",undefined,registry([model("bedrock-mantle","gpt"),model("openai-codex","gpt")],["bedrock-mantle","openai-codex"]));
+  expect(got).toEqual({provider:"openai-codex",id:"gpt"});
  });
- it("preserves native not-found errors",()=>{
-  expect(()=>resolveModel("missing",undefined,registry([model("one","gpt")]))).toThrow(/No model|not found/i);
+ it("accepts a full bare model name and prefers subscription over AWS",()=>{
+  const models=[model("amazon-bedrock","openai.gpt-5.6-sol"),model("bedrock-mantle","openai.gpt-5.6-sol"),model("openai-codex","gpt-5.6-sol")];
+  const got=resolveModel("gpt-5.6-sol",undefined,registry(models,["amazon-bedrock","bedrock-mantle","openai-codex"]));
+  expect(got).toEqual({provider:"openai-codex",id:"gpt-5.6-sol"});
  });
- it("preserves native ambiguity errors",()=>{
-  expect(()=>resolveModel("gpt",undefined,registry([model("one","gpt"),model("two","gpt")]))).toThrow(/ambiguous/i);
+ it("falls back from subscription to Mantle before native Bedrock",()=>{
+  const models=[model("amazon-bedrock","anthropic.claude-fable-5"),model("bedrock-mantle","anthropic.claude-fable-5")];
+  const got=resolveModel("fable",undefined,registry(models,["amazon-bedrock","bedrock-mantle"]));
+  expect(got).toEqual({provider:"bedrock-mantle",id:"anthropic.claude-fable-5"});
+ });
+ it("reports preferred-provider not-found errors",()=>{
+  expect(()=>resolveModel("missing",undefined,registry([model("openai-codex","gpt")],["openai-codex"]))).toThrow(/No configured subscription or AWS model/);
+ });
+ it("does not resolve a similar model from an unapproved provider",()=>{
+  expect(()=>resolveModel("sol",undefined,registry([model("openrouter","upstage/solar-pro4")],["openrouter"]))).toThrow(/No configured subscription or AWS model/);
  });
  it("uses the canonical bare model before effort restrictions",()=>{
-  const resolved=resolveModel("luna",undefined,registry([model("openai-codex","luna")]));
+  const resolved=resolveModel("luna",undefined,registry([model("openai-codex","gpt-5.6-luna")],["openai-codex"]));
   expect(()=>resolveAgentEffort("strategist",`${resolved.provider}/${resolved.id}`,"low","high")).toThrow(/below high/);
  });
  it("rejects Luna Strategist effort below high without restricting stronger models",()=>{

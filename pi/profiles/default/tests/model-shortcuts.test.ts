@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import modelShortcuts from "../extensions/model-shortcuts.js";
 
-function setup(models: Array<{ provider: string; id: string }>, switchResult = true) {
+function setup(models: Array<{ provider: string; id: string; name?: string; cost?: Record<string, number> }>, switchResult = true) {
 	const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void>; getArgumentCompletions?: (prefix: string) => Array<{ value: string; label: string }> | null }>();
 	let thinkingLevel = "medium";
 	const pi = {
@@ -14,7 +14,7 @@ function setup(models: Array<{ provider: string; id: string }>, switchResult = t
 	};
 	modelShortcuts(pi as any);
 	const ctx = {
-		modelRegistry: { getAvailable: () => models },
+		modelRegistry: { getAll: () => models, hasConfiguredAuth: () => true },
 		ui: { notify: vi.fn() },
 	};
 	return { commands, pi, ctx };
@@ -35,7 +35,7 @@ describe("model shortcuts", () => {
 		expect(ctx.ui.notify).toHaveBeenCalledWith(`Switched to ${provider}/${id}.`, "info");
 	});
 
-	it("/fable prefers the curated Bedrock Mantle route", async () => {
+	it("/fable prefers the Bedrock Mantle route", async () => {
 		const native = { provider: "amazon-bedrock", id: "us.anthropic.claude-fable-5-1" };
 		const mantle = { provider: "bedrock-mantle", id: "anthropic.claude-fable-5-1" };
 		const { commands, pi, ctx } = setup([native, mantle]);
@@ -43,6 +43,24 @@ describe("model shortcuts", () => {
 		await commands.get("fable")!.handler("", ctx);
 
 		expect(pi.setModel).toHaveBeenCalledWith(mantle);
+	});
+
+	it("chooses the cheapest equally close model within a provider tier", async () => {
+		const expensive = { provider: "openai-codex", id: "preview-gpt-5.6-sol", cost: { input: 5, output: 20 } };
+		const cheap = { provider: "openai-codex", id: "stable-gpt-5.6-sol", cost: { input: 1, output: 4 } };
+		const { commands, pi, ctx } = setup([expensive, cheap]);
+
+		await commands.get("sol")!.handler("", ctx);
+
+		expect(pi.setModel).toHaveBeenCalledWith(cheap);
+	});
+
+	it("does not fall through to unapproved providers", async () => {
+		const { commands, pi, ctx } = setup([{ provider: "openrouter", id: "upstage/solar-pro4" }]);
+
+		await commands.get("sol")!.handler("", ctx);
+
+		expect(pi.setModel).not.toHaveBeenCalled();
 	});
 
 	it("reports unavailable models without changing the active model", async () => {
