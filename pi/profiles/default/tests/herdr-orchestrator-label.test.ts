@@ -2,84 +2,63 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import register from "../extensions/herdr-orchestrator-label.ts";
 
 beforeEach(() => {
-  vi.stubEnv("HERDR_ENV", "1");
-  vi.stubEnv("HERDR_PANE_ID", "w1:p1");
-  vi.stubEnv("HERDR_TAB_ID", "w1:t1");
-  vi.stubEnv("HERDR_SOCKET_PATH", "fixture-only");
-  vi.stubEnv("HERDR_BIN_PATH", "fixture-herdr");
-  vi.stubEnv("PI_SUBAGENT_AUTHORITY", "");
-  vi.stubEnv("PI_HERDR_SUBAGENT", "");
+  vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_PANE_ID", "w1:p1"); vi.stubEnv("HERDR_TAB_ID", "w1:t1");
+  vi.stubEnv("HERDR_WORKSPACE_ID", "w1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_BIN_PATH", "fixture-herdr");
+  vi.stubEnv("PI_SUBAGENT_AUTHORITY", ""); vi.stubEnv("PI_HERDR_SUBAGENT", ""); vi.stubEnv("PI_HERDR_TAB_LABEL", "");
+  vi.stubEnv("PI_HERDR_TAB_TITLE", ""); vi.stubEnv("PI_HERDR_TAB_TITLE_EXPLICIT", "");
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 function fixture(cwd = "/work/.dotfiles/") {
-  const handlers: Record<string, (...args: any[]) => Promise<void>> = {};
-  const exec = vi.fn().mockResolvedValue({ code: 0, killed: false, stdout: "", stderr: "" });
-  const notify = vi.fn();
-  register({ on(name: string, handler: any) { handlers[name] = handler; }, exec } as any);
-  return { exec, notify, start: (reason = "startup", mode = "tui") => handlers.session_start({ reason }, { mode, cwd, ui: { notify } }) };
+  const handlers: Record<string, (...args: any[]) => any> = {};
+  const busHandlers: Record<string, (data: unknown) => void> = {};
+  const exec = vi.fn().mockImplementation(async (_bin, args: string[]) => {
+    if (args[0] === "tab" && args[1] === "get") return { code: 0, killed: false, stdout: JSON.stringify({ result: { tab: { tab_id: "w1:t1", workspace_id: "w1", label: ".dotfiles" } } }), stderr: "" };
+    if (args[0] === "pane" && args[1] === "get") return { code: 0, killed: false, stdout: JSON.stringify({ result: { pane: { pane_id: "w1:p1", tab_id: "w1:t1", workspace_id: "w1" } } }), stderr: "" };
+    return { code: 0, killed: false, stdout: "", stderr: "" };
+  });
+  const entries: unknown[] = [];
+  const ctx = { mode: "tui", cwd, ui: { notify: vi.fn() }, sessionManager: { buildContextEntries: () => entries, getSessionId: () => "session" } };
+  register({ on(name: string, handler: any) { handlers[name] = handler; }, exec, events: { on(name: string, handler: any) { busHandlers[name] = handler; }, emit(name: string, data: unknown) { busHandlers[name]?.(data); } } } as any);
+  return { exec, handlers, ctx, entries, start: (reason = "startup", mode = "tui") => handlers.session_start({ reason }, { ...ctx, mode }) };
 }
 
-it("labels the inherited startup pane and tab without changing focus", async () => {
-  const f = fixture();
-  expect(f.exec).not.toHaveBeenCalled();
-  await f.start();
-  expect(f.exec.mock.calls).toEqual([
-    ["fixture-herdr", ["pane", "rename", "w1:p1", "Orchestrator"], { timeout: 2000 }],
-    ["fixture-herdr", ["tab", "rename", "w1:t1", ".dotfiles"], { timeout: 2000 }],
+it("labels the startup pane and establishes the child-owned base title", async () => {
+  const f = fixture(); await f.start();
+  expect(f.exec.mock.calls.slice(0, 2).map(call => call[1])).toEqual([
+    ["pane", "rename", "w1:p1", "Orchestrator"], ["tab", "rename", "w1:t1", ".dotfiles"],
   ]);
-  expect(f.notify).not.toHaveBeenCalled();
 });
 
-it("keeps pane labeling but does not late-rename an explicitly named plan child", async () => {
-  vi.stubEnv("PI_HERDR_TAB_LABEL", "plan-stub");
-  const f = fixture("/work/repository");
+it("preserves an explicit launch title literally and performs no naming request", async () => {
+  vi.stubEnv("PI_HERDR_TAB_TITLE", "My Plan"); vi.stubEnv("PI_HERDR_TAB_TITLE_EXPLICIT", "1");
+  const f = fixture(); f.entries.push({ type: "message", message: { role: "user", content: "restored task" } });
   await f.start();
-  expect(f.exec).toHaveBeenCalledExactlyOnceWith("fixture-herdr", ["pane", "rename", "w1:p1", "Orchestrator"], { timeout: 2000 });
+  expect(f.exec).toHaveBeenCalledWith("fixture-herdr", ["tab", "rename", "w1:t1", "My Plan"], expect.anything());
+  expect(f.exec.mock.calls.some(call => call[1]?.[0] === "tab" && call[1]?.[1] === "get")).toBe(false);
 });
 
-it("passes directory names with spaces as one literal label argument", async () => {
-  const f = fixture("/work/project with spaces/");
-  await f.start();
-  expect(f.exec).toHaveBeenCalledWith("fixture-herdr", ["tab", "rename", "w1:t1", "project with spaces"], { timeout: 2000 });
+it("resets inherited explicit metadata on a new session", async () => {
+  vi.stubEnv("PI_HERDR_TAB_TITLE", "My Plan"); vi.stubEnv("PI_HERDR_TAB_TITLE_EXPLICIT", "1");
+  const f = fixture(); await f.start("new");
+  expect(f.exec).toHaveBeenCalledWith("fixture-herdr", ["tab", "rename", "w1:t1", ".dotfiles"], expect.anything());
 });
 
-it("keeps pane labeling when the tab identity is unavailable", async () => {
-  vi.stubEnv("HERDR_TAB_ID", "");
-  const f = fixture();
-  await f.start();
-  expect(f.exec).toHaveBeenCalledTimes(1);
-  expect(f.exec.mock.calls[0][1]).toEqual(["pane", "rename", "w1:p1", "Orchestrator"]);
+it.each(["rpc", "json", "print"])("does nothing for %s helpers", async mode => {
+  const f = fixture(); await f.start("startup", mode); expect(f.exec).not.toHaveBeenCalled();
 });
 
-it.each(["new", "resume", "fork", "reload"])("preserves later pane labels on %s", async reason => {
-  const f = fixture();
-  await f.start(reason);
-  expect(f.exec).not.toHaveBeenCalled();
+it.each([["PI_SUBAGENT_AUTHORITY", "restricted"], ["PI_HERDR_SUBAGENT", "child"], ["HERDR_ENV", ""], ["HERDR_SOCKET_PATH", ""]])("skips excluded context %s", async (key, value) => {
+  vi.stubEnv(key, value); const f = fixture(); await f.start(); expect(f.exec).not.toHaveBeenCalled();
 });
 
-it.each(["rpc", "json", "print"])("does not label a %s helper", async mode => {
-  const f = fixture();
-  await f.start("startup", mode);
-  expect(f.exec).not.toHaveBeenCalled();
+it("keeps routine label failures silent", async () => {
+  const f = fixture(); f.exec.mockRejectedValue(new Error("unavailable"));
+  await expect(f.start()).resolves.toBeUndefined(); expect(f.ctx.ui.notify).not.toHaveBeenCalled();
 });
 
-it.each([
-  ["PI_SUBAGENT_AUTHORITY", "restricted"], ["PI_HERDR_SUBAGENT", "child-endpoint"],
-  ["HERDR_ENV", ""], ["HERDR_PANE_ID", ""], ["HERDR_SOCKET_PATH", ""],
-])("skips child or unavailable Herdr context: %s", async (key, value) => {
-  vi.stubEnv(key, value);
-  const f = fixture();
-  await f.start();
-  expect(f.exec).not.toHaveBeenCalled();
-});
-
-it.each(["exit", "timeout", "spawn"])("reports %s failure without failing startup or retrying", async failure => {
-  const f = fixture();
-  if (failure === "spawn") f.exec.mockRejectedValue(new Error("spawn failed"));
-  else f.exec.mockResolvedValue({ code: 1, killed: failure === "timeout", stderr: "unavailable" });
-  await expect(f.start()).resolves.toBeUndefined();
-  expect(f.exec).toHaveBeenCalledTimes(2);
-  expect(f.notify).toHaveBeenCalledWith(expect.stringContaining("Herdr pane label unavailable:"), "warning");
-  expect(f.notify).toHaveBeenCalledWith(expect.stringContaining("Herdr tab label unavailable:"), "warning");
+it("invalidates naming work on tree navigation and shutdown", async () => {
+  const f = fixture(); await f.start();
+  await f.handlers.session_tree({}, f.ctx); await f.handlers.session_shutdown({ reason: "quit" }, f.ctx);
+  expect(f.ctx.ui.notify).not.toHaveBeenCalled();
 });

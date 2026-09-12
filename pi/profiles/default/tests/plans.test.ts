@@ -7,6 +7,7 @@ import plansCommand, { archivePlan, executePlans, openPlanInCode, planSelector }
 import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { createHerdrPiTab, HerdrPiTabLaunchError, renameHerdrPiTab } from "../extensions/session-launch.ts";
 import { discoverPlans, parsePlan } from "../lib/plans.ts";
+import { HERDR_TAB_TITLE_OWNED } from "../lib/herdr-tab-title-events.ts";
 import { spawnSync } from "node:child_process";
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn(), execFile: vi.fn() }));
 vi.mock("../extensions/session-launch.ts", async importOriginal => ({
@@ -281,17 +282,20 @@ it("runs here through the registered command with template expansion and closes 
   expect(copyToClipboard).not.toHaveBeenCalled(); expect(spawnSync).not.toHaveBeenCalled();
 });
 
-it("renames the inherited Herdr tab by exact stub and records a successful current submission once", async () => {
+it("claims explicit ownership before renaming the inherited Herdr tab", async () => {
   vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_TAB_ID", "origin-tab");
   const base = root(); add(base, "stub-name", complete);
   const appendEntry = vi.fn(); const sendUserMessage = vi.fn(); const notify = vi.fn();
-  vi.mocked(renameHerdrPiTab).mockResolvedValue(undefined);
+  const titleEvents = { on: vi.fn(), emit: vi.fn() };
+  vi.mocked(renameHerdrPiTab).mockImplementation(async () => {
+    expect(titleEvents.emit).toHaveBeenCalledWith(HERDR_TAB_TITLE_OWNED, { title: "stub-name", explicit: true });
+  });
   let value: any;
   const custom = vi.fn(async (factory: any) => {
     const component = factory({ requestRender() {} }, testTheme(), {}, (result: any) => { value = result; });
     component.handleInput("r"); return value;
   });
-  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify }, sessionManager: { getSessionId: () => "session" } } as any, { sendUserMessage, appendEntry });
+  await executePlans({ mode: "tui", cwd: base, ui: { custom, notify }, sessionManager: { getSessionId: () => "session" } } as any, { sendUserMessage, appendEntry, events: titleEvents });
   expect(renameHerdrPiTab).toHaveBeenCalledExactlyOnceWith("origin-tab", "stub-name", base);
   expect(sendUserMessage).toHaveBeenCalledExactlyOnceWith("/do-it .specs/stub-name/plan.md", { expandPromptTemplates: true, deliverAs: "followUp" });
   const events = appendEntry.mock.calls.filter(([type]) => type === "plan-action-event").map(([, data]) => data);

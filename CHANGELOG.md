@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-11: Add quiet automatic Herdr session tab naming
+
+**Added:** Eligible default-profile Herdr orchestrator tabs now receive asynchronous, tool-free `openai-codex/gpt-5.6-luna` naming attempts at low reasoning from bounded visible conversation text. Generated labels are normalized to lowercase and constrained to one to five words; restored sessions, including resumed children, can name themselves without delaying launch readiness.
+
+**Preserved:** Explicit `/plans`, `/branch [title]`, and `/new-instance [title]` labels and observed manual Herdr renames remain literal until `/clear` or `/new`, which restore the cwd basename and reset naming state. Attempts are cooldown-limited, and three consecutive operational failures open a breaker with no timed recovery. Failures and successes are silent; bounded redacted diagnostics are retained at the active profile runtime path in at most 64 KiB and 128 lines. Live model quality and attached-client rendering remain non-blocking verification limits.
+
 ## 2026-09-11: Keep subagent runtime dependencies out of bootstrap
 
 **Fixed:** Child launch specifications are now explicitly constructed instead of spreading internal runtime inputs into the bootstrap response. The model registry introduced for bare-model resolution stays parent-side with the catalog and progress callback. This prevents unrelated runtime state from overflowing the existing 256 KiB transport limit. Model resolution and the transport limit are unchanged; a regression test checks the bootstrap shape with an oversized parent-only field.

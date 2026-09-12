@@ -35,7 +35,7 @@ All paths below are relative to `C:/Users/mglenn/.dotfiles`, unless explicitly a
 - Planning baseline: 2026-09-11, branch `main`, commit `ff95a1ba` (`Improve Damage Control and Pi session workflows`). `git status --short` was empty before creating this spec.
 - The previously uncommitted Herdr resume changes are now committed in this baseline. Preserve them and any subsequent concurrent work. Do not copy their earlier uncommitted versions back over current files.
 - Originating integration target: `C:/Users/mglenn/.dotfiles`, branch `main`.
-- Proposed task worktree: `.worktrees/herdr-session-tab-naming`, branch `feature/herdr-session-tab-naming`. Record actual values during execution and do not repurpose existing unrelated worktrees.
+- Task worktree: `C:/Users/mglenn/.dotfiles/.worktrees/herdr-session-tab-naming`, branch `feature/herdr-session-tab-naming`, created from integration target `C:/Users/mglenn/.dotfiles` branch `main` at `534ef1c3` on 2026-09-12.
 - Verified planning profile: `PI_CODING_AGENT_DIR=C:\Users\mglenn\.dotfiles\pi\profiles\default`. Intended execution/validation profile: default in the task worktree. No legacy checks.
 
 Required implementation reading:
@@ -125,29 +125,29 @@ Implement fixed outcomes above, choosing equivalent local mechanisms directly. C
 
 ## Tasks
 
-- [ ] **T1: Implement the bounded naming request and owner state**
+- [x] **T1: Implement the bounded naming request and owner state**
   - Depends on: execution authorization and recorded task worktree.
   - Proposed files: `pi/profiles/default/lib/herdr-tab-naming.ts` and `pi/profiles/default/tests/herdr-tab-naming.test.ts`; small additional profile-local files only if needed.
   - Implement filtered payload construction, prompt/validation, Luna low completion, cooldown, single-flight control, breaker, cancellation/generation handling, and diagnostics. Reuse native runtime and CLI facilities where applicable without coupling to Damage Control policy.
   - Test observable outcomes with fake time and mock external model/CLI boundaries, not a mocked naming implementation. Cover excluded content, retained-tail text, bounds, exact low-effort/no-tools/no-retries request, invalid/empty/unchanged replies, timeouts, 60-second attempts, three-failure suspension, no timed probe, and diagnostic bounds/redaction/silence.
   - Done when: these finite unit checks pass and failure paths leave the title unchanged without foreground interruption.
-  - Evidence: Not started.
+  - Evidence: Implemented `lib/herdr-tab-naming.ts` and focused tests. Verified filtering, retained tails, recent-data bounds, Luna low/no-tools/no-retries, validation, deadline/cancellation distinction, cooldown, breaker, ownership checks, and locked bounded diagnostics on 2026-09-12.
 
-- [ ] **T2: Wire Pi lifecycle, title ownership, and resumed tabs**
+- [x] **T2: Wire Pi lifecycle, title ownership, and resumed tabs**
   - Depends on: T1 request/state contracts.
   - Existing files under `pi/profiles/default/`: `extensions/herdr-orchestrator-label.ts`, `extensions/session-launch.ts`, relevant `extensions/plans.ts` paths, and `lib/herdr-resume.ts`. Also `scripts/pi-herdr-launch.mjs` at the repository root only as needed. Proposed entry point: `pi/profiles/default/extensions/herdr-tab-naming.ts` if separate from the current label owner.
   - Connect first delivered prompt, `agent_settled`, restored startup, reset, reload, session replacement, and shutdown. Keep generated Herdr agent-state integration unmodified.
   - Carry explicit title provenance, protect current-tab plan titles, and coordinate initial/late launcher writes. Preserve launch/readiness/focus semantics. Make reset suppress inherited explicit-label metadata after `/clear`, including its immediate reload path.
   - Add/update tests exercising real extension handlers and launcher contracts with external I/O mocked: asynchronous resumed naming, no parent Luna call, first-prompt nonblocking execution, no duplicate request, manual/explicit title preservation, lowercase generated titles, `/clear`/`/new` reset, stale result rejection, reload persistence, excluded helper/subagent modes, and out-of-order parent/child title initialization.
   - Done when: the resumed child can rename independently without changing the resume receipt or adding naming latency to readiness; all lifecycle tests pass.
-  - Evidence: Not started.
+  - Evidence: Wired the existing orchestrator label extension, explicit title provenance, launch coordination, and plan title ownership. Focused lifecycle and launcher tests passed on 2026-09-12; resume receipt/readiness contracts were preserved.
 
-- [ ] **T3: Validate and document the operator behavior**
+- [x] **T3: Validate and document the operator behavior**
   - Depends on: T1–T2.
   - Update `pi/profiles/default/docs/herdr.md`, the relevant default section of `pi/README.md`, root `CHANGELOG.md`, and active-profile ignore rules if required. Document triggers, preserved labels, `/clear`, breaker reset, diagnostics path/limits, and silent failures. Do not claim live acceptance.
   - Run the finite commands below from the task worktree's default profile. Address task-related failures; report unrelated prerequisites without modifying unrelated features.
   - Done when: agreed automated checks pass, documentation matches implementation, and remaining live verification limits are recorded.
-  - Evidence: Not started.
+  - Evidence: Updated default-profile Herdr documentation, Pi README, and root changelog. On 2026-09-12 from the task worktree default profile, the agreed focused suite passed (9 files, 114 tests), `pnpm run typecheck` passed after a minimal baseline test typing correction, `pnpm run check:runtime` passed, and `git diff --check` passed. Live Luna/rendering observation remains a non-blocking verification limit.
 
 - [ ] **T4: Archive, commit, and integrate**
   - Depends on: T3.
@@ -172,9 +172,10 @@ pnpm run check:runtime
 
 Use the actual focused new test filenames if split during implementation. Dependencies, if absent: frozen default-profile install, then `bash scripts/pi-deps-link-setup --profile default` from the task root. Do not modify dependency manifests simply to work around unbundled Pi internals.
 
-- Status: ready for execution authorization.
-- Actual planning work, 2026-09-11, default at the originating checkout: inspected current source, installed Pi docs/example, Herdr CLI documentation, and clean Git baseline. No implementation or validation run.
-- Next: record/create the dedicated task worktree and begin T1 after execution is requested.
+- Status: implementation and agreed checks complete; task-branch archival and integration pending.
+- Actual planning work, 2026-09-11, default at the originating checkout: inspected current source, installed Pi docs/example, Herdr CLI documentation, and clean Git baseline.
+- Actual execution, 2026-09-12, default profile at `C:/Users/mglenn/.dotfiles/.worktrees/herdr-session-tab-naming/pi/profiles/default`: focused suite passed (9 files, 114 tests), typecheck passed, runtime smoke passed, and diff check passed.
+- Next: archive this spec, commit the task branch, integrate into the recorded target, commit completion metadata, and remove the task worktree.
 - Blockers/open user decisions: none.
 - Verification limits: mocked model/Herdr tests prove contracts, not live Luna title quality or attached-client rendering. No production rename/resume/reload experiment is required for completion. Operator live observation after loading the feature is non-blocking.
 
