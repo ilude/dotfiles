@@ -30,7 +30,7 @@ function fixture() {
 	return { commands, ctx };
 }
 
-it("awaits delayed plugin open, focuses the exact tab, renames it, and returns both IDs", async () => {
+it("awaits delayed plugin open, passes title ownership, focuses the exact tab, and leaves child title initialization authoritative", async () => {
 	const { commands, ctx } = fixture();
 	vi.mocked(execFile).mockImplementationOnce((_command: any, _args: any, _options: any, callback: any) => {
 		setTimeout(() => { callback(null, { stdout: JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w9:t4", pane_id: "w9:p4" } } } }), stderr: "" }); }, 10);
@@ -42,7 +42,9 @@ it("awaits delayed plugin open, focuses the exact tab, renames it, and returns b
 	const calls = vi.mocked(execFile).mock.calls.map(call => call[1] as string[]);
 	expect(calls[0]).toContain("PI_HERDR_SESSION_FILE=");
 	expect(calls[0]).toContain("PI_HERDR_PLAN_PATH=");
-	expect(calls.slice(1)).toEqual([["tab", "focus", "w9:t4"], ["tab", "rename", "w9:t4", "fresh"]]);
+	expect(calls[0]).toContain("PI_HERDR_TAB_TITLE=fresh");
+	expect(calls[0]).toContain("PI_HERDR_TAB_TITLE_EXPLICIT=1");
+	expect(calls.slice(1)).toEqual([["tab", "focus", "w9:t4"]]);
 });
 
 it("preserves branch session and plan inputs", async () => {
@@ -92,7 +94,8 @@ it("marks timeout as ambiguous and does not retry", async () => {
 	expect(execFile).toHaveBeenCalledTimes(1);
 });
 
-it.each(["focus", "rename"])("returns known receipt details when %s fails", async operation => {
+it("returns known receipt details when focus fails", async () => {
+	const operation = "focus";
 	fixture();
 	vi.mocked(execFile).mockImplementationOnce((_command: any, args: any, _options: any, callback: any) => callback(null, { stdout: JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w9:t4", pane_id: "w9:p4" } } } }), stderr: "" }));
 	vi.mocked(execFile).mockImplementation((_command: any, args: any, _options: any, callback: any) => {
@@ -103,6 +106,13 @@ it.each(["focus", "rename"])("returns known receipt details when %s fails", asyn
 	const error = await createHerdrPiTab(process.cwd(), "fresh").catch(value => value);
 	expect(error).toMatchObject({ mayHaveLaunched: true, tabId: "w9:t4", paneId: "w9:p4" });
 	expect(String(error)).toContain("Do not relaunch");
+});
+
+it("marks default launch titles as automatic provenance", async () => {
+	const { commands, ctx } = fixture();
+	await commands["new-instance"].handler("", ctx);
+	const open = vi.mocked(execFile).mock.calls[0][1] as string[];
+	expect(open).toContain("PI_HERDR_TAB_TITLE_EXPLICIT=0");
 });
 
 it("keeps plain terminal launch synchronous and shell-based", async () => {

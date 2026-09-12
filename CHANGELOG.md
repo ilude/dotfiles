@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-12: Add quiet automatic Herdr session tab naming
+
+**Added:** Eligible default-profile Herdr orchestrator tabs now receive asynchronous, tool-free `openai-codex/gpt-5.6-luna` naming attempts at low reasoning from bounded visible conversation text. Generated labels are normalized to lowercase and constrained to one to five words; restored sessions, including resumed children, can name themselves without delaying launch readiness.
+
+**Preserved:** Explicit `/plans`, `/branch [title]`, and `/new-instance [title]` labels and observed manual Herdr renames remain literal until `/clear` or `/new`, which restore the cwd basename and reset naming state. Attempts are cooldown-limited, and three consecutive operational failures open a breaker with no timed recovery. Failures and successes are silent; bounded redacted diagnostics are retained at the active profile runtime path in at most 64 KiB and 128 lines. Live model quality and attached-client rendering remain non-blocking verification limits.
+
 ## 2026-09-12: Keep `/clear` available after subagent cleanup failures
 
 **Changed:** Default Pi now treats subagent cleanup as a best-effort part of `/clear`, not a prerequisite for entering the new session. Unresolved cleanup is reported as a warning, and an immediately requested source reload is skipped when the existing runtime could not be retired. Visible launches that fail before creating a pane or authenticated host no longer retain a phantom starting-process state.

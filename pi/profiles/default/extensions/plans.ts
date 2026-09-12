@@ -6,6 +6,7 @@ import { Key, matchesKey, stripTerminalSequences, Text, truncateToWidth, visible
 import { containedRealPath, discoverPlans, parsePlan, type PlanRecord } from "../lib/plans.ts";
 import { createHerdrPiTab, HerdrPiTabLaunchError, renameHerdrPiTab } from "./session-launch.ts";
 import { PLAN_EVENT_TYPE, PlanEventRecorder, eventPlan, formatPlanEvent, notifyLoggingFailure, type PlanActionEvent, type PlanEventAction } from "../lib/plan-events.ts";
+import { claimHerdrTabTitle } from "../lib/herdr-tab-title-events.ts";
 
 const planActions = [
 	{ key: "o", action: "open", label: "Open in VS Code", hint: "VS Code" },
@@ -212,7 +213,7 @@ export function archivePlan(plan: PlanRecord, root: string): string {
 	return destination;
 }
 
-export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<ExtensionAPI, "sendUserMessage"> & Partial<Pick<ExtensionAPI, "appendEntry">>): Promise<void> {
+export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<ExtensionAPI, "sendUserMessage"> & Partial<Pick<ExtensionAPI, "appendEntry" | "events">>): Promise<void> {
 	if (ctx.mode !== "tui") throw new Error("/plans requires interactive Pi terminal mode.");
 	const root = path.resolve(ctx.cwd ?? process.cwd());
 	const recorder = new PlanEventRecorder(pi as Pick<ExtensionAPI, "appendEntry">, ctx, { onLoggingFailure: error => notifyLoggingFailure(ctx, error) });
@@ -286,7 +287,7 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 					const tab = process.env.HERDR_TAB_ID;
 					if (!tab) recorder.outcome(attemptId, "run-here", "failed", { plan: eventPlan(plan), phase: "naming", error: { stage: "identity", message: "HERDR_TAB_ID is missing" } });
 					else {
-						try { await renameHerdrPiTab(tab, plan.stub, root); recorder.outcome(attemptId, "run-here", "success", { plan: eventPlan(plan), phase: "naming", target: { tabId: tab } }); }
+						try { claimHerdrTabTitle(pi, plan.stub, true); await renameHerdrPiTab(tab, plan.stub, root); recorder.outcome(attemptId, "run-here", "success", { plan: eventPlan(plan), phase: "naming", target: { tabId: tab } }); }
 						catch (error) { recorder.outcome(attemptId, "run-here", "failed", { plan: eventPlan(plan), phase: "naming", target: { tabId: tab }, error: { stage: "naming", message: error } }); ctx.ui.notify(`Herdr tab rename failed: ${error instanceof Error ? error.message : String(error)}`, "warning"); }
 					}
 				} else recorder.outcome(attemptId, "run-here", "not-applicable", { plan: eventPlan(plan), phase: "naming" });
