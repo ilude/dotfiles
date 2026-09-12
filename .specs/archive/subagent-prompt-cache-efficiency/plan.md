@@ -1,7 +1,7 @@
 ---
 created: 2026-09-11
-status: ready
-completed: null
+status: completed
+completed: 2026-09-12
 ---
 
 # Make subagent prompts smaller and cache-stable
@@ -73,17 +73,17 @@ Create a dedicated worktree and branch, record them here, and carry this plan in
   - Done when: focused checks pass, all three coordinator prompts are no larger than before, Council excludes unrelated delegation policy, and the changelog explains preserved behavior and cache intent.
   - Evidence: Focused tests passed, 30 tests total. TypeScript typecheck and `git diff --check` passed. Composed prompt byte sizes decreased: Strategist 5,011 to 2,482; Team Lead 4,805 to 2,451; Council 4,452 to 1,353. Launch tests verify assignment/runtime independence. `CHANGELOG.md` records the cache-stability intent and preserved boundaries.
 
-- [ ] **T4: Integrate and close out after authorization**
+- [x] **T4: Integrate and close out after authorization**
   - Depends on: T3 and separate implementation/integration authorization.
   - Change: archive this spec with the implementation commit, merge into the recorded originating checkout, mark archived completion metadata, commit it, and clean the task worktree. Push only with explicit permission.
   - Done when: implementation and archived plan are present on the target, metadata is completed, and worktree cleanup is verified; otherwise report the exact integration blocker.
-  - Evidence: Not started.
+  - Evidence: Task commit `c9df97ea953091b806fbb6240b5fc01f283fbad5` was merged into recorded target `main` by `a557f3a34678dda4e2f5a3d85730e65766263dc6`. The target contains the implementation and archived spec; no active copy remains. Worktree cleanup is recorded below.
 
 ## Agreed validation and current handoff
 
-- Status: implementation and agreed agent-owned checks complete; archival and integration pending.
-- Completed work and evidence: T1-T3 are complete. Focused tests passed (30 tests), typecheck passed, and `git diff --check` passed. Coordinator prompt sizes decreased materially as recorded under T3.
-- Next: archive and commit the implementation, merge it into recorded `main`, commit completion metadata there, and remove the clean task worktree.
+- Status: completed on 2026-09-12.
+- Completed work and evidence: T1-T4 are complete. Focused tests passed (30 tests), typecheck passed, and `git diff --check` passed. Coordinator prompt sizes decreased materially as recorded under T3. Task commit `c9df97ea953091b806fbb6240b5fc01f283fbad5` was integrated by merge commit `a557f3a34678dda4e2f5a3d85730e65766263dc6`.
+- Next: none for this plan. Provider cache observation remains optional operator testing.
 - Blockers/open decisions: none.
 - Verification limits: actual provider cache-read behavior is not an agent-owned acceptance gate because provider caches are external and timing-dependent. After implementation, repeated same-role launches may be compared through existing session `cacheRead` usage as non-blocking live evidence; do not add telemetry solely for this check.
 
