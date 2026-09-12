@@ -9,24 +9,38 @@ import { reportInitialAgentPresence } from "../../../scripts/pi-herdr-launch.mjs
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
-it("reports a newly bootstrapped plugin pane to Herdr's agent list", () => {
+it("reports a newly bootstrapped plugin pane to Herdr's agent list", async () => {
   const socket = Object.assign(new EventEmitter(), { write: vi.fn(), destroy: vi.fn() });
   const connect = vi.fn(() => socket);
-  expect(reportInitialAgentPresence({ HERDR_ENV: "1", HERDR_PLUGIN_ID: "local.pi", HERDR_SOCKET_PATH: "fixture.sock", HERDR_PANE_ID: "w1:p2" }, connect)).toBe(true);
+  const pending = reportInitialAgentPresence({ HERDR_ENV: "1", HERDR_PLUGIN_ID: "local.pi", HERDR_SOCKET_PATH: "fixture.sock", HERDR_PANE_ID: "w1:p2" }, connect);
   expect(connect).toHaveBeenCalledOnce();
   socket.emit("connect");
   const request = JSON.parse(String(socket.write.mock.calls[0][0]).trim());
   expect(request).toMatchObject({ method: "pane.report_agent", params: { pane_id: "w1:p2", source: "herdr:pi", agent: "pi", state: "idle" } });
-  socket.emit("data", Buffer.from('{"result":{"type":"ok"}}\n'));
+  socket.emit("data", Buffer.from(JSON.stringify({ id: request.id, result: { type: "ok" } }).slice(0, 20)));
+  socket.emit("data", Buffer.from(`${JSON.stringify({ id: request.id, result: { type: "ok" } }).slice(20)}\n`));
+  await expect(pending).resolves.toBe(true);
   expect(socket.destroy).toHaveBeenCalledOnce();
-  socket.emit("close");
 });
 
-it("keeps initial Herdr registration best-effort", () => {
-  const connect = vi.fn(() => { throw new Error("invalid socket"); });
-  expect(reportInitialAgentPresence({ HERDR_ENV: "1", HERDR_PLUGIN_ID: "local.pi", HERDR_SOCKET_PATH: "bad", HERDR_PANE_ID: "w1:p2" }, connect)).toBe(true);
-  expect(reportInitialAgentPresence({ HERDR_ENV: "0" }, connect)).toBe(false);
-  expect(connect).toHaveBeenCalledOnce();
+it("rejects API errors and keeps initial Herdr registration best-effort", async () => {
+  let calls = 0;
+  const connect = vi.fn(() => {
+    calls++;
+    if (calls === 1) {
+      const socket = Object.assign(new EventEmitter(), { write: vi.fn(), destroy: vi.fn() });
+      queueMicrotask(() => {
+        socket.emit("connect");
+        const request = JSON.parse(String(socket.write.mock.calls[0][0]).trim());
+        socket.emit("data", Buffer.from(`${JSON.stringify({ id: request.id, error: { code: "not_ready" } })}\n`));
+      });
+      return socket;
+    }
+    throw new Error("invalid socket");
+  });
+  await expect(reportInitialAgentPresence({ HERDR_ENV: "1", HERDR_PLUGIN_ID: "local.pi", HERDR_SOCKET_PATH: "bad", HERDR_PANE_ID: "w1:p2" }, connect)).resolves.toBe(false);
+  await expect(reportInitialAgentPresence({ HERDR_ENV: "0" }, connect)).resolves.toBe(false);
+  expect(connect).toHaveBeenCalledTimes(4);
 });
 it.each([true, false])("real Node bootstrap preserves argv/env and preflight (valid=%s)", valid => {
   const root = mkdtempSync(join(tmpdir(), "herdr launch ")); roots.push(root);

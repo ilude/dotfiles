@@ -181,7 +181,12 @@ function resultComponent(record: Partial<ChildRecord>, expanded: boolean, theme:
   // The launch row owns identity, model, timing and prompt. Paired result rows only add state and output.
   const state = outcomeLabel(record);
   const title = includeIdentity ? `${identity(record)} · ${state}` : state;
-  const lines = [theme.fg(record.status === "settled" && record.outcome !== "complete" ? "warning" : "accent", theme.bold(title))];
+  const titleColor = record.status === "settled" && record.outcome === "failed"
+    ? "error"
+    : record.status === "settled" && record.outcome !== "complete"
+      ? "warning"
+      : "accent";
+  const lines = [theme.fg(titleColor, theme.bold(title))];
   if (includeIdentity) {
     lines.push(`Model: ${record.model ?? "default"} [${record.effort ?? "default"}]`);
     const prompt = value(record.assignment);

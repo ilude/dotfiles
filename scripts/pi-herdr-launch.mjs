@@ -9,43 +9,56 @@ function herdrSocketEndpoint(socketPath) {
   return process.platform === "win32" ? `\\\\.\\pipe\\${socketPath}` : socketPath;
 }
 
-export function reportInitialAgentPresence(env = process.env, connect = endpoint => net.createConnection(endpoint)) {
+function sendAgentReport(request, endpoint, connect, timeoutMs = 500) {
+  return new Promise(resolve => {
+    let settled = false;
+    let buffer = "";
+    let socket;
+    const finish = delivered => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket?.destroy();
+      resolve(delivered);
+    };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    timer.unref?.();
+    try {
+      socket = connect(endpoint);
+      socket.on("connect", () => socket.write(`${JSON.stringify(request)}\n`));
+      socket.on("data", data => {
+        buffer += String(data);
+        const newline = buffer.indexOf("\n");
+        if (newline < 0) return;
+        try {
+          const response = JSON.parse(buffer.slice(0, newline));
+          finish(response?.id === request.id && response?.error === undefined && response?.result !== undefined);
+        } catch {
+          finish(false);
+        }
+      });
+      socket.on("error", () => finish(false));
+      socket.on("end", () => finish(false));
+    } catch {
+      finish(false);
+    }
+  });
+}
+
+export async function reportInitialAgentPresence(env = process.env, connect = endpoint => net.createConnection(endpoint)) {
   if (env.HERDR_ENV !== "1" || env.HERDR_PLUGIN_ID !== "local.pi" || !env.HERDR_SOCKET_PATH || !env.HERDR_PANE_ID) return false;
-  const retryDelays = [100, 250, 500];
-  const attempt = retry => {
+  const retryDelays = [0, 100, 250, 500];
+  for (let retry = 0; retry < retryDelays.length; retry++) {
+    const delay = retryDelays[retry];
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
     const request = {
       id: `herdr:pi:bootstrap:${Date.now()}:${Math.random().toString(36).slice(2)}`,
       method: "pane.report_agent",
       params: { pane_id: env.HERDR_PANE_ID, source: "herdr:pi", agent: "pi", state: "idle", seq: Date.now() * 1000 + retry },
     };
-    let settled = false;
-    const retryLater = () => {
-      if (settled) return;
-      settled = true;
-      const delay = retryDelays[retry];
-      if (delay === undefined) return;
-      const timer = setTimeout(() => attempt(retry + 1), delay);
-      timer.unref?.();
-    };
-    try {
-      const socket = connect(herdrSocketEndpoint(env.HERDR_SOCKET_PATH));
-      const timer = setTimeout(() => { socket.destroy(); retryLater(); }, 500);
-      timer.unref?.();
-      socket.on("connect", () => socket.write(`${JSON.stringify(request)}\n`));
-      socket.on("data", data => {
-        clearTimeout(timer);
-        socket.destroy();
-        if (String(data).includes('"error"')) retryLater();
-        else settled = true;
-      });
-      socket.on("error", () => { clearTimeout(timer); retryLater(); });
-      socket.on("close", () => clearTimeout(timer));
-    } catch {
-      retryLater();
-    }
-  };
-  attempt(0);
-  return true;
+    if (await sendAgentReport(request, herdrSocketEndpoint(env.HERDR_SOCKET_PATH), connect)) return true;
+  }
+  return false;
 }
 
 // Only the setup-owned manifest supplies the entrypoint. Per-launch input is
@@ -97,7 +110,7 @@ export async function main() {
   // Register the plugin pane immediately. Fresh Pi sessions may not have a
   // session reference when the generated lifecycle extension first runs.
   // That extension subsequently attaches the session and owns live state.
-  reportInitialAgentPresence();
+  await reportInitialAgentPresence();
   // Herdr's preview can replace an exited focused terminal with a shell.
   // Explicitly retire only this plugin-owned pane at process exit instead.
   if (process.env.HERDR_PLUGIN_ID === "local.pi" && process.env.HERDR_PANE_ID && process.env.HERDR_SOCKET_PATH) {

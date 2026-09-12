@@ -38,6 +38,12 @@ it("preserves an explicit launch title literally and performs no naming request"
   expect(f.exec.mock.calls.some(call => call[1]?.[0] === "tab" && call[1]?.[1] === "get")).toBe(false);
 });
 
+it("preserves the plan child pane label", async () => {
+  vi.stubEnv("PI_HERDR_TAB_LABEL", "my-plan"); vi.stubEnv("PI_HERDR_TAB_TITLE", "my-plan"); vi.stubEnv("PI_HERDR_TAB_TITLE_EXPLICIT", "1");
+  const f = fixture(); await f.start();
+  expect(f.exec).not.toHaveBeenCalled();
+});
+
 it("resets inherited explicit metadata on a new session", async () => {
   vi.stubEnv("PI_HERDR_TAB_TITLE", "My Plan"); vi.stubEnv("PI_HERDR_TAB_TITLE_EXPLICIT", "1");
   const f = fixture(); await f.start("new");

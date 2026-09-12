@@ -109,7 +109,9 @@ on the target. Do not mark a task containing cleanup done before cleanup succeed
 if cleanup remains unfinished, report CLEANUP PENDING rather than COMPLETED.
 Rerun affected checks only if conflict resolution changed checked content. Remove the task worktree only when integration
 succeeded and it has no uncommitted or unmerged work. Push and deployment require
-separate authorization. Operator manual testing does not block this closeout.
+explicit user authorization, which may already be recorded in this plan; a later
+execution command does not revoke recorded authorization unless the user says so.
+Operator manual testing does not block this closeout.
 
 ### Final response
 

@@ -1,5 +1,23 @@
 # Agent instruction feedback log
 
+## AIF-052 - Preserve plan-recorded push and deployment authorization
+
+- **Reference:** Operator correction after `/do-it` stopped the database lifecycle plan before its authorized push and dev deployment, 2026-09-12.
+- **Feedback:** When the user explicitly authorizes push or deployment as part of a plan, invoking plan execution should carry that authorization forward. Generic command wording must not silently revoke it.
+- **Finding:** The selected plan recorded task-related push, deployment, monitoring, and one dev reset authorization. `/do-it` nevertheless said its invocation did not authorize push or deployment, and the assistant treated that as a newer revocation.
+- **Decision:** Make `/do-it` inherit explicit push/deployment authority recorded in the selected plan while neither adding authority absent from the plan nor overriding a later user revocation. Align the plan template with the same rule.
+- **Related:** AIF-016, AIF-021, AIF-023, APR-033.
+- **Status:** Prompt and template updated; future adherence remains unverified.
+
+## AIF-051 - Diagnose generated behavior before refining a build prompt
+
+- **Reference:** Operator correction after the Damage Control prompt hill-climb, 2026-09-12.
+- **Feedback:** Rephrasing an outcome already stated in the prompt is not a justified refinement. A prompt iteration needs evidence about why the generated implementation failed and a concrete reason the proposed change addresses that cause.
+- **Finding:** Iteration 1 blocked a routine redirected project write despite the prompt already allowing recoverable project edits. The assistant added another example and restated the same outcome without inspecting the generated analyzer or policy. Iteration 2 retained the failure and added generated-check, capability, and structural regressions.
+- **Recommendation:** After hidden grading, inspect the generated implementation outside the builder. Distinguish prompt omission or ambiguity from builder noncompliance and run variance. Edit only for a diagnosed prompt-level cause, state the predicted behavioral change, use a contrasting positive/negative case, and reject candidates that do not match the prediction or regress safety. Do not spend another iteration paraphrasing an existing requirement.
+- **Related:** APR-032, AIF-032, APR-002.
+- **Status:** Feedback recorded; a new experiment requires separate execution authority.
+
 ## AIF-050 - Do not let `/clear` cleanup failures veto session clearing
 
 - **Reference:** Operator correction after `/clear` refused to start a new session following two failed visible-subagent launches, 2026-09-12.

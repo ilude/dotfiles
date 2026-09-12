@@ -1,5 +1,24 @@
 # Agent process failure log
 
+## APR-033 - `/do-it` overrode recorded deployment authorization
+
+- **Reference:** Execution of `.specs/database-deployment-lifecycle/plan.md`, 2026-09-12.
+- **Observed:** The plan explicitly recorded authorization for task-related push, deployment, monitoring, and one dev reset. The assistant completed local T1-T4 work but stopped before T5 because `/do-it` said its invocation did not authorize push or deployment.
+- **Impact:** The authorized plan did not proceed through its required live proof, regression work, integration, or closeout. The assistant also initially attributed generated prompt text to the operator personally.
+- **Finding:** The command's generic authority sentence conflicted with plan-carried authority and was treated as a revocation despite no user statement withdrawing permission.
+- **Remediation:** `/do-it` now preserves explicit push/deployment authorization recorded in the selected plan, and the plan template states that execution does not revoke it unless the user does so.
+- **Related:** AIF-052, AIF-016, AIF-021, AIF-023.
+- **Status:** Instruction correction implemented; interrupted plan execution remains to be resumed separately.
+
+## APR-032 - Prompt refinement paraphrased an existing requirement without diagnosis
+
+- **Reference:** Damage Control prompt hill-climb and operator follow-up, 2026-09-12.
+- **Observed:** The first generated candidate blocked an ordinary project-file redirection. The assistant added more wording saying that this operation should be allowed, although the prompt already required ordinary recoverable project edits to remain quiet. It did not first inspect the candidate's implementation to identify the failure mechanism.
+- **Impact:** The second build spent an iteration on an unsupported hypothesis. It still blocked the routine write, failed one generated test, omitted the conventional validation scripts expected by the runner, and produced more hidden capability failures. The candidate was rejected and the wording was reverted.
+- **Remediation:** AIF-051 requires generated-code diagnosis, prompt-level cause classification, and an explicit predicted behavior before another prompt edit. The failed wording remains negative evidence, not a candidate to retry.
+- **Related:** AIF-051, AIF-032, APR-002.
+- **Status:** Incident recorded; no new loop has been executed.
+
 ## APR-031 - Unrequested cleanup gate blocked `/clear`
 
 - **Reference:** Operator-reported `/clear` failure after two strategist launches returned `pane_not_found`, 2026-09-12.

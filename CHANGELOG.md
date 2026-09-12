@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-12: Correct default Pi Herdr agent and status presentation
+
+**Fixed:** Direct Pi plugin launches now wait for Herdr to acknowledge their bounded initial agent report, parse complete matching responses, and retry rejected or failed attempts before starting Pi. `/plans` children retain their plan pane labels instead of being relabeled as orchestrators, and failed subagent outcomes use the error color rather than the warning color.
+
+**Clarified:** Herdr owns sidebar dots, symbols, colors, and client-relative idle-versus-done presentation. Pi continues to report working, blocked, and idle lifecycle state without overriding those client semantics. Registration failure remains non-fatal, plan launch and focus behavior are unchanged, and generated Herdr integration source remains unmodified.
+
 ## 2026-09-12: Share Dolos with linked worktrees and Herdr Pi
 
 **Fixed:** The installer now places the repository-built Dolos command in `~/.local/bin`, which is available to shell and direct Herdr Pi launches. Dolos pre-commit hooks prefer a checkout-local binary and fall back to that shared command, so linked worktrees no longer require separate builds.

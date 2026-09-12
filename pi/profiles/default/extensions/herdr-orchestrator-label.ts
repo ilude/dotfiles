@@ -60,12 +60,12 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
     const initialTitle = event.reason === "new" ? cwdTitle : (restored?.ownedTitle ?? inheritedTitle ?? cwdTitle);
     const initialExplicit = event.reason !== "new" && !restored && inheritedExplicit;
     const commands: string[][] = [];
-    if (event.reason === "startup") commands.push(["pane", "rename", pane, "Orchestrator"]);
+    if (event.reason === "startup" && !process.env.PI_HERDR_TAB_LABEL) commands.push(["pane", "rename", pane, "Orchestrator"]);
     // The child establishes its own initial title. Launchers never perform a late rename.
-    if (!restored) commands.push(["tab", "rename", tab, initialTitle]);
+    if (!restored && !process.env.PI_HERDR_TAB_LABEL) commands.push(["tab", "rename", tab, initialTitle]);
     for (const args of commands) {
       try { await cliFor(pi)(args, { timeoutMs: 2_000 }); }
-      catch { /* Label and naming failures are deliberately log-only. */ }
+      catch { /* Label failures are deliberately silent and do not block startup. */ }
     }
     owner = new HerdrTabNamingOwner({
       target: { tabId: tab, paneId: pane, workspaceId: process.env.HERDR_WORKSPACE_ID, sessionId: ctx.sessionManager.getSessionId() },

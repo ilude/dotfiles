@@ -51,6 +51,16 @@ describe("subagent presentation", () => {
     expect(text).not.toContain("internal JSON should not be primary");
   });
 
+  it("uses error color only for failed settled outcomes", () => {
+    const fg = vi.fn((_color: string, text: string) => text);
+    const trackingTheme = { fg, bold: (text: string) => text };
+    renderSubagentResult({ details: { ...base, status: "settled", outcome: "failed" } }, {}, trackingTheme, {});
+    expect(fg.mock.calls[0]?.[0]).toBe("error");
+    fg.mockClear();
+    renderSubagentResult({ details: { ...base, status: "settled", outcome: "blocked" } }, {}, trackingTheme, {});
+    expect(fg.mock.calls[0]?.[0]).toBe("warning");
+  });
+
   it("keeps question content and start/activity state visible", () => {
     const questionRecord = { ...base, status: "waiting" as const, phase: "waiting-parent" as const, result: "Should generated files be included?" };
     const question = plain(result(questionRecord), 80);
