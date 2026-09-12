@@ -31,12 +31,17 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
   pi.on("session_start", () => owned.clear());
   pi.registerTool({
     name: "herdr_layout", label: "Herdr layout",
-    description: "Inspect/create process panes, or resume a Pi session UUID in a new focused tab with one call. Resume uses the saved cwd and active profile, checks startup, and returns tab/pane IDs. Split/tab preserve focus.",
-    parameters: Type.Object({ action: choice(["list", "split", "tab", "resume"]), session: Type.Optional(Type.String({ description: "Existing session UUID, required for resume" })), direction: Type.Optional(choice(["right", "down"])), cwd: Type.Optional(Type.String()) }),
+    description: "Inspect/create process panes, tabs, or workspaces, or resume a Pi session UUID in a focused tab or separate workspace. Resume uses the saved cwd and active profile, checks startup, and returns created IDs.",
+    parameters: Type.Object({
+      action: choice(["list", "split", "tab", "workspace", "resume"]),
+      session: Type.Optional(Type.String({ description: "Existing session UUID, required for resume" })),
+      placement: Type.Optional(choice(["tab", "workspace"])), direction: Type.Optional(choice(["right", "down"])),
+      cwd: Type.Optional(Type.String()), label: Type.Optional(Type.String({ maxLength: 80 })), focus: Type.Optional(Type.Boolean()),
+    }),
     async execute(_id, params, signal, _update, ctx) {
       const caller = herdrContext();
       if (params.action === "resume") {
-        return text(await resumeHerdrSession(required(params.session, "session"), join(getAgentDir(), "sessions"), cli, signal));
+        return text(await resumeHerdrSession(required(params.session, "session"), join(getAgentDir(), "sessions"), cli, signal, params.placement || "tab"));
       }
       if (params.action === "list") {
         const panes = result(await cli(["pane", "list", "--workspace", caller.workspace], { signal })).panes;
@@ -45,10 +50,18 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
       const cwd = params.cwd || ctx.cwd;
       const args = params.action === "split"
         ? ["pane", "split", "--pane", caller.pane, "--direction", params.direction || "right", "--cwd", cwd, "--no-focus"]
-        : ["tab", "create", "--workspace", caller.workspace, "--cwd", cwd, "--no-focus"];
+        : params.action === "workspace"
+          ? ["workspace", "create", "--cwd", cwd, ...(params.label ? ["--label", params.label] : []), params.focus ? "--focus" : "--no-focus"]
+          : ["tab", "create", "--workspace", caller.workspace, "--cwd", cwd, "--no-focus"];
       const response = result(await cli(args, { signal }));
       const pane = response.pane || response.root_pane;
       const compact = compactPane(pane); owned.add(compact.pane);
+      if (params.action === "workspace") {
+        const workspace = response.workspace?.workspace_id;
+        const tab = response.tab?.tab_id;
+        if (!workspace || !tab) throw new Error("Herdr omitted workspace or tab identity");
+        return text({ ...compact, workspace, tab, focused: params.focus === true });
+      }
       return text(compact);
     },
   });

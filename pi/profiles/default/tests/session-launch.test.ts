@@ -63,6 +63,13 @@ it("preserves branch session and plan inputs", async () => {
 	expect(planOpen).toContain("--no-focus");
 });
 
+it("opens in an explicitly supplied workspace instead of the caller workspace", async () => {
+	fixture();
+	await createHerdrPiTab(process.cwd(), "fresh", undefined, undefined, false, "w10");
+	const open = vi.mocked(execFile).mock.calls[0][1] as string[];
+	expect(open.slice(open.indexOf("--workspace"), open.indexOf("--workspace") + 2)).toEqual(["--workspace", "w10"]);
+});
+
 it("reports missing workspace as a safe prelaunch failure", async () => {
 	vi.stubEnv("HERDR_ENV", "1");
 	vi.stubEnv("HERDR_WORKSPACE_ID", "");

@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { readSessionHeader } from "./log-analytics/sessions.ts";
 import { result, type HerdrCli } from "./herdr-cli.ts";
-import { createHerdrPiTab } from "../extensions/session-launch.ts";
+import { createHerdrPiTab, HerdrPiTabLaunchError } from "../extensions/session-launch.ts";
 
 /** Locate an exact UUID by filename, then read only its native session header. */
 export async function resolveResumeSession(session: string, sessionsRoot: string, signal?: AbortSignal) {
@@ -24,11 +24,33 @@ export async function resolveResumeSession(session: string, sessionsRoot: string
 }
 
 /** Resume without shell input. A partial launch is returned, never retried. */
-export async function resumeHerdrSession(session: string, sessionsRoot: string, cli: HerdrCli, signal?: AbortSignal) {
+export async function resumeHerdrSession(session: string, sessionsRoot: string, cli: HerdrCli, signal?: AbortSignal, placement: "tab" | "workspace" = "tab") {
   const target = await resolveResumeSession(session, sessionsRoot, signal);
   signal?.throwIfAborted();
-  const launched = await createHerdrPiTab(target.cwd, basename(target.cwd.replace(/[\\/]$/, "")) || "pi", target.file);
-  const receipt = { session: target.session, tab: launched.tabId, pane: launched.paneId, cwd: target.cwd, focused: true };
+  const title = basename(target.cwd.replace(/[\\/]$/, "")) || "pi";
+  let workspace: string | undefined;
+  let rootPane: string | undefined;
+  if (placement === "workspace") {
+    const created = result(await cli(["workspace", "create", "--cwd", target.cwd, "--label", title, "--no-focus"], { signal }));
+    workspace = created.workspace?.workspace_id;
+    rootPane = created.root_pane?.pane_id;
+    if (!workspace || !rootPane) throw new Error("Herdr workspace create omitted workspace or root pane identity; inspect before retrying");
+  }
+  let launched: Awaited<ReturnType<typeof createHerdrPiTab>>;
+  try {
+    launched = await createHerdrPiTab(target.cwd, title, target.file, undefined, false, workspace);
+  } catch (error) {
+    if (workspace && error instanceof HerdrPiTabLaunchError) {
+      throw new HerdrPiTabLaunchError(error.message, { mayHaveLaunched: error.mayHaveLaunched, tabId: error.tabId, paneId: error.paneId, workspaceId: workspace });
+    }
+    throw error;
+  }
+  let cleanupIssue: string | undefined;
+  if (rootPane) {
+    try { await cli(["pane", "close", rootPane], { signal }); }
+    catch (error) { cleanupIssue = `Initial shell pane ${rootPane} remains: ${error instanceof Error ? error.message : String(error)}`; }
+  }
+  const receipt = { session: target.session, workspace, tab: launched.tabId, pane: launched.paneId, cwd: target.cwd, focused: true, cleanupIssue };
   const deadline = Date.now() + 30_000;
   let issue = "Pi has not reported the resumed session yet";
   while (launched.paneId && Date.now() < deadline && !signal?.aborted) {

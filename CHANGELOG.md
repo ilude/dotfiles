@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-12: Add separate Herdr workspace launches
+
+**Added:** Default Pi's `herdr_layout` tool can now create a Herdr workspace directly or resume an existing Pi session into a new workspace using its saved cwd. Results capture Herdr's returned workspace, tab, and pane identities rather than predicting them.
+
+**Preserved:** Existing resume calls still open a focused tab in the caller's workspace. Separate-workspace launches retain partial identity on ambiguous failures, do not retry automatically, and report initial shell-pane cleanup failures without hiding a successfully launched Pi session.
+
 ## 2026-09-12: Resolve current Pi and Herdr releases during installation
 
 **Changed:** Both installers now resolve Pi's latest stable GitHub release before the pnpm update, and the Windows installer compares installed Herdr with its latest stable GitHub release before deciding whether to run Herdr's official installer. The shared Python helper supports both projects and optional authenticated GitHub requests.

@@ -52,13 +52,23 @@ it("resumes from only action and session with focused launch defaults", async ()
   vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
   const registered: Record<string, any> = {};
   const cli = vi.fn<HerdrCli>();
-  vi.mocked(resumeHerdrSession).mockResolvedValue({ session: "saved-id", tab: "w1:t2", pane: "w1:p2", cwd: ctx.cwd, focused: true, ready: true, state: "idle" });
+  vi.mocked(resumeHerdrSession).mockResolvedValue({ session: "saved-id", workspace: undefined, tab: "w1:t2", pane: "w1:p2", cwd: ctx.cwd, focused: true, cleanupIssue: undefined, ready: true, state: "idle" });
   tools({ registerTool(t: any) { registered[t.name] = t; }, on() {} } as unknown as ExtensionAPI, cli);
   const answer = await registered.herdr_layout.execute("id", { action: "resume", session: "saved-id" }, undefined, undefined, ctx);
-  expect(resumeHerdrSession).toHaveBeenCalledWith("saved-id", expect.stringMatching(/[\\/]sessions$/), cli, undefined);
+  expect(resumeHerdrSession).toHaveBeenCalledWith("saved-id", expect.stringMatching(/[\\/]sessions$/), cli, undefined, "tab");
   expect(JSON.parse(answer.content[0].text)).toMatchObject({ focused: true, ready: true, tab: "w1:t2", pane: "w1:p2" });
   await expect(registered.herdr_layout.execute("id", { action: "resume" }, undefined, undefined, ctx)).rejects.toThrow("session required");
   expect(cli).not.toHaveBeenCalled();
+});
+
+it("creates a workspace with captured identities and requested focus", async () => {
+  vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
+  const registered: Record<string, any> = {};
+  const cli = vi.fn<HerdrCli>().mockResolvedValue(json({ workspace: { workspace_id: "w2" }, tab: { tab_id: "w2:t1" }, root_pane: { pane_id: "w2:p1", tab_id: "w2:t1", workspace_id: "w2" } }));
+  tools({ registerTool(t: any) { registered[t.name] = t; }, on() {} } as unknown as ExtensionAPI, cli);
+  const answer = await registered.herdr_layout.execute("id", { action: "workspace", cwd: "C:/project", label: "project", focus: true }, undefined, undefined, ctx);
+  expect(cli).toHaveBeenCalledWith(["workspace", "create", "--cwd", "C:/project", "--label", "project", "--focus"], { signal: undefined });
+  expect(JSON.parse(answer.content[0].text)).toMatchObject({ workspace: "w2", tab: "w2:t1", pane: "w2:p1", focused: true });
 });
 
 it("defends ownership and own pane, bounds reads and accepts silent close", async () => {

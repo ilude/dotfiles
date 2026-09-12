@@ -130,13 +130,15 @@ export class HerdrPiTabLaunchError extends Error {
 	readonly mayHaveLaunched: boolean;
 	readonly tabId?: string;
 	readonly paneId?: string;
+	readonly workspaceId?: string;
 
-	constructor(message: string, fields: { mayHaveLaunched: boolean; tabId?: string; paneId?: string }) {
+	constructor(message: string, fields: { mayHaveLaunched: boolean; tabId?: string; paneId?: string; workspaceId?: string }) {
 		super(message);
 		this.name = "HerdrPiTabLaunchError";
 		this.mayHaveLaunched = fields.mayHaveLaunched;
 		this.tabId = fields.tabId;
 		this.paneId = fields.paneId;
+		this.workspaceId = fields.workspaceId;
 	}
 }
 
@@ -173,9 +175,9 @@ function createHerdrTab(cwd: string, title: string): string {
 	return paneId;
 }
 
-export async function createHerdrPiTab(cwd: string, title: string, sessionFile?: string, planPath?: string, titleExplicit = Boolean(planPath)): Promise<{ tabId: string; paneId?: string }> {
-	const workspace = process.env.HERDR_WORKSPACE_ID;
-	if (!workspace) throw new HerdrPiTabLaunchError("HERDR_WORKSPACE_ID is not set.", { mayHaveLaunched: false });
+export async function createHerdrPiTab(cwd: string, title: string, sessionFile?: string, planPath?: string, titleExplicit = Boolean(planPath), workspaceId?: string): Promise<{ tabId: string; paneId?: string }> {
+	const workspace = workspaceId || process.env.HERDR_WORKSPACE_ID;
+	if (!workspace) throw new HerdrPiTabLaunchError("HERDR_WORKSPACE_ID is not set and no workspace was supplied.", { mayHaveLaunched: false });
 	if (sessionFile && planPath) throw new HerdrPiTabLaunchError("A Herdr Pi tab cannot resume a session and launch a plan together.", { mayHaveLaunched: false });
 	const args = ["plugin", "pane", "open", "--plugin", "local.pi", "--entrypoint", "pi", "--placement", "tab", "--workspace", workspace,
 		"--cwd", process.platform === "win32" ? msysPathToWindows(cwd) : cwd,

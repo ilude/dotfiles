@@ -26,8 +26,18 @@ describe("one-call Herdr resume", () => {
   it("launches the exact saved session and cwd, then confirms its native session identity", async () => {
     const cli = vi.fn<HerdrCli>().mockResolvedValue(JSON.stringify({ result: { agent: { agent: "pi", agent_session: { value: session }, agent_status: "idle" } } }));
     expect(await resumeHerdrSession(session, root, cli)).toMatchObject({ session, tab: "w1:t2", pane: "w1:p2", focused: true, ready: true, state: "idle" });
-    expect(createHerdrPiTab).toHaveBeenCalledExactlyOnceWith(process.cwd(), expect.any(String), file);
+    expect(createHerdrPiTab).toHaveBeenCalledExactlyOnceWith(process.cwd(), expect.any(String), file, undefined, false, undefined);
     expect(cli).toHaveBeenCalledExactlyOnceWith(["agent", "get", "w1:p2"], { signal: undefined });
+  });
+  it("creates a separate workspace, launches there, and removes its initial shell pane", async () => {
+    const cli = vi.fn<HerdrCli>()
+      .mockResolvedValueOnce(JSON.stringify({ result: { workspace: { workspace_id: "w2" }, root_pane: { pane_id: "w2:p1" } } }))
+      .mockResolvedValueOnce("")
+      .mockResolvedValueOnce(JSON.stringify({ result: { agent: { agent: "pi", agent_session: { value: session }, agent_status: "idle" } } }));
+    vi.mocked(createHerdrPiTab).mockResolvedValueOnce({ tabId: "w2:t2", paneId: "w2:p2" });
+    expect(await resumeHerdrSession(session, root, cli, undefined, "workspace")).toMatchObject({ workspace: "w2", tab: "w2:t2", pane: "w2:p2", ready: true });
+    expect(createHerdrPiTab).toHaveBeenCalledWith(process.cwd(), expect.any(String), file, undefined, false, "w2");
+    expect(cli.mock.calls[1]?.[0]).toEqual(["pane", "close", "w2:p1"]);
   });
   it("does not launch missing sessions or retry ambiguous launches", async () => {
     const cli = vi.fn<HerdrCli>();
