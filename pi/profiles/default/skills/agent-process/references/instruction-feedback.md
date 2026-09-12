@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-053 - Never redirect shell output to NUL
+
+- **Reference:** Operator report of recurring literal `NUL` files and a Damage Control cleanup prompt, 2026-09-12.
+- **Feedback:** Use the concise rule “Never redirect to `NUL` in a shell.” Do not add shell-specific alternatives the model already knows.
+- **Finding:** A literal reserved-name file existed in a Windows worktree. The exact producer was not established, so this records the recurring prevention boundary without attributing the incident to a specific command or tool.
+- **Decision:** Add the rule to the default profile so it applies across project repositories.
+- **Related:** AIF-001, AIF-004.
+- **Status:** Instruction updated; future adherence remains unverified.
+
 ## AIF-052 - Preserve plan-recorded push and deployment authorization
 
 - **Reference:** Operator correction after `/do-it` stopped the database lifecycle plan before its authorized push and dev deployment, 2026-09-12.

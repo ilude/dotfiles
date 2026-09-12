@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-12: Prevent literal Windows NUL files
+
+**Changed:** Default Pi instructions now prohibit redirecting to `NUL` in a shell, preventing shell commands from leaving literal reserved-name files in Windows worktrees.
+
 ## 2026-09-12: Resolve repository-local skills for subagents
 
 **Fixed:** Default Pi subagents can resolve named skills from a trusted repository's `.pi/skills/` directory, searching from the assigned working directory up to the repository root before falling back to profile skills. Nested delegations retain the same trusted-project scope.

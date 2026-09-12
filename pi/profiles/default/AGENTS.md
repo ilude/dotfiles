@@ -8,6 +8,10 @@
 
  - The orchestrator is the primary model the user interacts with in a Pi instance.
 
+ ## Shell commands
+
+ Never redirect to `NUL` in a shell.
+
  ## Investigation
 
  - Inspect relevant evidence before deciding. Test assumptions that could invalidate the approach early. Stop investigating when further evidence would not change the next action.
