@@ -91,7 +91,7 @@ Existing JSONL remains authoritative. Search/header discovery do not load DuckDB
 
 ## Default profile web tools
 
-The default profile provides `web_search` (SearXNG) and `web_fetch` (local readable extraction with automatic public-URL Jina fallback). A tool-free Luna call screens results before they enter context; clean content has no banner, while content Luna flags as prompt injection is blocked. See [setup, behavior, and limitations](profiles/default/docs/web-tools.md).
+The default profile provides `web_search` (SearXNG with Serper and Brave Search rate-limit fallback) and `web_fetch` (local readable extraction with automatic public-URL Jina fallback). A tool-free Luna call screens results before they enter context; clean content has no banner, while content Luna flags as prompt injection is blocked. See [setup, behavior, and limitations](profiles/default/docs/web-tools.md).
 
 ## Default profile Herdr
 

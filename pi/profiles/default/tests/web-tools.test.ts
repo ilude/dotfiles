@@ -94,11 +94,47 @@ describe("tool integration", () => {
     await registered.get("web_search").execute("id", { query: "test", engines });
     expect(new URL(String((fetchMock.mock.calls as unknown as Array<[unknown]>)[0][0])).searchParams.get("engines")).toBe(expected);
   });
-  it("reports empty backend failures as errors instead of no matches", async () => {
+  it("reports non-rate-limit backend failures as errors instead of no matches", async () => {
     const { registered } = tools();
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ results: [], unresponsive_engines: [["duckduckgo", "CAPTCHA"]] }) })));
     await expect(registered.get("web_search").execute("id", { query: "test" })).rejects.toThrow("CAPTCHA");
     expect(complete).not.toHaveBeenCalled();
+  });
+  it("falls back from rate-limited SearXNG to Serper", async () => {
+    const { registered } = tools();
+    vi.stubEnv("SERPER_API_KEY", "serper-test");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ organic: [{ title: "Serper result", link: "https://example.com", snippet: "Found" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await registered.get("web_search").execute("id", { query: "test", num_results: 3 });
+    expect(result.details.backend).toBe("serper");
+    expect(result.content[0].text).toContain("Serper result");
+    expect(fetchMock.mock.calls[1][0]).toBe("https://google.serper.dev/search");
+    expect(fetchMock.mock.calls[1][1].headers["X-API-KEY"]).toBe("serper-test");
+  });
+  it("falls back from exhausted Serper to Brave Search", async () => {
+    const { registered } = tools();
+    vi.stubEnv("SERPER_API_KEY", "serper-test");
+    vi.stubEnv("BRAVE_SEARCH_API_KEY", "brave-test");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ results: [], unresponsive_engines: [["google", "too many requests"]] }) })
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ web: { results: [{ title: "Brave result", url: "https://example.org", description: "Found" }] } }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await registered.get("web_search").execute("id", { query: "test" });
+    expect(result.details.backend).toBe("brave");
+    expect(result.content[0].text).toContain("Brave result");
+    expect(String(fetchMock.mock.calls[2][0])).toContain("api.search.brave.com/res/v1/web/search");
+    expect(fetchMock.mock.calls[2][1].headers["X-Subscription-Token"]).toBe("brave-test");
+  });
+  it("keeps explicit engine searches on SearXNG", async () => {
+    const { registered } = tools();
+    vi.stubEnv("SERPER_API_KEY", "serper-test");
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 429 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(registered.get("web_search").execute("id", { query: "test", engines: ["github"] })).rejects.toThrow("SearXNG HTTP 429");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it("preserves partial results and screens their backend warning", async () => {
     const { registered } = tools();

@@ -8,14 +8,24 @@ extension; no legacy imports or global `~/.env` loading are used.
 - `web_search`: SearXNG titles, URLs, snippets, and dates. Supports `query`,
   `exact_phrases`, `exclude_terms`, `site`, `num_results` (1-20; default 5),
   and optional `engines` (SearXNG engine names). Uses `SEARXNG_URL` from the
-  process environment, otherwise `https://searxng.ilude.com/search`.
+  process environment, otherwise `https://searxng.ilude.com/search`. General
+  searches fall back to Serper (`SERPER_API_KEY`) when SearXNG returns HTTP 429
+  or no results with rate-limit-related engine failures. If Serper then returns
+  HTTP 402/429, reports credit or quota exhaustion in a 403 response, or is not
+  configured, Brave Search (`BRAVE_SEARCH_API_KEY`) is used. Each key is read
+  lazily from its exact Bitwarden Secrets Manager record through the existing
+  `BITWARDEN_ACCESS_KEY`; a same-named process environment value overrides BWS.
+  Other transport, authentication, malformed-response, and backend errors remain
+  visible instead of silently changing providers.
   Inherits the server's general-search defaults (Google + Brave on the managed
   endpoint), replacing the temporary DuckDuckGo-only workaround. Engine choice
   belongs to the service, not the client. An `engines` query parameter already present in
   `SEARXNG_URL` is preserved; the tool's `engines` argument overrides it. Pass
   `engines: []` to use the server defaults or, for example, `["github"]` for
-  repository searches. There are no automatic engine retries or failover loops.
-  Backend failures are shown alongside partial results; zero results with engine
+  repository searches. Explicit `engines` searches remain SearXNG-only because
+  the fallback APIs cannot preserve SearXNG engine selection. Partial SearXNG
+  results are retained rather than spending fallback quota. Backend failures are
+  shown alongside partial results; zero results with engine
   failures raises an error rather than claiming there were no matches. Results
   begin with `websearch: <query>` followed directly by the bounded result list.
 - `web_fetch`: HTTP(S) to readable Markdown, with direct handling for plain
@@ -30,7 +40,7 @@ extraction fails. This sends the original URL, including its query string, to
 `r.jina.ai`. Private/local URLs remain directly accessible and are not sent to
 Jina. Metadata checks also cover IPv4-mapped IPv6. Local Node fetching remains
 an inherited check-before-fetch path, not a complete DNS-pinning boundary. There are no domain allowlists or
-approval prompts. Search requests time out after 10 seconds. Pi cancellation
+approval prompts. The search fallback chain shares a 10-second deadline. Pi cancellation
 propagates into requests, extraction, and review; process failures are errors.
 
 Returned source content is bounded to 45000 bytes/1800 lines before review;

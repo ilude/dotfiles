@@ -1,5 +1,22 @@
 # Agent instruction feedback log
 
+## AIF-049 - Keep skill creation Pareto-focused
+
+- **Reference:** Operator review of the skill-creation research synthesis, 2026-09-11.
+- **Feedback:** Once the operator has decided to create a skill, the meta skill should not reopen that decision or impose an evaluation framework. Overly specific instructions consume context and can reduce model performance. The phrase “Pareto principle (80/20)” supplies general selection knowledge when paired with a concise definition of value.
+- **Decision:** Add a concise `skill-creation` skill that selects the smallest instruction set preventing consequential or recurring errors, relies on existing model judgment, uses precise discovery metadata and progressive disclosure, calibrates control to fragility, and keeps examples positive-only.
+- **Related:** AIF-048, AIF-035, APR-030.
+- **Status:** Implemented locally; runtime discovery requires reload.
+
+## AIF-048 - Make TypeScript runtime boundaries explicit
+
+- **Reference:** Visible-subagent bootstrap failure investigation, 2026-09-11.
+- **Feedback:** A broad internal launch object was spread and asserted as a narrower `LaunchSpec`; adding `modelRegistry` later silently placed it in the serialized bootstrap and exceeded the transport limit. The legacy TypeScript skill covered package, module, runtime-validation, cleanup, and testing concerns but did not name this object-assertion boundary trap.
+- **Decision:** Add a concise default TypeScript skill based on the Google TypeScript Style Guide's typed-object guidance and the observed failure. At RPC, serialization, persistence, subprocess, and public API boundaries, explicitly construct the boundary type rather than spreading and asserting a broader object. Retain the legacy skill's high-value package ownership, module-resolution, static-versus-runtime, resource-cleanup, and focused-check guidance.
+- **Operator correction:** Keep executable skill examples positive-only. Copyable prohibited syntax can prime the model to reproduce it despite a bad label; retain incident specifics in the historical failure log instead.
+- **Related:** APR-030, AIF-035, AIF-032.
+- **Status:** Skill created; discovery and future adherence remain unverified.
+
 ## AIF-047 - Do not add plan execution reservations
 
 - **Reference:** Operator correction after `/plans` created a child that reported `Reservation is missing or already adopted`, 2026-09-11.

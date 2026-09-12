@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-030 - Internal model registry leaked into visible-subagent bootstrap
+
+- **Reference:** Operator-reported strategist `pane_not_found` failures, 2026-09-11.
+- **Observed:** Herdr created each child pane, but the visible host exited during authenticated bootstrap. Added bounded startup diagnostics exposed `Response exceeds byte limit` rather than the secondary missing-pane error.
+- **Finding:** Model-resolution work added `modelRegistry` to parent-only launch input. Runtime code spread that broad input into an object asserted as `LaunchSpec`; the assertion did not remove extra properties. Bootstrap serialization therefore included the model registry and exceeded the application channel's 256 KiB context-protection limit.
+- **Remediation:** Add a default TypeScript skill requiring explicit construction at serialized/runtime boundaries and preferring typed object declarations over assertions. The runtime defect itself remains to be corrected separately by projecting an explicit `LaunchSpec`; do not raise the transport limit as a substitute.
+- **Related:** AIF-048, AIF-041, APR-008.
+- **Status:** Diagnostic and instruction remediation implemented locally; runtime fix and post-reload live acceptance remain pending.
+
 ## APR-029 - Unrequested plan reservation blocked a valid launch
 
 - **Reference:** Operator-reported `/plans` child startup failure, 2026-09-11.

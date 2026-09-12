@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 // The setup-owned host is JavaScript outside this profile's TypeScript project.
 // @ts-expect-error exercised as its real ESM module
-import { createHostDiagnosticCapture, sanitizeHostDiagnostic } from "../../../scripts/pi-subagent-host.mjs";
+import { createHostDiagnosticCapture, hostStartupDiagnostic, sanitizeHostDiagnostic } from "../../../scripts/pi-subagent-host.mjs";
 import { safeDiagnostic } from "../lib/subagents/visible.ts";
 
 describe("visible subagent host diagnostics", () => {
@@ -12,6 +12,11 @@ describe("visible subagent host diagnostics", () => {
     capture.append(Buffer.from("ret-value\n\u001b[31mboom\u001b[0m"));
     expect(Buffer.concat(mirrored).toString()).toBe("startup failed token=secret-value\n\u001b[31mboom\u001b[0m");
     expect(capture.close()).toBe("startup failed token=[redacted]\nboom");
+  });
+
+  it("labels and sanitizes failures before child stderr capture is available", () => {
+    expect(hostStartupDiagnostic("requesting bootstrap", new Error("token=secret failed")))
+      .toBe("Visible host startup failed during requesting bootstrap: token=[redacted] failed");
   });
 
   it("never publishes an incomplete field when bounded capture truncates a secret", () => {

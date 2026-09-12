@@ -14,6 +14,37 @@ function fixture(){process.env.PI_SUBAGENT_BIN=process.execPath;process.env.PI_S
 const definition:AgentDefinition={name:"probe",description:"probe",tools:[],delegates:[],skills:[],prompt:"probe",source:"profile",filePath:"probe.md"};
 const input={definition,instructions:"first",cwd:here,model:"openai-codex/test",effort:"low" as const,skills:[],origin:"origin-a",retained:false,surface:"headless" as const};
 describe("process-local descendant ownership",()=>{
+ it("serializes only launch fields, excluding large parent-only dependencies",async()=>{
+  const runtime=fixture();
+  const previousHerdr=process.env.HERDR_ENV;
+  process.env.HERDR_ENV="1";
+  let bootstrap:unknown;
+  const start=vi.spyOn(VisibleChild.prototype,"start").mockImplementation(async function(this:VisibleChild){
+   bootstrap=this.parentMessage({type:"bootstrap"});
+   this.record.status="settled";
+   this.record.processState="exited";
+   return this.snapshot();
+  });
+  try{
+   // An additional enumerable runtime field reproduces the same object-spread
+   // failure without manufacturing a native ModelRegistry instance.
+   const launchInput={...input,surface:"visible" as const,catalog:new Map([[definition.name,definition]]),progress:vi.fn(),runtimeDependency:"x".repeat(300_000)};
+   await runtime.launch(launchInput,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+   const frame=JSON.stringify({ok:true,result:bootstrap});
+   expect(Buffer.byteLength(frame)).toBeLessThan(256*1024);
+   expect(bootstrap).toEqual({profile:join(here,".."),spec:{
+    definition,instructions:input.instructions,cwd:here,model:input.model,
+    effort:input.effort,skills:[],origin:input.origin,retained:false,
+    parentId:undefined,surface:"visible",displayName:expect.any(String),prompt:definition.prompt,
+   }});
+   expect(frame).not.toContain("runtimeDependency");
+   expect(frame).not.toContain('"catalog"');
+   expect(frame).not.toContain('"progress"');
+  }finally{
+   start.mockRestore();
+   if(previousHerdr===undefined)delete process.env.HERDR_ENV;else process.env.HERDR_ENV=previousHerdr;
+  }
+ });
  it("gives same-role children distinct names and resolves names within their origin",async()=>{
   const runtime=fixture();
   const first=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);

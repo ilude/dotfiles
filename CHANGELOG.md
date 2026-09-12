@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-09-11: Keep subagent runtime dependencies out of bootstrap
+
+**Fixed:** Child launch specifications are now explicitly constructed instead of spreading internal runtime inputs into the bootstrap response. The model registry introduced for bare-model resolution stays parent-side with the catalog and progress callback. This prevents unrelated runtime state from overflowing the existing 256 KiB transport limit. Model resolution and the transport limit are unchanged; a regression test checks the bootstrap shape with an oversized parent-only field.
+
+## 2026-09-11: Add Pareto-focused skill creation guidance
+
+**Added:** The default Pi profile now has a concise `skill-creation` meta skill for selecting and structuring high-value agent instructions after the operator has decided a skill is needed.
+
+**Approach:** The skill applies the Pareto principle to minimize context cost, preserves model judgment outside fragile constraints, uses progressive disclosure, and keeps examples positive-only.
+
+## 2026-09-12: Add tiered web search rate-limit fallback
+
+**Changed:** Default Pi general web searches now fall back from SearXNG to Serper, then Brave Search, when a provider reports rate limiting or exhausted quota. Serper and Brave credentials are loaded lazily from their exact Bitwarden Secrets Manager records and cached in process memory; same-named `SERPER_API_KEY` and `BRAVE_SEARCH_API_KEY` environment values remain explicit overrides. The selected backend remains structured result metadata.
+
+**Preserved:** Partial SearXNG results are retained, explicit SearXNG engine selections never change providers, non-rate-limit errors remain visible, and all returned source content follows the existing bounds and Luna screening path.
+
+## 2026-09-11: Add default TypeScript boundary guidance
+
+**Added:** The default Pi profile now has a concise TypeScript skill covering typed object construction, runtime and serialization boundaries, package/module conventions, resource cleanup, and focused checks. It explicitly rejects spreading a broad internal object and asserting it to a narrower RPC, persistence, subprocess, or public API contract.
+
+**Why:** A parent-only model registry was unintentionally retained at runtime by an asserted `LaunchSpec` object and serialized into visible-subagent bootstrap responses. The new rule captures that observed failure pattern while retaining the highest-value package, module, validation, cleanup, and testing guidance from the legacy TypeScript skill.
+
+## 2026-09-11: Preserve early visible-subagent startup diagnostics
+
+**Changed:** The Herdr visible-subagent host now labels and sanitizes failures from module loading, endpoint parsing, authenticated bootstrap, launch construction, host registration, and child spawn. When the authenticated parent channel is available, it reports that bounded diagnostic and briefly keeps the pane alive so the primary startup error is shown instead of a secondary `pane_not_found` layout failure.
+
+**Preserved:** Diagnostics retain the existing redaction and byte limits. Endpoint credentials and environment contents are not logged, and ordinary child stderr capture and process cleanup are unchanged.
+
 ## 2026-09-11: Remove unrequested plan execution reservations
 
 **Changed:** `/plans` now launches the selected `/do-it` directly without cross-process reservation files, token handoff, live ownership polling, or startup refusal. The picker still ignores repeated keys while its own launch request is pending, and ambiguous Herdr responses are not retried automatically.

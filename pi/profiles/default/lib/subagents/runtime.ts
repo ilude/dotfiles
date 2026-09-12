@@ -175,13 +175,21 @@ export class SubagentRuntime {
   this.names.set(input.origin,allocator);
   const catalog=new Map(input.catalog??[[input.definition.name,input.definition]]);
   const parentDelegates=input.parentId?this.contexts.get(input.parentId)?.input.definition.delegates:undefined;
-  const frozen={...input,cwd,displayName:allocator.allocate(),prompt:composedAgentPrompt(input.definition,catalog,parentDelegates)};
+  // Project the wire contract explicitly. Runtime dependencies must never enter
+  // the visible bootstrap response, even when Input gains new fields.
+  const spec:LaunchSpec={
+   definition:input.definition,instructions:input.instructions,cwd,
+   model:input.model,effort:input.effort,skills:[...input.skills],
+   origin:input.origin,retained:input.retained,parentId:input.parentId,
+   surface:input.surface,displayName:allocator.allocate(),
+   prompt:composedAgentPrompt(input.definition,catalog,parentDelegates),
+  };
   const child=input.surface==="visible"
-   ?new VisibleChild(frozen as LaunchSpec,resolve(childExtension),resolve(profileDir),this.layoutFor(input.origin))
-   :new RpcChild(frozen as LaunchSpec,resolve(childExtension),resolve(profileDir));
+   ?new VisibleChild(spec,resolve(childExtension),resolve(profileDir),this.layoutFor(input.origin))
+   :new RpcChild(spec,resolve(childExtension),resolve(profileDir));
   this.children.set(child.record.id,child);
   this.inert.delete(child.record.id);
-  this.contexts.set(child.record.id,{input:frozen,profile:resolve(profileDir),extension:resolve(childExtension),catalog});
+  this.contexts.set(child.record.id,{input:{...input,cwd},profile:resolve(profileDir),extension:resolve(childExtension),catalog});
   child.hasOutstandingChildren=()=>[...this.children.values()].some(c=>c.record.parentId===child.record.id&&(c.record.status!=="settled"||c.record.phase==="cleanup"))||[...this.pending.values()].some(r=>r.parentId===child.record.id);
   child.record.waitState=initialWaitState??(background?"background":"attached");
   child.onProgress=record=>{

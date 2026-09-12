@@ -34,21 +34,32 @@ export function createHostDiagnosticCapture(write=chunk=>process.stderr.write(ch
  };
 }
 
+export function hostStartupDiagnostic(stage,error) {
+ const detail=error instanceof Error?error.message:String(error);
+ return sanitizeHostDiagnostic([Buffer.from(`Visible host startup failed during ${stage}: ${detail}`)]);
+}
+
 // Called only by the existing setup-owned Herdr bootstrap. This per-launch host
 // retains the actual ChildProcess handle; it is not a worker service or registry.
 export async function hostSubagent(entry, profile, rawEndpoint) {
- const { createJiti }=createRequire(join(profile,"package.json"))("jiti");
- const jiti=createJiti(import.meta.url);
- const { requestParent }=await jiti.import("../pi/profiles/default/lib/subagents/transport.ts");
- const { childLaunch }=await jiti.import("../pi/profiles/default/lib/subagents/launch.ts");
- const endpoint=JSON.parse(rawEndpoint);
- if(!endpoint||!Number.isInteger(endpoint.port)||endpoint.port<1||endpoint.port>65535||typeof endpoint.token!=="string"||!/^[a-f0-9]{64}$/.test(endpoint.token))throw new Error("Invalid subagent endpoint");
- const bootstrap=await requestParent(endpoint,{type:"bootstrap"});
- if(!bootstrap||resolve(bootstrap.profile)!==resolve(profile)||bootstrap.spec?.surface!=="visible"||typeof bootstrap.spec.instructions!=="string")throw new Error("Invalid authenticated bootstrap");
- const config=childLaunch(bootstrap.spec,endpoint.child,profile,endpoint);
- const scratch=mkdtempSync(join(tmpdir(),"pi-visible-child-"));
- const intervention=join(scratch,"intervention.json");
- let child,parentGone=false,exited=false,stopPromise;
+ let requestParent,endpoint,stage="loading jiti";
+ try {
+  const { createJiti }=createRequire(join(profile,"package.json"))("jiti");
+  const jiti=createJiti(import.meta.url);
+  stage="loading host modules";
+  ({ requestParent }=await jiti.import("../pi/profiles/default/lib/subagents/transport.ts"));
+  const { childLaunch }=await jiti.import("../pi/profiles/default/lib/subagents/launch.ts");
+  stage="parsing endpoint";
+  endpoint=JSON.parse(rawEndpoint);
+  if(!endpoint||!Number.isInteger(endpoint.port)||endpoint.port<1||endpoint.port>65535||typeof endpoint.token!=="string"||!/^[a-f0-9]{64}$/.test(endpoint.token))throw new Error("Invalid subagent endpoint");
+  stage="requesting bootstrap";
+  const bootstrap=await requestParent(endpoint,{type:"bootstrap"});
+  if(!bootstrap||resolve(bootstrap.profile)!==resolve(profile)||bootstrap.spec?.surface!=="visible"||typeof bootstrap.spec.instructions!=="string")throw new Error("Invalid authenticated bootstrap");
+  stage="building child launch";
+  const config=childLaunch(bootstrap.spec,endpoint.child,profile,endpoint);
+  const scratch=mkdtempSync(join(tmpdir(),"pi-visible-child-"));
+  const intervention=join(scratch,"intervention.json");
+  let child,parentGone=false,exited=false,stopPromise;
  const userOwned=()=>{try{const state=JSON.parse(readFileSync(intervention,"utf8"));return state.token===endpoint.token&&state.userOwned===true}catch{return false}};
  const stop=()=>stopPromise??=(async()=>{
   if(!child?.pid||child.exitCode!==null||child.signalCode!==null)return;
@@ -56,10 +67,12 @@ export async function hostSubagent(entry, profile, rawEndpoint) {
   else {try{process.kill(-child.pid,"SIGTERM")}catch(error){if(error.code!=="ESRCH")throw error}}
  })();
  try{
+  stage="registering host";
   await requestParent(endpoint,{type:"host-started",payload:{pid:process.pid}});
   // Keep stdin/stdout attached to the pane, but retain a bounded stderr
   // diagnostic so the parent can distinguish startup failure from a clean exit.
   const stderrCapture=createHostDiagnosticCapture();
+  stage="spawning child";
   child=spawn(process.execPath,[entry,...config.args],{cwd:bootstrap.spec.cwd,env:{...process.env,...config.env,PI_SUBAGENT_INTERVENTION_FILE:intervention,PI_HERDR_SUBAGENT:""},stdio:["inherit","inherit","pipe"],shell:false,detached:process.platform!=="win32"});
   child.stderr?.on("data",chunk=>stderrCapture.append(chunk));
   const closed=new Promise((resolve,reject)=>{child.once("error",error=>{exited=true;reject(error)});child.once("close",(code,signal)=>{exited=true;resolve({code,signal})})});
@@ -87,5 +100,19 @@ export async function hostSubagent(entry, profile, rawEndpoint) {
    const env={...process.env},pane=env.HERDR_PANE_ID;
    process.once("exit",()=>spawnSync(env.HERDR_BIN_PATH||"herdr",["plugin","pane","close",pane],{env,stdio:"ignore",windowsHide:true,timeout:2000}));
   }
+  }
+ } catch(error) {
+  const diagnostic=hostStartupDiagnostic(stage,error);
+  process.stderr.write(`${diagnostic}\n`);
+  if(requestParent&&endpoint){
+   try {
+    await requestParent(endpoint,{type:"host-exit",payload:{code:1,signal:null,stderr:diagnostic}});
+    // Keep the pane present long enough for placement to finish and the parent
+    // to report the startup exception instead of a secondary pane_not_found.
+    await delay(5_000);
+    return;
+   } catch { /* The outer launcher will preserve the diagnostic on stderr. */ }
+  }
+  throw error;
  }
 }
