@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { resolvePreferredModel } from "../model-selection.ts";
 export const EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
@@ -23,11 +23,24 @@ export function resolveAgentEffort(name:string,model:string,requested:AgentEffor
  if(name==="steward"&&id.includes("luna")&&!(["high","xhigh"] as AgentEffort[]).includes(effort))throw new Error("Steward must use Luna high or xhigh effort");
  return effort;
 }
-export function resolveSkills(profile:string,defaults:readonly string[],requested:unknown=[]):string[]{
+interface SkillResolutionContext { cwd?: string; projectTrusted?: boolean }
+function projectSkill(name:string,cwd:string):string|undefined{
+ let directory=resolve(cwd);
+ while(true){
+  const file=join(directory,".pi","skills",name,"SKILL.md");
+  if(existsSync(file))return file;
+  if(existsSync(join(directory,".git")))return undefined;
+  const parent=dirname(directory);
+  if(parent===directory)return undefined;
+  directory=parent;
+ }
+}
+export function resolveSkills(profile:string,defaults:readonly string[],requested:unknown=[],context:SkillResolutionContext={}):string[]{
  if(!Array.isArray(requested)||!requested.every(name=>typeof name==="string"))throw new Error("Skills must be a list of names");
  return [...new Set([...defaults,...requested])].map(name=>{
   if(!/^[a-z][a-z0-9_-]*$/.test(name))throw new Error(`Invalid skill ${name}`);
-  const file=join(profile,"skills",name,"SKILL.md");
+  const project=context.projectTrusted&&context.cwd?projectSkill(name,context.cwd):undefined;
+  const file=project??join(profile,"skills",name,"SKILL.md");
   if(!existsSync(file))throw new Error(`Unknown skill ${name}`);
   return file;
  });

@@ -18,7 +18,7 @@ export class RuntimeCleanupError extends Error {
  readonly summary: CleanupSummary;
  constructor(summary: CleanupSummary) { super("Subagent cleanup did not close every owned resource"); this.name = "RuntimeCleanupError"; this.summary = summary; }
 }
-interface Input { definition:AgentDefinition;instructions:string;cwd:string;model:string;effort:AgentEffort;skills:string[];origin:string;retained:boolean;parentId?:string;surface:"headless"|"visible";catalog?:Map<string,AgentDefinition>;modelRegistry?:ModelRegistry;progress?:(record:ChildRecord)=>void }
+interface Input { definition:AgentDefinition;instructions:string;cwd:string;model:string;effort:AgentEffort;skills:string[];origin:string;retained:boolean;parentId?:string;surface:"headless"|"visible";catalog?:Map<string,AgentDefinition>;modelRegistry?:ModelRegistry;projectTrusted?:boolean;progress?:(record:ChildRecord)=>void }
 interface Context { input:Input;profile:string;extension:string;catalog:Map<string,AgentDefinition> }
 export interface InertRuntimeState { names: Record<string, string[]>; outcomes: Delivery[] }
 
@@ -138,7 +138,8 @@ export class SubagentRuntime {
    if(payload.surface!==undefined&&payload.surface!=="visible"&&payload.surface!=="headless")throw new Error("Invalid surface");
    const requestedModel=(payload.model as string|undefined)??definition.model;
    const resolved=resolveModel(requestedModel,undefined,context.input.modelRegistry),model=`${resolved.provider}/${resolved.id}`;
-   return this.launch({definition,instructions:payload.instructions,cwd:resolve(context.input.cwd,(payload.cwd as string|undefined)??"."),model,effort:resolveAgentEffort(definition.name,model,payload.effort as AgentEffort|undefined,definition.effort),skills:resolveSkills(context.profile,definition.skills,payload.skills),origin:identity.origin,retained:payload.retain===true,parentId:identity.child,surface:(payload.surface as "headless"|"visible"|undefined)??context.input.surface,catalog:context.catalog,modelRegistry:context.input.modelRegistry},context.profile,context.extension,true,undefined,payload.background===true?"background":"attached");
+   const cwd=resolve(context.input.cwd,(payload.cwd as string|undefined)??".");
+   return this.launch({definition,instructions:payload.instructions,cwd,model,effort:resolveAgentEffort(definition.name,model,payload.effort as AgentEffort|undefined,definition.effort),skills:resolveSkills(context.profile,definition.skills,payload.skills,{cwd,projectTrusted:context.input.projectTrusted}),origin:identity.origin,retained:payload.retain===true,parentId:identity.child,surface:(payload.surface as "headless"|"visible"|undefined)??context.input.surface,catalog:context.catalog,modelRegistry:context.input.modelRegistry,projectTrusted:context.input.projectTrusted},context.profile,context.extension,true,undefined,payload.background===true?"background":"attached");
   }
   if(message.type==="control"){
    if(!context.input.definition.tools.includes("subagent_control"))throw new Error("Control is outside frozen authority");

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-12: Resolve repository-local skills for subagents
+
+**Fixed:** Default Pi subagents can resolve named skills from a trusted repository's `.pi/skills/` directory, searching from the assigned working directory up to the repository root before falling back to profile skills. Nested delegations retain the same trusted-project scope.
+
+**Preserved:** Untrusted projects cannot supply subagent skills, profile skills remain available, and unknown skill names still fail before launch.
+
+## 2026-09-12: Recognize complete temporary-file cleanup lifecycles
+
+**Changed:** Default Pi's Damage Control shadow judge now evaluates same-call data flow explicitly, allowing files or directories created by `mktemp`, used unchanged, and then removed even when a confirmed review rule matched the cleanup. Live synthetic evaluation covers both file and directory lifecycles and reassignment adversaries.
+
+**Fixed:** Approval summaries describe the shared `rm` force-or-recursive policy accurately instead of labeling every forced file deletion as recursive.
+
+**Preserved:** Confirmed block and human-only boundaries remain mandatory. Reassigned, derived, broadened, mixed, or meaningfully destructive cleanup targets still require the existing block or approval outcome.
+
 ## 2026-09-12: Make default Pi model resolution provider-aware
 
 **Changed:** Bare model names used by default-profile subagents and model shortcuts now resolve through one deterministic ladder: authenticated OpenAI Codex subscription models first, then Bedrock Mantle, then native Amazon Bedrock. Known family aliases and exact or token-aligned names are accepted; within the first tier containing the closest match, configured baseline token cost breaks equally close matches.

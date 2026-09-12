@@ -37,7 +37,7 @@ describe("approval presentation", () => {
   it("connects the real matched command to its target without displaying the script", () => {
     const approval = buildApproval(decision, operation, analysis);
     const summary = approval.summary.map(line => line.text).join("\n");
-    expect(summary).toContain("Policy: Recursive deletion");
+    expect(summary).toContain("Policy: Forced or recursive deletion");
     expect(summary).toContain("rm -f /tmp/pi-rebase-todo.py");
     expect(summary).toContain("Target: /tmp/pi-rebase-todo.py");
     expect(summary).toContain("Approves the whole shell call");
@@ -95,7 +95,7 @@ describe("approval presentation", () => {
   it("uses amber reasons/flags/scope, accent selection, and usable color-free text", () => {
     const view = createApprovalView(buildApproval(decision, operation, analysis), theme, getKeybindings(), vi.fn(), () => 30);
     const rendered = view.render(100).join("\n");
-    expect(rendered).toContain("\x1b[33mPolicy: Recursive deletion");
+    expect(rendered).toContain("\x1b[33mPolicy: Forced or recursive deletion");
     expect(rendered).toContain("\x1b[33m\x1b[1m-f");
     expect(stripTerminalSequences(rendered)).toContain("Run the whole shell call.");
     expect(stripTerminalSequences(rendered)).not.toContain("Approves the whole shell call");

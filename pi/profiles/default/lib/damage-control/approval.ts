@@ -14,7 +14,7 @@ const targets = (effect: Effect) => unique([...effect.targets, ...effect.sources
 const source = (request: ToolRequest, effect: Effect) => request.text.slice(effect.range.start, effect.range.end);
 
 // These are presentation names for policy identities, not new policy rules.
-const policyName = (reason: string) => /rm with recursive|rm with --recursive|rm with --force/i.test(reason) ? "Recursive deletion" : oneLine(reason);
+const policyName = (reason: string) => /rm with recursive|rm with --recursive|rm with --force/i.test(reason) ? "Forced or recursive deletion" : oneLine(reason);
 const timeoutDuration = (review: ReviewResult): string | undefined => {
   if (review.status !== "timeout") return undefined;
   const deadlineMs = review.diagnostics?.deadlineMs;
