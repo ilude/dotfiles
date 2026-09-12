@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-12: Make coordinator prompts smaller and cache-stable
+
+**Changed:** Default Pi now composes audience-specific delegation guidance for Strategist, Team Lead, and Council instead of injecting the full caller policy into every coordinator. Catalog and child tool ordering are deterministic so equivalent launches produce byte-stable model-visible prompts.
+
+**Preserved:** Role authority and permitted catalogs are unchanged, assignments and runtime identifiers remain outside the system prompt, and Council stays explicit-user-request only and non-writing.
+
 ## 2026-09-12: Keep `/clear` available after subagent cleanup failures
 
 **Changed:** Default Pi now treats subagent cleanup as a best-effort part of `/clear`, not a prerequisite for entering the new session. Unresolved cleanup is reported as a warning, and an immediately requested source reload is skipped when the existing runtime could not be retired. Visible launches that fail before creating a pane or authenticated host no longer retain a phantom starting-process state.

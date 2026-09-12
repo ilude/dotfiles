@@ -20,6 +20,16 @@ describe("subagent launch prompt", () => {
     expect(launch.args).toContain(join(process.cwd(), "extensions", "session-profile.ts"));
   });
 
+  it("keeps the system prompt independent of assignments and runtime launch values", () => {
+    const first = childLaunch(spec("headless"), "child-one", process.cwd());
+    const changed = childLaunch({ ...spec("visible"), instructions: "different assignment", cwd: join(process.cwd(), "other"), origin: "other-origin", parentId: "parent-two", retained: true }, "child-two", process.cwd());
+    expect(changed.env.PI_SUBAGENT_PROMPT).toBe(first.env.PI_SUBAGENT_PROMPT);
+    expect(changed.env.PI_SUBAGENT_PROMPT).toBe("frozen composed prompt");
+    for (const runtimeValue of ["different assignment", "child-two", "parent-two", "other-origin", join(process.cwd(), "other")]) {
+      expect(changed.env.PI_SUBAGENT_PROMPT).not.toContain(runtimeValue);
+    }
+  });
+
   it("loads provider plus accounting for Mantle children without the operator extension", () => {
     const launch = childLaunch({ ...spec("headless"), model: "bedrock-mantle/anthropic.claude-sonnet-5" }, "id", process.cwd());
     expect(launch.args).toContain("--extension");

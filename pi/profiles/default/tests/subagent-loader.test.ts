@@ -5,11 +5,24 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { JsonLines } from "../lib/subagents/framing.ts";
+import { childSystemPrompt } from "../extensions/subagent-child.ts";
 const profile=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const manifestPath=join(profile,"node_modules/@earendil-works/pi-coding-agent/package.json");
 const cli=resolve(dirname(manifestPath),JSON.parse(readFileSync(manifestPath,"utf8")).bin.pi);
 
 describe("bundled CLI child authority",()=>{
+ it("builds byte-stable model-visible authority without runtime launch values",()=>{
+  const rolePrompt="stable role prompt";
+  const first=childSystemPrompt("base","reviewer",["web_fetch","read","read"],rolePrompt);
+  const reordered=childSystemPrompt("base","reviewer",["read","web_fetch"],rolePrompt);
+  expect(reordered).toBe(first);
+  expect(first).toContain("tools [read, web_fetch]");
+  expect(first).toContain(rolePrompt);
+  for(const runtimeValue of ["child-id-42","parent-id-9","C:/task/worktree","http://127.0.0.1:7777","visible","display-name","assignment text"]){
+   expect(first).not.toContain(runtimeValue);
+  }
+ });
+
  it.each([{tools:[] as string[],childMode:true},{tools:["read"],childMode:true},{tools:[] as string[],childMode:false}])("loads with child=$childMode and explicit ceiling $tools",async ({tools,childMode})=>{
   const scratch=mkdtempSync(join(tmpdir(),"subagent-loader-"));
   const fixture=join(scratch,"probe.mjs");
