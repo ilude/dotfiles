@@ -8,6 +8,13 @@ import { workspaceRoot } from "../lib/subagents/workspace.ts";
 import { progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentResult, renderSubagentMessage } from "../lib/subagents/presentation.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
 interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; cwd:string; skills:string[]; surface?:string }
+
+export function childSystemPrompt(basePrompt:string,agent:string,tools:readonly string[],rolePrompt:string):string {
+ const toolNames=[...new Set(tools)].sort((a,b)=>a.localeCompare(b,"en"));
+ const authorityPrompt=`You are subagent ${agent}. Your authority is frozen to tools [${toolNames.join(", ")||"none"}]. You may not activate or request other tools. A normal final reply automatically completes your assignment; no reporting tool is needed for success. Use partial only for genuinely unfinished work and blocked only when you cannot proceed. Parent notifications are evidence to incorporate, not receipts to acknowledge. Use the question action for a question-answer request; it yields cleanly and the parent answer resumes this conversation.`;
+ return `${basePrompt}\n\n${authorityPrompt}${rolePrompt?` ${rolePrompt}`:""}`;
+}
+
 export default function childAuthority(pi:ExtensionAPI){
  (pi as any).registerMessageRenderer?.("subagent-result",renderSubagentMessage);
  if(!process.env.PI_SUBAGENT_AUTHORITY){if(process.env.PI_SUBAGENT_ENDPOINT)throw new Error("Subagent authority is missing");return}
@@ -21,7 +28,7 @@ export default function childAuthority(pi:ExtensionAPI){
  pi.on("tool_call",event=>{
   if(!allowed.has(event.toolName))return{block:true,reason:`Tool ${event.toolName} is outside frozen ${authority.agent} authority`};
  });
- pi.on("before_agent_start",event=>({systemPrompt:`${event.systemPrompt}\n\nYou are subagent ${authority.agent}. Your authority is frozen to tools [${[...allowed].join(", ")||"none"}]. You may not activate or request other tools. A normal final reply automatically completes your assignment; no reporting tool is needed for success. Use partial only for genuinely unfinished work and blocked only when you cannot proceed. Parent notifications are evidence to incorporate, not receipts to acknowledge. Use the question action for a question-answer request; it yields cleanly and the parent answer resumes this conversation. ${process.env.PI_SUBAGENT_PROMPT||""}`}));
+ pi.on("before_agent_start",event=>({systemPrompt:childSystemPrompt(event.systemPrompt,authority.agent,authority.tools,process.env.PI_SUBAGENT_PROMPT||"")}));
  const parentEndpoint=()=>{
   const endpoint=JSON.parse(process.env.PI_SUBAGENT_ENDPOINT||"null") as ChildEndpoint|null;
   if(!endpoint||endpoint.child!==authority.id)throw new Error("Authenticated parent unavailable");

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-12: Make coordinator prompts smaller and cache-stable
+
+**Changed:** Default Pi now composes audience-specific delegation guidance for Strategist, Team Lead, and Council instead of injecting the full caller policy into every coordinator. Catalog and child tool ordering are deterministic so equivalent launches produce byte-stable model-visible prompts.
+
+**Preserved:** Role authority and permitted catalogs are unchanged, assignments and runtime identifiers remain outside the system prompt, and Council stays explicit-user-request only and non-writing.
+
 ## 2026-09-12: Add quiet automatic Herdr session tab naming
 
 **Added:** Eligible default-profile Herdr orchestrator tabs now receive asynchronous, tool-free `openai-codex/gpt-5.6-luna` naming attempts at low reasoning from bounded visible conversation text. Generated labels are normalized to lowercase and constrained to one to five words; restored sessions, including resumed children, can name themselves without delaying launch readiness.
