@@ -5,8 +5,6 @@ import { copyToClipboard, type ExtensionAPI, type ExtensionCommandContext, type 
 import { Key, matchesKey, stripTerminalSequences, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { containedRealPath, discoverPlans, parsePlan, type PlanRecord } from "../lib/plans.ts";
 import { createHerdrPiTab, HerdrPiTabLaunchError, renameHerdrPiTab } from "./session-launch.ts";
-import { getPlanRunRuntime, registerPlanRunTracking } from "../lib/plan-run-runtime.ts";
-import type { PlanRun } from "../lib/plan-runs.ts";
 import { PLAN_EVENT_TYPE, PlanEventRecorder, eventPlan, formatPlanEvent, notifyLoggingFailure, type PlanActionEvent, type PlanEventAction } from "../lib/plan-events.ts";
 
 const planActions = [
@@ -24,8 +22,6 @@ interface SelectorOptions {
 	onActionRequest?: (action: PlanEventAction, plan?: PlanRecord) => string | undefined;
 	onActionRefusal?: (attemptId: string | undefined, action: PlanEventAction, plan: PlanRecord, reason: string, outcome?: "refused" | "failed" | "ambiguous") => void;
 	launch?: (plan: PlanRecord) => Promise<unknown>;
-	blockedLaunches?: Map<string, string>;
-	getRun?: (plan: PlanRecord) => PlanRun | undefined;
 }
 
 function clean(value: string): string { return stripTerminalSequences(value).replace(/\s+/g, " ").trim(); }
@@ -46,22 +42,10 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 		let pending = false;
 		let finished = false;
 		let launchError: string | undefined;
-		const blockedLaunches = options.blockedLaunches ?? new Map<string, string>();
-		const activity = (plan: PlanRecord) => {
-			try {
-				const run = options.getRun?.(plan);
-				return run ? { state: run.state, owner: `${run.state} in ${run.tabId ? `tab ${run.tabId}` : `Pi process ${run.pid}`}` } : undefined;
-			} catch (error) {
-				return { state: "unknown", owner: `Execution check failed: ${error instanceof Error ? error.message : String(error)}` };
-			}
-		};
-		// Refresh only while this picker exists. Launch authorization still rechecks atomically.
-		const refresh = options.getRun ? setInterval(() => { if (!finished) tui.requestRender(); }, 1000) : undefined;
-		refresh?.unref();
+		let launchMayExist = false;
 		const finish = (action: Action, automatic = false) => {
 			if (finished) return;
 			finished = true;
-			clearInterval(refresh);
 			if (action === "close" && !automatic) options.onActionRequest?.("close");
 			onDone({ action, index: selected });
 		};
@@ -71,6 +55,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 			const attemptId = options.onActionRequest?.("run-new-tab", plan);
 			pending = true;
 			launchError = undefined;
+			launchMayExist = false;
 			tui.requestRender(true);
 			// Let Pi paint the acknowledgment before starting any process work.
 			await new Promise<void>(resolve => setImmediate(resolve));
@@ -82,7 +67,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 				options.onActionRefusal?.(attemptId, "run-new-tab", plan, error instanceof Error ? error.message : String(error), error instanceof HerdrPiTabLaunchError && error.mayHaveLaunched ? "ambiguous" : "failed");
 				if (finished) return;
 				launchError = error instanceof Error ? error.message : String(error);
-				if (!(error instanceof HerdrPiTabLaunchError) || error.mayHaveLaunched) blockedLaunches.set(plan.path, launchError);
+				launchMayExist = !(error instanceof HerdrPiTabLaunchError) || error.mayHaveLaunched;
 				pending = false;
 				tui.requestRender(true);
 			}
@@ -90,13 +75,11 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 		const feedback = (width: number): string[] | undefined => {
 			if (pending) return ["Launching new tab...", "Opening and focusing Pi for this plan.", "Please wait. Repeated keys are ignored."]
 				.flatMap(text => wrapTextWithAnsi(text, width));
-			const blocked = blockedLaunches.get(plans[selected]?.path ?? "");
-			const error = blocked ?? launchError;
-			if (!error || (!blocked && plans[selected] && activity(plans[selected]!))) return;
+			if (!launchError) return;
 			return [
-				...wrapTextWithAnsi(blocked ? "Launch may exist. Do not retry." : "Launch failed. Safe to retry.", width),
-				...wrapTextWithAnsi(clean(error), width).slice(0, 2),
-				...wrapTextWithAnsi(blocked ? "Esc/q Close; inspect the tab." : "d Retry · Esc/q Close", width),
+				...wrapTextWithAnsi(launchMayExist ? "Launch may exist; inspect before retrying." : "Launch failed.", width),
+				...wrapTextWithAnsi(clean(launchError), width).slice(0, 2),
+				...wrapTextWithAnsi("d Retry · Esc/q Close", width),
 			];
 		};
 		return {
@@ -114,9 +97,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					+ theme.fg("borderAccent", "│");
 				const muted = (text: string) => theme.fg("muted", text);
 				const current = plans[selected];
-				const runs = plans.map(activity);
-				const currentRun = runs[selected];
-				const status = (plan: PlanRecord, index: number) => clean(runs[index]?.state ?? plan.status ?? "unknown");
+				const status = (plan: PlanRecord) => clean(plan.status ?? "unknown");
 				const notice = feedback(inner);
 				const output = [border("╭", "╮"), row(theme.bold(theme.fg("accent",
 					`Plans · ${details && current ? "Details" : "Browse"} · ${current ? `${selected + 1}/${plans.length}` : "0 plans"}`))), border("├", "┤")];
@@ -126,8 +107,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 				}
 				if (details) {
 					const content = [theme.bold(clean(current.title)), "",
-						`Status: ${status(current, selected)} · Tasks: ${progress(current)}`,
-						...(currentRun ? [`Saved plan status: ${clean(current.status ?? "unknown")}`, clean(currentRun.owner)] : []), "",
+						`Status: ${status(current)} · Tasks: ${progress(current)}`, "",
 						clean(current.description), "", `Path: ${clean(current.relativePath)}`,
 						`Modified: ${current.modified.toISOString().slice(0, 10)}`];
 					if (current.firstUnchecked) content.push(`Next: ${clean(current.firstUnchecked)}`);
@@ -145,13 +125,13 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					output.push(...help.map(text => row(theme.fg("text", text))));
 				} else {
 					const columns = inner >= 56;
-					const statusWidth = Math.min(16, Math.max(8, ...plans.map((plan, index) => visibleWidth(status(plan, index)))));
+					const statusWidth = Math.min(16, Math.max(8, ...plans.map(plan => visibleWidth(status(plan)))));
 					const taskWidth = Math.min(11, Math.max(5, ...plans.map(plan => visibleWidth(progress(plan)))));
 					const stubWidth = inner - statusWidth - taskWidth - 6;
 					const cells = (stub: string, status: string, tasks: string) => `${fit(stub, stubWidth)}  ${fit(status, statusWidth)}  ${fit(tasks, taskWidth)}`;
 					const help = notice ?? ["↑↓ Select · Enter Details · Esc/q Close", `Actions: ${planActions.map(action => `${action.key} ${action.hint}`).join(" · ")}`]
 						.flatMap(text => wrapTextWithAnsi(text, inner));
-					const metadata = columns ? [] : [`Status: ${status(current, selected)}`, `Tasks: ${progress(current)}`];
+					const metadata = columns ? [] : [`Status: ${status(current)}`, `Tasks: ${progress(current)}`];
 					// Very short, narrow panels retain all shortcuts before optional metadata.
 					metadata.splice(Math.max(0, height - 6 - (columns ? 1 : 0) - help.length));
 					// Reserve controls and one selectable row before allocating preview space.
@@ -160,7 +140,6 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					if (available < 4) preview.pop();
 					if (available < 3) preview.shift();
 					if (available < 2) preview.pop();
-					if (currentRun && available > preview.length + 1) preview.push(muted(clean(currentRun.owner)));
 					const capacity = Math.min(plans.length, Math.max(1, available - preview.length));
 					start = Math.max(0, Math.min(start, selected, plans.length - capacity));
 					if (selected >= start + capacity) start = selected - capacity + 1;
@@ -170,7 +149,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 						const plan = plans[index];
 						if (!plan) { output.push(row("")); continue; }
 						const active = index === selected;
-						const text = `${active ? "▶" : " "} ${columns ? cells(clean(plan.stub), status(plan, index), progress(plan)) : clean(plan.stub)}`;
+						const text = `${active ? "▶" : " "} ${columns ? cells(clean(plan.stub), status(plan), progress(plan)) : clean(plan.stub)}`;
 						output.push(row(active ? theme.bold(theme.fg("accent", text)) : text, active));
 					}
 					output.push(border("├", "┤"));
@@ -182,7 +161,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 				return output;
 			},
 			invalidate() {},
-			dispose() { finished = true; clearInterval(refresh); },
+			dispose() { finished = true; },
 			handleInput(data: string) {
 				if (pending || finished) return;
 				const action = planActions.find(action => action.key === data);
@@ -193,14 +172,6 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 				} else if (!plans.length || !usable) return;
 				else if (action) {
 					const semanticAction = actionName(action.action);
-					if (action.action === "do-it" || action.action === "run-here") {
-						const plan = plans[selected]!;
-						if (blockedLaunches.has(plan.path)) {
-							const attemptId = options.onActionRequest?.(semanticAction, plan);
-							options.onActionRefusal?.(attemptId, semanticAction, plan, blockedLaunches.get(plan.path)!);
-							return;
-						}
-					}
 					if (action.action === "do-it" && options.launch) { void launch(); return; }
 					options.onActionRequest?.(semanticAction, plans[selected]);
 					return finish(action.action);
@@ -241,7 +212,7 @@ export function archivePlan(plan: PlanRecord, root: string): string {
 	return destination;
 }
 
-export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<ExtensionAPI, "sendUserMessage"> & Partial<Pick<ExtensionAPI, "appendEntry">>, runtime = getPlanRunRuntime()): Promise<void> {
+export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<ExtensionAPI, "sendUserMessage"> & Partial<Pick<ExtensionAPI, "appendEntry">>): Promise<void> {
 	if (ctx.mode !== "tui") throw new Error("/plans requires interactive Pi terminal mode.");
 	const root = path.resolve(ctx.cwd ?? process.cwd());
 	const recorder = new PlanEventRecorder(pi as Pick<ExtensionAPI, "appendEntry">, ctx, { onLoggingFailure: error => notifyLoggingFailure(ctx, error) });
@@ -250,7 +221,6 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 	let selectedStub: string | undefined;
 	let details = false;
 	let automaticallyDismissed = false;
-	const blockedLaunches = new Map<string, string>();
 	const attempts = new Map<string, string>();
 	const requestAction = (action: PlanEventAction, plan?: PlanRecord) => {
 		const id = recorder.request(action, plan && eventPlan(plan));
@@ -271,34 +241,16 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 		let result: Selection | undefined;
 		try {
 			result = await ctx.ui.custom<Selection>((tui, theme, _keybindings, done) => planSelector(discovery.plans, selected, done, {
-			details, onViewChange: value => { details = value; }, blockedLaunches,
+			details, onViewChange: value => { details = value; },
 			onActionRequest: requestAction,
 			onActionRefusal: refusal,
-			getRun: plan => runtime.store.get(plan.path),
 			launch: async plan => {
 				const attemptId = attempts.get(`run-new-tab:${plan.path}`);
 				if (process.env.HERDR_ENV !== "1") throw new HerdrPiTabLaunchError("Plan execution from /plans requires a Herdr-managed Pi session.", { mayHaveLaunched: false });
-				let run: PlanRun;
-				try { run = runtime.store.claim(plan.path, { pid: process.pid, state: "launching" }, { replace: true }); }
-				catch (error) { throw new HerdrPiTabLaunchError(String(error), { mayHaveLaunched: false }); }
-				try {
-					const receipt = await createHerdrPiTab(root, plan.stub, undefined, plan.relativePath, run.token);
-					// The child can adopt ownership before this response. Never overwrite its PID/state.
-					if (runtime.store.get(plan.path)?.token === run.token) runtime.store.update(plan.path, run.token, receipt);
-					automaticallyDismissed = true;
-					recorder.outcome(attemptId, "run-new-tab", "success", { plan: eventPlan(plan), target: receipt, phase: "outcome" });
-					return receipt;
-				} catch (error) {
-					if (error instanceof HerdrPiTabLaunchError && !error.mayHaveLaunched) runtime.store.release(plan.path, run.token);
-					else {
-						const current = runtime.store.get(plan.path);
-						if (current?.token === run.token && current.pid === process.pid) runtime.store.update(plan.path, run.token, {
-							state: "unknown",
-							...(error instanceof HerdrPiTabLaunchError ? { tabId: error.tabId, paneId: error.paneId } : {}),
-						});
-					}
-					throw error;
-				}
+				const receipt = await createHerdrPiTab(root, plan.stub, undefined, plan.relativePath);
+				automaticallyDismissed = true;
+				recorder.outcome(attemptId, "run-new-tab", "success", { plan: eventPlan(plan), target: receipt, phase: "outcome" });
+				return receipt;
 			},
 			})(tui, theme), {
 				overlay: true, overlayOptions: { anchor: "center", width: "90%", maxHeight: "80%", margin: 1 },
@@ -330,12 +282,6 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 				ctx.ui.notify(`Copied /do-it command for ${plan.stub}.`, "info");
 				recorder.outcome(attemptId, "copy", "success", { plan: eventPlan(plan) });
 			} else if (result.action === "run-here") {
-				// Explicit /plans actions replace informational ownership records.
-				const run = runtime.store.claim(plan.path, { pid: process.pid, state: "waiting",
-					tabId: process.env.HERDR_TAB_ID, paneId: process.env.HERDR_PANE_ID,
-					sessionId: ctx.sessionManager?.getSessionId(),
-				}, { replace: true });
-				runtime.track(run);
 				if (process.env.HERDR_ENV === "1") {
 					const tab = process.env.HERDR_TAB_ID;
 					if (!tab) recorder.outcome(attemptId, "run-here", "failed", { plan: eventPlan(plan), phase: "naming", error: { stage: "identity", message: "HERDR_TAB_ID is missing" } });
@@ -345,12 +291,7 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 					}
 				} else recorder.outcome(attemptId, "run-here", "not-applicable", { plan: eventPlan(plan), phase: "naming" });
 				recorder.outcome(attemptId, "run-here", "requested", { plan: eventPlan(plan), phase: "submission" });
-				try {
-					pi.sendUserMessage(`/do-it ${plan.relativePath}`, { expandPromptTemplates: true, deliverAs: "followUp" });
-				} catch (error) {
-					runtime.forget(run);
-					throw error;
-				}
+				pi.sendUserMessage(`/do-it ${plan.relativePath}`, { expandPromptTemplates: true, deliverAs: "followUp" });
 				recorder.outcome(attemptId, "run-here", "success", { plan: eventPlan(plan) });
 				return;
 			} else if (result.action === "archive") {
@@ -371,14 +312,12 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 }
 
 export default function plansCommand(pi: ExtensionAPI): void {
-	const runtime = getPlanRunRuntime();
-	registerPlanRunTracking(pi, runtime);
 	pi.registerEntryRenderer?.(PLAN_EVENT_TYPE, entry => {
 		const event = entry.data as Partial<PlanActionEvent>;
 		return new Text(formatPlanEvent(event), 0, 0);
 	});
 	pi.registerCommand("plans", { description: "Browse open implementation plans", handler: async (args, ctx) => {
 		if (args.trim()) throw new Error("Usage: /plans");
-		await executePlans(ctx, pi, runtime);
+		await executePlans(ctx, pi);
 	} });
 }

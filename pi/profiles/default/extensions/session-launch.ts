@@ -173,15 +173,14 @@ function createHerdrTab(cwd: string, title: string): string {
 	return paneId;
 }
 
-export async function createHerdrPiTab(cwd: string, title: string, sessionFile?: string, planPath?: string, planRunToken?: string): Promise<{ tabId: string; paneId?: string }> {
+export async function createHerdrPiTab(cwd: string, title: string, sessionFile?: string, planPath?: string): Promise<{ tabId: string; paneId?: string }> {
 	const workspace = process.env.HERDR_WORKSPACE_ID;
 	if (!workspace) throw new HerdrPiTabLaunchError("HERDR_WORKSPACE_ID is not set.", { mayHaveLaunched: false });
 	if (sessionFile && planPath) throw new HerdrPiTabLaunchError("A Herdr Pi tab cannot resume a session and launch a plan together.", { mayHaveLaunched: false });
-	if (planRunToken && (!planPath || !/^[a-f0-9-]{36}$/i.test(planRunToken))) throw new HerdrPiTabLaunchError("A plan reservation requires a plan path and UUID token.", { mayHaveLaunched: false });
 	const args = ["plugin", "pane", "open", "--plugin", "local.pi", "--entrypoint", "pi", "--placement", "tab", "--workspace", workspace,
 		"--cwd", process.platform === "win32" ? msysPathToWindows(cwd) : cwd,
 		"--env", `PI_HERDR_PROFILE_DIR=${profileDir()}`, "--env", `PI_HERDR_SESSION_FILE=${sessionFile || ""}`,
-		"--env", `PI_HERDR_PLAN_PATH=${planPath || ""}`, "--env", `PI_HERDR_PLAN_RUN_TOKEN=${planRunToken || ""}`,
+		"--env", `PI_HERDR_PLAN_PATH=${planPath || ""}`,
 		"--env", `PI_HERDR_TAB_LABEL=${planPath ? title : ""}`, "--no-focus"];
 	let output: string;
 	try {

@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-047 - Do not add plan execution reservations
+
+- **Reference:** Operator correction after `/plans` created a child that reported `Reservation is missing or already adopted`, 2026-09-11.
+- **Feedback:** The cross-process reservation and live ownership system was not requested and obstructed normal plan launch.
+- **Evidence:** The original archived `/plans` plan explicitly listed plan execution tracking as a non-goal. Later changes added token handoff, profile-local run files, lifecycle tracking, polling, and startup refusal.
+- **Decision:** Remove that system rather than repair its race. Retain only picker-local pending-input suppression plus the originally requested constrained Herdr launch, path validation, archive checks, and non-automatic retry after ambiguous launch responses.
+- **Related:** AIF-041, AIF-031, APR-029.
+- **Status:** Implemented. Focused plan/session/launcher tests, typecheck, runtime smoke, and diff checks pass. Active sessions require reload; attached-client behavior remains unverified.
+
 ## AIF-046 - Resume a Herdr Pi session in one focused tool action
 
 - **Reference:** Operator correction after reopening a stalled dotfiles session, 2026-09-11.

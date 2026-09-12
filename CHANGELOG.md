@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-11: Remove unrequested plan execution reservations
+
+**Changed:** `/plans` now launches the selected `/do-it` directly without cross-process reservation files, token handoff, live ownership polling, or startup refusal. The picker still ignores repeated keys while its own launch request is pending, and ambiguous Herdr responses are not retried automatically.
+
+**Why:** The original `/plans` contract explicitly excluded plan execution tracking. The later reservation system exceeded that scope and blocked a valid child launch when its token could not be adopted.
+
+**Preserved:** Constrained direct-child plan-path validation, Herdr-only new-tab launch, exact tab naming, action history, archive eligibility checks, and existing launch error reporting remain unchanged.
+
+## 2026-09-11: Extend Brave CDP startup polling
+
+**Changed:** Default Pi browser automation allows up to 15 seconds for Brave's CDP endpoint to become available, polling at 250 ms intervals. The diagnostic 40-second window was reduced after isolated startup succeeded; slower startup was not established as the cause of real-profile failures. CDP detection accepts a valid loopback Chromium debugger endpoint without requiring a Brave product label. Failed starts now report bounded endpoint status, sanitized product/protocol fields, child state, marker-process count, and output byte counts while continuing to exclude browser output and command lines.
+
 ## 2026-09-11: Resume Pi sessions in one Herdr tool call
 
 **Added:** `herdr_layout` accepts `{"action":"resume","session":"<UUID>"}`. It resolves the saved session in the active profile, reuses the existing direct Pi plugin launcher, focuses the new tab by default, and returns startup state plus tab/pane IDs. This replaces separate layout, shell-command and readiness calls. Lookup reads filenames and the selected session header rather than scanning transcript bodies.

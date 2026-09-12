@@ -16,7 +16,7 @@ import {
 	validateBrowserConfig,
 	writeBrowserConfig,
 } from "../lib/browser-control";
-import { processMatches, windowsArgv } from "../lib/browser-runtime";
+import { cdpRetryDelay, inspectCdpVersion, processMatches, windowsArgv } from "../lib/browser-runtime";
 
 const temporary: string[] = [];
 afterEach(() => {
@@ -113,6 +113,23 @@ describe("profile configuration", () => {
 });
 
 describe("session and page boundaries", () => {
+	it("slows CDP startup polling at the configured elapsed-time thresholds", () => {
+		expect(cdpRetryDelay(0)).toBe(250);
+		expect(cdpRetryDelay(14_999)).toBe(250);
+		expect(cdpRetryDelay(15_000)).toBe(500);
+		expect(cdpRetryDelay(24_999)).toBe(500);
+		expect(cdpRetryDelay(25_000)).toBe(1_000);
+	});
+
+	it("accepts a valid Chromium CDP endpoint without requiring a Brave product label", () => {
+		expect(inspectCdpVersion({ Browser: "Chrome/140.0", "Protocol-Version": "1.3", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/browser/id" })).toEqual({
+			status: "ready",
+			product: "Chrome/140.0",
+			protocolVersion: "1.3",
+		});
+		expect(inspectCdpVersion({ Browser: "Chrome/140.0" }).status).toBe("invalid_endpoint");
+	});
+
 	it("binds restart authorization to the complete occupied tuple", () => {
 		const first = restartAuthorization(state());
 		expect(restartAuthorization(state({ processStartTime: "start-2" }))).not.toBe(first);

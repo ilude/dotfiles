@@ -2,8 +2,6 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { getPlanRunRuntime } from "../lib/plan-run-runtime.ts";
-import { PlanRunStore } from "../lib/plan-runs.ts";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import plansCommand, { archivePlan, executePlans, openPlanInCode, planSelector } from "../extensions/plans.ts";
 import { copyToClipboard } from "@earendil-works/pi-coding-agent";
@@ -214,7 +212,7 @@ it("refuses do-it outside Herdr without launching a fallback", async () => {
   expect(component.render(80).join("\n")).toContain("Launching new tab");
   await nextTurn();
   const failure = component.render(80).join("\n");
-  expect(failure).toContain("Browse"); expect(failure).toContain("Safe to retry");
+  expect(failure).toContain("Browse"); expect(failure).toContain("d Retry");
   expect(failure).toContain("requires a Herdr-managed Pi session");
   expect(createHerdrPiTab).not.toHaveBeenCalled(); expect(spawnSync).not.toHaveBeenCalled();
   component.handleInput("q"); await execution;
@@ -391,7 +389,7 @@ it.each([false, true])( "acknowledges a delayed launch, ignores repeats, and dis
   expect(createHerdrPiTab).not.toHaveBeenCalled();
   for (const key of ["d", "d", "\r", "r", "c", "o", "a", "q", "\x1b"]) component.handleInput(key);
   await nextTurn();
-  expect(createHerdrPiTab).toHaveBeenCalledExactlyOnceWith(base, "new-tab", undefined, ".specs/new-tab/plan.md", expect.any(String));
+  expect(createHerdrPiTab).toHaveBeenCalledExactlyOnceWith(base, "new-tab", undefined, ".specs/new-tab/plan.md");
   component.handleInput("d");
   expect(custom).toHaveBeenCalledOnce(); expect(notify).not.toHaveBeenCalled();
   completeLaunch({ tabId: "tab-test" }); await execution;
@@ -408,31 +406,23 @@ it.each([false, true])("preserves view and selection on a safe launch failure an
   component.handleInput("d"); await nextTurn();
   const failure = component.render(100).join("\n");
   expect(failure).toContain(`Plans · ${details ? "Details" : "Browse"} · 2/2`);
-  expect(failure).toContain("Safe to retry"); expect(failure).toContain("Launcher unavailable");
+  expect(failure).toContain("d Retry"); expect(failure).toContain("Launcher unavailable");
   expect(done).not.toHaveBeenCalled();
   component.handleInput("d"); component.handleInput("d"); await nextTurn();
   expect(launch).toHaveBeenCalledTimes(2);
   expect(done).toHaveBeenCalledExactlyOnceWith({ action: "close", index: 1 });
 });
 
-it("blocks repeat execution after an uncertain result, including after another action reopens the picker", async () => {
+it("reports an uncertain result without blocking an explicit retry", async () => {
   const base = root(); const plan = parsePlan(add(base, "selected", complete), "selected", base);
-  const blockedLaunches = new Map<string, string>();
   const launch = vi.fn().mockRejectedValue(new HerdrPiTabLaunchError("Tab w1:t8 exists; focus failed", { mayHaveLaunched: true, tabId: "w1:t8" }));
   const done = vi.fn();
-  const options = { launch, blockedLaunches };
-  const component = planSelector([plan], 0, done, options)({ requestRender() {} }, testTheme());
+  const component = planSelector([plan], 0, done, { launch })({ requestRender() {} }, testTheme());
   component.handleInput("d"); await nextTurn();
-  expect(component.render(100).join("\n")).toContain("Do not retry");
-  expect(component.render(100).join("\n")).toContain("w1:t8");
-  component.handleInput("d"); component.handleInput("r");
-  expect(done).not.toHaveBeenCalled(); expect(launch).toHaveBeenCalledOnce();
-  component.handleInput("c"); expect(done).toHaveBeenCalledWith({ action: "copy", index: 0 });
-  const reopenedDone = vi.fn();
-  const reopened = planSelector([plan], 0, reopenedDone, options)({ requestRender() {} }, testTheme());
-  reopened.handleInput("d"); reopened.handleInput("r");
-  expect(reopenedDone).not.toHaveBeenCalled(); expect(launch).toHaveBeenCalledOnce();
-  reopened.handleInput("q"); expect(reopenedDone).toHaveBeenCalledWith({ action: "close", index: 0 });
+  const output = component.render(100).join("\n");
+  expect(output).toContain("inspect before retrying"); expect(output).toContain("w1:t8");
+  component.handleInput("d"); await nextTurn();
+  expect(launch).toHaveBeenCalledTimes(2);
 });
 
 it.each([[24, 18], [40, 18], [100, 35]])("keeps pending and failure feedback within %i columns and %i rows", async (width, rows) => {
@@ -459,92 +449,6 @@ it("does not finish or redraw a disposed picker when a launch settles", async ()
   component.handleInput("d"); await nextTurn(); component.dispose(); requestRender.mockClear();
   resolveLaunch(); await nextTurn();
   expect(done).not.toHaveBeenCalled(); expect(requestRender).not.toHaveBeenCalled();
-});
-
-it.each([false, true])("shows live state without changing frontmatter while allowing explicit execution shortcuts (details=%s)", details => {
-  const base = root(); const file = add(base, "active", complete);
-  const plan = parsePlan(file, "active", base); const store = new PlanRunStore(join(root(), "runs"));
-  const run = store.claim(file, { pid: process.pid, state: "running", tabId: "w1:t9" });
-  const done = vi.fn(); const launch = vi.fn();
-  const component = planSelector([plan], 0, done, { details, launch, getRun: p => store.get(p.path) })({ requestRender() {} }, testTheme());
-  for (const state of ["running", "waiting", "blocked", "launching", "unknown"] as const) {
-    store.update(file, run.token, { state });
-    const output = component.render(100).join("\n");
-    expect(output).toContain(state); expect(output).toContain("w1:t9"); expect(output).not.toContain("Disabled");
-    component.handleInput("r"); component.handleInput("d");
-    expect(done).toHaveBeenCalledWith({ action: "run-here", index: 0 }); expect(launch).not.toHaveBeenCalled();
-  }
-  expect(plan.status).toBe("completed"); expect(readFileSync(file, "utf8")).toBe(complete);
-  component.handleInput("c"); expect(done).toHaveBeenCalledWith({ action: "run-here", index: 0 });
-});
-
-it("keeps ownership informational at keypress and allows execution shortcuts", () => {
-  const base = root(); const file = add(base, "active", complete); const plan = parsePlan(file, "active", base);
-  const store = new PlanRunStore(join(root(), "runs")); const done = vi.fn();
-  const component = planSelector([plan], 0, done, { getRun: p => store.get(p.path) })({ requestRender() {} }, testTheme());
-  component.render(100);
-  const run = store.claim(file, { pid: process.pid, state: "running", tabId: "other-tab" });
-  component.handleInput("r"); expect(done).toHaveBeenCalledWith({ action: "run-here", index: 0 });
-  store.release(file, run.token);
-});
-
-it.each([[24, 18], [40, 18], [100, 35]])("keeps live status and action legends bounded at %i columns/%i rows", (width, rows) => {
-  const base = root(); const file = add(base, "active", complete); const plan = parsePlan(file, "active", base);
-  const store = new PlanRunStore(join(root(), "runs")); store.claim(file, { pid: process.pid, state: "running", tabId: "other-tab" });
-  for (const details of [false, true]) {
-    const component = planSelector([plan], 0, vi.fn(), { details, getRun: p => store.get(p.path) })({ requestRender() {}, terminal: { rows } }, testTheme());
-    const lines = component.render(width);
-    expect(lines.length).toBeLessThanOrEqual(Math.floor(rows * 0.8)); expect(lines.every(line => visibleWidth(line) <= width)).toBe(true);
-    expect(lines.join("\n")).not.toContain("Disabled"); expect(lines.join("\n")).toContain("Run here"); component.dispose();
-  }
-});
-
-it("refreshes live state while open and stops refreshing on disposal", () => {
-  vi.useFakeTimers();
-  try {
-    const base = root(); const file = add(base, "active", complete); const plan = parsePlan(file, "active", base);
-    const requestRender = vi.fn();
-    const component = planSelector([plan], 0, vi.fn(), { getRun: () => undefined })({ requestRender }, testTheme());
-    vi.advanceTimersByTime(1000); expect(requestRender).toHaveBeenCalledOnce();
-    component.dispose(); vi.advanceTimersByTime(3000); expect(requestRender).toHaveBeenCalledOnce();
-  } finally { vi.useRealTimers(); }
-});
-
-it("fails closed when live execution state cannot be read", () => {
-  const base = root(); const plan = parsePlan(add(base, "active", complete), "active", base);
-  const done = vi.fn(); const component = planSelector([plan], 0, done, {
-    getRun() { throw new Error("Registry unreadable"); },
-  })({ requestRender() {} }, testTheme());
-  expect(component.render(100).join("\n")).toContain("Execution check failed");
-  component.handleInput("d"); component.handleInput("r"); expect(done).toHaveBeenCalledWith({ action: "do-it", index: 0 });
-  component.handleInput("q");
-});
-
-it("shows ownership across fresh picker invocations without disabling explicit actions", async () => {
-  const base = root(); const file = add(base, "active", complete);
-  getPlanRunRuntime().store.claim(file, { pid: process.pid, state: "running", tabId: "other-tab" });
-  const sendUserMessage = vi.fn();
-  const custom = vi.fn((factory: any) => new Promise(resolve => {
-    const picker = factory({ requestRender() {} }, testTheme(), {}, resolve);
-    expect(picker.render(100).join("\n")).toContain("running");
-    expect(picker.render(100).join("\n")).not.toContain("Disabled"); picker.handleInput("r"); picker.handleInput("d"); picker.handleInput("q");
-  }));
-  for (let count = 0; count < 2; count++) await executePlans({ mode: "tui", cwd: base, ui: { custom, notify: vi.fn() } } as any, { sendUserMessage });
-  expect(custom).toHaveBeenCalledTimes(2); expect(sendUserMessage).toHaveBeenCalledOnce(); expect(createHerdrPiTab).not.toHaveBeenCalled();
-});
-
-it("allows explicit replacement from two open pickers", async () => {
-  vi.stubEnv("HERDR_ENV", "1"); const base = root(); add(base, "active", complete);
-  vi.mocked(createHerdrPiTab).mockResolvedValue({ tabId: "new-tab" });
-  const pickers: Picker[] = []; const sendUserMessage = vi.fn();
-  const custom = vi.fn((factory: any) => new Promise(resolve => {
-    const picker = factory({ requestRender() {} }, testTheme(), {}, resolve);
-    pickers.push(picker); picker.handleInput("d");
-  }));
-  const ctx = { mode: "tui", cwd: base, ui: { custom, notify: vi.fn() } } as any;
-  await Promise.all([executePlans(ctx, { sendUserMessage }), executePlans(ctx, { sendUserMessage })]);
-  expect(pickers).toHaveLength(2);
-  expect(createHerdrPiTab).toHaveBeenCalledTimes(2); expect(sendUserMessage).not.toHaveBeenCalled();
 });
 
 it("opens the exact plan path in VS Code without a shell", () => {

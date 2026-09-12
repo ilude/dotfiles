@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-029 - Unrequested plan reservation blocked a valid launch
+
+- **Reference:** Operator-reported `/plans` child startup failure, 2026-09-11.
+- **Observed:** The child displayed `Reservation is missing or already adopted` and blocked its initial `/do-it` because its launch token no longer matched a profile-local reservation.
+- **Finding:** The reservation system was custom default-profile machinery added after the original `/plans` implementation. The authoritative archived plan explicitly named plan execution tracking as a non-goal. The gate therefore introduced both scope drift and a new failure mode.
+- **Remediation:** Remove plan-run storage, token transfer, lifecycle adoption, live-state polling, and ownership refusal. Preserve picker-local repeated-key suppression, constrained plan-path validation, and no automatic retry after ambiguous Herdr responses.
+- **Related:** AIF-047, AIF-041, APR-026, APR-007.
+- **Status:** Remediated. Focused plan/session/launcher tests, typecheck, runtime smoke, and diff checks pass. Active sessions require reload; attached-client behavior remains unverified.
+
 ## APR-028 - Judge context and explanation obscured routine cleanup
 
 - **Reference:** Operator-reported Damage Control approval prompt and default session `01a09221-27b5-7739-bbb8-dff21f3ff2a9`, 2026-09-11.

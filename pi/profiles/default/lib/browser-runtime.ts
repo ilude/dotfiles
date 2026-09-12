@@ -147,17 +147,57 @@ function findBrave(): string | undefined {
 	return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
-async function cdpOnline(port: number): Promise<boolean> {
-	try { const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(2000) }); return response.ok && /brave/i.test(JSON.stringify(await response.json())); } catch { return false; }
+const CDP_STARTUP_TIMEOUT_MS = 15_000;
+
+export function cdpRetryDelay(elapsedMs: number): number {
+	if (elapsedMs >= 25_000) return 1_000;
+	if (elapsedMs >= 15_000) return 500;
+	return 250;
 }
 
-async function waitForCdp(port: number, signal?: AbortSignal): Promise<void> {
-	for (let attempt = 0; attempt < 40; attempt++) {
+export interface CdpProbeResult {
+	status: "ready" | "unreachable" | "http_error" | "invalid_json" | "invalid_endpoint";
+	httpStatus?: number;
+	product?: string;
+	protocolVersion?: string;
+}
+
+export function inspectCdpVersion(value: unknown): Pick<CdpProbeResult, "status" | "product" | "protocolVersion"> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return { status: "invalid_endpoint" };
+	const record = value as Record<string, unknown>;
+	const product = typeof record.Browser === "string" ? record.Browser.slice(0, 120) : undefined;
+	const protocolVersion = typeof record["Protocol-Version"] === "string" ? record["Protocol-Version"].slice(0, 40) : undefined;
+	return typeof record.webSocketDebuggerUrl === "string" && record.webSocketDebuggerUrl.startsWith("ws://127.0.0.1:")
+		? { status: "ready", ...(product ? { product } : {}), ...(protocolVersion ? { protocolVersion } : {}) }
+		: { status: "invalid_endpoint", ...(product ? { product } : {}), ...(protocolVersion ? { protocolVersion } : {}) };
+}
+
+async function probeCdp(port: number, timeoutMs = 2_000): Promise<CdpProbeResult> {
+	try {
+		const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(timeoutMs) });
+		if (!response.ok) return { status: "http_error", httpStatus: response.status };
+		try { return inspectCdpVersion(await response.json()); }
+		catch { return { status: "invalid_json" }; }
+	} catch { return { status: "unreachable" }; }
+}
+
+async function cdpOnline(port: number): Promise<boolean> {
+	return (await probeCdp(port)).status === "ready";
+}
+
+async function waitForCdp(port: number, onProbe: (probe: CdpProbeResult) => void, signal?: AbortSignal): Promise<void> {
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < CDP_STARTUP_TIMEOUT_MS) {
 		if (signal?.aborted) throw new BrowserControlError("cancelled", "Browser operation was cancelled.");
-		if (await cdpOnline(port)) return;
-		await new Promise((resolve) => setTimeout(resolve, 250));
+		const remainingMs = CDP_STARTUP_TIMEOUT_MS - (Date.now() - startedAt);
+		const probe = await probeCdp(port, Math.min(2_000, Math.max(1, remainingMs)));
+		onProbe(probe);
+		if (probe.status === "ready") return;
+		const elapsedMs = Date.now() - startedAt;
+		if (elapsedMs >= CDP_STARTUP_TIMEOUT_MS) break;
+		await new Promise((resolve) => setTimeout(resolve, Math.min(cdpRetryDelay(elapsedMs), CDP_STARTUP_TIMEOUT_MS - elapsedMs)));
 	}
-	throw new BrowserControlError("launch_failed", "Brave CDP endpoint did not become available.");
+	throw new BrowserControlError("launch_failed", "Brave CDP endpoint did not become available within 15 seconds.");
 }
 
 export class BrowserRuntime {
@@ -193,8 +233,32 @@ export class BrowserRuntime {
 		const marker = randomUUID().replaceAll("-", "");
 		const args = ["--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${port}`, `--user-data-dir=${path.resolve(userDataDir)}`, `--profile-directory=${profileDirectory}`, `--pi-launch-marker=${marker}`, "--no-first-run", "--no-default-browser-check"];
 		if (input.extensionMode === "disabled") args.push("--disable-extensions", "--disable-component-extensions-with-background-pages");
-		const child = spawn(executable, args, { detached: false, stdio: "ignore", windowsHide: true });
-		try { await waitForCdp(port, input.signal); } catch (error) { try { child.kill(); } catch {} throw error; }
+		const child = spawn(executable, args, { detached: false, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+		let stdoutBytes = 0, stderrBytes = 0, spawnError: string | undefined, lastProbe: CdpProbeResult = { status: "unreachable" };
+		child.stdout?.on("data", (chunk: Buffer) => { stdoutBytes += chunk.length; });
+		child.stderr?.on("data", (chunk: Buffer) => { stderrBytes += chunk.length; });
+		child.on("error", (error) => { spawnError = error.name; });
+		try {
+			await waitForCdp(port, (probe) => { lastProbe = probe; }, input.signal);
+		} catch (error) {
+			const observedAtFailure = await this.processes.list();
+			const markerMatches = observedAtFailure.filter((item) => item.marker === marker && item.port === String(port));
+			const childState = child.exitCode !== null ? `exited(${child.exitCode})` : child.signalCode ? `signaled(${child.signalCode})` : "running";
+			const diagnostics = [
+				`endpoint=${lastProbe.status}`,
+				...(lastProbe.httpStatus === undefined ? [] : [`httpStatus=${lastProbe.httpStatus}`]),
+				...(lastProbe.product ? [`product=${lastProbe.product}`] : []),
+				...(lastProbe.protocolVersion ? [`protocolVersion=${lastProbe.protocolVersion}`] : []),
+				`child=${childState}`,
+				`markerProcesses=${markerMatches.length}`,
+				`stdoutBytes=${stdoutBytes}`,
+				`stderrBytes=${stderrBytes}`,
+				...(spawnError ? [`spawnError=${spawnError}`] : []),
+			].join(", ");
+			try { child.kill(); } catch {}
+			if (error instanceof BrowserControlError) throw new BrowserControlError(error.code, `${error.message} Diagnostics: ${diagnostics}.`);
+			throw error;
+		}
 		const observed = await this.processes.list();
 		const matches = observed.filter((item) => item.marker === marker && item.port === String(port) && canonical(item.userDataDir ?? "") === canonical(userDataDir) && item.profileDirectory === profileDirectory);
 		const ids = new Set(matches.map((item) => item.pid));
