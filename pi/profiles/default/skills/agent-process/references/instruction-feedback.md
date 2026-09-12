@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-050 - Do not let `/clear` cleanup failures veto session clearing
+
+- **Reference:** Operator correction after `/clear` refused to start a new session following two failed visible-subagent launches, 2026-09-12.
+- **Feedback:** The operator did not request a safety gate that makes successful subagent cleanup a prerequisite for `/clear`. Best-effort cleanup must not silently become authority to veto the requested session transition.
+- **Finding:** Commit `c25864f1` added the only custom blocking branch in `extensions/clear.ts`. Its archived plan called the behavior a proposed mechanism but did not identify operator authority for that `/clear` policy. The implementation, regression test, documentation, and changelog then treated it as required.
+- **Recommendation:** Remove the cleanup-failure veto from `/clear`. Keep cleanup reporting and any exact-resource handling separate from whether the new session opens. Review the desired disposition of unresolved runtime ownership before implementation rather than replacing the gate with another unapproved policy.
+- **Related:** AIF-019, AIF-041, APR-031.
+- **Status:** Feedback recorded; runtime change requires operator approval.
+
 ## AIF-049 - Keep skill creation Pareto-focused
 
 - **Reference:** Operator review of the skill-creation research synthesis, 2026-09-11.

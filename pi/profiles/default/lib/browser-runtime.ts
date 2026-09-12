@@ -30,6 +30,7 @@ export interface ProcessInfo {
 	executablePath: string;
 	marker?: string;
 	port?: string;
+	remoteDebuggingAddress?: string;
 	userDataDir?: string;
 	profileDirectory?: string;
 }
@@ -43,7 +44,7 @@ export interface ProcessAdapter {
 function fields(argv: string[]): Partial<ProcessInfo> {
 	const result: Partial<ProcessInfo> = {};
 	for (const argument of argv) {
-		for (const [key, prefix] of [["marker", "--pi-launch-marker="], ["port", "--remote-debugging-port="], ["userDataDir", "--user-data-dir="], ["profileDirectory", "--profile-directory="]] as const) {
+		for (const [key, prefix] of [["marker", "--pi-launch-marker="], ["port", "--remote-debugging-port="], ["remoteDebuggingAddress", "--remote-debugging-address="], ["userDataDir", "--user-data-dir="], ["profileDirectory", "--profile-directory="]] as const) {
 			if (argument.startsWith(prefix)) result[key] = argument.slice(prefix.length);
 		}
 	}
@@ -129,7 +130,14 @@ export function createProcessAdapter(platform = process.platform): ProcessAdapte
 
 export function processMatches(state: BrowserSessionState, info: ProcessInfo | undefined): boolean {
 	if (!info) return false;
-	return info.creationTime === state.processStartTime && canonical(info.executablePath) === canonical(state.executablePath) && canonical(info.userDataDir ?? "") === canonical(state.userDataDir) && info.profileDirectory === state.profileDirectory && info.marker === state.launchMarker && Number(info.port) === state.cdpPort;
+	const identityMatches = info.creationTime === state.processStartTime
+		&& canonical(info.executablePath) === canonical(state.executablePath)
+		&& canonical(info.userDataDir ?? "") === canonical(state.userDataDir)
+		&& info.profileDirectory === state.profileDirectory
+		&& Number(info.port) === state.cdpPort;
+	if (!identityMatches) return false;
+	if (state.sessionMode === "attached") return info.remoteDebuggingAddress === "127.0.0.1";
+	return typeof state.launchMarker === "string" && info.marker === state.launchMarker;
 }
 
 async function freePort(): Promise<number> {
@@ -147,7 +155,13 @@ function findBrave(): string | undefined {
 	return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
+export const DEFAULT_CDP_PORT = 9222;
 const CDP_STARTUP_TIMEOUT_MS = 15_000;
+
+function validateCdpPort(port: number): number {
+	if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new BrowserControlError("invalid_port", "CDP port must be an integer from 1 through 65535.");
+	return port;
+}
 
 export function cdpRetryDelay(elapsedMs: number): number {
 	if (elapsedMs >= 25_000) return 1_000;
@@ -185,7 +199,7 @@ async function cdpOnline(port: number): Promise<boolean> {
 	return (await probeCdp(port)).status === "ready";
 }
 
-async function waitForCdp(port: number, onProbe: (probe: CdpProbeResult) => void, signal?: AbortSignal): Promise<void> {
+async function waitForCdp(port: number, onProbe: (probe: CdpProbeResult) => void, signal?: AbortSignal, errorCode: "launch_failed" | "attach_failed" = "launch_failed"): Promise<void> {
 	const startedAt = Date.now();
 	while (Date.now() - startedAt < CDP_STARTUP_TIMEOUT_MS) {
 		if (signal?.aborted) throw new BrowserControlError("cancelled", "Browser operation was cancelled.");
@@ -197,7 +211,7 @@ async function waitForCdp(port: number, onProbe: (probe: CdpProbeResult) => void
 		if (elapsedMs >= CDP_STARTUP_TIMEOUT_MS) break;
 		await new Promise((resolve) => setTimeout(resolve, Math.min(cdpRetryDelay(elapsedMs), CDP_STARTUP_TIMEOUT_MS - elapsedMs)));
 	}
-	throw new BrowserControlError("launch_failed", "Brave CDP endpoint did not become available within 15 seconds.");
+	throw new BrowserControlError(errorCode, `Brave CDP endpoint did not become available within 15 seconds.`);
 }
 
 export class BrowserRuntime {
@@ -209,7 +223,50 @@ export class BrowserRuntime {
 		if (!state) return { code: 0, stdout: "status: no owned session state", stderr: "" };
 		const online = await cdpOnline(state.cdpPort);
 		const verified = online && processMatches(state, await this.processes.inspect(state.pid));
-		return { code: 0, stdout: `status: owned session record found\nprofileMode: ${state.profileMode}\ncdpOnline: ${online}\nprocessTupleVerified: ${verified}`, stderr: "" };
+		return { code: 0, stdout: `status: ${state.sessionMode === "attached" ? "attached session" : "owned session"} record found\nsessionMode: ${state.sessionMode ?? "owned"}\nprofileMode: ${state.profileMode}\ncdpOnline: ${online}\nprocessTupleVerified: ${verified}`, stderr: "" };
+	}
+
+	async attach(input: { profileAlias: string; extensionMode: ExtensionMode; cdpPort?: number; url?: string; signal?: AbortSignal }): Promise<BrowserCommandResult> {
+		const statePath = getBrowserStatePath();
+		const old = loadBrowserState();
+		if (old && processMatches(old, await this.processes.inspect(old.pid))) throw new BrowserControlError("session_occupied", "An owned or attached browser session is already connected.");
+		if (old) await fs.promises.rm(statePath, { force: true });
+		const configured = readBrowserConfig().profiles[input.profileAlias];
+		if (!configured) throw new BrowserControlError("profile_unknown", `Unknown profile alias ${input.profileAlias}. Run browser_session discover and /browser-setup.`);
+		const profile = resolveConfiguredProfile(input.profileAlias, undefined, discoverBraveProfiles(configured.userDataDir ? [configured.userDataDir] : undefined));
+		const port = validateCdpPort(input.cdpPort ?? DEFAULT_CDP_PORT);
+		const executable = findBrave();
+		if (!executable) throw new BrowserControlError("brave_missing", "Brave executable not found; the attached process cannot be verified.");
+		await waitForCdp(port, () => {}, input.signal, "attach_failed");
+		const expectedRoot = path.resolve(profile.userDataDir);
+		const candidates = (await this.processes.list()).filter((item) =>
+			canonical(item.executablePath) === canonical(executable)
+			&& canonical(item.userDataDir ?? "") === canonical(expectedRoot)
+			&& item.profileDirectory === profile.profileDirectory
+			&& item.remoteDebuggingAddress === "127.0.0.1"
+			&& Number(item.port) === port,
+		);
+		const ids = new Set(candidates.map((item) => item.pid));
+		const roots = candidates.filter((item) => !ids.has(item.parentPid));
+		if (roots.length !== 1) throw new BrowserControlError("attach_unverified", "The localhost CDP process does not expose one Brave root with the configured user-data-dir, profile, and port flags.");
+		const root = roots[0]!;
+		let state: BrowserSessionState = { version: 1, sessionId: randomUUID().replaceAll("-", ""), sessionMode: "attached", profileMode: "real", profileAlias: input.profileAlias, cdpPort: port, pid: root.pid, processStartTime: root.creationTime, executablePath: path.resolve(root.executablePath), userDataDir: expectedRoot, profileDirectory: profile.profileDirectory, extensionMode: input.extensionMode, extensionsExpected: configured.extensionsExpected ?? false, comparisonGeneration: 0 };
+		await saveBrowserState(state);
+		try {
+			if (input.url) {
+				const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(input.url)}`, { method: "PUT", signal: input.signal });
+				if (!response.ok) throw new BrowserControlError("target_missing", "CDP could not open the requested URL on the attached browser.");
+				const target = await response.json() as { id?: string };
+				state = { ...state, targetId: target.id };
+				await saveBrowserState(state);
+			}
+			const extensionTargets = (await listAllTargets(port)).filter((target) => target.url.startsWith("chrome-extension://"));
+			if ((input.extensionMode === "disabled" && extensionTargets.length) || (input.extensionMode === "enabled" && state.extensionsExpected && !extensionTargets.length)) throw new BrowserControlError("extension_mode_mismatch", "Attached browser extension mode and observable runtime targets disagree.");
+		} catch (error) {
+			await fs.promises.rm(statePath, { force: true });
+			throw error;
+		}
+		return { code: 0, stdout: `attached: ${state.sessionId}`, stderr: "" };
 	}
 
 	async start(input: { profileMode: ProfileMode; profileAlias?: string; extensionMode: ExtensionMode; url?: string; signal?: AbortSignal }): Promise<BrowserCommandResult> {
@@ -264,7 +321,7 @@ export class BrowserRuntime {
 		const ids = new Set(matches.map((item) => item.pid));
 		const root = matches.filter((item) => !ids.has(item.parentPid)).sort((a, b) => String(a.creationTime).localeCompare(String(b.creationTime)))[0];
 		if (!root || canonical(root.executablePath) !== canonical(executable)) { try { child.kill(); } catch {} throw new BrowserControlError("ownership_unverified", "Surviving Brave root process could not be verified."); }
-		let state: BrowserSessionState = { version: 1, sessionId: randomUUID().replaceAll("-", ""), launchMarker: marker, profileMode: input.profileMode, ...(input.profileAlias ? { profileAlias: input.profileAlias } : {}), cdpPort: port, pid: root.pid, processStartTime: root.creationTime, executablePath: path.resolve(root.executablePath), userDataDir: path.resolve(userDataDir), profileDirectory, extensionMode: input.extensionMode, extensionsExpected, comparisonGeneration: 0 };
+		let state: BrowserSessionState = { version: 1, sessionId: randomUUID().replaceAll("-", ""), sessionMode: "owned", launchMarker: marker, profileMode: input.profileMode, ...(input.profileAlias ? { profileAlias: input.profileAlias } : {}), cdpPort: port, pid: root.pid, processStartTime: root.creationTime, executablePath: path.resolve(root.executablePath), userDataDir: path.resolve(userDataDir), profileDirectory, extensionMode: input.extensionMode, extensionsExpected, comparisonGeneration: 0 };
 		await saveBrowserState(state);
 		if (input.url) {
 			const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(input.url)}`, { method: "PUT", signal: input.signal });
@@ -279,6 +336,7 @@ export class BrowserRuntime {
 	async stop(_signal?: AbortSignal): Promise<BrowserCommandResult> {
 		const state = loadBrowserState();
 		if (!state) return { code: 0, stdout: "close-owned: already_absent", stderr: "" };
+		if (state.sessionMode === "attached") { await fs.promises.rm(getBrowserStatePath(), { force: true }); return { code: 0, stdout: "close-attached: preserved", stderr: "" }; }
 		if (!processMatches(state, await this.processes.inspect(state.pid))) { await fs.promises.rm(getBrowserStatePath(), { force: true }); return { code: 0, stdout: "close-owned: detached", stderr: "" }; }
 		try { await this.processes.terminate(state.pid); } catch (error) { return { code: 1, stdout: "close-owned: failed", stderr: String(error) }; }
 		for (let attempt = 0; attempt < 20; attempt++) { if (!await this.processes.inspect(state.pid)) { await fs.promises.rm(getBrowserStatePath(), { force: true }); return { code: 0, stdout: "close-owned: stopped", stderr: "" }; } await new Promise((resolve) => setTimeout(resolve, 100)); }

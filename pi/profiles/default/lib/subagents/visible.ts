@@ -185,6 +185,11 @@ export class VisibleChild extends RpcChild {
    if(Date.now()>deadline)throw new Error("Visible launcher exit was not observed after pane closure");
    await delay(25);
   }
-  if(!this.hostPid)this.record.launcherState="exited";
+  if(!this.hostPid){
+   this.record.launcherState="exited";
+   // No pane and no authenticated host means the launcher failed before it
+   // could own a child process. Do not leave an impossible starting state.
+   if(!this.record.paneId)this.record.processState="exited";
+  }
  }
 }

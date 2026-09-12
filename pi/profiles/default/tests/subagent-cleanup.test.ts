@@ -58,6 +58,14 @@ describe("subagent cleanup ownership", () => {
     expect(child.snapshot().outcome).toBe("cancelled");
   });
 
+  it("closes startup state when a visible launch fails before creating a pane", async () => {
+    const child = new VisibleChild({ definition, instructions: "launch", cwd: here, model: "openai-codex/test", effort: "low", skills: [], origin: "cleanup-origin", retained: false, surface: "visible" }, join(here, "../extensions/subagent-child.ts"), join(here, ".."));
+    Object.assign((child as any).record, { status: "settled", outcome: "failed" });
+    (child as any).launchDone = Promise.reject(new Error("pane not found"));
+    expect(await child.cancel()).toMatchObject({ complete: true, process: "not-applicable", pane: "not-applicable", launcher: "not-applicable" });
+    expect(child.snapshot()).toMatchObject({ processState: "exited", launcherState: "exited" });
+  });
+
   it("reports an authenticated visible pane-close failure without touching Herdr", async () => {
     const child = new VisibleChild({ definition, instructions: "pane", cwd: here, model: "openai-codex/test", effort: "low", skills: [], origin: "cleanup-origin", retained: false, surface: "visible" }, join(here, "../extensions/subagent-child.ts"), join(here, ".."));
     const close = vi.fn().mockRejectedValueOnce(new Error("pane close denied"));
@@ -84,7 +92,7 @@ describe("subagent cleanup ownership", () => {
     expect(await owner.shutdown("clear")).toMatchObject({ complete: true });
   });
 
-  it("does not replace the runtime or clean session when reset cleanup is unresolved", async () => {
+  it("clears the session without replacing the runtime when reset cleanup is unresolved", async () => {
     const fresh = await resetSubagentRuntime();
     const child = rpcChild("[hold]");
     Object.assign(child.record, { status: "settled", phase: "settled", outcome: "complete", processState: "running", process: { pid: 123, exitCode: null, signalCode: null } });
@@ -95,12 +103,12 @@ describe("subagent cleanup ownership", () => {
     const ctx: any = { cwd: here, hasUI: true, isProjectTrusted: () => false, isIdle: () => true, sessionManager: { getSessionId: () => "cleanup-origin" }, ui: { notify: vi.fn() }, newSession: vi.fn() };
     subagents(pi); clearCommand(pi); await handlers.session_start({}, ctx);
     await commands.clear.handler("", ctx);
-    expect(ctx.newSession).not.toHaveBeenCalled();
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("cleanup"), "error");
+    expect(ctx.newSession).toHaveBeenCalledOnce();
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("cleanup remains unresolved"), "warning");
     expect(getSubagentRuntime()).toBe(fresh);
     stop.mockImplementation(async () => { child.record.processState = "exited"; });
     await commands.clear.handler("", ctx);
-    expect(ctx.newSession).toHaveBeenCalledOnce();
+    expect(ctx.newSession).toHaveBeenCalledTimes(2);
     await handlers.session_shutdown({ reason: "quit" }, ctx);
   });
 

@@ -14,8 +14,9 @@ Use Pi's tools rather than shell-level profile, PID, or active-tab guesses:
 1. Call `browser_session` with `action: "discover"`.
 2. For a real profile, choose one candidate whose Brave profile directory and live `Local State` display name match the operator's intent.
 3. Save the alias locally with `/browser-setup` using its exact `profileDirectory` and, when needed to disambiguate roots, `userDataDir`.
-4. Call `browser_session` with `action: "start"`, `profile_mode: "real"`, and that alias. Isolated mode is the default and needs no local profile file.
-5. Verify the website's rendered account identity separately. Brave profile metadata does not prove the signed-in website account.
+4. For Pi-owned automation, call `browser_session` with `action: "start"`, `profile_mode: "real"`, and that alias. Isolated mode is the default and needs no local profile file.
+5. For an operator-launched browser, use the explicit `browser_session` `action: "attach"` with the configured alias (and optional `cdp_port`, default `9222`). Attach never launches Brave: it requires a live loopback CDP endpoint and a matching Brave root process carrying explicit `--user-data-dir`, `--profile-directory`, `--remote-debugging-address=127.0.0.1`, and port flags.
+6. Verify the website's rendered account identity separately. Brave profile metadata does not prove the signed-in website account.
 
 Tracked `browser-profiles.schema.json` and `browser-profiles.example.json` describe identity-free configuration. Real aliases stay in the active profile's `browser-profiles.json`; runtime ownership stays in its `browser/session.json`. Legacy aliases are copied once into the default profile, but session state and browser data are never migrated. Never add machine-local files to tracked fixtures or telemetry.
 
@@ -23,13 +24,13 @@ Supported Brave stable roots are discovered from `Local State` on Windows, macOS
 
 ## Session ownership
 
-Only one automation session may own the machine-local registry. `browser_session` records and revalidates the surviving Brave root's process identity, canonical user-data root, profile directory, CDP port, and generated launch marker.
+Only one automation session may own the machine-local registry. `browser_session` records and revalidates the surviving Brave root's process identity, canonical user-data root, profile directory, CDP port, and generated launch marker for Pi-owned launches. Attached sessions instead require the explicit real-profile tuple and loopback address; their process need not carry Pi's generated marker.
 
 - Do not start a second session or attach an untracked browser.
 - Never kill Brave or Chrome by image name.
 - Treat `detached`, `graceful_close_incomplete`, and `failed` as not stopped.
-- Restarting an occupied real profile requires the current per-call authorization returned for that exact process tuple. Do not reuse authorization after process or profile state changes.
-- Session shutdown cleans only an isolated session with proven ownership. It preserves real-profile browsers.
+- Restarting an occupied real profile requires the current per-call authorization returned for that exact process tuple. Do not reuse authorization after process or profile state changes. Attached sessions cannot be restarted by Pi.
+- Session shutdown cleans only an isolated session with proven ownership. It preserves real-profile and attached browsers. Stopping an attached session only disconnects and clears Pi's session record; it never terminates the operator's browser.
 
 ## Exact page targets
 

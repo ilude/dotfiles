@@ -9,8 +9,9 @@ export const MAX_ITEMS = 100;
 export const BROWSER_CONFIG_VERSION = 1;
 
 export type ProfileMode = "isolated" | "real";
+export type SessionMode = "owned" | "attached";
 export type ExtensionMode = "enabled" | "disabled";
-export type SessionAction = "discover" | "status" | "start" | "restart" | "stop";
+export type SessionAction = "discover" | "status" | "start" | "attach" | "restart" | "stop";
 export type PageAction = "list" | "open" | "select" | "snapshot" | "screenshot" | "click" | "fill" | "close";
 
 export interface BrowserProfileConfig {
@@ -33,6 +34,7 @@ export interface DiscoveredProfile {
 export interface BrowserSessionState {
 	version?: 1;
 	sessionId: string;
+	sessionMode?: SessionMode;
 	launchMarker?: string;
 	profileAlias?: string;
 	profileMode: ProfileMode;
@@ -190,6 +192,7 @@ export function loadBrowserState(filePath = getBrowserStatePath()): BrowserSessi
 		if (typeof raw.sessionId !== "string" || typeof raw.cdpPort !== "number" || typeof raw.pid !== "number" || raw.processStartTime === undefined || typeof raw.executablePath !== "string" || typeof raw.userDataDir !== "string" || typeof raw.profileDirectory !== "string") throw new Error("missing identity tuple");
 		return {
 			...raw,
+			sessionMode: raw.sessionMode === "attached" ? "attached" : "owned",
 			profileMode: raw.profileMode === "real" ? "real" : "isolated",
 			extensionMode: raw.extensionMode === "disabled" ? "disabled" : "enabled",
 			comparisonGeneration: typeof raw.comparisonGeneration === "number" ? raw.comparisonGeneration : 0,
@@ -213,7 +216,7 @@ export function parseSessionStatus(output: string): { online?: boolean; ownershi
 	return {
 		online: values.get("cdpOnline") === "true",
 		ownershipVerified: values.get("processTupleVerified") === "true",
-		outcome: output.match(/close-owned:\s*([a-z_]+)/)?.[1],
+		outcome: output.match(/close-(?:owned|attached):\s*([a-z_]+)/)?.[1],
 	};
 }
 

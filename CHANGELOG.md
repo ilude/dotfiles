@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-12: Keep `/clear` available after subagent cleanup failures
+
+**Changed:** Default Pi now treats subagent cleanup as a best-effort part of `/clear`, not a prerequisite for entering the new session. Unresolved cleanup is reported as a warning, and an immediately requested source reload is skipped when the existing runtime could not be retired. Visible launches that fail before creating a pane or authenticated host no longer retain a phantom starting-process state.
+
+**Why:** The cleanup-success gate was not operator-requested and blocked `/clear` after failed Herdr launches whose launchers had already exited.
+
+## 2026-09-12: Attach default Pi browser control to operator-launched Brave
+
+**Added:** Default Pi now has an explicit browser attach action for a configured real Brave alias on loopback CDP, using port 9222 by default. Attach verifies the Brave executable, configured user-data root and profile, explicit loopback address, port, process creation identity, and CDP endpoint without requiring Pi's launch marker.
+
+**Preserved:** Pi-owned launches retain their generated-marker ownership and lifecycle. Attached sessions are never launched, terminated, or restarted by Pi; stop only disconnects and clears the session record. The EagleTG Quick Launch shortcut was backed up and updated without changing its existing target or settings, adding only the verified EagleTG root, profile, loopback address, and port flags.
+
+## 2026-09-12: Reuse the resolved Onclave endpoint for vault tools
+
+**Fixed:** Deferred Onclave vault and YouTube tools now reuse the API endpoint resolved during adapter startup, including its Bitwarden Secrets Manager fallback. They no longer require a duplicate `ONCLAVE_API_BASE` process environment variable when the connected adapter obtained that value from BWS. Tool discovery remains schema-only and does not resolve credentials or contact Onclave.
+
 ## 2026-09-11: Keep subagent runtime dependencies out of bootstrap
 
 **Fixed:** Child launch specifications are now explicitly constructed instead of spreading internal runtime inputs into the bootstrap response. The model registry introduced for bare-model resolution stays parent-side with the catalog and progress callback. This prevents unrelated runtime state from overflowing the existing 256 KiB transport limit. Model resolution and the transport limit are unchanged; a regression test checks the bootstrap shape with an oversized parent-only field.

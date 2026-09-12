@@ -24,7 +24,7 @@ it("keeps explicit environment credentials as overrides", async () => {
 
 it("loads and caches exact search API records from BWS", async () => {
 	vi.stubEnv("BITWARDEN_ACCESS_KEY", "machine-token");
-	const exec = vi.fn(async () => ({ code: 0, killed: false, stderr: "", stdout: JSON.stringify({ key: "SERPER_API_KEY", value: "serper-secret" }) }));
+	const exec = vi.fn(async (_command: string, _args: string[]) => ({ code: 0, killed: false, stderr: "", stdout: JSON.stringify({ key: "SERPER_API_KEY", value: "serper-secret" }) }));
 	expect(await searchApiKey(exec, "SERPER_API_KEY")).toBe("serper-secret");
 	expect(await searchApiKey(exec, "SERPER_API_KEY")).toBe("serper-secret");
 	expect(exec).toHaveBeenCalledOnce();
