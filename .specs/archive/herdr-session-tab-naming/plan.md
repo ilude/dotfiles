@@ -1,7 +1,7 @@
 ---
 created: 2026-09-11
-status: ready
-completed: null
+status: completed
+completed: 2026-09-12
 ---
 
 # Quiet automatic Herdr session tab naming
@@ -149,11 +149,11 @@ Implement fixed outcomes above, choosing equivalent local mechanisms directly. C
   - Done when: agreed automated checks pass, documentation matches implementation, and remaining live verification limits are recorded.
   - Evidence: Updated default-profile Herdr documentation, Pi README, and root changelog. On 2026-09-12 from the task worktree default profile, the agreed focused suite passed (9 files, 114 tests), `pnpm run typecheck` passed after a minimal baseline test typing correction, `pnpm run check:runtime` passed, and `git diff --check` passed. Live Luna/rendering observation remains a non-blocking verification limit.
 
-- [ ] **T4: Archive, commit, and integrate**
+- [x] **T4: Archive, commit, and integrate**
   - Depends on: T3.
   - Archive the whole spec, commit task changes, merge to the originating checkout unless `--no-merge`, verify delivery, and commit completion metadata following Closeout below.
   - Done when: implementation, archived spec, and completion metadata are committed on the authorized integration target; otherwise leave integration explicitly pending.
-  - Evidence: Not started.
+  - Evidence: Archived spec and implementation committed as `e1293051`; current `main` was merged into the task as `bacf2168`; task integrated into `C:/Users/mglenn/.dotfiles` branch `main` as merge commit `ec064fe8` on 2026-09-12. Target verification confirmed the archive is present and no active plan remains.
 
 - [ ] **T5: Clean up the integrated task worktree**
   - Depends on: successful T4 integration. Skip intentionally under `--no-merge`.
@@ -172,10 +172,10 @@ pnpm run check:runtime
 
 Use the actual focused new test filenames if split during implementation. Dependencies, if absent: frozen default-profile install, then `bash scripts/pi-deps-link-setup --profile default` from the task root. Do not modify dependency manifests simply to work around unbundled Pi internals.
 
-- Status: implementation and agreed checks complete; task-branch archival and integration pending.
+- Status: completed and integrated; task worktree cleanup pending final verification.
 - Actual planning work, 2026-09-11, default at the originating checkout: inspected current source, installed Pi docs/example, Herdr CLI documentation, and clean Git baseline.
 - Actual execution, 2026-09-12, default profile at `C:/Users/mglenn/.dotfiles/.worktrees/herdr-session-tab-naming/pi/profiles/default`: focused suite passed (9 files, 114 tests), typecheck passed, runtime smoke passed, and diff check passed.
-- Next: archive this spec, commit the task branch, integrate into the recorded target, commit completion metadata, and remove the task worktree.
+- Next: commit this completion metadata, remove the clean integrated task worktree, verify cleanup, and record final cleanup evidence.
 - Blockers/open user decisions: none.
 - Verification limits: mocked model/Herdr tests prove contracts, not live Luna title quality or attached-client rendering. No production rename/resume/reload experiment is required for completion. Operator live observation after loading the feature is non-blocking.
 
