@@ -155,10 +155,10 @@ Implement fixed outcomes above, choosing equivalent local mechanisms directly. C
   - Done when: implementation, archived spec, and completion metadata are committed on the authorized integration target; otherwise leave integration explicitly pending.
   - Evidence: Archived spec and implementation committed as `e1293051`; current `main` was merged into the task as `bacf2168`; task integrated into `C:/Users/mglenn/.dotfiles` branch `main` as merge commit `ec064fe8` on 2026-09-12. Target verification confirmed the archive is present and no active plan remains.
 
-- [ ] **T5: Clean up the integrated task worktree**
+- [x] **T5: Clean up the integrated task worktree**
   - Depends on: successful T4 integration. Skip intentionally under `--no-merge`.
   - Remove only the recorded task worktree when clean and fully merged. Verify no task worktree or active plan copy remains; do not remove unrelated worktrees.
-  - Evidence: Not started.
+  - Evidence: After integration and metadata commit, Git deregistered the clean task worktree. Windows path-length cleanup required Python `shutil.rmtree`; the directory was then verified absent and no task worktree registration remained on 2026-09-12.
 
 ## Agreed validation and current handoff
 
@@ -172,10 +172,10 @@ pnpm run check:runtime
 
 Use the actual focused new test filenames if split during implementation. Dependencies, if absent: frozen default-profile install, then `bash scripts/pi-deps-link-setup --profile default` from the task root. Do not modify dependency manifests simply to work around unbundled Pi internals.
 
-- Status: completed and integrated; task worktree cleanup pending final verification.
+- Status: completed, integrated, and cleaned up.
 - Actual planning work, 2026-09-11, default at the originating checkout: inspected current source, installed Pi docs/example, Herdr CLI documentation, and clean Git baseline.
 - Actual execution, 2026-09-12, default profile at `C:/Users/mglenn/.dotfiles/.worktrees/herdr-session-tab-naming/pi/profiles/default`: focused suite passed (9 files, 114 tests), typecheck passed, runtime smoke passed, and diff check passed.
-- Next: commit this completion metadata, remove the clean integrated task worktree, verify cleanup, and record final cleanup evidence.
+- Next: none.
 - Blockers/open user decisions: none.
 - Verification limits: mocked model/Herdr tests prove contracts, not live Luna title quality or attached-client rendering. No production rename/resume/reload experiment is required for completion. Operator live observation after loading the feature is non-blocking.
 
