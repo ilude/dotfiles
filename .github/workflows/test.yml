@@ -90,7 +90,7 @@ jobs:
           enable-cache: false
       - name: Install matching Pi runtime
         shell: bash
-        run: pnpm add -g @earendil-works/pi-coding-agent@0.85.0
+        run: pnpm add -g @earendil-works/pi-coding-agent@0.85.1
       - name: Install default profile and link runtime
         shell: bash
         run: |

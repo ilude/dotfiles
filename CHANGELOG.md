@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-12: Resolve current Pi and Herdr releases during installation
+
+**Changed:** Both installers now resolve Pi's latest stable GitHub release before the pnpm update, and the Windows installer compares installed Herdr with its latest stable GitHub release before deciding whether to run Herdr's official installer. The shared Python helper supports both projects and optional authenticated GitHub requests.
+
+**Preserved:** Pi still falls back to npm's `latest` tag when GitHub is unavailable, Herdr still enforces the existing minimum and uses its official installer, pnpm release-age retries remain intact, and legacy Pi dependency handling is unchanged. Default-profile CI now uses Pi 0.85.1.
+
 ## 2026-09-12: Correct default Pi Herdr agent and status presentation
 
 **Fixed:** Direct Pi plugin launches now wait for Herdr to acknowledge their bounded initial agent report, parse complete matching responses, and retry rejected or failed attempts before starting Pi. `/plans` children retain their plan pane labels instead of being relabeled as orchestrators, and failed subagent outcomes use the error color rather than the warning color.

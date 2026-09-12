@@ -466,10 +466,16 @@ if command -v pnpm &>/dev/null; then
         npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
     fi
 
+    pi_version=latest
+    if resolved_pi_version=$("$PYTHON_BIN" "${BASEDIR}/scripts/get_latest_agent_version.py" pi 2>/dev/null); then
+        pi_version="$resolved_pi_version"
+    else
+        echo "Warning: could not resolve the latest Pi GitHub release; using the npm latest tag"
+    fi
     pi_pnpm_args=(add -g --allow-build=koffi --allow-build=protobufjs
-        "@earendil-works/pi-coding-agent@latest")
+        "@earendil-works/pi-coding-agent@${pi_version}")
 
-    echo "Installing/updating pi-coding-agent to latest via pnpm (minimumReleaseAge=${PI_PNPM_MINIMUM_RELEASE_AGE} minutes)..."
+    echo "Installing/updating pi-coding-agent to ${pi_version} via pnpm (minimumReleaseAge=${PI_PNPM_MINIMUM_RELEASE_AGE} minutes)..."
     # Transitive AWS SDK packages pin siblings to exact versions, and those
     # siblings are published on independent schedules. A parent can therefore
     # clear the release-age gate while its pinned child has not, leaving the

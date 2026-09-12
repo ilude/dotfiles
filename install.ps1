@@ -994,21 +994,36 @@ function Test-ClaudeSmoke {
     }
 }
 
+function Get-LatestAgentVersion {
+    param([Parameter(Mandatory)][ValidateSet('pi', 'herdr')][string]$Project)
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $python) { return $null }
+    $script = Join-Path $PSScriptRoot 'scripts\get_latest_agent_version.py'
+    try {
+        $version = (& $python.Source $script $Project 2>$null | Select-Object -First 1)
+        if ($LASTEXITCODE -eq 0 -and $version -match '^\d+\.\d+\.\d+$') { return $version }
+    } catch { }
+    return $null
+}
+
 function Install-Herdr {
     $minimumVersion = [version]'0.9.0'
+    $latestText = Get-LatestAgentVersion -Project herdr
+    $targetVersion = if ($latestText) { [version]$latestText } else { $minimumVersion }
+    if (-not $latestText) { Write-Warning "Could not resolve the latest Herdr GitHub release; enforcing minimum $minimumVersion" }
     $command = Get-Command herdr -ErrorAction SilentlyContinue
     if ($command) {
         $versionText = (& $command.Source --version 2>$null | Select-Object -First 1)
         if ($versionText -match '(\d+\.\d+\.\d+)') {
             $installedVersion = [version]$Matches[1]
-            if ($installedVersion -ge $minimumVersion) {
+            if ($installedVersion -ge $targetVersion) {
                 Write-Host "  Herdr: $installedVersion" -ForegroundColor Green
                 return $true
             }
         }
     }
 
-    Write-Host "  Herdr: installing stable release (minimum $minimumVersion)..." -ForegroundColor Cyan
+    Write-Host "  Herdr: installing stable release (target $targetVersion)..." -ForegroundColor Cyan
     $installer = Join-Path ([System.IO.Path]::GetTempPath()) "herdr-install-$PID.ps1"
     try {
         Invoke-WebRequest -UseBasicParsing -Uri 'https://herdr.dev/install.ps1' -OutFile $installer
@@ -1019,8 +1034,8 @@ function Install-Herdr {
             throw "Herdr installer did not create $herdrPath"
         }
         $versionText = (& $herdrPath --version 2>$null | Select-Object -First 1)
-        if ($versionText -notmatch '(\d+\.\d+\.\d+)' -or [version]$Matches[1] -lt $minimumVersion) {
-            throw "Herdr $minimumVersion or newer was not installed (reported: $versionText)"
+        if ($versionText -notmatch '(\d+\.\d+\.\d+)' -or [version]$Matches[1] -lt $targetVersion) {
+            throw "Herdr $targetVersion or newer was not installed (reported: $versionText)"
         }
         Write-Host "  Herdr: $($Matches[1]) installed" -ForegroundColor Green
         return $true
@@ -1965,14 +1980,19 @@ try {
         # resolve its runtime package family, using a shorter release-age window
         # than the global default.
         $piPnpmMinimumReleaseAge = 720
-        Write-Host "  Installing/updating pi-coding-agent to latest via pnpm (minimumReleaseAge=$piPnpmMinimumReleaseAge minutes)..." -ForegroundColor Cyan
+        $piVersion = Get-LatestAgentVersion -Project pi
+        if (-not $piVersion) {
+            $piVersion = 'latest'
+            Write-Warning "Could not resolve the latest Pi GitHub release; using the npm latest tag"
+        }
+        Write-Host "  Installing/updating pi-coding-agent to $piVersion via pnpm (minimumReleaseAge=$piPnpmMinimumReleaseAge minutes)..." -ForegroundColor Cyan
         $previousCi = $env:CI
         $previousPnpmAllowAllBuilds = $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS
         $env:CI = '1'
         $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = 'true'
         try {
             pnpm --config.minimumReleaseAge=$piPnpmMinimumReleaseAge add -g --allow-build=koffi --allow-build=protobufjs `
-                '@earendil-works/pi-coding-agent@latest'
+                "@earendil-works/pi-coding-agent@$piVersion"
             $piInstallExitCode = $LASTEXITCODE
         } finally {
             $env:CI = $previousCi

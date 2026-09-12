@@ -192,7 +192,11 @@ make check         # Run lint + test + Pi extension validation
 
 ```bash
 just update        # Update dotbot, commit, and reinstall
+python scripts/get_latest_agent_version.py pi
+python scripts/get_latest_agent_version.py herdr
 ```
+
+The version helper reads each project's latest stable GitHub release. Installers use those versions when available, while preserving their existing package-source fallback if GitHub cannot be reached.
 
 ## Conventions
 
