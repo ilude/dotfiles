@@ -1,8 +1,8 @@
 # Changelog
 
-## 2026-09-12: Prevent literal Windows NUL files
+## 2026-09-12: Keep shell syntax consistent
 
-**Changed:** Default Pi instructions now prohibit redirecting to `NUL` in a shell, preventing shell commands from leaving literal reserved-name files in Windows worktrees.
+**Changed:** Default Pi instructions now require syntax matching the intended shell tool, prohibit CMD syntax, and prohibit redirecting to `NUL` in a shell. This prevents mixed-shell commands from leaving literal reserved-name files in Windows worktrees.
 
 ## 2026-09-12: Resolve repository-local skills for subagents
 

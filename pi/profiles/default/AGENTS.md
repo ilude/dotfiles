@@ -10,6 +10,10 @@
 
  ## Shell commands
 
+ Use syntax matching the intended shell tool
+
+ Never use CMD syntax
+
  Never redirect to `NUL` in a shell.
 
  ## Investigation

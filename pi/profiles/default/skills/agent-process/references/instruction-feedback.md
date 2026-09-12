@@ -1,13 +1,13 @@
 # Agent instruction feedback log
 
-## AIF-053 - Never redirect shell output to NUL
+## AIF-053 - Keep shell syntax consistent
 
 - **Reference:** Operator report of recurring literal `NUL` files and a Damage Control cleanup prompt, 2026-09-12.
-- **Feedback:** Use the concise rule “Never redirect to `NUL` in a shell.” Do not add shell-specific alternatives the model already knows.
-- **Finding:** A literal reserved-name file existed in a Windows worktree. The exact producer was not established, so this records the recurring prevention boundary without attributing the incident to a specific command or tool.
-- **Decision:** Add the rule to the default profile so it applies across project repositories.
+- **Feedback:** Use concise separate rules without ending punctuation: “Use syntax matching the intended shell tool” and “Never use CMD syntax”. Retain the direct `NUL` prohibition.
+- **Finding:** A reviewer passed `2>NUL || exit /b 0` to Bash in a Windows worktree. Bash created a literal root-level `NUL` file because both constructs were generated for the wrong shell.
+- **Decision:** Add the shell-consistency and CMD prohibitions to the default profile so they apply across project repositories.
 - **Related:** AIF-001, AIF-004.
-- **Status:** Instruction updated; future adherence remains unverified.
+- **Status:** Instructions updated; future adherence remains unverified.
 
 ## AIF-052 - Preserve plan-recorded push and deployment authorization
 
