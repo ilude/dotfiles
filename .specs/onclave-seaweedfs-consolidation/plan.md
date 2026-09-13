@@ -153,11 +153,10 @@ Implement and validate each owning repository independently. Commit and push Onc
 - End-to-end: accepted ingest records a subscriber; terminal completed/failed/cancelled event triggers exactly one Pi follow-up; transcript operation returns a readable local file; known video recovery completes without polling.
 - Storage: exact source/destination object keyset, byte total, and digest parity; one verified backup restore; OpenTofu state checks unchanged.
 - Status: in progress; local implementation and module integration complete, live execution blocked on authorization and environment.
-- Completed work and evidence: Onclave commits `d1ca91b`/`f3e44d6` and homelab commits `a8cd6d0`/`4480218` are locally integrated. Onclave `just check` passed with 267 tests and 1 skipped. Homelab focused public-safety and implementation tests passed; dependency-only tests skipped where `boto3` was unavailable.
+- Completed work and evidence: Onclave commits `d1ca91b`/`f3e44d6` and homelab commits `a8cd6d0`/`4480218`/`59f9c60`/`8460007` are locally integrated. Onclave `just check` passed with 267 tests and 1 skipped. Homelab `just validate` passed after the task-related ownership assertion and lint findings were corrected; its unit suite ran 435 tests with 1 skipped.
 - Next: after authorization, push owning repositories, perform BWS/DNS/SeaweedFS deployment, migrate with quiesced parity, cut over, restore-test backup, reprocess the known video, and decommission live MinIO.
 - Blockers/open decisions:
   - User must explicitly authorize pushes and live BWS mutation, deployment, migration, and MinIO decommission because this plan records that requirement and the execution invocation does not add authorization.
-  - Operator/environment owner must make a Docker Desktop Linux engine available before the blocked final `just validate` gate can pass.
   - No architectural decision remains open. The shared SeaweedFS process with separate bucket credentials remains selected.
 - Verification limits: no live DNS, BWS, SeaweedFS bucket, migration, deployment, Pi reload, video reprocessing, backup restore, or decommission was performed.
 
