@@ -23,7 +23,7 @@ Default-profile delegation uses stable human display names while UUIDs remain ca
 
 ## Default profile process review
 
-Use `/skill:agent-process` after reload to capture or review operator feedback, workflow failures, and agent-instruction refinements. The [skill](profiles/default/skills/agent-process/SKILL.md) maintains separate [instruction feedback](profiles/default/skills/agent-process/references/instruction-feedback.md) and [failure](profiles/default/skills/agent-process/references/failure-log.md) logs. Instruction changes require operator approval; review is on demand, not automatic.
+Use `/skill:agent-process` after reload to capture or review operator feedback, frustration about agent behavior, workflow failures, and agent-instruction refinements. The [skill](profiles/default/skills/agent-process/SKILL.md) retrieves relevant prior evidence from separate [instruction feedback](profiles/default/skills/agent-process/references/instruction-feedback.md) and [failure](profiles/default/skills/agent-process/references/failure-log.md) logs, permits record-only outcomes, and can offer [context separation](profiles/default/skills/agent-process/references/context-separation.md) without performing it automatically. Instruction changes require operator approval; review is on demand, not automatic.
 
 ## Default profile planning
 

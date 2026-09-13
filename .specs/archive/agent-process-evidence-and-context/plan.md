@@ -83,16 +83,16 @@ Create/resume the dedicated worktree and record its target before editing. Conti
 
 ## Tasks
 
-- [ ] **T1: Revise the improvement skill without adding ceremony**
+- [x] **T1: Revise the improvement skill without adding ceremony**
   - Depends on: none.
   - Update `agent-process/SKILL.md` description and body to implement the procedure contract. Preserve the existing feedback/refinement trigger and explicit `/skill:agent-process` use; add contextual frustration/swearing/“wtf” signals.
   - Replace full-log reading with relevant-entry retrieval and expansion when needed. Explicitly permit record-only completion and no instruction change. Put any separation offer before deep investigation.
   - Reuse/link `skill-creation` where skill edits are involved; change its text only if a specific overlap/conflict must be resolved. No general rewrite.
   - Verify: read the resulting instructions as a fresh executor and compare with settled requirements and existing owning guidance. Compare word counts and justify additions by behavior, without an arbitrary token cap.
   - Done when: the main skill gives clear actions and stopping choices without requiring theory, whole logs, fixed thresholds, or mandatory experiments.
-  - Evidence: Not started.
+  - Evidence: Revised `SKILL.md` now uses contextual behavior-frustration signals, targeted evidence retrieval, record-only completion, adherence-versus-policy diagnosis, operator-approved edit boundaries, and later comparable observation. The skill grew from 282 to 430 words because these settled behaviors replaced the single full-log rule; conditional command detail remains outside the main skill.
 
-- [ ] **T2: Make context-separation options available on demand**
+- [x] **T2: Make context-separation options available on demand**
   - Depends on: T1's offer boundary; source lookup may proceed independently.
   - Add proposed `references/context-separation.md`, linked only when separation would help. Use the verified research note and current owning runtime docs.
   - Describe fresh-instance handoff versus pre-digression fork, native fork/clone/tree distinctions, and existing-session resume. Explain that `/fork` restores the selected prompt to the editor and excludes it from history, while summaries can retain unwanted discussion. Filesystem/current instructions do not rewind.
@@ -100,17 +100,17 @@ Create/resume the dedicated worktree and record its target before editing. Conti
   - Represent custom `/branch` status from current evidence; if its repair is not verified, retain the limitation and use other options. This task does not depend on that repair.
   - Verify: compare every documented command with current installed/owning docs. Reuse prior experiments for unchanged behavior; do not relaunch interactive sessions merely to repeat them. Any unresolved option stays clearly labeled rather than advertised as working.
   - Done when: the model can offer practical choices without a prescribed sequence or new tools.
-  - Evidence: Not started.
+  - Evidence: Added `references/context-separation.md` covering fresh instances, repaired independent `/branch`, pre-digression `/fork`, `/tree`, `/clone`, CLI resume, and Herdr resume. It states the operator choice, filesystem limits, and live-testing limits without prescribing a sequence.
 
-- [ ] **T3: Record the draft and keep navigation consistent**
+- [x] **T3: Record the draft and keep navigation consistent**
   - Depends on: T1 and T2.
   - Update AIF-055 with the approved first-draft changes, including frustration signals and record-only outcomes. Where needed, extend that existing entry with concise expectation/later-observation language; do not migrate historical records or require new fields everywhere.
   - Preserve the research notes as research, distinguish implemented draft behavior from still-proposed ideas, and link the on-demand reference appropriately. Update `pi/README.md` only where its description would otherwise be stale.
   - Add a root `CHANGELOG.md` entry describing selective evidence, optional context separation, preserved approval, and non-automatic behavior. Do not imply proven effectiveness or claim the separate `/branch` repair.
   - Done when: navigation, research status, and feedback records agree with the actual draft and carry no new process obligations.
-  - Evidence: Not started.
+  - Evidence: Updated AIF-055, `pi/README.md`, and root `CHANGELOG.md`; research notes remain labeled research and `/branch` effectiveness is not overstated.
 
-- [ ] **T4: Validate the first draft with finite checks**
+- [x] **T4: Validate the first draft with finite checks**
   - Depends on: T1–T3.
   - Run `git diff --check` and resolve local Markdown links for changed files.
   - Use installed Pi skill discovery on the changed skill directory and confirm its name/description are discovered without related diagnostics. A disposable loader check using the installed package's documented skill-loading API is sufficient; no credentials, model calls, or permanent test harness are needed. Follow current Pi docs for the exact API before invoking it.
@@ -123,7 +123,7 @@ Create/resume the dedicated worktree and record its target before editing. Conti
   - Compare instruction size and remove duplicated meaning. Word counts are descriptive, not a pass/fail ratio.
   - Done when: discovery/links/whitespace checks pass and the single walkthrough reveals no unresolved conflict with agreed intent. Fix established local defects and rerun only affected checks.
   - Limits: these are loading/consistency checks and scenario walkthroughs, not model-behavior experiments or proof of effectiveness. Later ordinary use does not block completion. No full TypeScript/test suite is required for prose-only changes.
-  - Evidence: Not started.
+  - Evidence: `git diff --check` passed; all relative Markdown links in the five changed Markdown files resolved; installed Pi 0.85.1 `loadSkillsFromDir` discovered `agent-process` with its revised description and no diagnostics. One walkthrough passed: (1) first unfamiliar frustration can stop at a record, (2) AIF-031/AIF-054 maps to adherence and premise rechecking without automatic edits, (3) unrelated swearing does not trigger process work, (4) AIF-013 preserves the successful baseline, and (5) displaced task context leads only to an optional, command-accurate separation offer with no filesystem rollback claim. Main-skill size changed from 282 to 430 words; added meaning implements settled stopping, evidence, approval, and observation behavior while command details are conditional.
 
 - [ ] **T5: Archive and integrate the first draft**
   - Depends on: T4; execution authorization must have been given.
@@ -135,9 +135,9 @@ Create/resume the dedicated worktree and record its target before editing. Conti
 
 ## Validation and current handoff
 
-- Status: Ready for implementation authorization. This plan does not execute the skill changes.
-- Completed: capability investigation, disposable storage/RPC experiments, existing 27-test launch check, targeted historical comparison, and research capture before plan authoring. These are prerequisite evidence, not T4 completion.
-- Next: on execution authorization, establish task worktree and start T1.
+- Status: Implementation and agreed checks complete in the dedicated task worktree; archival, task commit, integration, completion metadata, and cleanup remain.
+- Completed: T1–T4, including the first-draft skill/reference/navigation changes and finite loading, link, whitespace, size, and scenario checks. Earlier capability experiments remain prerequisite evidence rather than repeated live tests.
+- Next: archive and commit the spec on the task branch, merge it into recorded target `C:/Users/mglenn/.dotfiles` branch `main`, then record completion metadata and clean up the worktree.
 - Open decisions: none for the first draft. The other branch's `/branch` repair is independent, not a blocker.
 - Verification limits: no measured improvement from draft wording; no live interactive branching/new-tab experiment required for delivery.
 - Fresh-executor review: checked once against settled intent, finite checks, task/repository boundaries, record-only completion, and closeout. No additional review sequence is imposed.
