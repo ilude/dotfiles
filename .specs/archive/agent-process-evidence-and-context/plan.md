@@ -1,7 +1,7 @@
 ---
 created: 2026-09-13
-status: ready
-completed: null
+status: completed
+completed: 2026-09-13
 ---
 
 # Evolve agent-process with selective evidence and task-context preservation
@@ -125,19 +125,19 @@ Create/resume the dedicated worktree and record its target before editing. Conti
   - Limits: these are loading/consistency checks and scenario walkthroughs, not model-behavior experiments or proof of effectiveness. Later ordinary use does not block completion. No full TypeScript/test suite is required for prose-only changes.
   - Evidence: `git diff --check` passed; all relative Markdown links in the five changed Markdown files resolved; installed Pi 0.85.1 `loadSkillsFromDir` discovered `agent-process` with its revised description and no diagnostics. One walkthrough passed: (1) first unfamiliar frustration can stop at a record, (2) AIF-031/AIF-054 maps to adherence and premise rechecking without automatic edits, (3) unrelated swearing does not trigger process work, (4) AIF-013 preserves the successful baseline, and (5) displaced task context leads only to an optional, command-accurate separation offer with no filesystem rollback claim. Main-skill size changed from 282 to 430 words; added meaning implements settled stopping, evidence, approval, and observation behavior while command details are conditional.
 
-- [ ] **T5: Archive and integrate the first draft**
+- [x] **T5: Archive and integrate the first draft**
   - Depends on: T4; execution authorization must have been given.
   - Record actual checks and remaining non-blocking limits. Archive the entire spec directory to `.specs/archive/agent-process-evidence-and-context/`, provided that destination is not another plan, and commit the task changes plus archive locally.
   - Merge into recorded originating `main` without stashing, discarding, or committing unrelated work. Resolve routine conflicts within scope; preserve independently edited launcher code. If blocked, retain the worktree and record the blocker, exact next action, and owner.
   - After integration, confirm target contains implementation and archive with no active plan copy. Set archived status/completion date and commit completion metadata on target. Remove the task worktree only after it has no uncommitted or unmerged work.
   - Done when: integration, metadata, and cleanup are verified, or an explicit no-merge request is reported with the committed worktree retained. Leave unfinished integration/cleanup unchecked. No push or deployment.
-  - Evidence: Not started.
+  - Evidence: Archived the complete spec on task commit `baa88f64`, merged task branch `task/agent-process-evidence-and-context` into recorded target `C:/Users/mglenn/.dotfiles` branch `main` with merge commit `2f4830fe`, and verified the active spec path is absent. Completion metadata is committed separately on the target; no push or deployment was performed.
 
 ## Validation and current handoff
 
-- Status: Implementation and agreed checks complete in the dedicated task worktree; archival, task commit, integration, completion metadata, and cleanup remain.
-- Completed: T1–T4, including the first-draft skill/reference/navigation changes and finite loading, link, whitespace, size, and scenario checks. Earlier capability experiments remain prerequisite evidence rather than repeated live tests.
-- Next: archive and commit the spec on the task branch, merge it into recorded target `C:/Users/mglenn/.dotfiles` branch `main`, then record completion metadata and clean up the worktree.
+- Status: Completed on 2026-09-13 and integrated into recorded target `C:/Users/mglenn/.dotfiles` branch `main`.
+- Completed: T1–T5, including the first-draft skill/reference/navigation changes, finite loading/link/whitespace/size/scenario checks, archival, local task commit, merge, completion metadata, and verified worktree cleanup. Earlier capability experiments remain prerequisite evidence rather than repeated live tests.
+- Next: None. Later ordinary use may supply non-blocking evidence about behavioral effectiveness.
 - Open decisions: none for the first draft. The other branch's `/branch` repair is independent, not a blocker.
 - Verification limits: no measured improvement from draft wording; no live interactive branching/new-tab experiment required for delivery.
 - Fresh-executor review: checked once against settled intent, finite checks, task/repository boundaries, record-only completion, and closeout. No additional review sequence is imposed.
