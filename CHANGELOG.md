@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-13: Make web fetch failures identifiable
+
+**Changed:** Default Pi now shows the requested URL in each `web_fetch` call row and preserves the gateway's human-readable failure message alongside its diagnostic error code. Failed fetches are identifiable without expanding the tool call, while the model continues to receive the original tool arguments and thrown error.
+
+## 2026-09-13: Ground Pi safeguard recommendations in evidence and user intent
+
+**Changed:** Default Pi instructions require evidence for factual claims and workflow-specific justification before calling safeguards necessary. Reviewer safety findings must carry an explicit proposal warning directing the parent to discuss additions outside agreed user intent before adoption. This addresses unsupported safety restrictions being treated as requirements while preserving reviewers' ability to propose controls.
+
+## 2026-09-13: Report the active Pi session directly
+
+**Added:** The default Pi profile now provides the argument-free `pi_session` tool, which reports only the current session ID and active profile without exposing model, reasoning, working-directory, or session-file details. The paired `session_messages` tool writes a selected session's user and assistant interaction, including thinking but excluding tool calls and results, to a local JSONL projection for focused review without injecting the projection into model context.
+
+## 2026-09-13: Resume Pi after asynchronous vault ingestion
+
+**Fixed:** Onclave vault ingestion now automatically subscribes the active Pi orchestrator to terminal job events. Completed, failed, and cancelled ingestion jobs return through the broker as queued Pi follow-ups that trigger a new turn, so completion no longer depends on the model polling or remembering the job. Vault content can also be downloaded through the existing signed Onclave API into an extension-owned private temporary file, allowing large transcripts to be inspected locally without placing their full text in model context.
+
+**Preserved:** The model cannot choose or spoof the notification identity, generic informational Onclave messages remain inert, and session replacement prevents stale Pi identities from receiving new ingestion subscriptions. Downloads accept only a content ID, return only the generated local path, content ID, and byte count, and do not expose object-store credentials or add another download endpoint.
+
+## 2026-09-12: Keep every Pi tab visible in Herdr Agents
+
+**Fixed:** The default Pi Herdr lifecycle integration now preserves Windows session paths and translates Pi's `reload` lifecycle into the generation marker recognized by Herdr 0.9.0. Reloaded direct tabs and visible subagents therefore retain session identity instead of becoming `unknown` and disappearing from the Agents pane.
+
+**Preserved:** Herdr remains responsible for agent state presentation, headless helpers remain excluded, and the official generated integration stays the lifecycle owner with only the documented compatibility corrections.
+
 ## 2026-09-12: Keep shell syntax consistent
 
 **Changed:** Default Pi instructions now require syntax matching the intended shell tool, prohibit CMD syntax, and prohibit redirecting to `NUL` in a shell. This prevents mixed-shell commands from leaving literal reserved-name files in Windows worktrees.

@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { truncateHead, type ModelRuntime, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { SCREEN_PROMPT, screenContent, type Reviewer } from "./screen.ts";
 import { GatewayCircuit } from "./circuit.ts";
@@ -179,6 +180,9 @@ export default function webTools(pi: ExtensionAPI) {
 			max_chars: Type.Optional(Type.Integer({ minimum: 1, maximum: 50_000 })),
 			backend: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina")], { description: "Default auto; explicit backend selection never substitutes another backend." })),
 		}),
+		renderCall(args, theme) {
+			return new Text(`${theme.fg("toolTitle", theme.bold("web_fetch:"))} ${theme.fg("muted", args.url ?? "")}`, 0, 0);
+		},
 		async execute(_id, params, signal) {
 			const deadline = performance.now() + 60_000;
 			const acquisition = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(60_000)]);

@@ -1,5 +1,15 @@
 # Agent instruction feedback log
 
+## AIF-054 - Stop prompting safety-gate invention
+
+- **Reference:** Operator correction after the Onclave vault notification and transcript-download implementation, 2026-09-13.
+- **Feedback:** Existing agents show a recurring tendency to invent operational safety gates and resource ceilings. Review the active orchestrator and role prompts for wording that primes generic safety recommendations, especially reviewer instructions, rather than adding another prohibition without identifying the source.
+- **Finding:** The reviewer role says to prioritize “correctness, safety, and requirement defects,” while the global default instructions already say generic best practices do not justify controls and unresolved safeguard choices require an operator question. In this task, the orchestrator also explicitly prompted workers to add byte limits, fail closed without a notification identity, and extend a timeout. The assignments establish orchestrator noncompliance with proportionality instructions; reviewer safety priming remains a possible influence, not a demonstrated cause.
+- **Decision:** Reviewers may propose safety controls and must present findings as proposals for parent assessment against user intent. The orchestrator must discuss suggestions outside that intent with the user before assigning or implementing them.
+- **Related:** AIF-041, AIF-031, AIF-032, AIF-024, APR-035.
+- **Follow-up evidence:** Session `01a09b46-74f9-70bb-989d-7bed421a1784`, records 278–299, shows repeated confident justification after correction: the orchestrator retained a supposedly necessary context-output limit until the operator pointed out that file download returns only metadata. The issue is not just proposal approval: claimed necessity must be checked against the actual data path, and a challenged premise must be reassessed rather than replaced with another unsupported justification. The operator subsequently approved concise replacements in global Investigation and Proportionality requiring evidence for factual claims, rechecking challenged claims, and workflow-specific justification for safeguards. The reviewer must explain the harm path and include an explicit proposal/user-discussion warning in each security or safety-gate finding.
+- **Status:** Default-profile reviewer and orchestrator instructions updated; future adherence remains unverified.
+
 ## AIF-053 - Keep shell syntax consistent
 
 - **Reference:** Operator report of recurring literal `NUL` files and a Damage Control cleanup prompt, 2026-09-12.

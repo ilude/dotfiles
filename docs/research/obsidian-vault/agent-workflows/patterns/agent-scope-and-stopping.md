@@ -111,6 +111,8 @@ Keep the research here and link it from the on-demand `agent-process` skill. Pre
 
 ## Related notes
 
+- [Instruction evolution and reasoning budgets](instruction-evolution-and-reasoning-budgets.md)
+
 - [Deterministic agent rules and guardrails](deterministic-agent-rules-and-guardrails.md)
 - [Evidence-based code review](evidence-based-code-review.md)
 - [Agent workflow benchmark loops](../workflow-ideas/agent-workflow-benchmark-loops.md)

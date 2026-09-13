@@ -67,7 +67,7 @@ export async function requestGateway(endpoint: string, token: string,
 					if (!reply.ok) {
 						if (["backend_unavailable", "overloaded"].includes(reply.error!.code)) throw new GatewayError("availability", "Gateway unavailable or overloaded");
 						if (reply.error!.code === "invalid_request") throw new GatewayError("configuration", `Gateway request rejected: ${reply.error!.code}`);
-						throw new GatewayError("acquisition", `Gateway acquisition failed: ${reply.error!.code}`);
+						throw new GatewayError("acquisition", `Web fetch failed: ${reply.error!.message} (${reply.error!.code})`);
 					}
 					if (status !== 200) throw new GatewayError("availability", "Gateway HTTP status contradicts its result");
 					resolve(reply);

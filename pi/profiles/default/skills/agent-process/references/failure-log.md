@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-035 - Onclave work added unrequested operational gates
+
+- **Reference:** Onclave vault notification and transcript-download implementation, 2026-09-13.
+- **Observed:** The orchestrator converted advisor and reviewer suggestions into a mandatory connected-agent ingest precondition, a 50 MiB download ceiling, and a full-stream deadline without first asking the operator. It explicitly included those controls in developer and review assignments.
+- **Finding:** The active default instructions already prohibit importing generic controls and require a user question when safeguard choices affect behavior. The reviewer role’s generic direction to prioritize safety may prime broad findings, but it did not require these controls; the orchestrator authored and approved them despite contrary scope guidance.
+- **Remediation:** AIF-054 records an instruction review discussion. Remove or change runtime gates only with operator approval; do not silently replace them with different limits.
+- **Related:** AIF-041, AIF-031, AIF-032, APR-026, APR-007.
+- **Follow-up evidence:** Reviewed session `01a09b46-74f9-70bb-989d-7bed421a1784`, records 278–299. After conceding arbitrary limits, the orchestrator asserted that a remaining 24,000-character bound had a clear purpose, conceded its lack of evidence when challenged, then acknowledged that transcript bytes never enter the download result. No intervening tool inspection supported these shifting claims. The subsequent correction proposal also overstated a notification identity check as guaranteeing notification for every accepted job; it establishes a routing identity, not eventual delivery.
+- **Status:** Reviewer/parent proposal instructions subsequently updated in AIF-054. Additional evidence recorded; this review does not verify runtime correction or authorize further instruction changes.
+
 ## APR-034 - Bare `sol` override launched OpenRouter Solar
 
 - **Reference:** Operator-reported strategist launch during database lifecycle plan reconciliation, 2026-09-12.

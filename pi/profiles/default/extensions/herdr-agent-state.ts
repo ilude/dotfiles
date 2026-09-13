@@ -6,6 +6,7 @@
 // @ts-nocheck
 
 import net from "node:net";
+import { isAbsolute } from "node:path";
 
 const HERDR_ENV = process.env.HERDR_ENV;
 const socketPath = process.env.HERDR_SOCKET_PATH;
@@ -74,7 +75,7 @@ function updateSessionRef(ctx: any): void {
   try {
     const file = ctx?.sessionManager?.getSessionFile?.();
     currentAgentSessionPath =
-      typeof file === "string" && file.startsWith("/") ? file : undefined;
+      typeof file === "string" && isAbsolute(file) ? file : undefined;
   } catch {
     currentAgentSessionPath = undefined;
   }
@@ -121,7 +122,10 @@ function reportSession(sessionStartSource?: string): Promise<void> {
       source,
       agent: "pi",
       seq: nextReportSeq(),
-      session_start_source: sessionStartSource,
+      // Herdr 0.9.0 does not recognize Pi's "reload" reason as a new
+      // lifecycle generation. Treat it as startup so reloaded tabs retain
+      // their session identity and remain in the Agents pane.
+      session_start_source: sessionStartSource === "reload" ? "startup" : sessionStartSource,
       ...sessionRef,
     },
   });

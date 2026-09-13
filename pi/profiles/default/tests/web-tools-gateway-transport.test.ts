@@ -28,9 +28,13 @@ it("times out connection establishment, rather than the whole browser response",
   await vi.advanceTimersByTimeAsync(15000); expect(second.req.destroyed).toBe(false);
   second.respond(200, receipt); await expect(slow).resolves.toMatchObject({ content: "hi" });
 });
-it.each([[401, "denied", "configuration"], [502, "upstream offline", "availability"], [422, { ...receipt, ok: false, error: { code: "challenge", message: "challenge" } }, "acquisition"]])("classifies HTTP %i without replaying site/auth failures", async (status, body, kind) => {
+it.each([
+  [401, "denied", "configuration", "Gateway authentication failed"],
+  [502, "upstream offline", "availability", "Gateway returned an invalid HTTP 502 response"],
+  [422, { ...receipt, ok: false, error: { code: "challenge", message: "Cloudflare challenge" } }, "acquisition", "Web fetch failed: Cloudflare challenge (challenge)"],
+])("classifies HTTP %i without replaying site/auth failures", async (status, body, kind, message) => {
   const fake = transport(); const result = requestGateway("https://gateway.example.com", "token", input, new AbortController().signal);
-  const rejected = expect(result).rejects.toMatchObject({ kind }); fake.respond(Number(status), body); await rejected;
+  const rejected = expect(result).rejects.toMatchObject({ kind, message }); fake.respond(Number(status), body); await rejected;
 });
 it("does not redirect gateway credentials and bounds response bytes", async () => {
   const fake = transport(); const result = requestGateway("https://gateway.example.com", "token", input, new AbortController().signal);

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { promisify, stripVTControlCharacters } from "node:util";
 import { fileURLToPath } from "node:url";
 import { screenContent } from "../extensions/web-tools/screen.ts";
 import webTools, { bounded, searchQuery } from "../extensions/web-tools/index.ts";
@@ -143,6 +143,14 @@ describe("tool integration", () => {
     expect(result.content[0].text).toContain("Useful");
     expect(result.content[0].text).toContain("too many requests");
     expect(complete.mock.calls[0][1].messages[0].content).toContain("too many requests");
+  });
+  it("shows the fetch URL in the operator-facing call row", () => {
+    const { registered } = tools();
+    const rendered = registered.get("web_fetch").renderCall(
+      { url: "https://example.com" },
+      { fg: (_color: string, value: string) => value, bold: (value: string) => value },
+    );
+    expect(stripVTControlCharacters(rendered.render(120).join("\n")).trimEnd()).toBe("web_fetch: https://example.com");
   });
   it("uses a real profile-local script path and passes cancellation", async () => {
     const { registered, exec } = tools();
