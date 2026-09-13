@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-13: Refine agent-process evidence and context handling
+
+**Changed:** Default Pi's on-demand `agent-process` skill now retrieves relevant prior incidents instead of requiring complete log reads, recognizes contextual frustration about agent behavior, and permits recording an intent failure without forcing instruction work. Proposed instruction edits still require operator approval and distinguish missing policy from failure to follow existing policy.
+
+**Added:** When process discussion may displace task work, the skill can offer a concise reference covering fresh instances, independent branches, pre-digression forks, tree navigation, and saved-session resume. Separation remains operator-chosen and does not rewind filesystem state, run automatically, create monitoring, or claim behavioral effectiveness.
+
 ## 2026-09-13: Repair independent `/branch` sessions
 
 **Fixed:** Default Pi `/branch` now extracts the child through a separate SessionManager, so the calling parent keeps its session identity and file while the launched child starts at the exact branch point.
