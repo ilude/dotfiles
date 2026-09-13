@@ -45,12 +45,15 @@ Investigation was completed on 2026-09-13 with Pi 0.85.1 and Herdr client/server
 - This A/B result establishes the wrapper-hidden process identity as the direct-tab registration defect. It does not establish process races, stale sequencing, or the previously contaminated production pane as causes.
 - `scripts/pi-subagent-host.mjs` already uses the correct comparable structure: it spawns the real Pi CLI as a child with inherited terminal streams. Visible subagents therefore need an explicit live list/state assertion, not a second launcher redesign.
 - The installed generated integration is version 8 and reported current by the installed Herdr 0.9.0 binary. A locally available newer Herdr source snapshot contains generated Pi integration version 9 with cross-platform path handling, but it is not the installed integration contract.
-- Herdr 0.9.0 accepts Pi session replacement reasons `new`, `resume`, and `fork`. It does not define `startup` as a Pi replacement reason. The pending local `reload` to `startup` translation is unsupported and must not be retained as the fix. A same-session reload should preserve identity without inventing a replacement generation.
+- Follow-up experiments verified the proposed wrapper-parent/spawned-Pi arrangement: exact agent registration and independently matched session identity, native input, Pi exit, and launcher-owned pane removal all passed.
+- Both original `reload` and translated `startup` preserved a registered same-session Pi pane in fresh live tests. The translation was unnecessary, not demonstrated harmful. Remove it to minimize upstream divergence, not because it caused the missing agents. The earlier claim that session-replacement rules made it invalid for any reload was incorrect.
+- Actual visible subagent runs using the existing host passed working/retained-idle registration, native session-content verification, reload, and pane/list cleanup. A matching headless run never appeared. No separate visible-subagent launcher defect was reproduced.
+- Reproduction details, run identifiers, results, activation guidance, and limits are recorded in [experiments.md](experiments.md).
 - Herdr's generated v8 integration used `file.startsWith("/")`, which rejects Windows session paths. The pending `node:path` absolute-path correction is independently valid. Use an implementation consistent with the generated v9 cross-platform form where practical.
 
 ### Herdr documentation confirmation
 
-The installed/source-matched Herdr documentation was reviewed after the live A/B test:
+Herdr's upstream documentation was reviewed alongside installed CLI behavior and local source. The inspected `docs/next` snapshot is not proof that every detail matches the installed binary; live 0.9.0 experiments control behavior claims:
 
 - `Agents` confirms Herdr first detects the pane's foreground process, then gives an active Pi lifecycle integration authoritative state/session control. This matches the observed failure when the wrapper hides Pi's real process.
 - `Integrations` confirms `herdr:pi` reports are lifecycle authority, `source` must remain stable, and sequence values must be strictly increasing when reports can arrive out of order.
@@ -61,9 +64,9 @@ The installed/source-matched Herdr documentation was reviewed after the live A/B
 
 ### Work to preserve
 
-Existing uncommitted task-related changes must be reassessed rather than overwritten:
+Earlier task-related edits have since been committed alongside other work (current HEAD during follow-up experiments: `8b47a7a4`). Recheck current Git state and edit the current source rather than replaying an old uncommitted patch:
 
-- `pi/profiles/default/extensions/herdr-agent-state.ts`: keep the Windows absolute-path correction; remove the unsupported reload translation.
+- `pi/profiles/default/extensions/herdr-agent-state.ts`: keep the Windows absolute-path correction; remove the experimentally unnecessary reload translation.
 - `pi/profiles/default/tests/herdr-agent-state.test.ts`: revise the mocked test so it covers the supported payload behavior and does not claim live registration.
 - `pi/profiles/default/docs/herdr.md`: replace the incorrect two-patch explanation with the verified launcher/process requirement and maintained path compatibility patch.
 - `CHANGELOG.md`: replace the premature fixed claim with the eventual verified implementation outcome.
@@ -85,7 +88,7 @@ Other uncommitted changes, including module state and the Onclave changelog entr
 
 ## Execution guidance
 
-Create or resume a dedicated task worktree and branch after safely transferring only the task-related uncommitted changes listed above. Record the actual path, branch, originating checkout, and integration target. Do not stash, discard, copy, or commit unrelated work. If concurrent ownership prevents safe transfer, continue read-only work and ask for that specific handoff.
+Create or resume a dedicated task worktree and branch from the current integration target. Preserve this plan and its experiment evidence, transferring only any still-uncommitted task content. Earlier lifecycle edits are now committed; do not replay them as pending patches. Record the actual path, branch, originating checkout, and integration target. Do not stash, discard, copy, or commit unrelated work. Concurrent edits to session-launch and documentation are present; inspect their current diff and preserve them.
 
 Implement the established fix and finite checks below. Separate verified code defects, verified live behavior, hypotheses, and remaining validation limits in evidence. A mocked pass cannot satisfy a live checkbox.
 
@@ -122,8 +125,10 @@ Implement the established fix and finite checks below. Separate verified code de
 
 - [ ] **T4: Align documentation and claims with verified behavior**
   - Depends on: T3.
-  - Files: `pi/profiles/default/docs/herdr.md`, `pi/profiles/default/docs/subagents.md`, `pi/README.md`, `CHANGELOG.md`.
-  - Change: document the launcher/process identity contract, Windows path compatibility maintenance, API-acknowledgment limit, and actual live checks. Remove the unsupported reload translation and all premature claims.
+  - Files: `pi/profiles/default/skills/herdr/SKILL.md`, `pi/profiles/default/docs/herdr.md`, `pi/profiles/default/docs/subagents.md`, `pi/README.md`, `CHANGELOG.md`.
+  - Change: document the launcher/process identity contract, Windows path compatibility maintenance, API-acknowledgment limit, and actual live checks. Correct premature claims and explain that reload translation was unnecessary, not proven harmful.
+  - Add a short troubleshooting pointer to the Herdr skill. Keep detailed intent, proven cause, tested versions, reproduction steps, activation instructions, and unresolved limits in `docs/herdr.md`, linked to this archived plan and `experiments.md`. This is the final implementation task before closeout so future recurrence has a concrete restart point without bloating the skill.
+  - Activation instructions: reopen settled Pi sessions started through the old wrapper using the corrected launcher. Pi `/reload` cannot change an existing process's OS command line. No Herdr upgrade or full server restart was required by the experiments; do not automatically restart the shared server or interrupt unrelated work.
   - Verify from `pi/profiles/default/`:
     - `pnpm test herdr-agent-state.test.ts herdr-launch.test.ts`
     - focused session-launch, prompt-state, label, and subagent runtime tests affected by the launcher change
@@ -144,10 +149,10 @@ Implement the established fix and finite checks below. Separate verified code de
 ## Agreed validation and current handoff
 
 - Status: ready.
-- Completed investigation: fresh isolated A/B runs established that the repository wrapper hides Pi's OS process identity and that direct Pi execution restores list membership, Windows session identity, and idle state.
+- Completed investigation: isolated baseline/direct-CLI A/B followed by a spawned-child wrapper prototype, both reload variants, and actual visible/headless subagent experiments. All three requested confidence checks passed; see [experiments.md](experiments.md). No production implementation was changed by the experiments.
 - Next: T1 and T2 may proceed independently, then T3 proves the combined behavior.
 - Blockers/open decisions: none. The established fix preserves the selected integration ownership and workflow.
-- Remaining validation limits: the proposed spawned-launcher implementation has not been written; reload after that implementation and visible-subagent list/state assertions have not yet run. Attached-client rendering is not separately proven by server/CLI registration, but operator manual testing will not block closeout after the automated live acceptance passes.
+- Remaining validation limits: the production launcher patch is not implemented. The prototype passed registration, input, same-session reload, and normal exit; final signal/error handling, resume/plan/preflight regressions, and integration tests must exercise the final production code. Visible-subagent lifecycle and headless exclusion passed with the current child stack. Unix behavior and attached-client rendering remain separately stated limits, not claimed passes. Operator manual testing will not block closeout after automated acceptance passes.
 
 ## Closeout
 

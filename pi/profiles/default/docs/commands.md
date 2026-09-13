@@ -2,7 +2,7 @@
 
 `extensions/commands.ts` runs the explicit registry in `commands/index.ts` for prompt-backed commands. Direct runtime commands live in focused extensions. Native Pi prompt templates live under `prompts/`. Everything belongs to this profile; no project command directories are scanned. Legacy is unchanged.
 
-- `/branch [title]`: opens a branched copy of this Pi session in a new terminal tab.
+- `/branch [title]`: creates an independent child from the current session leaf and opens it in a new terminal tab; the parent keeps its own session ID and file. Both sessions persist a visible native `session-branch` record containing the parent/child IDs and paths, exact branch-point entry ID and timestamp, and role. These records are excluded from model context.
 - `/bro`: sends the plain-language restatement prompt, without additional tools.
 - `/clear`: starts a new session, matching `/new`, and reloads profile resources when the footer shows `[reload]`.
 - `/commit [push]`: sends the [commit workflow](commit.md) and temporarily enables `commit_run`, which delegates the complete Git workflow privately to Luna/low.

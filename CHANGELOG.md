@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-13: Repair independent `/branch` sessions
+
+**Fixed:** Default Pi `/branch` now extracts the child through a separate SessionManager, so the calling parent keeps its session identity and file while the launched child starts at the exact branch point.
+
+**Added:** Parent and child sessions persist reciprocal visible `session-branch` records with their roles, both session IDs and paths, and the exact branch-point entry ID and timestamp. Native custom-entry rendering shows the evidence without adding it to model context.
+
 ## 2026-09-13: Make web fetch failures identifiable
 
 **Changed:** Default Pi now shows the requested URL in each `web_fetch` call row and preserves the gateway's human-readable failure message alongside its diagnostic error code. Failed fetches are identifiable without expanding the tool call, while the model continues to receive the original tool arguments and thrown error.

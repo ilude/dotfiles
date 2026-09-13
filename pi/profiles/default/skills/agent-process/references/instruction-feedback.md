@@ -1,5 +1,15 @@
 # Agent instruction feedback log
 
+## AIF-055 - Evolve instructions with selective evidence and preserved task context
+
+- **Reference:** Operator discussion and authorized investigation on 2026-09-13, following AIF-054.
+- **Feedback:** Seek small, high-impact instructions without filling context with either wordy rules or indiscriminate research. Use flexible prompt-based improvement rather than a deterministic state machine. Deletion, consolidation, and relocation are valid remedies. Offer, rather than automatically perform, separation of process discussion from task work; retain discoverable fork/new-instance options for later evolution through use.
+- **Finding:** `skill-creation` already covers concise selection and consolidation. `agent-process` is the existing improvement entry point, but its complete-history reading requirement conflicts with selective context use. Native Pi fork behavior passed disposable storage/RPC experiments; repository `/branch` mutates the parent session manager before launching the child, so it is not currently a reliable independent-copy option.
+- **Decision:** Capture research and capability evidence in the vault. Proposed skill revisions remain for discussion; no automation, new skill, or change to the full-log rule is authorized yet.
+- **Related:** AIF-003, AIF-004, AIF-013, AIF-031, AIF-054; vault notes `instruction-evolution-and-reasoning-budgets.md` and `pi-context-separation-options.md` under `agent-workflows/patterns/`.
+- **Follow-up:** Operator separately approved fixing `/branch` to keep parent and child in independent files, with reciprocal visible persisted IDs/paths/roles and branch-point entry/timestamp excluded from model context. Repair, real-manager tests, focused checks, and installed-loader review completed; no live two-tab exercise. No additional gates or workflow machinery were added.
+- **Status:** Investigation and bounded branch repair recorded. Functional experiments establish session behavior, not future instruction effectiveness.
+
 ## AIF-054 - Stop prompting safety-gate invention
 
 - **Reference:** Operator correction after the Onclave vault notification and transcript-download implementation, 2026-09-13.

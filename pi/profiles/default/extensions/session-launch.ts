@@ -2,13 +2,28 @@ import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getAgentDir, type ExtensionAPI, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type CustomEntry, type ExtensionAPI, type ExtensionCommandContext, type Theme } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js";
+import { Text } from "@earendil-works/pi-tui";
 import { activeProfileName } from "../lib/profile.ts";
 
 interface LaunchPlan {
 	executable?: string;
 	args: string[];
 	reason?: string;
+}
+
+const BRANCH_EVIDENCE_TYPE = "session-branch";
+
+interface BranchEvidence {
+	schemaVersion: 1;
+	role: "parent" | "child";
+	parentSessionId: string;
+	parentSessionFile: string;
+	childSessionId: string;
+	childSessionFile: string;
+	branchPointEntryId: string;
+	branchPointTimestamp: string;
 }
 
 interface CommandContext {
@@ -121,6 +136,31 @@ function runHerdr(args: string[], cwd: string): string {
 	if (result.error) throw result.error;
 	if (result.status !== 0) throw new Error((result.stderr || result.stdout).trim() || `herdr exited ${result.status}`);
 	return result.stdout;
+}
+
+function branchEvidence(data: unknown): BranchEvidence | undefined {
+	if (!data || typeof data !== "object") return undefined;
+	const value = data as Record<string, unknown>;
+	const role = value.role === "parent" || value.role === "child" ? value.role : undefined;
+	const parentSessionId = typeof value.parentSessionId === "string" && value.parentSessionId ? value.parentSessionId : undefined;
+	const parentSessionFile = typeof value.parentSessionFile === "string" && value.parentSessionFile ? value.parentSessionFile : undefined;
+	const childSessionId = typeof value.childSessionId === "string" && value.childSessionId ? value.childSessionId : undefined;
+	const childSessionFile = typeof value.childSessionFile === "string" && value.childSessionFile ? value.childSessionFile : undefined;
+	const branchPointEntryId = typeof value.branchPointEntryId === "string" && value.branchPointEntryId ? value.branchPointEntryId : undefined;
+	const branchPointTimestamp = typeof value.branchPointTimestamp === "string" && value.branchPointTimestamp ? value.branchPointTimestamp : undefined;
+	if (value.schemaVersion !== 1 || !role || !parentSessionId || !parentSessionFile || !childSessionId || !childSessionFile || !branchPointEntryId || !branchPointTimestamp) return undefined;
+	return { schemaVersion: 1, role, parentSessionId, parentSessionFile, childSessionId, childSessionFile, branchPointEntryId, branchPointTimestamp };
+}
+
+function renderBranchEvidence(entry: CustomEntry<BranchEvidence>, _options: { expanded: boolean }, theme: Theme): Text {
+	const data = branchEvidence(entry.data);
+	if (!data) return new Text(theme.fg("error", "[branch] Invalid branch evidence"), 0, 0);
+	return new Text([
+		theme.fg("accent", `[branch ${data.role}]`),
+		`parent: ${data.parentSessionId}  ${data.parentSessionFile}`,
+		`child:  ${data.childSessionId}  ${data.childSessionFile}`,
+		`point:  ${data.branchPointEntryId} @ ${data.branchPointTimestamp}`,
+	].join("\n"), 0, 0);
 }
 
 const execFileAsync = promisify(execFile);
@@ -245,14 +285,37 @@ async function executeNewTerminal(args: string, ctx: CommandContext): Promise<vo
 	else ctx.ui.notify(result.error ? `Terminal launch failed: ${result.error}` : plan.reason ?? "Terminal launch failed.", "error");
 }
 
-async function executeBranch(args: string, ctx: CommandContext): Promise<void> {
-	const leafId = ctx.sessionManager?.getLeafId?.();
-	if (!ctx.sessionManager?.createBranchedSession || !leafId) throw new Error("Cannot branch this session yet: no persisted session leaf is available.");
+async function executeBranch(args: string, ctx: CommandContext, pi: ExtensionAPI): Promise<void> {
+	const parentManager = ctx.sessionManager;
+	const leafId = parentManager?.getLeafId?.();
+	if (!parentManager?.createBranchedSession || !leafId) throw new Error("Cannot branch this session yet: no persisted session leaf is available.");
+	const parentSessionFile = parentManager.getSessionFile();
+	if (!parentSessionFile) throw new Error("Cannot branch this session: session persistence is unavailable.");
+	const branchPoint = parentManager.getEntry(leafId);
+	if (!branchPoint) throw new Error(`Entry ${leafId} not found`);
 	const cwd = ctx.cwd ?? process.cwd();
 	const title = args.trim() || defaultTitle(cwd);
 	ctx.ui.notify(isHerdr() ? `Opening branched Pi session in a Herdr tab: ${title}` : `Opening branched Pi session in a new terminal tab: ${title}`, "info");
-	const branchSessionFile = ctx.sessionManager.createBranchedSession(leafId);
+
+	// createBranchedSession changes the manager it is called on. Open a separate
+	// manager from the persisted parent so the live session remains the parent.
+	const childManager = SessionManager.open(parentSessionFile, parentManager.getSessionDir());
+	const branchSessionFile = childManager.createBranchedSession(leafId);
 	if (!branchSessionFile) throw new Error("Cannot branch this session: session persistence is unavailable.");
+	const parentSessionId = parentManager.getSessionId();
+	const childSessionId = childManager.getSessionId();
+	const evidence: BranchEvidence = {
+		schemaVersion: 1,
+		role: "parent",
+		parentSessionId,
+		parentSessionFile,
+		childSessionId,
+		childSessionFile: branchSessionFile,
+		branchPointEntryId: branchPoint.id,
+		branchPointTimestamp: branchPoint.timestamp,
+	};
+	childManager.appendCustomEntry(BRANCH_EVIDENCE_TYPE, { ...evidence, role: "child" });
+	pi.appendEntry(BRANCH_EVIDENCE_TYPE, evidence);
 	if (isHerdr()) {
 		try { await createHerdrPiTab(cwd, title, branchSessionFile, undefined, Boolean(args.trim())); }
 		catch (error) { throw new Error(`${String(error)}\nBranch retained: ${branchSessionFile}\nResume with pp --session ${quotePowerShell(branchSessionFile)}`); }
@@ -267,9 +330,10 @@ async function executeBranch(args: string, ctx: CommandContext): Promise<void> {
 }
 
 export default function sessionLaunchCommands(pi: ExtensionAPI): void {
+	pi.registerEntryRenderer<BranchEvidence>(BRANCH_EVIDENCE_TYPE, renderBranchEvidence);
 	pi.registerCommand("branch", {
 		description: "Open a branched copy of this Pi session in a new terminal tab",
-		handler: async (args, ctx) => executeBranch(args, ctx),
+		handler: async (args, ctx) => executeBranch(args, ctx, pi),
 	});
 	pi.registerCommand("new-instance", {
 		description: "Open a new Pi instance in this cwd in a new terminal tab",

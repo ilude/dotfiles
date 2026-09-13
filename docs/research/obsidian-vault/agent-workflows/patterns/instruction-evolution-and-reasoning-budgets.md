@@ -49,6 +49,12 @@ Power laws of practice were also discussed as an analogy for early improvement f
 
 This supports distinguishing available from effectively used context. It does not prove a universal prompt-length threshold, quantify instruction overload in current Pi models, or establish that shorter prompts always perform better. Rate–distortion theory was mentioned as a possible compression analogy: preserve behaviorally important information rather than merely shorten text. That analogy was not developed or validated in this review.
 
+### Improvement science: predictions and revision, not process ceremony
+
+[Taylor et al., Systematic review of PDSA applications (2014)](https://pmc.ncbi.nlm.nih.gov/articles/PMC3963536/) assessed how healthcare studies applied iterative testing, predictions, small-scale changes, and observations over time. Of 73 included articles, 47 supported full framework analysis; fewer than 20% documented a full iterative sequence. This evaluates reported method application, not the effectiveness of Pi instructions. The abstract and introductory method discussion were read; this is not a full-paper appraisal.
+
+**Local interpretation:** distinguish evidence sufficient to try a reversible change from evidence that it helped. State the intended behavioral effect and what would make us reconsider the explanation. Look for unintended burden as well as fewer recurrences. These can be brief prompts within existing feedback records, not mandatory forms, cycle counters, quantitative thresholds, or experiments for every edit. Local context matters; do not import the paper's healthcare reporting requirements into agent work.
+
 ## Possible Pi fit
 
 **Proposal, not approved skill changes:** evolve the existing on-demand `agent-process` skill rather than create a parallel instruction-improvement process. It already owns feedback, incident comparison, narrow proposals, and approval. Keep the theory in this note and a small procedure in the skill:
@@ -61,6 +67,20 @@ This supports distinguishing available from effectively used context. It does no
 No fixed scores, numerical budgets, automatic monitoring, mandatory A/B tests, or additional supervisor are implied. A separate skill becomes worth considering only if it has a distinct trigger and responsibility that the existing skill cannot express clearly.
 
 One current tension deserves discussion: `agent-process` requires both growing historical logs to be read completely on every invocation. That conflicts with the proposed selective-context approach. Targeted incident lookup plus expansion when evidence is missing is a candidate replacement, not authorized by this note.
+
+### Investigation before skill revision
+
+The September 13 follow-up checked the existing skills and selected historical records, not a new census of sessions:
+
+- `skill-creation` already covers consolidation, pruning, Pareto-inspired instruction selection, conditional references, and representative comparisons when an effect is uncertain or consequential. Keep writing guidance there; `agent-process` should own diagnosing the mismatch, proposing a change, approval, and subsequent learning.
+- AIF-031 and AIF-054 show that comparable-environment and proportionality instructions existed before the Onclave failure. A new paraphrase cannot be assumed to solve adherence. Checking whether a premise applies to the actual data path and requiring proposal warnings in returned findings target more specific behavior, but remain unvalidated remedies.
+- AIF-041 documents approval for context-output limits in another discussion. That does not establish their relevance to a metadata-only download. Retrieve the specific policy context instead of converting a prior decision into a universal rule.
+- AIF-013 records successful bounded work alongside gateway churn. It supports preserving the working baseline, not replacing the planning workflow because of one exception. The underlying successful sessions were not re-reviewed here, so this is evidence from the existing comparative record, not an independent replication.
+- AIF-003 records wording and approval with later adherence unverified. A successful edit or passing whitespace check establishes installation, not behavioral effectiveness.
+
+The logs totalled 843 lines at inspection. This is a direct cost of the current full-read requirement, not an estimated token count. The candidate replacement is focused retrieval with expansion where missing context could change the recommendation.
+
+These walkthroughs support a lightweight hypothesis-and-observation approach; they do not demonstrate that the proposed procedure would have prevented the incidents. [Context-separation experiments](pi-context-separation-options.md) establish native fork behavior and identified a repository `/branch` defect, subsequently repaired with separate session files and reciprocal context-excluded markers after operator approval. Those capabilities can be documented conditionally without building automation.
 
 ## Risks / reasons not to build yet
 
@@ -75,6 +95,8 @@ One current tension deserves discussion: `agent-process` requires both growing h
 Keep one linked research note. Discuss a concise revision to `agent-process`, including its full-log reading requirement, before adding a separate skill. Preserve user approval and evidence/assumption boundaries while measuring usefulness through actual task outcomes rather than prompt size alone.
 
 ## Related notes
+
+- [Pi context separation options and experiments](pi-context-separation-options.md)
 
 - [Agent scope and stopping](agent-scope-and-stopping.md)
 - [Agent process skill](../../../../../pi/profiles/default/skills/agent-process/SKILL.md)

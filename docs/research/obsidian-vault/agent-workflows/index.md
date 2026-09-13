@@ -47,6 +47,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 
 - [Agent scope and stopping](patterns/agent-scope-and-stopping.md) - evidence on scope drift, excessive verification, and bounded harness controls; not approved policy.
 - [Instruction evolution and reasoning budgets](patterns/instruction-evolution-and-reasoning-budgets.md) - Bayesian updating, bounded rationality, economics, and selective evidence for high-impact instruction changes; skill procedure remains a proposal.
+- [Pi context separation options](patterns/pi-context-separation-options.md) - verified fork/clone history behavior, conditional command options, and the bounded `/branch` session-manager repair; no process-improvement automation implemented.
 - [patterns/self-healing-harnesses](patterns/self-healing-harnesses.md)
 - [patterns/agent-terminal-workspaces](patterns/agent-terminal-workspaces.md)
 - [patterns/markdown-skills-memory](patterns/markdown-skills-memory.md)
