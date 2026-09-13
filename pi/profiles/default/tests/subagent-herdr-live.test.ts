@@ -45,11 +45,30 @@ describe.skipIf(process.env.PI_SUBAGENT_HERDR_LIVE!=="1")("isolated visible suba
    const definition:AgentDefinition={name:"probe",description:"Restricted parity",tools:["read"],delegates:[],skills:[],prompt:"Follow instructions precisely. Do not use other tools.",source:"profile",filePath:"probe.md"};
    writeFileSync(join(scratch,"marker.txt"),"cedar-417");
    const input={definition,instructions:"Read marker.txt and reply only with its contents. Remember them for later.",cwd:scratch,model:"openai-codex/gpt-5.6-luna",effort:"low" as const,skills:[],origin:"visible-live",retained:true,surface:"visible" as const};
+   const listedAgents=async()=>(await cli(["agent","list"])).result.agents as Array<Record<string,unknown>>;
+   const beforeHeadless=await listedAgents();
    const headless=await runtime.launch({...input,surface:"headless"},profile,join(profile,"extensions/subagent-child.ts"),false);
-   expect(headless.outcome,headless.error).toBe("complete");expect(headless.result).toContain("cedar-417");await runtime.get(headless.id).finish();
+   expect(headless.outcome,headless.error).toBe("complete");expect(headless.result).toContain("cedar-417");
+   expect(await listedAgents()).toEqual(beforeHeadless);
+   await runtime.get(headless.id).finish();
    const beforeLayout=await cli(["pane","layout","--pane",pane.pane_id]);
-   const started=await runtime.launch(input,profile,join(profile,"extensions/subagent-child.ts"),true);
+   const launching=runtime.launch(input,profile,join(profile,"extensions/subagent-child.ts"),true);
+   let visibleId="";
+   await vi.waitFor(async()=>{
+    const record=runtime.list().find(candidate=>candidate.surface==="visible"&&candidate.origin==="visible-live");
+    visibleId=record?.id??"";expect(record?.paneId).toBeTruthy();
+    const agent=(await listedAgents()).find((candidate:any)=>candidate.pane_id===record!.paneId) as any;
+    expect(agent).toBeDefined();expect(["idle","working"]).toContain(agent.agent_status??agent.state);
+    expect(agent.agent_session?.value??agent.agent_session_path??agent.session_path).toMatch(process.platform==="win32"?/^[A-Za-z]:\\/:/^\//);
+   },{timeout:30_000,interval:100});
+   await vi.waitFor(async()=>expect((await listedAgents()).find((candidate:any)=>candidate.pane_id===runtime.get(visibleId).snapshot().paneId)?.agent_status).toBe("working"),{timeout:15_000,interval:25});
+   const started=await launching;
    await vi.waitFor(()=>expect(runtime.get(started.id).snapshot().status,JSON.stringify(runtime.get(started.id).snapshot())).toBe("settled"),{timeout:50_000,interval:100});
+   const settledPaneId=runtime.get(started.id).snapshot().paneId;
+   const registeredBeforeReload=(await listedAgents()).find((candidate:any)=>candidate.pane_id===settledPaneId) as any;
+   expect(registeredBeforeReload?.agent_status??registeredBeforeReload?.state).toBe("idle");
+   const registeredSession=registeredBeforeReload?.agent_session?.value??registeredBeforeReload?.agent_session_path??registeredBeforeReload?.session_path;
+   expect(registeredSession).toBeTruthy();
    const afterLayout=await cli(["pane","layout","--pane",pane.pane_id]);
    expect(afterLayout.result.layout.focused_pane_id).toBe(beforeLayout.result.layout.focused_pane_id);
    const first=runtime.get(started.id).snapshot();
@@ -58,6 +77,10 @@ describe.skipIf(process.env.PI_SUBAGENT_HERDR_LIVE!=="1")("isolated visible suba
    await cli(["agent","prompt",first.paneId!,"/reload"]);
    await vi.waitFor(()=>expect(child.record.readyCount).toBe(2),{timeout:10_000});
    await vi.waitFor(async()=>expect(String(await cli(["agent","read",first.paneId!,"--source","recent-unwrapped","--lines","60"]))).toContain("Reloaded keybindings"),{timeout:10_000,interval:100});
+   await vi.waitFor(async()=>{
+    const registered=(await listedAgents()).find((candidate:any)=>candidate.pane_id===first.paneId) as any;
+    expect(registered?.agent_status??registered?.state).toBe("idle");expect(registered?.agent_session?.value??registered?.agent_session_path??registered?.session_path).toBe(registeredSession);
+   },{timeout:10_000,interval:100});
    await cli(["agent","prompt",first.paneId!,"Reply only: user help active. Keep the earlier marker in context."]);
    await vi.waitFor(()=>{expect(child.record.userOwned).toBe(true);expect(child.record.turns).toBe(2)},{timeout:30_000}).catch(async error=>{throw new Error(`${String(error)}\n${JSON.stringify(child.snapshot())}\n${await cli(["agent","read",first.paneId!,"--source","recent-unwrapped","--lines","120"])}`)});
    await expect(child.message("competing parent steering")).rejects.toThrow(/intervention/);

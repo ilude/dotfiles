@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 function herdrSocketEndpoint(socketPath) {
   return process.platform === "win32" ? `\\\\.\\pipe\\${socketPath}` : socketPath;
@@ -92,6 +92,30 @@ export function launchArguments(env = process.env) {
   }
   return { profile: resolve(profile), args };
 }
+export function retirePluginPane(env = process.env, run = spawnSync) {
+  if (env.HERDR_PLUGIN_ID !== "local.pi" || !env.HERDR_PANE_ID || !env.HERDR_SOCKET_PATH) return;
+  run(env.HERDR_BIN_PATH || "herdr", ["plugin", "pane", "close", env.HERDR_PANE_ID], { env, stdio: "ignore", windowsHide: true, timeout: 2000 });
+}
+
+function forwardSignal(child, signal) {
+  if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+}
+
+async function runPi(entry, args, env) {
+  const child = spawn(process.execPath, [entry, ...args], { cwd: process.cwd(), env, stdio: "inherit", shell: false });
+  const signals = ["SIGINT", "SIGTERM", "SIGHUP"];
+  const handlers = new Map(signals.map(signal => [signal, () => forwardSignal(child, signal)]));
+  for (const [signal, handler] of handlers) process.once(signal, handler);
+  try {
+    return await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (code, signal) => resolve({ code, signal }));
+    });
+  } finally {
+    for (const [signal, handler] of handlers) process.removeListener(signal, handler);
+  }
+}
+
 export async function main() {
   const entry = process.argv[2];
   if (process.argv.length !== 3 || !entry || !isAbsolute(entry) || !existsSync(entry)) throw new Error("Expected setup-owned absolute Pi entrypoint");
@@ -113,15 +137,18 @@ export async function main() {
   await reportInitialAgentPresence();
   // Herdr's preview can replace an exited focused terminal with a shell.
   // Explicitly retire only this plugin-owned pane at process exit instead.
-  if (process.env.HERDR_PLUGIN_ID === "local.pi" && process.env.HERDR_PANE_ID && process.env.HERDR_SOCKET_PATH) {
-    const pane = process.env.HERDR_PANE_ID;
-    const env = { ...process.env };
-    process.once("exit", () => {
-      spawnSync(env.HERDR_BIN_PATH || "herdr", ["plugin", "pane", "close", pane], { env, stdio: "ignore", windowsHide: true, timeout: 2000 });
-    });
+  const launchEnv = { ...process.env };
+  let outcome;
+  try {
+    outcome = await runPi(entry, args, launchEnv);
+  } finally {
+    retirePluginPane(launchEnv);
   }
-  process.argv = [process.execPath, entry, ...args];
-  await import(pathToFileURL(entry).href);
+  if (outcome.signal) {
+    try { process.kill(process.pid, outcome.signal); } catch { process.exitCode = 128; }
+  } else {
+    process.exitCode = outcome.code ?? 1;
+  }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch(error => { console.error(error.message); process.exitCode = 1; });

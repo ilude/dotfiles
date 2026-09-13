@@ -19,4 +19,4 @@ Discover `herdr_layout` and `herdr_pane` through `tool_search`. Use the structur
 - Interrupt gracefully, then inspect. Close only verified panes created by this Pi session, with explicit tool confirmation. Process-tool ownership is intentionally forgotten on session replacement/reload; do not invent ownership to close older panes. The separate subagent runtime retains its own authenticated child ownership and performs its own cleanup.
 - Pi exit does not stop services. Do not close unrelated panes or stop the Herdr server.
 
-Setup and limitations: [../../docs/herdr.md](../../docs/herdr.md).
+Setup and limitations: [../../docs/herdr.md](../../docs/herdr.md). If a direct Pi tab is missing from Herdr Agents, verify that `local.pi` was regenerated from the lasting checkout and that its foreground process is the real Pi CLI, not an in-process dynamic-import wrapper. Reopen settled tabs through the corrected launcher; `/reload` cannot change an existing process's OS command line. A successful bootstrap API acknowledgment alone is not proof of registration.

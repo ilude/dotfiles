@@ -1,11 +1,11 @@
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { afterEach, expect, it, vi } from "vitest";
 // @ts-expect-error The repository bootstrap is executable JavaScript outside this TS project.
-import { reportInitialAgentPresence } from "../../../scripts/pi-herdr-launch.mjs";
+import { reportInitialAgentPresence, retirePluginPane } from "../../../scripts/pi-herdr-launch.mjs";
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
@@ -42,7 +42,7 @@ it("rejects API errors and keeps initial Herdr registration best-effort", async 
   await expect(reportInitialAgentPresence({ HERDR_ENV: "0" }, connect)).resolves.toBe(false);
   expect(connect).toHaveBeenCalledTimes(4);
 });
-it.each([true, false])("real Node bootstrap preserves argv/env and preflight (valid=%s)", valid => {
+it.each([true, false])("spawns the real Pi entrypoint with argv/env and preflight (valid=%s)", valid => {
   const root = mkdtempSync(join(tmpdir(), "herdr launch ")); roots.push(root);
   const profile = join(root, "default"); mkdirSync(join(profile, "extensions/damage-control"), { recursive: true });
   writeFileSync(join(profile, "extensions/damage-control/index.js"), valid ? "export default function() {}" : "export default { broken");
@@ -55,6 +55,23 @@ it.each([true, false])("real Node bootstrap preserves argv/env and preflight (va
   expect(data.args).toEqual([...(valid ? [] : ["--no-tools", "--no-extensions"]), "--session", session]);
   expect(data.profile).toBe(profile); expect(data.pane).toBe("new-pane"); expect(data.leaked).toBeUndefined();
 });
+it("propagates the real Pi process exit code", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr exit code ")); roots.push(root);
+  const profile = join(root, "fixture"); mkdirSync(profile);
+  const entry = join(root, "entry.mjs"); writeFileSync(entry, "process.exit(23)");
+  const run = spawnSync(process.execPath, [resolve("../../../scripts/pi-herdr-launch.mjs"), entry], { env: { ...process.env, PI_HERDR_PROFILE_DIR: profile, HERDR_PLUGIN_ID: "" }, encoding: "utf8" });
+  expect(run.status, run.stderr).toBe(23);
+});
+
+it("preserves a Pi process signal termination", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr signal ")); roots.push(root);
+  const profile = join(root, "fixture"); mkdirSync(profile);
+  const entry = join(root, "entry.mjs"); writeFileSync(entry, 'process.kill(process.pid, "SIGTERM")');
+  const run = spawnSync(process.execPath, [resolve("../../../scripts/pi-herdr-launch.mjs"), entry], { env: { ...process.env, PI_HERDR_PROFILE_DIR: profile, HERDR_PLUGIN_ID: "" }, encoding: "utf8" });
+  if (process.platform !== "win32") expect(run.signal).toBe("SIGTERM");
+  else expect(run.status).not.toBe(0);
+});
+
 it("constructs a constrained do-it message for a direct-child plan", () => {
   const root = mkdtempSync(join(tmpdir(), "herdr plan ")); roots.push(root);
   const profile = join(root, "fixture"); mkdirSync(profile);
@@ -75,14 +92,8 @@ it("rejects arbitrary launch flags and nonabsolute session inputs", () => {
   expect(run.stderr).toContain("setup-owned");
 });
 it.each(["local.pi", "unrelated"])("retires only its plugin pane on exit (%s)", plugin => {
-  const root = mkdtempSync(join(tmpdir(), "herdr exit ")); roots.push(root);
-  const profile = join(root, "fixture"); mkdirSync(profile);
-  const calls = join(root, "calls.json"); const entry = join(root, "entry.mjs");
-  // Intercept only the external CLI boundary in the disposable child. No
-  // request can reach a real Herdr session, even if interception fails.
-  writeFileSync(entry, `import cp from 'node:child_process';import{syncBuiltinESMExports}from'node:module';import{writeFileSync}from'node:fs';cp.spawnSync=(bin,args)=>{writeFileSync(${JSON.stringify(calls)},JSON.stringify({bin,args}));return {status:0};};syncBuiltinESMExports();`);
-  const run = spawnSync(process.execPath, [resolve("../../../scripts/pi-herdr-launch.mjs"), entry], { env: { ...process.env, PI_HERDR_PROFILE_DIR: profile, PI_HERDR_SESSION_FILE: "", HERDR_PLUGIN_ID: plugin, HERDR_SOCKET_PATH: "fixture-only", HERDR_PANE_ID: "fixture-pane", HERDR_BIN_PATH: "nonexistent-fixture-cli" }, encoding: "utf8" });
-  expect(run.status, run.stderr).toBe(0);
-  if (plugin === "local.pi") expect(JSON.parse(readFileSync(calls, "utf8")).args).toEqual(["plugin", "pane", "close", "fixture-pane"]);
-  else expect(existsSync(calls)).toBe(false);
+  const run = vi.fn();
+  retirePluginPane({ HERDR_PLUGIN_ID: plugin, HERDR_SOCKET_PATH: "fixture-only", HERDR_PANE_ID: "fixture-pane", HERDR_BIN_PATH: "herdr-fixture" }, run);
+  if (plugin === "local.pi") expect(run).toHaveBeenCalledWith("herdr-fixture", ["plugin", "pane", "close", "fixture-pane"], expect.objectContaining({ stdio: "ignore", timeout: 2000 }));
+  else expect(run).not.toHaveBeenCalled();
 });

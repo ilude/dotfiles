@@ -94,23 +94,23 @@ Implement the established fix and finite checks below. Separate verified code de
 
 ## Tasks
 
-- [ ] **T1: Expose the real Pi process from ordinary plugin tabs**
+- [x] **T1: Expose the real Pi process from ordinary plugin tabs**
   - Depends on: none.
   - Files: `scripts/pi-herdr-launch.mjs`, `pi/profiles/default/tests/herdr-launch.test.ts`, and directly affected launcher tests.
   - Change: spawn the installed Pi CLI with exact existing arguments and inherited terminal streams instead of importing it into the wrapper process. Await its termination, preserve plugin-pane retirement, and propagate failure/cancellation truthfully. Preserve preflight, profile, resume, plan, and environment behavior.
   - Verify: focused launcher tests exercise argv/environment, process ownership, exit propagation, and exact-pane cleanup without a real production plugin relink.
   - Done when: the OS-visible foreground Pi process is the real CLI while launcher-owned cleanup and existing launch contracts remain intact.
-  - Evidence: Not started.
+  - Evidence: `scripts/pi-herdr-launch.mjs` now spawns the installed Pi CLI with inherited terminal streams, forwards termination signals, propagates child exit status, and retires the exact plugin pane after child termination. Focused launcher tests passed 13/13; the isolated direct-tab run confirmed the foreground argv is the real CLI and exact cleanup follows forced child termination.
 
-- [ ] **T2: Correct the pending lifecycle patch and its maintenance guard**
+- [x] **T2: Correct the pending lifecycle patch and its maintenance guard**
   - Depends on: none.
   - Files: `pi/profiles/default/extensions/herdr-agent-state.ts`, `pi/profiles/default/tests/herdr-agent-state.test.ts`, and a narrow setup/runtime assertion at the existing comparable location.
   - Change: retain cross-platform absolute session-path recognition, remove `reload` to `startup` translation, distinguish socket API errors from successful responses where the generated integration is locally maintained, and add a deterministic check that catches loss of the required Windows path correction after integration refresh.
   - Verify: mocked tests assert only payload, response parsing, and path behavior. Test descriptions and failures must not claim Agents-pane visibility.
   - Done when: lifecycle payloads match Pi/Herdr-supported reasons, Windows paths survive, API errors are not treated as delivery, and refresh loss is detectable.
-  - Evidence: Not started.
+  - Evidence: The lifecycle extension preserves `reload`, accepts cross-platform absolute paths, parses socket responses before treating delivery as successful, and `scripts/pi-herdr-setup.mjs` detects loss of the path guard. Focused lifecycle tests passed.
 
-- [ ] **T3: Prove direct-tab and visible-subagent registration on an actual isolated server**
+- [x] **T3: Prove direct-tab and visible-subagent registration on an actual isolated server**
   - Depends on: T1 and T2.
   - Files: existing isolated Herdr test infrastructure, especially `pi/profiles/default/tests/subagent-herdr-live.test.ts`; add one narrowly scoped direct-registration live test or shared helper where appropriate.
   - Change: automate exact-pane checks for:
@@ -121,7 +121,7 @@ Implement the established fix and finite checks below. Separate verified code de
     - headless helper exclusion.
   - Verify: use a named isolated Herdr server/config/plugin registry and pinned isolated socket. Do not relink production, stop the shared server, reuse `w27:pR`, or accept API acknowledgment as success.
   - Done when: every interactive/visible case is present with the expected exact pane/session/state and the headless control is absent.
-  - Evidence: Not started.
+  - Evidence: `PI_HERDR_DIRECT_LIVE=1 pnpm test herdr-direct-tab-live.test.ts` passed with exact direct-pane membership, Windows session identity, idle/working/done lifecycle, same-session reload, and exact cleanup after Pi child termination. The new visible-subagent and headless assertions also passed: the visible child appeared with exact pane/session and working/idle state through reload, while the headless control stayed absent. The broader pre-existing test then failed at its later user-intervention ownership assertion; the unmodified integration target reproduces that same unrelated failure.
 
 - [ ] **T4: Align documentation and claims with verified behavior**
   - Depends on: T3.
@@ -138,7 +138,7 @@ Implement the established fix and finite checks below. Separate verified code de
     - `pnpm run check:runtime`
     - `git diff --check`
   - Done when: code, tests, docs, and changelog agree on the verified defect, fix, and evidence limits.
-  - Evidence: Not started.
+  - Evidence: Documentation and changelog are aligned. Focused unit/runtime tests passed 56/56, direct live acceptance passed, typecheck passed, runtime smoke passed, and `git diff --check` passed. The required whole `subagent-herdr-live.test.ts` command remains red only at the pre-existing user-intervention assertion after all task registration assertions pass. Blocker: operator must decide whether to accept that demonstrated baseline failure as outside this plan or authorize expansion into the unrelated visible-subagent intervention behavior. Recommended next action: accept it as a recorded validation limit because unmodified `main` reproduces it and this plan explicitly excludes changing the visible-subagent path without a registration defect.
 
 - [ ] **T5: Integrate and close out**
   - Depends on: T4.
@@ -151,7 +151,7 @@ Implement the established fix and finite checks below. Separate verified code de
 - Status: ready.
 - Completed investigation: isolated baseline/direct-CLI A/B followed by a spawned-child wrapper prototype, both reload variants, and actual visible/headless subagent experiments. All three requested confidence checks passed; see [experiments.md](experiments.md). No production implementation was changed by the experiments.
 - Next: T1 and T2 may proceed independently, then T3 proves the combined behavior.
-- Blockers/open decisions: none. The established fix preserves the selected integration ownership and workflow.
+- Blockers/open decisions: operator decision required on the pre-existing `subagent-herdr-live.test.ts` user-intervention assertion described under T4. All task-specific registration assertions pass before that later failure. Recommendation: treat the reproduced baseline failure as outside scope and authorize closeout with that explicit validation limit; otherwise authorize a separate scope expansion into visible-subagent intervention ownership.
 - Remaining validation limits: the production launcher patch is not implemented. The prototype passed registration, input, same-session reload, and normal exit; final signal/error handling, resume/plan/preflight regressions, and integration tests must exercise the final production code. Visible-subagent lifecycle and headless exclusion passed with the current child stack. Unix behavior and attached-client rendering remain separately stated limits, not claimed passes. Operator manual testing will not block closeout after automated acceptance passes.
 
 ## Closeout
