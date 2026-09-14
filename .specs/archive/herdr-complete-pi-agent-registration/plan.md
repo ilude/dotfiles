@@ -144,7 +144,7 @@ Implement the established fix and finite checks below. Separate verified code de
   - Depends on: T4.
   - Change: inspect the complete task diff, archive this spec, commit task changes on the task branch, merge into the recorded originating `main`, commit completion metadata, and remove the clean task worktree. Do not push.
   - Done when: `main` contains the implementation and archived completed plan, no active plan copy remains, and task worktree cleanup is verified.
-  - Evidence: Not started.
+  - Evidence: Implementation and archived spec are committed on the task branch. Integration is blocked because the recorded originating `main` checkout has unrelated uncommitted changes, including `CHANGELOG.md`, which this task also changes. The execution contract forbids stashing, discarding, or committing those changes. Action owner: operator or the workflow owning those edits. Next action: finish or otherwise clear the unrelated target-checkout changes, then merge `workflow/herdr-complete-pi-agent-registration` into `main`, commit completion metadata, and remove this retained clean worktree.
 
 ## Agreed validation and current handoff
 
