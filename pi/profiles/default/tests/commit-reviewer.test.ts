@@ -9,8 +9,7 @@ it("supplies exact workflow locations and routes status refreshes to the existin
 	const inventory = ['Repository: .\n M "first.txt"', 'Repository: modules/example\n?? "new.txt"'];
 	const task = buildCommitTask(false, root, inventory);
 	expect(task).toContain(`Repository root: ${JSON.stringify(root)}`);
-	const utility = JSON.parse(task.match(/^Whitespace utility: (.+)$/m)![1]);
-	expect(readFileSync(utility, "utf8")).toContain("trimTrailingWhitespace");
+	expect(task).not.toContain("Whitespace utility");
 	expect(task).toContain(inventory.join("\n\n"));
 	expect(task).toContain("use commit_git_review for status refreshes, not shell git status");
 	expect(task).toContain("Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands");
@@ -30,13 +29,14 @@ it("uses deterministic publication annotations without changing local review eli
 	expect(detached).toContain("do not re-check its branch, outgoing commits, upstream, remotes, or push");
 });
 
-it("specifies usable inspection examples and the utility's actual argument contract", () => {
+it("specifies usable inspection and publication examples without a whitespace gate", () => {
 	const prompt = readFileSync(new URL("../commands/commit/reviewer.md", import.meta.url), "utf8");
 	const examples = [...prompt.matchAll(/commit_git_review\((\{[^\n]+?\})\)/g)].map(match => JSON.parse(match[1]));
 	expect(examples).toContainEqual({ action: "status", repo: "." });
 	expect(examples).toContainEqual({ action: "status", repo: "modules/example" });
 	expect(examples).toContainEqual({ action: "diff", repo: ".", staged: true });
-	expect(prompt).toContain('do not insert a literal `--`');
+	expect(prompt).not.toContain("diff --check");
+	expect(prompt).not.toContain("whitespace utility");
 	expect(prompt).toContain("--recurse-submodules=no origin");
 	expect(prompt).toContain("clean submodules whose outgoing commits are referenced");
 	expect(prompt).toContain("refresh the parent status");

@@ -10,7 +10,7 @@ const leaf = definition("leaf", { model: "provider/leaf" });
 const noDefault = definition("no_default");
 const coordinator = definition("coordinator", { delegates: ["leaf"] });
 const strategist = definition("strategist", { model: "provider/strategist", effort: "high" });
-const steward = definition("steward", { model: "openai-codex/gpt-5.6-luna", effort: "high" });
+const steward = definition("steward", { description: "Use after review findings or an unexpected check or deployment outcome, before follow-up fixes", model: "openai-codex/gpt-5.6-luna", effort: "high" });
 const teamlead = definition("teamlead", { delegates: ["leaf", "steward"] });
 const council = definition("council", { delegates: ["leaf"] });
 const entries = [["strategist", strategist], ["steward", steward], ["no_default", noDefault], ["coordinator", coordinator], ["leaf", leaf], ["teamlead", teamlead], ["council", council]] as const;
@@ -43,32 +43,39 @@ describe("delegation guidance", () => {
     expect(delegationContext({ audience: "leaf", definitions })).toBe("");
   });
 
-  it("keeps the settled caller selection, consultation, and recovery guidance", () => {
+  it("keeps caller routing compact and makes the Steward trigger concrete", () => {
     const text = delegationContext({ audience: "caller", definitions });
+    const guidance = text.slice(0, text.indexOf("\n\n## Available agent roles"));
     expect(text).toContain("Delegate only for bounded implementation");
-    expect(text).toContain("Otherwise work directly");
+    expect(text).toContain("otherwise work directly");
     expect(text).toContain('agent: "strategist"');
     expect(text).toContain('agent: "steward"');
-    expect(text).toContain("Steward uses Luna high or xhigh");
-    expect(text).toContain("obtain user approval");
-    expect(text).toContain("Use Sol low for Strategist");
-    expect(text).toContain("One automatic stronger-family retry");
-    expect(text).toContain("do not chain automatic retries");
+    expect(text).toContain("unexpected agreed check or deployment outcome");
+    expect(text).toContain("another MR, build, or deploy cycle");
+    expect(text).toContain("corrections proved by the evidence");
+    expect(guidance.length).toBeLessThan(900);
+    expect(text).not.toContain("Steward uses Luna high or xhigh");
+    expect(text).not.toContain("One automatic stronger-family retry");
+    expect(text).not.toContain("Use Sol low for Strategist");
   });
 
-  it("gives Strategist selection advice without Steward follow-up or retry policy", () => {
+  it("gives Strategist detailed selection advice without follow-up or retry policy", () => {
     const text = composedAgentPrompt(strategist, definitions, ["leaf"]);
     expect(text).toContain("Recommend direct execution");
     expect(text).toContain("State the evidence for role, model, and effort choices");
     expect(text).toContain("Use Sol low for Strategist");
+    expect(text).toContain("Steward uses Luna high or xhigh");
+    expect(text).toContain("requires prior user approval");
     expect(text).not.toContain("consult Steward");
     expect(text).not.toContain("One stronger-family retry");
   });
 
-  it("gives Team Lead coordination and retry advice without Strategist or Council policy", () => {
+  it("gives Team Lead concrete Steward and retry guidance without Strategist or Council policy", () => {
     const text = composedAgentPrompt(teamlead, definitions);
     expect(text).toContain("Coordinate permitted leaves");
+    expect(text).toContain("unexpected agreed check or deployment outcome");
     expect(text).toContain("consult Steward");
+    expect(text).toContain("another MR, build, or deploy cycle");
     expect(text).toContain("One stronger-family retry");
     expect(text).not.toContain("Use Sol low for Strategist");
     expect(text).not.toContain("independent openings");
@@ -94,7 +101,7 @@ describe("delegation guidance", () => {
   });
 
   it("catalogs Steward for callers and permitted coordinators but not in ordinary leaf context", () => {
-    expect(delegationContext({ audience: "caller", definitions })).toContain("- steward: steward role (model default: openai-codex/gpt-5.6-luna; effort default: high)");
+    expect(delegationContext({ audience: "caller", definitions })).toContain("- steward: Use after review findings or an unexpected check or deployment outcome, before follow-up fixes (model default: openai-codex/gpt-5.6-luna; effort default: high)");
     expect(composedAgentPrompt(teamlead, definitions)).toContain("- steward:");
     expect(composedAgentPrompt(steward, definitions)).toBe("steward prompt");
   });

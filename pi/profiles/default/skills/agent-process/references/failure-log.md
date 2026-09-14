@@ -1,5 +1,32 @@
 # Agent process failure log
 
+## APR-041 - `/commit` imposed an unsupported whitespace gate
+
+- **Reference:** `/commit` failure in the monorepo on 2026-09-14 and operator challenge after a terminal blank line blocked the commit.
+- **Observed:** The custom commit workflow made `git diff --check` a mandatory pre-staging gate, automatically repaired one diagnostic class, and treated every other whitespace diagnostic as fatal. It blocked the requested commit because one shell reference file ended with two newline characters.
+- **Finding:** Git does not require this check to commit, and no inspected monorepo instruction, hook, or policy required the gate. The commit documentation simultaneously claimed that the workflow introduced no additional validation. Repository history records the mechanism but no task-specific harm or requirement that justified imposing it on every commit. This was safety-gate theater and ceremony: it added mutation and a fatal acceptance condition without evidence that the workflow needed either.
+- **Remediation:** Remove the mandatory `git diff --check` step and automatic whitespace repair from the general `/commit` workflow. Leave whitespace enforcement to repository-owned hooks or CI where explicitly configured. Correct the contradictory documentation and remove tests or utilities that exist only for the unsupported gate. Code changes require operator approval.
+- **Related:** APR-035, AIF-054, AIF-041, AIF-032.
+- **Status:** Corrected with operator authorization. The reviewer prompt and task payload no longer mention the check or utility; the utility and gate-specific tests were removed, documentation was corrected, and focused tests and typecheck passed. The earlier requested monorepo commit was not created.
+
+## APR-040 - Database live-validation fixes bypassed the Steward checkpoint
+
+- **Reference:** Database deployment lifecycle continuation in session `01a0a16c-4614-76f8-bce1-4575235d4639`, 2026-09-14; operator question after MR !123 and another uncommitted follow-up fix.
+- **Observed:** Each new dev validation failure led directly to diagnosis, source edits, a merge request, image rebuild, and another live retry. The orchestrator never invoked Steward despite active guidance to consult it after review or validation findings. One inferred APIM UUID fix became MR !122, failed live, and was reverted by MR !123. After a later EISA 409, the orchestrator started another ownership/order change before the operator asked whether the work was churning.
+- **Finding:** The existing Steward trigger was applicable and was not followed. A short checkpoint could have compared the requested greenfield proof, the exact failure, prior successful behavior, and the proposed next mutation. In particular, APIM response representation did not prove accepted create-payload identity, so the UUID change should have been tested directly before an MR. Repeated source-change/deploy cycles also needed one bounded hypothesis and falsification check per cycle.
+- **Remediation:** For this task, stop the current uncommitted follow-up and use one explicit finding checkpoint before another source change: state the observed failure, strongest competing explanations, cheapest discriminating check, proposed fix, and unchanged acceptance path; consult Steward on that package. Treat this primarily as noncompliance with existing guidance, not evidence that another global rule is needed.
+- **Related:** APR-002, AIF-029, AIF-032, AIF-051.
+- **Status:** Incident recorded; no instruction or runtime change authorized. The database lifecycle remains incomplete.
+
+## APR-039 - Herdr diagnosis used another pane's process identity
+
+- **Reference:** Repeated monorepo Agents-pane report and operator request for thorough review, 2026-09-14.
+- **Observed:** The orchestrator asserted that the missing pane ran the corrected spawned-CLI launcher, then recommended registration retries. It had inspected a global process list without mapping the selected PIDs to that pane. Strategist advice inherited this unsupported premise.
+- **Finding:** Exact `pane process-info` mapped `w2A:p2` to bootstrap PID 28464 without a real Pi child. Its start at 2026-09-13 21:27:22 -0400 preceded the lasting checkout's fix merge at 22:22:56, established by Git reflog. The pane retained the pre-fix in-process wrapper; this incident did not establish a startup race in the corrected launcher.
+- **Related:** APR-020 (Herdr review boundaries); archived `herdr-complete-pi-agent-registration` experiments already distinguish old-process activation from code defects.
+- **Remediation:** Retract the race diagnosis and retry recommendation. Verify exact pane/process identity and checkout activation before choosing a fix. Independent runtime and implementation reviews are separate from recovery of the existing user pane.
+- **Status:** Diagnosis corrected. No registration code changed and no user pane reopened or closed. Existing evidence-based investigation instructions cover this failure; no instruction change proposed.
+
 ## APR-038 - `/new-instance` tabs exited during Onclave extension loading
 
 - **Reference:** Operator report of two `/new-instance` crashes, 2026-09-14.

@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-14: Remove the unsupported Pi commit whitespace gate
+
+**Removed:** Default Pi `/commit` no longer runs `git diff --check`, rewrites trailing whitespace, or rejects commits for other whitespace diagnostics. The general commit workflow had imposed those mutations and acceptance conditions without a repository requirement or demonstrated need.
+
+**Preserved:** Luna still reviews tracked and untracked changes, stages explicit paths, inspects the staged diff, runs normal repository commit hooks, and stops on actual Git, hook, tool, cancellation, or timeout failures. Repository-owned hooks and CI remain responsible for whitespace policy. Use `/reload` to activate the change.
+
+## 2026-09-14: Reduce standing Pi delegation guidance
+
+**Changed:** Default Pi now gives the primary orchestrator a 117-word delegation router instead of the previous 491-word policy block. The compact system guidance directly maps review findings and unexpected agreed-check or deployment outcomes to Steward consultation before another fix or MR/build/deploy cycle. Detailed model selection stays with Strategist, while Team Lead retains coordination and retry policy. The on-demand Pi extension and agent-process skills now require instruction updates to be checked against active guidance and ordinary model knowledge, placed at the latest useful prompt stage, and measured by audience when they alter always-visible composition.
+
+**Preserved:** Agent advice remains non-authoritative, evidence-proven corrections may be handled directly, agent catalogs remain deterministically ordered, and detailed role instructions are loaded only into the selected child. The prompt remains byte-stable for cache reuse; this change does not add provider-specific cache controls or automatic command-failure gates. Use `/reload` to activate the change.
+
+## 2026-09-14: Recover interrupted Pi commit model responses
+
+**Fixed:** Default Pi's commit runner now retries transient model-response failures before or during streaming, using one three-retry budget with bounded backoff rather than relying on provider request retries that missed mid-stream WebSocket errors. Recovery removes only the failed response and continues the same Agent with completed tool results intact, without replaying the workflow prompt or adding a mandatory Git refresh.
+
+**Preserved:** The existing active-work deadline includes retry delays, cancellation and actual tool/Git/hook failures remain terminal, push permission stays fixed, and final reporting still reads actual Git state. Completed commits are not undone or automatically replayed. Use `/reload` to activate the change.
+
 ## 2026-09-14: Keep new Pi tabs in the caller's current Herdr workspace
 
 **Fixed:** Default Pi `/branch` and `/new-instance` now resolve the caller pane's live Herdr workspace before opening a plugin tab. Moving a running Pi pane no longer causes new tabs to open in its launch-time workspace. Explicit workspace targets used by resume flows remain unchanged. `/branch` records now render only a concise role marker and localized branch time; full reciprocal evidence remains persisted without adding visual noise.

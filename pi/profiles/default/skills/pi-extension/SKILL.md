@@ -23,9 +23,10 @@ The active Pi profile is the configuration directory used by the running Pi proc
 
 ## Prompt caching
 
-- Keep unchanged system instructions and tool definitions stable, including deterministic tool ordering. Avoid incidental timestamps or counters in stable prompt content.
-- Keep changing task state separate from stable instructions. Replace stale extension-owned current-state context rather than accumulating duplicate snapshots; preserve conversation history.
-- Correctness and tool availability take precedence over cache reuse. Restore current context after compaction or session reconstruction without duplicating it.
+- Establish why each new model-visible instruction must appear at that prompt stage. Keep pre-selection context to local routing, authority, invariants, and evidence-backed corrections; put selected procedures in role or skill prompts and run-specific state in later messages.
+- Compare new text with active instructions and ordinary model knowledge; omit or consolidate generic and duplicate guidance. Keep unchanged system instructions and tool definitions byte-stable, with deterministic ordering and no incidental timestamps or counters.
+- Replace stale extension-owned state rather than accumulating snapshots; preserve conversation history. Correctness and tool availability take precedence over cache reuse, including when restoring context after compaction or session reconstruction.
+- For changes to always-visible prompt composition, compare composed byte counts by audience and test required inclusion, unrelated exclusion, deterministic output, and a justified size ceiling.
 - Inspect the affected provider's request construction when diagnosing cache behavior. Similar extension context does not guarantee identical provider payloads or cache hits.
 - Use reported provider usage to assess caching. Missing values are not zero, and cache-read counts alone do not establish cost or quota savings.
 

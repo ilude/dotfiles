@@ -1,6 +1,6 @@
 ---
 name: steward
-description: Advise whether review-driven follow-up belongs in the agreed task
+description: Use after review findings or an unexpected check or deployment outcome, before follow-up fixes
 tools: [read, grep, find, ls, subagent_parent]
 model: openai-codex/gpt-5.6-luna
 effort: high

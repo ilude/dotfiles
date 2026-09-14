@@ -1,5 +1,23 @@
 # Agent instruction feedback log
 
+## AIF-058 - Reduce always-injected caller delegation guidance
+
+- **Reference:** Steward-trigger discussion after APR-040, 2026-09-14.
+- **Feedback:** The caller guidance appears to pass too many tokens on every orchestrator run. A more precise Steward trigger should not add to that standing cost.
+- **Finding:** `CALLER_GUIDANCE` is about 3,425 characters and 491 whitespace-delimited words before the additional Team Lead/count paragraph and agent catalog appended by `extensions/subagents.ts`. It is stable and may benefit from provider prompt caching, but it still occupies context and is supplied to every primary agent run. It repeats detailed model routing, retry, assignment-sizing, and consultation behavior that can partly live in Strategist/Team Lead prompts or code-enforced defaults.
+- **Recommendation:** Replace rather than append. Keep only direct-execution versus delegation, Strategist and Steward triggers, advice-not-approval, and small dependency-aware assignments in caller context. Move detailed role/model/effort selection into Strategist context; keep enforceable effort constraints in runtime code; retain retry details only where the actor performing retries needs them. Review the separately appended Team Lead/count paragraph at the same time. Preserve the agent catalog as concise progressive-disclosure metadata.
+- **Related:** AIF-057, AIF-049, AIF-032, AIF-027.
+- **Status:** Implemented with operator approval in `lib/subagents/guidance.ts`, `extensions/subagents.ts`, and the Steward catalog description. Caller guidance decreased from 491 to 117 words. The on-demand `agent-process` and `pi-extension` skills now require comparison with active instructions and ordinary model knowledge, latest-useful-stage placement, and audience-specific size/stability checks for always-visible text. Focused subagent and skill tests and typecheck passed.
+
+## AIF-057 - Make Steward triggers finding-based and directly invokable
+
+- **Reference:** Follow-up to APR-040 during database lifecycle execution, 2026-09-14.
+- **Feedback:** “Relevant task” is too ambiguous to trigger reliable Steward use in a long-running plan. The trigger should be based on an observable validation finding and proposed follow-up action. The operator clarified that no user is monitoring an unattended plan run, so a manual `/steward` command does not solve the failure.
+- **Finding:** Pi skills and this profile's agent catalog both expose descriptions to the orchestrator for model-selected use. Skill loading does not itself launch a subagent; this profile launches roles through the `subagent` tool. The Steward description currently says only “review-driven follow-up,” which does not directly name an unexpected deployment or failed plan check. Automatic classification of arbitrary nonzero tool results would confuse expected command outcomes with validation findings.
+- **Recommendation:** Put the autonomous trigger in the always-injected Steward catalog description and subagent guidance: when an agreed check or deployment behaves unexpectedly and the proposed response requires tracked source/deployment changes, another MR/image/deploy cycle, or a changed workflow, invoke Steward before implementing. Always retrigger after a prior fix for the same criterion is falsified. Do not depend on user action, make Steward an approval authority, or add a generic shell-error gate. A plan-local reminder may reinforce a specific phase but is not the primary trigger.
+- **Related:** APR-040, AIF-029, AIF-032, AIF-043.
+- **Status:** Implemented with operator approval in the always-injected caller and Team Lead guidance plus `agents/steward.md`. The trigger is model-selected, requires no active user, and adds no command-failure gate.
+
 ## AIF-056 - Require explicit direction for published-history rewrites
 
 - **Reference:** Operator correction after the unauthorized force-push attempt recorded in APR-036, 2026-09-14.

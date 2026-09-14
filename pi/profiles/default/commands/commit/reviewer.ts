@@ -1,8 +1,9 @@
 import { lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import timers from "node:timers/promises";
 import { Agent } from "@earendil-works/pi-agent-core";
-import type { ImageContent, TextContent, Usage } from "@earendil-works/pi-ai";
+import { isContextOverflow, isRetryableAssistantError, type ImageContent, type TextContent, type Usage } from "@earendil-works/pi-ai";
 import { createBashTool, createReadTool, type ExtensionAPI, type ToolDefinition, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { Container, Text } from "@earendil-works/pi-tui";
@@ -12,7 +13,7 @@ import { formatStatus, gitReviewTool, page } from "./tools.ts";
 const PROVIDER = "openai-codex";
 const MODEL = "gpt-5.6-luna";
 const WORKFLOW_TIMEOUT_MS = 180_000;
-const TRANSPORT_RETRIES = 3;
+const RESPONSE_RETRIES = 3;
 
 export function isBroadDiscoveryCommand(command: string): boolean {
 	return /(^|(?:&&|\|\||[;|])\s*)(?:command\s+)?find(?:\.exe)?\s/i.test(command)
@@ -68,12 +69,10 @@ export function formatPublicationEligibility(push: boolean, branch: string): str
 }
 
 export function buildCommitTask(push: boolean, root: string, inventory: readonly string[]): string {
-	const utility = join(dirname(fileURLToPath(import.meta.url)), "trim-trailing-whitespace.mjs");
 	return `Execute the commit workflow now. ${push ? "Use only each inventory entry's deterministic Publication annotation. For eligible attached repositories, check outgoing commits after local commit work and push deepest-first using --recurse-submodules=no origin HEAD:refs/heads/<own-branch>. This includes clean initialized submodules with outgoing referenced commits. Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output. Push parents only after children. No force-push, tags, other branches, or automatic merge/rebase." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
 
-Locations (JSON-quoted absolute paths; decode and shell-quote as data):
+Location (JSON-quoted absolute path; decode and shell-quote as data):
 Repository root: ${JSON.stringify(root)}
-Whitespace utility: ${JSON.stringify(utility)}
 
 Repository inventory (initial status already collected; use commit_git_review for status refreshes, not shell git status; commit dirty initialized submodules deepest-first, then parent gitlinks):
 ${inventory.join("\n\n")}`;
@@ -189,7 +188,8 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 							},
 						],
 					},
-					streamFn: (model, context, options) => runtime.streamSimple(model, context, { ...options, maxRetries: TRANSPORT_RETRIES }),
+					// Response-level recovery below owns the retry budget, including stream failures.
+					streamFn: (model, context, options) => runtime.streamSimple(model, context, { ...options, maxRetries: 0 }),
 					toolExecution: "sequential",
 					beforeToolCall: async ({ toolCall, args }) => {
 						if (failure) return { block: true, reason: failure, terminate: true };
@@ -219,6 +219,23 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 				});
 				combined.throwIfAborted();
 				await agent.prompt(buildCommitTask(push, root, inventory));
+				for (let retry = 0; retry < RESPONSE_RETRIES; retry++) {
+					combined.throwIfAborted();
+					if (failure) throw new Error(failure);
+					const last = agent.state.messages.at(-1);
+					if (!last || last.role !== "assistant" || last.stopReason !== "error"
+						|| (!isRetryableAssistantError(last) && last.errorMessage !== "WebSocket stream closed before response.completed")
+						|| isContextOverflow(last, model.contextWindow)
+						|| /timed?\s*out|timeout/i.test(last.errorMessage ?? "")) break;
+					progress(`Retrying model response (${retry + 1}/${RESPONSE_RETRIES})…`);
+					await timers.setTimeout(1000 * 2 ** retry, undefined, { signal: combined });
+					combined.throwIfAborted();
+					// Agent never executes tools from an errored response. Remove only that
+					// response, keeping all completed tool results, as native Pi retry does.
+					agent.state.messages = agent.state.messages.slice(0, -1);
+					progress("Committing…");
+					await agent.continue();
+				}
 				combined.throwIfAborted();
 				if (failure) throw new Error(failure);
 				const last = [...agent.state.messages].reverse().find((message) => message.role === "assistant");

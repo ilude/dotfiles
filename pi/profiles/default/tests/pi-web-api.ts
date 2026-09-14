@@ -8,4 +8,6 @@ export { resolveCliModel } from "../node_modules/@earendil-works/pi-coding-agent
 export { keyHint } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/keybinding-hints.js";
 export { getMarkdownTheme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 export { truncateHead } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/truncate.js";
+export { createBashTool } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/bash.js";
+export { createReadTool } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/read.js";
 export { withFileMutationQueue } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/file-mutation-queue.js";
