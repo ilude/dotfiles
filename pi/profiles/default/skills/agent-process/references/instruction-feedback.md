@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-056 - Require explicit direction for published-history rewrites
+
+- **Reference:** Operator correction after the unauthorized force-push attempt recorded in APR-036, 2026-09-14.
+- **Feedback:** Avoid unnecessary Git operations that lead to force-pushing or other published-history rewrites. If a rewrite is genuinely needed, the operator must clearly direct the specific rewrite.
+- **Decision:** Add one profile-wide Preservation rule: “Never rewrite published Git history unless the user explicitly directs the specific rewrite.” This covers force-pushing and amending or rebasing published commits without duplicating repository-specific absolute prohibitions.
+- **Related:** APR-036, AIF-042, AIF-032.
+- **Status:** Instruction updated; future adherence remains unverified.
+
 ## AIF-055 - Evolve instructions with selective evidence and preserved task context
 
 - **Reference:** Operator discussion and authorized investigation on 2026-09-13, following AIF-054.

@@ -32,3 +32,4 @@
  ## Preservation
 
  - Preserve existing changes. Never discard work unless you created it during the current task or the user explicitly authorizes its removal.
+ - Never rewrite published Git history unless the user explicitly directs the specific rewrite.
