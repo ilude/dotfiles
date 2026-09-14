@@ -140,11 +140,11 @@ Implement the established fix and finite checks below. Separate verified code de
   - Done when: code, tests, docs, and changelog agree on the verified defect, fix, and evidence limits.
   - Evidence: Documentation and changelog are aligned. Focused unit/runtime tests passed 56/56, direct live acceptance passed, the refactored visible-subagent suite passed 5/5, typecheck passed, runtime smoke passed, and `git diff --check` passed. Splitting the monolithic live test showed the prior failure was confined to a test that sent pane input without first entering the existing explicit intervention mode; the corrected focused test now exercises that contract accurately.
 
-- [ ] **T5: Integrate and close out**
+- [x] **T5: Integrate and close out**
   - Depends on: T4.
   - Change: inspect the complete task diff, archive this spec, commit task changes on the task branch, merge into the recorded originating `main`, commit completion metadata, and remove the clean task worktree. Do not push.
   - Done when: `main` contains the implementation and archived completed plan, no active plan copy remains, and task worktree cleanup is verified.
-  - Evidence: Task commits `d13e08dd` and `bba5aabb` were merged into originating `main` by merge commit `d45b41b`; the target contains the implementation and archive, and no active plan remains. Task-worktree cleanup is the remaining closeout action.
+  - Evidence: Task commits `d13e08dd` and `bba5aabb` were merged into originating `main` by merge commit `d45b41b`; the target contains the implementation and archive, no active plan remains, and the task worktree registration and directory were removed and verified.
 
 ## Agreed validation and current handoff
 
