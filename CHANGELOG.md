@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-14: Consolidate Onclave object storage into SeaweedFS
+
+**Changed:** Onclave now uses a separately authorized `menos` bucket in the existing SeaweedFS deployment through its internal HTTPS endpoint. Migration preserves object keys and verifies exact key, byte, and payload-digest parity before cutover. SeaweedFS object backups include an isolated restore test, and successful cleanup removes restore-test buckets created by the workflow.
+
+**Removed:** The retired MinIO service, active configuration, container, and data were removed only after exact corpus parity, authenticated application checks, and backup restoration passed. OpenTofu state remains isolated in its existing bucket and credentials.
+
 ## 2026-09-14: Show immediate feedback for Pi extension commands
 
 **Fixed:** Every default-profile extension command now goes through one registration wrapper that echoes its exact slash command and raw arguments as a visible, model-readable transcript entry, then yields to the TUI before dispatching handler work. The wrapper does not serialize commands or add completion feedback; handlers retain their own concurrency and closeout behavior. Pi built-ins and third-party commands remain unchanged. `/clear` also reports that session replacement has started, including when changed profile resources will be reloaded.

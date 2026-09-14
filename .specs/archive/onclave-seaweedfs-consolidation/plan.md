@@ -1,7 +1,7 @@
 ---
 created: 2026-09-13
-status: in progress
-completed: null
+status: completed
+completed: 2026-09-14
 ---
 
 # Consolidate Onclave assets into SeaweedFS and complete the `/yt` workflow
@@ -13,7 +13,7 @@ completed: null
 - Remove the arbitrary transcript/download gates added during the current session. Do not replace them with new limits, deadlines, retries, threat-model controls, or availability policies without evidence and operator agreement.
 - Preserve unrelated work in the dotfiles parent and all existing task-owned changes in `modules/onclave/` and root `CHANGELOG.md`.
 - Non-goals: Internet exposure, MinIO browser console, a new Onclave download endpoint, RustFS or Garage evaluation, storage clustering, credential rotation, or unrelated object-schema redesign.
-- Authorization: this document authorizes planning only. Push, live DNS/BWS mutation, deployment, data migration, and MinIO removal require an explicit execution request. Stateful cutover must retain MinIO data as the rollback source until post-cutover verification passes.
+- Authorization: the operator subsequently authorized pushes, live DNS/BWS changes, deployment, migration, verification, and MinIO decommission. Stateful cutover retained MinIO data through parity, application checks, and successful backup restoration.
 
 ## Fresh-context handoff
 
@@ -34,7 +34,7 @@ All paths are relative to `C:/Users/mglenn/.dotfiles` unless a repository root i
 - Onclave commit `2418511` (`Add vault job notifications and downloads`) is already pushed at `origin/feature/v2-broker-core`; the parent gitlink already points to it. Reconcile its arbitrary limits and transcript operation in a new Onclave commit rather than rewriting pushed history.
 - Existing unrelated parent changes, including `CHANGELOG.md`, agent-process/context work, and Pi command/session files, are outside this plan. Never stage, commit, modify, or remove them. Add this task's eventual changelog entry only through a narrowly coordinated edit that preserves those changes.
 - The historical `modules/homelab-infra/.specs/bws-seaweedfs-state/plan.md` is marked completed and is evidence for the deployed state backend, not an active plan for this work.
-- Planning profile: Pi default profile, 2026-09-13. Execution profile: Pi default, started 2026-09-13. Live migration and deployment remain unauthorized by the plan.
+- Planning and execution profile: Pi default, 2026-09-13 through 2026-09-14. Live execution completed under subsequent operator authorization.
 - Recorded worktrees and integration targets:
   - Onclave: `C:/Users/mglenn/.dotfiles/.worktrees/onclave-seaweedfs-onclave`, branch `task/onclave-seaweedfs-consolidation`, integrate into canonical `modules/onclave/` branch `feature/v2-broker-core` at starting commit `2418511`.
   - Homelab: `C:/Users/mglenn/.dotfiles/.worktrees/onclave-seaweedfs-homelab`, branch `task/onclave-seaweedfs-consolidation`, integrate into canonical detached submodule target corresponding to `main` at starting commit `3c52df2`; attach/merge to local `main` before updating the parent gitlink.
@@ -62,7 +62,7 @@ Implement and validate each owning repository independently. Commit and push Onc
 
 ## Tasks
 
-- [ ] **T1: Reconcile the Onclave `/yt` and transcript implementation**
+- [x] **T1: Reconcile the Onclave `/yt` and transcript implementation**
   - Depends on: none.
   - Files: `modules/onclave/extensions/onclave-pi/src/lib/vault-tools.ts`, `modules/onclave/extensions/onclave-pi/src/onclave-pi.ts`, `modules/onclave/packages/client/src/index.ts`, `modules/onclave/services/core/src/{service.ts,vault/}`, related tests, and root `CHANGELOG.md`.
   - Change:
@@ -76,9 +76,9 @@ Implement and validate each owning repository independently. Commit and push Onc
   - Verify: from `modules/onclave/`, run focused client/adapter tests and `just check`.
   - Done when: an object larger than all observed transcripts downloads without entering model context or hitting an arbitrary local size/time gate; result contains exactly `local_path`, `content_id`, and `bytes`; terminal-event tests remain green; secrets and transcript content are absent from results and errors.
   - If blocked: retain the existing signed Onclave API path as the temporary implementation and record the exact missing SeaweedFS/BWS contract. Do not invent an endpoint or credential.
-  - Evidence: implemented in Onclave commits `d1ca91b` and `f3e44d6`, locally fast-forwarded into `feature/v2-broker-core`. `just check` passed with 267 tests and 1 skipped. Live Pi reload and retrieval remain T4/T5 work, so T1 remains unchecked.
+  - Evidence: implemented and pushed in Onclave commits `d1ca91b` and `f3e44d6` on `feature/v2-broker-core`. Final `just check` passed with 267 tests and 1 skipped.
 
-- [ ] **T2: Extend the existing SeaweedFS deployment for Onclave assets and internal S3 access**
+- [x] **T2: Extend the existing SeaweedFS deployment for Onclave assets and internal S3 access**
   - Depends on: none; contract must complete before T3/T4.
   - Files: `modules/homelab-infra/infra/ansible/roles/seaweedfs_onramp/`, relevant playbooks/tests, `config/bws-routing.json`, BWS families, and internal DNS inputs.
   - Change:
@@ -90,9 +90,9 @@ Implement and validate each owning repository independently. Commit and push Onc
   - Verify: focused homelab tests, Ansible syntax/lint for affected playbooks, Caddy configuration validation, DNS rendering validation, and SeaweedFS bucket/credential tests using redacted output.
   - Done when: the internal hostname resolves from the workstation, HTTPS validates, unauthenticated S3 access is denied, Onclave-scoped credentials can perform the exact required CRUD operations in `menos`, and state-bucket behavior remains unchanged.
   - If blocked: stop before data copy and report the failing DNS, TLS, credential, or bucket contract. Do not expose a raw host port or substitute Internet access.
-  - Evidence: local deployment/configuration implementation is in homelab commits `a8cd6d0` and `4480218`, fast-forwarded into local `main`. Focused tests passed. Live BWS/DNS/Caddy/SeaweedFS checks are unauthorized and unperformed, so T2 remains unchecked.
+  - Evidence: implemented, deployed, and pushed through homelab commit `6cebeac`. BWS readback, internal DNS, HTTPS, Caddy routing, bucket-scoped CRUD, and existing state-bucket behavior passed.
 
-- [ ] **T3: Copy and verify the MinIO corpus in SeaweedFS**
+- [x] **T3: Copy and verify the MinIO corpus in SeaweedFS**
   - Depends on: T2.
   - Files: proposed migration helper/tests under `modules/homelab-infra/scripts/` and private run artifacts under `modules/homelab-infra/values/`.
   - Change:
@@ -103,9 +103,9 @@ Implement and validate each owning repository independently. Commit and push Onc
   - Verify: expected baseline is approximately 3,969 objects and 28.94 MB, but live source inventory is authoritative. Require exact source/destination keyset, byte count, and content digest parity.
   - Done when: every source object has an identical verified destination object and rerunning the migration produces no data changes.
   - If blocked: preserve both stores, record mismatched keys/digests privately, and resume only the failed copies. Do not proceed to cutover.
-  - Evidence: resumable migration/parity helper and quiescence gates are implemented and tested locally in `a8cd6d0`/`4480218`. Live copy and exact corpus parity are unauthorized and unperformed, so T3 remains unchecked.
+  - Evidence: initial resumable copy and final quiesced synchronization completed. The private parity artifact records an exact match of 4,002 keys, 29,431,222 bytes, and payload SHA-256 digests with no missing or mismatched objects.
 
-- [ ] **T4: Cut Onclave and Pi over to SeaweedFS**
+- [x] **T4: Cut Onclave and Pi over to SeaweedFS**
   - Depends on: T1, T2, T3.
   - Files: Onclave deployment variables/BWS families and `modules/homelab-infra/infra/ansible/roles/onclave_onramp/`; no application object-key changes.
   - Change:
@@ -119,9 +119,9 @@ Implement and validate each owning repository independently. Commit and push Onc
     - Existing OpenTofu remote-state read, version, and lock checks still pass.
   - Done when: new Onclave writes and existing object reads use SeaweedFS, Pi returns a local transcript path without transcript bytes in context, and no service references MinIO as its active endpoint.
   - If blocked: restore the previous Onclave endpoint while preserving SeaweedFS's copied bucket and MinIO source. Record the exact failed check and owner.
-  - Evidence: opt-in cutover configuration and safe-default gates are implemented locally in `a8cd6d0`/`4480218`. Deployment, Pi reload, and live CRUD are unauthorized and unperformed, so T4 remains unchecked.
+  - Evidence: unified Onclave deployed against SeaweedFS. `/health`, `/ready`, signed API access, existing-object reads, and disposable S3 write/read/delete passed. Pi direct retrieval returned exactly `local_path`, `content_id`, and `bytes=41220` after reload.
 
-- [ ] **T5: Verify `/yt` recovery and decommission MinIO**
+- [x] **T5: Verify `/yt` recovery and decommission MinIO**
   - Depends on: T4.
   - Files: `modules/homelab-infra/infra/ansible/roles/onclave_onramp/`, Compose templates/tests, private backup artifact, and job/content records through supported APIs.
   - Change:
@@ -133,9 +133,9 @@ Implement and validate each owning repository independently. Commit and push Onc
   - Verify: focused Onclave deployment tests, live `/ready`, end-to-end `/yt` completion/failure notification test, exact transcript byte check, backup restore check, and absence of active MinIO containers/config references.
   - Done when: the failed video has a terminal reprocessing result delivered by event, Onclave assets operate from SeaweedFS, and MinIO is absent from the managed Onclave stack.
   - If blocked: leave MinIO stopped but recoverable only when SeaweedFS is active and parity remains proven; otherwise restore MinIO service and endpoint. Do not claim decommissioning complete while MinIO remains an active dependency.
-  - Evidence: backup/restore helper, explicit decommission gate, and MinIO-free target configuration are implemented locally in `a8cd6d0`/`4480218`. Live backup, reprocessing, and decommission are unauthorized and unperformed, so T5 remains unchecked.
+  - Evidence: reprocessing job `904e0464dd46473c8cca01b75ddd4eeb` completed and its queued terminal broker event woke the reloaded originating Pi session without polling. The 41,220-byte transcript downloaded locally without entering model context. A final SeaweedFS application-object backup restore-tested with exact parity. The MinIO container, managed configuration/volume, and retired bind data are absent.
 
-- [ ] **T6: Validate, integrate, and close out across repositories**
+- [x] **T6: Validate, integrate, and close out across repositories**
   - Depends on: T1-T5.
   - Change:
     - Run `just check` once in `modules/onclave` after its final changes.
@@ -144,7 +144,7 @@ Implement and validate each owning repository independently. Commit and push Onc
     - Archive this entire spec only after implementation, live cutover, decommissioning, and agent-owned checks are complete.
   - Done when: owning repositories contain focused commits, authorized pushes succeeded, parent gitlinks point to them, validation passes, the archived plan records exact evidence, and no task worktree cleanup remains.
   - If blocked: retain clean task worktrees and report the repository, commit, blocker, next action, and action owner. Do not stage unrelated parent changes.
-  - Evidence: not started.
+  - Evidence: Onclave is clean and pushed at `f3e44d6`; homelab-infra is clean and pushed at `6cebeac`. Final Onclave validation passed 267 tests with 1 skipped; final homelab validation passed 438 tests with 1 skipped. Temporary task files and worktrees are absent. Parent closeout records the updated gitlinks and this archived plan while preserving unrelated changes.
 
 ## Agreed validation and current handoff
 
@@ -152,13 +152,10 @@ Implement and validate each owning repository independently. Commit and push Onc
 - Homelab: focused role/script tests while implementing, affected Ansible/Caddy/DNS validation, live S3 CRUD/parity/cutover checks, then one final `just validate`.
 - End-to-end: accepted ingest records a subscriber; terminal completed/failed/cancelled event triggers exactly one Pi follow-up; transcript operation returns a readable local file; known video recovery completes without polling.
 - Storage: exact source/destination object keyset, byte total, and digest parity; one verified backup restore; OpenTofu state checks unchanged.
-- Status: in progress; local implementation and module integration complete, live execution blocked on authorization and environment.
-- Completed work and evidence: Onclave commits `d1ca91b`/`f3e44d6` and homelab commits `a8cd6d0`/`4480218`/`59f9c60`/`8460007` are locally integrated. Onclave `just check` passed with 267 tests and 1 skipped. Homelab `just validate` passed after the task-related ownership assertion and lint findings were corrected; its unit suite ran 435 tests with 1 skipped.
-- Next: after authorization, push owning repositories, perform BWS/DNS/SeaweedFS deployment, migrate with quiesced parity, cut over, restore-test backup, reprocess the known video, and decommission live MinIO.
-- Blockers/open decisions:
-  - User must explicitly authorize pushes and live BWS mutation, deployment, migration, and MinIO decommission because this plan records that requirement and the execution invocation does not add authorization.
-  - No architectural decision remains open. The shared SeaweedFS process with separate bucket credentials remains selected.
-- Verification limits: no live DNS, BWS, SeaweedFS bucket, migration, deployment, Pi reload, video reprocessing, backup restore, or decommission was performed.
+- Status: completed.
+- Completed work and evidence: Onclave commits `d1ca91b`/`f3e44d6` and homelab commits through `6cebeac` are pushed. Exact final parity was 4,002 objects and 29,431,222 bytes with matching keys and payload digests. Unified readiness, HTTPS, signed API, S3 CRUD, state isolation, backup restore, event-driven job completion, and 41,220-byte local transcript retrieval passed. MinIO is fully decommissioned.
+- Blockers/open decisions: none.
+- Verification limits: the cutover role's historical pre-acceptance failure path required manual legacy restoration rather than an automated rescue block. The successful migration passed acceptance and deliberately retired that rollback source; no post-retirement MinIO rollback was added.
 
 ## Closeout
 
