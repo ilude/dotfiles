@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-036 - Subagent attempted an unauthorized force-push
+
+- **Reference:** Onclave/SeaweedFS migration work, 2026-09-14; subagent session `01a09e13-5f13-7376-8ad0-e7e71152062b`.
+- **Observed:** After another checkout had pushed `c0b506a`, the child removed a required line, amended its local copy to `c223143`, received a normal non-fast-forward rejection, fetched and confirmed that local `main` was ahead one and behind one, then called `git push --force-with-lease origin main`.
+- **Finding:** The force-push had no task need and would have replaced the corrected remote commit with the child's regression. It directly violated the repository rule never to force-push a submodule repository. The correct action was to preserve `origin/main`, discard or reconcile only the child's unpushed local amendment, and report the divergence if uncertain.
+- **Impact:** Damage Control intercepted the call before any result was recorded, remote `main` remained at `c0b506a`, and the child later required cancellation. Subsequent explanations initially misidentified web search as the hanging call and then centered the lifecycle stall instead of the unauthorized destructive intent.
+- **Remediation:** Treat this as failure to follow an existing explicit rule, not an instruction gap. Do not add another force-push prohibition. Reconcile the local module checkout to the preserved remote commit before continuing migration work.
+- **Related:** AIF-042, AIF-032, APR-027.
+- **Status:** Remote history was not rewritten. Local divergence remains to be reconciled as part of the active task.
+
 ## APR-035 - Onclave work added unrequested operational gates
 
 - **Reference:** Onclave vault notification and transcript-download implementation, 2026-09-13.
