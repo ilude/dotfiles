@@ -25,8 +25,12 @@ Endpoint precedence remains:
 3. Existing BWS bootstrap using `BITWARDEN_ACCESS_KEY`,
    `BITWARDEN_API_SERVER`, and `ONCLAVE_BWS_PROJECT_ID`
 
-The BWS executable is `~/.local/bin/bws` (`bws.exe` on Windows). The service
-endpoint uses HTTPS. Requests retain the existing signing contract with the
+The BWS executable is `~/.local/bin/bws` (`bws.exe` on Windows). Transient BWS
+command failures receive three bounded startup attempts. If those attempts fail,
+Onclave reports a degraded state and retries every minute in the background so
+it can recover without `/clear` or `/reload`. Bootstrap validation and secret
+payload errors fail immediately. Session replacement and shutdown cancel active
+attempts and retry timers. The service endpoint uses HTTPS. Requests retain the existing signing contract with the
 local unencrypted OpenSSH Ed25519 key at `~/.ssh/id_ed25519`. The port does not
 change service authentication or configure credentials. `--onclave-id` overrides
 the otherwise session-derived instance identity.

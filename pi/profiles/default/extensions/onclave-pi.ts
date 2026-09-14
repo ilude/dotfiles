@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { withProfileCommandRegistration } from "../lib/profile-command.ts";
 
 export function resolveOnclaveAdapter(start = dirname(realpathSync(fileURLToPath(import.meta.url)))): string {
   let current = start;
@@ -17,5 +18,5 @@ export function resolveOnclaveAdapter(start = dirname(realpathSync(fileURLToPath
 
 export default async function registerOnclave(pi: ExtensionAPI): Promise<void> {
   const adapter = await import(pathToFileURL(resolveOnclaveAdapter()).href);
-  adapter.default(pi);
+  adapter.default(withProfileCommandRegistration(pi));
 }

@@ -35,3 +35,17 @@ export function registerProfileCommand(pi: ExtensionAPI, name: string, definitio
 		},
 	});
 }
+
+/** Give an externally owned adapter the profile's command registration UX. */
+export function withProfileCommandRegistration(pi: ExtensionAPI): ExtensionAPI {
+	const bound = new Map<PropertyKey, unknown>();
+	return new Proxy(pi, {
+		get(target, property) {
+			if (property === "registerCommand") return (name: string, definition: CommandDefinition) => registerProfileCommand(target, name, definition);
+			const value = Reflect.get(target, property, target);
+			if (typeof value !== "function") return value;
+			if (!bound.has(property)) bound.set(property, value.bind(target));
+			return bound.get(property);
+		},
+	});
+}

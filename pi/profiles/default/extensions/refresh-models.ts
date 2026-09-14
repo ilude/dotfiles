@@ -2,7 +2,7 @@ import { fetchProviderCatalog, parseRemoteModels } from "../lib/models/catalog.t
 import { loadProviderCache, writeProviderCache } from "../lib/models/cache.ts";
 import { buildProviderModelDefinitions, buildCachedProviderModelDefinitions } from "../lib/models/reconcile.ts";
 import type { ModelLike, ProviderModelDef } from "../lib/models/types.ts";
-import { registerSlashCommand } from "../lib/slash-command-echo.js";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 import {
 	getConfiguredBedrockModelIds,
 	shouldHideModel,
@@ -305,7 +305,7 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 		registerCachedProvider(pi, provider);
 	}
 
-	registerSlashCommand(pi)("refresh-models", {
+	registerProfileCommand(pi, "refresh-models", {
 		description:
 			"Refresh available models for one configured provider or all configured providers",
 		handler: async (args, ctx) => {

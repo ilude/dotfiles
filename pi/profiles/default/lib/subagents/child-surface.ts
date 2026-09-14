@@ -4,6 +4,7 @@ import { requestParent, type ChildEndpoint } from "./transport.ts";
 import { outcomeText } from "./status.ts";
 import { presentationDetails } from "./presentation.ts";
 import type { Delivery } from "./runtime.ts";
+import { registerProfileCommand } from "../profile-command.ts";
 interface State { generation:number;seen:Set<string>;ctx?:ExtensionContext;tick?:()=>Promise<void>;timer?:ReturnType<typeof setInterval>;busy:boolean;userOwned:boolean;parentGone:boolean;turn:number;last:string;error?:string;toolError?:string;prompt:boolean;redirectMessage?:string;unbind?:()=>void;activity?:{phase:"model"|"tool";toolName?:string};delivered?:Set<string>;queuedDelivery?:string }
 const key=Symbol.for("dotfiles.pi.subagent.surface.v1");
 export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
@@ -115,5 +116,5 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   state.unbind?.();state.unbind=undefined;state.ctx=undefined;
   if(event.reason==="quit"){if(state.timer)clearInterval(state.timer);state.timer=undefined}
  });
- pi.registerCommand("subagent-return",{description:"Hand this child back to its originating parent",handler:async()=>handback()});
+ registerProfileCommand(pi,"subagent-return",{description:"Hand this child back to its originating parent",handler:async()=>handback()});
 }

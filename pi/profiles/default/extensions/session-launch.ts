@@ -153,15 +153,15 @@ function branchEvidence(data: unknown): BranchEvidence | undefined {
 	return { schemaVersion: 1, role, parentSessionId, parentSessionFile, childSessionId, childSessionFile, branchPointEntryId, branchPointTimestamp };
 }
 
+function branchPointTime(timestamp: string): string {
+	const date = new Date(timestamp);
+	return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString().replaceAll(",", "");
+}
+
 function renderBranchEvidence(entry: CustomEntry<BranchEvidence>, _options: { expanded: boolean }, theme: Theme): Text {
 	const data = branchEvidence(entry.data);
 	if (!data) return new Text(theme.fg("error", "[branch] Invalid branch evidence"), 0, 0);
-	return new Text([
-		theme.fg("accent", `[branch ${data.role}]`),
-		`parent: ${data.parentSessionId}  ${data.parentSessionFile}`,
-		`child:  ${data.childSessionId}  ${data.childSessionFile}`,
-		`point:  ${data.branchPointEntryId} @ ${data.branchPointTimestamp}`,
-	].join("\n"), 0, 0);
+	return new Text(`${theme.fg("accent", `[branch ${data.role}]`)} ${branchPointTime(data.branchPointTimestamp)}`, 0, 0);
 }
 
 const execFileAsync = promisify(execFile);
@@ -216,10 +216,26 @@ function createHerdrTab(cwd: string, title: string): string {
 	return paneId;
 }
 
+async function currentHerdrWorkspace(cwd: string): Promise<string> {
+	let output: string;
+	try {
+		output = await runHerdrAsync(["pane", "current", "--current"], cwd);
+	} catch (error) {
+		throw new HerdrPiTabLaunchError(`Cannot resolve the caller's current Herdr workspace. ${String(error)}`, { mayHaveLaunched: false });
+	}
+	try {
+		const parsed = extractJsonObject(output) as { result?: { pane?: { workspace_id?: string } } };
+		const workspace = parsed.result?.pane?.workspace_id;
+		if (!workspace) throw new Error("Herdr omitted workspace identity");
+		return workspace;
+	} catch (error) {
+		throw new HerdrPiTabLaunchError(`Cannot resolve the caller's current Herdr workspace. ${String(error)}`, { mayHaveLaunched: false });
+	}
+}
+
 export async function createHerdrPiTab(cwd: string, title: string, sessionFile?: string, planPath?: string, titleExplicit = Boolean(planPath), workspaceId?: string): Promise<{ tabId: string; paneId?: string }> {
-	const workspace = workspaceId || process.env.HERDR_WORKSPACE_ID;
-	if (!workspace) throw new HerdrPiTabLaunchError("HERDR_WORKSPACE_ID is not set and no workspace was supplied.", { mayHaveLaunched: false });
 	if (sessionFile && planPath) throw new HerdrPiTabLaunchError("A Herdr Pi tab cannot resume a session and launch a plan together.", { mayHaveLaunched: false });
+	const workspace = workspaceId || await currentHerdrWorkspace(cwd);
 	const args = ["plugin", "pane", "open", "--plugin", "local.pi", "--entrypoint", "pi", "--placement", "tab", "--workspace", workspace,
 		"--cwd", process.platform === "win32" ? msysPathToWindows(cwd) : cwd,
 		"--env", `PI_HERDR_PROFILE_DIR=${profileDir()}`, "--env", `PI_HERDR_SESSION_FILE=${sessionFile || ""}`,

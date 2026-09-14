@@ -1,5 +1,22 @@
 # Agent process failure log
 
+## APR-038 - `/new-instance` tabs exited during Onclave extension loading
+
+- **Reference:** Operator report of two `/new-instance` crashes, 2026-09-14.
+- **Observed:** Herdr created and focused both tabs, recognized Pi, then the plugin bootstrap retired each pane after Pi exited. Direct `pp` startup reproduced `Extension runtime not initialized. Action methods cannot be called during extension loading` from `extensions/onclave-pi.ts`.
+- **Finding:** The Onclave adapter called `getActiveTools` and `setActiveTools` while its extension factory was still loading. These are Pi runtime action APIs and are unavailable until extension loading completes.
+- **Remediation:** Defer the initial adapter-tool visibility update to `session_start`, where the same update already occurs after runtime binding. Added a regression that makes runtime actions throw during registration.
+- **Status:** Corrected locally. All 89 Onclave adapter tests pass, default-profile typecheck and runtime smoke pass, and a direct `pp` launch reaches idle. The active orchestrator needs `/reload` before `/new-instance` uses the corrected source.
+
+## APR-037 - Central command wrapper missed the dynamically loaded Onclave adapter
+
+- **Reference:** Default Pi command-feedback centralization, 2026-09-14.
+- **Observed:** The implementation replaced direct `registerCommand` calls found under `pi/profiles/default/extensions`, then claimed every profile command was covered. `/onclave` still omitted its invocation because the profile file is a dynamic loader and the actual registration lives in `modules/onclave/extensions/onclave-pi`.
+- **Finding:** The inventory method searched only direct registrations in the profile tree and did not follow the loader boundary or validate the resulting runtime command catalog. Onclave is an explicitly integrated repository-owned adapter, not an arbitrary third-party command that could reasonably remain outside profile UX.
+- **Remediation:** The Onclave loader now supplies the centralized registration facade to the adapter. For claims covering every integrated command, inspect dynamic loaders and validate the effective registered-command inventory rather than relying only on source-tree `registerCommand` matches.
+- **Follow-up:** A full registration audit also found `/refresh-models` on an older wrapper and visible-child `/subagent-return` registered directly. Both now use the centralized wrapper; the obsolete registration helper was removed.
+- **Status:** Corrected; focused wrapper, loader, model-refresh, and child-surface tests pass. The existing Onclave smoke script has a separate stale tool-count expectation.
+
 ## APR-036 - Subagent attempted an unauthorized force-push
 
 - **Reference:** Onclave/SeaweedFS migration work, 2026-09-14; subagent session `01a09e13-5f13-7376-8ad0-e7e71152062b`.

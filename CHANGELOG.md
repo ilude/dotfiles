@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-14: Keep new Pi tabs in the caller's current Herdr workspace
+
+**Fixed:** Default Pi `/branch` and `/new-instance` now resolve the caller pane's live Herdr workspace before opening a plugin tab. Moving a running Pi pane no longer causes new tabs to open in its launch-time workspace. Explicit workspace targets used by resume flows remain unchanged. `/branch` records now render only a concise role marker and localized branch time; full reciprocal evidence remains persisted without adding visual noise.
+
+## 2026-09-14: Make Onclave Bitwarden bootstrap self-healing
+
+**Fixed:** The Pi Onclave adapter now retries transient Bitwarden Secrets Manager command failures with bounded startup attempts, reports a degraded retrying state instead of a terminal failure, and continues low-frequency recovery in the background. Successful recovery connects without `/clear` or `/reload`; permanent configuration and secret-payload errors still fail immediately, and session replacement or shutdown cancels stale attempts.
+
+**Preserved:** Explicit Onclave endpoints bypass Bitwarden, vault tool schemas remain discoverable during adapter startup, raw Bitwarden errors and secret material remain hidden, and ordinary Pi use remains available while Onclave is degraded.
+
 ## 2026-09-14: Consolidate Onclave object storage into SeaweedFS
 
 **Changed:** Onclave now uses a separately authorized `menos` bucket in the existing SeaweedFS deployment through its internal HTTPS endpoint. Migration preserves object keys and verifies exact key, byte, and payload-digest parity before cutover. SeaweedFS object backups include an isolated restore test, and successful cleanup removes restore-test buckets created by the workflow.
@@ -8,7 +18,7 @@
 
 ## 2026-09-14: Show immediate feedback for Pi extension commands
 
-**Fixed:** Every default-profile extension command now goes through one registration wrapper that echoes its exact slash command and raw arguments as a visible, model-readable transcript entry, then yields to the TUI before dispatching handler work. The wrapper does not serialize commands or add completion feedback; handlers retain their own concurrency and closeout behavior. Pi built-ins and third-party commands remain unchanged. `/clear` also reports that session replacement has started, including when changed profile resources will be reloaded.
+**Fixed:** Every default-profile extension command, including commands from explicitly integrated adapters such as Onclave, now goes through one registration wrapper that echoes its exact slash command and raw arguments as a visible, model-readable transcript entry, then yields to the TUI before dispatching handler work. The wrapper does not serialize commands or add completion feedback; handlers retain their own concurrency and closeout behavior. Pi built-ins and third-party commands remain unchanged. `/clear` also reports that session replacement has started, including when changed profile resources will be reloaded.
 
 ## 2026-09-14: Move Herdr panes between workspaces from Pi
 

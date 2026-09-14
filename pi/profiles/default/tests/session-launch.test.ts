@@ -29,9 +29,11 @@ function fixture() {
 		sessionManager: { getLeafId: () => "leaf", createBranchedSession: vi.fn(() => "C:/branch path/session.jsonl") },
 	};
 	vi.mocked(execFile).mockImplementation((_command: any, args: any, _options: any, callback: any) => {
-		const stdout = args[0] === "plugin"
-			? JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w9:t4", pane_id: "w9:p4" } } } })
-			: "";
+		const stdout = args[0] === "pane"
+			? JSON.stringify({ result: { pane: { pane_id: "w9:p1", workspace_id: "w9" } } })
+			: args[0] === "plugin"
+				? JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w9:t4", pane_id: "w9:p4" } } } })
+				: "";
 		callback(null, { stdout, stderr: "" });
 		return {} as any;
 	});
@@ -65,9 +67,11 @@ function realBranchFixture() {
 	register(pi as any);
 	const ctx = { cwd: root, ui: { notify: vi.fn() }, sessionManager: parent };
 	vi.mocked(execFile).mockImplementation((_command: any, args: any, _options: any, callback: any) => {
-		const stdout = args[0] === "plugin"
-			? JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w9:t4", pane_id: "w9:p4" } } } })
-			: "";
+		const stdout = args[0] === "pane"
+			? JSON.stringify({ result: { pane: { pane_id: "w9:p1", workspace_id: "w9" } } })
+			: args[0] === "plugin"
+				? JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w9:t4", pane_id: "w9:p4" } } } })
+				: "";
 		callback(null, { stdout, stderr: "" });
 		return {} as any;
 	});
@@ -76,8 +80,10 @@ function realBranchFixture() {
 
 it("awaits delayed plugin open, passes title ownership, focuses the exact tab, and leaves child title initialization authoritative", async () => {
 	const { commands, ctx } = fixture();
-	vi.mocked(execFile).mockImplementationOnce((_command: any, _args: any, _options: any, callback: any) => {
-		setTimeout(() => { callback(null, { stdout: JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w9:t4", pane_id: "w9:p4" } } } }), stderr: "" }); }, 10);
+	vi.mocked(execFile).mockImplementation((_command: any, args: any, _options: any, callback: any) => {
+		if (args[0] === "pane") callback(null, { stdout: JSON.stringify({ result: { pane: { workspace_id: "w9" } } }), stderr: "" });
+		else if (args[0] === "plugin") setTimeout(() => { callback(null, { stdout: JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w9:t4", pane_id: "w9:p4" } } } }), stderr: "" }); }, 10);
+		else callback(null, { stdout: "", stderr: "" });
 		return {} as any;
 	});
 	const pending = commands["new-instance"].handler("fresh", ctx);
@@ -85,14 +91,15 @@ it("awaits delayed plugin open, passes title ownership, focuses the exact tab, a
 	expect(vi.mocked(execFile)).not.toHaveBeenCalled();
 	await new Promise<void>((resolve) => setImmediate(resolve));
 	expect(ctx.ui.notify).toHaveBeenCalledWith("Opening new Pi instance in a Herdr tab: fresh", "info");
-	expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+	expect(vi.mocked(execFile)).toHaveBeenCalledTimes(2);
 	await pending;
 	const calls = vi.mocked(execFile).mock.calls.map(call => call[1] as string[]);
-	expect(calls[0]).toContain("PI_HERDR_SESSION_FILE=");
-	expect(calls[0]).toContain("PI_HERDR_PLAN_PATH=");
-	expect(calls[0]).toContain("PI_HERDR_TAB_TITLE=fresh");
-	expect(calls[0]).toContain("PI_HERDR_TAB_TITLE_EXPLICIT=1");
-	expect(calls.slice(1)).toEqual([["tab", "focus", "w9:t4"]]);
+	expect(calls[0]).toEqual(["pane", "current", "--current"]);
+	expect(calls[1]).toContain("PI_HERDR_SESSION_FILE=");
+	expect(calls[1]).toContain("PI_HERDR_PLAN_PATH=");
+	expect(calls[1]).toContain("PI_HERDR_TAB_TITLE=fresh");
+	expect(calls[1]).toContain("PI_HERDR_TAB_TITLE_EXPLICIT=1");
+	expect(calls.slice(2)).toEqual([["tab", "focus", "w9:t4"]]);
 });
 
 it("branches through an independent real manager and persists reciprocal visible evidence", async () => {
@@ -101,7 +108,7 @@ it("branches through an independent real manager and persists reciprocal visible
 	const parentFile = parent.getSessionFile()!;
 	const branchPoint = parent.getLeafEntry()!;
 	await commands.branch.handler("branch", ctx);
-	const branchOpen = vi.mocked(execFile).mock.calls[0][1] as string[];
+	const branchOpen = vi.mocked(execFile).mock.calls.find(call => (call[1] as string[])[0] === "plugin")![1] as string[];
 
 	expect(parent.getSessionId()).toBe(parentId);
 	expect(parent.getSessionFile()).toBe(parentFile);
@@ -141,67 +148,85 @@ it("branches through an independent real manager and persists reciprocal visible
 	expect(reopenedParent.buildSessionContext().messages.map(message => (message as any).content?.[0]?.text)).toContain("parent subsequent");
 	expect(reopenedChild.buildSessionContext().messages.map(message => (message as any).content?.[0]?.text)).toContain("child subsequent");
 
-	const rendered = renderers["session-branch"](childMarker, { expanded: false }, { fg: (_color: string, text: string) => text }).render(240).join("\n");
-	expect(rendered).toContain("[branch child]");
-	expect(rendered).toContain(parentFile);
-	expect(rendered).toContain(childFile);
-	expect(rendered).toContain(branchPoint.id);
-	expect(rendered).toContain(branchPoint.timestamp);
+	const theme = { fg: (_color: string, text: string) => text };
+	const expected = `[branch child] ${new Date(branchPoint.timestamp).toLocaleString().replaceAll(",", "")}`;
+	const rendered = renderers["session-branch"](childMarker, { expanded: false }, theme).render(240).join("\n").trimEnd();
+	expect(rendered).toBe(expected);
+	expect(rendered).not.toContain(parentFile);
+	expect(rendered).not.toContain(childFile);
+	const expanded = renderers["session-branch"](childMarker, { expanded: true }, theme).render(240).join("\n").trimEnd();
+	expect(expanded).toBe(expected);
 
 	vi.mocked(execFile).mockClear();
 	const receipt = await createHerdrPiTab(process.cwd(), "do-it", undefined, ".specs/example/plan.md");
 	expect(receipt).toEqual({ tabId: "w9:t4", paneId: "w9:p4" });
-	const planOpen = vi.mocked(execFile).mock.calls[0][1] as string[];
+	const planOpen = vi.mocked(execFile).mock.calls.find(call => (call[1] as string[])[0] === "plugin")![1] as string[];
 	expect(planOpen).toContain("PI_HERDR_PLAN_PATH=.specs/example/plan.md");
 	expect(planOpen).toContain("PI_HERDR_TAB_LABEL=do-it");
 	expect(planOpen).not.toContain("run");
 	expect(planOpen).toContain("--no-focus");
 });
 
-it("opens in an explicitly supplied workspace instead of the caller workspace", async () => {
+it("uses the caller pane's current workspace instead of its stale launch environment", async () => {
+	fixture();
+	vi.stubEnv("HERDR_WORKSPACE_ID", "w-old");
+	await createHerdrPiTab(process.cwd(), "fresh");
+	const calls = vi.mocked(execFile).mock.calls.map(call => call[1] as string[]);
+	expect(calls[0]).toEqual(["pane", "current", "--current"]);
+	const open = calls.find(args => args[0] === "plugin")!;
+	expect(open.slice(open.indexOf("--workspace"), open.indexOf("--workspace") + 2)).toEqual(["--workspace", "w9"]);
+});
+
+it("opens in an explicitly supplied workspace without inspecting the caller", async () => {
 	fixture();
 	await createHerdrPiTab(process.cwd(), "fresh", undefined, undefined, false, "w10");
-	const open = vi.mocked(execFile).mock.calls[0][1] as string[];
+	const calls = vi.mocked(execFile).mock.calls.map(call => call[1] as string[]);
+	expect(calls.some(args => args[0] === "pane")).toBe(false);
+	const open = calls.find(args => args[0] === "plugin")!;
 	expect(open.slice(open.indexOf("--workspace"), open.indexOf("--workspace") + 2)).toEqual(["--workspace", "w10"]);
 });
 
-it("reports missing workspace as a safe prelaunch failure", async () => {
-	vi.stubEnv("HERDR_ENV", "1");
-	vi.stubEnv("HERDR_WORKSPACE_ID", "");
-	await expect(createHerdrPiTab(process.cwd(), "fresh")).rejects.toMatchObject({
-		mayHaveLaunched: false, tabId: undefined, paneId: undefined,
-	});
-	expect(execFile).not.toHaveBeenCalled();
-});
-
-it.each(["ENOENT", "EACCES"])("allows a safe retry when the CLI never started (%s)", async code => {
+it("reports an unavailable current workspace as a safe prelaunch failure", async () => {
 	fixture();
 	vi.mocked(execFile).mockImplementationOnce((_command: any, _args: any, _options: any, callback: any) => {
-		callback(Object.assign(new Error("Cannot start CLI"), { code }));
+		callback(null, { stdout: JSON.stringify({ result: { pane: {} } }), stderr: "" });
 		return {} as any;
 	});
 	await expect(createHerdrPiTab(process.cwd(), "fresh")).rejects.toMatchObject({ mayHaveLaunched: false });
 	expect(execFile).toHaveBeenCalledTimes(1);
 });
 
+it.each(["ENOENT", "EACCES"])("allows a safe retry when the CLI never started (%s)", async code => {
+	fixture();
+	vi.mocked(execFile).mockImplementation((_command: any, args: any, _options: any, callback: any) => {
+		if (args[0] === "pane") callback(null, { stdout: JSON.stringify({ result: { pane: { workspace_id: "w9" } } }), stderr: "" });
+		else callback(Object.assign(new Error("Cannot start CLI"), { code }));
+		return {} as any;
+	});
+	await expect(createHerdrPiTab(process.cwd(), "fresh")).rejects.toMatchObject({ mayHaveLaunched: false });
+	expect(execFile).toHaveBeenCalledTimes(2);
+});
+
 it("marks timeout as ambiguous and does not retry", async () => {
 	fixture();
-	vi.mocked(execFile).mockImplementationOnce((_command: any, _args: any, _options: any, callback: any) => {
-		callback(Object.assign(new Error("timed out"), { killed: true, code: "ETIMEDOUT" }));
+	vi.mocked(execFile).mockImplementation((_command: any, args: any, _options: any, callback: any) => {
+		if (args[0] === "pane") callback(null, { stdout: JSON.stringify({ result: { pane: { workspace_id: "w9" } } }), stderr: "" });
+		else callback(Object.assign(new Error("timed out"), { killed: true, code: "ETIMEDOUT" }));
 		return {} as any;
 	});
 	const error = await createHerdrPiTab(process.cwd(), "fresh").catch(value => value);
 	expect(error).toBeInstanceOf(HerdrPiTabLaunchError);
 	expect(error).toMatchObject({ mayHaveLaunched: true });
-	expect(execFile).toHaveBeenCalledTimes(1);
+	expect(execFile).toHaveBeenCalledTimes(2);
 });
 
 it("returns known receipt details when focus fails", async () => {
 	const operation = "focus";
 	fixture();
-	vi.mocked(execFile).mockImplementationOnce((_command: any, args: any, _options: any, callback: any) => callback(null, { stdout: JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w9:t4", pane_id: "w9:p4" } } } }), stderr: "" }));
 	vi.mocked(execFile).mockImplementation((_command: any, args: any, _options: any, callback: any) => {
-		if (args[1] === operation) callback(new Error(`${operation} failed`));
+		if (args[0] === "pane") callback(null, { stdout: JSON.stringify({ result: { pane: { workspace_id: "w9" } } }), stderr: "" });
+		else if (args[0] === "plugin") callback(null, { stdout: JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w9:t4", pane_id: "w9:p4" } } } }), stderr: "" });
+		else if (args[1] === operation) callback(new Error(`${operation} failed`));
 		else callback(null, { stdout: "", stderr: "" });
 		return {} as any;
 	});
@@ -213,7 +238,7 @@ it("returns known receipt details when focus fails", async () => {
 it("marks default launch titles as automatic provenance", async () => {
 	const { commands, ctx } = fixture();
 	await commands["new-instance"].handler("", ctx);
-	const open = vi.mocked(execFile).mock.calls[0][1] as string[];
+	const open = vi.mocked(execFile).mock.calls.find(call => (call[1] as string[])[0] === "plugin")![1] as string[];
 	expect(open).toContain("PI_HERDR_TAB_TITLE_EXPLICIT=0");
 });
 
