@@ -1,7 +1,7 @@
 ---
 created: 2026-09-13
-status: ready
-completed: null
+status: completed
+completed: 2026-09-14
 ---
 
 # Keep every live Pi agent visible in Herdr
@@ -144,11 +144,11 @@ Implement the established fix and finite checks below. Separate verified code de
   - Depends on: T4.
   - Change: inspect the complete task diff, archive this spec, commit task changes on the task branch, merge into the recorded originating `main`, commit completion metadata, and remove the clean task worktree. Do not push.
   - Done when: `main` contains the implementation and archived completed plan, no active plan copy remains, and task worktree cleanup is verified.
-  - Evidence: Implementation and archived spec are committed on the task branch. Integration is blocked because the recorded originating `main` checkout has unrelated uncommitted changes, including `CHANGELOG.md`, which this task also changes. The execution contract forbids stashing, discarding, or committing those changes. Action owner: operator or the workflow owning those edits. Next action: finish or otherwise clear the unrelated target-checkout changes, then merge `workflow/herdr-complete-pi-agent-registration` into `main`, commit completion metadata, and remove this retained clean worktree.
+  - Evidence: Task commits `d13e08dd` and `bba5aabb` were merged into originating `main` by merge commit `d45b41b`; the target contains the implementation and archive, and no active plan remains. Task-worktree cleanup is the remaining closeout action.
 
 ## Agreed validation and current handoff
 
-- Status: ready.
+- Status: completed on 2026-09-14.
 - Completed investigation: isolated baseline/direct-CLI A/B followed by a spawned-child wrapper prototype, both reload variants, and actual visible/headless subagent experiments. All three requested confidence checks passed; see [experiments.md](experiments.md). No production implementation was changed by the experiments.
 - Next: T1 and T2 may proceed independently, then T3 proves the combined behavior.
 - Blockers/open decisions: none.
