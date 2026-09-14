@@ -121,9 +121,9 @@ Implement the established fix and finite checks below. Separate verified code de
     - headless helper exclusion.
   - Verify: use a named isolated Herdr server/config/plugin registry and pinned isolated socket. Do not relink production, stop the shared server, reuse `w27:pR`, or accept API acknowledgment as success.
   - Done when: every interactive/visible case is present with the expected exact pane/session/state and the headless control is absent.
-  - Evidence: `PI_HERDR_DIRECT_LIVE=1 pnpm test herdr-direct-tab-live.test.ts` passed with exact direct-pane membership, Windows session identity, idle/working/done lifecycle, same-session reload, and exact cleanup after Pi child termination. The new visible-subagent and headless assertions also passed: the visible child appeared with exact pane/session and working/idle state through reload, while the headless control stayed absent. The broader pre-existing test then failed at its later user-intervention ownership assertion; the unmodified integration target reproduces that same unrelated failure.
+  - Evidence: `PI_HERDR_DIRECT_LIVE=1 pnpm test herdr-direct-tab-live.test.ts` passed with exact direct-pane membership, Windows session identity, idle/working/done lifecycle, same-session reload, and exact cleanup after Pi child termination. The refactored visible-subagent live suite independently passed exact registration/state/session through reload, headless exclusion, and exact cleanup. Its four other focused scenarios also passed after the intervention test explicitly entered the existing intervention mode and the isolated web-tools package dependencies were installed.
 
-- [ ] **T4: Align documentation and claims with verified behavior**
+- [x] **T4: Align documentation and claims with verified behavior**
   - Depends on: T3.
   - Files: `pi/profiles/default/skills/herdr/SKILL.md`, `pi/profiles/default/docs/herdr.md`, `pi/profiles/default/docs/subagents.md`, `pi/README.md`, `CHANGELOG.md`.
   - Change: document the launcher/process identity contract, Windows path compatibility maintenance, API-acknowledgment limit, and actual live checks. Correct premature claims and explain that reload translation was unnecessary, not proven harmful.
@@ -138,7 +138,7 @@ Implement the established fix and finite checks below. Separate verified code de
     - `pnpm run check:runtime`
     - `git diff --check`
   - Done when: code, tests, docs, and changelog agree on the verified defect, fix, and evidence limits.
-  - Evidence: Documentation and changelog are aligned. Focused unit/runtime tests passed 56/56, direct live acceptance passed, typecheck passed, runtime smoke passed, and `git diff --check` passed. The required whole `subagent-herdr-live.test.ts` command remains red only at the pre-existing user-intervention assertion after all task registration assertions pass. Blocker: operator must decide whether to accept that demonstrated baseline failure as outside this plan or authorize expansion into the unrelated visible-subagent intervention behavior. Recommended next action: accept it as a recorded validation limit because unmodified `main` reproduces it and this plan explicitly excludes changing the visible-subagent path without a registration defect.
+  - Evidence: Documentation and changelog are aligned. Focused unit/runtime tests passed 56/56, direct live acceptance passed, the refactored visible-subagent suite passed 5/5, typecheck passed, runtime smoke passed, and `git diff --check` passed. Splitting the monolithic live test showed the prior failure was confined to a test that sent pane input without first entering the existing explicit intervention mode; the corrected focused test now exercises that contract accurately.
 
 - [ ] **T5: Integrate and close out**
   - Depends on: T4.
@@ -151,8 +151,8 @@ Implement the established fix and finite checks below. Separate verified code de
 - Status: ready.
 - Completed investigation: isolated baseline/direct-CLI A/B followed by a spawned-child wrapper prototype, both reload variants, and actual visible/headless subagent experiments. All three requested confidence checks passed; see [experiments.md](experiments.md). No production implementation was changed by the experiments.
 - Next: T1 and T2 may proceed independently, then T3 proves the combined behavior.
-- Blockers/open decisions: operator decision required on the pre-existing `subagent-herdr-live.test.ts` user-intervention assertion described under T4. All task-specific registration assertions pass before that later failure. Recommendation: treat the reproduced baseline failure as outside scope and authorize closeout with that explicit validation limit; otherwise authorize a separate scope expansion into visible-subagent intervention ownership.
-- Remaining validation limits: the production launcher patch is not implemented. The prototype passed registration, input, same-session reload, and normal exit; final signal/error handling, resume/plan/preflight regressions, and integration tests must exercise the final production code. Visible-subagent lifecycle and headless exclusion passed with the current child stack. Unix behavior and attached-client rendering remain separately stated limits, not claimed passes. Operator manual testing will not block closeout after automated acceptance passes.
+- Blockers/open decisions: none.
+- Remaining validation limits: Unix signal behavior and physical attached-client rendering remain unverified. Operator manual testing does not block closeout.
 
 ## Closeout
 
