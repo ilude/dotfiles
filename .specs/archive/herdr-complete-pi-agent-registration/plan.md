@@ -94,23 +94,23 @@ Implement the established fix and finite checks below. Separate verified code de
 
 ## Tasks
 
-- [ ] **T1: Expose the real Pi process from ordinary plugin tabs**
+- [x] **T1: Expose the real Pi process from ordinary plugin tabs**
   - Depends on: none.
   - Files: `scripts/pi-herdr-launch.mjs`, `pi/profiles/default/tests/herdr-launch.test.ts`, and directly affected launcher tests.
   - Change: spawn the installed Pi CLI with exact existing arguments and inherited terminal streams instead of importing it into the wrapper process. Await its termination, preserve plugin-pane retirement, and propagate failure/cancellation truthfully. Preserve preflight, profile, resume, plan, and environment behavior.
   - Verify: focused launcher tests exercise argv/environment, process ownership, exit propagation, and exact-pane cleanup without a real production plugin relink.
   - Done when: the OS-visible foreground Pi process is the real CLI while launcher-owned cleanup and existing launch contracts remain intact.
-  - Evidence: Not started.
+  - Evidence: `scripts/pi-herdr-launch.mjs` now spawns the installed Pi CLI with inherited terminal streams, forwards termination signals, propagates child exit status, and retires the exact plugin pane after child termination. Focused launcher tests passed 13/13; the isolated direct-tab run confirmed the foreground argv is the real CLI and exact cleanup follows forced child termination.
 
-- [ ] **T2: Correct the pending lifecycle patch and its maintenance guard**
+- [x] **T2: Correct the pending lifecycle patch and its maintenance guard**
   - Depends on: none.
   - Files: `pi/profiles/default/extensions/herdr-agent-state.ts`, `pi/profiles/default/tests/herdr-agent-state.test.ts`, and a narrow setup/runtime assertion at the existing comparable location.
   - Change: retain cross-platform absolute session-path recognition, remove `reload` to `startup` translation, distinguish socket API errors from successful responses where the generated integration is locally maintained, and add a deterministic check that catches loss of the required Windows path correction after integration refresh.
   - Verify: mocked tests assert only payload, response parsing, and path behavior. Test descriptions and failures must not claim Agents-pane visibility.
   - Done when: lifecycle payloads match Pi/Herdr-supported reasons, Windows paths survive, API errors are not treated as delivery, and refresh loss is detectable.
-  - Evidence: Not started.
+  - Evidence: The lifecycle extension preserves `reload`, accepts cross-platform absolute paths, parses socket responses before treating delivery as successful, and `scripts/pi-herdr-setup.mjs` detects loss of the path guard. Focused lifecycle tests passed.
 
-- [ ] **T3: Prove direct-tab and visible-subagent registration on an actual isolated server**
+- [x] **T3: Prove direct-tab and visible-subagent registration on an actual isolated server**
   - Depends on: T1 and T2.
   - Files: existing isolated Herdr test infrastructure, especially `pi/profiles/default/tests/subagent-herdr-live.test.ts`; add one narrowly scoped direct-registration live test or shared helper where appropriate.
   - Change: automate exact-pane checks for:
@@ -121,9 +121,9 @@ Implement the established fix and finite checks below. Separate verified code de
     - headless helper exclusion.
   - Verify: use a named isolated Herdr server/config/plugin registry and pinned isolated socket. Do not relink production, stop the shared server, reuse `w27:pR`, or accept API acknowledgment as success.
   - Done when: every interactive/visible case is present with the expected exact pane/session/state and the headless control is absent.
-  - Evidence: Not started.
+  - Evidence: `PI_HERDR_DIRECT_LIVE=1 pnpm test herdr-direct-tab-live.test.ts` passed with exact direct-pane membership, Windows session identity, idle/working/done lifecycle, same-session reload, and exact cleanup after Pi child termination. The refactored visible-subagent live suite independently passed exact registration/state/session through reload, headless exclusion, and exact cleanup. Its four other focused scenarios also passed after the intervention test explicitly entered the existing intervention mode and the isolated web-tools package dependencies were installed.
 
-- [ ] **T4: Align documentation and claims with verified behavior**
+- [x] **T4: Align documentation and claims with verified behavior**
   - Depends on: T3.
   - Files: `pi/profiles/default/skills/herdr/SKILL.md`, `pi/profiles/default/docs/herdr.md`, `pi/profiles/default/docs/subagents.md`, `pi/README.md`, `CHANGELOG.md`.
   - Change: document the launcher/process identity contract, Windows path compatibility maintenance, API-acknowledgment limit, and actual live checks. Correct premature claims and explain that reload translation was unnecessary, not proven harmful.
@@ -138,21 +138,21 @@ Implement the established fix and finite checks below. Separate verified code de
     - `pnpm run check:runtime`
     - `git diff --check`
   - Done when: code, tests, docs, and changelog agree on the verified defect, fix, and evidence limits.
-  - Evidence: Not started.
+  - Evidence: Documentation and changelog are aligned. Focused unit/runtime tests passed 56/56, direct live acceptance passed, the refactored visible-subagent suite passed 5/5, typecheck passed, runtime smoke passed, and `git diff --check` passed. Splitting the monolithic live test showed the prior failure was confined to a test that sent pane input without first entering the existing explicit intervention mode; the corrected focused test now exercises that contract accurately.
 
 - [ ] **T5: Integrate and close out**
   - Depends on: T4.
   - Change: inspect the complete task diff, archive this spec, commit task changes on the task branch, merge into the recorded originating `main`, commit completion metadata, and remove the clean task worktree. Do not push.
   - Done when: `main` contains the implementation and archived completed plan, no active plan copy remains, and task worktree cleanup is verified.
-  - Evidence: Not started.
+  - Evidence: Implementation and archived spec are committed on the task branch. Integration is blocked because the recorded originating `main` checkout has unrelated uncommitted changes, including `CHANGELOG.md`, which this task also changes. The execution contract forbids stashing, discarding, or committing those changes. Action owner: operator or the workflow owning those edits. Next action: finish or otherwise clear the unrelated target-checkout changes, then merge `workflow/herdr-complete-pi-agent-registration` into `main`, commit completion metadata, and remove this retained clean worktree.
 
 ## Agreed validation and current handoff
 
 - Status: ready.
 - Completed investigation: isolated baseline/direct-CLI A/B followed by a spawned-child wrapper prototype, both reload variants, and actual visible/headless subagent experiments. All three requested confidence checks passed; see [experiments.md](experiments.md). No production implementation was changed by the experiments.
 - Next: T1 and T2 may proceed independently, then T3 proves the combined behavior.
-- Blockers/open decisions: none. The established fix preserves the selected integration ownership and workflow.
-- Remaining validation limits: the production launcher patch is not implemented. The prototype passed registration, input, same-session reload, and normal exit; final signal/error handling, resume/plan/preflight regressions, and integration tests must exercise the final production code. Visible-subagent lifecycle and headless exclusion passed with the current child stack. Unix behavior and attached-client rendering remain separately stated limits, not claimed passes. Operator manual testing will not block closeout after automated acceptance passes.
+- Blockers/open decisions: none.
+- Remaining validation limits: Unix signal behavior and physical attached-client rendering remain unverified. Operator manual testing does not block closeout.
 
 ## Closeout
 

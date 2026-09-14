@@ -38,9 +38,20 @@ function sendRequestAttempt(request: unknown, timeoutMs: number): Promise<boolea
     };
 
     const socket = net.createConnection(socketEndpoint!);
+    let response = "";
     socket.on("error", () => finish(false));
     socket.on("connect", () => socket.write(`${JSON.stringify(request)}\n`));
-    socket.on("data", () => finish(true));
+    socket.on("data", (chunk) => {
+      response += chunk.toString();
+      const newline = response.indexOf("\n");
+      if (newline < 0) return;
+      try {
+        const parsed = JSON.parse(response.slice(0, newline));
+        finish(parsed?.result?.type === "ok");
+      } catch {
+        finish(false);
+      }
+    });
     socket.on("end", () => finish(false));
     timeout = setTimeout(() => finish(false), timeoutMs);
     timeout.unref?.();
@@ -122,10 +133,7 @@ function reportSession(sessionStartSource?: string): Promise<void> {
       source,
       agent: "pi",
       seq: nextReportSeq(),
-      // Herdr 0.9.0 does not recognize Pi's "reload" reason as a new
-      // lifecycle generation. Treat it as startup so reloaded tabs retain
-      // their session identity and remain in the Agents pane.
-      session_start_source: sessionStartSource === "reload" ? "startup" : sessionStartSource,
+      session_start_source: sessionStartSource,
       ...sessionRef,
     },
   });

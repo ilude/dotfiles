@@ -12,6 +12,17 @@
 
 **Added:** When process discussion may displace task work, the skill can offer a concise reference covering fresh instances, independent branches, pre-digression forks, tree navigation, and saved-session resume. Separation remains operator-chosen and does not rewind filesystem state, run automatically, create monitoring, or claim behavioral effectiveness.
 
+## 2026-09-13: Register Pi's real process in Herdr Agents
+
+**Fixed:** Default Herdr plugin tabs now expose the real spawned Pi CLI as the foreground process. The Node bootstrap remains the pane-lifetime owner, preserves exact argv and inherited streams, and retires its exact pane when Pi exits. Herdr 0.9.0 can therefore match direct-tab registration and session identity instead of treating the in-process dynamic-import wrapper as an unknown agent.
+
+**Preserved:** The generated Herdr lifecycle integration remains upstream-owned except for the maintained Windows absolute-session-path correction. Pi's original `reload` reason is retained because isolated same-session reload passed without translation; the earlier `startup` translation was unnecessary, not a demonstrated cause or harm. A successful registration API acknowledgment is not treated as proof of state mutation.
+
+**Validation:** On Windows with Node v25.9.0, Pi 0.85.1, and Herdr client/server 0.9.0, isolated direct-tab evidence passed exact registration, Windows session identity, idle -> working -> done, same-session reload, and exact child-termination cleanup. The visible-subagent live suite was split into five focused scenarios; all passed, including exact visible registration/state/session through reload, headless exclusion, intervention/handback, nested coordinators, shutdown survival, and cleanup. Unit tests do not prove visibility. Unix signal behavior and attached-client rendering remain unverified.
+
+**Activation:** Run `node scripts/pi-herdr-setup.mjs` from the lasting checkout and reopen settled tabs started through the old wrapper. `/reload` cannot change an existing process's OS command line. No Herdr upgrade or full shared-server restart is required by this evidence.
+
+
 ## 2026-09-13: Repair independent `/branch` sessions
 
 **Fixed:** Default Pi `/branch` now extracts the child through a separate SessionManager, so the calling parent keeps its session identity and file while the launched child starts at the exact branch point.
@@ -38,9 +49,9 @@
 
 ## 2026-09-12: Keep every Pi tab visible in Herdr Agents
 
-**Fixed:** The default Pi Herdr lifecycle integration now preserves Windows session paths and translates Pi's `reload` lifecycle into the generation marker recognized by Herdr 0.9.0. Reloaded direct tabs and visible subagents therefore retain session identity instead of becoming `unknown` and disappearing from the Agents pane.
+**Corrected:** The generated integration's Windows session-path compatibility correction remains required, but translating Pi's `reload` lifecycle reason to `startup` was unnecessary. Isolated same-session reload passed with the original reason; the translation was not shown harmful and is removed to minimize upstream divergence.
 
-**Preserved:** Herdr remains responsible for agent state presentation, headless helpers remain excluded, and the official generated integration stays the lifecycle owner with only the documented compatibility corrections.
+**Preserved:** Herdr remains responsible for agent state presentation, headless helpers remain excluded, and the official generated integration stays the lifecycle owner with only the documented Windows compatibility correction. See the 2026-09-13 entry for the launcher process-identity fix and bounded live evidence.
 
 ## 2026-09-12: Keep shell syntax consistent
 
