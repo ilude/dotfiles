@@ -1,6 +1,12 @@
 # Changelog
 
+## 2026-09-13: Survey evidence for agent instruction and feedback improvement
+
+**Added:** The research vault now has a dated survey of selective verification, instruction value, and feedback-driven improvement, with academic evidence and seven commercial/open-source implementations. It separates documented mechanisms from evaluated outcomes, preserves negative findings and source-version limits, and connects the findings to the existing instruction-evolution notes. This is research capture, not approval for new prompts, runtime controls, or an autonomous optimizer.
+
 ## 2026-09-13: Refine agent-process evidence and context handling
+
+**Clarified:** Instruction changes now explicitly consider context consumption, conflicting guidance, and obscured priorities, preferring replacement or consolidation when it preserves intended behavior.
 
 **Changed:** Default Pi's on-demand `agent-process` skill now retrieves relevant prior incidents instead of requiring complete log reads, recognizes contextual frustration about agent behavior, and permits recording an intent failure without forcing instruction work. Proposed instruction edits still require operator approval and distinguish missing policy from failure to follow existing policy.
 

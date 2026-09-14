@@ -38,4 +38,4 @@ For any repeated workflow:
 
 ## Memory rule
 
-Curated memory beats raw transcript memory. Store decisions and stable patterns, not every conversation.
+Prefer curated decisions and stable patterns over loading every conversation. Curation can still preserve errors or discard important exceptions; memory persistence is not proof of improvement. See the [September 2026 survey](agent-improvement-survey-2026-09.md) for evidence and implementation limits.

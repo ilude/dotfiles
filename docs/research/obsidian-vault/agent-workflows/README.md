@@ -5,6 +5,7 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 ## Start here
 
 - [index](index.md) - map of notes
+- [Agent improvement survey: September 2026](patterns/agent-improvement-survey-2026-09.md) - research and implementation evidence for selective verification, concise instructions, and feedback-driven improvement
 - [AGENTS](AGENTS.md) - vault purpose, KISS rules, promotion filter, and note template guidance
 - [_templates/research-note](_templates/research-note.md) - default shape for new research notes
 - [patterns/self-healing-harnesses](patterns/self-healing-harnesses.md) - browser harness / agent-written helpers

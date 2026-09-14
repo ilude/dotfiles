@@ -15,6 +15,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 
 ## Source captures
 
+- [Agent improvement implementations](projects/agent-improvement-implementations.md) - September 13, 2026 comparison of Claude Code, Cursor, Codex, Letta Code, LangMem, GEPA, and ACE; mechanisms versus effectiveness evidence.
+
 - [SearXNG search reliability](projects/searxng-search-reliability.md) - controlled engine/proxy/solver findings, managed rollout, and evidence limits.
 
 - [claude_prompts](claude_prompts.md) - source-based extraction of Claude Code system-prompt text and prompt-selection rules.
@@ -45,8 +47,11 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 
 ## Patterns
 
+- [Agent improvement survey: September 2026](patterns/agent-improvement-survey-2026-09.md) - selective verification, concise instructions, and feedback evolution; findings, applicability, and unresolved questions.
+- [Academic evidence for agent improvement](patterns/agent-improvement-academic-evidence.md) - original studies, negative results, inspected versions, and transfer limits supporting the survey.
+
 - [Agent scope and stopping](patterns/agent-scope-and-stopping.md) - evidence on scope drift, excessive verification, and bounded harness controls; not approved policy.
-- [Instruction evolution and reasoning budgets](patterns/instruction-evolution-and-reasoning-budgets.md) - Bayesian updating, bounded rationality, economics, and selective evidence for high-impact instruction changes; skill procedure remains a proposal.
+- [Instruction evolution and reasoning budgets](patterns/instruction-evolution-and-reasoning-budgets.md) - Bayesian updating, bounded rationality, economics, and selective evidence for high-impact instruction changes; distinguishes historical proposals from the revised skill.
 - [Pi context separation options](patterns/pi-context-separation-options.md) - verified fork/clone history behavior, conditional command options, and the bounded `/branch` session-manager repair; no process-improvement automation implemented.
 - [patterns/self-healing-harnesses](patterns/self-healing-harnesses.md)
 - [patterns/agent-terminal-workspaces](patterns/agent-terminal-workspaces.md)

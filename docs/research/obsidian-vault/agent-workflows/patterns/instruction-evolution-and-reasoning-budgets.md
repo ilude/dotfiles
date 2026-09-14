@@ -15,6 +15,10 @@ The operator wants a few high-impact instructions that preserve their intended w
 
 This September 2026 discussion extends beyond security. The Onclave incident in AIF-054/APR-035 is one example: an agent defended a context-output restriction until the operator pointed out that the download returns file metadata, not transcript text. A small local inspection was more relevant than general security research. Repetition in assistant messages or compaction does not supply independent evidence for a claim.
 
+## September 2026 evidence survey
+
+The [September 13 survey](agent-improvement-survey-2026-09.md) extends this conceptual discussion with [academic evidence](agent-improvement-academic-evidence.md) and [seven commercial/open-source implementations](../projects/agent-improvement-implementations.md). It separates selective verification, instruction benefit, and feedback-driven adaptation. Key additions include the revised AGENTS.md result, negative intrinsic self-correction evidence, GEPA's evaluated prompt evolution, and the gap between ACE's conceptual curation and its inspected add-only curator-operation path. Product memory capabilities are not proof of effectiveness or user-intent alignment. This remains research, not approval for skill or runtime changes.
+
 ## Useful signals
 
 ### Economics and bounded rationality: allocate scarce effort
@@ -57,7 +61,7 @@ This supports distinguishing available from effectively used context. It does no
 
 ## Possible Pi fit
 
-**Proposal, not approved skill changes:** evolve the existing on-demand `agent-process` skill rather than create a parallel instruction-improvement process. It already owns feedback, incident comparison, narrow proposals, and approval. Keep the theory in this note and a small procedure in the skill:
+**Historical proposal, subsequently implemented in part:** evolve the existing on-demand `agent-process` skill rather than create a parallel instruction-improvement process. The current skill now uses targeted incident retrieval, distinguishes missing policy from adherence failure, and asks for expected effects and later evidence. These source changes establish installation, not behavioral effectiveness. The original proposal below remains context, not a second active procedure. It already owns feedback, incident comparison, narrow proposals, and approval. Keep the theory in this note and a small procedure in the skill:
 
 1. Identify the operator's intended behavior and a concrete mismatch; compare relevant prior incidents and current instructions.
 2. Check uncertainties that could change the proposed remedy, using local evidence before unrelated research. Stop when further evidence would not change the choice.
@@ -66,7 +70,7 @@ This supports distinguishing available from effectively used context. It does no
 
 No fixed scores, numerical budgets, automatic monitoring, mandatory A/B tests, or additional supervisor are implied. A separate skill becomes worth considering only if it has a distinct trigger and responsibility that the existing skill cannot express clearly.
 
-One current tension deserves discussion: `agent-process` requires both growing historical logs to be read completely on every invocation. That conflicts with the proposed selective-context approach. Targeted incident lookup plus expansion when evidence is missing is a candidate replacement, not authorized by this note.
+The earlier full-log-read requirement conflicted with selective context. The current `agent-process` skill now searches relevant entries and expands only when missing evidence could change the cause or remedy. This correction was approved separately; this research note did not authorize it.
 
 ### Investigation before skill revision
 
@@ -78,7 +82,7 @@ The September 13 follow-up checked the existing skills and selected historical r
 - AIF-013 records successful bounded work alongside gateway churn. It supports preserving the working baseline, not replacing the planning workflow because of one exception. The underlying successful sessions were not re-reviewed here, so this is evidence from the existing comparative record, not an independent replication.
 - AIF-003 records wording and approval with later adherence unverified. A successful edit or passing whitespace check establishes installation, not behavioral effectiveness.
 
-The logs totalled 843 lines at inspection. This is a direct cost of the current full-read requirement, not an estimated token count. The candidate replacement is focused retrieval with expansion where missing context could change the recommendation.
+The logs totalled 843 lines at the earlier inspection. This measured the former full-read requirement's input size, not a token count. Focused retrieval has since replaced that requirement; its effect on task outcomes remains unverified.
 
 These walkthroughs support a lightweight hypothesis-and-observation approach; they do not demonstrate that the proposed procedure would have prevented the incidents. [Context-separation experiments](pi-context-separation-options.md) establish native fork behavior and identified a repository `/branch` defect, subsequently repaired with separate session files and reciprocal context-excluded markers after operator approval. Those capabilities can be documented conditionally without building automation.
 
@@ -88,11 +92,11 @@ These walkthroughs support a lightweight hypothesis-and-observation approach; th
 - Demanding objective proof of every suggestion would replace unsupported certainty with research churn.
 - Fewer tokens or tool calls alone do not establish success; incomplete work and more user corrections can erase apparent savings.
 - Existing similar instructions did not prevent the observed failure. Rewording alone may not be sufficient; inspect actual later behavior rather than promising prevention.
-- The sources support conceptual distinctions, not a proven intervention for this profile. Research capture is authorized; procedure and skill changes remain discussion items.
+- The sources support conceptual distinctions, not a proven intervention for this profile. The subsequent skill edits have separate approval; this survey authorizes no further procedure or skill changes.
 
 ## KISS recommendation
 
-Keep one linked research note. Discuss a concise revision to `agent-process`, including its full-log reading requirement, before adding a separate skill. Preserve user approval and evidence/assumption boundaries while measuring usefulness through actual task outcomes rather than prompt size alone.
+Keep the theory and linked survey in the vault rather than always-loaded instructions. Use the revised `agent-process` skill and assess its usefulness during later relevant reviews before adding a separate skill or optimizer. Preserve user approval and evidence/assumption boundaries; installation and smaller context alone do not demonstrate better task outcomes.
 
 ## Related notes
 
