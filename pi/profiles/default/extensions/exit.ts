@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 
 export default function exitCommand(pi: ExtensionAPI): void {
-	pi.registerCommand("exit", {
+	registerProfileCommand(pi, "exit", {
 		description: "Gracefully quit pi",
 		handler: async (_args, ctx) => {
 			ctx.shutdown();

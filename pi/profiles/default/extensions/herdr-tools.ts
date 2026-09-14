@@ -67,16 +67,17 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
   });
   pi.registerTool({
     name: "herdr_pane", label: "Herdr pane",
-    description: "Read, run, wait, rename, interrupt, or close a process pane. Run requires an idle Bash/PowerShell shell; close requires ownership and confirmation.",
+    description: "Read, run, wait, rename, move, interrupt, or close a process pane. Move places it in a new tab in an existing workspace and preserves focus by default. Run requires an idle Bash/PowerShell shell; close requires ownership and confirmation.",
     parameters: Type.Object({
-      action: choice(["read", "run", "wait", "rename", "interrupt", "close"]), pane: Type.String(),
+      action: choice(["read", "run", "wait", "rename", "move", "interrupt", "close"]), pane: Type.String(),
       command: Type.Optional(Type.String({ maxLength: 32000 })), label: Type.Optional(Type.String({ maxLength: 80 })),
+      workspace: Type.Optional(Type.String({ description: "Destination workspace ID, required for move" })), focus: Type.Optional(Type.Boolean()),
       match: Type.Optional(Type.String({ maxLength: 1000 })), lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
       timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 120 })), confirm: Type.Optional(Type.Boolean()),
     }),
     async execute(id, params, signal, _update, ctx) {
       const caller = herdrContext(); const pane = required(params.pane, "pane");
-      await inspectPane(cli, pane, signal);
+      const inspected = await inspectPane(cli, pane, signal);
       if (params.action === "read") return text(await cli(["pane", "read", pane, "--source", "recent-unwrapped", "--lines", String(params.lines || 80)], { signal }));
       if (params.action === "wait") {
         const timeout = (params.timeoutSeconds || 30) * 1000;
@@ -86,6 +87,16 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
       if (pane === caller.pane) throw new Error("Refusing to control Pi's own pane");
       if (params.action === "run") return checkedCommand(pi, cli, pane, required(params.command, "command"), id, ctx, signal);
       if (params.action === "rename") { await cli(["pane", "rename", pane, required(params.label, "label")], { signal }); return text({ pane, renamed: true }); }
+      if (params.action === "move") {
+        const workspace = required(params.workspace, "workspace");
+        if (inspected.workspace_id === workspace) throw new Error("Destination must be a different workspace");
+        const response = result(await cli(["pane", "move", pane, "--new-tab", "--workspace", workspace, ...(params.label ? ["--label", params.label] : []), params.focus ? "--focus" : "--no-focus"], { signal }));
+        const moved = response.move_result?.pane;
+        if (moved?.workspace_id !== workspace) throw new Error("Herdr move returned the wrong destination workspace");
+        const compact = compactPane(moved);
+        if (owned.delete(pane)) owned.add(compact.pane);
+        return text({ ...compact, previousPane: response.move_result.previous_pane_id, previousTab: response.move_result.previous_tab_id, focused: params.focus === true });
+      }
       if (!owned.has(pane)) throw new Error("Pane was not created by this session; refusing interruption/closure");
       if (params.action === "close") {
         if (params.confirm !== true) throw new Error("close requires confirm=true");

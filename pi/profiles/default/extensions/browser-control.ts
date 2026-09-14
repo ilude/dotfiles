@@ -2,6 +2,7 @@ import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 import {
 	BrowserControlError,
 	BrowserPageProtocol,
@@ -133,7 +134,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 		state = loadBrowserState();
 	});
 
-	pi.registerCommand("browser-setup", {
+	registerProfileCommand(pi, "browser-setup", {
 		description: "Validate and save one secret-free local Brave profile alias",
 		handler: async (args, ctx) => {
 			try {

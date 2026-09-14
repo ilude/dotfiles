@@ -6,6 +6,7 @@ import { getAgentDir, type CustomEntry, type ExtensionAPI, type ExtensionCommand
 import { SessionManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js";
 import { Text } from "@earendil-works/pi-tui";
 import { activeProfileName } from "../lib/profile.ts";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 
 interface LaunchPlan {
 	executable?: string;
@@ -331,15 +332,15 @@ async function executeBranch(args: string, ctx: CommandContext, pi: ExtensionAPI
 
 export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 	pi.registerEntryRenderer<BranchEvidence>(BRANCH_EVIDENCE_TYPE, renderBranchEvidence);
-	pi.registerCommand("branch", {
+	registerProfileCommand(pi, "branch", {
 		description: "Open a branched copy of this Pi session in a new terminal tab",
 		handler: async (args, ctx) => executeBranch(args, ctx, pi),
 	});
-	pi.registerCommand("new-instance", {
+	registerProfileCommand(pi, "new-instance", {
 		description: "Open a new Pi instance in this cwd in a new terminal tab",
 		handler: async (args, ctx) => executeNewInstance(args, ctx),
 	});
-	pi.registerCommand("new-terminal", {
+	registerProfileCommand(pi, "new-terminal", {
 		description: "Open a plain shell in this cwd in a new terminal",
 		handler: async (args, ctx) => executeNewTerminal(args, ctx),
 	});

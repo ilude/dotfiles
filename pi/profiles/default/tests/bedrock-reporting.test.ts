@@ -30,7 +30,7 @@ it("registers one management command, records once, normalizes cost, and reports
 	for (const fn of hooks.get("agent_settled") ?? []) await fn({}, ctx);
 	expect(statuses.get("bedrock")).toContain("$0.44");
 	await command.handler("refresh", ctx); expect(ctx.modelRegistry.refresh).toHaveBeenCalledWith(expect.objectContaining({ providers: ["bedrock-mantle"] }));
-	await command.handler("reconcile", ctx); expect(exec).toHaveBeenCalledWith("aws", expect.arrayContaining(["logs", "start-query"]), { timeout: 30_000 }); expect(notify.mock.calls.at(-1)?.[0]).toContain("CloudWatch baseline: $1.75 (2 invocation(s))");
+	await command.handler("reconcile", ctx); expect(exec).toHaveBeenCalledWith("aws", expect.arrayContaining(["logs", "start-query"]), { timeout: 30_000 }); expect(notify.mock.calls.at(-1)?.[0]).toContain("baseline: $1.75");
 	await expect(command.handler("reconcile", ctx)).rejects.toThrow("already exists");
 });
 

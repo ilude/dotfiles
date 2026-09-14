@@ -71,6 +71,25 @@ it("creates a workspace with captured identities and requested focus", async () 
   expect(JSON.parse(answer.content[0].text)).toMatchObject({ workspace: "w2", tab: "w2:t1", pane: "w2:p1", focused: true });
 });
 
+it("moves an existing pane to a new tab in another workspace without focusing it", async () => {
+  vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
+  const registered: Record<string, any> = {};
+  const cli = vi.fn<HerdrCli>(async args => {
+    if (args[1] === "get") return json({ pane: { pane_id: args[2], workspace_id: "w1" } });
+    if (args[1] === "move") return json({ move_result: { previous_pane_id: "p2", previous_tab_id: "w1:t2", pane: { pane_id: "w2:p3", tab_id: "w2:t4", workspace_id: "w2", label: "Pi", cwd: "C:/project" } } });
+    return "";
+  });
+  tools({ registerTool(t: any) { registered[t.name] = t; }, on() {} } as unknown as ExtensionAPI, cli);
+  const definition = registered.herdr_pane;
+  expect(definition.parameters.properties.action.anyOf.map((entry: any) => entry.const)).toContain("move");
+  const answer = await definition.execute("id", { action: "move", pane: "p2", workspace: "w2", label: "monorepo" }, undefined, undefined, ctx);
+  expect(cli).toHaveBeenCalledWith(["pane", "move", "p2", "--new-tab", "--workspace", "w2", "--label", "monorepo", "--no-focus"], { signal: undefined });
+  expect(JSON.parse(answer.content[0].text)).toMatchObject({ pane: "w2:p3", tab: "w2:t4", workspace: "w2", previousPane: "p2", previousTab: "w1:t2", focused: false });
+  await expect(definition.execute("id", { action: "move", pane: "p2" }, undefined, undefined, ctx)).rejects.toThrow("workspace required");
+  await expect(definition.execute("id", { action: "move", pane: "p2", workspace: "w1" }, undefined, undefined, ctx)).rejects.toThrow("different workspace");
+  await expect(definition.execute("id", { action: "move", pane: "p1", workspace: "w2" }, undefined, undefined, ctx)).rejects.toThrow("own pane");
+});
+
 it("defends ownership and own pane, bounds reads and accepts silent close", async () => {
   vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
   const registered: Record<string, any> = {}; const handlers: Record<string, () => void> = {};

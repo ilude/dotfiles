@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { completePartialArgument } from "../lib/argument-completions.ts";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 
 const EFFORT_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const EFFORT_MESSAGE_TYPE = "effort-command";
@@ -15,7 +16,7 @@ function sendResult(pi: ExtensionAPI, content: string): void {
 }
 
 export default function effortCommand(pi: ExtensionAPI): void {
-	pi.registerCommand("effort", {
+	registerProfileCommand(pi, "effort", {
 		description: "Show or set the session thinking effort",
 		getArgumentCompletions: (prefix) => completePartialArgument(prefix, EFFORT_LEVELS),
 		handler: async (args) => {

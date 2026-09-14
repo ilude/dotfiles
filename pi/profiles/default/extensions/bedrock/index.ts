@@ -3,6 +3,7 @@ import { accountBedrockMessage, bedrockSessionReference } from "../../lib/bedroc
 import { createBedrockModelProvider, resolveBedrockMantleTarget } from "../../lib/bedrock/provider.js";
 import { callerArgs, dashboardArgs, parseCaller, parseQueryId, parseResults, queryArgs, resultsArgs } from "../../lib/bedrock/cloudwatch-snapshot.js";
 import { createBaseline, formatStatus, formatUsage, readBaseline, summarize } from "../../lib/bedrock/ledger.js";
+import { registerProfileCommand } from "../../lib/profile-command.ts";
 
 export default function bedrock(pi: ExtensionAPI): void {
 	pi.registerProvider(createBedrockModelProvider());
@@ -20,7 +21,7 @@ export default function bedrock(pi: ExtensionAPI): void {
 	// Child/provider processes append to the shared ledger after their own tool
 	// work. Refresh once the parent turn settles so the footer sees those writes.
 	pi.on("agent_settled", async (_event, ctx) => refreshStatus(ctx));
-	pi.registerCommand("bedrock", {
+	registerProfileCommand(pi, "bedrock", {
 		description: "Inspect, refresh, or reconcile the consolidated Amazon Bedrock integration",
 		handler: async (args, ctx) => {
 			const command = args.trim();

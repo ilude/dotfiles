@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { completePartialArgument } from "../lib/argument-completions.ts";
 import { resolvePreferredModel } from "../lib/model-selection.ts";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 
 const SHORTCUTS = {
 	astra: "Switch to GPT-6 Astra using the preferred configured provider",
@@ -30,7 +31,7 @@ function findCandidate(ctx: ExtensionCommandContext, name: ShortcutName) {
 
 export default function modelShortcuts(pi: ExtensionAPI): void {
 	for (const name of Object.keys(SHORTCUTS) as ShortcutName[]) {
-		pi.registerCommand(name, {
+		registerProfileCommand(pi, name, {
 			description: `${SHORTCUTS[name]}; optionally set effort: ${EFFORT_LEVELS.join(", ")}`,
 			getArgumentCompletions: (prefix) => completePartialArgument(prefix, EFFORT_LEVELS),
 			handler: async (args, ctx) => {

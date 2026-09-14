@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";
 import { realpathSync } from "node:fs";
+import { registerProfileCommand } from "../../lib/profile-command.ts";
 
 export default async function (pi) {
   const profile = resolve(fileURLToPath(new URL("../../", import.meta.url)));
@@ -31,8 +32,8 @@ export default async function (pi) {
       ctx.ui.notify("Usage: /dc scan | /dc on | /dc off | /dc mode default | /dc mode noshell", "warning");
     },
   };
-  pi.registerCommand("damage-control", command);
-  pi.registerCommand("dc", command);
+  registerProfileCommand(pi, "damage-control", command);
+  registerProfileCommand(pi, "dc", command);
   pi.on("tool_call", (event, ctx) => gate.handle(event, ctx));
   // CLI-backed Herdr commands use the same gate with verified remote-pane
   // shell/cwd, not the orchestrator's cwd or a nested `herdr pane run` string.

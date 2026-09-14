@@ -7,6 +7,7 @@ import { containedRealPath, discoverPlans, parsePlan, type PlanRecord } from "..
 import { createHerdrPiTab, HerdrPiTabLaunchError, renameHerdrPiTab } from "./session-launch.ts";
 import { PLAN_EVENT_TYPE, PlanEventRecorder, eventPlan, formatPlanEvent, notifyLoggingFailure, type PlanActionEvent, type PlanEventAction } from "../lib/plan-events.ts";
 import { claimHerdrTabTitle } from "../lib/herdr-tab-title-events.ts";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 
 const planActions = [
 	{ key: "o", action: "open", label: "Open in VS Code", hint: "VS Code" },
@@ -317,7 +318,7 @@ export default function plansCommand(pi: ExtensionAPI): void {
 		const event = entry.data as Partial<PlanActionEvent>;
 		return new Text(formatPlanEvent(event), 0, 0);
 	});
-	pi.registerCommand("plans", { description: "Browse open implementation plans", handler: async (args, ctx) => {
+	registerProfileCommand(pi, "plans", { description: "Browse open implementation plans", handler: async (args, ctx) => {
 		if (args.trim()) throw new Error("Usage: /plans");
 		await executePlans(ctx, pi);
 	} });

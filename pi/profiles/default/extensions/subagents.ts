@@ -11,6 +11,7 @@ import { presentationDetails, progressResult, renderSubagentCall, renderSubagent
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
 import type { MessageOptions } from "../lib/subagents/transport.ts";
 import { delegationContext } from "../lib/subagents/guidance.ts";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 const Surface=Type.Union([Type.Literal("headless"),Type.Literal("visible")]);
 const Effort=Type.Union(EFFORTS.map(x=>Type.Literal(x)) as any);
 function output(value:unknown,error=false){return{content:[{type:"text" as const,text:JSON.stringify(value,null,2)}],details:value,isError:error}}
@@ -95,7 +96,7 @@ export default function subagents(pi:ExtensionAPI){
   else if(p.action==="cancel")await c.cancel();else if(p.action==="finish")await c.finish();else if(p.action==="escalate")await c.escalate(ctx);
   return output(c.snapshot());
  }catch(e){throw new Error(e instanceof Error?e.message:String(e))}}});
- pi.registerCommand("subagents",{description:"Inspect, wait for, or cancel subagents without relaunching",handler:async(args,ctx)=>{
+ registerProfileCommand(pi,"subagents",{description:"Inspect, wait for, or cancel subagents without relaunching",handler:async(args,ctx)=>{
   const [cmd="inspect",id]=args.trim().split(/\s+/),owner=ctx.sessionManager.getSessionId();
   try{
    if(cmd==="cancel"&&id)await active().get(id,owner).cancel();
@@ -113,5 +114,5 @@ export default function subagents(pi:ExtensionAPI){
    ctx.ui.notify(JSON.stringify(id?active().get(id,owner).snapshot():active().list(owner),null,2),"info");
   }catch(error){ctx.ui.notify(String(error),"error")}
  }});
- pi.registerCommand("subagent-return",{description:"Return an intervened visible child to parent control",handler:async(args,ctx)=>{const c=active().get(args.trim(),ctx.sessionManager.getSessionId());if(!(c instanceof VisibleChild))throw new Error("Only visible children have direct user handback");c.handback();ctx.ui.notify(`Returned ${c.record.displayName??c.record.id} to parent control`,"info")}});
+ registerProfileCommand(pi,"subagent-return",{description:"Return an intervened visible child to parent control",handler:async(args,ctx)=>{const c=active().get(args.trim(),ctx.sessionManager.getSessionId());if(!(c instanceof VisibleChild))throw new Error("Only visible children have direct user handback");c.handback();ctx.ui.notify(`Returned ${c.record.displayName??c.record.id} to parent control`,"info")}});
 }

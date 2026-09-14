@@ -6,6 +6,7 @@ import { requestParent, type ChildEndpoint } from "../lib/subagents/transport.ts
 import { setTimeout as delay } from "node:timers/promises";
 import { workspaceRoot } from "../lib/subagents/workspace.ts";
 import { progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentResult, renderSubagentMessage } from "../lib/subagents/presentation.ts";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
 interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; cwd:string; skills:string[]; surface?:string }
 
@@ -22,7 +23,7 @@ export default function childAuthority(pi:ExtensionAPI){
  if (!authority || !Array.isArray(authority.tools) || !authority.tools.every(t=>typeof t==="string") || !Array.isArray(authority.delegates) || !Array.isArray(authority.skills)) throw new Error("Invalid frozen authority");
  workspaceRoot(authority.cwd);
  const allowed=new Set(authority.tools);
- pi.registerCommand("exit",{description:"Exit this restricted child",handler:async(_args,ctx)=>ctx.shutdown()});
+ registerProfileCommand(pi,"exit",{description:"Exit this restricted child",handler:async(_args,ctx)=>ctx.shutdown()});
  pi.on("session_start",()=>pi.setActiveTools(pi.getAllTools().map(t=>t.name).filter(t=>allowed.has(t))));
  bindChildSurface(pi,authority.surface==="visible");
  pi.on("tool_call",event=>{

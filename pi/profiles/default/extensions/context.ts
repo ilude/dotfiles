@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { CONTEXT_REPORT_MESSAGE_TYPE, type AnyEntry, type ContextUsage } from "../lib/context-analysis.ts";
 import { formatContextReport } from "../lib/context-report.ts";
 import { completePartialArgument } from "../lib/argument-completions.ts";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 // Preserve existing analysis exports for consumers of this extension.
 export { buildContextBuckets, buildContextFileDetailBuckets, buildSkillPromptDetailBuckets,
 	buildInjectedContextDetailBuckets, buildToolSchemaBuckets, type Bucket } from "../lib/context-analysis.ts";
@@ -35,7 +36,7 @@ export default function registerContextCommand(pi: ExtensionAPI) {
 		new Text((entry.data as { text: string }).text, 0, 0),
 	);
 
-	pi.registerCommand("context", {
+	registerProfileCommand(pi, "context", {
 		description: "Show Pi context usage, token spend, and component breakdown",
 		getArgumentCompletions: (prefix) => completePartialArgument(prefix, ["clear", "hide", "widget"]),
 		handler: async (args, ctx) => {

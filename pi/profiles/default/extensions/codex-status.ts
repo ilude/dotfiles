@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Text } from "@earendil-works/pi-tui";
 import { fetchCodexUsage, formatCacheUsage, formatQuota, formatUsage, readCacheUsage, recordCacheUsage, REFRESH_MS, USAGE_PAGE, type CodexUsage } from "../lib/codex-usage.ts";
 import { formatUsage as formatBedrockUsage, summarize as summarizeBedrock } from "../lib/bedrock/ledger.ts";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 
 const REPORT = "codex-usage-report";
 const START = "codex-usage-start";
@@ -108,7 +109,7 @@ export default function codexStatus(pi: ExtensionAPI): void {
     try { recordCacheUsage(event.message); cacheError = undefined; }
     catch { cacheError = "cannot append profile cache history"; }
   });
-  pi.registerCommand("usage", {
+  registerProfileCommand(pi, "usage", {
     description: "Show Codex subscription limits and recent prompt-cache usage",
     handler: async (args, ctx) => {
       if (args.trim()) throw new Error("Usage: /usage");

@@ -81,6 +81,10 @@ it("awaits delayed plugin open, passes title ownership, focuses the exact tab, a
 		return {} as any;
 	});
 	const pending = commands["new-instance"].handler("fresh", ctx);
+	expect(ctx.ui.notify).toHaveBeenCalledWith("/new-instance fresh", "info");
+	expect(vi.mocked(execFile)).not.toHaveBeenCalled();
+	await new Promise<void>((resolve) => setImmediate(resolve));
+	expect(ctx.ui.notify).toHaveBeenCalledWith("Opening new Pi instance in a Herdr tab: fresh", "info");
 	expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
 	await pending;
 	const calls = vi.mocked(execFile).mock.calls.map(call => call[1] as string[]);

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-14: Show immediate feedback for Pi extension commands
+
+**Fixed:** Every default-profile extension command now goes through one registration wrapper that echoes its exact slash command and raw arguments as a visible, model-readable transcript entry, then yields to the TUI before dispatching handler work. The wrapper does not serialize commands or add completion feedback; handlers retain their own concurrency and closeout behavior. Pi built-ins and third-party commands remain unchanged. `/clear` also reports that session replacement has started, including when changed profile resources will be reloaded.
+
+## 2026-09-14: Move Herdr panes between workspaces from Pi
+
+**Added:** Default Pi's structured `herdr_pane` tool can move a non-caller pane into a new tab in an existing different workspace. Moves preserve focus by default and return the new pane and tab identities; Herdr removes an emptied source tab. Pi's own pane remains protected.
+
 ## 2026-09-13: Survey evidence for agent instruction and feedback improvement
 
 **Added:** The research vault now has a dated survey of selective verification, instruction value, and feedback-driven improvement, with academic evidence and seven commercial/open-source implementations. It separates documented mechanisms from evaluated outcomes, preserves negative findings and source-version limits, and connects the findings to the existing instruction-evolution notes. This is research capture, not approval for new prompts, runtime controls, or an autonomous optimizer.

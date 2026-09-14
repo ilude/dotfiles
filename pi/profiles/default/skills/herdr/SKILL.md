@@ -12,7 +12,7 @@ This is a local wrapper, not the upstream Herdr skill. For operations covered by
 Discover `herdr_layout` and `herdr_pane` through `tool_search`. Use the structured tools for their covered operations rather than bypassing their safety handling with raw terminal submissions.
 
 - To reopen a saved Pi session, use `herdr_layout` with `action: "resume"` and its session UUID. It resolves the saved cwd, launches and focuses a Pi tab, and checks startup in one call. Inspect returned IDs if readiness is unconfirmed; do not blindly relaunch. No separate shell creation, command submission, or raw CLI discovery is needed.
-- Inspect existing panes before creating duplicates. Prefer a sibling pane in the project cwd; choose right/down based on available layout. New panes preserve focus.
+- Inspect existing panes before creating duplicates. Prefer a sibling pane in the project cwd; choose right/down based on available layout. New panes preserve focus. Use `herdr_pane` move to place a non-caller pane in a new tab in an existing different workspace; cross-workspace moves return a new pane ID.
 - Submit commands only to verified idle Bash/PowerShell shells. Unknown foreground processes or cwd are not safe command targets. Use `subagent` for defined agent work, not these process tools; see [subagents](../../docs/subagents.md).
 - Use bounded fresh readiness/log checks or a health endpoint. Old scrollback may match immediately. Submitted does not mean ready or successful.
 - `compose up`, detached containers, and `logs -f` have distinct ownership. Interrupting/closing a log viewer does not stop containers. Destructive cleanup is not implied by a stop request.

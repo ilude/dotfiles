@@ -2,14 +2,12 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import { CommandInvocationAuthority } from "../lib/command-invocations.ts";
 import { completePartialArgument } from "../lib/argument-completions.ts";
 import { commands } from "../commands/index.ts";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 
 export default function profileCommands(pi: ExtensionAPI): void {
-	pi.registerMessageRenderer("profile-command", (message, { outputPad }) =>
-		new Text(typeof message.content === "string" ? message.content : "", outputPad, 0));
 
 	const directory = join(dirname(fileURLToPath(import.meta.url)), "..", "commands");
 	const owned = new Set<string>();
@@ -59,13 +57,11 @@ export default function profileCommands(pi: ExtensionAPI): void {
 			loadErrors.set(command.name, error instanceof Error ? error.message : String(error));
 		}
 
-		pi.registerCommand(command.name, {
+		registerProfileCommand(pi, command.name, {
 			description: command.description,
 			getArgumentCompletions: (prefix) => completePartialArgument(prefix, command.completions ?? []),
 			handler: async (rawArgs, ctx) => {
 				try {
-					// A short, durable transcript entry; don't echo arbitrary arguments/secrets.
-					pi.sendMessage({ customType: "profile-command", content: `/${command.name}`, display: true });
 					const failure = loadErrors.get(command.name);
 					if (failure) throw new Error(failure);
 					const args = rawArgs.trim();
