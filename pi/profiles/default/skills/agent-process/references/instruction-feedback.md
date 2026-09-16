@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-059 - Keep investigation purpose intact across long plans
+
+- **Reference:** Operator plan walkthrough request, 2026-09-15.
+- **Feedback:** Large plans invite unsupported assumptions and context-compaction drift that lose the original objective. Explain what each step proves and how before proceeding.
+- **Finding:** The current plan already requires a canonical handoff, evidence and temporary-state tracking. Those records help only if kept current and consulted after resumption; a checkbox does not prove acceptance. Its test-contract task defines future checks rather than implementing them, which needs explicit explanation.
+- **Decision:** Explain the bounded sequence, evidence limits and authorization boundaries without changing the plan or adding global instructions. Keep the current question, proven result, unresolved hypothesis and next action recoverable from the existing handoff.
+- **Related:** AIF-055, AIF-057; APR-029 (unrequested execution machinery).
+- **Status:** Feedback recorded. No new workflow machinery or instruction change; future adherence unverified.
+
 ## AIF-058 - Reduce always-injected caller delegation guidance
 
 - **Reference:** Steward-trigger discussion after APR-040, 2026-09-14.

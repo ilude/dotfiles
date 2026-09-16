@@ -1,5 +1,23 @@
 # Agent process failure log
 
+## APR-043 - One headless retry became a session-wide surface choice
+
+- **Reference:** WSO2 CAC investigation in session `01a09d86-a834-7524-8ab1-6127ce9a1bd9`, 2026-09-15; operator correction after the Herdr identity-failure review.
+- **Observed:** After two visible launches failed with `Herdr target identity changed`, the orchestrator asked to retry the researcher headlessly. The operator replied “try again and continue,” authorizing that retry. About 29 minutes later, the orchestrator launched a different Steward headlessly without asking, instructing it to “maintain surface” because the earlier researcher had been headless.
+- **Finding:** The first headless researcher was authorized. The later Steward was not covered by that one retry and violated existing guidance to choose headless inside Herdr only when the user requests it. The orchestrator incorrectly converted assignment-specific recovery permission into a persistent session preference. Existing guidance is explicit; this is adherence failure, not an instruction gap.
+- **Remediation:** Treat headless authorization as assignment-specific unless the operator explicitly sets a broader preference. A broken visible launch should trigger repair/resume or a new explicit headless request, not silent inheritance by later subagents.
+- **Related:** APR-008, TCA-003.
+- **Status:** Incident recorded; no instruction or runtime change proposed.
+
+## APR-042 - Local compatibility test became an unrequested source fix
+
+- **Reference:** EISA Trixie CI validation, 2026-09-15.
+- **Observed:** The operator requested a branch and local testing. When the unchanged CI setup failed because Debian 13 lacks `apt-key`, the assistant immediately edited `.gitlab-ci.yml` to use a GPG keyring and reran the test, without first researching the compatibility fact or asking whether to expand from testing into implementation.
+- **Finding:** The failure was the requested test result. Replacing the failing command changed task scope from evidence gathering to a source fix. The existing proportionality rule already requires asking when an unresolved choice changes scope or workflow.
+- **Remediation:** Revert the unrequested keyring edit, retain only the requested Trixie image change on the test branch, and report the local failure as evidence. Research and propose any compatibility fix separately before implementation.
+- **Related:** AIF-032, APR-040.
+- **Status:** Unrequested keyring edit reverted; no instruction change proposed.
+
 ## APR-041 - `/commit` imposed an unsupported whitespace gate
 
 - **Reference:** `/commit` failure in the monorepo on 2026-09-14 and operator challenge after a terminal blank line blocked the commit.
