@@ -125,12 +125,13 @@ it("awaits delayed plugin open, passes title ownership, focuses the exact tab, a
 		return {} as any;
 	});
 	const pending = commands["new-instance"].handler("fresh", ctx);
-	expect(ctx.ui.notify).toHaveBeenCalledWith("/new-instance fresh", "info");
+	expect(ctx.ui.notify).toHaveBeenCalledExactlyOnceWith("/new-instance fresh", "info");
 	expect(vi.mocked(execFile)).not.toHaveBeenCalled();
 	await new Promise<void>((resolve) => setImmediate(resolve));
-	expect(ctx.ui.notify).toHaveBeenCalledWith("Opening new Pi instance in a Herdr tab: fresh", "info");
+	expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
 	expect(vi.mocked(execFile)).toHaveBeenCalledTimes(2);
 	await pending;
+	expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
 	const calls = vi.mocked(execFile).mock.calls.map(call => call[1] as string[]);
 	expect(calls[0]).toEqual(["pane", "current", "--current"]);
 	expect(calls[1]).toContain("PI_HERDR_SESSION_FILE=");

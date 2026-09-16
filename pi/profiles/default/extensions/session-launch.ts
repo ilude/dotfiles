@@ -311,10 +311,7 @@ async function launchNewInstance(input: { cwd: string; title?: string; session?:
 async function executeNewInstance(args: string, ctx: CommandContext): Promise<void> {
 	const cwd = ctx.cwd ?? process.cwd();
 	const parsed = parseNewInstanceArgs(args);
-	const action = parsed.session ? `resumed Pi session ${parsed.session}` : "new Pi instance";
-	ctx.ui.notify(`Opening ${action} in ${isHerdr() ? "a Herdr" : "a new terminal"} tab${parsed.title ? `: ${parsed.title}` : ""}`, "info");
-	const receipt = await launchNewInstance({ cwd, ...parsed });
-	ctx.ui.notify(`Opened ${action} in a new tab${typeof receipt.title === "string" ? `: ${receipt.title}` : ""}`, "info");
+	await launchNewInstance({ cwd, ...parsed });
 }
 
 async function executeNewTerminal(args: string, ctx: CommandContext): Promise<void> {

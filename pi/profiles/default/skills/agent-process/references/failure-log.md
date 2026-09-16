@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-048 - `/new-instance` printed a redundant success line
+
+- **Reference:** Operator correction after using `/new-instance`, 2026-09-16.
+- **Observed:** The command invocation remained visible, followed by a separate `Opened new Pi instance...` success notification.
+- **Finding:** The visible command entry already confirms receipt, and successful tab creation is directly observable. A second success line adds transcript noise.
+- **Remediation:** Keep `/new-instance` silent after its visible invocation on success. Launch failures continue through the command wrapper's normal error path.
+- **Related:** APR-045.
+- **Status:** Runtime and regression test corrected locally; active sessions require `/reload`.
+
 ## APR-047 - Incompatible Onclave client change closed without coordinated rollout
 
 - **Reference:** Operator report that Onclave showed disconnected immediately after asynchronous-channel-messaging plan execution, 2026-09-16.

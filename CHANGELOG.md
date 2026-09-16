@@ -2,7 +2,7 @@
 
 ## 2026-09-16: Resume Pi sessions in new tabs
 
-**Added:** Default Pi `/new-instance --resume <session-uuid> [title]` resumes an exact active-profile session in a new tab using the session's saved cwd. The new `session_launch` tool exposes the same fresh-or-resume behavior to the orchestrator. Herdr launches retain exact-session startup checking; ordinary terminal launches pass the resolved session to the active `pp` profile. Existing `/new-instance [title]` behavior is unchanged. Use `/reload` to activate the command and tool.
+**Added:** Default Pi `/new-instance --resume <session-uuid> [title]` resumes an exact active-profile session in a new tab using the session's saved cwd. The new `session_launch` tool exposes the same fresh-or-resume behavior to the orchestrator. Herdr launches retain exact-session startup checking; ordinary terminal launches pass the resolved session to the active `pp` profile. Existing `/new-instance [title]` launch behavior is unchanged, while successful command launches no longer print a redundant second status line after the visible invocation. Use `/reload` to activate the command and tool.
 
 ## 2026-09-16: Consolidate Strategist instructions and share prompt-writing guidance
 
