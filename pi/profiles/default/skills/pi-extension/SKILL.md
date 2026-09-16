@@ -17,6 +17,7 @@ The active Pi profile is the configuration directory used by the running Pi proc
 
 - In UI render callbacks, read already-computed state. Perform filesystem scans, network requests, and subprocess work outside those callbacks.
 - Before a command starts slow work such as Git, network, or model calls, show that the command was received. Clear temporary progress indicators when the work finishes, fails, or is cancelled.
+- Separate command presentation from model input. Record interface-only command invocations with `appendEntry()` and an entry renderer. For prompt-backed commands, keep the expanded prompt model-visible but render only the exact `/command` invocation and localized start date/time.
 - Before adding a subprocess, check for an existing helper or equivalent Node API. When a subprocess is needed, specify its arguments, timeout, cancellation handling, and whether output is consumed or discarded.
 - When tests or subprocesses launch Pi, invoke the installed `pi` shim or resolve the CLI from the package's `bin.pi` manifest entry. Do not execute unbundled CLI or experimental server modules. Those internal paths may require `@earendil-works/pi-server`, which is intentionally not a default-profile dependency; do not add it to repair a test harness.
 - For state that belongs to one session, initialize it from that session and stop using it after switching sessions. Clean up timers and subscriptions created for that session when it ends.

@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-060 - Keep interface-command acknowledgments out of model context
+
+- **Reference:** Operator correction after `/new-instance` interrupted plan execution, 2026-09-15.
+- **Feedback:** `/new-instance` must never cause the current orchestrator to stop; it is an interface command that opens another instance, not an instruction to abandon current execution.
+- **Finding:** The profile's shared acknowledgment wrapper inserted command text with `pi.sendMessage()`, whose custom messages participate in model context. Pi extension commands already bypass the agent when invoked; the wrapper unintentionally reintroduced the command afterward as model-visible context.
+- **Decision:** Preserve visible command history as TUI-only custom entries via `pi.appendEntry()`. Do not add a model instruction explaining `/new-instance`; remove the runtime source of ambiguity instead.
+- **Related:** APR-045, AIF-029.
+- **Status:** Runtime and regression test corrected locally. With operator approval, the `pi-extension` skill now carries the command presentation versus model-input rule for future extension work. Future attached-client behavior requires reload.
+
 ## AIF-059 - Make Onclave outbound and automatic-reply behavior explicit
 
 - **Reference:** Operator review after an instance manually replied to an inbound Onclave ask with an invalid `inform` plus `task_id`, 2026-09-15.

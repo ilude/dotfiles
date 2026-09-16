@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-045 - `/new-instance` was injected into model context
+
+- **Reference:** Operator correction after `/new-instance` interrupted plan execution, 2026-09-15.
+- **Observed:** The current orchestrator interpreted the visible `/new-instance` acknowledgment as an instruction to stop and preserve a handoff, rather than continuing its existing work while the interface opened another Pi tab.
+- **Finding:** The shared profile-command wrapper used `pi.sendMessage()` for visible command acknowledgments. Pi custom messages participate in model context, so an interface command that should bypass the agent was later delivered as steering context. The interpretation was incorrect, but the runtime should not have exposed the acknowledgment to the model.
+- **Remediation:** Record shared command acknowledgments with `pi.appendEntry()` and an entry renderer. This preserves transcript visibility while excluding the entry from model context.
+- **Related:** AIF-060, APR-033.
+- **Status:** Runtime and regression test corrected locally; active sessions require `/reload`.
+
 ## APR-044 - `/plans` new-tab launch did not apply the plan title
 
 - **Reference:** Operator report after launching a plan with `/plans` and `d`, 2026-09-15.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-15: Keep Pi interface commands out of model context
+
+**Fixed:** Default-profile interface commands such as `/new-instance` now record their visible invocation as a TUI-only session entry instead of a custom model-visible message. Running `/new-instance` opens the requested tab without steering the current agent or making it interpret the command as a request to stop or prepare a handoff. The Pi extension skill now preserves this interface-only versus prompt-backed command distinction for future extensions. Use `/reload` to activate the change.
+
 ## 2026-09-15: Apply plan names to new Herdr tabs
 
 **Fixed:** Launching a plan with `d` in the default Pi `/plans` picker now applies the selected plan stub to the new Herdr tab. Plugin-tab creation cannot set a tab label directly, so child startup now applies the explicit inherited title while preserving the plugin pane label. Use `/reload` before launching another plan from an existing Pi process.
