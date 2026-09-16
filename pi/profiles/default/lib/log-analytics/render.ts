@@ -2,15 +2,16 @@ import { stripVTControlCharacters } from "node:util";
 import { keyHint, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import type { analyticsSchema } from "../../extensions/log-analytics-tool.js";
-import type { analyticsCatalog, followUpAnalytics, queryAnalytics, searchAnalytics, sessionAnalytics } from "./api.js";
+import type { analyticsCatalog, followUpAnalytics, queryAnalytics, searchAnalytics, sessionAnalytics, sessionLineageAnalytics } from "./api.js";
 
 type Tool = ToolDefinition<typeof analyticsSchema, unknown>;
 type QueryResult = Awaited<ReturnType<typeof queryAnalytics>>;
 type SessionsResult = Awaited<ReturnType<typeof sessionAnalytics>>;
 type SearchResult = Awaited<ReturnType<typeof searchAnalytics>>;
 type FollowUpResult = Awaited<ReturnType<typeof followUpAnalytics>>;
+type LineageResult = Awaited<ReturnType<typeof sessionLineageAnalytics>>;
 type CatalogResult = { sources: ReturnType<typeof analyticsCatalog>; defaults: Record<string, unknown>; limits: string };
-type RenderArgs = { operation?: string; profiles?: string[]; sources?: string[]; sessionRefs?: { profile: string; sessionId: string; fileKey?: string }[]; cwd?: string; sessionIds?: string[]; cursor?: string; interval?: { since: string; until: string }; filters?: Record<string, unknown>; sql?: string; execution?: string; maxRows?: number; maxBytes?: number; maxResults?: number; parameters?: Record<string, unknown>; occurrence?: { profile?: string; session?: { sessionId?: string }; fileKey?: string; byteOffset?: number; recordOrdinal?: number }; before?: number; after?: number };
+type RenderArgs = { operation?: string; profiles?: string[]; sessionId?: string; sources?: string[]; sessionRefs?: { profile: string; sessionId: string; fileKey?: string }[]; cwd?: string; sessionIds?: string[]; cursor?: string; interval?: { since: string; until: string }; filters?: Record<string, unknown>; sql?: string; execution?: string; maxRows?: number; maxBytes?: number; maxResults?: number; parameters?: Record<string, unknown>; occurrence?: { profile?: string; session?: { sessionId?: string }; fileKey?: string; byteOffset?: number; recordOrdinal?: number }; before?: number; after?: number };
 const sourceNames: Record<string, string> = {
 	session_entries: "session history", bedrock_usage: "Bedrock usage", codex_cache_observations: "Codex cache observations",
 };
@@ -40,7 +41,7 @@ function component(build: (width: number) => string[]): Component {
 export const renderAnalyticsCall: NonNullable<Tool["renderCall"]> = (rawArgs, theme, context) => component(() => {
 	const args = rawArgs as unknown as RenderArgs;
 	const expanded = context.expanded;
-	const title = args.operation === "catalog" ? "Available sources" : args.operation === "sessions" ? "Find sessions" : args.operation === "query" ? "Query logs" : args.operation === "search" ? "Search records" : args.operation === "follow_up" ? "Follow up occurrence" : "Preparing request…";
+	const title = args.operation === "catalog" ? "Available sources" : args.operation === "sessions" ? "Find sessions" : args.operation === "query" ? "Query logs" : args.operation === "search" ? "Search records" : args.operation === "follow_up" ? "Follow up occurrence" : args.operation === "session_lineage" ? "Find session lineage" : "Preparing request…";
 	const lines = [theme.fg("toolTitle", theme.bold("Log Analytics")) + " · " + title];
 	if (args.operation === "catalog" || !args.operation) return lines;
 	if (args.operation === "follow_up") {
@@ -56,6 +57,7 @@ export const renderAnalyticsCall: NonNullable<Tool["renderCall"]> = (rawArgs, th
 	if (args.cwd !== undefined) lines.push(`Project: ${expanded ? clean(args.cwd) : preview(args.cwd)}`);
 	if (args.sessionRefs?.length) lines.push(`Scope: ${count(args.sessionRefs.length, "selected session")}`);
 	if (args.sessionIds?.length) lines.push(`Filter: ${count(args.sessionIds.length, "session ID")}`);
+	if (args.sessionId) lines.push(`Session: ${expanded ? clean(args.sessionId) : preview(args.sessionId, 24)}`);
 	if (args.cursor) lines.push(theme.fg("muted", `Continuing ${args.operation === "search" ? "record search" : "session listing"}`));
 	if (args.interval) lines.push(`Interval: ${clean(args.interval.since)} to ${clean(args.interval.until)} [since, until)`);
 	if (args.filters) lines.push(`Filters: ${Object.entries(args.filters).map(([key, value]) => `${key}=${preview(value, 80)}`).join(" · ")}`);
@@ -151,6 +153,19 @@ export const renderAnalyticsResult: NonNullable<Tool["renderResult"]> = (result,
 		for (const item of data.before) lines.push(...followUpRecordLine("Before", item, expanded));
 		for (const item of data.after) lines.push(...followUpRecordLine("After", item, expanded));
 		if (expanded) lines.push(theme.fg("dim", `Context is bounded to ${data.before.length} preceding and ${data.after.length} following records; no additional fetch on expansion.`));
+	} else if ("ancestors" in details && "descendants" in details && Array.isArray(details.ancestors) && Array.isArray(details.descendants)) {
+		const data = details as LineageResult;
+		lines = [theme.bold(`Session lineage · ${clean(data.sessionId)}`) + ` · ${data.profiles.join(" + ")}`];
+		const ancestorCount = data.coverage.ancestorCount ?? data.ancestors.length;
+		const missingParentCount = data.coverage.missingParentCount ?? data.coverage.missingParents.length;
+		const unclassifiedSessionCount = data.coverage.unclassifiedSessionCount ?? data.coverage.unclassifiedSessions.length;
+		if (!data.target) lines.push(theme.fg("warning", "This historical session is unclassified (no valid lineage record)."));
+		lines.push(`Ancestors: ${ancestorCount} (${data.ancestors.length} shown) · Descendants: ${data.descendants.length}`);
+		if (data.truncated) lines.push(theme.fg("warning", "Descendants truncated by maxRows; narrow the lookup or raise the bound."));
+		if (data.coverage.ancestorsTruncated) lines.push(theme.fg("warning", "Ancestors truncated by maxRows; only the nearest ancestors are shown."));
+		if (missingParentCount) lines.push(theme.fg("warning", `Missing parents: ${data.coverage.missingParents.join(", ")}${data.coverage.missingParentsTruncated ? " (sample truncated)" : ""}`));
+		if (expanded) lines.push(theme.fg("dim", `Coverage: ${data.coverage.classifiedSessions}/${data.coverage.historicalSessions} sessions classified · ${unclassifiedSessionCount} unclassified${data.coverage.unclassifiedSessionsTruncated ? " (sample truncated)" : ""} · ${data.coverage.selectedFiles} files examined`));
+		for (const node of [...data.ancestors, ...data.descendants]) lines.push(`${node.profile}/${node.sessionId} · ${node.role ?? "unclassified header"} · parent ${node.parentSessionId ?? "unknown"}`);
 	} else if ("rows" in details && Array.isArray(details.rows)) {
 		const data = details as QueryResult;
 		lines = [theme.bold(`${count(data.rows.length, "row")} returned`) + ` · ${data.profiles.join(" + ")} · ${sources(data.sources)}${data.cost.execution === "large" ? " · large SQL" : ""}`];

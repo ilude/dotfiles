@@ -111,9 +111,9 @@ function takeCursor(cursor: string, requestScope: string | undefined): SearchSta
 	return state;
 }
 
-type PhysicalRecord = { offset: number; length: number; nextOffset: number; ordinal: number; raw: Buffer | null; malformed: boolean; oversized: boolean };
+export type PhysicalRecord = { offset: number; length: number; nextOffset: number; ordinal: number; raw: Buffer | null; malformed: boolean; oversized: boolean };
 /** Bounded JSONL reader. It retains at most one allowed record and discards oversized lines. */
-async function* records(file: string, start: number, horizon: number, signal?: AbortSignal): AsyncGenerator<PhysicalRecord> {
+export async function* records(file: string, start: number, horizon: number, signal?: AbortSignal): AsyncGenerator<PhysicalRecord> {
 	const handle = await fs.open(file, "r");
 	let position = start, lineStart = start, ordinal = 0, lineLength = 0, oversized = false, parts: Buffer[] = [];
 	try {

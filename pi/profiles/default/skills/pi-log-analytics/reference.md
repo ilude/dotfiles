@@ -18,7 +18,19 @@ Optional discovery fields: `cwd` (exact stored header string), `sessionIds` (nat
 
 Discovery validates the first physical JSONL line as a native session header. Each header read is limited to 64 KiB, with at most 511 bytes of read-ahead. Non-session, empty, malformed, or oversized headers are excluded. Listing and session-query results include `coverage.discovery`: `excludedFiles`, up to 20 `diagnostics` (profile, profile-relative file label capped at 512 characters, opaque fileKey, and reason), and `diagnosticsTruncated`. Counts cover the selected profiles before listing filters or exact session selection, not just the returned page. Explicit references to excluded sessions still fail as unresolved. Discovery never falls back to a transcript scan or native session loading that may repair files. Directory listing and header reads still cover the selected profile's session tree before pagination. Empty supported session trees are valid; missing profile roots and unreadable inputs are errors.
 
-Exact session SQL follow-up:
+### Subagent session lineage
+
+Discover with `tool_search` keywords `subagent session lineage`, then look up a native session ID:
+
+```json
+{"operation":"session_lineage","sessionId":"<native-id>","maxRows":100}
+```
+
+Optional `profiles` defaults to the active registered profile. This native JSONL operation reads automatically recorded `subagent-lineage` custom entries and resolves ancestors and descendants; it does not initialize DuckDB. `maxRows` bounds returned lists (1-1000, default 100), with truncation and scan coverage reported. Ordinary parent sessions can be resolved from their headers without classifying them as subagents. Historical sessions lacking a valid marker remain unclassified. Recorded relationships do not prove live status or restore runtime control.
+
+The version-1 payload records `sessionId`, `role`, `parentSessionId`, and `rootSessionId`. The payload's own session ID must match its file header, so inherited fork entries do not classify a different session. Native session IDs are distinct from runtime child IDs and JSONL entry `parentId` fields. No plan execution identity is recorded: find relevant conversations through ordinary history search, then resolve their lineage.
+
+### Exact session SQL follow-up
 
 ```json
 {

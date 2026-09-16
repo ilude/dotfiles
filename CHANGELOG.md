@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-16: Persist automatic Pi subagent session lineage
+
+**Added:** Default Pi subagents automatically record their role, immediate parent session ID, and root orchestrator session ID as metadata-only entries in native session JSONL. Nested delegation derives its parent from authenticated runtime state, without new model-facing launch parameters. The deferred `log_analytics` tool exposes `session_lineage` to find recorded ancestors and descendants after a session is found through ordinary history search.
+
+**Preserved:** JSONL remains authoritative, existing sessions without lineage remain unclassified, and historical relationships do not imply live process status or recovered control. No plan/work tracking, separate registry, or delegation-policy changes are included. Reload after active subagents settle, or start a fresh default-profile session, to enable recording for new children.
+
 ## 2026-09-16: Resume Pi sessions in new tabs
 
 **Added:** Default Pi `/new-instance --resume <session-uuid> [title]` resumes an exact active-profile session in a new tab using the session's saved cwd. The new `session_launch` tool exposes the same fresh-or-resume behavior to the orchestrator. Herdr launches retain exact-session startup checking; ordinary terminal launches pass the resolved session to the active `pp` profile. Existing `/new-instance [title]` launch behavior is unchanged, while successful command launches no longer print a redundant second status line after the visible invocation. Use `/reload` to activate the command and tool.

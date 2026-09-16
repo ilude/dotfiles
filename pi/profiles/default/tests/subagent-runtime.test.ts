@@ -63,6 +63,7 @@ describe("process-local descendant ownership",()=>{
   try{
    const coordinator={...definition,name:"coordinator",tools:["subagent","subagent_control"],delegates:["probe"]};
    const parent=await runtime.launch({...input,definition:coordinator,instructions:`WAIT_FILE:${join(scratch,"release")}`},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+   await vi.waitFor(()=>expect(runtime.get(parent.id).record.sessionId).toEqual(expect.any(String)));
    const leaf=await runtime.launch({...input,parentId:parent.id,instructions:"[reject]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
    await vi.waitFor(()=>expect(runtime.get(leaf.id).record.phase).toBe("settled"),{timeout:7000});
    writeFileSync(join(scratch,"release"),"ready");
@@ -103,6 +104,7 @@ describe("process-local descendant ownership",()=>{
   try{
    const coordinator={...definition,name:"coordinator",tools:["subagent"],delegates:["probe"]};
    const parent=await runtime.launch({...input,definition:coordinator,instructions:"[hold]",catalog:new Map([["coordinator",coordinator],["probe",definition]])},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+   await vi.waitFor(()=>expect(runtime.get(parent.id).record.sessionId).toEqual(expect.any(String)));
    const leaf=await runtime.launch({...input,cwd:scratch,parentId:parent.id,instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
    expect(leaf.cwd).toBe(scratch);
    await expect(runtime.launch({...input,cwd:scratch,parentId:parent.id,origin:"other-origin",instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true)).rejects.toThrow(/change origin/);
@@ -113,7 +115,8 @@ describe("process-local descendant ownership",()=>{
  it("marks a coordinator's foreground leaf wait as attached",async()=>{
   const runtime=fixture();
   const coordinator={...definition,name:"coordinator",tools:["subagent","subagent_control"],delegates:["probe"]};
-  const parent=await runtime.launch({...input,definition:coordinator,catalog:new Map([["coordinator",coordinator],["probe",definition]])},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  const parent=await runtime.launch({...input,definition:coordinator,instructions:"[hold]",catalog:new Map([["coordinator",coordinator],["probe",definition]])},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  await vi.waitFor(()=>expect(runtime.get(parent.id).record).toMatchObject({sessionId:expect.any(String),sessionFile:expect.any(String)}));
   const response=await (runtime as any).dispatch({child:parent.id,origin:input.origin,run:"fixture"},{type:"delegate",payload:{agent:"probe",instructions:"[hold]",model:"openai-codex/test",effort:"low",background:false}});
   expect(response.waitState).toBe("attached");
   const leaf=runtime.list(input.origin).find(record=>record.parentId===parent.id)!;
@@ -123,6 +126,7 @@ describe("process-local descendant ownership",()=>{
   const runtime=fixture(),delivered:Delivery[]=[];
   runtime.bind(input.origin,{deliver:r=>{delivered.push(r);return true}});
   const parent=await runtime.launch({...input,definition:{...definition,name:"coordinator",tools:["subagent"],delegates:["probe"]},instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  await vi.waitFor(()=>expect(runtime.get(parent.id).record.sessionId).toEqual(expect.any(String)));
   const leaf=await runtime.launch({...input,parentId:parent.id,instructions:"[approval]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
   await vi.waitFor(()=>expect(delivered).toHaveLength(1));
   expect(delivered[0]).toMatchObject({id:leaf.id,phase:"waiting-user",parentId:undefined});

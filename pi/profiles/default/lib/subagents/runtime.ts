@@ -107,6 +107,22 @@ export class SubagentRuntime {
   const child=this.children.get(identity.child),context=this.contexts.get(identity.child);
   if(!child||!context||child.record.origin!==identity.origin)throw new Error("Child owner unavailable");
   child.contact();
+  if(message.type==="session-identity"){
+   const payload=message.payload as {sessionId?:unknown;sessionFile?:unknown}|undefined;
+   if(typeof payload?.sessionId!=="string"||!payload.sessionId.trim()||typeof payload.sessionFile!=="string"||!payload.sessionFile.trim())throw new Error("Invalid child session identity");
+   if(child.record.sessionId!==undefined&&child.record.sessionId!==payload.sessionId)throw new Error("Child session identity changed");
+   if(child.record.sessionFile!==undefined&&child.record.sessionFile!==payload.sessionFile)throw new Error("Child session file changed");
+   const parent=child.record.parentId?this.children.get(child.record.parentId):undefined;
+   const parentSessionId=child.record.parentId
+    ? parent?.record.sessionId
+    : child.record.origin;
+   if(!parentSessionId)throw new Error("Authenticated parent session identity unavailable");
+   child.record.sessionId=payload.sessionId;
+   child.record.sessionFile=payload.sessionFile;
+   child.record.updatedAt=new Date().toISOString();
+   this.publish(identity.origin);
+   return {accepted:true,parentSessionId};
+  }
   const delivery=child.record.userOwned?undefined:[...this.pending.values()].find(r=>r.parentId===identity.child);
   if(message.type==="heartbeat")return{alive:true,delivery};
   if(message.type==="app-poll")return{...child.parentMessage(message) as object,delivery};
@@ -131,6 +147,7 @@ export class SubagentRuntime {
    const payload=message.payload as {agent?:unknown;instructions?:unknown;retain?:unknown;background?:unknown;cwd?:unknown;model?:unknown;effort?:unknown;skills?:unknown;surface?:unknown};
    if(!payload||typeof payload.agent!=="string"||typeof payload.instructions!=="string"||!payload.instructions.trim())throw new Error("Invalid delegation");
    if(!context.input.definition.tools.includes("subagent")||!context.input.definition.delegates.includes(payload.agent))throw new Error("Delegation is outside frozen authority");
+   if(!child.record.sessionId)throw new Error("Delegating parent session identity unavailable");
    const definition=context.catalog.get(payload.agent);
    if(!definition||definition.delegates.length)throw new Error("Only permitted leaf definitions may be commissioned");
    for(const key of ["cwd","model","effort"] as const)if(payload[key]!==undefined&&typeof payload[key]!=="string")throw new Error(`Invalid ${key}`);
@@ -168,6 +185,7 @@ export class SubagentRuntime {
   if(input.parentId){
    const parent=this.children.get(input.parentId),context=this.contexts.get(input.parentId);
    if(!parent||!context||parent.record.status==="settled")throw new Error("Delegating parent is unavailable");
+   if(!parent.record.sessionId)throw new Error("Delegating parent session identity unavailable");
    if(parent.record.parentId||!context.input.definition.delegates.includes(input.definition.name)||input.definition.delegates.length)throw new Error("Delegation is outside frozen authority");
    if(input.origin!==parent.record.origin)throw new Error("Child cannot change origin");
   }

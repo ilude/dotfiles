@@ -8,6 +8,7 @@ import { workspaceRoot } from "../lib/subagents/workspace.ts";
 import { progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentResult, renderSubagentMessage } from "../lib/subagents/presentation.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
+import { writeSubagentLineage } from "../lib/subagents/lineage.ts";
 interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; cwd:string; skills:string[]; surface?:string }
 
 export function childSystemPrompt(basePrompt:string,agent:string,tools:readonly string[],rolePrompt:string):string {
@@ -24,17 +25,26 @@ export default function childAuthority(pi:ExtensionAPI){
  workspaceRoot(authority.cwd);
  const allowed=new Set(authority.tools);
  registerProfileCommand(pi,"exit",{description:"Exit this restricted child",handler:async(_args,ctx)=>ctx.shutdown()});
- pi.on("session_start",()=>pi.setActiveTools(pi.getAllTools().map(t=>t.name).filter(t=>allowed.has(t))));
- bindChildSurface(pi,authority.surface==="visible");
- pi.on("tool_call",event=>{
-  if(!allowed.has(event.toolName))return{block:true,reason:`Tool ${event.toolName} is outside frozen ${authority.agent} authority`};
- });
- pi.on("before_agent_start",event=>({systemPrompt:childSystemPrompt(event.systemPrompt,authority.agent,authority.tools,process.env.PI_SUBAGENT_PROMPT||"")}));
  const parentEndpoint=()=>{
   const endpoint=JSON.parse(process.env.PI_SUBAGENT_ENDPOINT||"null") as ChildEndpoint|null;
   if(!endpoint||endpoint.child!==authority.id)throw new Error("Authenticated parent unavailable");
   return endpoint;
  };
+ pi.on("session_start",async(_event,ctx)=>{
+  pi.setActiveTools(pi.getAllTools().map(t=>t.name).filter(t=>allowed.has(t)));
+  if(!process.env.PI_SUBAGENT_ENDPOINT)return;
+  const sessionId=ctx.sessionManager.getSessionId(),sessionFile=ctx.sessionManager.getSessionFile();
+  if(!sessionId.trim()||!sessionFile)throw new Error("Child session is not durable");
+  const endpoint=parentEndpoint();
+  const response=await requestParent(endpoint,{type:"session-identity",payload:{sessionId,sessionFile}}) as {parentSessionId?:unknown};
+  if(typeof response?.parentSessionId!=="string"||!response.parentSessionId.trim())throw new Error("Authenticated parent session identity unavailable");
+  writeSubagentLineage(pi,ctx,authority.agent,response.parentSessionId,endpoint.origin);
+ });
+ bindChildSurface(pi,authority.surface==="visible");
+ pi.on("tool_call",event=>{
+  if(!allowed.has(event.toolName))return{block:true,reason:`Tool ${event.toolName} is outside frozen ${authority.agent} authority`};
+ });
+ pi.on("before_agent_start",event=>({systemPrompt:childSystemPrompt(event.systemPrompt,authority.agent,authority.tools,process.env.PI_SUBAGENT_PROMPT||"")}));
  const waitForChild=async(value:unknown,signal?:AbortSignal,onUpdate?: (value:any)=>void)=>{
   let record=value as ChildRecord;
   let lastView="",lastUpdate=0;

@@ -27,7 +27,7 @@ export interface ChildRecord {
   id: string; agent: string; displayName?: string; assignment?: string; model?: string; effort?: AgentEffort; cwd?: string; skills?: string[];
   origin: string; surface: "headless" | "visible";
   status: "running" | "waiting" | "settled"; outcome?: Outcome; result?: string; error?: string;
-  sessionFile?: string; retained: boolean; parentId?: string; userOwned: boolean;
+  sessionId?: string; sessionFile?: string; retained: boolean; parentId?: string; userOwned: boolean;
   process?: ChildProcessWithoutNullStreams; paneId?: string; createdAt: string; updatedAt: string;
   turns: number; readyCount?: number; processState: "starting" | "running" | "exited";
   phase?: Phase; phaseStartedAt?: string; assignmentStartedAt?: string; assignmentFinishedAt?: string; lastActivityAt?: string; lastContactAt?: string;

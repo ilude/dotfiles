@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -82,6 +82,7 @@ describe("bare model resolution at subagent launch seams", () => {
     const coordinator = definition("coordinator", { tools: ["subagent"], delegates: ["leaf"] });
     const modelRegistry = registry([model("bedrock-mantle", "gpt"), model("openai-codex", "gpt")], ["bedrock-mantle", "openai-codex"]);
     const parent = await runtime.launch({ definition: coordinator, instructions: "[hold]", cwd: here, model: "openai-codex/gpt", effort: "low", skills: [], origin: "coordinator-model-test", surface: "headless", retained: false, catalog: new Map([["coordinator", coordinator], ["leaf", leaf]]), modelRegistry }, join(here, ".."), join(here, "../extensions/subagent-child.ts"), true);
+    await vi.waitFor(() => expect(runtime.get(parent.id).record.sessionId).toEqual(expect.any(String)));
     const response = await (runtime as any).dispatch({ child: parent.id, origin: "coordinator-model-test", run: "fixture" }, { type: "delegate", payload: { agent: "leaf", instructions: "[live]", ...(requested ? { model: requested } : {}), background: true } });
     expect(response).toMatchObject({ model: expected, status: "running", parentId: parent.id });
     await runtime.get(response.id).cancel(); await runtime.get(parent.id).cancel();

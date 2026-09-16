@@ -5,6 +5,7 @@ import type { AnalyticsSourceId } from "./registry.js";
 import { followUp, searchLogs, type FollowUpRequest, type SearchRequest } from "./search.js";
 export type { FollowUpRequest, OccurrenceRef, SearchFilters, SearchMatch, SearchRequest, SearchResult } from "./search.js";
 import type { AnalyticsExecution, AnalyticsParameter } from "./store.js";
+import { sessionLineage, type LineageRequest } from "./lineage.js";
 export { analyticsCatalog };
 export type AnalyticsRequest = {
 	operation: "query"; profiles?: ProfileId[]; sources: AnalyticsSourceId[]; sessionRefs?: SessionRef[];
@@ -36,4 +37,8 @@ export async function queryAnalytics(registry: ProfileRegistry, request: Analyti
 
 export async function sessionAnalytics(registry: ProfileRegistry, request: SessionsRequest, signal?: AbortSignal) {
 	return await listSessions(registry, request, signal);
+}
+
+export async function sessionLineageAnalytics(registry: ProfileRegistry, request: LineageRequest, signal?: AbortSignal) {
+	return await sessionLineage(registry, request, signal);
 }
