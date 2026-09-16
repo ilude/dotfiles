@@ -1,7 +1,7 @@
 ---
 created: 2026-09-15
-status: ready
-completed: null
+status: completed
+completed: 2026-09-16
 ---
 
 # Build simple asynchronous Onclave channels
@@ -202,50 +202,50 @@ Continue independent tasks around blockers. Ask only if repository evidence forc
 
 ## Tasks
 
-- [ ] **T1: Define the minimal asynchronous channel contract**
+- [x] **T1: Define the minimal asynchronous channel contract**
   - Depends on: none.
   - Files/inputs: `modules/onclave/packages/envelope/src/a2a.ts`, `modules/onclave/packages/envelope/src/amqp.ts`, `modules/onclave/packages/envelope/src/protocol.ts`, package tests.
   - Change: replace point-to-point message types with protocol-versioned channel messages, semantic kinds, participant sets, request defaults, response linkage, satisfaction state, and core operations needed to post and retrieve delivery events. Keep task types separately compilable but remove task IDs from channel messages.
   - Verify: focused envelope/protocol/AMQP tests for direct and group requests, one/all defaults, notes, responses, invalid combinations, alias-resolved full IDs at the adapter boundary, and protocol mismatch.
   - Done when: the shared package expresses the settled contract without synchronous waits, model-supplied transport metadata, or channel-management requirements.
   - If blocked: ask only if preserving the independent task contract requires a broader product decision.
-  - Evidence: Not started.
+  - Evidence: Implemented and covered by the passing `just check` suite.
 
-- [ ] **T2: Implement the channel aggregate and RabbitMQ fan-out**
+- [x] **T2: Implement the channel aggregate and RabbitMQ fan-out**
   - Depends on: T1.
   - Files/inputs: proposed `modules/onclave/services/core/src/channel-store.ts`, `modules/onclave/services/core/src/rpc.ts`, `modules/onclave/services/core/src/service.ts`, `modules/onclave/services/core/src/agent-delivery.ts`, existing state/store patterns, core tests.
   - Change: atomically create/reuse channels by exact participant set, serialize posts, assign sequence, persist bounded message/request state, compute `any`/`all` satisfaction, authenticate participants, and fan out to existing durable agent queues. Preserve delivery leases, dead-letter handling, offline delivery, and idempotency.
   - Verify: focused tests for direct/group reuse, concurrent ordering, duplicate posts, one/all satisfaction, unexpected/duplicate responders, restart restoration, unauthorized posting, offline fan-out, and redelivery.
   - Done when: participants receive canonical channel events through their existing mailboxes and the core persists only state required by the settled contract.
   - If blocked: use the existing atomic state abstraction; do not introduce a new database or broker topology without approval.
-  - Evidence: Not started.
+  - Evidence: Implemented and covered by the passing `just check` suite.
 
-- [ ] **T3: Refactor the Pi adapter to one intuitive message tool**
+- [x] **T3: Refactor the Pi adapter to one intuitive message tool**
   - Depends on: T1, T2.
   - Files/inputs: `modules/onclave/extensions/onclave-pi/src/onclave-pi.ts`, `modules/onclave/extensions/onclave-pi/src/lib/delivery.ts`, and sibling `correlation.ts`, `framing.ts`, `http-client.ts`; adapter tests.
   - Change: keep `onclave_instances`; refactor `onclave_message` to the ordinary forms above; infer active-request responses from session-owned inbound context; resolve aliases; remove synchronous waits and automatic settled-run publication; apply request/response/note activation behavior and objective framing.
   - Verify: focused tests prove minimal parameters, one/all defaults, active response inference, explicit advanced correlation only when outside active context, notes and responses notifying without triggering model turns, no automatic publication on `agent_settled`, reload/session ownership, aliases, and invalid-call diagnostics.
   - Done when: ordinary requests/notes require only `kind`, `to`, and `body`, ordinary responses require only `body`, and no hidden network send occurs.
   - If blocked: preserve explicit sending and simple defaults; ask before adding another model-facing tool or required parameter.
-  - Evidence: Not started.
+  - Evidence: Implemented and covered by the passing `just check` suite.
 
-- [ ] **T4: Remove obsolete communication coupling and align documentation**
+- [x] **T4: Remove obsolete communication coupling and align documentation**
   - Depends on: T1-T3.
   - Files/inputs: old wait/correlation/run-summary paths, task-status communication coupling, `modules/onclave/docs/extensions/onclave-pi/{PRD,implementation-plan,status}.md`, `modules/onclave/README.md`, tests.
   - Change: remove code used only for `ask` waits, automatic `inform` replies, and automatic task creation/completion from peer messages. Preserve independently useful task APIs. Rewrite product documentation around async channels, semantic kinds, defaults, actor/RabbitMQ mapping, authority, and the explicit protocol break.
   - Verify: repository search finds retired `ask`/legacy `request`/`inform` communication assumptions only in clearly historical material; independent task tests still pass; documentation matches exported names and tool schemas.
   - Done when: the active implementation and documentation expose one coherent channel model without broad task redesign.
   - If blocked: identify exact independently consumed task coupling and ask before deleting or redesigning it.
-  - Evidence: Not started.
+  - Evidence: Implemented and covered by the passing `just check` suite.
 
-- [ ] **T5: Run bounded acceptance and integrate**
+- [x] **T5: Run bounded acceptance and integrate**
   - Depends on: T1-T4.
   - Files/inputs: `modules/onclave/package.json`, `modules/onclave/justfile`, changed packages and tests.
   - Change: from the Onclave repository/worktree root, run focused checks during implementation, then `just check`; run `just test-integration` when its existing documented RabbitMQ prerequisites are available. Inspect the effective local Pi tool catalog without deploying services.
   - Verify: `just check`; applicable integration command and exact result; `git diff --check`; final diff and status limited to task-owned changes.
   - Done when: checks pass, limits are recorded, the Onclave implementation branch is merged into its recorded originating branch, and the dotfiles checkout records the updated gitlink plus archived coordinating plan under the closeout contract.
   - If blocked: retain the worktree and report the exact prerequisite, next action, and owner. Push and deployment remain unauthorized.
-  - Evidence: Not started.
+  - Evidence: `just check` passed (265 tests, 1 skipped); `just test-integration` passed (3 broker-backed tests); `git diff --check` passed. Module commit `3fecffd` was fast-forwarded into `feature/v2-broker-core`.
 
 ## Agreed validation and current handoff
 
@@ -258,11 +258,11 @@ Finite agent-owned acceptance:
 - `just check` passes. Broker-backed integration runs only with its existing documented prerequisites; unavailable infrastructure is recorded as a verification limit rather than replaced with new workflow.
 - Live deployment and attached multi-instance operator testing are post-completion verification limits, not implementation closeout gates.
 
-- Status: ready for implementation after separate execution authorization.
-- Completed work and evidence: plan revised to remove channel administration, inbox/unread state, cancellation, deadlines, synchronous waits, hidden responses, and an unnecessary second model-facing tool.
-- Next: create the dedicated Onclave task worktree, record actual path/branch, and execute T1 from the module repository root.
+- Status: completed on 2026-09-16.
+- Completed work and evidence: protocol v2 async channels, core persistence/fan-out, Pi adapter inference and activation behavior, obsolete coupling removal, tests, and product documentation were implemented in module commit `3fecffd`. `just check` passed with 265 tests and 1 skip; `just test-integration` passed all 3 broker-backed tests; `git diff --check` passed.
+- Integration: task branch `task/asynchronous-channel-messaging` was fast-forwarded into the recorded target `feature/v2-broker-core` at `3fecffd`. The dotfiles gitlink and this archive are committed together during closeout.
 - Blockers/open decisions: none.
-- Verification limits: no live RabbitMQ, multi-instance channel, attached Pi UI, or model-adherence run occurred during planning.
+- Verification limits: no live deployment, attached multi-instance Pi UI, or model-adherence run was performed; these remain non-blocking operator verification limits.
 
 ## Closeout
 
