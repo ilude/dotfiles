@@ -61,8 +61,8 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
     const initialExplicit = event.reason !== "new" && !restored && inheritedExplicit;
     const commands: string[][] = [];
     if (event.reason === "startup" && !process.env.PI_HERDR_TAB_LABEL) commands.push(["pane", "rename", pane, "Orchestrator"]);
-    // The child establishes its own initial title. Launchers never perform a late rename.
-    if (!restored && !process.env.PI_HERDR_TAB_LABEL) commands.push(["tab", "rename", tab, initialTitle]);
+    // Plugin tab creation has no label option, so the child establishes its initial title.
+    if (!restored) commands.push(["tab", "rename", tab, initialTitle]);
     for (const args of commands) {
       try { await cliFor(pi)(args, { timeoutMs: 2_000 }); }
       catch { /* Label failures are deliberately silent and do not block startup. */ }

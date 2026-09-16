@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-15: Apply plan names to new Herdr tabs
+
+**Fixed:** Launching a plan with `d` in the default Pi `/plans` picker now applies the selected plan stub to the new Herdr tab. Plugin-tab creation cannot set a tab label directly, so child startup now applies the explicit inherited title while preserving the plugin pane label. Use `/reload` before launching another plan from an existing Pi process.
+
 ## 2026-09-15: Compact Pi prompt-template command display
 
 **Changed:** Default Pi profile prompt templates such as `/do-it` and `/summarize` now render in the transcript as only the exact command invocation and its localized start date and time. The expanded prompt remains persisted and model-visible but is no longer shown to the operator.

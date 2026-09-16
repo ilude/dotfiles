@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-044 - `/plans` new-tab launch did not apply the plan title
+
+- **Reference:** Operator report after launching a plan with `/plans` and `d`, 2026-09-15.
+- **Observed:** The plan opened in a new Herdr plugin tab, but the tab did not receive the selected plan stub as its title.
+- **Finding:** The launcher passed the title only as child environment metadata because `herdr plugin pane open` has no tab-label option. Child startup then treated `PI_HERDR_TAB_LABEL` as proof that the launcher had already named the tab and skipped its own rename. Unit tests encoded that incorrect assumption, while the live acceptance test checked focus and prompt delivery but not the resulting title.
+- **Remediation:** Have child startup apply the inherited explicit plan title while preserving the plugin pane label, and cover that command in the lifecycle test.
+- **Related:** APR-020.
+- **Status:** Runtime, regression test, and Herdr documentation corrected. Reload is required for an existing Pi process.
+
 ## APR-043 - One headless retry became a session-wide surface choice
 
 - **Reference:** WSO2 CAC investigation in session `01a09d86-a834-7524-8ab1-6127ce9a1bd9`, 2026-09-15; operator correction after the Herdr identity-failure review.
