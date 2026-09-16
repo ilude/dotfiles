@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-047 - Incompatible Onclave client change closed without coordinated rollout
+
+- **Reference:** Operator report that Onclave showed disconnected immediately after asynchronous-channel-messaging plan execution, 2026-09-16.
+- **Observed:** The local adapter loaded protocol v2 from Onclave commit `3fecffd`, while the deployed core still expected protocol v1. The adapter audit repeatedly recorded `register rejected: protocol_version_mismatch`.
+- **Finding:** The plan explicitly made protocol v1 incompatible, required core and adapters to change together, and said not to deploy mixed versions, but also excluded push, deployment, and live validation while treating them as non-blocking verification limits. Because the profile loads adapter source directly from the checkout, local integration activated v2 immediately and created the mixed-version state the plan prohibited. Offline and broker-backed tests could not detect the stale deployed core.
+- **Remediation:** Repair the immediate incident with an authorized coordinated core rollout or local adapter rollback. Future plans that change a directly loaded client/server compatibility boundary must either include an authorized coordinated rollout, preserve compatibility, or make local activation contingent on the server version; they must not close as operationally complete while knowingly creating a mixed-version runtime.
+- **Related:** AIF-011, APR-035.
+- **Status:** Cause confirmed; rollout or rollback requires operator direction.
+
 ## APR-046 - Four plan tasks were assigned to one developer
 
 - **Reference:** Operator screenshot of asynchronous-channel-messaging plan execution, 2026-09-16.

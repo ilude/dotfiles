@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-16: Resume Pi sessions in new tabs
+
+**Added:** Default Pi `/new-instance --resume <session-uuid> [title]` resumes an exact active-profile session in a new tab using the session's saved cwd. The new `session_launch` tool exposes the same fresh-or-resume behavior to the orchestrator. Herdr launches retain exact-session startup checking; ordinary terminal launches pass the resolved session to the active `pp` profile. Existing `/new-instance [title]` behavior is unchanged. Use `/reload` to activate the command and tool.
+
 ## 2026-09-16: Consolidate Strategist instructions and share prompt-writing guidance
 
 **Changed:** Default Pi Strategist now distinguishes a single bounded worker, straightforward parallel workers, and a Team Lead with a named ongoing coordination or integration responsibility. Consolidating its role and injected guidance reduces the bundled composition, including the role catalog, from 3,887 to 3,273 bytes and 511 to 418 whitespace-delimited words. The one-plan-task ceiling applies to leaf workers, not a Team Lead coordinating several assignments. Existing model-selection constraints, active parallel decomposition, and adaptable advisory output remain intact; no response schema or runtime gate was added.

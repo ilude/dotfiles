@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type CustomEntry, type ExtensionAPI, type ExtensionCommandContext, type Theme } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { SessionManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js";
 import { Text } from "@earendil-works/pi-tui";
 import { activeProfileName } from "../lib/profile.ts";
@@ -90,6 +91,15 @@ function ppCommand(args: string[] = []): string {
 
 function buildPiArgsForSession(sessionFile: string): string[] {
 	return ["--", "--session", extractSessionId(sessionFile)];
+}
+
+export function parseNewInstanceArgs(args: string): { session?: string; title?: string } {
+	const trimmed = args.trim();
+	if (trimmed !== "--resume" && !trimmed.startsWith("--resume ")) return { title: trimmed || undefined };
+	const match = trimmed.match(/^--resume(?:\s+(\S+))?(?:\s+([\s\S]+))?$/);
+	const session = match?.[1];
+	if (!session) throw new Error("Usage: /new-instance --resume <session-uuid> [title]");
+	return { session, title: match?.[2]?.trim() || undefined };
 }
 
 function buildGhosttyPlan(input: { cwd: string; initialInput?: string }): LaunchPlan {
@@ -272,19 +282,39 @@ function isHerdr(): boolean {
 	return process.env.HERDR_ENV === "1";
 }
 
+async function launchNewInstance(input: { cwd: string; title?: string; session?: string; signal?: AbortSignal }): Promise<Record<string, unknown>> {
+	if (input.session) {
+		if (isHerdr()) {
+			const [{ resumeHerdrSession }, { createHerdrCli }] = await Promise.all([import("../lib/herdr-resume.ts"), import("../lib/herdr-cli.ts")]);
+			return resumeHerdrSession(input.session, path.join(getAgentDir(), "sessions"), createHerdrCli(), input.signal, "tab", input.title);
+		}
+		const { resolveResumeSession } = await import("../lib/herdr-resume.ts");
+		const target = await resolveResumeSession(input.session, path.join(getAgentDir(), "sessions"), input.signal);
+		const title = input.title || defaultTitle(target.cwd);
+		const command = ppCommand(buildPiArgsForSession(target.file));
+		const plan = process.platform === "darwin" ? buildGhosttyPlan({ cwd: target.cwd, initialInput: command }) : buildWindowsTerminalPlan({ cwd: target.cwd, title, command });
+		const result = launch(plan);
+		if (!result.launched) throw new Error(result.error ? `Terminal launch failed: ${result.error}` : plan.reason ?? "Terminal launch failed.");
+		return { session: target.session, cwd: target.cwd, title, launched: true };
+	}
+	const title = input.title || defaultTitle(input.cwd);
+	if (isHerdr()) {
+		const receipt = await createHerdrPiTab(input.cwd, title, undefined, undefined, Boolean(input.title));
+		return { ...receipt, cwd: input.cwd, title, launched: true };
+	}
+	const plan = process.platform === "darwin" ? buildGhosttyPlan({ cwd: input.cwd, initialInput: ppCommand() }) : buildWindowsTerminalPlan({ cwd: input.cwd, title, command: ppCommand() });
+	const result = launch(plan);
+	if (!result.launched) throw new Error(result.error ? `Terminal launch failed: ${result.error}` : plan.reason ?? "Terminal launch failed.");
+	return { cwd: input.cwd, title, launched: true };
+}
+
 async function executeNewInstance(args: string, ctx: CommandContext): Promise<void> {
 	const cwd = ctx.cwd ?? process.cwd();
-	const title = args.trim() || defaultTitle(cwd);
-	ctx.ui.notify(isHerdr() ? `Opening new Pi instance in a Herdr tab: ${title}` : `Opening new Pi instance in a new terminal tab: ${title}`, "info");
-	if (isHerdr()) {
-		await createHerdrPiTab(cwd, title, undefined, undefined, Boolean(args.trim()));
-		ctx.ui.notify(`Opened new Pi instance in a Herdr tab: ${title}`, "info");
-		return;
-	}
-	const plan = process.platform === "darwin" ? buildGhosttyPlan({ cwd, initialInput: ppCommand() }) : buildWindowsTerminalPlan({ cwd, title, command: ppCommand() });
-	const result = launch(plan);
-	if (result.launched) ctx.ui.notify(`Opened new Pi instance in a new terminal tab: ${title}`, "info");
-	else ctx.ui.notify(result.error ? `Terminal launch failed: ${result.error}` : plan.reason ?? "Terminal launch failed.", "error");
+	const parsed = parseNewInstanceArgs(args);
+	const action = parsed.session ? `resumed Pi session ${parsed.session}` : "new Pi instance";
+	ctx.ui.notify(`Opening ${action} in ${isHerdr() ? "a Herdr" : "a new terminal"} tab${parsed.title ? `: ${parsed.title}` : ""}`, "info");
+	const receipt = await launchNewInstance({ cwd, ...parsed });
+	ctx.ui.notify(`Opened ${action} in a new tab${typeof receipt.title === "string" ? `: ${receipt.title}` : ""}`, "info");
 }
 
 async function executeNewTerminal(args: string, ctx: CommandContext): Promise<void> {
@@ -348,6 +378,19 @@ async function executeBranch(args: string, ctx: CommandContext, pi: ExtensionAPI
 
 export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 	pi.registerEntryRenderer<BranchEvidence>(BRANCH_EVIDENCE_TYPE, renderBranchEvidence);
+	pi.registerTool({
+		name: "session_launch",
+		label: "Launch Pi session",
+		description: "Open a fresh Pi instance or resume an existing active-profile session UUID in a new tab. Resumed sessions use their saved cwd.",
+		parameters: Type.Object({
+			session: Type.Optional(Type.String({ description: "Existing session UUID; omit for a fresh instance" })),
+			title: Type.Optional(Type.String({ description: "Optional tab title", maxLength: 80 })),
+		}, { additionalProperties: false }),
+		async execute(_id, params, signal, _onUpdate, ctx) {
+			const receipt = await launchNewInstance({ cwd: ctx.cwd, session: params.session, title: params.title?.trim() || undefined, signal });
+			return { content: [{ type: "text", text: JSON.stringify(receipt) }], details: receipt };
+		},
+	});
 	registerProfileCommand(pi, "branch", {
 		description: "Open a branched copy of this Pi session in a new terminal tab",
 		handler: async (args, ctx) => executeBranch(args, ctx, pi),

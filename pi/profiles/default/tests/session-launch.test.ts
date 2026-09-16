@@ -1,10 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { execFile, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js";
-import register, { createHerdrPiTab, HerdrPiTabLaunchError } from "../extensions/session-launch.ts";
+import register, { createHerdrPiTab, HerdrPiTabLaunchError, parseNewInstanceArgs } from "../extensions/session-launch.ts";
 
 vi.mock("node:child_process", () => ({ execFile: vi.fn(), spawnSync: vi.fn() }));
 
@@ -20,9 +20,11 @@ function fixture() {
 	vi.stubEnv("HERDR_ENV", "1");
 	vi.stubEnv("HERDR_WORKSPACE_ID", "w9");
 	const commands: Record<string, any> = {};
+	const tools: Record<string, any> = {};
 	register({
 		registerCommand(n: string, c: any) { commands[n] = c; },
 		registerEntryRenderer() {},
+		registerTool(tool: any) { tools[tool.name] = tool; },
 	} as any);
 	const ctx = {
 		cwd: process.cwd(), ui: { notify: vi.fn() },
@@ -42,7 +44,7 @@ function fixture() {
 		stdout: args[1] === "create" ? JSON.stringify({ result: { root_pane: { pane_id: "w9:p4" } } }) : "",
 		stderr: "",
 	}) as any);
-	return { commands, ctx };
+	return { commands, tools, ctx };
 }
 
 function realBranchFixture() {
@@ -62,6 +64,7 @@ function realBranchFixture() {
 	const pi = {
 		registerCommand(n: string, c: any) { commands[n] = c; },
 		registerEntryRenderer(n: string, renderer: any) { renderers[n] = renderer; },
+		registerTool() {},
 		appendEntry(type: string, data: unknown) { parent.appendCustomEntry(type, data); },
 	};
 	register(pi as any);
@@ -77,6 +80,41 @@ function realBranchFixture() {
 	});
 	return { commands, ctx, parent, renderers };
 }
+
+it("parses fresh and resumed new-instance arguments", () => {
+	expect(parseNewInstanceArgs("")).toEqual({});
+	expect(parseNewInstanceArgs("review work")).toEqual({ title: "review work" });
+	expect(parseNewInstanceArgs("--resume-notes")).toEqual({ title: "--resume-notes" });
+	expect(parseNewInstanceArgs("--resume 01a0aab6-5334-72a3-bc6e-79cfb0a2a2ee resumed work")).toEqual({
+		session: "01a0aab6-5334-72a3-bc6e-79cfb0a2a2ee",
+		title: "resumed work",
+	});
+	expect(() => parseNewInstanceArgs("--resume")).toThrow("Usage:");
+});
+
+it("launches an exact active-profile session from the tool using its saved cwd", async () => {
+	vi.unstubAllEnvs();
+	const root = mkdtempSync(join(tmpdir(), "session-launch-resume-"));
+	roots.push(root);
+	vi.stubEnv("PI_CODING_AGENT_DIR", root);
+	const savedCwd = join(root, "saved-project");
+	const sessions = join(root, "sessions", "--saved-project--");
+	mkdirSync(sessions, { recursive: true });
+	const session = "01a0aab6-5334-72a3-bc6e-79cfb0a2a2ee";
+	writeFileSync(join(sessions, `2026-09-16T00-00-00-000Z_${session}.jsonl`), `${JSON.stringify({ type: "session", version: 3, id: session, cwd: savedCwd })}\n`);
+	const { tools } = fixture();
+	vi.unstubAllEnvs();
+	vi.stubEnv("PI_CODING_AGENT_DIR", root);
+	vi.stubEnv("HERDR_ENV", "0");
+	vi.mocked(spawnSync).mockReturnValue({ status: 0 } as any);
+
+	const result = await tools.session_launch.execute("call", { session, title: "resumed" }, undefined, undefined, { cwd: process.cwd() });
+
+	expect(result.details).toMatchObject({ session, cwd: savedCwd, title: "resumed", launched: true });
+	const args = vi.mocked(spawnSync).mock.calls[0]?.[1] as string[];
+	expect(args).toContain(savedCwd);
+	expect(args.join(" ")).toContain(session);
+});
 
 it("awaits delayed plugin open, passes title ownership, focuses the exact tab, and leaves child title initialization authoritative", async () => {
 	const { commands, ctx } = fixture();
@@ -106,8 +144,9 @@ it("branches through an independent real manager and persists reciprocal visible
 	const { commands, ctx, parent, renderers } = realBranchFixture();
 	const parentId = parent.getSessionId();
 	const parentFile = parent.getSessionFile()!;
+	const pendingBranch = commands.branch.handler("branch", ctx);
 	const branchPoint = parent.getLeafEntry()!;
-	await commands.branch.handler("branch", ctx);
+	await pendingBranch;
 	const branchOpen = vi.mocked(execFile).mock.calls.find(call => (call[1] as string[])[0] === "plugin")![1] as string[];
 
 	expect(parent.getSessionId()).toBe(parentId);

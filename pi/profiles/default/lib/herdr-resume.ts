@@ -24,10 +24,10 @@ export async function resolveResumeSession(session: string, sessionsRoot: string
 }
 
 /** Resume without shell input. A partial launch is returned, never retried. */
-export async function resumeHerdrSession(session: string, sessionsRoot: string, cli: HerdrCli, signal?: AbortSignal, placement: "tab" | "workspace" = "tab") {
+export async function resumeHerdrSession(session: string, sessionsRoot: string, cli: HerdrCli, signal?: AbortSignal, placement: "tab" | "workspace" = "tab", requestedTitle?: string) {
   const target = await resolveResumeSession(session, sessionsRoot, signal);
   signal?.throwIfAborted();
-  const title = basename(target.cwd.replace(/[\\/]$/, "")) || "pi";
+  const title = requestedTitle?.trim() || basename(target.cwd.replace(/[\\/]$/, "")) || "pi";
   let workspace: string | undefined;
   let rootPane: string | undefined;
   if (placement === "workspace") {
