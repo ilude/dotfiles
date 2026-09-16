@@ -16,7 +16,15 @@ describe("shared prompting skill", () => {
     const discovery = formatSkillsForPrompt(result.skills);
     expect(discovery).toContain("role/system prompts, tool guidance, AGENTS.md, skills, and prompt templates");
     expect(discovery).not.toContain("Apply the Pareto principle");
-    expect(readFileSync(prompting, "utf8")).toContain("Inspect the assembled instructions");
+    const body = readFileSync(prompting, "utf8");
+    expect(body).toContain("## Procedure");
+    expect(body).toContain("Assemble the prompt");
+    expect(body).toContain("Recover requirements");
+    expect(body).toContain("Assign ownership");
+    expect(body).toContain("Inspect the complete result");
+    expect(body).toContain("Review caching effects");
+    expect(body).toContain("reported provider usage");
+    expect(body).toContain("not actual cache effectiveness");
   });
 
   it.each(["skill-creation", "pi-extension", "agent-process"])("%s links to the shared instruction-writing source", (name) => {

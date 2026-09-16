@@ -14,11 +14,11 @@ Delegate only for bounded implementation, parallel investigation, specialist res
 
 After review findings or an unexpected agreed check or deployment outcome, consult \`subagent\` with \`agent: "steward"\` before a follow-up fix or another MR, build, or deploy cycle. Handle directly only corrections proved by the evidence. Reuse advice for the same finding; consult again when the finding or proposed fix changes. Agent advice is not an approval gate.
 
-Assign at most one named plan task per leaf worker; split larger tasks further. Run ready independent assignments concurrently with disjoint write ownership. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
+Assign at most one named plan task per subagent; split larger tasks further. Run ready independent assignments concurrently with disjoint write ownership. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
 
 const COMMON_COORDINATOR_GUIDANCE = `## Delegation guidance
 
-Assign at most one named plan task per leaf worker; split larger tasks into independently verifiable outcomes. A Team Lead may coordinate several assignments. Seek useful parallel work with disjoint write ownership; listed order is not dependency order. Separate shared prerequisites from implementation: consumers need their specific interface or result, not unrelated producer work. Mark task splits or dependency corrections as proposals, not settled plan changes.`;
+Assign at most one named plan task per subagent; split larger tasks into independently verifiable outcomes. A Team Lead may coordinate several assignments. Seek useful parallel work with disjoint write ownership; listed order is not dependency order. Separate shared prerequisites from implementation: consumers need their specific interface or result, not unrelated producer work. Mark task splits or dependency corrections as proposals, not settled plan changes.`;
 
 const STRATEGIST_GUIDANCE = `${COMMON_COORDINATOR_GUIDANCE}
 
@@ -26,9 +26,13 @@ Recommend direct execution when delegation adds no value, one worker for a bound
 
 Use catalog defaults unless evidence warrants an override. Luna low/medium/high fits well-defined work; Luna xhigh or Sol low fits unresolved choices or interacting interfaces. Astra low is for cross-system decisions, competing interpretations, or repeated failed assignments. Luna Strategist requires at least high effort. Steward uses Luna high/xhigh; Sol or Astra for Steward requires prior user approval. Astra above high is user-selected only.`;
 
-const TEAMLEAD_GUIDANCE = `${COMMON_COORDINATOR_GUIDANCE}
+const TEAMLEAD_GUIDANCE = `## Steward
 
-Coordinate permitted leaves and integrate their evidence. After review findings or an unexpected agreed check or deployment outcome, consult Steward before a follow-up fix or another MR, build, or deploy cycle. Handle directly only corrections proved by the evidence. Reuse advice for the same finding; consult again when the finding or proposed fix changes. Steward uses Luna high or xhigh; Sol or Astra for Steward requires prior user approval. After an unsuccessful worker result, inspect the result and prerequisites first. One stronger-family retry of the same bounded assignment is allowed when the worker had required inputs and working tools but could not solve it: Luna to Sol, or Sol to Astra. Carry the evidence forward, do not chain retries, and tell the parent when you use one. Crashes, timeouts, missing prerequisites, environment or tool failures, and unresolved user decisions do not justify a stronger model.`;
+After a review finding or unexpected agreed check or deployment outcome, consult a Steward before commissioning a follow-up correction or another merge request, build, or deployment cycle. Reuse its advice while the finding and proposed response remain unchanged; consult again when either changes. Steward advice is advisory. Use Luna high or xhigh for Steward.
+
+## Unsuccessful assignments
+
+Inspect the subagent's evidence and prerequisites before retrying. Retry the same bounded assignment once with the next model family only when the subagent had the required inputs and functioning tools but could not solve it: Luna to Sol, or Sol to Astra. Carry the evidence into the retry and report the escalation to the parent. For crashes, timeouts, missing prerequisites, environment or tool failures, and unresolved user decisions, address the cause or ask the parent instead of changing models.`;
 
 const COUNCIL_GUIDANCE = `## Council guidance
 
@@ -48,14 +52,18 @@ export function delegationContext(options: DelegationContextOptions): string {
   const entries = catalogEntries(options.definitions, options.permitted);
   const catalog = options.audience === "strategist"
     ? "## Recommendation options\nRecommend only among roles the caller may dispatch. Seeing this catalog grants you no dispatch authority."
-    : "## Available agent roles\nCatalog visibility does not grant dispatch permission. Councils remain explicit-user-request only.";
+    : options.audience === "teamlead"
+      ? "## Permitted subagent roles\nOnly the listed roles may be commissioned."
+      : "## Available agent roles\nCatalog visibility does not grant dispatch permission. Councils remain explicit-user-request only.";
   const guidance = options.audience === "strategist"
     ? STRATEGIST_GUIDANCE
-    : options.audience === "teamlead" || options.audience === "coordinator"
+    : options.audience === "teamlead"
       ? TEAMLEAD_GUIDANCE
-      : options.audience === "council"
-        ? COUNCIL_GUIDANCE
-        : CALLER_GUIDANCE;
+      : options.audience === "coordinator"
+        ? COMMON_COORDINATOR_GUIDANCE
+        : options.audience === "council"
+          ? COUNCIL_GUIDANCE
+          : CALLER_GUIDANCE;
   return `${guidance}\n\n${catalog}\n${entries || "- none"}`;
 }
 

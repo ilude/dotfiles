@@ -149,7 +149,7 @@ export class SubagentRuntime {
    if(!context.input.definition.tools.includes("subagent")||!context.input.definition.delegates.includes(payload.agent))throw new Error("Delegation is outside frozen authority");
    if(!child.record.sessionId)throw new Error("Delegating parent session identity unavailable");
    const definition=context.catalog.get(payload.agent);
-   if(!definition||definition.delegates.length)throw new Error("Only permitted leaf definitions may be commissioned");
+   if(!definition||definition.delegates.length)throw new Error("Only permitted subagent definitions may be commissioned");
    for(const key of ["cwd","model","effort"] as const)if(payload[key]!==undefined&&typeof payload[key]!=="string")throw new Error(`Invalid ${key}`);
    if(payload.effort!==undefined&&!EFFORTS.includes(payload.effort as AgentEffort))throw new Error("Invalid effort");
    if(payload.surface!==undefined&&payload.surface!=="visible"&&payload.surface!=="headless")throw new Error("Invalid surface");

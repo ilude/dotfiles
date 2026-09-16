@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-16: Make Pi prompt reviews composition-first and cache-aware
+
+**Changed:** The default-profile prompting skill now follows an ordered whole-prompt procedure: assemble each audience-visible composition, recover the purpose of existing instructions, assign each behavior to one owning layer, rewrite and inspect the complete result, review caching effects, then validate and report evidence limits. This replaces an unordered checklist that did not reliably prevent incremental fragment editing.
+
+**Changed:** Cache review now distinguishes always-visible, conditional, and assignment-specific content; checks deterministic composition and stable-prefix disruption; and requires representative provider usage before claiming actual cache improvement or regression. Static byte counts and prefix analysis remain evidence about cacheability conditions rather than observed effectiveness.
+
+**Preserved:** Prompt changes still favor concise positive instructions, progressive disclosure, behavior preservation, audience-specific ownership, and representative checks. The skill remains on demand, and its unchanged discovery description keeps the always-visible skill catalog stable.
+
+## 2026-09-16: Unify the Pi Team Lead workflow and repository context
+
+**Changed:** Default-profile Team Leads now begin with Strategist decomposition, commission additional subagents for substantive work, coordinate no more than eight active subagents, reconsult Strategist when evidence invalidates the decomposition, and integrate the results. Steward consultation and evidence-based retry behavior remain available as concise follow-up sections rather than sharing Strategist-owned decomposition instructions. Model-facing coordinator terminology now consistently uses “subagent.”
+
+**Changed:** Team Leads load the applicable global and repository `AGENTS.md` context plus the normal discoverable skill catalog. This lets them apply repository boundaries and select relevant guidance while coordinating and integrating work.
+
+**Preserved:** The one-plan-task boundary, parallelism, dependency analysis, role/model selection, and completion-evidence requirements remain owned by Strategist guidance. Steward still interrupts finding-driven correction churn, and stronger-family retries still require a bounded failed assignment with working inputs and tools. Other subagent roles retain isolated context and skill loading. Team Lead tools, permitted roles, prompt templates, themes, extensions, and frozen runtime authority are unchanged.
+
 ## 2026-09-16: Reuse default-profile Pi subagent names safely
 
 **Changed:** Default-profile subagents now draw from 64 unique first names, then the existing surname and numeric-suffix overflow. Names are reusable after assignment settlement and successful owned-resource cleanup, while retained or user-owned children keep their reservations. Explicit `finish` and `cancel` release after cleanup without waiting for result acknowledgement.

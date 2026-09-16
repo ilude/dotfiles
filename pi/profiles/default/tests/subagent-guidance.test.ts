@@ -56,7 +56,7 @@ describe("delegation guidance", () => {
     expect(text).toContain("corrections proved by the evidence");
     // Keep caller context compact; detailed decomposition belongs to selected coordinators.
     expect(guidance.length).toBeLessThan(1000);
-    expect(text).toContain("at most one named plan task per leaf worker");
+    expect(text).toContain("at most one named plan task per subagent");
     expect(text).toContain("Run ready independent assignments concurrently");
     expect(text).not.toContain("Mark task splits or dependency corrections");
     expect(text).not.toContain("Steward uses Luna high or xhigh");
@@ -64,10 +64,10 @@ describe("delegation guidance", () => {
     expect(text).not.toContain("Use Sol low for Strategist");
   });
 
-  it("gives selected coordinators active decomposition and result-based dependency guidance", () => {
-    for (const role of [strategist, teamlead, coordinator]) {
+  it("gives Strategists and generic coordinators active decomposition guidance", () => {
+    for (const role of [strategist, coordinator]) {
       const text = composedAgentPrompt(role, definitions, ["leaf"]);
-      expect(text).toContain("at most one named plan task per leaf worker");
+      expect(text).toContain("at most one named plan task per subagent");
       expect(text).toContain("split larger tasks into independently verifiable outcomes");
       expect(text).toContain("A Team Lead may coordinate several assignments");
       expect(text).toContain("Seek useful parallel work");
@@ -91,14 +91,28 @@ describe("delegation guidance", () => {
     expect(text).not.toContain("One stronger-family retry");
   });
 
-  it("gives Team Lead concrete Steward and retry guidance without Strategist or Council policy", () => {
-    const text = composedAgentPrompt(teamlead, definitions);
-    expect(text).toContain("Coordinate permitted leaves");
-    expect(text).toContain("unexpected agreed check or deployment outcome");
-    expect(text).toContain("consult Steward");
-    expect(text).toContain("another MR, build, or deploy cycle");
-    expect(text).toContain("One stronger-family retry");
+  it("gives Team Lead its complete workflow, Steward trigger, and retry policy without Strategist-owned decomposition guidance", () => {
+    const profile = fileURLToPath(new URL("../", import.meta.url));
+    const catalog = loadDefinitions(profile, false, profile);
+    expect(catalog.errors).toEqual([]);
+    const role = catalog.agents.get("teamlead");
+    if (!role) throw new Error("Missing bundled Team Lead");
+    const text = composedAgentPrompt(role, catalog.agents);
+    expect(Buffer.byteLength(text)).toBeLessThan(3000);
+    expect(text).toContain("Commission a Strategist");
+    expect(text).toContain("one or more additional subagents");
+    expect(text).toContain("consult the Strategist again");
+    expect(text).toContain("no more than eight active subagents");
+    expect(text).toContain("## Steward");
+    expect(text).toContain("consult a Steward");
+    expect(text).toContain("Use Luna high or xhigh for Steward");
+    expect(text).toContain("## Unsuccessful assignments");
+    expect(text).toContain("Retry the same bounded assignment once");
+    expect(text).toContain("## Permitted subagent roles");
+    expect(text).not.toContain("at most one named plan task per subagent");
+    expect(text).not.toContain("A Team Lead may coordinate several assignments");
     expect(text).not.toContain("Use Sol low for Strategist");
+    expect(text).not.toContain("Sol or Astra for Steward");
     expect(text).not.toContain("independent openings");
   });
 

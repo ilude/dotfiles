@@ -20,6 +20,20 @@ describe("subagent launch prompt", () => {
     expect(launch.args).toContain(join(process.cwd(), "extensions", "session-profile.ts"));
   });
 
+  it("loads context files and discoverable skills only for Team Leads", () => {
+    const ordinary = childLaunch(spec("headless"), "ordinary", process.cwd());
+    const teamlead = childLaunch({
+      ...spec("headless"),
+      definition: { ...definition, name: "teamlead", delegates: ["probe"] },
+    }, "teamlead", process.cwd());
+
+    expect(ordinary.args).toEqual(expect.arrayContaining(["--no-context-files", "--no-skills"]));
+    expect(teamlead.args).not.toContain("--no-context-files");
+    expect(teamlead.args).not.toContain("--no-skills");
+    expect(teamlead.args).toContain("--no-extensions");
+    expect(teamlead.args).toEqual(expect.arrayContaining(["--no-prompt-templates", "--no-themes"]));
+  });
+
   it("keeps the system prompt independent of assignments and runtime launch values", () => {
     const first = childLaunch(spec("headless"), "child-one", process.cwd());
     const changed = childLaunch({ ...spec("visible"), instructions: "different assignment", cwd: join(process.cwd(), "other"), origin: "other-origin", parentId: "parent-two", retained: true }, "child-two", process.cwd());
