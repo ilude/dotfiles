@@ -37,11 +37,17 @@ reopening them.
    one with reasons, and ask a focused question. Handle routine technical details
    using judgment. Recommendations do not become requirements until agreed. Do not
    call a plan ready while a consequential decision remains open.
-4. Write ordered Markdown checkboxes with concrete changes, dependencies, relevant
-   paths or contracts, finite checks, and observable done conditions. Include only
-   context needed to restart. Label paths repository-root-relative and future files
-   as proposed. Do not invent optional work, rollback tasks, exhaustive contingencies,
-   approval gates, or manual acceptance requirements.
+4. Write named Markdown checkbox tasks with concrete changes, dependencies, relevant
+   paths or contracts, finite checks, and observable done conditions. Shape tasks as
+   independently assignable outcomes: separate shared prerequisites from parallel
+   implementation, identify disjoint write ownership, and name the specific result
+   each dependency supplies. Task order alone is not a dependency. Where a consumer
+   needs only an established interface, separate that prerequisite from the producer's
+   remaining implementation. Show useful concurrent groups without manufacturing
+   extra work or splitting tightly coupled changes merely to increase agent count.
+   Include only context needed to restart. Label paths repository-root-relative and
+   future files as proposed. Do not invent optional work, rollback tasks, exhaustive
+   contingencies, approval gates, or manual acceptance requirements.
 5. Record authorization and preservation constraints. Execution normally includes
    dedicated task worktrees, local task commits, and merge into a recorded target;
    push and deployment require separate permission. Plans must tell the executor to

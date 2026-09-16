@@ -14,11 +14,11 @@ Delegate only for bounded implementation, parallel investigation, specialist res
 
 After review findings or an unexpected agreed check or deployment outcome, consult \`subagent\` with \`agent: "steward"\` before a follow-up fix or another MR, build, or deploy cycle. Handle directly only corrections proved by the evidence. Reuse advice for the same finding; consult again when the finding or proposed fix changes. Agent advice is not an approval gate.
 
-Use small assignments. Incorporate prerequisite results before dependent work; independent work may run in parallel. Ask the user only when competing interpretations change behavior, scope, or acceptance.`;
+Assign at most one named plan task per worker; split larger tasks further. Run ready independent assignments concurrently with disjoint write ownership. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
 
 const COMMON_COORDINATOR_GUIDANCE = `## Delegation guidance
 
-Use small assignments split by responsibility. Inspect and incorporate prerequisite results before launching dependent work. Independent reads and disjoint writes may run in parallel. Base worker selection on the named outcome and checks, available inputs, interfaces, unresolved choices, and observed failures.`;
+Assign at most one named plan task per worker; split larger tasks by independently verifiable responsibility. Actively find useful parallel work rather than treating listed task order as dependencies. Separate shared prerequisites from independent implementation and define disjoint write ownership. Incorporate the specific interface or result a consumer needs before launching it; unrelated producer work need not block it. Recommend task splits or dependency corrections where the plan unnecessarily serializes work, clearly distinguishing proposals from the current plan. Base worker selection on the named outcome and checks, available inputs, interfaces, unresolved choices, and observed failures.`;
 
 const STRATEGIST_GUIDANCE = `${COMMON_COORDINATOR_GUIDANCE}
 

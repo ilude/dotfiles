@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-046 - Four plan tasks were assigned to one developer
+
+- **Reference:** Operator screenshot of asynchronous-channel-messaging plan execution, 2026-09-16.
+- **Observed:** The screenshot shows the orchestrator creating one Onclave worktree and launching one developer with “Implement T1-T4 and focused tests,” then waiting on that single broad assignment for more than 46 minutes. Strategist's actual recommendation was not recovered in this review.
+- **Finding:** T1, T2, T3, and T4 were named plan-task boundaries and the operator expects separate implementation subagents. The injected phrases “Use small assignments” and “split by responsibility” did not produce the intended decomposition. This repeats the assignment-sizing pattern in APR-020. Documentation mentions one plan task per worker, but the inspected caller/coordinator prompts did not state it explicitly.
+- **Remediation:** AIF-061 and AIF-062 implement the approved one-task ceiling, active parallel decomposition, result-based dependencies, and adaptable structured advice. No runtime enforcement or existing-plan rewrite was added.
+- **Related:** AIF-027, AIF-061, AIF-062, APR-020.
+- **Status:** Instruction correction implemented locally; future model behavior remains unverified.
+
 ## APR-045 - `/new-instance` was injected into model context
 
 - **Reference:** Operator correction after `/new-instance` interrupted plan execution, 2026-09-15.

@@ -53,10 +53,26 @@ describe("delegation guidance", () => {
     expect(text).toContain("unexpected agreed check or deployment outcome");
     expect(text).toContain("another MR, build, or deploy cycle");
     expect(text).toContain("corrections proved by the evidence");
-    expect(guidance.length).toBeLessThan(900);
+    // Keep caller context compact; detailed decomposition belongs to selected coordinators.
+    expect(guidance.length).toBeLessThan(1000);
+    expect(text).toContain("at most one named plan task per worker");
+    expect(text).toContain("Run ready independent assignments concurrently");
+    expect(text).not.toContain("Recommend task splits or dependency corrections");
     expect(text).not.toContain("Steward uses Luna high or xhigh");
     expect(text).not.toContain("One automatic stronger-family retry");
     expect(text).not.toContain("Use Sol low for Strategist");
+  });
+
+  it("gives selected coordinators active decomposition and result-based dependency guidance", () => {
+    for (const role of [strategist, teamlead, coordinator]) {
+      const text = composedAgentPrompt(role, definitions, ["leaf"]);
+      expect(text).toContain("at most one named plan task per worker");
+      expect(text).toContain("split larger tasks by independently verifiable responsibility");
+      expect(text).toContain("Actively find useful parallel work");
+      expect(text).toContain("disjoint write ownership");
+      expect(text).toContain("unrelated producer work need not block it");
+      expect(text).toContain("clearly distinguishing proposals from the current plan");
+    }
   });
 
   it("gives Strategist detailed selection advice without follow-up or retry policy", () => {

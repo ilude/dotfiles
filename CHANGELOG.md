@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-16: Make Pi delegation smaller and actively parallel
+
+**Changed:** Default Pi delegation guidance assigns at most one named plan task per worker and permits further decomposition. Strategist and coordinators now look for useful parallel work, separate shared prerequisites from independent implementation, and identify write ownership and the actual result each dependent task needs. The planning skill and template expose these boundaries when tasks are authored instead of defaulting to serial chains.
+
+**Preserved:** Strategist returns adaptable prose organized around work ready now, prerequisite-dependent work, and parent-owned actions. The parent retains dispatch and integration judgment; proposed plan changes remain proposals. No response schema, runtime gate, approval step, or automatic scheduler was added. Existing plans and running workers are unchanged. Use `/reload` once subagents have settled to load the updated guidance; new children receive the updated role prompt.
+
 ## 2026-09-15: Keep Pi interface commands out of model context
 
 **Fixed:** Default-profile interface commands such as `/new-instance` now record their visible invocation as a TUI-only session entry instead of a custom model-visible message. Running `/new-instance` opens the requested tab without steering the current agent or making it interpret the command as a request to stop or prepare a handoff. The Pi extension skill now preserves this interface-only versus prompt-backed command distinction for future extensions. Use `/reload` to activate the change.

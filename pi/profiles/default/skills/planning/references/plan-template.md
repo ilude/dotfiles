@@ -61,8 +61,9 @@ demonstrated task-relevant failures and stop testing when the finite agreed chec
 ## Tasks
 
 - [ ] **T1: <specific outcome>**
-  - Depends on: <none or task IDs>.
-  - Files/inputs: <existing or proposed paths>.
+  - Depends on: <none or task IDs and the specific prerequisite result>.
+  - Parallel with: <independent task IDs, if useful; omit otherwise>.
+  - Files/inputs: <existing or proposed paths; write ownership for parallel tasks>.
   - Change: <bounded work and any contract consumed later>.
   - Verify: <command and cwd, or exact comparison>.
   - Done when: <observable result>.

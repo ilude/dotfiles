@@ -1,5 +1,24 @@
 # Agent instruction feedback log
 
+## AIF-062 - Make Strategist actively expose parallel execution waves
+
+- **Reference:** Operator follow-up to AIF-061, 2026-09-16.
+- **Feedback:** Delegation advice is not putting enough effort into finding work that can run in parallel. Avoid treating a plan's listed order as an implicit serial dependency chain.
+- **Finding:** Active guidance merely permits independent work to run in parallel. It does not require Strategist to inspect explicit dependencies, identify all currently ready tasks, detect unnecessarily coupled task boundaries, or present execution waves. In the asynchronous-channel plan, T1-T4 are explicitly serial, so execution guidance alone cannot make those four implementation tasks parallel without revising the plan boundaries or dependencies.
+- **Decision:** With operator approval, replace passive parallelism guidance with active decomposition in Strategist/coordinator context and the planning skill/template. Separate shared prerequisites from independent implementation; identify useful concurrent assignments, write ownership, and exact prerequisite results. Recommend corrections to unnecessary plan dependencies without silently changing settled intent. Do not manufacture assignments merely to increase concurrency.
+- **Output clarification:** Strategist advice uses Start now, Start after prerequisites, and Parent-owned actions, omitting empty sections. Each assignment identifies its outcome, role/model/effort, ownership, and completion evidence. This is adaptable prose, not a parsed schema, runtime gate, approval step, or mandatory ceremony. The parent owns dispatch and integration.
+- **Related:** AIF-061, AIF-027, APR-046.
+- **Status:** Approved guidance implemented locally. Existing plans and running workers remain unchanged; behavioral effectiveness remains unverified.
+
+## AIF-061 - Assign one plan task per implementation subagent
+
+- **Reference:** Operator correction after the asynchronous-channel-messaging plan launch, 2026-09-16.
+- **Feedback:** When a plan has tasks T1 through T4, each task should be assigned to its own subagent. One developer receiving “Implement T1-T4” is not sufficiently decomposed.
+- **Finding:** The active injected guidance says only “Use small assignments” and “split by responsibility.” The screenshot establishes the orchestrator's combined assignment, not Strategist's actual recommendation. AIF-027 had already recommended one task section per worker, and subagent documentation mentions it, but the inspected caller/coordinator prompts do not carry that explicit boundary.
+- **Decision:** With operator approval, replace the ambiguous wording in caller, Strategist, and coordinator guidance with at most one named plan task per worker, allowing large tasks to be split further. Integrate prerequisite results before dependent work and run ready independent assignments concurrently with disjoint write ownership. Preserve direct execution for work that does not benefit from delegation.
+- **Related:** AIF-027, AIF-062, APR-020, APR-046.
+- **Status:** Approved guidance implemented locally. New child prompts and refreshed caller context carry the rule; future adherence remains unverified.
+
 ## AIF-060 - Keep interface-command acknowledgments out of model context
 
 - **Reference:** Operator correction after `/new-instance` interrupted plan execution, 2026-09-15.
