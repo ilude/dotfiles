@@ -84,6 +84,31 @@ it("detects resource additions and deletions regardless of their timestamps", ()
 	expect(service.needed).toBe(true);
 });
 
+it("watches skill definitions but ignores support files that reload does not load", () => {
+	const skill = join(dir, "skills", "example");
+	mkdirSync(join(skill, "references"), { recursive: true });
+	writeFileSync(join(skill, "SKILL.md"), "before");
+	const reference = join(skill, "references", "notes.md");
+	writeFileSync(reference, "before");
+	service.start(scope(), vi.fn());
+	writeFileSync(reference, "after");
+	vi.advanceTimersByTime(2000);
+	expect(service.needed).toBe(false);
+	writeFileSync(join(skill, "SKILL.md"), "after");
+	vi.advanceTimersByTime(2000);
+	expect(service.needed).toBe(true);
+});
+
+it("detects a newly discovered nested skill", () => {
+	mkdirSync(join(dir, "skills"));
+	service.start(scope(), vi.fn());
+	const skill = join(dir, "skills", "new-skill");
+	mkdirSync(skill);
+	writeFileSync(join(skill, "SKILL.md"), "new");
+	vi.advanceTimersByTime(2000);
+	expect(service.needed).toBe(true);
+});
+
 it("reports initialization errors once and clears them after a successful reset", () => {
 	writeFileSync(join(dir, "settings.json"), "invalid JSON");
 	const report = vi.fn(); service.start(scope(), report);

@@ -115,7 +115,14 @@ export function reloadSnapshot(roots: string[]): Map<string, string> {
 		if (visited.has(real)) return;
 		visited.add(real);
 		if (stat.isDirectory()) {
-			for (const entry of fs.readdirSync(file).sort()) visit(path.join(file, entry));
+			const entries = fs.readdirSync(file).sort();
+			// Pi stops skill discovery at SKILL.md. Supporting files are read directly
+			// when a skill asks for them, so changing them does not require a reload.
+			if (entries.includes("SKILL.md")) {
+				visit(path.join(file, "SKILL.md"));
+				return;
+			}
+			for (const entry of entries) visit(path.join(file, entry));
 		} else if (stat.isFile()) {
 			snapshot.set(real, resourceFingerprint(file));
 		}

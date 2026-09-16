@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-16: Limit Pi reload notices to reloadable skill files
+
+**Fixed:** The default-profile reload monitor now watches each discovered skill's `SKILL.md` definition without treating edits to its supporting references as pending runtime changes. Pi reads those supporting files directly when a skill requests them, so `/reload` does not affect their contents. Adding or removing skills and changing `SKILL.md` still requests reload; extension, prompt, theme, context, settings, command, tool, and library monitoring is unchanged.
+
 ## 2026-09-16: Persist automatic Pi subagent session lineage
 
 **Added:** Default Pi subagents automatically record their role, immediate parent session ID, and root orchestrator session ID as metadata-only entries in native session JSONL. Nested delegation derives its parent from authenticated runtime state, without new model-facing launch parameters. The deferred `log_analytics` tool exposes `session_lineage` to find recorded ancestors and descendants after a session is found through ordinary history search.
