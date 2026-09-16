@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-15: Compact Pi prompt-template command display
+
+**Changed:** Default Pi profile prompt templates such as `/do-it` and `/summarize` now render in the transcript as only the exact command invocation and its localized start date and time. The expanded prompt remains persisted and model-visible but is no longer shown to the operator.
+
 ## 2026-09-14: Remove the unsupported Pi commit whitespace gate
 
 **Removed:** Default Pi `/commit` no longer runs `git diff --check`, rewrites trailing whitespace, or rejects commits for other whitespace diagnostics. The general commit workflow had imposed those mutations and acceptance conditions without a repository requirement or demonstrated need.

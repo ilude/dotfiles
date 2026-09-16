@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-059 - Make Onclave outbound and automatic-reply behavior explicit
+
+- **Reference:** Operator review after an instance manually replied to an inbound Onclave ask with an invalid `inform` plus `task_id`, 2026-09-15.
+- **Feedback:** The interface is confusing because one flat `onclave_message` schema combines three outbound modes while inbound asks and requests are answered automatically from the normal assistant final response. Inbound framing prominently exposes task metadata without saying not to echo it, and field applicability is enforced only after an invalid call.
+- **Finding:** The failed instance did not merely choose an invalid field combination; it used the outbound tool for a response the adapter already publishes automatically after the turn settles. Current tool guidance covers authority but not this lifecycle. Documentation defines the behavior, but that text is not present at the model decision point. Validation also accepts `timeout_ms` for asynchronous `request` even though execution ignores it and documentation defines timeout as ask-only.
+- **Recommendation:** Preserve automatic replies. Add concise inbound framing that says to answer normally and not call `onclave_message`; add a message-type/field table to tool-owned guidance and conditional field descriptions; reject request timeouts consistently. Keep runtime validation. Consider separate outbound tools only if clearer guidance remains insufficient, since a larger tool surface is not yet justified.
+- **Related:** TCA-004, AIF-032, AIF-035.
+- **Status:** Feedback recorded; implementation requires operator approval.
+
 ## AIF-059 - Keep investigation purpose intact across long plans
 
 - **Reference:** Operator plan walkthrough request, 2026-09-15.
