@@ -15,7 +15,7 @@ description: Analyze existing Pi sessions and usage records across default, lega
 
 ### Targeted lookup and examples
 
-Narrow by known project, profile, or exact session and stop when enough examples answer the question:
+Narrow by known project, profile, or exact session and stop when enough examples answer the question. Retain every operator-supplied location and time bound across retries and cursor pages. Use `cwd` for one exact checkout or `repository` to include that checkout and its linked Git worktrees; they are mutually exclusive and normalize platform-equivalent path spellings:
 
 ```json
 {"operation":"search","profiles":["default"],"cwd":"/exact/project/path","filters":{"text":"needle","messageRoles":["user"]},"maxResults":20}
@@ -55,7 +55,7 @@ Use standard execution for small exact-session SQL. If a resource limit fails, r
 
 ## Discovery and continuation semantics
 
-`sessions` reads only bounded native headers (64 KiB per header), never transcript bodies. Its `cwd` is an exact stored header string, not a path to read; returned `ref` values contain the native session ID and opaque file discriminator. Follow its `nextCursor` with identical filters. `sessionRefs` from discovery reduce staging but directory/header discovery still occurs. `search` reads JSONL incrementally with 64 KiB buffers, an 8 MiB or 10,000-record page boundary, at most 100 matches and 16 MiB physical records. It reports selected/examined files, bytes and records, remaining files, malformed/oversized records, timestamp gaps, exclusions, captured byte horizons, and inventory changes. `complete:true` means selected readable input was traversed, with exclusions disclosed; it is not a semantic-review claim.
+`sessions` reads only bounded native headers (64 KiB per header), never transcript bodies. Its `cwd` matches one checkout after platform path normalization; `repository` resolves a readable Git checkout and includes linked worktrees. Neither path is a source root to scan. Returned `ref` values contain the native session ID and opaque file discriminator. Follow its `nextCursor` with identical filters. `sessionRefs` from discovery reduce staging but directory/header discovery still occurs. `search` reads JSONL incrementally with 64 KiB buffers, an 8 MiB or 10,000-record page boundary, at most 100 matches and 16 MiB physical records. It reports selected/examined files, bytes and records, remaining files, malformed/oversized records, timestamp gaps, exclusions, captured byte horizons, and inventory changes. `complete:true` means selected readable input was traversed, with exclusions disclosed; it is not a semantic-review claim.
 
 Search cursors are process-local, retained only while continuation is possible, bounded, and expiring. They bind filters and a selected-file inventory plus file markers and byte horizons. Appends beyond a captured horizon are outside that scan. Replacement or truncation stops continuation explicitly; start a fresh search. An expired cursor or changed scope requires a fresh search. Follow-up streams through the selected file to the exact occurrence while retaining only bounded adjacent context. Expansion renders only returned bounded matches/context and never fetches another page.
 

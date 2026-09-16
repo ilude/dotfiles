@@ -42,6 +42,18 @@ describe("streaming analytics search", () => {
 		await expect(fs.stat(file)).resolves.toBeTruthy();
 	});
 
+	it("keeps normalized location and interval scope across continuation", async () => {
+		await fixture.session("default", "inside", [message("one", "needle", "2026-09-15T12:00:00Z")], "inside.jsonl", "C:\\Projects\\Work\\Gitlab\\monorepo");
+		await fixture.session("default", "outside-time", [message("two", "needle", "2026-09-14T12:00:00Z")], "outside-time.jsonl", "C:\\Projects\\Work\\Gitlab\\monorepo");
+		await fixture.session("default", "outside-repo", [message("three", "needle", "2026-09-15T12:00:00Z")], "outside-repo.jsonl", "C:\\Projects\\Work\\Gitlab\\other");
+		const request = { operation: "search" as const, cwd: "c:/projects/work/gitlab/MONOREPO/", interval: { since: "2026-09-15", until: "2026-09-17" }, filters: { text: "needle" }, maxResults: 1 };
+		const first = await searchAnalytics(fixture.registry, request);
+		expect(first.matches.map(item => item.occurrence.session.sessionId)).toEqual(["inside"]);
+		if (first.nextCursor) {
+			await expect(searchAnalytics(fixture.registry, { ...request, cwd: "C:\\Projects\\Work\\Gitlab\\monorepo", cursor: first.nextCursor })).resolves.toBeDefined();
+		}
+	});
+
 	it("uses event time, roles and errors across profiles, including an old resumed session", async () => {
 		await fixture.session("default", "old", [message("old", "needle", "2026-09-05T00:00:00Z", "toolResult", { isError: true })]);
 		await fixture.session("legacy", "recent", [message("good", "needle", "2026-09-06T00:00:00Z", "toolResult", { isError: false }), message("bad", "failure", "2026-09-07T00:00:00Z", "toolResult", { isError: true }), message("user-failure", "failure", "2026-09-07T00:00:00Z", "user", { isError: false })]);

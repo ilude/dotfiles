@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { discoverSessions, listSessions, readSessionHeader, selectSessions } from "../lib/log-analytics/sessions.js";
+import { discoverSessions, listSessions, pathIdentity, readSessionHeader, selectSessions } from "../lib/log-analytics/sessions.js";
 import { selectedProfiles } from "../lib/log-analytics/profiles.js";
 import { analyticsFixture, recentMessage } from "./helpers/analytics-fixture.js";
 let fixture: Awaited<ReturnType<typeof analyticsFixture>>;
@@ -24,6 +24,23 @@ describe("metadata-only analytics session selection", () => {
 		await expect(listSessions(fixture.registry, { cursor: first.nextCursor! })).rejects.toThrow("cursor");
 		expect(first.sessions[0].created).toBe("2020-01-01T00:00:00.000Z");
 		expect(first.sessions[0]).not.toHaveProperty("file");
+	});
+
+	it("normalizes equivalent cwd spellings and distinguishes repository scope", async () => {
+		expect(pathIdentity("C:/Projects/Work/Gitlab/monorepo/")).toBe(pathIdentity("c:\\projects\\work\\gitlab\\MONOREPO"));
+		const checkout = path.join(fixture.scratch, "checkout");
+		const worktree = path.join(fixture.scratch, "linked-worktree");
+		const other = path.join(fixture.scratch, "other");
+		await fs.mkdir(path.join(checkout, ".git", "worktrees", "linked"), { recursive: true });
+		await fs.mkdir(worktree, { recursive: true });
+		await fs.writeFile(path.join(worktree, ".git"), `gitdir: ${path.join(checkout, ".git", "worktrees", "linked")}\n`);
+		await fs.mkdir(path.join(other, ".git"), { recursive: true });
+		await fixture.session("default", "base", [], "base.jsonl", checkout);
+		await fixture.session("default", "linked", [], "linked.jsonl", worktree);
+		await fixture.session("default", "other", [], "other.jsonl", other);
+		expect((await listSessions(fixture.registry, { cwd: `${checkout}${path.sep}` })).sessions.map(item => item.ref.sessionId)).toEqual(["base"]);
+		expect((await listSessions(fixture.registry, { repository: checkout })).sessions.map(item => item.ref.sessionId).sort()).toEqual(["base", "linked"]);
+		await expect(listSessions(fixture.registry, { cwd: checkout, repository: checkout })).rejects.toThrow("mutually exclusive");
 	});
 
 	it("does not parse transcript bodies and bounds headers", async () => {

@@ -63,8 +63,8 @@ export async function sessionLineage(registry: ProfileRegistry, request: Lineage
 		examinedBytes += file.bytes;
 		for await (const item of records(file.file, file.headerBytes, file.bytes, signal)) {
 			checkCancelled(signal);
-			if (item.oversized || item.malformed || !item.raw) { malformedRecords++; continue; }
-			const node = validLineage(JSON.parse(item.raw.toString("utf8")), file);
+			if (item.oversized || item.malformed) { malformedRecords++; continue; }
+			const node = validLineage(item.value, file);
 			if (node && !recordsByFile.has(file.ref.fileKey!)) recordsByFile.set(file.ref.fileKey!, { node, file });
 		}
 	}

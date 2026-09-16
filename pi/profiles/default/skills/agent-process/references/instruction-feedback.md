@@ -559,6 +559,7 @@ Factual history for refining agent instructions. This log is not executable poli
 - **Feedback:** Avoid professor-like, overly formal, or needlessly sophisticated language. Complexity should serve understanding, not demonstrate expertise.
 - **Decision:** Added a communication-style rule to `pi/profiles/default/AGENTS.md`. The operator later approved extending it to chat and files: no em dashes, filler, theatrical framing, repeated apologies, or sycophancy; no flattery or agreement without evidence. Technical terminology remains appropriate when needed for precision.
 - **Scope:** Default Pi profile.
+- **Follow-up (2026-09-16, session 01a0ab78-882f-75e0-86b8-c2795f778c5f):** Operator could not follow a deployment proposal expressed as abstract ownership categories. Explain the actual files, a duplicated setting, what currently happens, and the proposed before/after before asking for agreement. Apply existing plain-language guidance; no new instruction proposed. Further feedback in the same session rejected cascading subquestions during investigation scoping: determine repository-answerable facts directly and consolidate genuinely unresolved decisions instead of asking the operator to supply the investigation's intermediate results.
 - **Related incidents:** None recorded.
 - **Status:** Active; effectiveness has not yet been reviewed.
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-16: Preserve repository scope in Pi log analytics
+
+**Fixed:** Default-profile `log_analytics` now compares `cwd` filters using platform path semantics instead of raw JSON strings, so equivalent Windows slash, case, and trailing-separator spellings select the same checkout. A separate mutually exclusive `repository` scope includes sessions from a Git checkout and its linked worktrees. Search continuation binds the normalized location and event-time interval, preventing cursor pages from silently changing either scope.
+
+**Fixed:** Analytics filesystem and native DuckDB work now runs in a session-owned child process. A worker-level crash returns its exit code, signal, and bounded stderr as a normal tool error instead of terminating Pi and its Herdr tab. Session shutdown closes the worker, while one worker remains alive within a session so search cursors continue to work.
+
+**Changed:** Streaming search parses each JSONL record once, checks text blocks without joining another record-sized string, and shares one metadata-cache instance instead of loading a full cache copy for every transcript. Retained cursor inventories are bounded by 16 MiB of measured serialized metadata rather than only a cursor count; oldest cursors are evicted first.
+
+**Preserved:** Exact `cwd` scope does not include worktrees, repository scope does not include unrelated repositories, profile selection and output bounds are unchanged, and JSONL session headers remain authoritative. Repository scope requires a currently readable Git checkout; it does not infer repository identity from path naming conventions. Analytics remains caller-cancellable and broad searches remain possible without a new input deadline or corpus-size gate.
+
 ## 2026-09-16: Limit Pi reload notices to reloadable skill files
 
 **Fixed:** The default-profile reload monitor now watches each discovered skill's `SKILL.md` definition without treating edits to its supporting references as pending runtime changes. Pi reads those supporting files directly when a skill requests them, so `/reload` does not affect their contents. Adding or removing skills and changing `SKILL.md` still requests reload; extension, prompt, theme, context, settings, command, tool, and library monitoring is unchanged.

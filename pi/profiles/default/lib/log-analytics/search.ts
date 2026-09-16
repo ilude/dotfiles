@@ -1,14 +1,14 @@
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { canonicalWithin, checkCancelled, selectedProfiles, type ProfileId, type ProfileRegistry } from "./profiles.js";
-import { discoverSessions, normalizeRecord, selectSessions, type DiscoveryCoverage, type SessionFile, type SessionRef } from "./sessions.js";
+import { discoverSessions, normalizeRecord, pathIdentity, selectSessionLocation, selectSessions, type DiscoveryCoverage, type SessionFile, type SessionRef } from "./sessions.js";
 import { MetadataCache, type FileMarker } from "./metadata-cache.js";
 
 export type SearchFilters = {
 	entryTypes?: readonly string[]; messageRoles?: readonly string[]; toolNames?: readonly string[]; isError?: boolean; text?: string;
 };
 export type SearchRequest = {
-	operation: "search"; profiles?: readonly ProfileId[]; sessionRefs?: readonly SessionRef[]; cwd?: string;
+	operation: "search"; profiles?: readonly ProfileId[]; sessionRefs?: readonly SessionRef[]; cwd?: string; repository?: string;
 	interval?: { since: string; until: string }; filters?: SearchFilters; maxResults?: number; cursor?: string;
 };
 export type OccurrenceRef = {
@@ -47,8 +47,9 @@ const MAX_RESULTS = 100;
 const MAX_RECORD_BYTES = 16 * 1024 * 1024;
 const READ_BUFFER_BYTES = 64 * 1024;
 const MAX_DIAGNOSTICS = 20;
-const MAX_CURSOR_STATES = 128;
-const cursors = new Map<string, SearchState>();
+const MAX_CURSOR_STATE_BYTES = 16 * 1024 * 1024;
+const cursors = new Map<string, { state: SearchState; bytes: number }>();
+let cursorStateBytes = 0;
 
 function normalizedFilters(filters: SearchFilters | undefined): NormalizedFilters {
 	const list = (value: readonly string[] | undefined, name: string) => {
@@ -65,8 +66,9 @@ function normalizedInterval(interval: SearchRequest["interval"]): NormalizedInte
 	if (!Number.isFinite(since.getTime()) || !Number.isFinite(until.getTime()) || since >= until) throw new Error("invalid analytics search interval");
 	return { since: since.toISOString(), until: until.toISOString() };
 }
-function scopeOf(request: { profiles: readonly ProfileId[]; sessionRefs?: readonly SessionRef[]; cwd?: string; interval?: NormalizedInterval; filters: NormalizedFilters; maxResults: number }): string {
-	return JSON.stringify([request.profiles, request.sessionRefs?.map(ref => ({ ...ref })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))) ?? null, request.cwd ?? null, request.interval ?? null, request.filters, request.maxResults]);
+function scopeOf(request: { profiles: readonly ProfileId[]; sessionRefs?: readonly SessionRef[]; cwd?: string; repository?: string; interval?: NormalizedInterval; filters: NormalizedFilters; maxResults: number }): string {
+	return JSON.stringify([request.profiles, request.sessionRefs?.map(ref => ({ ...ref })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))) ?? null,
+		request.cwd === undefined ? null : pathIdentity(request.cwd), request.repository === undefined ? null : pathIdentity(request.repository), request.interval ?? null, request.filters, request.maxResults]);
 }
 function addDiagnostic(coverage: MutableCoverage, value: string): void {
 	if (coverage.diagnostics.length < MAX_DIAGNOSTICS) coverage.diagnostics.push(value.slice(0, 512));
@@ -87,31 +89,49 @@ function occurrence(file: SearchFile, item: PhysicalRecord, recordKey: string | 
 function inInterval(timestamp: string | null, interval: NormalizedInterval | undefined): boolean {
 	return !interval ? true : timestamp !== null && timestamp >= interval.since && timestamp < interval.until;
 }
+function textBlocks(record: unknown): string[] {
+	if (!record || typeof record !== "object") return [];
+	const message = (record as { message?: unknown }).message;
+	if (!message || typeof message !== "object") return [];
+	const content = (message as { content?: unknown }).content;
+	if (typeof content === "string") return [content];
+	if (!Array.isArray(content)) return [];
+	return content.flatMap(item => item && typeof item === "object" && (item as { type?: unknown }).type === "text" && typeof (item as { text?: unknown }).text === "string" ? [(item as { text: string }).text] : []);
+}
+function matchText(record: unknown, needle: string | undefined): { matched: boolean; snippet: string } {
+	const blocks = textBlocks(record);
+	if (needle === undefined) {
+		const text = blocks[0] ?? ""; return { matched: true, snippet: text.length > 500 ? `${text.slice(0, 500)}…` : text };
+	}
+	for (const text of blocks) if (text.includes(needle)) return { matched: true, snippet: text.length > 500 ? `${text.slice(0, 500)}…` : text };
+	return { matched: false, snippet: "" };
+}
 function matches(record: ReturnType<typeof normalizeRecord>, filters: NormalizedFilters, interval: NormalizedInterval | undefined): boolean {
 	return inInterval(record.timestamp, interval) &&
 		(filters.entryTypes === undefined || filters.entryTypes.includes(record.entryType ?? "")) &&
 		(filters.messageRoles === undefined || filters.messageRoles.includes(record.messageRole ?? "")) &&
 		(filters.toolNames === undefined || filters.toolNames.includes(record.toolName ?? "")) &&
-		(filters.isError === undefined || record.isError === filters.isError) &&
-		(filters.text === undefined || record.text.includes(filters.text));
+		(filters.isError === undefined || record.isError === filters.isError);
 }
-function snippet(text: string): string { return text.length > 500 ? `${text.slice(0, 500)}…` : text; }
+function cursorBytes(state: SearchState): number { return Buffer.byteLength(JSON.stringify({ scope: state.scope, files: state.files, cumulative: state.cumulative })); }
+function deleteCursor(cursor: string): void { const entry = cursors.get(cursor); if (entry) cursorStateBytes -= entry.bytes; cursors.delete(cursor); }
 function storeCursor(state: SearchState): string {
-	const cursor = randomUUID().replaceAll("-", "");
-	cursors.set(cursor, state);
-	while (cursors.size > MAX_CURSOR_STATES) cursors.delete(cursors.keys().next().value!);
+	const cursor = randomUUID().replaceAll("-", ""); const bytes = cursorBytes(state);
+	while (cursors.size && cursorStateBytes + bytes > MAX_CURSOR_STATE_BYTES) deleteCursor(cursors.keys().next().value!);
+	if (bytes > MAX_CURSOR_STATE_BYTES) throw new Error(`analytics search continuation metadata ${bytes} bytes exceeds retained-state bound ${MAX_CURSOR_STATE_BYTES}`);
+	cursors.set(cursor, { state, bytes }); cursorStateBytes += bytes;
 	return cursor;
 }
 function takeCursor(cursor: string, requestScope: string | undefined): SearchState {
 	if (cursor.length > 1024) throw new Error("invalid or expired analytics search cursor");
-	const state = cursors.get(cursor);
-	if (!state) throw new Error("invalid analytics search cursor; start a fresh search");
-	if (requestScope !== undefined && requestScope !== state.scope) throw new Error("analytics search cursor scope changed");
-	cursors.delete(cursor);
-	return state;
+	const entry = cursors.get(cursor);
+	if (!entry) throw new Error("invalid analytics search cursor; start a fresh search");
+	if (requestScope !== undefined && requestScope !== entry.state.scope) throw new Error("analytics search cursor scope changed");
+	deleteCursor(cursor);
+	return entry.state;
 }
 
-export type PhysicalRecord = { offset: number; length: number; nextOffset: number; ordinal: number; raw: Buffer | null; malformed: boolean; oversized: boolean };
+export type PhysicalRecord = { offset: number; length: number; nextOffset: number; ordinal: number; value: unknown; malformed: boolean; oversized: boolean };
 /** Bounded JSONL reader. It retains at most one allowed record and discards oversized lines. */
 export async function* records(file: string, start: number, horizon: number, signal?: AbortSignal): AsyncGenerator<PhysicalRecord> {
 	const handle = await fs.open(file, "r");
@@ -131,10 +151,9 @@ export async function* records(file: string, start: number, horizon: number, sig
 				if (lineLength > MAX_RECORD_BYTES) oversized = true;
 				else if (part.length) parts.push(part);
 				if (lineLength > 0) {
-					const raw = oversized ? null : Buffer.concat(parts);
-					let malformed = false;
-					if (raw) { try { JSON.parse(raw.toString("utf8")); } catch { malformed = true; } }
-					yield { offset: lineStart, length: lineLength, nextOffset: position + i + 1, ordinal: ordinal++, raw, malformed, oversized };
+					const raw = oversized ? null : Buffer.concat(parts); let malformed = false, value: unknown;
+					if (raw) { try { value = JSON.parse(raw.toString("utf8")); } catch { malformed = true; } }
+					yield { offset: lineStart, length: lineLength, nextOffset: position + i + 1, ordinal: ordinal++, value, malformed, oversized };
 				}
 				lineStart = position + i + 1; lineLength = 0; oversized = false; parts = []; begin = i + 1;
 			}
@@ -145,9 +164,9 @@ export async function* records(file: string, start: number, horizon: number, sig
 			position += bytesRead;
 		}
 		if (lineLength > 0) {
-			const raw = oversized ? null : Buffer.concat(parts); let malformed = false;
-			if (raw) { try { JSON.parse(raw.toString("utf8")); } catch { malformed = true; } }
-			yield { offset: lineStart, length: lineLength, nextOffset: lineStart + lineLength, ordinal: ordinal++, raw, malformed, oversized };
+			const raw = oversized ? null : Buffer.concat(parts); let malformed = false, value: unknown;
+			if (raw) { try { value = JSON.parse(raw.toString("utf8")); } catch { malformed = true; } }
+			yield { offset: lineStart, length: lineLength, nextOffset: lineStart + lineLength, ordinal: ordinal++, value, malformed, oversized };
 		}
 	} finally { await handle.close(); }
 }
@@ -175,7 +194,7 @@ async function scanPage(state: SearchState, signal: AbortSignal, discovery: Disc
 		const change = changedKind(file.marker, marker, file.horizon);
 		if (change && !change.startsWith("append")) { state.cumulative.inventoryChanges.push(`${file.ref.profile}/${file.ref.sessionId}: ${change}`); stopReason = "inventory_changed"; return { matches: matchesFound, page, stopReason, complete: false }; }
 		if (change) state.cumulative.inventoryChanges.push(`${file.ref.profile}/${file.ref.sessionId}: ${change}`);
-		const cache = caches.get(file.file) ?? await MetadataCache.open(file.root); caches.set(file.file, cache);
+		const cache = caches.get(file.root) ?? await MetadataCache.open(file.root); caches.set(file.root, cache);
 		const cachedRange = cache.get(file.file, file.marker)?.eventRange;
 		const range = ranges.get(state.fileIndex) ?? { min: cachedRange?.min ?? null, max: cachedRange?.max ?? null, through: cachedRange?.through ?? file.headerBytes };
 		ranges.set(state.fileIndex, range);
@@ -184,12 +203,12 @@ async function scanPage(state: SearchState, signal: AbortSignal, discovery: Disc
 			touched.add(state.fileIndex); page.examinedRecords++; page.examinedBytes += item.length; state.cumulative.examinedRecords++; state.cumulative.examinedBytes += item.length;
 			range.through = Math.max(range.through, item.nextOffset);
 			if (item.oversized) { page.oversizedRecords++; state.cumulative.oversizedRecords++; addDiagnostic(state.cumulative, `${file.ref.sessionId}: oversized record at byte ${item.offset}`); state.offset = item.nextOffset; continue; }
-			if (item.malformed || !item.raw) { page.malformedRecords++; state.cumulative.malformedRecords++; addDiagnostic(state.cumulative, `${file.ref.sessionId}: malformed record at byte ${item.offset}`); state.offset = item.nextOffset; continue; }
-			const value = JSON.parse(item.raw.toString("utf8")); const normalized = normalizeRecord(value);
+			if (item.malformed) { page.malformedRecords++; state.cumulative.malformedRecords++; addDiagnostic(state.cumulative, `${file.ref.sessionId}: malformed record at byte ${item.offset}`); state.offset = item.nextOffset; continue; }
+			const value = item.value; const normalized = normalizeRecord(value, false); const text = matchText(value, state.filters.text);
 			if (normalized.timestamp !== null) { range.min = range.min === null || normalized.timestamp < range.min ? normalized.timestamp : range.min; range.max = range.max === null || normalized.timestamp > range.max ? normalized.timestamp : range.max; }
 			if (normalized.timestamp === null && state.interval) state.cumulative.timestampGaps++;
-			if (matches(normalized, state.filters, state.interval)) {
-				const match: SearchMatch = { occurrence: occurrence(file, item, normalized.recordKey), timestamp: normalized.timestamp, entryType: normalized.entryType, messageRole: normalized.messageRole, toolName: normalized.toolName, isError: normalized.isError, snippet: snippet(normalized.text) };
+			if (text.matched && matches(normalized, state.filters, state.interval)) {
+				const match: SearchMatch = { occurrence: occurrence(file, item, normalized.recordKey), timestamp: normalized.timestamp, entryType: normalized.entryType, messageRole: normalized.messageRole, toolName: normalized.toolName, isError: normalized.isError, snippet: text.snippet };
 				matchesFound.push(match);
 			}
 			state.offset = item.nextOffset;
@@ -209,8 +228,8 @@ async function scanPage(state: SearchState, signal: AbortSignal, discovery: Disc
 }
 
 function requestScopeIfPresent(request: SearchRequest, profiles: ProfileId[], filters: NormalizedFilters, interval: NormalizedInterval | undefined, maxResults: number): string | undefined {
-	if (request.profiles === undefined && request.sessionRefs === undefined && request.cwd === undefined && request.interval === undefined && request.filters === undefined && request.maxResults === undefined) return undefined;
-	return scopeOf({ profiles, sessionRefs: request.sessionRefs, cwd: request.cwd, interval, filters, maxResults });
+	if (request.profiles === undefined && request.sessionRefs === undefined && request.cwd === undefined && request.repository === undefined && request.interval === undefined && request.filters === undefined && request.maxResults === undefined) return undefined;
+	return scopeOf({ profiles, sessionRefs: request.sessionRefs, cwd: request.cwd, repository: request.repository, interval, filters, maxResults });
 }
 
 export async function searchLogs(registry: ProfileRegistry, request: SearchRequest, signal?: AbortSignal): Promise<SearchResult> {
@@ -218,15 +237,17 @@ export async function searchLogs(registry: ProfileRegistry, request: SearchReque
 	const filters = normalizedFilters(request.filters); const interval = normalizedInterval(request.interval);
 	const maxResults = request.maxResults ?? MAX_RESULTS;
 	if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > MAX_RESULTS) throw new Error("invalid analytics search maxResults");
+	if (request.cwd !== undefined && request.repository !== undefined) throw new Error("analytics cwd and repository scopes are mutually exclusive");
 	let state: SearchState;
 	const cursorState = request.cursor ? takeCursor(request.cursor, requestScopeIfPresent(request, profiles, filters, interval, maxResults)) : undefined;
 	if (cursorState) state = cursorState;
 	else {
 		const discovery: DiscoveryCoverage = { excludedFiles: 0, diagnostics: [], diagnosticsTruncated: false };
 		const all = await discoverSessions(registry, profiles, signal, discovery);
-		const selected = request.sessionRefs ? selectSessions(all, request.sessionRefs, profiles) : all.filter(item => request.cwd === undefined || item.cwd === request.cwd);
-		const files = selected.filter(item => request.cwd === undefined || item.cwd === request.cwd).map(item => ({ ...item, horizon: item.bytes, root: registry.roots.default }));
-		state = { scope: scopeOf({ profiles, sessionRefs: request.sessionRefs, cwd: request.cwd, interval, filters, maxResults }), profiles, files, filters, interval, maxResults, fileIndex: 0, offset: files[0]?.headerBytes ?? 0, cumulative: emptyCoverage(files), exclusions: discovery };
+		const referenced = request.sessionRefs ? selectSessions(all, request.sessionRefs, profiles) : all;
+		const selected = await selectSessionLocation(referenced, request);
+		const files = selected.map(item => ({ ...item, horizon: item.bytes, root: registry.roots.default }));
+		state = { scope: scopeOf({ profiles, sessionRefs: request.sessionRefs, cwd: request.cwd, repository: request.repository, interval, filters, maxResults }), profiles, files, filters, interval, maxResults, fileIndex: 0, offset: files[0]?.headerBytes ?? 0, cumulative: emptyCoverage(files), exclusions: discovery };
 		const result = await scanPage(state, signal ?? new AbortController().signal, discovery);
 		state.cumulative.examinedFiles = result.page.examinedFiles; state.cumulative.examinedBytes = result.page.examinedBytes;
 		return finish(state, result, discovery);
@@ -238,7 +259,7 @@ export async function searchLogs(registry: ProfileRegistry, request: SearchReque
 function finish(state: SearchState, result: { matches: SearchMatch[]; page: MutableCoverage; stopReason: string; complete: boolean }, discovery: DiscoveryCoverage): SearchResult {
 	const complete = result.complete || result.stopReason === "inventory_changed" && false;
 	const nextCursor = complete || result.stopReason === "inventory_changed" ? null : storeCursor(state);
-	if (complete || result.stopReason === "inventory_changed") cursors.forEach((value, key) => { if (value === state) cursors.delete(key); });
+	if (complete || result.stopReason === "inventory_changed") cursors.forEach((value, key) => { if (value.state === state) deleteCursor(key); });
 	return { profiles: state.profiles, matches: result.matches, nextCursor, complete, stopReason: result.stopReason, coverage: outputCoverage(state, result.page, discovery) };
 }
 
@@ -254,15 +275,15 @@ export async function followUp(registry: ProfileRegistry, request: FollowUpReque
 	if (marker.size !== file.marker.size || marker.mtimeMs !== file.marker.mtimeMs || marker.ctimeMs !== file.marker.ctimeMs || marker.dev !== file.marker.dev || marker.ino !== file.marker.ino) throw new Error("analytics follow-up file changed; search again");
 	const preceding: FollowUpRecord[] = []; let target: FollowUpRecord | undefined; const following: FollowUpRecord[] = []; let found = false;
 	for await (const item of records(file.file, file.headerBytes, file.bytes, signal)) {
-		if (item.offset < request.occurrence.byteOffset) { if (before === 0) continue; if (preceding.length >= before) preceding.shift(); if (!item.raw || item.malformed || item.oversized) continue; const value = JSON.parse(item.raw.toString("utf8")); const normalized = normalizeRecord(value); preceding.push({ occurrence: occurrence({ ...file, horizon: file.bytes, root: registry.roots.default }, item, normalized.recordKey), record: value, timestamp: normalized.timestamp }); continue; }
+		if (item.offset < request.occurrence.byteOffset) { if (before === 0) continue; if (preceding.length >= before) preceding.shift(); if (item.malformed || item.oversized) continue; const value = item.value; const normalized = normalizeRecord(value); preceding.push({ occurrence: occurrence({ ...file, horizon: file.bytes, root: registry.roots.default }, item, normalized.recordKey), record: value, timestamp: normalized.timestamp }); continue; }
 		if (item.offset === request.occurrence.byteOffset) {
 			if (item.length !== request.occurrence.byteLength || item.ordinal !== request.occurrence.recordOrdinal) throw new Error("analytics follow-up occurrence no longer identifies the same record");
-			if (!item.raw || item.malformed || item.oversized) throw new Error("analytics follow-up occurrence is malformed");
-			const value = JSON.parse(item.raw.toString("utf8")); const normalized = normalizeRecord(value);
+			if (item.malformed || item.oversized) throw new Error("analytics follow-up occurrence is malformed");
+			const value = item.value; const normalized = normalizeRecord(value);
 			if (normalized.recordKey !== request.occurrence.recordKey) throw new Error("analytics follow-up occurrence identity changed");
 			target = { occurrence: request.occurrence, record: value, timestamp: normalized.timestamp }; found = true; continue;
 		}
-		if (found && following.length < after) { if (item.raw && !item.malformed && !item.oversized) { const value = JSON.parse(item.raw.toString("utf8")); const normalized = normalizeRecord(value); following.push({ occurrence: occurrence({ ...file, horizon: file.bytes, root: registry.roots.default }, item, normalized.recordKey), record: value, timestamp: normalized.timestamp }); } }
+		if (found && following.length < after) { if (!item.malformed && !item.oversized) { const value = item.value; const normalized = normalizeRecord(value); following.push({ occurrence: occurrence({ ...file, horizon: file.bytes, root: registry.roots.default }, item, normalized.recordKey), record: value, timestamp: normalized.timestamp }); } }
 		if (found && following.length >= after) break;
 	}
 	if (!target) throw new Error("analytics follow-up occurrence was not found");

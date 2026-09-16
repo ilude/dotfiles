@@ -8,7 +8,7 @@ export type SessionMetadata = {
 	ref: SessionRef; cwd: string | null; created: string | null; modified: string; bytes: number;
 };
 export type SessionFile = SessionMetadata & { file: string; headerBytes: number; marker: FileMarker };
-export type SessionsRequest = { profiles?: ProfileId[]; cwd?: string; sessionIds?: string[]; maxRows?: number; cursor?: string };
+export type SessionsRequest = { profiles?: ProfileId[]; cwd?: string; repository?: string; sessionIds?: string[]; maxRows?: number; cursor?: string };
 export type DiscoveryCoverage = {
 	excludedFiles: number;
 	diagnostics: { profile: ProfileId; file: string; fileKey: string; reason: string }[];
@@ -37,7 +37,7 @@ function messageText(value: unknown): string {
 		.map(item => (item as { text: string }).text).join("\n");
 }
 /** Native record interpretation shared by streaming search and registry-facing callers. */
-export function normalizeRecord(record: unknown): NormalizedRecord {
+export function normalizeRecord(record: unknown, includeText = true): NormalizedRecord {
 	const value = record && typeof record === "object" ? record as Record<string, unknown> : {};
 	const message = value.message && typeof value.message === "object" ? messageObject(value.message) : {};
 	return {
@@ -48,10 +48,55 @@ export function normalizeRecord(record: unknown): NormalizedRecord {
 		toolCallId: typeof message.toolCallId === "string" ? message.toolCallId : null,
 		isError: typeof message.isError === "boolean" ? message.isError : null,
 		recordKey: typeof value.id === "string" && value.id ? value.id : null,
-		text: messageText(message.content),
+		text: includeText ? messageText(message.content) : "",
 	};
 }
 function messageObject(value: object): Record<string, unknown> { return value as Record<string, unknown>; }
+
+function windowsPath(value: string): boolean { return /^[A-Za-z]:[\\/]/.test(value); }
+/** Stable comparison identity for stored cwd values and model-supplied path spellings. */
+export function pathIdentity(value: string): string {
+	if (windowsPath(value)) {
+		const normalized = path.win32.normalize(value.replaceAll("/", "\\"));
+		const root = path.win32.parse(normalized).root;
+		return (normalized.length === root.length ? root : normalized.replace(/[\\]+$/, "")).toLowerCase();
+	}
+	return path.posix.normalize(value).replace(/\/+$/, "") || "/";
+}
+async function repositoryIdentity(value: string): Promise<string | null> {
+	const dotGit = path.join(value, ".git");
+	try {
+		const stat = await fs.stat(dotGit);
+		if (stat.isDirectory()) return pathIdentity(value);
+		if (!stat.isFile()) return null;
+		const marker = (await fs.readFile(dotGit, "utf8")).trim();
+		const match = /^gitdir:\s*(.+)$/i.exec(marker);
+		if (!match) return null;
+		const gitDir = path.resolve(value, match[1]);
+		const normalized = path.normalize(gitDir);
+		const token = `${path.sep}.git${path.sep}worktrees${path.sep}`;
+		const index = process.platform === "win32" ? normalized.toLowerCase().indexOf(token.toLowerCase()) : normalized.indexOf(token);
+		return index < 0 ? null : pathIdentity(normalized.slice(0, index));
+	} catch { return null; }
+}
+export async function selectSessionLocation(files: SessionFile[], request: { cwd?: string; repository?: string }): Promise<SessionFile[]> {
+	if (request.cwd !== undefined && request.repository !== undefined) throw new Error("analytics cwd and repository scopes are mutually exclusive");
+	if (request.cwd !== undefined) {
+		const expected = pathIdentity(request.cwd);
+		return files.filter(item => item.cwd !== null && pathIdentity(item.cwd) === expected);
+	}
+	if (request.repository === undefined) return files;
+	const expected = await repositoryIdentity(request.repository);
+	if (!expected) throw new Error(`analytics repository is not a readable Git checkout: ${request.repository}`);
+	const identities = new Map<string, Promise<string | null>>();
+	return (await Promise.all(files.map(async item => {
+		if (item.cwd === null) return null;
+		const key = pathIdentity(item.cwd);
+		const identity = identities.get(key) ?? repositoryIdentity(item.cwd);
+		identities.set(key, identity);
+		return await identity === expected ? item : null;
+	}))).filter((item): item is SessionFile => item !== null);
+}
 
 /** Only the first physical line, at most 64 KiB. May read ahead at most 511 bytes. */
 export async function readSessionHeader(file: string, signal?: AbortSignal): Promise<{ id: string; cwd: string | null; timestamp: string | null; headerBytes: number }> {
@@ -130,7 +175,8 @@ export async function listSessions(registry: ProfileRegistry, request: SessionsR
 	const profiles = selectedProfiles(registry, request.profiles);
 	const maxRows = request.maxRows ?? 100;
 	if (!Number.isInteger(maxRows) || maxRows < 1 || maxRows > 1000) throw new Error("invalid analytics maxRows");
-	const scope = fileKeyForPath(JSON.stringify([profiles, request.cwd ?? null, request.sessionIds?.slice().sort() ?? null]));
+	if (request.cwd !== undefined && request.repository !== undefined) throw new Error("analytics cwd and repository scopes are mutually exclusive");
+	const scope = fileKeyForPath(JSON.stringify([profiles, request.cwd === undefined ? null : pathIdentity(request.cwd), request.repository === undefined ? null : pathIdentity(request.repository), request.sessionIds?.slice().sort() ?? null]));
 	let after = "";
 	if (request.cursor !== undefined) {
 		try {
@@ -141,8 +187,8 @@ export async function listSessions(registry: ProfileRegistry, request: SessionsR
 		} catch { throw new Error("invalid analytics sessions cursor or changed scope"); }
 	}
 	const discovery = discoveryCoverage();
-	const files = (await discoverSessions(registry, profiles, signal, discovery)).filter(item =>
-		(request.cwd === undefined || item.cwd === request.cwd) &&
+	const located = await selectSessionLocation(await discoverSessions(registry, profiles, signal, discovery), request);
+	const files = located.filter(item =>
 		(request.sessionIds === undefined || request.sessionIds.includes(item.ref.sessionId)) && sessionKey(item).localeCompare(after, "en") > 0);
 	const sessions: SessionMetadata[] = [];
 	let bytes = 2;

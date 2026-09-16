@@ -1,5 +1,16 @@
 # Agent process failure log
 
+## APR-049 - Analytics ignored the operator's explicit time window before a process exit
+
+- **Reference:** Default session `01a0abaa-f07b-7036-81ce-b442e4ec28a8`, 2026-09-16.
+- **Observed:** The operator said the sought discussion was "today or yesterday," and the request concerned the current monorepo. The agent first searched with `cwd: "C:/Projects/Work/Gitlab/monorepo"` but without an interval. Stored native session headers use the equivalent Windows spelling `C:\\Projects\\Work\\Gitlab\\monorepo`; the tool compares cwd strings exactly, so it incorrectly selected zero files. The agent then retried across both profiles with neither cwd nor interval. The session ends at that second `log_analytics` call without a tool result or shutdown record, and its Herdr tab closed.
+- **Finding:** Calling the second search "unbounded" describes the submitted request, not the operator's request. The agent discarded both explicit useful bounds. There is also a tool defect at the cwd boundary: valid equivalent Windows path spellings do not match after JSON decoding because no platform path normalization occurs. This is not evidence of malformed JSON. The missing result establishes abrupt process termination during the call but does not by itself identify OOM, a native crash, or another exact process-level cause.
+- **Impact:** The false empty scoped result prompted an overbroad retry, which examined more history than requested and exposed a tool/process failure that removed the visible Herdr tab without preserving an explanation in the session.
+- **Related:** APR-026 concerns earlier analytics limits and a renderer crash; it does not explain this termination. APR-024 involved a different custom path-confinement failure, and APR-006 recorded Windows long-path cleanup trouble. Together they establish recurring path-boundary defects, not one shared root cause.
+- **Operator feedback:** Path handling repeatedly causes workflow failures. Treat path spelling, shell syntax, platform comparison semantics, canonicalization and repository identity as explicit boundary concerns rather than assuming raw strings are portable identifiers.
+- **Remediation:** Normalized platform-equivalent cwd spellings, added an explicit Git repository scope that includes linked worktrees, and bound normalized location plus interval into cursor identity. Search now shares one metadata cache instead of loading the same up-to-4,096-entry document once per transcript, parses each record once, avoids joining all text blocks, and caps retained cursor metadata at 16 MiB. Analytics filesystem and native DuckDB work now runs in a session-owned child process; worker exit evidence returns as a tool error without taking Pi down.
+- **Status:** Remediated. The repeated per-file cache loads were a concrete approximately quadratic memory-growth defect and a plausible contributor, but the historical process exit contained no diagnostic proving it was the sole cause. All 48 analytics tests, TypeScript validation, and the real-loader offline smoke pass; live crash containment remains unforced.
+
 ## APR-048 - `/new-instance` printed a redundant success line
 
 - **Reference:** Operator correction after using `/new-instance`, 2026-09-16.
@@ -454,3 +465,11 @@ Factual incident history for operator review; not executable policy. Append inci
 - **Related:** APR-001 concerns stopping too early, not this same failure. Together they show why completion needs a clear, bounded finish list. AIF-002 also concerns clear handoff criteria.
 - **Remediation:** Operator approved the plain-language stopping rule (AIF-003) and a task-local R0–R6 finish list. Code simplification is for discussion, not automatically authorized by this review.
 - **Verification:** The initial review changed only the plan/logs. The operator subsequently approved the named cleanup and resumption. That bounded pass closed the stdin failure, simplified the identified code, strengthened outcome assertions, and passed Windows typecheck, 178 tests and runtime fault/repair checks. No new general audit or repeated installation was performed. Activation is waiting on real interactive acceptance; long-term adherence remains unverified.
+
+## Deployment simplification feedback (2026-09-16)
+
+- **Reference:** Monorepo rollout pipelines 8375-8380; operator challenged repeated unexpected deployment issues and unnecessary complexity.
+- **Observed:** Test-only change was incorrectly claimed to force an image build; successful no-op build jobs were initially treated as evidence of a new image. Environment destinations were then overridden by later-loaded generated lock values. Repeated targeted Argo operations did not establish a durable fix for stale resource selection.
+- **Finding:** Both overlapping configuration ownership and insufficient end-to-end evidence contributed. Multiple additional cycles began without consulting Steward on the changed finding. This repeats APR-040 rather than establishing a missing global instruction.
+- **Proposal:** Discuss separating image identity from environment configuration, one routine release sequence, and selection based on deployed inputs rather than assumed previous-push coverage. Do not redesign deployment or relax selected-destination preflight without operator agreement.
+- **Status:** Feedback recorded; simplification discussion only. Runtime acceptance remains incomplete.
