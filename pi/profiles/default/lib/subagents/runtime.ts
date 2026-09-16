@@ -200,12 +200,17 @@ export class SubagentRuntime {
    definition:input.definition,instructions:input.instructions,cwd,
    model:input.model,effort:input.effort,skills:[...input.skills],
    origin:input.origin,retained:input.retained,parentId:input.parentId,
-   surface:input.surface,displayName:allocator.allocate(),
+   surface:input.surface,
    prompt:composedAgentPrompt(input.definition,catalog,parentDelegates),
   };
   const child=input.surface==="visible"
    ?new VisibleChild(spec,resolve(childExtension),resolve(profileDir),this.layoutFor(input.origin))
    :new RpcChild(spec,resolve(childExtension),resolve(profileDir));
+  // Use the child UUID as the reservation owner. This lets a late callback from
+  // an old record fail the owner check after its name has been reused.
+  const displayName=allocator.allocate(child.record.id);
+  spec.displayName=displayName;
+  child.record.displayName=displayName;
   this.children.set(child.record.id,child);
   this.inert.delete(child.record.id);
   this.contexts.set(child.record.id,{input:{...input,cwd},profile:resolve(profileDir),extension:resolve(childExtension),catalog});
@@ -258,22 +263,36 @@ export class SubagentRuntime {
   return [...this.children.values()].map(c=>c.snapshot()).concat([...this.inert.values()].map(c=>c.snapshot())).filter(c=>!origin||c.origin===origin);
  }
  get(idOrName:string,origin?:string){
-  const exactName=idOrName.toLocaleLowerCase("en-US");
+  const named:RpcChild[]=[];
+  const origins=origin?[origin]:[...this.names.keys()];
+  for(const ownerOrigin of origins){
+   const owner=this.names.get(ownerOrigin)?.owner(idOrName);
+   if(!owner)continue;
+   const child=this.children.get(owner);
+   if(child&&child.record.origin===ownerOrigin)named.push(child);
+  }
+  if(named.length===1)return named[0];
+  if(named.length>1)throw new Error(`Ambiguous child id or name: ${idOrName}`);
+  // Once released, a display name is historical data, not a control alias.
+  // UUID/prefix lookup remains available for historical inert records.
   const all=[...this.children.values(),...this.inert.values()];
-  const names=all.filter(child=>child.record.displayName?.toLocaleLowerCase("en-US")===exactName&&(!origin||child.record.origin===origin));
-  if(names.length===1)return names[0];
   const matches=all.filter(child=>child.record.id.startsWith(idOrName)&&(!origin||child.record.origin===origin));
-  if(matches.length!==1)throw new Error(matches.length||names.length>1?`Ambiguous child id or name: ${idOrName}`:`Unknown child: ${idOrName}`);
+  if(matches.length!==1)throw new Error(matches.length>1?`Ambiguous child id or name: ${idOrName}`:`Unknown child: ${idOrName}`);
   return matches[0];
  }
  private getDirectChild(idOrName:string,parentId:string,origin:string){
-  const exactName=idOrName.toLocaleLowerCase("en-US");
+  const owner=this.names.get(origin)?.owner(idOrName);
+  if(owner){
+   const child=this.children.get(owner);
+   if(child?.record.origin===origin&&child.record.parentId===parentId)return child;
+   return undefined;
+  }
+  // Names are intentionally omitted here once their reservation is released.
+  // UUID/prefix lookup still reaches historical inert records.
   const all=[...this.children.values(),...this.inert.values()];
-  const names=all.filter(child=>child.record.parentId===parentId&&child.record.origin===origin&&child.record.displayName?.toLocaleLowerCase("en-US")===exactName);
-  if(names.length===1)return names[0];
   const matches=all.filter(child=>child.record.id.startsWith(idOrName)&&child.record.parentId===parentId&&child.record.origin===origin);
   if(matches.length===1)return matches[0];
-  if(names.length>1||matches.length>1)throw new Error(`Ambiguous child id or name: ${idOrName}`);
+  if(matches.length>1)throw new Error(`Ambiguous child id or name: ${idOrName}`);
   return undefined;
  }
  private layoutFor(origin:string){let layout=this.layouts.get(origin);if(!layout){layout=new SubagentLayout(createHerdrCli());this.layouts.set(origin,layout)}return layout}
@@ -288,7 +307,10 @@ export class SubagentRuntime {
   return record.processState!=="exited"||record.paneState==="open";
  }
  private reconcileCleanup(record:ChildRecord){
-  if(record.status==="settled"&&!record.retained&&!record.userOwned&&record.cleanup?.complete&&!this.resourcesOpen(record))this.transport.revoke(record.id);
+  if(record.status!=="settled"||record.retained||record.userOwned||!record.cleanup?.complete||this.resourcesOpen(record))return;
+  const allocator=this.names.get(record.origin);
+  if(record.displayName&&allocator?.release(record.displayName,record.id))this.publish(record.origin);
+  this.transport.revoke(record.id);
  }
  async shutdown(reason:string):Promise<CleanupSummary>{
   if(this.disposed)return {complete:true,attempted:0,failures:[]};
@@ -312,8 +334,8 @@ export class SubagentRuntime {
  /**
   * Ends this executable owner at a source reload. Reload is supported only after
   * all conversations, child processes, and retained children have settled.
-  * Pending outcomes and allocated names are plain data; transports and children
-  * are deliberately not migrated.
+  * Pending outcomes and live name reservations are plain data; transports and
+  * children are deliberately not migrated.
   */
  async retireForReload(){
   if(this.hasActiveResources())throw new Error("Subagent reload requires all child conversations and processes to be settled first");

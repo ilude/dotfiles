@@ -121,7 +121,7 @@ export default function(pi) {
     expect(next.owner).toBe(reloaded.owner);
     expect(next.next).toMatchObject({ status: "settled", outcome: "complete", processState: "exited", origin: first.origin });
     expect(next.next.displayName).toBeTruthy();
-    expect(next.next.displayName).not.toBe(first.records[0].displayName);
+    expect(next.next.displayName).toBe(first.records[0].displayName);
     expect(outcomes(next)).toHaveLength(1);
     expect(next.acks).toEqual(acknowledged.acks);
   } finally {

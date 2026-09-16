@@ -45,7 +45,7 @@ describe("process-local descendant ownership",()=>{
    if(previousHerdr===undefined)delete process.env.HERDR_ENV;else process.env.HERDR_ENV=previousHerdr;
   }
  });
- it("gives same-role children distinct names and resolves names within their origin",async()=>{
+ it("reuses released names while keeping historical name aliases disabled",async()=>{
   const runtime=fixture();
   const first=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
   const second=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
@@ -53,9 +53,32 @@ describe("process-local descendant ownership",()=>{
   expect(first.displayName).not.toBe(second.displayName);
   expect(runtime.get(first.displayName!.toUpperCase(),input.origin).record.id).toBe(first.id);
   expect(()=>runtime.get(first.displayName!,"different-origin")).toThrow(/Unknown/);
-  await runtime.get(first.id).cancel();await runtime.get(second.id).cancel();
+  await runtime.get(first.id).cancel();
+  const stale=runtime.get(first.id).snapshot();
+  expect(()=>runtime.get(first.displayName!,input.origin)).toThrow(/Unknown/);
   const third=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
-  expect(third.displayName).not.toBe(first.displayName);expect(third.displayName).not.toBe(second.displayName);
+  expect(third.displayName).toBe(first.displayName);
+  (runtime as any).reconcileCleanup(stale);
+  expect(runtime.get(first.displayName!,input.origin).record.id).toBe(third.id);
+  expect(()=>runtime.get(first.id)).not.toThrow();
+  await runtime.get(second.id).cancel();await runtime.get(third.id).cancel();
+ });
+ it("releases retained names only through explicit finish or cancel",async()=>{
+  const runtime=fixture();
+  const retained=await runtime.launch({...input,retained:true,instructions:"[reject]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  await vi.waitFor(()=>expect(runtime.get(retained.id).record.phase).toBe("settled"),{timeout:7000});
+  const name=retained.displayName!;
+  expect(runtime.get(name,input.origin).record.id).toBe(retained.id);
+  await runtime.get(retained.id).finish();
+  expect(()=>runtime.get(name,input.origin)).toThrow(/Unknown/);
+  const replacement=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  expect(replacement.displayName).toBe(name);
+  await runtime.get(replacement.id).cancel();
+  const cancellable=await runtime.launch({...input,retained:true,instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  await vi.waitFor(()=>expect(runtime.get(cancellable.id).record.processState).toBe("running"),{timeout:7000});
+  const cancelledName=cancellable.displayName!;
+  await runtime.get(cancellable.id).cancel();
+  expect(()=>runtime.get(cancelledName,input.origin)).toThrow(/Unknown/);
  });
  it("routes leaf failure to its coordinator and keeps that process alive until it consumes the outcome",async()=>{
   const runtime=fixture(),delivered:Delivery[]=[],scratch=mkdtempSync(join(tmpdir(),"coordinator-outcomes-"));
@@ -75,7 +98,8 @@ describe("process-local descendant ownership",()=>{
    const identity={child:parent.id,origin:input.origin,run:"fixture"};
    const response=await dispatch(identity,{type:"heartbeat"});
    expect(response.delivery).toMatchObject({id:leaf.id,outcome:"failed"});
-   expect(await dispatch(identity,{type:"control",payload:{action:"inspect",id:runtime.get(leaf.id).record.displayName!.toUpperCase()}})).toMatchObject({id:leaf.id});
+   await expect(dispatch(identity,{type:"control",payload:{action:"inspect",id:runtime.get(leaf.id).record.displayName!.toUpperCase()}})).rejects.toThrow(/direct children/);
+   expect(await dispatch(identity,{type:"control",payload:{action:"inspect",id:leaf.id}})).toMatchObject({id:leaf.id});
    await expect(dispatch({...identity,child:leaf.id},{type:"outcome-ack",payload:response.delivery.deliveryId})).rejects.toThrow(/ownership/);
    await dispatch(identity,{type:"outcome-ack",payload:response.delivery.deliveryId});
    await dispatch(identity,{type:"outcome-ack",payload:response.delivery.deliveryId});
@@ -120,6 +144,7 @@ describe("process-local descendant ownership",()=>{
   const response=await (runtime as any).dispatch({child:parent.id,origin:input.origin,run:"fixture"},{type:"delegate",payload:{agent:"probe",instructions:"[hold]",model:"openai-codex/test",effort:"low",background:false}});
   expect(response.waitState).toBe("attached");
   const leaf=runtime.list(input.origin).find(record=>record.parentId===parent.id)!;
+   expect(await (runtime as any).dispatch({child:parent.id,origin:input.origin,run:"fixture"},{type:"control",payload:{action:"inspect",id:leaf.displayName!.toUpperCase()}})).toMatchObject({id:leaf.id});
   await runtime.get(leaf.id).cancel();
  });
  it("routes a coordinator leaf's user-only approval to the originating user, never factual answering",async()=>{
@@ -207,7 +232,7 @@ describe("process-local descendant ownership",()=>{
   replacement.acknowledge(input.origin,carried[0].deliveryId);
   replacement.flush(input.origin);expect(carried).toHaveLength(1);
   const second=await replacement.launch({...input,instructions:"[reject]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
-  expect(second.displayName).not.toBe(firstName);
+  expect(second.displayName).toBe(firstName);
   await vi.waitFor(()=>expect(replacement.get(second.id).record.phase).toBe("settled"),{timeout:7000});
   await resetSubagentRuntime();
  });

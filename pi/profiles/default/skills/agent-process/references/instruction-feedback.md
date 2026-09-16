@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-064 - Require Team Leads to lead through delegated workers
+
+- **Reference:** Operator correction about Team Lead delegation semantics, 2026-09-16.
+- **Feedback:** A Team Lead exists to lead a team. It should not merely be permitted to delegate or coordinate conditionally; it must delegate substantive work to child agents.
+- **Finding:** The role prompt says to coordinate leaf assignments and forbids direct edits, but neither it nor Team Lead guidance explicitly requires launching leaves. Team Leads also do not inherit caller guidance requiring Strategist consultation before delegation, so the assembled Team Lead prompt does not require the Strategist step either. The current wording therefore leaves a path to direct non-editing work without forming a team.
+- **Recommendation:** Make Team Lead delegation mandatory: consult Strategist, form bounded leaf assignments, delegate substantive investigation and implementation, and integrate results. Reserve direct work for coordination and integration. Keep ordinary orchestrator delegation optional so simple tasks still remain direct.
+- **Related:** AIF-033, AIF-061, AIF-062, APR-020, APR-046.
+- **Status:** Feedback recorded; instruction change requires operator approval.
+
 ## AIF-063 - Consolidate the full Strategist prompt before adding role-selection advice
 
 - **Reference:** Operator question about prompt growth after the proposed single-worker versus Team Lead guidance, 2026-09-16.

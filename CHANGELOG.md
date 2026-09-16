@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-16: Reuse default-profile Pi subagent names safely
+
+**Changed:** Default-profile subagents now draw from 64 unique first names, then the existing surname and numeric-suffix overflow. Names are reusable after assignment settlement and successful owned-resource cleanup, while retained or user-owned children keep their reservations. Explicit `finish` and `cancel` release after cleanup without waiting for result acknowledgement.
+
+**Preserved:** Name aliases resolve only the current reservation owner within each origin; historical children remain inspectable and controllable by UUID or prefix. Reservation release is idempotent and owner-checked, so late callbacks cannot release a newer child with the same name. Session switches retain the shared runtime, and settled reload carries pending/inert outcomes plus live reservations without reserving released historical names.
+
 ## 2026-09-16: Preserve repository scope in Pi log analytics
 
 **Fixed:** Default-profile `log_analytics` now compares `cwd` filters using platform path semantics instead of raw JSON strings, so equivalent Windows slash, case, and trailing-separator spellings select the same checkout. A separate mutually exclusive `repository` scope includes sessions from a Git checkout and its linked worktrees. Search continuation binds the normalized location and event-time interval, preventing cursor pages from silently changing either scope.

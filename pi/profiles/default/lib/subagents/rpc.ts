@@ -232,6 +232,9 @@ export class RpcChild {
     const terminal=this.record.status==="settled";
     if(!terminal){this.record.outcome="cancelled";this.record.status="settled";this.activity("cleanup");try{await this.command("abort")}catch{/* Owned termination below is authoritative. */}}
     const cleanup=await this.cleanupOwnedResources();
+    // Explicit cancellation ends retention and direct user ownership only after
+    // cleanup succeeds. A failed cleanup keeps the reservation for retry.
+    if(cleanup.complete){this.record.retained=false;this.record.userOwned=false;}
     if(!terminal)this.done();else this.onProgress?.(this.snapshot());
     return cleanup;
   }
