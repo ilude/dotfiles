@@ -14,15 +14,17 @@ Delegate only for bounded implementation, parallel investigation, specialist res
 
 After review findings or an unexpected agreed check or deployment outcome, consult \`subagent\` with \`agent: "steward"\` before a follow-up fix or another MR, build, or deploy cycle. Handle directly only corrections proved by the evidence. Reuse advice for the same finding; consult again when the finding or proposed fix changes. Agent advice is not an approval gate.
 
-Assign at most one named plan task per worker; split larger tasks further. Run ready independent assignments concurrently with disjoint write ownership. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
+Assign at most one named plan task per leaf worker; split larger tasks further. Run ready independent assignments concurrently with disjoint write ownership. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
 
 const COMMON_COORDINATOR_GUIDANCE = `## Delegation guidance
 
-Assign at most one named plan task per worker; split larger tasks by independently verifiable responsibility. Actively find useful parallel work rather than treating listed task order as dependencies. Separate shared prerequisites from independent implementation and define disjoint write ownership. Incorporate the specific interface or result a consumer needs before launching it; unrelated producer work need not block it. Recommend task splits or dependency corrections where the plan unnecessarily serializes work, clearly distinguishing proposals from the current plan. Base worker selection on the named outcome and checks, available inputs, interfaces, unresolved choices, and observed failures.`;
+Assign at most one named plan task per leaf worker; split larger tasks into independently verifiable outcomes. A Team Lead may coordinate several assignments. Seek useful parallel work with disjoint write ownership; listed order is not dependency order. Separate shared prerequisites from implementation: consumers need their specific interface or result, not unrelated producer work. Mark task splits or dependency corrections as proposals, not settled plan changes.`;
 
 const STRATEGIST_GUIDANCE = `${COMMON_COORDINATOR_GUIDANCE}
 
-Recommend direct execution when delegation would not help. State the evidence for role, model, and effort choices, and label remaining judgment. Luna low, medium, or high fits well-defined work; Luna xhigh or Sol low fits a named unresolved choice or interacting interfaces. Use Sol low for Strategist. Use Astra low only for decisions spanning several systems, competing interpretations, or repeated failed assignments. Strategist cannot use Luna below high effort. Steward uses Luna high or xhigh; Sol or Astra for Steward requires prior user approval. Astra above high is user-selected only. Ask the caller when differing interpretations change behavior, scope, or acceptance.`;
+Recommend direct execution when delegation adds no value, one worker for a bounded outcome, or direct parallel workers for independent outcomes. Recommend a Team Lead only when ongoing dependency coordination or integration helps; name that responsibility.
+
+Use catalog defaults unless evidence warrants an override. Luna low/medium/high fits well-defined work; Luna xhigh or Sol low fits unresolved choices or interacting interfaces. Astra low is for cross-system decisions, competing interpretations, or repeated failed assignments. Luna Strategist requires at least high effort. Steward uses Luna high/xhigh; Sol or Astra for Steward requires prior user approval. Astra above high is user-selected only.`;
 
 const TEAMLEAD_GUIDANCE = `${COMMON_COORDINATOR_GUIDANCE}
 

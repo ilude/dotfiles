@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-16: Consolidate Strategist instructions and share prompt-writing guidance
+
+**Changed:** Default Pi Strategist now distinguishes a single bounded worker, straightforward parallel workers, and a Team Lead with a named ongoing coordination or integration responsibility. Consolidating its role and injected guidance reduces the bundled composition, including the role catalog, from 3,887 to 3,273 bytes and 511 to 418 whitespace-delimited words. The one-plan-task ceiling applies to leaf workers, not a Team Lead coordinating several assignments. Existing model-selection constraints, active parallel decomposition, and adaptable advisory output remain intact; no response schema or runtime gate was added.
+
+**Added:** A generally discoverable `prompting` skill owns instruction selection, whole-prompt consolidation, wording, and context placement. `skill-creation`, `agent-process`, and `pi-extension` now link to that shared guidance rather than duplicating it, while retaining their packaging, feedback/approval, and runtime/caching responsibilities. Discovery and prompt-composition checks do not prove future model adherence. Reload after active subagents settle to load the guidance and discover the new skill.
+
 ## 2026-09-16: Make Pi delegation smaller and actively parallel
 
 **Changed:** Default Pi delegation guidance assigns at most one named plan task per worker and permits further decomposition. Strategist and coordinators now look for useful parallel work, separate shared prerequisites from independent implementation, and identify write ownership and the actual result each dependent task needs. The planning skill and template expose these boundaries when tasks are authored instead of defaulting to serial chains.

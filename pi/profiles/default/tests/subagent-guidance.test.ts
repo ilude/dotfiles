@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { AgentDefinition } from "../lib/subagents/definitions.ts";
+import { fileURLToPath } from "node:url";
+import { loadDefinitions, type AgentDefinition } from "../lib/subagents/definitions.ts";
 import { composedAgentPrompt, delegationContext } from "../lib/subagents/guidance.ts";
 
 function definition(name: string, extra: Partial<AgentDefinition> = {}): AgentDefinition {
@@ -55,9 +56,9 @@ describe("delegation guidance", () => {
     expect(text).toContain("corrections proved by the evidence");
     // Keep caller context compact; detailed decomposition belongs to selected coordinators.
     expect(guidance.length).toBeLessThan(1000);
-    expect(text).toContain("at most one named plan task per worker");
+    expect(text).toContain("at most one named plan task per leaf worker");
     expect(text).toContain("Run ready independent assignments concurrently");
-    expect(text).not.toContain("Recommend task splits or dependency corrections");
+    expect(text).not.toContain("Mark task splits or dependency corrections");
     expect(text).not.toContain("Steward uses Luna high or xhigh");
     expect(text).not.toContain("One automatic stronger-family retry");
     expect(text).not.toContain("Use Sol low for Strategist");
@@ -66,21 +67,25 @@ describe("delegation guidance", () => {
   it("gives selected coordinators active decomposition and result-based dependency guidance", () => {
     for (const role of [strategist, teamlead, coordinator]) {
       const text = composedAgentPrompt(role, definitions, ["leaf"]);
-      expect(text).toContain("at most one named plan task per worker");
-      expect(text).toContain("split larger tasks by independently verifiable responsibility");
-      expect(text).toContain("Actively find useful parallel work");
+      expect(text).toContain("at most one named plan task per leaf worker");
+      expect(text).toContain("split larger tasks into independently verifiable outcomes");
+      expect(text).toContain("A Team Lead may coordinate several assignments");
+      expect(text).toContain("Seek useful parallel work");
       expect(text).toContain("disjoint write ownership");
-      expect(text).toContain("unrelated producer work need not block it");
-      expect(text).toContain("clearly distinguishing proposals from the current plan");
+      expect(text).toContain("consumers need their specific interface or result, not unrelated producer work");
+      expect(text).toContain("as proposals, not settled plan changes");
     }
   });
 
   it("gives Strategist detailed selection advice without follow-up or retry policy", () => {
     const text = composedAgentPrompt(strategist, definitions, ["leaf"]);
     expect(text).toContain("Recommend direct execution");
-    expect(text).toContain("State the evidence for role, model, and effort choices");
-    expect(text).toContain("Use Sol low for Strategist");
-    expect(text).toContain("Steward uses Luna high or xhigh");
+    expect(text).toContain("Use catalog defaults unless evidence warrants an override");
+    expect(text).toContain("one worker for a bounded outcome");
+    expect(text).toContain("direct parallel workers for independent outcomes");
+    expect(text).toContain("ongoing dependency coordination or integration helps; name that responsibility");
+    expect(text).toContain("Luna Strategist requires at least high effort");
+    expect(text).toContain("Steward uses Luna high/xhigh");
     expect(text).toContain("requires prior user approval");
     expect(text).not.toContain("consult Steward");
     expect(text).not.toContain("One stronger-family retry");
@@ -114,6 +119,28 @@ describe("delegation guidance", () => {
       expect(composedAgentPrompt(role, definitions, permitted)).toBe(first);
       expect(composedAgentPrompt(role, new Map([...entries].reverse()), permitted)).toBe(first);
     }
+  });
+
+  it("keeps the assembled bundled Strategist concise, actionable, and advisory", () => {
+    const profile = fileURLToPath(new URL("../", import.meta.url));
+    const catalog = loadDefinitions(profile, false, profile);
+    expect(catalog.errors).toEqual([]);
+    const role = catalog.agents.get("strategist");
+    if (!role) throw new Error("Missing bundled Strategist");
+    const text = composedAgentPrompt(role, catalog.agents);
+    // Includes role body, injected guidance, and catalog. Previously 3,887 bytes;
+    // allow modest wording changes without losing the agreed whole-prompt reduction.
+    expect(Buffer.byteLength(text)).toBeLessThan(3500);
+    expect(text).toContain("Start now, Start after prerequisites, and Parent-owned actions");
+    expect(text).toContain("exact prerequisite results");
+    expect(text).toContain("completion evidence");
+    expect(text).toContain("adaptable prose, not a schema or approval gate");
+    expect(text).toContain("parent owns execution");
+    expect(text).toContain("ongoing dependency coordination or integration helps");
+    expect(text).toContain("model default: openai-codex/gpt-5.6-sol; effort default: low");
+    expect(text).not.toContain("Use Sol low for Strategist");
+    expect(text).not.toContain("Apply the Pareto principle");
+    expect(composedAgentPrompt(role, new Map([...catalog.agents].reverse()))).toBe(text);
   });
 
   it("catalogs Steward for callers and permitted coordinators but not in ordinary leaf context", () => {

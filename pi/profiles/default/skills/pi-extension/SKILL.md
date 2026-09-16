@@ -22,10 +22,11 @@ The active Pi profile is the configuration directory used by the running Pi proc
 - When tests or subprocesses launch Pi, invoke the installed `pi` shim or resolve the CLI from the package's `bin.pi` manifest entry. Do not execute unbundled CLI or experimental server modules. Those internal paths may require `@earendil-works/pi-server`, which is intentionally not a default-profile dependency; do not add it to repair a test harness.
 - For state that belongs to one session, initialize it from that session and stop using it after switching sessions. Clean up timers and subscriptions created for that session when it ends.
 
-## Prompt caching
+## Prompt context and caching
 
-- Establish why each new model-visible instruction must appear at that prompt stage. Keep pre-selection context to local routing, authority, invariants, and evidence-backed corrections; put selected procedures in role or skill prompts and run-specific state in later messages.
-- Compare new text with active instructions and ordinary model knowledge; omit or consolidate generic and duplicate guidance. Keep unchanged system instructions and tool definitions byte-stable, with deterministic ordering and no incidental timestamps or counters.
+When editing model-visible instructions, load [prompting](../prompting/SKILL.md) for composition and wording.
+
+- Keep unchanged system instructions and tool definitions byte-stable, with deterministic ordering and no incidental timestamps or counters.
 - Replace stale extension-owned state rather than accumulating snapshots; preserve conversation history. Correctness and tool availability take precedence over cache reuse, including when restoring context after compaction or session reconstruction.
 - For changes to always-visible prompt composition, compare composed byte counts by audience and test required inclusion, unrelated exclusion, deterministic output, and a justified size ceiling.
 - Inspect the affected provider's request construction when diagnosing cache behavior. Similar extension context does not guarantee identical provider payloads or cache hits.
