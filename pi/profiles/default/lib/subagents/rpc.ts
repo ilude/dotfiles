@@ -323,10 +323,10 @@ export class RpcChild {
     return snapshot;
   }
   private send(type:string,data:Record<string,unknown>){this.record.process?.stdin.write(JSON.stringify({type,...data})+"\n")}
-  protected async finishFromTurn(){
+  protected async finishFromTurn(turnAlreadyCounted=false){
     if(this.record.status==="waiting"&&this.record.phase==="waiting-parent"&&this.question)return;
     if(this.record.status!=="running")return;
-    this.record.turns++;
+    if(!turnAlreadyCounted)this.record.turns++;
     if(this.hasOutstandingChildren?.()){
       this.record.notice="Waiting for commissioned children; their outcomes return automatically.";
       this.activity("waiting-children");return;

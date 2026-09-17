@@ -69,6 +69,33 @@ describe("native subagent message boundaries", () => {
     expect(redirected.commands).toContainEqual(expect.objectContaining({ type: "redirect", message: "visible redirect", delivery: "immediate" }));
   });
 
+  it("counts visible question yields so a second question and final reply remain valid", async () => {
+    const instance = new VisibleChild({ definition, instructions: "visible", cwd: here, model: "openai-codex/test", effort: "low", skills: [], origin: "messaging-origin", retained: true, surface: "visible" }, "fixture-extension", "fixture-profile");
+    const first = instance.parentMessage({ type: "question", payload: "First question" }) as { id: string };
+    expect(instance.parentMessage({ type: "turn", payload: { turn: 1, text: "" } })).toEqual({ accepted: true });
+    expect(instance.snapshot()).toMatchObject({ turns: 1, status: "waiting", requestId: first.id });
+    await instance.answer("First answer", first.id);
+    await instance.message("Redirect the follow-up", { delivery: "immediate" });
+    // The surface handles the redirect without emitting a settled wire turn.
+    const second = instance.parentMessage({ type: "question", payload: "Second question" }) as { id: string };
+    expect(instance.parentMessage({ type: "turn", payload: { turn: 2, text: "" } })).toEqual({ accepted: true });
+    expect(instance.snapshot()).toMatchObject({ turns: 2, status: "waiting", requestId: second.id });
+    expect(() => instance.parentMessage({ type: "turn", payload: { turn: 2, text: "duplicate" } })).toThrow("Invalid, duplicate, or late turn");
+    await instance.answer("Second answer", second.id);
+    expect(instance.parentMessage({ type: "turn", payload: { turn: 3, text: "Completed consultation" } })).toEqual({ accepted: true });
+    expect(instance.snapshot()).toMatchObject({ turns: 3, status: "settled", outcome: "complete", result: "Completed consultation" });
+    expect(instance.snapshot().error).toBeUndefined();
+  });
+
+  it("counts a visible question yield before child cancellation and a final reply", () => {
+    const instance = new VisibleChild({ definition, instructions: "visible", cwd: here, model: "openai-codex/test", effort: "low", skills: [], origin: "messaging-origin", retained: true, surface: "visible" }, "fixture-extension", "fixture-profile");
+    const question = instance.parentMessage({ type: "question", payload: "Need clarification" }) as { id: string };
+    instance.parentMessage({ type: "turn", payload: { turn: 1, text: "" } });
+    instance.parentMessage({ type: "cancel-question", payload: { requestId: question.id } });
+    expect(instance.parentMessage({ type: "turn", payload: { turn: 2, text: "Resolved locally" } })).toEqual({ accepted: true });
+    expect(instance.snapshot()).toMatchObject({ turns: 2, status: "settled", outcome: "complete", result: "Resolved locally" });
+  });
+
   it("keeps ordinary visible input parent-coordinated and reserves ownership for explicit escalation", async () => {
     const instance = new VisibleChild({ definition, instructions: "visible", cwd: here, model: "openai-codex/test", effort: "low", skills: [], origin: "messaging-origin", retained: true, surface: "visible" }, "fixture-extension", "fixture-profile", {} as any);
     (instance as any).appReady = true;

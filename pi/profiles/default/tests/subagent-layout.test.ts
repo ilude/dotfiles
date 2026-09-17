@@ -6,7 +6,7 @@ vi.mock("../lib/subagents/herdr-layout-api.ts", async importOriginal => ({
   createPaneFocus: vi.fn(),
 }));
 import type { HerdrCli } from "../lib/herdr-cli.ts";
-import { CHILDREN_PER_ROW, CHILDREN_PER_TAB, SubagentLayout, layoutSlot } from "../lib/subagents/layout.ts";
+import { CHILDREN_PER_ROW, CHILDREN_PER_TAB, LayoutReconciliationError, SubagentLayout, layoutSlot } from "../lib/subagents/layout.ts";
 
 class LayoutFixture {
   calls: string[][] = [];
@@ -22,6 +22,7 @@ class LayoutFixture {
   nextTab = 2;
   failRename = false;
   failCreatedInspect = false;
+  failLayout = false;
   tabs = new Set(["w1:t1", "w2:t1"]);
   constructor() {
     this.cli = this.run.bind(this);
@@ -64,6 +65,7 @@ class LayoutFixture {
       return JSON.stringify({ result: { panes } });
     }
     if (command === "pane layout") {
+      if (this.failLayout) throw new Error('{"error":{"code":"pane_not_found","message":"pane not found"},"id":"cli:pane:layout"}');
       const pane = this.panes.get(args[3]);
       const panes = [...this.panes.values()].filter(candidate => candidate.tab_id === pane?.tab_id);
       return JSON.stringify({ result: { layout: { panes, focused_pane_id: this.focus } } });
@@ -137,6 +139,23 @@ describe("subagent layout contract", () => {
       { tabIndex: 0, row: 0, column: 3 },
     ])).toEqual({ tabIndex: 0, row: 0, column: 1 });
     expect(CHILDREN_PER_ROW).toBe(CHILDREN_PER_TAB);
+  });
+
+  it("distinguishes successful pane closure from a subsequent reconciliation failure", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const request = { callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi" };
+    const first = await layout.place("origin", { ...request, childId: "first" });
+    const second = await layout.place("origin", { ...request, childId: "second" });
+    fixture.failLayout = true;
+    const closed = layout.close("origin", "first", first.paneId);
+    await expect(closed).rejects.toBeInstanceOf(LayoutReconciliationError);
+    await expect(closed).rejects.toThrow("pane_not_found");
+    expect(fixture.panes.has(first.paneId)).toBe(false);
+    expect(layout.snapshot("origin")).toMatchObject([{ childId: "second", paneId: second.paneId }]);
+    fixture.failLayout = false;
+    await layout.close("origin", "second", second.paneId);
+    expect(layout.snapshot("origin")).toEqual([]);
   });
 
   it("uses focused list records instead of inherited caller context", async () => {

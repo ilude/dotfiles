@@ -5,12 +5,12 @@ vi.mock("../lib/subagents/transport.ts", () => ({ requestParent: request }));
 import childAuthority from "../extensions/subagent-child.ts";
 
 it.each([
-  { agent: "strategist", background: true },
-  { agent: "strategist", background: false },
-  { agent: "strategist", background: undefined },
-  { agent: "probe", background: true },
-  { agent: "probe", background: false },
-])("coordinator launch waiting for $agent with background=$background", async ({ agent, background }) => {
+  { agent: "strategist", background: true, retain: true },
+  { agent: "strategist", background: false, retain: true },
+  { agent: "strategist", background: undefined, retain: undefined },
+  { agent: "probe", background: true, retain: true },
+  { agent: "probe", background: false, retain: undefined },
+])("coordinator launch waiting for $agent with background=$background retain=$retain", async ({ agent, background, retain }) => {
   const beforeAuthority = process.env.PI_SUBAGENT_AUTHORITY;
   const beforeEndpoint = process.env.PI_SUBAGENT_ENDPOINT;
   process.env.PI_SUBAGENT_AUTHORITY = JSON.stringify({ id: "coordinator", agent: "teamlead", tools: ["subagent"], delegates: [agent], cwd: process.cwd(), skills: [] });
@@ -25,8 +25,8 @@ it.each([
   try {
     childAuthority(pi as never);
     const progress = vi.fn();
-    const result = await tools.get("subagent")!.execute("launch", { agent, background, instructions: "bounded assignment" }, undefined, progress, {} as never);
-    expect(request.mock.calls[0][1]).toEqual({ type: "delegate", payload: { agent, background: effectiveBackground, instructions: "bounded assignment" } });
+    const result = await tools.get("subagent")!.execute("launch", { agent, background, retain, instructions: "bounded assignment" }, undefined, progress, {} as never);
+    expect(request.mock.calls[0][1]).toEqual({ type: "delegate", payload: { agent, background: effectiveBackground, retain: agent === "strategist" ? false : retain, instructions: "bounded assignment" } });
     expect(result.details).toEqual(effectiveBackground ? running : settled);
     if (effectiveBackground) {
       expect(request).toHaveBeenCalledTimes(1);

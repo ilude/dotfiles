@@ -18,6 +18,7 @@ describe("subagent launch prompt", () => {
     expect(launch.args).toContain("--approve");
     expect(launch.args).not.toContain("--no-approve");
     expect(launch.args).toContain(join(process.cwd(), "extensions", "session-profile.ts"));
+    expect(launch.args).toContain(join(process.cwd(), "extensions", "tool-invocation-provenance.ts"));
   });
 
   it("loads context files and discoverable skills only for Team Leads", () => {

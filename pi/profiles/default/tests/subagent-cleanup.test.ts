@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RpcChild } from "../lib/subagents/rpc.ts";
 import { VisibleChild } from "../lib/subagents/visible.ts";
+import { LayoutReconciliationError, SubagentLayout } from "../lib/subagents/layout.ts";
 import { SubagentRuntime, getSubagentRuntime, resetSubagentRuntime } from "../lib/subagents/runtime.ts";
 import subagents from "../extensions/subagents.ts";
 import clearCommand from "../extensions/clear.ts";
@@ -75,6 +76,22 @@ describe("subagent cleanup ownership", () => {
     close.mockResolvedValue(undefined);
     expect((await child.cancel()).complete).toBe(true);
     expect(close).toHaveBeenCalledTimes(2);
+  });
+
+  it("records a closed pane despite reconciliation failure and retries only remaining cleanup", async () => {
+    const layout = new SubagentLayout(async () => { throw new Error("Unexpected Herdr call"); }, async () => {});
+    const close = vi.spyOn(layout, "close").mockRejectedValueOnce(new LayoutReconciliationError(new Error("pane_not_found: pane:layout")));
+    const child = new VisibleChild({ definition, instructions: "pane", cwd: here, model: "openai-codex/test", effort: "low", skills: [], origin: "cleanup-origin", retained: true, surface: "visible" }, "fixture-extension", "fixture-profile", layout);
+    Object.assign(child.record, { status: "settled", outcome: "complete", result: "Useful result", paneId: "pane-1", paneState: "open" });
+    child.parentMessage({ type: "host-exit", payload: { code: 0 } });
+    await expect(child.finish()).rejects.toThrow("Cannot finish while owned resources remain open");
+    expect(child.snapshot()).toMatchObject({
+      status: "settled", outcome: "complete", result: "Useful result", retained: true, paneState: "closed",
+      cleanup: { complete: false, pane: "closed", launcher: "open", errors: [expect.stringContaining("pane_not_found")] },
+    });
+    expect(await child.finish()).toMatchObject({ complete: true, pane: "closed", launcher: "closed", errors: [expect.stringContaining("pane_not_found")] });
+    expect(child.snapshot()).toMatchObject({ outcome: "complete", result: "Useful result", retained: false });
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it("attempts every child and keeps the owner for an explicit retry", async () => {

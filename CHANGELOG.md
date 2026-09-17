@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-17: Record default-profile tool provenance
+
+**Added:** Default-profile sessions record one compact, non-model-visible custom entry when each tool invocation starts, linked by tool call ID with the tool name and effective registered tool `sourceInfo`. Arguments, results, and model-visible text are excluded; unknown tools remain `unknown`. Restricted child launches load the same extension explicitly.
+
+## 2026-09-17: Preserve subagent question turns and completed pane cleanup
+
+**Fixed:** Visible children now count accepted question-yield turns consistently with their parent. Previously, a question could leave the parent's turn count behind, causing a later reply or question to be rejected and the child to exit before its parent answered. Pending questions still keep the assignment alive; duplicate and out-of-order turns remain rejected, and headless turn handling is unchanged.
+
+**Fixed:** A successful child-pane close is now recorded even when subsequent layout adjustment fails. The adjustment error remains visible, but cleanup can retry remaining launcher work without attempting to close a pane whose ownership has already been released. Actual pane-close failures retain ownership for retry, and completed assignment results remain intact.
+
+**Scope:** Plain `exit` behavior in restricted children is unchanged. Focused regression tests cover both defects; live-model and attached-client reproduction are not claimed.
+
+## 2026-09-17: Prevent retained Strategist conversations
+
+**Fixed:** Default-profile root and coordinator launch paths now override `retain: true` for Strategists as well as forcing foreground execution. A Strategist blocks its parent until the consultation returns and then exits, preventing completed consultations from remaining available for unintended second turns.
+
+**Preserved:** Retention remains available for other roles, and existing Strategist wait interruption behavior is unchanged.
+
 ## 2026-09-17: Use normal Git merges with explicit dirty-worktree preservation
 
 **Added:** A default-profile Git workflow skill now guides plan and subagent branch integration. Clean destinations use a normal merge. Dirty destinations require an operator-approved preservation choice: a named stash restored with `apply`, or a targeted local WIP commit when a durable checkpoint is preferred. Separate worktrees are recommended for implementation isolation but do not bypass dirty-destination handling.

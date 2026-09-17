@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-068 - Strategist foreground mode also means non-retained
+
+- **Reference:** Operator correction during review of default session `01a0acad-f5d2-738a-942f-f5858de7a2c4`, 2026-09-17.
+- **Feedback:** Strategists are supposed to run in the foreground, block the parent until their consultation returns, and then exit. They are not retained conversations.
+- **Finding:** AIF-067 and the implementation enforced only `background:false`. The public schemas still accept `retain:true` for Strategists, and a Team Lead used it for Maya. This left a completed Strategist alive and allowed direct pane input to create an unintended second turn. The earlier review incorrectly described that retention as expected.
+- **Decision:** Treat Strategist non-retention as part of the role contract and enforce it in both root and coordinator launch paths rather than relying only on prompt adherence.
+- **Related:** AIF-067, APR-054, APR-056, TCA-005.
+- **Status:** Implemented in both root and coordinator launch paths. Fourteen focused tests, default typecheck, and runtime smoke passed; live model acceptance remains unverified.
+
 ## AIF-067 - Enforce foreground Strategist launches without delegation gates
 
 - **Reference:** Review of default session `01a0acad-f5d2-738a-942f-f5858de7a2c4`, 2026-09-17.

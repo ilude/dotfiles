@@ -37,13 +37,13 @@ afterEach(async () => {
 
 describe("model resolution and foreground behavior at subagent launch seams", () => {
   it.each([
-    { label: "definition fallback", requested: undefined, agent: "probe", background: undefined },
-    { label: "explicit bare override", requested: "gpt", agent: "probe", background: undefined },
-    { label: "ordinary background launch", requested: undefined, agent: "probe", background: true },
-    { label: "strategist background override", requested: undefined, agent: "strategist", background: true },
-    { label: "strategist explicit foreground", requested: undefined, agent: "strategist", background: false },
-    { label: "strategist default foreground", requested: undefined, agent: "strategist", background: undefined },
-  ])("direct tool preserves resolution and waiting for $label", async ({ requested, agent, background }) => {
+    { label: "definition fallback", requested: undefined, agent: "probe", background: undefined, retain: undefined },
+    { label: "explicit bare override", requested: "gpt", agent: "probe", background: undefined, retain: undefined },
+    { label: "ordinary background launch", requested: undefined, agent: "probe", background: true, retain: undefined },
+    { label: "strategist background and retention override", requested: undefined, agent: "strategist", background: true, retain: true },
+    { label: "strategist explicit foreground", requested: undefined, agent: "strategist", background: false, retain: undefined },
+    { label: "strategist default foreground", requested: undefined, agent: "strategist", background: undefined, retain: undefined },
+  ])("direct tool preserves resolution and waiting for $label", async ({ requested, agent, background, retain }) => {
     fixture();
     const profile = mkdtempSync(join(tmpdir(), "subagent-model-profile-"));
     const cwd = mkdtempSync(join(tmpdir(), "subagent-model-cwd-"));
@@ -56,10 +56,10 @@ describe("model resolution and foreground behavior at subagent launch seams", ()
     const ctx: any = { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "direct-model-test" }, isIdle: () => true, modelRegistry: registry([model("bedrock-mantle", "gpt"), model("openai-codex", "gpt")], ["bedrock-mantle", "openai-codex"]) };
     // The extension owns its runtime; use its normal tool seam and inspect its returned child record.
     const progress = vi.fn();
-    const result = await tools.subagent.execute("call", { agent, background, instructions: "[live]", surface: "headless", ...(requested ? { model: requested } : {}) }, undefined, progress, ctx);
+    const result = await tools.subagent.execute("call", { agent, background, retain, instructions: "[live]", surface: "headless", ...(requested ? { model: requested } : {}) }, undefined, progress, ctx);
     expect(result.isError).not.toBe(true);
     const effectiveBackground = agent !== "strategist" && background === true;
-    expect(result.details).toMatchObject({ model: "openai-codex/gpt", status: effectiveBackground ? "running" : "settled", waitState: effectiveBackground ? "background" : "attached" });
+    expect(result.details).toMatchObject({ model: "openai-codex/gpt", retained: agent === "strategist" ? false : retain ?? false, status: effectiveBackground ? "running" : "settled", waitState: effectiveBackground ? "background" : "attached" });
     if (effectiveBackground) await tools.subagent_control.execute("cancel", { action: "cancel", id: result.details.id }, undefined, undefined, ctx);
     rmSync(profile, { recursive: true, force: true }); rmSync(cwd, { recursive: true, force: true });
   });

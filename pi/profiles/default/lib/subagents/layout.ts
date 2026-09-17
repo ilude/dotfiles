@@ -33,6 +33,13 @@ export class LayoutPlacementError extends Error {
     this.placement = placement;
   }
 }
+/** The owned pane was closed; only subsequent layout reconciliation failed. */
+export class LayoutReconciliationError extends Error {
+  constructor(error: unknown) {
+    super(`Pane closed, but layout reconciliation failed: ${String(error)}`);
+    this.name = "LayoutReconciliationError";
+  }
+}
 interface Group {
   callerPane: string;
   callerTab: string;
@@ -76,11 +83,16 @@ export class SubagentLayout {
       if (!owned || owned.paneId !== paneId) throw new Error("Visible child pane is not owned by this layout");
       await this.cli(["plugin", "pane", "close", paneId]);
       group.children.delete(childId);
-      this.compactRow(group, owned);
-      await this.removeEmptyTab(group, owned);
-      await this.balance(group, owned.tabIndex, owned.row);
-      await this.balanceHeight(group);
-      if (!group.children.size) this.groups.delete(this.originFor(group));
+      try {
+        this.compactRow(group, owned);
+        await this.removeEmptyTab(group, owned);
+        await this.balance(group, owned.tabIndex, owned.row);
+        await this.balanceHeight(group);
+      } catch (error) {
+        throw new LayoutReconciliationError(error);
+      } finally {
+        if (!group.children.size) this.groups.delete(this.originFor(group));
+      }
     });
   }
 

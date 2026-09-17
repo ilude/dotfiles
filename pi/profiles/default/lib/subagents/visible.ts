@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
 import type { ChildEndpoint, ApplicationMessage, MessageOptions } from "./transport.ts";
 import { createHerdrCli, herdrContext, result, inspectPane } from "../herdr-cli.ts";
-import { LayoutPlacementError, SubagentLayout } from "./layout.ts";
+import { LayoutPlacementError, LayoutReconciliationError, SubagentLayout } from "./layout.ts";
 
 export function safeDiagnostic(value:unknown):string {
  if(typeof value!=="string")return "";
@@ -123,9 +123,11 @@ export class VisibleChild extends RpcChild {
   if(message.type==="turn"){
    const payload=message.payload as {text?:unknown;turn?:unknown;error?:unknown};
    if(!payload||typeof payload.text!=="string"||payload.turn!==this.record.turns+1)throw new Error("Invalid, duplicate, or late turn");
-   if(typeof payload.error==="string"){this.record.turns++;this.fail(payload.error);return{accepted:true}}
+   // Consume every accepted wire turn, including a yield that keeps a question pending.
+   this.record.turns++;
+   if(typeof payload.error==="string"){this.fail(payload.error);return{accepted:true}}
    this.last=payload.text;
-   void this.finishFromTurn();
+   void this.finishFromTurn(true);
    return{accepted:true};
   }
   return super.parentMessage(message);
@@ -177,7 +179,11 @@ export class VisibleChild extends RpcChild {
   // remains alive briefly so closing its still-live, non-focused plugin pane
   // cannot make Herdr focus the caller workspace as a side effect of PTY exit.
   if(this.record.paneId&&!this.closed){
-   await this.layout.close(this.record.origin,this.record.id,this.record.paneId);
+   try{await this.layout.close(this.record.origin,this.record.id,this.record.paneId)}
+   catch(error){
+    if(error instanceof LayoutReconciliationError){this.closed=true;this.record.paneState="closed"}
+    throw error;
+   }
    this.closed=true;this.record.paneState="closed";
   }
   // Pane closure owns launcher termination. Never terminate a PID found by probing.
