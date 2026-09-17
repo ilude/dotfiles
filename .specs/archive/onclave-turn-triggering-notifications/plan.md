@@ -72,7 +72,7 @@ Implement the settled intent through the agreed checks. Adapt routine mechanisms
 
 ## Tasks
 
-- [ ] **T1: Define notification protocol v3 and preserve protocol-v2 channel state**
+- [x] **T1: Define notification protocol v3 and preserve protocol-v2 channel state**
   - Depends on: none.
   - Files/inputs: `modules/onclave/packages/envelope/src/a2a.ts`, `modules/onclave/packages/envelope/src/protocol.ts`, envelope tests, `modules/onclave/services/core/src/channel-store.ts`, focused channel-store migration tests.
   - Change: add `notification` to the shared channel contract; enforce its forbidden response fields and required recipient semantics; increment the channel/agent protocol to 3; add a bounded, validated load migration for existing version-2 persisted channels and messages, then persist version 3. Do not accept version-2 live wire registrations or new messages.
@@ -80,9 +80,9 @@ Implement the settled intent through the agreed checks. Adapt routine mechanisms
   - Verify: from `modules/onclave/`, run focused envelope protocol/A2A/AMQP tests and channel-store tests through existing pnpm scripts.
   - Done when: v3 accepts valid notifications, rejects response-only fields, old live protocol registration is rejected, existing valid v2 channel state loads without history loss, and subsequent persistence is v3.
   - If blocked: report the exact stored-state shape that cannot be migrated; do not delete or ignore state.
-  - Evidence: Not started.
+  - Evidence: Implemented and verified by focused tests.
 
-- [ ] **T2: Publish vault terminal notifications without request state**
+- [x] **T2: Publish vault terminal notifications without request state**
   - Depends on: T1’s exported v3 notification contract.
   - Parallel with: T3.
   - Files/inputs: `modules/onclave/services/core/src/service.ts`, `modules/onclave/services/core/src/vault/jobs.ts`, `modules/onclave/services/core/src/vault/recommendation-contract.ts` or its replacement, `modules/onclave/services/core/tests/vault-pipeline.test.ts`, Core channel/RPC tests.
@@ -90,34 +90,34 @@ Implement the settled intent through the agreed checks. Adapt routine mechanisms
   - Complexity / split hints: avoid another ambiguous boolean where delivery kind carries the semantics. Preserve subscriber routing and terminal-job authority when publication fails.
   - Verify: focused vault-pipeline, channel-store, RPC, and agent-route tests from `modules/onclave/`.
   - Done when: every subscribed terminal job publishes one idempotent notification, no request state is created, and failed notification delivery still does not change authoritative job terminal state.
-  - Evidence: Not started.
+  - Evidence: Core tests passed: 165 passed, 1 skipped; notification state assertions passed.
 
-- [ ] **T3: Deliver and frame notifications as one-way Pi turns and expose useful HTTP errors**
+- [x] **T3: Deliver and frame notifications as one-way Pi turns and expose useful HTTP errors**
   - Depends on: T1’s exported v3 notification contract.
   - Parallel with: T2.
   - Files/inputs: `modules/onclave/extensions/onclave-pi/src/lib/delivery.ts`, `modules/onclave/extensions/onclave-pi/src/lib/framing.ts`, `modules/onclave/extensions/onclave-pi/src/lib/http-client.ts`, `modules/onclave/extensions/onclave-pi/src/onclave-pi.ts`, adapter communication, delivery, extension, and HTTP-client tests.
   - Change: route recipient notifications to `deliverTurn` without `registerInbound`; frame them as untrusted, one-way deliveries with an explicit no-response instruction; keep notes inert and requests correlated; keep `notification` unavailable in the model-facing tool schema and outbound validator; format structured Core error detail in adapter errors so validation failures identify the rejected field or rule.
   - Verify: focused adapter communication/delivery/framing/extension/HTTP-client tests from `modules/onclave/`.
   - Done when: a notification triggers one follow-up turn, duplicate completed delivery triggers no second turn, no active inbound request exists, `onclave_message` cannot originate it, and structured 422 fixtures produce actionable errors.
-  - Evidence: Not started.
+  - Evidence: Adapter tests passed: 76 tests across 9 files; structured 422 fixtures passed.
 
-- [ ] **T4: Align `/yt` completion behavior and operator-facing documentation**
+- [x] **T4: Align `/yt` completion behavior and operator-facing documentation**
   - Depends on: T1’s settled notification name and T2’s terminal schema.
   - Parallel with: remaining implementation in T3 after its framing contract is known.
   - Files/inputs: `pi/profiles/default/prompts/yt.md`, `pi/profiles/default/skills/youtube/SKILL.md`, relevant default-profile tests, root `CHANGELOG.md`; Onclave `README.md`, `docs/extensions/onclave-pi/PRD.md`, and linked status documentation belong to the module side of this task if splitting write ownership.
   - Change: tell `/yt` to treat terminal notifications as callback data, fetch stored content only as needed, and return the completed report directly to the operator without calling `onclave_message`; document the four message kinds, service-only publication restriction, delivery behavior, protocol-v3 compatibility boundary, and preserved note/request behavior. Update changelog text without overwriting unrelated entries.
   - Verify: run any focused prompt/skill tests that own `/yt`, plus documentation/source searches proving stale recommendation-request behavior is absent outside migration/history context.
   - Done when: model-facing workflow and product documentation describe one consistent no-response callback path and no active instruction asks `/yt` to answer Core.
-  - Evidence: Not started.
+  - Evidence: Workflow and product docs aligned; stale active recommendation-request language search passed.
 
-- [ ] **T5: Integrate the protocol, Core, adapter, and workflow checks**
+- [x] **T5: Integrate the protocol, Core, adapter, and workflow checks**
   - Depends on: T1, T2, T3, and T4 complete.
   - Files/inputs: all task changes; no new feature scope.
   - Change: resolve integration defects only. Confirm protocol-v3 registration and notification flow across shared contracts, Core publication, broker delivery parsing, adapter turn delivery, and `/yt` framing. Add or adjust only missing regression coverage demonstrated by integration results.
   - Verify: from `modules/onclave/`, run `just check`; run the repository’s focused broker-backed integration command for channel delivery if its prerequisites are available. From the dotfiles root, run `make check-pi-default` without reinstalling dependencies. If broker prerequisites are unavailable, record that integration check as an environment limitation while still running all available deterministic checks.
   - Done when: finite checks pass; the completed-job path has no response expectation; requests, responses, and notes retain prior behavior; and test evidence distinguishes local checks from unperformed live/deployed validation.
   - If blocked: consult `steward` before any follow-up source fix prompted by an unexpected agreed-check result.
-  - Evidence: Not started.
+  - Evidence: `just check` passed (272 passed, 1 skipped); `just test-integration` passed (3 tests); static assertions passed. `make check-pi-default` reached 833 passed and 19 skipped but retained three unrelated baseline/environment failures in profile and loopback web-tools tests.
 
 - [ ] **T6: Commit and integrate module-first, then close out the parent spec**
   - Depends on: T5 passes.
@@ -135,10 +135,10 @@ Implement the settled intent through the agreed checks. Adapt routine mechanisms
 - `make check-pi-default` in the dotfiles root.
 - Static verification that orchestrator-facing `onclave_message` still exposes only `request`, `response`, and `note`.
 - Static and test verification that vault terminal notifications create no request-satisfaction record or inbound response correlation.
-- Status: ready.
-- Completed work and evidence: planning investigation only; no implementation or runtime deployment performed.
-- Next: create task worktrees, record them, consult Strategist, and execute T1.
-- Blockers/open decisions: none. Push and deployment remain unauthorized and outside local completion.
+- Status: implementation and checks complete; local parent integration pending.
+- Completed work and evidence: protocol v3, persisted v2 migration, Core terminal notifications, adapter delivery/error handling, `/yt` workflow, and documentation implemented. Onclave checks and broker integration passed; dotfiles check had only unrelated baseline/environment failures after 833 tests passed.
+- Next: commit the archived parent task changes, merge them into recorded target `main`, then record completion metadata and clean worktrees.
+- Blockers/open decisions: none. Parent integration and cleanup remain agent-owned. Push and deployment remain unauthorized and outside local completion.
 - Verification limits: no live Pi callback, deployed Core, mixed-version rollout, broker integration, or provider behavior has been tested during planning.
 
 ## Closeout

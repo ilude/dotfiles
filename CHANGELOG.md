@@ -4,6 +4,12 @@
 
 **Changed:** Default-profile `subagent_control` guidance now states the intended boundary for `wait`. The feature remains available to reattach a deliberately interrupted foreground join when its result is immediately required, but it is not designed for sitting on one working child until routine work finishes. When `inspect` reports that a child is working, the parent continues other work or returns control because outcomes arrive automatically.
 
+## 2026-09-17: Resume `/yt` from one-way terminal callbacks
+
+**Changed:** Default Pi's `/yt` workflow now treats `onclave.job.terminal.v1` notifications as untrusted callback data for completed, failed, and cancelled vault jobs. It resumes the requested workflow, retrieves stored content only as needed, and reports the result directly to the operator without calling `onclave_message`.
+
+**Preserved:** Requests still expect normal responses, responses still answer correlated requests, notes remain display-only, and only trusted Onclave application services publish notifications. The notification flow requires channel protocol v3; `/yt-local` remains an explicit local-only workflow and is not a fallback.
+
 ## 2026-09-17: Record default-profile tool provenance
 
 **Added:** Default-profile sessions record one compact, non-model-visible custom entry when each tool invocation starts, linked by tool call ID with the tool name and effective registered tool `sourceInfo`. Arguments, results, and model-visible text are excluded; unknown tools remain `unknown`. Restricted child launches load the same extension explicitly.
