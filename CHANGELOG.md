@@ -1,10 +1,5 @@
 # Changelog
 
-## 2026-09-17: Make executable plans carry delegation prerequisites
-
-**Changed:** The default planning skill and plan template now require executable plans to tell the orchestrator to consult Strategist before delegation, assign at most one named plan task per subagent, split larger tasks further, and use only roles from the active agent catalog. The active subagent-parent-question-mailbox plan carries the same instruction.
-
-**Preserved:** Strategist still owns staffing recommendations, direct execution remains available when delegation does not help, and plans do not prescribe model or effort selections.
 ## 2026-09-17: Deliver Pi parent questions through a local mailbox
 
 **Added:** Default-profile subagent questions now show their complete bounded text and request ID in the child result, enter an origin-scoped process-local parent mailbox independently of foreground waits, and use the first native safe steering or follow-up boundary without interrupting active work. The child can keep discussing the issue with a user and explicitly cancel its own question when it decides the discussion resolved it.
@@ -12,6 +7,22 @@
 **Fixed:** Parent answers and child cancellations now race safely with accurate late-resolution errors. Undelivered resolved questions are removed, while already exposed questions receive one concise resolution update. Non-retained children stay alive while a question is pending, and ordinary visible input no longer clears the pending request.
 
 **Preserved:** Ordinary completion, failure, cancellation, user-only prompts, origin isolation, attached wait results, and outcome acknowledgement behavior remain unchanged. The mailbox is process-local and non-durable and has no Onclave dependency.
+
+## 2026-09-17: Run Strategist launches in the foreground
+
+**Changed:** Default-profile root and Team Lead/coordinator `subagent` tools now override `background: true` for `strategist`, using the existing foreground wait and progress path. This addresses delegation proceeding immediately after launching an unfinished background consultation.
+
+**Preserved:** Other roles retain background execution, surface selection and wait interruption behavior remain unchanged, and concurrent teams remain available. No launch gate, consultation receipt, or same-batch ordering enforcement is added; those remain deferred unless further incidents warrant revisiting them.
+
+## 2026-09-17: Remove duplicate `/plans` start output
+
+**Changed:** `/plans` now keeps the shared exact command row as its only visible invocation acknowledgment. Its structured start event remains recorded for analytics but no longer renders a redundant `/plans · invocation · started` row. Subsequent plan action outcomes remain visible.
+
+## 2026-09-17: Make executable plans carry delegation prerequisites
+
+**Changed:** The default planning skill and plan template now require executable plans to tell the orchestrator to consult Strategist before delegation, assign at most one named plan task per subagent, split larger tasks further, and use only roles from the active agent catalog. The active subagent-parent-question-mailbox plan carries the same instruction.
+
+**Preserved:** Strategist still owns staffing recommendations, direct execution remains available when delegation does not help, and plans do not prescribe model or effort selections.
 
 ## 2026-09-16: Size planned work for Luna and leave staffing to Strategist
 

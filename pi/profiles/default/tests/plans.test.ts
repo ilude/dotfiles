@@ -26,6 +26,14 @@ const testTheme = (bg = vi.fn((_: string, value: string) => value)) => ({ bold: 
 const nextTurn = () => new Promise<void>(resolve => setImmediate(resolve));
 type Picker = ReturnType<ReturnType<typeof planSelector>>;
 
+it("keeps the shared command invocation as the only visible /plans start row", () => {
+  const renderers = new Map<string, (entry: any) => any>();
+  plansCommand({ registerCommand: vi.fn(), registerEntryRenderer: (type: string, renderer: (entry: any) => any) => renderers.set(type, renderer) } as any);
+  const renderer = renderers.get("plan-action-event")!;
+  expect(renderer({ data: { action: "plans", phase: "invocation", outcome: "started" } }).render(80)).toEqual([]);
+  expect(renderer({ data: { action: "open", phase: "outcome", outcome: "success", plan: { stub: "demo" } } }).render(80).join("\n")).toContain("Open · demo · outcome · success");
+});
+
 it("discovers direct active plans, parses summaries and sorts by stub", () => {
   const base = root(); add(base, "z", complete.replace("Zebra", "Alpha")); add(base, "a", complete.replace("[x] Second", "[ ] Next"));
   add(base, "archive/old", complete); add(base, "deep/nested", complete);

@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-067 - Enforce foreground Strategist launches without delegation gates
+
+- **Reference:** Review of default session `01a0acad-f5d2-738a-942f-f5858de7a2c4`, 2026-09-17.
+- **Feedback:** The operator approved only foreground enforcement for Strategist and deferred broader launch restrictions until further issues establish a need. Concurrent Team Leads must remain unaffected.
+- **Decision:** Root and coordinator subagent tools override Strategist's background request and use their existing foreground wait/progress paths. Preserve ordinary interruption, other roles' background launches, and advice reuse. Add no consultation receipts, launch rejection, or same-batch sequencing gate.
+- **Related:** AIF-061, AIF-066, APR-046, APR-054.
+- **Status:** Implemented locally. All 31 focused launch, child-outcome, and runtime tests, default typecheck, and runtime smoke passed. Root tests use the real runtime with an inert child process; coordinator tests exercise the tool's wait path with mocked transport. Live model adherence remains unverified; reload only after active children settle.
+
 ## AIF-066 - Carry Strategist-first delegation into executable plans
 
 - **Reference:** Two attempted executions of the subagent-parent-question-mailbox plan, 2026-09-17.

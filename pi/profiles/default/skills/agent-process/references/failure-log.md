@@ -1,5 +1,23 @@
 # Agent process failure log
 
+## APR-054 - Delegation began before Strategist returned
+
+- **Reference:** Default session `01a0acad-f5d2-738a-942f-f5858de7a2c4`, 2026-09-17.
+- **Observed:** Strategist launched in the background at 00:05:30Z; developers received T5, T6, and combined T1+T2 at 00:05:51Z. Advice returned at 00:08:57Z requiring T1 integration before separate T2/T3 assignments. The parent then waited on the combined worker rather than correcting it until operator intervention.
+- **Finding:** The recorded plan already required one named task per worker and declared prerequisites. Later plan-template reinforcement does not establish that this adherence failure is fixed. Tool records establish premature dispatch and ignored advice, not the prior assistant's claimed psychological causes.
+- **Decision:** Operator approved only foreground-only Strategist launches in both root and coordinator tools. No broader delegation gates or same-batch enforcement; revisit only if later issues warrant it.
+- **Related:** APR-046, APR-051, AIF-066, AIF-067.
+- **Status:** Foreground enforcement implemented locally; 31 focused tests, default typecheck, and runtime smoke passed. No live model acceptance run. Assignment correctness remains the caller's responsibility.
+
+## APR-053 - `/plans` rendered two invocation acknowledgments
+
+- **Reference:** Operator correction after invoking `/plans`, 2026-09-17.
+- **Observed:** The transcript showed both the shared exact `/plans` command row and `/plans · invocation · started` from plan action history.
+- **Finding:** Both rows acknowledged the same invocation. The structured event is still useful for analytics, but rendering it duplicates the command-owned acknowledgment.
+- **Remediation:** Keep the structured invocation event recorded but render it as an empty component. Preserve visible rows for subsequent plan actions and outcomes.
+- **Related:** APR-048, APR-045.
+- **Status:** Corrected locally; 56 focused tests and default-profile typecheck passed.
+
 ## APR-052 - Parent question was trapped behind another foreground subagent wait
 
 - **Reference:** Parent session `01a0acad-f5d2-738a-942f-f5858de7a2c4` and developer child session `01a0acaf-1fd7-7016-a924-b523c740ed34`, 2026-09-17.

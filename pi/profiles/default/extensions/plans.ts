@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, renameSync } from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { copyToClipboard, type ExtensionAPI, type ExtensionCommandContext, type Theme } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey, stripTerminalSequences, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { Container, Key, matchesKey, stripTerminalSequences, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { containedRealPath, discoverPlans, parsePlan, type PlanRecord } from "../lib/plans.ts";
 import { createHerdrPiTab, HerdrPiTabLaunchError, renameHerdrPiTab } from "./session-launch.ts";
 import { PLAN_EVENT_TYPE, PlanEventRecorder, eventPlan, formatPlanEvent, notifyLoggingFailure, type PlanActionEvent, type PlanEventAction } from "../lib/plan-events.ts";
@@ -316,6 +316,7 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 export default function plansCommand(pi: ExtensionAPI): void {
 	pi.registerEntryRenderer?.(PLAN_EVENT_TYPE, entry => {
 		const event = entry.data as Partial<PlanActionEvent>;
+		if (event.action === "plans" && event.phase === "invocation" && event.outcome === "started") return new Container();
 		return new Text(formatPlanEvent(event), 0, 0);
 	});
 	registerProfileCommand(pi, "plans", { description: "Browse open implementation plans", handler: async (args, ctx) => {

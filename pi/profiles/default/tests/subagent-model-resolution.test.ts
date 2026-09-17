@@ -35,25 +35,32 @@ afterEach(async () => {
   }
 });
 
-describe("bare model resolution at subagent launch seams", () => {
+describe("model resolution and foreground behavior at subagent launch seams", () => {
   it.each([
-    ["definition fallback", undefined, "openai-codex/gpt"],
-    ["explicit bare override", "gpt", "openai-codex/gpt"],
-  ])("direct tool uses the preferred resolver for %s", async (_label, requested, expected) => {
+    { label: "definition fallback", requested: undefined, agent: "probe", background: undefined },
+    { label: "explicit bare override", requested: "gpt", agent: "probe", background: undefined },
+    { label: "ordinary background launch", requested: undefined, agent: "probe", background: true },
+    { label: "strategist background override", requested: undefined, agent: "strategist", background: true },
+    { label: "strategist explicit foreground", requested: undefined, agent: "strategist", background: false },
+    { label: "strategist default foreground", requested: undefined, agent: "strategist", background: undefined },
+  ])("direct tool preserves resolution and waiting for $label", async ({ requested, agent, background }) => {
     fixture();
     const profile = mkdtempSync(join(tmpdir(), "subagent-model-profile-"));
     const cwd = mkdtempSync(join(tmpdir(), "subagent-model-cwd-"));
     mkdirSync(join(profile, "agents"));
-    writeFileSync(join(profile, "agents", "probe.md"), `---\nname: probe\ndescription: probe\ntools: []\nskills: []\ndelegates: []\nmodel: ${requested === undefined ? "gpt" : "bedrock-mantle/gpt"}\n---\nprobe\n`);
+    writeFileSync(join(profile, "agents", `${agent}.md`), `---\nname: ${agent}\ndescription: ${agent}\ntools: []\nskills: []\ndelegates: []\nmodel: ${requested === undefined ? "gpt" : "bedrock-mantle/gpt"}\n---\n${agent}\n`);
     process.env.PI_CODING_AGENT_DIR = profile;
     const tools: Record<string, any> = {};
     const pi: any = { registerTool: (tool: any) => { tools[tool.name] = tool; }, registerCommand: () => {}, registerMessageRenderer: () => {}, on: () => {} };
     subagents(pi);
     const ctx: any = { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "direct-model-test" }, isIdle: () => true, modelRegistry: registry([model("bedrock-mantle", "gpt"), model("openai-codex", "gpt")], ["bedrock-mantle", "openai-codex"]) };
     // The extension owns its runtime; use its normal tool seam and inspect its returned child record.
-    const result = await tools.subagent.execute("call", { agent: "probe", instructions: "[live]", surface: "headless", ...(requested ? { model: requested } : {}) }, undefined, undefined, ctx);
+    const progress = vi.fn();
+    const result = await tools.subagent.execute("call", { agent, background, instructions: "[live]", surface: "headless", ...(requested ? { model: requested } : {}) }, undefined, progress, ctx);
     expect(result.isError).not.toBe(true);
-    expect(result.details).toMatchObject({ model: expected, status: "settled" });
+    const effectiveBackground = agent !== "strategist" && background === true;
+    expect(result.details).toMatchObject({ model: "openai-codex/gpt", status: effectiveBackground ? "running" : "settled", waitState: effectiveBackground ? "background" : "attached" });
+    if (effectiveBackground) await tools.subagent_control.execute("cancel", { action: "cancel", id: result.details.id }, undefined, undefined, ctx);
     rmSync(profile, { recursive: true, force: true }); rmSync(cwd, { recursive: true, force: true });
   });
 
