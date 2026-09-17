@@ -65,7 +65,7 @@ async function sendRequest(request: unknown): Promise<void> {
   await sendRequestAttempt(request, 1500);
 }
 
-type AgentState = "working" | "blocked" | "idle";
+type AgentState = "working" | "blocked" | "idle" | "unknown";
 
 type QueuedState = {
   state: AgentState;
@@ -195,6 +195,7 @@ export default function (pi) {
   let lastState: AgentState | undefined;
   let lastMessage: string | undefined;
   let rootSession = false;
+  const subagentSession = Boolean(process.env.PI_SUBAGENT_AUTHORITY);
 
   function desiredState() {
     if (blockedCount > 0) {
@@ -203,7 +204,12 @@ export default function (pi) {
     if (agentActive) {
       return { state: "working" as const, message: undefined };
     }
-    return { state: "idle" as const, message: undefined };
+    // Herdr plays its completion sound for background working -> idle
+    // transitions. Restricted subagents deliver their result to the parent and
+    // usually close immediately, so report unknown while settled to avoid a
+    // redundant completion ding. Actual operator prompts still report blocked
+    // through herdr:blocked and retain Herdr's request sound.
+    return { state: subagentSession ? "unknown" as const : "idle" as const, message: undefined };
   }
 
   function publishState(force = false) {

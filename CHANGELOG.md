@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-17: Reserve visible-subagent sounds for operator requests
+
+**Changed:** Settled visible subagents now report an `unknown` Herdr state instead of an `idle` completion transition, preventing redundant completion dings after their result is already delivered to the orchestrator. A subagent that opens an operator prompt still reports `blocked`, preserving Herdr's request sound. Orchestrator completion sounds are unchanged.
+
 ## 2026-09-17: Prevent subagent monitoring waits from blocking the orchestrator
 
 **Changed:** Default-profile `subagent_control` guidance now states the intended boundary for `wait`. The feature remains available to reattach a deliberately interrupted foreground join when its result is immediately required, but it is not designed for sitting on one working child until routine work finishes. When `inspect` reports that a child is working, the parent continues other work or returns control because outcomes arrive automatically.

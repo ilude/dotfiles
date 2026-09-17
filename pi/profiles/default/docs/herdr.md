@@ -73,7 +73,7 @@ Herdr owns sidebar symbols and colors. In Herdr 0.9, working is yellow, blocked 
 
 The existing footer, reload indicator, dialogs, and notices remain Pi-owned. Automatic naming adds no footer badge, transcript row, notification, bell, or model-context state. The generated Herdr integration publishes TUI working/settled state. The repository bridge maps native prompt start/end to operator-waiting state, including the current Damage Control custom dialog. Headless helper sessions do not claim the parent's pane.
 
-There is no additional bell or desktop-notification layer and no sound/desktop settings change. In the isolated live test, an unfocused actual approval dialog reported `blocked`; denial cleared it to background `done`. Headless API evidence does not prove audible or desktop delivery. Those require an attached client and operator observation under the user's Herdr settings.
+There is no additional bell or desktop-notification layer and no sound/desktop settings change. Settled restricted subagents report `unknown` rather than an `idle` completion transition so their result delivery does not also trigger Herdr's completion sound; actual operator prompts still report `blocked` and retain Herdr's request sound. Orchestrator lifecycle reporting is unchanged. In the isolated live test, an unfocused actual approval dialog reported `blocked`; denial cleared the orchestrator to background `done`. Headless API evidence does not prove audible or desktop delivery. Those require an attached client and operator observation under the user's Herdr settings.
 
 ## Validation
 
