@@ -4,6 +4,41 @@ import { result, type HerdrCli } from "../herdr-cli.ts";
 
 export type FocusPane = (paneId: string) => Promise<void>;
 
+export interface HerdrTabInfo {
+  tab_id: string;
+  workspace_id?: string;
+  label?: unknown;
+  title?: unknown;
+  name?: unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** Read one exact tab without using focus or substituting the focused tab. */
+export async function inspectTab(cli: HerdrCli, tabId: string, workspaceId?: string): Promise<HerdrTabInfo> {
+  const value = result(await cli(["tab", "get", tabId]));
+  const tab = isRecord(value.tab) ? value.tab : undefined;
+  if (tab?.tab_id !== tabId) throw new Error("Herdr tab identity changed");
+  if (workspaceId && tab.workspace_id !== workspaceId) throw new Error("Herdr tab workspace changed");
+  return {
+    tab_id: tabId,
+    workspace_id: typeof tab.workspace_id === "string" ? tab.workspace_id : undefined,
+    label: tab.label,
+    title: tab.title,
+    name: tab.name,
+  };
+}
+
+/** Herdr exposes the user-facing label first, with title/name compatibility fields. */
+export function tabTitle(tab: HerdrTabInfo): string | undefined {
+  for (const value of [tab.label, tab.title, tab.name]) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
 /** The CLI only exposes directional focus; the public API accepts an exact ID. */
 export function createPaneFocus(env: NodeJS.ProcessEnv = process.env): FocusPane {
   return paneId => new Promise((resolve, reject) => {

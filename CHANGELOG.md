@@ -4,6 +4,22 @@
 
 **Changed:** Settled visible subagents now report an `unknown` Herdr state instead of an `idle` completion transition, preventing redundant completion dings after their result is already delivered to the orchestrator. A subagent that opens an operator prompt still reports `blocked`, preserving Herdr's request sound. Orchestrator completion sounds are unchanged.
 
+## 2026-09-17: Clarify Team Lead and delegate tool authority
+
+**Changed:** The default-profile Team Lead startup handoff now explains that tool discovery lists only the lead's tools and delegates receive the tools defined for their own roles. This addresses a false refusal to dispatch capable workers without widening the Team Lead's permissions or changing messaging behavior.
+
+## 2026-09-17: Use two rows of eight-pane subagent groups
+
+**Changed:** Default-profile visible subagents now place the first eight descendants, including Team Leads, in two rows of four above the original caller. The caller remains the original full-width pane at approximately the bottom third. The ninth descendant starts a named overflow group, and every overflow tab repeats the two-row group of eight. Existing focus preservation, exact pane ownership, manual tab-name protection, concurrency, cleanup, and vacated-slot behavior remain in force.
+
+**Validation:** Focused unit tests and the opt-in `PI_SUBAGENT_UX_LIVE=1 pnpm test subagent-ux-live.test.ts` isolated Herdr server test cover physical geometry and exact identities at descendants 1, 4, 5, 8, and 9, along with naming and cleanup. This is new eight-pane server-side evidence only. The earlier four-pane Herdr 0.9.0 probe does not establish acceptance for this topology, and attached-client UX remains unverified. Source changes require the normal settled-only activation boundary.
+
+## 2026-09-17: Identify subagent overflow tabs by their occupants
+
+**Changed:** Default-profile Herdr subagent overflow tabs show the lone agent's name and role, such as `Elena · reviewer`. Shared tabs use the origin label captured at first overflow plus numbered suffixes such as `· agents 2`. Joins and departures update titles, returning to the remaining agent's name when alone. An observed manual rename stops further updates for that tab. Naming is independent of model-backed session naming and never renames caller or unrelated tabs.
+
+**Preserved:** Naming remains independent of model-backed session naming and does not rename callers or unrelated tabs. Existing best-effort pane swap and focus restoration remain unchanged.
+
 ## 2026-09-17: Prevent subagent monitoring waits from blocking the orchestrator
 
 **Changed:** Default-profile `subagent_control` guidance now states the intended boundary for `wait`. The feature remains available to reattach a deliberately interrupted foreground join when its result is immediately required, but it is not designed for sitting on one working child until routine work finishes. When `inspect` reports that a child is working, the parent continues other work or returns control because outcomes arrive automatically.

@@ -23,6 +23,19 @@ describe("bundled CLI child authority",()=>{
   }
  });
 
+ it("clarifies Team Lead discovery and delegate authority without changing other roles",()=>{
+  const tools=["read","subagent","subagent_control","tool_search"];
+  const prompt=childSystemPrompt("base","teamlead",tools,"role prompt");
+  const clarification=" Your tool discovery lists only your own tools. Your subagents do not inherit your tool restrictions; they receive the tools defined for their roles.";
+  expect(prompt).toContain(clarification);
+  expect(prompt).toContain("Your authority is frozen to tools [read, subagent, subagent_control, tool_search]. You may not activate or request other tools.");
+  expect(childSystemPrompt("base","teamlead",[...tools].reverse(),"role prompt")).toBe(prompt);
+  expect(childSystemPrompt("base","developer",["bash","edit","write"],"role prompt")).not.toContain(clarification);
+  // This clarification adds only its fixed text to the existing authority handoff.
+  const peer=childSystemPrompt("base","reviewer",tools,"role prompt");
+  expect(Buffer.byteLength(prompt)-Buffer.byteLength(peer)).toBe(Buffer.byteLength(clarification));
+ });
+
  it.each([{tools:[] as string[],childMode:true},{tools:["read"],childMode:true},{tools:[] as string[],childMode:false}])("loads with child=$childMode and explicit ceiling $tools",async ({tools,childMode})=>{
   const scratch=mkdtempSync(join(tmpdir(),"subagent-loader-"));
   const fixture=join(scratch,"probe.mjs");

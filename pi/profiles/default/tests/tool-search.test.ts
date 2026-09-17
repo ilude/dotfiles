@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import registerToolSearch, { scoreTool } from "../extensions/tool-search";
+import registerToolSearch, { renderToolSearchResult, scoreTool } from "../extensions/tool-search";
 import { createMockPi } from "./helpers/mock-pi";
 
 function register(pi: ReturnType<typeof createMockPi>, name: string, description: string) {
@@ -7,6 +7,23 @@ function register(pi: ReturnType<typeof createMockPi>, name: string, description
 }
 
 describe("tool_search", () => {
+	const theme = { bold: (text: string) => text, fg: (_color: string, text: string) => text };
+
+	it("renders a bounded collapsed summary while preserving expanded output", async () => {
+		const pi = createMockPi();
+		for (let index = 0; index < 8; index++) register(pi, `image_tool_${index}`, "Image capability");
+		pi.setActiveTools([]);
+		registerToolSearch(pi as never);
+		const result = await pi._getTool("tool_search")!.execute!("id", { query: "image" }, undefined, undefined, {});
+		const renderer = renderToolSearchResult as unknown as (result: Parameters<typeof renderToolSearchResult>[0], options: { expanded: boolean }, theme: Parameters<typeof renderToolSearchResult>[2], context: unknown) => { render(width: number): string[] };
+		const collapsed = renderer(result, { expanded: false }, theme as Parameters<typeof renderToolSearchResult>[2], {}).render(400).join("\n");
+		expect(collapsed).toContain('query "image" · 8 results · 8 activated');
+		expect(collapsed).toContain("image_tool_0");
+		expect(collapsed).toContain("image_tool_5");
+		expect(collapsed).not.toContain("image_tool_6");
+		expect(renderer(result, { expanded: true }, theme as Parameters<typeof renderToolSearchResult>[2], {}).render(400).map(line => line.trimEnd()).join("\n")).toBe(result.content[0].text);
+	});
+
 	it("scores names and descriptions", () => {
 		expect(scoreTool({ name: "image_transform", description: "Crop an image" }, ["image"])).toBe(7);
 	});

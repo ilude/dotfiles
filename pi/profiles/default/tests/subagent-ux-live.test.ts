@@ -137,74 +137,260 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
     };
     const layout = new SubagentLayout(layoutCli, createPaneFocus(fixture.env));
     try {
+      await fixture.cli(["tab", "rename", fixture.caller.tab_id, "drift"]);
+      const namedOrigin = result(await fixture.cli(["tab", "get", fixture.caller.tab_id])).tab;
+      const unrelatedBefore = result(await fixture.cli(["tab", "get", fixture.unrelated.tab_id])).tab;
+      expect(namedOrigin.label).toBe("drift");
       const before = result(await fixture.cli(["pane", "current"])).pane;
       expect(before.pane_id).toBe(fixture.unrelated.pane_id);
+      const processIdentity = async (paneId: string) => {
+        const info = result(await fixture.cli(["pane", "process-info", "--pane", paneId])).process_info;
+        return {
+          pane_id: info.pane_id,
+          shell_pid: info.shell_pid,
+          foreground_processes: (info.foreground_processes ?? []).map((process: any) => ({ pid: process.pid, name: process.name, argv: process.argv })),
+        };
+      };
+      const callerBefore = await inspectPane(fixture.cli, fixture.caller.pane_id);
+      const callerProcessBefore = await processIdentity(fixture.caller.pane_id);
       const placements: Array<Awaited<ReturnType<SubagentLayout["place"]>>> = [];
-      const geometryAt: Record<number, any[]> = {};
+      const geometryAt: Record<number, { main: any[]; overflow?: any[] }> = {};
+      const callerIdentityAt: Record<number, { pane: any; process: any }> = {};
       for (let index = 1; index <= 17; index++) {
         if (index === 2) switchAfterOpen = true;
         const placement = await layout.place("t5-geometry", inertRequest(fixture.caller.pane_id, fixture.scratch, index));
         placements.push(placement);
+        if (placement.tabIndex > 0) {
+          const title = result(await fixture.cli(["tab", "get", placement.tabId])).tab.label;
+          const singleton = placement.row === 0 && placement.column === 0;
+          expect(title).toBe(singleton ? `T5 inert ${index}` : `drift · agents ${placement.tabIndex + 1}`);
+        }
         expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
-        if ([1, 3, 4].includes(index)) {
-          const snapshot = result(await fixture.cli(["pane", "layout", "--pane", placement.paneId])).layout;
-          geometryAt[index] = snapshot.panes.filter((pane: any) => placements.some(item => item.paneId === pane.pane_id) || pane.pane_id === fixture.caller.pane_id);
+        if ([1, 4, 5, 8, 9].includes(index)) {
+          const mainSnapshot = result(await fixture.cli(["pane", "layout", "--pane", placements[0].paneId])).layout;
+          const main = mainSnapshot.panes.filter((pane: any) => placements.some(item => item.tabIndex === 0 && item.paneId === pane.pane_id) || pane.pane_id === fixture.caller.pane_id);
+          const overflow = index === 9
+            ? result(await fixture.cli(["pane", "layout", "--pane", placement.paneId])).layout.panes
+            : undefined;
+          geometryAt[index] = { main, overflow };
+          callerIdentityAt[index] = {
+            pane: await inspectPane(fixture.cli, fixture.caller.pane_id),
+            process: await processIdentity(fixture.caller.pane_id),
+          };
         }
       }
 
-      console.log(`Orchestrator-bottom geometry ${JSON.stringify(geometryAt)}`);
-      const fullWidthRow = (count: number) => {
-        const row = geometryAt[count].filter((pane: any) => placements.some(placement => placement.paneId === pane.pane_id));
-        const callerRect = geometryAt[count].find((pane: any) => pane.pane_id === fixture.caller.pane_id).rect;
-        const widths = row.map((pane: any) => pane.rect.width);
-        const left = Math.min(...row.map((pane: any) => pane.rect.x));
-        const right = Math.max(...row.map((pane: any) => pane.rect.x + pane.rect.width));
-        return Math.max(...row.map((pane: any) => pane.rect.y)) === Math.min(...row.map((pane: any) => pane.rect.y))
-          && Math.max(...widths) - Math.min(...widths) <= 1
-          && left === callerRect.x && right === callerRect.x + callerRect.width
-          && Math.max(...row.map((pane: any) => pane.rect.y + pane.rect.height)) <= callerRect.y + 1;
+      const assertMainRows = (count: number, expectedUpper: number, expectedLower: number) => {
+        const panes = geometryAt[count].main;
+        const owned = panes.filter((pane: any) => placements.some(placement => placement.paneId === pane.pane_id && placement.tabIndex === 0));
+        const callerPane = panes.find((pane: any) => pane.pane_id === fixture.caller.pane_id);
+        expect(callerPane).toBeTruthy();
+        const caller = callerPane.rect;
+        const row = (rowIndex: number) => owned
+          .filter((pane: any) => placements.find(item => item.paneId === pane.pane_id)?.row === rowIndex)
+          .sort((left: any, right: any) => left.rect.x - right.rect.x);
+        for (const [rowIndex, expected] of [[0, expectedUpper], [1, expectedLower]] as const) {
+          const members = row(rowIndex);
+          expect(members).toHaveLength(expected);
+          expect(members.every((pane: any) => pane.rect.width > 0 && pane.rect.height > 0)).toBe(true);
+          if (!members.length) continue;
+          expect(Math.max(...members.map((pane: any) => pane.rect.y)) - Math.min(...members.map((pane: any) => pane.rect.y))).toBeLessThanOrEqual(1);
+          expect(Math.max(...members.map((pane: any) => pane.rect.y + pane.rect.height))).toBeLessThanOrEqual(caller.y + 1);
+          const expectedIds = placements.filter(placement => placement.tabIndex === 0 && placement.row === rowIndex).slice(0, expected).map(placement => placement.paneId);
+          expect(members.map((pane: any) => pane.pane_id)).toEqual(expectedIds);
+        }
+        const upperTop = Math.min(...owned.map((pane: any) => pane.rect.y));
+        const ownedLeft = Math.min(...owned.map((pane: any) => pane.rect.x));
+        const ownedRight = Math.max(...owned.map((pane: any) => pane.rect.x + pane.rect.width));
+        const totalHeight = caller.y + caller.height - upperTop;
+        expect(caller.x).toBe(ownedLeft);
+        expect(caller.x + caller.width).toBe(ownedRight);
+        expect(Math.abs(caller.height - totalHeight / 3)).toBeLessThanOrEqual(1);
+        expect(callerIdentityAt[count].pane).toMatchObject({
+          pane_id: callerBefore.pane_id,
+          tab_id: callerBefore.tab_id,
+          workspace_id: callerBefore.workspace_id,
+        });
+        expect(callerIdentityAt[count].process).toEqual(callerProcessBefore);
+        return { owned, caller, row };
       };
-      expect(fullWidthRow(1)).toBe(true);
-      expect(fullWidthRow(3)).toBe(true);
-      expect(fullWidthRow(4)).toBe(true);
+      expect(assertMainRows(1, 1, 0).owned[0].pane_id).toBe(placements[0].paneId);
+      assertMainRows(4, 4, 0);
+      const five = assertMainRows(5, 4, 1);
+      expect(five.row(1)[0].rect.y).toBeGreaterThan(five.row(0)[0].rect.y);
+      expect(Math.abs(five.row(1)[0].rect.x - five.row(0)[0].rect.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(five.row(1)[0].rect.width - five.row(0)[0].rect.width)).toBeLessThanOrEqual(1);
+      const eight = assertMainRows(8, 4, 4);
+      for (const members of [eight.row(0), eight.row(1)]) {
+        const widths = members.map((pane: any) => pane.rect.width);
+        const left = Math.min(...members.map((pane: any) => pane.rect.x));
+        const right = Math.max(...members.map((pane: any) => pane.rect.x + pane.rect.width));
+        expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+        expect(left).toBe(eight.caller.x);
+        expect(right).toBe(eight.caller.x + eight.caller.width);
+      }
+      for (let column = 0; column < 4; column++) {
+        expect(Math.abs(eight.row(0)[column].rect.x - eight.row(1)[column].rect.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(eight.row(0)[column].rect.width - eight.row(1)[column].rect.width)).toBeLessThanOrEqual(1);
+        expect(eight.row(0)[column].rect.y + eight.row(0)[column].rect.height).toBeLessThanOrEqual(eight.row(1)[column].rect.y + 1);
+      }
+      assertMainRows(9, 4, 4);
+      const nineOverflow = geometryAt[9].overflow!;
+      expect(nineOverflow).toHaveLength(1);
+      expect(nineOverflow[0].pane_id).toBe(placements[8].paneId);
+      expect(nineOverflow[0].rect.width).toBeGreaterThan(0);
+      expect(nineOverflow[0].rect.height).toBeGreaterThan(0);
       expect(placements[0]).toMatchObject({ tabIndex: 0, row: 0, column: 0 });
       expect(placements[3]).toMatchObject({ tabIndex: 0, row: 0, column: 3 });
-      expect(placements[4]).toMatchObject({ tabIndex: 1, row: 0, column: 0 });
-      expect(placements[7]).toMatchObject({ tabIndex: 1, row: 0, column: 3 });
-      expect(placements[8]).toMatchObject({ tabIndex: 2, row: 0, column: 0 });
-      expect(placements[16]).toMatchObject({ tabIndex: 4, row: 0, column: 0 });
+      expect(placements[4]).toMatchObject({ tabIndex: 0, row: 1, column: 0 });
+      expect(placements[7]).toMatchObject({ tabIndex: 0, row: 1, column: 3 });
+      expect(placements[8]).toMatchObject({ tabIndex: 1, row: 0, column: 0 });
+      expect(placements[15]).toMatchObject({ tabIndex: 1, row: 1, column: 3 });
+      expect(placements[16]).toMatchObject({ tabIndex: 2, row: 0, column: 0 });
 
       const panes = await Promise.all(placements.map(placement => inspectPane(fixture.cli, placement.paneId)));
       expect(panes.every((pane: any) => pane.label?.startsWith("T5 inert"))).toBe(true);
       const geometry = result(await fixture.cli(["pane", "layout", "--pane", placements[0].paneId])).layout.panes as any[];
-      expect(geometry).toHaveLength(5);
+      expect(geometry).toHaveLength(9);
       expect(geometry.every((pane: any) => pane.rect.width > 0 && pane.rect.height > 0)).toBe(true);
-      expect(placements.filter(placement => placement.tabIndex === 1)).toHaveLength(4);
-      expect(new Set(placements.slice(4, 8).map(placement => placement.tabId)).size).toBe(1);
-      expect(placements[4].tabId).not.toBe(placements[0].tabId);
-      expect(placements.filter(placement => placement.tabIndex === 4)).toHaveLength(1);
-      expect(placements[16].tabId).not.toBe(placements[12].tabId);
+      const overflowGeometry = result(await fixture.cli(["pane", "layout", "--pane", placements[8].paneId])).layout.panes as any[];
+      expect(overflowGeometry).toHaveLength(8);
+      for (const rowIndex of [0, 1]) {
+        const rowPanes = overflowGeometry.filter((pane: any) => placements.find(placement => placement.paneId === pane.pane_id)?.row === rowIndex);
+        expect(rowPanes).toHaveLength(4);
+        expect(Math.max(...rowPanes.map((pane: any) => pane.rect.y)) - Math.min(...rowPanes.map((pane: any) => pane.rect.y))).toBeLessThanOrEqual(1);
+        const widths = rowPanes.map((pane: any) => pane.rect.width);
+        expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+      }
+      expect(placements.filter(placement => placement.tabIndex === 1)).toHaveLength(8);
+      expect(new Set(placements.slice(8, 16).map(placement => placement.tabId)).size).toBe(1);
+      expect(placements[8].tabId).not.toBe(placements[0].tabId);
+      expect(placements.filter(placement => placement.tabIndex === 2)).toHaveLength(1);
+      expect(placements[16].tabId).not.toBe(placements[8].tabId);
+      const overflowTabs = new Map<number, string>();
+      for (const placement of placements) if (placement.tabIndex > 0) overflowTabs.set(placement.tabIndex, placement.tabId);
+      expect([...overflowTabs.keys()]).toEqual([1, 2]);
+      for (const [tabIndex, tabId] of overflowTabs) {
+        const tab = result(await fixture.cli(["tab", "get", tabId])).tab;
+        expect(tab.label).toBe(tabIndex === 2 ? "T5 inert 17" : `drift · agents ${tabIndex + 1}`);
+      }
+      const manualTabId = placements[8].tabId;
+      await fixture.cli(["tab", "rename", manualTabId, "Manual overflow"]);
+      const additional = await layout.place("t5-geometry", inertRequest(fixture.caller.pane_id, fixture.scratch, 18));
+      expect(additional).toMatchObject({ tabIndex: 2, row: 0, column: 1 });
+      expect(result(await fixture.cli(["tab", "get", additional.tabId])).tab.label).toBe("drift · agents 3");
+      await layout.close("t5-geometry", placements[16].childId, placements[16].paneId);
+      expect(result(await fixture.cli(["tab", "get", additional.tabId])).tab.label).toBe("T5 inert 18");
+      for (const child of placements.slice(8, 11)) {
+        await layout.close("t5-geometry", child.childId, child.paneId);
+        expect(result(await fixture.cli(["tab", "get", manualTabId])).tab.label).toBe("Manual overflow");
+      }
+      const manualJoin = await layout.place("t5-geometry", inertRequest(fixture.caller.pane_id, fixture.scratch, 20));
+      expect(manualJoin.tabId).toBe(manualTabId);
+      expect(result(await fixture.cli(["tab", "get", manualTabId])).tab.label).toBe("Manual overflow");
+      expect(result(await fixture.cli(["tab", "get", fixture.caller.tab_id])).tab.label).toBe("drift");
+      expect(result(await fixture.cli(["tab", "get", fixture.unrelated.tab_id])).tab.label).toBe(unrelatedBefore.label);
+      expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
       const row0 = geometry.filter((pane: any) => placements.find(placement => placement.paneId === pane.pane_id)?.row === 0);
       expect(row0.length).toBe(4);
       const caller = await inspectPane(fixture.cli, fixture.caller.pane_id);
       expect(caller.pane_id).toBe(fixture.caller.pane_id);
       const callerGeometry = geometry.find((pane: any) => pane.pane_id === fixture.caller.pane_id);
       expect(Math.max(...row0.map((pane: any) => pane.rect.y + pane.rect.height))).toBeLessThanOrEqual(callerGeometry.rect.y + 1);
-      const totalHeight = callerGeometry.rect.height + row0[0].rect.height;
-      expect(Math.abs(callerGeometry.rect.height - totalHeight * 2 / 3)).toBeLessThanOrEqual(1);
+      const upperTop = Math.min(...geometry.filter((pane: any) => placements.find(placement => placement.paneId === pane.pane_id)?.tabIndex === 0).map((pane: any) => pane.rect.y));
+      const totalHeight = callerGeometry.rect.y + callerGeometry.rect.height - upperTop;
+      expect(Math.abs(callerGeometry.rect.height - totalHeight / 3)).toBeLessThanOrEqual(1);
+
+      // Remove one upper pane from the complete 2x4 main grid while its lower
+      // partner survives, then refill that exact row-major slot.
+      const vacated = placements[1];
+      const survivingLower = placements[5];
+      const survivingProcess = await processIdentity(survivingLower.paneId);
+      await layout.close("t5-geometry", vacated.childId, vacated.paneId);
+      expect(await processIdentity(survivingLower.paneId)).toEqual(survivingProcess);
+      const vacancyReplacement = await layout.place("t5-geometry", inertRequest(fixture.caller.pane_id, fixture.scratch, 19));
+      expect(vacancyReplacement).toMatchObject({ tabIndex: 0, row: 0, column: 1, tabId: survivingLower.tabId });
+      const refilled = result(await fixture.cli(["pane", "layout", "--pane", vacancyReplacement.paneId])).layout.panes as any[];
+      const refilledChildren = layout.snapshot("t5-geometry").filter(child => child.tabIndex === 0);
+      for (let column = 0; column < 4; column++) {
+        const upperChild = refilledChildren.find(child => child.row === 0 && child.column === column)!;
+        const lowerChild = refilledChildren.find(child => child.row === 1 && child.column === column)!;
+        const upperRect = refilled.find(pane => pane.pane_id === upperChild.paneId).rect;
+        const lowerRect = refilled.find(pane => pane.pane_id === lowerChild.paneId).rect;
+        expect(Math.abs(upperRect.x - lowerRect.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(upperRect.width - lowerRect.width)).toBeLessThanOrEqual(1);
+        expect(upperRect.y + upperRect.height).toBeLessThanOrEqual(lowerRect.y + 1);
+      }
+      expect(await processIdentity(survivingLower.paneId)).toEqual(survivingProcess);
+      expect(await processIdentity(fixture.caller.pane_id)).toEqual(callerProcessBefore);
+      expect((await inspectPane(fixture.cli, fixture.caller.pane_id)).pane_id).toBe(callerBefore.pane_id);
+      expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
+
+      // Remove both panes from one complete column, then refill both slots.
+      // The surviving six processes must keep their identities while the new
+      // pair restores one physical row-major column rather than nesting inside
+      // the previous upper half.
+      const completeBeforeClose = result(await fixture.cli(["pane", "layout", "--pane", vacancyReplacement.paneId])).layout.panes as any[];
+      const columnUpper = layout.snapshot("t5-geometry").find(child => child.tabIndex === 0 && child.row === 0 && child.column === 1)!;
+      const columnLower = layout.snapshot("t5-geometry").find(child => child.tabIndex === 0 && child.row === 1 && child.column === 1)!;
+      const columnSurvivors = layout.snapshot("t5-geometry").filter(child => child.tabIndex === 0 && child.column !== 1);
+      const survivorProcesses = new Map(await Promise.all(columnSurvivors.map(async child => [child.paneId, await processIdentity(child.paneId)] as const)));
+      await layout.close("t5-geometry", columnUpper.childId, columnUpper.paneId);
+      await layout.close("t5-geometry", columnLower.childId, columnLower.paneId);
+      const afterCompleteClose = result(await fixture.cli(["pane", "layout", "--pane", columnSurvivors[0].paneId])).layout.panes as any[];
+      const upperRefill = await layout.place("t5-geometry", inertRequest(fixture.caller.pane_id, fixture.scratch, 22));
+      const afterUpperRefill = result(await fixture.cli(["pane", "layout", "--pane", upperRefill.paneId])).layout.panes as any[];
+      const lowerRefill = await layout.place("t5-geometry", inertRequest(fixture.caller.pane_id, fixture.scratch, 23));
+      const afterLowerRefill = result(await fixture.cli(["pane", "layout", "--pane", lowerRefill.paneId])).layout.panes as any[];
+      expect(upperRefill).toMatchObject({ tabIndex: 0, row: 0, column: 3 });
+      expect(lowerRefill).toMatchObject({ tabIndex: 0, row: 1, column: 3 });
+      for (const child of columnSurvivors) expect(await processIdentity(child.paneId)).toEqual(survivorProcesses.get(child.paneId));
+      expect(await processIdentity(fixture.caller.pane_id)).toEqual(callerProcessBefore);
+      expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
+      const completeRefillChildren = layout.snapshot("t5-geometry").filter(child => child.tabIndex === 0);
+      const completeRows = [0, 1].map(row => completeRefillChildren
+        .filter(child => child.row === row)
+        .sort((left, right) => left.column - right.column)
+        .map(child => afterLowerRefill.find(pane => pane.pane_id === child.paneId)));
+      const completeCaller = afterLowerRefill.find(pane => pane.pane_id === fixture.caller.pane_id).rect;
+      const fullColumnEvidence = { completeBeforeClose, afterCompleteClose, afterUpperRefill, afterLowerRefill };
+      expect(completeRows.every(row => row.length === 4 && row.every(pane => pane?.rect)), JSON.stringify(fullColumnEvidence)).toBe(true);
+      expect(completeRows.every(row => {
+        const widths = row.map(pane => pane.rect.width);
+        const tops = row.map(pane => pane.rect.y);
+        const bottoms = row.map(pane => pane.rect.y + pane.rect.height);
+        return Math.max(...widths) - Math.min(...widths) <= 1
+          && Math.max(...tops) - Math.min(...tops) <= 1
+          && Math.max(...bottoms) - Math.min(...bottoms) <= 1;
+      }), JSON.stringify(fullColumnEvidence)).toBe(true);
+      expect(completeRows[0].every((upperPane, column) => {
+        const lowerPane = completeRows[1][column];
+        return Math.abs(upperPane.rect.x - lowerPane.rect.x) <= 1
+          && Math.abs(upperPane.rect.width - lowerPane.rect.width) <= 1
+          && upperPane.rect.y + upperPane.rect.height <= lowerPane.rect.y + 1;
+      }), JSON.stringify(fullColumnEvidence)).toBe(true);
+      expect(Math.min(...completeRows[0].map(pane => pane.rect.x))).toBe(completeCaller.x);
+      expect(Math.max(...completeRows[0].map(pane => pane.rect.x + pane.rect.width))).toBe(completeCaller.x + completeCaller.width);
+      const completeTop = Math.min(...completeRows.flat().map(pane => pane.rect.y));
+      const completeHeight = completeCaller.y + completeCaller.height - completeTop;
+      expect(Math.abs(completeCaller.height - completeHeight / 3)).toBeLessThanOrEqual(1);
+      expect((await inspectPane(fixture.cli, fixture.caller.pane_id)).pane_id).toBe(callerBefore.pane_id);
+
       await layout.close("t5-geometry", placements[0].childId, placements[0].paneId);
       expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
-      // Recreate the upper row while overflow survives, this time with the
+      // Recreate the upper region while overflow survives, this time with the
       // orchestrator itself focused. Its exact pane must remain the caller.
       for (const child of layout.snapshot("t5-geometry").filter(child => child.tabIndex === 0)) await layout.close("t5-geometry", child.childId, child.paneId);
       await createPaneFocus(fixture.env)(fixture.caller.pane_id);
-      const replacement = await layout.place("t5-geometry", inertRequest(fixture.caller.pane_id, fixture.scratch, 18));
+      const replacement = await layout.place("t5-geometry", inertRequest(fixture.caller.pane_id, fixture.scratch, 21));
       expect(replacement.tabIndex).toBe(0);
       expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.caller.pane_id);
       const recreated = result(await fixture.cli(["pane", "layout", "--pane", replacement.paneId])).layout.panes;
       const upper = recreated.find((pane: any) => pane.pane_id === replacement.paneId).rect;
       const lower = recreated.find((pane: any) => pane.pane_id === fixture.caller.pane_id).rect;
       expect(upper.y + upper.height).toBeLessThanOrEqual(lower.y + 1);
+      expect((await inspectPane(fixture.cli, fixture.caller.pane_id)).pane_id).toBe(callerBefore.pane_id);
+      expect(await processIdentity(fixture.caller.pane_id)).toEqual(callerProcessBefore);
     } finally {
       try {
         for (const child of layout.snapshot("t5-geometry").reverse()) await layout.close("t5-geometry", child.childId, child.paneId);

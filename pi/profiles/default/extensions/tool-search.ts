@@ -1,4 +1,6 @@
-import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
+import { stripVTControlCharacters } from "node:util";
+import type { ExtensionAPI, ToolInfo, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { activateTools } from "../lib/tool-activation.js";
 
@@ -19,6 +21,41 @@ export function formatToolEntry(tool: { name: string; description: string; sourc
 	return [`${index}. ${tool.name}`, `   ${description}`, ...(tool.source ? [`   [source: ${tool.source}]`] : [])].join("\n");
 }
 
+const toolSearchParameters = Type.Object({
+	query: Type.Optional(Type.String({ description: "Search keywords. Omit to list all tools." })),
+	include_params: Type.Optional(Type.Boolean({ description: "Include parameter schemas in results." })),
+	activate: Type.Optional(Type.Boolean({ description: "Activate matching inactive tools. Defaults to true for a non-empty query." })),
+}, { additionalProperties: false });
+
+type ToolSearchDetails = { total: number; matched: number; activated: string[]; query?: string };
+type ToolSearchDefinition = ToolDefinition<typeof toolSearchParameters, ToolSearchDetails>;
+
+function clean(value: string): string {
+	return stripVTControlCharacters(value).replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function resultNames(text: string): string[] {
+	return [...text.matchAll(/^\d+\. ([^\s]+)$/gm)].map(match => clean(match[1]));
+}
+
+function compactComponent(build: (width: number) => string[]): Component {
+	return { render: width => build(width).map(line => truncateToWidth(line, width)), invalidate() {} };
+}
+
+export const renderToolSearchResult: NonNullable<ToolSearchDefinition["renderResult"]> = (result, { expanded }, theme) => {
+	const text = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");
+	if (expanded) return new Text(text, 0, 0);
+	const details = result.details;
+	if (!details) return compactComponent(width => [truncateToWidth(clean(text) || "(no output)", width)]);
+	const query = details.query?.trim();
+	const label = query ? `query ${JSON.stringify(clean(query))}` : "all tools";
+	const names = resultNames(text);
+	const namePreview = names.length ? ` · ${names.slice(0, 6).join(", ")}${names.length > 6 ? ", …" : ""}` : "";
+	return compactComponent(width => [
+		theme.bold(`${label} · ${details.matched} result${details.matched === 1 ? "" : "s"} · ${details.activated.length} activated${namePreview}`),
+	]);
+};
+
 export default function registerToolSearch(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "tool_search",
@@ -30,11 +67,8 @@ export default function registerToolSearch(pi: ExtensionAPI): void {
 			"Search with descriptive capability keywords; matching inactive tools are activated by default for a non-empty query.",
 			"List without a query only to inspect available tools; list mode does not activate them.",
 		],
-		parameters: Type.Object({
-			query: Type.Optional(Type.String({ description: "Search keywords. Omit to list all tools." })),
-			include_params: Type.Optional(Type.Boolean({ description: "Include parameter schemas in results." })),
-			activate: Type.Optional(Type.Boolean({ description: "Activate matching inactive tools. Defaults to true for a non-empty query." })),
-		}, { additionalProperties: false }),
+		parameters: toolSearchParameters,
+		renderResult: renderToolSearchResult,
 		execute(_id, params) {
 			const allTools = pi.getAllTools();
 			const activeBefore = pi.getActiveTools();
