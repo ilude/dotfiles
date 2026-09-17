@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-17: Make executable plans carry delegation prerequisites
+
+**Changed:** The default planning skill and plan template now require executable plans to tell the orchestrator to consult Strategist before delegation, assign at most one named plan task per subagent, split larger tasks further, and use only roles from the active agent catalog. The active subagent-parent-question-mailbox plan carries the same instruction.
+
+**Preserved:** Strategist still owns staffing recommendations, direct execution remains available when delegation does not help, and plans do not prescribe model or effort selections.
+
 ## 2026-09-16: Size planned work for Luna and leave staffing to Strategist
 
 **Changed:** The default planning skill now sizes ordinary tasks for reliable Luna execution across investigation, implementation, validation, and any included review work. It replaces the Sol-low executor baseline and calls for oversized tasks to be split during planning. The plan template offers optional complexity and split hints describing difficult judgments, interacting contracts, coordination needs, and useful assignment boundaries.

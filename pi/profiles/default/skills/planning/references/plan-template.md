@@ -43,6 +43,10 @@ Create or resume the recorded dedicated task worktree and branch. Record the act
 path, branch, and originating integration target before editing. Preserve unrelated
 work and carry task-owned uncommitted plan content without deleting its source.
 
+Before delegating plan work, consult `strategist`. Assign at most one named plan task
+per subagent, split larger tasks further, and use only roles from the active agent
+catalog.
+
 Implement the settled intent through the agreed checks. Adapt technical mechanisms
 when repository evidence requires it, but do not change user intent, scope, settled
 decisions, or acceptance without approval. When blocked, continue independent tasks

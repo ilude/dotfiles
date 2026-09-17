@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-066 - Carry Strategist-first delegation into executable plans
+
+- **Reference:** Two attempted executions of the subagent-parent-question-mailbox plan, 2026-09-17.
+- **Observed:** Separate orchestrators skipped the required Strategist consultation. One also guessed nonexistent `implementer` and `coder` roles and attempted to assign four named plan tasks to one worker.
+- **Finding:** No Strategist requirement was removed from planning history. Recent planning guidance added that Strategist owns staffing, but the plan template did not carry the actionable Strategist-first step and relied on separately injected caller guidance. The generated plan was therefore not self-contained about delegation workflow.
+- **Decision:** With operator approval, require executable plans to instruct the orchestrator to consult Strategist before delegation, assign at most one named plan task per subagent, split larger tasks further, and use only active-catalog roles. Add the instruction to the planning skill, template, and affected active plan without changing task intent.
+- **Related:** AIF-061, AIF-062, AIF-063, APR-046.
+- **Status:** Implemented locally; future adherence remains unverified.
+
 ## AIF-065 - Add a whole-prompt review procedure with cache-effectiveness analysis
 
 - **Reference:** Operator follow-up after the Team Lead prompt consolidation, 2026-09-16.

@@ -56,11 +56,14 @@ reopening them.
    Include only context needed to restart. Label paths repository-root-relative and
    future files as proposed. Do not invent optional work, rollback tasks, exhaustive
    contingencies, approval gates, or manual acceptance requirements.
-5. Record authorization and preservation constraints. Execution normally includes
-   dedicated task worktrees, local task commits, and merge into a recorded target;
-   push and deployment require separate permission. Plans must tell the executor to
-   continue independent work around blockers, adapt mechanisms within settled intent,
-   and ask before changing scope, decisions, or acceptance.
+5. Record authorization, preservation, and delegation constraints. Execution normally
+   includes dedicated task worktrees, local task commits, and merge into a recorded
+   target; push and deployment require separate permission. Executable plans must tell
+   the orchestrator to consult Strategist before delegating, assign at most one named
+   plan task per subagent, split larger tasks further, and use only roles from the
+   active agent catalog. They must also tell the executor to continue independent work
+   around blockers, adapt mechanisms within settled intent, and ask before changing
+   scope, decisions, or acceptance.
 6. Include a bounded closeout contract. After implementation and agreed agent-owned
    checks, archive the whole spec and commit it with the task changes on the task
    branch, then merge into the recorded target before declaring completion. If merge
