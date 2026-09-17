@@ -1,7 +1,7 @@
 ---
 created: 2026-09-17
-status: draft
-completed: null
+status: completed
+completed: 2026-09-17
 ---
 
 # Refine delegation activation, make messaging responsive, and preserve results
@@ -478,7 +478,9 @@ task-related defects are resolved.
     Leave unchecked while integration or cleanup is pending.
   - Evidence: Implementation, documentation, and finite validation completed
     2026-09-17 in the default profile. Combined batch: 16 files and 133 tests passed;
-    typecheck and `git diff --check` passed. Integration and cleanup remain pending.
+    typecheck and `git diff --check` passed. Task commit `389e1fea` merged into
+    recorded target `main` as `e95fa8b4`; archive and active-plan removal verified.
+    Task-worktree cleanup remains the final closeout action.
 
 ## Combined acceptance scenario and finite validation
 
@@ -524,10 +526,10 @@ full-profile, paid-model, attached-client, or production-team test is added.
 
 ## Current handoff and evidence
 
-- Status: implementation, documentation, and agreed checks passed on the task
-  branch. Integration and cleanup are pending. Next action: archive and commit the
-  task branch, merge it into recorded target `main`, record completion metadata on
-  the target, and remove the clean merged task worktree. Action owner: orchestrator.
+- Status: completed 2026-09-17. Implementation and archive were committed as
+  `389e1fea` and merged into recorded target `main` as `e95fa8b4`. Combined checks
+  passed: 16 files, 133 tests, typecheck, and `git diff --check`. Completion metadata
+  is recorded on the target; task-worktree cleanup remains the final closeout action.
 - T2a diagnosis is complete: see [investigation.md](investigation.md). Remaining
   T2a work is the deferred-report lifetime fix and permanent regression, followed
   by T2b's original-result preservation. T5 verifies corrected delivery/cleanup;
