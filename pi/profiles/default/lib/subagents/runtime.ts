@@ -11,7 +11,8 @@ import { SubagentLayout } from "./layout.ts";
 import { createHerdrCli } from "../herdr-cli.ts";
 import { composedAgentPrompt } from "./guidance.ts";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
-export interface Delivery extends ChildRecord { deliveryId: string }
+export type DeliveryKind = "outcome" | "question" | "question-resolution";
+export interface Delivery extends ChildRecord { deliveryId: string; deliveryKind?: DeliveryKind }
 export interface BoundOrigin { deliver: (record: Delivery) => boolean; status?: (records: ChildRecord[]) => void }
 export interface CleanupSummary { complete: boolean; attempted: number; failures: Array<{ id: string; error: string }> }
 export class RuntimeCleanupError extends Error {
@@ -59,6 +60,7 @@ export class SubagentRuntime {
  private bindings=new Map<string,BoundOrigin>();
  private pending=new Map<string,Delivery>();
  private queued=new Set<string>();
+ private questions=new Map<string,{origin:string;childId:string;deliveryId:string;exposed:boolean}>();
  private names=new Map<string,NameAllocator>();
  private layouts=new Map<string,SubagentLayout>();
  private observers=new Map<string,Set<(record:ChildRecord)=>void>>();
@@ -78,21 +80,36 @@ export class SubagentRuntime {
   }
  }
  bind(origin:string,binding:BoundOrigin){this.bindings.set(origin,binding);this.publish(origin);this.flush(origin)}
- flush(origin:string){const binding=this.bindings.get(origin);if(!binding)return;for(const [id,record] of this.pending){if(record.origin===origin&&!record.parentId&&!this.queued.has(id)&&binding.deliver(record)&&this.pending.has(id))this.queued.add(id)}}
+ flush(origin:string){const binding=this.bindings.get(origin);if(!binding)return;for(const [id,record] of this.pending){if(record.origin===origin&&!record.parentId&&!this.queued.has(id)&&binding.deliver(record)&&this.pending.has(id)){this.queued.add(id);this.markQuestionExposed(id)}}}
+ private markQuestionExposed(deliveryId:string){for(const question of this.questions.values())if(question.deliveryId===deliveryId)question.exposed=true}
  private publish(origin:string){this.bindings.get(origin)?.status?.(this.list(origin));}
  acknowledge(origin:string,id:string){if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.queued.delete(id);this.inert.delete(id)}
  acknowledgeRecord(origin:string,recordId:string){
   let found=false;
   for(const [deliveryId,record] of [...this.pending]){
-   if(record.origin===origin&&record.id===recordId){this.acknowledge(origin,deliveryId);found=true;}
+   if(record.origin===origin&&record.id===recordId&&record.deliveryKind!=="question") {this.acknowledge(origin,deliveryId);found=true;}
   }
   return found;
  }
  unbind(origin:string,binding:BoundOrigin){if(this.bindings.get(origin)===binding)this.bindings.delete(origin)}
- private deliver(record:ChildRecord){
-  if(record.status!=="settled"&&record.status!=="waiting")return;
+ private resolveQuestionDelivery(record:ChildRecord,requestId:string,outcome:"answered"|"cancelled",by:"parent"|"child"|"assignment"){
+  const mailbox=this.questions.get(requestId);
+  if(!mailbox)return;
+  this.questions.delete(requestId);
+  const exposed=mailbox.exposed||this.queued.has(mailbox.deliveryId);
+  this.pending.delete(mailbox.deliveryId);this.queued.delete(mailbox.deliveryId);
+  if(!exposed)return;
+  const resolution:Delivery={
+   ...record,deliveryId:randomUUID(),deliveryKind:"question-resolution",
+   assignment:undefined,questionResolution:{requestId,outcome,by},result:`Parent question ${outcome} by ${by}.`,notice:undefined,
+  };
+  this.pending.set(resolution.deliveryId,resolution);
+  this.flush(record.origin);
+ }
+ private deliver(record:ChildRecord,deliveryKind:DeliveryKind="outcome",requestId?:string){
+  if(record.status!=="settled"&&record.status!=="waiting"&&deliveryKind!=="question-resolution")return;
   const parent=record.parentId?this.children.get(record.parentId):undefined;
-  const delivery={...record,deliveryId:randomUUID()};
+  const delivery={...record,deliveryId:randomUUID(),deliveryKind};
   if(record.parentId&&record.phase==="waiting-user"){
    delivery.notice=`User-only input for a child of coordinator ${record.parentId}; escalate through the originating user's UI.`;
    delivery.parentId=undefined;
@@ -101,6 +118,7 @@ export class SubagentRuntime {
    delivery.parentId=undefined;
   }
   this.pending.set(delivery.deliveryId,delivery);
+  if(deliveryKind==="question"&&requestId)this.questions.set(requestId,{origin:record.origin,childId:record.id,deliveryId:delivery.deliveryId,exposed:false});
   this.flush(record.origin);
  }
  private async dispatch(identity:Readonly<ChildIdentity>,message:ApplicationMessage):Promise<unknown>{
@@ -124,8 +142,14 @@ export class SubagentRuntime {
    return {accepted:true,parentSessionId};
   }
   const delivery=child.record.userOwned?undefined:[...this.pending.values()].find(r=>r.parentId===identity.child);
-  if(message.type==="heartbeat")return{alive:true,delivery};
-  if(message.type==="app-poll")return{...child.parentMessage(message) as object,delivery};
+  if(message.type==="heartbeat"){
+   if(delivery){this.queued.add(delivery.deliveryId);this.markQuestionExposed(delivery.deliveryId)}
+   return{alive:true,delivery};
+  }
+  if(message.type==="app-poll"){
+   if(delivery){this.queued.add(delivery.deliveryId);this.markQuestionExposed(delivery.deliveryId)}
+   return{...child.parentMessage(message) as object,delivery};
+  }
   if(message.type==="operator-input"){
    const wasIdle=child.record.status==="settled";
    const response=child.parentMessage(message);
@@ -222,11 +246,13 @@ export class SubagentRuntime {
    input.progress?.(record);
    for(const observer of this.observers.get(record.id)??[])observer(record);
   };
+  child.onQuestionCreated=(record,requestId)=>this.deliver(record,"question",requestId);
+  child.onQuestionResolved=(record,requestId,outcome,by)=>this.resolveQuestionDelivery(record,requestId,outcome,by);
   child.onUpdate=record=>{
    this.publish(record.origin);
    input.progress?.(record);
    for(const observer of this.observers.get(record.id)??[])observer(record);
-   if(record.waitState!=="attached"&&(record.status==="settled"||record.status==="waiting"))this.deliver(record);
+   if((record.status==="settled"&&record.waitState!=="attached")||(record.phase==="waiting-user"&&record.waitState!=="attached"))this.deliver(record);
    if(record.status==="settled"){
     for(const pending of this.pending.values())if(pending.parentId===record.id){pending.parentId=undefined;pending.notice=`Coordinator ${record.id} ended before receiving this outcome; forwarded to originating orchestrator.`}
     this.flush(record.origin);

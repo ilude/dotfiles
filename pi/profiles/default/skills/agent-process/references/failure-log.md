@@ -7,7 +7,7 @@
 - **Finding:** Maya's foreground launch had an attached wait, so automatic delivery was suppressed on the assumption that its tool result would deliver the question. The parent model turn also contained another unresolved foreground subagent wait, which prevented the tool batch from returning for more than 22 minutes. Direct visible input then started a new child turn, cleared the pending question, and allowed the child's normal final response to settle and exit. The question was neither lost in transport nor visible to the parent when action was needed; two individually intended behaviors composed into a broken question workflow.
 - **Recommended direction:** Parent questions must bypass unrelated foreground waits and become immediately actionable by the parent. A child waiting on a parent question should not treat ordinary direct input as a replacement assignment that clears the protocol request; either route that input as the answer or preserve the pending request until explicitly answered or cancelled. Cover parallel foreground launches, parent notification timing, direct child input, request correlation, and non-retained child lifetime.
 - **Related:** APR-016, APR-017, APR-051.
-- **Status:** Incident confirmed from complete exact-session records and current source. No runtime correction authorized or implemented.
+- **Status:** Remediated in the default-profile runtime and child surfaces. Focused lifecycle, mailbox, presentation, typecheck, and runtime checks pass. Live attached-client behavior remains unverified; process-local and non-durable scope is intentional.
 
 ## APR-051 - Foreground subagent wait unnecessarily blocked the orchestrator
 

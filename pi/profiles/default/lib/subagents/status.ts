@@ -37,11 +37,13 @@ function timing(record: ChildRecord, now: number): string {
 }
 
 export function outcomeText(record: ChildRecord): string {
+  if(record.questionResolution) return `Subagent ${identity(record)} parent question ${record.questionResolution.outcome} by ${record.questionResolution.by} (request ${record.questionResolution.requestId}).`;
   const stateText = record.status === "waiting"
     ? record.phase === "waiting-user" ? "needs user-only input; use escalate" : record.phase === "waiting-parent" ? "waiting for parent reply" : "waiting"
     : record.outcome ?? record.status;
   const lines = [`Subagent ${identity(record)} (${record.id}) ${stateText}:`];
   if (record.assignment) lines.push(`Assignment: ${clean(record.assignment)}`);
+  if (record.requestId) lines.push(`Request ID: ${record.requestId}`);
   if (record.result) lines.push(bounded(record.result));
   else if (!record.error) lines.push("No result");
   if (record.error) lines.push(`Error: ${bounded(record.error)}`);

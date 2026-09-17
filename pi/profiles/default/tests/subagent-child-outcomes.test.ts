@@ -12,8 +12,12 @@ it("yields parent questions as terminating tool results instead of polling",asyn
  try{
   childAuthority(pi);
   const result=await tools.subagent_parent.execute("question",{action:"question",message:"Include generated files?"},undefined);
-  expect(result.terminate).toBe(true);expect(result.details).toMatchObject({requestId:"request-1",protocol:"question-answer"});
-  expect(request.mock.calls.map(([,message])=>message.type)).toEqual(["question"]);
+  expect(result.terminate).toBe(true);expect(result.details).toMatchObject({requestId:"request-1",protocol:"question-answer",question:"Include generated files?"});
+  expect(result.content[0].text).toContain("Request ID: request-1");
+  expect(result.content[0].text).toContain("Question:\nInclude generated files?");
+  const cancelled=await tools.subagent_parent.execute("cancel",{action:"cancel-question",requestId:"request-1"},undefined);
+  expect(cancelled.terminate).toBeUndefined();expect(cancelled.content[0].text).toContain("cancelled");
+  expect(request.mock.calls.map(([,message])=>message.type)).toEqual(["question","cancel-question"]);
  }finally{
   if(beforeAuthority===undefined)delete process.env.PI_SUBAGENT_AUTHORITY;else process.env.PI_SUBAGENT_AUTHORITY=beforeAuthority;
   if(beforeEndpoint===undefined)delete process.env.PI_SUBAGENT_ENDPOINT;else process.env.PI_SUBAGENT_ENDPOINT=beforeEndpoint;

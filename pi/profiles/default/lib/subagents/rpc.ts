@@ -35,6 +35,7 @@ export interface ChildRecord {
   waitState?: "attached" | "detached" | "background"; notice?: string; paneState?: "open" | "closed";
   cleanup?: CleanupResult;
   launcherState?: "starting" | "running" | "exited";
+  questionResolution?: { requestId: string; outcome: "answered" | "cancelled"; by: "parent" | "child" | "assignment" };
 }
 export interface LaunchSpec { definition: AgentDefinition; prompt?: string; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible" }
 const LIMIT = 24_000;
@@ -50,11 +51,14 @@ export class RpcChild {
   protected last = "";
   onUpdate?: (record: ChildRecord) => void;
   onProgress?: (record: ChildRecord) => void;
+  onQuestionCreated?: (record: ChildRecord, requestId: string) => void;
+  onQuestionResolved?: (record: ChildRecord, requestId: string, outcome: "answered" | "cancelled", by: "parent" | "child" | "assignment") => void;
   hasOutstandingChildren?: () => boolean;
   private waiters = new Set<() => void>();
   private processClosed?: Promise<void>;
   private uiRequest?:{id:string;method:string;title?:string;message?:string;options?:string[];prefill?:string};
   private question?: { id: string; message: string; protocol: "question-answer" };
+  private questionResolutions = new Map<string, { outcome: "answered" | "cancelled"; by: "parent" | "child" | "assignment" }>();
   private intentionalRedirect = false;
   private toolFailure?: { toolName: string; reason: string };
   protected spec: LaunchSpec; protected profileDir: string;
@@ -180,18 +184,55 @@ export class RpcChild {
     await this.startMessage(value);
   }
   private async startMessage(value:string){
-    this.last="";this.toolFailure=undefined;this.question=undefined;this.uiRequest=undefined;this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
+    this.last="";this.toolFailure=undefined;this.uiRequest=undefined;this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
     this.record.assignment=value;this.record.assignmentStartedAt=new Date().toISOString();this.record.assignmentFinishedAt=undefined;
-    this.record.status="running";this.record.requestId=undefined;this.activity("starting");
+    this.record.status="running";this.record.requestId=this.question?.id;this.activity("starting");
     try{await this.command("prompt",{message:value})}catch(error){this.fail(`Follow-up prompt rejected: ${String(error)}`);throw error}
   }
   async answer(value:string, replyTo?:string){
     if(this.record.userOwned)throw new Error("Parent steering is suspended during user intervention");
-    if (!this.question) throw new Error("No parent question is pending; user approvals cannot be answered through this action");
     if (!value.trim()) throw new Error("Answer must be nonblank");
-    if (replyTo && replyTo !== this.question.id) throw new Error("Reply does not match the pending parent question");
-    this.question=undefined;
+    const question=this.question;
+    if (!question) {
+      const prior=replyTo ? this.questionResolutions.get(replyTo) : undefined;
+      if(prior)throw new Error(`Question ${replyTo} was already resolved by ${prior.by} ${prior.outcome}`);
+      throw new Error("No parent question is pending; user approvals cannot be answered through this action");
+    }
+    if (replyTo && replyTo !== question.id) {
+      const prior=this.questionResolutions.get(replyTo);
+      if(prior)throw new Error(`Question ${replyTo} was already resolved by ${prior.by} ${prior.outcome}`);
+      throw new Error("Reply does not match the pending parent question");
+    }
+    this.resolveQuestion(question.id,"answered","parent");
     await this.startMessage(`Answer to your question:\n${value}`);
+  }
+  cancelQuestion(requestId?:string){
+    const question=this.question;
+    if(!question){
+      const prior=requestId ? this.questionResolutions.get(requestId) : undefined;
+      if(prior)throw new Error(`Question ${requestId} was already resolved by ${prior.by} ${prior.outcome}`);
+      throw new Error("No parent question is pending");
+    }
+    if(requestId && requestId!==question.id){
+      const prior=this.questionResolutions.get(requestId);
+      if(prior)throw new Error(`Question ${requestId} was already resolved by ${prior.by} ${prior.outcome}`);
+      throw new Error("Cancellation does not match the pending parent question");
+    }
+    this.resolveQuestion(question.id,"cancelled","child");
+    this.record.status="running";
+    this.record.result=undefined;
+    this.activity("model");
+  }
+  private resolveQuestion(requestId:string,outcome:"answered"|"cancelled",by:"parent"|"child"|"assignment"){
+    if(this.question?.id!==requestId){
+      const prior=this.questionResolutions.get(requestId);
+      if(prior)throw new Error(`Question ${requestId} was already resolved by ${prior.by} ${prior.outcome}`);
+      throw new Error("No parent question is pending");
+    }
+    this.question=undefined;
+    this.questionResolutions.set(requestId,{outcome,by});
+    this.record.requestId=undefined;
+    this.onQuestionResolved?.(this.snapshot(),requestId,outcome,by);
   }
   async escalate(ctx:ExtensionContext){
     const request=this.uiRequest;if(!request)throw new Error("No user-only prompt is pending");
@@ -212,14 +253,30 @@ export class RpcChild {
     if (!this.spec.definition.tools.includes("subagent_parent")) throw new Error("Parent helper is outside frozen authority");
     if (this.record.status === "settled") throw new Error("Assignment is already settled");
     if (message.type === "question") {
+      if(this.question)throw new Error("A parent question is already pending");
       const payload=typeof message.payload === "string" ? {message:message.payload,protocol:"question-answer" as const} : message.payload as {message?:unknown;protocol?:unknown};
       if(typeof payload?.message!=="string"||!payload.message.trim())throw new Error("Question must be nonblank");
       if(payload.protocol!==undefined&&payload.protocol!=="question-answer")throw new Error("Unsupported question protocol");
       this.question={id:randomUUID(),message:payload.message.slice(0,LIMIT),protocol:"question-answer"};
-      this.last="";this.record.requestId=this.question.id;this.record.status="waiting";this.record.result=this.question.message;this.activity("waiting-parent");this.done();return {id:this.question.id,protocol:this.question.protocol};
+      this.last="";this.record.requestId=this.question.id;this.record.status="waiting";this.record.result=this.question.message;this.activity("waiting-parent");this.onQuestionCreated?.(this.snapshot(),this.question.id);this.done();return {id:this.question.id,protocol:this.question.protocol};
+    }
+    if (message.type === "cancel-question") {
+      const requestId=typeof message.payload === "string" ? message.payload : (message.payload as {requestId?:unknown})?.requestId;
+      if(requestId!==undefined&&typeof requestId!=="string")throw new Error("Question request ID must be a string");
+      this.cancelQuestion(requestId);
+      return {accepted:true,requestId:requestId??this.record.requestId,resolution:"cancelled"};
     }
     if (message.type === "poll-answer") {
-      if (!this.question || message.payload !== this.question.id) throw new Error("Unknown question; answer the current request");
+      if (!this.question) {
+        const prior=typeof message.payload === "string" ? this.questionResolutions.get(message.payload) : undefined;
+        if(prior)throw new Error(`Question ${String(message.payload)} was already resolved by ${prior.by} ${prior.outcome}`);
+        throw new Error("Unknown question; answer the current request");
+      }
+      if (message.payload !== this.question.id) {
+        const prior=typeof message.payload === "string" ? this.questionResolutions.get(message.payload) : undefined;
+        if(prior)throw new Error(`Question ${message.payload} was already resolved by ${prior.by} ${prior.outcome}`);
+        throw new Error("Unknown question; answer the current request");
+      }
       return {pending:true,requestId:this.question.id};
     }
     if (message.type === "partial" || message.type === "blocked") {
@@ -230,7 +287,9 @@ export class RpcChild {
   }
   async cancel():Promise<CleanupResult>{
     const terminal=this.record.status==="settled";
-    if(!terminal){this.record.outcome="cancelled";this.record.status="settled";this.activity("cleanup");try{await this.command("abort")}catch{/* Owned termination below is authoritative. */}}
+    if(!terminal){
+      if(this.question)this.resolveQuestion(this.question.id,"cancelled","assignment");
+      this.record.outcome="cancelled";this.record.status="settled";this.activity("cleanup");try{await this.command("abort")}catch{/* Owned termination below is authoritative. */}}
     const cleanup=await this.cleanupOwnedResources();
     // Explicit cancellation ends retention and direct user ownership only after
     // cleanup succeeds. A failed cleanup keeps the reservation for retry.
@@ -265,9 +324,7 @@ export class RpcChild {
   }
   private send(type:string,data:Record<string,unknown>){this.record.process?.stdin.write(JSON.stringify({type,...data})+"\n")}
   protected async finishFromTurn(){
-    if(this.record.status==="waiting"&&this.record.phase==="waiting-parent"&&this.last.trim()){
-      this.question=undefined;this.record.requestId=undefined;this.record.result=undefined;this.record.status="running";this.activity("model");
-    }
+    if(this.record.status==="waiting"&&this.record.phase==="waiting-parent"&&this.question)return;
     if(this.record.status!=="running")return;
     this.record.turns++;
     if(this.hasOutstandingChildren?.()){
@@ -277,6 +334,9 @@ export class RpcChild {
     if(this.toolFailure)return this.fail(`Tool ${this.toolFailure.toolName} failed: ${this.toolFailure.reason}`);
     if(!this.last.trim()&&!this.record.result?.trim())return this.fail("Blank output is not assignment completion");
     this.record.result=((this.record.outcome === "partial" || this.record.outcome === "blocked") ? this.record.result||this.last : this.last||this.record.result||"").slice(0,LIMIT);
+    if(this.question){
+      this.record.status="waiting";this.record.phase="waiting-parent";this.record.requestId=this.question.id;this.record.result=this.question.message;this.record.updatedAt=new Date().toISOString();this.onProgress?.(this.snapshot());return;
+    }
     this.record.outcome=this.record.outcome??"complete";this.record.status="settled";this.activity("cleanup");
     if(!this.record.retained&&!this.record.userOwned)await this.cleanupOwnedResources();
     this.done();
@@ -284,6 +344,7 @@ export class RpcChild {
   launchFailed(error:unknown){this.record.processState="exited";this.fail(`Child launch failed: ${String(error)}`)}
   protected fail(error:string){
     if(this.record.status==="settled"||this.intentionalRedirect)return;
+    if(this.question)this.resolveQuestion(this.question.id,"cancelled","assignment");
     this.record.error=error;this.record.outcome="failed";this.record.status="settled";this.record.requestId=undefined;this.activity("cleanup");
     void this.cleanupOwnedResources().finally(()=>this.done());
   }
