@@ -12,7 +12,7 @@ const leaf = definition("leaf", { model: "provider/leaf" });
 const noDefault = definition("no_default");
 const coordinator = definition("coordinator", { delegates: ["leaf"] });
 const strategist = definition("strategist", { model: "provider/strategist", effort: "high" });
-const steward = definition("steward", { description: "Use after review findings or an unexpected check or deployment outcome, before follow-up fixes", model: "openai-codex/gpt-5.6-luna", effort: "high" });
+const steward = definition("steward", { description: "Assess reviewer or validator findings before follow-up corrections. Not for initial investigation or debugging", model: "openai-codex/gpt-5.6-luna", effort: "high" });
 const teamlead = definition("teamlead", { delegates: ["leaf", "steward"] });
 const council = definition("council", { delegates: ["leaf"] });
 const entries = [["strategist", strategist], ["steward", steward], ["no_default", noDefault], ["coordinator", coordinator], ["leaf", leaf], ["teamlead", teamlead], ["council", council]] as const;
@@ -181,7 +181,7 @@ describe("delegation guidance", () => {
   });
 
   it("catalogs Steward for callers and permitted coordinators but not in ordinary leaf context", () => {
-    expect(delegationContext({ audience: "caller", definitions })).toContain("- steward: Use after review findings or an unexpected check or deployment outcome, before follow-up fixes (model default: openai-codex/gpt-5.6-luna; effort default: high)");
+    expect(delegationContext({ audience: "caller", definitions })).toContain("- steward: Assess reviewer or validator findings before follow-up corrections. Not for initial investigation or debugging (model default: openai-codex/gpt-5.6-luna; effort default: high)");
     expect(composedAgentPrompt(teamlead, definitions)).toContain("- steward:");
     expect(composedAgentPrompt(steward, definitions)).toBe("steward prompt");
   });

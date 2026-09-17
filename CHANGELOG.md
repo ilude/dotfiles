@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-17: Keep Steward out of initial debugging
+
+**Changed:** The default-profile Steward catalog now identifies the role as an assessor of reviewer or validator findings before follow-up corrections and explicitly excludes initial investigation and debugging. Detailed follow-up triggers and runtime authority are unchanged.
+
 ## 2026-09-17: Make subagent messaging nonblocking and preserve assignment results
 
 **Changed:** Root and coordinator message and answer controls now return explicit dispatch acceptance without waiting for assignment completion. Retained conversations preserve the original assignment result separately from later follow-ups, and inspection distinguishes current work, completed retained availability, follow-up results, and resource closure.

@@ -59,7 +59,7 @@ describe("subagent definitions",()=>{
   const catalog=loadDefinitions(profile,false,profile);
   expect(catalog.errors).toEqual([]);
   expect(catalog.agents.get("strategist")).toMatchObject({model:"openai-codex/gpt-5.6-sol",effort:"low",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
-  expect(catalog.agents.get("steward")).toMatchObject({description:"Use after review findings or an unexpected check or deployment outcome, before follow-up fixes",model:"openai-codex/gpt-5.6-luna",effort:"high",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
+  expect(catalog.agents.get("steward")).toMatchObject({description:"Assess reviewer or validator findings before follow-up corrections. Not for initial investigation or debugging",model:"openai-codex/gpt-5.6-luna",effort:"high",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
   expect(catalog.agents.get("teamlead")?.delegates).toEqual(expect.arrayContaining(["strategist","steward"]));
   expect(catalog.agents.get("reviewer")).toMatchObject({model:"openai-codex/gpt-5.6-sol",tools:expect.arrayContaining(["read","bash"]),delegates:[],skills:[]});
  });

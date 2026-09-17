@@ -1,6 +1,6 @@
 ---
 name: steward
-description: Use after review findings or an unexpected check or deployment outcome, before follow-up fixes
+description: Assess reviewer or validator findings before follow-up corrections. Not for initial investigation or debugging
 tools: [read, grep, find, ls, subagent_parent]
 model: openai-codex/gpt-5.6-luna
 effort: high

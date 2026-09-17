@@ -1,5 +1,23 @@
 # Agent instruction feedback log
 
+## AIF-077 - Steward is not a general debugging role
+
+- **Reference:** Operator screenshot of a reported game-behavior defect, 2026-09-17.
+- **Feedback:** The orchestrator launched Steward to diagnose an issue directly. Steward is intended to assess reviewer or validator findings, not perform initial debugging.
+- **Finding:** The active caller guidance requires a review finding or an unexpected agreed check or deployment outcome before a follow-up fix or another MR, build, or deploy cycle. The orchestrator instead paraphrased this as any "unexpected result" and treated a user-reported runtime symptom as qualifying. No agreed check or deployment produced the report, no reviewer or validator finding existed, and no follow-up cycle had begun. The launch was an adherence failure, not an ambiguous trigger or missing role boundary.
+- **Decision:** With operator approval, replace the always-visible Steward catalog description with a role contrast at the selection point: assess reviewer or validator findings before follow-up corrections; do not use Steward for initial investigation or debugging. Leave the detailed caller trigger and runtime authority unchanged.
+- **Validation:** All 33 focused guidance and definition tests pass, as does default-profile typecheck.
+- **Status:** Implemented locally; active Pi sessions require reload before receiving the revised catalog.
+
+## AIF-076 - Give the orchestrator two-thirds height until a fifth visible subagent
+
+- **Reference:** Operator screenshot of one visible subagent above the orchestrator, 2026-09-17.
+- **Feedback:** One visible subagent occupied the upper two-thirds while the orchestrator received the lower third. The orchestrator should retain the lower two-thirds for one through four visible subagents. At five through eight subagents, the second child row may borrow the middle third, leaving the orchestrator the lower third.
+- **Finding:** `SubagentLayout.balanceHeight()` currently targets the caller at one third for every nonempty main-tab layout. This directly produces the reported geometry and conflicts with the requested count-dependent split.
+- **Recommended correction:** Target the caller at two thirds while the main tab has at most four children and one third once it has more than four. Preserve the existing two rows of four and child-nine overflow behavior.
+- **Related:** AIF-070.
+- **Status:** Feedback recorded. Runtime and test changes require operator approval.
+
 ## AIF-075 - Do not block on routine background subagents
 
 - **Reference:** Execution of `subagent-nonblocking-messaging`, 2026-09-17.
