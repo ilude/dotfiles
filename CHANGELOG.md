@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-17: Use normal Git merges with explicit dirty-worktree preservation
+
+**Added:** A default-profile Git workflow skill now guides plan and subagent branch integration. Clean destinations use a normal merge. Dirty destinations require an operator-approved preservation choice: a named stash restored with `apply`, or a targeted local WIP commit when a durable checkpoint is preferred. Separate worktrees are recommended for implementation isolation but do not bypass dirty-destination handling.
+
+**Changed:** Agents are directed away from low-level `commit-tree`, `update-index`, and `update-ref` integration around dirty checkouts and from combining merge construction, conflict resolution, ref movement, restoration, and cleanup in one shell call.
+
+**Preserved:** Existing work remains protected. Stash restoration uses `apply` rather than `pop`; conflicts leave the stash intact, ignored files are not captured implicitly, and ambiguous stash cleanup stops for operator review.
+
 ## 2026-09-17: Deliver Pi parent questions through a local mailbox
 
 **Added:** Default-profile subagent questions now show their complete bounded text and request ID in the child result, enter an origin-scoped process-local parent mailbox independently of foreground waits, and use the first native safe steering or follow-up boundary without interrupting active work. The child can keep discussing the issue with a user and explicitly cancel its own question when it decides the discussion resolved it.

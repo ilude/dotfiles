@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-055 - Plan merge used low-level Git plumbing around a dirty checkout
+
+- **Reference:** Operator-reported Damage Control prompts during integration of `task/subagent-parent-question-mailbox`, default session `01a0ad2b-e432-7799-9695-e3016a31ab01`, 2026-09-17.
+- **Observed:** The integration command created temporary file versions, built an index with `update-index`, created a merge commit with `commit-tree`, moved `main` with `update-ref`, reset the index, restored selected paths with `git checkout HEAD`, and removed the temporary directory in one shell call. The shadow judge first returned an invalid dismissal of confirmed cleanup rules, then requested approval because the checkout operations could overwrite work.
+- **Finding:** The agent implemented a custom merge around a destination containing existing changes. Although intended to preserve those changes, the combined low-level operation was difficult for both the operator and safety review to verify and made partial execution harder to reason about.
+- **Remediation:** Added the `git-workflow` skill. Plan and subagent integration now follows a short decision order: normal merge when clean; an operator-approved named stash or targeted local WIP commit when dirty; otherwise stop. Stash restoration uses `apply` rather than `pop` and removes only the exact recorded stash after verification. Separate worktrees isolate implementation but do not bypass dirty-destination handling. Low-level merge construction around a dirty checkout is prohibited by the skill.
+- **Related:** APR-028.
+- **Status:** Instruction implemented locally; future adherence remains unverified.
+
 ## APR-054 - Delegation began before Strategist returned
 
 - **Reference:** Default session `01a0acad-f5d2-738a-942f-f5858de7a2c4`, 2026-09-17.
