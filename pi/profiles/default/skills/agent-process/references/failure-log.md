@@ -1,5 +1,23 @@
 # Agent process failure log
 
+## APR-051 - Foreground subagent wait unnecessarily blocked the orchestrator
+
+- **Reference:** Operator screenshot and correction during review of the deployment-publication-simplification execution, 2026-09-16.
+- **Observed:** After a strategist completed, the orchestrator entered `subagent_control wait` on a developer and remained foreground-blocked for more than 25 minutes.
+- **Finding:** Subagent outcomes return automatically. Keeping a foreground wait active did not help the developer progress or ensure delivery; it prevented the operator from normally addressing or redirecting the orchestrator and prevented parallel parent work. A short intentional join can be useful when an outcome is immediately required, but this long wait was a misuse of the asynchronous subagent workflow. APR-046 recorded the same long-wait evidence but addressed only assignment sizing, missing this separate failure.
+- **Remediation:** The `subagent_control` tool guidance now reserves `wait` for a short intentional join when its result is immediately required. Otherwise the orchestrator continues work or returns control and relies on automatic outcome delivery. Tool-owned guidance reaches every orchestrator or coordinator permitted to use the control surface without duplicating the rule in caller guidance.
+- **Related:** APR-017, APR-046, AIF-061, AIF-062.
+- **Status:** Instruction correction implemented locally; future adherence remains unverified.
+
+## APR-050 - Deferred release detail became a global implementation blocker
+
+- **Reference:** Default session `01a0ab78-882f-75e0-86b8-c2795f778c5f`, 2026-09-16; operator supplied the executor's stop report.
+- **Observed:** Planner told the operator release-tag naming/timing could wait without blocking other implementation, but marked the plan draft and left tag-trigger requirements embedded in two implementation tasks. The executor requested the deferred decision and performed no worktree or implementation work.
+- **Finding:** The handoff contradicted the conversation. A scoped deferred choice remained entangled with active acceptance; a generic instruction to continue independent work did not repair that structure. The planner also initially copied feedback meant for pre-plan clarification into executor instructions, then removed it after correction.
+- **Remediation:** Separated exact tag-event/creation wiring from active task acceptance; kept promotion handling and nonprod rendering testable with fixture inputs. Clarified readiness for bounded implementation and that a subsequent implementation request authorizes local work. Deferred trigger wiring remains explicitly pending, not silently chosen or claimed complete.
+- **Related:** APR-006/APR-001 (premature stopping), APR-005 (handoff drift), AIF-002 (explicit handoffs).
+- **Status:** Task-local plan corrected; resumed execution not verified. No global instruction change.
+
 ## APR-049 - Analytics ignored the operator's explicit time window before a process exit
 
 - **Reference:** Default session `01a0abaa-f07b-7036-81ce-b442e4ec28a8`, 2026-09-16.
@@ -34,9 +52,10 @@
 - **Reference:** Operator screenshot of asynchronous-channel-messaging plan execution, 2026-09-16.
 - **Observed:** The screenshot shows the orchestrator creating one Onclave worktree and launching one developer with “Implement T1-T4 and focused tests,” then waiting on that single broad assignment for more than 46 minutes. Strategist's actual recommendation was not recovered in this review.
 - **Finding:** T1, T2, T3, and T4 were named plan-task boundaries and the operator expects separate implementation subagents. The injected phrases “Use small assignments” and “split by responsibility” did not produce the intended decomposition. This repeats the assignment-sizing pattern in APR-020. Documentation mentions one plan task per worker, but the inspected caller/coordinator prompts did not state it explicitly.
+- **Recurrence:** In the deployment-publication-simplification execution, the orchestrator assigned named tasks T1 and T2 to one developer. A review subagent then entered context compaction. The combined named-task assignment directly violates the implemented one-task ceiling. Review compaction is evidence that the review consumed its available context, but without the exact review assignment it does not by itself prove which boundary should have been split.
 - **Remediation:** AIF-061 and AIF-062 implement the approved one-task ceiling, active parallel decomposition, result-based dependencies, and adaptable structured advice. No runtime enforcement or existing-plan rewrite was added.
-- **Related:** AIF-027, AIF-061, AIF-062, APR-020.
-- **Status:** Instruction correction implemented locally; future model behavior remains unverified.
+- **Related:** AIF-027, AIF-061, AIF-062, APR-020, APR-051.
+- **Status:** Instruction correction implemented locally, but recurrence is observed; verify whether the running orchestrator loaded the corrected guidance before treating this as current-prompt noncompliance.
 
 ## APR-045 - `/new-instance` was injected into model context
 

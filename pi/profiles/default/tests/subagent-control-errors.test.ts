@@ -26,6 +26,8 @@ it("reports rejected controls as native tool errors", async () => {
   };
   const ctx: any = { cwd: process.cwd(), hasUI: true, isProjectTrusted: () => false, isIdle: () => true, sessionManager: { getSessionId: () => "control-origin" }, ui: { notify: vi.fn(), setWidget: vi.fn() } };
   subagents(pi);
+  expect(tools.subagent_control.description).toContain("Use wait only for a short intentional join when its result is immediately required");
+  expect(tools.subagent_control.description).toContain("otherwise continue work or return control because completion and failure arrive automatically");
   await handlers.session_start({}, ctx);
   await expect(tools.subagent_control.execute("bad-control", { action: "inspect", id: "missing" }, undefined, undefined, ctx)).rejects.toThrow("Unknown child");
 });

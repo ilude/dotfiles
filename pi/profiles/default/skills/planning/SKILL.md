@@ -10,10 +10,13 @@ supplies desired outcomes, priorities, and consequential judgment. The agent
 investigates the implementation, recommends choices, and supplies technical
 reasoning. Planning does not authorize execution.
 
-A plan should stand alone for a fresh-context Sol session at low reasoning. It
-must preserve intent and make each next step and its finish observable without
-requiring the executor to load this skill or reconstruct the planning discussion.
-Keep detail proportional and leave routine implementation choices flexible.
+A plan should stand alone for a fresh-context executor. Size ordinary tasks for
+reliable Luna execution within one context, allowing room for unexpected findings
+across investigation, implementation, and validation. Apply the same sizing to
+review work when included. This is a planning target, not a guarantee or token limit.
+Preserve intent and make each next step and its finish observable without requiring
+the executor to load this skill or reconstruct the planning discussion. Keep detail
+proportional and leave routine implementation choices flexible.
 
 Questions about an existing plan do not authorize rewriting it. Revise a plan
 only when explicitly asked. The user's request and subsequent changes are
@@ -45,6 +48,11 @@ reopening them.
    needs only an established interface, separate that prerequisite from the producer's
    remaining implementation. Show useful concurrent groups without manufacturing
    extra work or splitting tightly coupled changes merely to increase agent count.
+   Split obviously oversized tasks now. Where useful, record complexity and split
+   hints: difficult technical judgments, interacting contracts, coordination needs,
+   or independently verifiable boundaries. Describe the difficulty rather than
+   prescribing a model or effort; Strategist owns staffing recommendations. Hints
+   support further decomposition, not deferral of consequential user decisions.
    Include only context needed to restart. Label paths repository-root-relative and
    future files as proposed. Do not invent optional work, rollback tasks, exhaustive
    contingencies, approval gates, or manual acceptance requirements.
@@ -68,7 +76,8 @@ reopening them.
 7. When Pi behavior matters, record the verified planning profile and intended
    execution profile. Keep actual runs separate by date, profile/path, scope, and
    result. Never claim intended profiles or model behavior were tested.
-8. Review once as a fresh executor: can Sol at low reasoning start each task, preserve
+8. Review once as a fresh executor: are ordinary tasks sized for the execution target
+   above, with useful hints for unusually complex work? Can the executor preserve
    fixed intent while choosing routine mechanisms, handle blockers, run finite checks,
    and complete authorized closeout from the plan alone? Fix consequential gaps, then
    stop. A draft with explicit open decisions is more honest than false readiness.

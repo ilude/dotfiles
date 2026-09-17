@@ -65,6 +65,9 @@ demonstrated task-relevant failures and stop testing when the finite agreed chec
   - Parallel with: <independent task IDs, if useful; omit otherwise>.
   - Files/inputs: <existing or proposed paths; write ownership for parallel tasks>.
   - Change: <bounded work and any contract consumed later>.
+  - Complexity / split hints: <difficult technical judgments, interacting contracts,
+    coordination needs, or independently verifiable split points; omit when not useful.
+    Describe the difficulty, leaving model and effort selection to Strategist>.
   - Verify: <command and cwd, or exact comparison>.
   - Done when: <observable result>.
   - If blocked: <specific branch without guessing consequential intent>.

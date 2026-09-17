@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-16: Size planned work for Luna and leave staffing to Strategist
+
+**Changed:** The default planning skill now sizes ordinary tasks for reliable Luna execution across investigation, implementation, validation, and any included review work. It replaces the Sol-low executor baseline and calls for oversized tasks to be split during planning. The plan template offers optional complexity and split hints describing difficult judgments, interacting contracts, coordination needs, and useful assignment boundaries.
+
+**Preserved:** Plans define outcomes and evidence rather than model or effort assignments. Strategist retains its existing staffing and coordination guidance. Context fit is a planning target rather than a token limit; tightly coupled work stays together where appropriate, and consequential user decisions remain part of planning. Existing plans are unchanged.
+
+## 2026-09-16: Review prompt meaning against agreed requirements
+
+**Changed:** Replaced the prompting skill's final testing directive with a complete-instruction review for missing requirements, conflicting directions, duplicated guidance, and misplaced responsibilities. This corrects guidance that prompted phrase-matching tests instead of reviewing instruction meaning.
+
+## 2026-09-16: Keep Pi orchestrators responsive while subagents run
+
+**Changed:** The default-profile `subagent_control` guidance now reserves foreground `wait` for a short intentional join whose result is immediately required. Otherwise orchestrators and coordinators continue independent work or return control to the operator because subagent completion and failure already arrive automatically.
+
+**Preserved:** Interrupting a foreground wait still leaves the subagent running, cancellation still stops owned work, and progress remains UI-only.
+
 ## 2026-09-16: Make Pi prompt reviews composition-first and cache-aware
 
 **Changed:** The default-profile prompting skill now follows an ordered whole-prompt procedure: assemble each audience-visible composition, recover the purpose of existing instructions, assign each behavior to one owning layer, rewrite and inspect the complete result, review caching effects, then validate and report evidence limits. This replaces an unordered checklist that did not reliably prevent incremental fragment editing.
