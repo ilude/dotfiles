@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-17: Make subagent messaging nonblocking and preserve assignment results
+
+**Changed:** Root and coordinator message and answer controls now return explicit dispatch acceptance without waiting for assignment completion. Retained conversations preserve the original assignment result separately from later follow-ups, and inspection distinguishes current work, completed retained availability, follow-up results, and resource closure.
+
+**Fixed:** Deferred partial reports no longer override a later normal completion from a new settlement cycle. Direct follow-up input no longer consumes unread outcomes, and explicit reads acknowledge only the represented exchange.
+
+**Changed:** Orchestrators consult Strategist for plan execution and work suited to parallel agents or Team Leads. Explicit handoffs and context-conservation handoffs skip duplicate consultation; standalone work otherwise stays with the orchestrator. Team Lead and foreground Strategist contracts remain unchanged.
+
+**Validation:** Focused deterministic tests cover nonblocking controls, settlement selection, original/follow-up evidence, outcome consumption, presentation, guidance, and the combined lifecycle. They do not establish live-model response timing or attached-client UX.
+
 ## 2026-09-17: Compact tool discovery and Onclave transcript output
 
 **Changed:** Default Pi now renders `tool_search` results as a bounded count, activation summary, and short tool-name preview. The Onclave Pi adapter now renders inbound terminal notifications as a concise job summary and vault content reads as title, type, and content ID. Expanded views retain the complete original output, and model-visible protocol and tool content are unchanged.

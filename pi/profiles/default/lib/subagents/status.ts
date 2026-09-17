@@ -36,17 +36,47 @@ function timing(record: ChildRecord, now: number): string {
   return `elapsed ${duration(started, now)}`;
 }
 
+function exchangeLabel(record: Pick<ChildRecord, "exchangeKind" | "exchangeId">): string {
+  const kind = record.exchangeKind ?? "original";
+  return `${kind} exchange${record.exchangeId ? ` ${record.exchangeId}` : ""}`;
+}
+
+function retainedState(record: ChildRecord): string | undefined {
+  if (!record.retained) return undefined;
+  if (record.processState === "exited") return "retained record closed; follow-up unavailable";
+  return "retained and available for follow-up";
+}
+
+function stateText(record: ChildRecord): string {
+  if (record.status === "waiting") {
+    if (record.phase === "waiting-user") return "needs user-only input; use escalate";
+    if (record.phase === "waiting-parent") return "waiting for parent reply; parent reply pending";
+    return "waiting";
+  }
+  if (record.status !== "settled") {
+    return record.exchangeKind && record.exchangeKind !== "original"
+      ? `${record.exchangeKind} in progress`
+      : record.phase === "redirecting" ? "redirecting current turn" : "working";
+  }
+  const outcome = record.outcome ?? "settled";
+  if (record.exchangeKind && record.exchangeKind !== "original") return `${record.exchangeKind} ${outcome}`;
+  if (outcome === "complete" && record.retained && record.processState !== "exited") return "completed, retained for follow-up";
+  return outcome;
+}
+
 export function outcomeText(record: ChildRecord): string {
   if(record.questionResolution) return `Subagent ${identity(record)} parent question ${record.questionResolution.outcome} by ${record.questionResolution.by} (request ${record.questionResolution.requestId}).`;
-  const stateText = record.status === "waiting"
-    ? record.phase === "waiting-user" ? "needs user-only input; use escalate" : record.phase === "waiting-parent" ? "waiting for parent reply" : "waiting"
-    : record.outcome ?? record.status;
-  const lines = [`Subagent ${identity(record)} (${record.id}) ${stateText}:`];
+  const lines = [`Subagent ${identity(record)} (${record.id}) ${stateText(record)}:`];
+  if (record.exchangeId) {
+    lines.push(`Exchange: ${exchangeLabel(record)}${record.exchangeKind && record.exchangeKind !== "original" ? "; original assignment is retained separately" : ""}.`);
+  }
   if (record.assignment) lines.push(`Assignment: ${clean(record.assignment)}`);
   if (record.requestId) lines.push(`Request ID: ${record.requestId}`);
   if (record.result) lines.push(bounded(record.result));
-  else if (!record.error) lines.push("No result");
+  else if (!record.error && record.status === "settled") lines.push("No result");
   if (record.error) lines.push(`Error: ${bounded(record.error)}`);
+  const retention = retainedState(record);
+  if (retention) lines.push(`Conversation: ${retention}.`);
   if (record.cleanup && !record.cleanup.complete) {
     const detail = record.cleanup.errors.at(-1) ?? "owned resources remain open";
     lines.push(`Cleanup: unresolved (${clean(detail)})`);

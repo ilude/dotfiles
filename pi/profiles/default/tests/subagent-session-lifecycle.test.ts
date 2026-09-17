@@ -110,6 +110,7 @@ export default function(pi) {
     }, { timeout: 15_000, interval: 100 });
     expect(outcomes(acknowledged)[0].details.origin).toBe(first.origin);
     expect(outcomes(acknowledged)[0].details.deliveryId).toBe(acknowledged.acks[0]);
+    expect(outcomes(acknowledged)[0].details.originalAssignment).toMatchObject({outcome:"complete",result:"first answer",assignment:expect.stringContaining("WAIT_FILE:")});
     writeFileSync(fixture, source.replace("before-source-reload", "after-source-reload"));
     const reloaded = await command("reload");
     expect(reloaded.owner).not.toBe(first.owner);

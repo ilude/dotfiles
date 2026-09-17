@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-060 - Orchestrator used subagent wait for routine completion
+
+- **Reference:** Execution of `subagent-nonblocking-messaging`, 2026-09-17.
+- **Observed:** While direct workers were performing ordinary background plan tasks, the orchestrator called `subagent_control wait` to block for their completion. The operator explicitly directed it to stop.
+- **Finding:** Existing tool and profile guidance already reserves `wait` for reattaching to a deliberately interrupted foreground join whose result is immediately required. Routine background outcomes arrive automatically, so the calls were instruction-adherence failures rather than a missing policy.
+- **Correction:** The orchestrator stopped using `wait`, continued parent-owned closeout work, and relied on automatic outcomes.
+- **Status:** Corrected during the same execution. No instruction change requested.
+
 ## APR-059 - UX report was treated as implementation authorization
 
 - **Reference:** Default-profile session `01a0b08d-ae05-7257-b011-770908cd36ef`, 2026-09-17.
@@ -7,7 +15,8 @@
 - **Finding:** The Strategist result explicitly conditioned implementation on authorization and identified a behavior choice for the parent to make. The assistant ignored that boundary. Existing proportionality guidance also requires asking when an unresolved choice affects behavior or scope. This was a failure to follow available evidence and guidance, not a lack of technical findings.
 - **Impact:** The operator lost the intended decision point and received implementation results instead of a findings/remedy discussion. Changes were left in the working repositories; this entry does not authorize reverting or otherwise altering them.
 - **Related:** AIF-074, AIF-072, AIF-021.
-- **Status:** Recorded. No instruction edit or repository cleanup authorized.
+- **Resolution (2026-09-17):** Caller guidance now states that a problem report or discussion does not authorize implementation; existing scope and approval rules remain in force. The same guidance revision limits delegation activation without changing runtime authority.
+- **Status:** Resolved in the locally integrated default-profile guidance. Prompt composition tests do not establish model adherence.
 
 ## APR-058 - Team Lead incorrectly assumed delegates inherit its tool ceiling
 
@@ -31,7 +40,8 @@
 - **Rejected explanations:** No result-body loss, worker crash, intervention takeover, reload failure, or stale Maya status is established. Root's working statement at 14:47:40Z preceded Maya's final at 14:48:07Z. The screenshot's reference to bodies describes orbital simulation.
 - **Recommendation:** Make coordinator message/answer dispatch nonblocking like root control and keep deliberate joins explicit. Cover a held background worker, parent responsiveness, and sibling outcomes at the coordinator tool boundary. Preserve intended foreground Strategist consultation and useful retention. Review prompt ownership before changing Steward guidance; do not add gates or blanket auto-close rules.
 - **Follow-up:** The same Team Lead sent a routine progress notification to reviewer Elena at 14:56:01.188Z (`d1df6261`), and the control call blocked until 14:58:33.518Z (`52dd0bf8`), another 152.330 seconds. This confirms the wait is not specific to question replies. Reviewer launch at 14:55:24Z preceded cleanup of completed Maya and Iris at 14:55:34Z and 14:55:48Z. With Clara and validator Nora, those four occupied slots made Elena the fifth child. `lib/subagents/layout.ts` automatically creates an overflow tab at child five and does not migrate overflow panes back after closures. The launch call did not select a tab; historical exact tab identity remains unverified.
-- **Status:** Source and historical transcript diagnosis only; no runtime changes or new live/model experiments. Existing messaging and child-outcome tests were inspected, not executed; they do not exercise this coordinator control-wrapper wait. Two prolonged waits in one task group, not a claim of cross-session recurrence.
+- **Resolution (2026-09-17):** Root and coordinator message/answer controls now return after native dispatch acceptance and expose per-call metadata without claiming model receipt or completion. Held-child regressions cover the coordinator boundary, while foreground Strategist waits remain unchanged. The broader retained-result and outcome-consumption lifecycle is covered by the same implementation plan.
+- **Status:** Resolved in the locally integrated default-profile implementation. Deterministic checks do not establish live-model timing or attached-client UX.
 
 ## APR-056 - Nested parent question cancelled during retained-child recovery
 

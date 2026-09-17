@@ -14,6 +14,18 @@ it("renders named transcript outcomes with bounded result and cleanup details",(
  const ended={...r,status:"settled" as const,outcome:"complete" as const,result:"answer",error:"cleanup failed"};
  expect(outcomeText(ended)).toContain("answer\nError: cleanup failed");
 });
+
+it("distinguishes retained completion and follow-up outcomes without replaying the original result",()=>{
+ const original={id:"original",agent:"probe",origin:"a",surface:"headless" as const,status:"settled" as const,retained:true,userOwned:false,turns:1,createdAt:"2026-09-08T00:00:00Z",updatedAt:"2026-09-08T00:00:02Z",assignment:"initial task",assignmentStartedAt:"2026-09-08T00:00:00Z",assignmentFinishedAt:"2026-09-08T00:00:02Z",processState:"running" as const,exchangeId:"original-id",exchangeKind:"original" as const,outcome:"complete" as const,result:"ORIGINAL FULL RESULT"};
+ expect(outcomeText(original)).toContain("completed, retained for follow-up");
+ const followUp={...original,assignment:"follow-up task",exchangeId:"follow-up-id",exchangeKind:"follow-up" as const,result:"FOLLOW-UP RESULT",originalAssignment:{exchangeId:"original-id",assignment:"initial task",outcome:"complete" as const,result:"ORIGINAL FULL RESULT",startedAt:original.assignmentStartedAt,finishedAt:original.assignmentFinishedAt}};
+ const text=outcomeText(followUp);
+ expect(text).toContain("follow-up complete");
+ expect(text).toContain("FOLLOW-UP RESULT");
+ expect(text).not.toContain("ORIGINAL FULL RESULT");
+ expect(text).toContain("original assignment is retained separately");
+ expect(outcomeText({...followUp,processState:"exited"})).toContain("retained record closed; follow-up unavailable");
+});
 it("replaces the module-local owner on an explicit reset",async()=>{
  const before=getSubagentRuntime();
  const replacement=await resetSubagentRuntime();

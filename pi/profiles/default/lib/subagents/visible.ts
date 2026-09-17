@@ -102,7 +102,8 @@ export class VisibleChild extends RpcChild {
    if(typeof payload?.text!=="string"||!payload.text.trim())throw new Error("Operator input must be nonblank");
    if(this.record.status!=="running"){
     const questionRequest=this.record.requestId;
-    this.last="";this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
+    this.beginExchange();
+    this.resetSettlementReport();this.last="";this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
     this.record.assignment=payload.text;this.record.assignmentStartedAt=new Date().toISOString();this.record.assignmentFinishedAt=undefined;
     this.record.status="running";this.record.phase="starting";this.record.phaseStartedAt=new Date().toISOString();this.record.requestId=questionRequest;
    }
@@ -112,7 +113,10 @@ export class VisibleChild extends RpcChild {
    if(this.forceStop)throw new Error("Child cancellation is already committed");
    this.record.userOwned=true;this.interventionReady=true;this.stopping=false;
    this.commands=[];
-   this.record.status="running";this.record.outcome=undefined;this.record.result=undefined;this.last="";
+   const newExchange=this.record.status==="settled";
+   this.beginExchange("intervention");
+   this.resetSettlementReport();this.record.status="running";this.record.outcome=undefined;this.record.result=undefined;this.record.error=undefined;this.last="";
+   if(newExchange){this.record.assignmentStartedAt=new Date().toISOString();this.record.assignmentFinishedAt=undefined;}
    return{accepted:true};
   }
   if(message.type==="handback"){

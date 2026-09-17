@@ -109,19 +109,39 @@ describe("process-local descendant ownership",()=>{
    expect(delivered[0]).toMatchObject({id:parent.id,outcome:"complete",result:"second answer",processState:"exited"});
   }finally{rmSync(scratch,{recursive:true,force:true})}
  });
- it("retires a previously pending outcome when an idle visible child accepts an operator turn",async()=>{
+ it("keeps unread descendant outcomes across direct input and consumes only the represented exchange",async()=>{
   const runtime=fixture();
-  const child=new VisibleChild({...input,retained:true,surface:"visible",displayName:"visible-probe",prompt:"probe"} as any,join(here,"../extensions/subagent-child.ts"),join(here,".."));
-  child.record.status="settled";child.record.outcome="complete";child.record.result="old result";
-  (runtime as any).children.set(child.record.id,child);
-  (runtime as any).contexts.set(child.record.id,{input:{...input,retained:true,surface:"visible"},profile:join(here,".."),extension:join(here,"../extensions/subagent-child.ts"),catalog:new Map([[definition.name,definition]])});
-  const stale={...child.snapshot(),id:"prior-leaf",parentId:child.record.id,deliveryId:"prior-outcome"};
-  (runtime as any).pending.set(stale.deliveryId,stale);
-  const dispatch=(message:any)=>(runtime as any).dispatch({child:child.record.id,origin:input.origin,run:"fixture"},message);
-  expect((await dispatch({type:"app-poll"})).delivery).toMatchObject({deliveryId:"prior-outcome"});
+  const coordinator={...definition,name:"coordinator",tools:["subagent_control"],delegates:[]};
+  const parent=new VisibleChild({...input,definition:coordinator,retained:true,surface:"visible",displayName:"visible-coordinator",prompt:"probe"} as any,join(here,"../extensions/subagent-child.ts"),join(here,".."));
+  const leaf=new VisibleChild({...input,retained:true,surface:"visible",displayName:"visible-leaf",prompt:"probe"} as any,join(here,"../extensions/subagent-child.ts"),join(here,".."));
+  parent.record.status="settled";
+  leaf.record.status="settled";leaf.record.parentId=parent.record.id;leaf.record.outcome="complete";leaf.record.result="follow-up result";leaf.record.exchangeKind="follow-up";
+  const originalExchange=leaf.record.exchangeId!;
+  const followUpExchange="follow-up-exchange";
+  leaf.record.exchangeId=followUpExchange;
+  leaf.record.originalAssignment=Object.freeze({exchangeId:originalExchange,assignment:"original assignment",outcome:"complete",result:"original result",startedAt:leaf.record.createdAt,finishedAt:leaf.record.updatedAt});
+  (runtime as any).children.set(parent.record.id,parent);(runtime as any).children.set(leaf.record.id,leaf);
+  (runtime as any).contexts.set(parent.record.id,{input:{...input,definition:coordinator,retained:true,surface:"visible"},profile:join(here,".."),extension:join(here,"../extensions/subagent-child.ts"),catalog:new Map([[coordinator.name,coordinator],[definition.name,definition]])});
+  const original={...leaf.snapshot(),parentId:parent.record.id,exchangeId:originalExchange,exchangeKind:"original" as const,id:leaf.record.id,deliveryId:"original-outcome"};
+  const followUp={...leaf.snapshot(),parentId:parent.record.id,exchangeId:followUpExchange,exchangeKind:"follow-up" as const,id:leaf.record.id,deliveryId:"follow-up-outcome"};
+  (runtime as any).pending.set(original.deliveryId,original);(runtime as any).pending.set(followUp.deliveryId,followUp);
+  const dispatch=(message:any)=>(runtime as any).dispatch({child:parent.record.id,origin:input.origin,run:"fixture"},message);
+
   await dispatch({type:"operator-input",payload:{text:"new operator turn"}});
-  expect(child.snapshot()).toMatchObject({status:"running",assignment:"new operator turn",outcome:undefined,result:undefined,userOwned:false});
-  expect((await dispatch({type:"app-poll"})).delivery).toBeUndefined();
+  expect(parent.snapshot()).toMatchObject({status:"running",assignment:"new operator turn",outcome:undefined,result:undefined});
+  const polled=await dispatch({type:"app-poll"});
+  expect(polled.delivery).toMatchObject({deliveryId:original.deliveryId,exchangeId:originalExchange});
+  polled.delivery.originalAssignment.result="mutated delivery copy";
+  expect((runtime as any).pending.get(original.deliveryId).originalAssignment.result).toBe("original result");
+  expect((runtime as any).pending.has(original.deliveryId)).toBe(true);
+  expect((runtime as any).pending.has(followUp.deliveryId)).toBe(true);
+
+  const inspected=await dispatch({type:"control",payload:{action:"inspect",id:leaf.record.id,consume:true}});
+  expect(inspected).toMatchObject({exchangeId:followUpExchange,originalAssignment:{result:"original result"}});
+  expect((runtime as any).pending.has(original.deliveryId)).toBe(true);
+  expect((runtime as any).pending.has(followUp.deliveryId)).toBe(false);
+  await dispatch({type:"outcome-ack",payload:original.deliveryId});
+  expect((runtime as any).pending.has(original.deliveryId)).toBe(false);
  });
  it("allows a permitted leaf in a sibling directory while preserving origin and delegate checks",async()=>{
   const runtime=fixture(),scratch=mkdtempSync(join(tmpdir(),"subagent-sibling-"));

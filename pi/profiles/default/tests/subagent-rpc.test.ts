@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RpcChild, type ChildRecord } from "../lib/subagents/rpc.ts";
+import { VisibleChild } from "../lib/subagents/visible.ts";
 import type { AgentDefinition } from "../lib/subagents/definitions.ts";
 const here=dirname(fileURLToPath(import.meta.url)),oldBin=process.env.PI_SUBAGENT_BIN,oldArgs=process.env.PI_SUBAGENT_BIN_ARGS;
 const children:RpcChild[]=[];
 afterEach(async()=>{await Promise.all(children.splice(0).map(child=>child.cancel()));if(oldBin===undefined)delete process.env.PI_SUBAGENT_BIN;else process.env.PI_SUBAGENT_BIN=oldBin;if(oldArgs===undefined)delete process.env.PI_SUBAGENT_BIN_ARGS;else process.env.PI_SUBAGENT_BIN_ARGS=oldArgs});
-const definition:AgentDefinition={name:"test",description:"test",tools:[],delegates:[],skills:[],prompt:"test",source:"profile",filePath:"test.md",model:"openai-codex/test",effort:"low"};
+const definition:AgentDefinition={name:"test",description:"test",tools:["subagent_parent"],delegates:[],skills:[],prompt:"test",source:"profile",filePath:"test.md",model:"openai-codex/test",effort:"low"};
 function child(instructions="first",retained=true){
  process.env.PI_SUBAGENT_BIN=process.execPath;process.env.PI_SUBAGENT_BIN_ARGS=JSON.stringify([join(here,"fixtures","fake-subagent-rpc.mjs")]);
  const instance=new RpcChild({definition,instructions,cwd:here,model:"openai-codex/test",effort:"low",skills:[],origin:"origin-a",retained,surface:"headless"},join(here,"../extensions/subagent-child.ts"),join(here,".."));children.push(instance);return instance;
@@ -45,16 +46,28 @@ describe("subagent RPC lifecycle",()=>{
   stop.mockRestore();
  });
  it("uses a retained process for a follow-up and preserves its completed outcome on shutdown",async()=>{
-  const instance=child();const first=await instance.start();expect(first).toMatchObject({origin:"origin-a",outcome:"complete",result:"first answer",assignment:"first",model:"openai-codex/test",effort:"low",cwd:here,skills:[],assignmentFinishedAt:expect.any(String)});
+  const instance=child();const first=await instance.start();expect(first).toMatchObject({origin:"origin-a",outcome:"complete",result:"first answer",assignment:"first",model:"openai-codex/test",effort:"low",cwd:here,skills:[],assignmentFinishedAt:expect.any(String),exchangeKind:"original",exchangeId:expect.any(String),originalAssignment:{exchangeId:expect.any(String),assignment:"first",outcome:"complete",result:"first answer",startedAt:first.assignmentStartedAt,finishedAt:first.assignmentFinishedAt}});
   expect(first.displayName).toBeUndefined();
-  const reply=new Promise<ChildRecord>(resolve=>instance.onUpdate=resolve);await instance.message("follow-up");expect((await reply)).toMatchObject({assignment:"follow-up",assignmentFinishedAt:expect.any(String)});
-  await instance.cancel();expect(instance.snapshot().outcome).toBe("complete");
+  const original=first.originalAssignment;
+  const reply=new Promise<ChildRecord>(resolve=>instance.onUpdate=resolve);await instance.message("follow-up");const followUp=await reply;
+  expect(followUp).toMatchObject({assignment:"follow-up",assignmentFinishedAt:expect.any(String),exchangeKind:"follow-up",exchangeId:expect.any(String),originalAssignment:original});
+  expect(followUp.exchangeId).not.toBe(first.exchangeId);
+  expect(original).toEqual(first.originalAssignment);
+  await instance.finish();expect(instance.snapshot().outcome).toBe("complete");expect(instance.snapshot().originalAssignment).toEqual(original);
+ });
+ it("keeps the original evidence when a running follow-up is cancelled",async()=>{
+  const instance=child();const first=await instance.start();await instance.message("[hold]");
+  expect(instance.snapshot()).toMatchObject({status:"running",exchangeKind:"follow-up",originalAssignment:first.originalAssignment});
+  await instance.cancel();
+  expect(instance.snapshot()).toMatchObject({status:"settled",outcome:"cancelled",originalAssignment:first.originalAssignment});
  });
  it.each(["[blank]","[exit]"])("does not invent success from %s",async input=>{
   const instance=child(input,false);const result=await instance.start();expect(result.outcome).toBe("failed");expect(result.error).toMatch(/Blank|without reporting completion/);
  });
  it("does not reuse a previous answer after a blank follow-up",async()=>{
-  const instance=child();await instance.start();const reply=new Promise<ChildRecord>(resolve=>instance.onUpdate=resolve);await instance.message("[blank]");expect(await reply).toMatchObject({outcome:"failed",error:"Blank output is not assignment completion"});
+  const instance=child();const first=await instance.start();const reply=new Promise<ChildRecord>(resolve=>instance.onUpdate=resolve);await instance.message("[blank]");const followUp=await reply;
+  expect(followUp).toMatchObject({outcome:"failed",error:"Blank output is not assignment completion",exchangeKind:"follow-up",originalAssignment:first.originalAssignment});
+  expect(followUp.result).toBeUndefined();
  });
  it("keeps user-only consent out of factual answers and preserves a user's denial",async()=>{
   const instance=child("[approval]");expect((await instance.start()).status).toBe("waiting");
@@ -65,5 +78,26 @@ describe("subagent RPC lifecycle",()=>{
  });
  it("commits cancellation before an abort response or process exit",async()=>{
   const instance=child("[hold]");const result=instance.start();await instance.cancel();expect(await result).toMatchObject({outcome:"cancelled",status:"settled"});expect(instance.snapshot().result).toBeUndefined();
+ });
+ it("keeps a terminal snapshot independent from later child state",async()=>{
+  const instance=child();const first=await instance.start();const captured=first.originalAssignment!;
+  const returned=instance.snapshot() as any;
+  returned.originalAssignment.result="mutated only in this returned snapshot";
+  returned.originalAssignment.assignment="mutated instructions";
+  expect(instance.snapshot().originalAssignment).toEqual(captured);
+  expect(instance.snapshot().originalAssignment).toMatchObject({assignment:"first",result:"first answer",outcome:"complete"});
+ });
+ it("expires a visible deferred report before its later final turn",async()=>{
+  const instance=new VisibleChild({definition,instructions:"visible deferred",cwd:here,model:"openai-codex/test",effort:"low",skills:[],origin:"origin-a",retained:true,surface:"visible"},"fixture-extension","fixture-profile",{} as any);
+  children.push(instance);Object.assign(instance.record,{processState:"exited",status:"running"});
+  let descendantsOutstanding=true;instance.hasOutstandingChildren=()=>descendantsOutstanding;
+  instance.parentMessage({type:"partial",payload:"Earlier visible work remains active."});
+  expect(instance.parentMessage({type:"turn",payload:{turn:1,text:"Still waiting for visible descendants."}})).toEqual({accepted:true});
+  expect(instance.snapshot()).toMatchObject({status:"running",phase:"waiting-children",outcome:"partial",result:"Earlier visible work remains active."});
+  expect(instance.parentMessage({type:"operator-input",payload:{text:"Ordinary input while descendants remain."}})).toEqual({accepted:true});
+  expect(instance.parentMessage({type:"turn",payload:{turn:2,text:"Still waiting after ordinary input."}})).toEqual({accepted:true});
+  descendantsOutstanding=false;
+  expect(instance.parentMessage({type:"turn",payload:{turn:3,text:"Visible work completed after descendants settled."}})).toEqual({accepted:true});
+  expect(instance.snapshot()).toMatchObject({status:"settled",outcome:"complete",result:"Visible work completed after descendants settled."});
  });
 });

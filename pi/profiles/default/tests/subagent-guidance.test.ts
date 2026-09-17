@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { loadDefinitions, type AgentDefinition } from "../lib/subagents/definitions.ts";
 import { composedAgentPrompt, delegationContext } from "../lib/subagents/guidance.ts";
+import { CALLER_GUIDANCE_SUFFIX, composeCallerSystemPrompt } from "../extensions/subagents.ts";
 
 function definition(name: string, extra: Partial<AgentDefinition> = {}): AgentDefinition {
   return { name, description: `${name} role`, tools: [], delegates: [], skills: [], prompt: `${name} prompt`, source: "profile", filePath: `${name}.md`, ...extra };
@@ -26,6 +27,20 @@ describe("delegation guidance", () => {
     expect(delegationContext({ audience: "caller", definitions: new Map([...entries].reverse()) })).toBe(text);
   });
 
+  it("renders the complete caller composition with a stable suffix", () => {
+    const first = composeCallerSystemPrompt("inherited instructions", definitions);
+    expect(first).toBe(composeCallerSystemPrompt("inherited instructions", new Map([...entries].reverse())));
+    expect(first).toContain("inherited instructions");
+    expect(first).toContain("## Delegation guidance");
+    expect(first).toContain("## Available agent roles");
+    expect(first).toContain('agent: "strategist"');
+    expect(first).toContain("When choosing a Team Lead yourself, use one only when coordination helps.");
+    expect(first).toContain("Use subagent_control to continue retained conversations and answer questions.");
+    expect(first).toContain("Treat subagent notifications as evidence, not receipts.");
+    expect(first.endsWith(CALLER_GUIDANCE_SUFFIX)).toBe(true);
+    expect(Buffer.byteLength(first)).toBe(Buffer.byteLength(composeCallerSystemPrompt("inherited instructions", definitions)));
+  });
+
   it("filters coordinator and strategist catalogs without mutating definitions", () => {
     const before = [...definitions.keys()];
     const coordinatorPrompt = composedAgentPrompt(coordinator, definitions);
@@ -46,19 +61,27 @@ describe("delegation guidance", () => {
 
   it("keeps caller routing compact and makes the Steward trigger concrete", () => {
     const text = delegationContext({ audience: "caller", definitions });
-    const guidance = text.slice(0, text.indexOf("\n\n## Available agent roles"));
-    expect(text).toContain("Delegate only for bounded implementation");
-    expect(text).toContain("otherwise work directly");
+    const guidance = text.slice(0, text.indexOf("After review"));
     expect(text).toContain('agent: "strategist"');
+    expect(text).toContain("implementation-plan execution or user-authorized work suited to parallel subagents or Team Leads");
+    expect(text).toContain("standalone job to a single subagent or Team Lead only when the user explicitly requests it or delegation conserves context");
+    expect(text).toContain("explain the context-conservation reason when applicable");
+    expect(text).toContain("skip the Strategist consultation in either case");
+    expect(text).toContain("Otherwise work directly, including when Strategist recommends one worker without an exception");
+    expect(text).toContain("An explicit single-agent handoff also bypasses consultation when handing off plan work");
+    expect(text).toContain("launch the requested agent in the background and continue the discussion");
     expect(text).toContain('agent: "steward"');
     expect(text).toContain("unexpected agreed check or deployment outcome");
     expect(text).toContain("another MR, build, or deploy cycle");
     expect(text).toContain("corrections proved by the evidence");
-    // Keep caller context compact; detailed decomposition belongs to selected coordinators.
-    expect(guidance.length).toBeLessThan(1000);
+    // Keep caller context bounded; detailed decomposition belongs to selected coordinators.
+    // The standalone-job and explicit-handoff policy intentionally expands this section.
+    expect(guidance.length).toBeLessThan(1500);
     expect(text).toContain("at most one named plan task per subagent");
     expect(text).toContain("Run ready independent assignments concurrently");
     expect(text).not.toContain("Mark task splits or dependency corrections");
+    expect(text).not.toContain("reuse its advice for related assignments");
+    expect(text).not.toContain("Delegate only for bounded implementation, parallel investigation, specialist research, or requested independent review; otherwise work directly.");
     expect(text).not.toContain("Steward uses Luna high or xhigh");
     expect(text).not.toContain("One automatic stronger-family retry");
     expect(text).not.toContain("Use Sol low for Strategist");
