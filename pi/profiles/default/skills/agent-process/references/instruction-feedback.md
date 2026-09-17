@@ -1,5 +1,24 @@
 # Agent instruction feedback log
 
+## AIF-079 - Steward judges reviewer and validator follow-up scope
+
+- **Reference:** Operator correction during repository review fixes, 2026-09-17.
+- **Feedback:** Steward assesses reviewer and validator agent output to judge whether addressing their findings would send the work off track. It is not a general pre-fix review stage.
+- **Observed:** The orchestrator sent its own additional code-review findings to Steward after the user authorized fixes, then defended this as required after any review findings.
+- **Related:** AIF-077 distinguishes Steward from initial investigation; AIF-057 concerns finding-triggered follow-up cycles, not blanket approval of requested implementation.
+- **Recurrence:** Later on 2026-09-17, the orchestrator again sent its own user-approved fixes to Steward for a bounded implementation assessment despite receiving the revised exclusion in active context. The operator clarified that Steward is not a pre-implementation role at all. Review of AIF-029 confirms the intended role is judging whether reviewer/validator findings warrant additional work after implementation. Current wording omits that phase from the positive trigger and qualifies the exclusion with “routine”; the role also requests smallest-fix recommendations. These are possible reinforcing cues, not an excuse for ignoring the existing exclusion. The operator subsequently approved the replacement: explicit post-implementation finding triage, no requested-work preflight, and a brief out-of-role response from Steward. Applied to shared caller/Team Lead guidance, catalog, role body, documentation, and tests; generic tools unchanged. All 35 focused tests and profile typecheck pass. Composed bytes: caller 3,591 to 3,670; Team Lead 3,187 to 3,244; Strategist 3,359 to 3,372 (catalog only); Steward 1,448 to 1,867. Deterministic composition tests pass. Changed standing guidance/catalog bytes invalidate their cached prompt suffix; live cache use and model adherence were not measured.
+- **Decision:** With operator approval, replace the broad trigger in caller and Team Lead guidance with one shared reviewer/validator-agent finding trigger, explicitly excluding orchestrator investigation and routine requested implementation. Align the catalog, role body, and documentation; retain direct evidence-proved corrections and advisory authority.
+- **Validation:** All 34 focused guidance/definition tests and default-profile typecheck pass. Bundled composition sizes changed: caller 3,238 to 3,591 bytes; Team Lead 2,794 to 3,187; Strategist 3,281 to 3,359 (catalog only); Steward 1,363 to 1,448. Output remains deterministic. Changed guidance/catalog text invalidates the corresponding cached prompt suffix; actual cache usage and future adherence were not measured.
+- **Status:** Implemented locally. Activation requires a fresh session or settled-only `/reload`.
+
+## AIF-078 - Reuse transient retry instead of changing models
+
+- **Reference:** Operator correction after reporting intermittent `Unable to verify Daybreak Blue access`, 2026-09-17.
+- **Feedback:** The desired behavior is the same bounded retry and recovery already used for transient WebSocket errors, not switching the default model or changing Sol-based roles.
+- **Finding:** Pi's retry classifier recognizes WebSocket and explicit retry wording, but the Daybreak response says `Please try again`, which is not one of its retry patterns. The assistant initially treated the error as persistent account access loss without establishing that premise.
+- **Correction:** Rewrite only the exact OpenAI Codex `gpt-5.6-sol` verification error at `message_end` to equivalent explicit retry wording before Pi performs native retry classification. Preserve the existing retry budget, backoff, UI, cancellation, and all other error classifications.
+- **Status:** Implemented locally; six focused tests, default-profile typecheck, and runtime smoke pass. Existing sessions require `/reload`.
+
 ## AIF-077 - Steward is not a general debugging role
 
 - **Reference:** Operator screenshot of a reported game-behavior defect, 2026-09-17.

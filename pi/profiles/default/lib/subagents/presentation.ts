@@ -95,6 +95,14 @@ function assignmentTiming(record: Partial<ChildRecord>, now = Date.now()): strin
   return finished ? `Duration: ${elapsed}` : `Elapsed: ${elapsed}`;
 }
 
+function terminalLine(record: Partial<ChildRecord>): string | undefined {
+  if (record.status !== "settled") return undefined;
+  const finished = record.assignmentFinishedAt ?? record.updatedAt;
+  if (!finished) return undefined;
+  const label = record.outcome === "complete" ? "Completed" : "Failed";
+  return `${label} ${localTimestamp(finished)}`;
+}
+
 function startLine(record: Partial<ChildRecord>, now = Date.now()): string | undefined {
   const started = record.assignmentStartedAt ?? record.createdAt;
   if (!started) return undefined;
@@ -128,40 +136,25 @@ function activeDescription(record: Partial<ChildRecord>): string {
 function callLines(args: Record<string, unknown>, record: Partial<ChildRecord> | undefined, theme: Theme, context: RenderContext): string {
   const isControl = !args?.agent;
   const action = value(args?.action || "control");
-  const title = record
-    ? `${isControl ? `subagent control · ${action}` : "subagent"} · ${identity(record)}`
-    : isControl
-      ? `subagent control · ${action}`
-      : `subagent · ${value(args.agent)}`;
-  const lines = [theme.fg("toolTitle", theme.bold(title))];
-  const instructions = value(args?.instructions);
-  if (record) {
-    // Prefer the invocation argument: the prompt shown here must be the prompt sent.
-    const prompt = instructions || value(record.assignment);
-    if (prompt) {
-      lines.push(context.expanded
-        ? `Prompt:\n${bounded(prompt, Infinity)}`
-        : `Prompt: ${oneLine(prompt, PROMPT_LIMIT)} ${theme.fg("dim", keyHint("app.tools.expand", "for full prompt"))}`);
-    }
-    const model = record.model || value(args.model) || "default";
-    const effort = record.effort || value(args.effort) || "default";
-    lines.push(`Model: ${model} [${effort}]`);
-    const timing = startLine(record);
-    if (timing) lines.push(timing);
-  } else {
-    if (instructions) {
-      lines.push(context.expanded
-        ? `Prompt:\n${bounded(instructions, Infinity)}`
-        : `Prompt: ${oneLine(instructions, PROMPT_LIMIT)} ${theme.fg("dim", keyHint("app.tools.expand", "for full prompt"))}`);
-    }
+  if (isControl) {
+    const title = record ? `subagent control · ${action} · ${identity(record)}` : `subagent control · ${action}`;
+    const lines = [theme.fg("toolTitle", theme.bold(title))];
     if (args?.id) lines.push(`Target: ${oneLine(args.id, 120)}`);
     if (args?.message) lines.push(`Message: ${oneLine(args.message)}`);
-    const model = value(args.model);
-    const effort = value(args.effort) || "default";
-    if (args?.agent && (model || args?.effort !== undefined)) lines.push(`Model: ${model || "default"} [${effort}]`);
-    const startedAt = context.state?.startedAt;
-    if (startedAt) lines.push(`Started: ${localTimestamp(startedAt)} · Elapsed: ${duration(new Date(startedAt).toISOString())}`);
+    return lines.join("\n");
   }
+
+  const name = record?.displayName ?? "pending";
+  const role = record?.agent ?? (value(args.agent) || "subagent");
+  const model = record?.model || value(args.model) || "default";
+  const effort = record?.effort || value(args.effort) || "default";
+  const started = record?.assignmentStartedAt ?? record?.createdAt ?? context.state?.startedAt;
+  const header = `Subagent ${name}  ${role}  ${model}[${effort}]  ${started ? localTimestamp(started) : "starting"}`;
+  const prompt = value(args?.instructions) || value(record?.assignment);
+  const lines = [theme.fg("toolTitle", theme.bold(header))];
+  if (prompt) lines.push(bounded(prompt, RESULT_LIMIT));
+  const terminal = record ? terminalLine(record) : undefined;
+  if (terminal) lines.push(terminal);
   return lines.join("\n");
 }
 
@@ -185,6 +178,21 @@ function updateCallComponent(result: any, theme: Theme, context: RenderContext):
   if (!component || !record) return;
   // Already inside the row's render pass. Scheduling another pass here can loop.
   component.setText(callLines(state.args ?? context.args ?? {}, record, theme, context));
+}
+
+function lifecycleLine(record: PresentedRecord): string {
+  const name = record.displayName ?? record.agent ?? "Subagent";
+  if (record.dispatch) return `${name}: ${record.dispatch.operation} accepted`;
+  if (record.questionResolution) return `${name}'s question was ${record.questionResolution.outcome}`;
+  if (record.status === "waiting" && record.phase === "waiting-user") return `${name} needs user input${record.result ? `: ${oneLine(record.result)}` : ""}`;
+  if (record.status === "waiting" && record.result) return `${name} asked: ${oneLine(record.result)}`;
+  if (record.status !== "settled" && record.waitState === "detached") return `${name}: wait detached; child continues`;
+  if (record.status !== "settled" && record.waitState === "background") return `${name}: started in background; child continues`;
+  if (record.status === "settled") {
+    const event = record.outcome === "failed" ? "failed" : record.outcome === "cancelled" ? "was cancelled" : "completed";
+    return `${name} ${event}${record.error ? `: ${oneLine(record.error)}` : ""}`;
+  }
+  return `${name}: ${activeDescription(record)}`;
 }
 
 function resultComponent(record: PresentedRecord, expanded: boolean, theme: Theme, includeIdentity = false): any {
@@ -270,7 +278,13 @@ export function renderSubagentResult(result: any, options: { expanded?: boolean;
   if (record) {
     const passedPrompt = value(context.state?.args?.instructions ?? context.args?.instructions);
     const displayRecord = passedPrompt ? { ...record, assignment: passedPrompt } : record;
-    return resultComponent(displayRecord, !!options?.expanded, theme);
+    if (context.state?.args?.agent && context.state?.callComponent) {
+      if (options?.expanded) return resultComponent(displayRecord, true, theme);
+      if (record.status === "settled") return new Text("", 0, 0);
+      return new Text(lifecycleLine(displayRecord), 0, 0);
+    }
+    if (!options?.expanded) return new Text(lifecycleLine(displayRecord), 0, 0);
+    return resultComponent(displayRecord, true, theme);
   }
   if (options?.isPartial) return new Text(theme.fg("warning", "Subagent is working…"), 0, 0);
   const error = result?.details && typeof result.details.error === "string" ? result.details.error : undefined;
@@ -328,7 +342,10 @@ export function presentationDetails(record: Partial<ChildRecord>): Record<string
 
 export function renderSubagentMessage(message: any, options: { expanded?: boolean; outputPad?: number }, theme: Theme): any {
   const record = recordFromResult(message);
-  if (record) return resultComponent(record, !!options?.expanded, theme, true);
+  if (record) {
+    if (options?.expanded) return resultComponent(record, true, theme, true);
+    return new Text(lifecycleLine(record), options?.outputPad ?? 0, 0);
+  }
   const text = typeof message?.content === "string" ? message.content : resultText(message);
   const firstBreak = text.indexOf("\n");
   const header = firstBreak < 0 ? text : text.slice(0, firstBreak);

@@ -8,11 +8,15 @@ export interface DelegationContextOptions {
   permitted?: readonly string[];
 }
 
+const STEWARD_GUIDANCE = `Consult \`subagent\` with \`agent: "steward"\` when a reviewer or validator agent reports findings about implemented work and you need to assess whether those findings warrant additional work. Provide the requested outcome, completed work, findings, and proposed follow-up. Steward advises whether further work is justified; it does not approve implementation.
+
+Do not consult Steward before starting requested implementation, including user-authorized fixes from a code review. Do not send it implementation plans, task decomposition, or the orchestrator's own investigation. Handle corrections directly when the evidence proves the correction. Reuse its assessment for the same finding.`;
+
 const CALLER_GUIDANCE = `## Delegation guidance
 
 Consult \`subagent\` with \`agent: "strategist"\` for implementation-plan execution or user-authorized work suited to parallel subagents or Team Leads. Delegate a standalone job to a single subagent or Team Lead only when the user explicitly requests it or delegation conserves context; explain the context-conservation reason when applicable, and skip the Strategist consultation in either case. Otherwise work directly, including when Strategist recommends one worker without an exception. An explicit single-agent handoff also bypasses consultation when handing off plan work. When the user requests delegation while you continue another discussion, launch the requested agent in the background and continue the discussion.
 
-After review findings or an unexpected agreed check or deployment outcome, consult \`subagent\` with \`agent: "steward"\` before a follow-up fix or another MR, build, or deploy cycle. Handle directly only corrections proved by the evidence. Reuse advice for the same finding; consult again when the finding or proposed fix changes. Agent advice is not an approval gate.
+${STEWARD_GUIDANCE}
 
 Assign at most one named plan task per subagent; split larger tasks further. Run ready independent assignments concurrently with disjoint write ownership. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
 
@@ -28,7 +32,9 @@ Use catalog defaults unless evidence warrants an override. Luna low/medium/high 
 
 const TEAMLEAD_GUIDANCE = `## Steward
 
-After a review finding or unexpected agreed check or deployment outcome, consult a Steward before commissioning a follow-up correction or another merge request, build, or deployment cycle. Reuse its advice while the finding and proposed response remain unchanged; consult again when either changes. Steward advice is advisory. Use Luna high or xhigh for Steward.
+${STEWARD_GUIDANCE}
+
+Use Luna high or xhigh for Steward.
 
 ## Unsuccessful assignments
 

@@ -12,7 +12,7 @@ const leaf = definition("leaf", { model: "provider/leaf" });
 const noDefault = definition("no_default");
 const coordinator = definition("coordinator", { delegates: ["leaf"] });
 const strategist = definition("strategist", { model: "provider/strategist", effort: "high" });
-const steward = definition("steward", { description: "Assess reviewer or validator findings before follow-up corrections. Not for initial investigation or debugging", model: "openai-codex/gpt-5.6-luna", effort: "high" });
+const steward = definition("steward", { description: "Post-implementation triage of reviewer/validator agent findings: assess whether additional work is warranted or would create scope drift or fix churn. Not for planning or pre-implementation assessment.", model: "openai-codex/gpt-5.6-luna", effort: "high" });
 const teamlead = definition("teamlead", { delegates: ["leaf", "steward"] });
 const council = definition("council", { delegates: ["leaf"] });
 const entries = [["strategist", strategist], ["steward", steward], ["no_default", noDefault], ["coordinator", coordinator], ["leaf", leaf], ["teamlead", teamlead], ["council", council]] as const;
@@ -61,7 +61,7 @@ describe("delegation guidance", () => {
 
   it("keeps caller routing compact and makes the Steward trigger concrete", () => {
     const text = delegationContext({ audience: "caller", definitions });
-    const guidance = text.slice(0, text.indexOf("After review"));
+    const guidance = text.slice(0, text.indexOf('Consult `subagent` with `agent: "steward"`'));
     expect(text).toContain('agent: "strategist"');
     expect(text).toContain("implementation-plan execution or user-authorized work suited to parallel subagents or Team Leads");
     expect(text).toContain("standalone job to a single subagent or Team Lead only when the user explicitly requests it or delegation conserves context");
@@ -71,9 +71,9 @@ describe("delegation guidance", () => {
     expect(text).toContain("An explicit single-agent handoff also bypasses consultation when handing off plan work");
     expect(text).toContain("launch the requested agent in the background and continue the discussion");
     expect(text).toContain('agent: "steward"');
-    expect(text).toContain("unexpected agreed check or deployment outcome");
-    expect(text).toContain("another MR, build, or deploy cycle");
-    expect(text).toContain("corrections proved by the evidence");
+    expect(text).toContain("when a reviewer or validator agent reports findings about implemented work");
+    expect(text).toContain("assess whether those findings warrant additional work");
+    expect(text).toContain("Handle corrections directly when the evidence proves the correction");
     // Keep caller context bounded; detailed decomposition belongs to selected coordinators.
     // The standalone-job and explicit-handoff policy intentionally expands this section.
     expect(guidance.length).toBeLessThan(1500);
@@ -85,6 +85,31 @@ describe("delegation guidance", () => {
     expect(text).not.toContain("Steward uses Luna high or xhigh");
     expect(text).not.toContain("One automatic stronger-family retry");
     expect(text).not.toContain("Use Sol low for Strategist");
+  });
+
+  it("shares post-implementation finding triage and excludes requested-work preflight across caller and Team Lead", () => {
+    const profile = fileURLToPath(new URL("../", import.meta.url));
+    const catalog = loadDefinitions(profile, false, profile);
+    const lead = catalog.agents.get("teamlead");
+    if (!lead) throw new Error("Missing bundled Team Lead");
+    const caller = composeCallerSystemPrompt("inherited instructions", catalog.agents);
+    const teamleadPrompt = composedAgentPrompt(lead, catalog.agents);
+    for (const text of [caller, teamleadPrompt]) {
+      expect(text).toContain("when a reviewer or validator agent reports findings about implemented work");
+      expect(text).toContain("assess whether those findings warrant additional work");
+      expect(text).toContain("Provide the requested outcome, completed work, findings, and proposed follow-up");
+      expect(text).toContain("Steward advises whether further work is justified; it does not approve implementation");
+      expect(text).toContain("Do not consult Steward before starting requested implementation, including user-authorized fixes from a code review");
+      expect(text).toContain("Do not send it implementation plans, task decomposition, or the orchestrator's own investigation");
+      expect(text).toContain("Handle corrections directly when the evidence proves the correction");
+      expect(text).toContain("Reuse its assessment for the same finding");
+      expect(text).not.toContain("routine pre-implementation");
+      expect(text).not.toContain("before assigning follow-up work");
+      expect(text).not.toContain("unexpected agreed check or deployment outcome");
+      expect(text).not.toContain("another MR, build, or deploy cycle");
+    }
+    // Full bundled caller context is about 3.6 KB including inherited test text.
+    expect(Buffer.byteLength(caller)).toBeLessThan(3800);
   });
 
   it("gives Strategists and generic coordinators active decomposition guidance", () => {
@@ -121,13 +146,14 @@ describe("delegation guidance", () => {
     const role = catalog.agents.get("teamlead");
     if (!role) throw new Error("Missing bundled Team Lead");
     const text = composedAgentPrompt(role, catalog.agents);
-    expect(Buffer.byteLength(text)).toBeLessThan(3000);
+    // Shared Steward source/intent boundaries add context while keeping the full prompt bounded.
+    expect(Buffer.byteLength(text)).toBeLessThan(3400);
     expect(text).toContain("Commission a Strategist");
     expect(text).toContain("one or more additional subagents");
     expect(text).toContain("consult the Strategist again");
     expect(text).toContain("no more than eight active subagents");
     expect(text).toContain("## Steward");
-    expect(text).toContain("consult a Steward");
+    expect(text).toContain('agent: "steward"');
     expect(text).toContain("Use Luna high or xhigh for Steward");
     expect(text).toContain("## Unsuccessful assignments");
     expect(text).toContain("Retry the same bounded assignment once");
@@ -180,8 +206,25 @@ describe("delegation guidance", () => {
     expect(composedAgentPrompt(role, new Map([...catalog.agents].reverse()))).toBe(text);
   });
 
+  it("instructs Steward to return misrouted assignments without performing pre-implementation assessment", () => {
+    const profile = fileURLToPath(new URL("../", import.meta.url));
+    const catalog = loadDefinitions(profile, false, profile);
+    const role = catalog.agents.get("steward");
+    if (!role) throw new Error("Missing bundled Steward");
+    const text = composedAgentPrompt(role, catalog.agents);
+    expect(text).toContain("Assess findings returned by reviewer or validator agents about implemented work");
+    expect(text).toContain("If the assignment requests planning, initial investigation, or pre-implementation assessment, briefly identify the mismatch and return without performing that assessment");
+    expect(text).toContain("Assess whether the proposed additional work is necessary to satisfy the existing request");
+    expect(text).toContain("Do not develop an implementation plan");
+    expect(text).not.toContain("Recommend the smallest fix");
+    expect(text).not.toContain("## Delegation guidance");
+    // Role-only triage and misrouting guidance, without a second caller workflow.
+    expect(Buffer.byteLength(text)).toBeLessThan(1900);
+    expect(composedAgentPrompt(role, catalog.agents)).toBe(text);
+  });
+
   it("catalogs Steward for callers and permitted coordinators but not in ordinary leaf context", () => {
-    expect(delegationContext({ audience: "caller", definitions })).toContain("- steward: Assess reviewer or validator findings before follow-up corrections. Not for initial investigation or debugging (model default: openai-codex/gpt-5.6-luna; effort default: high)");
+    expect(delegationContext({ audience: "caller", definitions })).toContain("- steward: Post-implementation triage of reviewer/validator agent findings: assess whether additional work is warranted or would create scope drift or fix churn. Not for planning or pre-implementation assessment. (model default: openai-codex/gpt-5.6-luna; effort default: high)");
     expect(composedAgentPrompt(teamlead, definitions)).toContain("- steward:");
     expect(composedAgentPrompt(steward, definitions)).toBe("steward prompt");
   });

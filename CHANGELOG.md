@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-17: Make Steward exclusively post-implementation finding triage
+
+**Changed:** Steward now assesses whether reviewer/validator findings about implemented work warrant additional work. Caller and Team Lead guidance explicitly exclude requested implementation, including user-approved code-review fixes, implementation planning, and orchestrator investigation. Misrouted planning or pre-implementation assignments receive a brief mismatch response rather than implementation advice. The role distinguishes necessary corrections from optional improvements instead of developing fixes.
+
+**Preserved:** The generic subagent tool, role permissions, model selection, direct evidence-proved corrections, and advisory authority are unchanged. Updated prompt-composition tests check these boundaries, not actual model selection or compliance. Activation requires a fresh session or settled-only `/reload`.
+
+## 2026-09-17: Limit Steward consultation to reviewer and validator findings
+
+**Changed:** Default Pi caller and Team Lead guidance now share one Steward trigger: assess findings returned by reviewer or validator agents for scope drift, unnecessary changes, and fix churn before follow-up work. The orchestrator's own investigation and routine implementation of user-requested fixes are explicitly excluded. The role catalog and Steward prompt name the same purpose; evidence-proved direct corrections, advice reuse, advisory authority, and existing model/tool permissions remain unchanged.
+
+**Activation:** Use the normal settled-only `/reload` boundary or a fresh session. Prompt checks establish consistent composition, not guaranteed future model adherence.
+
+## 2026-09-17: Simplify default subagent cards
+
+**Changed:** Default Pi now presents each subagent launch as one card containing its name, role, resolved `model[effort]`, local start date/time, prompt, and a local completion or failure date/time once available. Questions, answers, dispatches, detached waits, and automatic outcomes use compact lifecycle rows instead of separate interactive or completion cards. Internal IDs, exchange bookkeeping, and detailed execution metadata remain available through expansion and explicit inspection.
+
+## 2026-09-17: Retry transient Daybreak Blue access checks
+
+**Fixed:** Default Pi now routes the intermittent `gpt-5.6-sol` “Unable to verify Daybreak Blue access” response through Pi's existing bounded agent-level retry and backoff flow, matching transient WebSocket recovery. The correction is restricted to that exact OpenAI Codex Sol verification error; other access, eligibility, quota, and provider errors retain their existing classification.
+
 ## 2026-09-17: Keep Steward out of initial debugging
 
 **Changed:** The default-profile Steward catalog now identifies the role as an assessor of reviewer or validator findings before follow-up corrections and explicitly excludes initial investigation and debugging. Detailed follow-up triggers and runtime authority are unchanged.

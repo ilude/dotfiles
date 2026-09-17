@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-061 - Steward reused as an implementation preflight after explicit correction
+
+- **Reference:** Repository review follow-up, 2026-09-17; AIF-079, AIF-029.
+- **Observed:** After the user authorized fixes for the orchestrator's six findings, the orchestrator invoked Steward to assess proposed implementation approaches. The user interrupted and clarified that Steward is not a pre-implementation role.
+- **Finding:** Active guidance already excluded orchestrator investigation and routine checkpoints for requested fixes. This was an adherence failure. Positive routing text still lacks the original post-implementation boundary; role text invites smallest-fix recommendations and does not tell Steward how to handle misrouted assignments.
+- **Proposed remediation:** Replace, rather than append to, caller/catalog routing with post-implementation finding triage; give Steward a concise out-of-role response instead of performing implementation assessment. No tool gate or additional approval stage proposed.
+- **Status:** Implemented with operator approval: shared caller/Team Lead guidance and the catalog now specify post-implementation finding triage; Steward returns misrouted assignments without doing implementation assessment. Generic tooling is unchanged. All 35 focused guidance/definition tests and profile typecheck pass. Prompt assertions establish the written boundary, not live model adherence.
+
 ## APR-060 - Orchestrator used subagent wait for routine completion
 
 - **Reference:** Execution of `subagent-nonblocking-messaging`, 2026-09-17.

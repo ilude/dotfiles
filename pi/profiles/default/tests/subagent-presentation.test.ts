@@ -26,7 +26,7 @@ function result(record: Partial<ChildRecord>, expanded = false) { return renderS
 describe("subagent presentation", () => {
   it("renders a readable launch and control call at narrow and normal widths", () => {
     const call = renderSubagentCall({ agent: "explorer", instructions: "Find the implementation", surface: "visible", background: true }, theme, {});
-    expect(plain(call, 36)).toContain("Prompt: Find the implementation");
+    expect(plain(call, 36)).toContain("Find the implementation");
     expect(plain(call, 120)).not.toContain("surface=visible");
     const control = renderSubagentControlCall({ action: "wait", id: "Clara", message: "continue" }, theme, {});
     expect(plain(control, 80)).toContain("subagent control · wait");
@@ -54,9 +54,8 @@ describe("subagent presentation", () => {
   it("labels dispatch acceptance separately from current work", () => {
     const accepted = { ...base, status: "running" as const, phase: "model" as const, dispatch: { accepted: true as const, operation: "message" as const, completion: "not-reported" as const } };
     const text = plain(renderSubagentResult({ details: accepted }, {}, theme, {}), 120);
-    expect(text).toContain("Dispatch: accepted · message · completion not reported");
-    expect(text).toContain("working");
-    expect(text).not.toContain("complete");
+    expect(text).toContain("Clara: message accepted");
+    expect(text).not.toContain("completion");
   });
 
   it("shows original and current exchange results in expanded retained views", () => {
@@ -93,27 +92,21 @@ describe("subagent presentation", () => {
 
   it("keeps closed retained records and legacy records readable", () => {
     const closed = plain(result({ status: "settled", outcome: "complete", retained: true, processState: "exited", result: "finished" }), 120);
-    expect(closed).toContain("conversation closed");
+    expect(closed).toContain("Clara completed");
     const legacy = plain(result({ status: "settled", outcome: "complete", retained: undefined, processState: undefined, result: "legacy result" }), 120);
-    expect(legacy).toContain("complete");
-    expect(legacy).toContain("legacy result");
+    expect(legacy).toContain("Clara completed");
+    expect(legacy).not.toContain("legacy result");
   });
 
-  it("uses error color only for failed settled outcomes", () => {
-    const fg = vi.fn((_color: string, text: string) => text);
-    const trackingTheme = { fg, bold: (text: string) => text };
-    renderSubagentResult({ details: { ...base, status: "settled", outcome: "failed" } }, {}, trackingTheme, {});
-    expect(fg.mock.calls[0]?.[0]).toBe("error");
-    fg.mockClear();
-    renderSubagentResult({ details: { ...base, status: "settled", outcome: "blocked" } }, {}, trackingTheme, {});
-    expect(fg.mock.calls[0]?.[0]).toBe("warning");
+  it("uses textual terminal states without depending on color", () => {
+    expect(plain(result({ status: "settled", outcome: "failed", error: "Provider rejected the request" }), 120)).toContain("Clara failed: Provider rejected the request");
+    expect(plain(result({ status: "settled", outcome: "complete" }), 120)).toContain("Clara completed");
   });
 
   it("keeps question content and start/activity state visible", () => {
     const questionRecord = { ...base, status: "waiting" as const, phase: "waiting-parent" as const, result: "Should generated files be included?" };
     const question = plain(result(questionRecord), 80);
-    expect(question).toContain("Question: Should generated files be included?");
-    expect(question).toContain("question for parent");
+    expect(question).toContain("Clara asked: Should generated files be included?");
     const progress = progressResult(questionRecord).content[0].text;
     expect(progress).toContain("Question: Should generated files be included?");
     const expandedQuestion = plain(result(questionRecord, true), 120);
@@ -133,7 +126,7 @@ describe("subagent presentation", () => {
     expect(text).toContain("Cleanup failed: pane remained open");
     expect(text).toContain("multiline");
     const cleanup = plain(result({ ...record, phase: "cleanup" }), 120);
-    expect(cleanup).toContain("complete · cleaning up");
+    expect(cleanup).toContain("Clara completed: Cleanup failed: pane remained open");
     expect(plain(result({ userOwned: true }), 120)).toContain("user intervention; parent control suspended");
     const automatic = plain(renderSubagentMessage({ content: "fallback", details: { ...base, ...record } }, { expanded: true }, theme), 120);
     expect(automatic).toContain("Duration: 4s");
@@ -155,20 +148,15 @@ describe("subagent presentation", () => {
     const call = renderSubagentCall({ agent: "explorer", instructions: prompt }, theme, context);
     renderSubagentResult({ details: { ...base, assignment: "record copy", status: "running" } }, {}, theme, context);
     const collapsed = plain(call, 120);
-    expect(collapsed.match(/Model:/g)).toHaveLength(1);
-    expect(collapsed.match(/Started:/g)).toHaveLength(1);
-    expect(collapsed).toContain("for full prompt");
-    const finished = { ...base, assignment: "record copy that must not replace the sent prompt", status: "settled", outcome: "complete", result: "answer" };
+    expect(collapsed).toContain("Subagent Clara  explorer  openai-codex/test[low]");
+    expect(collapsed.replace(/\s+/g, " ")).toContain(prompt.replace(/\s+/g, " "));
+    expect(collapsed).toContain("FINAL PROMPT LINE");
+    const finished = { ...base, assignment: "record copy that must not replace the sent prompt", status: "settled", outcome: "complete", result: "answer", assignmentFinishedAt: "2026-09-08T00:00:04.000Z" };
     const resultView = renderSubagentResult({ details: finished }, {}, theme, context);
-    const paired = `${plain(call, 120)}\\n${plain(resultView, 120)}`;
-    expect(paired.match(/Model:/g)).toHaveLength(1);
-    expect(paired.match(/Started:/g)).toHaveLength(1);
-    expect(paired.match(/Prompt:/g)).toHaveLength(1);
-    renderSubagentResult({ details: finished }, { expanded: true }, theme, context);
-    const expanded = plain(call, 10000);
-    expect(expanded.replace(/\s+/g, " ")).toContain(prompt.replace(/\s+/g, " "));
-    expect(expanded).toContain("FINAL PROMPT LINE");
-    expect(expanded.match(/Prompt:/g)).toHaveLength(1);
+    expect(plain(resultView, 120).trim()).toBe("");
+    const updated = plain(call, 10000);
+    expect(updated.replace(/\s+/g, " ")).toContain(prompt.replace(/\s+/g, " "));
+    expect(updated).toContain("Completed");
     const expandedResult = plain(renderSubagentMessage({ details: finished }, { expanded: true }, theme), 120);
     expect(expandedResult).toContain("Surface: headless");
     expect(expandedResult.match(/Started:/g)).toHaveLength(1);
@@ -182,13 +170,13 @@ describe("subagent presentation", () => {
     const call = renderSubagentCall(args, theme, context);
     const finished = { ...base, status: "settled", outcome: "complete", result: "answer", assignmentFinishedAt: "2026-09-08T00:00:04.000Z" };
     renderSubagentResult({ details: finished }, {}, theme, context);
-    expect(plain(call, 120)).toContain("subagent · Clara · explorer");
-    expect(plain(call, 120)).toContain("Model: openai-codex/test [low]");
-    expect(plain(call, 120)).toContain("Duration: 4s");
+    expect(plain(call, 120)).toContain("Subagent Clara  explorer  openai-codex/test[low]");
+    expect(plain(call, 120)).toContain("Completed");
+    expect(plain(call, 120)).not.toContain("Duration:");
     expect(plain(call, 120)).not.toContain("headless");
     const rerender = renderSubagentCall(args, theme, { ...context, lastComponent: call });
     expect(rerender).toBe(call);
-    expect(plain(rerender, 120)).toContain("Duration: 4s");
+    expect(plain(rerender, 120)).toContain("Completed");
     expect(context.invalidate).not.toHaveBeenCalled();
     const legacy = { ...finished, assignmentFinishedAt: undefined };
     const terminal = plain(renderSubagentResult({ details: legacy }, {}, theme, {}), 120);
@@ -237,11 +225,9 @@ it("executes registered tools against an inert RPC child and renders their live 
       const component = tools.subagent.renderResult(update, { isPartial: true }, theme, context);
       for (const width of [36, 120]) views.push(plain(component, width));
     }, ctx);
-    await vi.waitFor(() => expect(views.some(view => view.includes("using bash"))).toBe(true));
+    await vi.waitFor(() => expect(views.length).toBeGreaterThan(0));
     const name = runtime.list("presentation-origin")[0].displayName!;
-    expect(plain(call, 120)).toContain(`subagent · ${name} · probe`);
-    expect(plain(call, 120)).toContain("Model: openai-codex/test [low]");
-    expect(plain(call, 120)).toContain("Started:");
+    expect(plain(call, 120)).toContain(`Subagent ${name}  probe  openai-codex/test[low]`);
     expect(messages).not.toHaveBeenCalled();
     abort.abort();
     const detached = await pending;
@@ -302,7 +288,7 @@ it("renders coordinator registered delegation and name controls over authenticat
     expect(result.details.phase).toBe("waiting-parent");
     for (const width of [36, 120]) {
       expect(plain(call, width)).toContain("Clara");
-      expect(plain(tools.subagent.renderResult(result, {}, theme, context), width).replace(/\s+/g, " ")).toContain("Question: Include generated files?");
+      expect(plain(tools.subagent.renderResult(result, {}, theme, context), width).replace(/\s+/g, " ")).toContain("Clara asked: Include generated files?");
     }
     const controlArgs = { action: "inspect", id: "Clara" };
     const controlContext: any = { state: {}, args: controlArgs };
