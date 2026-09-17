@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-17: Prevent subagent monitoring waits from blocking the orchestrator
+
+**Changed:** Default-profile `subagent_control` guidance now states the intended boundary for `wait`. The feature remains available to reattach a deliberately interrupted foreground join when its result is immediately required, but it is not designed for sitting on one working child until routine work finishes. When `inspect` reports that a child is working, the parent continues other work or returns control because outcomes arrive automatically.
+
 ## 2026-09-17: Record default-profile tool provenance
 
 **Added:** Default-profile sessions record one compact, non-model-visible custom entry when each tool invocation starts, linked by tool call ID with the tool name and effective registered tool `sourceInfo`. Arguments, results, and model-visible text are excluded; unknown tools remain `unknown`. Restricted child launches load the same extension explicitly.

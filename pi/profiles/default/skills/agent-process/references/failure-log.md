@@ -51,9 +51,10 @@
 - **Reference:** Operator screenshot and correction during review of the deployment-publication-simplification execution, 2026-09-16.
 - **Observed:** After a strategist completed, the orchestrator entered `subagent_control wait` on a developer and remained foreground-blocked for more than 25 minutes.
 - **Finding:** Subagent outcomes return automatically. Keeping a foreground wait active did not help the developer progress or ensure delivery; it prevented the operator from normally addressing or redirecting the orchestrator and prevented parallel parent work. A short intentional join can be useful when an outcome is immediately required, but this long wait was a misuse of the asynchronous subagent workflow. APR-046 recorded the same long-wait evidence but addressed only assignment sizing, missing this separate failure.
-- **Remediation:** The `subagent_control` tool guidance now reserves `wait` for a short intentional join when its result is immediately required. Otherwise the orchestrator continues work or returns control and relies on automatic outcome delivery. Tool-owned guidance reaches every orchestrator or coordinator permitted to use the control surface without duplicating the rule in caller guidance.
+- **Recurrence:** On 2026-09-17, an orchestrator inspected a background Steward, saw it was working, and immediately called `subagent_control wait`, self-blocking for at least 1 minute 53 seconds. The prior phrase “short intentional join” still left monitoring a working background child open to interpretation.
+- **Remediation:** Preserve `wait` for its designed purpose: reattaching a deliberately interrupted foreground join when that result is immediately required. State directly that it is not designed for sitting on one working child until routine work finishes. After `inspect` reports `working`, the parent continues other work or returns control and relies on automatic outcome delivery. Tool-owned guidance reaches every orchestrator or coordinator permitted to use the control surface without duplicating the rule in caller guidance.
 - **Related:** APR-017, APR-046, AIF-061, AIF-062.
-- **Status:** Instruction correction implemented locally; future adherence remains unverified.
+- **Status:** Stronger instruction correction implemented locally after recurrence; future adherence remains unverified.
 
 ## APR-050 - Deferred release detail became a global implementation blocker
 
