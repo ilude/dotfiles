@@ -13,7 +13,7 @@ interface Authority { id:string; agent:string; tools:string[]; delegates:string[
 
 export function childSystemPrompt(basePrompt:string,agent:string,tools:readonly string[],rolePrompt:string):string {
  const toolNames=[...new Set(tools)].sort((a,b)=>a.localeCompare(b,"en"));
- const authorityPrompt=`You are subagent ${agent}. Your authority is frozen to tools [${toolNames.join(", ")||"none"}]. You may not activate or request other tools. A normal final reply automatically completes your assignment; no reporting tool is needed for success. Use partial only for genuinely unfinished work and blocked only when you cannot proceed. Parent notifications are evidence to incorporate, not receipts to acknowledge. Use the question action for a question-answer request; it yields cleanly and the parent answer resumes this conversation.`;
+ const authorityPrompt=`You are subagent ${agent}. Your authority is frozen to tools [${toolNames.join(", ")||"none"}]. You may not activate or request other tools. A normal final reply automatically completes your assignment; no reporting tool is needed for success. Use partial only for genuinely unfinished work and blocked only when you cannot proceed. Parent notifications are evidence to incorporate, not receipts to acknowledge. Use the question action for a question-answer request; it yields cleanly and the parent answer resumes this conversation. Keep that request pending while discussing it with a user. When you decide the discussion answered it, use subagent_parent with action cancel-question and the request ID; ordinary user text does not resolve the request.`;
  return `${basePrompt}\n\n${authorityPrompt}${rolePrompt?` ${rolePrompt}`:""}`;
 }
 
@@ -73,12 +73,17 @@ export default function childAuthority(pi:ExtensionAPI){
   const tools=pi.getAllTools().filter(t=>allowed.has(t.name)&&(!p.query||`${t.name} ${t.description}`.toLowerCase().includes(p.query.toLowerCase()))).map(t=>({name:t.name,description:t.description}));
   return{content:[{type:"text",text:JSON.stringify(tools)}],details:{tools}};
  }});
- pi.registerTool({name:"subagent_parent",label:"Report to parent",description:"Ask the originating parent a factual question or report genuinely unfinished/blocked work. A question yields cleanly and returns a request ID; do not poll for the answer. Do not use this tool for successful completion; give a normal final reply instead.",parameters:Type.Object({action:Type.Union([Type.Literal("question"),Type.Literal("partial"),Type.Literal("blocked")]),message:Type.String()}),async execute(_id,p,signal){
+ pi.registerTool({name:"subagent_parent",label:"Report to parent",description:"Ask the originating parent a factual question or report genuinely unfinished/blocked work. A question yields cleanly and returns a request ID; do not poll for the answer. Keep the request pending during ordinary user discussion. When you decide the discussion answered your question, use cancel-question with that request ID. Do not use this tool for successful completion; give a normal final reply instead.",parameters:Type.Object({action:Type.Union([Type.Literal("question"),Type.Literal("cancel-question"),Type.Literal("partial"),Type.Literal("blocked")]),message:Type.Optional(Type.String()),requestId:Type.Optional(Type.String())}),async execute(_id,p,signal): Promise<any>{
+  if(p.action==="question"&&!p.message)throw new Error("Question requires message");
+  if(p.action==="cancel-question"&&!p.requestId)throw new Error("cancel-question requires requestId");
   if (!allowed.has("subagent_parent")) throw new Error("Parent helper is outside frozen authority");
   const endpoint = JSON.parse(process.env.PI_SUBAGENT_ENDPOINT || "null") as ChildEndpoint | null;
   if (!endpoint || endpoint.child !== authority.id) throw new Error("Authenticated parent unavailable");
-  const response = await requestParent(endpoint, {type:p.action,payload:p.action==="question"?{message:p.message,protocol:"question-answer"}:p.message}) as {id?:string};
+  const response = await requestParent(endpoint, {type:p.action,payload:p.action==="question"?{message:p.message,protocol:"question-answer"}:p.action==="cancel-question"?{requestId:p.requestId}:p.message}) as {id?:string;requestId?:string;resolution?:string};
+  if (p.action === "cancel-question") return {content:[{type:"text",text:`Parent question ${p.requestId} cancelled. Continue the conversation.`}],details:{requestId:p.requestId,resolution:response.resolution??"cancelled"}};
   if (p.action !== "question") return {content:[{type:"text",text:"Report accepted by parent"}],details:{requestId:undefined as string|undefined,protocol:undefined as "question-answer"|undefined}};
-  return {content:[{type:"text",text:`Question sent to parent${response.id?` (request ${response.id})`:""}. Waiting for the parent's reply.`}],details:{requestId:response.id,protocol:"question-answer" as const},terminate:true};
+  const requestId=response.id;
+  const questionText=p.message!.slice(0,24_000);
+  return {content:[{type:"text",text:`Question sent to parent${requestId?` (request ${requestId})`:""}. Waiting for the parent's reply.\nRequest ID: ${requestId??"unavailable"}\nQuestion:\n${questionText}`}],details:{requestId,protocol:"question-answer" as const,question:questionText},terminate:true};
  }});
 }

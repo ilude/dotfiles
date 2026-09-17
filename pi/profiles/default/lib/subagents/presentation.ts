@@ -62,6 +62,7 @@ function resultText(result: any): string {
 }
 
 function outcomeLabel(record: Partial<ChildRecord>): string {
+  if (record.questionResolution) return `question ${record.questionResolution.outcome}`;
   if (record.phase === "cleanup") return `${record.outcome ? `${record.outcome} · ` : ""}cleaning up`;
   if (record.status === "waiting") {
     if (record.phase === "waiting-user") return "needs user input";
@@ -109,7 +110,9 @@ function activeDescription(record: Partial<ChildRecord>): string {
   if (record.userOwned) return "user intervention; parent control suspended";
   if (record.phase === "redirecting") return "redirecting current turn";
   const state = outcomeLabel(record);
+  if (record.questionResolution) return `Question ${record.questionResolution.outcome}: ${oneLine(record.result)}`;
   if (record.status === "waiting" && record.result) return `Question: ${oneLine(record.result)}`;
+  if (record.requestId && record.result) return `Question: ${oneLine(record.result)}`;
   if (record.status !== "settled" && record.waitState === "detached") return `${state} · wait detached; child continues`;
   if (record.status !== "settled" && record.waitState === "background") return `${state} · started in background; child continues`;
   return state;
@@ -207,6 +210,8 @@ function resultComponent(record: Partial<ChildRecord>, expanded: boolean, theme:
   }
   if (record.error) lines.push(theme.fg("error", `Error: ${expanded ? bounded(record.error, RESULT_LIMIT) : oneLine(record.error)}`));
   if (record.notice) lines.push(theme.fg("muted", oneLine(record.notice)));
+  if (record.requestId) lines.push(`Request ID: ${record.requestId}`);
+  else if (record.questionResolution) lines.push(`Request ID: ${record.questionResolution.requestId}`);
   if (!expanded && record.status === "waiting" && record.result) lines.push(`Question: ${oneLine(record.result)}`);
   const output = bounded(record.result, RESULT_LIMIT);
   if (output && record.status === "settled" && !expanded) lines.push(`Result: ${oneLine(output)}`);
@@ -279,6 +284,7 @@ export function presentationDetails(record: Partial<ChildRecord>): Record<string
     result: record.result,
     error: record.error,
     notice: record.notice,
+    questionResolution: record.questionResolution,
   };
 }
 

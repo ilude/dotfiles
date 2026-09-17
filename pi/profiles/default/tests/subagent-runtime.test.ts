@@ -157,6 +157,30 @@ describe("process-local descendant ownership",()=>{
   expect(delivered[0]).toMatchObject({id:leaf.id,phase:"waiting-user",parentId:undefined});
   await expect(runtime.get(leaf.id).answer("yes")).rejects.toThrow(/user approvals/);
  });
+ it("delivers an attached parent question immediately and queues its resolution",async()=>{
+  const runtime=fixture(),delivered:Delivery[]=[];
+  const questionInput={...input,definition:{...input.definition,tools:["subagent_parent"]}};
+  runtime.bind(input.origin,{deliver:record=>{delivered.push(record);return true}});
+  const controller=new AbortController(),secondController=new AbortController();
+  const launching=runtime.launch({...questionInput,instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),false,controller.signal);
+  const secondLaunching=runtime.launch({...questionInput,instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),false,secondController.signal);
+  const child=await vi.waitFor(()=>{
+   const records=runtime.list(input.origin).filter(record=>record.status==="running");
+   if(records.length<2)throw new Error("children not started");
+   return records[0];
+  });
+  const dispatch=(message:any)=>(runtime as any).dispatch({child:child.id,origin:input.origin,run:"fixture"},message);
+  const request=await dispatch({type:"question",payload:{message:"Need parent input",protocol:"question-answer"}});
+  await expect(launching).resolves.toMatchObject({status:"waiting",requestId:request.id});
+  expect(delivered).toHaveLength(1);expect(delivered[0]).toMatchObject({deliveryKind:"question",requestId:request.id,result:"Need parent input"});
+  runtime.acknowledge(input.origin,delivered[0].deliveryId);
+  await runtime.get(child.id).answer("input supplied",request.id);
+  await vi.waitFor(()=>expect(delivered.some(record=>record.deliveryKind==="question-resolution")).toBe(true));
+  expect(delivered.find(record=>record.deliveryKind==="question-resolution")).toMatchObject({questionResolution:{requestId:request.id,outcome:"answered"}});
+  controller.abort();await runtime.get(child.id).cancel();
+  secondController.abort();await secondLaunching;await runtime.get(runtime.list(input.origin).find(record=>record.id!==child.id&&record.status!=="settled")!.id).cancel();
+ });
+
  it("keeps concurrent activity UI-only and queues failures while the parent is busy",async()=>{
   const runtime=fixture(),delivered:Delivery[]=[],views:any[]=[];let idle=false;
   runtime.bind(input.origin,{deliver:r=>{if(!idle)return false;delivered.push(r);return true},status:records=>views.push(records)});

@@ -88,13 +88,50 @@ describe("native subagent message boundaries", () => {
     expect(instance.snapshot().userOwned).toBe(false);
   });
 
-  it("does not strand a mixed tool batch after a question tool yields", async () => {
+  it("keeps a pending question separate from an ordinary child turn", async () => {
     const instance = child();
     void instance.start();
     await vi.waitFor(() => expect(instance.record.processState).toBe("running"));
-    instance.parentMessage({ type: "question", payload: "Question from one tool" });
+    const request = instance.parentMessage({ type: "question", payload: "Question from one tool" }) as { id: string };
     (instance as any).last = "A later assistant response from the same mixed batch";
     await (instance as any).finishFromTurn();
-    expect(instance.snapshot()).toMatchObject({ status: "settled", outcome: "complete", result: "A later assistant response from the same mixed batch" });
+    expect(instance.snapshot()).toMatchObject({ status: "waiting", phase: "waiting-parent", requestId: request.id, result: "Question from one tool" });
+    await expect(instance.answer("resolved", request.id)).resolves.toBeUndefined();
+  });
+
+  it.each(["answer", "cancel"] as const)("preserves first resolution and reports late %s resolution", async winner => {
+    const instance = child();
+    void instance.start();
+    await vi.waitFor(() => expect(instance.record.processState).toBe("running"));
+    const request = instance.parentMessage({ type: "question", payload: "Which result?" }) as { id: string };
+    if (winner === "answer") await instance.answer("the first result", request.id);
+    else instance.cancelQuestion(request.id);
+    expect(instance.snapshot().requestId).toBeUndefined();
+    if (winner === "answer") expect(() => instance.cancelQuestion(request.id)).toThrow(/already resolved by parent answered/);
+    else await expect(instance.answer("too late", request.id)).rejects.toThrow(/already resolved by child cancelled/);
+    (instance as any).last = "continued assignment";
+    await (instance as any).finishFromTurn();
+    expect(instance.snapshot()).toMatchObject({ status: "settled", outcome: "complete" });
+  });
+
+  it("does not turn ordinary assignment cancellation into a question answer", async () => {
+    const instance = child();
+    void instance.start();
+    await vi.waitFor(() => expect(instance.record.processState).toBe("running"));
+    const request = instance.parentMessage({ type: "question", payload: "Need a decision" }) as { id: string };
+    await instance.cancel();
+    await expect(instance.answer("too late", request.id)).rejects.toThrow(/already resolved by assignment cancelled/);
+  });
+
+  it("keeps a non-retained child alive until its question is resolved", async () => {
+    const instance = child();
+    const settled = instance.start();
+    await vi.waitFor(() => expect(instance.record.processState).toBe("running"));
+    const request = instance.parentMessage({ type: "question", payload: "Need a decision" }) as { id: string };
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(instance.record.processState).toBe("running");
+    await instance.answer("decision supplied", request.id);
+    await vi.waitFor(() => expect(instance.snapshot()).toMatchObject({ status: "settled", outcome: "complete" }));
+    await settled;
   });
 });

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-17: Deliver Pi parent questions through a local mailbox
+
+**Added:** Default-profile subagent questions now show their complete bounded text and request ID in the child result, enter an origin-scoped process-local parent mailbox independently of foreground waits, and use the first native safe steering or follow-up boundary without interrupting active work. The child can keep discussing the issue with a user and explicitly cancel its own question when it decides the discussion resolved it.
+
+**Fixed:** Parent answers and child cancellations now race safely with accurate late-resolution errors. Undelivered resolved questions are removed, while already exposed questions receive one concise resolution update. Non-retained children stay alive while a question is pending, and ordinary visible input no longer clears the pending request.
+
+**Preserved:** Ordinary completion, failure, cancellation, user-only prompts, origin isolation, attached wait results, and outcome acknowledgement behavior remain unchanged. The mailbox is process-local and non-durable and has no Onclave dependency.
+
 ## 2026-09-16: Size planned work for Luna and leave staffing to Strategist
 
 **Changed:** The default planning skill now sizes ordinary tasks for reliable Luna execution across investigation, implementation, validation, and any included review work. It replaces the Sol-low executor baseline and calls for oversized tasks to be split during planning. The plan template offers optional complexity and split hints describing difficult judgments, interacting contracts, coordination needs, and useful assignment boundaries.

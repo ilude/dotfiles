@@ -101,9 +101,10 @@ export class VisibleChild extends RpcChild {
    const payload=message.payload as {text?:unknown}|undefined;
    if(typeof payload?.text!=="string"||!payload.text.trim())throw new Error("Operator input must be nonblank");
    if(this.record.status!=="running"){
+    const questionRequest=this.record.requestId;
     this.last="";this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
     this.record.assignment=payload.text;this.record.assignmentStartedAt=new Date().toISOString();this.record.assignmentFinishedAt=undefined;
-    this.record.status="running";this.record.phase="starting";this.record.phaseStartedAt=new Date().toISOString();this.record.requestId=undefined;
+    this.record.status="running";this.record.phase="starting";this.record.phaseStartedAt=new Date().toISOString();this.record.requestId=questionRequest;
    }
    return{accepted:true};
   }

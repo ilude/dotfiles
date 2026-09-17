@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-052 - Parent question was trapped behind another foreground subagent wait
+
+- **Reference:** Parent session `01a0acad-f5d2-738a-942f-f5858de7a2c4` and developer child session `01a0acaf-1fd7-7016-a924-b523c740ed34`, 2026-09-17.
+- **Observed:** Maya asked the parent whether to integrate concurrent T5 changes at 00:53. The child entered `waiting-parent`, but the parent did not receive the question until 01:15. While waiting, the operator asked Maya directly what question it had asked; Maya printed a summary and then exited. The parent's later protocol answer was rejected because no matching question remained pending.
+- **Finding:** Maya's foreground launch had an attached wait, so automatic delivery was suppressed on the assumption that its tool result would deliver the question. The parent model turn also contained another unresolved foreground subagent wait, which prevented the tool batch from returning for more than 22 minutes. Direct visible input then started a new child turn, cleared the pending question, and allowed the child's normal final response to settle and exit. The question was neither lost in transport nor visible to the parent when action was needed; two individually intended behaviors composed into a broken question workflow.
+- **Recommended direction:** Parent questions must bypass unrelated foreground waits and become immediately actionable by the parent. A child waiting on a parent question should not treat ordinary direct input as a replacement assignment that clears the protocol request; either route that input as the answer or preserve the pending request until explicitly answered or cancelled. Cover parallel foreground launches, parent notification timing, direct child input, request correlation, and non-retained child lifetime.
+- **Related:** APR-016, APR-017, APR-051.
+- **Status:** Remediated in the default-profile runtime and child surfaces. Focused lifecycle, mailbox, presentation, typecheck, and runtime checks pass. Live attached-client behavior remains unverified; process-local and non-durable scope is intentional.
+
 ## APR-051 - Foreground subagent wait unnecessarily blocked the orchestrator
 
 - **Reference:** Operator screenshot and correction during review of the deployment-publication-simplification execution, 2026-09-16.
