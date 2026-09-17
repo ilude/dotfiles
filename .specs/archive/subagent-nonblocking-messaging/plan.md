@@ -293,7 +293,7 @@ task-related defects are resolved.
 
 ## Tasks
 
-- [ ] **T1: Make message controls nonblocking and report dispatch honestly**
+- [x] **T1: Make message controls nonblocking and report dispatch honestly**
   - Depends on: execution authorization; no task prerequisite. Parallel with T2a.
   - Owns: `pi/profiles/default/extensions/{subagent-child,subagents}.ts`, proposed
     `lib/subagents/control-result.ts` if a shared result builder is useful, and
@@ -311,9 +311,9 @@ task-related defects are resolved.
     automatically returns running then settled can let the old blocking code pass.
   - Done: calls resolve before the held child settles; acceptance is explicit and
     not called completion; old behavior fails the regression; Strategist still waits.
-  - Evidence: Not started.
+  - Evidence: Implemented 2026-09-17. Coordinator controls return explicit accepted dispatch metadata before a held child settles; 18 focused tests, typecheck, and diff check passed.
 
-- [ ] **T1b: Refine orchestrator activation and explicit handoffs**
+- [x] **T1b: Refine orchestrator activation and explicit handoffs**
   - Depends on: execution authorization and integrated T1 extension edits. The T1 dependency is write ownership, not runtime behavior.
     Parallel with ready T2a/T2b or T3/T4 work; no dependency on result preservation.
   - Owns: `pi/profiles/default/lib/subagents/guidance.ts`, the caller prompt suffix
@@ -338,9 +338,9 @@ task-related defects are resolved.
   - Done: composed caller guidance expresses the agreed policy without conflicting
     suffixes; unaffected audiences and runtime contracts remain unchanged; focused
     checks pass. Supply wording, size comparison, and evidence to T6.
-  - Evidence: Not started; E1 resolved by the operator as standalone jobs.
+  - Evidence: Implemented 2026-09-17. Caller guidance and suffix encode E/E1; 23 focused tests, typecheck, and diff check passed. Combined caller composition increased by 642 bytes.
 
-- [ ] **T2a: Correct deferred-turn result selection and add its regression**
+- [x] **T2a: Correct deferred-turn result selection and add its regression**
   - Depends on: execution authorization; causal investigation is complete. Parallel
     with T1; no implementation-task prerequisite.
   - Owns: shared report/settlement handling in
@@ -364,12 +364,11 @@ task-related defects are resolved.
   - Done: the deferred-report regression fails on old code and passes with the fix;
     same-settling-cycle partial/blocked reports remain accurate on both child paths.
   - Evidence: Investigation completed 2026-09-17; see [causal trace and deterministic reproduction](investigation.md).
-    An earlier explicit partial survives deferred settlement and overrides a later
-    final in `RpcChild.finishFromTurn`. Reuse this evidence rather than repeating
-    discovery. Correction and permanent regression are not implemented; task remains
-    unchecked. The probe reproduced current faulty behavior, not a passing fix.
+    Implementation completed 2026-09-17: settlement-cycle identity prevents an
+    earlier deferred partial from overriding a later final. Nineteen focused tests
+    plus messaging, typecheck, and diff check passed.
 
-- [ ] **T2b: Preserve original assignment results across follow-ups**
+- [x] **T2b: Preserve original assignment results across follow-ups**
   - Depends on: T2a's integrated selection fix and regression, so preservation is
     built on correct current-result behavior rather than freezing the stale report.
   - Owns: `pi/profiles/default/lib/subagents/{rpc,visible}.ts` and
@@ -393,9 +392,9 @@ task-related defects are resolved.
     the expected final result directly into state and then assert it survived.
   - Done: original instructions/result/outcome/timing survive later exchanges on
     visible and headless children; current replies remain independently available.
-  - Evidence: Not started.
+  - Evidence: Implemented 2026-09-17. Added exchange identity and immutable original-assignment snapshots across visible/headless paths; 34 focused tests, typecheck, and diff check passed.
 
-- [ ] **T3: Preserve unread outcomes across follow-up transitions**
+- [x] **T3: Preserve unread outcomes across follow-up transitions**
   - Depends on: T1's returning control path and T2b's original/current identity and
     immutable snapshot contract. Parallel with T4 after T1/T2b integration.
   - Owns: `pi/profiles/default/lib/subagents/{runtime,child-surface}.ts` and
@@ -414,9 +413,9 @@ task-related defects are resolved.
     expectation deliberately conflicts with the new contract.
   - Done: follow-up activity cannot erase unread original/sibling outcomes; actual
     consumption suppresses repeats without fabricating receipt or completion.
-  - Evidence: Not started.
+  - Evidence: Implemented 2026-09-17. Unread outcomes survive direct follow-up and represented exchange consumption remains selective; 19 focused tests, typecheck, and diff check passed.
 
-- [ ] **T4: Present dispatch, work, retention, and replies as distinct facts**
+- [x] **T4: Present dispatch, work, retention, and replies as distinct facts**
   - Depends on: T1's dispatch metadata and T2b's original/current result contract.
     Parallel with T3; no writes to its runtime or surface files.
   - Owns: `pi/profiles/default/lib/subagents/{status,presentation}.ts` and
@@ -431,9 +430,9 @@ task-related defects are resolved.
     active/completed/failed, closed retained process, and old-format records.
   - Done: humans and parent models can distinguish the lifecycle states and retrieve
     original evidence without confusing it with the latest conversational answer.
-  - Evidence: Not started.
+  - Evidence: Implemented 2026-09-17. Presentation distinguishes dispatch, original/current exchange, retention, failure, and closure; 25 targeted tests passed. Full status file passed standalone (6 tests); concurrent failure was environment contamination from a separate env-mutating suite. Typecheck and diff check passed.
 
-- [ ] **T5: Prove the combined messaging lifecycle**
+- [x] **T5: Prove the combined messaging lifecycle**
   - Depends on: integrated T1, T2a, T2b, T3, and T4 with focused passing evidence.
   - Owns: proposed `pi/profiles/default/tests/subagent-messaging-lifecycle.test.ts`
     and only necessary additions to existing inert fixtures.
@@ -455,7 +454,11 @@ task-related defects are resolved.
   - Verify from default: `pnpm test subagent-messaging-lifecycle.test.ts`.
   - Done: all four requested outcomes hold together in the scenario, with accurate
     limits on what inert integration evidence proves.
-  - Evidence: Not started.
+  - Evidence: Implemented 2026-09-17 in
+    `tests/subagent-messaging-lifecycle.test.ts`. Two deterministic integration tests
+    passed across authenticated headless transport/runtime boundaries and visible
+    app-poll/operator-input boundaries. This does not prove live-model timing or
+    attached-client UX.
 
 - [ ] **T6: Document, validate, and integrate the whole change**
   - Depends on: T1, T1b, T2a, T2b, T3, T4, and T5 passing evidence.
@@ -473,7 +476,9 @@ task-related defects are resolved.
   - Done: all four messaging outcomes and contract E documented and tested, implementation and archive
     integrated, completion metadata committed, task worktree cleanup verified.
     Leave unchecked while integration or cleanup is pending.
-  - Evidence: Not started.
+  - Evidence: Implementation, documentation, and finite validation completed
+    2026-09-17 in the default profile. Combined batch: 16 files and 133 tests passed;
+    typecheck and `git diff --check` passed. Integration and cleanup remain pending.
 
 ## Combined acceptance scenario and finite validation
 
@@ -519,11 +524,10 @@ full-profile, paid-model, attached-client, or production-team test is added.
 
 ## Current handoff and evidence
 
-- Status: revised draft covering all four messaging concerns plus orchestrator
-  activation/handoff guidance. No implementation has started. E1 is settled as
-  standalone jobs. Next action: operator plan review and execution authorization.
-  The decision to deliver
-  the whole messaging lifecycle remains settled.
+- Status: implementation, documentation, and agreed checks passed on the task
+  branch. Integration and cleanup are pending. Next action: archive and commit the
+  task branch, merge it into recorded target `main`, record completion metadata on
+  the target, and remove the clean merged task worktree. Action owner: orchestrator.
 - T2a diagnosis is complete: see [investigation.md](investigation.md). Remaining
   T2a work is the deferred-report lifetime fix and permanent regression, followed
   by T2b's original-result preservation. T5 verifies corrected delivery/cleanup;

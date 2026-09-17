@@ -10,7 +10,7 @@ import { resetSubagentRuntime } from "../lib/subagents/runtime.ts";
 import { initTheme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 initTheme("dark", false);
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
-import { progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
+import { presentationDetails, progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
 
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const base: ChildRecord = {
@@ -49,6 +49,54 @@ describe("subagent presentation", () => {
     expect(text).not.toContain("Clara · explorer");
     expect(text).not.toContain("Role:");
     expect(text).not.toContain("internal JSON should not be primary");
+  });
+
+  it("labels dispatch acceptance separately from current work", () => {
+    const accepted = { ...base, status: "running" as const, phase: "model" as const, dispatch: { accepted: true as const, operation: "message" as const, completion: "not-reported" as const } };
+    const text = plain(renderSubagentResult({ details: accepted }, {}, theme, {}), 120);
+    expect(text).toContain("Dispatch: accepted · message · completion not reported");
+    expect(text).toContain("working");
+    expect(text).not.toContain("complete");
+  });
+
+  it("shows original and current exchange results in expanded retained views", () => {
+    const followUp = {
+      ...base,
+      status: "settled" as const,
+      retained: true,
+      processState: "running" as const,
+      exchangeId: "follow-up-id",
+      exchangeKind: "follow-up" as const,
+      assignment: "Follow up on the initial work",
+      outcome: "failed" as const,
+      result: "CURRENT FOLLOW-UP RESULT",
+      originalAssignment: {
+        exchangeId: "original-id",
+        assignment: "Initial assignment",
+        outcome: "complete" as const,
+        result: "ORIGINAL ASSIGNMENT RESULT",
+        startedAt: "2026-09-08T00:00:00.000Z",
+        finishedAt: "2026-09-08T00:00:04.000Z",
+      },
+    };
+    const text = plain(renderSubagentMessage({ details: followUp }, { expanded: true }, theme), 120);
+    expect(text).toContain("follow-up failed");
+    expect(text).toContain("Original assignment");
+    expect(text).toContain("ORIGINAL ASSIGNMENT RESULT");
+    expect(text).toContain("Current exchange result");
+    expect(text).toContain("CURRENT FOLLOW-UP RESULT");
+    const details = presentationDetails(followUp);
+    expect(details.exchangeKind).toBe("follow-up");
+    expect(details.originalAssignment).toEqual(followUp.originalAssignment);
+    expect(details.originalAssignment).not.toBe(followUp.originalAssignment);
+  });
+
+  it("keeps closed retained records and legacy records readable", () => {
+    const closed = plain(result({ status: "settled", outcome: "complete", retained: true, processState: "exited", result: "finished" }), 120);
+    expect(closed).toContain("conversation closed");
+    const legacy = plain(result({ status: "settled", outcome: "complete", retained: undefined, processState: undefined, result: "legacy result" }), 120);
+    expect(legacy).toContain("complete");
+    expect(legacy).toContain("legacy result");
   });
 
   it("uses error color only for failed settled outcomes", () => {

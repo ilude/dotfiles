@@ -8,6 +8,16 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { childLaunch } from "./launch.ts";
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 export type Outcome = "complete" | "partial" | "blocked" | "failed" | "cancelled";
+export type ExchangeKind = "original" | "follow-up" | "intervention";
+export interface OriginalAssignmentSnapshot {
+  readonly exchangeId: string;
+  readonly assignment: string;
+  readonly outcome: Outcome;
+  readonly result?: string;
+  readonly error?: string;
+  readonly startedAt: string;
+  readonly finishedAt: string;
+}
 export type Phase = "starting" | "model" | "tool" | "waiting-parent" | "waiting-user" | "waiting-children" | "redirecting" | "cleanup" | "settled";
 export type CleanupResourceState = "closed" | "open" | "not-applicable";
 export interface CleanupResult {
@@ -27,6 +37,10 @@ export interface ChildRecord {
   id: string; agent: string; displayName?: string; assignment?: string; model?: string; effort?: AgentEffort; cwd?: string; skills?: string[];
   origin: string; surface: "headless" | "visible";
   status: "running" | "waiting" | "settled"; outcome?: Outcome; result?: string; error?: string;
+  /** Identity of the current assignment exchange. Historical records may omit it. */
+  exchangeId?: string; exchangeKind?: ExchangeKind;
+  /** The first assignment's terminal evidence, retained across later exchanges. */
+  originalAssignment?: OriginalAssignmentSnapshot;
   sessionId?: string; sessionFile?: string; retained: boolean; parentId?: string; userOwned: boolean;
   process?: ChildProcessWithoutNullStreams; paneId?: string; createdAt: string; updatedAt: string;
   turns: number; readyCount?: number; processState: "starting" | "running" | "exited";
@@ -49,6 +63,11 @@ export class RpcChild {
   private pending = new Map<string, (r:any)=>void>();
   protected settled?: ()=>void;
   protected last = "";
+  private settlementCycle = 0;
+  private settlementReport?: { outcome: "partial" | "blocked"; result: string; cycle: number };
+  private readonly initialAssignment: string;
+  private readonly initialExchangeId: string;
+  private readonly initialAssignmentStartedAt: string;
   onUpdate?: (record: ChildRecord) => void;
   onProgress?: (record: ChildRecord) => void;
   onQuestionCreated?: (record: ChildRecord, requestId: string) => void;
@@ -65,10 +84,14 @@ export class RpcChild {
   constructor(spec: LaunchSpec, childExtension: string, profileDir: string) {
     this.spec = spec; void childExtension; this.profileDir = profileDir;
     const now = new Date().toISOString();
+    const exchangeId = randomUUID();
+    this.initialAssignment = spec.instructions;
+    this.initialExchangeId = exchangeId;
+    this.initialAssignmentStartedAt = now;
     this.record = { id: randomUUID(), agent: spec.definition.name, displayName: spec.displayName,
       assignment: spec.instructions, model: spec.model, effort: spec.effort, cwd: spec.cwd, skills: [...spec.skills],
       origin: spec.origin, surface: spec.surface, status: "running", retained: spec.retained,
-      parentId: spec.parentId, userOwned: false, processState: "starting", transportState: "starting",
+      exchangeId, exchangeKind: "original", parentId: spec.parentId, userOwned: false, processState: "starting", transportState: "starting",
       phase: "starting", phaseStartedAt: now, assignmentStartedAt: now, turns: 0, createdAt: now, updatedAt: now };
   }
   contact() { this.record.lastContactAt = new Date().toISOString(); if(this.record.transportState!=="failed")this.record.transportState="connected"; }
@@ -79,6 +102,37 @@ export class RpcChild {
     this.record.phase = phase; this.record.toolName = toolName;
     this.record.lastActivityAt = now; this.record.updatedAt = now;
     this.onProgress?.(this.snapshot());
+  }
+  protected resetSettlementReport(){this.settlementReport=undefined;}
+  /** Start a distinct exchange only after the first assignment has terminal evidence. */
+  protected beginExchange(kind: ExchangeKind = "follow-up") {
+    // A question answer or redirect while the current exchange is still active
+    // keeps that exchange identity. Only a settled conversation starts a later
+    // exchange.
+    if (this.record.status !== "settled") return;
+    if (!this.record.originalAssignment) this.captureOriginalAssignment();
+    if (this.record.originalAssignment) {
+      this.record.exchangeId = randomUUID();
+      this.record.exchangeKind = kind;
+    }
+  }
+  private captureOriginalAssignment() {
+    if (this.record.originalAssignment || !this.record.outcome) return;
+    this.record.assignmentFinishedAt ??= new Date().toISOString();
+    this.record.originalAssignment = Object.freeze({
+      exchangeId: this.initialExchangeId,
+      assignment: this.initialAssignment,
+      outcome: this.record.outcome,
+      result: this.record.result,
+      error: this.record.error,
+      startedAt: this.initialAssignmentStartedAt,
+      finishedAt: this.record.assignmentFinishedAt,
+    });
+  }
+  private markSettled() {
+    this.record.status = "settled";
+    this.record.assignmentFinishedAt ??= new Date().toISOString();
+    this.captureOriginalAssignment();
   }
   private rpcActivity(e:any) {
     this.contact();
@@ -177,14 +231,15 @@ export class RpcChild {
     if (this.record.status !== "settled" && this.record.status !== "waiting") {
       if (mode !== "queued") throw new Error("Immediate delivery could not interrupt the active child");
       await this.command("steer",{message:value});
-      this.record.notice="A queued message will be applied before the next model response.";
+      this.record.notice="Queued message accepted for delivery; consumption is not confirmed.";
       this.onProgress?.(this.snapshot());
       return;
     }
     await this.startMessage(value);
   }
   private async startMessage(value:string){
-    this.last="";this.toolFailure=undefined;this.uiRequest=undefined;this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
+    this.beginExchange();
+    this.last="";this.toolFailure=undefined;this.uiRequest=undefined;this.settlementReport=undefined;this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
     this.record.assignment=value;this.record.assignmentStartedAt=new Date().toISOString();this.record.assignmentFinishedAt=undefined;
     this.record.status="running";this.record.requestId=this.question?.id;this.activity("starting");
     try{await this.command("prompt",{message:value})}catch(error){this.fail(`Follow-up prompt rejected: ${String(error)}`);throw error}
@@ -281,15 +336,19 @@ export class RpcChild {
     }
     if (message.type === "partial" || message.type === "blocked") {
       if (typeof message.payload !== "string" || !message.payload.trim()) throw new Error("Result must be nonblank");
-      this.record.outcome=message.type;this.record.result=message.payload.slice(0,LIMIT);return {accepted:true};
+      const report = message.payload.slice(0,LIMIT);
+      this.settlementReport={outcome:message.type,result:report,cycle:this.settlementCycle};
+      this.record.outcome=message.type;this.record.result=report;return {accepted:true};
     }
     throw new Error(`Unsupported parent message: ${message.type}`);
   }
   async cancel():Promise<CleanupResult>{
     const terminal=this.record.status==="settled";
     if(!terminal){
+      const pendingPrompt=Boolean(this.question||this.uiRequest);
       if(this.question)this.resolveQuestion(this.question.id,"cancelled","assignment");
-      this.record.outcome="cancelled";this.record.status="settled";this.activity("cleanup");try{await this.command("abort")}catch{/* Owned termination below is authoritative. */}}
+      if(pendingPrompt)this.record.result=undefined;
+      this.record.outcome="cancelled";this.markSettled();this.activity("cleanup");try{await this.command("abort")}catch{/* Owned termination below is authoritative. */}}
     const cleanup=await this.cleanupOwnedResources();
     // Explicit cancellation ends retention and direct user ownership only after
     // cleanup succeeds. A failed cleanup keeps the reservation for retry.
@@ -320,6 +379,8 @@ export class RpcChild {
     const {process:_,skills,...r}=this.record;
     const snapshot:ChildRecord=skills?{...r,skills:[...skills]}:{...r};
     if(r.cleanup)snapshot.cleanup={...r.cleanup,errors:[...r.cleanup.errors]};
+    if(r.originalAssignment)snapshot.originalAssignment={...r.originalAssignment};
+    if(r.questionResolution)snapshot.questionResolution={...r.questionResolution};
     return snapshot;
   }
   private send(type:string,data:Record<string,unknown>){this.record.process?.stdin.write(JSON.stringify({type,...data})+"\n")}
@@ -329,23 +390,31 @@ export class RpcChild {
     if(!turnAlreadyCounted)this.record.turns++;
     if(this.hasOutstandingChildren?.()){
       this.record.notice="Waiting for commissioned children; their outcomes return automatically.";
+      // A report belongs to the settlement cycle in which it was submitted. A
+      // deferred cycle must not leak its report into the next cycle, but the
+      // report remains available for this cycle's status while children settle.
+      this.settlementCycle++;
       this.activity("waiting-children");return;
     }
     if(this.toolFailure)return this.fail(`Tool ${this.toolFailure.toolName} failed: ${this.toolFailure.reason}`);
-    if(!this.last.trim()&&!this.record.result?.trim())return this.fail("Blank output is not assignment completion");
-    this.record.result=((this.record.outcome === "partial" || this.record.outcome === "blocked") ? this.record.result||this.last : this.last||this.record.result||"").slice(0,LIMIT);
+    const report=this.settlementReport?.cycle===this.settlementCycle ? this.settlementReport : undefined;
     if(this.question){
+      if(!this.last.trim()&&!this.record.result?.trim())return this.fail("Blank output is not assignment completion");
       this.record.status="waiting";this.record.phase="waiting-parent";this.record.requestId=this.question.id;this.record.result=this.question.message;this.record.updatedAt=new Date().toISOString();this.onProgress?.(this.snapshot());return;
     }
-    this.record.outcome=this.record.outcome??"complete";this.record.status="settled";this.activity("cleanup");
+    if(!report?.result.trim()&&!this.last.trim())return this.fail("Blank output is not assignment completion");
+    this.record.result=(report?.result??this.last).slice(0,LIMIT);
+    this.record.outcome=report?.outcome??"complete";this.markSettled();this.activity("cleanup");
     if(!this.record.retained&&!this.record.userOwned)await this.cleanupOwnedResources();
     this.done();
   }
   launchFailed(error:unknown){this.record.processState="exited";this.fail(`Child launch failed: ${String(error)}`)}
   protected fail(error:string){
     if(this.record.status==="settled"||this.intentionalRedirect)return;
+    const pendingPrompt=Boolean(this.question||this.uiRequest);
     if(this.question)this.resolveQuestion(this.question.id,"cancelled","assignment");
-    this.record.error=error;this.record.outcome="failed";this.record.status="settled";this.record.requestId=undefined;this.activity("cleanup");
+    if(pendingPrompt)this.record.result=undefined;
+    this.record.error=error;this.record.outcome="failed";this.markSettled();this.record.requestId=undefined;this.activity("cleanup");
     void this.cleanupOwnedResources().finally(()=>this.done());
   }
   private cleanupState():CleanupResult{
@@ -373,6 +442,7 @@ export class RpcChild {
   protected done(){
     if(this.record.status==="settled"){
       this.record.assignmentFinishedAt??=new Date().toISOString();
+      this.captureOriginalAssignment();
       this.record.phase="settled";this.record.toolName=undefined;this.record.notice=undefined
     }
     this.record.updatedAt=new Date().toISOString();

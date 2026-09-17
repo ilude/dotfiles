@@ -15,6 +15,19 @@ export type DeliveryKind = "outcome" | "question" | "question-resolution";
 export interface Delivery extends ChildRecord { deliveryId: string; deliveryKind?: DeliveryKind }
 export interface BoundOrigin { deliver: (record: Delivery) => boolean; status?: (records: ChildRecord[]) => void }
 export interface CleanupSummary { complete: boolean; attempted: number; failures: Array<{ id: string; error: string }> }
+
+/** Copy runtime records at delivery and reload boundaries without sharing nested result data. */
+function cloneRecord(record: ChildRecord): ChildRecord {
+ const copy: ChildRecord = { ...record };
+ if(record.skills)copy.skills=[...record.skills];
+ if(record.originalAssignment)copy.originalAssignment={...record.originalAssignment};
+ if(record.questionResolution)copy.questionResolution={...record.questionResolution};
+ if(record.cleanup)copy.cleanup={...record.cleanup,errors:[...record.cleanup.errors]};
+ return copy;
+}
+function cloneDelivery(delivery: Delivery): Delivery {
+ return { ...cloneRecord(delivery), deliveryId:delivery.deliveryId, deliveryKind:delivery.deliveryKind };
+}
 export class RuntimeCleanupError extends Error {
  readonly summary: CleanupSummary;
  constructor(summary: CleanupSummary) { super("Subagent cleanup did not close every owned resource"); this.name = "RuntimeCleanupError"; this.summary = summary; }
@@ -42,8 +55,8 @@ function clearInertState(): void {
 /** A settled record carried over reload without its process, transport, or controls. */
 class InertChild {
  readonly record: ChildRecord;
- constructor(record: ChildRecord) { this.record = { ...record, skills: record.skills ? [...record.skills] : undefined }; }
- snapshot(): ChildRecord { return { ...this.record, skills: this.record.skills ? [...this.record.skills] : undefined }; }
+ constructor(record: ChildRecord) { this.record = cloneRecord(record); }
+ snapshot(): ChildRecord { return cloneRecord(this.record); }
  wait(): Promise<ChildRecord> { return Promise.resolve(this.snapshot()); }
  private unavailable(): never { throw new Error("This settled subagent is no longer controllable after reload"); }
  async message(_value: string, _options?: MessageOptions): Promise<void> { this.unavailable(); }
@@ -75,19 +88,27 @@ export class SubagentRuntime {
    this.names.set(origin,allocator);
   }
   for(const outcome of seed?.outcomes??[]) {
-   this.pending.set(outcome.deliveryId,{...outcome,skills:outcome.skills?[...outcome.skills]:undefined});
+   this.pending.set(outcome.deliveryId,cloneDelivery(outcome));
    this.inert.set(outcome.id,new InertChild(outcome));
   }
  }
  bind(origin:string,binding:BoundOrigin){this.bindings.set(origin,binding);this.publish(origin);this.flush(origin)}
- flush(origin:string){const binding=this.bindings.get(origin);if(!binding)return;for(const [id,record] of this.pending){if(record.origin===origin&&!record.parentId&&!this.queued.has(id)&&binding.deliver(record)&&this.pending.has(id)){this.queued.add(id);this.markQuestionExposed(id)}}}
+ flush(origin:string){const binding=this.bindings.get(origin);if(!binding)return;for(const [id,record] of this.pending){if(record.origin===origin&&!record.parentId&&!this.queued.has(id)&&binding.deliver(cloneDelivery(record))&&this.pending.has(id)){this.queued.add(id);this.markQuestionExposed(id)}}}
  private markQuestionExposed(deliveryId:string){for(const question of this.questions.values())if(question.deliveryId===deliveryId)question.exposed=true}
  private publish(origin:string){this.bindings.get(origin)?.status?.(this.list(origin));}
  acknowledge(origin:string,id:string){if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.queued.delete(id);this.inert.delete(id)}
- acknowledgeRecord(origin:string,recordId:string){
+ acknowledgeRecord(origin:string,recordId:string,exchangeId?:string){
+  // An inspect/wait result represents the child's current exchange. Do not
+  // acknowledge an older unread delivery merely because it has the same child.
+  const current=this.children.get(recordId)?.record??this.inert.get(recordId)?.record;
+  const representedExchange=exchangeId??current?.exchangeId;
   let found=false;
   for(const [deliveryId,record] of [...this.pending]){
-   if(record.origin===origin&&record.id===recordId&&record.deliveryKind!=="question") {this.acknowledge(origin,deliveryId);found=true;}
+   if(record.origin!==origin||record.id!==recordId||record.deliveryKind==="question"||record.deliveryKind==="question-resolution")continue;
+   // Historical deliveries predate exchange IDs. They remain consumable, but a
+   // delivery with a known different exchange is not represented by this read.
+   if(representedExchange&&record.exchangeId&&record.exchangeId!==representedExchange)continue;
+   this.acknowledge(origin,deliveryId);found=true;
   }
   return found;
  }
@@ -100,7 +121,7 @@ export class SubagentRuntime {
   this.pending.delete(mailbox.deliveryId);this.queued.delete(mailbox.deliveryId);
   if(!exposed)return;
   const resolution:Delivery={
-   ...record,deliveryId:randomUUID(),deliveryKind:"question-resolution",
+   ...cloneRecord(record),deliveryId:randomUUID(),deliveryKind:"question-resolution",
    assignment:undefined,questionResolution:{requestId,outcome,by},result:`Parent question ${outcome} by ${by}.`,notice:undefined,
   };
   this.pending.set(resolution.deliveryId,resolution);
@@ -109,7 +130,7 @@ export class SubagentRuntime {
  private deliver(record:ChildRecord,deliveryKind:DeliveryKind="outcome",requestId?:string){
   if(record.status!=="settled"&&record.status!=="waiting"&&deliveryKind!=="question-resolution")return;
   const parent=record.parentId?this.children.get(record.parentId):undefined;
-  const delivery={...record,deliveryId:randomUUID(),deliveryKind};
+  const delivery:Delivery={...cloneRecord(record),deliveryId:randomUUID(),deliveryKind};
   if(record.parentId&&record.phase==="waiting-user"){
    delivery.notice=`User-only input for a child of coordinator ${record.parentId}; escalate through the originating user's UI.`;
    delivery.parentId=undefined;
@@ -144,21 +165,16 @@ export class SubagentRuntime {
   const delivery=child.record.userOwned?undefined:[...this.pending.values()].find(r=>r.parentId===identity.child);
   if(message.type==="heartbeat"){
    if(delivery){this.queued.add(delivery.deliveryId);this.markQuestionExposed(delivery.deliveryId)}
-   return{alive:true,delivery};
+   return{alive:true,delivery:delivery?cloneDelivery(delivery):undefined};
   }
   if(message.type==="app-poll"){
    if(delivery){this.queued.add(delivery.deliveryId);this.markQuestionExposed(delivery.deliveryId)}
-   return{...child.parentMessage(message) as object,delivery};
+   return{...child.parentMessage(message) as object,delivery:delivery?cloneDelivery(delivery):undefined};
   }
   if(message.type==="operator-input"){
-   const wasIdle=child.record.status==="settled";
-   const response=child.parentMessage(message);
-   if(wasIdle&&child.record.status==="running"){
-    for(const [deliveryId,pending] of [...this.pending]){
-     if(pending.id===child.record.id||pending.parentId===child.record.id)this.acknowledge(identity.origin,deliveryId);
-    }
-   }
-   return response;
+   // Direct input starts a later exchange; it is not a receipt for any earlier
+   // outcome. Those deliveries remain pending until their own acknowledgement.
+   return child.parentMessage(message);
   }
   if(message.type==="outcome-ack"){
    if(typeof message.payload!=="string")throw new Error("Outcome acknowledgement requires an id");
@@ -198,7 +214,7 @@ export class SubagentRuntime {
    else if(payload.action==="finish")await target.finish();
    else if(payload.action!=="inspect")throw new Error("Unsupported child control");
    const snapshot=target.snapshot();
-   if(payload.consume===true&&snapshot.status!=="running")this.acknowledgeRecord(identity.origin,snapshot.id);
+   if(payload.consume===true&&snapshot.status!=="running")this.acknowledgeRecord(identity.origin,snapshot.id,snapshot.exchangeId);
    return snapshot;
   }
   return child.parentMessage(message);
@@ -278,7 +294,7 @@ export class SubagentRuntime {
   const child=this.get(id,origin);
   try{
    const result=await child.wait(signal,toolResult);
-   if(toolResult&&result.status!=="running")this.acknowledgeRecord(origin,result.id);
+   if(toolResult&&result.status!=="running")this.acknowledgeRecord(origin,result.id,result.exchangeId);
    return result;
   }finally{
    if(child.record.waitState==="attached")child.record.waitState="background";
@@ -365,7 +381,7 @@ export class SubagentRuntime {
   */
  async retireForReload(){
   if(this.hasActiveResources())throw new Error("Subagent reload requires all child conversations and processes to be settled first");
-  const outcomes=[...this.pending.values()].map(record=>({...record,skills:record.skills?[...record.skills]:undefined}));
+  const outcomes=[...this.pending.values()].map(cloneDelivery);
   const names:Record<string,string[]>={};
   for(const [origin,allocator] of this.names)names[origin]=allocator.snapshot();
   await this.transport.close();

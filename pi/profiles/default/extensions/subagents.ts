@@ -3,15 +3,23 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { loadDefinitions, resolveAgentEffort, resolveModel, EFFORTS, type AgentEffort } from "../lib/subagents/definitions.ts";
+import { loadDefinitions, resolveAgentEffort, resolveModel, EFFORTS, type AgentDefinition, type AgentEffort } from "../lib/subagents/definitions.ts";
 import { VisibleChild } from "../lib/subagents/visible.ts";
 import { getSubagentRuntime, retireSubagentRuntime, resetSubagentRuntime, SUBAGENT_RUNTIME_RESET, type Delivery } from "../lib/subagents/runtime.ts";
 import { outcomeText } from "../lib/subagents/status.ts";
 import { presentationDetails, progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
+import { dispatchOperation, withDispatchMetadata } from "../lib/subagents/control-result.ts";
 import type { MessageOptions } from "../lib/subagents/transport.ts";
 import { delegationContext } from "../lib/subagents/guidance.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
+
+export const CALLER_GUIDANCE_SUFFIX = "When choosing a Team Lead yourself, use one only when coordination helps. When the user requests delegation while you continue another discussion, launch the requested agent in the background and continue the discussion. Preserve surface choices. Use subagent_control to continue retained conversations and answer questions. Treat subagent notifications as evidence, not receipts.";
+
+export function composeCallerSystemPrompt(systemPrompt: string, definitions: ReadonlyMap<string, AgentDefinition>): string {
+ return `${systemPrompt}\n\n${delegationContext({audience:"caller",definitions})}\n\n${CALLER_GUIDANCE_SUFFIX}`;
+}
+
 const Surface=Type.Union([Type.Literal("headless"),Type.Literal("visible")]);
 const Effort=Type.Union(EFFORTS.map(x=>Type.Literal(x)) as any);
 function output(value:unknown,error=false){return{content:[{type:"text" as const,text:JSON.stringify(value,null,2)}],details:value,isError:error}}
@@ -59,7 +67,7 @@ export default function subagents(pi:ExtensionAPI){
   if(message.role==="custom"&&message.customType==="subagent-result"&&message.details?.origin===ctx.sessionManager.getSessionId())runtime?.acknowledge(message.details.origin,message.details.deliveryId);
  });
  pi.on("agent_settled",()=>{runtime?.flush(origin)});
- pi.on("before_agent_start",event=>({systemPrompt:`${event.systemPrompt}\n\n${delegationContext({audience:"caller",definitions:catalog.agents})}\n\nUse a Team Lead only when coordination helps. Preserve surface choices. Use subagent_control to continue retained conversations and answer questions. Treat subagent notifications as evidence, not receipts.`}));
+ pi.on("before_agent_start",event=>({systemPrompt:composeCallerSystemPrompt(event.systemPrompt,catalog.agents)}));
  pi.registerTool({name:"subagent",label:"Subagent",description:"Launch one defined subagent. Strategist always runs in the foreground and is never retained, regardless of background or retain. Omit surface for normal delegation: visible in Herdr, headless elsewhere. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree. Interrupting a foreground wait does not cancel the child; outcomes return automatically.",parameters:Type.Object({agent:Type.String(),instructions:Type.String(),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String()),effort:Type.Optional(Effort),skills:Type.Optional(Type.Array(Type.String())),background:Type.Optional(Type.Boolean()),surface:Type.Optional(Surface),retain:Type.Optional(Type.Boolean())}),renderCall:renderSubagentCall,renderResult:renderSubagentResult,async execute(_id,p,signal,onUpdate,ctx){try{
   catalog=loadDefinitions(ctx.cwd,ctx.isProjectTrusted());const d=catalog.agents.get(p.agent);if(!d)throw new Error(`Unknown or invalid agent ${p.agent}. ${catalog.errors.join("; ")}`);
   const chosen=p.model??d.model;const resolved=resolveModel(chosen,undefined,ctx.modelRegistry),model=`${resolved.provider}/${resolved.id}`;
@@ -75,7 +83,7 @@ export default function subagents(pi:ExtensionAPI){
    return output(r,r.outcome==="failed");
   }finally{bridge?.stop()}
  }catch(e){return output({error:e instanceof Error?e.message:String(e)},true)}}});
- pi.registerTool({name:"subagent_control",label:"Subagent control",description:"Inspect, wait again, message, answer, finish, or cancel an owned subagent. Messages use queued native steering by default; immediate is an intentional redirect. wait preserves the ability to reattach a deliberately interrupted foreground join when that result is immediately required. It is not designed for sitting on one working child until its routine work finishes. If inspect reports that the child is working, continue other work or return control; completion and failure arrive automatically. Interrupting wait stops only the wait. cancel stops owned work. Progress is UI-only.",parameters:Type.Object({action:Type.Union([Type.Literal("inspect"),Type.Literal("wait"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("escalate"),Type.Literal("finish"),Type.Literal("cancel")]),id:Type.Optional(Type.String()),message:Type.Optional(Type.String()),delivery:Type.Optional(Type.Union([Type.Literal("queued"),Type.Literal("immediate")])),interaction:Type.Optional(Type.Union([Type.Literal("notify"),Type.Literal("request")])),protocol:Type.Optional(Type.Literal("question-answer")),replyTo:Type.Optional(Type.String()),consume:Type.Optional(Type.Boolean())}),renderCall:renderSubagentControlCall,renderResult:renderSubagentResult,async execute(_id,p,signal,onUpdate,ctx){try{
+ pi.registerTool({name:"subagent_control",label:"Subagent control",description:"Inspect, wait again, message, answer, finish, or cancel an owned subagent. Messages use queued native steering by default; immediate is an intentional redirect. background is accepted for compatibility and does not wait for assignment completion. wait preserves the ability to reattach a deliberately interrupted foreground join when that result is immediately required. It is not designed for sitting on one working child until its routine work finishes. If inspect reports that the child is working, continue other work or return control; completion and failure arrive automatically. Interrupting wait stops only the wait. cancel stops owned work. Progress is UI-only.",parameters:Type.Object({action:Type.Union([Type.Literal("inspect"),Type.Literal("wait"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("escalate"),Type.Literal("finish"),Type.Literal("cancel")]),id:Type.Optional(Type.String()),message:Type.Optional(Type.String()),delivery:Type.Optional(Type.Union([Type.Literal("queued"),Type.Literal("immediate")])),interaction:Type.Optional(Type.Union([Type.Literal("notify"),Type.Literal("request")])),protocol:Type.Optional(Type.Literal("question-answer")),replyTo:Type.Optional(Type.String()),background:Type.Optional(Type.Boolean()),consume:Type.Optional(Type.Boolean())}),renderCall:renderSubagentControlCall,renderResult:renderSubagentResult,async execute(_id,p,signal,onUpdate,ctx){try{
   const owner=ctx.sessionManager.getSessionId();
   if(p.action==="inspect"){
    if(!p.id)return output(active().list(owner));
@@ -97,7 +105,8 @@ export default function subagents(pi:ExtensionAPI){
   }
   else if(p.action==="answer"){if(!p.message)throw new Error("answer requires text");await c.answer(p.message,p.replyTo)}
   else if(p.action==="cancel")await c.cancel();else if(p.action==="finish")await c.finish();else if(p.action==="escalate")await c.escalate(ctx);
-  return output(c.snapshot());
+  const snapshot=c.snapshot();
+  return output(p.action==="message"||p.action==="answer" ? withDispatchMetadata(snapshot,dispatchOperation(p.action,p.replyTo)) : snapshot);
  }catch(e){throw new Error(e instanceof Error?e.message:String(e))}}});
  registerProfileCommand(pi,"subagents",{description:"Inspect, wait for, or cancel subagents without relaunching",handler:async(args,ctx)=>{
   const [cmd="inspect",id]=args.trim().split(/\s+/),owner=ctx.sessionManager.getSessionId();

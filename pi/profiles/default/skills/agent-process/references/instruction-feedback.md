@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-075 - Do not block on routine background subagents
+
+- **Reference:** Execution of `subagent-nonblocking-messaging`, 2026-09-17.
+- **Feedback:** The operator directed the orchestrator to stop using `subagent_control wait` to block on subagents.
+- **Observed:** The orchestrator used `wait` for ordinary background task completion despite existing guidance that reserves it for reattaching to a deliberately interrupted foreground join whose result is immediately required.
+- **Correction:** Continue independent parent-owned work and rely on automatic background outcomes. Use `wait` only for its documented reattachment case.
+- **Related:** APR-060, APR-057.
+- **Status:** Corrected during the same execution; existing instruction is already explicit.
+
 ## AIF-074 - Discuss findings and remedies before implementing reported UX problems
 
 - **Reference:** Default-profile session `01a0b08d-ae05-7257-b011-770908cd36ef`, 2026-09-17.
@@ -7,7 +16,8 @@
 - **Observed:** The assistant investigated the three surfaces, then dispatched two developers to implement renderers without presenting the findings or asking whether to proceed. Its Strategist had explicitly said implementation should begin only if authorized and identified a consequential choice between TUI-only rendering and changing model-visible output. The assistant selected TUI-only rendering itself, implemented changes in dotfiles and the Onclave module, ran checks, edited the changelog and feedback log, and only then summarized the findings.
 - **Correction:** Treat a problem report or request to assess output as authorization to investigate, not automatically to edit. Present the established causes, relevant options, and recommendation, then obtain approval before implementation when the operator has not asked to fix or implement.
 - **Related:** AIF-072 (explain findings and tradeoffs before narrowing scope), AIF-021 (preserve decision authority), APR-059.
-- **Status:** Feedback recorded. No executable instruction change approved.
+- **Resolution (2026-09-17):** Caller guidance now explicitly preserves scope and approval boundaries: a problem report or discussion does not automatically authorize implementation.
+- **Status:** Resolved in the locally integrated default-profile guidance. Prompt composition checks do not prove model adherence.
 
 ## AIF-073 - Keep routine tool transcript output compact
 
@@ -34,7 +44,8 @@
 - **Finding:** Caller guidance has no exception for an explicit user-selected Team Lead, while the Team Lead workflow independently requires Strategist consultation. This creates duplicate staffing advice rather than resolving an open role-selection decision.
 - **Requested direction:** Exempt explicit user-directed Team Lead handoffs from the orchestrator's pre-dispatch consultation. Preserve the Team Lead's Strategist-first decomposition and ordinary caller consultation when delegation structure remains undecided.
 - **Related:** AIF-063, AIF-064, AIF-069.
-- **Status:** Feedback recorded; executable guidance unchanged. Pane-layout implementation remains a separate authorized assignment.
+- **Resolution (2026-09-17):** Caller guidance now skips orchestrator consultation for explicit single-agent handoffs, including plan work, while preserving the Team Lead's own Strategist-first workflow and plan-specific consultation when delegation remains undecided.
+- **Status:** Resolved in the locally integrated default-profile guidance. Static prompt checks do not establish model adherence.
 
 ## AIF-070 - Restore eight-child upper grid and name overflow tabs
 

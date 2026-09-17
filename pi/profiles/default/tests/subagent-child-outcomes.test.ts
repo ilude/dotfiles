@@ -46,8 +46,37 @@ it("keeps permission input local and reports ordinary interactive input without 
  }
 });
 
+it("acknowledges original and follow-up deliveries by their existing delivery IDs",async()=>{
+ vi.useFakeTimers();
+ const before=process.env.PI_SUBAGENT_ENDPOINT;
+ process.env.PI_SUBAGENT_ENDPOINT=JSON.stringify({child:"exchange-coordinator",origin:"origin",run:"run",port:1,token:"inert"});
+ const original={id:"leaf",agent:"probe",origin:"origin",parentId:"exchange-coordinator",deliveryId:"original-outcome",exchangeId:"original-exchange",exchangeKind:"original",status:"settled",outcome:"complete",result:"original result",originalAssignment:{exchangeId:"original-exchange",assignment:"original assignment",outcome:"complete",result:"original result",startedAt:"2026-01-01T00:00:00.000Z",finishedAt:"2026-01-01T00:01:00.000Z"}};
+ const followUp={...original,deliveryId:"follow-up-outcome",exchangeId:"follow-up-exchange",exchangeKind:"follow-up",result:"follow-up result"};
+ const pending=[original,followUp];const acks:string[]=[];const messages:any[]=[];
+ const handlers:Record<string,Function[]>={};
+ const pi:any={on:(name:string,handler:Function)=>(handlers[name]??=[]).push(handler),registerCommand:()=>{},sendMessage:(message:any)=>messages.push(message)};
+ const ctx:any={isIdle:()=>true,ui:{setStatus:()=>{},notify:()=>{}},abort:vi.fn(),shutdown:vi.fn()};
+ const emit=async(name:string,event:any={})=>{for(const handler of handlers[name]??[])await handler(event,ctx)};
+ request.mockImplementation(async(_endpoint,message)=>{
+  if(message.type==="outcome-ack"){acks.push(message.payload);const index=pending.findIndex(delivery=>delivery.deliveryId===message.payload);if(index>=0)pending.splice(index,1);return{accepted:true}}
+  return{alive:true,delivery:pending[0]};
+ });
+ try{
+  bindChildSurface(pi,false);await emit("session_start");
+  await vi.advanceTimersByTimeAsync(600);expect(messages).toHaveLength(1);expect(messages[0].details).toMatchObject({deliveryId:original.deliveryId,exchangeId:original.exchangeId,originalAssignment:{result:"original result"}});
+  await emit("message_end",{message:{role:"custom",...messages[0]}});
+  await vi.advanceTimersByTimeAsync(300);expect(messages).toHaveLength(2);expect(messages[1].details).toMatchObject({deliveryId:followUp.deliveryId,exchangeId:followUp.exchangeId,result:"follow-up result"});
+  await emit("message_end",{message:{role:"custom",...messages[1]}});
+  expect(acks).toEqual([original.deliveryId,followUp.deliveryId]);
+ }finally{
+  await emit("session_shutdown",{reason:"quit"});vi.useRealTimers();
+  if(before===undefined)delete process.env.PI_SUBAGENT_ENDPOINT;else process.env.PI_SUBAGENT_ENDPOINT=before;
+ }
+});
+
 it("coordinator forwards outcomes, never heartbeat progress, and acknowledges only journaled messages across reload",async()=>{
  vi.useFakeTimers();
+ request.mockClear();
  const before=process.env.PI_SUBAGENT_ENDPOINT;
  process.env.PI_SUBAGENT_ENDPOINT=JSON.stringify({child:"coordinator",origin:"origin",run:"run",port:1,token:"inert"});
  const delivery={id:"leaf",agent:"probe",origin:"origin",parentId:"coordinator",deliveryId:"outcome-1",status:"settled",outcome:"failed",error:"fixture failure"};

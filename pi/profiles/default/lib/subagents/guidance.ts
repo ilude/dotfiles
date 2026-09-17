@@ -10,7 +10,7 @@ export interface DelegationContextOptions {
 
 const CALLER_GUIDANCE = `## Delegation guidance
 
-Delegate only for bounded implementation, parallel investigation, specialist research, or requested independent review; otherwise work directly. Before delegating, consult \`subagent\` with \`agent: "strategist"\` and reuse its advice for related assignments.
+Consult \`subagent\` with \`agent: "strategist"\` for implementation-plan execution or user-authorized work suited to parallel subagents or Team Leads. Delegate a standalone job to a single subagent or Team Lead only when the user explicitly requests it or delegation conserves context; explain the context-conservation reason when applicable, and skip the Strategist consultation in either case. Otherwise work directly, including when Strategist recommends one worker without an exception. An explicit single-agent handoff also bypasses consultation when handing off plan work. When the user requests delegation while you continue another discussion, launch the requested agent in the background and continue the discussion.
 
 After review findings or an unexpected agreed check or deployment outcome, consult \`subagent\` with \`agent: "steward"\` before a follow-up fix or another MR, build, or deploy cycle. Handle directly only corrections proved by the evidence. Reuse advice for the same finding; consult again when the finding or proposed fix changes. Agent advice is not an approval gate.
 

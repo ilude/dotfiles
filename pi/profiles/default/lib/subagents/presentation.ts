@@ -1,5 +1,6 @@
 import { getMarkdownTheme, keyHint } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Text } from "@earendil-works/pi-tui";
+import type { DispatchMetadata } from "./control-result.ts";
 import type { ChildRecord } from "./rpc.ts";
 import { duration } from "./status.ts";
 
@@ -8,6 +9,8 @@ const PROMPT_LIMIT = 160;
 const RESULT_LIMIT = 24_000;
 
 type Theme = any;
+type PresentedRecord = Partial<ChildRecord> & { dispatch?: DispatchMetadata };
+
 type RenderContext = {
   args?: Record<string, unknown>;
   isError?: boolean;
@@ -41,18 +44,18 @@ function localTimestamp(input: string | number): string {
   return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
-function recordFrom(valueToInspect: unknown): Partial<ChildRecord> | undefined {
+function recordFrom(valueToInspect: unknown): PresentedRecord | undefined {
   if (!valueToInspect || typeof valueToInspect !== "object") return undefined;
-  const candidate = valueToInspect as Partial<ChildRecord> & { record?: unknown };
+  const candidate = valueToInspect as PresentedRecord & { record?: unknown };
   if (typeof candidate.status === "string" && (typeof candidate.id === "string" || typeof candidate.agent === "string")) return candidate;
   return recordFrom(candidate.record);
 }
 
-function recordFromResult(result: any): Partial<ChildRecord> | undefined {
+function recordFromResult(result: any): PresentedRecord | undefined {
   return recordFrom(result?.details) ?? recordFrom(result?.details?.record) ?? recordFrom(result);
 }
 
-function lastRecord(context: RenderContext): Partial<ChildRecord> | undefined {
+function lastRecord(context: RenderContext): PresentedRecord | undefined {
   return recordFrom(context.state?.record);
 }
 
@@ -61,7 +64,7 @@ function resultText(result: any): string {
   return result.content.filter((part: any) => part?.type === "text").map((part: any) => value(part.text)).join("\n");
 }
 
-function outcomeLabel(record: Partial<ChildRecord>): string {
+function outcomeLabel(record: PresentedRecord): string {
   if (record.questionResolution) return `question ${record.questionResolution.outcome}`;
   if (record.phase === "cleanup") return `${record.outcome ? `${record.outcome} · ` : ""}cleaning up`;
   if (record.status === "waiting") {
@@ -70,12 +73,16 @@ function outcomeLabel(record: Partial<ChildRecord>): string {
     return "waiting";
   }
   if (record.status !== "settled") {
+    if (record.exchangeKind && record.exchangeKind !== "original") return `${record.exchangeKind} in progress`;
     if (record.phase === "redirecting") return "redirecting current turn";
     if (record.phase === "tool") return record.toolName ? `using ${record.toolName}` : "using a tool";
     if (record.phase === "waiting-children") return "waiting for children";
     if (record.phase === "model") return "working";
     return record.phase === "starting" ? "starting assignment" : record.phase ?? "starting assignment";
   }
+  if (record.exchangeKind && record.exchangeKind !== "original") return `${record.exchangeKind} ${record.outcome ?? "settled"}`;
+  if (record.outcome === "complete" && record.retained && record.processState !== "exited") return "completed, retained for follow-up";
+  if (record.retained && record.processState === "exited") return `${record.outcome ?? "settled"} · conversation closed`;
   return record.outcome ?? "settled";
 }
 
@@ -180,7 +187,7 @@ function updateCallComponent(result: any, theme: Theme, context: RenderContext):
   component.setText(callLines(state.args ?? context.args ?? {}, record, theme, context));
 }
 
-function resultComponent(record: Partial<ChildRecord>, expanded: boolean, theme: Theme, includeIdentity = false): any {
+function resultComponent(record: PresentedRecord, expanded: boolean, theme: Theme, includeIdentity = false): any {
   // The launch row owns identity, model, timing and prompt. Paired result rows only add state and output.
   const state = outcomeLabel(record);
   const title = includeIdentity ? `${identity(record)} · ${state}` : state;
@@ -190,6 +197,15 @@ function resultComponent(record: Partial<ChildRecord>, expanded: boolean, theme:
       ? "warning"
       : "accent";
   const lines = [theme.fg(titleColor, theme.bold(title))];
+  if (record.dispatch) {
+    lines.push(`Dispatch: accepted · ${record.dispatch.operation} · completion not reported`);
+  }
+  if (record.exchangeId) {
+    lines.push(`Exchange: ${record.exchangeKind ?? "original"} · ${record.exchangeId}`);
+  }
+  if (record.exchangeKind && record.exchangeKind !== "original") {
+    lines.push("Original assignment result is retained separately.");
+  }
   if (includeIdentity) {
     lines.push(`Model: ${record.model ?? "default"} [${record.effort ?? "default"}]`);
     const prompt = value(record.assignment);
@@ -219,7 +235,22 @@ function resultComponent(record: Partial<ChildRecord>, expanded: boolean, theme:
   if (!expanded) return new Text(lines.join("\n"), 0, 0);
   const container = new Container();
   container.addChild(new Text(lines.join("\n"), 0, 0));
-  if (output) container.addChild(new Markdown(output, 0, 0, getMarkdownTheme()));
+  const original = record.originalAssignment;
+  const hasSeparateOriginal = !!original && record.exchangeId !== undefined && record.exchangeId !== original.exchangeId;
+  if (hasSeparateOriginal && original) {
+    const originalLines = [
+      "Original assignment",
+      `Prompt: ${bounded(original.assignment, Infinity)}`,
+      `Outcome: ${original.outcome}`,
+      `Started: ${original.startedAt}`,
+      `Finished: ${original.finishedAt}`,
+      `Exchange: original · ${original.exchangeId}`,
+    ];
+    container.addChild(new Text(originalLines.join("\n"), 0, 0));
+    if (original.result) container.addChild(new Markdown(`Original result:\n\n${bounded(original.result, RESULT_LIMIT)}`, 0, 0, getMarkdownTheme()));
+    if (original.error) container.addChild(new Text(`Original error: ${bounded(original.error, RESULT_LIMIT)}`, 0, 0));
+  }
+  if (output) container.addChild(new Markdown(`${hasSeparateOriginal ? "Current exchange result:\n\n" : ""}${output}`, 0, 0, getMarkdownTheme()));
   container.addChild(new Text(details(record).join("\n"), 0, 0));
   return container;
 }
@@ -257,6 +288,7 @@ export function renderSubagentResult(result: any, options: { expanded?: boolean;
 
 export function presentationDetails(record: Partial<ChildRecord>): Record<string, unknown> {
   return {
+    id: record.id,
     displayName: record.displayName,
     agent: record.agent,
     outcome: record.outcome,
@@ -284,6 +316,12 @@ export function presentationDetails(record: Partial<ChildRecord>): Record<string
     result: record.result,
     error: record.error,
     notice: record.notice,
+    exchangeId: record.exchangeId,
+    exchangeKind: record.exchangeKind,
+    originalAssignment: record.originalAssignment ? { ...record.originalAssignment } : undefined,
+    cleanup: record.cleanup ? { ...record.cleanup, errors: [...record.cleanup.errors] } : undefined,
+    paneState: record.paneState,
+    launcherState: record.launcherState,
     questionResolution: record.questionResolution,
   };
 }

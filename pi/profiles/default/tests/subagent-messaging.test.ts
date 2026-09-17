@@ -52,9 +52,11 @@ describe("native subagent message boundaries", () => {
     expect(instance.parentMessage({ type: "poll-answer", payload: request.id })).toMatchObject({ pending: true, requestId: request.id });
     await expect(instance.answer("stale", "wrong-request")).rejects.toThrow(/does not match/);
     expect(instance.snapshot()).toMatchObject({ status: "waiting", requestId: request.id });
+    const originalExchange = instance.snapshot().exchangeId;
+    expect(instance.snapshot().originalAssignment).toBeUndefined();
     await instance.answer("No, keep the generated files out", request.id);
     await vi.waitFor(() => expect(instance.record.status).toBe("settled"));
-    expect(instance.snapshot()).toMatchObject({ outcome: "complete", result: "first answer" });
+    expect(instance.snapshot()).toMatchObject({ outcome: "complete", result: "first answer", exchangeId: originalExchange, exchangeKind: "original", originalAssignment: { exchangeId: originalExchange, assignment: "[hold]", outcome: "complete", result: "first answer" } });
   });
 
   it("uses the same queued and immediate boundaries for visible children", async () => {
@@ -62,6 +64,7 @@ describe("native subagent message boundaries", () => {
     (instance as any).appReady = true;
     instance.record.status = "running";
     await instance.message("visible queued message", { delivery: "queued" });
+    expect(instance.snapshot().notice).toBe("Queued message accepted for delivery; consumption is not confirmed.");
     const queued = instance.parentMessage({ type: "app-poll" }) as { commands: Array<{ type: string; message?: string; delivery?: string }> };
     expect(queued.commands).toContainEqual(expect.objectContaining({ type: "message", message: "visible queued message", delivery: "queued" }));
     await instance.message("visible redirect", { delivery: "immediate" });
@@ -71,9 +74,11 @@ describe("native subagent message boundaries", () => {
 
   it("counts visible question yields so a second question and final reply remain valid", async () => {
     const instance = new VisibleChild({ definition, instructions: "visible", cwd: here, model: "openai-codex/test", effort: "low", skills: [], origin: "messaging-origin", retained: true, surface: "visible" }, "fixture-extension", "fixture-profile");
+    const originalExchange = instance.snapshot().exchangeId;
     const first = instance.parentMessage({ type: "question", payload: "First question" }) as { id: string };
+    expect(instance.snapshot().originalAssignment).toBeUndefined();
     expect(instance.parentMessage({ type: "turn", payload: { turn: 1, text: "" } })).toEqual({ accepted: true });
-    expect(instance.snapshot()).toMatchObject({ turns: 1, status: "waiting", requestId: first.id });
+    expect(instance.snapshot()).toMatchObject({ turns: 1, status: "waiting", requestId: first.id, exchangeId: originalExchange, exchangeKind: "original" });
     await instance.answer("First answer", first.id);
     await instance.message("Redirect the follow-up", { delivery: "immediate" });
     // The surface handles the redirect without emitting a settled wire turn.
@@ -83,7 +88,7 @@ describe("native subagent message boundaries", () => {
     expect(() => instance.parentMessage({ type: "turn", payload: { turn: 2, text: "duplicate" } })).toThrow("Invalid, duplicate, or late turn");
     await instance.answer("Second answer", second.id);
     expect(instance.parentMessage({ type: "turn", payload: { turn: 3, text: "Completed consultation" } })).toEqual({ accepted: true });
-    expect(instance.snapshot()).toMatchObject({ turns: 3, status: "settled", outcome: "complete", result: "Completed consultation" });
+    expect(instance.snapshot()).toMatchObject({ turns: 3, status: "settled", outcome: "complete", result: "Completed consultation", exchangeId: originalExchange, exchangeKind: "original", originalAssignment: { exchangeId: originalExchange, assignment: "visible", outcome: "complete", result: "Completed consultation" } });
     expect(instance.snapshot().error).toBeUndefined();
   });
 
@@ -94,6 +99,25 @@ describe("native subagent message boundaries", () => {
     instance.parentMessage({ type: "cancel-question", payload: { requestId: question.id } });
     expect(instance.parentMessage({ type: "turn", payload: { turn: 2, text: "Resolved locally" } })).toEqual({ accepted: true });
     expect(instance.snapshot()).toMatchObject({ turns: 2, status: "settled", outcome: "complete", result: "Resolved locally" });
+  });
+
+  it("preserves the original visible result through direct input and intervention", async () => {
+    const instance = new VisibleChild({ definition, instructions: "visible", cwd: here, model: "openai-codex/test", effort: "low", skills: [], origin: "messaging-origin", retained: true, surface: "visible" }, "fixture-extension", "fixture-profile", {} as any);
+    (instance as any).appReady = true;
+    instance.record.processState = "exited";
+    expect(instance.parentMessage({ type: "turn", payload: { turn: 1, text: "Original visible result" } })).toEqual({ accepted: true });
+    const first = instance.snapshot();
+    expect(first.originalAssignment).toMatchObject({ assignment: "visible", result: "Original visible result", outcome: "complete", exchangeId: first.exchangeId });
+    instance.parentMessage({ type: "operator-input", payload: { text: "Direct visible follow-up" } });
+    expect(instance.snapshot()).toMatchObject({ status: "running", assignment: "Direct visible follow-up", exchangeKind: "follow-up", originalAssignment: first.originalAssignment });
+    expect(instance.parentMessage({ type: "turn", payload: { turn: 2, text: "Direct follow-up result" } })).toEqual({ accepted: true });
+    const followUp = instance.snapshot();
+    expect(followUp).toMatchObject({ status: "settled", result: "Direct follow-up result", exchangeKind: "follow-up", originalAssignment: first.originalAssignment });
+    expect(followUp.exchangeId).not.toBe(first.exchangeId);
+    instance.parentMessage({ type: "intervene" });
+    expect(instance.snapshot()).toMatchObject({ status: "running", exchangeKind: "intervention", originalAssignment: first.originalAssignment });
+    expect(instance.parentMessage({ type: "turn", payload: { turn: 3, text: "Intervention result" } })).toEqual({ accepted: true });
+    expect(instance.snapshot()).toMatchObject({ status: "settled", result: "Intervention result", exchangeKind: "intervention", originalAssignment: first.originalAssignment });
   });
 
   it("keeps ordinary visible input parent-coordinated and reserves ownership for explicit escalation", async () => {
@@ -147,6 +171,7 @@ describe("native subagent message boundaries", () => {
     await vi.waitFor(() => expect(instance.record.processState).toBe("running"));
     const request = instance.parentMessage({ type: "question", payload: "Need a decision" }) as { id: string };
     await instance.cancel();
+    expect(instance.snapshot()).toMatchObject({ outcome: "cancelled", result: undefined, originalAssignment: { assignment: "[hold]", outcome: "cancelled", result: undefined } });
     await expect(instance.answer("too late", request.id)).rejects.toThrow(/already resolved by assignment cancelled/);
   });
 
