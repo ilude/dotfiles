@@ -460,7 +460,7 @@ task-related defects are resolved.
     app-poll/operator-input boundaries. This does not prove live-model timing or
     attached-client UX.
 
-- [ ] **T6: Document, validate, and integrate the whole change**
+- [x] **T6: Document, validate, and integrate the whole change**
   - Depends on: T1, T1b, T2a, T2b, T3, T4, and T5 passing evidence.
   - Owner: orchestrator; implementation tasks must supply their completed changes
     and evidence rather than leaving unfinished work for closeout.
@@ -479,8 +479,8 @@ task-related defects are resolved.
   - Evidence: Implementation, documentation, and finite validation completed
     2026-09-17 in the default profile. Combined batch: 16 files and 133 tests passed;
     typecheck and `git diff --check` passed. Task commit `389e1fea` merged into
-    recorded target `main` as `e95fa8b4`; archive and active-plan removal verified.
-    Task-worktree cleanup remains the final closeout action.
+    recorded target `main` as `e95fa8b4`; archive, active-plan removal, clean
+    task-worktree removal, and task-branch deletion verified.
 
 ## Combined acceptance scenario and finite validation
 
@@ -529,7 +529,8 @@ full-profile, paid-model, attached-client, or production-team test is added.
 - Status: completed 2026-09-17. Implementation and archive were committed as
   `389e1fea` and merged into recorded target `main` as `e95fa8b4`. Combined checks
   passed: 16 files, 133 tests, typecheck, and `git diff --check`. Completion metadata
-  is recorded on the target; task-worktree cleanup remains the final closeout action.
+  is recorded on the target. Clean task-worktree removal and task-branch deletion
+  were verified.
 - T2a diagnosis is complete: see [investigation.md](investigation.md). Remaining
   T2a work is the deferred-report lifetime fix and permanent regression, followed
   by T2b's original-result preservation. T5 verifies corrected delivery/cleanup;
