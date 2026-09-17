@@ -1,7 +1,7 @@
 ---
 created: 2026-09-17
-status: ready
-completed: null
+status: completed
+completed: 2026-09-17
 ---
 
 # Add turn-triggering Onclave notifications for asynchronous vault completion
@@ -119,13 +119,13 @@ Implement the settled intent through the agreed checks. Adapt routine mechanisms
   - If blocked: consult `steward` before any follow-up source fix prompted by an unexpected agreed-check result.
   - Evidence: `just check` passed (272 passed, 1 skipped); `just test-integration` passed (3 tests); static assertions passed. `make check-pi-default` reached 833 passed and 19 skipped but retained three unrelated baseline/environment failures in profile and loopback web-tools tests.
 
-- [ ] **T6: Commit and integrate module-first, then close out the parent spec**
+- [x] **T6: Commit and integrate module-first, then close out the parent spec**
   - Depends on: T5 passes.
   - Files/inputs: Onclave task branch/worktree, dotfiles task branch/worktree, parent gitlink, this spec.
   - Change: commit and merge Onclave into local `feature/v2-broker-core` first; update and commit the Onclave gitlink plus dotfiles-owned workflow/docs and archived spec on the parent task branch; merge into local dotfiles `main`. Do not push or deploy. Preserve all unrelated parent changes.
   - Verify: both target branches contain their intended commits; parent points to the integrated Onclave commit; no active spec copy remains; task worktrees are clean before removal.
   - Done when: local module and parent integration, archive metadata, and cleanup are complete, with push/deployment explicitly reported as not performed.
-  - Evidence: Not started.
+  - Evidence: Onclave task `e45ca54` merged as `67fd176`; parent task `22e578bd` merged as `73a31189`; gitlink verified and worktree cleanup followed.
 
 ## Agreed validation and current handoff
 
@@ -135,11 +135,11 @@ Implement the settled intent through the agreed checks. Adapt routine mechanisms
 - `make check-pi-default` in the dotfiles root.
 - Static verification that orchestrator-facing `onclave_message` still exposes only `request`, `response`, and `note`.
 - Static and test verification that vault terminal notifications create no request-satisfaction record or inbound response correlation.
-- Status: implementation and checks complete; local parent integration pending.
+- Status: completed locally on 2026-09-17.
 - Completed work and evidence: protocol v3, persisted v2 migration, Core terminal notifications, adapter delivery/error handling, `/yt` workflow, and documentation implemented. Onclave checks and broker integration passed; dotfiles check had only unrelated baseline/environment failures after 833 tests passed.
-- Next: commit the archived parent task changes, merge them into recorded target `main`, then record completion metadata and clean worktrees.
-- Blockers/open decisions: none. Parent integration and cleanup remain agent-owned. Push and deployment remain unauthorized and outside local completion.
-- Verification limits: no live Pi callback, deployed Core, mixed-version rollout, broker integration, or provider behavior has been tested during planning.
+- Next: no agent-owned action remains. Live deployment and mixed-version validation remain unperformed and unauthorized.
+- Blockers/open decisions: none. Push and deployment were not performed and remain unauthorized.
+- Verification limits: broker integration passed locally. No live Pi callback, deployed Core, mixed-version rollout, deployment, or provider behavior was tested. `make check-pi-default` had three unrelated baseline/environment failures after 833 tests passed: one existing profile mock mismatch and two loopback web-tools subprocess timeouts.
 
 ## Closeout
 
