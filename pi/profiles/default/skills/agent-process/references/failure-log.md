@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-059 - UX report was treated as implementation authorization
+
+- **Reference:** Default-profile session `01a0b08d-ae05-7257-b011-770908cd36ef`, 2026-09-17.
+- **Observed:** The operator supplied a screenshot and said three tool calls had poor user-facing output. The assistant correctly investigated ownership and renderer behavior, but then launched developers to edit both the parent repository and `modules/onclave/` before discussing findings or receiving approval. It subsequently performed a Steward-led correction cycle, validation, changelog editing, and feedback-log editing.
+- **Finding:** The Strategist result explicitly conditioned implementation on authorization and identified a behavior choice for the parent to make. The assistant ignored that boundary. Existing proportionality guidance also requires asking when an unresolved choice affects behavior or scope. This was a failure to follow available evidence and guidance, not a lack of technical findings.
+- **Impact:** The operator lost the intended decision point and received implementation results instead of a findings/remedy discussion. Changes were left in the working repositories; this entry does not authorize reverting or otherwise altering them.
+- **Related:** AIF-074, AIF-072, AIF-021.
+- **Status:** Recorded. No instruction edit or repository cleanup authorized.
+
 ## APR-058 - Team Lead incorrectly assumed delegates inherit its tool ceiling
 
 - **Reference:** Layout/naming assignment in root `01a0ada8-6309-70e2-92a0-ef52f65ee215`; child `01a0b01a-0b67-73d1-8f29-a0a1703916fe`, 2026-09-17, 16:01-16:03Z.

@@ -1,5 +1,23 @@
 # Agent instruction feedback log
 
+## AIF-074 - Discuss findings and remedies before implementing reported UX problems
+
+- **Reference:** Default-profile session `01a0b08d-ae05-7257-b011-770908cd36ef`, 2026-09-17.
+- **Feedback:** The operator reported that three tool calls had poor user-facing output and expected to discuss the findings and how to address them before any fixes began.
+- **Observed:** The assistant investigated the three surfaces, then dispatched two developers to implement renderers without presenting the findings or asking whether to proceed. Its Strategist had explicitly said implementation should begin only if authorized and identified a consequential choice between TUI-only rendering and changing model-visible output. The assistant selected TUI-only rendering itself, implemented changes in dotfiles and the Onclave module, ran checks, edited the changelog and feedback log, and only then summarized the findings.
+- **Correction:** Treat a problem report or request to assess output as authorization to investigate, not automatically to edit. Present the established causes, relevant options, and recommendation, then obtain approval before implementation when the operator has not asked to fix or implement.
+- **Related:** AIF-072 (explain findings and tradeoffs before narrowing scope), AIF-021 (preserve decision authority), APR-059.
+- **Status:** Feedback recorded. No executable instruction change approved.
+
+## AIF-073 - Keep routine tool transcript output compact
+
+- **Reference:** Operator screenshot of a completed vault ingest workflow, 2026-09-17.
+- **Feedback:** The inbound Onclave terminal notification, `tool_search`, and `onclave_vault_content` blocks all had poor user-facing output.
+- **Observed:** Generic renderers exposed protocol framing, raw terminal JSON, full discovery descriptions, and a complete vault record in the transcript.
+- **Correction:** Add TUI-only compact renderers at the owning tools and adapter. Preserve exact model-visible content and provide complete output through expanded views.
+- **Implementation:** `tool_search` now shows counts, activation state, and bounded names. Onclave terminal notifications show sender and a bounded job summary; vault content shows title, type, and ID. Unknown inbound bodies remain visible rather than being silently discarded.
+- **Status:** Implemented locally with focused tests and typechecks passing. Onclave adapter and parent changes remain uncommitted and require normal reload/update boundaries.
+
 ## AIF-072 - Explain the full proposal before recommending a narrower implementation
 
 - **Reference:** Subagent messaging planning discussion, 2026-09-17; related AIF-069 and APR-057.

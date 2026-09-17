@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-17: Compact tool discovery and Onclave transcript output
+
+**Changed:** Default Pi now renders `tool_search` results as a bounded count, activation summary, and short tool-name preview. The Onclave Pi adapter now renders inbound terminal notifications as a concise job summary and vault content reads as title, type, and content ID. Expanded views retain the complete original output, and model-visible protocol and tool content are unchanged.
+
 ## 2026-09-17: Reserve visible-subagent sounds for operator requests
 
 **Changed:** Settled visible subagents now report an `unknown` Herdr state instead of an `idle` completion transition, preventing redundant completion dings after their result is already delivered to the orchestrator. A subagent that opens an operator prompt still reports `blocked`, preserving Herdr's request sound. Orchestrator completion sounds are unchanged.
