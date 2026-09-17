@@ -1,7 +1,7 @@
 ---
 created: 2026-09-17
-status: integration-pending
-completed: null
+status: completed
+completed: 2026-09-17
 ---
 
 # Make subagent parent questions visible and asynchronously actionable
@@ -104,25 +104,26 @@ Keep checkbox state, concise evidence, current blockers, and the next action acc
   - If blocked: identify the failing contract and owner; do not weaken race, routing, or non-interruption requirements to make tests pass.
   - Evidence: Updated default subagent documentation, root `CHANGELOG.md`, APR-052 status, and this plan. Focused affected tests, typecheck, and runtime checks pass.
 
-- [ ] **T5: Archive, commit, merge, and clean up**
+- [x] **T5: Archive, commit, merge, and clean up**
   - Depends on: T4 checks passing.
   - Files/inputs: task-owned implementation, test, documentation, feedback-log, changelog, and spec changes.
   - Change: update task evidence, archive the whole spec directory, commit on the task branch, merge into the recorded originating `main` checkout, commit completion metadata on the target, and remove the clean task worktree.
   - Verify: target `main` contains the implementation and `.specs/archive/subagent-parent-question-mailbox/plan.md`; no active spec copy or task-owned worktree remains; unrelated target changes are untouched.
   - Done when: integration and cleanup are complete. Push remains unperformed.
   - If blocked: retain the worktree and report the exact merge or cleanup blocker and next agent-owned action.
-  - Evidence: Implementation and agreed checks passed. Archival and task-branch commit are the next closeout actions; integration remains pending.
+  - Evidence: Archived and committed on task branch as `e2cded3c`; merged into originating `main` as `23bf0f80`. Target verification confirmed the implementation and archived plan are present and the active plan is removed. Completion metadata is committed separately on `main`; task worktree cleanup followed.
 
 ## Agreed validation and current handoff
 
 - Focused tests must exercise the real runtime and visible-child boundaries rather than only isolated formatting helpers.
 - Required final checks from `pi/profiles/default`: affected Vitest files, `pnpm run typecheck`, and `pnpm run check:runtime`.
 - A live attached-client run is not required for completion and is a non-blocking verification limit. Do not claim it occurred unless separately recorded with date and result.
-- Status: T1-T4 implementation complete; T5 remains orchestrator-owned.
-- Completed work and evidence: Default-profile implementation, focused regression coverage, documentation, changelog, and APR-052 remediation are complete in the dedicated task worktree. Required automated checks pass.
-- Next: orchestrator may perform T5 integration and closeout; do not archive or commit from this task.
+- Status: completed and integrated on 2026-09-17.
+- Completed work and evidence: Default-profile implementation, focused regression coverage, documentation, changelog, and APR-052 remediation are merged into `main`. Required automated checks passed. The archived plan and completion metadata are committed on the target.
+- Next: none.
 - Execution record: checkout `C:/Users/mglenn/.dotfiles/.worktrees/subagent-parent-question-mailbox`; branch `task/subagent-parent-question-mailbox`; originating integration target `C:/Users/mglenn/.dotfiles` on `main`.
 - Blockers/open decisions: none.
+- Integration evidence: task commit `e2cded3c5f5bbc6acf51a7451d2cfb1b111a3243`; merge commit `23bf0f80346f624b0a2a6b3bcc374accca7349a0`; originating target `main` at `C:/Users/mglenn/.dotfiles`.
 - Verification limits: no live attached-client run was performed; process-local and non-durable behavior is covered by focused tests.
 
 ## Closeout
