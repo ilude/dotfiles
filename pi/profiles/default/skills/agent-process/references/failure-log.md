@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-062 - Defended rotation machinery before separating CA and server lifetimes
+
+- **Reference:** Default-profile certificate-planning discussion, 2026-09-18.
+- **Observed:** When reviewing a frequent CA-rotation implementation, the orchestrator repeatedly argued about trust refresh and restarts without first clearly distinguishing CA lifetime from server-certificate renewal. The operator had to introduce longer-lived CAs with planned maintenance-window replacement.
+- **Finding:** The orchestrator anchored on the existing design and treated its coordination requirements as unavoidable, despite repeated requests to explain the premise. Related feedback: proportionality and consequence-changing alternatives in instruction-feedback.md. Existing recheck/proportionality guidance already applies.
+- **Correction:** Recommend longer-lived CAs with automatic short-lived server renewal; treat eventual CA replacement as a separate planned operation. This is a proposed design change, not implementation authority.
+- **Status:** Feedback recorded. No instruction changes or infrastructure mutations authorized by this entry.
+
 ## APR-061 - Steward reused as an implementation preflight after explicit correction
 
 - **Reference:** Repository review follow-up, 2026-09-17; AIF-079, AIF-029B.
