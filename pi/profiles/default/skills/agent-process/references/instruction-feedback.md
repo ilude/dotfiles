@@ -1,12 +1,23 @@
 # Agent instruction feedback log
 
+## AIF-080 - Repair context-transfer gaps rather than add global prohibitions
+
+- **Reference:** Operator review of recurring feedback patterns, 2026-09-17.
+- **Feedback:** Reevaluate subagents' `--no-context-files` before compensating with assignment guidance; remove unused `/handoff`; clarify deferred scope and the explicit single-agent delegation exception; check behavior-changing restrictions during the existing planning review. Compaction needs a concrete implementation proposal before approval.
+- **Decision:** Remove the default handoff prompt and command references. Amend the planning skill and template so explicitly deferred work does not block independent approved scope, preserve the caller's explicit single-agent handoff exception and Team Lead's own consultation, and question unsupported restrictions within the existing authoring review.
+- **Evidence:** Ordinary children disable native context-file discovery; Team Leads already enable it. An offline probe of installed Pi 0.85.1 confirms split-turn summary requests omit prior summary/custom focus from the turn-prefix call; with no complete-history messages, the split path substitutes `No prior history.` even when a previous summary exists. Stubbed responses establish request construction, not live model behavior.
+- **Related:** AIF-021, AIF-052, AIF-054, AIF-059B, AIF-071; APR-050.
+- **Follow-up:** Operator approved native context-file discovery for all subagent roles. Removed `--no-context-files` from ordinary launches; retained explicit skill selection, extension isolation, and tool/delegation restrictions. Team Lead discovery is unchanged. A native compaction fix means changing the Pi package itself; the supported local customization route is the `session_before_compact` extension hook, not a separate configuration system.
+- **Compaction decision:** After comparison with legacy, the operator approved a summary-generation-only default extension. It combines prepared history and turn prefix with prior summary/custom focus through the native public compactor, preserves retention coordinates and cumulative file metadata, and leaves triggers and continuation with Pi. Native hook errors fall through, so generation failures explicitly report and cancel rather than silently using split summaries. No legacy soft threshold, task registry, abort/resume machinery, or failure circuit is ported.
+- **Status:** Approved prompt/skill, subagent context-loading, and compaction changes implemented locally. Compaction tests exercise installed native generation with stubbed responses; live-model summary quality remains unverified.
+
 ## AIF-079 - Steward judges reviewer and validator follow-up scope
 
 - **Reference:** Operator correction during repository review fixes, 2026-09-17.
 - **Feedback:** Steward assesses reviewer and validator agent output to judge whether addressing their findings would send the work off track. It is not a general pre-fix review stage.
 - **Observed:** The orchestrator sent its own additional code-review findings to Steward after the user authorized fixes, then defended this as required after any review findings.
 - **Related:** AIF-077 distinguishes Steward from initial investigation; AIF-057 concerns finding-triggered follow-up cycles, not blanket approval of requested implementation.
-- **Recurrence:** Later on 2026-09-17, the orchestrator again sent its own user-approved fixes to Steward for a bounded implementation assessment despite receiving the revised exclusion in active context. The operator clarified that Steward is not a pre-implementation role at all. Review of AIF-029 confirms the intended role is judging whether reviewer/validator findings warrant additional work after implementation. Current wording omits that phase from the positive trigger and qualifies the exclusion with “routine”; the role also requests smallest-fix recommendations. These are possible reinforcing cues, not an excuse for ignoring the existing exclusion. The operator subsequently approved the replacement: explicit post-implementation finding triage, no requested-work preflight, and a brief out-of-role response from Steward. Applied to shared caller/Team Lead guidance, catalog, role body, documentation, and tests; generic tools unchanged. All 35 focused tests and profile typecheck pass. Composed bytes: caller 3,591 to 3,670; Team Lead 3,187 to 3,244; Strategist 3,359 to 3,372 (catalog only); Steward 1,448 to 1,867. Deterministic composition tests pass. Changed standing guidance/catalog bytes invalidate their cached prompt suffix; live cache use and model adherence were not measured.
+- **Recurrence:** Later on 2026-09-17, the orchestrator again sent its own user-approved fixes to Steward for a bounded implementation assessment despite receiving the revised exclusion in active context. The operator clarified that Steward is not a pre-implementation role at all. Review of AIF-029B confirms the intended role is judging whether reviewer/validator findings warrant additional work after implementation. Current wording omits that phase from the positive trigger and qualifies the exclusion with “routine”; the role also requests smallest-fix recommendations. These are possible reinforcing cues, not an excuse for ignoring the existing exclusion. The operator subsequently approved the replacement: explicit post-implementation finding triage, no requested-work preflight, and a brief out-of-role response from Steward. Applied to shared caller/Team Lead guidance, catalog, role body, documentation, and tests; generic tools unchanged. All 35 focused tests and profile typecheck pass. Composed bytes: caller 3,591 to 3,670; Team Lead 3,187 to 3,244; Strategist 3,359 to 3,372 (catalog only); Steward 1,448 to 1,867. Deterministic composition tests pass. Changed standing guidance/catalog bytes invalidate their cached prompt suffix; live cache use and model adherence were not measured.
 - **Decision:** With operator approval, replace the broad trigger in caller and Team Lead guidance with one shared reviewer/validator-agent finding trigger, explicitly excluding orchestrator investigation and routine requested implementation. Align the catalog, role body, and documentation; retain direct evidence-proved corrections and advisory authority.
 - **Validation:** All 34 focused guidance/definition tests and default-profile typecheck pass. Bundled composition sizes changed: caller 3,238 to 3,591 bytes; Team Lead 2,794 to 3,187; Strategist 3,281 to 3,359 (catalog only); Steward 1,363 to 1,448. Output remains deterministic. Changed guidance/catalog text invalidates the corresponding cached prompt suffix; actual cache usage and future adherence were not measured.
 - **Status:** Implemented locally. Activation requires a fresh session or settled-only `/reload`.
@@ -32,10 +43,10 @@
 
 - **Reference:** Operator screenshot of one visible subagent above the orchestrator, 2026-09-17.
 - **Feedback:** One visible subagent occupied the upper two-thirds while the orchestrator received the lower third. The orchestrator should retain the lower two-thirds for one through four visible subagents. At five through eight subagents, the second child row may borrow the middle third, leaving the orchestrator the lower third.
-- **Finding:** `SubagentLayout.balanceHeight()` currently targets the caller at one third for every nonempty main-tab layout. This directly produces the reported geometry and conflicts with the requested count-dependent split.
-- **Recommended correction:** Target the caller at two thirds while the main tab has at most four children and one third once it has more than four. Preserve the existing two rows of four and child-nine overflow behavior.
+- **Finding:** `SubagentLayout.balanceHeight()` targeted the caller at one third for every nonempty main-tab layout. This directly produced the reported geometry and conflicted with the requested count-dependent split.
+- **Correction:** Target the caller at two thirds while the main tab has at most four children and one third once it has more than four. Preserve the existing two rows of four and child-nine overflow behavior.
 - **Related:** AIF-070.
-- **Status:** Feedback recorded. Runtime and test changes require operator approval.
+- **Status:** Implemented with operator approval. Focused layout tests, default-profile typecheck, and runtime smoke pass; attached-client acceptance remains unverified.
 
 ## AIF-075 - Do not block on routine background subagents
 
@@ -201,19 +212,19 @@
 - **Feedback:** `/new-instance` must never cause the current orchestrator to stop; it is an interface command that opens another instance, not an instruction to abandon current execution.
 - **Finding:** The profile's shared acknowledgment wrapper inserted command text with `pi.sendMessage()`, whose custom messages participate in model context. Pi extension commands already bypass the agent when invoked; the wrapper unintentionally reintroduced the command afterward as model-visible context.
 - **Decision:** Preserve visible command history as TUI-only custom entries via `pi.appendEntry()`. Do not add a model instruction explaining `/new-instance`; remove the runtime source of ambiguity instead.
-- **Related:** APR-045, AIF-029.
+- **Related:** APR-045, AIF-029A.
 - **Status:** Runtime and regression test corrected locally. With operator approval, the `pi-extension` skill now carries the command presentation versus model-input rule for future extension work. Future attached-client behavior requires reload.
 
-## AIF-059 - Make Onclave outbound and automatic-reply behavior explicit
+## AIF-059A - Make Onclave outbound and automatic-reply behavior explicit
 
 - **Reference:** Operator review after an instance manually replied to an inbound Onclave ask with an invalid `inform` plus `task_id`, 2026-09-15.
 - **Feedback:** The interface is confusing because one flat `onclave_message` schema combines three outbound modes while inbound asks and requests are answered automatically from the normal assistant final response. Inbound framing prominently exposes task metadata without saying not to echo it, and field applicability is enforced only after an invalid call.
 - **Finding:** The failed instance did not merely choose an invalid field combination; it used the outbound tool for a response the adapter already publishes automatically after the turn settles. Current tool guidance covers authority but not this lifecycle. Documentation defines the behavior, but that text is not present at the model decision point. Validation also accepts `timeout_ms` for asynchronous `request` even though execution ignores it and documentation defines timeout as ask-only.
 - **Recommendation:** Preserve automatic replies. Add concise inbound framing that says to answer normally and not call `onclave_message`; add a message-type/field table to tool-owned guidance and conditional field descriptions; reject request timeouts consistently. Keep runtime validation. Consider separate outbound tools only if clearer guidance remains insufficient, since a larger tool surface is not yet justified.
 - **Related:** TCA-004, AIF-032, AIF-035.
-- **Status:** Feedback recorded; implementation requires operator approval.
+- **Status:** Implemented in the owning Onclave adapter. Inbound framing explains response behavior, active-request correlation is inferred, unsupported task/context/timeout fields are rejected, and focused communication tests cover the contract.
 
-## AIF-059 - Keep investigation purpose intact across long plans
+## AIF-059B - Keep investigation purpose intact across long plans
 
 - **Reference:** Operator plan walkthrough request, 2026-09-15.
 - **Feedback:** Large plans invite unsupported assumptions and context-compaction drift that lose the original objective. Explain what each step proves and how before proceeding.
@@ -237,7 +248,7 @@
 - **Feedback:** “Relevant task” is too ambiguous to trigger reliable Steward use in a long-running plan. The trigger should be based on an observable validation finding and proposed follow-up action. The operator clarified that no user is monitoring an unattended plan run, so a manual `/steward` command does not solve the failure.
 - **Finding:** Pi skills and this profile's agent catalog both expose descriptions to the orchestrator for model-selected use. Skill loading does not itself launch a subagent; this profile launches roles through the `subagent` tool. The Steward description currently says only “review-driven follow-up,” which does not directly name an unexpected deployment or failed plan check. Automatic classification of arbitrary nonzero tool results would confuse expected command outcomes with validation findings.
 - **Recommendation:** Put the autonomous trigger in the always-injected Steward catalog description and subagent guidance: when an agreed check or deployment behaves unexpectedly and the proposed response requires tracked source/deployment changes, another MR/image/deploy cycle, or a changed workflow, invoke Steward before implementing. Always retrigger after a prior fix for the same criterion is falsified. Do not depend on user action, make Steward an approval authority, or add a generic shell-error gate. A plan-local reminder may reinforce a specific phase but is not the primary trigger.
-- **Related:** APR-040, AIF-029, AIF-032, AIF-043.
+- **Related:** APR-040, AIF-029B, AIF-032, AIF-043.
 - **Status:** Implemented with operator approval in the always-injected caller and Team Lead guidance plus `agents/steward.md`. The trigger is model-selected, requires no active user, and adds no command-failure gate.
 
 ## AIF-056 - Require explicit direction for published-history rewrites
@@ -304,7 +315,7 @@
 - **Finding:** Commit `c25864f1` added the only custom blocking branch in `extensions/clear.ts`. Its archived plan called the behavior a proposed mechanism but did not identify operator authority for that `/clear` policy. The implementation, regression test, documentation, and changelog then treated it as required.
 - **Recommendation:** Remove the cleanup-failure veto from `/clear`. Keep cleanup reporting and any exact-resource handling separate from whether the new session opens. Review the desired disposition of unresolved runtime ownership before implementation rather than replacing the gate with another unapproved policy.
 - **Related:** AIF-019, AIF-041, APR-031.
-- **Status:** Feedback recorded; runtime change requires operator approval.
+- **Status:** Implemented. `/clear` reports unresolved cleanup but still starts the new session; it suppresses reload when reset did not complete. Focused validation is recorded in the implementing runtime history.
 
 ## AIF-049 - Keep skill creation Pareto-focused
 
@@ -347,7 +358,7 @@
 - **Evidence:** The reported temporary evaluation-directory cleanup received `ask` after an approximately 24 KB prompt containing reports, hashes, edits, and incidental parser uncertainties. The recorded call took 11.3 seconds, not a timeout; contribution to other timeout incidents is unverified. The orchestrator repeatedly substituted summaries and file paths for the requested exact prompt, then incorrectly attributed the issue to one sentence.
 - **Decision:** Replace the outbound evidence dump with native-branch conversation text and the pending call. Keep deterministic rules and approval boundaries unchanged. Document context omissions rather than silently substituting machine-generated history.
 - **Correction:** The first implementation imposed an unrequested 16-message/16 KiB slice. The operator rejected it and approved full user/assistant session text, trimmed only when the judge's actual context window requires it. Removed both conversation caps and the separate 64 KiB outbound gate; trimming occurs only after provider-reported context overflow and discloses the omitted count.
-- **Related:** AIF-015 (meaningful harm), AIF-032 (concise instructions), AIF-041 (context-size protections), APR-007, APR-010.
+- **Related:** AIF-015B (meaningful harm), AIF-032 (concise instructions), AIF-041 (context-size protections), APR-007, APR-010.
 - **Status:** Implemented with focused tests, typecheck and runtime smoke passing. The reported cleanup passed a non-executing native-context Luna replay after contract refinement; meaningful unique-work and hard-block contrasts retained intervention. See APR-028 for measurements and limits. Active sessions require reload; no global instruction change.
 
 ## AIF-044 - Keep Pi repository settings out of project repositories
@@ -379,10 +390,10 @@
 
 - **Reference:** Operator correction after the weekly session-failure review, 2026-09-11.
 - **Feedback:** The operator did not request the custom `log_analytics` query deadlines, selected-input bound, DuckDB memory ceiling, or many other safety gates added to the default profile. These controls obstruct requested work and shift operational policy away from the operator without agreement.
-- **Finding:** The review hit the tool's configured 120-second large-query deadline and 1 GB DuckDB ceiling while performing the requested exhaustive analysis. A direct JSONL fallback completed the affected review. Existing AIF-015, AIF-024, AIF-029, AIF-031, and APR-024 already reject generic, unrequested gates and ceremony; this is another concrete occurrence involving resource limits rather than authorization prompts.
+- **Finding:** The review hit the tool's configured 120-second large-query deadline and 1 GB DuckDB ceiling while performing the requested exhaustive analysis. A direct JSONL fallback completed the affected review. Existing AIF-015B, AIF-024, AIF-029B, AIF-031, and APR-024 already reject generic, unrequested gates and ceremony; this is another concrete occurrence involving resource limits rather than authorization prompts.
 - **Operator clarification:** Limits that protect model context size are acceptable. The objection concerns unrequested operational gates and resource ceilings that obstruct work, not bounded tool-result rendering or pagination needed to keep results usable in context.
 - **Recommendation:** Inventory custom default-profile gates and limits, identify their provenance and concrete purpose, and present removal or simplification recommendations for operator decision. Preserve context-size protections. Do not silently raise, retain, or replace operational gates with new gates. This feedback does not itself authorize runtime changes.
-- **Related:** AIF-015, AIF-024, AIF-029, AIF-031, APR-024, APR-026.
+- **Related:** AIF-015B, AIF-024, AIF-029B, AIF-031, APR-024, APR-026.
 - **Status:** Operator approved remediation. Removed internal analytics deadlines, the standard selected-input ceiling, search byte/record/deadline page gates, and cursor expiry; raised default DuckDB memory to 2 GB and large temporary disk to 8 GiB; retained two threads, serialized staging, caller cancellation, context-output bounds, bounded cursor state, bounded physical-record/header reads, and the read-only registered-source boundary. Focused analytics tests and TypeScript validation pass.
 
 ## AIF-040 - Preserve approved development fixture policy across sessions
@@ -462,7 +473,7 @@
 
 - **Reference:** Operator approval after independent Fable and Opus wording consultations, 2026-09-10.
 - **Feedback:** Existing features demonstrate the expected solutions and safeguard level, not just reusable code. Compare purpose and operating environment: deployed authentication controls do not automatically belong in local developer tooling. Generic best practices or hypothetical concerns alone do not justify new gates. Ask with a recommendation when the applicable pattern is unclear or alternatives differ in behavior, scope, safeguards, or operator workflow; choose equivalent implementation details directly.
-- **Comparison:** Refines AIF-004's flexible, narrow workflows and AIF-029 (direct evidence and recommended consultation), with the overbuilding examples in APR-002/APR-007. Repository patterns are a baseline, not infallible: the request or concrete code/environment evidence may establish a need to depart.
+- **Comparison:** Refines AIF-004's flexible, narrow workflows and AIF-029B (direct evidence and recommended consultation), with the overbuilding examples in APR-002/APR-007. Repository patterns are a baseline, not infallible: the request or concrete code/environment evidence may establish a need to depart.
 - **Decision:** Added the approved paragraph under Proportionality in `pi/profiles/default/AGENTS.md`. Preserved existing scope, verification, and preservation rules. Planning-skill and agent-plan changes remain outside this approval; no runtime gates or required reports were added.
 - **Status:** Implemented as instruction text. Scoped diff review and `git diff --check` passed; future model adherence remains unverified.
 
@@ -475,7 +486,7 @@
 - **Fallback clarification:** Operator explicitly permits existing `find`, `rg`, `jq`, `awk`, and `sort` for read-only history investigation when analytics cannot retrieve what is needed. Prefer the tool without making it exclusive; preserve scope, source coordinates, parsed field semantics and honest coverage.
 - **Status:** Runtime changes and validation are recorded in repository-root-relative `.specs/archive/query-driven-log-analytics/plan.md`. The approved fallback guidance remains in the existing default `pi-log-analytics` skill/reference rather than a duplicate skill.
 
-## AIF-029 - Tools are not slash-command-only by default
+## AIF-029A - Tools are not slash-command-only by default
 
 - **Reference:** Operator correction after an explicitly requested commit was rejected because `commit_run` lacked a delivered `/commit` invocation, 2026-09-10.
 - **Feedback:** Tools are shared operator/model capabilities. Naming or describing an action should be sufficient for the model to use its tool; slash commands must not add ceremony by acting as mandatory capability gates unless the operator has discussed and approved a concrete reason.
@@ -484,7 +495,7 @@
 - **Related:** AIF-004, AIF-024, AIF-028, APR-007.
 - **Status:** Implemented. All 50 focused offline command/web-tool tests and the default-profile typecheck pass; direct runtime use requires reload and remains unverified.
 
-## AIF-029 - Use direct evidence and recommended consultation without approval gates
+## AIF-029B - Use direct evidence and recommended consultation without approval gates
 
 - **Reference:** Operator clarification during Strategist and Steward planning, 2026-09-10.
 - **Feedback:** Strategist advises before subagent assignments; a separate Steward checks whether reviewer/validator findings warrant more work after implementation. Both are the recommended path when applicable, not exceptional optional tools or mandatory approvals. Keep them simple, flexible, and low ceremony. Prefer direct tool/result triggers and observable facts over abstract benefits or subjective labels; the operator reports that ambiguity lets agents expand scope.
@@ -509,7 +520,7 @@
 - **Recommendation:** Add a short delegation rule at the default-profile scope: split work by independently reviewable seam or one plan task, normally commission the next task after integrating the prior result, and use the least capable configured role/model that can reliably do the work. Preserve judgment for tightly coupled changes and cheap orchestrator-owned checks rather than requiring one agent per file.
 - **Escalation follow-up:** The operator favors bounded automatic retry with a stronger model to keep execution moving. A retry should preserve the same assignment and evidence, occur only after a settled capability-like failure rather than a missing prerequisite, permission, tool, or user decision, and remain capped so it cannot become an escalation loop. Exact ladder and retry count remain design choices until approved.
 - **Related:** AIF-004, AIF-017, APR-006, APR-020.
-- **Status:** Feedback recorded. Instruction change requires operator approval.
+- **Status:** Superseded by the implemented AIF-061 and AIF-062 assignment-sizing and dependency guidance.
 
 ## AIF-026 - Remove subagent display duplication without hiding supervision context
 
@@ -532,7 +543,7 @@
 - **Reference:** Operator discussion of parent-question hangs, actor-style messaging, and possible SQLite storage, 2026-09-09.
 - **Feedback:** KISS and low ceremony are explicit priorities. Do not surround ordinary subagent messaging with excessive safety gates, approvals, or operator bookkeeping.
 - **Direction:** Prefer a small message/reply lifecycle with runtime-managed correlation and clear waiting states. Do not add completion gates, repeated reminders, or speculative recovery machinery as requirements. Basic routing/state correctness is distinct from new authorization ceremony. SQLite and restart recovery were discussed, not selected for implementation.
-- **Related:** AIF-004, AIF-015 (risk proportionality), APR-007, APR-016.
+- **Related:** AIF-004, AIF-015B (risk proportionality), APR-007, APR-016.
 - **Status:** Design constraint recorded. No implementation, global instruction change, or new storage/recovery requirement authorized by this entry.
 
 ## AIF-023 - Separate intent refinement from plan execution
@@ -576,7 +587,7 @@
 - **Confirmed UX decisions:** Use pregenerated human names consistently in transcript rows, pane titles, and controls; retain UUIDs internally. Put child panes above the unchanged bottom orchestrator, fill left to right, four children per row and two rows; more than eight children moves to a new tab. This supersedes the archived fifth-child tab threshold, not authorization for silent headless overflow.
 - **Existing lifecycle decision (corrected during planning):** The newer completed `.specs/archive/default-subagents-and-council/plan.md` explicitly supersedes the cancelled Herdr plan: capture results, settle owned processes, then close finished panes immediately, including failed work, without zoom-deferred cleanup. Preserve retained conversations and direct intervention under current lifecycle rules. The assistant first cited the older archive and incorrectly recorded its failed-pane/zoom policy as reaffirmed; the operator had not requested that change. The owning `docs/subagents.md` now records the correct source and preserved behavior.
 - **Review failure:** The assistant asked the operator to decide pane closure again without consulting the archived plan. The answer was recorded; the failure was retrieval, not missing operator direction. Consult this reference when implementing and document the resulting behavior in the owning default runtime documentation, rather than relying only on an archive or feedback log.
-- **Status:** Historical implementation and final scoped 17-test rerun are recorded, but operator acceptance remains blocked. No model-backed or attached-client run occurred; the initial swap focus theft and 5+ child geometry blocker prevent claiming complete UX.
+- **Status:** Superseded in part by AIF-070, which records corrected focus handling and validated 1/4/5/8/9 geometry. Attached-client acceptance remains unverified.
 
 ## AIF-019 - Reset stale subagent owners without manual ceremony
 
@@ -611,16 +622,16 @@
 - **Related:** AIF-014 (worktree integration), AIF-005 (archival), AIF-003/APR-002 (bounded scope and checks), APR-006 (premature handoff).
 - **Status:** Template and documentation added. Loader/argument-expansion verification is recorded in the implementation handoff; end-to-end agent adherence remains unverified.
 
-## AIF-015 — Do not substitute promises for authorized execution
+## AIF-015A — Do not substitute promises for authorized execution
 
 - **Reference:** Operator feedback after the default-subagents plan was twice followed by a response promising continuation while no further implementation was performed.
 - **Feedback:** Use the concise principle “show, don't tell.” Brief explanations of the next action and its reason are useful for monitoring; the problem is ending the turn after promising actionable work instead of doing it.
 - **Finding:** Existing planning and proportionality guidance already says to continue actionable authorized work, but APR-006 recurred immediately after correction. The failure mode is specifically substituting future-tense intent for available tool actions, not giving progress context.
 - **Recommendation:** Add one short rule to the default profile's global `AGENTS.md`: “Show, don't tell: brief intent updates are fine, but do not end a turn by promising actionable work. Do it or state the concrete blocker.”
 - **Related:** APR-001 and APR-006 (premature handoffs), AIF-003 (bounded completion), AIF-014 (authorized plan execution).
-- **Status:** Proposed. Instruction change requires operator approval.
+- **Status:** Implemented in `pi/profiles/default/AGENTS.md`; future adherence remains unverified.
 
-## AIF-015 - Damage Control prevents unrecoverable harm, not suspicious-looking activity
+## AIF-015B - Damage Control prevents unrecoverable harm, not suspicious-looking activity
 
 - **Reference:** Operator discussion of dependency-link setup approval, `/dc scan`, contextual variable handling, and helper dependency tracking on 2026-09-08.
 - **Feedback:** Damage Control should stop meaningful unrecoverable damage, not act as a general security guard. Routine recoverable work should pass; unfamiliar syntax, variables, helpers, and generic flags are not independent reasons for approval or new machinery. Avoid approval ceremony and speculative dependency frameworks.

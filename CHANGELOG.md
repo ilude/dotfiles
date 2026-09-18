@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-17: Reconcile compaction history and active-turn decisions together
+
+**Changed:** Default Pi now uses a summary-generation-only extension for orchestrators and subagents. Previous summary, compacted history, turn prefix, and custom focus reach one native summarization request, avoiding independent contradictory checkpoints and the native split path's omission of prior context when no complete-history messages remain. Guidance preserves current authorization and corrections; file metadata carries forward across extension checkpoints.
+
+**Preserved:** Native compaction triggers, retention boundaries, serialization, model selection, configured retries, persistence, and continuation. No legacy soft threshold, abort/resume loop, task registry, or failure circuit. Failed summary generation reports the error and cancels the attempt instead of silently falling back to the faulty split path. Deterministic tests use the real compactor with stubbed model responses; live summary quality is unverified. Activate with a fresh session or settled-only reload; existing children are not migrated.
+
+## 2026-09-17: Load repository instructions for every subagent role
+
+**Changed:** Default Pi subagents now use native context-file discovery instead of suppressing it outside Team Leads. Children receive active-profile and applicable ancestor repository instructions from their assigned working directory without relying on parents to reproduce those policies in each assignment. Parent conversation history is not copied. Explicit skill selection for ordinary roles, Team Lead skill discovery, and frozen tool/delegation authority remain unchanged. Reload with children settled or start a fresh session before launching new children.
+
+## 2026-09-17: Remove unused handoff command and clarify plan boundaries
+
+**Changed:** Removed default Pi's unused `/handoff` prompt and its project-specific private-vault workflow; `/summarize` remains available. Planning now distinguishes explicitly deferred work from ready, independent executable scope and preserves the caller's explicit single-agent handoff exception without changing Team Lead coordination. The existing authoring review checks that behavior-changing restrictions have an agreed requirement, applicable repository policy, or demonstrated task need rather than silently promoting proposals into requirements.
+
+**Preserved:** No new approval gate, state registry, or review phase. Subagent context loading and native compaction are unchanged pending operator decisions. Reload or start a fresh session to pick up the prompt and skill changes.
+
+## 2026-09-17: Preserve orchestrator space with small visible teams
+
+**Changed:** Default Pi now keeps the orchestrator at approximately two-thirds of the main tab height while one through four visible subagents occupy the upper third. When a fifth through eighth subagent requires the second child row, the orchestrator returns to the bottom third. The existing two rows of four, ninth-child overflow, focus restoration, and tab naming behavior are unchanged.
+
+**Documentation:** Reconciled stale feedback-log statuses with implemented Onclave messaging, `/clear`, delegation, and communication guidance; assigned unique suffixes to previously duplicated feedback IDs; and marked the older subagent UX blocker as superseded by later geometry validation.
+
 ## 2026-09-17: Make Steward exclusively post-implementation finding triage
 
 **Changed:** Steward now assesses whether reviewer/validator findings about implemented work warrant additional work. Caller and Team Lead guidance explicitly exclude requested implementation, including user-approved code-review fixes, implementation planning, and orchestrator investigation. Misrouted planning or pre-implementation assignments receive a brief mismatch response rather than implementation advice. The role distinguishes necessary corrections from optional improvements instead of developing fixes.

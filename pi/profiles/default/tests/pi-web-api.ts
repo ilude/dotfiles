@@ -1,5 +1,7 @@
 // Avoid importing Pi's unrelated experimental server entry point in Vitest.
 // Production extensions receive these same exports through Pi's loader.
+export { compact } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/compaction/compaction.js";
+export { SettingsManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/settings-manager.js";
 export { formatSkillsForPrompt, loadSkillsFromDir } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/skills.js";
 export { CONFIG_DIR_NAME, getAgentDir } from "../node_modules/@earendil-works/pi-coding-agent/dist/config.js";
 export { copyToClipboard } from "../node_modules/@earendil-works/pi-coding-agent/dist/utils/clipboard.js";

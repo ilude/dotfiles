@@ -3,10 +3,10 @@ import type { LaunchSpec } from "./rpc.ts";
 import type { ChildEndpoint } from "./transport.ts";
 export function childLaunch(spec: LaunchSpec, id: string, profile: string, endpoint?: ChildEndpoint) {
  const d=spec.definition;
- const isolatedResources=d.name==="teamlead"?[]:["--no-skills","--no-context-files"];
+ const isolatedResources=d.name==="teamlead"?[]:["--no-skills"];
  const args=[...(spec.surface==="headless"?["--mode","rpc"]:[]),"--no-extensions",...isolatedResources,"--no-prompt-templates","--no-themes","--approve",...(d.tools.length?["--tools",d.tools.join(",")]:["--no-tools"]),"--model",spec.model,"--thinking",spec.effort];
  const extension=(name:string)=>args.push("--extension",join(profile,"extensions",name));
- extension("subagent-child.ts");extension("damage-control/index.js");extension("session-profile.ts");extension("tool-invocation-provenance.ts");
+ extension("subagent-child.ts");extension("compaction.ts");extension("damage-control/index.js");extension("session-profile.ts");extension("tool-invocation-provenance.ts");
  // Bedrock children account finalized replies without loading operator commands.
  // Mantle additionally needs its custom provider registration.
  if(spec.model.startsWith("bedrock-mantle/"))extension("bedrock/provider.ts");

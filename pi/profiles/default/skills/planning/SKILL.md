@@ -39,7 +39,9 @@ reopening them.
    architecture, or acceptance, explain the choices and consequences, recommend
    one with reasons, and ask a focused question. Handle routine technical details
    using judgment. Recommendations do not become requirements until agreed. Do not
-   call a plan ready while a consequential decision remains open.
+   call the selected executable scope ready while a consequential decision within
+   it remains open. Keep explicitly deferred work visible but outside that scope's
+   acceptance criteria and dependencies; it must not block independent approved work.
 4. Write named Markdown checkbox tasks with concrete changes, dependencies, relevant
    paths or contracts, finite checks, and observable done conditions. Shape tasks as
    independently assignable outcomes: separate shared prerequisites from parallel
@@ -59,10 +61,12 @@ reopening them.
 5. Record authorization, preservation, and delegation constraints. Execution normally
    includes dedicated task worktrees, local task commits, and merge into a recorded
    target; push and deployment require separate permission. Executable plans must tell
-   the orchestrator to consult Strategist before delegating, assign at most one named
-   plan task per subagent, split larger tasks further, and use only roles from the
-   active agent catalog. They must also tell the executor to continue independent work
-   around blockers, adapt mechanisms within settled intent, and ask before changing
+   the orchestrator to consult Strategist before delegating unless the user explicitly
+   requests a single-agent handoff, including a Team Lead. Preserve the Team Lead's
+   own Strategist-first workflow. Assign at most one named plan task per subagent,
+   split larger tasks further, and use only roles from the active agent catalog.
+   Plans must also tell the executor to continue independent work around blockers,
+   adapt mechanisms within settled intent, and ask before changing
    scope, decisions, or acceptance.
 6. Include a bounded closeout contract. After implementation and agreed agent-owned
    checks, archive the whole spec and commit it with the task changes on the task
@@ -82,8 +86,11 @@ reopening them.
 8. Review once as a fresh executor: are ordinary tasks sized for the execution target
    above, with useful hints for unusually complex work? Can the executor preserve
    fixed intent while choosing routine mechanisms, handle blockers, run finite checks,
-   and complete authorized closeout from the plan alone? Fix consequential gaps, then
-   stop. A draft with explicit open decisions is more honest than false readiness.
+   and complete authorized closeout from the plan alone? Does each behavior-changing
+   restriction come from an agreed requirement, applicable repository policy, or
+   demonstrated task need? Remove unsupported restrictions or present them as proposals
+   outside the executable scope. Fix consequential gaps, then stop. A draft with
+   explicit open decisions is more honest than false readiness.
 
 See [agent-process](../agent-process/SKILL.md) when reviewing workflow feedback or
 changing instructions. Ordinary planning does not require another feedback review.

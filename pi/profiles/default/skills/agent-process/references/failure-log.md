@@ -2,7 +2,7 @@
 
 ## APR-061 - Steward reused as an implementation preflight after explicit correction
 
-- **Reference:** Repository review follow-up, 2026-09-17; AIF-079, AIF-029.
+- **Reference:** Repository review follow-up, 2026-09-17; AIF-079, AIF-029B.
 - **Observed:** After the user authorized fixes for the orchestrator's six findings, the orchestrator invoked Steward to assess proposed implementation approaches. The user interrupted and clarified that Steward is not a pre-implementation role.
 - **Finding:** Active guidance already excluded orchestrator investigation and routine checkpoints for requested fixes. This was an adherence failure. Positive routing text still lacks the original post-implementation boundary; role text invites smallest-fix recommendations and does not tell Steward how to handle misrouted assignments.
 - **Proposed remediation:** Replace, rather than append to, caller/catalog routing with post-implementation finding triage; give Steward a concise out-of-role response instead of performing implementation assessment. No tool gate or additional approval stage proposed.
@@ -206,7 +206,7 @@
 - **Observed:** Each new dev validation failure led directly to diagnosis, source edits, a merge request, image rebuild, and another live retry. The orchestrator never invoked Steward despite active guidance to consult it after review or validation findings. One inferred APIM UUID fix became MR !122, failed live, and was reverted by MR !123. After a later EISA 409, the orchestrator started another ownership/order change before the operator asked whether the work was churning.
 - **Finding:** The existing Steward trigger was applicable and was not followed. A short checkpoint could have compared the requested greenfield proof, the exact failure, prior successful behavior, and the proposed next mutation. In particular, APIM response representation did not prove accepted create-payload identity, so the UUID change should have been tested directly before an MR. Repeated source-change/deploy cycles also needed one bounded hypothesis and falsification check per cycle.
 - **Remediation:** For this task, stop the current uncommitted follow-up and use one explicit finding checkpoint before another source change: state the observed failure, strongest competing explanations, cheapest discriminating check, proposed fix, and unchanged acceptance path; consult Steward on that package. Treat this primarily as noncompliance with existing guidance, not evidence that another global rule is needed.
-- **Related:** APR-002, AIF-029, AIF-032, AIF-051.
+- **Related:** APR-002, AIF-029B, AIF-032, AIF-051.
 - **Status:** Incident recorded; no instruction or runtime change authorized. The database lifecycle remains incomplete.
 
 ## APR-039 - Herdr diagnosis used another pane's process identity
@@ -289,9 +289,9 @@
 - **Reference:** Operator-reported `/clear` failure after two strategist launches returned `pane_not_found`, 2026-09-12.
 - **Observed:** Both launchers exited, but child records remained at `processState: "starting"`. Cleanup remained incomplete, `requestSubagentRuntimeReset()` raised `RuntimeCleanupError`, and `/clear` returned without calling `ctx.newSession()`.
 - **Finding:** Commit `c25864f1` deliberately added this refusal and a regression asserting that `ctx.newSession()` is not called after unresolved cleanup. The archived plan supplied no operator decision authorizing cleanup success as a prerequisite for clearing. The stale launch-state defect triggered the gate but did not create its policy.
-- **Remediation:** AIF-050 recommends removing the veto while preserving truthful cleanup reporting. Exact unresolved-owner disposition remains to be agreed before implementation.
+- **Remediation:** AIF-050 removed the veto while preserving truthful cleanup reporting. Cleanup failure suppresses reload but does not prevent the requested new session.
 - **Related:** AIF-019, AIF-041, AIF-050, APR-030.
-- **Status:** Incident recorded; no runtime correction authorized yet.
+- **Status:** Runtime correction implemented; attached-client effectiveness remains unverified.
 
 ## APR-030 - Internal model registry leaked into visible-subagent bootstrap
 
@@ -399,7 +399,7 @@
 - **Observed:** The operator selected `Allow once` for task-owned cleanup, but Damage Control returned its generic operator-denied result and executed nothing. Repeated explicit approval produced the same result.
 - **Finding:** `promptDecision` compared the TUI custom result to `"allow"` inside the conditional assignment, converting it to a boolean. Its later string checks could therefore never recognize either `allow` or `review`; every non-cancelled TUI choice fell through to denial. RPC prompts were unaffected.
 - **Remediation:** Preserve the custom component's string result and add an actual component-level regression proving Enter on `Allow once` returns `approved`.
-- **Related:** APR-004, APR-010, AIF-015.
+- **Related:** APR-004, APR-010, AIF-015B.
 - **Status:** Code and focused regression updated; active-session effectiveness requires reload before retrying the interrupted cleanup.
 
 ## APR-018 - External pipeline monitoring was delegated to tool-less subagents
@@ -484,7 +484,7 @@
 - **Observed:** Damage Control requested whole-call approval for `rm -rf "$scratch"` and displayed unresolved temporary variables. The issue is authority, not a missing special-case parser: confirmed generic deletion `user` rules return before Luna can review the same-call `mktemp` pattern.
 - **Follow-up:** The operator clarified that the existing shadow judge should recognize the pattern, and rejected migration-order IDs as active policy names. The selected risk-alignment plan was authorized for execution, including semantic identities and real policy-to-judge routing checks. No new diagnostic judge or temporary-directory recognizer is intended.
 - **Evidence:** The original submitted command was recovered as inert regression data. Running real baseline `main` analysis without executing the command returned `user` with confirmed `legacy-007`/`legacy-008`. The task implementation now routes it to review. No actual Luna verdict is verified because the task profile has no configured authentication/model catalog.
-- **Related:** AIF-015, APR-004; repository-root-relative `.specs/archive/damage-control-risk-alignment-and-preapproval/plan.md`.
+- **Related:** AIF-015B, APR-004; repository-root-relative `.specs/archive/damage-control-risk-alignment-and-preapproval/plan.md`.
 - **Status:** Implementation and offline checks in the task worktree; live acceptance and integration remain pending. The original report was not a captured runtime judge trace, and the baseline probe did not execute the operation.
 
 ## APR-009 - Long shell sleep used for deployment monitoring
@@ -513,7 +513,7 @@
 - **Observed:** Assistant proposed a second confirmation, a broad mandatory safety checklist, and dependency-tree handling before establishing their need. It then recommended continuing body analysis despite the operator's scan-skipping objective, and later suggested excluding all helper-using scripts. The operator corrected each direction. Earlier explanations also overstated direct rm prompting without first checking the scoped-delete exemption.
 - **Impact:** Repeated clarification and design drift in the conversation. No proposed trust store, extra gate, or dependency framework was implemented.
 - **Remediation:** Recorded the governing purpose in the owning default Damage Control contract, completed a bounded current-policy review, and separated agreed feature direction from unresolved implementation details. Helper complexity alone is not a reason to reject preapproval. Existing runtime semantics remain explicit until changed by scoped implementation.
-- **Related:** AIF-015, AIF-004, APR-002. This incident concerns proposal scope and inaccurate explanation, not evidence of executed data loss or a new measured failure rate.
+- **Related:** AIF-015B, AIF-004, APR-002. This incident concerns proposal scope and inaccurate explanation, not evidence of executed data loss or a new measured failure rate.
 - **Status:** Documentation/review complete; effectiveness of the future implementation remains unverified.
 
 ## APR-006 — Default subagent plan stopped without a blocker

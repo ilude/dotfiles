@@ -15,20 +15,23 @@ describe("subagent launch prompt", () => {
     expect(launch.env.PI_SUBAGENT_PROMPT).toBe("frozen composed prompt");
     expect(launch.args).toContain("provider/model");expect(launch.args).toContain("low");
     expect(launch.args.includes("rpc")).toBe(surface === "headless");
+    expect(launch.args).not.toContain("--no-context-files");
     expect(launch.args).toContain("--approve");
     expect(launch.args).not.toContain("--no-approve");
     expect(launch.args).toContain(join(process.cwd(), "extensions", "session-profile.ts"));
+    expect(launch.args).toContain(join(process.cwd(), "extensions", "compaction.ts"));
     expect(launch.args).toContain(join(process.cwd(), "extensions", "tool-invocation-provenance.ts"));
   });
 
-  it("loads context files and discoverable skills only for Team Leads", () => {
+  it("loads context files for all roles while keeping skill discovery exclusive to Team Leads", () => {
     const ordinary = childLaunch(spec("headless"), "ordinary", process.cwd());
     const teamlead = childLaunch({
       ...spec("headless"),
       definition: { ...definition, name: "teamlead", delegates: ["probe"] },
     }, "teamlead", process.cwd());
 
-    expect(ordinary.args).toEqual(expect.arrayContaining(["--no-context-files", "--no-skills"]));
+    expect(ordinary.args).not.toContain("--no-context-files");
+    expect(ordinary.args).toContain("--no-skills");
     expect(teamlead.args).not.toContain("--no-context-files");
     expect(teamlead.args).not.toContain("--no-skills");
     expect(teamlead.args).toContain("--no-extensions");

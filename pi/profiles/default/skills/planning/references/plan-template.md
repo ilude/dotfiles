@@ -33,8 +33,10 @@ applicable `AGENTS.md` files before acting.
 
 State fixed outcomes, interfaces, defaults, ownership, and behavior branches needed
 by later tasks. Distinguish them from adaptable technical approaches. Resolve
-consequential uncertainty while authoring; if user judgment is still needed, keep
-`status: draft`, explain the choices and recommendation, and ask a focused question.
+consequential uncertainty within the selected executable scope while authoring; if
+user judgment is still needed for that scope, keep `status: draft`, explain the choices
+and recommendation, and ask a focused question. List explicitly deferred work separately,
+without making it an acceptance criterion or dependency of independent approved work.
 Do not predetermine routine implementation details.
 
 ## Execution guidance
@@ -43,9 +45,10 @@ Create or resume the recorded dedicated task worktree and branch. Record the act
 path, branch, and originating integration target before editing. Preserve unrelated
 work and carry task-owned uncommitted plan content without deleting its source.
 
-Before delegating plan work, consult `strategist`. Assign at most one named plan task
-per subagent, split larger tasks further, and use only roles from the active agent
-catalog.
+Before delegating plan work, consult `strategist` unless the user explicitly requests
+a single-agent handoff, including a Team Lead. A Team Lead still follows its own
+Strategist-first workflow. Assign at most one named plan task per subagent, split
+larger tasks further, and use only roles from the active agent catalog.
 
 Implement the settled intent through the agreed checks. Adapt technical mechanisms
 when repository evidence requires it, but do not change user intent, scope, settled

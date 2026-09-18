@@ -186,6 +186,17 @@ describe("subagent layout contract", () => {
     expect(fixture.calls.some(call => call[0] === "pane" && call[1] === "focus")).toBe(false);
   });
 
+  it("gives the caller two-thirds height through four children, then one-third", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const request = { callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi" };
+    for (let index = 1; index <= 5; index++) {
+      await layout.place("origin", { ...request, childId: `child-${index}` });
+      const verticalResizes = fixture.calls.filter(call => call[0] === "pane" && call[1] === "resize" && ["up", "down"].includes(call[3]!));
+      expect(verticalResizes.at(-1)?.at(-3)).toBe(index <= CHILDREN_PER_ROW ? "0.333333" : "0.666667");
+    }
+  });
+
   it("observes a user focus change after opening and does not restore an older snapshot", async () => {
     const fixture = new LayoutFixture();
     fixture.focus = "w1:p1";
@@ -383,14 +394,6 @@ describe("subagent layout contract", () => {
       ["right", layout.snapshot("origin").find(child => child.childId === "child-4")!.paneId],
       ["right", layout.snapshot("origin").find(child => child.childId === "child-8")!.paneId],
     ]);
-  });
-
-  it("targets the original caller at one third of the combined main layout height", async () => {
-    const fixture = new LayoutFixture();
-    await new SubagentLayout(fixture.cli).place("origin", {
-      childId: "first", callerPane: "w1:p1", cwd: "C:/work", title: "First", plugin: "local.pi", entrypoint: "pi",
-    });
-    expect(fixture.calls).toContainEqual(["pane", "resize", "--direction", "down", "--amount", "0.666667", "--pane", "w1:p1"]);
   });
 
   it("recreates the upper row when only overflow children remain", async () => {

@@ -383,7 +383,7 @@ export class SubagentLayout {
     const bottom = Math.max(...rects.map((rect: any) => rect.y + rect.height));
     const total = bottom - top;
     if (!(total > 0)) return;
-    const desiredCaller = total / 3;
+    const desiredCaller = total * (mainTab.length <= CHILDREN_PER_ROW ? 2 / 3 : 1 / 3);
     const delta = (desiredCaller - caller.rect.height) / total;
     if (Math.abs(delta) >= 0.005) await this.cli(["pane", "resize", "--direction", delta > 0 ? "up" : "down", "--amount", Math.abs(delta).toFixed(6), "--pane", group.callerPane]);
   }
