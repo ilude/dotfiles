@@ -24,13 +24,23 @@ function plain(component: any, width: number) { return component.render(width).j
 function result(record: Partial<ChildRecord>, expanded = false) { return renderSubagentResult({ content: [{ type: "text", text: "internal JSON should not be primary" }], details: { ...base, ...record } }, { expanded }, theme, {}); }
 
 describe("subagent presentation", () => {
+  it("renders blocking rationale immediately below blocking call headers", () => {
+    const launch = renderSubagentCall({ agent: "explorer", instructions: "Find the implementation", blockingReason: "The result determines the next edit." }, theme, {});
+    expect(plain(launch, 120).split("\n")[1].trimEnd()).toBe("Blocking: The result determines the next edit.");
+    const strategist = renderSubagentCall({ agent: "strategist", instructions: "Advise on delegation", background: true }, theme, {});
+    expect(plain(strategist, 120).split("\n")[1].trimEnd()).toBe("Blocking: Strategist consultations run in the foreground by role contract.");
+  });
+
   it("renders a readable launch and control call at narrow and normal widths", () => {
     const call = renderSubagentCall({ agent: "explorer", instructions: "Find the implementation", surface: "visible", background: true }, theme, {});
     expect(plain(call, 36)).toContain("Find the implementation");
     expect(plain(call, 120)).not.toContain("surface=visible");
-    const control = renderSubagentControlCall({ action: "wait", id: "Clara", message: "continue" }, theme, {});
-    expect(plain(control, 80)).toContain("subagent control · wait");
-    expect(plain(control, 80)).toContain("Target: Clara");
+    expect(plain(call, 120)).not.toContain("Blocking:");
+    const control = renderSubagentControlCall({ action: "wait", id: "Clara", message: "continue", blockingReason: "The result determines the next edit." }, theme, {});
+    const controlText = plain(control, 80);
+    expect(controlText).toContain("subagent control · wait");
+    expect(controlText.split("\n")[1].trimEnd()).toBe("Blocking: The result determines the next edit.");
+    expect(controlText).toContain("Target: Clara");
   });
 
   it.each([
@@ -216,7 +226,10 @@ it("executes registered tools against an inert RPC child and renders their live 
     // Follow the current origin-session lifecycle rather than the child-authority path.
     vi.stubEnv("PI_SUBAGENT_AUTHORITY", "");
     subagents(pi); await handlers.session_start({}, ctx);
-    const args = { agent: "probe", instructions: "[activity] [hold]\nInspect all requested files." };
+    const missingReason = await tools.subagent.execute("missing-reason", { agent: "probe", instructions: "Inspect files." }, undefined, undefined, ctx);
+    expect(missingReason.isError).toBe(true);
+    expect(missingReason.details.error).toContain("requires blockingReason");
+    const args = { agent: "probe", instructions: "[activity] [hold]\nInspect all requested files.", blockingReason: "The inspection result is required before continuing." };
     const context: any = { state: {}, args, executionStarted: true, invalidate: vi.fn() };
     const call = tools.subagent.renderCall(args, theme, context);
     const abort = new AbortController();
@@ -249,13 +262,14 @@ it("executes registered tools against an inert RPC child and renders their live 
     const backgroundArgs = { agent: "probe", instructions: "[hold]", background: true };
     const background = await tools.subagent.execute("background", backgroundArgs, undefined, undefined, ctx);
     expect(plain(tools.subagent.renderResult(background, {}, theme, { state: {} }), 120)).toContain("started in background; child continues");
+    await expect(tools.subagent_control.execute("wait-bg", { action: "wait", id: background.details.displayName }, undefined, undefined, ctx)).rejects.toThrow("requires blockingReason");
     await tools.subagent_control.execute("cancel-bg", { action: "cancel", id: background.details.displayName }, undefined, undefined, ctx);
-    const approval = await tools.subagent.execute("approval", { agent: "probe", instructions: "[approval]" }, undefined, undefined, ctx);
+    const approval = await tools.subagent.execute("approval", { agent: "probe", instructions: "[approval]", blockingReason: "The approval response is required before continuing." }, undefined, undefined, ctx);
     expect(plain(tools.subagent.renderResult(approval, {}, theme, {}), 120)).toContain("needs user input");
     await tools.subagent_control.execute("cancel-approval", { action: "cancel", id: approval.details.displayName }, undefined, undefined, ctx);
     const fullAssignment = `Return an answer\n${"full assignment ".repeat(1100)}\nLAST REQUESTED LINE`;
-    const complete = await tools.subagent.execute("complete", { agent: "probe", instructions: fullAssignment }, undefined, undefined, ctx);
-    const failed = await tools.subagent.execute("failed", { agent: "probe", instructions: "[reject]" }, undefined, undefined, ctx);
+    const complete = await tools.subagent.execute("complete", { agent: "probe", instructions: fullAssignment, blockingReason: "The answer is required before continuing." }, undefined, undefined, ctx);
+    const failed = await tools.subagent.execute("failed", { agent: "probe", instructions: "[reject]", blockingReason: "The preflight result is required before continuing." }, undefined, undefined, ctx);
     for (const width of [36, 120]) {
       const text = plain(tools.subagent.renderResult(complete, { expanded: true }, theme, {}), width);
       expect(text).toContain("first answer"); expect(text).not.toContain("Duration:");
@@ -281,7 +295,7 @@ it("renders coordinator registered delegation and name controls over authenticat
   const pi: any = { registerTool: (tool: any) => { tools[tool.name] = tool; }, registerCommand: vi.fn(), on: vi.fn(), sendMessage: vi.fn() };
   try {
     childAuthority(pi);
-    const args = { agent: "explorer", instructions: "Inspect files" };
+    const args = { agent: "explorer", instructions: "Inspect files", blockingReason: "The file inventory is required before continuing." };
     const context: any = { state: {}, args };
     const call = tools.subagent.renderCall(args, theme, context);
     const result = await tools.subagent.execute("delegate", args, undefined, (update: any) => tools.subagent.renderResult(update, { isPartial: true }, theme, context));

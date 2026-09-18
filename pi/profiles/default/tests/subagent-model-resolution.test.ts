@@ -56,7 +56,8 @@ describe("model resolution and foreground behavior at subagent launch seams", ()
     const ctx: any = { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "direct-model-test" }, isIdle: () => true, modelRegistry: registry([model("bedrock-mantle", "gpt"), model("openai-codex", "gpt")], ["bedrock-mantle", "openai-codex"]) };
     // The extension owns its runtime; use its normal tool seam and inspect its returned child record.
     const progress = vi.fn();
-    const result = await tools.subagent.execute("call", { agent, background, retain, instructions: "[live]", surface: "headless", ...(requested ? { model: requested } : {}) }, undefined, progress, ctx);
+    const blockingReason = agent === "strategist" || background === true ? undefined : "The model result is required before continuing.";
+    const result = await tools.subagent.execute("call", { agent, background, retain, instructions: "[live]", surface: "headless", blockingReason, ...(requested ? { model: requested } : {}) }, undefined, progress, ctx);
     expect(result.isError).not.toBe(true);
     const effectiveBackground = agent !== "strategist" && background === true;
     expect(result.details).toMatchObject({ model: "openai-codex/gpt", retained: agent === "strategist" ? false : retain ?? false, status: effectiveBackground ? "running" : "settled", waitState: effectiveBackground ? "background" : "attached" });
@@ -73,7 +74,7 @@ describe("model resolution and foreground behavior at subagent launch seams", ()
     process.env.PI_CODING_AGENT_DIR = profile;
     const tools: Record<string, any> = {};
     subagents({ registerTool: (tool: any) => { tools[tool.name] = tool; }, registerCommand: () => {}, registerMessageRenderer: () => {}, on: () => {} } as any);
-    const result = await tools.subagent.execute("call", { agent: "probe", instructions: "[live]" }, undefined, undefined, { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "unsupported-model-test" }, isIdle: () => true, modelRegistry: registry([model("openrouter", "gpt")], ["openrouter"]) });
+    const result = await tools.subagent.execute("call", { agent: "probe", instructions: "[live]", blockingReason: "The model result is required before continuing." }, undefined, undefined, { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "unsupported-model-test" }, isIdle: () => true, modelRegistry: registry([model("openrouter", "gpt")], ["openrouter"]) });
     expect(result.isError).toBe(true);
     expect(result.details.error).toMatch(/subscription or AWS/i);
     rmSync(profile, { recursive: true, force: true }); rmSync(cwd, { recursive: true, force: true });

@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-081 - Explain every intentional orchestrator block in the tool card
+
+- **Reference:** Operator screenshot of a foreground Explorer launch, 2026-09-18.
+- **Feedback:** Whenever the orchestrator intentionally blocks on a subagent operation, the visible tool output should explain why blocking was chosen instead of background execution, returning control, or continuing other work. This applies to synchronous launches and explicit `subagent_control wait` calls.
+- **Requested presentation:** Put the explanation directly below the tool card's first line so the reason remains associated with the blocking action rather than relying on a separate assistant intent update.
+- **Related:** AIF-075, APR-051, APR-060. Foreground Strategists remain an intentional role contract, while ordinary background completion should not use `wait`.
+- **Decision:** Require a model-supplied `blockingReason` for non-Strategist foreground launches and explicit root `subagent_control wait` calls. Strategists are exempt because foreground execution is enforced by role contract; their cards show a runtime-owned explanation. Render the explanation directly below the card header and leave background launches and nonblocking controls unchanged.
+- **Status:** Implemented locally. All 225 focused subagent tests pass with 9 environment-dependent skips, as do default-profile typecheck, runtime smoke, and `git diff --check`. Activation requires a fresh session or settled-only `/reload`; live attached-client presentation remains unverified.
+
 ## AIF-080 - Repair context-transfer gaps rather than add global prohibitions
 
 - **Reference:** Operator review of recurring feedback patterns, 2026-09-17.
@@ -734,6 +743,7 @@ Factual history for refining agent instructions. This log is not executable poli
 - **Decision:** Added a communication-style rule to `pi/profiles/default/AGENTS.md`. The operator later approved extending it to chat and files: no em dashes, filler, theatrical framing, repeated apologies, or sycophancy; no flattery or agreement without evidence. Technical terminology remains appropriate when needed for precision.
 - **Scope:** Default Pi profile.
 - **Follow-up (2026-09-16, session 01a0ab78-882f-75e0-86b8-c2795f778c5f):** Operator could not follow a deployment proposal expressed as abstract ownership categories. Explain the actual files, a duplicated setting, what currently happens, and the proposed before/after before asking for agreement. Apply existing plain-language guidance; no new instruction proposed. Further feedback in the same session rejected cascading subquestions during investigation scoping: determine repository-answerable facts directly and consolidate genuinely unresolved decisions instead of asking the operator to supply the investigation's intermediate results.
+- **Follow-up (2026-09-18):** When the operator supplies exact concise policy wording, use it without expanding the same rule into redundant prohibitions. Apply existing plain-language guidance; no new instruction proposed.
 - **Related incidents:** None recorded.
 - **Status:** Active; effectiveness has not yet been reviewed.
 

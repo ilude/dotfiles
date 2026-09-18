@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-18: Explain intentional subagent blocking in tool cards
+
+**Changed:** Default Pi now requires a concise blocking reason for non-Strategist foreground subagent launches and explicit `subagent_control wait` calls. The reason appears directly below the tool-card header so operators can see why the orchestrator did not return control or continue independent work. Strategists remain exempt because their foreground execution is enforced by role contract; their cards show that runtime-owned explanation automatically. Background launches and nonblocking controls remain unchanged.
+
 ## 2026-09-17: Reconcile compaction history and active-turn decisions together
 
 **Changed:** Default Pi now uses a summary-generation-only extension for orchestrators and subagents. Previous summary, compacted history, turn prefix, and custom focus reach one native summarization request, avoiding independent contradictory checkpoints and the native split path's omission of prior context when no complete-history messages remain. Guidance preserves current authorization and corrections; file metadata carries forward across extension checkpoints.

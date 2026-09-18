@@ -139,6 +139,7 @@ function callLines(args: Record<string, unknown>, record: Partial<ChildRecord> |
   if (isControl) {
     const title = record ? `subagent control · ${action} · ${identity(record)}` : `subagent control · ${action}`;
     const lines = [theme.fg("toolTitle", theme.bold(title))];
+    if (action === "wait" && args?.blockingReason) lines.push(`Blocking: ${oneLine(args.blockingReason)}`);
     if (args?.id) lines.push(`Target: ${oneLine(args.id, 120)}`);
     if (args?.message) lines.push(`Message: ${oneLine(args.message)}`);
     return lines.join("\n");
@@ -152,6 +153,12 @@ function callLines(args: Record<string, unknown>, record: Partial<ChildRecord> |
   const header = `Subagent ${name}  ${role}  ${model}[${effort}]  ${started ? localTimestamp(started) : "starting"}`;
   const prompt = value(args?.instructions) || value(record?.assignment);
   const lines = [theme.fg("toolTitle", theme.bold(header))];
+  const blockingReason = role === "strategist"
+    ? "Strategist consultations run in the foreground by role contract."
+    : args?.background === true
+      ? ""
+      : oneLine(args?.blockingReason);
+  if (blockingReason) lines.push(`Blocking: ${blockingReason}`);
   if (prompt) lines.push(bounded(prompt, RESULT_LIMIT));
   const terminal = record ? terminalLine(record) : undefined;
   if (terminal) lines.push(terminal);
