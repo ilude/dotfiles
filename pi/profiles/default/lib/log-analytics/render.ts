@@ -142,7 +142,10 @@ export const renderAnalyticsResult: NonNullable<Tool["renderResult"]> = (result,
 			const label = occurrenceLabel(occurrence) ?? "incomplete occurrence";
 			lines.push(`${theme.fg("accent", label)} · ${clean(match.timestamp ?? "no timestamp")} · ${clean(match.messageRole ?? "unknown role")}${match.toolName ? ` · ${clean(match.toolName)}` : ""}${match.isError === true ? " · error" : ""}`);
 			lines.push(`  ${preview(match.snippet, expanded ? 500 : 180)}`);
-			if (expanded) lines.push(theme.fg("dim", `  offset ${occurrence.byteOffset} · ordinal ${occurrence.recordOrdinal} · record ${clean(occurrence.recordKey ?? "id-less")}`));
+			if (expanded) {
+				for (const decision of match.blockingDecisions ?? []) lines.push(`  Blocking decision: ${clean(decision.toolName)} · ${clean(decision.action)}${decision.agent ? ` · ${clean(decision.agent)}` : ""} · version ${clean(decision.subagentExtensionVersion ?? "unversioned")} · ${decision.blocking ? clean(decision.reasonSource ?? "missing") : "nonblocking"}${decision.reason ? ` · ${clean(decision.reason)}` : ""}`);
+				lines.push(theme.fg("dim", `  offset ${occurrence.byteOffset} · ordinal ${occurrence.recordOrdinal} · record ${clean(occurrence.recordKey ?? "id-less")}`));
+			}
 		}
 		if (!expanded && data.matches.length > PREVIEW_ROWS) lines.push(theme.fg("dim", `${count(data.matches.length - PREVIEW_ROWS, "more match")} in expanded view`));
 		if (data.nextCursor) lines.push(theme.fg("warning", "Continue with nextCursor; expansion does not fetch the next page."));

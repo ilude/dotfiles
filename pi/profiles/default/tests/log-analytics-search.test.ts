@@ -22,6 +22,55 @@ describe("streaming analytics search", () => {
 		expect(normalizeRecord({ type: "message", message: { role: "toolResult", content: [{ type: "image", data: "needle" }], arguments: "needle" } }).text).toBe("");
 	});
 
+	it("finds blocking subagent decisions without DuckDB or full-record text search", async () => {
+		const toolCalls = (id: string, content: unknown[]) => ({ type: "message", id, timestamp: "2026-09-18T00:00:00Z", message: { role: "assistant", content } });
+		await fixture.session("default", "blocking", [
+			{ type: "custom", id: "version-1", timestamp: "2026-09-18T00:00:00Z", customType: "subagent-extension-version", data: { version: "1.0.0" } },
+			toolCalls("foreground", [{ type: "toolCall", id: "one", name: "subagent", arguments: { agent: "explorer", instructions: "inspect", blockingReason: "The inventory determines the next edit." } }]),
+			toolCalls("strategist", [{ type: "toolCall", id: "two", name: "subagent", arguments: { agent: "strategist", instructions: "advise", background: true } }]),
+			toolCalls("wait", [{ type: "toolCall", id: "three", name: "subagent_control", arguments: { action: "wait", id: "Clara", blockingReason: "The result is required before integration." } }]),
+			toolCalls("background", [{ type: "toolCall", id: "four", name: "subagent", arguments: { agent: "explorer", instructions: "inspect", background: true } }]),
+			toolCalls("legacy-missing", [{ type: "toolCall", id: "five", name: "subagent", arguments: { agent: "explorer", instructions: "inspect" } }]),
+		]);
+		const blocked = await searchAnalytics(fixture.registry, { operation: "search", filters: { subagentBlocking: true } });
+		expect(blocked.matches).toHaveLength(4);
+		expect(blocked.matches.flatMap(item => item.blockingDecisions ?? []).map(item => ({ tool: item.toolName, source: item.reasonSource, reason: item.reason }))).toEqual([
+			{ tool: "subagent", source: "model", reason: "The inventory determines the next edit." },
+			{ tool: "subagent", source: "role-contract", reason: "Strategist consultations run in the foreground by role contract." },
+			{ tool: "subagent_control", source: "model", reason: "The result is required before integration." },
+			{ tool: "subagent", source: "missing", reason: null },
+		]);
+		const behavioral = await searchAnalytics(fixture.registry, { operation: "search", filters: { subagentBlocking: true, subagentBlockingReasonSources: ["model", "missing"] } });
+		expect(behavioral.matches).toHaveLength(3);
+		expect(behavioral.matches.flatMap(item => item.blockingDecisions ?? []).map(item => item.reasonSource)).toEqual(["model", "model", "missing"]);
+		expect(blocked.matches.flatMap(item => item.blockingDecisions ?? []).every(item => item.subagentExtensionVersion === "1.0.0")).toBe(true);
+		const versioned = await searchAnalytics(fixture.registry, { operation: "search", filters: { subagentBlocking: true, subagentExtensionVersion: "1.0.0" } });
+		expect(versioned.matches).toHaveLength(4);
+		const absentVersion = await searchAnalytics(fixture.registry, { operation: "search", filters: { subagentBlocking: true, subagentExtensionVersion: "2.0.0" } });
+		expect(absentVersion.matches).toHaveLength(0);
+
+		const nonblocking = await searchAnalytics(fixture.registry, { operation: "search", filters: { subagentBlocking: false, toolNames: ["subagent"] } });
+		expect(nonblocking.matches).toHaveLength(1);
+		expect(nonblocking.matches[0].blockingDecisions?.[0]).toMatchObject({ agent: "explorer", background: true, blocking: false });
+		await expect(searchAnalytics(fixture.registry, { operation: "search", filters: { subagentBlockingReasonSources: ["model"] } })).rejects.toThrow("requires subagentBlocking=true");
+		await expect(searchAnalytics(fixture.registry, { operation: "search", filters: { subagentExtensionVersion: "1.0.0" } })).rejects.toThrow("requires subagentBlocking");
+	});
+
+	it("associates blocking decisions with the latest extension version inside one session", async () => {
+		const call = (id: string) => ({ type: "message", id, timestamp: "2026-09-18T00:00:00Z", message: { role: "assistant", content: [{ type: "toolCall", id, name: "subagent_control", arguments: { action: "wait", id: "worker", blockingReason: `reason-${id}` } }] } });
+		await fixture.session("default", "version-boundary", [
+			call("legacy"),
+			{ type: "custom", id: "v1", timestamp: "2026-09-18T00:00:01Z", customType: "subagent-extension-version", data: { version: "1.0.0" } },
+			call("current"),
+			{ type: "custom", id: "v2", timestamp: "2026-09-18T00:00:02Z", customType: "subagent-extension-version", data: { version: "2.0.0" } },
+			call("future"),
+		]);
+		const all = await searchAnalytics(fixture.registry, { operation: "search", filters: { subagentBlocking: true } });
+		expect(all.matches.flatMap(match => match.blockingDecisions ?? []).map(decision => decision.subagentExtensionVersion)).toEqual([null, "1.0.0", "2.0.0"]);
+		const current = await searchAnalytics(fixture.registry, { operation: "search", filters: { subagentBlocking: true, subagentExtensionVersion: "1.0.0" } });
+		expect(current.matches.map(match => match.occurrence.recordKey)).toEqual(["current"]);
+	});
+
 	it("pages a large file, preserves zero-match progress, and returns exact stable occurrences", async () => {
 		const records = Array.from({ length: 10_500 }, (_, i) => message(`id-${i}`, i === 10_499 ? "final needle" : `${"padding ".repeat(110)}${i}`, "2026-09-01T00:00:00Z"));
 		const file = await fixture.session("default", "large", records);

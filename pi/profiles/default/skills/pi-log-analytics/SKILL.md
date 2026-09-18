@@ -27,7 +27,7 @@ Use `sessionRefs` from `sessions` when the session is known. If `nextCursor` is 
 {"operation":"follow_up","occurrence":{"profile":"default","session":{"profile":"default","sessionId":"<native-id>","fileKey":"<file-key>"},"fileKey":"<file-key>","byteOffset":123,"byteLength":456,"recordOrdinal":7,"recordKey":"<id-or-null>"},"before":2,"after":2}
 ```
 
-Search text examines message strings and text blocks only. It does not search quoted tool arguments, images, or arbitrary serialized JSON. Use SQL for a deliberate full-record content search.
+Search text examines message strings and text blocks only. It does not search general quoted tool arguments, images, or arbitrary serialized JSON. For orchestrator blocking decisions, use `filters.subagentBlocking`; matching records include structured launch/control metadata, explicit model-supplied reasons, the Strategist role-contract reason, or `missing` for historical foreground calls without a recorded reason. For behavioral reviews where role-mandated Strategists are out of scope, set `subagentBlocking: true` with `subagentBlockingReasonSources: ["model", "missing"]`. Each decision includes the active subagent extension version, or `null` for older unversioned history; use `subagentExtensionVersion` to restrict a review to one recorded runtime version. Use SQL for other deliberate full-record content searches.
 
 ### Last-week tool-call failures
 

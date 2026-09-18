@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-18: Version subagent behavior and clarify automatic resumption
+
+**Changed:** Default Pi subagent extension version `1.0.0` records its active version at session start or reload so later `log_analytics` blocking reviews can identify the runtime and guidance governing each decision. Background result guidance now states explicitly that completion triggers a new orchestrator turn and resumes the workflow without polling. A downstream dependency alone no longer qualifies as a blocking explanation; ordinary workers and validators should run in the background, while `subagent_control wait` is reserved for reattaching an interrupted foreground join needed immediately.
+
+## 2026-09-18: Search subagent blocking decisions without SQL staging
+
+**Changed:** Default Pi log analytics now supports `search` with `filters.subagentBlocking`. Matching assistant tool-call records expose structured launch/control decisions, effective background mode, blocking reasons, and whether each reason was model-supplied, derived from the Strategist role contract, or missing from older history. An optional `subagentBlockingReasonSources` filter makes role-contract Strategists explicitly excludable from behavioral reviews without changing complete blocking searches. The bounded native search path remains DuckDB-free and does not make unrelated tool arguments searchable or add persistent telemetry.
+
 ## 2026-09-18: Explain intentional subagent blocking in tool cards
 
 **Changed:** Default Pi now requires a concise blocking reason for non-Strategist foreground subagent launches and explicit `subagent_control wait` calls. The reason appears directly below the tool-card header so operators can see why the orchestrator did not return control or continue independent work. Strategists remain exempt because their foreground execution is enforced by role contract; their cards show that runtime-owned explanation automatically. Background launches and nonblocking controls remain unchanged.

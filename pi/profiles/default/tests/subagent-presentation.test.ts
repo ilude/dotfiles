@@ -214,7 +214,7 @@ it("executes registered tools against an inert RPC child and renders their live 
   const ctx: any = { cwd: scratch, hasUI: true, isProjectTrusted: () => true, isIdle: () => false,
     sessionManager: { getSessionId: () => "presentation-origin" }, ui: { setWidget: vi.fn(), notify: vi.fn() } };
   const pi: any = { on: (name: string, handler: Function) => { handlers[name] = handler; },
-    registerTool: (tool: any) => { tools[tool.name] = tool; }, registerCommand: vi.fn(), registerMessageRenderer: vi.fn(), sendMessage: messages };
+    registerTool: (tool: any) => { tools[tool.name] = tool; }, registerCommand: vi.fn(), registerMessageRenderer: vi.fn(), sendMessage: messages, appendEntry: vi.fn() };
   mkdirSync(join(scratch, ".pi", "agents"), { recursive: true });
   writeFileSync(join(scratch, ".pi", "agents", "probe.md"), "---\nname: probe\ndescription: Inert fixture\ntools: []\nmodel: openai-codex/test\n---\nReport the fixture result.\n");
   vi.stubEnv("PI_CODING_AGENT_DIR", profile);

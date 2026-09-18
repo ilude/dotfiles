@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-082 - Recorded reasons show routine dependency waits still self-block orchestration
+
+- **Reference:** Complete default-profile blocking-decision search for 2026-09-18 after `blockingReason` introduction.
+- **Finding:** One plan-execution session contained six explicit `subagent_control wait` calls and one foreground Validator launch. The waits lasted approximately 18 seconds, 11 minutes, 11 minutes, 16 minutes, 4 minutes, and an unresolved final span. Their reasons described genuine task dependencies, but generally explained why later integration depended on the result rather than why the orchestrator itself could not return control or perform independent work. Two consecutive waits targeted the same P1 worker around a parent-question recovery. The foreground Validator launch similarly justified prerequisite validation but not foreground blocking. Three Strategist launches were role-contract blocking. One Explorer foreground launch was an intentional analytics probe. One older Explorer launch lacked a reason and was duplicated into five forked/session files; it predates enforcement.
+- **Recommendation:** Refine the tool-owned requirement so a reason must identify why no useful parent work remains and why returning control is inappropriate, not merely name a downstream dependency. Prefer background launch plus automatic outcome delivery. Keep explicit wait reserved for reattaching an interrupted foreground join and Strategists unchanged.
+- **Related:** AIF-075, AIF-081; APR-051, APR-060.
+- **Decision:** Clarify that background completion triggers another orchestrator turn and resumes the workflow without polling. A dependency alone does not justify blocking; reserve `wait` for reattaching an interrupted foreground join needed now. Track the effective boundary with one subagent extension version rather than a separate policy version.
+- **Status:** Implemented locally as subagent extension `1.0.0`. Session start and reload record the active version; blocking analytics returns and filters by that version. Activation requires `/reload` or a new session.
+
 ## AIF-081 - Explain every intentional orchestrator block in the tool card
 
 - **Reference:** Operator screenshot of a foreground Explorer launch, 2026-09-18.
@@ -7,7 +16,8 @@
 - **Requested presentation:** Put the explanation directly below the tool card's first line so the reason remains associated with the blocking action rather than relying on a separate assistant intent update.
 - **Related:** AIF-075, APR-051, APR-060. Foreground Strategists remain an intentional role contract, while ordinary background completion should not use `wait`.
 - **Decision:** Require a model-supplied `blockingReason` for non-Strategist foreground launches and explicit root `subagent_control wait` calls. Strategists are exempt because foreground execution is enforced by role contract; their cards show a runtime-owned explanation. Render the explanation directly below the card header and leave background launches and nonblocking controls unchanged.
-- **Status:** Implemented locally. All 225 focused subagent tests pass with 9 environment-dependent skips, as do default-profile typecheck, runtime smoke, and `git diff --check`. Activation requires a fresh session or settled-only `/reload`; live attached-client presentation remains unverified.
+- **Analytics follow-up:** The operator requested fast retrieval of these decisions without broad raw-JSON SQL. Native `log_analytics search` now accepts `filters.subagentBlocking` and returns structured decisions with model, role-contract, missing, or nonblocking provenance directly from existing session records. This path does not add telemetry or SQL projection columns.
+- **Status:** Blocking presentation was implemented and committed as `50a53b60`. The analytics follow-up is implemented locally; all 49 log-analytics tests, default-profile typecheck, offline real-loader smoke, and `git diff --check` pass. Activation requires a fresh session or settled-only `/reload`; live attached-client presentation and analytics remain unverified.
 
 ## AIF-080 - Repair context-transfer gaps rather than add global prohibitions
 

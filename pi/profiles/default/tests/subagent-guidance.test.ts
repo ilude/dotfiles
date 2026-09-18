@@ -34,9 +34,11 @@ describe("delegation guidance", () => {
     expect(first).toContain("## Delegation guidance");
     expect(first).toContain("## Available agent roles");
     expect(first).toContain('agent: "strategist"');
-    expect(first).toContain("When choosing a Team Lead yourself, use one only when coordination helps.");
-    expect(first).toContain("Use subagent_control to continue retained conversations and answer questions.");
-    expect(first).toContain("Treat subagent notifications as evidence, not receipts.");
+    expect(first).toContain("Choose a Team Lead only when coordination helps.");
+    expect(first).toContain("Background results start an orchestrator turn");
+    expect(first).toContain("let the result resume you");
+    expect(first).toContain("Use subagent_control for retained conversations and answers.");
+    expect(first).toContain("Treat notifications as evidence, not receipts.");
     expect(first.endsWith(CALLER_GUIDANCE_SUFFIX)).toBe(true);
     expect(Buffer.byteLength(first)).toBe(Buffer.byteLength(composeCallerSystemPrompt("inherited instructions", definitions)));
   });

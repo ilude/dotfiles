@@ -33,7 +33,7 @@ it("replaces the module-local owner on an explicit reset",async()=>{
 });
 it("does not install a persistent subagent status widget",async()=>{
  const handlers:Record<string,Function>={},setWidget=vi.fn();
- const pi:any={events:{on:()=>()=>{}},on:(name:string,handler:Function)=>{handlers[name]=handler},registerTool:()=>{},registerCommand:()=>{},sendMessage:()=>{}};
+ const pi:any={events:{on:()=>()=>{}},on:(name:string,handler:Function)=>{handlers[name]=handler},registerTool:()=>{},registerCommand:()=>{},sendMessage:()=>{},appendEntry:vi.fn()};
  const ctx:any={cwd:here,hasUI:true,isProjectTrusted:()=>false,isIdle:()=>true,sessionManager:{getSessionId:()=>"fresh-owner"},ui:{setWidget}};
  subagents(pi);await handlers.session_start({},ctx);
  expect(setWidget).not.toHaveBeenCalled();
@@ -42,7 +42,7 @@ it("does not install a persistent subagent status widget",async()=>{
 });
 it("resets the owning runtime through the shared clear event",async()=>{
  const events=createEventBus(),handlers:Record<string,Function>={},commands:Record<string,any>={};
- const pi:any={events,on:(name:string,handler:Function)=>{handlers[name]=handler},registerTool:()=>{},registerCommand:(name:string,command:any)=>{commands[name]=command},sendMessage:()=>{}};
+ const pi:any={events,on:(name:string,handler:Function)=>{handlers[name]=handler},registerTool:()=>{},registerCommand:(name:string,command:any)=>{commands[name]=command},sendMessage:()=>{},appendEntry:vi.fn()};
  const ctx:any={cwd:here,hasUI:true,isProjectTrusted:()=>false,isIdle:()=>true,sessionManager:{getSessionId:()=>"clear-owner"},ui:{setWidget:()=>{},notify:vi.fn()},newSession:vi.fn(async(options:any)=>options.withSession({}))};
  subagents(pi);clearCommand(pi);await handlers.session_start({},ctx);const before=getSubagentRuntime().ownerId;
  await commands.clear.handler("",ctx);
@@ -53,7 +53,7 @@ it("delivers outcomes without a persistent status widget or progress messages",a
  const oldBin=process.env.PI_SUBAGENT_BIN,oldArgs=process.env.PI_SUBAGENT_BIN_ARGS;
  process.env.PI_SUBAGENT_BIN=process.execPath;process.env.PI_SUBAGENT_BIN_ARGS=JSON.stringify([join(here,"fixtures/fake-subagent-rpc.mjs")]);
  const runtime=getSubagentRuntime(),handlers:Record<string,Function>={},messages:any[]=[],setWidget=vi.fn();
- const pi:any={on:(name:string,handler:Function)=>{handlers[name]=handler},registerTool:()=>{},registerCommand:()=>{},sendMessage:(message:any)=>messages.push(message)};
+ const pi:any={on:(name:string,handler:Function)=>{handlers[name]=handler},registerTool:()=>{},registerCommand:()=>{},sendMessage:(message:any)=>messages.push(message),appendEntry:vi.fn()};
  let owner="status-a",idle=false;
  const ctx:any={cwd:here,hasUI:true,isProjectTrusted:()=>false,isIdle:()=>idle,sessionManager:{getSessionId:()=>owner},ui:{setWidget,notify:()=>{}}};
  try{

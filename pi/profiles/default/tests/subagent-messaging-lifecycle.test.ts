@@ -51,6 +51,7 @@ function rootHarness(origin: string, messages: any[]) {
     registerTool: (tool: any) => { tools[tool.name] = tool; },
     registerCommand: () => {}, registerMessageRenderer: () => {},
     sendMessage: (message: any) => messages.push(message),
+    appendEntry: vi.fn(),
   };
   subagents(pi);
   return { handlers, tools, ctx };

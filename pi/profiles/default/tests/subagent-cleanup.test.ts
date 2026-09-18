@@ -116,7 +116,7 @@ describe("subagent cleanup ownership", () => {
     (fresh as any).children.set(child.record.id, child);
     const stop = vi.spyOn(child as any, "stopProcess").mockRejectedValueOnce(new Error("reset termination denied"));
     const events = createEventBus(), handlers: Record<string, Function> = {}, commands: Record<string, any> = {};
-    const pi: any = { events, on: (name: string, handler: Function) => { handlers[name] = handler; }, registerTool: () => {}, registerCommand: (name: string, command: any) => { commands[name] = command; }, sendMessage: () => {} };
+    const pi: any = { events, on: (name: string, handler: Function) => { handlers[name] = handler; }, registerTool: () => {}, registerCommand: (name: string, command: any) => { commands[name] = command; }, sendMessage: () => {}, appendEntry: vi.fn() };
     const ctx: any = { cwd: here, hasUI: true, isProjectTrusted: () => false, isIdle: () => true, sessionManager: { getSessionId: () => "cleanup-origin" }, ui: { notify: vi.fn() }, newSession: vi.fn() };
     subagents(pi); clearCommand(pi); await handlers.session_start({}, ctx);
     await commands.clear.handler("", ctx);

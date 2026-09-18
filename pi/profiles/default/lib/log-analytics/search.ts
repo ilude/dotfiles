@@ -3,9 +3,12 @@ import { randomUUID } from "node:crypto";
 import { canonicalWithin, checkCancelled, selectedProfiles, type ProfileId, type ProfileRegistry } from "./profiles.js";
 import { discoverSessions, normalizeRecord, pathIdentity, selectSessionLocation, selectSessions, type DiscoveryCoverage, type SessionFile, type SessionRef } from "./sessions.js";
 import { MetadataCache, type FileMarker } from "./metadata-cache.js";
+import { SUBAGENT_EXTENSION_VERSION_ENTRY } from "../subagents/version.js";
 
+export type SubagentBlockingReasonSource = "model" | "role-contract" | "missing";
 export type SearchFilters = {
 	entryTypes?: readonly string[]; messageRoles?: readonly string[]; toolNames?: readonly string[]; isError?: boolean; text?: string;
+	subagentBlocking?: boolean; subagentBlockingReasonSources?: readonly SubagentBlockingReasonSource[]; subagentExtensionVersion?: string;
 };
 export type SearchRequest = {
 	operation: "search"; profiles?: readonly ProfileId[]; sessionRefs?: readonly SessionRef[]; cwd?: string; repository?: string;
@@ -20,18 +23,22 @@ export type FollowUpRequest = { operation: "follow_up"; occurrence: OccurrenceRe
 type SearchFile = SessionFile & { horizon: number; root: string };
 type SearchState = {
 	scope: string; profiles: ProfileId[]; files: SearchFile[]; filters: NormalizedFilters; interval?: NormalizedInterval;
-	maxResults: number; fileIndex: number; offset: number; cumulative: MutableCoverage; exclusions: DiscoveryCoverage;
+	maxResults: number; fileIndex: number; offset: number; subagentExtensionVersion: string | null; cumulative: MutableCoverage; exclusions: DiscoveryCoverage;
 };
 type NormalizedInterval = { since: string; until: string };
-type NormalizedFilters = { entryTypes?: string[]; messageRoles?: string[]; toolNames?: string[]; isError?: boolean; text?: string };
+type NormalizedFilters = { entryTypes?: string[]; messageRoles?: string[]; toolNames?: string[]; isError?: boolean; text?: string; subagentBlocking?: boolean; subagentBlockingReasonSources?: SubagentBlockingReasonSource[]; subagentExtensionVersion?: string };
 type MutableCoverage = {
 	selectedFiles: number; selectedBytes: number; examinedFiles: number; examinedRecords: number; examinedBytes: number;
 	safelyPrunedFiles: number; malformedRecords: number; oversizedRecords: number; timestampGaps: number;
 	diagnostics: string[]; diagnosticsTruncated: boolean; inventoryChanges: string[];
 };
+export type SubagentBlockingDecision = {
+	toolName: "subagent" | "subagent_control"; agent: string | null; action: string; background: boolean | null;
+	blocking: boolean; reason: string | null; reasonSource: SubagentBlockingReasonSource | null; subagentExtensionVersion: string | null;
+};
 export type SearchMatch = {
 	occurrence: OccurrenceRef; timestamp: string | null; entryType: string | null; messageRole: string | null;
-	toolName: string | null; isError: boolean | null; snippet: string;
+	toolName: string | null; isError: boolean | null; snippet: string; blockingDecisions?: SubagentBlockingDecision[];
 };
 export type SearchCoverage = MutableCoverage & {
 	page: Pick<MutableCoverage, "examinedFiles" | "examinedRecords" | "examinedBytes" | "malformedRecords" | "oversizedRecords">;
@@ -58,7 +65,14 @@ function normalizedFilters(filters: SearchFilters | undefined): NormalizedFilter
 		return [...new Set(value)].sort();
 	};
 	if (filters?.text !== undefined && (typeof filters.text !== "string" || filters.text.length > 4096)) throw new Error("invalid analytics search text");
-	return { entryTypes: list(filters?.entryTypes, "entryTypes"), messageRoles: list(filters?.messageRoles, "messageRoles"), toolNames: list(filters?.toolNames, "toolNames"), isError: filters?.isError, text: filters?.text };
+	if (filters?.subagentBlocking !== undefined && typeof filters.subagentBlocking !== "boolean") throw new Error("invalid analytics search subagentBlocking");
+	if (filters?.subagentExtensionVersion !== undefined && (typeof filters.subagentExtensionVersion !== "string" || !filters.subagentExtensionVersion || filters.subagentExtensionVersion.length > 64)) throw new Error("invalid analytics search subagentExtensionVersion");
+	const reasonSources = list(filters?.subagentBlockingReasonSources, "subagentBlockingReasonSources");
+	const isReasonSource = (source: string): source is SubagentBlockingReasonSource => source === "model" || source === "role-contract" || source === "missing";
+	if (reasonSources?.some(source => !isReasonSource(source))) throw new Error("invalid analytics search subagentBlockingReasonSources");
+	if (reasonSources !== undefined && filters?.subagentBlocking !== true) throw new Error("subagentBlockingReasonSources requires subagentBlocking=true");
+	if (filters?.subagentExtensionVersion !== undefined && filters.subagentBlocking === undefined) throw new Error("subagentExtensionVersion requires subagentBlocking");
+	return { entryTypes: list(filters?.entryTypes, "entryTypes"), messageRoles: list(filters?.messageRoles, "messageRoles"), toolNames: list(filters?.toolNames, "toolNames"), isError: filters?.isError, text: filters?.text, subagentBlocking: filters?.subagentBlocking, subagentBlockingReasonSources: reasonSources?.filter(isReasonSource), subagentExtensionVersion: filters?.subagentExtensionVersion };
 }
 function normalizedInterval(interval: SearchRequest["interval"]): NormalizedInterval | undefined {
 	if (!interval) return undefined;
@@ -106,11 +120,48 @@ function matchText(record: unknown, needle: string | undefined): { matched: bool
 	for (const text of blocks) if (text.includes(needle)) return { matched: true, snippet: text.length > 500 ? `${text.slice(0, 500)}…` : text };
 	return { matched: false, snippet: "" };
 }
+function subagentVersionMarker(record: unknown): string | undefined {
+	if (!record || typeof record !== "object") return;
+	const entry = record as { type?: unknown; customType?: unknown; data?: unknown };
+	if (entry.type !== "custom" || entry.customType !== SUBAGENT_EXTENSION_VERSION_ENTRY || !entry.data || typeof entry.data !== "object") return;
+	const version = (entry.data as { version?: unknown }).version;
+	return typeof version === "string" && version.length > 0 && version.length <= 64 ? version : undefined;
+}
+function subagentDecisions(record: unknown, subagentExtensionVersion: string | null): SubagentBlockingDecision[] {
+	if (!record || typeof record !== "object") return [];
+	const message = (record as { message?: unknown }).message;
+	if (!message || typeof message !== "object") return [];
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return [];
+	const decisions: SubagentBlockingDecision[] = [];
+	for (const item of content) {
+		if (!item || typeof item !== "object" || (item as { type?: unknown }).type !== "toolCall") continue;
+		const call = item as { name?: unknown; arguments?: unknown };
+		if (call.name !== "subagent" && call.name !== "subagent_control") continue;
+		const args = call.arguments && typeof call.arguments === "object" ? call.arguments as Record<string, unknown> : {};
+		const supplied = typeof args.blockingReason === "string" && args.blockingReason.trim() ? args.blockingReason.trim() : null;
+		if (call.name === "subagent") {
+			const agent = typeof args.agent === "string" ? args.agent : null;
+			const strategist = agent === "strategist";
+			const background = strategist ? false : args.background === true;
+			const blocking = !background;
+			decisions.push({ toolName: call.name, agent, action: "launch", background, blocking,
+				reason: blocking ? strategist ? "Strategist consultations run in the foreground by role contract." : supplied : null,
+				reasonSource: blocking ? strategist ? "role-contract" : supplied ? "model" : "missing" : null, subagentExtensionVersion });
+			continue;
+		}
+		const action = typeof args.action === "string" ? args.action : "control";
+		const blocking = action === "wait";
+		decisions.push({ toolName: call.name, agent: null, action, background: null, blocking,
+			reason: blocking ? supplied : null, reasonSource: blocking ? supplied ? "model" : "missing" : null, subagentExtensionVersion });
+	}
+	return decisions;
+}
 function matches(record: ReturnType<typeof normalizeRecord>, filters: NormalizedFilters, interval: NormalizedInterval | undefined): boolean {
 	return inInterval(record.timestamp, interval) &&
 		(filters.entryTypes === undefined || filters.entryTypes.includes(record.entryType ?? "")) &&
 		(filters.messageRoles === undefined || filters.messageRoles.includes(record.messageRole ?? "")) &&
-		(filters.toolNames === undefined || filters.toolNames.includes(record.toolName ?? "")) &&
+		(filters.subagentBlocking !== undefined || filters.toolNames === undefined || filters.toolNames.includes(record.toolName ?? "")) &&
 		(filters.isError === undefined || record.isError === filters.isError);
 }
 function cursorBytes(state: SearchState): number { return Buffer.byteLength(JSON.stringify({ scope: state.scope, files: state.files, cumulative: state.cumulative })); }
@@ -204,19 +255,32 @@ async function scanPage(state: SearchState, signal: AbortSignal, discovery: Disc
 			range.through = Math.max(range.through, item.nextOffset);
 			if (item.oversized) { page.oversizedRecords++; state.cumulative.oversizedRecords++; addDiagnostic(state.cumulative, `${file.ref.sessionId}: oversized record at byte ${item.offset}`); state.offset = item.nextOffset; continue; }
 			if (item.malformed) { page.malformedRecords++; state.cumulative.malformedRecords++; addDiagnostic(state.cumulative, `${file.ref.sessionId}: malformed record at byte ${item.offset}`); state.offset = item.nextOffset; continue; }
-			const value = item.value; const normalized = normalizeRecord(value, false); const text = matchText(value, state.filters.text);
+			const value = item.value;
+			const versionMarker = subagentVersionMarker(value);
+			if (versionMarker !== undefined) state.subagentExtensionVersion = versionMarker;
+			const normalized = normalizeRecord(value, false); const text = matchText(value, state.filters.text);
 			if (normalized.timestamp !== null) { range.min = range.min === null || normalized.timestamp < range.min ? normalized.timestamp : range.min; range.max = range.max === null || normalized.timestamp > range.max ? normalized.timestamp : range.max; }
 			if (normalized.timestamp === null && state.interval) state.cumulative.timestampGaps++;
 			if (text.matched && matches(normalized, state.filters, state.interval)) {
-				const match: SearchMatch = { occurrence: occurrence(file, item, normalized.recordKey), timestamp: normalized.timestamp, entryType: normalized.entryType, messageRole: normalized.messageRole, toolName: normalized.toolName, isError: normalized.isError, snippet: text.snippet };
-				matchesFound.push(match);
+				const blockingDecisions = state.filters.subagentBlocking === undefined ? undefined : subagentDecisions(value, state.subagentExtensionVersion)
+					.filter(decision => decision.blocking === state.filters.subagentBlocking &&
+						(state.filters.toolNames === undefined || state.filters.toolNames.includes(decision.toolName)) &&
+						(state.filters.subagentBlockingReasonSources === undefined || decision.reasonSource !== null && state.filters.subagentBlockingReasonSources.includes(decision.reasonSource)) &&
+						(state.filters.subagentExtensionVersion === undefined || decision.subagentExtensionVersion === state.filters.subagentExtensionVersion));
+				if (blockingDecisions === undefined || blockingDecisions.length) {
+					const blockingSnippet = blockingDecisions?.map(decision => decision.reason ?? `${decision.toolName} ${decision.action}: blocking reason missing`).join(" | ");
+					const match: SearchMatch = { occurrence: occurrence(file, item, normalized.recordKey), timestamp: normalized.timestamp, entryType: normalized.entryType, messageRole: normalized.messageRole,
+						toolName: blockingDecisions?.length === 1 ? blockingDecisions[0].toolName : normalized.toolName, isError: normalized.isError,
+						snippet: blockingSnippet || text.snippet, ...(blockingDecisions ? { blockingDecisions } : {}) };
+					matchesFound.push(match);
+				}
 			}
 			state.offset = item.nextOffset;
 			if (matchesFound.length >= state.maxResults) { stopReason = "result_limit"; break; }
 		}
 		page.examinedFiles = touched.size;
 		if (stopReason !== "page_budget") break;
-		state.fileIndex++; state.offset = state.fileIndex < state.files.length ? state.files[state.fileIndex].headerBytes : 0;
+		state.fileIndex++; state.offset = state.fileIndex < state.files.length ? state.files[state.fileIndex].headerBytes : 0; state.subagentExtensionVersion = null;
 	}
 	page.examinedFiles = touched.size;
 	state.cumulative.examinedFiles = Math.min(state.files.length, Math.max(state.cumulative.examinedFiles, state.fileIndex + page.examinedFiles));
@@ -247,7 +311,7 @@ export async function searchLogs(registry: ProfileRegistry, request: SearchReque
 		const referenced = request.sessionRefs ? selectSessions(all, request.sessionRefs, profiles) : all;
 		const selected = await selectSessionLocation(referenced, request);
 		const files = selected.map(item => ({ ...item, horizon: item.bytes, root: registry.roots.default }));
-		state = { scope: scopeOf({ profiles, sessionRefs: request.sessionRefs, cwd: request.cwd, repository: request.repository, interval, filters, maxResults }), profiles, files, filters, interval, maxResults, fileIndex: 0, offset: files[0]?.headerBytes ?? 0, cumulative: emptyCoverage(files), exclusions: discovery };
+		state = { scope: scopeOf({ profiles, sessionRefs: request.sessionRefs, cwd: request.cwd, repository: request.repository, interval, filters, maxResults }), profiles, files, filters, interval, maxResults, fileIndex: 0, offset: files[0]?.headerBytes ?? 0, subagentExtensionVersion: null, cumulative: emptyCoverage(files), exclusions: discovery };
 		const result = await scanPage(state, signal ?? new AbortController().signal, discovery);
 		state.cumulative.examinedFiles = result.page.examinedFiles; state.cumulative.examinedBytes = result.page.examinedBytes;
 		return finish(state, result, discovery);
