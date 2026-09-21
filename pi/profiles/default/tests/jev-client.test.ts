@@ -38,8 +38,26 @@ it("resolves credentials lazily from the exact BWS record without exposing helpe
 	const client = createJevClient({ credentialResolver: resolve, fetch });
 	expect(exec).not.toHaveBeenCalled();
 	await client.evaluate(null, { urgent: noul("Urgent?") });
+	await client.evaluate(null, { urgent: noul("Urgent?") });
+	expect(exec).toHaveBeenCalledOnce();
 	expect(exec).toHaveBeenCalledWith("uv", expect.arrayContaining([JEV_API_KEY_ID]), expect.anything());
 	expect(exec.mock.calls[0][0]).toBe("uv");
+});
+
+it("filters unvalidated response metadata at the result boundary", async () => {
+	const fetch = vi.fn(async () => response({ model: "jev-1.13.0", leaked: "discarded", answers: { urgent: { type: "noul", noul: 0.5, secret: "discarded" } }, usage: { input_tokens: 1, output_tokens: 0, secret: "discarded" } }));
+	const result = await createJevClient({ apiKey: "synthetic-key", fetch }).evaluate("state", { urgent: noul("Urgent?") });
+	expect(result).not.toHaveProperty("leaked");
+	expect(result.answers.urgent).not.toHaveProperty("secret");
+	expect(result.usage).not.toHaveProperty("secret");
+});
+
+it("rejects scores outside the rubric and invalid legends", async () => {
+	const questions = { priority: score("Priority", ["low", "high"] as const) };
+	const outOfRange = vi.fn(async () => response({ model: "jev-1.13.0", answers: { priority: { type: "score", score: 2.5, confidence: 0.5, legend: { 0: "low", 1: "high" }, probabilities: { 0: 0.5, 1: 0.5 } } }, usage: { input_tokens: 1, output_tokens: 0 } }));
+	await expect(createJevClient({ apiKey: "synthetic-key", fetch: outOfRange }).evaluate("state", questions)).rejects.toMatchObject({ code: "response" });
+	const invalidLegend = vi.fn(async () => response({ model: "jev-1.13.0", answers: { priority: { type: "score", score: 0.5, confidence: 0.5, legend: { 0: "low" }, probabilities: { 0: 0.5, 1: 0.5 } } }, usage: { input_tokens: 1, output_tokens: 0 } }));
+	await expect(createJevClient({ apiKey: "synthetic-key", fetch: invalidLegend }).evaluate("state", questions)).rejects.toMatchObject({ code: "response" });
 });
 
 it("rejects malformed or mismatched answers safely", async () => {

@@ -62,29 +62,52 @@ export function createJevCredentialResolver(exec: Exec = defaultExec): JevCreden
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasOwn(value: object, key: string): boolean {
+	return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function sameValue(left: unknown, right: unknown): boolean {
+	if (Object.is(left, right)) return true;
+	if (Array.isArray(left) || Array.isArray(right)) {
+		return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((item, index) => sameValue(item, right[index]));
+	}
+	if (isRecord(left) && isRecord(right)) {
+		const leftKeys = Object.keys(left);
+		const rightKeys = Object.keys(right);
+		return leftKeys.length === rightKeys.length && leftKeys.every((key) => hasOwn(right, key) && sameValue(left[key], right[key]));
+	}
+	return false;
 }
 
 function isProbability(value: unknown): value is number {
 	return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
-function validateAnswer(question: Question, answer: unknown): void {
+function validateAnswer(question: Question, answer: unknown): Record<string, unknown> {
 	if (!isRecord(answer) || answer.type !== question.type) throw new JevClientError("response", "Jev returned an answer with the wrong type");
 	if (question.type === "noul") {
 		if (!isProbability(answer.noul)) throw new JevClientError("response", "Jev returned an invalid Noul answer");
-		return;
+		return { type: "noul", noul: answer.noul };
 	}
 	if (typeof answer.confidence !== "number" || !isProbability(answer.confidence) || !isRecord(answer.probabilities))
 		throw new JevClientError("response", "Jev returned invalid answer metadata");
 	const labels = question.type === "choice" ? Object.keys(question.criteria) : question.criteria.map((_entry, index) => String(index));
-	if (question.type === "choice" && (typeof answer.choice !== "string" || !labels.includes(answer.choice)))
-		throw new JevClientError("response", "Jev returned an unknown choice");
 	const probabilities = answer.probabilities;
-	if (Object.keys(probabilities).length !== labels.length || labels.some((label) => !isProbability(probabilities[label])))
+	if (Object.keys(probabilities).length !== labels.length || labels.some((label) => !hasOwn(probabilities, label) || !isProbability(probabilities[label])))
 		throw new JevClientError("response", "Jev returned invalid probabilities");
-	if (question.type === "score" && (typeof answer.score !== "number" || !Number.isFinite(answer.score)))
+	if (question.type === "choice") {
+		if (typeof answer.choice !== "string" || !labels.includes(answer.choice)) throw new JevClientError("response", "Jev returned an unknown choice");
+		return { type: "choice", choice: answer.choice, confidence: answer.confidence, probabilities: Object.fromEntries(labels.map((label) => [label, probabilities[label]])) };
+	}
+	if (typeof answer.score !== "number" || !Number.isFinite(answer.score) || answer.score < 0 || answer.score > labels.length - 1)
 		throw new JevClientError("response", "Jev returned an invalid score");
+	const legend = answer.legend;
+	if (!isRecord(legend) || Object.keys(legend).length !== labels.length || labels.some((label, index) => !hasOwn(legend, label) || !sameValue(legend[label], question.criteria[index])))
+		throw new JevClientError("response", "Jev returned an invalid score legend");
+	return { type: "score", score: answer.score, confidence: answer.confidence, legend: Object.fromEntries(labels.map((label, index) => [label, question.criteria[index]])), probabilities: Object.fromEntries(labels.map((label) => [label, probabilities[label]])) };
 }
 
 function validateResult<Q extends Questions>(questions: Q, result: unknown): JevResult<Q> {
@@ -92,13 +115,17 @@ function validateResult<Q extends Questions>(questions: Q, result: unknown): Jev
 		throw new JevClientError("response", "Jev returned an invalid result");
 	const answerNames = Object.keys(result.answers);
 	const questionNames = Object.keys(questions);
-	if (answerNames.length !== questionNames.length || questionNames.some((name) => !answerNames.includes(name)))
+	if (answerNames.length !== questionNames.length || questionNames.some((name) => !hasOwn(result.answers as object, name)))
 		throw new JevClientError("response", "Jev returned answers for the wrong questions");
-	for (const name of questionNames) validateAnswer(questions[name], result.answers[name]);
+	const answers: Record<string, Record<string, unknown>> = Object.create(null);
+	for (const name of questionNames) answers[name] = validateAnswer(questions[name], result.answers[name]);
 	const usage = result.usage;
-	if (![usage.input_tokens, usage.output_tokens].every((value) => typeof value === "number" && Number.isInteger(value) && value >= 0))
+	const inputTokens = usage.input_tokens;
+	const outputTokens = usage.output_tokens;
+	if (![inputTokens, outputTokens].every((value) => typeof value === "number" && Number.isInteger(value) && value >= 0))
 		throw new JevClientError("response", "Jev returned invalid usage metadata");
-	return result as unknown as JevResult<Q>;
+	const validated = { model: result.model, answers, usage: { input_tokens: inputTokens, output_tokens: outputTokens } };
+	return validated as unknown as JevResult<Q>;
 }
 
 export interface JevClientOptions {
@@ -116,13 +143,25 @@ export interface JevClient {
 export function createJevClient(options: JevClientOptions = {}): JevClient {
 	const resolveCredential = options.credentialResolver ?? createJevCredentialResolver();
 	let client: TypeSafeClient | undefined;
+	let resolvedApiKey: string | undefined;
+	let credentialLookup: Promise<string> | undefined;
+	const getApiKey = (signal?: AbortSignal): Promise<string> => {
+		const configuredKey = options.apiKey?.trim() || process.env[JEV_API_KEY_NAME]?.trim();
+		if (configuredKey) return Promise.resolve(configuredKey);
+		if (resolvedApiKey) return Promise.resolve(resolvedApiKey);
+		credentialLookup ??= resolveCredential(signal).then((key) => {
+			resolvedApiKey = key;
+			return key;
+		}).finally(() => { credentialLookup = undefined; });
+		return credentialLookup;
+	};
 	return {
 		evaluate: async (state, questions, requestOptions = {}) => {
 			if (!isRecord(questions) || Object.keys(questions).length === 0) throw new JevClientError("request", "Jev requires at least one question");
 			const signal = requestOptions.signal;
 			if (signal?.aborted) throw new JevClientError("cancelled", "Jev request was cancelled");
 			try {
-				const apiKey = options.apiKey?.trim() || process.env[JEV_API_KEY_NAME]?.trim() || await resolveCredential(signal);
+				const apiKey = await getApiKey(signal);
 				client ??= new TypeSafeClient({ apiKey, baseURL: JEV_ENDPOINT, defaultModel: options.model ?? DEFAULT_JEV_MODEL, fetch: options.fetch, timeout: options.timeoutMs ?? 10_000, retry: { maxRetries: 2 }, logLevel: "off" });
 				const request = requestOptions.model === undefined ? { state, questions } : { state, questions, model: requestOptions.model };
 				const result = await client.systemOne(request, { signal, timeout: requestOptions.timeoutMs ?? options.timeoutMs ?? 10_000, retry: { maxRetries: 2 } });
