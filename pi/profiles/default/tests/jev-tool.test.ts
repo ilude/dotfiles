@@ -30,14 +30,23 @@ describe("jev_evaluate", () => {
 	});
 
 	it("validates inputs and preserves cancellation through the client boundary", async () => {
-		expect(Value.Check(jevParameters, { state: "x", questions: {} })).toBe(true);
-		expect(validQuestions({ urgent: { type: "noul" } })).toBe(true);
-		expect(validQuestions({ urgent: { type: "choice", criteria: { only: "x" } } })).toBe(false);
+		expect(Value.Check(jevParameters, { state: "x", questions: {} })).toBe(false);
+		expect(validQuestions({ urgent: { type: "noul", instructions: "Is this urgent?" } })).toBe(true);
+		expect(validQuestions({ urgent: { type: "noul" } })).toBe(false);
+		expect(validQuestions({ urgent: { type: "choice", instructions: "Pick one", criteria: { only: "x" } } })).toBe(false);
+		expect(validQuestions({ urgent: { type: "choice", instructions: "Pick one", criteria: { yes: "x", no: { detail: ["y"] } } } })).toBe(true);
+		expect(validQuestions({ priority: { type: "score", instructions: "Rate it", criteria: ["low", "high"] } })).toBe(true);
+		expect(validQuestions({ priority: { type: "score", instructions: "Rate it", criteria: ["one"] } })).toBe(false);
+		expect(validQuestions({ urgent: { type: "noul", instructions: "Is this urgent?", criteria: { true: "yes", false: "no" } } })).toBe(true);
 		const pi = createMockPi();
 		const jev = client();
 		registerJev(pi as never, jev as never);
 		const invalidResult = await pi._getTool("jev_evaluate")!.execute("id", { state: "synthetic", questions: {} }, undefined, undefined, {});
 		expect(invalidResult.details).toEqual({ code: "request" });
+		expect(invalidResult.isError).toBe(true);
+		expect(jev.evaluate).not.toHaveBeenCalled();
+		const invalidStateResult = await pi._getTool("jev_evaluate")!.execute("id", { state: 42 as never, questions }, undefined, undefined, {});
+		expect(invalidStateResult.isError).toBe(true);
 		expect(jev.evaluate).not.toHaveBeenCalled();
 		const controller = new AbortController();
 		const cancelled = { evaluate: vi.fn(async (_state: unknown, _questions: unknown, options?: { signal?: AbortSignal }) => {
@@ -49,6 +58,7 @@ describe("jev_evaluate", () => {
 		controller.abort();
 		const result = await cancelledPi._getTool("jev_evaluate")!.execute("id", { state: "synthetic", questions }, controller.signal, undefined, {});
 		expect(result.details).toEqual({ code: "cancelled" });
+		expect(result.isError).toBe(true);
 		expect(result.content[0].text).toBe("Jev evaluation failed: Jev request was cancelled");
 		expect(result.content[0].text).not.toContain("synthetic");
 	});

@@ -1,17 +1,31 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { EntryType, Questions } from "@typesafe-ai/sdk";
 import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { createJevClient, JevClientError, type JevClient } from "../lib/jev/client.ts";
 
-const entrySchema = Type.Unknown();
-const questionSchema = Type.Object({
-	type: Type.Union([Type.Literal("choice"), Type.Literal("score"), Type.Literal("noul")]),
-	instructions: Type.Optional(entrySchema),
-	criteria: Type.Optional(entrySchema),
-}, { additionalProperties: false });
+// TypeSafe accepts text, JSON objects/arrays, or null for state and descriptions.
+const entrySchema = Type.Union([
+	Type.String({ description: "Text description." }),
+	Type.Record(Type.String(), Type.Unknown(), { description: "Structured JSON object description." }),
+	Type.Array(Type.Unknown(), { description: "Structured JSON array description." }),
+	Type.Null({ description: "No description." }),
+]);
+const choiceCriteriaSchema = Type.Record(Type.String({ minLength: 1 }), entrySchema, { description: "Named choices and their descriptions. Provide 2 to 255 choices.", minProperties: 2, maxProperties: 255 });
+const scoreCriteriaSchema = Type.Array(entrySchema, { description: "Ordered score descriptions from level 0 upward. Provide 2 to 10 levels.", minItems: 2, maxItems: 10 });
+const noulCriteriaSchema = Type.Object({
+	true: Type.Optional(entrySchema),
+	false: Type.Optional(entrySchema),
+}, { description: "Optional descriptions for true and false outcomes.", additionalProperties: false });
+const questionSchema = Type.Union([
+	Type.Object({ type: Type.Literal("choice"), instructions: entrySchema, criteria: choiceCriteriaSchema }, { additionalProperties: false }),
+	Type.Object({ type: Type.Literal("score"), instructions: entrySchema, criteria: scoreCriteriaSchema }, { additionalProperties: false }),
+	Type.Object({ type: Type.Literal("noul"), instructions: entrySchema, criteria: Type.Optional(Type.Union([noulCriteriaSchema, Type.Null()])) }, { additionalProperties: false }),
+]);
+const questionsSchema = Type.Record(Type.String({ minLength: 1 }), questionSchema, { minProperties: 1 });
 const jevParameters = Type.Object({
 	state: entrySchema,
-	questions: Type.Record(Type.String({ minLength: 1 }), questionSchema),
+	questions: questionsSchema,
 	model: Type.Optional(Type.String({ minLength: 1 })),
 }, { additionalProperties: false });
 
@@ -21,18 +35,8 @@ type JevToolDetails = {
 	elapsed_ms?: number;
 	code?: JevClientError["code"];
 };
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function validQuestions(value: unknown): value is Questions {
-	if (!isRecord(value) || Object.keys(value).length === 0) return false;
-	return Object.values(value).every((question) => {
-		if (!isRecord(question) || !["choice", "score", "noul"].includes(String(question.type))) return false;
-		if (question.type === "choice") return isRecord(question.criteria) && Object.keys(question.criteria).length >= 2;
-		if (question.type === "score") return Array.isArray(question.criteria) && question.criteria.length >= 2;
-		return question.criteria === undefined || question.criteria === null || isRecord(question.criteria);
-	});
+	return Value.Check(questionsSchema, value);
 }
 
 function toolDetails(value: JevToolDetails): JevToolDetails {
@@ -56,12 +60,12 @@ export default function registerJev(pi: ExtensionAPI, client: JevClient = create
 		],
 		parameters: jevParameters,
 		execute: async (_id, params, signal) => {
-			if (!validQuestions(params.questions)) {
-				return { content: [{ type: "text", text: "Jev evaluation failed: questions must contain at least one valid typed question" }], details: toolDetails({ code: "request" }) };
+			if (!Value.Check(jevParameters, params)) {
+				return { content: [{ type: "text", text: "Jev evaluation failed: invalid state, questions, or model" }], details: toolDetails({ code: "request" }), isError: true };
 			}
 			const started = performance.now();
 			try {
-				const result = await client.evaluate(params.state as EntryType, params.questions, { model: params.model, signal });
+				const result = await client.evaluate(params.state as EntryType, params.questions as Questions, { model: params.model, signal });
 				const elapsed_ms = Math.round(performance.now() - started);
 				return {
 					content: [{ type: "text", text: JSON.stringify({ answers: result.answers, model: result.model, usage: result.usage, elapsed_ms }) }],
@@ -69,7 +73,7 @@ export default function registerJev(pi: ExtensionAPI, client: JevClient = create
 				};
 			} catch (error) {
 				const failure = safeError(error);
-				return { content: [{ type: "text", text: failure.text }], details: toolDetails(failure.details) };
+				return { content: [{ type: "text", text: failure.text }], details: toolDetails(failure.details), isError: true };
 			}
 		},
 	});
