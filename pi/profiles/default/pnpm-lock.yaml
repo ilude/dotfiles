@@ -14,6 +14,9 @@ importers:
       '@duckdb/node-api':
         specifier: 1.5.5-r.4
         version: 1.5.5-r.4
+      '@typesafe-ai/sdk':
+        specifier: 0.6.0
+        version: 0.6.0
       jiti:
         specifier: 2.7.0
         version: 2.7.0
@@ -679,6 +682,10 @@ packages:
 
   '@types/retry@0.12.5':
     resolution: {integrity: sha512-3xSjTp3v03X/lSQLkczaN9UIEwJMoMCA1+Nb5HfbJEQWogdeQIyVtTvxPXDQjZ5zws8rFQfVfRdz03ARihPJgw==}
+
+  '@typesafe-ai/sdk@0.6.0':
+    resolution: {integrity: sha512-IddX+Q0XM+VagOUZFeP7wZjaO4SHMdvnh2zEBdrZZnXedWI3BNK1lKhMx3ayrkFWvVLbVcUHJy6AVZlY+e6Jaw==}
+    engines: {node: '>=20'}
 
   '@vitest/expect@4.1.9':
     resolution: {integrity: sha512-vl/rYsUKcBr3SnQn166+XR5ZQcgMx3DQhFWdfli/cWpLnLUmbxZvyrJZotLFUryib+LtArYMSTJ5RbQ57ZqrlA==}
@@ -1633,6 +1640,8 @@ snapshots:
       '@types/retry': 0.12.5
 
   '@types/retry@0.12.5': {}
+
+  '@typesafe-ai/sdk@0.6.0': {}
 
   '@vitest/expect@4.1.9':
     dependencies:
