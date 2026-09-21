@@ -20,11 +20,13 @@ ${STEWARD_GUIDANCE}
 
 Assign at most one named plan task per subagent; split larger tasks further. Run ready independent assignments concurrently with disjoint write ownership. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
 
-const COMMON_COORDINATOR_GUIDANCE = `## Delegation guidance
+function coordinatorGuidance(taskSizing = "Assign at most one named plan task per subagent; split larger tasks into independently verifiable outcomes."): string {
+  return `## Delegation guidance
 
-Assign at most one named plan task per subagent; split larger tasks into independently verifiable outcomes. A Team Lead may coordinate several assignments. Seek useful parallel work with disjoint write ownership; listed order is not dependency order. Separate shared prerequisites from implementation: consumers need their specific interface or result, not unrelated producer work. Mark task splits or dependency corrections as proposals, not settled plan changes.`;
+${taskSizing} A Team Lead may coordinate several assignments. Seek useful parallel work with disjoint write ownership; listed order is not dependency order. Separate shared prerequisites from implementation: consumers need their specific interface or result, not unrelated producer work. Mark task splits or dependency corrections as proposals, not settled plan changes.`;
+}
 
-const STRATEGIST_GUIDANCE = `${COMMON_COORDINATOR_GUIDANCE}
+const STRATEGIST_GUIDANCE = `${coordinatorGuidance("Assign at most one named plan task per subagent. Treat it as an upper boundary, not an assignment size. Split multiple independently provable outcomes into smaller assignments with specific finishes, preserving task requirements.")}
 
 Recommend direct execution when delegation adds no value, one worker for a bounded outcome, or direct parallel workers for independent outcomes. Recommend a Team Lead only when ongoing dependency coordination or integration helps; name that responsibility.
 
@@ -66,7 +68,7 @@ export function delegationContext(options: DelegationContextOptions): string {
     : options.audience === "teamlead"
       ? TEAMLEAD_GUIDANCE
       : options.audience === "coordinator"
-        ? COMMON_COORDINATOR_GUIDANCE
+        ? coordinatorGuidance()
         : options.audience === "council"
           ? COUNCIL_GUIDANCE
           : CALLER_GUIDANCE;

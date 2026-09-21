@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-21: Activate YouTube vault tools with /yt
+
+**Changed:** Default Pi's `/yt` command wrapper now activates the four registered Onclave vault tools before submitting its workflow prompt, removing model-side discovery calls for a known workflow. Activation preserves unrelated tools and remains available after agent settlement for asynchronous terminal callbacks; the existing session-start/reload reset still hides deferred tools. The prompt and YouTube skill now direct calls to the already-active tools. `/yt-local`, callback reporting, service failures, and the prohibition on local fallback remain unchanged. Use `/reload` or a fresh session to load the wrapper change.
+
+## 2026-09-19: Size Strategist assignments by outcomes within plan tasks
+
+**Changed:** Default Pi Strategist guidance now treats a named plan task as an upper boundary rather than proof of an adequately sized assignment. Multiple independently provable outcomes should become smaller assignments with specific finishes while preserving the task's requirements. This addresses oversized single-task handoffs without changing other roles' guidance, planning acceptance, model defaults, or runtime dispatch behavior.
+
 ## 2026-09-18: Version subagent behavior and clarify automatic resumption
 
 **Changed:** Default Pi subagent extension version `1.0.0` records its active version at session start or reload so later `log_analytics` blocking reviews can identify the runtime and guidance governing each decision. Background result guidance now states explicitly that completion triggers a new orchestrator turn and resumes the workflow without polling. A downstream dependency alone no longer qualifies as a blocking explanation; ordinary workers and validators should run in the background, while `subagent_control wait` is reserved for reattaching an interrupted foreground join needed immediately.

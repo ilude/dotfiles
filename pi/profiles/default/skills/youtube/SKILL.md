@@ -5,7 +5,7 @@ description: Use deferred Onclave vault tools for YouTube transcript and content
 
 # YouTube and Onclave vault
 
-For user-directed YouTube research, discover inactive capabilities with `tool_search` using terms such as `YouTube`, `transcript`, `ingest`, `content`, `search`, `channel`, or `jobs`. The matching `onclave_vault_*` tools are activated for the current session only.
+`/yt` activates the four `onclave_vault_*` tools before submitting its prompt. Call them directly; they stay active for asynchronous completion callbacks until the next session start or reload. For user-directed YouTube research outside `/yt`, use active tools directly and discover only missing capabilities with `tool_search`.
 
 - `onclave_vault_ingest` submits a URL or transcript and returns `content_id` and `job_id`.
 - `onclave_vault_content` reads content or a bounded transcript.

@@ -4,5 +4,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerPromptTemplateCommands } from "../lib/prompt-template-commands.ts";
 
 export default function promptTemplateCommands(pi: ExtensionAPI): void {
-	registerPromptTemplateCommands(pi, join(dirname(fileURLToPath(import.meta.url)), "..", "prompts"));
+	registerPromptTemplateCommands(pi, join(dirname(fileURLToPath(import.meta.url)), "..", "prompts"), {
+		yt: ["onclave_vault_search", "onclave_vault_content", "onclave_vault_ingest", "onclave_vault_jobs"],
+	});
 }

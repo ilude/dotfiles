@@ -118,12 +118,24 @@ describe("delegation guidance", () => {
     for (const role of [strategist, coordinator]) {
       const text = composedAgentPrompt(role, definitions, ["leaf"]);
       expect(text).toContain("at most one named plan task per subagent");
-      expect(text).toContain("split larger tasks into independently verifiable outcomes");
       expect(text).toContain("A Team Lead may coordinate several assignments");
       expect(text).toContain("Seek useful parallel work");
       expect(text).toContain("disjoint write ownership");
       expect(text).toContain("consumers need their specific interface or result, not unrelated producer work");
       expect(text).toContain("as proposals, not settled plan changes");
+    }
+  });
+
+  it("sizes outcomes within named tasks only in Strategist guidance", () => {
+    const text = composedAgentPrompt(strategist, definitions, ["leaf"]);
+    expect(text).toContain("Treat it as an upper boundary, not an assignment size");
+    expect(text).toContain("Split multiple independently provable outcomes into smaller assignments with specific finishes");
+    expect(text).toContain("preserving task requirements");
+    expect(text).not.toContain("split larger tasks into independently verifiable outcomes");
+    const coordinatorText = composedAgentPrompt(coordinator, definitions);
+    expect(coordinatorText).toContain("split larger tasks into independently verifiable outcomes");
+    for (const audience of ["caller", "coordinator", "teamlead", "council", "leaf"] as const) {
+      expect(delegationContext({ audience, definitions })).not.toContain("upper boundary, not an assignment size");
     }
   });
 

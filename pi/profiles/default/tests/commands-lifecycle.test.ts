@@ -18,6 +18,8 @@ vi.mock("../commands/commit/reviewer.ts", () => ({
 }));
 
 import profileCommands from "../extensions/commands.ts";
+import promptTemplateCommands from "../extensions/prompt-template-commands.ts";
+import registerToolVisibility from "../extensions/tool-visibility.ts";
 
 type Hook = (event: any, ctx?: any) => unknown;
 
@@ -72,6 +74,52 @@ function runtimeToolResponse(stream: AssistantMessageEventStream, name: string, 
 
 describe("profile command lifecycle", () => {
 	beforeEach(() => vi.clearAllMocks());
+
+	it("activates /yt tools before submission and retains them for callback turns until session reset", async () => {
+		const f = fixture();
+		const vaultTools = ["onclave_vault_search", "onclave_vault_content", "onclave_vault_ingest", "onclave_vault_jobs"];
+		registerToolVisibility(f.pi);
+		promptTemplateCommands(f.pi);
+		f.pi.setActiveTools([...f.active(), ...vaultTools]);
+		await f.emit("session_start", { reason: "startup" });
+		expect(f.active()).toEqual(["read", "unrelated_tool"]);
+
+		// Unrelated templates, including the explicit local workflow, do not activate vault tools.
+		await f.commands.get("yt-local")!.handler("fixture-video", f.ctx);
+		expect(f.active()).toEqual(["read", "unrelated_tool"]);
+
+		await f.commands.get("commit")!.handler("", f.ctx);
+		const expected = ["read", "unrelated_tool", "commit_run", ...vaultTools];
+		const originalSend = f.pi.sendMessage;
+		f.pi.sendMessage = (...args: Parameters<typeof originalSend>) => {
+			expect(f.active()).toEqual(expected);
+			return originalSend(...args);
+		};
+		const request = "https://www.youtube.com/watch?v=fixture";
+		await f.commands.get("yt")!.handler(request, f.ctx);
+		const prompt = f.sent.at(-1)!;
+		expect(prompt.message.customType).toBe("prompt-template-command");
+		expect(prompt.message.details.invocation).toBe(`/yt ${request}`);
+		expect(prompt.message.content).toContain(`YouTube request: ${request}`);
+		expect(prompt.message.content).not.toContain("tool_search");
+		expect(prompt.message.content).not.toContain("$ARGUMENTS");
+		expect(prompt.options).toMatchObject({ triggerTurn: true });
+		// Repeating /yt must not duplicate tools or replace an in-flight command's tools.
+		await f.commands.get("yt")!.handler("search context management", f.ctx);
+		f.pi.sendMessage = originalSend;
+
+		await f.emit("agent_end", { messages: [], willRetry: true });
+		await f.emit("session_compact", { reason: "threshold" });
+		expect(f.active()).toEqual(expected);
+		await f.emit("agent_settled", {});
+		expect(f.active()).toEqual(["read", "unrelated_tool", ...vaultTools]);
+		// A later terminal notification starts another turn without tool discovery.
+		await f.emit("message_start", { message: { role: "custom", customType: "onclave-notification", content: "job_terminal" } });
+		expect(f.active()).toEqual(["read", "unrelated_tool", ...vaultTools]);
+		await f.emit("session_shutdown", { reason: "new" });
+		await f.emit("session_start", { reason: "new" });
+		expect(f.active()).toEqual(["read", "unrelated_tool"]);
+	});
 
 	it("allows a direct commit tool call without granting push authority", async () => {
 		const f = fixture();

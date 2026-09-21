@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { activateTools } from "./tool-activation.ts";
 
 export const PROMPT_TEMPLATE_COMMAND_TYPE = "prompt-template-command";
 
@@ -59,7 +60,11 @@ function parseTemplate(raw: string): { description?: string; body: string } {
 	return { description, body: raw.slice(end + 5) };
 }
 
-export function registerPromptTemplateCommands(pi: ExtensionAPI, promptsDirectory: string): void {
+export function registerPromptTemplateCommands(
+	pi: ExtensionAPI,
+	promptsDirectory: string,
+	commandTools: Readonly<Record<string, readonly string[]>> = {},
+): void {
 	pi.registerMessageRenderer(PROMPT_TEMPLATE_COMMAND_TYPE, (message, { outputPad }) => {
 		const details = message.details as PromptTemplateCommandDetails | undefined;
 		return new Text(details ? formatPromptTemplateCommand(details) : "", outputPad, 0);
@@ -75,6 +80,10 @@ export function registerPromptTemplateCommands(pi: ExtensionAPI, promptsDirector
 			handler: async (rawArgs) => {
 				const args = rawArgs.trim();
 				const invocation = args ? `/${name} ${args}` : `/${name}`;
+				// Prepare schemas before submission, including when steering a busy agent.
+				// Leave these existing tools active for asynchronous callback turns.
+				const tools = commandTools[name];
+				if (tools?.length) activateTools(pi, tools);
 				pi.sendMessage({
 					customType: PROMPT_TEMPLATE_COMMAND_TYPE,
 					content: substitutePromptArguments(body, parseCommandArgs(args)),

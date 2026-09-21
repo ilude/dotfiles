@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-063 - Future lifecycle proof blocked a preparation-only deployment
+
+- **Reference:** Default execution `01a0b6d3-a81b-7507-8a4d-01e67f21a751`, 2026-09-18/19; planning provenance `01a0b598-8155-700a-9da8-10cae221bf5b`; TCA-009.
+- **Observed:** The planner made full disposable-cluster renewal/replacement/retirement proof a prerequisite for preparation-only deployment. It acknowledged the operator's later clarification that these were development environments not yet serving the use case, but did not update the handoff. Strategist reproduced the broad S3 boundary as one developer assignment. That worker performed 15 failing opt-in integration runs and one interrupted run over roughly 44 minutes before operator intervention. Failures included fixture/setup problems and a real generated-trust evidence defect; they were not all meaningless retries.
+- **Finding:** Validation scope and task decomposition were wrong before dispatch. The loaded planning skill already required proportional acceptance, preserving deferred scope boundaries, and splitting oversized tasks. One named task per worker was followed, but treated as sufficient sizing. Recovery initially split the test work without reconsidering whether it belonged on the deployment's critical path. The operator had to question that premise separately.
+- **Recovery:** Bounded workers corrected the evidence defect and proved activation. The operator then authorized deferring remaining local lifecycle simulation. The executor deployed preparation, verified it, merged locally, and archived the plan. Four S3 worker transcripts contain no compaction records; compaction is not an established cause. The Sol success inherited Luna's production fix and uncommitted checkpoint work, so it is not a controlled model comparison.
+- **Recommendations:** During existing plan authoring, connect each blocking check to the operation being delivered and carry environment/risk decisions into the handoff. During existing Strategist consultation, size independently provable outcomes rather than equating task IDs with assignment units. During execution, surface a concrete acceptance mismatch for a user decision instead of only subdividing increasingly expensive validation. Preserve authorization and background delivery; add no blanket cluster ban, timer, review stage, or runtime gate.
+- **Related:** APR-062 (same design discussion), APR-050 (deferred scope coupling), APR-046/APR-020 (assignment sizing), AIF-080/AIF-061/AIF-006. These are comparable patterns, not a new census or a shared-mechanism count.
+- **Status:** Review recorded. Operator subsequently approved only the Strategist task-sizing correction, implemented and checked under AIF-083. Planning-skill improvements remain under discussion; no plan, runtime, deployment, or infrastructure changes.
+
 ## APR-062 - Defended rotation machinery before separating CA and server lifetimes
 
 - **Reference:** Default-profile certificate-planning discussion, 2026-09-18.

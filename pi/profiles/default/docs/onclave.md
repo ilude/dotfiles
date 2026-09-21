@@ -89,9 +89,11 @@ an implementation completion gate.
 
 ## YouTube vault and backfill
 
-`/yt` uses the deferred `onclave_vault_*` tools and does not fall back to local
-fetching. Use `/yt-local` only for an explicit local transcript or metadata
-fetch. The retained Python fetchers live in `tools/onclave-youtube` and write
+`/yt` activates all four registered `onclave_vault_*` tools before submitting
+its prompt, so ingest and callback turns can call them without `tool_search`.
+They remain active through agent settlement and are hidden again on session
+start or reload. `/yt` does not fall back to local fetching. Use `/yt-local`
+only for an explicit local transcript or metadata fetch. The retained Python fetchers live in `tools/onclave-youtube` and write
 under `~/.dotfiles/yt/`.
 
 The optional `tools/onclave-backfill` worker is registered by the installer as a
