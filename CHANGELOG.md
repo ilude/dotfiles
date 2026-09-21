@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-21: Add deferred Jev evaluation for default Pi
+
+**Added:** Default Pi now provides a deferred `jev_evaluate` tool for explicitly supplied state and typed questions. Tool discovery activates it on demand, keeps existing tool visibility unchanged, maps validated Jev answers with model, usage, and elapsed time, and returns bounded safe failures. Registration performs no credential lookup or network request; live Jev and BWS calls remain operator-owned.
+
 ## 2026-09-21: Activate YouTube vault tools with /yt
 
 **Changed:** Default Pi's `/yt` command wrapper now activates the four registered Onclave vault tools before submitting its workflow prompt, removing model-side discovery calls for a known workflow. Activation preserves unrelated tools and remains available after agent settlement for asynchronous terminal callbacks; the existing session-start/reload reset still hides deferred tools. The prompt and YouTube skill now direct calls to the already-active tools. `/yt-local`, callback reporting, service failures, and the prohibition on local fallback remain unchanged. Use `/reload` or a fresh session to load the wrapper change.

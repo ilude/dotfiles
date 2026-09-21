@@ -32,6 +32,8 @@ it("uses the official SDK boundary and validates Choice, fractional Score, and N
 });
 
 it("resolves credentials lazily from the exact BWS record without exposing helper output", async () => {
+	vi.stubEnv(JEV_API_KEY_NAME, "");
+	vi.stubEnv("BITWARDEN_ACCESS_KEY", "synthetic-machine-token");
 	const exec = vi.fn(async (_command: string, args: string[]) => ({ stdout: JSON.stringify({ key: JEV_API_KEY_NAME, value: "synthetic-bws-key" }), stderr: "" }));
 	const resolve = createJevCredentialResolver(exec);
 	const fetch = vi.fn(async () => response({ model: "jev-1.13.0", answers: { urgent: { type: "noul", noul: 0.5 } }, usage: { input_tokens: 1, output_tokens: 0 } }));
@@ -70,6 +72,7 @@ describe("cancellation and timeout", () => {
 	it("passes cancellation through the SDK boundary", async () => {
 		const controller = new AbortController();
 		const fetch = vi.fn(async (_input: string, init?: RequestInit) => {
+			if (init?.signal?.aborted) throw new Error("aborted");
 			await new Promise<void>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
 			return response({});
 		});
@@ -80,6 +83,7 @@ describe("cancellation and timeout", () => {
 
 	it("reports SDK timeouts as safe failures", async () => {
 		const fetch = vi.fn(async (_input: string, init?: RequestInit) => {
+			if (init?.signal?.aborted) throw new Error("timeout");
 			await new Promise<void>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("timeout")), { once: true }));
 			return response({});
 		});
