@@ -143,11 +143,12 @@ T1 and T2 were approved on 2026-09-21 and are executable. The decisions above no
 
 ## Current handoff
 
-- Status: T1/T2 implemented and checked; local integration pending. T3 remains deferred, so whole-plan completion and archival are intentionally pending.
+- Status: T1/T2 completed and integrated locally into main via fast-forward through `60d79d4e` on 2026-09-21. Task worktree removed after clean/ancestor checks. T3 remains deferred, so whole-plan completion and archival are intentionally pending.
 - Actual checks, 2026-09-21, default profile in recorded task worktree: `pnpm test jev-client.test.ts jev-tool.test.ts tool-visibility.test.ts tool-search.test.ts` coverage passed (19 tests, final run split between tool and other three files); `pnpm run typecheck` passed; `node scripts/jev-smoke.mjs` passed through installed Pi 0.85.1. Tests used synthetic credentials and mocked transport. No live BWS or Jev requests.
-- Next action: merge the committed T1/T2 delivery and plan evidence into main, then clean up the task worktree. T3 needs separate authorization.
+- Lasting checkout setup: frozen pnpm install and default dependency link setup passed; `pnpm run check:runtime` and `node scripts/jev-smoke.mjs` passed after installation on main. No push performed.
+- Next action: operator may reload Pi to discover `jev_evaluate` through tool search. T3 and live experiments need separate authorization; no T1/T2 implementation work remains.
 - Verification limits: live BWS access/key validity, model availability, production latency/billing and domain accuracy remain untested. The native-loader check establishes offline module registration, not live provider calls. The model-limitations page was unavailable through screening.
 - [x] Authorized T1/T2 implementation and agreed offline checks complete.
 - [ ] Whole spec archived, deferred until T3 is resolved.
-- [ ] T1/T2 delivery and evidence integrated into recorded target.
-- [ ] T1/T2 task worktree cleanup verified.
+- [x] T1/T2 delivery and evidence integrated into recorded target.
+- [x] T1/T2 task worktree cleanup verified.
