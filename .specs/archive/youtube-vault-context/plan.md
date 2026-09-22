@@ -306,8 +306,8 @@ After T1, T2 (SponsorBlock helper), T5 (budget planner/config), T7 (callback pay
 ## Actual implementation and publication evidence
 
 - Execution profile: default. Dotfiles task worktree `C:/Users/mglenn/.dotfiles/.worktrees/youtube-vault-context`, branch `task/youtube-vault-context`; Onclave task commit `8349ffc9b09c632d39b5de8c8ce9c9a4c5c800a4`.
-- Onclave implementation merged to `feature/v2-broker-core` as `72a666412d2292a4ec105d3b2b5eb6b97150d95b` and published to `origin/feature/v2-broker-core`.
-- Offline integrated validation on 2026-09-21: Onclave `pnpm run check` passed (319 passed, 1 skipped); default profile typecheck passed; selected Pi tests passed (14); task-adapter smoke passed; both repositories passed `git diff --check`.
+- Onclave implementation merged to `feature/v2-broker-core` as `72a666412d2292a4ec105d3b2b5eb6b97150d95b`, then CI exposed a credential-dependent extension test. The task-owned fix passed the full local check and was merged/published as `1d35d2320f154b24b61ad637b565184755b8f635`.
+- Offline integrated validation on 2026-09-21: Onclave `pnpm run check` passed (319 passed, 1 skipped), including the CI fix; default profile typecheck passed; selected Pi tests passed (14); task-adapter smoke passed; both repositories passed `git diff --check`.
 - Deployment, live verification, final homelab validation, completion metadata, and worktree cleanup remain pending. Next action owner: executor, after parent merge/publication and exact-SHA image availability.
 
 ## Agreed validation and current handoff
