@@ -185,6 +185,24 @@ describe.skipIf(process.env.PI_SUBAGENT_HERDR_LIVE !== "1")("isolated visible su
   await child.finish();
  }), timeout);
 
+ it("completes a bounded visible lead and worker recovery smoke", async () => withLiveHarness(async ({ scratch, runtime, input }) => {
+  const catalog = loadDefinitions(scratch, false, profile);
+  const definition: AgentDefinition = {
+   name: "probe-lead", description: "Bounded coordinator smoke",
+   tools: ["subagent", "subagent_control"], delegates: ["developer"], skills: [],
+   prompt: "You coordinate one worker. Launch a developer to write proof.txt with exactly leaf write ok, no shell commands. Use background:true, retain:false. Return control while it works. After its automatic completion, report the result. Do not ask the parent questions or report partial completion.",
+   source: "profile", filePath: "probe-lead.md",
+  };
+  const started = await runtime.launch({ ...input, definition, instructions: "Run the one-worker smoke now.", retained: false, catalog: catalog.agents }, profile, childExtension, true);
+  await vi.waitFor(() => expect(runtime.get(started.id).snapshot().status).toBe("settled"), { timeout: 120_000, interval: 250 });
+  const result = runtime.get(started.id).snapshot();
+  expect(result.outcome, result.error ?? result.result).toBe("complete");
+  const members = runtime.list().filter(record => record.parentId === result.id);
+  expect(members.map(record => record.agent)).toEqual(["developer"]);
+  expect(members[0].outcome, JSON.stringify(members)).toBe("complete");
+  expect(readFileSync(join(scratch, "proof.txt"), "utf8")).toBe("leaf write ok");
+ }), timeout);
+
  it("runs a nested teamlead and its developer and explorer members", async () => withLiveHarness(async ({ scratch, runtime, input }) => {
   const catalog = loadDefinitions(scratch, false, profile);
   expect(catalog.errors).toEqual([]);

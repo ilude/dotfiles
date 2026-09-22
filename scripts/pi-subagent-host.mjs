@@ -78,8 +78,9 @@ export async function hostSubagent(entry, profile, rawEndpoint) {
   const closed=new Promise((resolve,reject)=>{child.once("error",error=>{exited=true;reject(error)});child.once("close",(code,signal)=>{exited=true;resolve({code,signal})})});
   const watch=(async()=>{
    while(!exited){
-    try{const state=await requestParent(endpoint,{type:"host-poll"});if(state.stop&&(state.force||!userOwned()))await stop()}
-    catch{parentGone=true;if(!userOwned())await stop()}
+    try{const state=await requestParent(endpoint,{type:"host-poll"});if(state.stop&&(state.force||!userOwned())){stderrCapture.append(Buffer.from(`[subagent-host] shutdown=parent-stop force=${Boolean(state.force)}\n`));await stop()}}
+    catch(error){if(!parentGone)stderrCapture.append(Buffer.from(`${hostStartupDiagnostic("parent monitoring",error)}; action=${userOwned()?"preserve-user-owned":"stop-child"}\n`));parentGone=true;if(!userOwned())await stop()}
+    if(parentGone&&userOwned())break;
     if(!exited)await delay(100);
    }
   })();

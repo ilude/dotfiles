@@ -1,5 +1,14 @@
 # Tool-call analysis log
 
+## TCA-010 - Knowledge-review visible subagent interruption
+
+- **Review date:** 2026-09-22. Default profile; selected review-team events from `[2026-09-22T18:48:00Z,2026-09-22T19:39:00Z)`, plus bounded Windows event and current layout inspection. Not an exhaustive failure count.
+- **Evidence:** Parent notifications, exact EISA/platform lead errors, bounded Herdr server logs around 19:17 and 19:38, and visible/layout/host/transport source. Review artifacts remain in the MPS review worktree under `.review/knowledge-discovery/`.
+- **Findings:** Early startup errors identify a 30-second app-ready deadline, not its cause. Bulk exits around 19:17 remain causally unresolved. At 19:38:05, retry targeted absent pane `w2A:p4R`; retained layout anchors explain that immediate placement failure. Cleanup missing-pane errors are aftermath, not proof of the initial trigger. Host and child both treated a single failed parent request as parent loss; this is a demonstrated code path, not proof it initiated the incident.
+- **Memory evidence:** Windows System/Application and enabled Resource-Exhaustion Detector/Resolver logs had no matching memory or application-crash events in `[18:40Z,19:25Z)`. Later available-memory readings cannot exclude historical pressure. A bounded analytics OOM does not establish machine exhaustion. No memory-limit changes warranted by this evidence.
+- **Remediation:** User authorized a separate dotfiles worktree fix. Placement now reconciles missing owned panes; polls alone retry transient connection failures three times with bounded backoff. Explicit rejection, received stop responses and non-idempotent requests are not retried. Request-category and host-stop diagnostics omit payloads/tokens. Headless was proposed but not authorized or used as the recovery route.
+- **Validation:** 235 offline subagent tests passed; typecheck and runtime check passed. Isolated visible bounded coordinator/developer smoke passed. Standard full-role Team Lead smoke returned a partial workflow report rather than completion, not a demonstrated launcher crash. Initial worktree live attempts exposed missing isolated web dependencies and missing profile authentication; corrected setup reused the existing auth through a temporary file link, without copying values. An inert geometry assertion failed identically in task and unchanged main (`13.666... <= 1`, subagent-ux-live.test.ts:208), so it is a pre-existing limitation and was not changed. Current attached-client acceptance and original bulk-exit causality remain unproved.
+
 ## TCA-009 - Oversized disposable validation on the deployment critical path
 
 - **Review date:** 2026-09-19.

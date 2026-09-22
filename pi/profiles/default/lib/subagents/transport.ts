@@ -1,5 +1,6 @@
 import { createServer, createConnection, type Server, type Socket } from "node:net";
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { JsonLines } from "./framing.ts";
 
 export interface ChildIdentity { child: string; run: string; origin: string }
@@ -99,7 +100,30 @@ export class ChildTransport {
   }
 }
 
-export function requestParent(endpoint: ChildEndpoint, message: ApplicationMessage): Promise<unknown> {
+class ParentConnectionError extends Error {
+  readonly reason: string;
+  constructor(reason: string) { super(`Parent connection failed: ${reason}`); this.reason = reason; }
+}
+
+// Only polls are safe to replay: commands, bootstrap and final turns may have
+// been accepted before their response was lost. Never retry those implicitly.
+export async function requestParent(endpoint: ChildEndpoint, message: ApplicationMessage): Promise<unknown> {
+  const attempts = ["host-poll", "app-poll", "heartbeat"].includes(message.type) ? 3 : 1;
+  for (let attempt = 1; ; attempt++) {
+    try { return await requestParentOnce(endpoint, message); }
+    catch (error) {
+      const retry = error instanceof ParentConnectionError && attempt < attempts;
+      // Do not publish endpoints, payloads or arbitrary server error text.
+      const kind = error instanceof ParentConnectionError ? error.reason : "rejected-or-invalid-response";
+      const type = /^[a-z-]{1,32}$/.test(message.type) ? message.type : "unknown";
+      process.stderr.write(`[subagent-parent] ${type} attempt=${attempt}/${attempts} reason=${kind} action=${retry ? "retry" : "fail"}\n`);
+      if (!retry) throw error;
+      await delay(250 * attempt);
+    }
+  }
+}
+
+function requestParentOnce(endpoint: ChildEndpoint, message: ApplicationMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const socket = createConnection({ host: "127.0.0.1", port: endpoint.port });
     let settled = false;
@@ -110,7 +134,7 @@ export function requestParent(endpoint: ChildEndpoint, message: ApplicationMessa
       socket.destroy();
       error ? reject(error) : resolve(value);
     };
-    const deadline = setTimeout(() => finish(new Error("Parent request timed out")), DEADLINE);
+    const deadline = setTimeout(() => finish(new ParentConnectionError("timeout")), DEADLINE);
     const frames = new JsonLines(value => {
       if (!object(value) || typeof value.ok !== "boolean") { finish(new Error("Invalid parent response")); return; }
       value.ok ? finish(undefined, value.result) : finish(new Error(typeof value.error === "string" ? value.error : "Parent rejected request"));
@@ -121,7 +145,10 @@ export function requestParent(endpoint: ChildEndpoint, message: ApplicationMessa
       socket.write(frame);
     });
     socket.on("data", (chunk: Buffer) => { try { frames.push(chunk); } catch (error) { finish(error as Error); } });
-    socket.once("error", error => finish(error));
-    socket.once("close", () => finish(new Error("Parent unavailable")));
+    socket.once("error", error => {
+      const code = (error as NodeJS.ErrnoException).code;
+      finish(new ParentConnectionError(code && /^[A-Z0-9_]{1,32}$/.test(code) ? code : "socket-error"));
+    });
+    socket.once("close", () => finish(new ParentConnectionError("connection-closed")));
   });
 }

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-22: Recover visible subagents from stale panes and transient parent links
+
+**Changed:** Visible child placement reconciles previously owned pane identities
+against the live workspace before selecting split anchors. Already-removed owned
+panes can complete cleanup without repeated close failures. Caller and unrelated
+panes remain untouched.
+
+Parent polling now retries connection failures up to three attempts with bounded
+backoff, shared by the host and child session. Explicit parent rejection and stop
+responses are not delayed. Mutating requests and final turns are never replayed.
+Bounded diagnostics identify request type, transport reason and host shutdown
+trigger without printing authentication tokens or message payloads. Memory limits
+and the settled-only reload boundary remain unchanged.
+
 ## 2026-09-21: Make `/yt` whole-video retrieval explicit and compact
 
 **Changed:** Default Pi's `/yt` guidance now reports sufficient asynchronous

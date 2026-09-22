@@ -46,6 +46,7 @@ interface Group {
   callerTab: string;
   workspaceId: string;
   children: Map<string, LayoutChild & { title: string }>;
+  disappeared: Map<string, string>;
   tabs: Map<number, string>;
   managedTabTitles: Map<string, string>;
   halfVacancies: Map<number, Set<number>>;
@@ -92,10 +93,13 @@ export class SubagentLayout {
     if (!group) return;
     await this.serial(group, async () => {
       const owned = group.children.get(childId);
+      if (!owned && group.disappeared.get(childId) === paneId) return;
       if (!owned || owned.paneId !== paneId) throw new Error("Visible child pane is not owned by this layout");
       const partnerSurvives = [...group.children.values()].some(candidate => candidate.childId !== childId
         && candidate.tabIndex === owned.tabIndex && candidate.column === owned.column && candidate.row !== owned.row);
-      await this.cli(["plugin", "pane", "close", paneId]);
+      // An operator or exited host may already have removed this exact pane.
+      const live = await this.livePanes(group);
+      if (live.has(paneId)) await this.cli(["plugin", "pane", "close", paneId]);
       group.children.delete(childId);
       try {
         const halfVacancies = this.slotSet(group.halfVacancies, owned.tabIndex);
@@ -134,7 +138,7 @@ export class SubagentLayout {
     }
     const group: Group = {
       callerPane, callerTab: "", workspaceId: "", children: new Map(), tabs: new Map(), managedTabTitles: new Map(),
-      halfVacancies: new Map(), rightSplitLowerSlots: new Map(), tail: Promise.resolve(),
+      disappeared: new Map(), halfVacancies: new Map(), rightSplitLowerSlots: new Map(), tail: Promise.resolve(),
     };
     this.groups.set(origin, group);
     return group;
@@ -155,6 +159,7 @@ export class SubagentLayout {
     } else if (caller.tab_id !== group.callerTab || caller.workspace_id !== group.workspaceId) {
       throw new Error("Visible child caller workspace changed");
     }
+    await this.reconcileMissingPanes(group);
     const slot = this.nextSlot(group);
     const newOverflowTab = slot.tabIndex > 0 && !group.tabs.has(slot.tabIndex);
     const lowerAnchor = slot.row === 0
@@ -220,6 +225,39 @@ export class SubagentLayout {
         throw new LayoutPlacementError(String(error), { ...owned });
       }
       return { ...owned };
+  }
+
+  private async livePanes(group: Group): Promise<Set<string>> {
+    const response = asResult(await this.cli(["pane", "list", "--workspace", group.workspaceId]));
+    if (!Array.isArray(response.panes) || response.panes.some((pane: any) => typeof pane?.pane_id !== "string")) {
+      throw new Error("Herdr did not return a complete pane list");
+    }
+    return new Set(response.panes.map((pane: { pane_id: string }) => pane.pane_id));
+  }
+
+  private async reconcileMissingPanes(group: Group): Promise<void> {
+    if (!group.children.size) return;
+    const live = await this.livePanes(group);
+    const missing = [...group.children.values()].filter(child => !live.has(child.paneId))
+      .sort((a, b) => b.tabIndex - a.tabIndex || b.column - a.column || b.row - a.row);
+    for (const child of missing) {
+      group.children.delete(child.childId);
+      group.disappeared.set(child.childId, child.paneId);
+      const partnerSurvives = [...group.children.values()].some(candidate => candidate.tabIndex === child.tabIndex && candidate.column === child.column);
+      const vacancies = this.slotSet(group.halfVacancies, child.tabIndex);
+      const completed = !partnerSurvives && vacancies.delete(child.column);
+      if (partnerSurvives) vacancies.add(child.column);
+      const appended = this.compactColumns(group, child);
+      if (![...group.children.values()].some(candidate => candidate.tabIndex === child.tabIndex)) {
+        group.halfVacancies.delete(child.tabIndex);
+        group.rightSplitLowerSlots.delete(child.tabIndex);
+        const tab = group.tabs.get(child.tabIndex);
+        if (tab) group.managedTabTitles.delete(tab);
+        group.tabs.delete(child.tabIndex);
+      } else if (completed && appended !== undefined) {
+        this.slotSet(group.rightSplitLowerSlots, child.tabIndex).add(appended);
+      }
+    }
   }
 
   private async swapPreservingFocus(sourcePane: string, targetPane: string): Promise<void> {

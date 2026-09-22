@@ -135,6 +135,45 @@ function allocations(count: number) {
 }
 
 describe("subagent layout contract", () => {
+  it("launches from the surviving caller after all tracked children disappeared", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const request = { callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi" };
+    const first = await layout.place("origin", { ...request, childId: "first" });
+    const second = await layout.place("origin", { ...request, childId: "second" });
+    fixture.panes.delete(first.paneId);
+    fixture.panes.delete(second.paneId);
+    const next = await layout.place("origin", { ...request, childId: "next" });
+    expect(layout.snapshot("origin")).toEqual([next]);
+    const opens = fixture.calls.filter(args => args.slice(0, 3).join(" ") === "plugin pane open");
+    expect(opens.at(-1)).toContain("w1:p1");
+    await layout.close("origin", "first", first.paneId);
+    expect(fixture.panes.has(next.paneId)).toBe(true);
+    expect(fixture.panes.has("w2:p1")).toBe(true);
+  });
+
+  it("reconciles a missing lower partner without selecting its stale pane", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const request = { callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi" };
+    const children: Awaited<ReturnType<SubagentLayout["place"]>>[] = [];
+    for (let i = 0; i < 5; i++) children.push(await layout.place("origin", { ...request, childId: String(i) }));
+    fixture.panes.delete(children[0].paneId);
+    fixture.panes.delete(children[4].paneId);
+    const next = await layout.place("origin", { ...request, childId: "next" });
+    expect(fixture.panes.has(next.paneId)).toBe(true);
+    expect(layout.snapshot("origin").some(child => child.paneId === children[4].paneId)).toBe(false);
+  });
+
+  it("settles cleanup when an owned pane has already disappeared", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const child = await layout.place("origin", { childId: "first", callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi" });
+    fixture.panes.delete(child.paneId);
+    await layout.close("origin", "first", child.paneId);
+    expect(layout.snapshot("origin")).toEqual([]);
+    expect(fixture.calls.some(args => args.slice(0, 3).join(" ") === "plugin pane close")).toBe(false);
+  });
   it.each([
     [1, 0, 0, 0], [4, 0, 0, 3], [5, 0, 1, 0], [8, 0, 1, 3],
     [9, 1, 0, 0], [17, 2, 0, 0],
