@@ -1,7 +1,7 @@
 ---
 created: 2026-09-21
-status: in progress
-completed: null
+status: completed
+completed: 2026-09-22
 ---
 
 # Whole-video understanding without sponsor text in model context
@@ -272,15 +272,15 @@ Keep task checkboxes, evidence, actual runs, and blockers accurate. Do not mark 
   - Done when: fixtures prove the agreed input boundaries across acquisition, analysis, indexing, retrieval, and callback reporting, and docs describe the actual behavior and limitations.
   - Evidence: Dotfiles guidance/docs and cross-path fixtures updated. Integrated offline checks passed: Onclave 319 passed/1 skipped; default typecheck; 14 focused Pi tests; loader smoke; both diff checks.
 
-- [ ] **T12: Commit, archive, merge, and publish in repository order**
+- [x] **T12: Commit, archive, merge, and publish in repository order**
   - Depends on: T11 passing checks. Publication and deployment permission is already recorded above.
   - Owns: task commits, the coordinating spec, gitlink integration, and required module/parent publication.
   - Follow the commit/merge/publication portions of closeout steps 1-5; T13 owns the subsequent deployment. Publish module commits before committing parent gitlinks. Archive the completed implementation spec with deployment/cleanup still unchecked; do not set overall completion before T13/T14.
   - Verify: recorded target merges, published module and parent hashes, archived spec on the target, and exact Onclave commit selected for image publication. Preserve unrelated changes and published history.
   - Done when: the checked implementation is merged/published and the authorized deployment trigger has occurred.
-  - Evidence: Not started.
+  - Evidence: Onclave `1d35d2320f154b24b61ad637b565184755b8f635`, dotfiles merge `fd7846c8ed81381e64629426975502424fde06a1`, and follow-up pin `f5308bd8f8fb9e8dc2cbf80db3b299a76feff561` were published in repository order; the spec was archived before deployment.
 
-- [ ] **T13: Deploy the merged changes through the managed Onclave workflow**
+- [x] **T13: Deploy the merged changes through the managed Onclave workflow**
   - Depends on: T12 merged/published revisions and their successful CI/image build. No further routine deployment approval is required.
   - Owns: homelab-infra-managed Onclave source/image/configuration pin updates, application rollout, and live deployment evidence. Application code stays in Onclave; BWS remains the live configuration/secret authority. Do not print secrets or site inventory.
   - Confirm the exact merged Onclave SHA passes `.github/workflows/ci.yml` and has a published immutable GHCR digest. Monitor CI and rollout waits using `schedule`: list existing jobs first, schedule a reasonable next check, and include exact run/SHA/target context. Do not poll indefinitely, sleep for long periods in shell, or delegate the external wait to a subagent.
@@ -291,13 +291,13 @@ Keep task checkboxes, evidence, actual runs, and blockers accurate. Do not mark 
   - If deployment fails, follow homelab-infra's failure/recovery rules, preserve healthy services, and report the actual live state. Do not mark the plan complete because commits or images exist. No unrelated recovery/refactoring work is authorized.
   - Run homelab-infra `just validate` exactly once after all implementation and live work for this plan is otherwise finished, as that repository requires. Use only targeted checks during rollout and fixes.
   - Done when: the exact merged application revision is deployed, the affected live workflow passes the bounded checks, and the final homelab validation result is recorded.
-  - Evidence: Not started.
+  - Evidence: CI run `35691914016` passed for exact SHA `1d35d2320f154b24b61ad637b565184755b8f635`; immutable image digest `sha256:cccb72820e32c3c6ff6a052819d25d47382475dfc6eb873cbca29010f2ad0009` was deployed. Device-local and object backups were created, the object archive was restore-tested, managed health/readiness/signed API checks passed, disposable ingestion completed with original/analysis retrieval verified, and a fresh default-profile adapter returned the completed smoke item. Homelab `just validate` passed once. The required consumer fix was published as homelab-infra `602f870a823dbb3650ede0b9c8f57aa2427736c2`.
 
-- [ ] **T14: Record final completion and remove task-owned worktrees**
+- [x] **T14: Record final completion and remove task-owned worktrees**
   - Depends on: T13 successful deployment and validation, or a later explicit operator change to the completion scope.
   - Owns: final archived-plan metadata/evidence commit and publication, and only task-owned worktree cleanup.
   - Follow closeout steps 6-7. Leave cleanup unchecked until it succeeds; report retained worktrees accurately.
-  - Evidence: Not started.
+  - Evidence: Completion metadata recorded on the parent target; task-owned worktrees and merged task branches were removed after clean-state verification.
 
 ### Useful concurrency
 
@@ -308,7 +308,8 @@ After T1, T2 (SponsorBlock helper), T5 (budget planner/config), T7 (callback pay
 - Execution profile: default. Dotfiles task worktree `C:/Users/mglenn/.dotfiles/.worktrees/youtube-vault-context`, branch `task/youtube-vault-context`; Onclave task commit `8349ffc9b09c632d39b5de8c8ce9c9a4c5c800a4`.
 - Onclave implementation merged to `feature/v2-broker-core` as `72a666412d2292a4ec105d3b2b5eb6b97150d95b`, then CI exposed a credential-dependent extension test. The task-owned fix passed the full local check and was merged/published as `1d35d2320f154b24b61ad637b565184755b8f635`.
 - Offline integrated validation on 2026-09-21: Onclave `pnpm run check` passed (319 passed, 1 skipped), including the CI fix; default profile typecheck passed; selected Pi tests passed (14); task-adapter smoke passed; both repositories passed `git diff --check`.
-- Deployment, live verification, final homelab validation, completion metadata, and worktree cleanup remain pending. Next action owner: executor, after parent merge/publication and exact-SHA image availability.
+- Deployment and closeout completed on 2026-09-22. CI run `35691914016` passed; image digest `sha256:cccb72820e32c3c6ff6a052819d25d47382475dfc6eb873cbca29010f2ad0009` is deployed. Managed health, readiness, signed API, disposable ingestion, original/analysis retrieval, fresh-adapter lookup, and the one final homelab `just validate` all passed.
+- A deployment failure caused by missing consumer-side input-budget environment rendering was recovered within the existing service boundary. Homelab-infra commit `602f870a823dbb3650ede0b9c8f57aa2427736c2` owns that contract and is published on `main`; healthy service verification passed after redeployment.
 
 ## Agreed validation and current handoff
 
