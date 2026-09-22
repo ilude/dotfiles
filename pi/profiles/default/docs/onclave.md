@@ -92,9 +92,25 @@ an implementation completion gate.
 `/yt` activates all four registered `onclave_vault_*` tools before submitting
 its prompt, so ingest and callback turns can call them without `tool_search`.
 They remain active through agent settlement and are hidden again on session
-start or reload. `/yt` does not fall back to local fetching. Use `/yt-local`
-only for an explicit local transcript or metadata fetch. The retained Python fetchers live in `tools/onclave-youtube` and write
-under `~/.dotfiles/yt/`.
+start or reload. Terminal callbacks are one-way: when title, IDs, status,
+summary, coverage, and filtering state are sufficient, Pi reports them directly
+without a content lookup, callback reply, or polling loop. `/yt` does not fall
+back to local fetching. Use `/yt-local` only for an explicit local transcript or
+metadata fetch. The retained Python fetchers live in `tools/onclave-youtube` and
+write under `~/.dotfiles/yt/`.
+
+Single-item vault reads are compact by default and return one summary plus
+concise coverage/filtering state. Request documented `fields` for details such
+as `outline`, or `full: true` for the complete tool-visible record. Whole
+transcript retrieval defaults to the `analysis` variant; `original` is explicit.
+SponsorBlock is consulted lazily only by whole-transcript access when its stored
+snapshot is missing or an eligible empty result has expired. Unavailable or
+untimed filtering is reported explicitly as a limitation, not as proof of no ads.
+Legacy analysis artifacts can be prepared on access, but this does not regenerate
+historical summaries or embeddings; reprocess and reindex remain explicit.
+Bare ingestion does not trigger repository research or repository changes. See
+the Onclave [YouTube context contract](../../../modules/onclave/docs/guides/youtube-context.md)
+for the service/client shapes and SponsorBlock attribution.
 
 The optional `tools/onclave-backfill` worker is registered by the installer as a
 native per-user daily and login-triggered job. It scans complete local caches

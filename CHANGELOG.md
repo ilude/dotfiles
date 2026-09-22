@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-21: Make `/yt` whole-video retrieval explicit and compact
+
+**Changed:** Default Pi's `/yt` guidance now reports sufficient asynchronous
+Onclave callbacks directly, keeps single-item reads compact, requests outline or
+other fields explicitly, and defaults transcript retrieval to the filtered
+analysis variant. It documents lazy SponsorBlock lookup, age-aware empty-result
+cache expiry, unavailable and legacy provenance, and explicit regeneration.
+Bare ingestion does not poll, reply to callbacks, fall back to local fetchers, or
+start repository research.
+
+**Documentation:** Reconciled the Onclave YouTube context and environment
+contracts, including callback and projection shapes plus SponsorBlock's
+CC BY-NC-SA 4.0 attribution and public-service limitation. Added cross-path
+projection fixtures for compact, field-selected, and full views.
+
 ## 2026-09-21: Add deferred Jev evaluation for default Pi
 
 **Added:** Default Pi now provides a deferred `jev_evaluate` tool for explicitly supplied state and typed questions. Tool discovery activates it on demand, keeps existing tool visibility unchanged, maps validated Jev answers with model, usage, and elapsed time, and returns bounded safe failures. Registration performs no credential lookup or network request; live Jev and BWS calls remain operator-owned.

@@ -40,10 +40,14 @@ export default async function(pi) {
   try { result = JSON.parse(await readFile(marker, "utf8")); }
   catch { throw new Error(`Loader did not finish: ${output.stdout}\n${output.stderr}`); }
   assert(!result.error, JSON.stringify(result));
-  assert.deepEqual(result.tools.map(tool => tool.name).sort(), ["onclave_instances", "onclave_message"]);
+  assert.deepEqual(result.tools.map(tool => tool.name).sort(), [
+    "onclave_instances", "onclave_message", "onclave_vault_content", "onclave_vault_ingest",
+    "onclave_vault_jobs", "onclave_vault_search",
+  ]);
   assert.deepEqual(result.commands, ["onclave"]);
-  assert(result.hooks.includes("agent_settled"));
+  assert(result.hooks.includes("session_start"));
   assert(result.hooks.includes("session_shutdown"));
-  assert(result.tools.every(tool => tool.guidance.some(line => line.includes("orchestrator"))));
+  assert(result.tools.filter(tool => ["onclave_instances", "onclave_message"].includes(tool.name))
+    .every(tool => tool.guidance.some(line => line.includes("orchestrator"))));
   console.log(`Pi ${manifest.version}: shared Onclave adapter registered through the default loader (offline).`);
 } finally { await rm(scratch, { recursive: true, force: true }); }
