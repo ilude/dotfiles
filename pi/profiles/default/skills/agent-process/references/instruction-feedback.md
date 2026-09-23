@@ -6,7 +6,8 @@
 - **Feedback:** Service skills should preserve responsibilities, adaptations, decision reasons, existing mechanisms, and dependencies so later changes fit established architecture. Command targets and generic product descriptions do not fulfill that purpose. New architectural discoveries and consequential development context also need the appropriate durable home, not just chat or local research artifacts.
 - **Finding:** Existing project write-back guidance already requires durable evidence, but the initial skills emphasized operational navigation and omitted a concrete map of newly understood native configuration files. Related APR-064 concerns the evidence quality behind those discoveries, not their documentation placement.
 - **Remediation:** Service skills were revised to architectural context and the affected service gained an existing-file responsibility map. Operator is considering a knowledge-maintenance skill covering both discovery-time capture and subsequent skill maintenance, with placement guidance for AGENTS.md, skills, and docs.
-- **Status:** New maintenance skill and routing changes remain proposals pending approval. This record grants no implementation authority.
+- **Portability clarification:** Operator requires standalone skills that do not depend on global instructions. Essential evidence, preservation, and placement guidance must remain in the skill even where it overlaps global policy.
+- **Status:** Implemented with operator approval as the tracked-project `.pi/skills/project-knowledge/SKILL.md`, with routing in the existing AGENTS.md write-back section and skill catalog. Static checks passed; no global skill dependencies or machine-specific paths. Model activation/adherence has not been measured.
 
 ## AIF-083 - Carry environment decisions into validation scope and task sizing
 
