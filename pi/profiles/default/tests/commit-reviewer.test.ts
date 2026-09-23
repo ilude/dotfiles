@@ -35,7 +35,7 @@ it("specifies usable inspection and publication examples without a whitespace ga
 	expect(examples).toContainEqual({ action: "status", repo: "." });
 	expect(examples).toContainEqual({ action: "status", repo: "modules/example" });
 	expect(examples).toContainEqual({ action: "diff", repo: ".", staged: true });
-	expect(prompt).not.toContain("diff --check");
+	expect(prompt).toContain("Do not run `git diff --check` or any other optional whitespace gate");
 	expect(prompt).not.toContain("whitespace utility");
 	expect(prompt).toContain("--recurse-submodules=no origin");
 	expect(prompt).toContain("clean submodules whose outgoing commits are referenced");

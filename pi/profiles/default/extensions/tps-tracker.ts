@@ -2,7 +2,6 @@
 // (blob 5c198dc30baa96a64a6ee55a18a9a59a9b7ac7d0).
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-const STATE = "generation-stats";
 export default function tpsTracker(pi: ExtensionAPI): void {
   let messageStart: number | undefined;
   let streamStart: number | undefined;
@@ -34,8 +33,7 @@ export default function tpsTracker(pi: ExtensionAPI): void {
   }
   pi.on("session_start", (_event, ctx) => {
     reset();
-    const entry = [...ctx.sessionManager.getEntries()].reverse().find(entry => entry.type === "custom" && entry.customType === STATE && (entry.data as { sessionId?: string })?.sessionId === ctx.sessionManager.getSessionId());
-    if (ctx.hasUI) ctx.ui.setStatus("tps", entry?.type === "custom" ? (entry.data as { text: string }).text : undefined);
+    if (ctx.hasUI) ctx.ui.setStatus("tps", undefined);
   });
   pi.on("session_shutdown", reset);
   pi.on("agent_start", (_event, ctx) => {
@@ -80,8 +78,10 @@ export default function tpsTracker(pi: ExtensionAPI): void {
     const seconds = streamMs / 1000;
     const rate = seconds > 0 && output > 0 ? `${Math.round(output / seconds)} tok/s` : "TPS unavailable";
     const first = samples ? `${(latencyMs / samples / 1000).toFixed(1)}s` : "unavailable";
-    const text = `${interrupted ? "stopped" : "done"}: ${rate} | first ${first} avg | ${output} tok / ${seconds.toFixed(1)}s streaming`;
-    if (ctx.hasUI) ctx.ui.setStatus("tps", text);
-    pi.appendEntry(STATE, { sessionId: ctx.sessionManager.getSessionId(), text });
+    const text = `${interrupted ? "stopped: " : ""}${rate} | first ${first} avg | ${output} tok / ${seconds.toFixed(1)}s streaming`;
+    if (ctx.hasUI) {
+      ctx.ui.setStatus("tps", undefined);
+      ctx.ui.notify(`${text}\ncompleted ${new Date().toLocaleString()}`, "info");
+    }
   });
 }

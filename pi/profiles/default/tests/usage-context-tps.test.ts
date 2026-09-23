@@ -273,10 +273,11 @@ describe("generation metrics", () => {
     now = 4000; await r.emit("message_end", { message: assistant() });
     now = 14000; // tool execution, not streaming
     await r.emit("agent_end");
-    expect(r.statuses.get("tps")).toBe("done: 50 tok/s | first 2.0s avg | 100 tok / 2.0s streaming");
+    expect(r.statuses.has("tps")).toBe(false);
+    expect(r.ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/^50 tok\/s \| first 2\.0s avg \| 100 tok \/ 2\.0s streaming\ncompleted .+/), "info");
     expect(vi.getTimerCount()).toBe(0);
     const restored = runtime(tps, r.sm); await restored.emit("session_start", { reason: "reload" });
-    expect(restored.statuses.get("tps")).toBe(r.statuses.get("tps"));
+    expect(restored.statuses.has("tps")).toBe(false);
     r.sm.newSession(); await r.emit("session_start", { reason: "new" });
     expect(r.statuses.has("tps")).toBe(false);
   });
@@ -284,7 +285,8 @@ describe("generation metrics", () => {
     const r = runtime(tps);
     await r.emit("agent_start"); await r.emit("message_start", { message: assistant(0) });
     await r.emit("message_end", { message: assistant(0, "aborted") }); await r.emit("agent_end");
-    expect(r.statuses.get("tps")).toContain("stopped: TPS unavailable");
+    expect(r.statuses.has("tps")).toBe(false);
+    expect(r.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("stopped: TPS unavailable"), "info");
     await r.emit("session_shutdown"); expect(vi.getTimerCount()).toBe(0);
   });
 });

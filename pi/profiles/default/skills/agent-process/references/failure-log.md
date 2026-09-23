@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-065 - `/commit` repeated a removed whitespace gate
+
+- **Reference:** Default-profile `commit_run` stopped on trailing whitespace in `tps-tracker.ts` after the operator requested a commit.
+- **Observed:** Luna ran `git diff --cached --check` after staging, despite the existing commit prompt allowing only repository hooks as validation. No commit was created; two files remained staged.
+- **Finding:** This repeats APR-041 after its gate was removed. The current reviewer prompt did not explicitly name the forbidden command; the operator rejected treating whitespace as a reason to stop this commit.
+- **Remediation:** Explicitly prohibit optional whitespace gates in the commit reviewer prompt and test that wording. Remove the introduced trailing space in the source. Do not retry the failed commit without a new request.
+- **Related:** APR-041.
+- **Status:** Prompt and source corrected; future model adherence unverified.
+
 ## APR-064 - Compatibility recommendations outran version-specific research
 
 - **Reference:** Default-profile compatibility investigation, 2026-09-23; operator challenged shallow research and repeated guesses.
