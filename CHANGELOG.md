@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-23: Restore quiet Herdr subagent completions
+
+**Fixed:** Restored the local Herdr lifecycle exception lost during the 0.9.1 integration refresh: settled visible subagents report `unknown` rather than triggering a background completion sound. Their panes close after reporting results to the parent. Blocked approval prompts still request attention, and orchestrator completion sounds remain unchanged. A focused regression test and a comment on the generated integration now flag this exception during future refreshes.
+
 ## 2026-09-23: Recover commit review from stale diff pagination
 
 **Fixed:** When a live Git diff shrinks between paginated `commit_git_review`

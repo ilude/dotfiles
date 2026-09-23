@@ -1,6 +1,9 @@
 // installed by herdr
 // managed by herdr; reinstalling or updating the integration overwrites this file.
-// add custom hooks/plugins beside this file instead of editing it.
+// LOCAL EXCEPTION: settled PI_SUBAGENT_AUTHORITY sessions report unknown, not idle.
+// Herdr sounds on background working -> idle; children deliver results to their parent
+// and close, while blocked approval prompts must still sound. Keep the override below
+// after integration refresh; herdr-agent-state.test.ts guards against losing it.
 // HERDR_INTEGRATION_ID=pi
 // HERDR_INTEGRATION_VERSION=9
 // @ts-nocheck
@@ -54,7 +57,7 @@ async function sendRequest(request: unknown): Promise<void> {
   await sendRequestAttempt(request, 1500);
 }
 
-type AgentState = "working" | "blocked" | "idle";
+type AgentState = "working" | "blocked" | "idle" | "unknown";
 
 type QueuedState = {
   state: AgentState;
@@ -187,6 +190,7 @@ export default function (pi) {
   let lastState: AgentState | undefined;
   let lastMessage: string | undefined;
   let rootSession = false;
+  const subagentSession = Boolean(process.env.PI_SUBAGENT_AUTHORITY);
 
   function desiredState() {
     if (blockedCount > 0) {
@@ -195,7 +199,9 @@ export default function (pi) {
     if (agentActive) {
       return { state: "working" as const, message: undefined };
     }
-    return { state: "idle" as const, message: undefined };
+    // LOCAL EXCEPTION: see file header. Do not mute all Pi sounds: orchestrator
+    // completions and actual blocked approval requests remain audible.
+    return { state: subagentSession ? "unknown" as const : "idle" as const, message: undefined };
   }
 
   function publishState(force = false) {

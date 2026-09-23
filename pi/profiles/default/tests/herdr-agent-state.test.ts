@@ -40,7 +40,7 @@ it("reports the supported session payload and preserves reload", async () => {
   } });
 });
 
-it("reports settled subagents as idle while preserving blocked request state", async () => {
+it("keeps the local quiet-subagent override across Herdr integration refreshes", async () => {
   vi.stubEnv("PI_SUBAGENT_AUTHORITY", "fixture");
   vi.resetModules();
   const { default: register } = await import("../extensions/herdr-agent-state.ts");
@@ -56,12 +56,16 @@ it("reports settled subagents as idle while preserving blocked request state", a
   };
   await handlers.session_start({ reason: "startup" }, ctx);
   await vi.waitFor(() => expect(requests.some(request => request.method === "pane.report_agent")).toBe(true));
-  expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("idle");
+  expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("unknown");
+  handlers.agent_start({}, ctx);
+  await vi.waitFor(() => expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("working"));
+  handlers.agent_settled({}, ctx);
+  await vi.waitFor(() => expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("unknown"));
 
   blocked?.({ active: true, label: "Allow command?" });
   await vi.waitFor(() => expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("blocked"));
   blocked?.({ active: false });
-  await vi.waitFor(() => expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("idle"));
+  await vi.waitFor(() => expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("unknown"));
 });
 
 it("treats any socket response as delivery", async () => {
