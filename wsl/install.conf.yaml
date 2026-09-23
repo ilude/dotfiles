@@ -42,6 +42,10 @@
     ~/.config/ohmyposh/prompt.json:
       path: config/ohmyposh/prompt.json
 
+# Herdr config
+- link:
+    ~/.config/herdr/config.toml: config/herdr/config.toml
+
 # Neovim config
 - link:
     ~/.config/nvim/init.lua:

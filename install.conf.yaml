@@ -32,6 +32,15 @@
 - link:
     ~/.config/ohmyposh/prompt.json: config/ohmyposh/prompt.json
 
+# Herdr config (Windows uses a PowerShell shell override)
+- link:
+    ~/.config/herdr/config.toml:
+      path: config/herdr/config.toml
+      if: '[ -z "$WINDIR" ] && [ "$OSTYPE" != "msys" ] && [ "$OSTYPE" != "cygwin" ]'
+    ~/AppData/Roaming/herdr/config.toml:
+      path: config/herdr/config.windows.toml
+      if: '[ "$OSTYPE" = "msys" ] || [ "$OSTYPE" = "cygwin" ] || [ -n "$WINDIR" ]'
+
 # Neovim config
 - link:
     ~/.config/nvim/init.lua:

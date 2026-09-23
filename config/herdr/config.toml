@@ -1,0 +1,19 @@
+onboarding = false
+
+[keys]
+previous_tab = "prefix+shift+comma"
+next_tab = "prefix+shift+period"
+
+[ui.sidebar.agents.rows_by_agent]
+pi = [
+    ["state_icon", "agent", "state_text"],
+    ["$model", "$context"],
+    ["$subagents", "$tasks"],
+    ["workspace", "tab"],
+]
+
+[ui]
+agent_panel_sort = "spaces"
+
+[update]
+channel = "stable"

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-23: Manage Herdr configuration across platforms
+
+**Changed:** Dotbot now links the Herdr configuration on Windows, Linux, macOS, and WSL. Tab navigation uses prefix+< and prefix+> instead of prefix+P and prefix+N. Windows retains its explicit PowerShell shell path; Unix platforms use Herdr's default shell.
+
 ## 2026-09-23: Clarify schedule tool output
 
 **Changed:** Schedule creation shows local creation and run times, a compact
