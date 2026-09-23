@@ -268,7 +268,13 @@ export class SubagentLayout {
       await this.cli(["pane", "swap", "--source-pane", sourcePane, "--target-pane", targetPane]);
     } finally {
       // Do not overwrite a subsequent user focus change to another pane.
-      if (focused !== sourcePane && await focusedPane(this.cli) === sourcePane) await this.focusPane(focused);
+      try {
+        if (focused && focused !== sourcePane && await focusedPane(this.cli) === sourcePane) await this.focusPane(focused);
+      } catch {
+        // Placement already happened. A failed focus check/restoration must not
+        // discard the child or mask a swap error. Do not retry a stale focus.
+        console.warn("Herdr focus restoration failed; pane placement was not rolled back");
+      }
     }
   }
 

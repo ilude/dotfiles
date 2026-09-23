@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SubagentLayout } from "../lib/subagents/layout.ts";
 const exec=promisify(execFile), root=resolve(dirname(fileURLToPath(import.meta.url)),"../../../..");
 it.skipIf(process.env.PI_HERDR_FOCUS_LIVE!=="1")("background plugin splits preserve the focused pane across other tabs and workspaces",async()=>{
  const scratch=mkdtempSync(join(tmpdir(),"herdr-focus-")),name=`focus-${process.pid}`;
@@ -40,6 +41,25 @@ it.skipIf(process.env.PI_HERDR_FOCUS_LIVE!=="1")("background plugin splits prese
    }finally{await cli(["plugin","pane","close",opened.pane_id])}
    expect((await cli(["pane","current"])).result.pane.pane_id,`${context} cleanup`).toBe(before.pane_id);
   }
+  // Exercise production placement with a real focus change after its swap.
+  const before=(await cli(["api","snapshot"])).result.snapshot;
+  let swaps=0;
+  const layout=new SubagentLayout(async args=>{
+   const response=await cli(args);
+   if(args[0]==="pane"&&args[1]==="swap"){
+    swaps++;
+    await cli(["tab","focus",before.focused_tab_id]);
+   }
+   return typeof response==="string"?response:JSON.stringify(response);
+  },async()=>{throw new Error("Must not overwrite the subsequent focus change")});
+  const placed=await layout.place("focus-live",{
+   childId:"probe",callerPane:source.root_pane.pane_id,cwd:scratch,title:"Focus probe",plugin:"local.pi",entrypoint:"pi",
+  });
+  try{
+   expect(swaps).toBe(1);
+   expect((await cli(["api","snapshot"])).result.snapshot.focused_pane_id).toBe(before.focused_pane_id);
+   expect((await cli(["pane","get",placed.paneId])).result.pane.pane_id).toBe(placed.paneId);
+  }finally{await layout.close("focus-live","probe",placed.paneId)}
  }finally{
   try{await cli(["server","stop"])}finally{if(server.exitCode===null)server.kill();await closed;rmSync(scratch,{recursive:true,force:true})}
  }

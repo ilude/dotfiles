@@ -73,12 +73,12 @@ export function createPaneFocus(env: NodeJS.ProcessEnv = process.env): FocusPane
 }
 
 /** Inherited caller IDs do not identify the pane the user is currently viewing. */
-export async function focusedPane(cli: HerdrCli): Promise<string> {
-  const workspace = result(await cli(["workspace", "list"])).workspaces?.find((item: any) => item.focused);
-  if (!workspace) throw new Error("Herdr focused workspace unavailable");
-  const tab = result(await cli(["tab", "list", "--workspace", workspace.workspace_id])).tabs?.find((item: any) => item.focused);
-  const panes = result(await cli(["pane", "list", "--workspace", workspace.workspace_id])).panes;
-  const pane = panes?.find((item: any) => item.focused && item.tab_id === tab?.tab_id);
-  if (typeof pane?.pane_id !== "string") throw new Error("Herdr focused pane unavailable");
-  return pane.pane_id;
+export async function focusedPane(cli: HerdrCli): Promise<string | undefined> {
+  // Separate workspace/tab/pane reads can straddle an ordinary focus change.
+  const snapshot: unknown = result(await cli(["api", "snapshot"])).snapshot;
+  if (!isRecord(snapshot)) throw new Error("Herdr focus snapshot unavailable");
+  const pane = snapshot.focused_pane_id;
+  if (pane === null) return undefined;
+  if (typeof pane !== "string" || !pane) throw new Error("Herdr focused pane unavailable");
+  return pane;
 }

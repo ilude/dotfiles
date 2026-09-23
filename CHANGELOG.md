@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-23: Keep visible launches intact during focus changes
+
+**Fixed:** Pi's visible subagent layout reads the focused pane from one Herdr
+snapshot instead of combining three requests that could straddle a workspace or
+tab switch. Post-swap focus restoration failures emit a warning rather than
+turning successful placement into child cleanup. A later user focus change is
+still respected when observed, and launches are not retried. Regression coverage
+includes isolated live placement with a focus change after the swap.
+
 ## 2026-09-22: Recover visible subagents from stale panes and transient parent links
 
 **Changed:** Visible child placement reconciles previously owned pane identities

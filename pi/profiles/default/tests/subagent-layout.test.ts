@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createPaneFocus } from "../lib/subagents/herdr-layout-api.ts";
+import { createPaneFocus, focusedPane } from "../lib/subagents/herdr-layout-api.ts";
 
 vi.mock("../lib/subagents/herdr-layout-api.ts", async importOriginal => ({
   ...await importOriginal<typeof import("../lib/subagents/herdr-layout-api.ts")>(),
@@ -43,6 +43,7 @@ class LayoutFixture {
     // This fixture models the production caller-context behavior: `pane
     // current` resolves HERDR_PANE_ID, while list records expose actual UI
     // focus independently.
+    if (command === "api snapshot") return JSON.stringify({ result: { snapshot: { focused_pane_id: this.focus } } });
     if (command === "pane current") return JSON.stringify({ result: { pane: this.panes.get("w1:p1") } });
     if (command === "workspace list") {
       const workspaces = [...new Set([...this.panes.values()].map(pane => pane.workspace_id))].map(workspace_id => ({
@@ -208,7 +209,7 @@ describe("subagent layout contract", () => {
     expect(layout.snapshot("origin")).toEqual([]);
   });
 
-  it("uses focused list records instead of inherited caller context", async () => {
+  it("uses the focus snapshot instead of inherited caller context", async () => {
     const fixture = new LayoutFixture();
     const layout = new SubagentLayout(fixture.cli);
     expect((JSON.parse(await fixture.cli(["pane", "current"]))).result.pane.pane_id).toBe("w1:p1");
@@ -255,6 +256,48 @@ describe("subagent layout contract", () => {
     });
     expect(fixture.focus).toBe("w1:p2");
     expect(fixture.focusRequests).toEqual([]);
+  });
+
+  it.each(["w2:p1", "w1:p2"])("preserves changed focus %s from the post-swap snapshot", async focus => {
+    const fixture = new LayoutFixture();
+    fixture.focusAfterSwap = focus;
+    const placed = await new SubagentLayout(fixture.cli).place("origin", {
+      childId: "child", callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi",
+    });
+    expect(placed.paneId).toBe("w1:p2");
+    expect(fixture.focus).toBe(focus);
+    expect(fixture.focusRequests).toEqual([]);
+  });
+
+  it("keeps placement when the post-swap focus query fails", async () => {
+    const fixture = new LayoutFixture();
+    let reads = 0;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const layout = new SubagentLayout(async args => {
+        if (args.join(" ") === "api snapshot" && ++reads === 2) throw new Error("snapshot unavailable");
+        return fixture.cli(args);
+      });
+      const placed = await layout.place("origin", {
+        childId: "child", callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi",
+      });
+      expect(layout.snapshot("origin")).toMatchObject([{ paneId: placed.paneId }]);
+      expect(fixture.focusRequests).toEqual([]);
+      expect(warn).toHaveBeenCalledOnce();
+    } finally { warn.mockRestore(); }
+  });
+
+  it("reads focus atomically without joining changing workspace/tab lists", async () => {
+    const cli = vi.fn<HerdrCli>(async args => {
+      expect(args).toEqual(["api", "snapshot"]);
+      return JSON.stringify({ result: { snapshot: { focused_pane_id: "w2:p1" } } });
+    });
+    expect(await focusedPane(cli)).toBe("w2:p1");
+    expect(cli).toHaveBeenCalledOnce();
+  });
+
+  it("accepts a snapshot with no focused pane", async () => {
+    expect(await focusedPane(async () => JSON.stringify({ result: { snapshot: { focused_pane_id: null } } }))).toBeUndefined();
   });
 
   it("serializes concurrent placement and returns exact IDs", async () => {
