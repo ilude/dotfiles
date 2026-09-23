@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { Model } from "@earendil-works/pi-ai";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify, stripVTControlCharacters } from "node:util";
@@ -6,11 +8,18 @@ import { fileURLToPath } from "node:url";
 import { screenContent } from "../extensions/web-tools/screen.ts";
 import webTools, { bounded, searchQuery } from "../extensions/web-tools/index.ts";
 
-const complete = vi.hoisted(() => vi.fn());
+const complete = vi.hoisted(() => vi.fn<ModelRuntime["completeSimple"]>());
+const getAvailable = vi.hoisted(() => vi.fn<ModelRuntime["getAvailable"]>());
+const screeningModel: Model<"openai-codex-responses"> = {
+  provider: "openai-codex", id: "gpt-6-luna", name: "offline", api: "openai-codex-responses",
+  baseUrl: "https://unused.invalid", reasoning: true, input: ["text"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 1000,
+};
+beforeEach(() => { getAvailable.mockReset().mockResolvedValue([{ ...screeningModel, id: "gpt-5.6-luna" }, screeningModel]); });
 vi.mock("@earendil-works/pi-coding-agent", async (original) => ({
   ...await original(),
   getAgentDir: () => "/test-profile",
-  ModelRuntime: { create: async () => ({ getAvailable: async () => [{ provider: "openai-codex", id: "gpt-6-luna" }], completeSimple: complete }) },
+  ModelRuntime: { create: async () => ({ getAvailable, completeSimple: complete } satisfies Pick<ModelRuntime, "getAvailable" | "completeSimple">) },
 }));
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
@@ -50,7 +59,7 @@ describe("tool integration", () => {
     const registered = new Map<string, any>();
     const exec = vi.fn();
     webTools({ registerTool: (tool: any) => registered.set(tool.name, tool), exec } as any);
-    complete.mockResolvedValue({ stopReason: "stop", content: [{ type: "text", text: '{"suspicious":false,"excerpts":[]}' }], usage: { totalTokens: 10 } });
+    complete.mockResolvedValue({ role: "assistant", api: screeningModel.api, provider: screeningModel.provider, model: screeningModel.id, timestamp: 0, stopReason: "stop", content: [{ type: "text", text: '{"suspicious":false,"excerpts":[]}' }], usage: { input: 10, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 10, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
     return { registered, exec };
   }
   it("composes structured refinements and bounds multibyte output", () => {
@@ -66,6 +75,8 @@ describe("tool integration", () => {
     expect(result.details.screening).toBe("screened");
     expect(result.content[0].text).toContain("websearch: test\n--- Result 1 ---");
     expect(result.usage.totalTokens).toBe(10);
+    expect(complete.mock.calls[0][0]).toBe(screeningModel);
+    expect(getAvailable).toHaveBeenCalledWith("openai-codex", { signal: expect.any(AbortSignal) });
     expect(String((fetchMock.mock.calls as unknown as Array<[unknown]>)[0][0])).toContain("language=en");
     expect(new URL(String((fetchMock.mock.calls as unknown as Array<[unknown]>)[0][0])).searchParams.get("engines")).toBeNull();
     const context = (complete.mock.calls as unknown as Array<[unknown, any]>)[0][1];
@@ -73,6 +84,19 @@ describe("tool integration", () => {
     expect(context.messages).toHaveLength(1);
     expect(context.messages[0].content).toContain("Snippet");
     expect(context.messages[0].content).not.toContain("web_search(");
+  });
+  it("cancels availability lookup without starting screening completion", async () => {
+    const { registered } = tools();
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ results: [{ title: "Title", url: "https://example.com", content: "Snippet" }] }) })));
+    getAvailable.mockImplementation((_provider, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+    }));
+    const controller = new AbortController();
+    const pending = registered.get("web_search").execute("id", { query: "test" }, controller.signal);
+    await vi.waitFor(() => expect(getAvailable).toHaveBeenCalled());
+    controller.abort();
+    await expect(pending).rejects.toThrow();
+    expect(complete).not.toHaveBeenCalled();
   });
   it("does not review a tool-generated no-results message", async () => {
     const { registered } = tools();

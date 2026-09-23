@@ -1,19 +1,18 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { realpathSync } from "node:fs";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { createAssistantMessageEventStream, type AssistantMessage, type Model, type Tool, type TranscriptContext } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext, createBashTool } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ModelRuntime, createBashTool } from "@earendil-works/pi-coding-agent";
 import { commitReviewerTool } from "../commands/commit/reviewer.ts";
 
 // Keep the real Agent and its stream/tool lifecycle. Only provider and shell/Git
 // boundaries are replaced: these tests never send requests or mutate a repository.
 const doubles = vi.hoisted(() => ({
-	stream: vi.fn<StreamFn>(),
+	stream: vi.fn<ModelRuntime["streamSimple"]>(),
 	shell: vi.fn<ReturnType<typeof createBashTool>["execute"]>(),
-	getModel: vi.fn(),
+	getAvailable: vi.fn<ModelRuntime["getAvailable"]>(),
 }));
 vi.mock("../lib/model-runtime.ts", () => ({
-	createProfileModelRuntime: async () => ({ getModel: doubles.getModel, streamSimple: doubles.stream }),
+	createProfileModelRuntime: async () => ({ getAvailable: doubles.getAvailable, streamSimple: doubles.stream } satisfies Pick<ModelRuntime, "getAvailable" | "streamSimple">),
 }));
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@earendil-works/pi-coding-agent")>();
@@ -21,7 +20,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
 });
 
 const model: Model<"openai-codex-responses"> = {
-	id: "offline", name: "offline", api: "openai-codex-responses", provider: "openai-codex",
+	id: "gpt-6-luna", name: "offline", api: "openai-codex-responses", provider: "openai-codex",
 	baseUrl: "https://unused.invalid", reasoning: false, input: ["text"],
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 1000,
 };
@@ -48,7 +47,7 @@ beforeEach(() => {
 	requests = [];
 	commits = [];
 	progress = [];
-	doubles.getModel.mockReturnValue(model);
+	doubles.getAvailable.mockReset().mockResolvedValue([{ ...model, id: "gpt-5.6-luna" }, model]);
 	doubles.shell.mockReset().mockImplementation(async (_id, { command }) => {
 		commits.push(command);
 		return { content: [{ type: "text", text: `completed ${command}` }], details: {} };
@@ -116,6 +115,8 @@ it.each([false, true])("retries the same response context after a completed tool
 	);
 	const { run, permission } = start();
 	const result = await run;
+	expect(result.details).toMatchObject({ model: "openai-codex/gpt-6-luna:low" });
+	expect(doubles.getAvailable).toHaveBeenCalledWith("openai-codex", { signal: expect.any(AbortSignal) });
 	expect(commits).toEqual(["child commit", "parent commit"]);
 	expect(requests[2]).toEqual(requests[1]);
 	expect(requests[2]!.messages.filter(item => item.role === "user")).toHaveLength(1);
@@ -166,6 +167,19 @@ it("never retries a transport-looking tool failure or executes queued mutations"
 	expect(requests).toHaveLength(1);
 	expect(doubles.shell).toHaveBeenCalledTimes(1);
 	expect(progress.some(text => text.startsWith("Retrying"))).toBe(false);
+});
+
+it("cancels availability lookup without starting the review agent", async () => {
+	doubles.getAvailable.mockImplementation((_provider, options) => new Promise((_resolve, reject) => {
+		options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+	}));
+	const controller = new AbortController();
+	const { run } = start(controller.signal);
+	await vi.waitFor(() => expect(doubles.getAvailable).toHaveBeenCalled());
+	controller.abort();
+	await expect(run).rejects.toThrow("Cancelled");
+	expect(requests).toHaveLength(0);
+	expect(commits).toHaveLength(0);
 });
 
 it("cancels during backoff without another request", async () => {

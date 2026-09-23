@@ -4,8 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { loadDefinitions, resolveAgentEffort, resolveModel } from "../lib/subagents/definitions.ts";
-function model(provider:string,id:string){return {provider,id,name:id} as any}
-function registry(models:any[],authenticated:string[]=[]){return {getAll:()=>models,hasConfiguredAuth:(m:any)=>authenticated.includes(m.provider)} as any}
+import { modelFixture as model, registryFixture as registry } from "./helpers/model-selection.ts";
 const roots:string[]=[];const old=process.env.PI_CODING_AGENT_DIR;
 afterEach(()=>{process.env.PI_CODING_AGENT_DIR=old;for(const r of roots.splice(0))rmSync(r,{recursive:true,force:true})});
 function root(){const r=mkdtempSync(join(tmpdir(),"subagent-defs-"));roots.push(r);mkdirSync(join(r,"agents"),{recursive:true});process.env.PI_CODING_AGENT_DIR=r;return r}
@@ -37,6 +36,10 @@ describe("subagent definitions",()=>{
  });
  it("does not resolve a similar model from an unapproved provider",()=>{
   expect(()=>resolveModel("sol",undefined,registry([model("openrouter","upstage/solar-pro4")],["openrouter"]))).toThrow(/No authenticated openai-codex sol model/);
+ });
+ it.each(["astra", "sol", "terra", "luna"])("resolves the latest %s default with the actual Pi registry", family=>{
+  const source=registry([model("openai-codex",`gpt-6-${family}`),model("openai-codex",`gpt-7-${family}`)],["openai-codex"]);
+  expect(resolveModel(undefined,family,source)).toEqual({provider:"openai-codex",id:`gpt-7-${family}`});
  });
  it("uses the canonical bare model before effort restrictions",()=>{
   const resolved=resolveModel("luna",undefined,registry([model("openai-codex","gpt-5.6-luna")],["openai-codex"]));

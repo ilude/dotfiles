@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-23: Fix model-family resolution across Pi callers
+
+**Fixed:** Default-profile subagent aliases and Damage Control judgment no longer
+mistake Pi's synchronous model registry for its asynchronous runtime. Separate,
+typed entry points replace method-name guessing. Commit review, web screening,
+and Herdr naming now pass their existing cancellation signals through availability
+lookup. Family/version selection, provider preferences, explicit overrides, and
+missing-model errors remain unchanged. Regression tests use Pi's actual registry
+class with controlled catalogs; the commit workflow's stale runtime mock now
+matches the current API. These checks are offline, not live-provider validation.
+
 ## 2026-09-23: Manage Herdr configuration across platforms
 
 **Changed:** Dotbot now links the Herdr configuration on Windows, Linux, macOS, and WSL. Tab navigation uses prefix+< and prefix+> instead of prefix+P and prefix+N. Windows retains its explicit PowerShell shell path; Unix platforms use Herdr's default shell.

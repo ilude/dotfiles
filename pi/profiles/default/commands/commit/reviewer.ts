@@ -6,7 +6,7 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { isContextOverflow, isRetryableAssistantError, type ImageContent, type TextContent, type Usage } from "@earendil-works/pi-ai";
 import { createBashTool, createReadTool, type ExtensionAPI, type ToolDefinition, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
-import { resolveLatestAuthenticatedCodexModel } from "../../lib/model-selection.ts";
+import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { formatStatus, gitReviewTool, page } from "./tools.ts";
@@ -139,7 +139,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 					inventory.push(`Repository: ${relative(root, repository) || "."}\nInstruction files: ${instructions.length ? instructions.join(", ") : "none"}${publication ? `\n${publication}` : ""}\n${status}`);
 				}
 				const runtime = await createProfileModelRuntime(combined);
-				const model = await resolveLatestAuthenticatedCodexModel(MODEL_FAMILY, runtime);
+				const model = await resolveLatestCodexModelFromRuntime(MODEL_FAMILY, runtime, combined);
 				selectedModelId = model.id;
 				const review = gitReviewTool(pi, repositories);
 				const read = createReadTool(root);

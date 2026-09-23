@@ -1,10 +1,10 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { lock } from "proper-lockfile";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Api, AssistantMessage, Message, Model } from "@earendil-works/pi-ai";
 import { createProfileModelRuntime } from "./model-runtime.ts";
-import { resolveLatestAuthenticatedCodexModel } from "./model-selection.ts";
+import { resolveLatestCodexModelFromRuntime } from "./model-selection.ts";
 import { result, type HerdrCli } from "./herdr-cli.ts";
 
 export const NAMING_MODEL_PROVIDER = "openai-codex";
@@ -159,7 +159,7 @@ export interface NamingTarget {
 }
 
 export interface NamingRuntime {
-  getAvailable(provider: string): Promise<readonly Model<Api>[]>;
+  getAvailable: ModelRuntime["getAvailable"];
   completeSimple(model: Model<Api>, context: { systemPrompt: string; messages: Message[]; tools?: never[] }, options: {
     reasoning: "low";
     toolChoice: "none";
@@ -459,7 +459,7 @@ export class HerdrTabNamingOwner {
       const runtime = await this.runtimeFactory(signal);
       if (invalidated()) return { outcome: "cancelled" };
       if (timedOut()) return timeoutFailure();
-      const model = await resolveLatestAuthenticatedCodexModel(NAMING_MODEL_FAMILY, runtime);
+      const model = await resolveLatestCodexModelFromRuntime(NAMING_MODEL_FAMILY, runtime, signal);
       this.diagnosticModel = `${model.provider}/${model.id}`;
       const response = await runtime.completeSimple(model, {
         systemPrompt: NAMING_PROMPT,

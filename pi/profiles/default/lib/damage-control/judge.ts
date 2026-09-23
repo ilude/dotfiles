@@ -2,7 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import { isContextOverflow } from "@earendil-works/pi-ai";
 import type { Evidence, JudgeDiagnostic, PendingCall, ReviewResult, Settings } from "./types.ts";
-import { resolveLatestAuthenticatedCodexModel } from "../model-selection.ts";
+import { resolveLatestCodexModelFromRegistry } from "../model-selection.ts";
 
 const MAX_REASON_CHARS = 1_000;
 const MAX_RESPONSE_BYTES = 8 * 1024;
@@ -149,7 +149,7 @@ export async function review(
   let contract: string;
   try {
     contract = readReviewContract();
-    model = resolveLatestAuthenticatedCodexModel("luna", ctx.modelRegistry);
+    model = resolveLatestCodexModelFromRegistry("luna", ctx.modelRegistry);
   } catch (error) {
     return unavailable(error);
   }

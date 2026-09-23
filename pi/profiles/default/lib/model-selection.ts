@@ -16,8 +16,7 @@ const MODEL_ALIASES: Readonly<Record<string, string>> = {
 	terra: "terra",
 };
 const CODEX_PROVIDER = "openai-codex";
-const CODEX_FAMILIES = ["astra", "sol", "terra", "luna"] as const;
-type OpenAIFamily = typeof CODEX_FAMILIES[number];
+type OpenAIFamily = "astra" | "sol" | "terra" | "luna";
 
 type Candidate = {
 	model: Model<Api>;
@@ -80,7 +79,9 @@ export function resolvePreferredModel(
 	}
 
 	const alias = trimmed.toLowerCase();
-	if (CODEX_FAMILIES.includes(alias as OpenAIFamily)) return resolveLatestAuthenticatedCodexModel(alias as OpenAIFamily, registry);
+	if (alias === "astra" || alias === "sol" || alias === "terra" || alias === "luna") {
+		return resolveLatestCodexModelFromRegistry(alias, registry);
+	}
 	if (alias === "fable") return resolveLatestFamilyModel("fable", registry);
 	const target = trimmed;
 	const authenticated = registry.getAll().filter(model => registry.hasConfiguredAuth(model));
@@ -122,28 +123,30 @@ function resolveLatestFamilyModel(
 	throw new Error(`No configured subscription or AWS model matches "${family}"`);
 }
 
-export function resolveLatestAuthenticatedCodexModel(
-	family: OpenAIFamily,
-	source: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth">,
-): Model<Api>;
-export function resolveLatestAuthenticatedCodexModel(
-	family: OpenAIFamily,
-	source: Pick<ModelRuntime, "getAvailable">,
-): Promise<Model<Api>>;
-export function resolveLatestAuthenticatedCodexModel(
-	family: OpenAIFamily,
-	source: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth"> | Pick<ModelRuntime, "getAvailable">,
-): Model<Api> | Promise<Model<Api>> {
-	if ("getAvailable" in source) {
-		return source.getAvailable(CODEX_PROVIDER).then(models => {
-			const model = latestFamilyModel(family, models.filter(candidate => candidate.provider === CODEX_PROVIDER));
-			if (!model) throw new Error(`No authenticated ${CODEX_PROVIDER} ${family} model is available`);
-			return model;
-		});
-	}
-	const model = latestFamilyModel(family, source.getAll().filter(candidate => candidate.provider === CODEX_PROVIDER && source.hasConfiguredAuth(candidate)));
+function latestCodexModel(family: OpenAIFamily, models: readonly Model<Api>[]): Model<Api> {
+	const model = latestFamilyModel(family, models.filter(candidate => candidate.provider === CODEX_PROVIDER));
 	if (!model) throw new Error(`No authenticated ${CODEX_PROVIDER} ${family} model is available`);
 	return model;
+}
+
+// Keep these entry points separate: both Pi APIs expose getAvailable, but only
+// ModelRuntime returns a Promise. Callers already know which API they own.
+export function resolveLatestCodexModelFromRegistry(
+	family: OpenAIFamily,
+	registry: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth">,
+): Model<Api> {
+	return latestCodexModel(family, registry.getAll().filter(model => model.provider === CODEX_PROVIDER && registry.hasConfiguredAuth(model)));
+}
+
+export async function resolveLatestCodexModelFromRuntime(
+	family: OpenAIFamily,
+	runtime: Pick<ModelRuntime, "getAvailable">,
+	signal?: AbortSignal,
+): Promise<Model<Api>> {
+	signal?.throwIfAborted();
+	const models = await runtime.getAvailable(CODEX_PROVIDER, { signal });
+	signal?.throwIfAborted();
+	return latestCodexModel(family, models);
 }
 
 export function resolveLatestShortcutModel(

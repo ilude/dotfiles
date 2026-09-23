@@ -1,7 +1,9 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { review } from "../../lib/damage-control/judge.ts";
+import { modelFixture, registryFixture } from "../helpers/model-selection.ts";
 import { Context, DIRECT_INPUT_LIMIT } from "../../lib/damage-control/context.ts";
 import type { Evidence, PendingCall, Settings } from "../../lib/damage-control/types.ts";
 
@@ -10,13 +12,18 @@ const pending: PendingCall = { callId: "call-1", fingerprint: "fp", generation: 
 function evidence(applicability: "candidate" | "confirmed" = "candidate"): Evidence {
   return { callId: "call-1", operation: "rm ./scratch", operator: [{ source: "interactive", text: "remove the scratch fixture" }], conversation: [{ role: "user", text: "Remove the scratch fixture." }, { role: "assistant", text: "I will remove only the generated scratch output." }], pendingCall: { tool: "bash", input: { command: "rm ./scratch" }, cwd: "/work" }, untrusted: { effects: [], matches: [{ ruleId: "delete", action: applicability === "confirmed" ? "block" : "review", applicability, reason: "delete match", effects: [] }], uncertainties: ["parser detail must stay local"] }, omissions: [] };
 }
-function textResponse(value: unknown, stopReason?: "stop" | "error" | "aborted", errorMessage?: string): { content: { type: "text"; text: string }[]; stopReason?: string; errorMessage?: string } {
-  return { content: [{ type: "text", text: JSON.stringify(value) }], ...(stopReason === undefined ? {} : { stopReason }), ...(errorMessage === undefined ? {} : { errorMessage }) };
+function textResponse(value: unknown, stopReason: "stop" | "error" | "aborted" = "stop", errorMessage?: string): AssistantMessage {
+  return {
+    role: "assistant", api: "openai-codex-responses", provider: "openai-codex", model: "gpt-6-luna", timestamp: 0,
+    content: [{ type: "text", text: JSON.stringify(value) }], stopReason, errorMessage,
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+  };
 }
-function context(complete: ReturnType<typeof vi.fn>, signal?: AbortSignal, authenticated = true): Pick<ExtensionContext, "modelRegistry" | "signal"> {
-  const model = { provider: "openai-codex", id: "gpt-6-luna" };
-  const registry = { getAll: vi.fn(() => [model]), hasConfiguredAuth: vi.fn(() => authenticated), complete };
-  return { modelRegistry: registry as unknown as ExtensionContext["modelRegistry"], signal };
+function context(complete: ReturnType<typeof vi.fn<ExtensionContext["modelRegistry"]["complete"]>>, signal?: AbortSignal, authenticated = true): Pick<ExtensionContext, "modelRegistry" | "signal"> {
+  const models = [modelFixture("openai-codex", "gpt-5.6-luna"), modelFixture("openai-codex", "gpt-6-luna")];
+  const registry = registryFixture(models, authenticated ? ["openai-codex"] : []);
+  vi.spyOn(registry, "complete").mockImplementation(complete);
+  return { modelRegistry: registry, signal };
 }
 
 const valid = { verdict: "allow", reason: "Known disposable target matches direct intent.", dismissedCandidates: ["delete"] };
@@ -143,9 +150,9 @@ describe("Luna review", () => {
 
   it("cancels the underlying request on deadline and ignores its late result", async () => {
     let passedSignal: AbortSignal | undefined;
-    const complete = vi.fn((_model, _request, options: { signal: AbortSignal }) => {
-      passedSignal = options.signal;
-      return new Promise((resolve) => setTimeout(() => resolve(textResponse(valid)), 100));
+    const complete = vi.fn<ExtensionContext["modelRegistry"]["complete"]>((_model, _request, options) => {
+      passedSignal = options?.signal;
+      return new Promise<AssistantMessage>((resolve) => setTimeout(() => resolve(textResponse(valid)), 100));
     });
     await expect(review(evidence(), context(complete), { ...settings, judge: { ...settings.judge, deadlineMs: 5 } }, pending, () => 3)).resolves.toMatchObject({ status: "timeout" });
     expect(passedSignal?.aborted).toBe(true);
@@ -167,7 +174,7 @@ describe("Luna review", () => {
 
     const controller = new AbortController();
     const removeListener = vi.spyOn(controller.signal, "removeEventListener");
-    const ignoresCancellation = vi.fn(() => new Promise(() => undefined));
+    const ignoresCancellation = vi.fn<ExtensionContext["modelRegistry"]["complete"]>(() => new Promise<AssistantMessage>(() => undefined));
     const result = review(evidence(), context(ignoresCancellation, controller.signal), settings, pending, () => 3);
     controller.abort();
     await expect(result).resolves.toMatchObject({ status: "cancelled" });

@@ -1,5 +1,12 @@
 # Agent instruction feedback log
 
+## Seed documentation confused runtime evidence with developer guidance (2026-09-23)
+
+- **Feedback:** Pipeline/revision snapshots, probe outcomes, and generic verification caveats made MPS/EISA seed docs read like running commentary rather than useful developer documentation. The operator asked for cleanup and prevention across sessions.
+- **Observed:** During dev seed rollout, the assistant added one-time deployment evidence to architecture and seed docs, then replaced it with repetitive generic caveats. The operator corrected both. An earlier README run-history correction already established the appropriate distinction, so this was failure to apply existing guidance, not proof that a new approval gate or documentation workflow is needed.
+- **Proposed remediation:** Keep only current mechanisms, ownership, non-obvious constraints, and supported procedures in developer docs; keep temporary rollout evidence in the task report or designated history. Remove obsolete pre-construction proposal material after confirming what unique evidence warrants retention. No instruction change or further cleanup has been approved yet.
+- **Status:** Discussion pending; do not treat the proposal as authorization to edit project guidance or delete files.
+
 ## AIF-085 - Do not turn plan discovery into an exhaustive obvious-question checklist
 
 - **Reference:** MPS EC2 sandbox planning discussion, 2026-09-23.

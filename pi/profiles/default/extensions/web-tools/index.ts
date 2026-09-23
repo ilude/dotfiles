@@ -2,7 +2,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { truncateHead, type ModelRuntime, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
-import { resolveLatestAuthenticatedCodexModel } from "../../lib/model-selection.ts";
+import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { SCREEN_PROMPT, screenContent, type Reviewer } from "./screen.ts";
@@ -122,7 +122,7 @@ export default function webTools(pi: ExtensionAPI) {
 		if (!runtime) {
 			runtime = await createProfileModelRuntime(signal);
 		}
-		const model = await resolveLatestAuthenticatedCodexModel("luna", runtime);
+		const model = await resolveLatestCodexModelFromRuntime("luna", runtime, signal);
 		const reply = await runtime.completeSimple(model, {
 			systemPrompt: SCREEN_PROMPT,
 			messages: [{ role: "user", content: text, timestamp: Date.now() }],
