@@ -194,6 +194,60 @@ const CURATED_PROVIDER_ORDER = [
 	"opencode-go",
 ] as const;
 
+const MODEL_FAMILY_ORDER = {
+	anthropic: ["fable", "opus", "sonnet", "haiku"],
+	openai: ["astra", "sol", "terra", "luna"],
+} as const;
+
+type OrderedModel = { id: string };
+
+function modelFamily(id: string): { vendor: keyof typeof MODEL_FAMILY_ORDER; family: string; rank: number } | undefined {
+	const normalized = id.toLowerCase();
+	const vendor = normalized.includes("anthropic") || /(?:^|[-.])(?:claude|fable|opus|sonnet|haiku)(?:[-.]|$)/.test(normalized)
+		? "anthropic"
+		: "openai";
+	const rank = MODEL_FAMILY_ORDER[vendor].findIndex((family) => new RegExp(`(?:^|[-.])${family}(?:[-.]|$)`).test(normalized));
+	return rank < 0 ? undefined : { vendor, family: MODEL_FAMILY_ORDER[vendor][rank], rank };
+}
+
+function versionParts(id: string): number[] {
+	return [...id.matchAll(/\d+/g)].map((match) => Number(match[0]));
+}
+
+function compareVersionsDescending(left: string, right: string): number {
+	const a = versionParts(left);
+	const b = versionParts(right);
+	for (let index = 0; index < Math.max(a.length, b.length); index++) {
+		const difference = (b[index] ?? -1) - (a[index] ?? -1);
+		if (difference) return difference;
+	}
+	return 0;
+}
+
+/** Stable provider-local ordering: latest size tiers first, older generations after them. */
+export function orderProviderModels<TModel extends OrderedModel>(models: readonly TModel[]): TModel[] {
+	const newestByFamily = new Map<string, string>();
+	for (const model of models) {
+		const family = modelFamily(model.id);
+		if (!family) continue;
+		const key = `${family.vendor}/${family.family}`;
+		const current = newestByFamily.get(key);
+		if (!current || compareVersionsDescending(model.id, current) < 0) newestByFamily.set(key, model.id);
+	}
+	return [...models].sort((left, right) => {
+		const a = modelFamily(left.id);
+		const b = modelFamily(right.id);
+		if (!a || !b) return a ? -1 : b ? 1 : left.id.localeCompare(right.id);
+		const vendorDifference = Object.keys(MODEL_FAMILY_ORDER).indexOf(a.vendor) - Object.keys(MODEL_FAMILY_ORDER).indexOf(b.vendor);
+		if (vendorDifference) return vendorDifference;
+		const aLatest = newestByFamily.get(`${a.vendor}/${a.family}`) === left.id;
+		const bLatest = newestByFamily.get(`${b.vendor}/${b.family}`) === right.id;
+		if (aLatest !== bLatest) return aLatest ? -1 : 1;
+		if (aLatest && bLatest) return a.rank - b.rank;
+		return compareVersionsDescending(left.id, right.id) || a.rank - b.rank || left.id.localeCompare(right.id);
+	});
+}
+
 export async function syncCuratedModelScope(
 	ctx: ExtensionContext,
 	bedrockModelIds: readonly string[],
@@ -211,19 +265,17 @@ export async function syncCuratedModelScope(
 		const existingCodex = existing.filter((id) =>
 			id.startsWith("openai-codex/"),
 		);
-		const availableCodex = available
-			.filter(
-				(model) =>
-					model.provider === "openai-codex" &&
-					!shouldHideModel("openai-codex", model),
-			)
-			.map((model) => `openai-codex/${model.id}`);
+		const availableCodex = orderProviderModels(available.filter(
+			(model) =>
+				model.provider === "openai-codex" &&
+				!shouldHideModel("openai-codex", model),
+		)).map((model) => `openai-codex/${model.id}`);
 		const codex = configured.has("openai-codex")
 			? availableCodex
 			: existingCodex;
 		const bedrock =
 			configured.has("amazon-bedrock") || configured.has("bedrock-mantle")
-				? bedrockModelIds.map((id) => {
+				? orderProviderModels(bedrockModelIds.map((id) => ({ id }))).map(({ id }) => {
 						const logicalId = id
 							.replace(/^us[.]/, "")
 							.replace(/-\d{8}-v\d+:\d+$/, "");
@@ -246,18 +298,21 @@ export async function syncCuratedModelScope(
 				.sort(),
 		];
 		const remaining = orderedProviders.flatMap((provider) =>
-			available
-				.filter(
-					(model) =>
-						model.provider === provider && !shouldHideModel(provider, model),
-				)
-				.sort((left, right) => left.id.localeCompare(right.id))
-				.map((model) => `${provider}/${model.id}`),
+			orderProviderModels(available.filter(
+				(model) =>
+					model.provider === provider && !shouldHideModel(provider, model),
+			)).map((model) => `${provider}/${model.id}`),
 		);
 		scope = [...new Set([...codex, ...bedrock, ...remaining])];
-		if (JSON.stringify(existing) === JSON.stringify(scope)) return settings;
+		const latestSol = availableCodex.find((id) => /(?:^|[-.])sol(?:[-.]|$)/.test(id.split("/")[1] ?? ""));
+		const next = {
+			...settings,
+			...(latestSol ? { defaultProvider: "openai-codex", defaultModel: latestSol.split("/")[1] } : {}),
+			enabledModels: scope,
+		};
+		if (JSON.stringify(settings) === JSON.stringify(next)) return settings;
 		changed = true;
-		return { ...settings, enabledModels: scope };
+		return next;
 	});
 	return { scope, changed };
 }

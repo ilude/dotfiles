@@ -28,14 +28,17 @@ it("passes the active profile to a new instance without launching a real termina
 	vi.stubEnv("PI_CODING_AGENT_DIR", join(homedir(), ".pi", "profiles", "work"));
 	vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_WORKSPACE_ID", "test-workspace");
 	vi.mocked(execFile).mockImplementation((_command: any, args: any, _options: any, callback: any) => {
-		callback(null, { stdout: args[0] === "plugin" ? JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "test-tab" } } } }) : "", stderr: "" });
+		const stdout = args[0] === "pane"
+			? JSON.stringify({ result: { pane: { workspace_id: "test-workspace" } } })
+			: args[0] === "plugin" ? JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "test-tab" } } } }) : "";
+		callback(null, { stdout, stderr: "" });
 		return {} as any;
 	});
 	const commands = new Map<string, any>();
-	sessionLaunch({ registerCommand: (name: string, command: unknown) => commands.set(name, command), registerEntryRenderer: vi.fn(), registerMessageRenderer: vi.fn(), sendMessage: vi.fn() } as unknown as ExtensionAPI);
+	sessionLaunch({ registerCommand: (name: string, command: unknown) => commands.set(name, command), registerTool: vi.fn(), registerEntryRenderer: vi.fn(), registerMessageRenderer: vi.fn(), sendMessage: vi.fn() } as unknown as ExtensionAPI);
 	await commands.get("new-instance").handler("", { cwd: process.cwd(), ui: { notify: vi.fn() } });
-	const launchArgs = vi.mocked(execFile).mock.calls[0]?.[1] as string[];
+	const launchArgs = vi.mocked(execFile).mock.calls[1]?.[1] as string[];
 	expect(launchArgs.slice(0, 4)).toEqual(["plugin", "pane", "open", "--plugin"]);
 	expect(launchArgs).toContain(`PI_HERDR_PROFILE_DIR=${join(homedir(), ".pi", "profiles", "work")}`);
-	expect(vi.mocked(execFile).mock.calls[1]?.[1]).toEqual(["tab", "focus", "test-tab"]);
+	expect(vi.mocked(execFile).mock.calls[2]?.[1]).toEqual(["tab", "focus", "test-tab"]);
 });

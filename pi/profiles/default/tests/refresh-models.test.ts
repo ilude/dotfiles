@@ -50,6 +50,7 @@ vi.mock("@earendil-works/pi-ai/compat", () => ({
 
 import registerRefreshModelsCommand, {
 	getCurrentSubscriptionProviders,
+	orderProviderModels,
 	parseRefreshModelsArgs,
 	syncCuratedModelScope,
 } from "../extensions/refresh-models";
@@ -105,6 +106,32 @@ describe("getCurrentSubscriptionProviders", () => {
 		expect(getCurrentSubscriptionProviders(modelRegistry)).toEqual([
 			"openai-codex",
 			"openrouter",
+		]);
+	});
+});
+
+describe("orderProviderModels", () => {
+	it("orders latest size tiers before older generations without dropping models", () => {
+		const models = [
+			"gpt-5.5", "gpt-5.6-luna", "gpt-6-luna", "gpt-5.6-terra",
+			"gpt-5.6-sol", "gpt-6-sol", "gpt-6-astra",
+		].map((id) => ({ id }));
+		expect(orderProviderModels(models).map(({ id }) => id)).toEqual([
+			"gpt-6-astra", "gpt-6-sol", "gpt-5.6-terra", "gpt-6-luna",
+			"gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.5",
+		]);
+	});
+
+	it("orders the latest Anthropic size tiers before older family versions", () => {
+		const models = [
+			"anthropic.claude-haiku-4-5", "anthropic.claude-opus-5",
+			"anthropic.claude-sonnet-5", "anthropic.claude-fable-5-1",
+			"anthropic.claude-opus-5-5",
+		].map((id) => ({ id }));
+		expect(orderProviderModels(models).map(({ id }) => id)).toEqual([
+			"anthropic.claude-fable-5-1", "anthropic.claude-opus-5-5",
+			"anthropic.claude-sonnet-5", "anthropic.claude-haiku-4-5",
+			"anthropic.claude-opus-5",
 		]);
 	});
 });
@@ -193,7 +220,7 @@ describe("/refresh-models command", () => {
 		});
 		const ctx = {
 			modelRegistry: {
-				getAll: () => [model("gpt-6-astra"), model("codex-auto-review")],
+				getAll: () => [model("gpt-5.6-sol"), model("gpt-6-astra"), model("gpt-6-sol"), model("codex-auto-review")],
 				getProviderAuthStatus: (provider: string) => ({
 					configured: provider === "openai-codex",
 				}),
@@ -202,8 +229,14 @@ describe("/refresh-models command", () => {
 
 		const result = await syncCuratedModelScope(ctx, []);
 
-		expect(result.scope).toEqual(["openai-codex/gpt-6-astra"]);
+		expect(result.scope).toEqual([
+			"openai-codex/gpt-6-astra",
+			"openai-codex/gpt-6-sol",
+			"openai-codex/gpt-5.6-sol",
+		]);
 		expect(result.scope).not.toContain("openai-codex/gpt-5.4");
+		const settings = JSON.parse(fs.readFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8"));
+		expect(settings).toMatchObject({ defaultProvider: "openai-codex", defaultModel: "gpt-6-sol" });
 	});
 
 	it("restores current Pi metadata when the cache has no new models", () => {
@@ -643,8 +676,8 @@ describe("/refresh-models command", () => {
 		const settings = JSON.parse(fs.readFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8"));
 		expect(settings.enabledModels).toEqual([
 			"openai-codex/gpt-5.4",
-			"bedrock-mantle/openai.gpt-5.6-luna",
 			"bedrock-mantle/anthropic.claude-opus-5",
+			"bedrock-mantle/openai.gpt-5.6-luna",
 		]);
 		expect(reload).toHaveBeenCalledOnce();
 	});

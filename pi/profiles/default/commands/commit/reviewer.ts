@@ -197,7 +197,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 							return { block: true, reason: "Broad recursive discovery is disabled. Use the supplied repository and instruction inventory.", terminate: true };
 						return undefined;
 					},
-					shouldStopAfterTurn: () => !!failure,
+					finishTurn: () => failure ? { action: "end" } : undefined,
 				});
 				unsubscribe = agent.subscribe((event) => {
 					if (event.type === "tool_execution_start") {

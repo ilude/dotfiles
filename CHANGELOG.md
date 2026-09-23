@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-09-23: Update default Pi compatibility for Pi 0.87.1 and Herdr 0.9.1
+
+**Changed:** Default Pi now uses the 0.87 normalized transcript contract for
+provider streams and the replacement `finishTurn` agent callback. Bedrock routing
+preserves normalized transcript identity while rewriting route-specific assistant
+history, and tests inspect system prompts and tools from transcript system
+messages. The curated built-in route expectation now follows Claude Opus 5.5 on
+Bedrock Runtime.
+
+Model refresh now keeps every available model except explicitly hidden entries,
+groups models by provider, orders each provider's latest capability tiers before
+older generations, and materializes the latest available Codex Sol as the
+default. An idempotent install patch stops `/model` from promoting the current or
+default model above that configured order, displays major-only GPT generations
+with an explicit `.0`, such as `gpt-6.0-sol`, and hides Bedrock's
+`anthropic.claude-` and `openai.` routing prefixes without changing provider model
+IDs. On resume, existing Codex and Bedrock Mantle conversations select a newer
+available model in the same provider and family when possible, retaining the
+saved model when no upgrade is available. New sessions and subagents keep their
+existing behavior.
+
+**Compatibility:** Refreshed the checked-in Herdr Pi integration to version 9.
+Herdr now owns the cross-platform Windows session-path handling that previously
+required a repository correction. The generated integration reports settled
+restricted subagents as `idle`; the earlier repository-only `unknown` state and
+its redundant-completion-sound suppression are no longer retained.
+
 ## 2026-09-23: Keep visible launches intact during focus changes
 
 **Fixed:** Pi's visible subagent layout reads the focused pane from one Herdr

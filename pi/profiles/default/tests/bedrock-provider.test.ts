@@ -37,18 +37,18 @@ describe("Bedrock provider routing", () => {
 		expect(routes.some(route => route.model.id === "anthropic.claude-sonnet-4-6")).toBe(false);
 	});
 	it("preserves the materialized Runtime fallback versus advertised Mantle target", async () => {
-		const runtimeMetadata = [{ id: "us.anthropic.claude-opus-5", kind: "inference-profile" as const, modelName: "Runtime Opus" }];
+		const runtimeMetadata = [{ id: "us.anthropic.claude-opus-5-5", kind: "inference-profile" as const, modelName: "Runtime Opus" }];
 		const runtimeProvider = createBedrockModelProvider({}, { provideToken: async () => "token", runtimeMetadata });
-		expect(bedrockRouteTargetIds(runtimeProvider, ["anthropic.claude-opus-5"])).toEqual(["us.anthropic.claude-opus-5"]);
+		expect(bedrockRouteTargetIds(runtimeProvider, ["anthropic.claude-opus-5-5"])).toEqual(["us.anthropic.claude-opus-5-5"]);
 
 		const mantleProvider = createBedrockModelProvider({}, {
 			provideToken: async () => "token",
 			runtimeMetadata,
-			discoverModels: async () => ["anthropic.claude-opus-5"],
+			discoverModels: async () => ["anthropic.claude-opus-5-5"],
 		});
 		await mantleProvider.refreshModels?.({ allowNetwork: true, signal: new AbortController().signal, publish: async (event: any) => event.update?.() } as any);
-		expect(bedrockRouteTargetIds(mantleProvider, ["anthropic.claude-opus-5"])).toEqual(["anthropic.claude-opus-5"]);
-		expect(mantleProvider.getModels().find(model => model.id === "anthropic.claude-opus-5")?.provider).toBe("bedrock-mantle");
+		expect(bedrockRouteTargetIds(mantleProvider, ["anthropic.claude-opus-5-5"])).toEqual(["anthropic.claude-opus-5-5"]);
+		expect(mantleProvider.getModels().find(model => model.id === "anthropic.claude-opus-5-5")?.provider).toBe("bedrock-mantle");
 	});
 
 	it("normalizes route identity and replays matching context through the target", async () => {

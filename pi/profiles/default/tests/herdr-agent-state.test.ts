@@ -40,7 +40,7 @@ it("reports the supported session payload and preserves reload", async () => {
   } });
 });
 
-it("keeps settled subagents quiet while preserving blocked request state", async () => {
+it("reports settled subagents as idle while preserving blocked request state", async () => {
   vi.stubEnv("PI_SUBAGENT_AUTHORITY", "fixture");
   vi.resetModules();
   const { default: register } = await import("../extensions/herdr-agent-state.ts");
@@ -56,15 +56,15 @@ it("keeps settled subagents quiet while preserving blocked request state", async
   };
   await handlers.session_start({ reason: "startup" }, ctx);
   await vi.waitFor(() => expect(requests.some(request => request.method === "pane.report_agent")).toBe(true));
-  expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("unknown");
+  expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("idle");
 
   blocked?.({ active: true, label: "Allow command?" });
   await vi.waitFor(() => expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("blocked"));
   blocked?.({ active: false });
-  await vi.waitFor(() => expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("unknown"));
+  await vi.waitFor(() => expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("idle"));
 });
 
-it("does not treat a socket API error as delivery", async () => {
+it("treats any socket response as delivery", async () => {
   socketResponse = { error: { type: "invalid_request" } };
   vi.resetModules();
   const { default: register } = await import("../extensions/herdr-agent-state.ts");
@@ -75,7 +75,7 @@ it("does not treat a socket API error as delivery", async () => {
     mode: "tui", isIdle: () => true,
     sessionManager: { getSessionFile: () => sessionFile, getSessionId: () => "session-id" },
   });
-  await vi.waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(4));
-  expect(requests.filter(({ method }) => method === "pane.report_agent_session")).toHaveLength(2);
-  expect(requests.filter(({ method }) => method === "pane.report_agent")).toHaveLength(2);
+  await vi.waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(2));
+  expect(requests.filter(({ method }) => method === "pane.report_agent_session")).toHaveLength(1);
+  expect(requests.filter(({ method }) => method === "pane.report_agent")).toHaveLength(1);
 });

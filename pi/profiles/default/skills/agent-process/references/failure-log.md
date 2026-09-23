@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-064 - Compatibility recommendations outran version-specific research
+
+- **Reference:** Default-profile compatibility investigation, 2026-09-23; operator challenged shallow research and repeated guesses.
+- **Observed:** The orchestrator generalized a rejected administrative operation and an incomplete configuration experiment into a broad server-side limitation, proposed client changes, then changed its recommendation when the operator supplied documentation. It had not traced the installed implementation's configuration exceptions or write path.
+- **Finding:** Existing evidence/recheck instructions applied. Comparable shifting explanations are recorded in APR-035; premature acceptance claims in the deployment/login entries are related but not the same test. No missing global instruction established.
+- **Remediation:** Retract the broad conclusion, inspect exact installed binaries and configuration templates, distinguish parser acceptance from persistence, and test candidate behavior offline before recommending another live mutation. Record evidence and unresolved limits instead of presenting another candidate as a fix.
+- **Status:** Exact-version investigation and isolated component tests performed. Full server compatibility remains unproven. No instruction changes.
+- **Follow-up correction:** The operator clarified that the ongoing task is to restore an existing customized platform's contracts, not deploy vendor defaults or conduct disconnected pass/fail experiments. After legacy scalar persistence succeeded and missing array metadata was established, the orchestrator treated that finding as a stopping condition and reverted rather than treating it as the next configuration defect to address. Use legacy definitions and consumer behavior as the compatibility baseline; distinguish ordinary corrections within the requested outcome from consequential scope changes. Existing investigation/proportionality guidance applies. No broader customization audit or unrelated changes are authorized by this correction.
+- **Authorized instruction change:** After the operator requested durable project guidance because the pattern kept recurring, added `Customized-platform compatibility` near the top of the project `AGENTS.md`. It sets legacy implementation/consumer contracts as the baseline except for recorded intentional changes, requires continued correction of demonstrated migration gaps within authorized work, distinguishes partial progress from automatic rollback, and requires real request/persistence checks. Existing explicit operational constraints remain binding. Project-level ownership avoids duplicating the rule across service skills. Effectiveness across future sessions remains unverified.
+
 ## APR-063 - Future lifecycle proof blocked a preparation-only deployment
 
 - **Reference:** Default execution `01a0b6d3-a81b-7507-8a4d-01e67f21a751`, 2026-09-18/19; planning provenance `01a0b598-8155-700a-9da8-10cae221bf5b`; TCA-009.
@@ -608,6 +618,7 @@ Factual incident history for operator review; not executable policy. Append inci
 - **Finding:** Both overlapping configuration ownership and insufficient end-to-end evidence contributed. Multiple additional cycles began without consulting Steward on the changed finding. This repeats APR-040 rather than establishing a missing global instruction.
 - **Proposal:** Discuss separating image identity from environment configuration, one routine release sequence, and selection based on deployed inputs rather than assumed previous-push coverage. Do not redesign deployment or relax selected-destination preflight without operator agreement.
 - **Status:** Feedback recorded; simplification discussion only. Runtime acceptance remains incomplete.
+- **Recurrence (2026-09-22):** A requested EISA/MPS deployment became another multi-hour chain of corrective pipelines. The assistant prematurely called intermediate states complete, reversed rollout timing evidence, used an invalid DCR verification assumption, and needed repeated deployments before identifying that the release Job omitted managed EISA client-secret inputs for dev/main. The operator again described the pattern as turning one deployment into a six-plus-hour marathon. Existing guidance was sufficient; this was an adherence and technical-validation failure, not a missing-instruction problem.
 
 ## EISA OAuth acceptance overclaim (2026-09-22)
 

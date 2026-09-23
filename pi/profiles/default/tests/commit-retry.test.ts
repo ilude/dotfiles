@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { realpathSync } from "node:fs";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import { createAssistantMessageEventStream, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, type AssistantMessage, type Model, type Tool, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, createBashTool } from "@earendil-works/pi-coding-agent";
 import { commitReviewerTool } from "../commands/commit/reviewer.ts";
 
@@ -37,7 +37,7 @@ const done = () => message([{ type: "text", text: "Done" }]);
 const failed = (error = "WebSocket error") => message([toolCall("must-not-execute")], "error", error);
 type Response = { message: AssistantMessage; started?: boolean };
 let responses: Response[];
-let requests: Parameters<StreamFn>[1][];
+let requests: Array<{ systemPrompt: string; messages: TranscriptContext["messages"]; tools?: Tool[] }>;
 let commits: string[];
 let progress: string[];
 let git: ReturnType<typeof vi.fn<ExtensionAPI["exec"]>>;
@@ -55,7 +55,12 @@ beforeEach(() => {
 	});
 	doubles.stream.mockReset().mockImplementation((_model, context, options) => {
 		expect(options?.maxRetries).toBe(0);
-		requests.push({ systemPrompt: context.systemPrompt, messages: structuredClone(context.messages), tools: context.tools });
+		const system = context.messages.find((message) => message.role === "system");
+		requests.push({
+			systemPrompt: typeof system?.content === "string" ? system.content : "",
+			messages: structuredClone(context.messages),
+			tools: system?.toolsAdded,
+		});
 		const response = responses.shift();
 		if (!response) throw new Error("Unexpected model request");
 		const stream = createAssistantMessageEventStream();

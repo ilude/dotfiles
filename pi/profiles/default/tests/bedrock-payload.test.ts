@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it, vi } from "vitest";
-import type { AnthropicMessagesCompat, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { normalizeContext, type AnthropicMessagesCompat, type SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/compat";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import { buildBedrockModelRoutes, createBedrockRoutingStream } from "../lib/bedrock/provider.ts";
@@ -36,7 +36,7 @@ describe("Bedrock real adapter serialization", () => {
 	it("uses the four latest discovered model routes", () => {
 		expect(routes.map(route => [route.model.id, route.target.id, route.transport])).toEqual([
 			["anthropic.claude-fable-5-1", "us.anthropic.claude-fable-5-1", "runtime"],
-			["anthropic.claude-opus-5", "anthropic.claude-opus-5", "mantle-anthropic"],
+			["anthropic.claude-opus-5-5", "us.anthropic.claude-opus-5-5", "runtime"],
 			["anthropic.claude-sonnet-5", "anthropic.claude-sonnet-5", "mantle-anthropic"],
 			["anthropic.claude-haiku-4-5", "anthropic.claude-haiku-4-5", "mantle-anthropic"],
 		]);
@@ -52,7 +52,7 @@ describe("Bedrock real adapter serialization", () => {
 					const simpleOptions: SimpleStreamOptions = { reasoning: level === "off" ? undefined : level, maxTokens: 2048, thinkingBudgets: { low: 1024 } };
 					const options = mode === "simple" ? simpleOptions : { thinkingEnabled: level !== "off", effort: "low", thinkingBudgetTokens: 1024, maxTokens: 2048 };
 					const stream = createBedrockRoutingStream(async () => "test-token", () => route, {}, mode);
-					const result = await stream(route.model, structuredClone(codexHistory), { ...options, fetch: captured.fetch, onPayload }).result();
+					const result = await stream(route.model, normalizeContext(structuredClone(codexHistory)), { ...options, fetch: captured.fetch, onPayload }).result();
 					expect(result.errorMessage).toContain("intercepted serialized request");
 					expect(captured.fetch).toHaveBeenCalledOnce();
 					expect(onPayload).toHaveBeenCalledOnce();
@@ -81,7 +81,7 @@ describe("Bedrock real adapter serialization", () => {
 		const native = getBuiltinModels("anthropic").find(model => model.id === "claude-opus-5")!;
 		expect(native.compat?.supportsMidConvoEffort).toBe(true);
 		const captured = captureFetch();
-		await anthropicMessagesApi().streamSimple(native, structuredClone(codexHistory), { apiKey: "test-key", reasoning: "low", maxTokens: 128, fetch: captured.fetch }).result();
+		await anthropicMessagesApi().streamSimple(native, normalizeContext(structuredClone(codexHistory)), { apiKey: "test-key", reasoning: "low", maxTokens: 128, fetch: captured.fetch }).result();
 		expect(captured.requests[0].payload.messages.at(-1)).toEqual({ role: "system", content: [], output_config: { effort: "low" } });
 	});
 
@@ -103,7 +103,7 @@ describe("Bedrock real adapter serialization", () => {
 			const target = { ...route.target, baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 			const stream = createBedrockRoutingStream(async () => { throw new Error("Runtime must not use Mantle auth"); }, () => ({ ...route, target }));
 			const options: SimpleStreamOptions = { reasoning: "low", maxTokens: 128, signal: AbortSignal.timeout(5000), env: { AWS_BEDROCK_SKIP_AUTH: "1", AWS_BEDROCK_FORCE_HTTP1: "1", NO_PROXY: "127.0.0.1", AWS_REGION: "us-east-1" } };
-			const result = await stream(route.model, structuredClone(codexHistory), options).result();
+			const result = await stream(route.model, normalizeContext(structuredClone(codexHistory)), options).result();
 			expect(result.errorMessage).toContain("intercepted serialized request");
 			expect(requests).toHaveLength(1);
 			expect(decodeURIComponent(requests[0].url)).toContain(`/model/${route.target.id}/converse-stream`);

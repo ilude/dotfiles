@@ -2,11 +2,11 @@
 // managed by herdr; reinstalling or updating the integration overwrites this file.
 // add custom hooks/plugins beside this file instead of editing it.
 // HERDR_INTEGRATION_ID=pi
-// HERDR_INTEGRATION_VERSION=8
+// HERDR_INTEGRATION_VERSION=9
 // @ts-nocheck
 
 import net from "node:net";
-import { isAbsolute } from "node:path";
+import path from "node:path";
 
 const HERDR_ENV = process.env.HERDR_ENV;
 const socketPath = process.env.HERDR_SOCKET_PATH;
@@ -38,20 +38,9 @@ function sendRequestAttempt(request: unknown, timeoutMs: number): Promise<boolea
     };
 
     const socket = net.createConnection(socketEndpoint!);
-    let response = "";
     socket.on("error", () => finish(false));
     socket.on("connect", () => socket.write(`${JSON.stringify(request)}\n`));
-    socket.on("data", (chunk) => {
-      response += chunk.toString();
-      const newline = response.indexOf("\n");
-      if (newline < 0) return;
-      try {
-        const parsed = JSON.parse(response.slice(0, newline));
-        finish(parsed?.result?.type === "ok");
-      } catch {
-        finish(false);
-      }
-    });
+    socket.on("data", () => finish(true));
     socket.on("end", () => finish(false));
     timeout = setTimeout(() => finish(false), timeoutMs);
     timeout.unref?.();
@@ -65,7 +54,7 @@ async function sendRequest(request: unknown): Promise<void> {
   await sendRequestAttempt(request, 1500);
 }
 
-type AgentState = "working" | "blocked" | "idle" | "unknown";
+type AgentState = "working" | "blocked" | "idle";
 
 type QueuedState = {
   state: AgentState;
@@ -86,7 +75,10 @@ function updateSessionRef(ctx: any): void {
   try {
     const file = ctx?.sessionManager?.getSessionFile?.();
     currentAgentSessionPath =
-      typeof file === "string" && isAbsolute(file) ? file : undefined;
+      typeof file === "string" &&
+      (path.posix.isAbsolute(file) || path.win32.isAbsolute(file))
+        ? file
+        : undefined;
   } catch {
     currentAgentSessionPath = undefined;
   }
@@ -195,7 +187,6 @@ export default function (pi) {
   let lastState: AgentState | undefined;
   let lastMessage: string | undefined;
   let rootSession = false;
-  const subagentSession = Boolean(process.env.PI_SUBAGENT_AUTHORITY);
 
   function desiredState() {
     if (blockedCount > 0) {
@@ -204,12 +195,7 @@ export default function (pi) {
     if (agentActive) {
       return { state: "working" as const, message: undefined };
     }
-    // Herdr plays its completion sound for background working -> idle
-    // transitions. Restricted subagents deliver their result to the parent and
-    // usually close immediately, so report unknown while settled to avoid a
-    // redundant completion ding. Actual operator prompts still report blocked
-    // through herdr:blocked and retain Herdr's request sound.
-    return { state: subagentSession ? "unknown" as const : "idle" as const, message: undefined };
+    return { state: "idle" as const, message: undefined };
   }
 
   function publishState(force = false) {

@@ -17,6 +17,7 @@ import {
 	type Provider,
 	type SimpleStreamOptions,
 	type StreamOptions,
+	type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
@@ -69,7 +70,7 @@ type TokenProviderFactory = (
 type RoutingStreamOptions = StreamOptions;
 type StreamAdapter = (
 	model: Model<Api>,
-	context: Context,
+	context: TranscriptContext,
 	options?: RoutingStreamOptions,
 ) => AssistantMessageEventStream;
 type BedrockTransport = "mantle-anthropic" | "mantle-openai" | "runtime";
@@ -407,10 +408,10 @@ function normalizeEvent(
 	return { ...event, partial: normalizeMessage(event.partial, route) };
 }
 
-export function contextForBedrockRoute(
-	context: Context,
+export function contextForBedrockRoute<TContext extends Context>(
+	context: TContext,
 	route: BedrockModelRoute,
-): Context {
+): TContext {
 	return {
 		...context,
 		messages: context.messages.map((message) => {
@@ -429,7 +430,7 @@ export function contextForBedrockRoute(
 				model: route.target.id,
 			};
 		}),
-	};
+	} as TContext;
 }
 
 function errorMessage(

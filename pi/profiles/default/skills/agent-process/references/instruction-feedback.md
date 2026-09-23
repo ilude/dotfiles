@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-084 - Preserve architectural understanding rather than operational skill boilerplate
+
+- **Reference:** Operator corrections during service-skill creation and subsequent knowledge-maintenance discussion.
+- **Feedback:** Service skills should preserve responsibilities, adaptations, decision reasons, existing mechanisms, and dependencies so later changes fit established architecture. Command targets and generic product descriptions do not fulfill that purpose. New architectural discoveries and consequential development context also need the appropriate durable home, not just chat or local research artifacts.
+- **Finding:** Existing project write-back guidance already requires durable evidence, but the initial skills emphasized operational navigation and omitted a concrete map of newly understood native configuration files. Related APR-064 concerns the evidence quality behind those discoveries, not their documentation placement.
+- **Remediation:** Service skills were revised to architectural context and the affected service gained an existing-file responsibility map. Operator is considering a knowledge-maintenance skill covering both discovery-time capture and subsequent skill maintenance, with placement guidance for AGENTS.md, skills, and docs.
+- **Status:** New maintenance skill and routing changes remain proposals pending approval. This record grants no implementation authority.
+
 ## AIF-083 - Carry environment decisions into validation scope and task sizing
 
 - **Reference:** Planning `01a0b598-8155-700a-9da8-10cae221bf5b` and execution `01a0b6d3-a81b-7507-8a4d-01e67f21a751`, reviewed 2026-09-19; APR-063/TCA-009.

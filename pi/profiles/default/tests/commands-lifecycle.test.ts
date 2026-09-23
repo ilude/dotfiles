@@ -204,7 +204,8 @@ describe("profile command lifecycle", () => {
 			initialState: { model: runtimeModel as any, thinkingLevel: "off", systemPrompt: "fixture", tools: [holdTool as any] },
 			convertToLlm: (messages) => messages.flatMap((message: any) => message.role === "custom" ? [{ role: "user", content: [{ type: "text", text: message.content }], timestamp: message.timestamp }] : [message]),
 			streamFn: (_model, context) => {
-				requests.push({ tools: (context.tools ?? []).map((tool) => tool.name), messages: context.messages });
+				const tools = context.messages.flatMap((message) => message.role === "system" ? (message.toolsAdded ?? []) : []);
+				requests.push({ tools: tools.map((tool) => tool.name), messages: context.messages });
 				const stream = createAssistantMessageEventStream();
 				if (requestNumber++ < 2) runtimeToolResponse(stream, requestNumber === 1 ? "hold_tool" : "commit_run", requestNumber === 1 ? "hold-call" : "commit-call");
 				else {
