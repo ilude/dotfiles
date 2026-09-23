@@ -59,8 +59,8 @@ export function parseSettings(source: string): Settings {
   const raw = object(JSON.parse(source), ["version", "judge", "parseBudgetMs"], "settings");
   if (raw.version !== 1) throw new Error("Unsupported settings version");
   const judge = object(raw.judge, ["enabled", "provider", "model", "reasoning", "deadlineMs", "retries"], "judge");
-  if (typeof judge.enabled !== "boolean" || judge.provider !== "openai-codex" || judge.model !== "gpt-5.6-luna" || judge.reasoning !== "high" || judge.retries !== 0) {
-    throw new Error("Unsupported judge settings: exact Luna/high, zero retries required");
+  if (typeof judge.enabled !== "boolean" || judge.provider !== "openai-codex" || judge.model !== "luna" || judge.reasoning !== "high" || judge.retries !== 0) {
+    throw new Error("Unsupported judge settings: latest authenticated Codex Luna/high, zero retries required");
   }
   return {
     version: 1,

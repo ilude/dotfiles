@@ -2,7 +2,7 @@
 name: explorer
 description: Local code and evidence lookup
 tools: [read, grep, find, ls, tool_search, log_analytics, subagent_parent]
-model: openai-codex/gpt-5.6-luna
+model: luna
 effort: low
 skills: []
 delegates: []

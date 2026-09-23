@@ -2,7 +2,7 @@
 name: steward
 description: "Post-implementation triage of reviewer/validator agent findings: assess whether additional work is warranted or would create scope drift or fix churn. Not for planning or pre-implementation assessment."
 tools: [read, grep, find, ls, subagent_parent]
-model: openai-codex/gpt-5.6-luna
+model: luna
 effort: high
 skills: []
 delegates: []

@@ -1,6 +1,6 @@
 # Quiet commits
 
-`/commit` delegates the whole workflow to **openai-codex/gpt-5.6-luna**, at **low** reasoning: review, grouping/messages, staging, commits, and an optional push. An explicit operator request to commit may call `commit_run` directly with commit-only behavior. The current model presents its result without repeating routine Git work in the main conversation.
+`/commit` delegates the whole workflow to the latest authenticated **openai-codex Luna**, at **low** reasoning: review, grouping/messages, staging, commits, and an optional push. An explicit operator request to commit may call `commit_run` directly with commit-only behavior. The current model presents its result without repeating routine Git work in the main conversation.
 
 ## What you see
 

@@ -6,12 +6,13 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { isContextOverflow, isRetryableAssistantError, type ImageContent, type TextContent, type Usage } from "@earendil-works/pi-ai";
 import { createBashTool, createReadTool, type ExtensionAPI, type ToolDefinition, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
+import { resolveLatestAuthenticatedCodexModel } from "../../lib/model-selection.ts";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { formatStatus, gitReviewTool, page } from "./tools.ts";
 
 const PROVIDER = "openai-codex";
-const MODEL = "gpt-5.6-luna";
+const MODEL_FAMILY = "luna";
 const WORKFLOW_TIMEOUT_MS = 180_000;
 const RESPONSE_RETRIES = 3;
 
@@ -95,6 +96,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 			const pauseTimer = () => { clearTimeout(timer); remaining -= Date.now() - activeSince; };
 			resumeTimer();
 			let agent: Agent | undefined;
+			let selectedModelId: string | undefined;
 			let unsubscribe: (() => void) | undefined;
 			const abort = () => agent?.abort();
 			combined.addEventListener("abort", abort, { once: true });
@@ -137,8 +139,8 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 					inventory.push(`Repository: ${relative(root, repository) || "."}\nInstruction files: ${instructions.length ? instructions.join(", ") : "none"}${publication ? `\n${publication}` : ""}\n${status}`);
 				}
 				const runtime = await createProfileModelRuntime(combined);
-				const model = runtime.getModel(PROVIDER, MODEL);
-				if (!model) throw new Error(`${PROVIDER}/${MODEL} is unavailable. No fallback model was used.`);
+				const model = await resolveLatestAuthenticatedCodexModel(MODEL_FAMILY, runtime);
+				selectedModelId = model.id;
 				const review = gitReviewTool(pi, repositories);
 				const read = createReadTool(root);
 				const shell = createBashTool(root);
@@ -273,7 +275,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 			const publication = push && publicationTargets > 0 ? (/^Pushed\.?$/i.test(outcome) ? "Pushed." : "Push completion not confirmed.") : "";
 			const report = [summary, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
-			return { content: [{ type: "text", text: report }], details: { elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${PROVIDER}/${MODEL}:low` }, usage };
+			return { content: [{ type: "text", text: report }], details: { elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${PROVIDER}/${selectedModelId}:low` }, usage };
 		},
 		renderCall: () => new Container(),
 		renderResult(result, { isPartial }, theme, context) {

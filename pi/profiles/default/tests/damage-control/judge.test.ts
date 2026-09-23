@@ -5,7 +5,7 @@ import { review } from "../../lib/damage-control/judge.ts";
 import { Context, DIRECT_INPUT_LIMIT } from "../../lib/damage-control/context.ts";
 import type { Evidence, PendingCall, Settings } from "../../lib/damage-control/types.ts";
 
-const settings: Settings = { version: 1, judge: { enabled: true, provider: "openai-codex", model: "gpt-5.6-luna", reasoning: "high", deadlineMs: 50, retries: 0 }, parseBudgetMs: 50 };
+const settings: Settings = { version: 1, judge: { enabled: true, provider: "openai-codex", model: "luna", reasoning: "high", deadlineMs: 50, retries: 0 }, parseBudgetMs: 50 };
 const pending: PendingCall = { callId: "call-1", fingerprint: "fp", generation: 3 };
 function evidence(applicability: "candidate" | "confirmed" = "candidate"): Evidence {
   return { callId: "call-1", operation: "rm ./scratch", operator: [{ source: "interactive", text: "remove the scratch fixture" }], conversation: [{ role: "user", text: "Remove the scratch fixture." }, { role: "assistant", text: "I will remove only the generated scratch output." }], pendingCall: { tool: "bash", input: { command: "rm ./scratch" }, cwd: "/work" }, untrusted: { effects: [], matches: [{ ruleId: "delete", action: applicability === "confirmed" ? "block" : "review", applicability, reason: "delete match", effects: [] }], uncertainties: ["parser detail must stay local"] }, omissions: [] };
@@ -14,7 +14,8 @@ function textResponse(value: unknown, stopReason?: "stop" | "error" | "aborted",
   return { content: [{ type: "text", text: JSON.stringify(value) }], ...(stopReason === undefined ? {} : { stopReason }), ...(errorMessage === undefined ? {} : { errorMessage }) };
 }
 function context(complete: ReturnType<typeof vi.fn>, signal?: AbortSignal, authenticated = true): Pick<ExtensionContext, "modelRegistry" | "signal"> {
-  const registry = { find: vi.fn(() => ({ provider: "openai-codex", id: "gpt-5.6-luna" })), hasConfiguredAuth: vi.fn(() => authenticated), complete };
+  const model = { provider: "openai-codex", id: "gpt-6-luna" };
+  const registry = { getAll: vi.fn(() => [model]), hasConfiguredAuth: vi.fn(() => authenticated), complete };
   return { modelRegistry: registry as unknown as ExtensionContext["modelRegistry"], signal };
 }
 
@@ -24,14 +25,14 @@ describe("Luna review", () => {
   it("uses the maintained prompt, exact Luna model, high reasoning, zero retries, and one completion", async () => {
     const complete = vi.fn().mockResolvedValue(textResponse(valid, "stop"));
     const ctx = context(complete);
-    await expect(review(evidence(), ctx, settings, pending, () => 3)).resolves.toMatchObject({ status: "valid", ...valid, diagnostics: { version: 1, callId: "call-1", provider: "openai-codex", model: "gpt-5.6-luna", promptTruncated: false, outputTruncated: false, stopReason: "stop", verdict: "allow" } });
+    await expect(review(evidence(), ctx, settings, pending, () => 3)).resolves.toMatchObject({ status: "valid", ...valid, diagnostics: { version: 1, callId: "call-1", provider: "openai-codex", model: "gpt-6-luna", promptTruncated: false, outputTruncated: false, stopReason: "stop", verdict: "allow" } });
     expect(complete).toHaveBeenCalledTimes(1);
     const [model, request, options] = complete.mock.calls[0] as unknown as [{ provider: string; id: string }, { messages: [{ content: [{ text: string }] }] }, { reasoningEffort: string; maxRetries: number; signal: AbortSignal }];
     const contract = readFileSync(new URL("../../lib/damage-control/judge-prompt.md", import.meta.url), "utf8").trim();
     expect(contract).toContain("uses unchanged, and then removes");
     expect(contract).toContain("confirmed `review` rule");
     expect(contract).toContain("identity or path is reassigned");
-    expect(model).toMatchObject({ provider: "openai-codex", id: "gpt-5.6-luna" });
+    expect(model).toMatchObject({ provider: "openai-codex", id: "gpt-6-luna" });
     expect(options).toMatchObject({ reasoningEffort: "high", maxRetries: 0 });
     expect(request.messages[0].content[0].text.startsWith(`${contract}\n\nEVIDENCE JSON:\n`)).toBe(true);
     const outbound = request.messages[0].content[0].text;
@@ -118,7 +119,7 @@ describe("Luna review", () => {
     expect(noAuth).not.toHaveBeenCalled();
 
     const findFailure = context(vi.fn());
-    vi.mocked(findFailure.modelRegistry.find).mockImplementation(() => { throw new Error("registry lookup failure"); });
+    vi.mocked(findFailure.modelRegistry.getAll).mockImplementation(() => { throw new Error("registry lookup failure"); });
     await expect(review(evidence(), findFailure, settings, pending, () => 3)).resolves.toMatchObject({ status: "unavailable" });
 
     const authFailure = context(vi.fn());

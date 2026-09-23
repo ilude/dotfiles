@@ -12,14 +12,14 @@ The historical focused automated suite, isolated Herdr geometry test, model-back
 
 ## Definitions and authority
 
-Editable profile roles live in `agents/*.md`. Trusted projects can override them through the nearest `.pi/agents/` directory. Invalid overrides disable the affected names rather than restoring a more powerful profile definition. Each filename must match its `name`.
+Editable profile roles live in `agents/*.md`. Built-in bare family defaults (`astra`, `sol`, `terra`, `luna`) select the latest authenticated Codex version at launch, with no provider fallback. Explicit `provider/model` references remain exact. Trusted projects can override them through the nearest `.pi/agents/` directory. Invalid overrides disable the affected names rather than restoring a more powerful profile definition. Each filename must match its `name`.
 
 ```yaml
 ---
 name: reader
 description: Inspect local evidence
 tools: [read, grep, find, ls, subagent_parent]
-model: openai-codex/gpt-5.6-luna
+model: luna
 effort: low
 skills: []
 delegates: []

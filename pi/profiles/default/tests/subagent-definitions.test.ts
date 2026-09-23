@@ -36,7 +36,7 @@ describe("subagent definitions",()=>{
   expect(()=>resolveModel("missing",undefined,registry([model("openai-codex","gpt")],["openai-codex"]))).toThrow(/No configured subscription or AWS model/);
  });
  it("does not resolve a similar model from an unapproved provider",()=>{
-  expect(()=>resolveModel("sol",undefined,registry([model("openrouter","upstage/solar-pro4")],["openrouter"]))).toThrow(/No configured subscription or AWS model/);
+  expect(()=>resolveModel("sol",undefined,registry([model("openrouter","upstage/solar-pro4")],["openrouter"]))).toThrow(/No authenticated openai-codex sol model/);
  });
  it("uses the canonical bare model before effort restrictions",()=>{
   const resolved=resolveModel("luna",undefined,registry([model("openai-codex","gpt-5.6-luna")],["openai-codex"]));
@@ -58,9 +58,9 @@ describe("subagent definitions",()=>{
   const profile=join(dirname(fileURLToPath(import.meta.url)),"..");
   const catalog=loadDefinitions(profile,false,profile);
   expect(catalog.errors).toEqual([]);
-  expect(catalog.agents.get("strategist")).toMatchObject({model:"openai-codex/gpt-5.6-sol",effort:"low",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
-  expect(catalog.agents.get("steward")).toMatchObject({description:"Post-implementation triage of reviewer/validator agent findings: assess whether additional work is warranted or would create scope drift or fix churn. Not for planning or pre-implementation assessment.",model:"openai-codex/gpt-5.6-luna",effort:"high",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
+  expect(catalog.agents.get("strategist")).toMatchObject({model:"sol",effort:"low",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
+  expect(catalog.agents.get("steward")).toMatchObject({description:"Post-implementation triage of reviewer/validator agent findings: assess whether additional work is warranted or would create scope drift or fix churn. Not for planning or pre-implementation assessment.",model:"luna",effort:"high",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
   expect(catalog.agents.get("teamlead")?.delegates).toEqual(expect.arrayContaining(["strategist","steward"]));
-  expect(catalog.agents.get("reviewer")).toMatchObject({model:"openai-codex/gpt-5.6-sol",tools:expect.arrayContaining(["read","bash"]),delegates:[],skills:[]});
+  expect(catalog.agents.get("reviewer")).toMatchObject({model:"sol",tools:expect.arrayContaining(["read","bash"]),delegates:[],skills:[]});
  });
 });

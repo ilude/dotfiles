@@ -1,5 +1,6 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { modelFamilyVersion } from "../lib/model-family.ts";
 
 const DAYBREAK_ACCESS_ERROR = "Unable to verify Daybreak Blue access. Please try again.";
 const RETRYABLE_DAYBREAK_ACCESS_ERROR = "Unable to verify Daybreak Blue access. Please retry your request.";
@@ -7,7 +8,7 @@ const RETRYABLE_DAYBREAK_ACCESS_ERROR = "Unable to verify Daybreak Blue access. 
 export function markDaybreakAccessErrorRetryable(message: AssistantMessage): AssistantMessage | undefined {
 	if (
 		message.provider !== "openai-codex" ||
-		message.model !== "gpt-5.6-sol" ||
+		modelFamilyVersion(message.model)?.family !== "sol" ||
 		message.stopReason !== "error" ||
 		!message.errorMessage?.includes(DAYBREAK_ACCESS_ERROR)
 	) return undefined;

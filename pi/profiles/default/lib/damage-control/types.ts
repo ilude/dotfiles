@@ -131,6 +131,6 @@ export type PathPolicy = {
 export type Policy = { version: 1; commands: CompiledRule[]; paths: PathPolicy };
 export type Settings = {
   version: 1;
-  judge: { enabled: boolean; provider: "openai-codex"; model: "gpt-5.6-luna"; reasoning: "high"; deadlineMs: number; retries: 0 };
+  judge: { enabled: boolean; provider: "openai-codex"; model: "luna"; reasoning: "high"; deadlineMs: number; retries: 0 };
   parseBudgetMs: number;
 };

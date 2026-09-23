@@ -9,7 +9,7 @@ function message(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
 		content: [],
 		api: "openai-codex-responses",
 		provider: "openai-codex",
-		model: "gpt-5.6-sol",
+		model: "gpt-6-sol",
 		usage: {
 			input: 0,
 			output: 0,
@@ -26,10 +26,11 @@ function message(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
 }
 
 describe("Daybreak access retry classification", () => {
-	it("marks the transient Sol verification failure for Pi's native retry classifier", () => {
-		const original = message();
+	it.each(["gpt-5.6-sol", "gpt-6-sol"])("marks the transient Sol verification failure across family versions without repinning %s", model => {
+		const original = message({ model });
 		const replacement = markDaybreakAccessErrorRetryable(original);
 
+		expect(replacement?.model).toBe(model);
 		expect(replacement?.errorMessage).toBe("Codex error: Unable to verify Daybreak Blue access. Please retry your request.");
 		expect(original.errorMessage).toContain("Please try again.");
 	});

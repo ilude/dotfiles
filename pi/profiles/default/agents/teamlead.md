@@ -2,7 +2,7 @@
 name: teamlead
 description: Coordinate subagents and integrate their results
 tools: [read, grep, find, ls, tool_search, log_analytics, web_search, web_fetch, subagent_parent, subagent, subagent_control]
-model: openai-codex/gpt-6-astra
+model: astra
 effort: low
 skills: []
 delegates: [explorer, developer, reviewer, validator, researcher, advisor, strategist, steward]

@@ -4,11 +4,12 @@ import { lock } from "proper-lockfile";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { Api, AssistantMessage, Message, Model } from "@earendil-works/pi-ai";
 import { createProfileModelRuntime } from "./model-runtime.ts";
+import { resolveLatestAuthenticatedCodexModel } from "./model-selection.ts";
 import { result, type HerdrCli } from "./herdr-cli.ts";
 
 export const NAMING_MODEL_PROVIDER = "openai-codex";
-export const NAMING_MODEL_ID = "gpt-5.6-luna";
-export const NAMING_MODEL = `${NAMING_MODEL_PROVIDER}/${NAMING_MODEL_ID}`;
+export const NAMING_MODEL_FAMILY = "luna";
+export const NAMING_MODEL = `${NAMING_MODEL_PROVIDER}/${NAMING_MODEL_FAMILY}`;
 export const NAMING_PROMPT = `You name the current coding session.
 Return only a title of 1 to 5 words describing the work currently being attempted.
 Use lowercase always, including proper names and acronyms.
@@ -158,7 +159,7 @@ export interface NamingTarget {
 }
 
 export interface NamingRuntime {
-  getModel(provider: string, model: string): Model<Api> | undefined;
+  getAvailable(provider: string): Promise<readonly Model<Api>[]>;
   completeSimple(model: Model<Api>, context: { systemPrompt: string; messages: Message[]; tools?: never[] }, options: {
     reasoning: "low";
     toolChoice: "none";
@@ -333,6 +334,7 @@ export class HerdrTabNamingOwner {
   private readonly now: () => number;
   private readonly deadlineMs: number;
   private ownedTitle: string;
+  private diagnosticModel = NAMING_MODEL;
   private generation = 0;
   private lastAttemptStarted?: number;
   private failures = 0;
@@ -407,7 +409,7 @@ export class HerdrTabNamingOwner {
       ...record,
       timestamp: new Date(this.now()).toISOString(),
       target: this.target,
-      model: NAMING_MODEL,
+      model: this.diagnosticModel,
       effort: "low",
       promptVersion: NAMING_PROMPT_VERSION,
       failureCount: this.failures,
@@ -457,8 +459,8 @@ export class HerdrTabNamingOwner {
       const runtime = await this.runtimeFactory(signal);
       if (invalidated()) return { outcome: "cancelled" };
       if (timedOut()) return timeoutFailure();
-      const model = runtime.getModel(NAMING_MODEL_PROVIDER, NAMING_MODEL_ID);
-      if (!model) return this.failure(trigger, "Luna model unavailable", started, request);
+      const model = await resolveLatestAuthenticatedCodexModel(NAMING_MODEL_FAMILY, runtime);
+      this.diagnosticModel = `${model.provider}/${model.id}`;
       const response = await runtime.completeSimple(model, {
         systemPrompt: NAMING_PROMPT,
         messages: [{ role: "user", content: request.payload, timestamp: this.now() }],

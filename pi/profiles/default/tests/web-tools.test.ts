@@ -10,7 +10,7 @@ const complete = vi.hoisted(() => vi.fn());
 vi.mock("@earendil-works/pi-coding-agent", async (original) => ({
   ...await original(),
   getAgentDir: () => "/test-profile",
-  ModelRuntime: { create: async () => ({ getModel: () => ({}), completeSimple: complete }) },
+  ModelRuntime: { create: async () => ({ getAvailable: async () => [{ provider: "openai-codex", id: "gpt-6-luna" }], completeSimple: complete }) },
 }));
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 

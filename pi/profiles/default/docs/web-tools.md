@@ -88,7 +88,7 @@ Node runtime or broken Pi loader.
 ## Basic prompt-injection screening
 
 Before source content enters the conversation, a separate, tool-free
-`openai-codex/gpt-5.6-luna` call at low reasoning checks the bounded content.
+latest authenticated `openai-codex` Luna call at low reasoning checks the bounded content.
 Empty search results need no review; tool-generated query headers are excluded
 from review input. It gets only a fixed review prompt and the source content, not conversation
 history, filesystem tools, or credential contents. Normal provider

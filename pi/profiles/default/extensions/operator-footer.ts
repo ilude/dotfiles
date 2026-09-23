@@ -158,7 +158,7 @@ function colorForThinkingLevel(model: string, thinkingLevel: string): string {
 	const normalizedModel = model.toLowerCase();
 	const normalizedLevel = thinkingLevel.toLowerCase();
 	if (normalizedLevel === "off") return ANSI.yellow;
-	if (normalizedModel === "gpt-5.6-sol" && ["medium", "high", "xhigh"].includes(normalizedLevel)) return ANSI.pink;
+	if (normalizedModel.endsWith("-sol") && ["medium", "high", "xhigh"].includes(normalizedLevel)) return ANSI.pink;
 	if (["high", "xhigh"].includes(normalizedLevel)) return ANSI.pink;
 	return ANSI.cyan;
 }

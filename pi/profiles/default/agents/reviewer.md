@@ -2,7 +2,7 @@
 name: reviewer
 description: Independent evidence-based review
 tools: [read, grep, find, ls, bash, tool_search, log_analytics, web_search, web_fetch, subagent_parent]
-model: openai-codex/gpt-5.6-sol
+model: sol
 effort: low
 skills: []
 delegates: []

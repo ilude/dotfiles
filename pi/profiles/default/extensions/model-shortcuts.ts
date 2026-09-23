@@ -6,6 +6,7 @@ import { registerProfileCommand } from "../lib/profile-command.ts";
 const SHORTCUTS = {
 	astra: "Switch to the latest Astra using the preferred configured provider",
 	sol: "Switch to the latest Sol using the preferred configured provider",
+	terra: "Switch to the latest Terra using the preferred configured provider",
 	luna: "Switch to the latest Luna using the preferred configured provider",
 	fable: "Switch to the latest Claude Fable using the preferred configured provider",
 	opus: "Switch to the latest Claude Opus using the preferred configured provider",

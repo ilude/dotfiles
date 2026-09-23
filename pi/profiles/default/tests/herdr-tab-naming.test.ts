@@ -6,7 +6,7 @@ import {
   HerdrTabNamingOwner,
   NAMING_COOLDOWN_MS,
   NAMING_FAILURE_LIMIT,
-  NAMING_MODEL_ID,
+  NAMING_MODEL_FAMILY,
   NAMING_MODEL_PROVIDER,
   buildFilteredNamingContext,
   createFileNamingDiagnostics,
@@ -16,7 +16,7 @@ import {
 } from "../lib/herdr-tab-naming.ts";
 import type { HerdrCli } from "../lib/herdr-cli.ts";
 
-const model = { provider: NAMING_MODEL_PROVIDER, id: NAMING_MODEL_ID } as never;
+const model = { provider: NAMING_MODEL_PROVIDER, id: `gpt-6-${NAMING_MODEL_FAMILY}` } as never;
 
 function herdrFixture(initialTitle = ".dotfiles") {
   let title = initialTitle;
@@ -33,7 +33,7 @@ function herdrFixture(initialTitle = ".dotfiles") {
 
 function runtimeFor(response: { content: unknown[]; stopReason: string }, onCall?: (options: unknown) => void): NamingRuntime {
   return {
-    getModel: vi.fn(() => model),
+    getAvailable: vi.fn(async () => [model]),
     completeSimple: vi.fn(async (_model, context, options) => {
       onCall?.({ context, options });
       return response as never;
@@ -125,7 +125,7 @@ describe("owner request and guards", () => {
     const herdr = herdrFixture();
     const diagnostics = diagnosticSink();
     const runtime: NamingRuntime = {
-      getModel: vi.fn(() => model),
+      getAvailable: vi.fn(async () => [model]),
       completeSimple: vi.fn((_model, _context, options) => new Promise<never>((_resolve, reject) => {
         options.signal.addEventListener("abort", () => reject(new Error("provider aborted")), { once: true });
       })),
@@ -141,7 +141,7 @@ describe("owner request and guards", () => {
     const outer = new AbortController();
     const diagnostics = diagnosticSink();
     const runtime: NamingRuntime = {
-      getModel: vi.fn(() => model),
+      getAvailable: vi.fn(async () => [model]),
       completeSimple: vi.fn((_model, _context, options) => new Promise<never>((_resolve, reject) => {
         options.signal.addEventListener("abort", () => reject(new Error("outer cancellation")), { once: true });
       })),
@@ -159,7 +159,7 @@ describe("owner request and guards", () => {
     const herdr = herdrFixture();
     const diagnostics = diagnosticSink();
     const runtime: NamingRuntime = {
-      getModel: vi.fn(() => model),
+      getAvailable: vi.fn(async () => [model]),
       completeSimple: vi.fn(async () => { throw new Error("provider timeout"); }),
     };
     const owner = new HerdrTabNamingOwner({ target: { tabId: "tab" }, initialTitle: ".dotfiles", cli: herdr.cli, runtimeFactory: async () => runtime, diagnostics, deadlineMs: 60_000 });
@@ -200,7 +200,7 @@ describe("owner request and guards", () => {
     let now = 1_000;
     let release!: () => void;
     const pending = new Promise<never>(resolve => { release = () => resolve(undefined as never); });
-    let nextRuntime: NamingRuntime = { getModel: vi.fn(() => model), completeSimple: vi.fn(() => pending) };
+    let nextRuntime: NamingRuntime = { getAvailable: vi.fn(async () => [model]), completeSimple: vi.fn(() => pending) };
     const owner = new HerdrTabNamingOwner({ target: { tabId: "tab" }, initialTitle: ".dotfiles", cli: herdr.cli, runtimeFactory: async () => nextRuntime, now: () => now, deadlineMs: 60_000, diagnostics: diagnosticSink() });
     const first = owner.attempt("prompt", entries({ role: "user", content: "task" }));
     expect((await owner.attempt("settled", entries({ role: "user", content: "task" }))).reason).toBe("request already in flight");
@@ -222,7 +222,7 @@ describe("owner request and guards", () => {
   it("cancels stale generation without a rename", async () => {
     const herdr = herdrFixture();
     let resolve!: (value: never) => void;
-    const runtime: NamingRuntime = { getModel: vi.fn(() => model), completeSimple: vi.fn(() => new Promise<never>(resolvePromise => { resolve = resolvePromise; })) };
+    const runtime: NamingRuntime = { getAvailable: vi.fn(async () => [model]), completeSimple: vi.fn(() => new Promise<never>(resolvePromise => { resolve = resolvePromise; })) };
     const owner = new HerdrTabNamingOwner({ target: { tabId: "tab" }, initialTitle: ".dotfiles", cli: herdr.cli, runtimeFactory: async () => runtime, diagnostics: diagnosticSink() });
     const attempt = owner.attempt("prompt", entries({ role: "user", content: "task" }));
     await vi.waitFor(() => expect(runtime.completeSimple).toHaveBeenCalled());
@@ -239,7 +239,7 @@ describe("file diagnostics", () => {
     const path = join(directory, "diagnostics.jsonl");
     await writeFile(path, '{"existing":true}\n{"partial":', "utf8");
     const diagnostics = createFileNamingDiagnostics(path);
-    await Promise.all(Array.from({ length: 160 }, (_, i) => diagnostics.record({ timestamp: new Date().toISOString(), target: { tabId: "tab" }, trigger: `test-${i}`, outcome: "failed", durationMs: 1, model: NAMING_MODEL_ID, effort: "low", promptVersion: "v1", failureCount: 3, breakerOpen: true, request: { records: 1, omittedRecords: 0, omittedChars: 0, chars: 10 }, error: "authorization=secret-token" })));
+    await Promise.all(Array.from({ length: 160 }, (_, i) => diagnostics.record({ timestamp: new Date().toISOString(), target: { tabId: "tab" }, trigger: `test-${i}`, outcome: "failed", durationMs: 1, model: "openai-codex/gpt-6-luna", effort: "low", promptVersion: "v1", failureCount: 3, breakerOpen: true, request: { records: 1, omittedRecords: 0, omittedChars: 0, chars: 10 }, error: "authorization=secret-token" })));
     const content = await readFile(path, "utf8");
     expect(Buffer.byteLength(content)).toBeLessThanOrEqual(64 * 1024);
     const lines = content.split("\n").filter(Boolean);

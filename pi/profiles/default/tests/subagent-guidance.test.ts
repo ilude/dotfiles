@@ -214,7 +214,7 @@ describe("delegation guidance", () => {
     expect(text).toContain("adaptable prose, not a schema or approval gate");
     expect(text).toContain("parent owns execution");
     expect(text).toContain("ongoing dependency coordination or integration helps");
-    expect(text).toContain("model default: openai-codex/gpt-5.6-sol; effort default: low");
+    expect(text).toContain("model default: sol; effort default: low");
     expect(text).not.toContain("Use Sol low for Strategist");
     expect(text).not.toContain("Apply the Pareto principle");
     expect(composedAgentPrompt(role, new Map([...catalog.agents].reverse()))).toBe(text);

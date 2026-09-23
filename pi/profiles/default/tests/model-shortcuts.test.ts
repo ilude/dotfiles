@@ -24,6 +24,7 @@ describe("model shortcuts", () => {
 	it.each([
 		["astra", "openai-codex", "gpt-6-astra"],
 		["sol", "openai-codex", "gpt-5.6-sol"],
+		["terra", "openai-codex", "gpt-5.6-terra"],
 		["luna", "openai-codex", "gpt-5.6-luna"],
 	] as const)("/%s selects its Codex subscription model", async (command, provider, id) => {
 		const model = { provider, id };
@@ -37,7 +38,8 @@ describe("model shortcuts", () => {
 
 	it("selects the newest version in each family without changing the provider ladder", async () => {
 		const models = [
-			{ provider: "bedrock-mantle", id: "openai.gpt-6-sol" },
+			{ provider: "bedrock-mantle", id: "openai.gpt-7-sol" },
+			{ provider: "bedrock-mantle", id: "openai.gpt-7-terra" },
 			{ provider: "openai-codex", id: "gpt-5.6-sol" },
 			{ provider: "openai-codex", id: "gpt-6-luna" },
 			{ provider: "openai-codex", id: "gpt-6-sol" },
@@ -45,9 +47,16 @@ describe("model shortcuts", () => {
 		];
 		const { commands, pi, ctx } = setup(models);
 		await commands.get("sol")!.handler("", ctx);
-		expect(pi.setModel).toHaveBeenLastCalledWith(models[3]);
+		expect(pi.setModel).toHaveBeenLastCalledWith(models[4]);
 		await commands.get("luna")!.handler("", ctx);
-		expect(pi.setModel).toHaveBeenLastCalledWith(models[2]);
+		expect(pi.setModel).toHaveBeenLastCalledWith(models[3]);
+	});
+
+	it("/terra falls back to Bedrock Mantle when Codex Terra is unavailable", async () => {
+		const mantle = { provider: "bedrock-mantle", id: "openai.gpt-7-terra" };
+		const { commands, pi, ctx } = setup([mantle]);
+		await commands.get("terra")!.handler("", ctx);
+		expect(pi.setModel).toHaveBeenCalledWith(mantle);
 	});
 
 	it("/fable prefers the Bedrock Mantle route and its newest version", async () => {
@@ -107,7 +116,7 @@ describe("model shortcuts", () => {
 		expect(ctx.ui.notify).toHaveBeenCalledWith("Switched to openai-codex/gpt-5.6-sol at high effort.", "info");
 	});
 
-	it.each(["astra", "sol", "luna", "fable", "opus"])("/%s only autocompletes partial effort levels", (command) => {
+	it.each(["astra", "sol", "terra", "luna", "fable", "opus"])("/%s only autocompletes partial effort levels", (command) => {
 		const { commands } = setup([]);
 		const complete = commands.get(command)!.getArgumentCompletions!;
 

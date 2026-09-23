@@ -1,5 +1,5 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { compareModelVersions, modelFamilyVersion } from "./model-family.ts";
 
 const PROVIDER_LADDER = [
@@ -9,11 +9,15 @@ const PROVIDER_LADDER = [
 ] as const;
 
 const MODEL_ALIASES: Readonly<Record<string, string>> = {
-	astra: "gpt-6-astra",
+	astra: "astra",
 	fable: "claude-fable",
-	luna: "gpt-5.6-luna",
-	sol: "gpt-5.6-sol",
+	luna: "luna",
+	sol: "sol",
+	terra: "terra",
 };
+const CODEX_PROVIDER = "openai-codex";
+const CODEX_FAMILIES = ["astra", "sol", "terra", "luna"] as const;
+type OpenAIFamily = typeof CODEX_FAMILIES[number];
 
 type Candidate = {
 	model: Model<Api>;
@@ -75,7 +79,10 @@ export function resolvePreferredModel(
 		throw new Error(`Expected a bare model name, received explicit reference ${trimmed}`);
 	}
 
-	const target = MODEL_ALIASES[trimmed.toLowerCase()] ?? trimmed;
+	const alias = trimmed.toLowerCase();
+	if (CODEX_FAMILIES.includes(alias as OpenAIFamily)) return resolveLatestAuthenticatedCodexModel(alias as OpenAIFamily, registry);
+	if (alias === "fable") return resolveLatestFamilyModel("fable", registry);
+	const target = trimmed;
 	const authenticated = registry.getAll().filter(model => registry.hasConfiguredAuth(model));
 
 	for (const providers of PROVIDER_LADDER) {
@@ -93,22 +100,57 @@ export function resolvePreferredModel(
 	throw new Error(`No configured subscription or AWS model matches "${requested}"`);
 }
 
-export function resolveLatestShortcutModel(
-	family: "astra" | "sol" | "luna" | "fable" | "opus",
+function latestFamilyModel(family: OpenAIFamily | "fable" | "opus", models: readonly Model<Api>[]): Model<Api> | undefined {
+	return models.flatMap(model => {
+		const parsed = modelFamilyVersion(model.id);
+		return parsed?.family === family ? [{ model, version: parsed.version }] : [];
+	}).sort((left, right) => compareModelVersions(right.version, left.version)
+		|| costScore(left.model) - costScore(right.model)
+		|| left.model.id.localeCompare(right.model.id))[0]?.model;
+}
+
+function resolveLatestFamilyModel(
+	family: OpenAIFamily | "fable" | "opus",
 	registry: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth">,
+	providers: readonly (readonly string[])[] = PROVIDER_LADDER,
 ): Model<Api> {
 	const authenticated = registry.getAll().filter(model => registry.hasConfiguredAuth(model));
-	for (const providers of PROVIDER_LADDER) {
-		const candidates = authenticated.flatMap(model => {
-			if (!(providers as readonly string[]).includes(model.provider)) return [];
-			const parsed = modelFamilyVersion(model.id);
-			return parsed?.family === family ? [{ model, version: parsed.version }] : [];
-		}).sort((left, right) => compareModelVersions(right.version, left.version)
-			|| costScore(left.model) - costScore(right.model)
-			|| left.model.id.localeCompare(right.model.id));
-		if (candidates.length) return candidates[0].model;
+	for (const providerTier of providers) {
+		const model = latestFamilyModel(family, authenticated.filter(candidate => providerTier.includes(candidate.provider)));
+		if (model) return model;
 	}
 	throw new Error(`No configured subscription or AWS model matches "${family}"`);
+}
+
+export function resolveLatestAuthenticatedCodexModel(
+	family: OpenAIFamily,
+	source: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth">,
+): Model<Api>;
+export function resolveLatestAuthenticatedCodexModel(
+	family: OpenAIFamily,
+	source: Pick<ModelRuntime, "getAvailable">,
+): Promise<Model<Api>>;
+export function resolveLatestAuthenticatedCodexModel(
+	family: OpenAIFamily,
+	source: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth"> | Pick<ModelRuntime, "getAvailable">,
+): Model<Api> | Promise<Model<Api>> {
+	if ("getAvailable" in source) {
+		return source.getAvailable(CODEX_PROVIDER).then(models => {
+			const model = latestFamilyModel(family, models.filter(candidate => candidate.provider === CODEX_PROVIDER));
+			if (!model) throw new Error(`No authenticated ${CODEX_PROVIDER} ${family} model is available`);
+			return model;
+		});
+	}
+	const model = latestFamilyModel(family, source.getAll().filter(candidate => candidate.provider === CODEX_PROVIDER && source.hasConfiguredAuth(candidate)));
+	if (!model) throw new Error(`No authenticated ${CODEX_PROVIDER} ${family} model is available`);
+	return model;
+}
+
+export function resolveLatestShortcutModel(
+	family: "astra" | "sol" | "terra" | "luna" | "fable" | "opus",
+	registry: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth">,
+): Model<Api> {
+	return resolveLatestFamilyModel(family, registry);
 }
 
 export function modelAliasNames(): readonly string[] {

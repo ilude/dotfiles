@@ -2,7 +2,7 @@
 name: strategist
 description: Advise on assignment boundaries, dependencies, and subagent selection
 tools: [read, grep, find, ls, subagent_parent]
-model: openai-codex/gpt-5.6-sol
+model: sol
 effort: low
 skills: []
 delegates: []

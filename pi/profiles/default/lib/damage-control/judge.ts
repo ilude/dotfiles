@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import { isContextOverflow } from "@earendil-works/pi-ai";
 import type { Evidence, JudgeDiagnostic, PendingCall, ReviewResult, Settings } from "./types.ts";
+import { resolveLatestAuthenticatedCodexModel } from "../model-selection.ts";
 
 const MAX_REASON_CHARS = 1_000;
 const MAX_RESPONSE_BYTES = 8 * 1024;
@@ -148,8 +149,7 @@ export async function review(
   let contract: string;
   try {
     contract = readReviewContract();
-    model = ctx.modelRegistry.find(settings.judge.provider, settings.judge.model);
-    if (!model || !ctx.modelRegistry.hasConfiguredAuth(model)) return { status: "unavailable", reason: "Configured Luna model or authentication is unavailable." };
+    model = resolveLatestAuthenticatedCodexModel("luna", ctx.modelRegistry);
   } catch (error) {
     return unavailable(error);
   }
@@ -166,7 +166,7 @@ export async function review(
     const diagnostic: JudgeDiagnostic = {
       version: 1, callId: pending.callId, startedAt: new Date(startedAt).toISOString(), endedAt: new Date(endedAt).toISOString(),
       elapsedMs: Math.max(0, endedAt - startedAt), deadlineMs: settings.judge.deadlineMs, provider: settings.judge.provider,
-      model: settings.judge.model, effort: settings.judge.reasoning, maxTokens: 800, retries: settings.judge.retries,
+      model: model?.id ?? settings.judge.model, effort: settings.judge.reasoning, maxTokens: 800, retries: settings.judge.retries,
       prompt: promptValue.text, promptTruncated: promptValue.truncated, promptRedacted: promptValue.redacted, status: result.status,
       ...(result.status === "valid" ? { verdict: result.verdict } : {}),
       ...(response?.stopReason === undefined ? {} : { stopReason: response.stopReason }),

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-23: Align default model families
+
+**Changed:** Built-in subagents and bare family aliases now use the latest
+OpenAI Codex family models without provider fallback. `/terra` uses the existing shortcut provider preference; Terra is available as an override but is not a built-in agent default.
+Commit review, web screening, Herdr naming, and Damage Control judgment resolve
+the latest authenticated Codex Luna at runtime rather than pinning a version.
+Diagnostics report the selected model. Daybreak access-error retry handling
+matches the Sol family across versions while retaining the request's exact model;
+other errors are unchanged, and footer coloring follows Sol family semantics. Explicit provider/model
+overrides and unrelated agent-process references remain unchanged.
+
 ## 2026-09-23: Restore quiet Herdr subagent completions
 
 **Fixed:** Restored the local Herdr lifecycle exception lost during the 0.9.1 integration refresh: settled visible subagents report `unknown` rather than triggering a background completion sound. Their panes close after reporting results to the parent. Blocked approval prompts still request attention, and orchestrator completion sounds remain unchanged. A focused regression test and a comment on the generated integration now flag this exception during future refreshes.

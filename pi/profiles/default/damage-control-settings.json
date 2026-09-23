@@ -3,7 +3,7 @@
   "judge": {
     "enabled": true,
     "provider": "openai-codex",
-    "model": "gpt-5.6-luna",
+    "model": "luna",
     "reasoning": "high",
     "deadlineMs": 40000,
     "retries": 0
