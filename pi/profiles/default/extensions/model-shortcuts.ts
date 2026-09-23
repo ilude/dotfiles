@@ -1,13 +1,14 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { completePartialArgument } from "../lib/argument-completions.ts";
-import { resolvePreferredModel } from "../lib/model-selection.ts";
+import { resolveLatestShortcutModel } from "../lib/model-selection.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 
 const SHORTCUTS = {
-	astra: "Switch to GPT-6 Astra using the preferred configured provider",
-	sol: "Switch to GPT-5.6 Sol using the preferred configured provider",
-	luna: "Switch to GPT-5.6 Luna using the preferred configured provider",
-	fable: "Switch to Claude Fable using the preferred configured provider",
+	astra: "Switch to the latest Astra using the preferred configured provider",
+	sol: "Switch to the latest Sol using the preferred configured provider",
+	luna: "Switch to the latest Luna using the preferred configured provider",
+	fable: "Switch to the latest Claude Fable using the preferred configured provider",
+	opus: "Switch to the latest Claude Opus using the preferred configured provider",
 } as const;
 
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh"] as const;
@@ -23,7 +24,7 @@ function parseEffort(args: string): EffortLevel | undefined {
 
 function findCandidate(ctx: ExtensionCommandContext, name: ShortcutName) {
 	try {
-		return resolvePreferredModel(name, ctx.modelRegistry);
+		return resolveLatestShortcutModel(name, ctx.modelRegistry);
 	} catch {
 		return undefined;
 	}

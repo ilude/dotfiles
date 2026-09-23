@@ -35,19 +35,44 @@ describe("model shortcuts", () => {
 		expect(ctx.ui.notify).toHaveBeenCalledWith(`Switched to ${provider}/${id}.`, "info");
 	});
 
-	it("/fable prefers the Bedrock Mantle route", async () => {
+	it("selects the newest version in each family without changing the provider ladder", async () => {
+		const models = [
+			{ provider: "bedrock-mantle", id: "openai.gpt-6-sol" },
+			{ provider: "openai-codex", id: "gpt-5.6-sol" },
+			{ provider: "openai-codex", id: "gpt-6-luna" },
+			{ provider: "openai-codex", id: "gpt-6-sol" },
+			{ provider: "openai-codex", id: "gpt-5.6-luna" },
+		];
+		const { commands, pi, ctx } = setup(models);
+		await commands.get("sol")!.handler("", ctx);
+		expect(pi.setModel).toHaveBeenLastCalledWith(models[3]);
+		await commands.get("luna")!.handler("", ctx);
+		expect(pi.setModel).toHaveBeenLastCalledWith(models[2]);
+	});
+
+	it("/fable prefers the Bedrock Mantle route and its newest version", async () => {
 		const native = { provider: "amazon-bedrock", id: "us.anthropic.claude-fable-5-1" };
 		const mantle = { provider: "bedrock-mantle", id: "anthropic.claude-fable-5-1" };
-		const { commands, pi, ctx } = setup([native, mantle]);
+		const older = { provider: "bedrock-mantle", id: "anthropic.claude-fable-5" };
+		const { commands, pi, ctx } = setup([native, older, mantle]);
 
 		await commands.get("fable")!.handler("", ctx);
 
 		expect(pi.setModel).toHaveBeenCalledWith(mantle);
 	});
 
-	it("chooses the cheapest equally close model within a provider tier", async () => {
-		const expensive = { provider: "openai-codex", id: "preview-gpt-5.6-sol", cost: { input: 5, output: 20 } };
-		const cheap = { provider: "openai-codex", id: "stable-gpt-5.6-sol", cost: { input: 1, output: 4 } };
+	it("/opus selects the newest authenticated Opus without crossing providers", async () => {
+		const native = { provider: "amazon-bedrock", id: "us.anthropic.claude-opus-6" };
+		const older = { provider: "bedrock-mantle", id: "anthropic.claude-opus-5" };
+		const newest = { provider: "bedrock-mantle", id: "anthropic.claude-opus-5-5" };
+		const { commands, pi, ctx } = setup([native, older, newest]);
+		await commands.get("opus")!.handler("", ctx);
+		expect(pi.setModel).toHaveBeenCalledExactlyOnceWith(newest);
+	});
+
+	it("chooses the cheapest same-version model within a provider tier", async () => {
+		const expensive = { provider: "openai-codex", id: "gpt-5.6-sol-preview", cost: { input: 5, output: 20 } };
+		const cheap = { provider: "openai-codex", id: "gpt-5.6-sol-stable", cost: { input: 1, output: 4 } };
 		const { commands, pi, ctx } = setup([expensive, cheap]);
 
 		await commands.get("sol")!.handler("", ctx);
@@ -82,7 +107,7 @@ describe("model shortcuts", () => {
 		expect(ctx.ui.notify).toHaveBeenCalledWith("Switched to openai-codex/gpt-5.6-sol at high effort.", "info");
 	});
 
-	it.each(["astra", "sol", "luna", "fable"])("/%s only autocompletes partial effort levels", (command) => {
+	it.each(["astra", "sol", "luna", "fable", "opus"])("/%s only autocompletes partial effort levels", (command) => {
 		const { commands } = setup([]);
 		const complete = commands.get(command)!.getArgumentCompletions!;
 

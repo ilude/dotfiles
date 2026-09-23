@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-23: Recover commit review from stale diff pagination
+
+**Fixed:** When a live Git diff shrinks between paginated `commit_git_review`
+requests, an offset beyond its new length now returns a restart-at-zero notice
+instead of aborting the commit workflow. Actual Git and tool failures still stop
+committing.
+
+## 2026-09-23: Select latest available model family in shortcuts
+
+**Changed:** `/astra`, `/sol`, `/luna`, and `/fable` now select the newest
+available version of their named family in the first authenticated provider
+tier, instead of pinning the older Sol and Luna IDs. Added `/opus` with the
+same provider and version selection. Same-version cost ties,
+provider preference, optional effort, and subagent model resolution remain
+unchanged.
+
 ## 2026-09-23: Update default Pi compatibility for Pi 0.87.1 and Herdr 0.9.1
 
 **Changed:** Default Pi now uses the 0.87 normalized transcript contract for

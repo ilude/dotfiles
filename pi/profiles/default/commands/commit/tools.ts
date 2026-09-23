@@ -20,7 +20,7 @@ export function formatStatus(output: string): string {
 }
 
 export function page(text: string, offset = 0): string {
-	if (offset > text.length) throw new Error("Offset exceeds current output; restart at offset 0.");
+	if (offset > text.length) return `[Diff output changed: requested offset ${offset} exceeds current length ${text.length}. Restart pagination at offset=0 with the same action, repository, paths, and staged setting.]`;
 	const end = Math.min(text.length, offset + 12000);
 	return `${text.slice(offset, end)}\n\n[Characters ${offset}-${end} of ${text.length}. ${end < text.length ? `More unread output: repeat the same request with offset=${end}.` : "End of output."} Output is live; restart pagination after Git changes.]`;
 }

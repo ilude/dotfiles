@@ -1,5 +1,11 @@
 # Agent instruction feedback log
 
+## README run-history correction (2026-09-23)
+
+- **Feedback:** Keep routine run results and change history out of READMEs.
+- **Observed:** A prototype README accumulated pod/revision details, test outcomes, debugging history, and retries.
+- **Remediation:** Removed that section and agent-specific wording; added concise project guidance routing history to changelogs and run results to reports/artifacts. Related AIF-039 addresses useful changelog content; AIF-084 concerns architectural knowledge, not routine run history.
+
 ## AIF-084 - Preserve architectural understanding rather than operational skill boilerplate
 
 - **Reference:** Operator corrections during service-skill creation and subsequent knowledge-maintenance discussion.

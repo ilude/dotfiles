@@ -10,6 +10,11 @@
 - **Follow-up correction:** The operator clarified that the ongoing task is to restore an existing customized platform's contracts, not deploy vendor defaults or conduct disconnected pass/fail experiments. After legacy scalar persistence succeeded and missing array metadata was established, the orchestrator treated that finding as a stopping condition and reverted rather than treating it as the next configuration defect to address. Use legacy definitions and consumer behavior as the compatibility baseline; distinguish ordinary corrections within the requested outcome from consequential scope changes. Existing investigation/proportionality guidance applies. No broader customization audit or unrelated changes are authorized by this correction.
 - **Authorized instruction change:** After the operator requested durable project guidance because the pattern kept recurring, added `Customized-platform compatibility` near the top of the project `AGENTS.md`. It sets legacy implementation/consumer contracts as the baseline except for recorded intentional changes, requires continued correction of demonstrated migration gaps within authorized work, distinguishes partial progress from automatic rollback, and requires real request/persistence checks. Existing explicit operational constraints remain binding. Project-level ownership avoids duplicating the rule across service skills. Effectiveness across future sessions remains unverified.
 
+### Same-session recurrence: observed restriction called incorrect
+
+- **Observed:** While explaining a profile failure, the orchestrator called an administrator-only endpoint restriction incorrect despite having explicitly left intended provisioning and authorization unresolved. Source established the restriction and logs established the denial, not that the policy was wrong. Earlier certificate-seeding advice was likewise not an established remedy.
+- **Correction:** Retract the policy judgment and keep the observed mechanism separate from unresolved intended behavior. Existing evidence and consumer-baseline guidance already applies; no instruction change is warranted.
+
 ## APR-063 - Future lifecycle proof blocked a preparation-only deployment
 
 - **Reference:** Default execution `01a0b6d3-a81b-7507-8a4d-01e67f21a751`, 2026-09-18/19; planning provenance `01a0b598-8155-700a-9da8-10cae221bf5b`; TCA-009.

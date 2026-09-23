@@ -64,6 +64,18 @@ it("retains explicit path filtering and paginates a large pathless diff", async 
 	expect(await review({ action: "diff", offset: 12000 })).toContain("[Characters 12000-24000 of");
 });
 
+it("reports a stale page offset without failing when live diff output shrinks", async () => {
+	writeFileSync(join(root, "first.txt"), "large diff line\n".repeat(2000));
+	const first = await review({ action: "diff" });
+	expect(first).toContain("offset=12000");
+	writeFileSync(join(root, "first.txt"), "first staged\n");
+	writeFileSync(join(root, "second.txt"), "second staged\n");
+	const stale = await review({ action: "diff", offset: 12000 });
+	expect(stale).toContain("Diff output changed: requested offset 12000 exceeds current length");
+	expect(stale).toContain("Restart pagination at offset=0");
+	expect(await review({ action: "diff", offset: 0 })).toContain("No tracked differences");
+});
+
 it("restricts pathless diffs to the selected inventory repository", async () => {
 	const nested = join(root, "nested"); mkdirSync(nested); git(nested, "init", "--quiet");
 	writeFileSync(join(nested, "nested.txt"), "nested staged\n"); git(nested, "add", "--", "nested.txt");

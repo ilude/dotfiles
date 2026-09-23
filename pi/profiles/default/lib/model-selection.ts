@@ -1,5 +1,6 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { compareModelVersions, modelFamilyVersion } from "./model-family.ts";
 
 const PROVIDER_LADDER = [
 	["openai-codex"],
@@ -90,6 +91,24 @@ export function resolvePreferredModel(
 	}
 
 	throw new Error(`No configured subscription or AWS model matches "${requested}"`);
+}
+
+export function resolveLatestShortcutModel(
+	family: "astra" | "sol" | "luna" | "fable" | "opus",
+	registry: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth">,
+): Model<Api> {
+	const authenticated = registry.getAll().filter(model => registry.hasConfiguredAuth(model));
+	for (const providers of PROVIDER_LADDER) {
+		const candidates = authenticated.flatMap(model => {
+			if (!(providers as readonly string[]).includes(model.provider)) return [];
+			const parsed = modelFamilyVersion(model.id);
+			return parsed?.family === family ? [{ model, version: parsed.version }] : [];
+		}).sort((left, right) => compareModelVersions(right.version, left.version)
+			|| costScore(left.model) - costScore(right.model)
+			|| left.model.id.localeCompare(right.model.id));
+		if (candidates.length) return candidates[0].model;
+	}
+	throw new Error(`No configured subscription or AWS model matches "${family}"`);
 }
 
 export function modelAliasNames(): readonly string[] {
