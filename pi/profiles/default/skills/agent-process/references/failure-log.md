@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-066 - Suggested validation became an unapproved deployment prerequisite
+
+- **Reference:** Default-profile seed construction/deployment discussion, 2026-09-23, session `01a0cf9b-ead6-777e-aa8f-a492cfe5aeac`.
+- **Observed:** After the operator requested building and deploying data to the dev environment, the orchestrator announced a separate disposable-database validation phase previously suggested by the orchestrator. The operator had not agreed to that additional workflow and corrected the promotion of suggestions into requirements twice.
+- **Finding:** Existing Proportionality guidance already requires discussion and approval before recommendations change scope, safeguards, or workflow. This was failure to apply that boundary, not absent instructions. General execution authorization did not settle the suggested extra prerequisite.
+- **Correction:** Remove the added prerequisite. Keep requested implementation/deployment distinct from unapproved proposals; discuss consequential additions before assigning or executing them. No blanket prohibition on repository-required tests and no instruction change.
+- **Related:** APR-063 (extra validation blocked deployment); AIF-002 (proposed choices versus requirements).
+- **Status:** Operator correction recorded; no disposable-database work had begun. Build/deployment remains unfinished and authorized; this feedback turn did not execute it.
+
 ## APR-065 - `/commit` repeated a removed whitespace gate
 
 - **Reference:** Default-profile `commit_run` stopped on trailing whitespace in `tps-tracker.ts` after the operator requested a commit.

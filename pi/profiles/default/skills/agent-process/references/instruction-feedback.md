@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-085 - Do not turn plan discovery into an exhaustive obvious-question checklist
+
+- **Reference:** MPS EC2 sandbox planning discussion, 2026-09-23.
+- **Feedback:** After the operator requested one-at-a-time discussion, the assistant continued asking low-value questions whose answers followed from the established faithful persistent sandbox intent.
+- **Finding:** One-at-a-time controls presentation, not whether every generic checklist item warrants operator input. Repository evidence and prior answers already resolved persistence and several fidelity defaults.
+- **Remediation:** Infer equivalent implementation details from the stated fidelity boundary and existing environment. Ask only unresolved choices that materially alter behavior, scope, cost, or acceptance.
+- **Status:** Applied to the active discussion; no instruction change requested.
+
 ## README run-history correction (2026-09-23)
 
 - **Feedback:** Keep routine run results and change history out of READMEs.
