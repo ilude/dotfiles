@@ -1,19 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { formatScheduleFooterStatus, getProcessScheduler, type ScheduledPrompt } from "../lib/process-scheduler.ts";
+import { formatScheduleFooterStatus, getProcessScheduler } from "../lib/process-scheduler.ts";
 
-function describe(job: ScheduledPrompt): string {
-  const prompt = job.prompt.replace(/\s+/g, " ");
-  const preview = prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt;
-  const time = new Intl.DateTimeFormat(undefined, {
+function localDateTime(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
     year: "numeric", month: "short", day: "numeric",
     hour: "numeric", minute: "2-digit", timeZoneName: "short",
-  }).format(new Date(job.runAt));
-  const peers = getProcessScheduler().list();
-  let length = 8;
-  while (peers.some(peer => peer.id !== job.id && peer.id.startsWith(job.id.slice(0, length)))) length++;
-  return `${time} [${job.id.slice(0, length)}]\n  ${preview}${job.error ? `\n  Delivery failed: ${job.error}` : ""}`;
+  }).format(date);
 }
 
 export default function schedulerExtension(pi: ExtensionAPI): void {
@@ -36,7 +31,7 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "schedule",
     label: "Schedule",
-    description: "Create, list, or cancel one-shot process-local prompts for reminders and external wall-clock waits, including CI/CD pipeline and deployment monitoring. Not for deferring work that can continue now. No recurrence or persistence. List shows up to 64 jobs with 80-character prompt previews.",
+    description: "Create, list, or cancel one-shot process-local prompts for reminders and external wall-clock waits, including CI/CD pipeline and deployment monitoring. Not for deferring work that can continue now. No recurrence or persistence. List shows up to 64 job IDs and local run times.",
     promptSnippet: "Schedule a one-shot prompt for a reminder or external wall-clock wait",
     promptGuidelines: [
       "Use schedule when the user requests a future reminder or work must wait for an external event. GitLab/GitHub pipeline completion, deployment rollouts, and cloud operations are intended uses; schedule the next reasonable check even when the event's exact completion time is unknown.",
@@ -52,6 +47,25 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
       prompt: Type.Optional(Type.String({ maxLength: 4000, description: "Follow-up prompt, not a slash command." })),
       id: Type.Optional(Type.String({ description: "Schedule id or unique prefix, for cancel." })),
     }),
+    renderCall(args, theme) {
+      return new Text(args.action === "list" ? theme.fg("toolTitle", theme.bold("schedule list:")) : "", 0, 0);
+    },
+    renderResult(result, _options, theme, context) {
+      const text = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");
+      const lines = text.split("\n");
+      return new Text(lines.map((line, index) => {
+        if (context.args.action === "create_at") {
+          if (index === 0) {
+            const match = /^Schedule create (\[[a-f0-9]+\]) (.*?) (\d+m)$/.exec(line);
+            if (match) return `${theme.fg("toolTitle", theme.bold("schedule create"))} ${theme.fg("muted", match[1])} ${theme.fg("accent", match[2])} ${theme.fg("warning", match[3])}`;
+          }
+          if (index === 3) return theme.fg("muted", line);
+        } else if (index === 0 && context.args.action === "cancel") {
+          return theme.fg("toolTitle", theme.bold(`schedule ${line.replace(/^Cancelled:/, "cancel:")}`));
+        }
+        return theme.fg("toolOutput", line);
+      }).join("\n"), 0, 0);
+    },
     async execute(_id, params, signal) {
       signal?.throwIfAborted();
       const scheduler = getProcessScheduler();
@@ -59,12 +73,17 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
       if (params.action === "create_at") {
         if (!params.when || !params.prompt) throw new Error("create_at requires when and prompt");
         const job = scheduler.create(params.when, params.prompt);
-        text = `Scheduled for ${describe(job)}\nRequires Pi to stay open.`;
+        const createdAt = new Date();
+        const minutesUntilRun = Math.max(1, Math.ceil((Date.parse(job.runAt) - createdAt.getTime()) / 60_000));
+        const prompt = job.prompt.replace(/\s+/g, " ");
+        const preview = prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt;
+        text = `Schedule create [${job.id.slice(0, 8)}] ${localDateTime(new Date(job.runAt))} ${minutesUntilRun}m\n   ${preview}\n\ncreated at ${localDateTime(createdAt)}`;
       } else if (params.action === "cancel") {
         if (!params.id) throw new Error("cancel requires id");
-        text = `Cancelled: ${describe(scheduler.cancel(params.id))}`;
+        const cancelled = scheduler.cancel(params.id);
+        text = `Cancelled: [${cancelled.id.slice(0, 8)}]`;
       } else if (params.action === "list") {
-        text = scheduler.list().map(describe).join("\n") || "No scheduled reminders.";
+        text = scheduler.list().map(job => `${localDateTime(new Date(job.runAt))} [${job.id.slice(0, 8)}]`).join("\n") || "No scheduled reminders.";
       } else {
         throw new Error(`Unknown schedule action: ${params.action}`);
       }

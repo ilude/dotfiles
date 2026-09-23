@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-23: Clarify schedule tool output
+
+**Changed:** Schedule creation shows local creation and run times, a compact
+minute offset, the cancellation ID, and a short prompt preview with distinct
+terminal colors. List now shows IDs and run times without prompt previews;
+cancellation confirms only the ID. Scheduled delivery behavior is unchanged.
+
 ## 2026-09-23: Align default model families
 
 **Changed:** Built-in subagents and bare family aliases now use the latest

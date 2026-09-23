@@ -160,10 +160,13 @@ describe("schedule tool", () => {
       year: "numeric", month: "short", day: "numeric",
       hour: "numeric", minute: "2-digit", timeZoneName: "short",
     }).format(new Date(job.runAt));
-    const summary = `${localTime} [${job.id.slice(0, 8)}]\n  Check pipeline ${"x".repeat(64)}…`;
-    expect(result.content[0].text).toBe(`Scheduled for ${summary}\nRequires Pi to stay open.`);
-    expect((await h.call({ action: "list" })).content[0].text).toBe(summary);
-    expect((await h.call({ action: "cancel", id: job.id.slice(0, 8) })).content[0].text).toBe(`Cancelled: ${summary}`);
+    const createdAt = new Intl.DateTimeFormat(undefined, {
+      year: "numeric", month: "short", day: "numeric",
+      hour: "numeric", minute: "2-digit", timeZoneName: "short",
+    }).format(new Date());
+    expect(result.content[0].text).toBe(`Schedule create [${job.id.slice(0, 8)}] ${localTime} 1m\n   Check pipeline ${"x".repeat(64)}…\n\ncreated at ${createdAt}`);
+    expect((await h.call({ action: "list" })).content[0].text).toBe(`${localTime} [${job.id.slice(0, 8)}]`);
+    expect((await h.call({ action: "cancel", id: job.id.slice(0, 8) })).content[0].text).toBe(`Cancelled: [${job.id.slice(0, 8)}]`);
     expect((await h.call({ action: "list" })).content[0].text).toBe("No scheduled reminders.");
   });
 
