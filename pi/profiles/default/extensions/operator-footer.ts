@@ -1,6 +1,7 @@
 import * as childProcess from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
+import { VERSION } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { RELOAD_CHANGED, requestReloadState, type ReloadState } from "../lib/profile-reload-events.ts";
 
@@ -18,7 +19,6 @@ const ANSI = {
 } as const;
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
-let cachedPiVersion: string | null | undefined;
 let requestFooterRender: (() => void) | undefined;
 const cachedStatusDirectories = new Map<string, string>();
 
@@ -81,21 +81,12 @@ function money(value: number): string {
 
 function runCommand(args: string[], cwd?: string): string {
 	try {
-		const useWindowsShellShim = process.platform === "win32" && args[0] === "pi";
-		const result = useWindowsShellShim
-			? childProcess.spawnSync("pi --version", {
-					cwd,
-					encoding: "utf-8",
-					shell: true,
-					timeout: 3000,
-					windowsHide: true,
-				})
-			: childProcess.spawnSync(args[0], args.slice(1), {
-					cwd,
-					encoding: "utf-8",
-					timeout: 3000,
-					windowsHide: true,
-				});
+		const result = childProcess.spawnSync(args[0], args.slice(1), {
+			cwd,
+			encoding: "utf-8",
+			timeout: 3000,
+			windowsHide: true,
+		});
 		return result.status === 0 ? `${result.stdout ?? ""}${result.stderr ?? ""}`.trim() : "";
 	} catch {
 		return "";
@@ -129,13 +120,6 @@ function formatStatusDirectory(cwd: string): string {
 	}
 	cachedStatusDirectories.set(cwd, directory);
 	return directory;
-}
-
-function resolvePiVersion(): string | null {
-	if (cachedPiVersion !== undefined) return cachedPiVersion;
-	const output = runCommand(["pi", "--version"]);
-	cachedPiVersion = output.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/)?.[0] ?? null;
-	return cachedPiVersion;
 }
 
 function formatProviderName(provider: string | undefined): string | null {
@@ -213,7 +197,7 @@ function formatMainFooter(options: {
 	const thinkingLabel = `${ANSI.white}[${colorForThinkingLevel(model, thinking)}${thinking}${ANSI.white}]${ANSI.reset}`;
 	const providerLabel = provider ? `${ANSI.dim}${ANSI.grey}${provider}/${ANSI.reset}` : "";
 	const contextLabel = formatContextUsageSegment(options.contextUsage);
-	const versionLabel = `${ANSI.dim}π v${resolvePiVersion() ?? "?"}${ANSI.reset}${formatReloadIndicator(options.reloadNeeded, options.reloadError)}`;
+	const versionLabel = `${ANSI.dim}π v${VERSION}${ANSI.reset}${formatReloadIndicator(options.reloadNeeded, options.reloadError)}`;
 	let left = `${ANSI.green}${directory}${ANSI.reset}${branch} | ${providerLabel}${ANSI.orange}${model}${ANSI.reset}${thinkingLabel}`;
 	if (contextLabel) left += ` | ${contextLabel}`;
 	left += ` | ${versionLabel}`;
@@ -330,7 +314,7 @@ export default function operatorFooter(pi: ExtensionAPI): void {
 		});
 		reloadState = requestReloadState(pi) ?? { needed: false };
 		initializeUsage(ctx);
-		if (!installFooter(ctx, pi, () => reloadState)) ctx.ui.setStatus("pi", `π v${resolvePiVersion() ?? "?"}`);
+		if (!installFooter(ctx, pi, () => reloadState)) ctx.ui.setStatus("pi", `π v${VERSION}`);
 		refreshStatuses(ctx);
 	});
 

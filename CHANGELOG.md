@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-23: Show the running Pi version in the default footer
+
+**Fixed:** The default-profile footer and status fallback now use Pi's exported runtime version instead of invoking the installed `pi` command. Existing sessions no longer show a newly installed version before restarting.
+
 ## 2026-09-23: Fix model-family resolution across Pi callers
 
 **Fixed:** Default-profile subagent aliases and Damage Control judgment no longer
