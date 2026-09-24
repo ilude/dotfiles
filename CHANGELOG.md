@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-24: Bound quiet-commit candidates to Git status
+
+**Changed:** `/commit`'s private Luna prompt now selects staging paths from the current Git status inventory, not file references, and refreshes status before subsequent commit groups. Force-adding ignored files requires explicit operator authorization. Existing rename handling, grouping, and hooks remain unchanged; no runtime gate was added.
+
 ## 2026-09-24: Deploy native Onclave Quadlet services with health recovery
 
 **Changed:** Onclave now runs as six native Quadlet services instead of the legacy Compose unit. Deployment and rollback remain core-only, preserving the existing backup recovery path and SearXNG volumes. Readiness and health semantics remain unchanged; an upstream transcript failure is latched and logged, and systemd restarts a service that becomes unhealthy. Verified ingestion and transcript retrieval persisted across restart. The deployed Onclave revision and infrastructure gitlink are recorded in this integration; no inventory or secrets moved into dotfiles.

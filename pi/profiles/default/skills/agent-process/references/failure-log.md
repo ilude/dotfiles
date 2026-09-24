@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-070 - Quiet commit attempted to stage an ignored archive path
+
+- **Reference:** Operator correction during CAC setup workflow, 2026-09-24.
+- **Observed:** `commit_run` explicitly staged an ignored `.specs` archive path and Git rejected it. The orchestrator repeatedly inferred its source without evidence. The private agent transcript was not retained, so the path-selection cause remains unresolved.
+- **Related:** AIF-009 (repository inventory and commit ordering).
+- **Remediation:** With operator approval, replaced staging guidance in the commit-only prompt: use current status candidates, not file references; refresh before subsequent groups; require explicit authorization to force-add ignored files. No general agent rule or runtime gate added.
+- **Status:** Prompt revised; effectiveness against a live recurrence is unverified.
+
 ## APR-069 - Retained completed subagents and delayed recovery after partial result
 
 - **Reference:** Default session `01a0d212-1862-72be-825b-4865b83bbd33`, 2026-09-24; validator child session `99e5a8d3-4e52-4508-b3a8-d55ae1f3a8c2`.
