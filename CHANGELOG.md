@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-24: Discover connected-server Herdr agent recovery
+
+**Changed:** Default-profile orchestrators and Team Leads can discover deferred Herdr agent, layout, and pane controls through `tool_search`. Structured subagent ownership remains the normal path; Herdr agent operations cover live agents in the same connected server, and complete-layout pane inspection supports raw-terminal fallback when no functioning agent interface exists. Exact selected non-caller panes can be interrupted or closed across Pi sessions without a creation-ownership record or confirmation field, while the caller pane remains protected. Idle state alone does not classify a pane as stale or trigger cleanup. Recovery detail stays in the conditional Herdr skill rather than the always-loaded prompt.
+
 ## 2026-09-24: Deploy native Onclave Quadlet services with health recovery
 
 **Changed:** Onclave now runs as six native Quadlet services instead of the legacy Compose unit. Deployment and rollback remain core-only, preserving the existing backup recovery path and SearXNG volumes. Readiness and health semantics remain unchanged; an upstream transcript failure is latched and logged, and systemd restarts a service that becomes unhealthy. Verified ingestion and transcript retrieval persisted across restart. The deployed Onclave revision and infrastructure gitlink are recorded in this integration; no inventory or secrets moved into dotfiles.

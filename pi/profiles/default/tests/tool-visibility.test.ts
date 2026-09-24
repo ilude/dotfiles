@@ -15,7 +15,7 @@ describe("deferred tool visibility", () => {
 		await pi._getHook("session_start")[0]!.handler({}, {});
 		expect(pi.getActiveTools()).toEqual(["read", "browser_page"]);
 		expect(DEFERRED_TOOL_NAMES).toEqual([
-			"image_properties", "image_transform", "log_analytics", "herdr_layout", "herdr_pane",
+			"image_properties", "image_transform", "log_analytics", "herdr_agent", "herdr_layout", "herdr_pane",
 			"onclave_vault_search", "onclave_vault_content", "onclave_vault_ingest", "onclave_vault_jobs", "jev_evaluate",
 		]);
 	});
