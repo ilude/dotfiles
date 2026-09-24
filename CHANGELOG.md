@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-24: Migrate FreeLLMAPI to a health-verified Quadlet
+
+**Changed:** FreeLLMAPI on the onramp host now uses a native rootless Podman Quadlet instead of the legacy `podman-compose` oneshot unit. The migration preserves its loopback-only port, Caddy route, BWS-owned encryption key, digest-pinned image, and persistent SQLite data. Deployment now waits for Podman's declared container health in addition to direct HTTP and HTTPS checks, preventing malformed runtime health commands from passing rollout validation. The service-state workflow now covers FreeLLMAPI data and both legacy and Quadlet definitions so the pre-cutover state can be restored.
+
 ## 2026-09-24: Bound quiet-commit candidates to Git status
 
 **Changed:** `/commit`'s private Luna prompt now selects staging paths from the current Git status inventory, not file references, and refreshes status before subsequent commit groups. Force-adding ignored files requires explicit operator authorization. Existing rename handling, grouping, and hooks remain unchanged; no runtime gate was added.
