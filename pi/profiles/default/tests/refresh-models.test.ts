@@ -236,7 +236,7 @@ describe("/refresh-models command", () => {
 		]);
 		expect(result.scope).not.toContain("openai-codex/gpt-5.4");
 		const settings = JSON.parse(fs.readFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8"));
-		expect(settings).toMatchObject({ defaultProvider: "openai-codex", defaultModel: "gpt-6-sol" });
+		expect(settings).toMatchObject({ defaultProvider: "openai-codex", defaultModel: "gpt-5.6-sol" });
 	});
 
 	it("restores current Pi metadata when the cache has no new models", () => {

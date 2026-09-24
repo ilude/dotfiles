@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-24: Pin default Pi Sol selection to 5.6
+
+The default profile now selects authenticated Sol 5.6 for `/sol`, bare Sol model resolution, refreshed defaults, and resumed Sol conversations instead of automatically moving to newer Sol generations. Other model families retain latest-version selection. If Sol 5.6 is unavailable, automatic Sol selection does not substitute a newer version; explicit model selection remains available.
+
 ## 2026-09-24: Separate inherited monitoring from child branch work
 
 **Fixed:** `/branch` children now receive model-visible parent and branch-point

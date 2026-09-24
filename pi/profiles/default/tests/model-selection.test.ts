@@ -31,11 +31,12 @@ describe("latest authenticated Codex family resolution", () => {
 
 	it.each(["astra", "sol", "terra", "luna"] as const)("resolves %s synchronously with Pi's actual registry API", family => {
 		const latest = modelFixture("openai-codex", `gpt-7-${family}`);
-		const registry = registryFixture([modelFixture("openai-codex", `gpt-6-${family}`), latest], ["openai-codex"]);
+		const pinned = modelFixture("openai-codex", "gpt-5.6-sol");
+		const registry = registryFixture([modelFixture("openai-codex", `gpt-6-${family}`), latest, pinned], ["openai-codex"]);
 		// This real method was missing from the original mock, hiding the crash.
 		expect(Array.isArray(registry.getAvailable())).toBe(true);
-		expect(resolveLatestCodexModelFromRegistry(family, registry)).toBe(latest);
-		expect(resolvePreferredModel(family, registry)).toBe(latest);
+		expect(resolveLatestCodexModelFromRegistry(family, registry)).toBe(family === "sol" ? pinned : latest);
+		expect(resolvePreferredModel(family, registry)).toBe(family === "sol" ? pinned : latest);
 	});
 
 	it("rejects missing families and never falls back to another provider", async () => {

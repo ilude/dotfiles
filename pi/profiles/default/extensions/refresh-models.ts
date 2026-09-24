@@ -304,7 +304,7 @@ export async function syncCuratedModelScope(
 			)).map((model) => `${provider}/${model.id}`),
 		);
 		scope = [...new Set([...codex, ...bedrock, ...remaining])];
-		const latestSol = availableCodex.find((id) => /(?:^|[-.])sol(?:[-.]|$)/.test(id.split("/")[1] ?? ""));
+		const latestSol = availableCodex.find((id) => id === "openai-codex/gpt-5.6-sol");
 		const next = {
 			...settings,
 			...(latestSol ? { defaultProvider: "openai-codex", defaultModel: latestSol.split("/")[1] } : {}),

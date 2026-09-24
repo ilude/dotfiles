@@ -47,7 +47,7 @@ describe("model shortcuts", () => {
 		];
 		const { commands, pi, ctx } = setup(models);
 		await commands.get("sol")!.handler("", ctx);
-		expect(pi.setModel).toHaveBeenLastCalledWith(models[4]);
+		expect(pi.setModel).toHaveBeenLastCalledWith(models[2]);
 		await commands.get("luna")!.handler("", ctx);
 		expect(pi.setModel).toHaveBeenLastCalledWith(models[3]);
 	});
@@ -79,14 +79,14 @@ describe("model shortcuts", () => {
 		expect(pi.setModel).toHaveBeenCalledExactlyOnceWith(newest);
 	});
 
-	it("chooses the cheapest same-version model within a provider tier", async () => {
+	it("does not select a variant when pinned Sol is unavailable", async () => {
 		const expensive = { provider: "openai-codex", id: "gpt-5.6-sol-preview", cost: { input: 5, output: 20 } };
 		const cheap = { provider: "openai-codex", id: "gpt-5.6-sol-stable", cost: { input: 1, output: 4 } };
 		const { commands, pi, ctx } = setup([expensive, cheap]);
 
 		await commands.get("sol")!.handler("", ctx);
 
-		expect(pi.setModel).toHaveBeenCalledWith(cheap);
+		expect(pi.setModel).not.toHaveBeenCalled();
 	});
 
 	it("does not fall through to unapproved providers", async () => {

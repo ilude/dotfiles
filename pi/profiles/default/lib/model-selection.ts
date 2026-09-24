@@ -16,6 +16,7 @@ const MODEL_ALIASES: Readonly<Record<string, string>> = {
 	terra: "terra",
 };
 const CODEX_PROVIDER = "openai-codex";
+export const PINNED_SOL_MODEL = "gpt-5.6-sol";
 type OpenAIFamily = "astra" | "sol" | "terra" | "luna";
 
 type Candidate = {
@@ -102,6 +103,7 @@ export function resolvePreferredModel(
 }
 
 function latestFamilyModel(family: OpenAIFamily | "fable" | "opus", models: readonly Model<Api>[]): Model<Api> | undefined {
+	if (family === "sol") return models.find(model => model.id === PINNED_SOL_MODEL || model.id === `openai.${PINNED_SOL_MODEL}`);
 	return models.flatMap(model => {
 		const parsed = modelFamilyVersion(model.id);
 		return parsed?.family === family ? [{ model, version: parsed.version }] : [];

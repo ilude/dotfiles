@@ -1,9 +1,15 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { compareModelVersions, modelFamilyVersion } from "../lib/model-family.ts";
+import { PINNED_SOL_MODEL } from "../lib/model-selection.ts";
 
 export function latestSameFamily<T extends { provider: string; id: string }>(saved: T, available: readonly T[]): T | undefined {
   const original = modelFamilyVersion(saved.id);
   if (!original) return undefined;
+  if (original.family === "sol") {
+    const pinned = available.find(candidate => candidate.provider === saved.provider &&
+      (candidate.id === PINNED_SOL_MODEL || candidate.id === `openai.${PINNED_SOL_MODEL}`));
+    return pinned?.id === saved.id ? undefined : pinned;
+  }
   return available.flatMap((candidate) => {
     if (candidate.provider !== saved.provider) return [];
     const parsed = modelFamilyVersion(candidate.id);

@@ -11,9 +11,9 @@ describe("resumed model upgrades", () => {
       model("openai-codex", "gpt-6-luna"), model("bedrock-mantle", "openai.gpt-6-sol"),
       model("bedrock-mantle", "anthropic.claude-opus-5"), model("bedrock-mantle", "anthropic.claude-opus-5-5"),
     ];
-    expect(latestSameFamily(model("openai-codex", "gpt-5.6-sol"), available)).toEqual(available[1]);
+    expect(latestSameFamily(model("openai-codex", "gpt-5.6-sol"), available)).toBeUndefined();
     expect(latestSameFamily(model("bedrock-mantle", "anthropic.claude-opus-5"), available)).toEqual(available[5]);
-    expect(latestSameFamily(model("openai-codex", "gpt-6-sol"), available)).toBeUndefined();
+    expect(latestSameFamily(model("openai-codex", "gpt-6-sol"), available)).toEqual(available[0]);
     expect(latestSameFamily(model("openai-codex", "gpt-5.5"), available)).toBeUndefined();
   });
 
@@ -21,8 +21,8 @@ describe("resumed model upgrades", () => {
     const handlers = new Map<string, (event: { reason: string }, ctx: any) => Promise<void>>();
     const setModel = vi.fn(async () => true);
     resumeLatestModel({ on: (name: string, handler: any) => handlers.set(name, handler), setModel } as never);
-    const saved = model("openai-codex", "gpt-5.6-sol");
-    const newer = model("openai-codex", "gpt-6-sol");
+    const saved = model("openai-codex", "gpt-6-sol");
+    const newer = model("openai-codex", "gpt-5.6-sol");
     const ctx = {
       model: saved,
       sessionManager: { getBranch: () => [{ type: "message" }] },
