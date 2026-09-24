@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-24: Deploy native Onclave Quadlet services with health recovery
+
+**Changed:** Onclave now runs as six native Quadlet services instead of the legacy Compose unit. Deployment and rollback remain core-only, preserving the existing backup recovery path and SearXNG volumes. Readiness and health semantics remain unchanged; an upstream transcript failure is latched and logged, and systemd restarts a service that becomes unhealthy. Verified ingestion and transcript retrieval persisted across restart. The deployed Onclave revision and infrastructure gitlink are recorded in this integration; no inventory or secrets moved into dotfiles.
+
 ## 2026-09-24: Correct Bedrock one-hour cache-write estimates
 
 **Fixed:** New Bedrock observations preserve the reported one-hour cache-write token subset and price it separately, rather than charging every cache write at the five-minute rate. Five-minute pricing is unchanged, and estimates use reported tokens rather than guessing from the current retention setting. Existing ledger estimates and the baseline remain unchanged; older observations lack the duration split needed for a correction. Runtime responses routed through the consolidated provider are now labeled Runtime without inheriting Mantle's region. Pricing provenance records the running Pi version instead of the stale 0.85.0 label. PowerShell and zsh now default `PI_CACHE_RETENTION` to `short` (five minutes for Claude), preserving explicit environment overrides. Existing processes retain their inherited value until relaunched with `short`.
