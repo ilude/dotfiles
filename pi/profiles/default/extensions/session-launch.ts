@@ -375,6 +375,25 @@ async function executeBranch(args: string, ctx: CommandContext, pi: ExtensionAPI
 
 export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 	pi.registerEntryRenderer<BranchEvidence>(BRANCH_EVIDENCE_TYPE, renderBranchEvidence);
+	pi.on("before_agent_start", (event, ctx) => {
+		// Read the persisted branch, not compacted model messages or cached session state.
+		// Match this child so inherited markers and later branches do not change ownership.
+		const sessionId = ctx.sessionManager.getSessionId();
+		const evidence = ctx.sessionManager.getBranch()
+			.filter((entry): entry is CustomEntry => entry.type === "custom" && entry.customType === BRANCH_EVIDENCE_TYPE)
+			.map(entry => branchEvidence(entry.data))
+			.find(data => data?.role === "child" && data.childSessionId === sessionId);
+		if (!evidence) {
+			delete event.systemPromptOptions.sections.session_branch;
+			return;
+		}
+		event.systemPromptOptions.sections.session_branch = [
+			`This is an independent /branch child of session ${evidence.parentSessionId}.`,
+			`History through entry ${evidence.branchPointEntryId} (${evidence.branchPointTimestamp}) was inherited from the parent.`,
+			"The parent retains responsibility for its monitoring and reminders. Do not recreate those follow-ups unless the user asks to continue them here.",
+			"The child starts with no inherited schedules; an empty schedule list is expected, not missing work to restore. Scheduling remains available for this child's own work.",
+		].join("\n");
+	});
 	pi.registerTool({
 		name: "session_launch",
 		label: "Launch Pi session",

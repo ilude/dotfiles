@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-24: Separate inherited monitoring from child branch work
+
+**Fixed:** `/branch` children now receive model-visible parent and branch-point
+context reconstructed from existing session metadata on each turn, including
+after reload/resume and compaction. This addresses children recreating a parent's
+monitoring timers from copied history. Scheduler guidance now distinguishes
+same-process session changes from independent `/branch` processes and explains
+that an empty child schedule is expected. Inherited monitoring/reminders remain
+with the parent unless requested in the child; the child's own scheduling stays
+available. Parent timers, copied history, and scheduling lifecycle are unchanged.
+This is contextual guidance, not a scheduler disablement or authorization gate.
+
 ## 2026-09-23: Show the running Pi version in the default footer
 
 **Fixed:** The default-profile footer and status fallback now use Pi's exported runtime version instead of invoking the installed `pi` command. Existing sessions no longer show a newly installed version before restarting.

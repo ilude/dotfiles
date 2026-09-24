@@ -3,6 +3,8 @@ import { execFile, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { BeforeAgentStartEvent, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
 import { SessionManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js";
 import register, { createHerdrPiTab, HerdrPiTabLaunchError, parseNewInstanceArgs } from "../extensions/session-launch.ts";
 
@@ -22,6 +24,7 @@ function fixture() {
 	const commands: Record<string, any> = {};
 	const tools: Record<string, any> = {};
 	register({
+		on: vi.fn(),
 		registerCommand(n: string, c: any) { commands[n] = c; },
 		registerEntryRenderer() {},
 		registerTool(tool: any) { tools[tool.name] = tool; },
@@ -61,7 +64,9 @@ function realBranchFixture() {
 	} as any);
 	const commands: Record<string, any> = {};
 	const renderers: Record<string, any> = {};
+	const hooks = new Map<string, (event: BeforeAgentStartEvent, ctx: ExtensionContext) => void>();
 	const pi = {
+		on(name: string, handler: (event: BeforeAgentStartEvent, ctx: ExtensionContext) => void) { hooks.set(name, handler); },
 		registerCommand(n: string, c: any) { commands[n] = c; },
 		registerEntryRenderer(n: string, renderer: any) { renderers[n] = renderer; },
 		registerTool() {},
@@ -78,7 +83,14 @@ function realBranchFixture() {
 		callback(null, { stdout, stderr: "" });
 		return {} as any;
 	});
-	return { commands, ctx, parent, renderers };
+	const promptOptions = normalizeBuildSystemPromptOptions({ cwd: root, sections: { unrelated: "preserve me" } });
+	function promptFor(manager: SessionManager) {
+		hooks.get("before_agent_start")!({
+			type: "before_agent_start", prompt: "Discuss a different task", systemPrompt: buildSystemPrompt(promptOptions), systemPromptOptions: promptOptions,
+		}, { sessionManager: manager } as unknown as ExtensionContext);
+		return { section: promptOptions.sections.session_branch, prompt: buildSystemPrompt(promptOptions) };
+	}
+	return { commands, ctx, parent, renderers, promptFor };
 }
 
 it("parses fresh and resumed new-instance arguments", () => {
@@ -205,6 +217,39 @@ it("branches through an independent real manager and persists reciprocal visible
 	expect(planOpen).toContain("PI_HERDR_TAB_LABEL=do-it");
 	expect(planOpen).not.toContain("run");
 	expect(planOpen).toContain("--no-focus");
+});
+
+it("restores only the current child's monitoring boundary from persisted metadata after compaction and reload", async () => {
+	const { commands, ctx, parent, promptFor } = realBranchFixture();
+	expect(promptFor(parent).section).toBeUndefined();
+	await commands.branch.handler("branch", ctx);
+	const marker = parent.getEntries().find(entry => entry.type === "custom" && entry.customType === "session-branch");
+	if (marker?.type !== "custom") throw new Error("Missing branch marker");
+	const data = marker.data as { childSessionFile: string; parentSessionId: string; branchPointEntryId: string };
+	const child = SessionManager.open(data.childSessionFile, parent.getSessionDir());
+	const initial = promptFor(child);
+	expect(initial.section).toContain(data.parentSessionId);
+	expect(initial.section).toContain(data.branchPointEntryId);
+	expect(initial.section).toContain("unless the user asks to continue them here");
+	expect(initial.section).toContain("Scheduling remains available for this child's own work");
+	expect(initial.prompt).toContain(`<session_branch>\n${initial.section}\n</session_branch>`);
+	expect(initial.prompt).toContain("preserve me");
+	expect(Buffer.byteLength(initial.section)).toBeLessThan(800);
+	expect(promptFor(child)).toEqual(initial);
+
+	const retained = child.appendMessage({ role: "user", content: "Discuss a different task", timestamp: Date.now() });
+	child.appendCompaction("Inherited deployment monitoring was pending.", retained, 1000);
+	// A later parent-role marker must not erase this session's own child boundary.
+	child.appendCustomEntry("session-branch", {
+		schemaVersion: 1, role: "parent", parentSessionId: child.getSessionId(), parentSessionFile: data.childSessionFile,
+		childSessionId: "grandchild", childSessionFile: "grandchild.jsonl", branchPointEntryId: retained, branchPointTimestamp: new Date().toISOString(),
+	});
+	const reopened = SessionManager.open(data.childSessionFile, parent.getSessionDir());
+	const reloadedExtension = realBranchFixture();
+	expect(reloadedExtension.promptFor(reopened).section).toBe(initial.section);
+	expect(promptFor(parent).section).toBeUndefined();
+	expect(promptFor(parent).prompt).not.toContain("<session_branch>");
+	expect(promptFor(SessionManager.inMemory()).section).toBeUndefined();
 });
 
 it("uses the caller pane's current workspace instead of its stale launch environment", async () => {

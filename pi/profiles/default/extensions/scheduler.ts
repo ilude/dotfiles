@@ -38,7 +38,8 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
       "Do not use schedule to postpone implementation, planning, retries, or other work that can continue now. External CI/CD and deployment monitoring is not ordinary continuation: schedule follow-up checks instead of delegating the wait to subagents.",
       "For genuine external waits or user-requested monitoring, do not occupy bash or PowerShell with sleep commands longer than 15 seconds; use schedule instead. Short waits of 15 seconds or less may remain inline.",
       "Before creating a schedule, list existing jobs and do not create a duplicate or overlapping reminder. Ask when required timing is missing or ambiguous.",
-      "Schedule prompts follow the active conversation across session changes and reloads; include enough context to identify the external event. They run as follow-ups, never steering, and disappear when Pi exits.",
+      "Schedules follow the active conversation only within the same Pi process, including /new, /resume, /fork, and /reload. /branch opens a separate process with no inherited timers. Do not recreate the parent's monitoring or reminders unless the user asks to continue them in the child; an empty child schedule list is expected. Scheduling remains available for the child's own work.",
+      "Include enough context to identify the external event. Scheduled prompts run as follow-ups, never steering, and disappear when their Pi process exits.",
       "Do available work before scheduling when practical. If wrapping up, make schedule your last tool call. Cancel unneeded schedules; to change one, cancel and reschedule.",
     ],
     parameters: Type.Object({

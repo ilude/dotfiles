@@ -115,6 +115,9 @@ describe("schedule tool", () => {
     expect(guidance).toContain("deployment rollouts");
     expect(guidance).toContain("exact completion time is unknown");
     expect(guidance).toContain("instead of delegating the wait to subagents");
+    expect(guidance).toContain("/branch opens a separate process with no inherited timers");
+    expect(guidance).toContain("unless the user asks to continue them in the child");
+    expect(guidance).toContain("Scheduling remains available for the child's own work");
   });
 
   it.each(["new", "resume", "reload", "fork"])("survives %s with follow-up delivery into the active session", async reason => {

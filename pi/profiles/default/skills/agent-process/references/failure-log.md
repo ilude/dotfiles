@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-067 - Scheduler report dismissed through an implementation distinction
+
+- **Reference:** Operator's `/branch` investigation, parent `01a0d0ff-07f9-7739-bb4e-0e734f51921d`, child `01a0d130-1fff-745d-92a0-33d5ae7cac9e`.
+- **Observed:** The orchestrator repeatedly emphasized memory-only timers and copied history instead of tracing the unsolicited prompt. Child records establish a new schedule call during an unrelated discussion at 02:15:46Z and delivery at 02:25:46Z on 2026-09-24. The orchestrator proposed disabling scheduling in children, repeatedly introduced regression tests before settling the remedy, and used acknowledgments without resolving the issue.
+- **Finding:** Active Investigation guidance already requires rechecking challenged premises; Proportionality rejects invented requirements and unsupported safeguards. Scheduler guidance strongly encourages continued monitoring and says prompts follow conversation changes, while the branch marker is excluded from model context. This is a concrete context ambiguity for inherited monitoring, not proof of timer copying or a proven general model cause. The testing skill was not loaded when the regression-test proposals were made; pi-extension calls for relevant checks but not a test-first discussion or mandatory new regression for every fix.
+- **Related:** AIF-054 (repeated confident justification), APR-002 (verification churn), APR-064 (explanations outrunning evidence), AIF-055 (branch metadata excluded from context).
+- **Remediation:** Operator approved model-visible branch context restored from persisted metadata on each turn, plus scheduler guidance distinguishing same-process lifecycle from `/branch`. Implemented without disabling scheduling, deleting history, or changing parent timers. Child-specific context survives compaction and reload/resume; scheduling for child-owned work remains available.
+- **Status:** Focused checks passed (34 tests and default-profile typecheck). Existing instances need reload; already-created timers are not cancelled. Future model adherence is unverified. Investigation was targeted, not a review of all today's sessions.
+
 ## APR-066 - Suggested validation became an unapproved deployment prerequisite
 
 - **Reference:** Default-profile seed construction/deployment discussion, 2026-09-23, session `01a0cf9b-ead6-777e-aa8f-a492cfe5aeac`.
