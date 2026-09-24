@@ -10,7 +10,7 @@ import { resetSubagentRuntime } from "../lib/subagents/runtime.ts";
 import { initTheme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 initTheme("dark", false);
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
-import { presentationDetails, progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
+import { parentVisibleRecord, presentationDetails, progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
 
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const base: ChildRecord = {
@@ -95,9 +95,24 @@ describe("subagent presentation", () => {
     expect(text).toContain("Current exchange result");
     expect(text).toContain("CURRENT FOLLOW-UP RESULT");
     const details = presentationDetails(followUp);
+    expect(details.subagentId).toBe(followUp.id);
+    expect(details.id).toBe(followUp.id);
+    expect(details.sessionId).toBeUndefined();
+    expect(details).not.toHaveProperty("sessionFile");
     expect(details.exchangeKind).toBe("follow-up");
     expect(details.originalAssignment).toEqual(followUp.originalAssignment);
     expect(details.originalAssignment).not.toBe(followUp.originalAssignment);
+  });
+
+  it("serializes canonical and compatible identities without exposing session files", () => {
+    const registered = { ...base, sessionId: "native-session", sessionFile: "/private/session.jsonl" };
+    const visible = parentVisibleRecord(registered);
+    expect(visible).toMatchObject({ subagentId: registered.id, id: registered.id, sessionId: "native-session" });
+    expect(visible).not.toHaveProperty("sessionFile");
+    const unregistered = parentVisibleRecord(base);
+    expect(unregistered).not.toHaveProperty("sessionId");
+    expect(progressResult(registered).details).toMatchObject({ subagentId: registered.id, sessionId: "native-session" });
+    expect(progressResult(registered).details).not.toHaveProperty("sessionFile");
   });
 
   it("keeps closed retained records and legacy records readable", () => {
@@ -258,9 +273,19 @@ it("executes registered tools against an inert RPC child and renders their live 
     expect(plain(control, 120)).not.toContain("cancelled");
     expect(plain(cancelledView, 120)).toContain("cancelled");
     expect(plain(cancelledView, 120)).not.toContain("child continues");
-
     const backgroundArgs = { agent: "probe", instructions: "[hold]", background: true };
     const background = await tools.subagent.execute("background", backgroundArgs, undefined, undefined, ctx);
+    expect(background.details).toMatchObject({ subagentId: background.details.id, id: background.details.id });
+    expect(background.details).not.toHaveProperty("sessionFile");
+    const inspected = await tools.subagent_control.execute("inspect", { action: "inspect", id: background.details.subagentId }, undefined, undefined, ctx);
+    expect(inspected.details).toMatchObject({ subagentId: background.details.subagentId, id: background.details.subagentId });
+    expect(inspected.details).not.toHaveProperty("sessionFile");
+    const listed = await tools.subagent_control.execute("inspect", { action: "inspect" }, undefined, undefined, ctx);
+    expect(listed.details).toEqual(expect.arrayContaining([expect.objectContaining({ subagentId: background.details.subagentId, id: background.details.subagentId })]));
+    expect(JSON.stringify(listed.details)).not.toContain("sessionFile");
+    expect(tools.subagent_control.description).toContain("returned subagentId");
+    expect(tools.subagent_control.description).toContain("returned sessionId");
+    expect(tools.subagent_control.parameters.properties.id.description).toContain("not the native sessionId");
     expect(plain(tools.subagent.renderResult(background, {}, theme, { state: {} }), 120)).toContain("started in background; child continues");
     await expect(tools.subagent_control.execute("wait-bg", { action: "wait", id: background.details.displayName }, undefined, undefined, ctx)).rejects.toThrow("requires blockingReason");
     await tools.subagent_control.execute("cancel-bg", { action: "cancel", id: background.details.displayName }, undefined, undefined, ctx);

@@ -63,7 +63,10 @@ describe("subagent definitions",()=>{
   expect(catalog.errors).toEqual([]);
   expect(catalog.agents.get("strategist")).toMatchObject({model:"sol",effort:"low",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
   expect(catalog.agents.get("steward")).toMatchObject({description:"Post-implementation triage of reviewer/validator agent findings: assess whether additional work is warranted or would create scope drift or fix churn. Not for planning or pre-implementation assessment.",model:"luna",effort:"high",tools:["read","grep","find","ls","subagent_parent"],delegates:[],skills:[]});
-  expect(catalog.agents.get("teamlead")?.delegates).toEqual(expect.arrayContaining(["strategist","steward"]));
-  expect(catalog.agents.get("reviewer")).toMatchObject({model:"sol",tools:expect.arrayContaining(["read","bash"]),delegates:[],skills:[]});
+  expect(catalog.agents.get("teamlead")?.delegates).toEqual(expect.arrayContaining(["strategist","steward","writer"]));
+  expect(catalog.agents.get("reviewer")).toMatchObject({description:expect.stringMatching(/read-only.*return.*findings/i),model:"sol",tools:expect.arrayContaining(["read","bash"]),delegates:[],skills:[]});
+  expect(catalog.agents.get("reviewer")?.tools).not.toEqual(expect.arrayContaining(["edit","write"]));
+  expect(catalog.agents.get("writer")).toMatchObject({description:expect.stringMatching(/writable prose/i),model:"sol",effort:"low",tools:expect.arrayContaining(["read","edit","write"]),delegates:[],skills:[]});
+  expect(catalog.agents.get("writer")?.tools).toHaveLength(12);
  });
 });
