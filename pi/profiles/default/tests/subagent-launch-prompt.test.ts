@@ -36,6 +36,14 @@ describe("subagent launch prompt", () => {
     expect(teamlead.args).not.toContain("--no-skills");
     expect(teamlead.args).toContain("--no-extensions");
     expect(teamlead.args).toEqual(expect.arrayContaining(["--no-prompt-templates", "--no-themes"]));
+    expect(teamlead.args).toContain(join(process.cwd(), "extensions", "herdr-tools.ts"));
+    expect(teamlead.args).toContain(join(process.cwd(), "extensions", "tool-visibility.ts"));
+  });
+
+  it("does not load Herdr tools for ordinary roles", () => {
+    const ordinary = childLaunch(spec("headless"), "ordinary", process.cwd());
+    expect(ordinary.args).not.toContain(join(process.cwd(), "extensions", "herdr-tools.ts"));
+    expect(ordinary.args).not.toContain(join(process.cwd(), "extensions", "tool-visibility.ts"));
   });
 
   it("keeps the system prompt independent of assignments and runtime launch values", () => {

@@ -1,11 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { JsonLines } from "../lib/subagents/framing.ts";
-import { childSystemPrompt } from "../extensions/subagent-child.ts";
+import { childLaunch } from "../lib/subagents/launch.ts";
+import type { AgentDefinition } from "../lib/subagents/definitions.ts";
+import { childSystemPrompt, default as childAuthority } from "../extensions/subagent-child.ts";
+import registerToolVisibility from "../extensions/tool-visibility.ts";
+import { createMockPi } from "./helpers/mock-pi.ts";
+afterEach(() => vi.unstubAllEnvs());
 const profile=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const manifestPath=join(profile,"node_modules/@earendil-works/pi-coding-agent/package.json");
 const cli=resolve(dirname(manifestPath),JSON.parse(readFileSync(manifestPath,"utf8")).bin.pi);
@@ -69,4 +74,59 @@ describe("bundled CLI child authority",()=>{
    }
   } finally { child.kill(); await exited; rmSync(scratch,{recursive:true,force:true}); }
  },20_000);
+
+ it("lets a Team Lead discover and activate only permitted deferred Herdr tools",async()=>{
+  const pi=createMockPi();
+  for(const [name,description] of [["read","Read files"],["herdr_agent","Inspect and prompt live Herdr agents"],["herdr_layout","Inspect Herdr panes and workspaces"],["herdr_pane","Read or recover a Herdr pane"],["image_transform","Transform images"]])pi.registerTool({name,description,parameters:{},execute:async()=>({content:[]})});
+  vi.stubEnv("PI_SUBAGENT_AUTHORITY",JSON.stringify({id:"lead",agent:"teamlead",tools:["read","tool_search","herdr_agent","herdr_layout","herdr_pane"],delegates:[],cwd:process.cwd(),skills:[]}));
+  vi.stubEnv("PI_SUBAGENT_ENDPOINT","");
+  childAuthority(pi as never);
+  registerToolVisibility(pi as never);
+  for(const hook of pi._getHook("session_start"))await hook.handler({},{});
+  expect(pi.getActiveTools()).toEqual(["read","tool_search"]);
+  const result=await pi._getTool("tool_search")!.execute("id",{query:"Herdr agent control"},undefined,undefined,{});
+  expect(result.details.tools.map((tool:{name:string})=>tool.name)).toEqual(["herdr_agent","herdr_layout","herdr_pane"]);
+  expect(pi.getActiveTools()).toEqual(["read","tool_search","herdr_agent","herdr_layout","herdr_pane"]);
+  const broadened=await pi._getTool("tool_search")!.execute("id",{query:"image transform"},undefined,undefined,{});
+  expect(broadened.details.tools).toEqual([]);
+  expect(pi.getActiveTools()).not.toContain("image_transform");
+ });
+
+ it("loads registered Herdr tools into a real Team Lead child while keeping them inactive",async()=>{
+  const scratch=mkdtempSync(join(tmpdir(),"subagent-herdr-loader-"));
+  const authority=["read","tool_search","herdr_agent","herdr_layout","herdr_pane"];
+  const definition:AgentDefinition={name:"teamlead",description:"Coordinate",tools:authority,delegates:[],prompt:"Coordinate",model:"provider/model",effort:"low",skills:[],source:"profile",filePath:"teamlead.md"};
+  const launch=childLaunch({definition,prompt:"probe",instructions:"probe",cwd:scratch,model:"provider/model",effort:"low",skills:[],origin:"probe",retained:false,surface:"headless"},"lead",profile);
+  const fixture=join(scratch,"probe.mjs");
+  writeFileSync(fixture,`export default function(pi) { pi.on('session_start', () => { process.stdout.write(JSON.stringify({type:'herdr_probe',active:pi.getActiveTools(),registered:pi.getAllTools().map(tool=>tool.name)})+'\\n'); }); }`);
+  const args=[...launch.args];
+  for(let index=args.length-1;index>=0;index--)if(args[index]==="--model"||args[index]==="--thinking")args.splice(index,2);
+  const child=spawn(process.execPath,[cli,"--mode","rpc","--offline","--no-session","--no-context-files",...args,"-e",fixture],{cwd:scratch,env:{...process.env,...launch.env,PI_CODING_AGENT_DIR:join(scratch,"profile"),PI_SUBAGENT_ENDPOINT:""},stdio:["pipe","pipe","pipe"],windowsHide:true});
+  let stderr="";
+  child.stderr.on("data",chunk=>{stderr=(stderr+chunk).slice(-4000)});
+  const exited=new Promise<void>(done=>child.once("close",()=>done()));
+  try{
+   const probe=await new Promise<{active:string[];registered:string[]}>((resolve,reject)=>{
+    const timeout=setTimeout(()=>reject(new Error(`Herdr child probe timed out: ${stderr}`)),15_000);
+    const finish=(error?:Error,value?:{active:string[];registered:string[]})=>{clearTimeout(timeout);error?reject(error):resolve(value!)};
+    const parser=new JsonLines(value=>{const event=value as {type?:string;active?:string[];registered?:string[]};if(event.type==="herdr_probe")finish(undefined,{active:event.active??[],registered:event.registered??[]})});
+    for(const stream of [child.stdout,child.stderr])stream.on("data",chunk=>{try{parser.push(chunk)}catch(error){finish(error as Error)}});
+    child.once("error",error=>finish(error));child.once("exit",()=>finish(new Error(`CLI exited before Herdr probe: ${stderr}`)));
+   });
+   expect(probe.registered).toEqual(expect.arrayContaining(authority.filter(name=>name.startsWith("herdr_"))));
+   expect(probe.active).toEqual(["read","tool_search"]);
+  }finally{child.kill();await exited;rmSync(scratch,{recursive:true,force:true})}
+ },20_000);
+
+ it("does not discover or activate Herdr tools for an ordinary leaf",async()=>{
+  const pi=createMockPi();
+  for(const [name,description] of [["read","Read local files"],["herdr_agent","Herdr agent"],["herdr_layout","Herdr layout"],["herdr_pane","Herdr pane"]])pi.registerTool({name,description,parameters:{},execute:async()=>({content:[]})});
+  vi.stubEnv("PI_SUBAGENT_AUTHORITY",JSON.stringify({id:"leaf",agent:"developer",tools:["read","tool_search"],delegates:[],cwd:process.cwd(),skills:[]}));
+  vi.stubEnv("PI_SUBAGENT_ENDPOINT","");
+  childAuthority(pi as never);
+  for(const hook of pi._getHook("session_start"))await hook.handler({},{});
+  const result=await pi._getTool("tool_search")!.execute("id",{query:"Herdr"},undefined,undefined,{});
+  expect(result.details.tools).toEqual([]);
+  expect(pi.getActiveTools()).toEqual(["read","tool_search"]);
+ });
 });

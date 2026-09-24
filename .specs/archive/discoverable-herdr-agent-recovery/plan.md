@@ -48,7 +48,7 @@ All paths are relative to `C:/Users/mglenn/.dotfiles`.
   - Herdr itself supports `agent list`, `get`, `read`, `prompt`, `wait`, and `send-keys`, plus pane-level read/input/close operations. Session `01a0d1aa-052a-77e3-9e29-1bd8b396e21e` contains the researched discussion and upstream evidence.
   - AIF-087 records the incorrect global-cleanup claim caused by checking only one branch registry. AIF-089 records speculative subagent retention and stale-pane impact.
 - Work to preserve: `pi/profiles/default/skills/agent-process/references/instruction-feedback.md` is already modified by concurrent feedback work. Recheck the worktree before editing and do not overwrite or renumber unrelated entries.
-- Worktree and integration target: on later execution, create a dedicated task worktree and branch from the then-current `main`; record their actual paths before editing. Integrate back into the originating `main` checkout only when separately authorized.
+- Worktree and integration target: task worktree `C:/Users/mglenn/.dotfiles/.worktrees/discoverable-herdr-agent-recovery` on branch `feature/discoverable-herdr-agent-recovery`, created from commit `1ac0a394` in originating checkout `C:/Users/mglenn/.dotfiles` on branch `main`. This execution request authorizes local integration back into that recorded checkout and branch.
 - Profiles: planning used the repository-owned default profile. Intended implementation and checks also use `pi/profiles/default`; no legacy-profile work is in scope.
 
 ## Decisions and implementation contract
@@ -104,7 +104,7 @@ Keep checkbox state, concise evidence, current blockers, and next action accurat
 
 ## Tasks
 
-- [ ] **T1: Add one reusable structured Herdr agent-control surface**
+- [x] **T1: Add one reusable structured Herdr agent-control surface**
   - Depends on: none.
   - Parallel with: T2 after its shared activation contract is agreed in code; otherwise complete this first.
   - Files/inputs: `pi/profiles/default/extensions/herdr-tools.ts`, reusable helpers under `pi/profiles/default/lib/` if needed, `pi/profiles/default/tests/herdr-tools.test.ts`.
@@ -113,9 +113,9 @@ Keep checkbox state, concise evidence, current blockers, and next action accurat
   - Verify: from `pi/profiles/default`, run the focused Herdr tool tests covering every action, argument construction, bounded output, cancellation, timeout, missing target, and malformed response.
   - Done when: root Pi can discover and activate one structured tool that lists, inspects, reads, prompts, waits for, and sends keys to any exact live Herdr agent in the connected server, and can obtain bounded complete-layout inventory.
   - If blocked: inspect installed `herdr --skill` and targeted CLI help, then adapt exact argv/response parsing without changing the settled public behavior.
-  - Evidence: Not started.
+  - Evidence: Added deferred `herdr_agent` list/get/read/prompt/wait/sendKeys actions with exact target validation, bounded output/timeouts, cancellation, compact validated responses, and connected-server layout inventory. Installed Herdr 0.9.1-preview help was inspected. `pnpm test herdr-tools.test.ts` passed 17 tests; targeted TypeScript checking passed.
 
-- [ ] **T2: Make deferred Herdr tools activatable inside frozen Team Lead authority**
+- [x] **T2: Make deferred Herdr tools activatable inside frozen Team Lead authority**
   - Depends on: T1's registered tool names and shared implementation entry point.
   - Files/inputs: `pi/profiles/default/agents/teamlead.md`, `pi/profiles/default/lib/subagents/launch.ts`, `pi/profiles/default/extensions/subagent-child.ts`, `pi/profiles/default/extensions/tool-visibility.ts`, relevant subagent launch/tool/authority tests.
   - Change: include the three Herdr tools in Team Lead's frozen role authority, load their owning extension for Team Leads, start them inactive, and let the child's restricted `tool_search` activate matching tools only from the already-frozen permitted set. Preserve authority freezing, tool discovery for non-Team-Lead roles, and root deferred activation.
@@ -123,9 +123,9 @@ Keep checkbox state, concise evidence, current blockers, and next action accurat
   - Verify: focused tests show a Team Lead starts without Herdr tools in active model context, finds and activates them with descriptive searches, cannot activate tools outside its frozen authority, and ordinary leaves receive no Herdr capability. Confirm root behavior remains deferred and activatable.
   - Done when: orchestrators and Team Leads share the same deferred tools while Team Lead discovery cannot widen its role authority.
   - If blocked: preserve the frozen-authority boundary and change registration/activation plumbing; do not make Herdr tools permanently active as a workaround.
-  - Evidence: Not started.
+  - Evidence: Implemented Team Lead-only Herdr extension loading, frozen-authority activation through restricted `tool_search`, root deferral, and ordinary-leaf exclusion. Focused launch/loader/tool visibility/search checks passed: 4 files, 24 tests. Typecheck and `git diff --check` also passed in the task worktree.
 
-- [ ] **T3: Remove the branch-local cleanup gate and cover the demonstrated recovery workflow**
+- [x] **T3: Remove the branch-local cleanup gate and cover the demonstrated recovery workflow**
   - Depends on: T1 complete-layout inventory; T2 Team Lead access.
   - Files/inputs: `pi/profiles/default/extensions/herdr-tools.ts`, `pi/profiles/default/tests/herdr-tools.test.ts`, proposed focused recovery tests if existing tests cannot express multiple sessions/agents.
   - Change: remove in-memory session-creation ownership and `confirm=true` requirements from exact non-caller pane interrupt/close operations. Retain target existence inspection and self-pane refusal. Add a deterministic scenario with a current orchestrator, an earlier coordinator, an active validator, and stale workers: the current orchestrator can inspect all, prompt/read the earlier coordinator, preserve active panes, and close exact stale panes when selected.
@@ -133,9 +133,9 @@ Keep checkbox state, concise evidence, current blockers, and next action accurat
   - Verify: focused tests establish that exact cross-session pane cleanup succeeds without confirmation, the caller pane remains rejected, no unrelated pane is closed, and agent prompt/read target the requested live agent.
   - Done when: the previously reported `Pane was not created by this session` blocker no longer prevents deliberate exact-pane recovery, without adding a replacement approval mechanism.
   - If blocked: report the exact Herdr server limitation. Do not restore ownership gating or simulate success by forgetting the pane.
-  - Evidence: Not started.
+  - Evidence: Removed pane-creation ownership tracking and close confirmation from exact non-caller interrupt/close operations while retaining target inspection and self-pane refusal. Added deterministic earlier-coordinator/active-validator/stale-worker coverage that targets only selected agents and panes. `pnpm test herdr-tools.test.ts` passed 18 tests; typecheck and `git diff --check` passed.
 
-- [ ] **T4: Document discovery, validate the complete composition, and close out**
+- [x] **T4: Document discovery, validate the complete composition, and close out**
   - Depends on: T1-T3.
   - Files/inputs: `pi/profiles/default/skills/herdr/SKILL.md`, `pi/profiles/default/docs/subagents.md`, `pi/profiles/default/docs/herdr.md` if its public contract changes, `pi/profiles/default/lib/subagents/guidance.ts` only if the concise routing sentence is necessary, prompt-composition tests, root `CHANGELOG.md`, this plan.
   - Change: document Herdr-native recovery as complementary to structured subagent ownership; explain discovery terms, agent-first operations, raw-pane fallback, complete-layout claims, and same-server scope. Remove stale statements that interruption/closure always requires session ownership. Keep detailed procedure conditional. Render and inspect the complete root and Team Lead prompts, compare byte counts, and avoid adding command syntax to always-loaded context.
@@ -143,7 +143,7 @@ Keep checkbox state, concise evidence, current blockers, and next action accurat
   - Verify from `pi/profiles/default`: run focused Herdr, tool-search, subagent launch/authority/guidance tests, `pnpm run typecheck`, and `pnpm run check:runtime`. From repository root run `git diff --check`. Record static prompt byte changes by affected audience and state that live provider caching/adherence is unmeasured unless representative requests are actually observed.
   - Done when: documentation and prompts describe the implemented discoverable workflow without a contradictory ownership gate, all finite checks pass, and the root changelog records the operator-facing capability.
   - If blocked: leave closeout unchecked with the failing command and task owner; do not broaden into an unrelated prompt or Herdr audit.
-  - Evidence: Not started.
+  - Evidence: Updated conditional Herdr skill and public docs for tool-search discovery, agent-first same-server recovery, complete connected-layout inventory, and raw-pane fallback; removed stale ownership/confirmation claims; recorded the operator-facing change in `CHANGELOG.md`. Always-loaded root and Team Lead compositions changed by 0 bytes; the deferred Herdr skill description changed by +68 bytes. Focused discovery/prompt, launch/loader/guidance/visibility, and Herdr checks passed; typecheck, runtime check, and `git diff --check` passed. Live provider caching and adherence remain unmeasured.
 
 ## Agreed validation and current handoff
 
@@ -155,11 +155,11 @@ Keep checkbox state, concise evidence, current blockers, and next action accurat
 - `git diff --check`
 - An isolated Herdr live test is appropriate only if the existing opt-in harness can prove real agent targeting and cross-session pane cleanup without touching operator panes. It is agent-owned and non-destructive within its isolated server. Attached-client/manual acceptance is a non-blocking verification limit.
 
-- Status: ready for an explicit execution request.
-- Completed work and evidence: planning and targeted source/history investigation only; no implementation.
-- Next: after execution authorization, consult Strategist and create the dedicated task worktree, then start T1.
-- Blockers/open decisions: none within the selected scope.
-- Verification limits: no code, runtime, Herdr server, attached client, provider caching, or model adherence has been tested by this planning task.
+- Status: implementation and agreed agent-owned checks complete; integration pending.
+- Completed work and evidence: T1-T4 completed. Focused final validation passed 8 files and 104 tests with injected subagent authority cleared; the bundled Strategist definition check, `pnpm run typecheck`, `pnpm run check:runtime`, and root `git diff --check` also passed. Root and Team Lead composed prompt sizes remain 3,591 and 3,076 bytes, both with 0-byte deltas.
+- Next: archive and commit the task branch, then integrate it into the recorded originating `main` checkout.
+- Blockers/open decisions: none within the selected scope. The target checkout currently has unrelated changes that must be preserved during integration.
+- Verification limits: attached-client behavior, live provider caching, and model adherence were not measured. An extra broad registry test could not find an authenticated Codex Sol model; the agreed bundled authority check passed separately.
 
 ## Closeout
 

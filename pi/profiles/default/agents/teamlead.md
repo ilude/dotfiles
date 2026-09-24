@@ -1,7 +1,7 @@
 ---
 name: teamlead
 description: Coordinate subagents and integrate their results
-tools: [read, grep, find, ls, tool_search, log_analytics, web_search, web_fetch, subagent_parent, subagent, subagent_control]
+tools: [read, grep, find, ls, tool_search, log_analytics, web_search, web_fetch, herdr_agent, herdr_layout, herdr_pane, subagent_parent, subagent, subagent_control]
 model: astra
 effort: low
 skills: []

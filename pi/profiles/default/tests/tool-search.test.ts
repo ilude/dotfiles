@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import registerToolSearch, { renderToolSearchResult, scoreTool } from "../extensions/tool-search";
+import registerToolVisibility from "../extensions/tool-visibility";
 import { createMockPi } from "./helpers/mock-pi";
 
 function register(pi: ReturnType<typeof createMockPi>, name: string, description: string) {
@@ -65,6 +66,35 @@ describe("tool_search", () => {
 		expect(pi.getActiveTools()).toEqual(["read", "tool_search", "onclave_vault_search", "onclave_vault_content"]);
 		expect(pi.getActiveTools()).not.toContain("onclave_message");
 		expect(pi.exec).not.toHaveBeenCalled();
+	});
+
+	it("keeps root Herdr tools deferred until a descriptive search activates them", async () => {
+		const pi = createMockPi();
+		for (const [name, description] of [["read", "Read files"], ["herdr_agent", "Inspect and prompt Herdr agents"], ["herdr_layout", "Inspect Herdr panes and workspaces"], ["herdr_pane", "Read and recover Herdr panes"]]) register(pi, name, description);
+		pi.setActiveTools(["read"]);
+		registerToolSearch(pi as never);
+		registerToolVisibility(pi as never);
+		await pi._getHook("session_start")[0]!.handler({}, {});
+		expect(pi.getActiveTools()).toEqual(["read", "tool_search"]);
+		const result = await pi._getTool("tool_search")!.execute!("id", { query: "Herdr agent control" }, undefined, undefined, {});
+		expect(result.details.activated).toEqual(["herdr_agent", "herdr_layout", "herdr_pane"]);
+		expect(pi.getActiveTools()).toEqual(["read", "tool_search", "herdr_agent", "herdr_layout", "herdr_pane"]);
+		const paneTools = await pi._getTool("tool_search")!.execute!("id", { query: "Herdr panes" }, undefined, undefined, {});
+		expect(paneTools.details.activated).toEqual([]);
+		expect(pi.getActiveTools()).toEqual(["read", "tool_search", "herdr_agent", "herdr_layout", "herdr_pane"]);
+	});
+
+	it.each([
+		["Herdr agent control", ["herdr_agent", "herdr_layout", "herdr_pane"]],
+		["read or prompt another agent", ["herdr_agent"]],
+		["cross-agent pane recovery", ["herdr_layout", "herdr_pane"]],
+	])("discovers deferred Herdr recovery with %s", async (query, expected) => {
+		const pi = createMockPi();
+		for (const [name, description] of [["herdr_agent", "Inspect and control any exact live agent: list, get, read, prompt, wait, send keys"], ["herdr_layout", "Inspect the complete connected Herdr pane layout"], ["herdr_pane", "Read, interrupt, or close an exact existing Herdr process pane for recovery"]]) register(pi, name, description);
+		pi.setActiveTools([]); registerToolSearch(pi as never);
+		const result = await pi._getTool("tool_search")!.execute!("id", { query }, undefined, undefined, {});
+		expect(result.details.activated).toEqual(expect.arrayContaining(expected));
+		for (const name of expected) expect(result.content[0].text).toContain(name);
 	});
 
 	it("returns a bounded no-match result", async () => {

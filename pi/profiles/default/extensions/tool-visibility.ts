@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { deactivateTools } from "../lib/tool-activation.js";
 
 export const DEFERRED_TOOL_NAMES = [
-	"image_properties", "image_transform", "log_analytics", "herdr_layout", "herdr_pane",
+	"image_properties", "image_transform", "log_analytics", "herdr_agent", "herdr_layout", "herdr_pane",
 	"onclave_vault_search", "onclave_vault_content", "onclave_vault_ingest", "onclave_vault_jobs", "jev_evaluate",
 ] as const;
 

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { loadDefinitions, type AgentDefinition } from "../lib/subagents/definitions.ts";
@@ -87,6 +88,33 @@ describe("delegation guidance", () => {
     expect(text).not.toContain("Steward uses Luna high or xhigh");
     expect(text).not.toContain("One automatic stronger-family retry");
     expect(text).not.toContain("Use Sol low for Strategist");
+  });
+
+  it("keeps Herdr recovery conditional while rendering stable complete caller and Team Lead prompts", () => {
+    const profile = fileURLToPath(new URL("../", import.meta.url));
+    const catalog = loadDefinitions(profile, false, profile);
+    expect(catalog.errors).toEqual([]);
+    const lead = catalog.agents.get("teamlead");
+    if (!lead) throw new Error("Missing bundled Team Lead");
+    const root = composeCallerSystemPrompt("<Pi inherited system prompt>", catalog.agents);
+    const teamLeadPrompt = composedAgentPrompt(lead, catalog.agents);
+    expect(composeCallerSystemPrompt("<Pi inherited system prompt>", new Map([...catalog.agents].reverse()))).toBe(root);
+    expect(composedAgentPrompt(lead, new Map([...catalog.agents].reverse()))).toBe(teamLeadPrompt);
+    for (const prompt of [root, teamLeadPrompt]) {
+      expect(prompt).not.toContain("herdr_agent");
+      expect(prompt).not.toContain("herdr_layout");
+      expect(prompt).not.toContain("herdr_pane");
+      expect(prompt).not.toContain("cross-agent pane recovery");
+      expect(prompt).not.toContain("herdr --skill");
+    }
+    // The root uses a fixed stand-in for Pi's runtime-owned inherited system prompt.
+    expect(Buffer.byteLength(root)).toBe(3591);
+    expect(Buffer.byteLength(teamLeadPrompt)).toBe(3076);
+    const skill = readFileSync(new URL("../skills/herdr/SKILL.md", import.meta.url), "utf8");
+    const description = /^description: (.+)$/m.exec(skill)?.[1];
+    expect(description).toContain("owned subagent controls cannot reach a visible agent or pane");
+    expect(description).toContain("cross-agent recovery");
+    expect(description).not.toContain("herdr --skill");
   });
 
   it("shares post-implementation finding triage and excludes requested-work preflight across caller and Team Lead", () => {

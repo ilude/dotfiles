@@ -10,6 +10,7 @@ import { registerProfileCommand } from "../lib/profile-command.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
 import { dispatchOperation, withDispatchMetadata } from "../lib/subagents/control-result.ts";
 import { writeSubagentLineage } from "../lib/subagents/lineage.ts";
+import { activateTools } from "../lib/tool-activation.js";
 interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; cwd:string; skills:string[]; surface?:string }
 
 export function childSystemPrompt(basePrompt:string,agent:string,tools:readonly string[],rolePrompt:string):string {
@@ -75,7 +76,10 @@ export default function childAuthority(pi:ExtensionAPI){
   return{content:[{type:"text",text:JSON.stringify(result)}],details:result};
  },renderCall:renderSubagentControlCall,renderResult:renderSubagentResult});
  pi.registerTool({name:"tool_search",label:"Search permitted tools",description:"Inspect only the tools in this conversation's frozen authority. Cannot activate additional tools.",parameters:Type.Object({query:Type.Optional(Type.String())}),async execute(_id,p){
-  const tools=pi.getAllTools().filter(t=>allowed.has(t.name)&&(!p.query||`${t.name} ${t.description}`.toLowerCase().includes(p.query.toLowerCase()))).map(t=>({name:t.name,description:t.description}));
+  const terms=p.query?.toLowerCase().split(/\s+/).filter(Boolean)??[];
+  const matches=pi.getAllTools().filter(t=>allowed.has(t.name)&&(!terms.length||terms.some(term=>`${t.name} ${t.description}`.toLowerCase().includes(term))));
+  if(p.query?.trim())activateTools(pi,matches.map(t=>t.name));
+  const tools=matches.map(t=>({name:t.name,description:t.description}));
   return{content:[{type:"text",text:JSON.stringify(tools)}],details:{tools}};
  }});
  pi.registerTool({name:"subagent_parent",label:"Report to parent",description:"Ask the originating parent a factual question or report genuinely unfinished/blocked work. A question yields cleanly and returns a request ID; do not poll for the answer. Keep the request pending during ordinary user discussion. When you decide the discussion answered your question, use cancel-question with that request ID. Do not use this tool for successful completion; give a normal final reply instead.",parameters:Type.Object({action:Type.Union([Type.Literal("question"),Type.Literal("cancel-question"),Type.Literal("partial"),Type.Literal("blocked")]),message:Type.Optional(Type.String()),requestId:Type.Optional(Type.String())}),async execute(_id,p,signal): Promise<any>{
