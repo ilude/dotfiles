@@ -1,7 +1,7 @@
 ---
 created: 2026-09-24
-status: ready
-completed: null
+status: completed
+completed: 2026-09-24
 ---
 
 # Make Herdr cross-agent recovery discoverable to orchestrators and Team Leads
@@ -155,10 +155,10 @@ Keep checkbox state, concise evidence, current blockers, and next action accurat
 - `git diff --check`
 - An isolated Herdr live test is appropriate only if the existing opt-in harness can prove real agent targeting and cross-session pane cleanup without touching operator panes. It is agent-owned and non-destructive within its isolated server. Attached-client/manual acceptance is a non-blocking verification limit.
 
-- Status: implementation and agreed agent-owned checks complete; integration pending.
-- Completed work and evidence: T1-T4 completed. Focused final validation passed 8 files and 104 tests with injected subagent authority cleared; the bundled Strategist definition check, `pnpm run typecheck`, `pnpm run check:runtime`, and root `git diff --check` also passed. Root and Team Lead composed prompt sizes remain 3,591 and 3,076 bytes, both with 0-byte deltas.
-- Next: archive and commit the task branch, then integrate it into the recorded originating `main` checkout.
-- Blockers/open decisions: none within the selected scope. The target checkout currently has unrelated changes that must be preserved during integration.
+- Status: completed and integrated on 2026-09-24.
+- Completed work and evidence: T1-T4 completed. Focused final validation passed 8 files and 104 tests with injected subagent authority cleared; the bundled Strategist definition check, `pnpm run typecheck`, `pnpm run check:runtime`, and root `git diff --check` also passed. Root and Team Lead composed prompt sizes remain 3,591 and 3,076 bytes, both with 0-byte deltas. Task commit `a1ee7e39` was merged into recorded target `main` by merge commit `783fafa0`; the archived spec is present and the active plan is absent.
+- Next: none.
+- Blockers/open decisions: none.
 - Verification limits: attached-client behavior, live provider caching, and model adherence were not measured. An extra broad registry test could not find an authenticated Codex Sol model; the agreed bundled authority check passed separately.
 
 ## Closeout
