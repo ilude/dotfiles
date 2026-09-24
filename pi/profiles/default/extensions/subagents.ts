@@ -7,7 +7,7 @@ import { loadDefinitions, resolveAgentEffort, resolveModel, EFFORTS, type AgentD
 import { VisibleChild } from "../lib/subagents/visible.ts";
 import { getSubagentRuntime, retireSubagentRuntime, resetSubagentRuntime, SUBAGENT_RUNTIME_RESET, type Delivery } from "../lib/subagents/runtime.ts";
 import { outcomeText } from "../lib/subagents/status.ts";
-import { presentationDetails, progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
+import { parentVisibleRecord, presentationDetails, progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
 import { dispatchOperation, withDispatchMetadata } from "../lib/subagents/control-result.ts";
 import type { MessageOptions } from "../lib/subagents/transport.ts";
@@ -83,23 +83,23 @@ export default function subagents(pi:ExtensionAPI){
   const bridge=background?undefined:updates(onUpdate);
   try{
    const r=await active().launch({definition:d,instructions:p.instructions,cwd,model,effort:resolveAgentEffort(d.name,model,p.effort as AgentEffort|undefined,d.effort),skills,origin:ctx.sessionManager.getSessionId(),retained,surface,catalog:catalog.agents,modelRegistry:ctx.modelRegistry,projectTrusted,progress:bridge?.push},profile,childExt,background,signal);
-   return output(r,r.outcome==="failed");
+   return output(parentVisibleRecord(r),r.outcome==="failed");
   }finally{bridge?.stop()}
  }catch(e){return output({error:e instanceof Error?e.message:String(e)},true)}}});
- pi.registerTool({name:"subagent_control",label:"Subagent control",description:"Inspect, wait again, message, answer, finish, or cancel an owned subagent. Messages use queued native steering by default; immediate is an intentional redirect. background is accepted for compatibility and does not wait for assignment completion. Background completion automatically triggers another orchestrator turn containing the result. If a child is working, continue independent work or end the current turn and let its result resume you; do not poll. wait preserves the ability to reattach a deliberately interrupted foreground join when that result is immediately required in the current turn. It requires blockingReason and is not for routine completion. Interrupting wait stops only the wait. cancel stops owned work. Progress is UI-only.",parameters:Type.Object({action:Type.Union([Type.Literal("inspect"),Type.Literal("wait"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("escalate"),Type.Literal("finish"),Type.Literal("cancel")]),id:Type.Optional(Type.String()),message:Type.Optional(Type.String()),blockingReason:Type.Optional(Type.String({description:"Required for wait. Explain why this interrupted foreground join must resume now, why no useful independent work remains, and why automatic resumption after returning control is unsuitable."})),delivery:Type.Optional(Type.Union([Type.Literal("queued"),Type.Literal("immediate")])),interaction:Type.Optional(Type.Union([Type.Literal("notify"),Type.Literal("request")])),protocol:Type.Optional(Type.Literal("question-answer")),replyTo:Type.Optional(Type.String()),background:Type.Optional(Type.Boolean()),consume:Type.Optional(Type.Boolean())}),renderCall:renderSubagentControlCall,renderResult:renderSubagentResult,async execute(_id,p,signal,onUpdate,ctx){try{
+ pi.registerTool({name:"subagent_control",label:"Subagent control",description:"Inspect, wait again, message, answer, finish, or cancel an owned subagent. The id parameter accepts a returned subagentId (also exposed as legacy id); session_messages and native analytics use the returned sessionId. Messages use queued native steering by default; immediate is an intentional redirect. background is accepted for compatibility and does not wait for assignment completion. Background completion automatically triggers another orchestrator turn containing the result. If a child is working, continue independent work or end the current turn and let its result resume you; do not poll. wait preserves the ability to reattach a deliberately interrupted foreground join when that result is immediately required in the current turn. It requires blockingReason and is not for routine completion. Interrupting wait stops only the wait. cancel stops owned work. Progress is UI-only.",parameters:Type.Object({action:Type.Union([Type.Literal("inspect"),Type.Literal("wait"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("escalate"),Type.Literal("finish"),Type.Literal("cancel")]),id:Type.Optional(Type.String({description:"A returned subagentId (legacy id is also accepted), display name, or unique prefix. This is not the native sessionId."})),message:Type.Optional(Type.String()),blockingReason:Type.Optional(Type.String({description:"Required for wait. Explain why this interrupted foreground join must resume now, why no useful independent work remains, and why automatic resumption after returning control is unsuitable."})),delivery:Type.Optional(Type.Union([Type.Literal("queued"),Type.Literal("immediate")])),interaction:Type.Optional(Type.Union([Type.Literal("notify"),Type.Literal("request")])),protocol:Type.Optional(Type.Literal("question-answer")),replyTo:Type.Optional(Type.String()),background:Type.Optional(Type.Boolean()),consume:Type.Optional(Type.Boolean())}),renderCall:renderSubagentControlCall,renderResult:renderSubagentResult,async execute(_id,p,signal,onUpdate,ctx){try{
   const owner=ctx.sessionManager.getSessionId();
   if(p.action==="inspect"){
-   if(!p.id)return output(active().list(owner));
+   if(!p.id)return output(active().list(owner).map(parentVisibleRecord));
    const record=active().get(p.id,owner).snapshot();
    if(p.consume&&record.status!=="running")active().acknowledgeRecord(owner,record.id);
-   return output(record);
+   return output(parentVisibleRecord(record));
   }
   if(!p.id)throw new Error(`${p.action} requires id or name`);
   const c=active().get(p.id,owner);
   if(p.action==="wait"){
    if(!p.blockingReason?.trim())throw new Error("subagent_control wait requires blockingReason");
    const bridge=updates(onUpdate),unsubscribe=active().subscribe(p.id,owner,bridge.push),refresh=setInterval(()=>bridge.push(c.snapshot()),1000);refresh.unref();
-   try{return output(await active().wait(p.id,owner,signal))}finally{clearInterval(refresh);unsubscribe();bridge.stop()}
+   try{return output(parentVisibleRecord(await active().wait(p.id,owner,signal)))}finally{clearInterval(refresh);unsubscribe();bridge.stop()}
   }
   if(c.record.userOwned&&p.action!=="escalate")throw new Error("Parent control is suspended during direct user intervention; the user can use /subagents cancel");
   if(p.action==="message"){
@@ -110,7 +110,7 @@ export default function subagents(pi:ExtensionAPI){
   else if(p.action==="answer"){if(!p.message)throw new Error("answer requires text");await c.answer(p.message,p.replyTo)}
   else if(p.action==="cancel")await c.cancel();else if(p.action==="finish")await c.finish();else if(p.action==="escalate")await c.escalate(ctx);
   const snapshot=c.snapshot();
-  return output(p.action==="message"||p.action==="answer" ? withDispatchMetadata(snapshot,dispatchOperation(p.action,p.replyTo)) : snapshot);
+  return output(parentVisibleRecord(p.action==="message"||p.action==="answer" ? withDispatchMetadata(snapshot,dispatchOperation(p.action,p.replyTo)) : snapshot));
  }catch(e){throw new Error(e instanceof Error?e.message:String(e))}}});
  registerProfileCommand(pi,"subagents",{description:"Inspect, wait for, or cancel subagents without relaunching",handler:async(args,ctx)=>{
   const [cmd="inspect",id]=args.trim().split(/\s+/),owner=ctx.sessionManager.getSessionId();
@@ -127,7 +127,7 @@ export default function subagents(pi:ExtensionAPI){
     try{await Promise.race([pending,dialog]);}finally{abort.abort();dialogAbort.abort();await pending;}
    }else if(cmd&&cmd!=="inspect"&&cmd!=="cancel")throw new Error("Use /subagents inspect [id-or-name], wait <id-or-name>, or cancel <id-or-name>");
    else if(cmd==="cancel")throw new Error("cancel requires id");
-   ctx.ui.notify(JSON.stringify(id?active().get(id,owner).snapshot():active().list(owner),null,2),"info");
+   ctx.ui.notify(JSON.stringify(id?parentVisibleRecord(active().get(id,owner).snapshot()):active().list(owner).map(parentVisibleRecord),null,2),"info");
   }catch(error){ctx.ui.notify(String(error),"error")}
  }});
  registerProfileCommand(pi,"subagent-return",{description:"Return an intervened visible child to parent control",handler:async(args,ctx)=>{const c=active().get(args.trim(),ctx.sessionManager.getSessionId());if(!(c instanceof VisibleChild))throw new Error("Only visible children have direct user handback");c.handback();ctx.ui.notify(`Returned ${c.record.displayName??c.record.id} to parent control`,"info")}});

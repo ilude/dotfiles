@@ -1,0 +1,5 @@
+worktree=C:/Users/mglenn/.dotfiles/.worktrees/flexible-writer-role
+branch=workflow/flexible-writer-role
+target_checkout=C:/Users/mglenn/.dotfiles
+target_branch=main
+origin_head=5f642f74a745eb19fe6fad8b0a682b30004d5f78

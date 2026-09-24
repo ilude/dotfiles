@@ -154,8 +154,9 @@ describe("combined subagent messaging lifecycle", () => {
         action: "answer", id: a.id, message: "[hold]", replyTo: question.id,
       });
       expect(answered.details).toMatchObject({
-        id: a.id, status: "running", dispatch: { accepted: true, operation: "answer", completion: "not-reported" },
+        subagentId: a.id, id: a.id, sessionId: expect.any(String), status: "running", dispatch: { accepted: true, operation: "answer", completion: "not-reported" },
       });
+      expect(answered.details).not.toHaveProperty("sessionFile");
       const resolution = await requestParent(parentEndpoint, { type: "heartbeat" }) as any;
       expect(resolution.delivery).toMatchObject({ deliveryKind: "question-resolution", questionResolution: { requestId: question.id, outcome: "answered" } });
       await requestParent(parentEndpoint, { type: "outcome-ack", payload: resolution.delivery.deliveryId });
@@ -168,7 +169,7 @@ describe("combined subagent messaging lifecycle", () => {
         action: "message", id: parent.id, message: "root direction while A runs", background: false,
       }, undefined, undefined, root.ctx);
       expect(directed.details).toMatchObject({
-        id: parent.id, status: "running", outcome: "partial",
+        subagentId: parent.id, id: parent.id, sessionId: expect.any(String), status: "running", outcome: "partial",
         dispatch: { accepted: true, operation: "message", completion: "not-reported" },
       });
       await waitForRecord(runtime, parent.id, { phase: "waiting-children", status: "running", outcome: "partial", result: "Earlier work remains active." });
@@ -182,9 +183,10 @@ describe("combined subagent messaging lifecycle", () => {
       await waitForRecord(runtime, b.id, { status: "settled", result: "second answer", exchangeKind: "follow-up" });
       const inspected = await controls.subagent_control.execute("inspect", { action: "inspect", id: b.id });
       expect(inspected.details).toMatchObject({
-        result: "second answer", exchangeKind: "follow-up",
+        subagentId: b.id, id: b.id, sessionId: expect.any(String), result: "second answer", exchangeKind: "follow-up",
         originalAssignment: { result: "first answer", outcome: "complete", assignment: "initial retained worker" },
       });
+      expect(inspected.details).not.toHaveProperty("sessionFile");
       const originalCopy = inspected.details.originalAssignment;
       originalCopy.result = "mutated response copy";
       expect(runtime.get(b.id).snapshot().originalAssignment?.result).toBe("first answer");
@@ -216,9 +218,10 @@ describe("combined subagent messaging lifecycle", () => {
       expect(final.processState).toBe("running");
 
       // Root's native delivery contains the final result and original snapshot.
-      const parentMessage = rootMessages.find(message => message.customType === "subagent-result" && message.details?.id === parent.id);
-      expect(parentMessage?.details).toMatchObject({ outcome: "complete", result: "second answer", originalAssignment: { result: "second answer" } });
+      const parentMessage = rootMessages.find(message => message.customType === "subagent-result" && message.details?.subagentId === parent.id);
+      expect(parentMessage?.details).toMatchObject({ subagentId: parent.id, id: parent.id, sessionId: expect.any(String), outcome: "complete", result: "second answer", originalAssignment: { result: "second answer" } });
       expect(parentMessage?.details.result).not.toContain("Earlier work remains active.");
+      expect(parentMessage?.details).not.toHaveProperty("sessionFile");
       const pendingBeforeAck = (runtime as any).pending as Map<string, unknown>;
       const parentDeliveryId = parentMessage.details.deliveryId;
       await root.handlers.message_end({ message: { role: "custom", customType: "subagent-result", details: { origin, deliveryId: parentDeliveryId } } }, root.ctx);

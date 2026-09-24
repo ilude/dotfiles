@@ -8,7 +8,7 @@ import { PROFILE_IDS, runtimeProfiles, type ProfileRegistry } from "../lib/log-a
 
 export const SESSION_PROFILE_ENTRY = "session-profile";
 export const sessionMessagesSchema = Type.Object({
-	session_id: Type.String({ minLength: 1, maxLength: 256 }),
+	session_id: Type.String({ minLength: 1, maxLength: 256, description: "Native Pi sessionId, including the sessionId returned for a subagent. Do not use subagentId here." }),
 	profile: Type.Optional(StringEnum(PROFILE_IDS)),
 }, { additionalProperties: false });
 export type SessionMessagesToolInput = Static<typeof sessionMessagesSchema>;
@@ -21,7 +21,7 @@ export function registerSessionMessages(
 	pi.registerTool({
 		name: "session_messages",
 		label: "Session Messages",
-		description: "Project one registered Pi session to an extension-owned temporary JSONL file containing user and assistant/model messages only. Omit profile to use the active registered profile. Malformed body lines are skipped; the operation is cancellable.",
+		description: "Project one registered Pi session to an extension-owned temporary JSONL file containing user and assistant/model messages only. session_id is the native Pi sessionId, not a subagentId. Omit profile to use the active registered profile. Malformed body lines are skipped; the operation is cancellable.",
 		parameters: sessionMessagesSchema,
 		async execute(_id, params, signal) {
 			if (!Check(sessionMessagesSchema, params)) throw new Error("invalid session_messages arguments");

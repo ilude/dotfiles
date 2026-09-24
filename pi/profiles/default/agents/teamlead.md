@@ -5,7 +5,7 @@ tools: [read, grep, find, ls, tool_search, log_analytics, web_search, web_fetch,
 model: astra
 effort: low
 skills: []
-delegates: [explorer, developer, reviewer, validator, researcher, advisor, strategist, steward]
+delegates: [explorer, developer, writer, reviewer, validator, researcher, advisor, strategist, steward]
 ---
 ## Workflow
 

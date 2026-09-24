@@ -12,13 +12,17 @@ const STEWARD_GUIDANCE = `Consult \`subagent\` with \`agent: "steward"\` when a 
 
 Do not consult Steward before starting requested implementation, including user-authorized fixes from a code review. Do not send it implementation plans, task decomposition, or the orchestrator's own investigation. Handle corrections directly when the evidence proves the correction. Reuse its assessment for the same finding.`;
 
+const WRITING_GUIDANCE = `Reviewer and validator are read-only: use them for evidence-based findings returned through their normal results, never filesystem output. You correlate and integrate results unless synthesis is explicitly assigned. Use writer when the delegated outcome is a prose artifact; give a natural-language brief and applicable skills as useful suggestions, not required fields. Do not repeat established synthesis just to write it. Preserve disjoint write ownership.`;
+
 const CALLER_GUIDANCE = `## Delegation guidance
 
 Consult \`subagent\` with \`agent: "strategist"\` for implementation-plan execution or user-authorized work suited to parallel subagents or Team Leads. Delegate a standalone job to a single subagent or Team Lead only when the user explicitly requests it or delegation conserves context; explain the context-conservation reason when applicable, and skip the Strategist consultation in either case. Otherwise work directly, including when Strategist recommends one worker without an exception. An explicit single-agent handoff also bypasses consultation when handing off plan work. When the user requests delegation while you continue another discussion, launch the requested agent in the background and continue the discussion.
 
 ${STEWARD_GUIDANCE}
 
-Assign at most one named plan task per subagent; split larger tasks further. Run ready independent assignments concurrently with disjoint write ownership. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
+${WRITING_GUIDANCE}
+
+Assign at most one named plan task per subagent; split larger tasks further. Run ready independent assignments concurrently. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
 
 function coordinatorGuidance(taskSizing = "Assign at most one named plan task per subagent; split larger tasks into independently verifiable outcomes."): string {
   return `## Delegation guidance
@@ -32,7 +36,9 @@ Recommend direct execution when delegation adds no value, one worker for a bound
 
 Use catalog defaults unless evidence warrants an override. Luna low/medium/high fits well-defined work; Luna xhigh or Sol low fits unresolved choices or interacting interfaces. Astra low is for cross-system decisions, competing interpretations, or repeated failed assignments. Luna Strategist requires at least high effort. Steward uses Luna high/xhigh; Sol or Astra for Steward requires prior user approval. Astra above high is user-selected only.`;
 
-const TEAMLEAD_GUIDANCE = `## Steward
+const TEAMLEAD_GUIDANCE = `${WRITING_GUIDANCE}
+
+## Steward
 
 ${STEWARD_GUIDANCE}
 

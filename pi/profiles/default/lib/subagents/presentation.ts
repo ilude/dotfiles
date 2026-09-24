@@ -307,9 +307,15 @@ export function renderSubagentResult(result: any, options: { expanded?: boolean;
   return new Text(theme.fg(context?.isError ? "error" : "muted", bounded(text, RESULT_LIMIT)), 0, 0);
 }
 
-export function presentationDetails(record: Partial<ChildRecord>): Record<string, unknown> {
+export function parentVisibleRecord(record: ChildRecord & { dispatch?: DispatchMetadata }): Record<string, unknown> & { subagentId: string; id: string } {
+  return presentationDetails(record);
+}
+
+export function presentationDetails(record: ChildRecord & { dispatch?: DispatchMetadata }): Record<string, unknown> & { subagentId: string; id: string } {
   return {
+    subagentId: record.id,
     id: record.id,
+    ...(typeof record.sessionId === "string" ? { sessionId: record.sessionId } : {}),
     displayName: record.displayName,
     agent: record.agent,
     outcome: record.outcome,
@@ -344,6 +350,7 @@ export function presentationDetails(record: Partial<ChildRecord>): Record<string
     paneState: record.paneState,
     launcherState: record.launcherState,
     questionResolution: record.questionResolution,
+    dispatch: record.dispatch,
   };
 }
 
@@ -379,6 +386,6 @@ export function renderSubagentMessage(message: any, options: { expanded?: boolea
   return container;
 }
 
-export function progressResult(record: ChildRecord): { content: Array<{ type: "text"; text: string }>; details: ChildRecord } {
-  return { content: [{ type: "text", text: `${identity(record)} · ${activeDescription(record)} · ${assignmentTiming(record)}` }], details: record };
+export function progressResult(record: ChildRecord): { content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> & { subagentId: string; id: string } } {
+  return { content: [{ type: "text", text: `${identity(record)} · ${activeDescription(record)} · ${assignmentTiming(record)}` }], details: parentVisibleRecord(record) };
 }

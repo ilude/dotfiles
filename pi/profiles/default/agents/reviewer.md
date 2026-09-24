@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Independent evidence-based review
+description: Read-only independent review; return evidence-based findings
 tools: [read, grep, find, ls, bash, tool_search, log_analytics, web_search, web_fetch, subagent_parent]
 model: sol
 effort: low

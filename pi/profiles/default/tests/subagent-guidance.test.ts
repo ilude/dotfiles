@@ -10,13 +10,15 @@ function definition(name: string, extra: Partial<AgentDefinition> = {}): AgentDe
 }
 
 const leaf = definition("leaf", { model: "provider/leaf" });
+const reviewer = definition("reviewer", { description: "Read-only independent review; return evidence-based findings" });
+const writer = definition("writer", { description: "Writable prose authoring for documents and other text artifacts" });
 const noDefault = definition("no_default");
 const coordinator = definition("coordinator", { delegates: ["leaf"] });
 const strategist = definition("strategist", { model: "provider/strategist", effort: "high" });
 const steward = definition("steward", { description: "Post-implementation triage of reviewer/validator agent findings: assess whether additional work is warranted or would create scope drift or fix churn. Not for planning or pre-implementation assessment.", model: "openai-codex/gpt-5.6-luna", effort: "high" });
 const teamlead = definition("teamlead", { delegates: ["leaf", "steward"] });
 const council = definition("council", { delegates: ["leaf"] });
-const entries = [["strategist", strategist], ["steward", steward], ["no_default", noDefault], ["coordinator", coordinator], ["leaf", leaf], ["teamlead", teamlead], ["council", council]] as const;
+const entries = [["strategist", strategist], ["steward", steward], ["no_default", noDefault], ["coordinator", coordinator], ["leaf", leaf], ["reviewer", reviewer], ["writer", writer], ["teamlead", teamlead], ["council", council]] as const;
 const definitions = new Map(entries);
 
 describe("delegation guidance", () => {
@@ -40,6 +42,14 @@ describe("delegation guidance", () => {
     expect(first).toContain("let the result resume you");
     expect(first).toContain("Use subagent_control for retained conversations and answers.");
     expect(first).toContain("Treat notifications as evidence, not receipts.");
+    expect(first).toContain("Reviewer and validator are read-only");
+    expect(first).toContain("returned through their normal results");
+    expect(first).toContain("You correlate and integrate results unless synthesis is explicitly assigned");
+    expect(first).toContain("Use writer when the delegated outcome is a prose artifact");
+    expect(first).toContain("natural-language brief and applicable skills as useful suggestions, not required fields");
+    expect(first).toContain("Do not repeat established synthesis just to write it");
+    expect(first).toContain("- reviewer:");
+    expect(first).toContain("- writer:");
     expect(first.endsWith(CALLER_GUIDANCE_SUFFIX)).toBe(true);
     expect(Buffer.byteLength(first)).toBe(Buffer.byteLength(composeCallerSystemPrompt("inherited instructions", definitions)));
   });
@@ -82,6 +92,8 @@ describe("delegation guidance", () => {
     expect(guidance.length).toBeLessThan(1500);
     expect(text).toContain("at most one named plan task per subagent");
     expect(text).toContain("Run ready independent assignments concurrently");
+    expect(text).toContain("Reviewer and validator are read-only");
+    expect(text).toContain("Use writer when the delegated outcome is a prose artifact");
     expect(text).not.toContain("Mark task splits or dependency corrections");
     expect(text).not.toContain("reuse its advice for related assignments");
     expect(text).not.toContain("Delegate only for bounded implementation, parallel investigation, specialist research, or requested independent review; otherwise work directly.");
@@ -108,8 +120,8 @@ describe("delegation guidance", () => {
       expect(prompt).not.toContain("herdr --skill");
     }
     // The root uses a fixed stand-in for Pi's runtime-owned inherited system prompt.
-    expect(Buffer.byteLength(root)).toBe(3591);
-    expect(Buffer.byteLength(teamLeadPrompt)).toBe(3076);
+    expect(Buffer.byteLength(root)).toBeLessThan(4500);
+    expect(Buffer.byteLength(teamLeadPrompt)).toBeLessThan(3900);
     const skill = readFileSync(new URL("../skills/herdr/SKILL.md", import.meta.url), "utf8");
     const description = /^description: (.+)$/m.exec(skill)?.[1];
     expect(description).toContain("owned subagent controls cannot reach a visible agent or pane");
@@ -133,13 +145,18 @@ describe("delegation guidance", () => {
       expect(text).toContain("Do not send it implementation plans, task decomposition, or the orchestrator's own investigation");
       expect(text).toContain("Handle corrections directly when the evidence proves the correction");
       expect(text).toContain("Reuse its assessment for the same finding");
+      expect(text).toContain("Reviewer and validator are read-only");
+      expect(text).toContain("You correlate and integrate results unless synthesis is explicitly assigned");
+      expect(text).toContain("Use writer when the delegated outcome is a prose artifact");
+      expect(text).toContain("natural-language brief and applicable skills as useful suggestions, not required fields");
+      expect(text).toContain("Do not repeat established synthesis just to write it");
       expect(text).not.toContain("routine pre-implementation");
       expect(text).not.toContain("before assigning follow-up work");
       expect(text).not.toContain("unexpected agreed check or deployment outcome");
       expect(text).not.toContain("another MR, build, or deploy cycle");
     }
-    // Full bundled caller context is about 3.6 KB including inherited test text.
-    expect(Buffer.byteLength(caller)).toBeLessThan(3800);
+    // Bound the composed caller while allowing the consolidated role guidance.
+    expect(Buffer.byteLength(caller)).toBeLessThan(4500);
   });
 
   it("gives Strategists and generic coordinators active decomposition guidance", () => {
@@ -188,8 +205,8 @@ describe("delegation guidance", () => {
     const role = catalog.agents.get("teamlead");
     if (!role) throw new Error("Missing bundled Team Lead");
     const text = composedAgentPrompt(role, catalog.agents);
-    // Shared Steward source/intent boundaries add context while keeping the full prompt bounded.
-    expect(Buffer.byteLength(text)).toBeLessThan(3400);
+    // Shared Steward and writing boundaries add context while keeping the full prompt bounded.
+    expect(Buffer.byteLength(text)).toBeLessThan(3900);
     expect(text).toContain("Commission a Strategist");
     expect(text).toContain("one or more additional subagents");
     expect(text).toContain("consult the Strategist again");
@@ -205,6 +222,13 @@ describe("delegation guidance", () => {
     expect(text).not.toContain("Use Sol low for Strategist");
     expect(text).not.toContain("Sol or Astra for Steward");
     expect(text).not.toContain("independent openings");
+    const caller = composeCallerSystemPrompt("inherited instructions", catalog.agents);
+    expect(caller).toContain("Reviewer and validator are read-only");
+    expect(caller).toContain("You correlate and integrate results unless synthesis is explicitly assigned");
+    expect(caller).toContain("Use writer when the delegated outcome is a prose artifact");
+    expect(caller).toContain("Do not repeat established synthesis just to write it");
+    expect(caller).toContain("- writer: Writable prose authoring");
+    expect(caller).toContain("- reviewer: Read-only independent review");
   });
 
   it("gives Council only deliberation guidance and its permitted catalog", () => {
