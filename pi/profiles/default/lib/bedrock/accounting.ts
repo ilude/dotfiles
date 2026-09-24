@@ -32,14 +32,15 @@ function annotate(message: any, record: UsageRecord): any {
 export async function accountBedrockMessage(message: any, session?: string, onError?: () => void): Promise<BedrockAccountingResult | undefined> {
 	if (!isBedrockAssistantMessage(message)) return undefined;
 	const target = message.responseModel || (message.provider === "amazon-bedrock" ? message.model : undefined);
+	const runtime = message.provider === "amazon-bedrock" || message.api === "bedrock-converse-stream";
 	const record = makeRecord({
 		timestamp: message.timestamp,
 		session,
 		provider: message.provider,
 		model: message.model,
 		target,
-		transport: message.provider === "amazon-bedrock" ? "runtime" : target?.startsWith("openai.") ? "mantle-openai" : "mantle-anthropic",
-		region: message.provider === "bedrock-mantle" ? resolveBedrockMantleTarget().region : undefined,
+		transport: runtime ? "runtime" : target?.startsWith("openai.") ? "mantle-openai" : "mantle-anthropic",
+		region: runtime ? undefined : resolveBedrockMantleTarget().region,
 		usage: message.usage,
 	});
 	let persisted = true;

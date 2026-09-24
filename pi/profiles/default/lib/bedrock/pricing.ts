@@ -1,7 +1,8 @@
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
+import { VERSION } from "@earendil-works/pi-coding-agent";
 import { loadPricingEntries, type PricingRates } from "./pricing-store.js";
 
-export interface TokenUsage { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+export interface TokenUsage { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cacheWrite1h?: number }
 export interface PriceResult {
 	status: "estimated" | "unpriced";
 	basis: string;
@@ -13,7 +14,7 @@ export interface PriceResult {
 	total?: number;
 }
 
-export const PRICING_BASIS = "pi-0.85.0-catalog+mantle-aliases@2026-09-11";
+export const PRICING_BASIS = `pi-${VERSION}-catalog+mantle-aliases@2026-09-11`;
 export const RESEARCHED_PRICING_BASIS = "aws-bedrock-research";
 export const PRICING_SOURCE = "https://aws.amazon.com/bedrock/pricing/";
 
@@ -56,11 +57,15 @@ export function estimateUsage(targetId: string | undefined, usage: TokenUsage): 
 	} : undefined);
 	if (!rates) return { status: "unpriced", basis: PRICING_BASIS, reason: `no catalog price or researched AWS price for ${targetId}` };
 	const n = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+	// Pi reports one-hour writes as a subset of cacheWrite, not extra tokens.
+	// Match its Claude pricing: one-hour writes cost twice the base input rate.
+	const longWrite = Math.min(n(usage.cacheWrite1h), n(usage.cacheWrite));
+	const shortWrite = n(usage.cacheWrite) - longWrite;
 	const components = {
 		input: n(usage.input) * rates.input / 1_000_000,
 		output: n(usage.output) * rates.output / 1_000_000,
 		cacheRead: n(usage.cacheRead) * rates.cacheRead / 1_000_000,
-		cacheWrite: n(usage.cacheWrite) * rates.cacheWrite / 1_000_000,
+		cacheWrite: (shortWrite * rates.cacheWrite + longWrite * rates.input * 2) / 1_000_000,
 	};
 	return {
 		status: "estimated",

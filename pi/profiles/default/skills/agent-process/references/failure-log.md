@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-068 - Requested cache default left pending reconfirmation
+
+- **Reference:** Default-profile Mantle accounting discussion, 2026-09-24, session `01a0d39b-3fb2-73a0-825d-761f5467d6d4`.
+- **Observed:** The operator specified five-minute cache writes while approving the accounting fix. The orchestrator fixed accounting but asked for confirmation of the default and then reported it as pending. The operator had to repeat the requested default.
+- **Finding:** The orchestrator treated the requested behavior as an unresolved proposal. Existing scope and intent guidance applied; no additional approval rule was needed.
+- **Related:** APR-064 (corrections did not carry through to the next action); APR-066 (confusing requested work with proposals).
+- **Remediation:** Changed both PowerShell and zsh defaults to `short`, preserving explicit overrides. Syntax and default/override checks passed. Existing Pi processes must be relaunched with the updated environment. No instruction changes.
+
 ## APR-067 - Scheduler report dismissed through an implementation distinction
 
 - **Reference:** Operator's `/branch` investigation, parent `01a0d0ff-07f9-7739-bb4e-0e734f51921d`, child `01a0d130-1fff-745d-92a0-33d5ae7cac9e`.

@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendRecord, createBaseline, formatStatus, formatUsage, makeRecord, readBaseline, readRecords, summarize } from "../lib/bedrock/ledger.ts";
 import { parseCaller, parseResults } from "../lib/bedrock/cloudwatch-snapshot.ts";
-import { estimateUsage } from "../lib/bedrock/pricing.ts";
+import { estimateUsage, PRICING_BASIS } from "../lib/bedrock/pricing.ts";
+import { accountBedrockMessage } from "../lib/bedrock/accounting.ts";
+import { VERSION } from "@earendil-works/pi-coding-agent";
 
 const dirs: string[] = [];
 afterEach(() => { vi.unstubAllEnvs(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -25,6 +27,48 @@ describe("Bedrock accounting", () => {
 		expect(price.catalogTarget).toBe(catalogTarget);
 		expect(price.components).toEqual({ input: rates[0], output: rates[1], cacheRead: rates[2], cacheWrite: rates[3] });
 		expect(price.total).toBeCloseTo(rates.reduce((sum, rate) => sum + rate, 0));
+	});
+	it.each([
+		["anthropic.claude-opus-5-5", undefined, 5],
+		["anthropic.claude-opus-5-5", 0, 5],
+		["anthropic.claude-opus-5-5", 400_000, 6.2],
+		["anthropic.claude-opus-5-5", 1_000_000, 8],
+		["us.anthropic.claude-opus-5-5", 400_000, 6.82],
+	] as const)("prices reported cache writes for %s (%s one-hour tokens)", (target, cacheWrite1h, expected) => {
+		vi.stubEnv("PI_CACHE_RETENTION", "long");
+		const price = estimateUsage(target, { cacheWrite: 1_000_000, cacheWrite1h });
+		expect(price.components?.cacheWrite).toBeCloseTo(expected);
+		expect(price.total).toBeCloseTo(expected);
+		expect(price.basis).toBe(PRICING_BASIS);
+		expect(price.basis).toContain(`pi-${VERSION}-catalog`);
+	});
+	it("preserves reported one-hour writes through accounting, persistence and reporting", async () => {
+		temp();
+		const result = await accountBedrockMessage({
+			role: "assistant", provider: "bedrock-mantle", api: "anthropic-messages",
+			model: "anthropic.claude-opus-5-5", responseModel: "anthropic.claude-opus-5-5",
+			timestamp: Date.now(), usage: { cacheWrite: 1_000_000, cacheWrite1h: 400_000 },
+		}, "cache-session");
+		expect(result?.persisted).toBe(true);
+		expect(result?.message.usage.cost.cacheWrite).toBeCloseTo(6.2);
+		const [record] = await readRecords();
+		expect(record.usage.cacheWrite1h).toBe(400_000);
+		expect(record.usage.cacheWrite).toBe(1_000_000);
+		const summary = await summarize(record.month);
+		expect(summary.cost).toBeCloseTo(6.2);
+		expect(formatUsage(summary)).toContain("$6.20");
+	});
+	it.each([
+		["amazon-bedrock", "bedrock-converse-stream", "us.anthropic.claude-opus-5-5", "runtime"],
+		["bedrock-mantle", "bedrock-converse-stream", "us.anthropic.claude-opus-5-5", "runtime"],
+		["bedrock-mantle", "anthropic-messages", "anthropic.claude-opus-5-5", "mantle-anthropic"],
+		["bedrock-mantle", "openai-responses", "openai.gpt-5.6-luna", "mantle-openai"],
+	])("labels %s %s accounting by its transport", async (provider, api, target, transport) => {
+		temp();
+		vi.stubEnv("BEDROCK_MANTLE_REGION", "us-west-2");
+		const result = await accountBedrockMessage({ role: "assistant", provider, api, model: target, responseModel: target, usage: { input: 10 } });
+		expect(result?.record.transport).toBe(transport);
+		expect(result?.record.region).toBe(transport === "runtime" ? undefined : "us-west-2");
 	});
 	it("does not infer unknown releases, regional aliases, or missing targets", () => {
 		for (const target of ["anthropic.claude-opus-99", "eu.anthropic.claude-haiku-4-5", undefined]) {

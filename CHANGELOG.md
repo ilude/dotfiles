@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-24: Correct Bedrock one-hour cache-write estimates
+
+**Fixed:** New Bedrock observations preserve the reported one-hour cache-write token subset and price it separately, rather than charging every cache write at the five-minute rate. Five-minute pricing is unchanged, and estimates use reported tokens rather than guessing from the current retention setting. Existing ledger estimates and the baseline remain unchanged; older observations lack the duration split needed for a correction. Runtime responses routed through the consolidated provider are now labeled Runtime without inheriting Mantle's region. Pricing provenance records the running Pi version instead of the stale 0.85.0 label. PowerShell and zsh now default `PI_CACHE_RETENTION` to `short` (five minutes for Claude), preserving explicit environment overrides. Existing processes retain their inherited value until relaunched with `short`.
+
 ## 2026-09-24: Fix strict tool rejection on Bedrock Mantle Claude
 
 **Fixed:** Bedrock Mantle Claude requests no longer advertise Anthropic's native strict-tool field, which the Mantle endpoint rejects with `tools.0.custom.strict: Extra inputs are not permitted`. Strict tools remain enabled for native Anthropic routes that support them.

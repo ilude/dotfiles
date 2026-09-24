@@ -10,7 +10,7 @@ export const BASELINE_FILE = "bedrock-cost-baseline.json";
 export interface UsageRecord {
 	id: string; timestamp: string; month: string; session?: string;
 	provider: string; model: string; target?: string; transport: string; region?: string;
-	usage: Required<TokenUsage>; pricing: PriceResult;
+	usage: Required<Omit<TokenUsage, "cacheWrite1h">> & Pick<TokenUsage, "cacheWrite1h">; pricing: PriceResult;
 }
 export interface CostBaseline {
 	schemaVersion: 1; month: string; principal: string; amount: number; invocations: number;
@@ -24,7 +24,8 @@ const finite = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v 
 
 export function makeRecord(input: { timestamp?: number; session?: string; provider: string; model: string; target?: string; transport?: string; region?: string; usage: TokenUsage }): UsageRecord {
 	const timestamp = new Date(input.timestamp ?? Date.now());
-	const usage = { input: finite(input.usage.input), output: finite(input.usage.output), cacheRead: finite(input.usage.cacheRead), cacheWrite: finite(input.usage.cacheWrite) };
+	const usage: UsageRecord["usage"] = { input: finite(input.usage.input), output: finite(input.usage.output), cacheRead: finite(input.usage.cacheRead), cacheWrite: finite(input.usage.cacheWrite) };
+	if (input.usage.cacheWrite1h !== undefined) usage.cacheWrite1h = Math.min(finite(input.usage.cacheWrite1h), usage.cacheWrite);
 	const identity = `${input.session ?? "ephemeral"}|${timestamp.getTime()}|${input.provider}|${input.model}|${input.target ?? ""}`;
 	return { id: createHash("sha256").update(identity).digest("hex").slice(0, 24), timestamp: timestamp.toISOString(), month: monthKey(timestamp), session: input.session, provider: input.provider, model: input.model, target: input.target, transport: input.transport ?? (input.provider === "amazon-bedrock" ? "runtime" : "unknown"), region: input.region, usage, pricing: estimateUsage(input.target ?? (input.provider === "amazon-bedrock" ? input.model : undefined), usage) };
 }
