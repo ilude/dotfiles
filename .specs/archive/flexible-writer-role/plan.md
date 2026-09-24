@@ -1,7 +1,7 @@
 ---
 created: 2026-09-24
-status: ready
-completed: null
+status: completed
+completed: 2026-09-24
 ---
 
 # Add a flexible writer role and clarify synthesis and subagent identity
@@ -189,9 +189,9 @@ Keep checkbox state, concise evidence, current blockers, and the next action acc
 
 ## Agreed validation and current handoff
 
-- Status: implementation and agent-owned validation complete; integration pending.
-- Completed work and evidence: T1-T5 are implemented in `C:/Users/mglenn/.dotfiles/.worktrees/flexible-writer-role` on `workflow/flexible-writer-role`. Focused behavior, typecheck, runtime smoke, and diff checks are recorded above.
-- Next: archive and commit the spec with implementation, merge to the recorded originating `main`, commit completion metadata, and remove the clean task worktree.
+- Status: completed and integrated on 2026-09-24.
+- Completed work and evidence: T1-T5 were implemented in `C:/Users/mglenn/.dotfiles/.worktrees/flexible-writer-role`; task commit `e462eefc` was integrated into recorded target `main` through merge commit `bdef99d6`. Focused behavior, typecheck, runtime smoke, and diff checks are recorded above.
+- Closeout: the archived spec and implementation are present on `main`; the active spec copy was removed. The changelog entry was staged separately with completion metadata so the originating checkout's unrelated changelog work remained uncommitted and preserved.
 - Blockers/open decisions: none. The focused suite's sole failing Sol-default fixture is reproduced unchanged on originating `main` and is not task-related.
 - Verification limits: static and lifecycle tests establish composition, serialized identity fields, and authority declarations. They do not prove live model adherence, writing quality across every artifact type, or registration in an unrelated analytics profile.
 
