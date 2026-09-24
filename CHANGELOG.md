@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-24: Fix strict tool rejection on Bedrock Mantle Claude
+
+**Fixed:** Bedrock Mantle Claude requests no longer advertise Anthropic's native strict-tool field, which the Mantle endpoint rejects with `tools.0.custom.strict: Extra inputs are not permitted`. Strict tools remain enabled for native Anthropic routes that support them.
+
 ## 2026-09-24: Pin default Pi Sol selection to 5.6
 
 The default profile now selects authenticated Sol 5.6 for `/sol`, bare Sol model resolution, refreshed defaults, and resumed Sol conversations instead of automatically moving to newer Sol generations. Other model families retain latest-version selection. If Sol 5.6 is unavailable, automatic Sol selection does not substitute a newer version; explicit model selection remains available.

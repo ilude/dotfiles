@@ -58,6 +58,7 @@ describe("Bedrock real adapter serialization", () => {
 					expect(onPayload).toHaveBeenCalledOnce();
 					const { payload, headers, url } = captured.requests[0];
 					expect(url).toContain("/anthropic/v1/messages");
+					expect(payload.tools).not.toContainEqual(expect.objectContaining({ strict: expect.anything() }));
 					expect(headers.get("authorization")).toBe("Bearer test-token");
 					expect(headers.get("anthropic-beta") ?? "").not.toMatch(/mid-conversation-output-config|thinking-binding-controls/);
 					expectCompatibleMessages(payload);
@@ -76,6 +77,15 @@ describe("Bedrock real adapter serialization", () => {
 			}
 		}
 	}
+
+	it("omits unsupported strict tools from Mantle Anthropic requests", async () => {
+		const route = mantleRoutes.find(item => item.model.id === "anthropic.claude-sonnet-5")!;
+		const captured = captureFetch();
+		const context = structuredClone(codexHistory);
+		context.tools![0].constrainedSampling = { type: "json_schema", strict: "prefer" };
+		await createBedrockRoutingStream(async () => "test-token", () => route)(route.model, normalizeContext(context), { maxTokens: 128, fetch: captured.fetch }).result();
+		expect(captured.requests[0].payload.tools[0]).not.toHaveProperty("strict");
+	});
 
 	it("does not alter native Anthropic mid-conversation effort support", async () => {
 		const native = getBuiltinModels("anthropic").find(model => model.id === "claude-opus-5")!;

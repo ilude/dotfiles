@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-086 - Herdr-native agent control was hidden by the local subagent restriction
+
+- **Reference:** Operator question after reviewing “I Run an AI Civilization in Herdr,” 2026-09-24.
+- **Feedback:** The operator asked whether one Herdr agent can directly read and type into another agent's terminal. The assistant answered only from this profile's restricted subagent tools and said no, without first researching Herdr's actual product capability. The operator had to supply the video's 4:23–4:29 evidence and request explicit research.
+- **Finding:** Herdr officially supports agent-to-agent orchestration through `agent start`, `agent prompt`, `agent read`, `agent wait`, and `agent send-keys`, plus raw pane input. This profile deliberately withholds general Herdr tools from children and routes results through its authenticated subagent runtime. Existing local documentation states that restriction, but the answer incorrectly presented a local policy boundary as Herdr's capability. The broader design opportunity is unresolved: Herdr-native coordination could complement the subagent protocol, but raw terminal control would weaken authenticated identity, outcome, authority, and cleanup guarantees if substituted directly.
+- **Recommendation:** Explain product capability before local restrictions. Present design options and obtain operator approval before implementation.
+- **Follow-up correction:** The first recommendation immediately overdesigned a narrow authenticated bridge, ownership restrictions, staged read-only rollout, and terminal fallback semantics without establishing concrete harm in this workflow. The operator identified this as inflexible safety gating against a hypothetical threat. Start from Herdr's native agent automation surface and the requested flexible agent-to-agent operation; add restrictions only for a demonstrated problem or an explicit operator requirement. Existing structured subagent messaging can coexist without becoming a mandatory gateway.
+- **Status:** Feedback recorded; no runtime or instruction change authorized.
+
 ## Seed documentation confused runtime evidence with developer guidance (2026-09-23)
 
 - **Feedback:** Pipeline/revision snapshots, probe outcomes, generic verification caveats, implementation intent, and change-log prose made MPS/EISA docs read like running commentary rather than useful developer documentation. The operator asked for cleanup and prevention across sessions, then reported that the pattern continued despite introducing `.pi/agent-notes/`.

@@ -256,7 +256,13 @@ function mantleClaudeRoute(
 		name: `${source.name} (Mantle)`,
 		// Mantle accepts request-level effort, not Anthropic's mid-conversation
 		// output_config system messages or thinking-binding beta controls.
-		compat: { ...source.compat, supportsMidConvoEffort: false },
+		compat: {
+			...source.compat,
+			supportsMidConvoEffort: false,
+			// Mantle's Anthropic endpoint rejects the native Anthropic `strict`
+			// tool field even when the underlying model supports it.
+			supportsStrictTools: false,
+		},
 	};
 	return { model, target: model, transport: "mantle-anthropic" };
 }
