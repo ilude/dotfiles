@@ -1,9 +1,5 @@
 # Changelog
 
-## 2026-09-24: Clarify subagent writing and identity
-
-**Changed:** Added a flexible writer role for prose artifacts and clarified that reviewer and validator return read-only findings while the parent owns synthesis unless explicitly delegated. Parent-visible results now distinguish `subagentId` for control from native `sessionId` for session and analytics tools, available after child registration.
-
 ## 2026-09-24: Migrate FreeLLMAPI to a health-verified Quadlet
 
 **Changed:** FreeLLMAPI on the onramp host now uses a native rootless Podman Quadlet instead of the legacy `podman-compose` oneshot unit. The migration preserves its loopback-only port, Caddy route, BWS-owned encryption key, digest-pinned image, and persistent SQLite data. Deployment now waits for Podman's declared container health in addition to direct HTTP and HTTPS checks, preventing malformed runtime health commands from passing rollout validation. The service-state workflow now covers FreeLLMAPI data and both legacy and Quadlet definitions so the pre-cutover state can be restored.
