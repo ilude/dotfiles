@@ -1,5 +1,30 @@
 # Agent instruction feedback log
 
+## AIF-087 - Runtime ownership was mistaken for complete Herdr pane cleanup
+
+- **Reference:** Quadlet migration continuation and operator pane-cleanup request, 2026-09-24.
+- **Feedback:** The operator reported multiple orchestrators, idle subagent panes, and a working validator after the assistant claimed no idle children remained.
+- **Finding:** `subagent_control inspect` covered only children still owned by the current branch runtime. Herdr inspection showed four stale idle worker panes from the earlier Team Lead, an idle Team Lead coordinator with a live validator child, the current orchestrator, and the separate branch parent. The earlier answer incorrectly treated absence from current runtime ownership as proof of global cleanup. Current structured Herdr tools correctly refused closing stale panes because this session did not create them.
+- **Correction:** For visible cleanup questions, inspect both current subagent ownership and the live Herdr layout. Distinguish active workflows, independent orchestrators, and stale panes. Do not claim global cleanup from one runtime registry; report exact stale panes and the ownership blocker.
+- **Status:** Feedback recorded. No runtime change authorized.
+
+## AIF-088 - Keep transient pipeline measurements out of always-loaded guidance
+
+- **Reference:** Operator correction during MPS pipeline monitoring, 2026-09-24.
+- **Feedback:** Replacing one stale timing snapshot with another large benchmark block made `AGENTS.md` noisy and violated the prompting skill's ownership and context-efficiency rules.
+- **Finding:** Individual timing samples are task evidence, not durable operating policy. The useful instruction is to check a new pipeline promptly and derive later checks from its active jobs and elapsed time.
+- **Remediation:** Removed the entire snapshot section and consolidated the durable behavior into the existing GitLab status-tooling paragraph. No benchmark table or new process was retained in always-loaded guidance.
+- **Related:** AIF-032, AIF-055.
+- **Status:** Project guidance cleaned up; future adherence remains unverified.
+
+## AIF-089 - High-cost orchestrator roles and retained children need explicit lifecycle consent
+
+- **Reference:** Operator report and Herdr screenshot, 2026-09-24.
+- **Feedback:** At least twice in two days the subagent system launched Astra-level orchestrators or Astra-level Team Leads without asking. Subagents were also retained for hypothetical later conversation, rarely reused, and then left open, producing narrow unusable Herdr panes.
+- **Finding:** Current Strategist guidance permits Astra for cross-system decisions, competing interpretations, or repeated failures, while only Astra Steward and Astra above high have narrower consent rules. Ordinary Team Lead selection is not the problem and does not require operator approval. Retention defaults to false in both root and coordinator runtime paths, so the abandoned panes require explicit `retain:true`; current guidance says only to use control for retained conversations and does not require a concrete follow-up or cleanup after completion. Earlier AIF-069 recommended clarifying useful retention without a blanket ban, but the reported recurrence now establishes that speculative retention and missed cleanup remain a practical layout problem.
+- **Recommendation:** Require explicit operator approval before dispatching an Astra-model subagent, including an Astra Team Lead. Preserve ordinary Team Lead selection without an approval step. Reserve `retain:true` for a named, expected follow-up in the current workflow; otherwise use normal non-retained completion. After consuming a retained child's result, either perform that follow-up or finish the child before closeout. Keep retention available when the operator or workflow actually needs an ongoing conversation.
+- **Status:** Feedback recorded; instruction/runtime changes require operator approval.
+
 ## AIF-086 - Herdr-native agent control was hidden by the local subagent restriction
 
 - **Reference:** Operator question after reviewing “I Run an AI Civilization in Herdr,” 2026-09-24.
