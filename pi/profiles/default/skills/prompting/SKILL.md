@@ -5,7 +5,7 @@ description: Create, review, or optimize agent instructions, including role/syst
 
 # Prompting
 
-Ground changes in requested behavior, applicable policy, and observed failures. For operator-feedback analysis, use [agent-process](../agent-process/SKILL.md); skill packaging belongs to [skill-creation](../skill-creation/SKILL.md).
+Ground changes in requested behavior, applicable policy, and observed failures. For Pi-specific prompt reviews, read the [Pi instruction-composition reference](../pi-extension/references/instruction-composition.md). For operator-feedback analysis, use [agent-process](../agent-process/SKILL.md); skill packaging belongs to [skill-creation](../skill-creation/SKILL.md).
 
 ## Procedure
 

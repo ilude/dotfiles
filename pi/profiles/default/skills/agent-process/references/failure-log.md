@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-073 - Asked permission to investigate an investigation request
+
+- **Reference:** Cross-provider Pi context investigation, 2026-09-25.
+- **Observed:** After the operator reported that Bedrock did not appear to receive prior session context, the orchestrator described possible causes and offered to inspect the session "if you want" instead of performing the implied read-only investigation.
+- **Impact:** The operator had to restate that the question was a request to investigate.
+- **Finding:** Existing investigation and intent guidance already required inspecting available evidence. This was an adherence failure, not a missing authorization rule.
+- **Status:** Recorded; investigation resumed directly.
+
 ## APR-072 - Documentation-review findings were presented without investigation or usable detail
 
 - **Reference:** MPS Markdown-review discussion, 2026-09-24; related AIF-092.

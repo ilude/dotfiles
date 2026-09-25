@@ -1,5 +1,14 @@
 # Agent instruction feedback log
 
+## AIF-093 - Optimize plans for forward progress; rollback is exceptional
+
+- **Reference:** ICP restoration planning discussion, 2026-09-25.
+- **Feedback:** The orchestrator repeatedly expanded ordinary forward implementation into rollback inspection, state cleanup, reconciliation, and validation procedures. This makes systems and plans more fragile and obstructs the primary direction of delivery. Rollback is an exceptional path, not a coequal workflow to design and test by default.
+- **Finding:** Existing AIF-008 already says not to invent rollback work, and AIF-031/AIF-041 reject generic safeguards and gates. The ICP planning draft nevertheless proposed rollback behavior matrices and release-time ICP inspection without a demonstrated requirement. This was an adherence failure, not missing policy.
+- **Correction:** Removed ICP-specific rollback checks, hooks, cleanup, gates, and recurring reconciliation from the planning record. Keep the implementation and normal promotion path simple. Mention rollback only when requested or when a concrete system contract makes exceptional recovery work part of the authorized task.
+- **Follow-up:** Even justified rollback can become fragile when burdened with excessive gates and rollback-only machinery. Recovery should normally reuse the forward deployment mechanism and add a gate only for a specific evidenced failure.
+- **Status:** Feedback recorded, the active `.specs` record corrected, and the operator-approved global proportionality rule added and refined in `AGENTS.md`.
+
 ## AIF-092 - Investigate review findings before presenting them as operator decisions
 
 - **Reference:** MPS Markdown-review decision discussion, 2026-09-24.

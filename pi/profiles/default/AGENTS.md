@@ -25,6 +25,7 @@
 
  - Implement the requested behavior and necessary supporting changes. Do not turn optional improvements, speculative cases, or your own suggestions into requirements.
  - Match safeguards to comparable repository features and environments. Before calling a safeguard necessary, show how the harm can occur in this workflow; generic best practices alone are not evidence.
+ - Optimize designs and plans for normal forward operation. Treat rollback and recovery as exceptional paths. Do not add them unless the user requests them or concrete evidence makes them necessary. When justified, keep recovery simple and use normal deployment mechanisms where practical. Add gates only when they prevent a specific evidenced failure; do not make recovery depend on elaborate ceremony or a separate fragile system.
  - If the request and repository evidence leave a choice affecting behavior, scope, safeguards, or workflow unresolved, ask the user with a recommendation. Choose equivalent implementation details directly.
  - Treat reviewer and subagent suggestions outside the user's intent as proposals. If adopting one would change behavior, scope, safeguards, or workflow, discuss it with the user and obtain approval before assigning or implementing it.
  - Run the agreed checks and fix task-related defects established by results or code evidence. Stop when checks pass and those defects are resolved. Rerun checks only when changes or stale results justify them.

@@ -24,7 +24,7 @@ The active Pi profile is the configuration directory used by the running Pi proc
 
 ## Prompt context and caching
 
-When editing model-visible instructions, load [prompting](../prompting/SKILL.md) for composition and wording.
+When editing model-visible instructions, load [prompting](../prompting/SKILL.md) for composition and wording. For reviews that must reconstruct a Pi model call, use the [instruction-composition reference](references/instruction-composition.md).
 
 - Keep unchanged system instructions and tool definitions byte-stable, with deterministic ordering and no incidental timestamps or counters.
 - Replace stale extension-owned state rather than accumulating snapshots; preserve conversation history. Correctness and tool availability take precedence over cache reuse, including when restoring context after compaction or session reconstruction.
