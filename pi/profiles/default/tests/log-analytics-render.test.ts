@@ -33,7 +33,8 @@ function rendered(details: unknown, expanded = false, width = 100): string {
 }
 function query(rows: Record<string, unknown>[], columns = Object.keys(rows[0] ?? {})): Awaited<ReturnType<typeof queryAnalytics>> {
 	return { rows, columns, profiles: ["default"], sources: ["session_entries"], truncated: false,
-		cost: { filesScanned: 2, bytesScanned: 2048, discoveryMs: 1.1, stagingMs: 2.2, queryMs: 3.3 },
+		cost: { requestedExecution: "automatic", execution: "standard", selectedBytes: 2048, selectionReason: "exact_session_below_256_mib",
+			filesScanned: 2, bytesScanned: 2048, discoveryMs: 1.1, stagingMs: 2.2, queryMs: 3.3 },
 		coverage: { files: "all selected files staged", records: "valid JSON only; malformed lines excluded; live files are not a snapshot" } };
 }
 
@@ -77,6 +78,7 @@ describe("log analytics user-facing rendering", () => {
 		const data = query([{ tool_name: "bash", failures: "12" }, { tool_name: "read", failures: "3" }]);
 		const text = rendered(data);
 		expect(text).toContain("2 rows returned · default · session history");
+		expect(text).toContain("Execution: standard (automatic: exact-session scope under 256 MiB)");
 		expect(text).toMatch(/tool_name\s+failures\nbash\s+12\nread\s+3/);
 		expect(text).not.toContain("bytesScanned");
 		expect(text).toContain("ctrl+o for full returned values, SQL and diagnostics");
@@ -84,6 +86,8 @@ describe("log analytics user-facing rendering", () => {
 		expect(narrow).toContain("Row 1");
 		expect(narrow).toContain("bash");
 		const expanded = rendered(data, true);
+		expect(expanded).toContain("Requested: automatic · effective: standard");
+		expect(expanded).toContain("Selected input: 2.0 KiB · reason: exact_session_below_256_mib");
 		expect(expanded).toContain("Scanned: 2 files · 2.0 KiB");
 		expect(expanded).toContain("discovery 1 ms · staging 2 ms · query 3 ms");
 	});

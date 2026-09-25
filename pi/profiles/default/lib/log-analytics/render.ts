@@ -62,7 +62,7 @@ export const renderAnalyticsCall: NonNullable<Tool["renderCall"]> = (rawArgs, th
 	if (args.interval) lines.push(`Interval: ${clean(args.interval.since)} to ${clean(args.interval.until)} [since, until)`);
 	if (args.filters) lines.push(`Filters: ${Object.entries(args.filters).map(([key, value]) => `${key}=${preview(value, 80)}`).join(" · ")}`);
 	if (args.sql) lines.push(theme.fg("muted", `${args.execution === "large" ? "Large SQL" : "SQL"}: ${expanded ? `\n${clean(args.sql)}` : preview(args.sql)}`));
-	if (args.execution) lines.push(theme.fg("muted", `Execution: ${args.execution}`));
+	if (args.operation === "query") lines.push(theme.fg("muted", `Requested execution: ${args.execution ?? "automatic"}`));
 	if (expanded) {
 		if (args.maxRows !== undefined) lines.push(`Row limit: ${args.maxRows}`);
 		if (args.maxBytes !== undefined) lines.push(`Output bytes: ${args.maxBytes}`);
@@ -120,6 +120,15 @@ function coverageLines(coverage: QueryResult["coverage"] | SessionsResult["cover
 	}
 	return lines;
 }
+function executionReason(reason: QueryResult["cost"]["selectionReason"]): string {
+	switch (reason) {
+		case "explicit_standard": return "explicit standard override";
+		case "explicit_large": return "explicit large override";
+		case "selected_bytes_at_or_above_256_mib": return "selected input is at least 256 MiB";
+		case "exact_session_below_256_mib": return "exact-session scope under 256 MiB";
+		case "non_exact_scope_below_256_mib": return "scope is not an exact-session selection";
+	}
+}
 function followUpRecordLine(label: string, item: FollowUpResult["match"], expanded: boolean): string[] {
 	const value = clean(item.record);
 	return [expanded ? `${label}: ${value}` : `${label}: ${preview(value, 220)}`];
@@ -172,14 +181,17 @@ export const renderAnalyticsResult: NonNullable<Tool["renderResult"]> = (result,
 	} else if ("rows" in details && Array.isArray(details.rows)) {
 		const data = details as QueryResult;
 		lines = [theme.bold(`${count(data.rows.length, "row")} returned`) + ` · ${data.profiles.join(" + ")} · ${sources(data.sources)}${data.cost.execution === "large" ? " · large SQL" : ""}`];
+		lines.push(theme.fg("muted", `Execution: ${data.cost.execution} (${data.cost.requestedExecution === "automatic" ? `automatic: ${executionReason(data.cost.selectionReason)}` : "explicit override"})`));
 		if (data.truncated) lines.push(theme.fg("warning", "Result truncated by row/byte limit. Narrow the query to retrieve omitted results; expanding only shows returned rows."));
 		if (!data.rows.length) lines.push("No rows matched the query.");
 		lines.push(...coverageLines(data.coverage, expanded, theme), ...rowsView(data.rows, data.columns, expanded, width, theme));
 		if (expanded) {
 			const cost = data.cost;
-			lines.push(theme.fg("dim", `Execution: ${cost.execution ?? "standard"} · Scanned: ${count(cost.filesScanned, "file")} · ${bytes(cost.bytesScanned)}`));
+			lines.push(theme.fg("dim", `Requested: ${cost.requestedExecution} · effective: ${cost.execution}`));
+			lines.push(theme.fg("dim", `Selected input: ${bytes(cost.selectedBytes)} · reason: ${cost.selectionReason}`));
+			lines.push(theme.fg("dim", `Scanned: ${count(cost.filesScanned, "file")} · ${bytes(cost.bytesScanned)}`));
 			lines.push(theme.fg("dim", `Time: discovery ${Math.round(cost.discoveryMs)} ms · staging ${Math.round(cost.stagingMs)} ms · query ${Math.round(cost.queryMs)} ms`));
-			if (cost.execution === "large") lines.push(theme.fg("dim", `Large resources: ${cost.recordsStaged ?? 0} records · ${cost.memoryLimit} · ${cost.threads} threads · disk ${bytes(cost.peakOwnedDiskBytes ?? 0)}/${bytes(cost.diskBudgetBytes ?? 0)} high-water/budget`));
+			if (cost.memoryLimit !== undefined) lines.push(theme.fg("dim", `Resources: ${cost.execution === "large" ? `${cost.recordsStaged ?? 0} records staged · ` : ""}${cost.memoryLimit} · ${cost.threads} threads · disk ${bytes(cost.peakOwnedDiskBytes ?? 0)}/${bytes(cost.diskBudgetBytes ?? 0)} high-water/budget`));
 		}
 	} else if ("sessions" in details && Array.isArray(details.sessions)) {
 		const data = details as SessionsResult;

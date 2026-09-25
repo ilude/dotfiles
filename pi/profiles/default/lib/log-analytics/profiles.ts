@@ -45,6 +45,26 @@ export async function canonicalWithin(root: string, file: string): Promise<strin
 	return canonical;
 }
 
+/** Create a private analytics state directory below the registered default profile. */
+export async function createAnalyticsInvocationDirectory(profileRoot: string): Promise<string> {
+	const root = await fs.realpath(profileRoot);
+	const state = path.join(root, ".analytics-state");
+	const storage = path.join(state, "log-analytics-tmp");
+	for (const directory of [state, storage]) {
+		try {
+			const stat = await fs.lstat(directory);
+			if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`analytics storage path is not a trusted directory: ${directory}`);
+		} catch (error) {
+			if (!isMissing(error)) throw error;
+			try { await fs.mkdir(directory); }
+			catch (createError) { if ((createError as NodeJS.ErrnoException).code !== "EEXIST") throw createError; }
+		}
+		const canonical = await fs.realpath(directory);
+		if (!contained(root, canonical)) throw new Error(`analytics storage path escapes profile: ${directory}`);
+	}
+	return fs.mkdtemp(path.join(storage, "invocation-"));
+}
+
 export function isMissing(error: unknown): boolean {
 	return (error as NodeJS.ErrnoException).code === "ENOENT";
 }

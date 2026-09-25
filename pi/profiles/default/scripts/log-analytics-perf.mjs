@@ -115,7 +115,9 @@ async function runWorkload(manifest, workload, sample, jiti) {
       assert.equal(row.cross_join_rows, manifest.expected.crossJoinRows);
       assert.equal(value.truncated, false);
       assert.equal(value.cost.execution, "large");
-      assert.equal(value.cost.memoryLimit, "1GB");
+      assert.equal(value.cost.memoryLimit, "2GB");
+      assert.equal(value.cost.requestedExecution, "large");
+      assert.equal(value.cost.selectionReason, "explicit_large");
       assert.equal(value.cost.threads, 2);
       assert.ok(value.cost.bytesScanned > 512 * 1024 * 1024 || manifest.size === "small");
       assert.ok((value.cost.peakOwnedDiskBytes ?? 0) > 0);
@@ -160,7 +162,7 @@ if (process.argv[2] === "--worker") {
     console.log(JSON.stringify({ acceptance: "query-driven-log-analytics/T5", runtime: process.version, duckdbNodeApi: dependency.version,
       platform: process.platform, arch: process.arch, os: os.release(), cpu: os.cpus()[0]?.model,
       matrix: { sizes: ["small (~10 MiB)", "large (>=600 MiB)"], workloads, samples: ["cold", "warm"], profiles: ["default", "legacy"] },
-      bounds: { searchPageBytes: 8 * 1024 * 1024, searchPageRecords: 10_000, standardInputBytes: 512 * 1024 * 1024, largeMemory: "1GB", largeThreads: 2, largeDiskBudgetBytes: 4 * 1024 ** 3 },
+      bounds: { searchPageBytes: 8 * 1024 * 1024, searchPageRecords: 10_000, automaticLargeThresholdBytes: 256 * 1024 * 1024, memoryLimit: "2GB", threads: 2, diskBudgetBytes: 8 * 1024 ** 3 },
       note: "Generated native JSONL only; expectations are computed by the generator; no private history, live model calls, or persistent transcript copy." }));
     for (const size of ["small", "large"]) {
       const manifest = await generateFixture(scratch, size);

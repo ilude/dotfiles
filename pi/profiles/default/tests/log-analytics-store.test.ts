@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { withAnalyticsSession, setStagingObserver, setTemporaryStorageObserver } from "../lib/log-analytics/store.js";
+import { AUTO_LARGE_THRESHOLD_BYTES, chooseAnalyticsExecution, withAnalyticsSession, setStagingObserver, setTemporaryStorageObserver } from "../lib/log-analytics/store.js";
 import { queryAnalytics } from "../lib/log-analytics/api.js";
 import { discoverSessions } from "../lib/log-analytics/sessions.js";
 import { analyticsFixture, recentMessage } from "./helpers/analytics-fixture.js";
@@ -11,6 +11,14 @@ afterEach(async () => { setStagingObserver(undefined); setTemporaryStorageObserv
 const longQuery = "SELECT sum(a.i*b.i) FROM range(100000000) a(i) CROSS JOIN range(10000) b(i)";
 
 describe("bounded default analytics store", () => {
+	it("selects execution from requested mode, selected bytes, and exact-session scope", () => {
+		expect(chooseAnalyticsExecution("automatic", AUTO_LARGE_THRESHOLD_BYTES - 1, true)).toEqual({ requestedExecution: "automatic", execution: "standard", selectionReason: "exact_session_below_256_mib" });
+		expect(chooseAnalyticsExecution("automatic", AUTO_LARGE_THRESHOLD_BYTES, true)).toEqual({ requestedExecution: "automatic", execution: "large", selectionReason: "selected_bytes_at_or_above_256_mib" });
+		expect(chooseAnalyticsExecution("automatic", 1, false)).toEqual({ requestedExecution: "automatic", execution: "large", selectionReason: "non_exact_scope_below_256_mib" });
+		expect(chooseAnalyticsExecution("standard", AUTO_LARGE_THRESHOLD_BYTES, false)).toEqual({ requestedExecution: "standard", execution: "standard", selectionReason: "explicit_standard" });
+		expect(chooseAnalyticsExecution("large", 1, true)).toEqual({ requestedExecution: "large", execution: "large", selectionReason: "explicit_large" });
+	});
+
 	it("queries full nested native records across both profiles and retains resumed-session event time", async () => {
 		await fixture.session("default", "one", [recentMessage]);
 		await fixture.session("legacy", "two", [{ type: "message", id: "tool", timestamp: "2026-09-02T00:00:00Z", message: { role: "toolResult", toolName: "read", toolCallId: "call", isError: true } }]);
@@ -96,8 +104,9 @@ describe("bounded default analytics store", () => {
 	it("enforces native resource configuration", async () => {
 		await fixture.session("default", "one", [recentMessage]);
 		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], threads: 2, memoryLimit: "2GB" }, async session => {
-			const result = await session.query({ sql: "SELECT current_setting('threads') threads, current_setting('memory_limit') memory, current_setting('temp_directory') temp_dir" });
-			expect(result.rows[0]).toMatchObject({ threads: "2", temp_dir: "" });
+			const result = await session.query({ sql: "SELECT current_setting('threads') threads, current_setting('memory_limit') memory, current_setting('temp_directory') temp_dir, current_setting('preserve_insertion_order') insertion_order" });
+			expect(result.rows[0]).toMatchObject({ threads: "2", insertion_order: false });
+			expect(result.rows[0].temp_dir).toContain(path.join(fixture.registry.roots.default, ".analytics-state", "log-analytics-tmp"));
 			expect(result.rows[0].memory).toMatch(/GiB|MiB/);
 		});
 	});
@@ -143,18 +152,37 @@ describe("bounded default analytics store", () => {
 		expect(await fs.readdir(fixture.scratch)).toEqual(["default", "legacy"]);
 	});
 
-	it("fails a large execution at its owned disk budget and removes exactly its invocation path", async () => {
+	it("cleans only its invocation directory and preserves sibling state", async () => {
+		const sharedRoot = path.join(fixture.registry.roots.default, ".analytics-state", "log-analytics-tmp");
+		await fs.mkdir(sharedRoot, { recursive: true });
+		const sibling = path.join(sharedRoot, "another-invocation"); await fs.mkdir(sibling);
+		await fs.writeFile(path.join(sibling, "keep"), "owned elsewhere");
+		let owned: string | undefined; setTemporaryStorageObserver(value => { owned = value; });
+		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"] }, async session => { await session.query({ sql: "SELECT 1" }); });
+		expect(owned).toBeTruthy(); await expect(fs.stat(owned!)).rejects.toThrow();
+		expect(await fs.readFile(path.join(sibling, "keep"), "utf8")).toBe("owned elsewhere");
+	});
+
+	it.each(["standard", "large"] as const)("enforces %s owned disk budget and removes exactly its invocation path", async execution => {
 		await fixture.session("default", "one", [recentMessage]); let owned: string | undefined;
 		setTemporaryStorageObserver(value => { owned = value; });
-		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large", diskBudgetBytes: 1 }, async () => {})).rejects.toThrow("owned disk");
+		const failure = await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution, diskBudgetBytes: 1, memoryLimit: "32MB" }, async session => {
+			if (execution === "standard") await session.query({ sql: "SELECT i FROM range(3000000) t(i) ORDER BY i DESC", maxRows: 1 });
+		}).then(() => "", error => String(error));
+		expect(failure).toContain(`requested execution: ${execution}`);
+		expect(failure).toContain(`effective execution: ${execution}`);
+		expect(failure).toMatch(/selected bytes: \d+/);
+		expect(failure).toContain(`selection reason: explicit_${execution}`);
+		if (execution === "standard") expect(failure).toContain('Retry explicitly with execution: "large"');
+		else expect(failure).not.toContain("Retry explicitly with execution");
 		expect(owned).toBeTruthy(); await expect(fs.stat(owned!)).rejects.toThrow();
 		expect(await fs.readdir(fixture.scratch)).toEqual(["default", "legacy"]);
 	});
 
-	it("allows bounded spill under low memory without raising the ceiling", async () => {
-		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large", memoryLimit: "32MB", diskBudgetBytes: 256 * 1024 * 1024 }, async session => {
-			const settings = await session.query({ sql: "SELECT current_setting('memory_limit') memory, current_setting('temp_directory') temp_dir" });
-			expect(settings.rows[0].memory).toMatch(/30.5 MiB|32/); expect(settings.rows[0].temp_dir).not.toBe("");
+	it.each(["standard", "large"] as const)("allows bounded spill in %s mode under low memory", async execution => {
+		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution, memoryLimit: "32MB", diskBudgetBytes: 256 * 1024 * 1024 }, async session => {
+			const settings = await session.query({ sql: "SELECT current_setting('memory_limit') memory, current_setting('temp_directory') temp_dir, current_setting('preserve_insertion_order') insertion_order" });
+			expect(settings.rows[0].memory).toMatch(/30.5 MiB|32/); expect(settings.rows[0].temp_dir).not.toBe(""); expect(settings.rows[0].insertion_order).toBe(false);
 			const sorted = await session.query({ sql: "SELECT i FROM range(3000000) t(i) ORDER BY i DESC", maxRows: 1 });
 			expect(sorted.rows).toHaveLength(1); expect(sorted.truncated).toBe(true); expect(sorted.cost.memoryLimit).toBe("32MB");
 			expect(sorted.cost.peakOwnedDiskBytes).toBeGreaterThan(settings.cost.peakOwnedDiskBytes!);

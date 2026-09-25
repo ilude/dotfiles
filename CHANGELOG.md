@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-25: Select resilient log analytics execution automatically
+
+**Changed:** Omitted SQL execution now selects large mode for broad scope or at least 256 MiB selected input, retaining standard for smaller exact-session queries. Explicit mode overrides remain available. Both modes use 2 GB, two threads, bounded 8 GiB spill under per-invocation directories in the default profile's ignored analytics state, with cleanup and resource reporting. Spill can still fail for some memory-intensive DuckDB operators; explicitly standard failures advise retrying large.
+
 ## 2026-09-25: Show plan change dates
 
 **Changed:** `/plans` now shows the later filesystem creation or modification date for each plan in the browse list and detail view.

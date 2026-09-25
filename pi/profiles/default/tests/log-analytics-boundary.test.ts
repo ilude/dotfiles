@@ -37,6 +37,12 @@ describe("read-only analytics boundary", () => {
 		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"], execution: "large" }, async () => {})).rejects.toThrow("PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES");
 	});
 
+	it("rejects profile-local temporary storage symlink escapes", async () => {
+		const outside = path.join(fixture.scratch, "outside-state"); await fs.mkdir(outside);
+		await fs.symlink(outside, path.join(fixture.registry.roots.default, ".analytics-state"), process.platform === "win32" ? "junction" : "dir");
+		await expect(withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries"] }, async () => {})).rejects.toThrow("trusted directory");
+	});
+
 	it("does not discover generic root JSONL or follow ledger link escapes", async () => {
 		await fs.writeFile(path.join(fixture.registry.roots.default, "events.jsonl"), "sensitive root data");
 		await withAnalyticsSession({ registry: fixture.registry, sources: ["session_entries", "bedrock_usage", "codex_cache_observations"] }, async session => {
