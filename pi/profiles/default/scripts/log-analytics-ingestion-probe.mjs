@@ -1,125 +1,156 @@
-// Finite synthetic T1 probe. Uses generated native JSONL only and owns all temporary files.
+// Bounded strategy comparison on generated native JSONL only. No session history is read.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { createJiti } from "jiti";
 import { DuckDBInstance } from "@duckdb/node-api";
+import { generateFixture } from "./log-analytics-fixture.mjs";
 
-const root = path.resolve(import.meta.dirname, "..");
+const profileRoot = path.resolve(import.meta.dirname, "..");
+const root = path.join(profileRoot, ".analytics-state", "log-analytics-t1-fixtures");
 const jiti = createJiti(import.meta.url);
-const { discoverSessions } = await jiti.import(path.join(root, "lib/log-analytics/sessions.ts"));
-const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "pi-analytics-t1-"));
-let peakRss = process.memoryUsage().rss;
-const sampler = setInterval(() => { peakRss = Math.max(peakRss, process.memoryUsage().rss); }, 10);
-sampler.unref();
-const started = performance.now();
-const cpuStarted = process.cpuUsage();
-
+const { discoverSessions } = await jiti.import(path.join(profileRoot, "lib/log-analytics/sessions.ts"));
+const strategies = ["standard-in-memory", "standard-owned-spill", "large-raw-disk"];
+const workloads = {
+  count: "SELECT count(*) n FROM session_entries",
+  filtered_projection_json: "SELECT count(*) n FROM session_entries WHERE _profile = 'default' AND json_extract_string(record, '$.message.toolName') = 'fixture_tool' AND json_extract_string(record, '$.message.isError') = 'true'",
+  grouping: "SELECT _profile, json_extract_string(record, '$.message.toolName') tool, count(*) n FROM session_entries GROUP BY ALL ORDER BY _profile, tool",
+  sorting: "SELECT _profile, _timestamp, _record_key FROM session_entries ORDER BY _timestamp DESC NULLS LAST, _record_key LIMIT 100",
+  join: "SELECT count(*) n FROM session_entries a JOIN session_entries b ON json_extract_string(a.record, '$.message.toolCallId') = json_extract_string(b.record, '$.message.toolCallId') WHERE a._profile = 'default' AND b._profile = 'legacy'",
+};
 const quote = value => `'${value.replaceAll("'", "''")}'`;
+const columns = `profile AS _profile, source_file AS _source_file,
+  coalesce(nullif(json_extract_string(record, '$.id'), ''), md5(record::VARCHAR)) AS _record_key,
+  try_cast(json_extract_string(record, '$.timestamp') AS TIMESTAMPTZ) AS _timestamp,
+  record`;
+
 async function treeBytes(dir) {
   let total = 0;
-  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-    const file = path.join(dir, entry.name);
-    total += entry.isDirectory() ? await treeBytes(file) : (await fs.stat(file)).size;
+  for (const entry of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    const item = path.join(dir, entry.name);
+    total += entry.isDirectory() ? await treeBytes(item) : (await fs.stat(item).catch(() => ({ size: 0 }))).size;
   }
   return total;
 }
-async function timed(work) {
-  const wall = performance.now(); const cpu = process.cpuUsage(); const value = await work();
-  const used = process.cpuUsage(cpu);
-  return { value, elapsedMs: performance.now() - wall, cpuMs: (used.user + used.system) / 1000 };
-}
-async function rows(connection, sql) {
-  const result = await connection.runAndReadAll(sql);
-  return result.getRowObjectsJson();
-}
-
-try {
-  const registry = { active: "default", roots: { default: path.join(scratch, "default"), legacy: path.join(scratch, "legacy") } };
-  for (const profileRoot of Object.values(registry.roots)) await fs.mkdir(path.join(profileRoot, "sessions"), { recursive: true });
-
-  // Enough files to expose repeated header I/O without reading transcript bodies.
-  const headerFiles = 240;
-  for (let n = 0; n < headerFiles; n++) {
-    const profile = n % 2 ? "legacy" : "default";
-    const header = { type: "session", version: 3, id: `header-${n}`, cwd: "/synthetic", timestamp: "2026-09-01T00:00:00Z" };
-    await fs.writeFile(path.join(registry.roots[profile], "sessions", `header-${n}.jsonl`), `${JSON.stringify(header)}\n`);
-  }
-  const discovery = [];
-  for (let pass = 1; pass <= 3; pass++) {
-    const measured = await timed(() => discoverSessions(registry, ["default", "legacy"]));
-    assert.equal(measured.value.length, headerFiles);
-    discovery.push({ pass, files: measured.value.length, headerReadUpperBoundBytes: measured.value.length * 512, elapsedMs: measured.elapsedMs, cpuMs: measured.cpuMs });
-  }
-
-  // Two independent files with complete padded records. IDs and join keys are generator-owned.
-  const dataDir = path.join(scratch, "input"); await fs.mkdir(dataDir);
-  const files = []; const recordsPerFile = 4096; const padding = "x".repeat(4096);
-  for (let f = 0; f < 2; f++) {
-    const lines = [];
-    for (let n = 0; n < recordsPerFile; n++) lines.push(JSON.stringify({
-      type: "message", id: `f${f}-${n}`, timestamp: "2026-09-01T00:00:00Z",
-      message: { role: "toolResult", toolName: n % 2 ? "bash" : "read", toolCallId: `call-${n}`, isError: n % 7 === 0,
-        content: [{ type: "text", text: `${f}:${n}:${padding}` }] },
-    }));
-    const file = path.join(dataDir, `records-${f}.jsonl`); await fs.writeFile(file, `${lines.join("\n")}\n`); files.push(file);
-  }
-  const inputBytes = (await Promise.all(files.map(file => fs.stat(file)))).reduce((sum, stat) => sum + stat.size, 0);
-  const expected = { records: recordsPerFile * 2, errors: Math.ceil(recordsPerFile / 7), joined: recordsPerFile };
-
-  async function stage(mode) {
-    const owned = path.join(scratch, `owned-${mode}`); await fs.mkdir(owned);
-    const dbPath = path.join(owned, "analytics.duckdb"); const temp = path.join(owned, "spill"); await fs.mkdir(temp);
-    const beforeRss = process.memoryUsage().rss; const wall = performance.now(); const cpu = process.cpuUsage();
-    const instance = await DuckDBInstance.create(dbPath, { enable_external_access: "true", threads: "2", memory_limit: "1GB",
-      temp_directory: temp, max_temp_directory_size: "1GB", autoinstall_known_extensions: "false", autoload_known_extensions: "false" });
+async function exists(file) { try { await fs.stat(file); return true; } catch (error) { if (error.code === "ENOENT") return false; throw error; } }
+async function measure(size, manifest, strategy) {
+  const selectedFiles = manifest.files.filter(file => file.profile === "default" || file.profile === "legacy");
+  const registry = manifest.registry;
+  const discoveryStart = performance.now();
+  const discovered = await discoverSessions(registry, ["default", "legacy"]);
+  const discoveryMs = performance.now() - discoveryStart;
+  assert.equal(discovered.length, selectedFiles.length);
+  const selectedBytes = selectedFiles.reduce((sum, file) => sum + file.bytes, 0);
+  const owned = path.join(root, `owned-${size}-${strategy}`);
+  await fs.mkdir(path.join(owned, "spill"), { recursive: true });
+  const spill = path.join(owned, "spill");
+  let peakOwnedDiskBytes = 0;
+  let polling = setInterval(async () => { peakOwnedDiskBytes = Math.max(peakOwnedDiskBytes, await treeBytes(owned)); }, 20);
+  polling.unref();
+  let instance;
+  let phase = "instance-create";
+  let stagingMs;
+  let queryMs = {};
+  try {
+    const database = strategy === "large-raw-disk" ? path.join(owned, "analytics.duckdb") : ":memory:";
+    const tempDirectory = strategy === "standard-in-memory" ? "" : spill;
+    instance = await DuckDBInstance.create(database, { threads: "2", memory_limit: "2GB", temp_directory: tempDirectory,
+      max_temp_directory_size: "2GB", autoinstall_known_extensions: "false", autoload_known_extensions: "false" });
     const connection = await instance.connect();
+    const stagingStart = performance.now();
     try {
-      if (mode === "one-file") {
-        await connection.run("CREATE TABLE raw(profile VARCHAR, source_file VARCHAR, record JSON)");
-        for (let f = 0; f < files.length; f++) await connection.run(`INSERT INTO raw SELECT ${quote(f ? "legacy" : "default")}, filename::VARCHAR, json FROM read_json_objects(${quote(files[f])}, format='newline_delimited', filename=true)`);
-      } else {
+      phase = "staging";
+      await connection.run("SET preserve_insertion_order = false");
+      if (strategy === "large-raw-disk") {
         await connection.run("CREATE TABLE raw(profile VARCHAR, source_file VARCHAR, record JSON)");
         const appender = await connection.createAppender("raw");
         try {
-          for (let f = 0; f < files.length; f++) {
-            const handle = await fs.open(files[f], "r");
+          for (const file of selectedFiles) {
+            const handle = await fs.open(file.file, "r");
             try {
               for await (const line of handle.readLines()) {
                 if (!line) continue;
-                appender.appendVarchar(f ? "legacy" : "default"); appender.appendVarchar(files[f]); appender.appendVarchar(line); appender.endRow();
+                const record = JSON.parse(line);
+                if (record.type !== "message") continue;
+                appender.appendVarchar(file.profile); appender.appendVarchar(file.file); appender.appendVarchar(line); appender.endRow();
               }
             } finally { await handle.close(); }
           }
           appender.flushSync();
         } finally { appender.closeSync(); }
+        await connection.run(`CREATE VIEW session_entries AS SELECT ${columns} FROM raw`);
+        await connection.run("CHECKPOINT");
+      } else {
+        const files = selectedFiles.map(file => quote(file.file)).join(", ");
+        const metadata = selectedFiles.map(file => `(${quote(file.file)}, ${quote(file.profile)})`).join(", ");
+        await connection.run(`CREATE TABLE session_entries AS SELECT ${columns} FROM (
+          SELECT meta.profile profile, filename source_file, json record
+          FROM read_json_objects([${files}], format='newline_delimited', filename=true, ignore_errors=true) data
+          JOIN (VALUES ${metadata}) meta(file, profile) ON filename = meta.file
+          WHERE json_extract_string(json, '$.type') = 'message'
+        ) staged`);
       }
-      await connection.run("CREATE TABLE prepared AS SELECT profile, source_file, record, record->>'id' id, record->'message'->>'toolName' tool_name, record->'message'->>'toolCallId' tool_call_id, try_cast(record->'message'->>'isError' AS BOOLEAN) is_error FROM raw");
-      await connection.run("DROP TABLE raw");
-      await connection.run("SET enable_external_access = false");
-      const grouped = await rows(connection, "SELECT profile, tool_name, count(*) n, count(*) FILTER (is_error) errors FROM prepared GROUP BY ALL ORDER BY profile, tool_name");
-      const joined = await rows(connection, "SELECT count(*) n FROM prepared a JOIN prepared b USING (tool_call_id) WHERE a.profile='default' AND b.profile='legacy'");
-      assert.equal(grouped.reduce((sum, row) => sum + Number(row.n), 0), expected.records);
-      assert.equal(grouped.filter(row => row.tool_name === "read").reduce((sum, row) => sum + Number(row.errors), 0), expected.errors);
-      assert.deepEqual(joined, [{ n: String(expected.joined) }]);
-      await assert.rejects(() => rows(connection, `SELECT * FROM read_json_objects(${quote(files[0])})`));
-      await connection.run("CHECKPOINT");
-      const diskHighWaterBytes = await treeBytes(owned);
-      const used = process.cpuUsage(cpu);
-      return { mode, inputBytes, records: expected.records, elapsedMs: performance.now() - wall, cpuMs: (used.user + used.system) / 1000,
-        rssDeltaBytes: process.memoryUsage().rss - beforeRss, diskHighWaterBytes, grouped, joined, externalReadDenied: true, memoryLimit: "1GB", threads: 2 };
-    } finally { connection.closeSync(); instance.closeSync(); await fs.rm(owned, { recursive: true, force: true }); }
+      stagingMs = performance.now() - stagingStart;
+      const recordsStaged = Number((await connection.runAndReadAll("SELECT count(*) n FROM session_entries")).getRowObjectsJson()[0].n);
+      assert.equal(recordsStaged, manifest.expected.totalRecords - manifest.files.length);
+      const queryResults = {};
+      for (const [name, sql] of Object.entries(workloads)) {
+        phase = `query:${name}`;
+        const start = performance.now();
+        const result = await connection.runAndReadAll(sql);
+        const rows = result.getRowObjectsJson();
+        queryResults[name] = { elapsedMs: performance.now() - start, rows: rows.length, firstRow: rows[0] ?? null };
+        queryMs[name] = queryResults[name].elapsedMs;
+      }
+      peakOwnedDiskBytes = Math.max(peakOwnedDiskBytes, await treeBytes(owned));
+      return { size, strategy, status: "ok", selectedFiles: selectedFiles.length, selectedBytes, recordsStaged, discoveryMs, stagingMs,
+        queryMs: Object.fromEntries(Object.entries(queryResults).map(([name, result]) => [name, result.elapsedMs])), queryResults,
+        memoryLimit: "2GB", threads: 2, peakOwnedDiskBytes, cleanup: "pending" };
+    } finally { connection.closeSync(); }
+  } catch (error) {
+    peakOwnedDiskBytes = Math.max(peakOwnedDiskBytes, await treeBytes(owned));
+    return { size, strategy, status: "failed", selectedFiles: selectedFiles.length, selectedBytes, discoveryMs, stagingMs: stagingMs ?? null,
+      queryMs, recordsStaged: null, memoryLimit: "2GB", threads: 2, peakOwnedDiskBytes, failedAt: phase,
+      error: error instanceof Error ? error.message : String(error), cleanup: "pending" };
+  } finally {
+    if (instance) instance.closeSync();
+    clearInterval(polling);
+    await fs.rm(owned, { recursive: true, force: true });
+    assert.equal(await exists(owned), false, `owned strategy directory remains: ${owned}`);
   }
-  const staging = [await stage("one-file"), await stage("chunked-appender")];
-  clearInterval(sampler);
-  const cpu = process.cpuUsage(cpuStarted);
-  const report = { probe: "query-driven-log-analytics/T1", runtime: process.version, duckdb: "1.5.5-r.4", platform: `${process.platform}/${process.arch}`,
-    synthetic: { headerFiles, dataFiles: files.length, recordsPerFile, inputBytes, fullRecordPayloadBytes: padding.length }, discovery, staging,
-    process: { elapsedMs: performance.now() - started, cpuMs: (cpu.user + cpu.system) / 1000, peakRssBytes: peakRss }, cleanup: { scratchRemovedByFinally: true } };
-  console.log(JSON.stringify(report, null, 2));
+}
+
+await fs.mkdir(root, { recursive: true });
+const results = [];
+try {
+  const runtime = JSON.parse(await fs.readFile(path.join(profileRoot, "node_modules/@duckdb/node-api/package.json"), "utf8"));
+  console.log(JSON.stringify({ probe: "log-analytics/T1", runtime: process.version, duckdbNodeApi: runtime.version,
+    platform: `${process.platform}/${process.arch}`, fixtureRoot: root,
+    bands: { small: "generated ~10 MiB corpus", large: "generated >=600 MiB corpus" }, strategies, workloads: Object.keys(workloads),
+    constraints: { memoryLimit: "2GB", threads: 2, ownedDiskBudget: "2GB", generatedOnly: true, fixtureCleanup: "finally removes ignored fixture root" } }));
+  for (const size of ["small", "large"]) {
+    const manifest = await generateFixture(root, size);
+    console.log(JSON.stringify({ fixture: size, selectedScope: "both synthetic profiles", files: manifest.files.length,
+      selectedBytes: manifest.actualBytes, expectedRecords: manifest.expected.totalRecords - manifest.files.length }));
+    for (const strategy of strategies) {
+      const result = await measure(size, manifest, strategy);
+      result.cleanup = "owned strategy directory removed and verified";
+      results.push(result); console.log(JSON.stringify(result));
+    }
+    await fs.rm(path.join(root, size), { recursive: true, force: true });
+    assert.equal(await exists(path.join(root, size)), false, `fixture remains: ${path.join(root, size)}`);
+  }
+  assert.equal(results.length, 6);
+  const memoryOnlyLarge = results.find(result => result.size === "large" && result.strategy === "standard-in-memory");
+  assert.equal(memoryOnlyLarge?.status, "failed", "large standard in-memory staging should establish its memory boundary");
+  assert.equal(memoryOnlyLarge.failedAt, "staging");
+  assert.ok(results.filter(result => result !== memoryOnlyLarge).every(result => result.status === "ok" && Object.keys(result.queryMs).length === 5 && result.cleanup.includes("verified")));
+  console.log(JSON.stringify({ summary: { strategiesCompared: strategies, resultCount: results.length,
+    allWorkloadsMeasured: results.every(result => result.status === "failed" || Object.keys(result.queryMs).length === 5), allOwnedDirectoriesRemoved: true,
+    thresholdRecommendation: { bytes: 256 * 1024 ** 2, rule: "use large for selections >=256 MiB or any scope without an exact session selection; standard is eligible only for exact-session selections below 256 MiB", basis: "11.3 MB selected synthetic band completed in standard; 636.4 MB selected band failed standard staging at 2GB; 256 MiB is a conservative separation point, not a measured crossover" },
+    stagingRecommendation: "retain in-memory standard for demonstrably small exact-session inputs; use large raw/disk staging for broad or >=256 MiB inputs; owned spill is a viable standard fallback but does not remove the eager staging memory ceiling",
+    fixtureCleanup: "each fixture band removed immediately after measurement" } }));
 } finally {
-  clearInterval(sampler);
-  await fs.rm(scratch, { recursive: true, force: true });
-  await assert.rejects(() => fs.stat(scratch));
+  await fs.rm(root, { recursive: true, force: true });
+  assert.equal(await exists(root), false, `fixture root remains: ${root}`);
 }

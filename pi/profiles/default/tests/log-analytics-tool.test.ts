@@ -43,7 +43,8 @@ describe("log_analytics registered tool", () => {
 		const context = await execute({ operation: "follow_up", occurrence: all[0].occurrence, before: 1, after: 1 });
 		expect(context.details.match.record.message.content[0].text).toBe("read failed");
 		const large = await execute({ operation: "query", profiles: ["default"], sources: ["session_entries"], execution: "large", sql: "SELECT count(*) AS records FROM session_entries" });
-		expect(large.details.cost.execution).toBe("large");
+		expect(large.details.cost).toMatchObject({ requestedExecution: "large", execution: "large", selectionReason: "explicit_large" });
+		expect(large.details.cost.selectedBytes).toBe(large.details.cost.bytesScanned);
 		expect(large.details.cost.diskBudgetBytes).toBe(8 * 1024 ** 3);
 	});
 
@@ -53,15 +54,25 @@ describe("log_analytics registered tool", () => {
 		const { execute } = tool();
 		for (const profiles of [undefined, ["legacy"], ["default", "legacy"]]) {
 			const request = { operation: "query", ...(profiles ? { profiles } : {}), sources: ["session_entries"], sql: "SELECT DISTINCT _profile FROM session_entries ORDER BY _profile" };
-			expect((await execute(request)).details.rows.map((row: { _profile: string }) => row._profile)).toEqual(profiles ?? ["default"]);
+			const result = (await execute(request)).details;
+			expect(result.rows.map((row: { _profile: string }) => row._profile)).toEqual(profiles ?? ["default"]);
+			expect(result.cost).toMatchObject({ requestedExecution: "automatic", execution: "large", selectionReason: "non_exact_scope_below_256_mib" });
+			expect(result.cost.selectedBytes).toBe(result.cost.bytesScanned);
 		}
 		const page = await execute({ operation: "sessions", profiles: ["default", "legacy"], maxRows: 1 });
 		expect(page.details.nextCursor).toBeTruthy();
 		const next = await execute({ operation: "sessions", profiles: ["default", "legacy"], maxRows: 1, cursor: page.details.nextCursor });
 		expect(next.details.sessions[0].ref.profile).toBe("legacy");
-		const selected = await execute({ operation: "query", profiles: ["default", "legacy"], sources: ["session_entries"], sessionRefs: [page.details.sessions[0].ref], sql: "SELECT session_id FROM session_entries LIMIT 1" });
+		const selectedRequest = { operation: "query", profiles: ["default", "legacy"], sources: ["session_entries"], sessionRefs: [page.details.sessions[0].ref], sql: "SELECT session_id FROM session_entries LIMIT 1" };
+		const selected = await execute(selectedRequest);
 		expect(selected.details.rows).toEqual([{ session_id: "one" }]);
 		expect(selected.details.cost.filesScanned).toBe(1);
+		expect(selected.details.cost).toMatchObject({ requestedExecution: "automatic", execution: "standard", selectionReason: "exact_session_below_256_mib" });
+		expect(selected.details.cost.selectedBytes).toBe(selected.details.cost.bytesScanned);
+		const standardOverride = await execute({ ...selectedRequest, execution: "standard" });
+		const largeOverride = await execute({ ...selectedRequest, execution: "large" });
+		expect(standardOverride.details.cost).toMatchObject({ requestedExecution: "standard", execution: "standard", selectionReason: "explicit_standard" });
+		expect(largeOverride.details.cost).toMatchObject({ requestedExecution: "large", execution: "large", selectionReason: "explicit_large" });
 	});
 
 	it("rejects wrong-operation fields, malformed parameters, unsupported pairs and abort", async () => {

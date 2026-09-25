@@ -8,7 +8,7 @@ description: Analyze existing Pi sessions and usage records across default, lega
 1. Activate `log_analytics` through `tool_search` with `session analytics` or `usage logs` keywords. It is deferred at session start and stays active until the next session.
 2. Use `{"operation":"catalog"}` for source names and columns. `session_entries` supports default and legacy; `bedrock_usage` and `codex_cache_observations` support default only.
 3. Omitted `profiles` selects the active registered profile, normally default. Use `["legacy"]` or `["default","legacy"]` explicitly. Never assume a default-only result searched legacy too.
-4. Choose the operation by work: `sessions` is metadata-only discovery, `search` is the cheap DuckDB-free literal/native-field path, `follow_up` retrieves bounded context for an exact search occurrence, and `query` is for native SQL joins/aggregates. Use `execution:"large"` explicitly for broad SQL.
+4. Choose the operation by work: `sessions` is metadata-only discovery, `search` is the cheap DuckDB-free literal/native-field path, `follow_up` retrieves bounded context for an exact search occurrence, and `query` is for native SQL joins/aggregates. Omitted query execution selects large for non-exact-session scope or selected input at least 256 MiB; only smaller exact-session selections default to standard. Explicit `standard` and `large` override this policy.
 5. Report selected profiles/sources, operation, filters, coverage, scan costs, and limitations. A successful bounded output does not mean every row was returned or every selected record was semantically reviewed.
 
 ## Executable recipes
@@ -45,13 +45,13 @@ Use `search` or bounded pages over both profiles for the fixed `[since,until)` i
 
 ### Global analytics
 
-Use one native read-only SELECT for joins, aggregates, windows, or deliberately full-record searches. Select `execution:"large"` for a large scope:
+Use one native read-only SELECT for joins, aggregates, windows, or deliberately full-record searches. Automatic selection handles broad and large scopes; set execution explicitly only to override it:
 
 ```json
 {"operation":"query","profiles":["default","legacy"],"sources":["session_entries"],"execution":"large","sql":"SELECT _profile, message_role, count(*) AS records FROM session_entries WHERE _timestamp >= $since::TIMESTAMPTZ GROUP BY _profile, message_role ORDER BY _profile, message_role","parameters":{"since":"2026-06-01T00:00:00Z"},"maxRows":1000}
 ```
 
-Use standard execution for small exact-session SQL. If a resource limit fails, report the actual phase and bound and narrow the selected profiles/sessions or choose `search`; do not silently retry with larger limits or claim a partial aggregate is complete.
+If an explicitly standard query fails on a resource limit, report requested/effective mode, selected bytes and selection reason, then retry explicitly with `execution:"large"` when appropriate. Never silently retry or claim a partial aggregate is complete.
 
 ## Discovery and continuation semantics
 
@@ -61,7 +61,7 @@ Search cursors are process-local, retained only while continuation is possible, 
 
 ## Costs, cache, and temporary storage
 
-Search and header discovery do not initialize DuckDB. Standard SQL keeps the existing 5-second deadline, 512 MiB selected-input bound, two threads, 1 GB DuckDB memory ceiling, and invocation-local in-memory database with no spill. Large SQL is opt-in: it uses a bounded JSONL reader and appender, an invocation-owned disk database/spill directory, a 120-second deadline and 4 GiB owned-disk budget while retaining two threads and the 1 GB ceiling. Costs report discovery, staging, query time, files/bytes, and large-mode staged records, malformed records, disk high-water and budget. Temporary paths are runtime-owned and cleaned after success, error, or cancellation; a cleanup failure names the owned remnant. Standard or large mode never creates a persistent transcript projection.
+Search and header discovery do not initialize DuckDB. Both query modes use a 2 GB DuckDB memory limit, two threads, and an 8 GiB bounded owned-disk budget, configurable through `PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES` for either mode. Every query creates per-invocation database/spill storage beneath the default profile's gitignored `.analytics-state/`; it is removed after success, error, or cancellation, and cleanup failures name the exact remnant. Cost reports requested and effective mode, selected bytes, selection reason, and resource usage. DuckDB spill cannot prevent every out-of-memory failure, especially for complex blocking operators and some aggregates. No persistent transcript projection is created.
 
 The disposable metadata cache is under the default runtime's gitignored `.analytics-state/metadata.json`. It contains only validated file markers, native header metadata, and event ranges observed during requested reads. It contains no message content, snippets, arguments, outputs, or SQL projection. Missing, corrupt, stale, or unwritable cache state falls back to authoritative files and cannot exclude input. Cache ranges are invalidated on file replacement/truncation.
 

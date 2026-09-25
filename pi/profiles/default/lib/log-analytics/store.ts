@@ -1,15 +1,29 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { DuckDBInstance, StatementType, type DuckDBConnection } from "@duckdb/node-api";
-import { canonicalWithin, checkCancelled } from "./profiles.js";
+import { canonicalWithin, checkCancelled, createAnalyticsInvocationDirectory } from "./profiles.js";
 import { selectSources, type SelectedSource, type SourceColumn, type SourceSelection } from "./registry.js";
 
 export type AnalyticsParameter = string | number | boolean | null;
 export type AnalyticsExecution = "standard" | "large";
+export type AnalyticsRequestedExecution = AnalyticsExecution | "automatic";
+export type AnalyticsSelectionReason = "explicit_standard" | "explicit_large" | "selected_bytes_at_or_above_256_mib" | "exact_session_below_256_mib" | "non_exact_scope_below_256_mib";
+export const AUTO_LARGE_THRESHOLD_BYTES = 256 * 1024 ** 2;
 export type AnalyticsQuery = { sql: string; parameters?: Record<string, AnalyticsParameter>; maxRows?: number; maxBytes?: number };
+export type AnalyticsExecutionDecision = {
+	requestedExecution: AnalyticsRequestedExecution; execution: AnalyticsExecution; selectionReason: AnalyticsSelectionReason;
+};
+export function chooseAnalyticsExecution(requestedExecution: AnalyticsRequestedExecution, selectedBytes: number, exactSessionScope: boolean): AnalyticsExecutionDecision {
+	if (requestedExecution === "standard") return { requestedExecution, execution: "standard", selectionReason: "explicit_standard" };
+	if (requestedExecution === "large") return { requestedExecution, execution: "large", selectionReason: "explicit_large" };
+	if (selectedBytes >= AUTO_LARGE_THRESHOLD_BYTES) return { requestedExecution, execution: "large", selectionReason: "selected_bytes_at_or_above_256_mib" };
+	return exactSessionScope
+		? { requestedExecution, execution: "standard", selectionReason: "exact_session_below_256_mib" }
+		: { requestedExecution, execution: "large", selectionReason: "non_exact_scope_below_256_mib" };
+}
 export type AnalyticsQueryCost = {
-	execution?: AnalyticsExecution; filesScanned: number; bytesScanned: number; discoveryMs: number; stagingMs: number; queryMs: number;
+	requestedExecution: AnalyticsRequestedExecution; execution: AnalyticsExecution; selectedBytes: number; selectionReason: AnalyticsSelectionReason;
+	filesScanned: number; bytesScanned: number; discoveryMs: number; stagingMs: number; queryMs: number;
 	memoryLimit?: string; threads?: number; recordsStaged?: number; malformedRecords?: number;
 	peakOwnedDiskBytes?: number; diskBudgetBytes?: number;
 };
@@ -129,13 +143,20 @@ async function treeBytes(root: string): Promise<number> {
 async function checkDisk(tracker: ResourceTracker): Promise<void> {
 	if (tracker.resourceError) throw tracker.resourceError;
 	const bytes = await treeBytes(tracker.ownedPath); tracker.peakOwnedDiskBytes = Math.max(tracker.peakOwnedDiskBytes, bytes);
-	if (bytes > tracker.diskBudgetBytes) throw new Error(`analytics large execution owned disk ${bytes} bytes exceeds bound ${tracker.diskBudgetBytes}`);
+	if (bytes > tracker.diskBudgetBytes) throw new Error(`analytics execution owned disk ${bytes} bytes exceeds bound ${tracker.diskBudgetBytes}`);
 }
 function resourceFailure(error: unknown, tracker: ResourceTracker | undefined): unknown {
-	if (!tracker || !(error instanceof Error) || error.message.startsWith("analytics large execution owned disk")) return error;
+	if (!tracker || !(error instanceof Error) || error.message.startsWith("analytics execution owned disk")) return error;
 	return /out of memory|temp(?:orary)? directory|no space|disk full/i.test(error.message)
-		? new Error(`analytics large execution resource limit (memory and owned disk ${tracker.diskBudgetBytes} bytes): ${error.message}`)
+		? new Error(`analytics execution resource limit (memory and owned disk ${tracker.diskBudgetBytes} bytes): ${error.message}`)
 		: error;
+}
+function isResourceFailure(error: unknown): error is Error {
+	return error instanceof Error && (/^analytics execution (?:owned disk|resource limit)/.test(error.message) || /out of memory|temp(?:orary)? directory|no space|disk full/i.test(error.message));
+}
+function explainResourceFailure(error: Error, decision: AnalyticsExecutionDecision, selectedBytes: number): Error {
+	const retry = decision.execution === "standard" ? ' Retry explicitly with execution: "large"; no automatic retry was performed.' : "";
+	return new Error(`Analytics resource failure (requested execution: ${decision.requestedExecution}; effective execution: ${decision.execution}; selected bytes: ${selectedBytes}; selection reason: ${decision.selectionReason}).${retry} Cause: ${error.message}`);
 }
 async function createLargeView(connection: DuckDBConnection, source: SelectedSource, signal: AbortSignal, tracker: ResourceTracker, counters: { records: number; malformed: number }): Promise<void> {
 	const raw = `_raw_${source.definition.name}`;
@@ -194,52 +215,67 @@ async function query(instance: DuckDBInstance, request: AnalyticsQuery, signal: 
 }
 
 export async function withAnalyticsSession<T>(options: AnalyticsSessionOptions, callback: (session: AnalyticsSession) => Promise<T>): Promise<T> {
-	checkCancelled(options.signal); const execution = options.execution ?? "standard";
-	if (execution !== "standard" && execution !== "large") throw new Error("invalid analytics execution mode");
+	checkCancelled(options.signal); const requestedExecution = options.execution ?? "automatic";
+	if (requestedExecution !== "automatic" && requestedExecution !== "standard" && requestedExecution !== "large") throw new Error("invalid analytics execution mode");
 	const threads = integer(options.threads ?? environmentInteger("PI_ANALYTICS_THREADS", 2), "threads");
 	const memoryLimit = options.memoryLimit ?? process.env.PI_ANALYTICS_MEMORY_LIMIT ?? "2GB"; if (!memoryLimit.trim()) throw new Error("invalid analytics memoryLimit");
-	const diskBudgetBytes = execution === "large" ? integer(options.diskBudgetBytes ?? environmentInteger("PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES", 8 * 1024 ** 3), "diskBudgetBytes") : undefined;
+	const diskBudgetBytes = integer(options.diskBudgetBytes ?? environmentInteger("PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES", 8 * 1024 ** 3), "diskBudgetBytes");
 	const signal = options.signal ?? new AbortController().signal;
 	let instance: DuckDBInstance | undefined, setup: DuckDBConnection | undefined, ownedPath: string | undefined, tracker: ResourceTracker | undefined;
 	const cancelSetup = () => setup?.interrupt(); signal.addEventListener("abort", cancelSetup);
+	let decision: AnalyticsExecutionDecision | undefined; let selectedBytes = 0;
 	try {
 		const discoveryStarted = performance.now(); const sources = await selectSources({ ...options, signal });
-		const files = [...new Map(sources.flatMap(source => source.files).map(item => [item.file, item])).values()]; let bytesScanned = 0;
-		for (const item of files) { checkCancelled(signal); if (await canonicalWithin(item.root, item.file) !== item.file) throw new Error("analytics input changed during discovery"); bytesScanned += (await fs.stat(item.file)).size; }
+		const files = [...new Map(sources.flatMap(source => source.files).map(item => [item.file, item])).values()];
+		for (const item of files) { checkCancelled(signal); if (await canonicalWithin(item.root, item.file) !== item.file) throw new Error("analytics input changed during discovery"); selectedBytes += (await fs.stat(item.file)).size; }
+		const exactSessionScope = [...new Set(options.sources)].length === 1 && options.sources.includes("session_entries") && Boolean(options.sessionRefs?.length);
+		decision = chooseAnalyticsExecution(requestedExecution, selectedBytes, exactSessionScope);
+		const { execution } = decision;
 		const started = performance.now(); const counters = { records: 0, malformed: 0 };
 		await withStagingLock(signal, async () => {
 			await stagingObserver?.(options); checkCancelled(signal);
-			if (execution === "large") {
-				const base = path.join(os.tmpdir(), "pi-log-analytics"); await fs.mkdir(base, { recursive: true }); ownedPath = await fs.mkdtemp(path.join(base, "invocation-"));
-				await temporaryStorageObserver?.(ownedPath); const spill = path.join(ownedPath, "spill"); await fs.mkdir(spill);
-				tracker = { ownedPath, diskBudgetBytes: diskBudgetBytes!, peakOwnedDiskBytes: 0 };
-				instance = await DuckDBInstance.create(path.join(ownedPath, "analytics.duckdb"), { enable_external_access: "true", threads: String(threads), memory_limit: memoryLimit,
+			ownedPath = await createAnalyticsInvocationDirectory(options.registry.roots.default);
+			await temporaryStorageObserver?.(ownedPath);
+			const spill = path.join(ownedPath, "spill"); await fs.mkdir(spill);
+			tracker = { ownedPath, diskBudgetBytes, peakOwnedDiskBytes: 0 };
+			instance = execution === "large"
+				? await DuckDBInstance.create(path.join(ownedPath, "analytics.duckdb"), { enable_external_access: "true", threads: String(threads), memory_limit: memoryLimit,
+					temp_directory: spill, max_temp_directory_size: `${diskBudgetBytes}B`, autoinstall_known_extensions: "false", autoload_known_extensions: "false" })
+				: await DuckDBInstance.create(":memory:", { enable_external_access: "true", threads: String(threads), memory_limit: memoryLimit,
 					temp_directory: spill, max_temp_directory_size: `${diskBudgetBytes}B`, autoinstall_known_extensions: "false", autoload_known_extensions: "false" });
-			} else instance = await DuckDBInstance.create(":memory:", { enable_external_access: "true", threads: String(threads), memory_limit: memoryLimit,
-				temp_directory: "", autoinstall_known_extensions: "false", autoload_known_extensions: "false" });
 			setup = await instance.connect(); await setup.run("SET TimeZone = 'UTC'");
-			if (execution === "large") await setup.run("SET preserve_insertion_order = false");
+			await setup.run("SET preserve_insertion_order = false");
 			let setupMonitor: NodeJS.Timeout | undefined;
 			if (tracker) setupMonitor = setInterval(() => { void checkDisk(tracker!).catch(error => { tracker!.resourceError = error as Error; setup?.interrupt(); }); }, 25);
 			setupMonitor?.unref();
 			try {
-				for (const source of sources) { checkCancelled(signal); if (tracker) await createLargeView(setup, source, signal, tracker, counters); else await createStandardView(setup, source); }
+				for (const source of sources) { checkCancelled(signal); if (execution === "large") await createLargeView(setup, source, signal, tracker!, counters); else await createStandardView(setup, source); }
+				await checkDisk(tracker!);
 				if (tracker?.resourceError) throw tracker.resourceError;
 				checkCancelled(signal); await setup.run("SET enable_external_access = false");
 			} finally { if (setupMonitor) clearInterval(setupMonitor); }
 			setup.closeSync(); setup = undefined;
 		});
-		const cost: Omit<AnalyticsQueryCost, "queryMs"> = { execution, filesScanned: files.length, bytesScanned, discoveryMs: started - discoveryStarted,
+		const cost: Omit<AnalyticsQueryCost, "queryMs"> = { ...decision, selectedBytes, filesScanned: files.length, bytesScanned: selectedBytes, discoveryMs: started - discoveryStarted,
 			stagingMs: performance.now() - started, memoryLimit, threads,
-			...(tracker ? { recordsStaged: counters.records, malformedRecords: counters.malformed, peakOwnedDiskBytes: tracker.peakOwnedDiskBytes, diskBudgetBytes: tracker.diskBudgetBytes } : {}) };
+			...(tracker ? { ...(execution === "large" ? { recordsStaged: counters.records, malformedRecords: counters.malformed } : {}), peakOwnedDiskBytes: tracker.peakOwnedDiskBytes, diskBudgetBytes: tracker.diskBudgetBytes } : {}) };
 		checkCancelled(signal); return await callback({ query: request => query(instance!, request, signal, cost, tracker) });
 	} catch (error) {
-		checkCancelled(options.signal); throw resourceFailure(error, tracker);
+		checkCancelled(options.signal);
+		const normalized = resourceFailure(error, tracker);
+		if (decision && isResourceFailure(normalized)) throw explainResourceFailure(normalized, decision, selectedBytes);
+		throw normalized;
 	} finally {
-		signal?.removeEventListener("abort", cancelSetup); setup?.closeSync(); instance?.closeSync();
-		if (ownedPath) {
-			try { await fs.rm(ownedPath, { recursive: true, force: true }); await fs.stat(ownedPath); throw new Error("path still exists"); }
-			catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error(`analytics cleanup failed for owned path ${ownedPath}: ${error instanceof Error ? error.message : String(error)}`); }
+		signal?.removeEventListener("abort", cancelSetup);
+		try { setup?.closeSync(); }
+		finally {
+			try { instance?.closeSync(); }
+			finally {
+				if (ownedPath) {
+					try { await fs.rm(ownedPath, { recursive: true, force: true }); await fs.stat(ownedPath); throw new Error("path still exists"); }
+					catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error(`analytics cleanup failed for owned path ${ownedPath}: ${error instanceof Error ? error.message : String(error)}`); }
+				}
+			}
 		}
 	}
 }
