@@ -39,10 +39,17 @@ DISPLAY_OLD = '            const modelText = isSelected ? theme.fg("accent", ite
 DISPLAY_V1 = """            // Display major-only GPT generations with an explicit .0 for alignment.
             const displayId = item.id.replace(/^gpt-(\\d+)-(?=astra|sol|terra|luna)/u, "gpt-$1.0-");
             const modelText = isSelected ? theme.fg("accent", displayId) : displayId;"""
-DISPLAY_NEW = """            // Display compact labels without changing provider model IDs.
+DISPLAY_V2 = """            // Display compact labels without changing provider model IDs.
             const displayId = (item.provider === "bedrock-mantle"
                 ? item.id.replace(/^(?:anthropic\\.claude-|openai\\.)/u, "")
                 : item.id).replace(/^gpt-(\\d+)-(?=astra|sol|terra|luna)/u, "gpt-$1.0-");
+            const modelText = isSelected ? theme.fg("accent", displayId) : displayId;"""
+DISPLAY_NEW = """            // Display compact labels without changing provider model IDs.
+            const displayId = (item.provider === "bedrock-mantle"
+                ? item.id.replace(/^(?:anthropic\\.claude-|openai\\.)/u, "")
+                : item.provider === "anthropic"
+                    ? item.id.replace(/^claude-/u, "")
+                    : item.id).replace(/^gpt-(\\d+)-(?=astra|sol|terra|luna)/u, "gpt-$1.0-");
             const modelText = isSelected ? theme.fg("accent", displayId) : displayId;"""
 BUNDLE_ORDER_MARKER = "/* Preserve registry/configured order within each provider. */"
 BUNDLE_DISPLAY_V1_MARKER = "/* Display major-only GPT generations with an explicit .0 for alignment. */"
@@ -51,7 +58,8 @@ BUNDLE_ORDER_PATTERN = re.compile(r"sortModels\(models\)\{let sorted=\[\.\.\.mod
 BUNDLE_ORDER_NEW = f"sortModels(models){{let sorted=[...models];{BUNDLE_ORDER_MARKER}return sorted.sort((a,b2)=>a.provider.localeCompare(b2.provider)),sorted}}getScopeText()"
 BUNDLE_DISPLAY_OLD = 'modelText=isSelected?theme.fg("accent",item.id):item.id'
 BUNDLE_DISPLAY_V1 = f'{BUNDLE_DISPLAY_V1_MARKER}displayId=item.id.replace(/^gpt-(\\d+)-(?=astra|sol|terra|luna)/u,"gpt-$1.0-"),modelText=isSelected?theme.fg("accent",displayId):displayId'
-BUNDLE_DISPLAY_NEW = f'{BUNDLE_DISPLAY_MARKER}displayId=(item.provider==="bedrock-mantle"?item.id.replace(/^(?:anthropic\\.claude-|openai\\.)/u,""):item.id).replace(/^gpt-(\\d+)-(?=astra|sol|terra|luna)/u,"gpt-$1.0-"),modelText=isSelected?theme.fg("accent",displayId):displayId'
+BUNDLE_DISPLAY_V2 = f'{BUNDLE_DISPLAY_MARKER}displayId=(item.provider==="bedrock-mantle"?item.id.replace(/^(?:anthropic\\.claude-|openai\\.)/u,""):item.id).replace(/^gpt-(\\d+)-(?=astra|sol|terra|luna)/u,"gpt-$1.0-"),modelText=isSelected?theme.fg("accent",displayId):displayId'
+BUNDLE_DISPLAY_NEW = f'{BUNDLE_DISPLAY_MARKER}displayId=(item.provider==="bedrock-mantle"?item.id.replace(/^(?:anthropic\\.claude-|openai\\.)/u,""):item.provider==="anthropic"?item.id.replace(/^claude-/u,""):item.id).replace(/^gpt-(\\d+)-(?=astra|sol|terra|luna)/u,"gpt-$1.0-"),modelText=isSelected?theme.fg("accent",displayId):displayId'
 
 
 def command_output(args: list[str]) -> str | None:
@@ -112,26 +120,32 @@ def main() -> int:
             if BUNDLE_ORDER_MARKER not in text and BUNDLE_ORDER_PATTERN.search(text):
                 text = BUNDLE_ORDER_PATTERN.sub(BUNDLE_ORDER_NEW, text, count=1)
                 changed = True
-            if BUNDLE_DISPLAY_MARKER not in text:
-                if BUNDLE_DISPLAY_V1 in text:
+            if BUNDLE_DISPLAY_NEW not in text:
+                if BUNDLE_DISPLAY_V2 in text:
+                    text = text.replace(BUNDLE_DISPLAY_V2, BUNDLE_DISPLAY_NEW, 1)
+                    changed = True
+                elif BUNDLE_DISPLAY_V1 in text:
                     text = text.replace(BUNDLE_DISPLAY_V1, BUNDLE_DISPLAY_NEW, 1)
                     changed = True
                 elif BUNDLE_DISPLAY_OLD in text:
                     text = text.replace(BUNDLE_DISPLAY_OLD, BUNDLE_DISPLAY_NEW, 1)
                     changed = True
-            complete = BUNDLE_ORDER_MARKER in text and BUNDLE_DISPLAY_MARKER in text
+            complete = BUNDLE_ORDER_MARKER in text and BUNDLE_DISPLAY_NEW in text
         else:
             if ORDER_MARKER not in text and OLD in text:
                 text = text.replace(OLD, NEW, 1)
                 changed = True
-            if DISPLAY_MARKER not in text:
-                if DISPLAY_V1 in text:
+            if DISPLAY_NEW not in text:
+                if DISPLAY_V2 in text:
+                    text = text.replace(DISPLAY_V2, DISPLAY_NEW, 1)
+                    changed = True
+                elif DISPLAY_V1 in text:
                     text = text.replace(DISPLAY_V1, DISPLAY_NEW, 1)
                     changed = True
                 elif DISPLAY_OLD in text:
                     text = text.replace(DISPLAY_OLD, DISPLAY_NEW, 1)
                     changed = True
-            complete = ORDER_MARKER in text and DISPLAY_MARKER in text
+            complete = ORDER_MARKER in text and DISPLAY_NEW in text
         if changed:
             path.write_text(text, encoding="utf-8", newline="\n")
             print(f"patched: {path}")

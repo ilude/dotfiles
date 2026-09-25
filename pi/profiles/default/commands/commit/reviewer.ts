@@ -3,18 +3,31 @@ import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import timers from "node:timers/promises";
 import { Agent } from "@earendil-works/pi-agent-core";
-import { isContextOverflow, isRetryableAssistantError, type ImageContent, type TextContent, type Usage } from "@earendil-works/pi-ai";
-import { createBashTool, createReadTool, type ExtensionAPI, type ToolDefinition, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { isContextOverflow, isRetryableAssistantError, type Api, type ImageContent, type Model, type TextContent, type Usage } from "@earendil-works/pi-ai";
+import { createBashTool, createReadTool, type ExtensionAPI, type ModelRuntime, type ToolDefinition, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts";
+import { compareModelVersions, modelFamilyVersion } from "../../lib/model-family.ts";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { formatStatus, gitReviewTool, page } from "./tools.ts";
 
-const PROVIDER = "openai-codex";
 const MODEL_FAMILY = "luna";
+const FALLBACK_PROVIDER = "anthropic";
+const FALLBACK_FAMILY = "haiku";
 const WORKFLOW_TIMEOUT_MS = 180_000;
 const RESPONSE_RETRIES = 3;
+
+/** Latest undated Haiku from the Anthropic subscription provider. */
+export async function resolveFallbackModel(runtime: Pick<ModelRuntime, "getAvailable">, signal?: AbortSignal): Promise<Model<Api>> {
+	const models = await runtime.getAvailable(FALLBACK_PROVIDER, { signal });
+	const model = models.filter((candidate) => !/-\d{8}$/.test(candidate.id)).flatMap((candidate) => {
+		const parsed = modelFamilyVersion(candidate.id);
+		return parsed?.family === FALLBACK_FAMILY ? [{ candidate, version: parsed.version }] : [];
+	}).sort((a, b) => compareModelVersions(b.version, a.version))[0]?.candidate;
+	if (!model) throw new Error(`No authenticated ${FALLBACK_PROVIDER} ${FALLBACK_FAMILY} model is available`);
+	return model;
+}
 
 export function isBroadDiscoveryCommand(command: string): boolean {
 	return /(^|(?:&&|\|\||[;|])\s*)(?:command\s+)?find(?:\.exe)?\s/i.test(command)
@@ -96,7 +109,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 			const pauseTimer = () => { clearTimeout(timer); remaining -= Date.now() - activeSince; };
 			resumeTimer();
 			let agent: Agent | undefined;
-			let selectedModelId: string | undefined;
+			let selectedModel: Model<Api> | undefined;
 			let unsubscribe: (() => void) | undefined;
 			const abort = () => agent?.abort();
 			combined.addEventListener("abort", abort, { once: true });
@@ -139,8 +152,16 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 					inventory.push(`Repository: ${relative(root, repository) || "."}\nInstruction files: ${instructions.length ? instructions.join(", ") : "none"}${publication ? `\n${publication}` : ""}\n${status}`);
 				}
 				const runtime = await createProfileModelRuntime(combined);
-				const model = await resolveLatestCodexModelFromRuntime(MODEL_FAMILY, runtime, combined);
-				selectedModelId = model.id;
+				let usedFallback = false;
+				let model: Model<Api>;
+				try { model = await resolveLatestCodexModelFromRuntime(MODEL_FAMILY, runtime, combined); }
+				catch (error) {
+					combined.throwIfAborted();
+					progress(`Luna unavailable (${error instanceof Error ? error.message : String(error)}); using ${FALLBACK_FAMILY}…`);
+					model = await resolveFallbackModel(runtime, combined);
+					usedFallback = true;
+				}
+				selectedModel = model;
 				const review = gitReviewTool(pi, repositories);
 				const read = createReadTool(root);
 				const shell = createBashTool(root);
@@ -221,27 +242,48 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 				});
 				combined.throwIfAborted();
 				await agent.prompt(buildCommitTask(push, root, inventory));
-				for (let retry = 0; retry < RESPONSE_RETRIES; retry++) {
+				const lastError = () => {
+					const last = agent!.state.messages.at(-1);
+					return last?.role === "assistant" && last.stopReason === "error" ? last : undefined;
+				};
+				for (;;) {
+					for (let retry = 0; retry < RESPONSE_RETRIES; retry++) {
+						combined.throwIfAborted();
+						if (failure) throw new Error(failure);
+						const last = lastError();
+						if (!last
+							|| (!isRetryableAssistantError(last) && last.errorMessage !== "WebSocket stream closed before response.completed")
+							|| isContextOverflow(last, model.contextWindow)
+							|| /timed?\s*out|timeout/i.test(last.errorMessage ?? "")) break;
+						progress(`Retrying model response (${retry + 1}/${RESPONSE_RETRIES})…`);
+						await timers.setTimeout(1000 * 2 ** retry, undefined, { signal: combined });
+						combined.throwIfAborted();
+						// Agent never executes tools from an errored response. Remove only that
+						// response, keeping all completed tool results, as native Pi retry does.
+						agent.state.messages = agent.state.messages.slice(0, -1);
+						progress("Committing…");
+						await agent.continue();
+					}
 					combined.throwIfAborted();
 					if (failure) throw new Error(failure);
-					const last = agent.state.messages.at(-1);
-					if (!last || last.role !== "assistant" || last.stopReason !== "error"
-						|| (!isRetryableAssistantError(last) && last.errorMessage !== "WebSocket stream closed before response.completed")
-						|| isContextOverflow(last, model.contextWindow)
-						|| /timed?\s*out|timeout/i.test(last.errorMessage ?? "")) break;
-					progress(`Retrying model response (${retry + 1}/${RESPONSE_RETRIES})…`);
-					await timers.setTimeout(1000 * 2 ** retry, undefined, { signal: combined });
-					combined.throwIfAborted();
-					// Agent never executes tools from an errored response. Remove only that
-					// response, keeping all completed tool results, as native Pi retry does.
+					const last = lastError();
+					if (!last || usedFallback) break;
+					// Luna failed after retries: continue the same transcript on Haiku.
+					let fallback: Model<Api>;
+					try { fallback = await resolveFallbackModel(runtime, combined); }
+					catch { break; }
+					usedFallback = true;
+					model = fallback;
+					selectedModel = fallback;
+					progress(`Luna failed (${last.errorMessage ?? "error"}); retrying with ${fallback.id}…`);
 					agent.state.messages = agent.state.messages.slice(0, -1);
-					progress("Committing…");
+					agent.state.model = fallback;
 					await agent.continue();
 				}
 				combined.throwIfAborted();
 				if (failure) throw new Error(failure);
 				const last = [...agent.state.messages].reverse().find((message) => message.role === "assistant");
-				if (!last || last.stopReason === "error" || last.stopReason === "aborted") throw new Error(last?.errorMessage || "Luna returned no response.");
+				if (!last || last.stopReason === "error" || last.stopReason === "aborted") throw new Error(last?.errorMessage || `${selectedModel?.id ?? "Model"} returned no response.`);
 				outcome = last.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
 			} catch (error) {
 				failure = signal?.aborted ? "Cancelled" : deadline.signal.aborted ? "Timed out" : error instanceof Error ? error.message : String(error);
@@ -275,7 +317,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 			const publication = push && publicationTargets > 0 ? (/^Pushed\.?$/i.test(outcome) ? "Pushed." : "Push completion not confirmed.") : "";
 			const report = [summary, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
-			return { content: [{ type: "text", text: report }], details: { elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${PROVIDER}/${selectedModelId}:low` }, usage };
+			return { content: [{ type: "text", text: report }], details: { elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${selectedModel?.provider}/${selectedModel?.id}:low` }, usage };
 		},
 		renderCall: () => new Container(),
 		renderResult(result, { isPartial }, theme, context) {

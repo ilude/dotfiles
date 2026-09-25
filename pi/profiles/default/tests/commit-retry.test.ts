@@ -223,3 +223,38 @@ it("retains captured push permission and annotations through recovery", async ()
 	expect(git.mock.calls.filter(([, args]) => args[2] === "branch")).toHaveLength(1);
 	expect(result.content).toEqual([{ type: "text", text: "No commits created.\nPushed." }]);
 });
+
+const haiku = { ...model, id: "claude-haiku-4-5", provider: "anthropic", api: "anthropic-messages" } as unknown as Model<"openai-codex-responses">;
+const withHaiku = () => doubles.getAvailable.mockImplementation(async provider => provider === "anthropic"
+	? [{ ...haiku, id: "claude-haiku-4-5-20251001" }, { ...haiku, id: "claude-haiku-4-4" }, haiku]
+	: [model]);
+
+it("continues the same transcript on the latest Anthropic Haiku after Luna fails", async () => {
+	withHaiku();
+	const models: string[] = [];
+	doubles.stream.mockImplementation(((original) => (m, c, o) => { models.push(m.id); return original(m, c, o); })(doubles.stream.getMockImplementation()!));
+	responses.push(
+		{ message: message([toolCall("child commit")], "toolUse") },
+		{ message: failed("insufficient_quota") },
+		{ message: done() },
+	);
+	const result = await start().run;
+	expect(models).toEqual(["gpt-6-luna", "gpt-6-luna", "claude-haiku-4-5"]);
+	expect(requests[2]!.messages).toEqual(requests[1]!.messages);
+	expect(result.details).toMatchObject({ model: "anthropic/claude-haiku-4-5:low" });
+	expect(commits).toEqual(["child commit"]);
+});
+
+it("uses Haiku when no Luna model is available", async () => {
+	doubles.getAvailable.mockImplementation(async provider => provider === "anthropic" ? [haiku] : []);
+	responses.push({ message: done() });
+	const result = await start().run;
+	expect(result.details).toMatchObject({ model: "anthropic/claude-haiku-4-5:low" });
+});
+
+it("does not fall back again when Haiku also fails", async () => {
+	withHaiku();
+	responses.push({ message: failed("insufficient_quota") }, { message: failed("Invalid request") });
+	await expect(start().run).rejects.toThrow("Invalid request");
+	expect(requests).toHaveLength(2);
+});
