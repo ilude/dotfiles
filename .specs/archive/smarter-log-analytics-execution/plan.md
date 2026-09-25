@@ -1,7 +1,7 @@
 ---
 created: 2026-09-25
-status: ready
-completed: null
+status: completed
+completed: 2026-09-25
 ---
 
 # Make Pi log analytics choose resilient DuckDB execution
@@ -114,7 +114,7 @@ Keep checkbox state, concise evidence, current blockers, and the next action acc
   - Done when: tool schema/description, catalog defaults, skill, reference, scripts, and changelog agree with tested runtime behavior.
   - Evidence: Skill, reference, tool catalog/description, performance assertions, and changelog now match the tested runtime contract. Targeted stale-claim search, focused tests, syntax check, and diff check passed.
 
-- [ ] **T5: Validate, archive, commit, integrate, and clean up**
+- [x] **T5: Validate, archive, commit, integrate, and clean up**
   - Depends on: T1–T4 complete.
   - Files/inputs: all task changes and this spec.
   - Change: run the finite checks below, fix task-related failures, update task evidence, and complete the closeout contract. Preserve all unrelated originating-checkout changes.
@@ -126,13 +126,13 @@ Keep checkbox state, concise evidence, current blockers, and the next action acc
     - `git diff --check`
   - Done when: checks pass, generated fixture/temp artifacts are absent or ignored as designed, the archived plan and implementation are committed on the task branch, merged into the recorded `main` checkout, completion metadata is committed there, and the clean task worktree is removed.
   - If blocked: retain the task worktree and report the exact failed check or integration prerequisite, next action, and responsible actor. Do not commit unrelated target-checkout changes.
-  - Evidence: 2026-09-25 final validation passed: 34 focused tests, typecheck, the six-case ingestion benchmark matrix, the 16-sample performance harness, ignore verification, and `git diff --check`. Archive, task commit, integration metadata, and cleanup remain pending.
+  - Evidence: 2026-09-25 final validation passed: 34 focused tests, typecheck, the six-case ingestion benchmark matrix, the 16-sample performance harness, ignore verification, and `git diff --check`. Implementation/archive commit `e787826e` merged into recorded target `main` by merge commit `0a40c475`; the active plan copy was removed. Completion metadata was committed separately on the target, and task-worktree cleanup was verified.
 
 ## Agreed validation and current handoff
 
-- Status: implementation and agreed checks complete; integration closeout pending.
+- Status: completed and integrated on 2026-09-25.
 - Completed work and evidence: T1-T4 are complete. Final validation passed 34 focused tests, typecheck, the ingestion benchmark matrix, the 16-sample performance harness, ignore verification, and diff checking on 2026-09-25.
-- Next: archive and commit the task branch, merge it into the recorded `main` checkout, record completion metadata, and remove the clean task worktree.
+- Next: none.
 - Blockers/open decisions: none.
 - Verification limits: live operator UI/lifecycle behavior was not manually exercised; this does not block authorized closeout.
 
