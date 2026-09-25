@@ -13,7 +13,7 @@ export interface PlanRecord {
 	tasks: { total: number; checked: number };
 	firstUnchecked?: string;
 	handoff?: string;
-	modified: Date;
+	changed: Date;
 	warnings: string[];
 }
 
@@ -59,10 +59,12 @@ export function parsePlan(file: string, stub: string, root: string): PlanRecord 
 	const completed = scalar(metadata.completed);
 	if (metadata.completed !== undefined && metadata.completed !== null && !completed) warnings.push("invalid completion date");
 	const handoff = plainSummary(section(markdown, "Current handoff"));
+	const fileStat = statSync(file);
+	const changed = new Date(Math.max(fileStat.birthtimeMs, fileStat.mtimeMs));
 	return {
 		stub, path: file, relativePath: path.relative(root, file).replace(/\\/g, "/"), title, description,
 		status, completed, tasks: { total: boxes.length, checked }, firstUnchecked, handoff,
-		modified: statSync(file).mtime, warnings,
+		changed, warnings,
 	};
 }
 

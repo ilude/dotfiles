@@ -111,7 +111,7 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					const content = [theme.bold(clean(current.title)), "",
 						`Status: ${status(current)} · Tasks: ${progress(current)}`, "",
 						clean(current.description), "", `Path: ${clean(current.relativePath)}`,
-						`Modified: ${current.modified.toISOString().slice(0, 10)}`];
+						`Changed: ${current.changed.toISOString().slice(0, 10)}`];
 					if (current.firstUnchecked) content.push(`Next: ${clean(current.firstUnchecked)}`);
 					if (current.handoff) content.push(`Handoff: ${clean(current.handoff)}`);
 					if (current.warnings.length) content.push(theme.fg("warning", `Warning: ${clean(current.warnings.join("; "))}`));
@@ -129,11 +129,12 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					const columns = inner >= 56;
 					const statusWidth = Math.min(16, Math.max(8, ...plans.map(plan => visibleWidth(status(plan)))));
 					const taskWidth = Math.min(11, Math.max(5, ...plans.map(plan => visibleWidth(progress(plan)))));
-					const stubWidth = inner - statusWidth - taskWidth - 6;
-					const cells = (stub: string, status: string, tasks: string) => `${fit(stub, stubWidth)}  ${fit(status, statusWidth)}  ${fit(tasks, taskWidth)}`;
+					const dateWidth = 10;
+					const stubWidth = inner - statusWidth - taskWidth - dateWidth - 8;
+					const cells = (stub: string, status: string, tasks: string, changed: string) => `${fit(stub, stubWidth)}  ${fit(status, statusWidth)}  ${fit(tasks, taskWidth)}  ${fit(changed, dateWidth)}`;
 					const help = notice ?? ["↑↓ Select · Enter Details · Esc/q Close", `Actions: ${planActions.map(action => `${action.key} ${action.hint}`).join(" · ")}`]
 						.flatMap(text => wrapTextWithAnsi(text, inner));
-					const metadata = columns ? [] : [`Status: ${status(current)}`, `Tasks: ${progress(current)}`];
+					const metadata = columns ? [] : [`Status: ${status(current)}`, `Tasks: ${progress(current)}`, `Changed: ${current.changed.toISOString().slice(0, 10)}`];
 					// Very short, narrow panels retain all shortcuts before optional metadata.
 					metadata.splice(Math.max(0, height - 6 - (columns ? 1 : 0) - help.length));
 					// Reserve controls and one selectable row before allocating preview space.
@@ -145,13 +146,13 @@ export function planSelector(plans: PlanRecord[], initial: number, onDone: (valu
 					const capacity = Math.min(plans.length, Math.max(1, available - preview.length));
 					start = Math.max(0, Math.min(start, selected, plans.length - capacity));
 					if (selected >= start + capacity) start = selected - capacity + 1;
-					if (columns) output.push(row(muted(`  ${cells("Spec stub", "Status", "Tasks")}`)));
+					if (columns) output.push(row(muted(`  ${cells("Spec stub", "Status", "Tasks", "Changed")}`)));
 					for (let offset = 0; offset < capacity; offset++) {
 						const index = start + offset;
 						const plan = plans[index];
 						if (!plan) { output.push(row("")); continue; }
 						const active = index === selected;
-						const text = `${active ? "▶" : " "} ${columns ? cells(clean(plan.stub), status(plan), progress(plan)) : clean(plan.stub)}`;
+						const text = `${active ? "▶" : " "} ${columns ? cells(clean(plan.stub), status(plan), progress(plan), plan.changed.toISOString().slice(0, 10)) : clean(plan.stub)}`;
 						output.push(row(active ? theme.bold(theme.fg("accent", text)) : text, active));
 					}
 					output.push(border("├", "┤"));

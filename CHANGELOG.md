@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-25: Show plan change dates
+
+**Changed:** `/plans` now shows the later filesystem creation or modification date for each plan in the browse list and detail view.
+
 ## 2026-09-24: Clarify subagent writing and identity
 
 **Changed:** Added a flexible writer role for prose artifacts and clarified that reviewer and validator return read-only findings while the parent owns synthesis unless explicitly delegated. Parent-visible results now distinguish `subagentId` for control from native `sessionId` for session and analytics tools, available after child registration.

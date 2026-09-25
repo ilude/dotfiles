@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -41,6 +41,8 @@ it("discovers direct active plans, parses summaries and sorts by stub", () => {
   expect(found.errors).toEqual([]); expect(found.plans.map(p => p.stub)).toEqual(["a", "z"]);
   expect(found.plans.map(p => p.title)).toEqual(["Zebra", "Alpha"]);
   expect(found.plans[0]).toMatchObject({ description: "Ship the selector.", status: "completed", tasks: { total: 2, checked: 1 }, firstUnchecked: "Next" });
+  const planStat = statSync(found.plans[0]!.path);
+  expect(found.plans[0]!.changed.valueOf()).toBe(Math.floor(Math.max(planStat.birthtimeMs, planStat.mtimeMs)));
 });
 
 it("keeps malformed plans visible with bounded warnings", () => {
@@ -68,7 +70,8 @@ it("aligns the list columns and opens the selected plan without entering details
   const component = planSelector(plans, 1, done)({ requestRender() {}, terminal: { rows: 24 } }, testTheme(bg));
   const rows = component.render(80);
   expect(rows.every(row => visibleWidth(row) === 80)).toBe(true);
-  expect(rows.map(stripTerminalSequences).join("\n")).toMatch(/Spec stub\s+Status\s+Tasks/);
+  expect(rows.map(stripTerminalSequences).join("\n")).toMatch(/Spec stub\s+Status\s+Tasks\s+Changed/);
+  expect(rows.map(stripTerminalSequences).join("\n")).toContain(plans[1]!.changed.toISOString().slice(0, 10));
   const planRows = rows.filter(row => /(?:alpha|beta)\s+completed/.test(row));
   expect(planRows).toHaveLength(2);
   expect(planRows[0]!.indexOf("completed")).toBe(planRows[1]!.indexOf("completed"));
