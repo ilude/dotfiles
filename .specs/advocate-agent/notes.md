@@ -1,6 +1,6 @@
 # Advocate agent: investigation and discussion notes
 
-Updated: 2026-09-25. This is a discussion handoff, not an implementation plan or active policy.
+Updated: 2026-09-26. This is a discussion handoff, not an implementation plan or active policy.
 
 ## Resume here
 
@@ -184,6 +184,30 @@ Strong additions:
 - Environment-specific controls can be appropriate without becoming unsolicited blockers.
 - Planning should resolve consequential intent and then leave routine implementation flexibility to the executor.
 
+### Historical week: September 1–8
+
+Frozen interval: `[2026-09-01T19:16:41.417221Z, 2026-09-08T19:16:41.417221Z)`.
+
+- Both profiles were inventoried: 4,182 files, approximately 5.06 GB, and 525 event-active sessions. Deduplication reduced 6,549 visible-message occurrences to 5,763 canonical messages: 1,397 default and 4,366 legacy.
+- Six disjoint reviewers covered 519 sessions and all 363 rendered pages. Five older legacy sessions resumed within the interval were included.
+- An inventory mistake initially treated native `parentSession` as explicit child lineage. It was corrected before semantic review, restoring 1,553 canonical messages from ambiguous fork/branch sessions. Generated traffic was distinguished semantically from operator testimony.
+- Coverage audit verified batch union, timestamp bounds, frozen hashes, deduplication, and page rendering. Clipped outputs were recovered; reviewers reported no unread ranges. The auditor verified recovery receipts but did not byte-match old presentation output against the LF-corrected renderer.
+- One invalid legacy historical-backfill header was excluded. No malformed bodies, oversized records, timestamp gaps, or source changes were reported in readable input. Semantic coverage remains visible conversation, not every tool result, attachment, thinking block, or child transcript. Previously sampled anchors were retained as context rather than counted as independent new evidence.
+- Team Lead report: default `01a0db37-090e-7249-b42c-025433366b3d`; coverage audit: `01a0db3a-b29b-7401-858e-0d86874a5ebe`; synthesis check: `01a0db5c-0089-7276-b838-81a827141609`.
+- Temporary metadata/helpers: `C:/Users/mglenn/AppData/Local/Temp/advocate-review-week-2026-09-01-gr9f7h2d/`. No copied transcript corpus or rendered-page files were created by reviewers.
+
+Parent-checked precedents:
+
+| Subject | Profile, session / record | Evidence and limit |
+| --- | --- | --- |
+| Positive batched-workflow feedback | legacy `01a06f6c-10de-77ff-999c-35d33d08b556` / `7c0021a7`, `fe30af4f`, `2441a0be` | Mike clarified that deferred validation must still allow fixes, approved a workflow with bounded repair and reassessment, and praised its execution. The praised run needed no repair, so it does not demonstrate effectiveness of the numerical repair allowance. The historical instruction-change approval does not make that allowance current policy. |
+| Quiet end-to-end delegation | default `01a0744a-e4df-74f1-bb62-07bade758415` / `e79d3fa3`, `14f08728`; proposal `04268f12` | Approved delegating the full commit operation, keeping routine Git output outside the main thread while surfacing questions, failures, commits, remaining changes, and push status. Supports complete delegated ownership with concise reporting, not a standing model choice. |
+| Exhaustive work without an imposed budget | legacy `01a06e4d-ba24-7fa9-a3b8-cbb2290f9541` / `e6b8c229` | Rejected an arbitrary execution budget for a requested full baseline review. Anti-churn advice must not manufacture partial completion. Authority was specific to that review. |
+| Workload-specific stability exception | default `01a07781-f779-73a5-80b5-a4d166fe4691` / `81fcbae8`; proposal `83b0108c` | Authorized a SearXNG-only 24-hour exception to a seven-day image hold after discussion of scraper freshness. Supports understanding why a control exists and when its cost defeats its purpose, not general unpinning. |
+| Preference without an observed defect | legacy `01a06cf6-a913-7ee6-b262-bcc5a6f948fc` / `0ad235c3`, `58b3167a`; follow-up `63b843ce` | Rejected prose-asserting tests after the assistant hypothesized them. The assistant's subsequent bounded search reported none. Preserve the expressed preference without recording a confirmed implemented defect. |
+
+Marginal value: useful positive workflow precedents and contextual exceptions, mostly refining existing understanding rather than adding a broad new preference. Quiet delegation directly supports the proposed background feedback worker. Bounded repair versus exhaustive review and stability versus freshness sharpen when to follow or depart from heuristics. The Team Lead recommends pausing broad weekly review in favor of targeted retrieval for unresolved contrasts. This is a recommendation for discussion, not a finding that all domains are saturated or a user decision to stop. No older week has been started.
+
 ## Candidate design principles
 
 These are synthesis proposals, not new active rules. Their value is in the contrasts and boundaries, not slogans.
@@ -330,6 +354,17 @@ Mike agreed to the following design. It is not implemented yet; this records the
 - Return only the corrective action relevant to the current task, a brief account of knowledge changes, and any consequential question or core-instruction proposal. Raw history and exploratory analysis stay in the child context. Subsequent Advocate consultations use the updated references.
 
 The guiding distinction is understanding why a rule of thumb helps and when departing from it better preserves Mike's intent. Learning should improve that judgment, not accumulate mechanical classifications or exceptionless rules.
+
+### Lessons from historical review for feedback interpretation
+
+The same reviews should inform how the worker learns, not just what Advocate knows. The September 1–8 review supplies concrete examples:
+
+- Read enough of the proposed approach, correction, environmental constraints, and resolution to understand the feedback. A short approval depends on its adjacent proposal; a later qualification can change its meaning.
+- Separate a stated preference from evidence that a defect actually existed. The prose-test example above establishes the former without establishing the latter.
+- Separate approval of a mechanism from evidence that it worked. The praised batched run did not exercise its repair allowance.
+- Preserve the reason for an exception, such as SearXNG freshness or an explicitly exhaustive review. Otherwise the exception becomes a misleading general prohibition or permission.
+- Keep routine analysis outside the main context without hiding consequential outcomes. The approved quiet commit workflow is a positive precedent for a worker owning both investigation and permitted updates, rather than returning bookkeeping to the orchestrator.
+- Live feedback may arrive before the resolution is known. Record uncertainty honestly rather than manufacture a finished lesson. These observations inform interpretation, not new timing rules, labels, or trigger requirements.
 
 ## Open decisions and cautions
 
