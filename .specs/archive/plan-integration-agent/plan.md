@@ -1,7 +1,7 @@
 ---
 created: 2026-09-25
-status: ready
-completed: null
+status: completed
+completed: 2026-09-26
 ---
 
 # Delegate authorized plan integration and cleanup to an Integrator agent
@@ -134,12 +134,12 @@ Keep checkbox state, concise evidence, blockers, and next action current. Leave 
 
 ## Agreed validation and current handoff
 
-- Status: implementation and agreed task checks validated; task-branch closeout pending.
-- Completed work and evidence: T1-T4 implementation is preserved on `feature/plan-integration-agent` at base `6ec31d87730262640918874778888090480fc444`. Disposable end-to-end lifecycle scenarios passed as recorded under T5. The two Damage Control enforcement fixture failures from T3/T4 were reproduced and fixed without changing production enforcement. Focused tests, typecheck, runtime smoke, ordinary-orchestrator visibility comparison, and `git diff --check` passed. One unrelated environment-dependent definition test still requires an authenticated `openai-codex` Sol model; its focused non-registry coverage passed.
-- Integration target: `C:/Users/mglenn/.dotfiles`, branch `main`; task worktree: `C:/Users/mglenn/.dotfiles/.worktrees/plan-integration-agent`, branch `feature/plan-integration-agent`. Do not commit or integrate in this task. No completion status/date has been set.
-- Next: the parent should review and commit the implementation plus `.specs/archive/plan-integration-agent/plan.md` on `feature/plan-integration-agent`; then complete integration and metadata/worktree cleanup under the recorded closeout contract. This task intentionally made no commit and did not integrate.
-- Blockers/open decisions: none. The active Pi registry test limit is environmental and not a task-related defect; do not change registry/model behavior to mask it.
-- Verification limits: closeout scenarios use disposable Git repositories/worktrees through the production closeout library. The runtime smoke validates bootstrap/policy/grammars without executing tools or calling a model. Bootstrap integration of this plan has not been run; do not claim an Integrator-owned or manual integration.
+- Status: completed on 2026-09-26.
+- Completed work and evidence: implementation and archive were committed on `feature/plan-integration-agent` as `7e971d308977d5d948d976035d3bb3001f17d36f`. Disposable lifecycle scenarios, 119 focused tests, typecheck, runtime smoke, ordinary-orchestrator visibility comparison, and `git diff --check` passed as recorded under T5. One environment-dependent definition test requires an authenticated `openai-codex` Sol model; its focused non-registry coverage passed.
+- Integration result: manually bootstrapped under the pre-change closeout contract into `C:/Users/mglenn/.dotfiles` branch `main` with merge commit `f77ac075d993d3bb90e9269ef39698fa39a4c074`. A routine `CHANGELOG.md` merge conflict was resolved by preserving both entries. Existing unrelated target changes remained unstaged and no stash was required.
+- Closeout: the active spec was removed, this archived plan records actual completion metadata, and the metadata commit follows this update. The task branch is preserved. Task-worktree cleanup is verified after that commit.
+- Blockers/open decisions: none.
+- Verification limits: closeout scenarios use disposable Git repositories/worktrees through the production closeout library. The runtime smoke validates bootstrap/policy/grammars without executing tools or calling a model. This plan's own integration was manual because the running process could not safely bootstrap the newly added role and authority path.
 
 ## Closeout
 
