@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-25: Make new Pi instance launches silent
+
+**Changed:** Default Pi `/new-instance` no longer prints its invocation or a success notice in the console where it was entered. Launch failures still surface normally, and the `session_launch` tool retains its structured result.
+
 ## 2026-09-25: Select resilient log analytics execution automatically
 
 **Changed:** Omitted SQL execution now selects large mode for broad scope or at least 256 MiB selected input, retaining standard for smaller exact-session queries. Explicit mode overrides remain available. Both modes use 2 GB, two threads, bounded 8 GiB spill under per-invocation directories in the default profile's ignored analytics state, with cleanup and resource reporting. Spill can still fail for some memory-intensive DuckDB operators; explicitly standard failures advise retrying large.

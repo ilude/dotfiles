@@ -4,8 +4,14 @@ onboarding = false
 default_shell = "C:/Program Files/PowerShell/7/pwsh.exe"
 
 [keys]
-previous_tab = "prefix+shift+comma"
-next_tab = "prefix+shift+period"
+previous_tab = "prefix+comma"
+next_tab = "prefix+period"
+
+[[keys.command]]
+key = "prefix+n"
+type = "shell"
+command = "\"%HERDR_BIN_PATH%\" plugin pane open --plugin local.pi --entrypoint pi --placement tab --workspace \"%HERDR_ACTIVE_WORKSPACE_ID%\" --cwd \"%HERDR_ACTIVE_PANE_CWD%\" --env \"PI_HERDR_PROFILE_DIR=%USERPROFILE%/.dotfiles/pi/profiles/default\" --focus"
+description = "open a new Pi instance"
 
 [ui.sidebar.agents.rows_by_agent]
 pi = [

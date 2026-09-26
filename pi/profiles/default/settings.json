@@ -22,5 +22,10 @@
     "anthropic/claude-opus-5-5",
     "anthropic/claude-sonnet-5",
     "anthropic/claude-haiku-4-5"
-  ]
+  ],
+  "steeringMode": "all",
+  "followUpMode": "all",
+  "defaultProjectTrust": "always",
+  "doubleEscapeAction": "none",
+  "treeFilterMode": "default"
 }

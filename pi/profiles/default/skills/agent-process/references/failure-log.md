@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-074 - Server config reload was mistaken for attached-client keymap reload
+
+- **Reference:** Herdr `prefix+n` custom Pi-tab binding, 2026-09-25.
+- **Observed:** After editing Herdr keybindings, the orchestrator ran `herdr server reload-config` and claimed the new client shortcut was active. The operator's lowercase `prefix+n` still used the old client keymap, while uppercase `prefix+shift+n` invoked the built-in new-workspace action and did not start Pi.
+- **Finding:** The CLI command reloads server-owned custom commands but does not refresh an already attached client's local keymap. Herdr's in-app Reload config action reloads both. The implementation had not been exercised through an attached client before the activation claim.
+- **Remediation:** Use the in-app Reload config action (`prefix+shift+r` under the old keymap) after local binding changes, or restart the client. Distinguish server command availability from attached-client keymap activation.
+- **Status:** Configuration is written and server-valid; attached-client reload remains required before testing lowercase `prefix+n`.
+
 ## APR-073 - Asked permission to investigate an investigation request
 
 - **Reference:** Cross-provider Pi context investigation, 2026-09-25.

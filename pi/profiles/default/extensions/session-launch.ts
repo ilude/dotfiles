@@ -411,7 +411,7 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 		description: "Open a branched copy of this Pi session in a new terminal tab",
 		handler: async (args, ctx) => executeBranch(args, ctx, pi),
 	});
-	registerProfileCommand(pi, "new-instance", {
+	pi.registerCommand("new-instance", {
 		description: "Open a new Pi instance in this cwd in a new terminal tab",
 		handler: async (args, ctx) => executeNewInstance(args, ctx),
 	});

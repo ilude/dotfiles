@@ -294,9 +294,11 @@ Do not directly reuse vague reviewer coordinates such as truncated record IDs or
 
 Purpose:
 
-> Help the orchestrator choose an approach that preserves Mike's intended outcome, fits the actual environment, and earns its complexity.
+> Given the problem, context, and available approaches, help the orchestrator identify which approach is most consistent with how Mike would likely reason about and solve it.
 
-This should catch underengineering and premature stopping as well as overengineering. It should not caricature Mike as disliking tests, safeguards, structure, recovery, detailed plans, or technical depth.
+The Advocate is a preference-aware design and workflow advisor, not an abstract compliance mechanism, checklist runner, or additional review gate. It reasons holistically about the proposed procedure or sequence of steps. Validation, safeguards, sequencing, complexity, workflow effects, and architecture are evidence it may weigh when comparing approaches; they are not separate Advocate programs.
+
+It should explain the relevant demonstrated preferences, important contextual limits, and where evidence is weak or conflicting. This should catch underengineering and premature stopping as well as overengineering. It should not caricature Mike as disliking tests, safeguards, structure, recovery, detailed plans, or technical depth.
 
 Proposed knowledge organization:
 
@@ -308,20 +310,34 @@ Proposed knowledge organization:
 
 Potential consultation moments:
 
-- Several technically valid designs differ materially in workflow, complexity, or operating burden.
-- A proposed safeguard or test would become a new prerequisite.
+- The orchestrator has a proposed procedure or set of steps and wants to know whether Mike would likely approach the problem that way.
+- Several technically valid designs differ materially in workflow, complexity, validation, safeguards, architecture, or operating burden.
 - A parent is about to turn review recommendations into implementation assignments.
 - Existing conventions and a proposed exception need contextual comparison.
 
 Possible response shape, not a required schema: recommend the fit, explain the relevant precedent and its limit, identify conflict with the current request, and ask a focused question only if needed. No scores, approval authority, or mandatory additional review cycle proposed.
 
+## Agreed learning loop with agent-process
+
+Mike agreed to the following design. It is not implemented yet; this records the intended workflow rather than changing active skill instructions.
+
+- Preserve the current agent-process timing and feedback triggers. The orchestrator handles the immediate correction; deeper investigation and knowledge maintenance run in a writable background worker to avoid filling the active task context with historical analysis.
+- That worker makes the learning judgment during the triggered investigation, before reporting back. No separate reviewer, periodic review, or fixed incident-count threshold is required.
+- The decision is whether feedback provides a supported reason to change Advocate's advice on a future comparable problem. One explicit general correction can suffice; repeated comparable decisions can support an inferred heuristic. Repeated failure to follow adequate guidance does not by itself warrant rewriting it.
+- If existing knowledge already covers the feedback, report the corrective action without manufacturing a knowledge change.
+- Under the agreed standing write boundary, maintain feedback records and Advocate learning references directly: precedents, inferred preferences, heuristic purposes, applicability, exceptions, and uncertainty. Compare proposed revisions with earlier evidence so new feedback does not erase relevant contrasts.
+- Changes to Advocate's core instructions, authority, responsibilities, permissions, or consultation triggers remain specific proposals for Mike's approval. Material ambiguity returns as a focused question, not an invented preference.
+- Return only the corrective action relevant to the current task, a brief account of knowledge changes, and any consequential question or core-instruction proposal. Raw history and exploratory analysis stay in the child context. Subsequent Advocate consultations use the updated references.
+
+The guiding distinction is understanding why a rule of thumb helps and when departing from it better preserves Mike's intent. Learning should improve that judgment, not accumulate mechanical classifications or exceptionless rules.
+
 ## Open decisions and cautions
 
 - Exact role prompt, reference layout, model/effort, tools, and consultation routing are not selected.
-- Decide whether Advocate should assess omitted material concerns and the premise of added machinery while leaving technical defect verification to Reviewer and staffing to Strategist. Recommended: yes.
-- Decide whether Advocate should cover completion and validation design while scope is unresolved, leaving post-implementation continuation judgment to Steward. Recommended: yes.
-- Decide whether consequential operator workflow and UX effects belong in Advocate review without creating a cosmetic approval gate. Recommended: yes.
-- Decide whether references should distinguish durable preferences, domain-specific decisions, and temporary or model-specific judgments. Recommended: yes, without a rigid record schema.
+- Decide whether Advocate should assess the premise of added machinery while leaving technical defect verification to Reviewer and staffing to Strategist. Recommended: yes.
+- Working definition, more objective than "identify the full material problem": Advocate checks whether a recommendation discloses known, evidenced concerns that could change Mike's decision. A concern is material when evidence shows it could affect outcome achievement, scope or acceptance, operating risk or burden, sequencing or prerequisites, or the choice being requested. Classify known concerns as included, deferred, not material with a brief reason, or unresolved. Advocate is not expected to discover every possible issue, and disclosure does not authorize implementing every concern.
+- Do not split completion conditions, validation, workflow, UX, safeguards, or architecture into independent Advocate review functions. Treat them as contextual evidence when judging whether a proposed procedure or sequence resembles how Mike would likely solve the problem.
+- Derive useful rules of thumb from repeated decisions and apply them to new problems. Ground them in demonstrated evidence, explain relevant contextual limits or exceptions, and revise them when later evidence conflicts. Distinguish an established heuristic from a context-specific precedent or uncertain inference when that distinction affects the recommendation. Do not require fixed labels, scores, or an evidence schema. Current intent and applicable repository policy take precedence.
 - When tactical restoration conflicts with an established architecture, Advocate should expose the tradeoff rather than assume speed or conformity always wins; confirm whether this is part of its remit.
 - Reconfirm current consultation routing rather than importing historical approval boundaries for larger-model or Steward calls.
 - Do not adopt every candidate principle verbatim. Many already exist in active guidance; examples and discrimination may add more value than more imperatives.
