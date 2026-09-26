@@ -15,31 +15,11 @@
       "Bash(pi -p:*)",
       "Bash(pi --list-models:*)"
     ],
-    "deny": [
-      "Bash(rm -rf /*:*)",
-      "Bash(rm -rf ~/*:*)",
-      "Bash(sudo rm -rf:*)",
-      "Bash(mkfs:*)",
-      "Bash(dd if=* of=/dev/*:*)",
-      "Read(~/.ssh/**)",
-      "Read(~/.aws/**)",
-      "Read(~/.gnupg/**)",
-      "Read(~/.docker/config.json)",
-      "Read(~/.npmrc)",
-      "Read(~/.pypirc)",
-      "Read(~/.git-credentials)",
-      "Read(~/.config/gh/**)",
-      "Edit(~/.bashrc)",
-      "Edit(~/.zshrc)",
-      "Edit(~/.bash_profile)",
-      "Edit(~/.profile)"
-    ],
     "ask": [
       "Bash(git push --force:*)",
       "Bash(git reset --hard:*)"
     ]
   },
-  "model": "us.anthropic.claude-fable-5-1",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "PermissionRequest": [
@@ -100,7 +80,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/damage-control/bash-tool-damage-control.py",
+            "command": "bun $HOME/.claude/hooks/damage-control/pi-adapter.ts",
             "timeout": 5
           }
         ]
@@ -115,7 +95,7 @@
           },
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/damage-control/edit-tool-damage-control.py",
+            "command": "bun $HOME/.claude/hooks/damage-control/pi-adapter.ts",
             "timeout": 5
           }
         ]
@@ -130,7 +110,7 @@
           },
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/damage-control/write-tool-damage-control.py",
+            "command": "bun $HOME/.claude/hooks/damage-control/pi-adapter.ts",
             "timeout": 5
           }
         ]

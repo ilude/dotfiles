@@ -1,5 +1,7 @@
 # Changelog
 
+- Claude Code PreToolUse Damage Control now delegates Bash, Edit, and Write to the default Pi deterministic policy and parser through a Bun adapter. Luna shadow judging is deferred; decisions requiring contextual review ask the operator, explicit blocks deny, and deterministic allows return no decision. Malformed input fails closed. Claude Edit `replace_all` is explicitly denied until its semantics can be represented safely. The existing path-normalization hooks and unrelated Claude settings remain unchanged.
+
 ## 2026-09-26: Track the active Windows Herdr configuration
 
 **Changed:** The Windows Herdr configuration now disables the new-tab name prompt, retains the active preview update channel, and is linked from Herdr's AppData configuration path to the repository-owned source. Future edits made through Herdr's active configuration path are therefore tracked by the dotfiles repository.
