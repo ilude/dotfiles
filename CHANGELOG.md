@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-26: Track the active Windows Herdr configuration
+
+**Changed:** The Windows Herdr configuration now disables the new-tab name prompt, retains the active preview update channel, and is linked from Herdr's AppData configuration path to the repository-owned source. Future edits made through Herdr's active configuration path are therefore tracked by the dotfiles repository.
+
 ## 2026-09-26: Accept commit review read requests
 
 **Fixed:** The default Pi profile's private commit review tool now treats `read` as a diff request instead of rejecting the commit workflow before staging. Existing `status`, `summary`, and `diff` behavior is unchanged.

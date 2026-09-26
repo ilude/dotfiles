@@ -1,8 +1,5 @@
 onboarding = false
 
-[terminal]
-default_shell = "C:/Program Files/PowerShell/7/pwsh.exe"
-
 [keys]
 previous_tab = "prefix+comma"
 next_tab = "prefix+period"
@@ -12,6 +9,9 @@ key = "prefix+n"
 type = "shell"
 command = "pwsh.exe -NoProfile -File \"%USERPROFILE%/.dotfiles/scripts/herdr-new-instance.ps1\""
 description = "open a new Pi instance"
+
+[terminal]
+default_shell = "C:/Program Files/PowerShell/7/pwsh.exe"
 
 [ui.sidebar.agents.rows_by_agent]
 pi = [
@@ -23,6 +23,7 @@ pi = [
 
 [ui]
 agent_panel_sort = "spaces"
+prompt_new_tab_name = false
 
 [update]
-channel = "stable"
+channel = "preview"
