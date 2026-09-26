@@ -50,7 +50,7 @@ Mike authorized using the remaining night to review earlier weeks back to the be
 | 7 | June 30–July 7 | 28 | 928 | 58 | Complete; findings below |
 | 8 | June 23–30 | 42 | 1,813 | 93 | Complete; findings below |
 | 9 | June 16–23 | 19 | 477 | 26 | Complete; findings below |
-| 10 | June 9–16 | 40 | 1,356 | 77 | Launched: `caa89801-5644-4e14-949e-f9d76d32e744` |
+| 10 | June 9–16 | 40 | 1,356 | 77 | Complete; findings below |
 | 11 | June 2–9 | 72 | 3,024 | 144 | Launched: `45656bc8-0c56-4f63-81f8-933cefc1b02d` |
 | 12 | June 1 00:00Z–June 2 | 18 | 681 | 42 | Launched: `62243586-e12f-49fc-82ff-decb4f418473` |
 
@@ -198,6 +198,21 @@ Parent-checked legacy evidence:
 Lead/second-reader checked contrasts: preserving deployed behavior need not preserve obsolete wrappers indefinitely once replacement coverage is complete (`019ed89d-4d93-744c-b934-1773087ebed0` / `e6b21847`, `247dcaef`, `63076333`, `36bdcf11`, `cd05b017`); a client-facing SBOM should fit its audience (`019edafd-c967-731d-82f4-15000375693b` / supplied feedback `838d7270`, approval `eb925fef`); lower lint-warning counts partly caused by threshold changes did not prove improved readability (`019edbb6-fdac-7761-80cd-e6c970b01626` / `6c5d58fc`, `b8f0d77f`).
 
 Learning refinement: retain initial authorization when recording later corrections; avoid inventing a harmful outcome. Supplied colleague feedback is not independently Mike-authored evidence, though his response can endorse an approach. Conversion, convergence, removal of obsolete surfaces, and operational effectiveness are distinct outcomes. This review corrected role, cross-session, approval-adjacency, ordinal, and Git-hash citation errors.
+
+### Completed overnight review: June 9–16 (week 10)
+
+All 77 pages, 40 sessions, 1,356 messages reviewed across 0–25, 26–51, 52–76. First reader resumed after initially stopping at page 12. No remaining unread ranges, clipping, or renderer errors. Children closed; one cleanup timeout recovered on retry. Team Lead `caa89801-5644-4e14-949e-f9d76d32e744`, exchange `77a0aee2-c73e-4adc-a621-614a8c8f2099`. Shared inventory limitations apply.
+
+Parent-checked legacy evidence:
+
+- **Useful strictness with local recovery:** `019eadef-16cf-7ea6-af0b-e04d6ce14262` / proposal `8e3443c6`, approval `812972c8`. Kept StrictMode while adding safe property access, per-message recovery, and malformed-record accounting so one bad item need not terminate a whole export. Neither removing all checks nor failing an entire operation captures the purpose. Sustained effectiveness was not established.
+- **Completeness requires representative evidence:** same session / `8d2b724d`, admission `74942118`, direction `87f52c43`. Zero-error export results concealed a repair that stopped pagination after page one. Mike requested a short multi-page test before another broad run. In `019ecc94-5e6c-7338-99e4-ce633eaff59f` / `8c44688c`, report `903a3d1f`, creating one missing user did not prove recognition/preservation of existing users. Check what the success claim actually establishes; do not turn these examples into universal mandatory gates.
+- **Real capability without premature execution:** user-management session above / `a8f16707`, response `948d7b47`. Rejected stubs and extra flags when the request was to build usable lifecycle support without running it yet. Focused deletion protection remained. A subsequent short selection concerned password generation, not blanket approval of every safeguard in the preceding response.
+- **Simple deployment can retain necessary writable state:** `019ecbb6-3dc3-702b-8eb2-1d72c56b6c43` / `474033c9`, `85c51a65`, adjacent proposals. Chose a compact archive application interface, accepted a mounted volume for writable runtime state, and requested a measured DuckDB prototype before settling the storage representation. Positive design direction, not proof of a finished system or an enduring database preference.
+
+Lead-checked contrasts: concrete differences exposed unintended removal of live CUI keywords, leading Mike to preserve current tenant settings (`019ebc3b-bcbd-7c20-a374-1e8d62231e46` / `fb2a8602`, `5db70859`, `63f8ea4a`); live/repository comparison need not create another state authority (`019ebd01-749a-736a-911b-4e311e455d4c` / `4d185faf`), while later tracked desired-state files were explicitly approved (`019ecc94-5e6c-7338-99e4-ce633eaff59f` / `b8ef0a7d`). A direct OneDrive working-outcome confirmation (`019eadef-16cf-7ea6-af0b-e04d6ce14262` / `6bf99185`) applies to that observed result, not every diagnostic explanation.
+
+Learning refinement: error-free activity and a positive single case can conceal incomplete breadth. Preserve both sides of each contrast: strictness plus item-local recovery, complete capability plus restrained execution, simple packaging plus real writable state. Acknowledgment followed by another version of the same mistake is not a resolved incident. Verify short-approval adjacency before assigning authority.
 
 ## How the discussion reached this point
 

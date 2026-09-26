@@ -6,7 +6,7 @@
 
 ## 2026-09-26: Add commit workflow shortcuts
 
-**Changed:** In the default Pi profile, F9 now runs `/commit push`, while Alt+F9 runs `/commit`. Both shortcuts use the same command workflow and invocation authority as typed slash commands.
+**Changed:** In the default Pi profile, F9 now runs `/commit push`, while F10 runs `/commit`. Both shortcuts use the same command workflow and invocation authority as typed slash commands. F10 replaces the original Alt+F9 binding because Pi's terminal input layer does not support modified function-key shortcuts.
 
 ## 2026-09-26: Delegate authorized plan closeout to Integrator
 

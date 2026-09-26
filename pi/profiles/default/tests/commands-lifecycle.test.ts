@@ -79,7 +79,7 @@ describe("profile command lifecycle", () => {
 
 	it.each([
 		["f9", true, "Commit changes and push to origin"],
-		["alt+f9", false, "Commit changes"],
+		["f10", false, "Commit changes"],
 	] as const)("maps %s to the commit workflow with push=%s", async (key, push, description) => {
 		const f = fixture();
 		const shortcut = f.shortcuts.get(key)!;

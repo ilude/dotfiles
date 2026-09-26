@@ -97,7 +97,7 @@ export default function profileCommands(pi: ExtensionAPI): void {
 			description: "Commit changes and push to origin",
 			handler: (ctx) => invokeCommand(commit, "push", ctx),
 		});
-		pi.registerShortcut("alt+f9", {
+		pi.registerShortcut("f10", {
 			description: "Commit changes",
 			handler: (ctx) => invokeCommand(commit, "", ctx),
 		});
