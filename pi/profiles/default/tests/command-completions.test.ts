@@ -14,6 +14,7 @@ function completions() {
 		registerMessageRenderer: vi.fn(),
 		registerTool: vi.fn(),
 		registerCommand: (name: string, options: Parameters<ExtensionAPI["registerCommand"]>[1]) => registered.set(name, options),
+		registerShortcut: vi.fn(),
 		on: vi.fn(),
 	} as unknown as ExtensionAPI);
 	return registered.get("commit")!.getArgumentCompletions!;

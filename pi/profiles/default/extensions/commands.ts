@@ -31,6 +31,33 @@ export default function profileCommands(pi: ExtensionAPI): void {
 		pi.sendMessage({ customType: "profile-command-error", content: message, display: true }, { triggerTurn });
 	}
 
+	async function invokeCommand(command: (typeof commands)[number], rawArgs: string, ctx: ExtensionContext): Promise<void> {
+		try {
+			const failure = loadErrors.get(command.name);
+			if (failure) throw new Error(failure);
+			const args = rawArgs.trim();
+			if (!command.arguments && args) throw new Error(`Usage: /${command.name}`);
+			const parsed = command.arguments?.(args) ?? { extra: "", options: {} };
+			const prompt = readFileSync(join(directory, command.name, "prompt.md"), "utf8").trim();
+			if (!prompt) throw new Error("Command prompt is empty.");
+
+			const invocation = invocations.create(command.name, parsed.options ?? {});
+			// Prepare schemas before submission. This is additive so an executing batch
+			// keeps its tools; authority is still granted only at message delivery.
+			const currentTools = pi.getActiveTools();
+			pi.setActiveTools([...new Set([...currentTools, ...(toolsByCommand.get(command.name) ?? [])])]);
+			pi.sendMessage({
+				customType: "profile-command-prompt",
+				content: parsed.extra ? `${prompt}\n\n${parsed.extra}` : prompt,
+				display: false,
+				details: { invocationId: invocation.id },
+			}, { deliverAs: "steer", triggerTurn: true });
+		} catch (error) {
+			// Invalid or failed submissions must not deactivate a valid in-flight command.
+			report(`/${command.name} failed: ${error instanceof Error ? error.message : String(error)}`, ctx, true);
+		}
+	}
+
 	for (const command of commands) {
 		try {
 			const tools = command.tools?.(pi, invocations) ?? [];
@@ -60,32 +87,19 @@ export default function profileCommands(pi: ExtensionAPI): void {
 		registerProfileCommand(pi, command.name, {
 			description: command.description,
 			getArgumentCompletions: (prefix) => completePartialArgument(prefix, command.completions ?? []),
-			handler: async (rawArgs, ctx) => {
-				try {
-					const failure = loadErrors.get(command.name);
-					if (failure) throw new Error(failure);
-					const args = rawArgs.trim();
-					if (!command.arguments && args) throw new Error(`Usage: /${command.name}`);
-					const parsed = command.arguments?.(args) ?? { extra: "", options: {} };
-					const prompt = readFileSync(join(directory, command.name, "prompt.md"), "utf8").trim();
-					if (!prompt) throw new Error("Command prompt is empty.");
+			handler: (rawArgs, ctx) => invokeCommand(command, rawArgs, ctx),
+		});
+	}
 
-					const invocation = invocations.create(command.name, parsed.options ?? {});
-					// Prepare schemas before submission. This is additive so an executing batch
-					// keeps its tools; authority is still granted only at message delivery.
-					const currentTools = pi.getActiveTools();
-					pi.setActiveTools([...new Set([...currentTools, ...(toolsByCommand.get(command.name) ?? [])])]);
-					pi.sendMessage({
-						customType: "profile-command-prompt",
-						content: parsed.extra ? `${prompt}\n\n${parsed.extra}` : prompt,
-						display: false,
-						details: { invocationId: invocation.id },
-					}, { deliverAs: "steer", triggerTurn: true });
-				} catch (error) {
-					// Invalid or failed submissions must not deactivate a valid in-flight command.
-					report(`/${command.name} failed: ${error instanceof Error ? error.message : String(error)}`, ctx, true);
-				}
-			},
+	const commit = commands.find((command) => command.name === "commit");
+	if (commit) {
+		pi.registerShortcut("f9", {
+			description: "Commit changes and push to origin",
+			handler: (ctx) => invokeCommand(commit, "push", ctx),
+		});
+		pi.registerShortcut("alt+f9", {
+			description: "Commit changes",
+			handler: (ctx) => invokeCommand(commit, "", ctx),
 		});
 	}
 

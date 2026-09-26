@@ -44,6 +44,12 @@ it("refreshes status with exact quoted paths in the selected inventory repositor
 	await expect(review({ action: "status", repo: "nested" })).rejects.toThrow("Repository is not in the supplied inventory");
 });
 
+it("accepts read as a diff alias", async () => {
+	const output = await review({ action: "read", paths: ["first.txt"] });
+	expect(output).toContain("+first worktree");
+	expect(output).not.toContain("second.txt");
+});
+
 it.each([undefined, []])("allows pathless worktree and staged diffs (paths=%s)", async paths => {
 	const worktree = await review({ action: "diff", paths });
 	expect(worktree).toContain("+first worktree");

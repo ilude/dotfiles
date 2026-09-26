@@ -26,6 +26,7 @@ type Hook = (event: any, ctx?: any) => unknown;
 function fixture() {
 	const hooks = new Map<string, Hook[]>();
 	const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
+	const shortcuts = new Map<string, { description?: string; handler: (ctx: any) => Promise<void> | void }>();
 	const tools = new Map<string, any>();
 	const sent: Array<{ message: any; options?: any }> = [];
 	let activeTools = ["read", "unrelated_tool"];
@@ -33,6 +34,7 @@ function fixture() {
 		registerMessageRenderer: vi.fn(),
 		registerTool: (tool: any) => tools.set(tool.name, tool),
 		registerCommand: (name: string, definition: any) => commands.set(name, definition),
+		registerShortcut: (key: string, definition: any) => shortcuts.set(key, definition),
 		on: (event: string, handler: Hook) => hooks.set(event, [...(hooks.get(event) ?? []), handler]),
 		sendMessage: (message: any, options?: any) => sent.push({ message, options }),
 		getActiveTools: () => [...activeTools],
@@ -45,7 +47,7 @@ function fixture() {
 		for (const handler of hooks.get(name) ?? []) result = await handler(event, ctx);
 		return result;
 	};
-	return { pi, commands, tools, sent, ctx, emit, active: () => activeTools };
+	return { pi, commands, shortcuts, tools, sent, ctx, emit, active: () => activeTools };
 }
 
 function promptMessages(f: ReturnType<typeof fixture>) {
@@ -74,6 +76,24 @@ function runtimeToolResponse(stream: AssistantMessageEventStream, name: string, 
 
 describe("profile command lifecycle", () => {
 	beforeEach(() => vi.clearAllMocks());
+
+	it.each([
+		["f9", true, "Commit changes and push to origin"],
+		["alt+f9", false, "Commit changes"],
+	] as const)("maps %s to the commit workflow with push=%s", async (key, push, description) => {
+		const f = fixture();
+		const shortcut = f.shortcuts.get(key)!;
+		expect(shortcut.description).toBe(description);
+
+		await shortcut.handler(f.ctx);
+		const prompt = promptMessages(f).at(-1)!;
+		await f.emit("message_start", { message: prompt.message });
+		await f.emit("tool_call", { toolName: "commit_run", toolCallId: `call-${key}` });
+		const result = await f.tools.get("commit_run").execute(`call-${key}`);
+
+		expect(result.details.push).toBe(push);
+		expect(prompt.options).toMatchObject({ deliverAs: "steer", triggerTurn: true });
+	});
 
 	it("activates /yt tools before submission and retains them for callback turns until session reset", async () => {
 		const f = fixture();

@@ -8,8 +8,8 @@ Updated: 2026-09-26. This is a discussion handoff, not an implementation plan or
 - That session's cwd is `C:/Projects/Work/Gitlab/monorepo`. This note is deliberately in the dotfiles repository so discussion can continue in the owning checkout. Resuming the saved session may retain its original cwd; starting a dotfiles session and reading this note avoids assuming otherwise.
 - Intended working repository: `~/.dotfiles` (`C:/Users/mglenn/.dotfiles` on this machine).
 - Current subject: designing a distinct, on-demand Advocate that understands Mike's demonstrated design and workflow preferences.
-- All research workers have returned or failed and been replaced; none remains working for this investigation. No follow-up schedules were created here.
-- Next useful discussion: review the candidate principles below, decide the Advocate's consultation boundary and knowledge organization, and only then authorize its implementation.
+- Overnight research extension authorized September 26: review the remaining history back to June 1 with weekly Team Leads. See the active research handoff below. Earlier weekly workers are closed; do not mistake retained processes for active assignments. No follow-up schedules were created here.
+- Next useful discussion after this research: supported new findings, feedback-learning refinements, then the Advocate's concrete role and knowledge organization. Implementation is not authorized.
 
 ## Authorization and settled direction
 
@@ -28,6 +28,176 @@ The intended distinctions are:
 The proposed Advocate is advisory, not an approval gate. Current requests and applicable repository policy take precedence over inferred preferences. No mandatory consultation on every task has been agreed.
 
 The user rejected the earlier tangent toward another universal "smallest possible change" rule. Do not revive it. Proportionality and scoped completeness are not minimum line count or minimum functionality.
+
+## Overnight research extension: June 1–August 18
+
+Mike authorized using the remaining night to review earlier weeks back to the beginning of June, seeking additional findings and refinements to agent-process feedback handling. This supersedes the earlier recommendation to pause broad retrieval, not the restrictions on implementation, commits, or pushes.
+
+- Owning orchestrator: default `01a0dab8-4e9b-74fd-8a6c-adecd40df49c`.
+- New interval: `[2026-06-01T00:00:00Z, 2026-08-18T19:16:41.417221Z)`, both profiles. Seven-day windows backward from the existing August 18 boundary, plus the final June 1–2 partial window. No overlap with completed later reviews.
+- Shared inventory and indexed renderer complete: developer `fd98339d-49f2-42a5-9971-e8c56aef3fc8`, native session `01a0dc0b-115a-725a-8448-e75e499e1071`. Renderer reads/verifies only the requested page's records using metadata-only coordinates. Page counts unchanged, first/last week-1 pages compared byte-for-byte against the original. Invocation: `PYTHONIOENCODING=utf-8 python <temp-root>/renderer.py <week> --page <zero-based-page>`. Do not rerun inventory, partition, or index preparation. The initial explorer lacked execution/write tools and is closed. Inventory is not semantic review.
+- Weeks 1–3 launched with separate Team Leads. Parent launches the next pending week as each Lead finishes, keeping roughly three weekly teams active rather than flooding the machine with all readers at once. Completed Leads must return synthesis and exact coverage; settled partial returns require resumption, not an assumption that they remain working.
+- Temporary helpers/manifests: `C:/Users/mglenn/AppData/Local/Temp/advocate-historical-2026-06-01-2026-08-18/`. Captured 4,245 files / 5,125,136,680 bytes (corrected 1,000-byte addition error in the initial helper report) across both profiles. Default: 1,781 files, zero qualifying events. Legacy: 2,464 files, 598 event-active sessions, 597 visible sessions; 20,896 visible occurrences reduced to 19,681 canonical messages, removing 1,215 inherited duplicates. Twenty ambiguous-parent sessions retained. One invalid historical-backfill header excluded; no other reported parse, size, timestamp, source-change, or read errors. There are 1,110 rendered pages, not yet semantically reviewed.
+
+| Week | Interval dates (19:16:41.417221Z boundaries unless noted) | Sessions | Messages | Pages | Review state |
+| --- | --- | ---: | ---: | ---: | --- |
+| 1 | August 11–18 | 187 | 3,254 | 287 | Complete; findings below |
+| 2 | August 4–11 | 16 | 343 | 26 | Complete; findings below |
+| 3 | July 28–August 4 | 16 | 804 | 36 | Complete; findings below |
+| 4 | July 21–28 | 63 | 2,673 | 129 | Complete; findings below |
+| 5 | July 14–21 | 50 | 1,947 | 93 | Complete; findings below |
+| 6 | July 7–14 | 74 | 2,381 | 99 | Complete; findings below |
+| 7 | June 30–July 7 | 28 | 928 | 58 | Complete; findings below |
+| 8 | June 23–30 | 42 | 1,813 | 93 | Complete; findings below |
+| 9 | June 16–23 | 19 | 477 | 26 | Complete; findings below |
+| 10 | June 9–16 | 40 | 1,356 | 77 | Launched: `caa89801-5644-4e14-949e-f9d76d32e744` |
+| 11 | June 2–9 | 72 | 3,024 | 144 | Launched: `45656bc8-0c56-4f63-81f8-933cefc1b02d` |
+| 12 | June 1 00:00Z–June 2 | 18 | 681 | 42 | Launched: `62243586-e12f-49fc-82ff-decb4f418473` |
+
+Weekly session counts can overlap for sessions spanning boundaries; their sum is not the union's distinct-session count.
+- Weekly Leads will own disjoint intervals and return consolidated evidence and coverage, including resumed sessions, deduplication, exclusions, clipped/unread ranges, exact native citations, and contextual limits. Current clarifications above historical precedent: cosmetic gates impose attention costs; genuine regression failures deserve investigation, not speculative feature growth; superseded assertions may be updated, but newly discovered conflicts require grounded judgment; Advocate asks when unsure and may challenge established preferences with new evidence.
+- Parent integrates supported findings and feedback-learning design refinements here. Distinguish new insight, meaningful contrast/revision, and corroboration. Preserve uncertainty and unresolved questions for Mike rather than inventing preferences while he is away.
+- Research is not authorization to activate Advocate, edit runtime policy or active skills, commit, or push. No new monitoring schedule is needed for ordinary research continuation; background results resume the parent while this Pi process remains running.
+
+### Completed overnight review: August 11–18 (week 1)
+
+All 287 pages, 187 sessions, 3,254 messages semantically reviewed; all readers closed. Clipped/uncertain ranges 7–35 and 47–71 were recovered, plus page 74. Other parallel outputs were reported complete rather than broadly reread. Final range union: 0–16, 17–35, 36–71, 72–107, 108–143, 144–179, 180–215, 216–251, 252–286. No unread selected pages. Team Lead native session `01a0dc10-f2ca-7043-9382-a37d7d14b852`, exchange `c259258d-b41e-47a5-a64a-8163da1da24c`. Shared inventory limits apply; pages 146–286 largely contained generated research, not additional direct testimony.
+
+Parent-checked legacy evidence:
+
+- **Understanding purpose can lead to deletion, not replacement:** `01a014f0-976d-7dc9-80cd-de23b163aa56` / `ac935bc6`, proposal `a446def5`, decision `4e7d5cd0`. Mike explained that a provenance rule addressed agents dismissing failures they had caused in earlier sessions, then chose to remove it rather than adopt another qualified replacement. Preserve both purpose and deletion decision; rediscovering the purpose does not justify reinstating rejected wording. Effectiveness after removal was not established.
+- **Several working slices may be needed:** same session / `ecb094ed`, `88978882`, surrounding proposals `1fd04775`, `9102072f`. Mike rejected interpreting feasibility as exactly one smallest demonstration. Where no trustworthy working precedent exists, prove distinct critical uncertainties with working code before investing in the full architecture. This is not a universal experiment gate or a reason to repeat known evidence.
+- **Consequential questions need conversation:** `01a00ffa-0f00-74a3-a900-ef6af18bc6ac` / `873eccc3`, response `014a619b`. A constrained selection interface obstructed discussion of certificate approaches and tradeoffs. This supports conversational uncertainty handling, not prohibition of concise choices once understood.
+- **Reliability does not imply enterprise machinery:** `019ffc5f-95aa-7c5e-b549-72e2af59604b` / expanded proposal `40853422`, correction `a82e8d8b`, response `f90e0ea2`. A requested real restore exercise was followed by disproportionate hardening recommendations for a single-user service. Keep useful recovery and the evidenced limitations without converting them into a larger program. The drill itself was assistant-reported.
+- **Durable tooling can reduce observed churn:** `01a00746-0cbb-71ec-acd2-75cd2e865c92` / `de648831`. Mike proposed consolidating repetitive pipeline queries into a helper. Lead additionally verified requests for a durable location and discoverability (`6ae7e9b5`, `579d670b`). Opposition to speculative machinery is not opposition to a tool justified by repeated work.
+
+Lead-verified supporting contrasts: concrete calls/sequences/decision diagrams over persona navigation and empty technical prose (`01a00bb3-4bcb-738d-bb04-3692b263d9dc` / `532deeb7`, `476466c1`, `f2b7eb0d`, `383b2dd4`, `802c54f1`); correcting the actual prior-access baseline before evaluating DNS-cutover risk (`01a01195-b174-7ea6-b85f-c5591948d9bc` / `07518df9`, `640fd746`); rejecting cleanup risk for approximately $0.30/month savings (`01a00099-bdea-75c1-bb75-68d4b3d56870` / `0ba5cd54`). These explain contextual decisions, not general risk tolerance.
+
+Feedback-learning refinement: follow the attempted remedy to its final correction, including explicit subtraction. Do not learn from proposal volume or generated research repetition. Verify semantic attribution as well as locator validity. This review corrected ordinal/message-ID confusion, duplicated approval attribution, and indirect quotations mistaken for direct testimony.
+
+### Completed overnight review: August 4–11 (week 2)
+
+All 26 pages, 16 sessions, and 343 canonical visible messages reviewed. Four disjoint readers covered pages 0–6, 7–13, 14–19, 20–25 with no reported clipping, render failures, or unread ranges; children closed. Shared inventory limitations above apply. Team Lead `f5b76268-c784-403d-b837-88f81eaf9b5e`, report exchange `d1ce0ca1-416f-4f23-aeb4-59ad8e1e51bd`.
+
+Parent checked these native legacy records and adjacent context:
+
+- **Phases need not become separate plans:** `019feccf-9a2e-77b0-9d92-fdeb04ee66b3` / `745f8d11`, preceding `fcef6009`. Mike preferred phases within one durable plan for the connected SeaweedFS/state and configuration work. Execution decomposition and artifact fragmentation are different choices. This does not prohibit independent plans or endorse the assistant's subsequently added gates.
+- **Environment goals matter beyond cost:** same session / `86e7caef`, `88d15110`. Self-hosting belonged to the homelab goal; BWS deliberately combined secrets with site-specific configuration. Mike invited counterarguments. These are contextual precedents, not universal rejection of paid services or permission to place arbitrary state in BWS.
+- **Durability without unrelated context:** `019ff192-037a-7934-ab53-5ccb67721edb` / `e99dd1f5`, `777ab677`. Rejected historical task-list accumulation while also wanting tracking to activate during larger work to survive compaction. Complementary goals, not contradictory preferences. The large architecture in the assistant's subsequent research response was not operator-approved by these messages.
+- **Remove the cause, not merely test around it:** `019fec54-cdad-7a3f-9535-0a32d291b3f3` / `56439c7a`, response `8b58a355`. Redirected a OneDrive/profile-path repair toward removing the unnecessary cross-file deployment dependency. "Create a design that cannot fail" concerns eliminating this failure mode, not a general rejection of regression tests or proof of infallibility.
+- **Concision protects interpretation:** `019fec86-19c6-700d-9922-8eaad8e42199` / `afd7be8c`, `871c7eeb`, `0fecb26f`. Challenged backups for first-time provisioning, then stressed that extra wording creates opportunities for strange interpretations and requested cleanup of existing rules, not just another addition. Assistant policy-cleanup claims are not proof of effectiveness. Preserve meaningful-state protection rather than generalizing the incident into anti-backup advice.
+- **Accepted challenge and deliberate sequencing reversal:** `019fec99-7e5f-72c7-9169-94d56e13c9a3` / proposal `99706c32`, approval `4806cf8a`. Accepted using the existing image mirror and changing merge order instead of adding another registry transfer. Concrete evidence changed the chosen approach; no standing merge authority follows.
+
+Team Lead checked additional refinements: planned discovery need not become a prerequisite blocking plan launch (`019feccf-9a2e-77b0-9d92-fdeb04ee66b3` / `7e487416`, assistant `34fdf7a1`); deployment completion in one repository explicitly included Kubernetes services/deployments (`019fec99-7e5f-72c7-9169-94d56e13c9a3` / `ff78ecd9`). The detailed ensuing checklist was assistant-authored. Two reviewer claims of operator acceptance were corrected because their cited messages were assistant completion reports.
+
+Learning refinement: preserve paired evidence. Excess tracking context and insufficient durability can both be defects; test resistance can target an avoidable dependency rather than testing itself; rejecting pointless backups does not reject state protection. Read the proposed remedy and later correction before changing the heuristic. This small week adds contextual precedents and reasons, not new core instructions or a general evaluation framework.
+
+### Completed overnight review: July 28–August 4 (week 3)
+
+All 36 pages, 16 sessions, and 804 selected visible messages reviewed in six contiguous six-page assignments. No unresolved clipping or unread ranges. One reader report was recovered from its native session; one automatic-standard citation query exhausted memory and succeeded with an explicitly large filtered retry. Team Lead `913c6b7a-3c65-434e-b469-e89f2b94936d`, report exchange `3ff5b18b-d4c7-4191-969c-84745320d9f9`; all children closed. Shared inventory limitations apply.
+
+Parent-checked legacy anchors and surrounding context:
+
+- **Validation must preserve ongoing usability:** `019fc38e-acbc-7f3d-a479-493270fcdf70` / `4131a85e`, `cd274773`, `af8c32ca`, `cca719e8`. Deleting an ephemeral account proved a login mechanism but left developers without reusable testing access. Mike corrected that outcome and asked about future deployment maintenance. Persistent live state and automatically reconciled state were distinct; reconciliation was not yet established. Not a universal preference for permanent test accounts.
+- **Authorization changes are action-specific:** `019fbe64-7821-7e7b-bf29-fe9f0b57e55f` / `cdd41405`, `ad4aa085`. Deferring commits/pushes did not cancel independently requested deployment observation. Do not interpret a narrowed mutation boundary as abandonment of the rest of the task.
+- **Intentional temporary structure can remain:** `019fc38e-acbc-7f3d-a479-493270fcdf70` / `67803f28`, preceding proposal `1feee276`. Mike preserved divergent deployment branches while proving the system, requested configurable customer domains, and required continued dev/staging login validation. The assistant's proposed portability work had expanded into a blocker. Improve the requested capability within the accepted phase rather than treating every temporary difference as a defect requiring immediate redesign.
+- **Rollback needs a useful destination:** `019fbe64-7821-7e7b-bf29-fe9f0b57e55f` / `2bba0684`, response `7a01a6b0`. Testing environments had no working prior version to restore. Mike selected forward repair; the response retained evidence and predecessor objects. Contextual corroboration of fix-forward, not general permission to discard recovery or protections.
+
+Lead-verified refinements: scheduler state is not task progress, and blanket turn-ending rules were later narrowed (`019fbe64-7821-7e7b-bf29-fe9f0b57e55f` / `f0c5cb81`, `58db665a`; `019fc2d6-3b08-7859-ada9-48f6de7e3395` / `a91233c8`, `dc8c26b8`). Existing direct-merge authority was misapplied as an MR prerequisite (first session / `af69a3a7`, `f7c7c979`). A local packaging failure was prematurely called pre-existing before causality was established (`019faed4-9ac7-7ab5-85e1-7e1d226cc277` / `68a13a4c`, assistant `bdca9757`). These historical mechanics do not replace current scheduling, Git, or regression instructions.
+
+Feedback-learning refinement: preserve the operational chain. An initial repair can expose a masked defect; runtime availability can change what validation is possible; healthy components can coexist with broken login; a successful probe can still leave the deliverable unusable. Neither collapsing everything into one failure nor recording the first success captures the intended outcome. Later staffing direction supersedes this week's historical requests for model hints in plans.
+
+### Completed overnight review: July 21–28 (week 4)
+
+All 129 pages, 63 sessions, 2,673 messages semantically reviewed in ranges 0–32, 33–64, 65–96, 97–128; readers closed. Two continuation fragments accounted for. Failed shell invocations were recovered and no unread/clipped output remained. One large manifest read exceeded tool output limits; compact metadata recovered without reinventory. One standard citation query exhausted memory; explicitly large retry succeeded. Team Lead `f1fc2278-4724-4ac3-83f0-b8019ddcb925`, exchange `02ca482d-6f4e-48fa-a7af-377e12bef1a9`. Shared inventory limits apply.
+
+Parent-checked legacy evidence:
+
+- **Protect the invariant, not a proxy:** `019f91ec-124a-744e-a6e9-8b620e111ea7` / `85afd1d6`, proposal `5c6d0e4e`, acceptance `503b0e72`. Removed a read-before-edit ledger that accepted partial reads, rejected equivalent inspection, and forced rereads, while retaining applicable instruction delivery before mutation. "We can try that" establishes trial acceptance, not measured effectiveness or opposition to all enforcement.
+- **Capability visibility can matter more than reducing activation:** `019f99c2-01ee-7e16-90c3-a8930c4ec826` / `292ff5ff`, proposal `5d20353f`, acceptance `09600f7d`. Mike prioritized avoiding hidden capabilities over preventing harmless extra activation. Do not optimize context size by making useful capabilities undiscoverable. The historical design and telemetry proposals do not override today's tool authority or authorize rebuilding them.
+- **Low criticality is not disposable data:** `019f86a9-21a3-7c47-a358-c4e7c3c998a9` / proposal `62b039f8`, approval `047cd4f6`, response `74b84673`. "You can do 4" authorized only a Menos-specific single-user treatment retaining a verified backup and direct smoke test while dropping unrequested ceremony. It did not approve adjacent compaction caps, review restrictions, or runtime changes.
+- **Intent needs a knowledge home distinct from tests:** `019f96a6-fe8d-7bcb-a06c-a4e14692a8c1` / `2703ab76`, adjacent `875b6734`, `9af11512`. Mike explicitly retained tests of code functionality while rejecting tests whose purpose was enforcing policy preferences. The latest clarification about investigating regressions and superseded assertions gives the current practical boundary; this is not exemption of executable safety behavior from testing.
+- **Review may own artifact completion:** `019fa1b7-4288-70c2-8657-f4c23e5cf62c` / `54b6d94c`. Expected the plan-review workflow to leave an improved plan, not merely findings requiring another bookkeeping round. This is a workflow-specific precedent supporting writable feedback maintenance, not blanket reviewer mutation authority.
+
+Lead-verified corroboration: simplify governing instructions instead of adding safety tiers (`019f8f2e-752e-7086-81bb-2cfedcb29261` / `96ecdacf`; `019f95ab-67d5-70a8-a966-2701b678a1c9` / `641f7ea8`, `53cb9599`); positive acceptance of cancellable commit work (`019f9acd-35ef-7709-936d-4a7ecedac505` / `125060ed`); later direct working-behavior observation in that session (`0ee8b518`). Missing live activation should be reported as incomplete, not used to infer permission to deploy.
+
+Feedback-learning refinement: preserve the exact scope of short approvals and distinguish purpose from enforcement proxy. A correct diagnosis may still produce a rejected remedy. Historical acceptance of a trial, praise of discussion, and a later observation that something works are different kinds of evidence, not interchangeable success claims.
+
+### Completed overnight review: July 14–21 (week 5)
+
+All 93 pages, 50 sessions, 1,947 messages reviewed in ranges 0–30, 31–61, 62–92. Combined-output clipping on 16–30 recovered individually; no unread ranges. Children closed. One standard citation query exhausted memory; explicitly large filtered retry succeeded. Team Lead `99a2690f-c757-46d6-b0aa-95941ceebb43`, exchange `d8e865a1-241b-408e-94ff-4f2c6d290755`. Shared inventory limitations apply.
+
+Parent-checked legacy evidence:
+
+- **Ownership can differ by layer:** `019f6801-30a9-76e8-94ec-34be13d335e2` / `43a18942`, `4b0aec4e`, responses `445401a4`, `6445fd01`. User-maintained folders should not be continuously reconciled, but administrative groups still needed managed state because owners could not maintain them through Teams. Avoid turning one layer's exception into an all-or-nothing architecture.
+- **Decisive preflight and parallel routine checks can coexist:** `019f7832-da3e-79c6-aeb0-351adbb38528` / `fa19dbb3`, admission `9c5a9b5c`, later `548fd6f2`, response `59f4c9ee`. Repeated import failures exposed skipped disposable-current-schema validation. Once executable preflight reportedly passed, Mike directed starting the import while syntax validation ran. Lead checked approval `50d4cfad`; later storage exhaustion remained a separate failure, so preflight was not proof of completion or full environment adequacy.
+- **Time first, then tokens:** `019f6bb0-60d0-7d78-87ae-c4d879d1e34a` / `f9425a9b`, response `689db39d`. Repeated syntax-error-prone ad hoc scripts can justify a maintained deterministic helper while judgment stays flexible. Useful automation is not the same as policy ceremony.
+- **Recorded acceptance is not necessarily informed acceptance:** `019f80d4-fb78-7090-899a-cf67b85e80f0` / `91b04eca`, `4048ccf6`, assistant `a69026f2`. Mike said the plan's alleged accepted symlink/glob risk was new to him; the assistant later acknowledged scope expansion and reframing his objection. Do not repeat the assistant's "accepted risk" label as proof of operator understanding or approval.
+
+Lead-checked corroboration: explicit praise of deletion-first instruction cleanup scoped to the proposed items (`019f803c-86f5-7466-8b72-f6d8744d6270` / `943c7184`); long-running work was acceptable while on target (`019f7c2a-6d7a-79f0-8736-0072c6f09ff9` / `22677ca8`); cosmetic assertions could be removed while runtime formatting remained (`019f65e9-cc63-7a01-9e99-2cfa939b6b41` / `7e713837`, `81eff6d2`). No standing numerical time/turn limit or anti-formatting rule follows.
+
+Learning refinement: identify the actual layer being managed, tested, or migrated before inferring a contradiction. Preserve subsequent sequencing corrections and direct operator statements over plan labels or assistant self-justification. Instruction-cleanup approval establishes the selected approach, not its eventual effectiveness.
+
+### Completed overnight review: July 7–14 (week 6)
+
+All 99 pages, 74 sessions, 2,381 messages reviewed individually across 0–24, 25–49, 50–74, 75–98. No reported clipping, renderer errors, or unread ranges; children closed. One exact-session standard query selected about 62.9 MB but exhausted memory; explicitly large retry succeeded. Team Lead `e25deca5-a41b-4b35-bc04-bdf7a8d9f8fc`, exchange `0c2a0565-1dd8-4248-b37a-26fb200c552e`. Shared inventory limitations apply.
+
+Parent-checked legacy evidence:
+
+- **Exploration and engineered delivery are legitimate different goals:** `019f4a5d-bf8b-7511-882f-7d8c4dc6a783` / `38e71273`, proposal `adf29961`, qualified acceptance `553deb76`. Sometimes imperfect working code should establish feasibility before architecture; sometimes upfront design is the goal. Mike also wanted evidence of improvement rather than an opaque, reactionary workflow system. Historical command-mode mappings were provisional, not current policy. This does not create a mandatory experiment program for every learning update.
+- **Completeness may require broad conversion:** `019f3e4c-3a0a-7a4f-a6d8-2f7c28f5b14e` / `6f198aa0`, `64ffe5ca`, surrounding `c826b700`, `13c86d0c`. Mike rejected stopping at Hermes when the desired change covered all services, then required fresh-user setups rather than assuming existing-host connectivity proved bootstrap correctness. "Smallest safe fix" had narrowed the outcome, not merely its implementation.
+- **Visible recovery can override delegation efficiency locally:** `019f488f-0fb5-797d-b609-a74517e773d7` / `05cb4afd`. Requested direct execution "for now" during DNS recovery so he could observe the work. Lead verified later correction of an unsupported mandatory-delegation claim (`5f2c9261`, `eb3548b4`). This is a contextual trust/visibility need, not general opposition to subagents.
+- **A promise is not enforcement:** `019f4f5b-6e98-7548-a01e-28f732185291` / `d872ad5e`, proposal `23fba795`, approval `72fecae8`. After costly repeated failures, Mike rejected an unenforced promise never to repeat them and authorized mechanical prevention. Concrete counterexample to treating all controls as unwanted ceremony. Effectiveness and universal validity of the proposed numerical limits were not established.
+
+Lead-checked contrasts: existing dedicated service users can satisfy a common security purpose without uniform account names (`019f4754-ca1f-7f59-90fd-52089d71ef56` / `8a396043`, `8dcdfef3`, `8d62f5de`); desired-state membership versus explicitly exempt one-time mailbox transfer (`019f3f59-1658-70ca-a29e-79e4e5212eed` / `8bc51889`; `019f3f59-436f-7b2f-99a9-17160fc02b1a` / `1515565c`); fewer operator flags can coexist with useful internal tooling (`019f43d8-7872-73c5-ba82-82c8bccc390d` / `ba3923d6`, `a17e77ad`, `ca3bfb5a`).
+
+Learning refinement: preserve purpose and phase, and separate interface burden from internal capability. Protecting data does not authorize publishing its backup. Approval, reported recovery, actual user-path acceptance, and sustained effectiveness are distinct. The Lead withdrew false acceptance claims based on assistant-authored statements and corrected a supposed retry-resolution anchor that actually reported push failure.
+
+### Completed overnight review: June 30–July 7 (week 7)
+
+All 58 pages, 28 sessions, 928 messages reviewed across 0–28 and 29–57; both readers closed. A combined output clipped page 31, recovered individually. No unread ranges. Substantial generated/pasted conversation on 7–17 was not independent operator testimony. Coordinator recovered an oversized manifest read and an incorrect source-path lookup; one child-answer control misuse did not affect final coverage. Team Lead `1fffdd31-4d7a-42fa-9de9-0c11fae2e52f`, exchange `4556bee5-3f14-4552-8ac0-a131e9fa80cf`. Shared inventory limitations apply.
+
+Parent-checked legacy evidence:
+
+- **Workflow-native interface can justify more implementation:** `019f3dbc-ac03-70ae-a497-235fab697f3f` / `258905d2`, proposal `dab3f324`, selection `85717471`. Chose a native model-refresh command over a Just target or prompt-only command, preserving a scriptable helper. Simplicity is user-workflow fit, not fewest lines. Design approval does not establish runtime effectiveness.
+- **Report-first can change after explained consequences:** `019f1a2e-3e62-76a5-bd64-4ef729e0095d` / explanation `2b1cc79b`, approval `0b8becb8`. After concrete differentiation of reporting versus targeted CUI-sharing blocking, Mike explicitly authorized both. Lead checked earlier low-friction intent (`6fca443a`). Preserve the informed revision; neither permanent report-only preference nor standing enforcement authority follows.
+- **Acknowledgment is not correction:** `019f24b8-1835-7222-9122-cd79f8920691` / request `88285029`, correction `66c9428f`, response `82b65afa`, escalation `ee1054b4`, response `17b28439`. Requested group membership was repeatedly replaced with a file path or an offer to provide it, even after apology. Learning must inspect whether the remedy changed behavior, not treat acknowledgment as completion. Concision does not override an explicit request to show information.
+- **Rejected architecture does not end all problem-solving:** `019f1a54-208e-745e-99f2-029e0df9cc80` / `e76bd715`, `16e3694f`. Mike rejected browser access as a substitute for a settled laptop-per-tenant approach while still seeking controls and an accurate explanation of consequences. A reader's broader "stop solution generation" inference was withdrawn. The lesson is to answer remaining questions within settled constraints, not abandon assistance or preserve historical technical claims as universal facts.
+
+Lead-checked corroboration: policy names and clean plans did not substitute for understanding effects (`019f1a2e-3e62-76a5-bd64-4ef729e0095d` / `c55e4446`, `93677499`, `48bfe2e6`); direct live deletion and unrelated Git cleanup could desynchronize managed and live state (`019f13cf-a7fb-756c-a714-399d042027e8` / `474de06b`; `019f24b8-1835-7222-9122-cd79f8920691` / `95e7a7b3`); intentionally deferred moving a misplaced script while another person used it (`019f39ad-3b21-7bbb-8e43-8109f6f3afb5` / `5a38d5f1`).
+
+Learning refinement: preserve informed changes of intent, distinguish rejected alternatives from still-requested assistance, and check the actual response after feedback. Artifact existence, apparent cleanliness, semantic equivalence, and operator acceptance are not interchangeable. Imperfect placement may have a practical reason worth retaining.
+
+### Completed overnight review: June 23–30 (week 8)
+
+All 93 pages, 42 sessions, 1,813 messages reviewed across 0–30, 31–61, 62–92; no unread pages or renderer errors. Parent resumed a settled partial handoff to collect the remaining reader/citation results; no certain-complete ranges reread. Children closed. Oversized manifest output recovered via compact metadata; one misattributed directory-layout citation replaced with the actual command-simplification request. Team Lead native `01a0dc24-93f3-70f7-b1ed-e342481059d7`, final exchange `8693d9b8-f464-4282-b3e8-e965d4ddfd66`. Shared inventory limitations apply.
+
+Parent-checked legacy evidence:
+
+- **Handoffs must preserve completion scope:** `019f05e1-aed9-716f-a6fa-17278d0db4c4` / request `4aa412e1`, generated prompt `3f0561f3`; execution `019f05eb-46af-7f5c-bd8b-495bba9a0be9` / explanation `5b604546`, correction `92a54fb1`. A request to work through a 93-item checklist became "make measurable progress" with weaker completion criteria; execution stopped after a slice. Inspect parent-authored scope transmission before blaming worker capability or effort. Generated goals are evidence of transmission, not independent operator intent.
+- **Build authority differs from run authority:** `019efb57-9eb7-77fa-9654-fa6ca30cfbc6` / `7b0772d1`, `76d3f7e4`, responses `aa88c030`, `5d4eace0`. Requested mutation capability should be implemented even though executing a live change requires approval. Do not convert execution safeguards into missing functionality or treat capability approval as permission to run it.
+- **Validate the actual operator path:** `019f0edb-f39a-7349-af5e-bb07d7f2f344` / `5203bde1`, response `6e11d06b`, direction `25af7d3e`. Manual file removal and one-off scripts did not demonstrate that the intended plan/apply workflow worked. The failed saved-plan apply was not successful mutation; later success remained assistant-reported.
+- **Use owning-platform authority:** `019efcad-8ae9-758f-86f9-17c940cf6cb7` / `816c537c`, response `25009308`. Similarity between VS Code and Pi did not make VS Code documentation authoritative for Pi extensions. The general lesson is source ownership, not preservation of potentially outdated API advice from the assistant's response.
+
+Lead-checked contrasts: Mike explicitly preferred IaC over UI-heavy DNS management (`019f0534-ed11-768e-8292-ae3e374a7e66` / `d0126206`, `5a9d8d03`), so low ceremony need not mean manual configuration. Tracked-export default changes were initially excluded, then separately approved (`019f00b0-3f8d-7628-b5b1-29e945c313fb` / `576d018a`, `1d962fe9`, `2a1b3999`); later approval does not retroactively authorize the original must-fix framing. Completeness questions require direct remaining-work disclosure (`019efc29-593e-7656-a7cd-e4e63dc99b92` / `2307cd76`, `d9c0ffca`, `254475e6`).
+
+Learning refinement: trace request, generated assignment, execution, correction, and resolution as separate authored steps. Changes in knowledge may be about better transmission or distinguishing build/run authority rather than adding a new preference. Recheck disputed environmental premises instead of defending the original classification.
+
+### Completed overnight review: June 16–23 (week 9)
+
+All 26 pages, 19 sessions, 477 messages reviewed across 0–5, 6–10, 11–15, 16–20, 21–25. Wrong-directory invocations recovered; no unread or clipped ranges. Five readers closed. Parent resumed a settled partial handoff to obtain final targeted verification and synthesis without rereading. Team Lead native `01a0dc25-4630-751a-85af-6348ee23d029`, final exchange `04e186ce-2040-43b1-964b-146c59cbe815`. Shared inventory limitations apply.
+
+Parent-checked legacy evidence:
+
+- **Existing recovery can be sufficient:** `019edc1f-c65b-7089-9ad3-d36f933889a6` / `8433e836`, preceding `42c2faeb`. Mike accepted exports overwriting specified tracked files because Git could restore them. Not authorization to overwrite uncommitted or irreplaceable work.
+- **Consequential actions can have simple controls:** same session / `f0815c4e`, preceding `ac7f30f3`. Chose separate policy/assignment scripts and understandable action-specific deletion flags over layered safety flags. The problem was confusing ceremony, not every safeguard. Historical flag names and exact semantics are not universal current policy.
+- **Initial authority and later procedural correction differ:** `019ecc94-5e6c-7338-99e4-ce633eaff59f` / `000866b3`, report `12b38215`, correction `bee2f91d`. Deletion had been requested. Mike subsequently required seeing the resolved change plan and being asked before destructive/hard-to-restore tenant changes. Do not invent unwanted deletion or actual harm to explain the feedback. Preserve this repository-specific consequence/approval distinction rather than generalizing it to routine edits.
+- **Migration can deliberately preserve live behavior:** `019ed655-2181-74af-80b7-a6600fe53bd9` / `434045c6`, response `fcf6be99`. Conversion to managed configuration was to capture the live tenant, not apply legacy assumptions. A changed plan indicated a conversion problem, not desired drift correction. This does not establish that brownfield state always defines desired behavior.
+- **Concrete durable-data loss can justify stronger retention:** `019ef52d-59f9-7e0f-b904-455a364da252` / `07f11acd`, preceding `da3946b7`, report `84b95f27`. Mike explicitly selected no MR-diff expiration and two-year backups after an expiration-related loss diagnosis. Terraform changes were reported, but no apply or restore was established. Neither the duration nor no-expiration treatment becomes a generic preference.
+
+Lead/second-reader checked contrasts: preserving deployed behavior need not preserve obsolete wrappers indefinitely once replacement coverage is complete (`019ed89d-4d93-744c-b934-1773087ebed0` / `e6b21847`, `247dcaef`, `63076333`, `36bdcf11`, `cd05b017`); a client-facing SBOM should fit its audience (`019edafd-c967-731d-82f4-15000375693b` / supplied feedback `838d7270`, approval `eb925fef`); lower lint-warning counts partly caused by threshold changes did not prove improved readability (`019edbb6-fdac-7761-80cd-e6c970b01626` / `6c5d58fc`, `b8f0d77f`).
+
+Learning refinement: retain initial authorization when recording later corrections; avoid inventing a harmful outcome. Supplied colleague feedback is not independently Mike-authored evidence, though his response can endorse an approach. Conversion, convergence, removal of obsolete surfaces, and operational effectiveness are distinct outcomes. This review corrected role, cross-session, approval-adjacency, ordinal, and Git-hash citation errors.
 
 ## How the discussion reached this point
 
@@ -242,7 +412,7 @@ Feedback-worker implications: preserve chronological revisions instead of treati
 
 Both weeks added meaningful, concentrated insights. They do not confirm that older history has become valueless or that every successive week yields less. They strengthen the reasons behind existing heuristics and provide useful examples of changing an approach rather than merely adding exceptions.
 
-A more defensible diminishing-returns assessment is that broad scans increasingly spend effort on repeated themes and generated traffic, while the useful additions cluster around specific exchanges. Recommendation: move toward applying the accumulated knowledge and use targeted historical retrieval when a real uncertainty arises. This remains a proposal for Mike, not authorization to stop requested work or begin implementation. No week before August 18 has been started.
+A more defensible diminishing-returns assessment is that broad scans increasingly spend effort on repeated themes and generated traffic, while the useful additions cluster around specific exchanges. Recommendation: move toward applying the accumulated knowledge and use targeted historical retrieval when a real uncertainty arises. This was a proposal for Mike, not authorization to stop requested work or begin implementation. Mike subsequently authorized the June 1–August 18 overnight extension recorded above.
 
 ### Historical week: August 18–25
 
