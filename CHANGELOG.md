@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-26: Delegate authorized plan closeout to Integrator
+
+**Changed:** `/do-it` now dispatches the role-scoped Integrator after implementation, checks, archival, and the task-branch commit. The manifest uses a runtime-stripped assignment envelope rather than expanding the ordinary subagent tool schema. The role owns authorized local merge and cleanup, including temporary tracked/untracked preservation only when needed; `--no-merge` skips dispatch. Routine conflicts remain agent-owned, while consequential overlap and restoration conflicts return to the orchestrator. Push/deployment boundaries and parent-owned questions and final reporting remain unchanged. Planning templates and Git workflow guidance route new plan closeout through this handoff rather than repeating its detailed procedure.
+
 ## 2026-09-25: Make new Pi instance launches silent
 
 **Changed:** Default Pi `/new-instance` no longer prints its invocation or a success notice in the console where it was entered. Launch failures still surface normally, and the `session_launch` tool retains its structured result.

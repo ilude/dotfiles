@@ -7,6 +7,7 @@ import type { ChildEndpoint, ApplicationMessage, MessageOptions } from "./transp
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { childLaunch } from "./launch.ts";
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
+import type { CloseoutManifest } from "../plan-integration/contracts.ts";
 export type Outcome = "complete" | "partial" | "blocked" | "failed" | "cancelled";
 export type ExchangeKind = "original" | "follow-up" | "intervention";
 export interface OriginalAssignmentSnapshot {
@@ -51,7 +52,7 @@ export interface ChildRecord {
   launcherState?: "starting" | "running" | "exited";
   questionResolution?: { requestId: string; outcome: "answered" | "cancelled"; by: "parent" | "child" | "assignment" };
 }
-export interface LaunchSpec { definition: AgentDefinition; prompt?: string; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible" }
+export interface LaunchSpec { definition: AgentDefinition; prompt?: string; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible"; closeoutManifest?: CloseoutManifest; closeoutParentSessionId?: string }
 const LIMIT = 24_000;
 // Native agent_end contains all messages for the assignment, not just its final text.
 // Keep authenticated application messages at their existing 256 KiB bound; RPC gets a

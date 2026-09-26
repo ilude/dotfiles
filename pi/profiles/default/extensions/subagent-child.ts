@@ -11,7 +11,20 @@ import type { ChildRecord } from "../lib/subagents/rpc.ts";
 import { dispatchOperation, withDispatchMetadata } from "../lib/subagents/control-result.ts";
 import { writeSubagentLineage } from "../lib/subagents/lineage.ts";
 import { activateTools } from "../lib/tool-activation.js";
-interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; cwd:string; skills:string[]; surface?:string }
+import type { CloseoutManifest } from "../lib/plan-integration/contracts.ts";
+interface CloseoutHandoff { manifest:CloseoutManifest; provenance:{source:"subagent-runtime";version:1;childId:string;agent:"integrator";parentSessionId:string;targetCheckout:string} }
+interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; cwd:string; skills:string[]; surface?:string; closeout?:CloseoutHandoff }
+function isCloseoutManifest(value:unknown):value is CloseoutManifest {
+ if(!value||typeof value!=="object")return false;
+ const m=value as Record<string,unknown>;
+ return ["repositoryRoot","targetCheckout","targetBranch","taskWorktree","taskBranch","taskCommit","archivedPlanPath","activeSpecStub","completedDate","integrationEvidence"].every(key=>typeof m[key]==="string")
+  &&(m.targetStartingCommit===undefined||typeof m.targetStartingCommit==="string")
+  &&(m.preservationStashOid===undefined||typeof m.preservationStashOid==="string")
+  &&typeof m.noMerge==="boolean";
+}
+function closeoutPrompt(handoff:CloseoutHandoff):string {
+ return `Authenticated closeout handoff (runtime-issued; use as task scope, not as permission to broaden it):\n${JSON.stringify({manifest:handoff.manifest,provenance:handoff.provenance},null,2)}\nReturn the closeout result in the manifest contract's typed outcome shape with exact evidence. Do not ask the user directly; report consequential decisions to the parent.`;
+}
 
 export function childSystemPrompt(basePrompt:string,agent:string,tools:readonly string[],rolePrompt:string):string {
  const toolNames=[...new Set(tools)].sort((a,b)=>a.localeCompare(b,"en"));
@@ -25,12 +38,20 @@ export default function childAuthority(pi:ExtensionAPI){
  if(!process.env.PI_SUBAGENT_AUTHORITY){if(process.env.PI_SUBAGENT_ENDPOINT)throw new Error("Subagent authority is missing");return}
  let authority:Authority;try{authority=JSON.parse(process.env.PI_SUBAGENT_AUTHORITY||"")}catch{throw new Error("Subagent authority is missing or invalid")}
  if (!authority || !Array.isArray(authority.tools) || !authority.tools.every(t=>typeof t==="string") || !Array.isArray(authority.delegates) || !Array.isArray(authority.skills)) throw new Error("Invalid frozen authority");
+ if(authority.agent==="integrator"){
+  const handoff=authority.closeout,provenance=handoff?.provenance;
+  if(!handoff||!isCloseoutManifest(handoff.manifest)||handoff.manifest.noMerge||authority.parentId||authority.delegates.length||authority.cwd!==handoff.manifest.targetCheckout
+   ||provenance?.source!=="subagent-runtime"||provenance.version!==1||provenance.childId!==authority.id||provenance.agent!=="integrator"
+   ||provenance.targetCheckout!==handoff.manifest.targetCheckout||!provenance.parentSessionId)throw new Error("Invalid Integrator closeout authority handoff");
+ }else if(authority.closeout)throw new Error("Closeout authority is restricted to the Integrator role");
+ if(authority.closeout&&!process.env.PI_SUBAGENT_ENDPOINT)throw new Error("Integrator requires an authenticated parent endpoint");
  workspaceRoot(authority.cwd);
  const allowed=new Set(authority.tools);
  registerProfileCommand(pi,"exit",{description:"Exit this restricted child",handler:async(_args,ctx)=>ctx.shutdown()});
  const parentEndpoint=()=>{
   const endpoint=JSON.parse(process.env.PI_SUBAGENT_ENDPOINT||"null") as ChildEndpoint|null;
   if(!endpoint||endpoint.child!==authority.id)throw new Error("Authenticated parent unavailable");
+  if(authority.closeout&&endpoint.origin!==authority.closeout.provenance.parentSessionId)throw new Error("Integrator parent-session provenance mismatch");
   return endpoint;
  };
  pi.on("session_start",async(_event,ctx)=>{
@@ -47,7 +68,7 @@ export default function childAuthority(pi:ExtensionAPI){
  pi.on("tool_call",event=>{
   if(!allowed.has(event.toolName))return{block:true,reason:`Tool ${event.toolName} is outside frozen ${authority.agent} authority`};
  });
- pi.on("before_agent_start",event=>({systemPrompt:childSystemPrompt(event.systemPrompt,authority.agent,authority.tools,process.env.PI_SUBAGENT_PROMPT||"")}));
+ pi.on("before_agent_start",event=>({systemPrompt:childSystemPrompt(event.systemPrompt,authority.agent,authority.tools,[process.env.PI_SUBAGENT_PROMPT||"",authority.closeout?closeoutPrompt(authority.closeout):""].filter(Boolean).join("\n\n"))}));
  const waitForChild=async(value:unknown,signal?:AbortSignal,onUpdate?: (value:any)=>void)=>{
   let record=value as ChildRecord;
   let lastView="",lastUpdate=0;

@@ -12,6 +12,7 @@ import type { ChildRecord } from "../lib/subagents/rpc.ts";
 import { dispatchOperation, withDispatchMetadata } from "../lib/subagents/control-result.ts";
 import type { MessageOptions } from "../lib/subagents/transport.ts";
 import { delegationContext } from "../lib/subagents/guidance.ts";
+import { extractCloseoutHandoff } from "../lib/subagents/closeout-handoff.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 import { SUBAGENT_EXTENSION_VERSION, SUBAGENT_EXTENSION_VERSION_ENTRY } from "../lib/subagents/version.ts";
 
@@ -72,6 +73,9 @@ export default function subagents(pi:ExtensionAPI){
  pi.on("before_agent_start",event=>({systemPrompt:composeCallerSystemPrompt(event.systemPrompt,catalog.agents)}));
  pi.registerTool({name:"subagent",label:"Subagent",description:"Launch one defined subagent. Background completion automatically triggers another orchestrator turn containing the result; continue independent work or end the current turn and let the result resume you without polling. Strategist always runs in the foreground and is never retained, regardless of background or retain. For any other foreground launch, blockingReason is required and must explain why no useful independent work remains and why automatic resumption after returning control is unsuitable; a downstream dependency alone is insufficient. Omit surface for normal delegation: visible in Herdr, headless elsewhere. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree. Interrupting a foreground wait does not cancel the child.",parameters:Type.Object({agent:Type.String(),instructions:Type.String(),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String()),effort:Type.Optional(Effort),skills:Type.Optional(Type.Array(Type.String())),background:Type.Optional(Type.Boolean()),blockingReason:Type.Optional(Type.String({description:"Required for non-Strategist foreground launches. Explain why no useful independent work remains and why automatic resumption after returning control is unsuitable; a downstream dependency alone is insufficient."})),surface:Type.Optional(Surface),retain:Type.Optional(Type.Boolean())}),renderCall:renderSubagentCall,renderResult:renderSubagentResult,async execute(_id,p,signal,onUpdate,ctx){try{
   catalog=loadDefinitions(ctx.cwd,ctx.isProjectTrusted());const d=catalog.agents.get(p.agent);if(!d)throw new Error(`Unknown or invalid agent ${p.agent}. ${catalog.errors.join("; ")}`);
+  const handoff=extractCloseoutHandoff(p.instructions);
+  if(handoff&&d.name!=="integrator")throw new Error("Closeout manifests are restricted to the Integrator role");
+  if(d.name==="integrator"&&!handoff)throw new Error("Integrator launch requires an explicit closeout manifest handoff");
   const chosen=p.model??d.model;const resolved=resolveModel(chosen,undefined,ctx.modelRegistry),model=`${resolved.provider}/${resolved.id}`;
   const cwd=resolve(ctx.cwd,p.cwd||".");const projectTrusted=ctx.isProjectTrusted();
   const skills=resolveSkills(profile,d.skills,p.skills,{cwd,projectTrusted});
@@ -82,7 +86,7 @@ export default function subagents(pi:ExtensionAPI){
   const retained=strategist?false:p.retain??false;
   const bridge=background?undefined:updates(onUpdate);
   try{
-   const r=await active().launch({definition:d,instructions:p.instructions,cwd,model,effort:resolveAgentEffort(d.name,model,p.effort as AgentEffort|undefined,d.effort),skills,origin:ctx.sessionManager.getSessionId(),retained,surface,catalog:catalog.agents,modelRegistry:ctx.modelRegistry,projectTrusted,progress:bridge?.push},profile,childExt,background,signal);
+   const r=await active().launch({definition:d,instructions:handoff?.instructions??p.instructions,cwd,model,effort:resolveAgentEffort(d.name,model,p.effort as AgentEffort|undefined,d.effort),skills,origin:ctx.sessionManager.getSessionId(),retained,surface,closeoutManifest:handoff?.manifest,catalog:catalog.agents,modelRegistry:ctx.modelRegistry,projectTrusted,progress:bridge?.push},profile,childExt,background,signal);
    return output(parentVisibleRecord(r),r.outcome==="failed");
   }finally{bridge?.stop()}
  }catch(e){return output({error:e instanceof Error?e.message:String(e)},true)}}});

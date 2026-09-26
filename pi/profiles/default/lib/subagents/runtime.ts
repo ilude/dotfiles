@@ -10,6 +10,8 @@ import { NameAllocator } from "./names.ts";
 import { SubagentLayout } from "./layout.ts";
 import { createHerdrCli } from "../herdr-cli.ts";
 import { composedAgentPrompt } from "./guidance.ts";
+import type { CloseoutManifest } from "../plan-integration/contracts.ts";
+import { validateCloseoutManifest } from "../plan-integration/closeout.ts";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 export type DeliveryKind = "outcome" | "question" | "question-resolution";
 export interface Delivery extends ChildRecord { deliveryId: string; deliveryKind?: DeliveryKind }
@@ -32,7 +34,7 @@ export class RuntimeCleanupError extends Error {
  readonly summary: CleanupSummary;
  constructor(summary: CleanupSummary) { super("Subagent cleanup did not close every owned resource"); this.name = "RuntimeCleanupError"; this.summary = summary; }
 }
-interface Input { definition:AgentDefinition;instructions:string;cwd:string;model:string;effort:AgentEffort;skills:string[];origin:string;retained:boolean;parentId?:string;surface:"headless"|"visible";catalog?:Map<string,AgentDefinition>;modelRegistry?:ModelRegistry;projectTrusted?:boolean;progress?:(record:ChildRecord)=>void }
+interface Input { definition:AgentDefinition;instructions:string;cwd:string;model:string;effort:AgentEffort;skills:string[];origin:string;retained:boolean;parentId?:string;surface:"headless"|"visible";closeoutManifest?:CloseoutManifest;catalog?:Map<string,AgentDefinition>;modelRegistry?:ModelRegistry;projectTrusted?:boolean;progress?:(record:ChildRecord)=>void }
 interface Context { input:Input;profile:string;extension:string;catalog:Map<string,AgentDefinition> }
 export interface InertRuntimeState { names: Record<string, string[]>; outcomes: Delivery[] }
 
@@ -184,12 +186,13 @@ export class SubagentRuntime {
   }
   if(message.type==="delegate"){
    if(child.record.status==="settled")throw new Error("Parent assignment is settled");
-   const payload=message.payload as {agent?:unknown;instructions?:unknown;retain?:unknown;background?:unknown;cwd?:unknown;model?:unknown;effort?:unknown;skills?:unknown;surface?:unknown};
+   const payload=message.payload as {agent?:unknown;instructions?:unknown;retain?:unknown;background?:unknown;cwd?:unknown;model?:unknown;effort?:unknown;skills?:unknown;surface?:unknown;closeoutManifest?:unknown};
    if(!payload||typeof payload.agent!=="string"||typeof payload.instructions!=="string"||!payload.instructions.trim())throw new Error("Invalid delegation");
    if(!context.input.definition.tools.includes("subagent")||!context.input.definition.delegates.includes(payload.agent))throw new Error("Delegation is outside frozen authority");
    if(!child.record.sessionId)throw new Error("Delegating parent session identity unavailable");
    const definition=context.catalog.get(payload.agent);
    if(!definition||definition.delegates.length)throw new Error("Only permitted subagent definitions may be commissioned");
+   if(payload.closeoutManifest!==undefined)throw new Error("Closeout manifests may only be supplied by the originating orchestrator");
    for(const key of ["cwd","model","effort"] as const)if(payload[key]!==undefined&&typeof payload[key]!=="string")throw new Error(`Invalid ${key}`);
    if(payload.effort!==undefined&&!EFFORTS.includes(payload.effort as AgentEffort))throw new Error("Invalid effort");
    if(payload.surface!==undefined&&payload.surface!=="visible"&&payload.surface!=="headless")throw new Error("Invalid surface");
@@ -222,6 +225,12 @@ export class SubagentRuntime {
  async launch(input:Input,profileDir:string,childExtension:string,background:boolean,signal?:AbortSignal,initialWaitState?:"attached"|"background"):Promise<ChildRecord>{
   if(this.disposed)throw new Error("Subagent runtime is no longer active");
   const cwd=workspaceRoot(resolve(input.cwd));
+  if(input.definition.name==="integrator"){
+   if(input.parentId||!input.closeoutManifest)throw new Error("Integrator requires a root-orchestrator closeout manifest");
+   validateCloseoutManifest(input.closeoutManifest);
+   if(input.closeoutManifest.noMerge)throw new Error("Integrator is not launched when closeout is skipped");
+   if(resolve(input.cwd)!==resolve(input.closeoutManifest.targetCheckout))throw new Error("Integrator must launch from the recorded target checkout");
+  }else if(input.closeoutManifest)throw new Error("Closeout manifests are restricted to the Integrator role");
   if(input.parentId){
    const parent=this.children.get(input.parentId),context=this.contexts.get(input.parentId);
    if(!parent||!context||parent.record.status==="settled")throw new Error("Delegating parent is unavailable");
@@ -241,6 +250,8 @@ export class SubagentRuntime {
    model:input.model,effort:input.effort,skills:[...input.skills],
    origin:input.origin,retained:input.retained,parentId:input.parentId,
    surface:input.surface,
+   closeoutManifest:input.closeoutManifest,
+   closeoutParentSessionId:input.closeoutManifest?input.origin:undefined,
    prompt:composedAgentPrompt(input.definition,catalog,parentDelegates),
   };
   const child=input.surface==="visible"

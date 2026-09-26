@@ -4,8 +4,9 @@ import { review as actualReview } from "../../lib/damage-control/judge.ts";
 import { harness } from "./fixtures/fake-pi.ts";
 
 function actualJudge(complete: ReturnType<typeof vi.fn>) {
+  const model = { provider: "openai-codex", id: "gpt-5.6-luna" };
   const modelRegistry = {
-    find: vi.fn(() => ({ provider: "openai-codex", id: "gpt-5.6-luna" })),
+    getAll: vi.fn(() => [model]),
     hasConfiguredAuth: vi.fn(() => true),
     complete,
   } as unknown as ExtensionContext["modelRegistry"];

@@ -3,11 +3,17 @@ import { join } from "node:path";
 import { childLaunch } from "../lib/subagents/launch.ts";
 import type { AgentDefinition } from "../lib/subagents/definitions.ts";
 import type { LaunchSpec } from "../lib/subagents/rpc.ts";
+import type { CloseoutManifest } from "../lib/plan-integration/contracts.ts";
 
 const definition: AgentDefinition = { name: "probe", description: "Probe", tools: ["read"], delegates: [], model: "provider/model", effort: "low", skills: [], prompt: "definition body", source: "profile", filePath: "probe.md" };
 function spec(surface: "headless" | "visible"): LaunchSpec {
   return { definition, prompt: "frozen composed prompt", instructions: "check", cwd: process.cwd(), model: "provider/model", effort: "low", skills: [], origin: "origin", retained: false, surface };
 }
+const closeoutManifest: CloseoutManifest = {
+  repositoryRoot: process.cwd(), targetCheckout: process.cwd(), targetBranch: "main", taskWorktree: join(process.cwd(), ".worktrees", "task"), taskBranch: "feature/task",
+  taskCommit: "a".repeat(40), archivedPlanPath: ".specs/archive/task/plan.md", activeSpecStub: "task", noMerge: false,
+  completedDate: "2026-09-26", integrationEvidence: "checks passed",
+};
 
 describe("subagent launch prompt", () => {
   it.each(["headless", "visible"] as const)("exports the frozen composed prompt for %s hosting without changing model or effort", (surface) => {
@@ -54,6 +60,17 @@ describe("subagent launch prompt", () => {
     for (const runtimeValue of ["different assignment", "child-two", "parent-two", "other-origin", join(process.cwd(), "other")]) {
       expect(changed.env.PI_SUBAGENT_PROMPT).not.toContain(runtimeValue);
     }
+  });
+
+  it("transfers the typed manifest with runtime-issued Integrator provenance only to the child", () => {
+    const launch = childLaunch({ ...spec("headless"), definition: { ...definition, name: "integrator" }, closeoutManifest, closeoutParentSessionId: "parent-session" }, "child-id", process.cwd());
+    const authority = JSON.parse(launch.env.PI_SUBAGENT_AUTHORITY);
+    expect(authority.closeout).toEqual({
+      manifest: closeoutManifest,
+      provenance: { source: "subagent-runtime", version: 1, childId: "child-id", agent: "integrator", parentSessionId: "parent-session", targetCheckout: closeoutManifest.targetCheckout },
+    });
+    expect(launch.env.PI_SUBAGENT_AUTHORITY).not.toContain("bash");
+    expect(launch.env.PI_SUBAGENT_PROMPT).toBe("frozen composed prompt");
   });
 
   it("loads provider plus accounting for Mantle children without the operator extension", () => {

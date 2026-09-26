@@ -13,7 +13,7 @@ Damage Control loads with the default profile. Its [design purpose](damage-contr
 - There is no `/dc status` command.
 - `pp --dc-recovery` remains available as an explicit maintenance path.
 
-Confirmed blocks, remote/cloud/live operations, Docker volumes, exfiltration, dynamic targets, and protected paths are not bypassed. Eligibility comes from parsed effects and canonical path facts for the whole invocation; a local command prefix does not make accompanying or unresolved effects eligible. Review failures retain the approval path.
+Confirmed blocks, remote/cloud/live operations, Docker volumes, exfiltration, dynamic targets, and protected paths are not bypassed. Eligibility comes from parsed effects and canonical path facts for the whole invocation; a local command prefix does not make accompanying or unresolved effects eligible. Review failures retain the approval path. The default-profile Integrator has one separate deterministic allowance: only the unmodified canonical plan-integration helper, invoked alone with the runtime-issued Integrator manifest and authenticated parent-session provenance, runs without a prompt. Altered helper bytes, aliases, broadened manifests, missing provenance, or composed commands receive ordinary Damage Control enforcement. This does not change `/dc off` or either shell mode. `/do-it` dispatches the Integrator after the task-branch commit unless `--no-merge` is set; local closeout authority does not include push or deployment unless the plan explicitly authorizes it.
 
 ## Behavior
 

@@ -7,21 +7,17 @@ description: Safely integrate plan or subagent branches, especially when the des
 
 Prefer ordinary Git commands and separate, reviewable steps. Preserve all existing work.
 
-## Integrate a plan branch
+## Authorized plan closeout
 
-1. Inspect `git status --short --branch` and relevant diffs. Identify which changes predate the integration.
-2. Choose the first applicable path:
-   - Clean destination: use a normal `git merge <branch>`.
-   - Dirty destination with operator-approved temporary preservation: use the stash workflow below.
-   - Dirty destination where the operator prefers a durable checkpoint: make a targeted local `wip: ...` commit containing only the pre-existing work, then merge normally. Treat that commit as local and temporary unless the operator explicitly requests a push.
-   - No clearly safe or approved preservation path: stop and report the dirty paths.
-3. Resolve normal merge conflicts as file edits, validate, and commit the merge normally. Keep inspection, preservation, merge, conflict resolution, restoration, and cleanup as separate operations.
+For `/do-it` execution, the orchestrator commits the implementation and archived plan on the task branch, then dispatches the Integrator from the recorded target checkout. The Integrator owns local merge, completion metadata, restoration, and worktree cleanup under its role skill. It may temporarily preserve tracked and untracked target changes when needed, excluding ignored files and leaving disjoint changes in place where safe. It resolves routine conflicts within settled intent; restoration conflicts and consequential overlaps return to the parent with exact evidence. The parent owns user questions and final reporting. `--no-merge` skips Integrator dispatch and leaves the committed worktree in place. Push and deployment remain governed by the plan's explicit authorization.
+
+Outside this authorized closeout contract, use the ordinary operator-approved preservation workflow below. Do not infer stash authority from a plan branch or a dirty destination.
 
 Do not merge around existing changes with Git plumbing such as `commit-tree`, `update-index`, or `update-ref`. Never use a broad checkout or restore to erase conflicts or pre-existing work.
 
 ## Stash workflow
 
-1. Obtain operator approval before temporarily removing pre-existing changes from the checkout.
+1. Obtain operator approval before temporarily removing pre-existing changes from the checkout, unless the authorized `/do-it` Integrator closeout contract above applies.
 2. Preserve tracked and untracked changes with a named stash. Do not include ignored files automatically:
 
 ```bash

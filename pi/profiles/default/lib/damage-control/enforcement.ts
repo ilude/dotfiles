@@ -5,6 +5,7 @@ import { adapt } from "./adapters.ts";
 import { analyzeRequest, type AnalysisDependencies } from "./analysis.ts";
 import { Breaker, fingerprint, type BreakerSnapshot } from "./breaker.ts";
 import { bypassEligibility } from "./bypass.ts";
+import { authorizedPlanIntegration } from "./plan-integration-authority.ts";
 import { Context, DIRECT_INPUT_LIMIT, processVariableEvidence } from "./context.ts";
 import { decide } from "./engine.ts";
 import { loadPolicy } from "./policy.ts";
@@ -145,6 +146,12 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         if (!fresh()) return blocked("Pending call cancelled or changed; action not executed");
         const sequenceDecision = sequence.check(request.tool, request.text, analysis.effects);
         if (sequenceDecision) analysis.matches.push({ ruleId: sequenceDecision.name, action: sequenceDecision.action === "review" ? "review" : "block", applicability: "confirmed", reason: sequenceDecision.reason, effects: analysis.effects.map(effect => effect.id) });
+        if (!sequenceDecision && authorizedPlanIntegration(request, analysis, profile)) {
+          sequence.record(request.tool, request.text);
+          completed.set(call.callId, { request, effects: analysis.effects, created, generation: context.generation });
+          while (completed.size > 50) completed.delete(completed.keys().next().value!);
+          return undefined;
+        }
         const variables = [...(analysis.internal?.variables ?? []), ...processVariableEvidence(analysis.effects, process.env)];
         const evidence = context.buildEvidence(
           call.callId, request.text, analysis.effects, analysis.matches, analysis.uncertainties, variables, sequenceDecision?.evidence,

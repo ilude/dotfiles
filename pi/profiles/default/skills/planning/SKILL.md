@@ -70,10 +70,11 @@ reopening them.
    scope, decisions, or acceptance.
 6. Include a bounded closeout contract. After implementation and agreed agent-owned
    checks, archive the whole spec and commit it with the task changes on the task
-   branch, then merge into the recorded target before declaring completion. If merge
-   is blocked, retain the worktree and report integration pending. Preserve explicit
-   no-merge instructions as an intentional exception. Operator manual or live testing
-   happens after completion and never blocks archival, commit, or authorized merge;
+   branch. For authorized `/do-it` execution, the orchestrator dispatches the
+   Integrator from the recorded target checkout after that commit; the role owns
+   local integration and cleanup under its skill. Preserve explicit no-merge
+   instructions as an intentional exception. Operator manual or live testing happens
+   after completion and never blocks archival, commit, or authorized integration;
    record it only as a non-blocking verification limit. Require accurate unfinished
    integration/cleanup checkboxes and blocker, next-action, and action-owner records.
    Include the template's outcome-first response contract: 🟢 completed, 🔴 merge
