@@ -145,13 +145,13 @@ it("registers f7 to launch a fresh instance", async () => {
 	expect(calls[2]).toEqual(["tab", "focus", "w9:t4"]);
 });
 
-it("registers f8 to run git s and display its output", async () => {
+it("registers f8 to run git status --short and label its output", async () => {
 	const { run, shortcuts, ctx } = fixture();
 
 	await shortcuts.f8.handler(ctx);
 
-	expect(run).toHaveBeenCalledWith("git", ["s"], { cwd: ctx.cwd, timeout: 10_000 });
-	expect(ctx.ui.notify).toHaveBeenCalledWith("status output", "info");
+	expect(run).toHaveBeenCalledWith("git", ["status", "--short"], { cwd: ctx.cwd, timeout: 10_000 });
+	expect(ctx.ui.notify).toHaveBeenCalledWith("# git status --short\n status output", "info");
 });
 
 it("launches silently, awaits delayed plugin open, passes title ownership, focuses the exact tab, and leaves child title initialization authoritative", async () => {

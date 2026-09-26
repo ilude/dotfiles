@@ -420,11 +420,12 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 		handler: async (ctx) => executeNewInstance("", ctx),
 	});
 	pi.registerShortcut("f8", {
-		description: "Show git status",
+		description: "Show git status --short",
 		handler: async (ctx) => {
-			const result = await pi.exec("git", ["s"], { cwd: ctx.cwd, timeout: 10_000 });
+			const result = await pi.exec("git", ["status", "--short"], { cwd: ctx.cwd, timeout: 10_000 });
 			const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-			ctx.ui.notify(output || (result.code === 0 ? "Working tree clean." : `git s exited ${result.code}`), result.code === 0 ? "info" : "error");
+			const detail = output || (result.code === 0 ? "Working tree clean." : `git status --short exited ${result.code}`);
+			ctx.ui.notify(`# git status --short\n ${detail}`, result.code === 0 ? "info" : "error");
 		},
 	});
 	registerProfileCommand(pi, "new-terminal", {
