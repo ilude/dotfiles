@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-26: Delegate authorized plan closeout to Integrator
+
+**Changed:** `/do-it` now dispatches the role-scoped Integrator after implementation, checks, archival, and the task-branch commit. The manifest uses a runtime-stripped assignment envelope rather than expanding the ordinary subagent tool schema. The role owns authorized local merge and cleanup, including temporary tracked/untracked preservation only when needed; `--no-merge` skips dispatch. Routine conflicts remain agent-owned, while consequential overlap and restoration conflicts return to the orchestrator. Push/deployment boundaries and parent-owned questions and final reporting remain unchanged. Planning templates and Git workflow guidance route new plan closeout through this handoff rather than repeating its detailed procedure.
+
 ## 2026-09-25: Select resilient log analytics execution automatically
 
 **Changed:** Omitted SQL execution now selects large mode for broad scope or at least 256 MiB selected input, retaining standard for smaller exact-session queries. Explicit mode overrides remain available. Both modes use 2 GB, two threads, bounded 8 GiB spill under per-invocation directories in the default profile's ignored analytics state, with cleanup and resource reporting. Spill can still fail for some memory-intensive DuckDB operators; explicitly standard failures advise retrying large.

@@ -257,9 +257,9 @@ describe("delegation guidance", () => {
     const role = catalog.agents.get("strategist");
     if (!role) throw new Error("Missing bundled Strategist");
     const text = composedAgentPrompt(role, catalog.agents);
-    // Includes role body, injected guidance, and catalog. Previously 3,887 bytes;
-    // allow modest wording changes without losing the agreed whole-prompt reduction.
-    expect(Buffer.byteLength(text)).toBeLessThan(3500);
+    // Includes role body, injected guidance, and catalog. The concise Integrator
+    // catalog entry adds bounded role-routing context without exposing its skill.
+    expect(Buffer.byteLength(text)).toBeLessThan(3600);
     expect(text).toContain("Start now, Start after prerequisites, and Parent-owned actions");
     expect(text).toContain("exact prerequisite results");
     expect(text).toContain("completion evidence");

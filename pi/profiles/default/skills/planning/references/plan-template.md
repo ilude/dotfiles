@@ -105,24 +105,20 @@ another plan, then move this entire spec directory there in the task worktree an
 repair affected links. Commit the implementation and archived spec together on the
 task branch. Do not archive unfinished implementation.
 
-Unless explicitly disabled, merge the task branch into its recorded originating
-checkout and branch without stashing, discarding, or committing unrelated target
-changes. Resolve routine merge conflicts within settled intent yourself; ask only
-for consequential decisions or prerequisites outside your authority.
-If integration is blocked, retain the worktree and report implementation
-and checks separately from pending delivery. If `--no-merge` applies, keep the
-committed worktree and report integration as intentionally pending.
+For authorized `/do-it` execution, after the task commit dispatch the Integrator
+from the recorded target checkout with the closeout manifest. The Integrator owns
+local integration and cleanup; the orchestrator owns user questions and final
+reporting. If integration is blocked, retain the worktree and report implementation
+and checks separately from pending delivery. If `--no-merge` applies, do not dispatch
+the Integrator for mutation; keep the committed worktree and report integration as
+intentionally pending.
 
-After a successful merge, verify the target contains the changes and archive and no
-active plan copy remains. Then set the archived plan's `status: completed` and
-`completed: YYYY-MM-DD`, record integration evidence, and commit that metadata update
-on the target. Do not mark a task containing cleanup done before cleanup succeeds;
-if cleanup remains unfinished, report CLEANUP PENDING rather than COMPLETED.
-Rerun affected checks only if conflict resolution changed checked content. Remove the task worktree only when integration
-succeeded and it has no uncommitted or unmerged work. Push and deployment require
-explicit user authorization, which may already be recorded in this plan; a later
-execution command does not revoke recorded authorization unless the user says so.
-Operator manual testing does not block this closeout.
+The Integrator verifies the target and archive, records the actual completion date,
+status, and evidence, commits that metadata, then removes the clean task worktree.
+It reports CLEANUP PENDING if integration or metadata succeeded but cleanup did not.
+Push and deployment require explicit user authorization, which may already be
+recorded in this plan; a later execution command does not revoke recorded
+authorization unless the user says so. Operator manual testing does not block closeout.
 
 ### Final response
 
