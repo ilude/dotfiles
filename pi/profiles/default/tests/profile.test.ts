@@ -35,7 +35,7 @@ it("passes the active profile to a new instance without launching a real termina
 		return {} as any;
 	});
 	const commands = new Map<string, any>();
-	sessionLaunch({ on: vi.fn(), registerCommand: (name: string, command: unknown) => commands.set(name, command), registerTool: vi.fn(), registerEntryRenderer: vi.fn(), registerMessageRenderer: vi.fn(), sendMessage: vi.fn() } as unknown as ExtensionAPI);
+	sessionLaunch({ on: vi.fn(), registerCommand: (name: string, command: unknown) => commands.set(name, command), registerShortcut: vi.fn(), registerTool: vi.fn(), registerEntryRenderer: vi.fn(), registerMessageRenderer: vi.fn(), sendMessage: vi.fn() } as unknown as ExtensionAPI);
 	await commands.get("new-instance").handler("", { cwd: process.cwd(), ui: { notify: vi.fn() } });
 	const launchArgs = vi.mocked(execFile).mock.calls[1]?.[1] as string[];
 	expect(launchArgs.slice(0, 4)).toEqual(["plugin", "pane", "open", "--plugin"]);

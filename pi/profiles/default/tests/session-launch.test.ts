@@ -22,10 +22,14 @@ function fixture() {
 	vi.stubEnv("HERDR_ENV", "1");
 	vi.stubEnv("HERDR_WORKSPACE_ID", "w9");
 	const commands: Record<string, any> = {};
+	const shortcuts: Record<string, any> = {};
 	const tools: Record<string, any> = {};
+	const run = vi.fn(async () => ({ stdout: "status output\n", stderr: "", code: 0, killed: false }));
 	register({
 		on: vi.fn(),
+		exec: run,
 		registerCommand(n: string, c: any) { commands[n] = c; },
+		registerShortcut(key: string, shortcut: any) { shortcuts[key] = shortcut; },
 		registerEntryRenderer() {},
 		registerTool(tool: any) { tools[tool.name] = tool; },
 	} as any);
@@ -47,7 +51,7 @@ function fixture() {
 		stdout: args[1] === "create" ? JSON.stringify({ result: { root_pane: { pane_id: "w9:p4" } } }) : "",
 		stderr: "",
 	}) as any);
-	return { commands, tools, ctx };
+	return { commands, run, shortcuts, tools, ctx };
 }
 
 function realBranchFixture() {
@@ -68,6 +72,7 @@ function realBranchFixture() {
 	const pi = {
 		on(name: string, handler: (event: BeforeAgentStartEvent, ctx: ExtensionContext) => void) { hooks.set(name, handler); },
 		registerCommand(n: string, c: any) { commands[n] = c; },
+		registerShortcut() {},
 		registerEntryRenderer(n: string, renderer: any) { renderers[n] = renderer; },
 		registerTool() {},
 		appendEntry(type: string, data: unknown) { parent.appendCustomEntry(type, data); },
@@ -126,6 +131,27 @@ it("launches an exact active-profile session from the tool using its saved cwd",
 	const args = vi.mocked(spawnSync).mock.calls[0]?.[1] as string[];
 	expect(args).toContain(savedCwd);
 	expect(args.join(" ")).toContain(session);
+});
+
+it("registers f7 to launch a fresh instance", async () => {
+	const { shortcuts, ctx } = fixture();
+
+	await shortcuts.f7.handler(ctx);
+
+	expect(shortcuts.f7.description).toBe("Open a new Pi instance");
+	const calls = vi.mocked(execFile).mock.calls.map(call => call[1] as string[]);
+	expect(calls[0]).toEqual(["pane", "current", "--current"]);
+	expect(calls[1]).toContain("PI_HERDR_SESSION_FILE=");
+	expect(calls[2]).toEqual(["tab", "focus", "w9:t4"]);
+});
+
+it("registers f8 to run git s and display its output", async () => {
+	const { run, shortcuts, ctx } = fixture();
+
+	await shortcuts.f8.handler(ctx);
+
+	expect(run).toHaveBeenCalledWith("git", ["s"], { cwd: ctx.cwd, timeout: 10_000 });
+	expect(ctx.ui.notify).toHaveBeenCalledWith("status output", "info");
 });
 
 it("launches silently, awaits delayed plugin open, passes title ownership, focuses the exact tab, and leaves child title initialization authoritative", async () => {

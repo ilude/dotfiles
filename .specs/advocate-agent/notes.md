@@ -206,7 +206,74 @@ Parent-checked precedents:
 | Workload-specific stability exception | default `01a07781-f779-73a5-80b5-a4d166fe4691` / `81fcbae8`; proposal `83b0108c` | Authorized a SearXNG-only 24-hour exception to a seven-day image hold after discussion of scraper freshness. Supports understanding why a control exists and when its cost defeats its purpose, not general unpinning. |
 | Preference without an observed defect | legacy `01a06cf6-a913-7ee6-b262-bcc5a6f948fc` / `0ad235c3`, `58b3167a`; follow-up `63b843ce` | Rejected prose-asserting tests after the assistant hypothesized them. The assistant's subsequent bounded search reported none. Preserve the expressed preference without recording a confirmed implemented defect. |
 
-Marginal value: useful positive workflow precedents and contextual exceptions, mostly refining existing understanding rather than adding a broad new preference. Quiet delegation directly supports the proposed background feedback worker. Bounded repair versus exhaustive review and stability versus freshness sharpen when to follow or depart from heuristics. The Team Lead recommends pausing broad weekly review in favor of targeted retrieval for unresolved contrasts. This is a recommendation for discussion, not a finding that all domains are saturated or a user decision to stop. No older week has been started.
+Marginal value: useful positive workflow precedents and contextual exceptions, mostly refining existing understanding rather than adding a broad new preference. Quiet delegation directly supports the proposed background feedback worker. Bounded repair versus exhaustive review and stability versus freshness sharpen when to follow or depart from heuristics. The Team Lead recommends pausing broad weekly review in favor of targeted retrieval for unresolved contrasts. This is a recommendation for discussion, not a finding that all domains are saturated or a user decision to stop. Mike subsequently authorized August 18–September 1 as two more weekly batches to test this assessment.
+
+### Historical week: August 25–September 1
+
+Frozen interval: `[2026-08-25T19:16:41.417221Z, 2026-09-01T19:16:41.417221Z)`.
+
+- Both profiles inventoried: 4,210 files, approximately 5.10 GB; 4,209 valid headers. No default in-window events; 377 legacy event-active sessions, including three older resumed sessions.
+- 372 files contained visible conversation before deduplication. Removing 442 inherited duplicates left 371 canonical selected sessions and 3,824 messages. Thirteen ambiguous-parent sessions remained selected.
+- All 158 pages across three batches were semantically reviewed. Grouped tool outputs initially clipped; completed ranges were preserved and uncertain ranges recovered individually. Batch 2 required complete recovery. No selected unread ranges remained in the final report.
+- One invalid legacy historical-backfill header excluded. No malformed bodies, missing timestamps, or source changes reported. Scope was visible conversation, not exhaustive tools, attachments, thinking, or private calls. Generated user-role assignments were distinguished from operator testimony.
+- Team Lead report: default `01a0db8f-df87-73aa-acfc-86de99369c88`, final follow-up `3eb074db-25bf-4fdd-9d0a-88da3844ee28`. Metadata/helpers: `C:/Users/mglenn/AppData/Local/Temp/advocate-review-week-2026-08-25-hwi2o_2s/`.
+- Operational issue: the Team Lead settled with an unfinished result rather than delivering final synthesis when readers completed. Parent resumed it after Mike reported inactivity. All recovery workers had finished; no semantic reread was needed to produce the final report. This is a current coordination failure, not evidence that historical research itself remained active.
+
+Parent-checked additions (all source sessions legacy):
+
+| Subject | Session / record | Evidence and limit |
+| --- | --- | --- |
+| Contextual judgment versus policy machinery | `01a03bca-94e8-70c1-860b-da0fe3c9619a` / `2a98d380`, proposal `899a8f70`, acceptance `b79dde65` | Mike challenged determinism as a general design stipulation because it could encourage ceremony at the expense of flexibility and simplicity. Accepted distinguishing stable mechanisms/consequential invariants from contextual judgment. This does not reject predictable semantics or appropriate enforcement. |
+| Value before maintenance or relocation | `01a03a70-855e-7d9c-a80e-1824c3933add` / `d633473b`, explanation `692845a6`, approval `7fd40c05` | Corrected documents were still considered essentially meaningless. Approved deleting redundant prose and retaining the useful ownership rule locally, not globally. Accuracy and correct location alone do not establish usefulness. |
+| Explicit retention exception | Same session / `0e699495` | Retained prompt-routing logs for possible future research. Inactivity, reproducibility, or generation alone does not justify deleting material with named historical/research value. |
+| Revision of an approved approach | `01a039c0-f507-72e1-a70b-f947f623415f` / `03f6272f`, `1aa36675`, `c75cf9a9`; later `01a040bd-d375-77df-b823-8f6c284e50bb` / explanation `e780d6cd`, request `571b225f` | Earlier approvals included closed diagnostic dismissal categories and a three-candidate limit. Later requested an effective failure-family investigation described in the adjacent response, rather than the restrictive workflow. Preserve chronology and purpose; do not accumulate both as timeless requirements or infer that every earlier boundary was revoked. |
+| Bounded extra work can simplify a workflow | `01a039c0-f507-72e1-a70b-f947f623415f` / proposal `ccffb080`, correction `f63babe3` | Chose all-platform builds over selective host compilation because detection problems had already cost more. Less computation is not necessarily less total complexity. |
+
+Team Lead-verified supporting examples, not independently reread by parent:
+
+- DDD should improve demonstrated domain structure rather than decorate low-level mechanics: `01a03be0-c3e4-75bc-a838-2a0a8e563e67` / `2a4aca66`, `de51f56e`. A predictable no-flags release workflow remained desirable where intent was settled: `01a03e74-e6a1-70a8-a932-6e39f4c88806` / `d08fcf0b`.
+- A sufficient tracker/checker did not justify an expanded protocol and evaluation harness: `01a05d3c-8326-7320-9d35-6908825b4da7` / `fa6ebb90`, `d7659722`, `419be094`, `29fb7dda`.
+- Simplification must preserve the approved prototype: `01a0441c-c962-7f30-8b13-340780123bfd` / `6b5b5ca2`, `d6756fb4`. Final satisfaction was not established.
+- Rejected a damage-control taxonomy but accepted structural command analysis while declining OS enforcement for now: `01a045a9-23c9-7289-ae51-61428dd03b94` / `33726816`, `071a6f6e`.
+
+Feedback-worker implications: preserve chronological revisions instead of treating every approval as permanent; distinguish submitted requirements from personally authored preferences; interpret a short approval with its adjacent proposal; and retain the contrast that explains an exception. This supports learning through judgment, not a new classification workflow.
+
+### Assessment after the two additional August weeks
+
+Both weeks added meaningful, concentrated insights. They do not confirm that older history has become valueless or that every successive week yields less. They strengthen the reasons behind existing heuristics and provide useful examples of changing an approach rather than merely adding exceptions.
+
+A more defensible diminishing-returns assessment is that broad scans increasingly spend effort on repeated themes and generated traffic, while the useful additions cluster around specific exchanges. Recommendation: move toward applying the accumulated knowledge and use targeted historical retrieval when a real uncertainty arises. This remains a proposal for Mike, not authorization to stop requested work or begin implementation. No week before August 18 has been started.
+
+### Historical week: August 18–25
+
+Frozen interval: `[2026-08-18T19:16:41.417221Z, 2026-08-25T19:16:41.417221Z)`.
+
+- Both profiles inventoried: 1,738 default files with no qualifying events, and 2,464 legacy files with 557 event-active sessions. Corrected captured size: 5,091,532,492 bytes, not the initial helper handoff's 6,919,532,492.
+- 9,467 visible occurrences became 8,357 canonical reviewed messages after removing 1,110 duplicates. There were 552 distinct canonical-review sessions, six created before the interval, and 553 batch entries due to one continuation.
+- All 516 pages across six batches were semantically reviewed. Dedicated recovery covered clipped batch-1 pages 15–29. Metadata-only partial returns were not counted as semantic coverage. Eleven ambiguous-parent sessions were retained; generated traffic was not treated as direct operator evidence.
+- One invalid legacy historical-backfill header excluded. No reported malformed bodies, oversized records, timestamp gaps, unstable-source exclusions, renderer verification failures, or remaining unread selected ranges. Coverage remains visible conversation rather than exhaustive tool results or attachments.
+- Corrected native citations and manifest bounds supersede erroneous first-pass reviewer IDs and interval descriptions. Team Lead report: default `01a0db8f-e4c5-77db-93d5-ef1e5fe3789a`, final follow-up `c49112db-10a0-452b-9af6-34519c6d054e`.
+- Metadata/helpers: `C:/Users/mglenn/AppData/Local/Temp/advocate-review-week-2026-08-18-28940ddd28834b38916c7be4e4562ea2/`.
+
+Parent-checked additions (all source sessions legacy):
+
+| Subject | Session / record | Evidence and limit |
+| --- | --- | --- |
+| Model-led exceptional recovery | `01a039d8-7e5a-795d-8679-4689251b9c8d` / `96bb9f56`, proposal `2e6e9663`, approval `e4e2f446` | Explicitly endorsed model attempts at safe recovery from unusual local failures instead of a second workflow state machine. The proposal retained hard boundaries for sensitive/destructive/production/ambiguous-ownership actions and deterministic verification before cleanup. Not permission to remove normal-operation correctness or current safeguards. |
+| Authorized provisional implementation | `01a02210-a5f6-7162-8c32-45ae3c7544c4` / `61ec0395`, response `f0962362` | Required a full best-guess dev/staging deployment so knowledgeable owners could evaluate behavior. Distinguish inventing authoritative requirements from building an explicitly authorized candidate to elicit the missing feedback. Assumptions remained disclosed, not historical facts or owner acceptance. |
+| Review substance versus bookkeeping | `01a03161-05e4-79cf-966c-3414842706f5` / `55f5aa2d`, assistant `0d2cd2e5`, corrections `aa56983f`, `152065e8` | Rejected exposed lifecycle ceremony, then rejected the assistant's reduction to one reread. Wanted substantive expert/adversarial review preserved. Historical sequence is evidence about purpose, not a new mandatory review pipeline. |
+| Positive acceptance of a reduced design | `01a02c8e-f6db-7f48-9a54-48ceeaf2c41f` / `cb56e0a2`, proposal `fca2ce66`, `472b247a`, `b69812b1` | Liked and authorized a reduced goal/task/Team Lead proposal that retained useful structure while deferring extra machinery. This is acceptance of the adjacent proposal, not proof of whole-system effectiveness or endorsement of every old implementation detail as current policy. |
+
+Additional Team Lead-verified contrasts, not independently reread by the parent:
+
+- Small safeguards can be worthwhile even for a low-likelihood race: `01a01770-5f1e-7053-9996-dc90f1e34605` / `dc300015`, `b73f6816`, `42e49975`. The agent presented leaving it alone as reasonable before Mike approved a focused fix. Do not require an actual past incident as the only possible justification for prospective protection.
+- A two-phase rollout can preserve alert continuity without requiring another operator approval pause: `01a036d9-1807-7e5c-aaff-d6298e38437e` / `830bec8b`, `ef5d0663`, `55f1cf83`, `c9da8cbe`, `f1c28097`.
+- A short serial ingestion workflow was approved while timeout/resume machinery was deferred: `01a02f8a-de02-7f64-a5cb-7e5383054e46` / `f911f422`, `047b79fb`, `38221a0c`. This limits a universal-background interpretation, not current scheduling or blocking instructions.
+- Controls should match the actual mutation: `01a024d4-d49c-7842-8f78-03c6d833f00f` / `7726f12f`, `693bbe29`, `09844d70`. An immutable-image code rollout was distinguished from a durable-data migration requiring whole-stack backup.
+
+Feedback-worker implications: follow the full correction chain, including later rejection of an assistant's attempted remedy. In this week, generated child instructions added CI database machinery that the direct parent conversation rejected; generated assignments cannot establish user preference. Keep local repairs distinct from knowledge changes, preserve the environmental reason for exceptions, and do not treat missing historical observations as proof that a prospective need cannot exist.
+
+Marginal value: moderate overall, concentrated in several genuinely useful contrasts. This weakens a simple claim that each older week necessarily adds less value. It does not change the holistic advisory remit. The Team Lead recommended pausing broad expansion after the concurrent August 25–September 1 review; the combined assessment is recorded above.
 
 ## Candidate design principles
 

@@ -415,6 +415,18 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 		description: "Open a new Pi instance in this cwd in a new terminal tab",
 		handler: async (args, ctx) => executeNewInstance(args, ctx),
 	});
+	pi.registerShortcut("f7", {
+		description: "Open a new Pi instance",
+		handler: async (ctx) => executeNewInstance("", ctx),
+	});
+	pi.registerShortcut("f8", {
+		description: "Show git status",
+		handler: async (ctx) => {
+			const result = await pi.exec("git", ["s"], { cwd: ctx.cwd, timeout: 10_000 });
+			const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+			ctx.ui.notify(output || (result.code === 0 ? "Working tree clean." : `git s exited ${result.code}`), result.code === 0 ? "info" : "error");
+		},
+	});
 	registerProfileCommand(pi, "new-terminal", {
 		description: "Open a plain shell in this cwd in a new terminal",
 		handler: async (args, ctx) => executeNewTerminal(args, ctx),
