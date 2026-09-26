@@ -275,6 +275,24 @@ Feedback-worker implications: follow the full correction chain, including later 
 
 Marginal value: moderate overall, concentrated in several genuinely useful contrasts. This weakens a simple claim that each older week necessarily adds less value. It does not change the holistic advisory remit. The Team Lead recommended pausing broad expansion after the concurrent August 25–September 1 review; the combined assessment is recorded above.
 
+## Operator clarification: interruption cost and cosmetic gates
+
+Mike clarified that the main frustration is not merely speculative preventive work. A command can introduce an unexpected safety/quality gate that blocks the requested operation over something he does not consider consequential, such as extra whitespace during a Git commit. Checking cosmetic whitespace has no value to him when it does not affect code behavior; blocking a commit then forces him to abandon his current train of thought to resolve an irrelevant issue.
+
+This is direct evidence that operator attention and continuity are part of the cost of a safeguard. A mechanically cheap check can impose a substantial workflow cost when it interrupts the user. Do not translate this into a proposal for more approval prompts, or assume automatic cosmetic cleanup is the desired substitute: Mike objected to the value of the check itself. The example concerns cosmetic whitespace, not whitespace with syntactic or functional significance. It does not authorize bypassing applicable repository requirements or establish the treatment of genuine functional failures; those boundaries remain to be clarified.
+
+### Operator clarification: regression failures and test authority
+
+Mike clarified that pre-existing versus newly introduced failures are less central in the current worktree workflow. Tests should establish functionality and catch regressions across components: if they worked at the start, they should work at completion.
+
+The recurring failure is the agent's response to a failing test: insufficient investigation followed by broad refactoring or invented features, instead of understanding why the current change broke the tested behavior and making an appropriate correction. Ask Mike when consequential intent remains unclear rather than inventing a design to reconcile it.
+
+A second failure is treating a poor test as authority over the requested change. Tests asserting particular prompt words or phrases can preserve obsolete wording after the underlying idea is deliberately refined. The agent then tries to satisfy both the new intent and the stale assertion, producing contradictory instructions. Test existence alone does not establish that its expectation remains valid. Distinguish a real behavioral regression from a brittle or superseded assertion; preserve intended functionality rather than automatically restoring whatever text makes the test pass. This is not permission to discard inconvenient regression tests or to leave genuinely broken behavior unresolved.
+
+Mike confirmed that when the requested change clearly supersedes a test's old expectation, the agent should update or remove that assertion directly and explain afterward, without seeking separate permission. Preserve still-relevant behavioral coverage.
+
+Qualification: execution may uncover a conflict or dependency that planning missed because the investigation was incomplete. This can change the implications of removing an assertion or the approach needed to implement the plan. The original assignment does not settle this newly discovered conflict. Mike objects to agents independently resolving such consequential issues, especially when an undersized implementation model obeys a broad instruction to "fix it" and produces a fragile workaround. Bring the evidence and changed implications back to the parent rather than leaving the implementation worker to invent a solution. Mike clarified that this should not automatically become a question for him: Advocate should use the accumulated understanding of "Mike's way" to help resolve the issue when genuinely comparable prior situations and their resolutions make the preferred approach clear. The parent can then give the worker a resolved correction. If Advocate lacks relevant context, finds conflicting precedents, or remains unsure about the consequential choice, bring a focused question to Mike. A larger model alone is not a substitute for this grounding. Historical precedent does not override an explicit current request or authorize otherwise prohibited actions. Routine implementation details remain agent-owned.
+
 ## Candidate design principles
 
 These are synthesis proposals, not new active rules. Their value is in the contrasts and boundaries, not slogans.
@@ -432,6 +450,16 @@ The same reviews should inform how the worker learns, not just what Advocate kno
 - Preserve the reason for an exception, such as SearXNG freshness or an explicitly exhaustive review. Otherwise the exception becomes a misleading general prohibition or permission.
 - Keep routine analysis outside the main context without hiding consequential outcomes. The approved quiet commit workflow is a positive precedent for a worker owning both investigation and permitted updates, rather than returning bookkeeping to the orchestrator.
 - Live feedback may arrive before the resolution is known. Record uncertainty honestly rather than manufacture a finished lesson. These observations inform interpretation, not new timing rules, labels, or trigger requirements.
+
+### Initial uncertainty handling
+
+Mike chose an initially conservative consultation posture: when Advocate is unsure which consequential approach fits his intent, ask rather than choose on his behalf. Clear, genuinely comparable precedents can still support resolving an issue without asking. The purpose is to learn from the answers and refine the judgment over time so future questions concentrate on real uncertainty rather than repeatedly asking what is already clear.
+
+Mike compared this to refining Damage Control's initially broad caution into higher-signal decisions. This is an analogy for calibration, not authorization to block all work, introduce another safety mechanism, use a numerical confidence threshold, or require approval for routine implementation details. Answers feed the agreed agent-process learning loop; improved grounding, not elapsed time or question count alone, supports fewer interruptions.
+
+### Challenging established preferences
+
+Mike explicitly approved Advocate challenging his usual approach when new evidence suggests another approach would better serve the current goal. Explain the established preference, what differs in this situation, and why the alternative may be better, then ask Mike. Understanding his reasoning must not become automatic agreement or an echo chamber.
 
 ## Open decisions and cautions
 
