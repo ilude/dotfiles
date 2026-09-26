@@ -176,15 +176,17 @@ function ccyl {
     if ($bedrock) { $claudeArgs = @($args | Select-Object -Skip 1) }
     else { $claudeArgs = @($args) }
     $previous = @{}
-    foreach ($name in @('CLAUDE_CODE_USE_BEDROCK', 'AWS_REGION', 'ANTHROPIC_DEFAULT_OPUS_MODEL')) {
+    foreach ($name in @('CLAUDE_CODE_USE_BEDROCK', 'AWS_REGION', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'DOTFILES_CLAUDE_PROVIDER')) {
         $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
     }
     try {
         if ($bedrock) {
+            $env:DOTFILES_CLAUDE_PROVIDER = 'bedrock'
             $env:CLAUDE_CODE_USE_BEDROCK = '1'
             $env:AWS_REGION = 'us-east-2'
             $env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'us.anthropic.claude-opus-5-5'
         } else {
+            $env:DOTFILES_CLAUDE_PROVIDER = 'subscription'
             Remove-Item Env:CLAUDE_CODE_USE_BEDROCK, Env:ANTHROPIC_DEFAULT_OPUS_MODEL -ErrorAction SilentlyContinue
         }
         Clear-Host

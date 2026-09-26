@@ -52,6 +52,13 @@ def get_home_pattern() -> str:
     return normalize_path(home)
 
 
+def is_bedrock() -> bool:
+    provider = os.environ.get("DOTFILES_CLAUDE_PROVIDER")
+    if provider in ("subscription", "bedrock"):
+        return provider == "bedrock"
+    return os.environ.get("CLAUDE_CODE_USE_BEDROCK") == "1"
+
+
 def usage_details(data: dict) -> tuple[str, str]:
     dt = __import__("datetime")
     now = dt.datetime.now().astimezone()
@@ -59,7 +66,7 @@ def usage_details(data: dict) -> tuple[str, str]:
     timestamp = dt.datetime.now(dt.timezone.utc)
     home = Path.home()
     state_file = home / ".claude" / "bedrock-status-usage.json"
-    if os.environ.get("CLAUDE_CODE_USE_BEDROCK") == "1" and data.get("session_id") and isinstance(data.get("cost", {}).get("total_cost_usd"), (int, float)):
+    if is_bedrock() and data.get("session_id") and isinstance(data.get("cost", {}).get("total_cost_usd"), (int, float)):
         state_file.parent.mkdir(parents=True, exist_ok=True)
         lock = state_file.with_suffix(state_file.suffix + ".lock")
         acquired = False
@@ -262,7 +269,7 @@ def main() -> None:
     if context:
         line = line.replace(f" | {version_label}", f" | {GREEN}{context}{RESET} | {version_label}")
     quota, bedrock = usage_details(data)
-    usage = bedrock if os.environ.get("CLAUDE_CODE_USE_BEDROCK") == "1" else quota
+    usage = bedrock if is_bedrock() else quota
     try:
         width = max(40, min(400, int(os.environ.get("COLUMNS", "100"))))
     except ValueError:

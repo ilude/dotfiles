@@ -94,11 +94,12 @@ def test_footer_shows_one_provider_specific_line(monkeypatch, capsys):
     monkeypatch.setattr(status, "usage_details", lambda data: ("claude: 5h 42% | wk 17%", "bedrock: $2.00 est."))
     payload = json.dumps({"model": {"display_name": "Sonnet"}})
     monkeypatch.setattr(sys, "stdin", io.StringIO(payload))
-    monkeypatch.delenv("CLAUDE_CODE_USE_BEDROCK", raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
+    monkeypatch.setenv("DOTFILES_CLAUDE_PROVIDER", "subscription")
     status.main()
     assert capsys.readouterr().out.count("\n") == 1
     monkeypatch.setattr(sys, "stdin", io.StringIO(payload))
-    monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
+    monkeypatch.setenv("DOTFILES_CLAUDE_PROVIDER", "bedrock")
     status.main()
     line = capsys.readouterr().out
     assert line.count("\n") == 1
@@ -110,7 +111,8 @@ def test_subscription_displays_limits_without_writing(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "pi"))
-    monkeypatch.delenv("CLAUDE_CODE_USE_BEDROCK", raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
+    monkeypatch.setenv("DOTFILES_CLAUDE_PROVIDER", "subscription")
     line = status.usage_suffix({"session_id": "subscription", "cost": {"total_cost_usd": 8}, "rate_limits": {"five_hour": {"used_percentage": 42, "resets_at": 1700000000}, "seven_day": {"used_percentage": 17, "resets_at": 1700000000}}})
     assert "5h 42%" in line and "wk 17%" in line
     assert not (tmp_path / ".claude" / "bedrock-status-usage.json").exists()
