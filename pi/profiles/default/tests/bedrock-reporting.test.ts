@@ -5,6 +5,9 @@ import { join } from "node:path";
 import bedrock from "../extensions/bedrock/index.ts";
 import { appendRecord, createBaseline, makeRecord, readBaseline } from "../lib/bedrock/ledger.ts";
 
+// These Pi-only reporting tests must not include concurrent local Claude sessions.
+vi.mock("../lib/bedrock/claude-status-usage.js", () => ({ readClaudeLocalContribution: async () => 0 }));
+
 let dir: string;
 afterEach(() => { vi.unstubAllEnvs(); rmSync(dir, { recursive: true, force: true }); });
 it("registers one management command, records once, normalizes cost, and reports outside context", async () => {

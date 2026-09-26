@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-094 - Tool cards should present operator meaning before transport identity
+
+- **Reference:** Herdr tool-output screenshot and UX discussion, 2026-09-26.
+- **Feedback:** Raw JSON and pane identifiers such as `w27:pKR` add noise to routine tool cards. Collapsed output should use recognizable names, labels, paths, actions, outcomes, and actionable warnings; internal identifiers remain useful only in expanded diagnostic details.
+- **Finding:** The Pi extension skill advised compact expandable views but did not define semantic presentation or distinguish operator identity from transport identity. The Herdr tools had no custom renderers, so generic cards exposed serialized protocol results and could appear blank during calls.
+- **Decision:** Add concise tool-presentation guidance to the Pi extension skill and apply it to the three Herdr tools without changing model-facing results or behavior.
+- **Status:** Implemented locally with focused renderer coverage; live attached-client acceptance remains unverified.
+
 ## AIF-093 - Optimize plans for forward progress; rollback is exceptional
 
 - **Reference:** ICP restoration planning discussion, 2026-09-25.

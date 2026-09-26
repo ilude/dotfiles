@@ -60,6 +60,12 @@ describe("session_messages", () => {
 		expect(JSON.stringify(lines)).not.toContain("system sentinel");
 		expect(JSON.stringify(lines)).not.toContain("tool-only");
 		const returned = result.content[0]?.text ?? "";
+		const theme = { fg: (_color: string, value: string) => value, bold: (value: string) => value };
+		const renderedTool = tool() as any;
+		const collapsed = renderedTool.renderResult(result, { expanded: false }, theme).render(200).map((line: string) => line.trimEnd()).join("\n");
+		expect(collapsed).toBe(`3 messages · default\n${details.local_path}`);
+		expect(collapsed).not.toContain("messages\"");
+		expect(renderedTool.renderResult(result, { expanded: true }, theme).render(300).join("\n")).toContain('"session_id":"messages"');
 		for (const sentinel of [userText, thinkingText, assistantText, toolArgument, "tool result sentinel", "custom sentinel", "system sentinel"]) expect(returned).not.toContain(sentinel);
 	});
 

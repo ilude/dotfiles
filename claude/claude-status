@@ -9,17 +9,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Fast path: delegate to compiled Go binary if available
-def _try_go_binary() -> None:
-    here = Path(os.path.realpath(__file__)).parent
-    for candidate in (here / "claude-status.exe", here / "claude-status-bin"):
-        if candidate.is_file():
-            result = subprocess.run([str(candidate)])
-            sys.exit(result.returncode)
-
-_try_go_binary()
-
-
 def run(args: list, cwd: str = None) -> str:
     try:
         r = subprocess.run(
@@ -63,14 +52,147 @@ def get_home_pattern() -> str:
     return normalize_path(home)
 
 
+def usage_details(data: dict) -> tuple[str, str]:
+    dt = __import__("datetime")
+    now = dt.datetime.now().astimezone()
+    month = now.strftime("%Y-%m")
+    timestamp = dt.datetime.now(dt.timezone.utc)
+    home = Path.home()
+    state_file = home / ".claude" / "bedrock-status-usage.json"
+    if os.environ.get("CLAUDE_CODE_USE_BEDROCK") == "1" and data.get("session_id") and isinstance(data.get("cost", {}).get("total_cost_usd"), (int, float)):
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        lock = state_file.with_suffix(state_file.suffix + ".lock")
+        acquired = False
+        for _ in range(100):
+            try:
+                lock.mkdir(); acquired = True; break
+            except FileExistsError:
+                clock = __import__("time")
+                try:
+                    if clock.time() - lock.stat().st_mtime > 10:
+                        lock.rmdir()
+                except OSError:
+                    pass
+                clock.sleep(.02)
+        if acquired:
+            try:
+                try: state = json.loads(state_file.read_text())
+                except FileNotFoundError: state = {}
+                if not isinstance(state, dict) or (state and state.get("version") != 1):
+                    raise ValueError("Invalid existing Bedrock usage state")
+                state.setdefault("version", 1); state.setdefault("startedAt", now.isoformat()); state.setdefault("sessions", {}); state.setdefault("increments", [])
+                sid = data["session_id"]; cost = float(data["cost"]["total_cost_usd"]); old = state["sessions"].get(sid)
+                delta = max(0, cost - float(old["cost"])) if old and old.get("month") == month else (cost if not old else 0)
+                at = timestamp.isoformat()
+                if delta: state["increments"].append({"month": month, "at": at, "amount": delta, "sessionId": sid})
+                state["sessions"][sid] = {"month": month, "cost": cost, "updatedAt": at}
+                import tempfile
+                with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=state_file.parent, prefix=state_file.name + ".", delete=False) as stream:
+                    tmp = Path(stream.name)
+                    stream.write(json.dumps(state, indent=2) + "\n")
+                os.replace(tmp, state_file)
+            except (OSError, ValueError, TypeError):
+                pass
+            finally: lock.rmdir()
+    root = Path(__file__).resolve().parent.parent / "pi" / "profiles" / "default"
+    cutoff = ""
+    try:
+        baseline = json.loads((root / "bedrock-cost-baseline.json").read_text())
+        if baseline.get("month") == month: cutoff = baseline.get("capturedAt", "")
+    except (OSError, ValueError, TypeError): pass
+    helper = root / "scripts" / "bedrock-status-subtotal.mjs"
+    files = {"ledger": root / "bedrock-usage.jsonl", "baseline": root / "bedrock-cost-baseline.json",
+             "pricing": root / "bedrock-pricing.json", "catalog": root / "lib" / "bedrock" / "pricing.ts",
+             "dependencies": root / "pnpm-lock.yaml", "helper": helper}
+    def signature(file):
+        try:
+            stat = file.stat()
+            return [stat.st_size, stat.st_mtime_ns / 1_000_000]
+        except FileNotFoundError:
+            return [0, 0]
+    try:
+        cached = json.loads((root.parent.parent.parent / "claude" / "cache" / "bedrock-status-subtotal.json").read_text())
+        fresh = cached.get("month") == month and all(
+            cached.get("inputs", {}).get(name, [None, None])[0] == sig[0]
+            and abs(cached["inputs"][name][1] - sig[1]) < 1 for name, file in files.items()
+            for sig in [signature(file)])
+        subtotal = cached["subtotal"] if fresh else None
+    except (OSError, ValueError, TypeError, KeyError, IndexError):
+        subtotal = None
+    if subtotal is None:
+        try:
+            result = subprocess.run(["node", str(root / "node_modules" / "tsx" / "dist" / "cli.mjs"), str(helper), month], capture_output=True, text=True, timeout=5)
+            subtotal = json.loads(result.stdout) if result.returncode == 0 else {}
+        except (OSError, subprocess.SubprocessError, ValueError): subtotal = {}
+    available = isinstance(subtotal, dict) and isinstance(subtotal.get("cost"), (int, float)) and isinstance(subtotal.get("baseline"), (int, float))
+    total = float(subtotal.get("cost", 0)) + float(subtotal.get("baseline", 0)) if available else 0
+    unpriced = bool(subtotal.get("unpriced", False)) if available else False
+    try:
+        state = json.loads(state_file.read_text())
+        cutoff_time = dt.datetime.fromisoformat(cutoff.replace("Z", "+00:00")) if cutoff else None
+        total += sum(float(i["amount"]) for i in state.get("increments", [])
+                     if i.get("month") == month and isinstance(i.get("amount"), (int, float)) and i["amount"] > 0
+                     and (cutoff_time is None or dt.datetime.fromisoformat(i["at"].replace("Z", "+00:00")) > cutoff_time))
+    except (OSError, ValueError, TypeError, KeyError): pass
+    bedrock = (f"bedrock: ${total:.2f} est." + (" + unpriced" if unpriced else "")) if available else "bedrock: unavailable"
+    limits = data.get("rate_limits")
+    limits = limits if isinstance(limits, dict) else {}
+    def window(key: str) -> str:
+        entry = limits.get(key)
+        value = entry.get("used_percentage") if isinstance(entry, dict) else None
+        return f"{value:.0f}%" if isinstance(value, (int, float)) and not isinstance(value, bool) else "--"
+    return f"claude: 5h {window('five_hour')} | wk {window('seven_day')}", bedrock
+
+
+def usage_suffix(data: dict) -> str:
+    quota, bedrock = usage_details(data)
+    return f" | {bedrock} | {quota}"
+
+
+def compact_tokens(value: float) -> str:
+    return f"{value / 1000:.0f}k" if value >= 1000 else str(round(value))
+
+
+def context_label(data: dict) -> str:
+    context = data.get("context_window")
+    if not isinstance(context, dict):
+        return ""
+    size = context.get("context_window_size")
+    used = context.get("total_input_tokens")
+    percent = context.get("used_percentage")
+    if not isinstance(size, (int, float)) or size <= 0:
+        return ""
+    if not isinstance(used, (int, float)) or used < 0:
+        used = (percent / 100) * size if isinstance(percent, (int, float)) else None
+    if used is None:
+        return ""
+    if not isinstance(percent, (int, float)):
+        percent = 100 * used / size
+    return f"{percent:.0f}% {compact_tokens(used)}/{compact_tokens(size)}"
+
+
+def align_right(left: str, right: str, width: int) -> str:
+    plain = lambda value: re.sub(r"\x1b\[[0-9;]*m", "", value)
+    gap = width - len(plain(left)) - len(plain(right))
+    if gap < 2:
+        room = max(0, width - len(right) - 2)
+        short = plain(left)
+        left = short[:room - 1] + "…" if len(short) > room and room > 1 else short[:room]
+        gap = width - len(left) - len(right)
+    return left + " " * max(1, gap) + right
+
+
 def main() -> None:
     try:
         data = json.load(sys.stdin)
         model = data.get("model", {}).get("display_name", "unknown")
         cwd = data.get("workspace", {}).get("current_dir", "")
     except Exception:
+        data = {}
         model = "unknown"
         cwd = ""
+    if not isinstance(data, dict):
+        data = {}
 
     current_path = cwd or os.getcwd()
     git_path = to_wsl_path(current_path) if is_wsl() else current_path
@@ -95,13 +217,16 @@ def main() -> None:
         f"\033[33m[\033[34m{branch_name}\033[33m]\033[0m" if branch_name else ""
     )
 
-    effort = "medium"
-    settings_path = Path(os.path.expanduser("~")) / ".claude" / "settings.json"
-    try:
-        with open(settings_path) as f:
-            effort = json.load(f).get("effortLevel", "medium")
-    except Exception:
-        pass
+    live_effort = data.get("effort")
+    effort = live_effort.get("level") if isinstance(live_effort, dict) else None
+    if not isinstance(effort, str) or not effort:
+        effort = "medium"
+        settings_path = Path(os.path.expanduser("~")) / ".claude" / "settings.json"
+        try:
+            with open(settings_path) as f:
+                effort = json.load(f).get("effortLevel", "medium")
+        except Exception:
+            pass
 
     claude_bin = shutil.which("claude") or "claude"
     cc_version = run([claude_bin, "--version"])
@@ -133,7 +258,16 @@ def main() -> None:
             f" | {ORANGE}{model}{RESET}{effort_label} | {version_label}"
         )
 
-    sys.stdout.write(line + "\n")
+    context = context_label(data)
+    if context:
+        line = line.replace(f" | {version_label}", f" | {GREEN}{context}{RESET} | {version_label}")
+    quota, bedrock = usage_details(data)
+    usage = bedrock if os.environ.get("CLAUDE_CODE_USE_BEDROCK") == "1" else quota
+    try:
+        width = max(40, min(400, int(os.environ.get("COLUMNS", "100"))))
+    except ValueError:
+        width = 100
+    sys.stdout.write(align_right(line, usage, width) + "\n")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,21 @@
 # Changelog
 
+- Claude Code's status line now mirrors Pi's compact layout: repository, model, live effort, context usage, and version on the left; one provider-specific indicator on the right: subscription 5-hour/weekly usage in Anthropic mode, or the Bedrock MTD estimate in Bedrock mode. Missing subscription windows show `--` rather than silently disappearing. `/effort` changes appear without editing settings; saved `effortLevel` remains a fallback when Claude does not provide a live value.
+
+## 2026-09-26: Improve web and session tool presentation
+
+**Changed:** Web search now collapses to result counts, backend, and bounded titles; web fetch shows its domain, content size, backend, and a bounded preview. Pi session launch, message projection, and current-session tools now show readable state, profile, counts, paths, and labels while moving native session, pane, tab, and workspace identifiers to expanded details. Model-facing results and tool behavior are unchanged.
+
+## 2026-09-26: Make Herdr tool output operator-readable
+
+**Changed:** Default Pi's Herdr agent, layout, and pane tools now render semantic action and result summaries instead of raw JSON. Collapsed views prefer agent names, labels, paths, and outcomes while keeping pane, tab, workspace, session, and protocol identifiers in expanded details. Reads show captured output directly, lists are bounded, and expected errors show their useful message without protocol framing.
+
+**Guidance:** The Pi extension skill now requires operator-oriented collapsed tool views, human identity before transport identity, meaningful progress, progressive disclosure, and collapsed/expanded renderer coverage. Model-facing Herdr results and tool behavior are unchanged.
+
+- Claude Code's status line now shows Anthropic subscription 5-hour and 7-day utilization from Claude's own status payload. Claude Bedrock sessions record local cost estimates from activation onward; Claude and Pi footers show a combined month-to-date Bedrock estimate using Pi's existing CloudWatch baseline and post-baseline ledger. Pi reconciliation and `/bedrock` reporting remain unchanged. The Python status line is now the only implementation; the Go binary and its installer build path were removed.
+
+- `ccyl` now starts Claude Code with the Anthropic subscription by default. Use `ccyl --bedrock` (or `ccyl -b`) to select the existing us-east-2 Bedrock model for one launch. Bedrock-specific settings no longer apply to every Claude invocation; shell wrappers isolate inherited provider variables without changing the parent environment.
+
 - Claude Code PreToolUse Damage Control now delegates Bash, Edit, and Write to the default Pi deterministic policy and parser through a Bun adapter. Luna shadow judging is deferred; decisions requiring contextual review ask the operator, explicit blocks deny, and deterministic allows return no decision. Malformed input fails closed. Claude Edit `replace_all` is explicitly denied until its semantics can be represented safely. The existing path-normalization hooks and unrelated Claude settings remain unchanged.
 
 ## 2026-09-26: Track the active Windows Herdr configuration

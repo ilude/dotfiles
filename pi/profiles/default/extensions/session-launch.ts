@@ -402,6 +402,19 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 			session: Type.Optional(Type.String({ description: "Existing session UUID; omit for a fresh instance" })),
 			title: Type.Optional(Type.String({ description: "Optional tab title", maxLength: 80 })),
 		}, { additionalProperties: false }),
+		renderCall(args, theme) {
+			const action = args.session ? "resume Pi session" : "launch Pi session";
+			return new Text(`${theme.fg("toolTitle", theme.bold(action))}${args.title ? ` ${theme.fg("muted", `· ${args.title}`)}` : ""}`, 0, 0);
+		},
+		renderResult(result, { expanded }, theme) {
+			const raw = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");
+			if (expanded) return new Text(raw, 0, 0);
+			const receipt = result.details as Record<string, unknown> | undefined;
+			const cwd = typeof receipt?.cwd === "string" ? path.basename(receipt.cwd) : undefined;
+			const state = typeof receipt?.state === "string" ? receipt.state : receipt?.ready === true ? "ready" : receipt?.launched === true ? "launched" : "started";
+			const label = typeof receipt?.title === "string" ? receipt.title : cwd;
+			return new Text(theme.fg("toolOutput", `${receipt?.session ? "resumed" : "launched"}${label ? ` · ${label}` : ""} · ${state}`), 0, 0);
+		},
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			const receipt = await launchNewInstance({ cwd: ctx.cwd, session: params.session, title: params.title?.trim() || undefined, signal });
 			return { content: [{ type: "text", text: JSON.stringify(receipt) }], details: receipt };

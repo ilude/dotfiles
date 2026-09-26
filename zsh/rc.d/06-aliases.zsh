@@ -35,9 +35,20 @@ _run_claude() {
 }
 
 ccyl() {
+    local bedrock=0
+    if [[ "$1" == -b || "$1" == --bedrock ]]; then
+        bedrock=1
+        shift
+    fi
     clear
     printf '\033]0;%s\007' "${PWD:t}"
-    _run_claude --dangerously-skip-permissions --chrome "$@"
+    if (( bedrock )); then
+        CLAUDE_CODE_USE_BEDROCK=1 AWS_REGION=us-east-2 ANTHROPIC_DEFAULT_OPUS_MODEL=us.anthropic.claude-opus-5-5 \
+            _run_claude --dangerously-skip-permissions --chrome "$@"
+    else
+        ( unset CLAUDE_CODE_USE_BEDROCK ANTHROPIC_DEFAULT_OPUS_MODEL
+          _run_claude --dangerously-skip-permissions --chrome "$@" )
+    fi
 }
 claude-install() {
     if [[ "$OSTYPE" == "darwin"* ]] && (( ${+commands[brew]} )); then

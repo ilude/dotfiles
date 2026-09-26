@@ -48,6 +48,9 @@ claude/.update.lock
 claude/.last-cleanup
 claude/history.jsonl
 claude/stats-cache.json
+claude/bedrock-status-usage.json
+claude/bedrock-status-usage.json.lock/
+claude/bedrock-status-usage.json.*.tmp
 claude/sessions/
 
 # Working directories

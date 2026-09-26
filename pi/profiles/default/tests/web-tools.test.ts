@@ -174,7 +174,18 @@ describe("tool integration", () => {
       { url: "https://example.com" },
       { fg: (_color: string, value: string) => value, bold: (value: string) => value },
     );
-    expect(stripVTControlCharacters(rendered.render(120).join("\n")).trimEnd()).toBe("web_fetch: https://example.com");
+    expect(stripVTControlCharacters(rendered.render(120).join("\n")).trimEnd()).toBe("web fetch · example.com");
+  });
+  it("renders compact search and fetch results while preserving full expanded content", () => {
+    const { registered } = tools();
+    const theme = { fg: (_color: string, value: string) => value, bold: (value: string) => value };
+    const render = (component: any) => stripVTControlCharacters(component.render(120).map((line: string) => line.trimEnd()).join("\n"));
+    const search = { content: [{ type: "text", text: "websearch: test\n--- Result 1 ---\nTitle: Useful result\nURL: https://example.com\nEngine: brave\nSnippet: full snippet" }], details: { backend: "brave" } };
+    expect(render(registered.get("web_search").renderResult(search, { expanded: false }, theme))).toBe("1 result · brave\nUseful result");
+    expect(render(registered.get("web_search").renderResult(search, { expanded: true }, theme))).toContain("Snippet: full snippet");
+    const fetch = { content: [{ type: "text", text: "webfetch: https://example.com\nPage title\nFirst paragraph" }], details: { backend: "direct" } };
+    expect(render(registered.get("web_fetch").renderResult(fetch, { expanded: false }, theme))).toBe("26 characters · direct\nPage title\nFirst paragraph");
+    expect(render(registered.get("web_fetch").renderResult(fetch, { expanded: true }, theme))).toContain("webfetch: https://example.com");
   });
   it("uses a real profile-local script path and passes cancellation", async () => {
     const { registered, exec } = tools();

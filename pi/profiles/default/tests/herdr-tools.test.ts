@@ -261,6 +261,31 @@ it("uses live focused pane identity instead of inherited pane environment for de
   expect(cli).not.toHaveBeenCalledWith(["pane", "close", "live-caller-pane"], { signal: undefined });
 });
 
+it("renders human-readable collapsed Herdr results and keeps internal IDs in expanded details", async () => {
+  vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
+  const registered: Record<string, any> = {};
+  tools({ registerTool(t: any) { registered[t.name] = t; }, on() {} } as unknown as ExtensionAPI, vi.fn<HerdrCli>());
+  const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
+  const lines = (component: any) => component.render(200).map((line: string) => line.trimEnd()).join("\n");
+  const context = (args: Record<string, unknown>, isError = false) => ({ args, isError });
+
+  const agentResult = { content: [{ type: "text", text: JSON.stringify({ name: "claude", pane_id: "w27:pKH", workspace_id: "W27", cwd: "C:/Users/mglenn/.dotfiles", status: "idle" }) }], details: {} };
+  const agentCall = registered.herdr_agent.renderCall({ action: "get", target: "claude" }, theme, context({}));
+  expect(lines(agentCall)).toBe("herdr agent · get · claude");
+  expect(agentCall.render(20).every((line: string) => line.length <= 20)).toBe(true);
+  expect(lines(registered.herdr_agent.renderResult(agentResult, { expanded: false }, theme, context({ action: "get", target: "claude" })))).toBe("claude · idle\nC:/Users/mglenn/.dotfiles");
+  expect(lines(registered.herdr_agent.renderResult(agentResult, { expanded: true }, theme, context({ action: "get", target: "claude" })))).toContain("w27:pKH");
+
+  const waitResult = { content: [{ type: "text", text: JSON.stringify({ pane: "w27:pKR", matched: "~/.dotfiles[main]>", output: "ready" }) }], details: {} };
+  const collapsed = lines(registered.herdr_pane.renderResult(waitResult, { expanded: false }, theme, context({ action: "wait", pane: "w27:pKR", match: "~/.dotfiles[main]>" })));
+  expect(collapsed).toBe("matched “~/.dotfiles[main]>”\nready");
+  expect(collapsed).not.toContain("w27:pKR");
+
+  const error = { content: [{ type: "text", text: JSON.stringify({ error: { code: "timeout", message: "timed out waiting for output match", id: "cli:pane:wait-output" } }) }], details: {} };
+  expect(lines(registered.herdr_pane.renderResult(error, { expanded: false }, theme, context({ action: "wait", pane: "w27:pKR" }, true)))).toBe("timed out waiting for output match");
+  expect(lines(registered.herdr_pane.renderResult(error, { expanded: true }, theme, context({ action: "wait", pane: "w27:pKR" }, true)))).toContain("cli:pane:wait-output");
+});
+
 it("requires an existing exact pane but permits non-caller interrupt/close without confirmation", async () => {
   vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
   const registered: Record<string, any> = {};

@@ -3,8 +3,6 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "DISABLE_ERROR_REPORTING": "1",
     "DISABLE_TELEMETRY": "1",
-    "CLAUDE_CODE_USE_BEDROCK": "1",
-    "AWS_REGION": "us-east-2",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "us.anthropic.claude-opus-5-5"
   },
   "includeCoAuthoredBy": false,
@@ -167,5 +165,10 @@
   "companyAnnouncements": [],
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
-  "releaseChannel": "latest"
+  "releaseChannel": "latest",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "high"
+    }
+  }
 }

@@ -3,13 +3,18 @@ import { accountBedrockMessage, bedrockSessionReference } from "../../lib/bedroc
 import { createBedrockModelProvider, resolveBedrockMantleTarget } from "../../lib/bedrock/provider.js";
 import { callerArgs, dashboardArgs, parseCaller, parseQueryId, parseResults, queryArgs, resultsArgs } from "../../lib/bedrock/cloudwatch-snapshot.js";
 import { createBaseline, formatStatus, formatUsage, readBaseline, summarize } from "../../lib/bedrock/ledger.js";
+import { readClaudeLocalContribution } from "../../lib/bedrock/claude-status-usage.js";
 import { registerProfileCommand } from "../../lib/profile-command.ts";
 
 export default function bedrock(pi: ExtensionAPI): void {
 	pi.registerProvider(createBedrockModelProvider());
 	const refreshStatus = async (ctx: any) => {
-		try { ctx.ui.setStatus("bedrock", formatStatus(await summarize())); }
-		catch { ctx.ui.setStatus("bedrock", "bedrock: estimate unavailable"); }
+		try {
+			const summary = await summarize();
+			const claude = await readClaudeLocalContribution(summary.month, summary.baselineDetails);
+			const piTotal = summary.cost + summary.baseline;
+			ctx.ui.setStatus("bedrock", claude > 0 ? `bedrock: $${(piTotal + claude).toFixed(2)} MTD est.${summary.unpriced ? ` + ${summary.unpriced} unpriced` : ""}` : formatStatus(summary));
+		} catch { ctx.ui.setStatus("bedrock", "bedrock: estimate unavailable"); }
 	};
 	pi.on("session_start", async (_event, ctx) => refreshStatus(ctx));
 	pi.on("message_end", async (event, ctx) => {

@@ -149,6 +149,19 @@ export default function webTools(pi: ExtensionAPI) {
 			num_results: Type.Optional(Type.Integer({ minimum: 1, maximum: 20, description: "Default: 5" })),
 			engines: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { description: "SearXNG engine names, e.g. google, brave, github. Defaults to the endpoint engines setting or server defaults. Empty array uses server defaults." })),
 		}),
+		renderCall(args, theme) {
+			return new Text(`${theme.fg("toolTitle", theme.bold("web search ·"))} ${theme.fg("muted", args.query)}`, 0, 0);
+		},
+		renderResult(result, { expanded }, theme) {
+			const output = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");
+			if (expanded) return new Text(output, 0, 0);
+			const titles = [...output.matchAll(/^Title: (.+)$/gm)].map(match => match[1]);
+			const backend = (result.details as { backend?: string } | undefined)?.backend;
+			const summary = titles.length
+				? `${titles.length} result${titles.length === 1 ? "" : "s"}${backend ? ` · ${backend}` : ""}\n${titles.slice(0, 5).join("\n")}${titles.length > 5 ? `\n… ${titles.length - 5} more` : ""}`
+				: `No results${backend ? ` · ${backend}` : ""}`;
+			return new Text(theme.fg("toolOutput", summary), 0, 0);
+		},
 		async execute(_id, params, signal) {
 			const query = searchQuery(params);
 			if (!query) throw new Error("Search query must not be empty");
@@ -181,7 +194,19 @@ export default function webTools(pi: ExtensionAPI) {
 			backend: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina")], { description: "Default auto; explicit backend selection never substitutes another backend." })),
 		}),
 		renderCall(args, theme) {
-			return new Text(`${theme.fg("toolTitle", theme.bold("web_fetch:"))} ${theme.fg("muted", args.url ?? "")}`, 0, 0);
+			let subject = args.url ?? "";
+			try { subject = new URL(subject).hostname || subject; } catch { /* display the supplied value */ }
+			return new Text(`${theme.fg("toolTitle", theme.bold("web fetch ·"))} ${theme.fg("muted", subject)}`, 0, 0);
+		},
+		renderResult(result, { expanded }, theme) {
+			const output = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");
+			if (expanded) return new Text(output, 0, 0);
+			const body = output.replace(/^webfetch:.*\n?/, "").trim();
+			const lines = body.split("\n").map(line => line.trim()).filter(Boolean);
+			const preview = lines.slice(0, 6).join("\n") || "No readable content.";
+			const details = result.details as { backend?: string; recovery?: string } | undefined;
+			const status = [details?.backend, details?.recovery].filter(Boolean).join(" · ");
+			return new Text(theme.fg("toolOutput", `${body.length.toLocaleString()} characters${status ? ` · ${status}` : ""}\n${preview}${lines.length > 6 ? `\n… ${lines.length - 6} more lines` : ""}`), 0, 0);
 		},
 		async execute(_id, params, signal) {
 			const deadline = performance.now() + 60_000;

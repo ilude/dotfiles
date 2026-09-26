@@ -128,6 +128,11 @@ it("launches an exact active-profile session from the tool using its saved cwd",
 	const result = await tools.session_launch.execute("call", { session, title: "resumed" }, undefined, undefined, { cwd: process.cwd() });
 
 	expect(result.details).toMatchObject({ session, cwd: savedCwd, title: "resumed", launched: true });
+	const theme = { fg: (_color: string, value: string) => value, bold: (value: string) => value };
+	const collapsed = tools.session_launch.renderResult(result, { expanded: false }, theme).render(120).join("\n").trimEnd();
+	expect(collapsed).toBe("resumed · resumed · launched");
+	expect(collapsed).not.toContain(session);
+	expect(tools.session_launch.renderResult(result, { expanded: true }, theme).render(200).join("\n")).toContain(session);
 	const args = vi.mocked(spawnSync).mock.calls[0]?.[1] as string[];
 	expect(args).toContain(savedCwd);
 	expect(args.join(" ")).toContain(session);

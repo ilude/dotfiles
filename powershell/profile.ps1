@@ -172,9 +172,29 @@ function Invoke-Claude {
 }
 
 function ccyl {
-    Clear-Host
-    Write-Host -NoNewline ("`e]0;{0}`a" -f (Split-Path -Leaf $PWD.Path))
-    Invoke-Claude --dangerously-skip-permissions --chrome @args
+    $bedrock = $args.Count -gt 0 -and $args[0] -in @('-b', '--bedrock')
+    if ($bedrock) { $claudeArgs = @($args | Select-Object -Skip 1) }
+    else { $claudeArgs = @($args) }
+    $previous = @{}
+    foreach ($name in @('CLAUDE_CODE_USE_BEDROCK', 'AWS_REGION', 'ANTHROPIC_DEFAULT_OPUS_MODEL')) {
+        $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+    }
+    try {
+        if ($bedrock) {
+            $env:CLAUDE_CODE_USE_BEDROCK = '1'
+            $env:AWS_REGION = 'us-east-2'
+            $env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'us.anthropic.claude-opus-5-5'
+        } else {
+            Remove-Item Env:CLAUDE_CODE_USE_BEDROCK, Env:ANTHROPIC_DEFAULT_OPUS_MODEL -ErrorAction SilentlyContinue
+        }
+        Clear-Host
+        Write-Host -NoNewline ("`e]0;{0}`a" -f (Split-Path -Leaf $PWD.Path))
+        Invoke-Claude --dangerously-skip-permissions --chrome @claudeArgs
+    } finally {
+        foreach ($name in $previous.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+        }
+    }
 }
 function claude-install { pnpm add --global --config.minimum-release-age=4320 @anthropic-ai/claude-code }
 

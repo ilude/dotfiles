@@ -1,5 +1,6 @@
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { join } from "node:path";
+import { Text } from "@earendil-works/pi-tui";
+import { basename, join } from "node:path";
 import { resumeHerdrSession } from "../lib/herdr-resume.ts";
 import { Type } from "typebox";
 import { compactPane, createHerdrCli, herdrContext, inspectPane, inspectShell, OUTPUT_LIMIT, result, type HerdrCli } from "../lib/herdr-cli.ts";
@@ -9,6 +10,41 @@ import { focusedPane } from "../lib/subagents/herdr-layout-api.ts";
 
 const choice = <T extends string>(values: T[]) => Type.Union(values.map(value => Type.Literal(value)));
 const text = (value: unknown) => ({ content: [{ type: "text" as const, text: typeof value === "string" ? value.slice(0, OUTPUT_LIMIT) : JSON.stringify(value).slice(0, OUTPUT_LIMIT) }], details: {} });
+const resultText = (value: { content: Array<{ type: string; text?: string }> }) => value.content.filter(part => part.type === "text").map(part => part.text || "").join("\n");
+const parsedResult = (value: { content: Array<{ type: string; text?: string }> }): unknown => {
+  const raw = resultText(value);
+  try { return JSON.parse(raw); } catch { return raw; }
+};
+const short = (value: unknown, limit = 80): string => {
+  const line = String(value ?? "").replace(/\s+/g, " ").trim();
+  return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
+};
+const pathName = (value: unknown): string | undefined => typeof value === "string" && value ? basename(value.replace(/[\\/]+$/, "")) : undefined;
+const visibleTarget = (value: unknown): string | undefined => typeof value === "string" && value && !value.includes(":") ? value : undefined;
+const previewOutput = (value: unknown, expanded: boolean): string => {
+  const output = String(value ?? "").trim();
+  if (!output) return "";
+  const lines = output.split("\n");
+  const shown = expanded ? lines : lines.slice(0, 8);
+  return `${shown.join("\n")}${!expanded && lines.length > shown.length ? `\n… ${lines.length - shown.length} more lines` : ""}`;
+};
+function renderCall(kind: "agent" | "layout" | "pane", args: Record<string, unknown>, theme: any) {
+  const action = String(args.action || "inspect").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  const subject = kind === "agent" ? visibleTarget(args.target) : undefined;
+  const detail = action === "wait" && args.match ? ` · ${short(args.match)}` : subject ? ` · ${subject}` : "";
+  return new Text(`${theme.fg("toolTitle", theme.bold(`herdr ${kind} · ${action}`))}${theme.fg("muted", detail)}`, 0, 0);
+}
+function renderDetails(raw: string, summary: string, expanded: boolean, theme: any) {
+  const visible = expanded && raw.trim() && raw.trim() !== summary.trim() ? `${summary}\n\n${theme.fg("muted", raw)}` : summary;
+  return new Text(theme.fg("toolOutput", visible), 0, 0);
+}
+function errorSummary(data: unknown): string | undefined {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const error = (data as Record<string, unknown>).error;
+  if (!error || typeof error !== "object" || Array.isArray(error)) return undefined;
+  const fields = error as Record<string, unknown>;
+  return typeof fields.message === "string" ? fields.message : undefined;
+}
 function required(value: string | undefined, label: string): string {
   if (!value?.trim() || value.includes("\0")) throw new Error(`${label} required`);
   return value;
@@ -42,6 +78,28 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
       placement: Type.Optional(choice(["tab", "workspace"])), direction: Type.Optional(choice(["right", "down"])),
       cwd: Type.Optional(Type.String()), label: Type.Optional(Type.String({ maxLength: 80 })), focus: Type.Optional(Type.Boolean()),
     }),
+    renderCall(args, theme) { return renderCall("layout", args, theme); },
+    renderResult(value, { expanded }, theme, context) {
+      const raw = resultText(value); const data = parsedResult(value);
+      if (context.isError) return renderDetails(raw, errorSummary(data) || raw, expanded, theme);
+      if (!data || typeof data !== "object" || Array.isArray(data)) return renderDetails(raw, raw, expanded, theme);
+      const item = data as Record<string, any>;
+      let summary: string;
+      if (context.args.action === "list" && Array.isArray(item.panes)) {
+        const rows = item.panes.slice(0, expanded ? item.panes.length : 8).map((pane: Record<string, unknown>) => {
+          const name = pane.agent || pane.label || pathName(pane.cwd) || pane.process || "unlabeled pane";
+          const state = pane.state ? ` · ${pane.state}` : "";
+          const focus = pane.focused ? " · focused" : "";
+          return `${name}${state}${focus}`;
+        });
+        summary = rows.length ? `${item.total} panes\n${rows.join("\n")}${!expanded && item.total > rows.length ? `\n… ${item.total - rows.length} more` : ""}` : "No panes.";
+      } else if (context.args.action === "resume") {
+        summary = `${item.ready ? "resumed" : "resume started"}${pathName(item.cwd) ? ` · ${pathName(item.cwd)}` : ""}${item.state ? ` · ${item.state}` : ""}`;
+      } else {
+        summary = `created${context.args.label ? ` · ${context.args.label}` : pathName(context.args.cwd) ? ` · ${pathName(context.args.cwd)}` : ""}${item.focused ? " · focused" : ""}`;
+      }
+      return renderDetails(raw, summary, expanded, theme);
+    },
     async execute(_id, params, signal, _update, ctx) {
       const caller = herdrContext();
       if (params.action === "resume") {
@@ -102,6 +160,22 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
       lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
       keys: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 32 }), { minItems: 1, maxItems: 16 })),
     }),
+    renderCall(args, theme) { return renderCall("agent", args, theme); },
+    renderResult(value, { expanded }, theme, context) {
+      const raw = resultText(value); const data = parsedResult(value);
+      if (context.isError) return renderDetails(raw, errorSummary(data) || raw, expanded, theme);
+      if (!data || typeof data !== "object" || Array.isArray(data)) return renderDetails(raw, raw, expanded, theme);
+      const item = data as Record<string, any>; let summary: string;
+      if (context.args.action === "list" && Array.isArray(item.agents)) {
+        const rows = item.agents.slice(0, expanded ? item.agents.length : 8).map((agent: Record<string, unknown>) => `${agent.name || "unnamed agent"}${agent.status ? ` · ${agent.status}` : ""}`);
+        summary = rows.length ? `${item.total} agents\n${rows.join("\n")}${!expanded && item.total > rows.length ? `\n… ${item.total - rows.length} more` : ""}` : "No live agents.";
+      } else if (context.args.action === "read") summary = previewOutput(item.output, expanded) || "No recent output.";
+      else if (context.args.action === "get") summary = `${item.name || visibleTarget(context.args.target) || "agent"}${item.status ? ` · ${item.status}` : ""}${pathName(item.cwd) ? `\n${item.cwd}` : ""}`;
+      else if (context.args.action === "wait") summary = `reached ${item.response || context.args.until || "requested state"}`;
+      else if (context.args.action === "prompt") summary = item.waited ? "prompt completed" : "prompt submitted";
+      else summary = "keys submitted";
+      return renderDetails(raw, summary, expanded, theme);
+    },
     async execute(_id, params, signal) {
       return text(await herdrAgentAction(cli, params as HerdrAgentAction, signal));
     },
@@ -117,6 +191,21 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
       timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 120 })),
 
     }),
+    renderCall(args, theme) { return renderCall("pane", args, theme); },
+    renderResult(value, { expanded }, theme, context) {
+      const raw = resultText(value); const data = parsedResult(value);
+      if (context.isError) return renderDetails(raw, errorSummary(data) || raw, expanded, theme);
+      if (context.args.action === "read") return renderDetails(raw, previewOutput(raw, expanded) || "No recent output.", expanded, theme);
+      if (!data || typeof data !== "object" || Array.isArray(data)) return renderDetails(raw, raw, expanded, theme);
+      const item = data as Record<string, any>; let summary: string;
+      if (context.args.action === "wait") summary = `${item.matched ? `matched “${short(item.matched)}”` : "output matched"}${item.output ? `\n${previewOutput(item.output, expanded)}` : ""}`;
+      else if (context.args.action === "run") summary = "command submitted";
+      else if (context.args.action === "rename") summary = `renamed${context.args.label ? ` · ${context.args.label}` : ""}`;
+      else if (context.args.action === "move") summary = `moved${context.args.label ? ` · ${context.args.label}` : ""}${item.focused ? " · focused" : ""}`;
+      else if (context.args.action === "close") summary = "closed";
+      else summary = "interrupt submitted\nInspect the process before assuming it stopped.";
+      return renderDetails(raw, summary, expanded, theme);
+    },
     async execute(id, params, signal, _update, ctx) {
       const caller = herdrContext(); const pane = required(params.pane, "pane");
       const inspected = await inspectPane(cli, pane, signal);
