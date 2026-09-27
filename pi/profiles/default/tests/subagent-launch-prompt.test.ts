@@ -27,6 +27,7 @@ describe("subagent launch prompt", () => {
     expect(launch.args).toContain(join(process.cwd(), "extensions", "session-profile.ts"));
     expect(launch.args).toContain(join(process.cwd(), "extensions", "compaction.ts"));
     expect(launch.args).toContain(join(process.cwd(), "extensions", "tool-invocation-provenance.ts"));
+    expect(launch.args).toContain(join(process.cwd(), "extensions", "scoped-instructions.ts"));
   });
 
   it("loads context files for all roles while keeping skill discovery exclusive to Team Leads", () => {
@@ -44,6 +45,7 @@ describe("subagent launch prompt", () => {
     expect(teamlead.args).toEqual(expect.arrayContaining(["--no-prompt-templates", "--no-themes"]));
     expect(teamlead.args).toContain(join(process.cwd(), "extensions", "herdr-tools.ts"));
     expect(teamlead.args).toContain(join(process.cwd(), "extensions", "tool-visibility.ts"));
+    expect(teamlead.args).toContain(join(process.cwd(), "extensions", "scoped-instructions.ts"));
   });
 
   it("does not load Herdr tools for ordinary roles", () => {
