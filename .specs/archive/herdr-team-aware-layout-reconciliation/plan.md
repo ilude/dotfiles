@@ -1,7 +1,7 @@
 ---
 created: 2026-09-27
-status: ready
-completed: null
+status: completed
+completed: 2026-09-27
 ---
 
 # Keep Herdr subagent layouts sane through lifecycle and team changes
@@ -183,3 +183,7 @@ Start with one overall outcome, using the colored symbol and explicit text toget
 - 🟡 **CLEANUP PENDING**: changes and completion metadata are already on the target, but worktree cleanup is unfinished.
 
 For blocked or cleanup-pending outcomes, immediately give **Reason** and **Action needed**, naming the issue, who must act, and the exact next action before successes. Do not imply automatic resumption or hand available agent-owned work to the user. If several issues remain, lead with the blocking outcome and list required actions. Then give concise checks, spec location, branch/commits, merge result, and retained worktree or cleanup remnants. Never rely on color alone or lead a blocked result with a success summary. These are response labels, not new frontmatter states.
+
+## Integration evidence
+
+Typecheck passed; check:runtime passed; 60 focused layout/model/cleanup tests passed; isolated Herdr live suite passed 4 inert scenarios with 1 separately gated real-model case skipped, including cross-workspace caller move followed by successful placement. Broader subagent command had unrelated credential and pre-existing assertion failures recorded in the archived plan.
