@@ -33,7 +33,7 @@ export type AnalyticsSessionOptions = SourceSelection & {
 	execution?: AnalyticsExecution; threads?: number; memoryLimit?: string; diskBudgetBytes?: number;
 };
 
-type ResourceTracker = { ownedPath: string; diskBudgetBytes: number; peakOwnedDiskBytes: number; resourceError?: Error };
+type ResourceTracker = { ownedPath: string; diskBudgetBytes: number; peakOwnedDiskBytes: number };
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const identifier = (value: string) => `"${value.replaceAll('"', '""')}"`;
 let stagingTail = Promise.resolve();
@@ -141,7 +141,6 @@ async function treeBytes(root: string): Promise<number> {
 	return total;
 }
 async function checkDisk(tracker: ResourceTracker): Promise<void> {
-	if (tracker.resourceError) throw tracker.resourceError;
 	const bytes = await treeBytes(tracker.ownedPath); tracker.peakOwnedDiskBytes = Math.max(tracker.peakOwnedDiskBytes, bytes);
 	if (bytes > tracker.diskBudgetBytes) throw new Error(`analytics execution owned disk ${bytes} bytes exceeds bound ${tracker.diskBudgetBytes}`);
 }
@@ -185,9 +184,7 @@ async function query(instance: DuckDBInstance, request: AnalyticsQuery, signal: 
 	const maxRows = integer(request.maxRows ?? 1000, "maxRows"), maxBytes = integer(request.maxBytes ?? 256 * 1024, "maxBytes");
 	if (maxRows > 1000 || maxBytes > 256 * 1024) throw new Error("invalid analytics output bound");
 	const connection = await instance.connect(); const cancel = () => connection.interrupt(); signal.addEventListener("abort", cancel, { once: true });
-	let monitor: NodeJS.Timeout | undefined;
-	if (tracker) monitor = setInterval(() => { void checkDisk(tracker).catch(error => { tracker.resourceError = error as Error; connection.interrupt(); }); }, 25);
-	monitor?.unref(); const started = performance.now();
+	const started = performance.now();
 	try {
 		await connection.run("SET TimeZone = 'UTC'"); const statements = await connection.extractStatements(request.sql);
 		if (statements.count !== 1) throw new Error("analytics SQL requires exactly one SELECT query");
@@ -199,19 +196,19 @@ async function query(instance: DuckDBInstance, request: AnalyticsQuery, signal: 
 			let truncated = false, bytes = 2;
 			for await (const chunk of result.yieldRowObjectJson()) {
 				for (const row of chunk) {
-					checkCancelled(signal); if (tracker?.resourceError) throw tracker.resourceError;
+					checkCancelled(signal);
 					const next = bytes + Buffer.byteLength(JSON.stringify(row)) + (rows.length ? 1 : 0);
 					if (rows.length >= maxRows || next > maxBytes) { truncated = true; break; }
 					rows.push(row); bytes = next;
 				}
 				if (truncated) break;
 			}
-			if (tracker) await checkDisk(tracker); checkCancelled(signal); if (tracker?.resourceError) throw tracker.resourceError;
+			if (tracker) await checkDisk(tracker); checkCancelled(signal);
 			const cost: AnalyticsQueryCost = { ...baseCost, ...(tracker ? { peakOwnedDiskBytes: tracker.peakOwnedDiskBytes } : {}), queryMs: performance.now() - started };
 			return { columns, rows, truncated, cost };
 		} finally { prepared.destroySync(); }
-	} catch (error) { if (tracker?.resourceError) throw tracker.resourceError; throw resourceFailure(error, tracker); }
-	finally { if (monitor) clearInterval(monitor); signal.removeEventListener("abort", cancel); connection.closeSync(); }
+	} catch (error) { throw resourceFailure(error, tracker); }
+	finally { signal.removeEventListener("abort", cancel); connection.closeSync(); }
 }
 
 export async function withAnalyticsSession<T>(options: AnalyticsSessionOptions, callback: (session: AnalyticsSession) => Promise<T>): Promise<T> {
@@ -245,15 +242,9 @@ export async function withAnalyticsSession<T>(options: AnalyticsSessionOptions, 
 					temp_directory: spill, max_temp_directory_size: `${diskBudgetBytes}B`, autoinstall_known_extensions: "false", autoload_known_extensions: "false" });
 			setup = await instance.connect(); await setup.run("SET TimeZone = 'UTC'");
 			await setup.run("SET preserve_insertion_order = false");
-			let setupMonitor: NodeJS.Timeout | undefined;
-			if (tracker) setupMonitor = setInterval(() => { void checkDisk(tracker!).catch(error => { tracker!.resourceError = error as Error; setup?.interrupt(); }); }, 25);
-			setupMonitor?.unref();
-			try {
-				for (const source of sources) { checkCancelled(signal); if (execution === "large") await createLargeView(setup, source, signal, tracker!, counters); else await createStandardView(setup, source); }
-				await checkDisk(tracker!);
-				if (tracker?.resourceError) throw tracker.resourceError;
-				checkCancelled(signal); await setup.run("SET enable_external_access = false");
-			} finally { if (setupMonitor) clearInterval(setupMonitor); }
+			for (const source of sources) { checkCancelled(signal); if (execution === "large") await createLargeView(setup, source, signal, tracker!, counters); else await createStandardView(setup, source); }
+			await checkDisk(tracker!);
+			checkCancelled(signal); await setup.run("SET enable_external_access = false");
 			setup.closeSync(); setup = undefined;
 		});
 		const cost: Omit<AnalyticsQueryCost, "queryMs"> = { ...decision, selectedBytes, filesScanned: files.length, bytesScanned: selectedBytes, discoveryMs: started - discoveryStarted,

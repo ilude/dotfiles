@@ -1,6 +1,11 @@
 import { expect, it, vi } from "vitest";
 const request=vi.hoisted(()=>vi.fn());
-vi.mock("../lib/subagents/transport.ts",()=>({requestParent:request}));
+const wait=vi.hoisted(()=>vi.fn());
+const report=vi.hoisted(()=>vi.fn());
+let nextWaiter:((batch:any)=>void)|undefined;
+function waitForEvent(consumer:string,signal:AbortSignal){return new Promise((resolve,reject)=>{nextWaiter=batch=>resolve(batch);signal.addEventListener("abort",()=>reject(new Error("aborted")),{once:true})})}
+async function publish(batch:any){await vi.waitFor(()=>expect(nextWaiter).toBeTypeOf("function"));const resolve=nextWaiter!;nextWaiter=undefined;resolve(batch)}
+vi.mock("../lib/subagents/transport.ts",()=>({requestParent:request,waitForParentEvents:wait,reportParentActivity:report}));
 import { bindChildSurface } from "../lib/subagents/child-surface.ts";
 import childAuthority from "../extensions/subagent-child.ts";
 it("yields parent questions as terminating tool results instead of polling",async()=>{
@@ -9,6 +14,7 @@ it("yields parent questions as terminating tool results instead of polling",asyn
  process.env.PI_SUBAGENT_ENDPOINT=JSON.stringify({child:"leaf",origin:"origin",run:"run",port:1,token:"inert"});
  const tools:any={};const pi:any={registerTool:(tool:any)=>{tools[tool.name]=tool},registerCommand:()=>{},on:()=>{},setActiveTools:()=>{},getAllTools:()=>[],sendMessage:vi.fn()};
  request.mockResolvedValue({id:"request-1"});
+ wait.mockImplementation((_endpoint:unknown,consumer:string,signal:AbortSignal)=>waitForEvent(consumer,signal));
  try{
   childAuthority(pi);
   const result=await tools.subagent_parent.execute("question",{action:"question",message:"Include generated files?"},undefined);
@@ -30,7 +36,7 @@ it("keeps permission input local and reports ordinary interactive input without 
  const handlers:Record<string,Function[]>={};const requests:any[]=[];
  const pi:any={on:(name:string,handler:Function)=>(handlers[name]??=[]).push(handler),registerCommand:()=>{},sendMessage:vi.fn()};
  const ctx:any={isIdle:()=>true,ui:{setStatus:vi.fn(),notify:vi.fn()},abort:vi.fn(),shutdown:vi.fn()};
- request.mockImplementation(async(_endpoint,message)=>{requests.push(message);if(message.type==="app-ready")return{accepted:true};if(message.type==="app-poll")return{commands:[]};return{accepted:true};});
+ request.mockImplementation(async(_endpoint,message)=>{requests.push(message);if(message.type==="app-ready")return{accepted:true};return{accepted:true};});
  const emit=async(name:string,event:any={})=>{for(const handler of handlers[name]??[])await handler(event,ctx)};
  try{
   bindChildSurface(pi,true);await emit("session_start");
@@ -39,7 +45,7 @@ it("keeps permission input local and reports ordinary interactive input without 
   await emit("ui_prompt_end");await emit("input",{source:"interactive",text:"continue normally"});
   expect(requests).toContainEqual(expect.objectContaining({type:"operator-input",payload:expect.objectContaining({text:"continue normally"})}));
   expect(requests.some(message=>message.type==="intervene")).toBe(false);
-  await vi.advanceTimersByTimeAsync(250);
+  expect(requests.some(message=>message.type==="app-poll")).toBe(false);
  }finally{
   await emit("session_shutdown",{reason:"quit"});vi.useRealTimers();
   if(before===undefined)delete process.env.PI_SUBAGENT_ENDPOINT;else process.env.PI_SUBAGENT_ENDPOINT=before;
@@ -63,11 +69,14 @@ it("acknowledges original and follow-up deliveries by their existing delivery ID
  });
  try{
   bindChildSurface(pi,false);await emit("session_start");
-  await vi.advanceTimersByTimeAsync(600);expect(messages).toHaveLength(1);expect(messages[0].details).toMatchObject({deliveryId:original.deliveryId,exchangeId:original.exchangeId,originalAssignment:{result:"original result"}});
+  await publish({consumer:"headless-app",delivery:original});
+  await vi.waitFor(()=>expect(messages).toHaveLength(1));expect(messages[0].details).toMatchObject({deliveryId:original.deliveryId,exchangeId:original.exchangeId,originalAssignment:{result:"original result"}});
   await emit("message_end",{message:{role:"custom",...messages[0]}});
-  await vi.advanceTimersByTimeAsync(300);expect(messages).toHaveLength(2);expect(messages[1].details).toMatchObject({deliveryId:followUp.deliveryId,exchangeId:followUp.exchangeId,result:"follow-up result"});
+  await publish({consumer:"headless-app",delivery:followUp});
+  await vi.waitFor(()=>expect(messages).toHaveLength(2));expect(messages[1].details).toMatchObject({deliveryId:followUp.deliveryId,exchangeId:followUp.exchangeId,result:"follow-up result"});
   await emit("message_end",{message:{role:"custom",...messages[1]}});
   expect(acks).toEqual([original.deliveryId,followUp.deliveryId]);
+  expect(request.mock.calls.some(([,message])=>["heartbeat","app-poll"].includes(message.type))).toBe(false);
  }finally{
   await emit("session_shutdown",{reason:"quit"});vi.useRealTimers();
   if(before===undefined)delete process.env.PI_SUBAGENT_ENDPOINT;else process.env.PI_SUBAGENT_ENDPOINT=before;
@@ -88,14 +97,16 @@ it("coordinator forwards outcomes, never heartbeat progress, and acknowledges on
  request.mockImplementation(async(_endpoint,message)=>{if(message.type==="outcome-ack"){pending=undefined;return{accepted:true}}return{alive:true,delivery:pending}});
  try{
   bindChildSurface(pi,false);await emit("session_start");
-  await vi.advanceTimersByTimeAsync(600);expect(messages).toHaveLength(1);expect(messages[0].content).toContain("fixture failure");
-  idle=true;await vi.advanceTimersByTimeAsync(200);expect(messages).toHaveLength(1);
+  await publish({consumer:"headless-app",delivery});
+  await vi.waitFor(()=>expect(messages).toHaveLength(1));expect(messages[0].content).toContain("fixture failure");
+  idle=true;expect(messages).toHaveLength(1);
   expect(request.mock.calls.some(([,m])=>m.type==="outcome-ack")).toBe(false);
-  await vi.advanceTimersByTimeAsync(400);expect(messages).toHaveLength(1);
   await emit("message_end",{message:{role:"custom",...messages[0]}});
   expect(request.mock.calls.some(([,m])=>m.type==="outcome-ack"&&m.payload==="outcome-1")).toBe(true);
+  expect(request.mock.calls.some(([,message])=>["heartbeat","app-poll"].includes(message.type))).toBe(false);
   await emit("session_shutdown",{reason:"reload"});await emit("session_start");pending=delivery;
-  await vi.advanceTimersByTimeAsync(400);expect(messages).toHaveLength(1);expect(ctx.shutdown).not.toHaveBeenCalled();
+  await publish({consumer:"headless-app",delivery});
+  await vi.waitFor(()=>expect(messages).toHaveLength(1));expect(ctx.shutdown).not.toHaveBeenCalled();
  }finally{
   await emit("session_shutdown",{reason:"quit"});vi.useRealTimers();
   if(before===undefined)delete process.env.PI_SUBAGENT_ENDPOINT;else process.env.PI_SUBAGENT_ENDPOINT=before;

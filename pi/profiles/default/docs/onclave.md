@@ -13,10 +13,12 @@ checkout. Initialize that module and install its pnpm workspace dependencies.
 The adapter requires Pi 0.85.x, including `agent_settled` lifecycle support.
 
 Registration starts automatically after session startup. Transient transport
-failures reconnect automatically. `/onclave` shows connection state, instance
-ID, registration, and live peer count. The existing footer displays the
-`onclave-v2` status slot. Setup errors are reported without preventing ordinary
-Pi use; after correcting configuration, use `/reload` or start a fresh session.
+failures reconnect automatically. The authenticated message-delivery long poll
+renews the server's 90-second presence lease and returns the current live-peer
+count for `/onclave` and the existing `onclave-v2` footer slot. The adapter no
+longer sends a separate periodic heartbeat. Setup errors are reported without
+preventing ordinary Pi use; after correcting configuration, use `/reload` or
+start a fresh session.
 
 Endpoint precedence remains:
 
@@ -36,7 +38,11 @@ change service authentication or configure credentials. `--onclave-id` overrides
 the otherwise session-derived instance identity.
 
 Tools are enabled after registration. If `tool_search` exposes them while
-disconnected, execution still reports that Onclave is unavailable.
+disconnected, execution still reports that Onclave is unavailable. Message
+receipt remains the existing signed HTTPS server-held poll, normally waiting up
+to 25 seconds. An empty response returned in under one second is delayed by 250
+ms before the next poll to avoid a rapid empty-response loop; normal held polls,
+delivered messages, reconnect backoff, and delivery disposition are unchanged.
 
 ## Communication
 
@@ -83,9 +89,12 @@ node scripts/onclave-smoke.mjs
 ```
 
 The smoke test uses the actual installed Pi loader with an isolated temporary
-profile and no session/network calls. Offline checks do not prove live service
-compatibility. Live verification is operator-owned after implementation, not
-an implementation completion gate.
+profile and no session/network calls. Focused adapter/core tests cover presence
+renewal, peer-count responses, empty-response pacing, normal held polls,
+delivery, disconnection, and shutdown without live credentials. Offline checks
+do not prove broker-backed or deployed live service compatibility. Live
+verification is operator-owned after implementation, not an implementation
+completion gate.
 
 ## YouTube vault and backfill
 

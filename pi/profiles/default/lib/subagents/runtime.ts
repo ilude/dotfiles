@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { ChildTransport, type ChildIdentity, type ApplicationMessage, type MessageOptions } from "./transport.ts";
+import { ChildTransport, type ChildIdentity, type ApplicationMessage, type MessageOptions, type ParentActivity, type ParentCommand, type ParentEventBatch, type ParentEventConsumer } from "./transport.ts";
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 import { VisibleChild } from "./visible.ts";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
@@ -80,7 +80,8 @@ export class SubagentRuntime {
  private layouts=new Map<string,SubagentLayout>();
  private observers=new Map<string,Set<(record:ChildRecord)=>void>>();
  private inert=new Map<string,InertChild>();
- private transport=new ChildTransport((identity,message)=>this.dispatch(identity,message));
+ private transport=new ChildTransport((identity,message,signal)=>this.dispatch(identity,message,signal));
+ private eventWaiters=new Map<string,{identity:Readonly<ChildIdentity>;resolve:(value:ParentEventBatch)=>void;reject:(error:Error)=>void;signal:AbortSignal;abort:()=>void}>();
  private disposed=false;
  readonly ownerId=randomUUID();
  constructor(seed?:InertRuntimeState) {
@@ -98,7 +99,52 @@ export class SubagentRuntime {
  flush(origin:string){const binding=this.bindings.get(origin);if(!binding)return;for(const [id,record] of this.pending){if(record.origin===origin&&!record.parentId&&!this.queued.has(id)&&binding.deliver(cloneDelivery(record))&&this.pending.has(id)){this.queued.add(id);this.markQuestionExposed(id)}}}
  private markQuestionExposed(deliveryId:string){for(const question of this.questions.values())if(question.deliveryId===deliveryId)question.exposed=true}
  private publish(origin:string){this.bindings.get(origin)?.status?.(this.list(origin));}
- acknowledge(origin:string,id:string){if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.queued.delete(id);this.inert.delete(id)}
+ private eventKey(child:string,consumer:ParentEventConsumer){return `${child}:${consumer}`}
+ private parentEvent(identity:Readonly<ChildIdentity>,consumer:ParentEventConsumer):ParentEventBatch|undefined{
+  const child=this.children.get(identity.child),context=this.contexts.get(identity.child);
+  if(!child||!context||child.record.origin!==identity.origin)throw new Error("Child owner unavailable");
+  const visible=child.record.surface==="visible";
+  if((consumer==="visible-app"||consumer==="visible-host")!==visible)throw new Error("Parent event consumer does not match child surface");
+  if(consumer==="visible-host"){
+   const state=child.parentMessage({type:"host-poll"}) as {stop:boolean;force:boolean};
+   return state.stop?{consumer,stop:true,force:state.force}:undefined;
+  }
+  const delivery=child.record.userOwned?undefined:[...this.pending.values()].find(record=>record.parentId===identity.child);
+  if(consumer==="headless-app"){
+   if(delivery){this.queued.add(delivery.deliveryId);this.markQuestionExposed(delivery.deliveryId);return{consumer,delivery:cloneDelivery(delivery)}}
+   return undefined;
+  }
+  const response=child.parentMessage({type:"app-poll"}) as {commands:ParentCommand[]};
+  if(delivery){this.queued.add(delivery.deliveryId);this.markQuestionExposed(delivery.deliveryId)}
+  if(!response.commands.length&&!delivery)return undefined;
+  return{consumer,commands:response.commands.map(command=>({...command})),delivery:delivery?cloneDelivery(delivery):undefined};
+ }
+ private wakeParentEvents(child:string,consumer:ParentEventConsumer){
+  const key=this.eventKey(child,consumer),waiter=this.eventWaiters.get(key);
+  if(!waiter)return;
+  if(!this.contexts.has(child)||!this.children.has(child))return;
+  let batch:ParentEventBatch|undefined;
+  try{batch=this.parentEvent(waiter.identity,consumer)}catch(error){this.eventWaiters.delete(key);waiter.signal.removeEventListener("abort",waiter.abort);waiter.reject(error instanceof Error?error:new Error("Parent event request failed"));return}
+  if(!batch)return;
+  this.eventWaiters.delete(key);waiter.signal.removeEventListener("abort",waiter.abort);waiter.resolve(batch);
+ }
+ private waitForParentEvents(identity:Readonly<ChildIdentity>,consumer:ParentEventConsumer,signal:AbortSignal):Promise<ParentEventBatch>{
+  if(signal.aborted)return Promise.reject(signal.reason instanceof Error?signal.reason:new Error("Parent event request cancelled"));
+  const immediate=this.parentEvent(identity,consumer);
+  if(immediate)return Promise.resolve(immediate);
+  const key=this.eventKey(identity.child,consumer);
+  if(this.eventWaiters.has(key))return Promise.reject(new Error("Parent event consumer already has an active request"));
+  return new Promise((resolve,reject)=>{
+   const abort=()=>{if(this.eventWaiters.get(key)?.abort!==abort)return;this.eventWaiters.delete(key);reject(new Error("Parent event request cancelled"))};
+   this.eventWaiters.set(key,{identity,resolve,reject,signal,abort});
+   signal.addEventListener("abort",abort,{once:true});
+   // Recheck after registering so a state change cannot be lost between snapshot and wait.
+   try{const batch=this.parentEvent(identity,consumer);if(batch){this.eventWaiters.delete(key);signal.removeEventListener("abort",abort);resolve(batch)}}
+   catch(error){this.eventWaiters.delete(key);signal.removeEventListener("abort",abort);reject(error)}
+  });
+ }
+ acknowledge(origin:string,id:string){
+if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.queued.delete(id);this.inert.delete(id)}
  acknowledgeRecord(origin:string,recordId:string,exchangeId?:string){
   // An inspect/wait result represents the child's current exchange. Do not
   // acknowledge an older unread delivery merely because it has the same child.
@@ -127,6 +173,7 @@ export class SubagentRuntime {
    assignment:undefined,questionResolution:{requestId,outcome,by},result:`Parent question ${outcome} by ${by}.`,notice:undefined,
   };
   this.pending.set(resolution.deliveryId,resolution);
+  if(resolution.parentId){this.wakeParentEvents(resolution.parentId,"headless-app");this.wakeParentEvents(resolution.parentId,"visible-app")}
   this.flush(record.origin);
  }
  private deliver(record:ChildRecord,deliveryKind:DeliveryKind="outcome",requestId?:string){
@@ -142,12 +189,33 @@ export class SubagentRuntime {
   }
   this.pending.set(delivery.deliveryId,delivery);
   if(deliveryKind==="question"&&requestId)this.questions.set(requestId,{origin:record.origin,childId:record.id,deliveryId:delivery.deliveryId,exposed:false});
+  if(delivery.parentId){this.wakeParentEvents(delivery.parentId,"headless-app");this.wakeParentEvents(delivery.parentId,"visible-app")}
   this.flush(record.origin);
  }
- private async dispatch(identity:Readonly<ChildIdentity>,message:ApplicationMessage):Promise<unknown>{
+ private recordActivity(child:RpcChild,payload:unknown,required=false){
+  if(child.record.status==="settled")return;
+  if(payload===undefined&&!required)return;
+  if(!payload||typeof payload!=="object"||Array.isArray(payload))throw new Error("Invalid child activity");
+  const value=payload as Record<string,unknown>;
+  if(value.phase!=="model"&&value.phase!=="tool")throw new Error("Invalid child activity phase");
+  if(value.toolName!==undefined&&typeof value.toolName!=="string")throw new Error("Invalid child activity tool name");
+  child.activity(value.phase,typeof value.toolName==="string"?value.toolName.slice(0,128):undefined);
+ }
+ private async dispatch(identity:Readonly<ChildIdentity>,message:ApplicationMessage,signal:AbortSignal):Promise<unknown>{
+
   const child=this.children.get(identity.child),context=this.contexts.get(identity.child);
   if(!child||!context||child.record.origin!==identity.origin)throw new Error("Child owner unavailable");
   child.contact();
+  if(message.type==="parent-events"){
+   const consumer=(message.payload as {consumer?:unknown}|undefined)?.consumer;
+   if(consumer!=="headless-app"&&consumer!=="visible-app"&&consumer!=="visible-host")throw new Error("Invalid parent event consumer");
+   return this.waitForParentEvents(identity,consumer,signal);
+  }
+  if(message.type==="app-activity"){
+   if(child.record.surface!=="visible")throw new Error("Only visible children report app activity");
+   this.recordActivity(child,message.payload,true);
+   return{accepted:true};
+  }
   if(message.type==="session-identity"){
    const payload=message.payload as {sessionId?:unknown;sessionFile?:unknown}|undefined;
    if(typeof payload?.sessionId!=="string"||!payload.sessionId.trim()||typeof payload.sessionFile!=="string"||!payload.sessionFile.trim())throw new Error("Invalid child session identity");
@@ -170,8 +238,9 @@ export class SubagentRuntime {
    return{alive:true,delivery:delivery?cloneDelivery(delivery):undefined};
   }
   if(message.type==="app-poll"){
+   this.recordActivity(child,message.payload);
    if(delivery){this.queued.add(delivery.deliveryId);this.markQuestionExposed(delivery.deliveryId)}
-   return{...child.parentMessage(message) as object,delivery:delivery?cloneDelivery(delivery):undefined};
+   return{...child.parentMessage({type:"app-poll"}) as object,delivery:delivery?cloneDelivery(delivery):undefined};
   }
   if(message.type==="operator-input"){
    // Direct input starts a later exchange; it is not a receipt for any earlier
@@ -267,6 +336,7 @@ export class SubagentRuntime {
   this.contexts.set(child.record.id,{input:{...input,cwd},profile:resolve(profileDir),extension:resolve(childExtension),catalog});
   child.hasOutstandingChildren=()=>[...this.children.values()].some(c=>c.record.parentId===child.record.id&&(c.record.status!=="settled"||c.record.phase==="cleanup"))||[...this.pending.values()].some(r=>r.parentId===child.record.id);
   child.record.waitState=initialWaitState??(background?"background":"attached");
+  child.onParentEvent=consumer=>this.wakeParentEvents(child.record.id,consumer);
   child.onProgress=record=>{
    this.reconcileCleanup(record);
    this.publish(record.origin);

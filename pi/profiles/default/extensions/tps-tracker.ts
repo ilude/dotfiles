@@ -12,12 +12,14 @@ export default function tpsTracker(pi: ExtensionAPI): void {
   let samples = 0;
   let official = 0;
   let interrupted = false;
+  let publishedStream = false;
   let timer: ReturnType<typeof setInterval> | undefined;
   const stopTimer = () => { clearInterval(timer); timer = undefined; };
   function reset(): void {
     stopTimer(); messageStart = streamStart = undefined;
     estimate = output = streamMs = latencyMs = samples = official = 0;
     interrupted = false;
+    publishedStream = false;
   }
   function show(ctx: ExtensionContext): void {
     if (!ctx.hasUI || messageStart === undefined) return;
@@ -42,11 +44,11 @@ export default function tpsTracker(pi: ExtensionAPI): void {
   });
   pi.on("message_start", (event, ctx) => {
     if (event.message.role !== "assistant") return;
-    messageStart = performance.now(); streamStart = undefined; estimate = official = 0;
+    messageStart = performance.now(); streamStart = undefined; estimate = official = 0; publishedStream = false;
     stopTimer();
     if (ctx.hasUI) {
       show(ctx);
-      timer = setInterval(() => show(ctx), 250);
+      timer = setInterval(() => show(ctx), 500);
       timer.unref();
     }
   });
@@ -54,13 +56,17 @@ export default function tpsTracker(pi: ExtensionAPI): void {
     const delta = event.assistantMessageEvent;
     if (event.message.role !== "assistant" || messageStart === undefined || !["text_delta", "thinking_delta", "toolcall_delta"].includes(delta.type)) return;
     if (!("delta" in delta) || typeof delta.delta !== "string" || !delta.delta) return;
-    if (streamStart === undefined) {
+    const firstToken = streamStart === undefined;
+    if (firstToken) {
       streamStart = performance.now();
       latencyMs += streamStart - messageStart; samples++;
     }
     estimate += delta.delta.length / 4;
     official = event.message.usage?.output ?? 0;
-    show(ctx);
+    if (firstToken || !publishedStream) {
+      show(ctx);
+      publishedStream = true;
+    }
   });
   pi.on("message_end", (event, ctx) => {
     if (event.message.role !== "assistant") return;

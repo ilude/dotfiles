@@ -42,12 +42,12 @@ export function hostStartupDiagnostic(stage,error) {
 // Called only by the existing setup-owned Herdr bootstrap. This per-launch host
 // retains the actual ChildProcess handle; it is not a worker service or registry.
 export async function hostSubagent(entry, profile, rawEndpoint) {
- let requestParent,endpoint,stage="loading jiti";
+ let requestParent,waitForParentEvents,endpoint,stage="loading jiti";
  try {
   const { createJiti }=createRequire(join(profile,"package.json"))("jiti");
   const jiti=createJiti(import.meta.url);
   stage="loading host modules";
-  ({ requestParent }=await jiti.import("../pi/profiles/default/lib/subagents/transport.ts"));
+  ({ requestParent, waitForParentEvents }=await jiti.import("../pi/profiles/default/lib/subagents/transport.ts"));
   const { childLaunch }=await jiti.import("../pi/profiles/default/lib/subagents/launch.ts");
   stage="parsing endpoint";
   endpoint=JSON.parse(rawEndpoint);
@@ -76,16 +76,27 @@ export async function hostSubagent(entry, profile, rawEndpoint) {
   child=spawn(process.execPath,[entry,...config.args],{cwd:bootstrap.spec.cwd,env:{...process.env,...config.env,PI_SUBAGENT_INTERVENTION_FILE:intervention,PI_HERDR_SUBAGENT:""},stdio:["inherit","inherit","pipe"],shell:false,detached:process.platform!=="win32"});
   child.stderr?.on("data",chunk=>stderrCapture.append(chunk));
   const closed=new Promise((resolve,reject)=>{child.once("error",error=>{exited=true;reject(error)});child.once("close",(code,signal)=>{exited=true;resolve({code,signal})})});
+  const watchController=new AbortController();
   const watch=(async()=>{
-   while(!exited){
-    try{const state=await requestParent(endpoint,{type:"host-poll"});if(state.stop&&(state.force||!userOwned())){stderrCapture.append(Buffer.from(`[subagent-host] shutdown=parent-stop force=${Boolean(state.force)}\n`));await stop()}}
-    catch(error){if(!parentGone)stderrCapture.append(Buffer.from(`${hostStartupDiagnostic("parent monitoring",error)}; action=${userOwned()?"preserve-user-owned":"stop-child"}\n`));parentGone=true;if(!userOwned())await stop()}
-    if(parentGone&&userOwned())break;
-    if(!exited)await delay(100);
+   while(!exited&&!parentGone&&!watchController.signal.aborted){
+    try{
+     const event=await waitForParentEvents(endpoint,"visible-host",watchController.signal);
+     if(event.stop&&(event.force||!userOwned())){
+      stderrCapture.append(Buffer.from(`[subagent-host] shutdown=parent-stop force=${Boolean(event.force)}\n`));
+      await stop();
+      return;
+     }
+    }catch(error){
+     if(watchController.signal.aborted)return;
+     if(!parentGone)stderrCapture.append(Buffer.from(`${hostStartupDiagnostic("parent monitoring",error)}; action=${userOwned()?"preserve-user-owned":"stop-child"}\n`));
+     parentGone=true;
+     if(!userOwned())await stop();
+    }
    }
   })();
   let outcome;
   try{outcome=await closed}catch(error){outcome={code:null,signal:null,error:String(error?.message||"child process could not start")}}
+  watchController.abort();
   await watch;
   try{
    const diagnostic=stderrCapture.close();

@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { requestReloadState } from "../lib/profile-reload-events.ts";
+import { RELOAD_REFRESH_REQUEST } from "../lib/profile-reload.ts";
 import { requestSubagentRuntimeReset } from "../lib/subagents/runtime.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 
@@ -8,7 +9,12 @@ export default function clearCommand(pi: ExtensionAPI): void {
 		description: "Alias for /new; reload when needed",
 		handler: async (args, ctx) => {
 			if (args.trim()) throw new Error("Usage: /clear");
-			const state = requestReloadState(pi);
+			let state = requestReloadState(pi);
+			if (state) {
+				state = await new Promise(resolve => {
+					pi.events.emit(RELOAD_REFRESH_REQUEST, resolve);
+				});
+			}
 			if (!state) ctx.ui.notify("Reload monitoring unavailable; starting a new session without automatic reload.", "warning");
 			const reloadNeeded = Boolean(state?.needed && !state.error);
 			ctx.ui.notify(reloadNeeded ? "Starting a new session and reloading changed profile resources..." : "Starting a new session...", "info");
