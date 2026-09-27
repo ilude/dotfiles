@@ -50,13 +50,16 @@ async function load(order = ["profile-reload", "operator-footer", "clear"], reas
   const stop = async () => { await emit("session_shutdown", { reason: "new" }); };
   stops.push(stop);
   await emit("session_start", { reason });
-  return { ctx, loaded, stop, requestRender, text: (width = 180) => stripTerminalSequences(footer!.render(width).join("\n")) };
+  await vi.advanceTimersByTimeAsync(0);
+  const refresh = () => new Promise(resolve => bus.emit("default:profile-reload:refresh", resolve));
+  if (requestReloadState({ events: bus })) await refresh();
+  return { ctx, loaded, stop, requestRender, refresh, text: (width = 180) => stripTerminalSequences(footer!.render(width).join("\n")) };
 }
 it.each([false, true])("delivers lib changes to separately loaded footer and clear (reverse=%s)", async reverse => {
   const r = await load(reverse ? ["operator-footer", "clear", "profile-reload"] : undefined);
   expect(r.text()).not.toContain("[reload]");
   writeFileSync(join(dir, "lib", "approval.ts"), "export const marker = 'new approval';");
-  await vi.advanceTimersByTimeAsync(15_000);
+  await vi.advanceTimersByTimeAsync(15_000); await r.refresh();
   expect(r.text()).toContain("[reload]"); expect(r.text(30)).toContain("[reload]");
   expect(r.requestRender).toHaveBeenCalled();
   const reload = vi.fn();
@@ -70,7 +73,7 @@ it.each([false, true])("delivers lib changes to separately loaded footer and cle
 it("preserves pending changes with cached factories, and clears after source reevaluation", async () => {
   let r = await load();
   writeFileSync(join(dir, "lib", "codex-usage.ts"), "export const marker = 'new quota';");
-  await vi.advanceTimersByTimeAsync(2000);
+  await vi.advanceTimersByTimeAsync(2000); await r.refresh();
   for (const reason of ["new", "resume", "fork"]) {
     await r.stop(); r = await load(undefined, reason);
     expect(r.text()).toContain("[reload]"); expect(vi.getTimerCount()).toBe(1);
@@ -89,6 +92,15 @@ it("reports monitor errors and absent-owner clear promptly", async () => {
   await command.handler("", { ...alone.ctx, newSession } as any);
   expect(newSession).toHaveBeenCalledOnce(); expect(reload).not.toHaveBeenCalled();
   expect(alone.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("unavailable"), "warning");
+});
+it("/clear waits for an immediate edit scan before deciding to reload", async () => {
+  const r = await load();
+  writeFileSync(join(dir, "lib", "approval.ts"), "export const marker = 'changed immediately';");
+  const reload = vi.fn();
+  const newSession = vi.fn(async (options: any) => { await r.stop(); await options.withSession({ reload }); });
+  const command = r.loaded.extensions.flatMap(ext => [...ext.commands]).find(([name]) => name === "clear")![1];
+  await command.handler("", { ...r.ctx, newSession } as any);
+  expect(reload).toHaveBeenCalledOnce();
 });
 it("reevaluates an imported implementation only after cache invalidation", async () => {
   const source = join(dir, "lib", "formatter.ts");

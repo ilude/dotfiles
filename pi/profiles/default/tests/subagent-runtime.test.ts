@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { SubagentRuntime, getSubagentRuntime, resetSubagentRuntime, retireSubagentRuntime, type Delivery } from "../lib/subagents/runtime.ts";
 import { VisibleChild } from "../lib/subagents/visible.ts";
+import { RpcChild } from "../lib/subagents/rpc.ts";
 import type { AgentDefinition } from "../lib/subagents/definitions.ts";
 const here=dirname(fileURLToPath(import.meta.url));
 const oldBin=process.env.PI_SUBAGENT_BIN,oldArgs=process.env.PI_SUBAGENT_BIN_ARGS;
@@ -13,6 +14,22 @@ afterEach(async()=>{await Promise.all(owners.splice(0).map(owner=>owner.shutdown
 function fixture(){process.env.PI_SUBAGENT_BIN=process.execPath;process.env.PI_SUBAGENT_BIN_ARGS=JSON.stringify([join(here,"fixtures/fake-subagent-rpc.mjs")]);const runtime=new SubagentRuntime();owners.push(runtime);return runtime}
 const definition:AgentDefinition={name:"probe",description:"probe",tools:[],delegates:[],skills:[],prompt:"probe",source:"profile",filePath:"probe.md"};
 const input={definition,instructions:"first",cwd:here,model:"openai-codex/test",effort:"low" as const,skills:[],origin:"origin-a",retained:false,surface:"headless" as const};
+function syntheticChild(runtime:SubagentRuntime,surface:"headless"|"visible"){
+ const role={...definition,name:surface==="visible"?"visible-coordinator":"headless-coordinator",tools:["subagent_parent","subagent_control"]};
+ const spec={...input,definition:role,surface,retained:true,displayName:`${surface}-coordinator`,prompt:role.prompt};
+ const child=surface==="visible"
+  ?new VisibleChild(spec,join(here,"../extensions/subagent-child.ts"),join(here,".."))
+  :new RpcChild(spec,join(here,"../extensions/subagent-child.ts"),join(here,".."));
+ child.record.status="running";child.record.processState="running";
+ if(child instanceof VisibleChild)(child as any).appReady=true;
+ (runtime as any).children.set(child.record.id,child);
+ (runtime as any).contexts.set(child.record.id,{input:spec,profile:join(here,".."),extension:join(here,"../extensions/subagent-child.ts"),catalog:new Map([[role.name,role]])});
+ child.onParentEvent=consumer=>(runtime as any).wakeParentEvents(child.record.id,consumer);
+ const identity={child:child.record.id,origin:input.origin,run:"synthetic-run"};
+ const dispatch=(message:any,signal=new AbortController().signal)=>(runtime as any).dispatch(identity,message,signal);
+ return{child,identity,dispatch};
+}
+
 describe("process-local descendant ownership",()=>{
  it("serializes only launch fields, excluding large parent-only dependencies",async()=>{
   const runtime=fixture();
@@ -279,5 +296,63 @@ describe("process-local descendant ownership",()=>{
   expect(second.displayName).toBe(firstName);
   await vi.waitFor(()=>expect(replacement.get(second.id).record.phase).toBe("settled"),{timeout:7000});
   await resetSubagentRuntime();
+ });
+});
+
+describe("parent-driven event channels",()=>{
+ it("wakes an idle headless app once for a nested outcome and does not replay after acknowledgement",async()=>{
+  const runtime=fixture(),{child,dispatch}=syntheticChild(runtime,"headless");
+  const controller=new AbortController();
+  const waiting=dispatch({type:"parent-events",payload:{consumer:"headless-app"}},controller.signal);
+  await vi.waitFor(()=>expect((runtime as any).eventWaiters.size).toBe(1));
+  await expect(dispatch({type:"parent-events",payload:{consumer:"headless-app"}})).rejects.toThrow(/active request/);
+  const descendant=new RpcChild({...input,parentId:child.record.id},join(here,"../extensions/subagent-child.ts"),join(here,".."));
+  Object.assign(descendant.record,{status:"settled",outcome:"failed",result:"nested failure",phase:"settled",processState:"exited"});
+  (runtime as any).deliver(descendant.record);
+  const batch=await waiting;
+  expect(batch).toMatchObject({consumer:"headless-app",delivery:{id:descendant.record.id,outcome:"failed",result:"nested failure"}});
+  const deliveryId=(batch as any).delivery.deliveryId;
+  await dispatch({type:"outcome-ack",payload:deliveryId});
+  await dispatch({type:"outcome-ack",payload:deliveryId});
+  const nextController=new AbortController();
+  const next=dispatch({type:"parent-events",payload:{consumer:"headless-app"}},nextController.signal);
+  await vi.waitFor(()=>expect((runtime as any).eventWaiters.size).toBe(1));
+  nextController.abort();
+  await expect(next).rejects.toThrow(/cancelled/);
+  (runtime as any).children.delete(child.record.id);(runtime as any).contexts.delete(child.record.id);
+ });
+
+ it("delivers all queued visible commands, accepts acknowledgements, reports activity, and wakes only the host stop channel",async()=>{
+  const runtime=fixture(),{child,dispatch}=syntheticChild(runtime,"visible");
+  await child.message("first queued command",{delivery:"queued"});
+  await child.message("second redirect",{delivery:"immediate"});
+  const batch=await dispatch({type:"parent-events",payload:{consumer:"visible-app"}});
+  expect(batch).toMatchObject({consumer:"visible-app",commands:[
+   {type:"message",message:"first queued command",delivery:"queued"},
+   {type:"redirect",message:"second redirect",delivery:"immediate"},
+  ]});
+  const commands=(batch as any).commands as Array<{id:string}>;
+  for(const command of commands)await dispatch({type:"app-ack",payload:command.id});
+  await dispatch({type:"app-activity",payload:{phase:"tool",toolName:"bash"}});
+  expect(child.snapshot()).toMatchObject({phase:"tool",toolName:"bash"});
+  await expect(dispatch({type:"app-activity",payload:{phase:"unknown"}})).rejects.toThrow(/activity phase/);
+  const emptyController=new AbortController();
+  const idleApp=dispatch({type:"parent-events",payload:{consumer:"visible-app"}},emptyController.signal);
+  await vi.waitFor(()=>expect((runtime as any).eventWaiters.size).toBe(1));
+  const hostController=new AbortController();
+  const host=dispatch({type:"parent-events",payload:{consumer:"visible-host"}},hostController.signal);
+  await vi.waitFor(()=>expect((runtime as any).eventWaiters.size).toBe(2));
+  const cleanup=child.cancel();
+  await expect(host).resolves.toMatchObject({consumer:"visible-host",stop:true,force:true});
+  await cleanup;
+  emptyController.abort();
+  await expect(idleApp).rejects.toThrow(/cancelled/);
+  (runtime as any).children.delete(child.record.id);(runtime as any).contexts.delete(child.record.id);
+ });
+
+ it("rejects a channel for the wrong child surface",async()=>{
+  const runtime=fixture(),{dispatch,child}=syntheticChild(runtime,"headless");
+  await expect(dispatch({type:"parent-events",payload:{consumer:"visible-host"}})).rejects.toThrow(/does not match child surface/);
+  (runtime as any).children.delete(child.record.id);(runtime as any).contexts.delete(child.record.id);
  });
 });

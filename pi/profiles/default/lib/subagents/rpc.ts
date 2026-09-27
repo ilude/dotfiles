@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { JsonLines } from "./framing.ts";
-import type { ChildEndpoint, ApplicationMessage, MessageOptions } from "./transport.ts";
+import type { ChildEndpoint, ApplicationMessage, MessageOptions, ParentEventConsumer } from "./transport.ts";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { childLaunch } from "./launch.ts";
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
@@ -71,6 +71,7 @@ export class RpcChild {
   private readonly initialAssignmentStartedAt: string;
   onUpdate?: (record: ChildRecord) => void;
   onProgress?: (record: ChildRecord) => void;
+  onParentEvent?: (consumer: ParentEventConsumer) => void;
   onQuestionCreated?: (record: ChildRecord, requestId: string) => void;
   onQuestionResolved?: (record: ChildRecord, requestId: string, outcome: "answered" | "cancelled", by: "parent" | "child" | "assignment") => void;
   hasOutstandingChildren?: () => boolean;
@@ -303,7 +304,7 @@ export class RpcChild {
       else response.value=await ctx.ui.input(title,request.message);
       if(response.value===undefined&&response.confirmed===undefined)response.cancelled=true;
       this.uiRequest=undefined;this.record.status="running";this.record.result=undefined;this.activity("model");this.send("extension_ui_response",response);
-    }finally{this.record.userOwned=false}
+    }finally{this.record.userOwned=false;this.onParentEvent?.("headless-app")}
   }
   parentMessage(message: ApplicationMessage): unknown {
     if (!this.spec.definition.tools.includes("subagent_parent")) throw new Error("Parent helper is outside frozen authority");

@@ -13,6 +13,7 @@ import type { AgentDefinition } from "../lib/subagents/definitions.ts";
 const here = dirname(fileURLToPath(import.meta.url));
 const oldBin = process.env.PI_SUBAGENT_BIN;
 const oldArgs = process.env.PI_SUBAGENT_BIN_ARGS;
+const oldAuthority = process.env.PI_SUBAGENT_AUTHORITY;
 const children: RpcChild[] = [];
 const owners: SubagentRuntime[] = [];
 const definition: AgentDefinition = { name: "cleanup-probe", description: "cleanup probe", tools: [], delegates: [], skills: [], prompt: "probe", source: "profile", filePath: "probe.md" };
@@ -44,6 +45,7 @@ afterEach(async () => {
   for (const owner of owners.splice(0)) await owner.shutdown("quit").catch(() => undefined);
   if (oldBin === undefined) delete process.env.PI_SUBAGENT_BIN; else process.env.PI_SUBAGENT_BIN = oldBin;
   if (oldArgs === undefined) delete process.env.PI_SUBAGENT_BIN_ARGS; else process.env.PI_SUBAGENT_BIN_ARGS = oldArgs;
+  if (oldAuthority === undefined) delete process.env.PI_SUBAGENT_AUTHORITY; else process.env.PI_SUBAGENT_AUTHORITY = oldAuthority;
 });
 
 describe("subagent cleanup ownership", () => {
@@ -118,6 +120,7 @@ describe("subagent cleanup ownership", () => {
     const events = createEventBus(), handlers: Record<string, Function> = {}, commands: Record<string, any> = {};
     const pi: any = { events, on: (name: string, handler: Function) => { handlers[name] = handler; }, registerTool: () => {}, registerCommand: (name: string, command: any) => { commands[name] = command; }, sendMessage: () => {}, appendEntry: vi.fn() };
     const ctx: any = { cwd: here, hasUI: true, isProjectTrusted: () => false, isIdle: () => true, sessionManager: { getSessionId: () => "cleanup-origin" }, ui: { notify: vi.fn() }, newSession: vi.fn() };
+    delete process.env.PI_SUBAGENT_AUTHORITY;
     subagents(pi); clearCommand(pi); await handlers.session_start({}, ctx);
     await commands.clear.handler("", ctx);
     expect(ctx.newSession).toHaveBeenCalledOnce();

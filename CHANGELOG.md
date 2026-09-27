@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-27: Reduce recurring default Pi runtime work
+
+**Changed:** The `[reload]` monitor now scans asynchronously with one in-flight check, retains its 15-second cadence and content/reversion detection, and limits loaded provenance to first-party profile code/resources plus the shared Onclave adapter. Themes and third-party pnpm code are excluded. `/clear` requests a current scan before deciding whether to reload, and superseded-session scans cannot publish stale state.
+
+**Changed:** Live TPS accounting still consumes every output delta, but footer publication is coalesced to 500 ms with prompt first-token and completion updates. First-token latency, estimated versus provider-reported counts, final throughput, and lifecycle cleanup are preserved.
+
+**Changed:** Subagent applications and visible hosts now use authenticated held parent-event requests instead of 200 ms and 100 ms parent-query loops. Parent commands, nested outcomes, and host stop wake the relevant consumer immediately; visible activity is sent only on state changes. Existing acknowledgements, origin ownership, intervention, parent-loss, native input, and cleanup semantics remain intact. The channel is process-local and non-durable.
+
+**Changed:** Onclave's signed HTTPS message long poll now renews the 90-second presence lease and returns the live-peer count used by the adapter footer, replacing its separate heartbeat interval. Empty polls returned in under one second receive a 250 ms delay before repolling; ordinary 25-second server-held polls, delivery/disposition semantics, and reconnect backoff are unchanged. Focused and full offline module checks passed; broker-backed and deployed live verification were not run.
+
+**Changed:** Log analytics no longer recursively walks its invocation directory every 25 ms during setup and SELECT. DuckDB's native 8 GiB spill configuration, explicit owned-disk checks at large-staging batch/checkpoint boundaries and query completion, resource reporting, read-only SELECT, and cleanup remain. Because checks now occur only at those boundaries, the budget and reported peak are not continuously sampled hard limits.
+
 - Default Pi's reload monitor now avoids canonicalizing every ordinary resource file on each scan and polls every 15 seconds instead of every two seconds. On Windows, the prior content-hashing scan took roughly 200–400 ms per idle Pi process, so several open Herdr Pi tabs could consume multiple CPU cores and degrade terminal input. Content-based change detection, metadata-only touch suppression, symlink cycle protection, and the reload indicator remain intact.
 
 - Default Pi profile commands now render with the same padded, shaded presentation as ordinary user input. `/commit` completion lines format commit hashes as subdued inline code and subjects as bold text so successful commit output stands out from ordinary assistant prose.

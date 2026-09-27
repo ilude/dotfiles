@@ -1,6 +1,6 @@
 ---
 created: 2026-09-27
-status: ready
+status: in-progress
 completed: null
 ---
 
@@ -48,70 +48,70 @@ The tasks below have independent owners unless a dependency is named. T1, T2, T3
 
 ## Tasks
 
-- [ ] **T1: Focus and unblock first-party reload detection**
+- [x] **T1: Focus and unblock first-party reload detection**
   - Depends on: none. Parallel with: T2, T3, T5, T6.
   - Files: `pi/profiles/default/extensions/profile-reload.ts`, `lib/{profile-reload,reload-monitor}.ts`, `extensions/clear.ts` if required, and `tests/profile-reload*.test.ts`.
   - Change: select first-party Pi reload inputs rather than arbitrary absolute loaded paths; retain owned imported code and first-party resource coverage other than themes, including known shared adapter inputs. Remove theme paths from the monitored inputs. Make baseline and recurring checks non-blocking with a single in-flight scan and session-generation protection. Keep the 15-second cadence, prompt footer updates on changed state, and let `/clear` obtain a current answer before deciding whether to reload. Preserve normal reload lifecycle and error reporting.
   - Verify: `cd pi/profiles/default && pnpm test profile-reload.test.ts profile-reload-integration.test.ts`; add focused fixtures for explicit third-party package paths, first-party adapter paths, ignored theme edits, change during an in-flight scan, shutdown/rebind, and an immediate `/clear` after an edit. Observe an interactive-path responsiveness bound in an offline fixture or measured local run without turning a live manual check into a gate.
   - Done when monitored first-party edits/reversions produce the right indicator and `/clear` decision, theme and third-party pnpm edits do not, and filesystem scanning does not synchronously monopolize the Pi event loop.
-  - Evidence: Not started.
+  - Evidence: Implemented asynchronous, serialized, session-cancelled scans with owned-path filtering and fresh `/clear` checks. Focused reload suite passed: 2 files, 18 tests. Final combined suite also passed.
 
-- [ ] **T2: Coalesce throughput display updates**
+- [x] **T2: Coalesce throughput display updates**
   - Depends on: none. Parallel with: T1, T3, T5, T6.
   - Files: `pi/profiles/default/extensions/tps-tracker.ts`, `tests/usage-context-tps.test.ts`.
   - Change: collect each delta without rendering each one; publish at most once or twice per second while streaming, with prompt first-token and final updates. Stop the timer on message end, cancellation, session switch, and shutdown.
   - Verify: `cd pi/profiles/default && pnpm test usage-context-tps.test.ts`; assert `setStatus` call cadence as well as displayed calculations and cleanup.
   - Done when rapid deltas do not produce a render request per delta and display semantics remain intact.
-  - Evidence: Not started.
+  - Evidence: Implemented 500 ms streaming presentation with first-token/final updates and cleanup. `usage-context-tps.test.ts` passed: 12 tests.
 
-- [ ] **T3: Provide parent-driven local subagent delivery**
+- [x] **T3: Provide parent-driven local subagent delivery**
   - Depends on: none. Parallel with: T1, T2, T5, T6.
   - Files: `pi/profiles/default/lib/subagents/{transport,runtime,visible,rpc}.ts` as needed and `tests/{subagent-transport,subagent-runtime,subagent-messaging}.test.ts`.
   - Change: establish a bounded bidirectional channel or held-request contract through which the parent signals pending child commands, nested outcomes, and host stop; preserve child reports/acknowledgements and existing ownership. Supply a clear channel API for T4 rather than adding a second broker or authorization layer. Distinguish visible app, visible host, and headless app endpoints.
   - Complexity: transport, session lifetime, and parent/host/child ownership interact. Split internal contract and runtime wiring if one assignment becomes too large.
   - Verify: focused transport/runtime tests for idle wakeup, multiple queued commands, acknowledgement, disconnect, cancellation, parent loss, and no duplicate outcome delivery.
   - Done when T4 can subscribe to parent events without sending periodic heartbeat/app/host polls.
-  - Evidence: Not started.
+  - Evidence: Added held parent-event channels for headless app, visible app, and visible host consumers with wakeups, acknowledgements, disconnect handling, and activity reports. Focused transport/runtime/messaging suite passed: 3 files, 50 tests.
 
-- [ ] **T4: Migrate child and visible host to event delivery**
+- [x] **T4: Migrate child and visible host to event delivery**
   - Depends on: T3's channel contract and parent signal delivery; can proceed alongside T1, T2, T5 and T6 after that prerequisite.
   - Files: `pi/profiles/default/lib/subagents/child-surface.ts`, `scripts/pi-subagent-host.mjs`, `lib/subagents/visible.ts` if necessary, and `tests/{subagent-messaging-lifecycle,subagent-child-outcomes,subagent-host-diagnostic,subagent-cleanup}.test.ts`.
   - Change: eliminate the active child application's 200 ms and visible host's 100 ms parent-query loops. Keep native visible user input, parent command/redirect/handback behavior, headless and coordinator nested outcomes, host stop, user-owned survival on parent loss, and deterministic cleanup. Avoid losing a pending event across initial registration or session replacement.
   - Verify: named focused tests plus the existing `pnpm test subagent` filter from `pi/profiles/default/`. Opt-in model/Herdr live suites remain non-blocking verification limits unless specifically authorized and provisioned.
   - Done when idle children and their hosts no longer generate short-interval parent requests, while command/result delivery and failure behavior still pass the focused lifecycle suite.
-  - Evidence: Not started.
+  - Evidence: Replaced the 200 ms app and 100 ms host query loops with cancellable parent-event waits. Four named focused files passed: 19 tests. The broad `pnpm test subagent` filter retained 7 failures that reproduce on the recorded target checkout; 24 task-worktree files passed and 3 skipped.
 
-- [ ] **T5: Keep Onclave delivery reactive without redundant heartbeats**
+- [x] **T5: Keep Onclave delivery reactive without redundant heartbeats**
   - Depends on: none. Parallel with: T1, T2, T3, T6. Owns only `modules/onclave/` files.
   - Files: `modules/onclave/extensions/onclave-pi/src/{onclave-pi.ts,lib/connection.ts,lib/http-client.ts}` and `modules/onclave/services/core/src/{registry.ts,vault/agent-routes.ts}` as needed, with corresponding adapter/core tests and relevant module documentation.
   - Change: pace unexpectedly immediate empty long-poll responses while retaining normal 25-second server-held delivery and reconnect backoff. Renew the 90-second presence lease from authenticated message polls, remove the separate heartbeat interval, and return the current live-peer count along that same request/response path so the footer does not require a replacement poll. The existing route response helpers support headers on both an empty 204 and a delivered response; use a comparably small wire change rather than a new service or transport.
   - Verify: from `modules/onclave/`, run focused `pnpm exec vitest run extensions/onclave-pi/tests/connection.test.ts extensions/onclave-pi/tests/extension.test.ts extensions/onclave-pi/tests/http-client.test.ts services/core/tests/registry.test.ts`, then `just check`. Test idle presence beyond 90 seconds, quick empty responses, real waits, delivered messages, disconnection, and shutdown without live credentials. Broker-backed integration is a non-blocking limit if prerequisites are absent.
   - Done when ordinary idle message delivery does not busy-loop, healthy idle instances stay live, footer presence remains accurate, and no independent heartbeat interval remains when the message channel suffices.
-  - Evidence: Not started.
+  - Evidence: Implemented in independent Onclave branch `task/lean-pi-runtime-onclave`, commit `ceab7fb`; focused Vitest passed 5 files/42 tests and `just check` passed 50 files/391 tests with 1 skipped. Broker-backed integration was not run. Commit is local and unpushed, so the dotfiles gitlink remains unchanged pending push authorization.
 
-- [ ] **T6: Remove aggressive analytics disk timers**
+- [x] **T6: Remove aggressive analytics disk timers**
   - Depends on: none. Parallel with: T1, T2, T3, T5.
   - Files: `pi/profiles/default/lib/log-analytics/store.ts`, `tests/{log-analytics-store,log-analytics-boundary}.test.ts`.
   - Change: remove the setup and query 25 ms `treeBytes` intervals and their interrupt plumbing. Preserve native `max_temp_directory_size`, the total-owned-disk checks at staging batches/checkpoints, cleanup, and truthful peak/budget reporting. Do not add a slower replacement directory-walk timer without evidence.
   - Verify: `cd pi/profiles/default && pnpm test log-analytics-store.test.ts log-analytics-boundary.test.ts`; use existing tiny-budget tests to demonstrate that explicit staging checks still reject oversized owned data and that SELECT/cleanup behavior remains correct.
   - Done when no periodic recursive directory checks remain during analytics, and the existing bounded staging behavior and report still work.
-  - Evidence: Not started.
+  - Evidence: Removed both recursive timers while retaining staging/checkpoint checks and DuckDB spill limits. Focused analytics suite passed: 2 files, 22 tests.
 
-- [ ] **T7: Reconcile docs, run final checks, and record closeout**
+- [x] **T7: Reconcile docs, run final checks, and record closeout**
   - Depends on: T1, T2, T4, T5, T6. Owns shared dotfiles docs/changelog and the coordinating spec state.
   - Files: `pi/README.md`, `pi/profiles/default/docs/{subagents,onclave}.md`, `CHANGELOG.md`, this plan; Onclave-owned documentation belongs in its own repository. Keep the scope note at the owning reload code path, not an intent log in the README.
   - Change: update current behavior and limitations, preserving unrelated edits. Run each affected suite after code integration once; rerun only when fixes change checked content. Record any offline/live verification limit accurately.
   - Verify from `pi/profiles/default`: `pnpm run typecheck`; `pnpm test profile-reload.test.ts profile-reload-integration.test.ts usage-context-tps.test.ts subagent-transport.test.ts subagent-runtime.test.ts subagent-messaging-lifecycle.test.ts subagent-child-outcomes.test.ts subagent-host-diagnostic.test.ts subagent-cleanup.test.ts log-analytics-store.test.ts log-analytics-boundary.test.ts onclave-pi.test.ts`; `pnpm run check:runtime`; `node scripts/onclave-smoke.mjs`. Use the T5 Onclave checks for that repository. No file-filter `--` after `pnpm test`.
   - Done when documentation matches validated behavior and all agreed agent-owned checks pass or have a precise task-related defect fixed. Local Git integration is authorized by `/do-it` unless `--no-merge` is specified; push remains separately authorized.
-  - Evidence: Not started.
+  - Evidence: Updated root changelog and Pi runtime/subagent/Onclave docs. Final dotfiles checks passed: typecheck; 12 files/110 tests in the agreed suite; `check:runtime`; and offline Onclave smoke. Broad `pnpm test subagent` has 7 target-baseline failures (unauthenticated Sol registry plus pre-existing session/record assertions), reproduced unchanged in the target checkout.
 
 ## Agreed validation and current handoff
 
-- Status: **ready for `/do-it` execution**, not in progress.
-- Completed work: planning investigation only; source note added earlier at `pi/profiles/default/extensions/profile-reload.ts` and existing prior-task changes must be preserved. No Git or validation was run while creating this plan.
-- Next: invoke `/do-it` for implementation and authorized local Git closeout; then record targets and start independent T1/T2/T3/T5/T6 as appropriate.
-- Open behavior decisions: none. Ask only if implementation evidence shows an agreed behavior cannot be preserved without changing scope or acceptance.
-- Verification limits: attached-client typing, live Herdr child control, and deployed Onclave presence are not proven by offline tests; do not label them passed. They are not required manual acceptance gates.
+- Status: **implementation and agreed agent-owned checks complete; integration blocked on module publication authorization**.
+- Completed work: T1 through T7 are implemented and validated in dotfiles worktree `C:/Users/mglenn/.dotfiles/.worktrees/lean-pi-runtime`, branch `task/lean-pi-runtime`, based on recorded target `main` at `677dcc442f96fd60518b30be9aa3b5f91b410cdb`. Onclave T5 is committed in worktree `C:/Users/mglenn/.dotfiles/.worktrees/lean-pi-runtime-onclave`, branch `task/lean-pi-runtime-onclave`, commit `ceab7fb`.
+- Next: the operator must authorize pushing the Onclave module commit. Then publish the module branch/commit, update the dotfiles gitlink to the remotely reachable commit, archive this spec, commit the coordinated task, and dispatch Integrator from the recorded target checkout.
+- Open behavior decisions: none. Push authorization is the only consequential prerequisite.
+- Verification limits: attached-client typing, live Herdr child control, broker-backed/deployed Onclave presence, and deployment are not proven. They are non-blocking manual/live limits. No push or deployment was performed.
 
 ## Closeout on `/do-it`
 

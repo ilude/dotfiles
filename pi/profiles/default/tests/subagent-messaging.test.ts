@@ -4,10 +4,11 @@ import { fileURLToPath } from "node:url";
 import { RpcChild } from "../lib/subagents/rpc.ts";
 import { VisibleChild } from "../lib/subagents/visible.ts";
 import type { AgentDefinition } from "../lib/subagents/definitions.ts";
-import type { MessageOptions } from "../lib/subagents/transport.ts";
+import { ChildTransport, reportParentActivity, type MessageOptions } from "../lib/subagents/transport.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const children: RpcChild[] = [];
+const transports: ChildTransport[] = [];
 const definition: AgentDefinition = { name: "test", description: "test", tools: ["subagent_parent"], delegates: [], skills: [], prompt: "test", source: "profile", filePath: "test.md", model: "openai-codex/test", effort: "low" };
 
 function child(instructions = "[hold]") {
@@ -20,11 +21,21 @@ function child(instructions = "[hold]") {
 
 afterEach(async () => {
   await Promise.all(children.splice(0).map(child => child.cancel()));
+  await Promise.all(transports.splice(0).map(transport => transport.close()));
   delete process.env.PI_SUBAGENT_BIN;
   delete process.env.PI_SUBAGENT_BIN_ARGS;
 });
 
 describe("native subagent message boundaries", () => {
+  it("reports visible activity as a change-driven message rather than a poll", async () => {
+    const requests: Array<{ type: string; payload?: unknown }> = [];
+    const transport = new ChildTransport(async (_identity, message) => { requests.push(message); return { accepted: true }; });
+    transports.push(transport);
+    const endpoint = await transport.register({ child: "visible-child", run: "visible-run", origin: "messaging-origin" });
+    await reportParentActivity(endpoint, { phase: "tool", toolName: "grep" });
+    expect(requests).toEqual([{ type: "app-activity", payload: { phase: "tool", toolName: "grep" } }]);
+  });
+
   it("steers a busy child without waiting for settlement", async () => {
     const instance = child();
     const settled = instance.start();

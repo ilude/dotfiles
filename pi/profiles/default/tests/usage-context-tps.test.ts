@@ -22,9 +22,10 @@ function runtime(register: (pi: ExtensionAPI) => void, sm = SessionManager.inMem
   const commands = new Map<string, any>();
   const renderers = new Map<string, any>();
   const statuses = new Map<string, string>();
+  const statusCalls: [string, string | undefined][] = [];
   const ui = {
     theme: { fg: (_color: string, value: string) => value },
-    setStatus: (key: string, value?: string) => value ? statuses.set(key, value) : statuses.delete(key),
+    setStatus: (key: string, value?: string) => { statusCalls.push([key, value]); return value ? statuses.set(key, value) : statuses.delete(key); },
     notify: vi.fn(), setWidget: vi.fn(),
   };
   const ctx = {
@@ -37,6 +38,7 @@ function runtime(register: (pi: ExtensionAPI) => void, sm = SessionManager.inMem
   };
   const events = createEventBus();
   events.on(RELOAD_REQUEST, reply => (reply as Function)({ needed: true }));
+  events.on("default:profile-reload:refresh", reply => (reply as Function)({ needed: true }));
   const pi = {
     events,
     on: (name: string, handler: any) => hooks.set(name, [...(hooks.get(name) ?? []), handler]),
@@ -47,7 +49,7 @@ function runtime(register: (pi: ExtensionAPI) => void, sm = SessionManager.inMem
     getAllTools: () => [{ name: "read", description: "Read a file", parameters: { type: "object" } }],
   };
   register(pi as unknown as ExtensionAPI);
-  return { ctx, pi, commands, renderers, statuses, sm,
+  return { ctx, pi, commands, renderers, statuses, statusCalls, sm,
     emit: async (name: string, event: any = {}) => { for (const fn of hooks.get(name) ?? []) await fn(event, ctx); },
     reports: () => sm.getEntries().filter(e => e.type === "custom" && e.customType === "codex-usage-report"),
   };
@@ -263,14 +265,27 @@ describe("generation metrics", () => {
     await r.emit("session_start"); await r.emit("agent_start");
     const partial = { ...assistant(0), usage: { output: 0 } };
     await r.emit("message_start", { message: partial });
-    now = 2000; await vi.advanceTimersByTimeAsync(250);
+    now = 2000; await vi.advanceTimersByTimeAsync(500);
     expect(r.statuses.get("tps")).toContain("waiting 2.0s");
     await r.emit("message_update", { message: partial, assistantMessageEvent: { type: "thinking_delta", delta: "x".repeat(40) } });
     now = 3000;
     await r.emit("message_update", { message: partial, assistantMessageEvent: { type: "text_delta", delta: "x".repeat(40) } });
-    expect(r.statuses.get("tps")).toContain("~20 tok/s");
     expect(r.statuses.get("tps")).toContain("first 2.0s");
+    const streamUpdates = () => r.statusCalls.filter(([key, value]) => key === "tps" && value?.includes("tok/s"));
+    expect(streamUpdates()).toHaveLength(0); // first-token update is immediate, but the rate is still pending
+    now = 3000;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(r.statuses.get("tps")).toContain("~20 tok/s");
+    expect(streamUpdates()).toHaveLength(1);
+    for (let i = 0; i < 20; i++) {
+      await r.emit("message_update", { message: partial, assistantMessageEvent: { type: "text_delta", delta: "x" } });
+    }
+    expect(streamUpdates()).toHaveLength(1);
+    now = 3500;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(streamUpdates()).toHaveLength(2); // recurring publication is bounded to 2/s
     now = 4000; await r.emit("message_end", { message: assistant() });
+    expect(streamUpdates()).toHaveLength(3); // final update
     now = 14000; // tool execution, not streaming
     await r.emit("agent_end");
     expect(r.statuses.has("tps")).toBe(false);

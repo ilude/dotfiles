@@ -1,18 +1,18 @@
 import { writeFileSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { requestParent, type ChildEndpoint } from "./transport.ts";
+import { requestParent, reportParentActivity, waitForParentEvents, type ChildEndpoint } from "./transport.ts";
 import { outcomeText } from "./status.ts";
 import { presentationDetails } from "./presentation.ts";
 import type { Delivery } from "./runtime.ts";
 import { registerProfileCommand } from "../profile-command.ts";
-interface State { generation:number;seen:Set<string>;ctx?:ExtensionContext;tick?:()=>Promise<void>;timer?:ReturnType<typeof setInterval>;busy:boolean;userOwned:boolean;parentGone:boolean;turn:number;last:string;error?:string;toolError?:string;prompt:boolean;redirectMessage?:string;unbind?:()=>void;activity?:{phase:"model"|"tool";toolName?:string};delivered?:Set<string>;queuedDelivery?:string }
+interface State { generation:number;seen:Set<string>;ctx?:ExtensionContext;userOwned:boolean;parentGone:boolean;turn:number;last:string;error?:string;toolError?:string;prompt:boolean;redirectMessage?:string;unbind?:()=>void;activity?:{phase:"model"|"tool";toolName?:string};delivered?:Set<string>;queuedDelivery?:string;deliveryAck?:()=>void }
 const key=Symbol.for("dotfiles.pi.subagent.surface.v1");
 export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
  const raw=process.env.PI_SUBAGENT_ENDPOINT;
  if(!raw)return; // Offline loader fixtures have no parent process.
  const endpoint=JSON.parse(raw) as ChildEndpoint;
  const global=globalThis as typeof globalThis&{[key]?:State};
- const state=global[key]??={generation:0,seen:new Set(),busy:false,userOwned:false,parentGone:false,turn:0,last:"",prompt:false};
+ const state:State=global[key]??(global[key]={generation:0,seen:new Set(),userOwned:false,parentGone:false,turn:0,last:"",prompt:false});
  state.delivered??=new Set();
  const receiveOutcome=async(delivery?:Delivery)=>{
   if(!delivery||state.userOwned||!state.ctx)return;
@@ -31,7 +31,7 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
  const unavailable=()=>{
   state.parentGone=true;
   if(visible&&state.userOwned){mark(true);return}
-  void state.ctx?.abort();state.ctx?.shutdown();
+  void state.ctx?.abort?.();state.ctx?.shutdown?.();
  };
  const intervene=async()=>{
   mark(true);
@@ -45,40 +45,54 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   state.ctx=ctx;state.userOwned=false;state.parentGone=false;state.prompt=false;state.redirectMessage=undefined;state.error=undefined;state.toolError=undefined;state.last="";state.queuedDelivery=undefined;
   const generation=++state.generation;
   state.unbind?.();
+  const controller=new AbortController();
+  state.unbind=()=>controller.abort();
   if(visible){
-   try{await requestParent(endpoint,{type:"app-ready",payload:{tools:pi.getActiveTools()}})}catch{unavailable()}
+   try{await requestParent(endpoint,{type:"app-ready",payload:{tools:pi.getActiveTools()}})}catch{unavailable();return}
   }
-  state.tick=async()=>{
-   if(!state.ctx||state.parentGone)return;
+  const consume=async()=>{
    try{
-    if(!visible){const response=await requestParent(endpoint,{type:"heartbeat"}) as {delivery?:Delivery};await receiveOutcome(response.delivery);return}
-    const activity=state.activity;
-    const response=await requestParent(endpoint,{type:"app-poll",payload:activity}) as {commands:Array<{id:string;type:string;message?:string;delivery?:"queued"|"immediate"}>;delivery?:Delivery};
-    if(state.activity===activity)state.activity=undefined;
-    await receiveOutcome(response.delivery);
-    for(const command of response.commands){
+    while(generation===state.generation&&state.ctx&&!controller.signal.aborted&&!state.parentGone){
+     const batch=await waitForParentEvents(endpoint,visible?"visible-app":"headless-app",controller.signal);
      if(generation!==state.generation||!state.ctx)return;
-     if(!state.seen.has(command.id)){
-      if(command.type==="intervene"){mark(true);await requestParent(endpoint,{type:"intervention-ready"})}
-      else if(command.type==="handback")await handback();
-      else if(command.type==="redirect"&&command.message&&!state.userOwned){state.redirectMessage=command.message;state.ctx.abort()}
-      else if(command.type==="message"&&!state.userOwned&&command.message){state.last="";pi.sendUserMessage(command.message,{deliverAs:command.delivery==="queued"?"steer":"followUp"})}
-      else continue;
-      state.seen.add(command.id);
+     const delivery=batch.consumer==="visible-host"?undefined:batch.delivery as Delivery|undefined;
+     await receiveOutcome(delivery);
+     if(batch.consumer==="visible-app")for(const command of batch.commands){
+      if(generation!==state.generation||!state.ctx)return;
+      if(!state.seen.has(command.id)){
+       if(command.type==="intervene"){mark(true);await requestParent(endpoint,{type:"intervention-ready"})}
+       else if(command.type==="handback")await handback();
+       else if(command.type==="redirect"&&command.message&&!state.userOwned){state.redirectMessage=command.message;state.ctx.abort()}
+       else if(command.type==="message"&&!state.userOwned&&command.message){state.last="";pi.sendUserMessage(command.message,{deliverAs:command.delivery==="queued"?"steer":"followUp"})}
+       else continue;
+       state.seen.add(command.id);
+      }
+      await requestParent(endpoint,{type:"app-ack",payload:command.id});
      }
-     await requestParent(endpoint,{type:"app-ack",payload:command.id});
+     if(delivery&&state.queuedDelivery===delivery.deliveryId){
+      let finish!:()=>void;
+      await new Promise<void>(resolve=>{
+       finish=()=>{controller.signal.removeEventListener("abort",finish);resolve()};
+       state.deliveryAck=finish;
+       controller.signal.addEventListener("abort",finish,{once:true});
+      });
+      if(state.deliveryAck===finish)state.deliveryAck=undefined;
+     }
     }
-   }catch{if(generation===state.generation)unavailable()}
+   }catch{if(generation===state.generation&&!controller.signal.aborted)unavailable()}
   };
-  state.timer??=setInterval(()=>{if(state.busy)return;state.busy=true;void state.tick?.().finally(()=>{state.busy=false})},200);
-  state.timer.unref();
+  void consume();
  });
  pi.on("message_end",async event=>{
   const message=event.message as any;
   if(message.role!=="custom"||message.customType!=="subagent-result"||message.details?.parentId!==endpoint.child)return;
   const id=message.details.deliveryId;
-  state.delivered!.add(id);state.queuedDelivery=undefined;
-  try{await requestParent(endpoint,{type:"outcome-ack",payload:id})}catch{unavailable()}
+  state.delivered!.add(id);
+  const isCurrentDelivery=state.queuedDelivery===id;
+  if(isCurrentDelivery)state.queuedDelivery=undefined;
+  try{await requestParent(endpoint,{type:"outcome-ack",payload:id})}catch{unavailable()}finally{
+   if(isCurrentDelivery){state.deliveryAck?.();state.deliveryAck=undefined;}
+  }
  });
  pi.on("input",async event=>{
   if(visible&&event.source==="interactive"&&!state.prompt){
@@ -89,12 +103,17 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
  pi.on("ui_prompt_start",()=>{state.prompt=true});
  pi.on("ui_prompt_end",()=>{state.prompt=false});
  if(visible){
-  pi.on("turn_start",()=>{state.activity={phase:"model"}});
-  pi.on("message_update",()=>{state.activity={phase:"model"}});
-  pi.on("tool_execution_start",event=>{state.activity={phase:"tool",toolName:event.toolName}});
-  pi.on("tool_execution_update",event=>{state.activity={phase:"tool",toolName:event.toolName}});
+  const activity=(value:{phase:"model"|"tool";toolName?:string})=>{
+   if(state.activity?.phase===value.phase&&state.activity?.toolName===value.toolName)return;
+   state.activity=value;
+   void reportParentActivity(endpoint,value).catch(()=>unavailable());
+  };
+  pi.on("turn_start",()=>activity({phase:"model"}));
+  pi.on("message_update",()=>activity({phase:"model"}));
+  pi.on("tool_execution_start",event=>activity({phase:"tool",toolName:event.toolName}));
+  pi.on("tool_execution_update",event=>activity({phase:"tool",toolName:event.toolName}));
   pi.on("tool_execution_end",event=>{
-   state.activity={phase:"model"};
+   activity({phase:"model"});
    if((event as any).isError)state.toolError=(event as any).toolName?`${(event as any).toolName} failed: ${String((event as any).result?.content?.filter?.((part:any)=>part.type==="text").map?.((part:any)=>part.text).join?.("\n")||"tool returned an error")}`:"Tool failed";
   });
  }
@@ -112,9 +131,8 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   const error=state.error??state.toolError;
   try{await requestParent(endpoint,{type:"turn",payload:{turn:++state.turn,text:state.last,error}})}catch{unavailable()}
  });
- pi.on("session_shutdown",event=>{
+ pi.on("session_shutdown",()=>{
   state.unbind?.();state.unbind=undefined;state.ctx=undefined;
-  if(event.reason==="quit"){if(state.timer)clearInterval(state.timer);state.timer=undefined}
  });
  registerProfileCommand(pi,"subagent-return",{description:"Hand this child back to its originating parent",handler:async()=>handback()});
 }

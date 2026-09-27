@@ -33,7 +33,7 @@ export class VisibleChild extends RpcChild {
  private interventionReady=false;
  private commands:Array<{id:string;type:string;message?:string;delivery?:"queued"|"immediate"}>=[];
  constructor(spec:LaunchSpec,childExtension:string,profileDir:string,layout?:SubagentLayout){super(spec,childExtension,profileDir);this.layout=layout??new SubagentLayout(this.cli)}
- private enqueue(command:{type:string;message?:string;delivery?:"queued"|"immediate"}){this.commands.push({id:randomUUID(),...command})}
+ private enqueue(command:{type:string;message?:string;delivery?:"queued"|"immediate"}){this.commands.push({id:randomUUID(),...command});this.onParentEvent?.("visible-app")}
  private startup?:ReturnType<typeof setTimeout>;
  private launchDone?:Promise<void>;
  override start(endpoint?:ChildEndpoint):Promise<ChildRecord>{
@@ -121,6 +121,7 @@ export class VisibleChild extends RpcChild {
   }
   if(message.type==="handback"){
    this.record.userOwned=false;this.interventionReady=false;
+   this.onParentEvent?.("visible-app");
    if(this.record.status==="settled"&&!this.record.retained)void this.cleanupOwnedResources();
    return{accepted:true};
   }
@@ -141,7 +142,7 @@ export class VisibleChild extends RpcChild {
    if(typeof data.message!=="string")throw new Error("Message required");
    this.enqueue({type:"message",message:data.message,delivery:type==="steer"?"queued":undefined});return;
   }
-  if(type==="abort"){this.forceStop=true;this.stopping=true;return}
+  if(type==="abort"){this.forceStop=true;this.stopping=true;this.onParentEvent?.("visible-host");return}
   throw new Error(`Unsupported visible command ${type}`);
  }
  override async message(value:string,options:MessageOptions={}){
@@ -168,6 +169,7 @@ export class VisibleChild extends RpcChild {
  protected override async stopProcess(){
   if(this.record.userOwned&&!this.forceStop)return;
   this.stopping=true;
+  this.onParentEvent?.("visible-host");
   if(this.startup)clearTimeout(this.startup);
   try{await this.launchDone}catch{ /* Exact returned pane, when available, still belongs to this launch. */ }
   const deadline=Date.now()+10_000;

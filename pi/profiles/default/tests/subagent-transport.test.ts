@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer } from "node:net";
-import { ChildTransport, requestParent } from "../lib/subagents/transport.ts";
+import { ChildTransport, requestParent, waitForParentEvents } from "../lib/subagents/transport.ts";
 const servers: ChildTransport[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map(server => server.close())); });
 function server(handler: ConstructorParameters<typeof ChildTransport>[0]) {
@@ -37,6 +37,81 @@ describe("authenticated child transport", () => {
       expect(calls).toBe(expected);
       expect(diagnostic.mock.calls.at(-1)?.[0]).toContain("action=fail");
     } finally { diagnostic.mockRestore(); await new Promise<void>(resolve => socketServer.close(() => resolve())); }
+  });
+
+  it("holds one event request while idle and wakes it with the host stop event", async () => {
+    let calls = 0;
+    let publish!: (value: unknown) => void;
+    const transport = server((_identity, message, signal) => {
+      calls++;
+      expect(message).toMatchObject({ type: "parent-events", payload: { consumer: "visible-host" } });
+      return new Promise((resolve, reject) => {
+        publish = resolve;
+        signal.addEventListener("abort", () => reject(new Error("request disconnected")), { once: true });
+      });
+    });
+    const endpoint = await transport.register(identity);
+    let complete = false;
+    const waiting = waitForParentEvents(endpoint, "visible-host").then(value => { complete = true; return value; });
+    await vi.waitFor(() => expect(calls).toBe(1));
+    await new Promise(resolve => setTimeout(resolve, 40));
+    expect(complete).toBe(false);
+    expect(calls).toBe(1);
+    publish({ consumer: "visible-host", stop: true, force: false });
+    await expect(waiting).resolves.toEqual({ consumer: "visible-host", stop: true, force: false });
+    expect(calls).toBe(1);
+  });
+
+  it("cancels a held event request and disconnects the parent waiter", async () => {
+    let calls = 0, disconnected = false;
+    const transport = server((_identity, _message, signal) => {
+      calls++;
+      return new Promise((_resolve, reject) => signal.addEventListener("abort", () => { disconnected = true; reject(new Error("request disconnected")); }, { once: true }));
+    });
+    const endpoint = await transport.register(identity), controller = new AbortController();
+    const waiting = waitForParentEvents(endpoint, "headless-app", controller.signal);
+    const assertion = expect(waiting).rejects.toThrow();
+    await vi.waitFor(() => expect(calls).toBe(1));
+    controller.abort();
+    await assertion;
+    await vi.waitFor(() => expect(disconnected).toBe(true));
+    expect(calls).toBe(1);
+  });
+
+  it("revokes an owned endpoint by disconnecting its held event request", async () => {
+    let received = false, disconnected = false;
+    const transport = server((_identity, _message, signal) => new Promise((_resolve, reject) => {
+      received = true;
+      signal.addEventListener("abort", () => { disconnected = true; reject(new Error("endpoint revoked")); }, { once: true });
+    }));
+    const endpoint = await transport.register({ ...identity, child: "child-b" });
+    const endpointWait = waitForParentEvents(endpoint, "headless-app");
+    const assertion = expect(endpointWait).rejects.toThrow();
+    await vi.waitFor(() => expect(received).toBe(true));
+    transport.revoke("child-b");
+    await assertion;
+    expect(disconnected).toBe(true);
+  });
+
+  it("reports parent loss to a held event request and clears its waiter", async () => {
+    let received = false, disconnected = false;
+    const transport = server((_identity, _message, signal) => new Promise((_resolve, reject) => {
+      received = true;
+      signal.addEventListener("abort", () => { disconnected = true; reject(new Error("owner closed")); }, { once: true });
+    }));
+    const endpoint = await transport.register(identity);
+    const waiting = waitForParentEvents(endpoint, "headless-app");
+    const assertion = expect(waiting).rejects.toThrow();
+    await vi.waitFor(() => expect(received).toBe(true));
+    await transport.close();
+    await assertion;
+    expect(disconnected).toBe(true);
+  });
+
+  it("validates event channel payloads before exposing them to consumers", async () => {
+    const transport = server(async () => ({ consumer: "visible-app", commands: [{ id: "bad", type: "message", delivery: "later" }] }));
+    const endpoint = await transport.register(identity);
+    await expect(waitForParentEvents(endpoint, "visible-app")).rejects.toThrow(/command batch/);
   });
 
   it("does not retry an explicit parent rejection even for polls", async () => {
