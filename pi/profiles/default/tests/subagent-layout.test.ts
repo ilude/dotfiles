@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createPaneFocus, focusedPane } from "../lib/subagents/herdr-layout-api.ts";
+import { createPaneFocus, currentPaneIdentity, focusedPane } from "../lib/subagents/herdr-layout-api.ts";
 
 vi.mock("../lib/subagents/herdr-layout-api.ts", async importOriginal => ({
   ...await importOriginal<typeof import("../lib/subagents/herdr-layout-api.ts")>(),
@@ -14,7 +14,7 @@ class LayoutFixture {
   focusAfterOpen?: string;
   focusAfterSwap?: string;
   panes = new Map<string, any>([
-    ["w1:p1", { pane_id: "w1:p1", tab_id: "w1:t1", workspace_id: "w1", rect: { x: 0, y: 0, width: 100, height: 40 } }],
+    ["w1:p1", { pane_id: "w1:p1", tab_id: "w1:t1", workspace_id: "w1", terminal_id: "caller-terminal", rect: { x: 0, y: 0, width: 100, height: 40 } }],
     ["w2:p1", { pane_id: "w2:p1", tab_id: "w2:t1", workspace_id: "w2", rect: { x: 0, y: 0, width: 100, height: 40 } }],
   ]);
   focus = "w2:p1";
@@ -24,6 +24,7 @@ class LayoutFixture {
   failTabRename = false;
   failCreatedInspect = false;
   failLayout = false;
+  failOpen = false;
   tabs = new Set(["w1:t1", "w2:t1", "w1:manual"]);
   tabTitles = new Map([["w1:t1", "drift"], ["w2:t1", "unrelated"], ["w1:manual", "Manual tab"]]);
   constructor() {
@@ -112,6 +113,7 @@ class LayoutFixture {
         if (wasFocused) this.focus = "w1:p1";
         return "";
       }
+      if (this.failOpen) throw new Error("open failed");
       const target = this.panes.get(args[args.indexOf("--target-pane") + 1]);
       const tabId = args.includes("--placement") && args[args.indexOf("--placement") + 1] === "tab" ? `w1:t${this.nextTab++}` : target.tab_id;
       this.tabs.add(tabId);
@@ -136,6 +138,37 @@ function allocations(count: number) {
 }
 
 describe("subagent layout contract", () => {
+  it("resolves a stale inherited caller alias to its current public pane identity", async () => {
+    const cli: HerdrCli = async args => {
+      expect(args).toEqual(["pane","current","--current"]);
+      return JSON.stringify({result:{pane:{pane_id:"w1:p9",tab_id:"w1:t3",workspace_id:"w1",terminal_id:"term-caller"}}});
+    };
+    await expect(currentPaneIdentity(cli)).resolves.toEqual({pane_id:"w1:p9",tab_id:"w1:t3",workspace_id:"w1",terminal_id:"term-caller"});
+  });
+
+  it("rebinds an empty failed layout group only to the same caller terminal", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const request = { cwd:"C:/work",title:"Child",plugin:"local.pi",entrypoint:"pi" };
+    fixture.failOpen=true;
+    await expect(layout.place("origin",{...request,childId:"failed",callerPane:"w1:p1"})).rejects.toThrow("open failed");
+    fixture.failOpen=false;
+    fixture.panes.set("w1:p9",{pane_id:"w1:p9",tab_id:"w1:t3",workspace_id:"w1",terminal_id:"caller-terminal",rect:{x:0,y:0,width:100,height:40}});
+    fixture.tabs.add("w1:t3"); fixture.tabTitles.set("w1:t3","moved");
+    await expect(layout.place("origin",{...request,childId:"next",callerPane:"w1:p9"})).resolves.toMatchObject({childId:"next",tabId:"w1:t3"});
+  });
+
+  it("rejects rebinding an empty failed layout group to another terminal", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const request = { cwd:"C:/work",title:"Child",plugin:"local.pi",entrypoint:"pi" };
+    fixture.failOpen=true;
+    await expect(layout.place("origin",{...request,childId:"failed",callerPane:"w1:p1"})).rejects.toThrow("open failed");
+    fixture.failOpen=false;
+    fixture.panes.set("w1:p9",{pane_id:"w1:p9",tab_id:"w1:t3",workspace_id:"w1",terminal_id:"other-terminal",rect:{x:0,y:0,width:100,height:40}});
+    await expect(layout.place("origin",{...request,childId:"next",callerPane:"w1:p9"})).rejects.toThrow("caller process identity changed");
+  });
+
   it("launches from the surviving caller after all tracked children disappeared", async () => {
     const fixture = new LayoutFixture();
     const layout = new SubagentLayout(fixture.cli);

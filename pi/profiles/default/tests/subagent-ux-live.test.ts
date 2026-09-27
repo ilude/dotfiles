@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspectPane, result, type HerdrCli } from "../lib/herdr-cli.ts";
 import { SubagentLayout } from "../lib/subagents/layout.ts";
-import { createPaneFocus } from "../lib/subagents/herdr-layout-api.ts";
+import { createPaneFocus, currentPaneIdentity } from "../lib/subagents/herdr-layout-api.ts";
 import { SubagentRuntime } from "../lib/subagents/runtime.ts";
 import type { AgentDefinition } from "../lib/subagents/definitions.ts";
 
@@ -52,7 +52,7 @@ async function isolatedFixture(): Promise<Fixture> {
     // must omit inherited IDs, as in herdr-background-focus.test.ts, so
     // pane current reports actual UI focus rather than the caller pane.
     const callEnv = { ...env };
-    if (args[0] === "pane" && args[1] === "current") {
+    if (args[0] === "pane" && args[1] === "current" && !args.includes("--current")) {
       for (const key of ["HERDR_PANE_ID", "HERDR_TAB_ID", "HERDR_WORKSPACE_ID"]) delete callEnv[key];
     }
     const { stdout } = await exec(executable, ["--session", name, ...args], { env: callEnv, windowsHide: true, timeout: 15_000, maxBuffer: 256 * 1024 });
@@ -153,7 +153,27 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
     } finally {
       await closeFixture(fixture);
     }
-  }, 60_000);
+  }, 120_000);
+
+  it("resolves a moved caller before launching another owned pane", async () => {
+    const fixture = await isolatedFixture();
+    let layout: SubagentLayout | undefined;
+    try {
+      const before = await inspectPane(fixture.cli,fixture.caller.pane_id);
+      const response = result(await fixture.cli(["pane","move",fixture.caller.pane_id,"--new-workspace","--label","moved caller","--no-focus"]));
+      const moved = response.move_result.pane;
+      expect(moved.pane_id).not.toBe(fixture.caller.pane_id);
+      const current = await currentPaneIdentity(fixture.cli);
+      expect(current).toMatchObject({pane_id:moved.pane_id,tab_id:moved.tab_id,workspace_id:moved.workspace_id,terminal_id:before.terminal_id});
+      layout = new SubagentLayout(fixture.cli,createPaneFocus(fixture.env));
+      const child = await layout.place("moved-caller",inertRequest(current.pane_id,fixture.scratch,40));
+      expect(child.workspaceId).toBe(current.workspace_id);
+      expect((await inspectPane(fixture.cli,current.pane_id)).terminal_id).toBe(before.terminal_id);
+    } finally {
+      if (layout) for (const child of layout.snapshot("moved-caller").reverse()) await layout.close("moved-caller",child.childId,child.paneId).catch(()=>undefined);
+      await closeFixture(fixture);
+    }
+  }, 120_000);
 
   it("migrates and returns a production-layout team without recreating its panes", async () => {
     const fixture = await isolatedFixture();

@@ -47,6 +47,7 @@ export class LayoutReconciliationError extends Error {
 type OwnedLayoutChild = LayoutChild & { title: string; parentId?: string; role: string; order: number };
 interface Group {
   callerPane: string;
+  callerTerminalId?: string;
   callerTab: string;
   workspaceId: string;
   children: Map<string, OwnedLayoutChild>;
@@ -147,10 +148,7 @@ export class SubagentLayout {
 
   private group(origin: string, callerPane: string): Group {
     const existing = this.groups.get(origin);
-    if (existing) {
-      if (existing.callerPane !== callerPane) throw new Error("Visible child caller changed within an origin");
-      return existing;
-    }
+    if (existing) return existing;
     const group: Group = {
       callerPane, callerTab: "", workspaceId: "", children: new Map(), tabs: new Map(), managedTabTitles: new Map(),
       disappeared: new Map(), nextOrder: 0, teamTabIndexes: new Map(), dirtyTabs: new Set(), controllerRects: new Map(), halfVacancies: new Map(), rightSplitLowerSlots: new Map(), tail: Promise.resolve(),
@@ -168,9 +166,21 @@ export class SubagentLayout {
   private async placeLocked(group: Group, request: LayoutPlacementRequest): Promise<LayoutPlacement> {
     if (group.children.has(request.childId)) throw new Error("Visible child already has a layout slot");
     const caller = await inspectPane(this.cli, request.callerPane);
+    const terminalId = typeof caller.terminal_id === "string" ? caller.terminal_id : undefined;
     if (!group.callerTab) {
+      group.callerPane = request.callerPane;
+      group.callerTerminalId = terminalId;
       group.callerTab = String(caller.tab_id);
       group.workspaceId = String(caller.workspace_id);
+    } else if (request.callerPane !== group.callerPane) {
+      if (group.children.size) throw new Error("Visible child caller changed while owned panes are active");
+      if (group.callerTerminalId && terminalId !== group.callerTerminalId) throw new Error("Visible child caller process identity changed");
+      group.callerPane = request.callerPane;
+      group.callerTerminalId = terminalId ?? group.callerTerminalId;
+      group.callerTab = String(caller.tab_id);
+      group.workspaceId = String(caller.workspace_id);
+      group.controllerRects.clear();
+      group.dirtyTabs.clear();
     } else if (caller.tab_id !== group.callerTab || caller.workspace_id !== group.workspaceId) {
       throw new Error("Visible child caller workspace changed");
     }

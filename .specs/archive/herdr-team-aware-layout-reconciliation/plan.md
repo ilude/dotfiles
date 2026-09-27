@@ -119,7 +119,7 @@ Keep checkbox state, concise evidence, current blockers, and the next action acc
   - Complexity / split hints: avoid coupling launch readiness to a debounce that can hide the exact created pane. Layout correction after close must distinguish successful pane closure from later reconciliation degradation, as the current cleanup contract does.
   - Verify: from `pi/profiles/default`, run `pnpm test subagent-layout.test.ts subagent-cleanup.test.ts`; add focused cases for 1/5/6/10/11/12 ordinary panes, simultaneous departures, several close orders, manual resize becoming dirty, rounding not becoming dirty, degraded topology reporting once, and no mutation of unrelated panes.
   - Done when: ordinary lifecycle churn converges to the agreed five-wide geometry when clean, preserves manual geometry when dirty, and leaves unsafe layouts intact with inspectable bounded diagnostics.
-  - Evidence: Five-wide production placement, lifecycle-boundary dirty detection, serialized reconciliation, existing bounded lifecycle error reporting, and focused layout/cleanup checks pass.
+  - Evidence: Five-wide production placement, lifecycle-boundary dirty detection, serialized reconciliation, stale-caller rebinding guarded by terminal identity, existing bounded lifecycle error reporting, and focused layout/cleanup checks pass.
 
 - [x] **T4: Integrate Team Lead reservation, migration, nested groups, and automatic return**
   - Depends on: T1 passing migration evidence; T2's desired-state API; T3's serialized reconciliation and diagnostic contracts.
@@ -143,7 +143,7 @@ Keep checkbox state, concise evidence, current blockers, and the next action acc
     - `pnpm run check:runtime`
     - `PI_SUBAGENT_UX_LIVE=1 pnpm test subagent-ux-live.test.ts`
   - Done when: finite unit/runtime checks pass, the isolated live test proves exact geometry/process identity and cleanup through twelve panes on the recorded Herdr version, and documentation accurately states both proven behavior and remaining attached-client limits.
-  - Evidence: Typecheck and the 57-test focused layout/cleanup suite pass; the isolated live suite passes three inert scenarios with one separately gated real-model case skipped. Documentation and changelog are updated.
+  - Evidence: Typecheck and the 60-test focused layout/cleanup suite pass; the isolated live suite passes four inert scenarios, including cross-workspace caller-ID resolution followed by placement, with one separately gated real-model case skipped. Documentation and changelog are updated.
 
 - [ ] **T6: Archive, commit, integrate, and clean up the authorized task**
   - Depends on: T1-T5 complete with agreed checks passing and no unresolved migration-policy blocker.
@@ -159,7 +159,7 @@ Keep checkbox state, concise evidence, current blockers, and the next action acc
 - Live acceptance must use a fresh isolated named Herdr server, isolated config/plugin registry, inert processes, and an explicit test socket. Never stop, relink, or mutate the shared production server during tests.
 - Automated evidence does not prove attached-client rendering or whether automatic shrink-return movement feels distracting. That operator observation is a non-blocking verification limit after integration. The settled initial behavior remains automatic return unless the user later asks to disable it.
 - Status: implementation and agent-owned checks complete; task commit/integration pending.
-- Completed work and evidence: T1-T5 are complete. `pnpm run typecheck`, `pnpm run check:runtime`, 57 focused layout/model/cleanup tests, and the isolated live Herdr suite (3 passed, 1 separately gated real-model case skipped) pass. The broader requested subagent command produced 293 passes and 11 skips, plus seven environment/pre-existing failures: unavailable authenticated Codex model resolution and existing session/strategist result-shape assertions unrelated to the touched layout paths. Focused task checks remained green afterward.
+- Completed work and evidence: T1-T5 are complete. `pnpm run typecheck`, `pnpm run check:runtime`, 60 focused layout/model/cleanup tests, and the isolated live Herdr suite (4 passed, 1 separately gated real-model case skipped) pass. The broader requested subagent command produced 293 passes and 11 skips, plus seven environment/pre-existing failures: unavailable authenticated Codex model resolution and existing session/strategist result-shape assertions unrelated to the touched layout paths. Focused task checks remained green afterward.
 - Next: archive and commit the task, then dispatch Integrator from the recorded target checkout.
 - Blockers/open decisions: none.
 - Verification limits: attached-client rendering and whether automatic return feels distracting remain operator-observed, non-blocking limits. The isolated suite proves same-workspace migration/return, five-wide geometry, dirty-state unit behavior, focus, cleanup, and exact terminal identity on the recorded Herdr preview.

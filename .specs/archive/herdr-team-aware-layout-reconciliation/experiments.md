@@ -15,6 +15,7 @@ Installed client/server: `0.9.1-preview.2026-09-21-0ff0f27e2226`, protocol 22.
 - Every moved pane retained its exact `terminal_id`; returned pane IDs were consumed from `move_result.pane` rather than predicted.
 - An unrelated focused pane remained focused through migration and return.
 - The production `SubagentLayout` scenario independently grew a Team Lead group until it required a dedicated tab, verified the complete team's terminal identities, removed the expansion pane, and verified automatic return with the same terminal identities.
+- A caller pane moved to a different workspace received a new public pane ID. Its inherited old ID still resolved through `pane current --current`; a subsequent production-layout placement used the returned live ID and preserved the caller terminal identity.
 - Current preview builds can name a server created under a fully isolated configuration `default` even when the launch command includes a requested session selector. The fixture now discovers the one running session from that isolated configuration instead of waiting for the requested label. Isolation still comes from the unique config and AppData paths.
 
 ## Command and result
@@ -22,8 +23,8 @@ Installed client/server: `0.9.1-preview.2026-09-21-0ff0f27e2226`, protocol 22.
 ```text
 PI_SUBAGENT_UX_LIVE=1 pnpm test subagent-ux-live.test.ts
 Test Files  1 passed (1)
-Tests       3 passed | 1 skipped (4)
-Duration    58.57s
+Tests       4 passed | 1 skipped (5)
+Duration    87.68s
 ```
 
 The skipped case is the separately gated real bundled-Pi/model scenario. The inert movement, production layout, and full geometry scenarios passed.

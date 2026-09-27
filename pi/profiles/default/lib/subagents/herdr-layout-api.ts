@@ -4,6 +4,13 @@ import { result, type HerdrCli } from "../herdr-cli.ts";
 
 export type FocusPane = (paneId: string) => Promise<void>;
 
+export interface CurrentPaneIdentity {
+  pane_id: string;
+  tab_id: string;
+  workspace_id: string;
+  terminal_id?: string;
+}
+
 export interface HerdrTabInfo {
   tab_id: string;
   workspace_id?: string;
@@ -14,6 +21,21 @@ export interface HerdrTabInfo {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+/** Resolve inherited caller context to the pane's current public identity. */
+export async function currentPaneIdentity(cli: HerdrCli): Promise<CurrentPaneIdentity> {
+  const value = result(await cli(["pane", "current", "--current"]));
+  const pane = isRecord(value.pane) ? value.pane : undefined;
+  if (!pane || typeof pane.pane_id !== "string" || typeof pane.tab_id !== "string" || typeof pane.workspace_id !== "string") {
+    throw new Error("Herdr current pane identity is incomplete");
+  }
+  return {
+    pane_id: pane.pane_id,
+    tab_id: pane.tab_id,
+    workspace_id: pane.workspace_id,
+    terminal_id: typeof pane.terminal_id === "string" ? pane.terminal_id : undefined,
+  };
 }
 
 /** Read one exact tab without using focus or substituting the focused tab. */
