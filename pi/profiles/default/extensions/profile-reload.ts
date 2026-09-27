@@ -18,6 +18,10 @@ export default function profileReloadLifecycle(pi: ExtensionAPI): void {
 		const agentDir = getAgentDir();
 		const scope: ReloadScope = {
 			agentDir, cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted(), projectConfigDir: CONFIG_DIR_NAME,
+			// [reload] and /clear track our first-party Pi source and resources, including
+			// repository-owned adapters, not installed third-party pnpm packages.
+			// sourceInfo.path is provenance, not proof of ownership. These paths are
+			// currently unfiltered; enforce that boundary when revising this monitor.
 			loadedPaths: [
 				...pi.getCommands().map(command => command.sourceInfo.path),
 				...pi.getAllTools().map(tool => tool.sourceInfo.path),
