@@ -166,6 +166,17 @@ describe("subagent layout contract", () => {
     expect(layout.snapshot("origin").some(child => child.paneId === children[4].paneId)).toBe(false);
   });
 
+  it("marks controller geometry dirty at a lifecycle boundary and stops automatic resizing", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const request = { callerPane: "w1:p1", cwd: "C:/work", title: "Child", plugin: "local.pi", entrypoint: "pi" };
+    const first = await layout.place("origin", { ...request, childId: "first" });
+    fixture.panes.get(first.paneId).rect.width += 8;
+    const before = fixture.calls.filter(call => call[0] === "pane" && call[1] === "resize").length;
+    await layout.place("origin", { ...request, childId: "second" });
+    expect(fixture.calls.filter(call => call[0] === "pane" && call[1] === "resize")).toHaveLength(before);
+  });
+
   it("settles cleanup when an owned pane has already disappeared", async () => {
     const fixture = new LayoutFixture();
     const layout = new SubagentLayout(fixture.cli);
@@ -176,8 +187,8 @@ describe("subagent layout contract", () => {
     expect(fixture.calls.some(args => args.slice(0, 3).join(" ") === "plugin pane close")).toBe(false);
   });
   it.each([
-    [1, 0, 0, 0], [4, 0, 0, 3], [5, 0, 1, 0], [8, 0, 1, 3],
-    [9, 1, 0, 0], [17, 2, 0, 0],
+    [1, 0, 0, 0], [5, 0, 0, 4], [6, 0, 1, 0], [10, 0, 1, 4],
+    [11, 1, 0, 0], [21, 2, 0, 0],
   ])("allocates child %i at tab %i row %i column %i", (child, tab, row, column) => {
     const slots = allocations(child);
     expect(slots[child - 1]).toEqual({ tabIndex: tab, row, column });
@@ -311,8 +322,8 @@ describe("subagent layout contract", () => {
     expect(new Set(placements.map(placement => placement.paneId)).size).toBe(17);
     expect(placements.map(placement => [placement.tabIndex, placement.row, placement.column])).toContainEqual([0, 1, 0]);
     expect(placements.map(placement => [placement.tabIndex, placement.row, placement.column])).toContainEqual([1, 0, 0]);
-    expect(placements.at(-1)).toMatchObject({ tabIndex: 2, row: 0, column: 0 });
-    expect(fixture.calls.filter(call => call[0] === "plugin" && call[2] === "open" && call.includes("--placement") && call[call.indexOf("--placement") + 1] === "tab")).toHaveLength(2);
+    expect(placements.at(-1)).toMatchObject({ tabIndex: 1, row: 1, column: 1 });
+    expect(fixture.calls.filter(call => call[0] === "plugin" && call[2] === "open" && call.includes("--placement") && call[call.indexOf("--placement") + 1] === "tab")).toHaveLength(1);
     expect(fixture.calls.some(call => call[0] === "pane" && call[1] === "resize" && call.includes("--direction") && ["left", "right"].includes(call[call.indexOf("--direction") + 1]!))).toBe(true);
     expect(fixture.focus).toBe("w2:p1");
     expect(fixture.calls.filter(call => call[0] === "plugin" && call[2] === "open").every(call => call.at(-1) === "--no-focus")).toBe(true);
@@ -321,8 +332,7 @@ describe("subagent layout contract", () => {
     expect(fixture.calls.some(call => call[0] === "pane" && call[1] === "focus")).toBe(false);
     expect(fixture.calls.filter(call => call[0] === "pane" && call[1] === "rename")).toHaveLength(17);
     expect(fixture.calls.filter(call => call[0] === "tab" && call[1] === "rename").map(call => call.slice(2))).toEqual([
-      ["w1:t2", "Clara · explorer 9"], ["w1:t2", "drift · agents 2"],
-      ["w1:t3", "Clara · explorer 17"],
+      ["w1:t2", "Clara · explorer 11"], ["w1:t2", "drift · agents 2"],
     ]);
   });
 
@@ -343,8 +353,7 @@ describe("subagent layout contract", () => {
     expect(fixture.tabTitles.get("w1:manual")).toBe("Manual tab");
     expect(fixture.calls.filter(call => call[0] === "tab" && call[1] === "get" && call[2] === "w1:t1")).toHaveLength(1);
     expect(fixture.calls.filter(call => call[0] === "tab" && call[1] === "rename").map(call => call.slice(2))).toEqual([
-      ["w1:t2", "Child 9"], ["w1:t2", "Manual origin title · agents 2"],
-      ["w1:t3", "Child 17"], ["w1:t3", "Manual origin title · agents 3"],
+      ["w1:t2", "Child 11"], ["w1:t2", "Updated origin title · agents 2"],
     ]);
     expect(fixture.focusRequests).toEqual(["w2:p1"]);
   });
@@ -353,7 +362,7 @@ describe("subagent layout contract", () => {
     const fixture = new LayoutFixture();
     const layout = new SubagentLayout(fixture.cli);
     const request = { callerPane: "w1:p1", cwd: "C:/work", plugin: "local.pi", entrypoint: "pi" };
-    for (let i = 1; i <= 8; i++) await layout.place("origin", { ...request, childId: `child-${i}`, title: `Child ${i}` });
+    for (let i = 1; i <= 10; i++) await layout.place("origin", { ...request, childId: `child-${i}`, title: `Child ${i}` });
     const elena = await layout.place("origin", { ...request, childId: "elena", title: "Elena · reviewer" });
     expect(fixture.tabTitles.get(elena.tabId)).toBe("Elena · reviewer");
     const maya = await layout.place("origin", { ...request, childId: "maya", title: "Maya · developer" });
@@ -373,7 +382,7 @@ describe("subagent layout contract", () => {
     expect(fixture.focus).toBe("w2:p1");
   });
 
-  it.each([9, 12])("preserves manual overflow titles through joins and departures from %i children", async count => {
+  it.each([11, 14])("preserves manual overflow titles through joins and departures from %i children", async count => {
     const fixture = new LayoutFixture();
     const layout = new SubagentLayout(fixture.cli);
     const request = { callerPane: "w1:p1", cwd: "C:/work", plugin: "local.pi", entrypoint: "pi" };
@@ -399,14 +408,14 @@ describe("subagent layout contract", () => {
     const fixture = new LayoutFixture();
     fixture.failTabRename = true;
     const layout = new SubagentLayout(fixture.cli);
-    for (let i = 1; i <= 8; i++) await layout.place("origin", {
+    for (let i = 1; i <= 10; i++) await layout.place("origin", {
       childId: `child-${i}`, callerPane: "w1:p1", cwd: "C:/work", title: `Child ${i}`, plugin: "local.pi", entrypoint: "pi",
     });
     await expect(layout.place("origin", {
-      childId: "child-9", callerPane: "w1:p1", cwd: "C:/work", title: "Child 9", plugin: "local.pi", entrypoint: "pi",
-    })).rejects.toMatchObject({ placement: { paneId: "w1:p10", tabId: "w1:t2" } });
-    expect(layout.snapshot("origin")).toHaveLength(9);
-    expect(fixture.panes.has("w1:p10")).toBe(true);
+      childId: "child-11", callerPane: "w1:p1", cwd: "C:/work", title: "Child 11", plugin: "local.pi", entrypoint: "pi",
+    })).rejects.toMatchObject({ placement: { paneId: "w1:p12", tabId: "w1:t2" } });
+    expect(layout.snapshot("origin")).toHaveLength(11);
+    expect(fixture.panes.has("w1:p12")).toBe(true);
   });
 
   it("does not overwrite a focus switch during later placement or close", async () => {
@@ -428,11 +437,11 @@ describe("subagent layout contract", () => {
   it("replaces an upper-row vacancy above its surviving lower pane without renumbering either row", async () => {
     const fixture = new LayoutFixture();
     const layout = new SubagentLayout(fixture.cli);
-    for (let i = 1; i <= 8; i++) await layout.place("origin", {
+    for (let i = 1; i <= 10; i++) await layout.place("origin", {
       childId: `child-${i}`, callerPane: "w1:p1", cwd: "C:/work", title: `Child ${i}`, plugin: "local.pi", entrypoint: "pi",
     });
     const removed = layout.snapshot("origin").find(child => child.childId === "child-2")!;
-    const lower = layout.snapshot("origin").find(child => child.childId === "child-6")!;
+    const lower = layout.snapshot("origin").find(child => child.childId === "child-7")!;
     await layout.close("origin", removed.childId, removed.paneId);
     expect(layout.snapshot("origin").find(child => child.childId === lower.childId)).toMatchObject({ paneId: lower.paneId, row: 1, column: 1 });
     expect(layout.snapshot("origin").find(child => child.childId === "child-3")).toMatchObject({ row: 0, column: 2 });
@@ -449,15 +458,15 @@ describe("subagent layout contract", () => {
   it("refills both halves of a compacted full column from the matching row tails", async () => {
     const fixture = new LayoutFixture();
     const layout = new SubagentLayout(fixture.cli);
-    for (let i = 1; i <= 8; i++) await layout.place("origin", {
+    for (let i = 1; i <= 10; i++) await layout.place("origin", {
       childId: `child-${i}`, callerPane: "w1:p1", cwd: "C:/work", title: `Child ${i}`, plugin: "local.pi", entrypoint: "pi",
     });
     const upper = layout.snapshot("origin").find(child => child.childId === "child-2")!;
-    const lower = layout.snapshot("origin").find(child => child.childId === "child-6")!;
+    const lower = layout.snapshot("origin").find(child => child.childId === "child-7")!;
     await layout.close("origin", upper.childId, upper.paneId);
     await layout.close("origin", lower.childId, lower.paneId);
     expect(layout.snapshot("origin").filter(child => child.tabIndex === 0).map(child => [child.row, child.column])).toEqual([
-      [0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2],
+      [0, 0], [0, 1], [0, 2], [0, 3], [1, 0], [1, 1], [1, 2], [1, 3],
     ]);
 
     const upperRefill = await layout.place("origin", {
@@ -466,22 +475,22 @@ describe("subagent layout contract", () => {
     const lowerRefill = await layout.place("origin", {
       childId: "lower-refill", callerPane: "w1:p1", cwd: "C:/work", title: "Lower refill", plugin: "local.pi", entrypoint: "pi",
     });
-    expect(upperRefill).toMatchObject({ row: 0, column: 3 });
-    expect(lowerRefill).toMatchObject({ row: 1, column: 3 });
+    expect(upperRefill).toMatchObject({ row: 0, column: 4 });
+    expect(lowerRefill).toMatchObject({ row: 1, column: 4 });
     const refillOpens = fixture.calls.filter(call => call[0] === "plugin" && call[2] === "open").slice(-2);
     expect(refillOpens.map(open => [
       open[open.indexOf("--direction") + 1],
       open[open.indexOf("--target-pane") + 1],
     ])).toEqual([
-      ["right", layout.snapshot("origin").find(child => child.childId === "child-4")!.paneId],
-      ["right", layout.snapshot("origin").find(child => child.childId === "child-8")!.paneId],
+      ["right", layout.snapshot("origin").find(child => child.childId === "child-5")!.paneId],
+      ["right", layout.snapshot("origin").find(child => child.childId === "child-10")!.paneId],
     ]);
   });
 
   it("recreates the upper row when only overflow children remain", async () => {
     const fixture = new LayoutFixture();
     const layout = new SubagentLayout(fixture.cli);
-    for (let i = 1; i <= 9; i++) await layout.place("origin", {
+    for (let i = 1; i <= 11; i++) await layout.place("origin", {
       childId: `child-${i}`, callerPane: "w1:p1", cwd: "C:/work", title: `Child ${i}`, plugin: "local.pi", entrypoint: "pi",
     });
     for (const child of layout.snapshot("origin").filter(child => child.tabIndex === 0)) await layout.close("origin", child.childId, child.paneId);
@@ -490,7 +499,7 @@ describe("subagent layout contract", () => {
     });
     expect(replacement).toMatchObject({ tabIndex: 0, column: 0 });
     expect(fixture.calls).toContainEqual(["pane", "swap", "--source-pane", "w1:p1", "--target-pane", replacement.paneId]);
-    expect(layout.snapshot("origin").find(child => child.childId === "child-9")).toMatchObject({ tabIndex: 1 });
+    expect(layout.snapshot("origin").find(child => child.childId === "child-11")).toMatchObject({ tabIndex: 1 });
   });
 
   it("keeps the exact created pane owned when identity inspection fails", async () => {
@@ -536,7 +545,7 @@ describe("subagent layout contract", () => {
       childId: "first", callerPane: "w1:p1", cwd: "C:/work", title: "Maya · reviewer", plugin: "local.pi", entrypoint: "pi",
     });
     // Fill the caller tab, then create one pane in an owned overflow tab.
-    for (let i = 2; i <= 9; i++) await layout.place("origin", {
+    for (let i = 2; i <= 11; i++) await layout.place("origin", {
       childId: `child-${i}`, callerPane: "w1:p1", cwd: "C:/work", title: `Child ${i}`, plugin: "local.pi", entrypoint: "pi",
     });
     const overflow = (await layout.snapshot("origin")).find(child => child.tabIndex === 1)!;

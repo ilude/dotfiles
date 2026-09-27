@@ -49,7 +49,7 @@ export class VisibleChild extends RpcChild {
    const expected=resolve(this.profileDir,"../../../scripts/pi-herdr-launch.mjs");
    if(!Array.isArray(command)||command.length!==3||typeof command[1]!=="string"||realpathSync.native(command[1])!==realpathSync.native(expected))throw new Error("local.pi is not linked to this profile's repository bootstrap; refusing an unrestricted launch");
    await inspectPane(this.cli,context.pane);
-   const placement=await this.layout.place(this.record.origin,{childId:this.record.id,callerPane:context.pane,cwd:this.spec.cwd,title:`${this.spec.displayName ?? this.spec.definition.name} · ${this.spec.definition.name}`,plugin:"local.pi",entrypoint:"pi",env:[`PI_HERDR_PROFILE_DIR=${this.profileDir}`,`PI_HERDR_SUBAGENT=${JSON.stringify(endpoint)}`]});
+   const placement=await this.layout.place(this.record.origin,{childId:this.record.id,parentId:this.spec.parentId,role:this.spec.definition.name,callerPane:context.pane,cwd:this.spec.cwd,title:`${this.spec.displayName ?? this.spec.definition.name} · ${this.spec.definition.name}`,plugin:"local.pi",entrypoint:"pi",env:[`PI_HERDR_PROFILE_DIR=${this.profileDir}`,`PI_HERDR_SUBAGENT=${JSON.stringify(endpoint)}`]});
    this.record.paneId=placement.paneId;this.record.paneState="open";
   })();
   void this.launchDone.catch(error=>{

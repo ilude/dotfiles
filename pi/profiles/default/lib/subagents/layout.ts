@@ -1,8 +1,9 @@
 import type { HerdrCli } from "../herdr-cli.ts";
 import { createPaneFocus, focusedPane, inspectTab, tabTitle, type FocusPane } from "./herdr-layout-api.ts";
 import { compactPane, inspectLayout, inspectPane, result } from "../herdr-cli.ts";
+import { desiredLayout, PANES_PER_ROW, type DesiredLayoutSlot } from "./layout-model.ts";
 
-export const CHILDREN_PER_ROW = 4;
+export const CHILDREN_PER_ROW = PANES_PER_ROW;
 export const ROWS_PER_TAB = 2;
 export const CHILDREN_PER_TAB = CHILDREN_PER_ROW * ROWS_PER_TAB;
 
@@ -24,6 +25,8 @@ export interface LayoutPlacementRequest {
   plugin: string;
   entrypoint: string;
   env?: string[];
+  parentId?: string;
+  role?: string;
 }
 export interface LayoutPlacement extends LayoutChild {}
 export class LayoutPlacementError extends Error {
@@ -41,12 +44,17 @@ export class LayoutReconciliationError extends Error {
     this.name = "LayoutReconciliationError";
   }
 }
+type OwnedLayoutChild = LayoutChild & { title: string; parentId?: string; role: string; order: number };
 interface Group {
   callerPane: string;
   callerTab: string;
   workspaceId: string;
-  children: Map<string, LayoutChild & { title: string }>;
+  children: Map<string, OwnedLayoutChild>;
   disappeared: Map<string, string>;
+  nextOrder: number;
+  teamTabIndexes: Map<string, number>;
+  dirtyTabs: Set<string>;
+  controllerRects: Map<string, Map<string, {x:number;y:number;width:number;height:number}>>;
   tabs: Map<number, string>;
   managedTabTitles: Map<string, string>;
   halfVacancies: Map<number, Set<number>>;
@@ -77,10 +85,11 @@ export class SubagentLayout {
   private groups = new Map<string, Group>();
   private readonly cli: HerdrCli;
   private readonly focusPane: FocusPane;
-  constructor(cli: HerdrCli, focusPane: FocusPane = createPaneFocus()) { this.cli = cli; this.focusPane = focusPane; }
+  private readonly paneMoved?: (childId: string, paneId: string) => void;
+  constructor(cli: HerdrCli, focusPane: FocusPane = createPaneFocus(), paneMoved?: (childId: string, paneId: string) => void) { this.cli = cli; this.focusPane = focusPane; this.paneMoved = paneMoved; }
 
   snapshot(origin: string): LayoutChild[] {
-    return [...(this.groups.get(origin)?.children.values() ?? [])].map(({ title, ...child }) => child);
+    return [...(this.groups.get(origin)?.children.values() ?? [])].map(({ title: _title, parentId: _parentId, role: _role, order: _order, ...child }) => child);
   }
 
   async place(origin: string, request: LayoutPlacementRequest): Promise<LayoutPlacement> {
@@ -97,6 +106,7 @@ export class SubagentLayout {
       if (!owned || owned.paneId !== paneId) throw new Error("Visible child pane is not owned by this layout");
       const partnerSurvives = [...group.children.values()].some(candidate => candidate.childId !== childId
         && candidate.tabIndex === owned.tabIndex && candidate.column === owned.column && candidate.row !== owned.row);
+      await this.detectDirty(group, owned.tabId, owned.paneId);
       // An operator or exited host may already have removed this exact pane.
       const live = await this.livePanes(group);
       if (live.has(paneId)) await this.cli(["plugin", "pane", "close", paneId]);
@@ -114,9 +124,14 @@ export class SubagentLayout {
           group.rightSplitLowerSlots.delete(owned.tabIndex);
         }
         await this.removeEmptyTab(group, owned);
+        if (!group.dirtyTabs.has(owned.tabId)) await this.returnEligibleTeams(group);
         await this.updateTabTitle(group, owned.tabIndex);
-        await this.balance(group, owned.tabIndex, owned.row);
-        await this.balanceHeight(group);
+        if (!group.dirtyTabs.has(owned.tabId)) {
+          await this.balance(group, owned.tabIndex, owned.row);
+          await this.balanceHeight(group);
+          const survivor = [...group.children.values()].find(child => child.tabId === owned.tabId)?.paneId;
+          if (survivor) await this.rememberGeometry(group, owned.tabId, survivor);
+        }
       } catch (error) {
         throw new LayoutReconciliationError(error);
       } finally {
@@ -138,7 +153,7 @@ export class SubagentLayout {
     }
     const group: Group = {
       callerPane, callerTab: "", workspaceId: "", children: new Map(), tabs: new Map(), managedTabTitles: new Map(),
-      disappeared: new Map(), halfVacancies: new Map(), rightSplitLowerSlots: new Map(), tail: Promise.resolve(),
+      disappeared: new Map(), nextOrder: 0, teamTabIndexes: new Map(), dirtyTabs: new Set(), controllerRects: new Map(), halfVacancies: new Map(), rightSplitLowerSlots: new Map(), tail: Promise.resolve(),
     };
     this.groups.set(origin, group);
     return group;
@@ -160,7 +175,16 @@ export class SubagentLayout {
       throw new Error("Visible child caller workspace changed");
     }
     await this.reconcileMissingPanes(group);
-    const slot = this.nextSlot(group);
+    await this.detectDirty(group, group.callerTab, group.callerPane);
+    const order = group.nextOrder++;
+    const model = desiredLayout([
+      ...[...group.children.values()].map(child => ({childId:child.childId,parentId:child.parentId,role:child.role,order:child.order})),
+      {childId:request.childId,parentId:request.parentId,role:request.role ?? "agent",order},
+    ]);
+    const wanted = model.slots.find(candidate => candidate.childId === request.childId);
+    if (!wanted) throw new Error("Desired layout omitted the visible child");
+    if (wanted.tab.startsWith("team:") && !group.dirtyTabs.has(group.callerTab)) await this.migrateTeam(group, wanted.groupId, model.slots);
+    const slot = wanted.kind === "ordinary" ? this.nextSlot(group) : this.physicalSlot(group, wanted);
     const newOverflowTab = slot.tabIndex > 0 && !group.tabs.has(slot.tabIndex);
     const lowerAnchor = slot.row === 0
       ? [...group.children.values()].find(child => child.tabIndex === slot.tabIndex && child.row === 1 && child.column === slot.column)
@@ -187,13 +211,23 @@ export class SubagentLayout {
     } else if (slot.tabIndex === 0 && slot.row === 0 && slot.column === 0) {
       const opened = await this.openSplit(request, request.callerPane, "down");
       paneId = opened.paneId; tabId = opened.tabId;
-    } else if (slot.column === 0 && slot.row === 0 && slot.tabIndex > 0) {
+    } else if (wanted.anchor || (slot.column === 0 && slot.row === 0 && slot.tabIndex > 0 && !group.tabs.has(slot.tabIndex))) {
       const opened = await this.openTab(request);
       paneId = opened.paneId; tabId = opened.tabId;
+    } else if (wanted.tab.startsWith("team:") && wanted.row === 0 && wanted.column === 0) {
+      const leader = group.children.get(wanted.groupId);
+      if (!leader) throw new Error("Dedicated team leader is unavailable");
+      const opened = await this.openSplit(request, leader.paneId, "down");
+      paneId = opened.paneId; tabId = opened.tabId;
     } else {
-      const target = this.targetFor(group, slot.tabIndex, slot.row, slot.column);
+      const previousTeamSlot = wanted.kind !== "ordinary" && wanted.tab === "origin" && slot.column > 0
+        ? model.slots.find(candidate => candidate.groupId === wanted.groupId && candidate.row === wanted.row && candidate.column === wanted.column-1)
+        : undefined;
+      const sharedTeamTail = previousTeamSlot ? group.children.get(previousTeamSlot.childId) : undefined;
+      const target = sharedTeamTail ?? this.targetFor(group, slot.tabIndex, slot.row, slot.column);
       if (!target) throw new Error("No owned pane available for a new layout slot");
-      const opened = await this.openSplit(request, target.paneId, slot.row === 1 ? "down" : "right");
+      const direction = sharedTeamTail ? "right" : slot.row === 1 ? "down" : "right";
+      const opened = await this.openSplit(request, target.paneId, direction);
       paneId = opened.paneId; tabId = opened.tabId;
     }
       if (!paneId || !tabId) throw new Error("Herdr did not return the created pane identity");
@@ -201,13 +235,16 @@ export class SubagentLayout {
       // Register immediately after creation. If identity verification or polish
       // fails, the visible child can settle this exact returned pane before it
       // is closed.
-      group.children.set(request.childId, { ...owned, title: request.title.slice(0, 160).trim() });
+      group.children.set(request.childId, { ...owned, title: request.title.slice(0, 160).trim(), parentId: request.parentId, role: request.role ?? "agent", order });
       this.slotSet(group.halfVacancies, slot.tabIndex).delete(slot.column);
       if (rightSplitLower) this.slotSet(group.rightSplitLowerSlots, slot.tabIndex).delete(slot.column);
       if (!group.tabs.has(slot.tabIndex)) group.tabs.set(slot.tabIndex, tabId);
       try {
         if (lowerAnchor) {
           await this.swapPreservingFocus(lowerAnchor.paneId, paneId);
+        } else if (wanted.tab.startsWith("team:") && !wanted.anchor && wanted.row === 0 && wanted.column === 0) {
+          const leader = [...group.children.values()].find(child => child.childId === wanted.groupId);
+          if (leader) await this.swapPreservingFocus(leader.paneId, paneId);
         } else if (slot.tabIndex === 0 && slot.row === 0 && slot.column === 0) {
           // Herdr 0.9 has no upward plugin split or non-focusing swap.
           await this.swapPreservingFocus(group.callerPane, paneId);
@@ -219,8 +256,11 @@ export class SubagentLayout {
         }
         await this.updateTabTitle(group, slot.tabIndex, newOverflowTab);
         await this.cli(["pane", "rename", paneId, request.title.slice(0, 160)]);
-        await this.balance(group, slot.tabIndex, slot.row);
-        await this.balanceHeight(group);
+        if (!group.dirtyTabs.has(tabId)) {
+          await this.balance(group, slot.tabIndex, slot.row);
+          await this.balanceHeight(group);
+          await this.rememberGeometry(group, tabId, paneId);
+        }
       } catch (error) {
         throw new LayoutPlacementError(String(error), { ...owned });
       }
@@ -298,10 +338,113 @@ export class SubagentLayout {
         return;
       }
     }
-    const title = members.length === 1 ? members[0].title : `${group.originTitle} · agents ${tabIndex + 1}`;
+    const title = tabIndex >= 1000
+      ? `${members.find(member => member.role === "teamlead")?.title ?? members[0].title} · team`
+      : members.length === 1 ? members[0].title : `${group.originTitle} · agents ${tabIndex + 1}`;
     if (title === previous) return;
     await this.cli(["tab", "rename", tabId, title]);
     group.managedTabTitles.set(tabId, title);
+  }
+
+  private layoutRects(layout: {panes?: unknown}): Map<string,{x:number;y:number;width:number;height:number}> {
+    const rects = new Map<string,{x:number;y:number;width:number;height:number}>();
+    if (!Array.isArray(layout.panes)) return rects;
+    for (const pane of layout.panes as Array<{pane_id?:unknown;rect?:Record<string,unknown>}>) {
+      const rect = pane.rect;
+      if (typeof pane.pane_id === "string" && rect && [rect.x,rect.y,rect.width,rect.height].every(Number.isFinite)) rects.set(pane.pane_id,{x:Number(rect.x),y:Number(rect.y),width:Number(rect.width),height:Number(rect.height)});
+    }
+    return rects;
+  }
+
+  private async detectDirty(group: Group, tabId: string, paneId: string): Promise<void> {
+    const expected = group.controllerRects.get(tabId);
+    if (!expected || group.dirtyTabs.has(tabId)) return;
+    try {
+      const current = this.layoutRects(await inspectLayout(this.cli,paneId));
+      for (const [id, rect] of expected) {
+        const observed = current.get(id);
+        if (!observed) continue;
+        if (["x","y","width","height"].some(key => Math.abs(observed[key as keyof typeof observed]-rect[key as keyof typeof rect]) > 1)) {
+          group.dirtyTabs.add(tabId); return;
+        }
+      }
+    } catch { /* A diagnostic observation must not replace the owning lifecycle error. */ }
+  }
+
+  private async rememberGeometry(group: Group, tabId: string, paneId: string): Promise<void> {
+    if (group.dirtyTabs.has(tabId)) return;
+    const rects = this.layoutRects(await inspectLayout(this.cli,paneId));
+    if (rects.size) group.controllerRects.set(tabId,rects);
+  }
+
+  private physicalSlot(group: Group, wanted: DesiredLayoutSlot): {tabIndex:number;row:number;column:number} {
+    if (wanted.tab === "origin") return {tabIndex:0,row:wanted.row,column:wanted.column};
+    if (wanted.tab.startsWith("overflow:")) return {tabIndex:Number(wanted.tab.slice("overflow:".length)),row:wanted.row,column:wanted.column};
+    let tabIndex = group.teamTabIndexes.get(wanted.groupId);
+    if (tabIndex === undefined) {
+      tabIndex = 1000 + group.teamTabIndexes.size;
+      group.teamTabIndexes.set(wanted.groupId, tabIndex);
+    }
+    return {tabIndex,row:wanted.row,column:wanted.column};
+  }
+
+  private async migrateTeam(group: Group, teamId: string, desired: DesiredLayoutSlot[]): Promise<void> {
+    const members = desired.filter(slot => slot.groupId === teamId);
+    const existing = members.map(slot => ({slot, child:group.children.get(slot.childId)})).filter((value): value is {slot:DesiredLayoutSlot;child:OwnedLayoutChild} => value.child !== undefined);
+    if (!existing.length || existing.every(value => value.child.tabIndex >= 1000)) return;
+    const leader = existing.find(value => value.slot.childId === teamId);
+    if (!leader) throw new Error("Team migration cannot find its owned leader pane");
+    const before = await inspectPane(this.cli, leader.child.paneId);
+    const leaderResponse = asResult(await this.cli(["pane","move",leader.child.paneId,"--new-tab","--workspace",group.workspaceId,"--label",`${leader.child.title} · team`,"--no-focus"]));
+    const identity = this.requirePane(leaderResponse.move_result?.pane ?? leaderResponse.pane);
+    const after = await inspectPane(this.cli, identity.paneId);
+    if (before.terminal_id && after.terminal_id !== before.terminal_id) throw new Error("Team leader process identity changed during migration");
+    const tabIndex = this.physicalSlot(group, leader.slot).tabIndex;
+    Object.assign(leader.child,{paneId:identity.paneId,tabId:identity.tabId,tabIndex,row:leader.slot.row,column:leader.slot.column});
+    group.tabs.set(tabIndex,identity.tabId); this.paneMoved?.(leader.child.childId,identity.paneId);
+    let firstDescendant = true;
+    for (const value of existing.filter(candidate => candidate !== leader).sort((a,b)=>a.slot.row-b.slot.row||a.slot.column-b.slot.column)) {
+      const target = firstDescendant ? leader.child : existing.find(candidate => candidate.slot.row === value.slot.row && candidate.slot.column === value.slot.column-1)?.child
+        ?? existing.find(candidate => candidate.slot.row === value.slot.row-1 && candidate.slot.column === value.slot.column)?.child
+        ?? leader.child;
+      const direction = firstDescendant || value.slot.row > 0 ? "down" : "right";
+      const prior = await inspectPane(this.cli,value.child.paneId);
+      const response = asResult(await this.cli(["pane","move",value.child.paneId,"--tab",identity.tabId,"--split",direction,"--target-pane",target.paneId,"--no-focus"]));
+      const moved = this.requirePane(response.move_result?.pane ?? response.pane);
+      const observed = await inspectPane(this.cli,moved.paneId);
+      if (prior.terminal_id && observed.terminal_id !== prior.terminal_id) throw new Error("Team descendant process identity changed during migration");
+      Object.assign(value.child,{paneId:moved.paneId,tabId:moved.tabId,tabIndex,row:value.slot.row,column:value.slot.column});
+      this.paneMoved?.(value.child.childId,moved.paneId);
+      if (firstDescendant) { await this.swapPreservingFocus(leader.child.paneId,value.child.paneId); firstDescendant=false; }
+    }
+  }
+
+  private currentDesired(group: Group) {
+    return desiredLayout([...group.children.values()].map(child => ({childId:child.childId,parentId:child.parentId,role:child.role,order:child.order})));
+  }
+
+  private async returnEligibleTeams(group: Group): Promise<void> {
+    const model = this.currentDesired(group);
+    for (const teamId of new Set(model.slots.filter(slot => slot.kind !== "ordinary" && slot.tab === "origin").map(slot => slot.groupId))) {
+      const slots = model.slots.filter(slot => slot.groupId === teamId).sort((a,b)=>a.row-b.row||a.column-b.column);
+      const values = slots.map(slot => ({slot,child:group.children.get(slot.childId)})).filter((value): value is {slot:DesiredLayoutSlot;child:OwnedLayoutChild} => value.child !== undefined);
+      if (!values.some(value => value.child.tabIndex >= 1000)) continue;
+      for (const value of values) {
+        let target: OwnedLayoutChild | undefined;
+        if (value.slot.column > 0) target = values.find(candidate => candidate.slot.row === value.slot.row && candidate.slot.column === value.slot.column-1)?.child;
+        if (!target && value.slot.row > 0) target = [...group.children.values()].find(candidate => candidate.tabIndex === 0 && candidate.row === value.slot.row-1 && candidate.column === value.slot.column);
+        const targetPane = target?.paneId ?? group.callerPane;
+        const direction = value.slot.column > 0 ? "right" : "down";
+        const prior = await inspectPane(this.cli,value.child.paneId);
+        const response = asResult(await this.cli(["pane","move",value.child.paneId,"--tab",group.callerTab,"--split",direction,"--target-pane",targetPane,"--no-focus"]));
+        const moved = this.requirePane(response.move_result?.pane ?? response.pane);
+        const observed = await inspectPane(this.cli,moved.paneId);
+        if (prior.terminal_id && observed.terminal_id !== prior.terminal_id) throw new Error("Team process identity changed while returning to the origin tab");
+        Object.assign(value.child,{paneId:moved.paneId,tabId:moved.tabId,tabIndex:0,row:value.slot.row,column:value.slot.column});
+        this.paneMoved?.(value.child.childId,moved.paneId);
+        if (!target && value.slot.row === 0 && value.slot.column === 0) await this.swapPreservingFocus(group.callerPane,value.child.paneId);
+      }
+    }
   }
 
   private nextSlot(group: Group): { tabIndex: number; row: number; column: number } {
