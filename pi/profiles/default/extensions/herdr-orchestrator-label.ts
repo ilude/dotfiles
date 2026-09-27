@@ -40,6 +40,10 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
     if (!current) return;
     void current.attempt(trigger, context).catch(() => undefined);
   };
+  const reportCommand = (invocation: string, outcome: string, level: "info" | "warning" | "error", ctx: ExtensionContext) => {
+    ctx.ui.notify(outcome, level);
+    pi.sendMessage({ customType: "herdr-rename-command", content: `${invocation}\n${outcome}`, display: false }, { triggerTurn: false });
+  };
 
   pi.events?.on(HERDR_TAB_TITLE_OWNED, data => {
     const event = data as HerdrTabTitleOwnedEvent;
@@ -50,30 +54,31 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
     description: "Rename the current Herdr tab, or generate a title from session context",
     handler: async (args, ctx) => {
       const current = owner;
+      const title = args.trim();
+      const invocation = title ? `/rename ${title}` : "/rename";
       if (!active || !current) {
-        ctx.ui.notify("/rename is available only in an eligible Herdr orchestrator tab.", "warning");
+        reportCommand(invocation, "/rename is available only in an eligible Herdr orchestrator tab.", "warning", ctx);
         return;
       }
-      const title = args.trim();
       if (title.length > 160) {
-        ctx.ui.notify("Tab titles must be at most 160 characters.", "error");
+        reportCommand(invocation, "Tab titles must be at most 160 characters.", "error", ctx);
         return;
       }
       ctx.ui.setStatus("herdr-rename", title ? "renaming tab..." : "generating tab title...");
       try {
         if (title) {
           await current.renameExplicit(title, ctx.signal);
-          ctx.ui.notify(`Renamed tab to ${title}.`, "info");
+          reportCommand(invocation, `Renamed tab to ${title}.`, "info", ctx);
           return;
         }
         const outcome = await current.forceAttempt("rename-command", entries(ctx), ctx.signal);
-        if (outcome.outcome === "renamed") ctx.ui.notify(`Renamed tab to ${outcome.title}.`, "info");
-        else if (outcome.outcome === "unchanged") ctx.ui.notify("The current tab title still matches the session.", "info");
-        else if (outcome.outcome === "abstained") ctx.ui.notify("No confident tab title could be generated.", "warning");
-        else if (outcome.outcome === "skipped") ctx.ui.notify(`Tab rename skipped: ${outcome.reason}.`, "warning");
-        else if (outcome.outcome === "failed") ctx.ui.notify(`Tab rename failed: ${outcome.reason}.`, "error");
+        if (outcome.outcome === "renamed") reportCommand(invocation, `Renamed tab to ${outcome.title}.`, "info", ctx);
+        else if (outcome.outcome === "unchanged") reportCommand(invocation, "The current tab title still matches the session.", "info", ctx);
+        else if (outcome.outcome === "abstained") reportCommand(invocation, "No confident tab title could be generated.", "warning", ctx);
+        else if (outcome.outcome === "skipped") reportCommand(invocation, `Tab rename skipped: ${outcome.reason}.`, "warning", ctx);
+        else if (outcome.outcome === "failed") reportCommand(invocation, `Tab rename failed: ${outcome.reason}.`, "error", ctx);
       } catch (error) {
-        ctx.ui.notify(`Tab rename failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+        reportCommand(invocation, `Tab rename failed: ${error instanceof Error ? error.message : String(error)}`, "error", ctx);
       } finally {
         ctx.ui.setStatus("herdr-rename", undefined);
       }

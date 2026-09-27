@@ -14,16 +14,21 @@ function fixture(cwd = "/work/.dotfiles/") {
   const commands: Record<string, { handler: (args: string, ctx: any) => Promise<void> }> = {};
   const busHandlers: Record<string, (data: unknown) => void> = {};
   let tabTitle = ".dotfiles";
+  let tabId = "w1:t1";
   const exec = vi.fn().mockImplementation(async (_bin, args: string[]) => {
-    if (args[0] === "tab" && args[1] === "get") return { code: 0, killed: false, stdout: JSON.stringify({ result: { tab: { tab_id: "w1:t1", workspace_id: "w1", label: tabTitle } } }), stderr: "" };
+    if (args[0] === "tab" && args[1] === "get") {
+      if (args[2] !== tabId) return { code: 1, killed: false, stdout: "", stderr: `tab ${args[2]} not found` };
+      return { code: 0, killed: false, stdout: JSON.stringify({ result: { tab: { tab_id: tabId, workspace_id: "w1", label: tabTitle } } }), stderr: "" };
+    }
     if (args[0] === "tab" && args[1] === "rename") tabTitle = args[3];
-    if (args[0] === "pane" && args[1] === "get") return { code: 0, killed: false, stdout: JSON.stringify({ result: { pane: { pane_id: "w1:p1", tab_id: "w1:t1", workspace_id: "w1" } } }), stderr: "" };
+    if (args[0] === "pane" && args[1] === "get") return { code: 0, killed: false, stdout: JSON.stringify({ result: { pane: { pane_id: "w1:p1", tab_id: tabId, workspace_id: "w1" } } }), stderr: "" };
     return { code: 0, killed: false, stdout: "", stderr: "" };
   });
   const entries: unknown[] = [];
   const ctx = { mode: "tui", cwd, signal: undefined, ui: { notify: vi.fn(), setStatus: vi.fn() }, sessionManager: { buildContextEntries: () => entries, getSessionId: () => "session" } };
-  register({ on(name: string, handler: any) { handlers[name] = handler; }, registerCommand(name: string, command: any) { commands[name] = command; }, exec, events: { on(name: string, handler: any) { busHandlers[name] = handler; }, emit(name: string, data: unknown) { busHandlers[name]?.(data); } } } as any);
-  return { exec, handlers, commands, ctx, entries, get tabTitle() { return tabTitle; }, start: (reason = "startup", mode = "tui") => handlers.session_start({ reason }, { ...ctx, mode }) };
+  const sendMessage = vi.fn();
+  register({ on(name: string, handler: any) { handlers[name] = handler; }, registerCommand(name: string, command: any) { commands[name] = command; }, exec, sendMessage, events: { on(name: string, handler: any) { busHandlers[name] = handler; }, emit(name: string, data: unknown) { busHandlers[name]?.(data); } } } as any);
+  return { exec, sendMessage, handlers, commands, ctx, entries, get tabTitle() { return tabTitle; }, moveTab(id: string) { tabId = id; }, start: (reason = "startup", mode = "tui") => handlers.session_start({ reason }, { ...ctx, mode }) };
 }
 
 it("labels the startup pane and establishes the child-owned base title", async () => {
@@ -73,11 +78,23 @@ it("runs restored-context naming when Pi reports a resumed session", async () =>
   await vi.waitFor(() => expect(f.exec).toHaveBeenCalledWith("fixture-herdr", ["tab", "get", "w1:t1"], expect.anything()));
 });
 
-it("renames the current tab explicitly and protects the supplied title", async () => {
+it("renames the current tab explicitly and records the command outcome for model context", async () => {
   const f = fixture(); await f.start();
   await f.commands.rename.handler("  My Exact Title  ", f.ctx);
   expect(f.tabTitle).toBe("My Exact Title");
   expect(f.ctx.ui.notify).toHaveBeenCalledWith("Renamed tab to My Exact Title.", "info");
+  expect(f.sendMessage).toHaveBeenCalledWith({
+    customType: "herdr-rename-command", content: "/rename My Exact Title\nRenamed tab to My Exact Title.", display: false,
+  }, { triggerTurn: false });
+});
+
+it("resolves the pane's current tab after Herdr changes its tab identity", async () => {
+  const f = fixture(); await f.start();
+  f.moveTab("w1:t2");
+  await f.commands.rename.handler("Moved Tab", f.ctx);
+  expect(f.tabTitle).toBe("Moved Tab");
+  expect(f.exec).toHaveBeenCalledWith("fixture-herdr", ["tab", "get", "w1:t2"], expect.anything());
+  expect(f.exec).toHaveBeenCalledWith("fixture-herdr", ["tab", "rename", "w1:t2", "Moved Tab"], expect.anything());
 });
 
 it("invalidates naming work on tree navigation and shutdown", async () => {

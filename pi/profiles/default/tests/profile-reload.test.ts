@@ -10,7 +10,7 @@ import { requestReloadState } from "../lib/profile-reload-events.ts";
 
 let dir: string;
 let service: ProfileReload;
-beforeEach(() => { vi.useFakeTimers(); dir = mkdtempSync(join(tmpdir(), "profile-reload-")); service = new ProfileReload(); });
+beforeEach(() => { vi.useFakeTimers(); dir = mkdtempSync(join(tmpdir(), "profile-reload-")); service = new ProfileReload(undefined, 2_000); });
 afterEach(() => { service.stop(); vi.useRealTimers(); vi.unstubAllEnvs(); rmSync(dir, { recursive: true, force: true }); });
 const scope = () => ({ agentDir: dir, cwd: dir, home: dir, projectTrusted: false, projectConfigDir: ".pi" });
 
@@ -126,7 +126,7 @@ it("registers independent session lifecycle and watches profile lib files withou
 	registerReload({ events, on: (name: string, hook: (...args: any[]) => any) => hooks.set(name, hook), getCommands: () => [], getAllTools: () => [] } as unknown as ExtensionAPI);
 	const ctx = { cwd: dir, isProjectTrusted: () => false, ui: { getAllThemes: () => [], notify: vi.fn() } };
 	await hooks.get("session_start")!({}, ctx);
-	writeFileSync(file, "after, changed"); vi.advanceTimersByTime(2000);
+	writeFileSync(file, "after, changed"); vi.advanceTimersByTime(15_000);
 	expect(requestReloadState({ events })?.needed).toBe(true);
 	await hooks.get("session_shutdown")!({}, ctx); expect(vi.getTimerCount()).toBe(0);
 	expect(requestReloadState({ events })).toBeUndefined();

@@ -1,9 +1,12 @@
 import { ReloadMonitor, type ReloadScope } from "./reload-monitor.ts";
 
+const RELOAD_POLL_MS = 15_000;
+
 /** Session-scoped monitoring, independent of whether a footer is installed. */
 export class ProfileReload {
 	private readonly monitor: ReloadMonitor;
-	constructor(monitor = new ReloadMonitor()) { this.monitor = monitor; }
+	private readonly pollMs: number;
+	constructor(monitor = new ReloadMonitor(), pollMs = RELOAD_POLL_MS) { this.monitor = monitor; this.pollMs = pollMs; }
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private readonly listeners = new Set<() => void>();
 
@@ -29,7 +32,7 @@ export class ProfileReload {
 		};
 		check();
 		this.changed();
-		this.timer = setInterval(check, 2000);
+		this.timer = setInterval(check, this.pollMs);
 		this.timer.unref();
 	}
 

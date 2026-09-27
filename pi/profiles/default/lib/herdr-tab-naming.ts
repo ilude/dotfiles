@@ -298,6 +298,7 @@ export interface NamingAttemptResult {
 }
 
 interface InspectedTarget {
+  tabId: string;
   title: string;
 }
 
@@ -306,19 +307,23 @@ function fieldString(value: unknown): string | undefined {
 }
 
 async function inspectExactTarget(cli: HerdrCli, target: NamingTarget, signal: AbortSignal): Promise<InspectedTarget> {
-  const inspected = objectLike(result(await cli(["tab", "get", target.tabId], { signal })));
-  const tab = objectLike(inspected?.tab);
-  if (!tab || tab.tab_id !== target.tabId) throw new Error("Herdr tab identity changed");
-  if (target.workspaceId && tab.workspace_id !== target.workspaceId) throw new Error("Herdr workspace identity changed");
+  let tabId = target.tabId;
   if (target.paneId) {
     const paneResult = objectLike(result(await cli(["pane", "get", target.paneId], { signal })));
     const pane = objectLike(paneResult?.pane);
-    if (!pane || pane.pane_id !== target.paneId || pane.tab_id !== target.tabId) throw new Error("Herdr pane identity changed");
+    if (!pane || pane.pane_id !== target.paneId) throw new Error("Herdr pane identity changed");
     if (target.workspaceId && pane.workspace_id !== target.workspaceId) throw new Error("Herdr pane workspace changed");
+    tabId = fieldString(pane.tab_id) ?? "";
+    if (!tabId) throw new Error("Herdr pane tab identity unavailable");
+    target.tabId = tabId;
   }
+  const inspected = objectLike(result(await cli(["tab", "get", tabId], { signal })));
+  const tab = objectLike(inspected?.tab);
+  if (!tab || tab.tab_id !== tabId) throw new Error("Herdr tab identity changed");
+  if (target.workspaceId && tab.workspace_id !== target.workspaceId) throw new Error("Herdr workspace identity changed");
   const title = fieldString(tab.label) ?? fieldString(tab.title) ?? fieldString(tab.name);
   if (!title) throw new Error("Herdr tab title unavailable");
-  return { title };
+  return { tabId, title };
 }
 
 function isProviderTimeout(error: unknown): boolean {
@@ -392,8 +397,8 @@ export class HerdrTabNamingOwner {
     this.cancel();
     const controller = new AbortController();
     const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
-    await inspectExactTarget(this.cli, this.target, combined);
-    await this.cli(["tab", "rename", this.target.tabId, title], { signal: combined });
+    const current = await inspectExactTarget(this.cli, this.target, combined);
+    await this.cli(["tab", "rename", current.tabId, title], { signal: combined });
     this.claim(title);
   }
 
@@ -505,7 +510,7 @@ export class HerdrTabNamingOwner {
         this.diagnostic({ trigger, outcome: "unchanged", durationMs: Math.max(0, this.now() - started), request: requestStats, response: validated.title });
         return { outcome: "unchanged", title: validated.title };
       }
-      await this.cli(["tab", "rename", this.target.tabId, validated.title], { signal });
+      await this.cli(["tab", "rename", after.tabId, validated.title], { signal });
       if (invalidated()) return { outcome: "cancelled" };
       if (timedOut()) return timeoutFailure();
       this.ownedTitle = validated.title;

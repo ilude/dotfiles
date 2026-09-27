@@ -104,16 +104,22 @@ export function reloadSnapshot(roots: string[]): Map<string, string> {
 		if (EXCLUDED.has(path.basename(file))) return;
 		if (++count > 10_000) throw new Error("Reload monitoring exceeds 10000 filesystem entries");
 		let stat: fs.Stats;
-		let real: string;
+		let identity = path.resolve(file);
 		try {
-			stat = fs.statSync(file);
-			real = fs.realpathSync(file);
+			const linkStat = fs.lstatSync(file);
+			if (linkStat.isSymbolicLink()) {
+				identity = fs.realpathSync(file);
+				stat = fs.statSync(identity);
+			} else stat = linkStat;
 		} catch (error) {
 			if (missing(error)) return;
 			throw error;
 		}
-		if (visited.has(real)) return;
-		visited.add(real);
+		// Resolving every ordinary file through realpath is disproportionately
+		// expensive on Windows. Absolute paths identify normal entries; only
+		// links need canonicalization for cycle and duplicate protection.
+		if (visited.has(identity)) return;
+		visited.add(identity);
 		if (stat.isDirectory()) {
 			const entries = fs.readdirSync(file).sort();
 			// Pi stops skill discovery at SKILL.md. Supporting files are read directly
@@ -124,7 +130,7 @@ export function reloadSnapshot(roots: string[]): Map<string, string> {
 			}
 			for (const entry of entries) visit(path.join(file, entry));
 		} else if (stat.isFile()) {
-			snapshot.set(real, resourceFingerprint(file));
+			snapshot.set(identity, resourceFingerprint(file));
 		}
 	};
 	for (const root of roots) visit(root);

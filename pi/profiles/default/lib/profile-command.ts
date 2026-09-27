@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Box, Text } from "@earendil-works/pi-tui";
 import { yieldForUi } from "./ui-yield.ts";
 
 const ENTRY_TYPE = "profile-command";
@@ -10,8 +10,11 @@ function initialize(pi: ExtensionAPI): void {
 	if (initialized.has(pi)) return;
 	initialized.add(pi);
 	if (typeof pi.registerEntryRenderer !== "function") return;
-	pi.registerEntryRenderer<string>(ENTRY_TYPE, (entry) =>
-		new Text(typeof entry.data === "string" ? entry.data : "", 0, 0));
+	pi.registerEntryRenderer<string>(ENTRY_TYPE, (entry, _options, theme) => {
+		const box = new Box(1, 1, content => theme.bg("userMessageBg", content));
+		box.addChild(new Text(theme.fg("userMessageText", typeof entry.data === "string" ? entry.data : ""), 0, 0));
+		return box;
+	});
 }
 
 /** Register a profile-owned command with shared acknowledgment UX. */

@@ -56,7 +56,7 @@ it.each([false, true])("delivers lib changes to separately loaded footer and cle
   const r = await load(reverse ? ["operator-footer", "clear", "profile-reload"] : undefined);
   expect(r.text()).not.toContain("[reload]");
   writeFileSync(join(dir, "lib", "approval.ts"), "export const marker = 'new approval';");
-  await vi.advanceTimersByTimeAsync(2000);
+  await vi.advanceTimersByTimeAsync(15_000);
   expect(r.text()).toContain("[reload]"); expect(r.text(30)).toContain("[reload]");
   expect(r.requestRender).toHaveBeenCalled();
   const reload = vi.fn();
