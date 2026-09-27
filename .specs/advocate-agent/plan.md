@@ -1,6 +1,6 @@
 ---
 created: 2026-09-26
-status: draft
+status: ready
 completed: null
 ---
 
@@ -12,7 +12,7 @@ Give the orchestrator a distinct advisor that understands Mike's demonstrated re
 
 **Authorized now:** planning only. No implementation, active instruction changes, commits, pushes, or runtime activation are authorized by the request to write this plan.
 
-**Planning revisions:** Mike requested shared knowledge ownership under `agent-process`, generalized instruction diagnosis/evaluation under `prompting`, preservation of intent alongside observed outcomes, and evidence-informed routing lessons. Concurrent-writer machinery is explicitly deferred. The procedure, research, and limits are recorded in [evaluation-design.md](evaluation-design.md). Remaining role defaults/tools and implementation details below are recommendations for plan review, not execution authority. There are no remaining broad historical-research prerequisites.
+**Planning revisions:** Mike requested shared knowledge ownership under `agent-process`, generalized instruction diagnosis/evaluation under `prompting`, preservation of intent alongside observed outcomes, and evidence-informed routing lessons. Concurrent-writer machinery is explicitly deferred. The procedure, research, and limits are recorded in [evaluation-design.md](evaluation-design.md). Mike settled comparison ownership: writer designs and interprets comparisons; the parent launches necessary runs using existing tools. The plan is ready for execution authorization. Test-copy setup and Strategist coverage are agent-owned implementation details, not open operator decisions. Readiness does not authorize implementation.
 
 ### Settled requirements
 
@@ -68,7 +68,7 @@ Inspected default profile at dotfiles `main`, revision `2947630a`. `PI_CODING_AG
 
 **Profiles:** verified planning profile and intended implementation profile are both default. Legacy remains excluded from implementation/testing. Native historical references already recorded from both profiles may be consulted read-only if a specific source ambiguity matters. No temporary inventory/renderer is a runtime dependency.
 
-## Implementation design and remaining recommendations
+## Implementation design
 
 ### 1. Advocate role and consultation
 
@@ -139,7 +139,7 @@ The invoking orchestrator:
 3. Supplies the feedback, current intent and authority, relevant source/session pointers, known resolution or uncertainty, and the actual writable paths. Resolve these from the active skill locations, not a guessed HOME or the task's cwd. Use the existing context-conservation exception, not a preliminary staffing consultation for this single worker.
 4. Continues independent work, then incorporates the concise automatic result or asks Mike the remaining consequential question. Do not poll or retain a completed worker for hypothetical follow-up.
 
-The writer is already the worker: it performs investigation, learning judgment, and allowed edits itself. The worker section must not recursively tell it to dispatch another worker. It may request a missing factual input through `subagent_parent`. It does not take over implementation of the original task.
+The writer is already the worker: it performs investigation, learning judgment, and allowed edits itself. The worker section must not recursively tell it to dispatch another worker. Writer designs and interprets comparisons; when new runs are necessary, it requests them through `subagent_parent` and the parent launches them using existing tools, returning results or source pointers. Writer's no-delegation boundary remains unchanged. It may also request a missing factual input through `subagent_parent`. It does not take over implementation of the original task.
 
 **Standing learning write boundary proposed for installation:** within `skills/agent-process/references/`, the existing `instruction-feedback.md` and `failure-log.md`, plus `knowledge/` including its navigation index. Maintain the current records; do not delete unrelated feedback or rewrite history to hide earlier decisions. Read current file contents and use precise edits that preserve concurrent unrelated changes.
 
@@ -169,13 +169,13 @@ Create or resume the dedicated task worktree, record its actual coordinates and 
 
 Before delegating implementation-plan work, consult Strategist unless Mike explicitly requests a single-agent handoff, including a Team Lead. A Team Lead still follows its own Strategist-first workflow. Assign at most one named plan task per subagent and split further when needed. Use only the active role catalog; the proposed Advocate is not available for dispatch until installed and loaded. Strategist owns execution staffing, not this plan.
 
-After approval fixes the package contract, T0, T1, T2, and T3 may proceed concurrently with disjoint ownership. They consume the paths and behavior above, not one another's completed implementation. T4 integrates their results and validates actual discovery/assembly; T4a then exercises the learning-to-advice path. Transfer ownership explicitly if a task-related fix touches another worker's files.
+After execution is authorized, T0, T1, T2, and T3 may proceed concurrently with disjoint ownership. They consume the paths and behavior above, not one another's completed implementation. T4 integrates their results and validates actual discovery/assembly; T4a then exercises the learning-to-advice path. Transfer ownership explicitly if a task-related fix touches another worker's files.
 
 Continue independent work around blockers. Adapt routine mechanisms within settled intent; ask before changing scope, consequential behavior, permissions, or acceptance. Do not expand the specified evaluation procedure and exercise into a review pipeline, broad audit, optional safeguards, or permanent evaluation platform. Fix demonstrated task-related defects and stop when the agreed finite checks pass. Keep task evidence and blocked/pending states accurate.
 
 ## Tasks
 
-These tasks describe the recommended package. They are not executable until the draft decisions and execution authorization are resolved.
+These tasks describe the ready package. Execution authorization is still required; no further planning decision is blocking it. `/do-it` authorizes this package's implementation and local worktree/commit/integration workflow unless the user restricts those actions.
 
 - [ ] **T0: Add generalized intent-led evaluation guidance to prompting**
   - Depends on: plan approval and execution authorization; no implementation-task dependency.
@@ -196,16 +196,16 @@ These tasks describe the recommended package. They are not executable until the 
   - Evidence: Not started.
 
 - [ ] **T2: Register the advisory role and on-demand routing**
-  - Depends on: approval of the role, tools/default, and Team Lead availability; consumes the `agent-process` reader/index contract, not T1's finished contents or T3's completed procedure.
+  - Depends on: execution authorization; consumes the role/defaults and `agent-process` reader/index contract above, not T1's finished contents or T3's completed procedure.
   - Parallel with: T1 and T3.
   - Write ownership: new `agents/advocate.md`, existing `agents/teamlead.md`, `agents/strategist.md`, and `lib/subagents/guidance.ts` under the default profile.
   - Change: implement the proposed role, explicit skills, delegate permission, and concise shared routing. Give Strategist explicit `agent-process` skill discovery and a pointer to relevant routing knowledge through the reader path, without changing its tool/delegate authority or model defaults. Reuse generic loader/launch behavior. Keep Reviewer, Strategist, Steward, Council, and ordinary child responsibilities unchanged.
-  - Verify: load bundled definitions and render caller, Team Lead, and Advocate compositions. Inspect effective tools/delegates and confirm no knowledge body is injected by the generated catalog. Do not alter general transport/lifecycle behavior absent a demonstrated required correction.
+  - Verify: load bundled definitions and render caller, Team Lead, Advocate, and Strategist compositions. Confirm Strategist can discover routing knowledge through the reader path without starting maintenance. Inspect effective tools/delegates and confirm no knowledge body is injected by the generated catalog. Do not alter general transport/lifecycle behavior absent a demonstrated required correction.
   - Done when: the definition resolves, authorized callers can discover it, and complete affected instructions express advisory rather than approval authority. Full skill-backed integration is verified in T4.
   - Evidence: Not started.
 
 - [ ] **T3: Move feedback investigation and learning into the background writer**
-  - Depends on: approval of the writer workflow and write boundary; consumes the agreed reference locations, not T1's finished seed or T2's role.
+  - Depends on: execution authorization; consumes the writer workflow, write boundary, and reference locations above, not T1's finished seed or T2's role.
   - Parallel with: T1 and T2.
   - Write ownership: `skills/agent-process/SKILL.md`, proposed `references/learning-worker.md`, and existing `references/context-separation.md`. Do not rewrite historical logs merely to install the workflow.
   - Change: distinguish knowledge-reader, invoking-orchestrator, and learning-worker responsibilities within the existing skill. Link the reader to the shared index without triggering maintenance. Link general diagnosis/evaluation to prompting's proposed `references/intent-evaluation.md`, rather than duplicating that procedure. Preserve user intent and useful outcome evidence in the existing records/references. Preserve feedback triggers, immediate correction, selective retrieval, valid no-change outcomes, and specific approval for core changes. State concrete allowed maintenance paths and teach updating/consolidating existing knowledge with evidence links rather than accumulating duplicate lessons. Keep feedback-record authoring with the worker. Preserve explicit process-discussion separation options without making them a dispatch prerequisite.
@@ -225,7 +225,7 @@ These tasks describe the recommended package. They are not executable until the 
 - [ ] **T4a: Exercise feedback-to-knowledge-to-advice behavior**
   - Depends on: T4's verified resource wiring and passing source checks.
   - Write ownership: task-local disposable knowledge/case artifacts and a concise results note in this spec; no live knowledge changes or production actions during the exercise.
-  - Change: follow the initial exercise in `evaluation-design.md`. Select a recorded correction and meaningful contrasting case. Run the learning worker against a disposable prior-knowledge copy, verify the saved change, and compare fresh Advocate consultations with before/after knowledge on equivalent inputs. Use the actual updated role/skill composition and existing child-launch mechanisms, not a bare-model simulation claimed as equivalent. Do not relink production profile resources to the disposable worktree. Ensure each trial is reading its assigned copy rather than the canonical live store.
+  - Change: follow the initial exercise in `evaluation-design.md`. Writer designs and interprets the comparison; the parent launches necessary runs using existing tools. Select a recorded correction and meaningful contrasting case. Run the learning worker against a disposable prior-knowledge copy, verify the saved change, and compare fresh Advocate consultations with before/after knowledge on equivalent inputs. Use the actual updated role/skill composition and existing child-launch mechanisms, not a bare-model simulation claimed as equivalent. The executor selects the existing launch/profile configuration for the disposable resources and verifies the resolved skill and knowledge paths before each run. This setup is ordinary implementation work, not another operator decision. Do not relink production profile resources to the disposable worktree or write to the canonical live knowledge store.
   - Verify: record actual profile/resource paths, model/provider/effort, candidate state, native run pointers, observed edits/advice, and limits. Keep expected answers out of the acting agent's input. Confirm the contrast survives rather than judging only whether fewer questions or fewer words were produced. No model sweep or new permanent harness.
   - Done when: the integrated path has been exercised, task-related wiring defects are fixed, and the comparison's supported conclusion is recorded. No improvement or inconclusive quality evidence is a valid result, not a reason for endless candidate generation. If runtime prerequisites prevent a run, record the concrete blocker instead of claiming offline checks proved the behavior.
   - Evidence: Not started.
@@ -263,6 +263,7 @@ Additionally, review the complete affected compositions once using real loaded d
 - Advocate: native/context instructions, frozen tool ceiling, role text, explicitly selected skill catalog, then the `agent-process` reader path and relevant shared references. Loading these does not initiate feedback maintenance. Current goal and evidence remain assignment-specific.
 - Writer: unchanged generic role and tools, explicit skill selection, worker instructions and permitted paths, and feedback-specific assignment. It must not be told to launch another worker.
 - Team Lead: existing workflow plus Advocate availability and concise guidance, without duplicated knowledge or a new mandatory review stage.
+- Strategist: existing role/tools plus explicit `agent-process` skill discovery and the knowledge-reader path. Relevant routing advice is accessible without feedback logging, worker dispatch, or automatic model-default changes.
 
 Record dynamic sections that were not captured, compare before/after composed byte counts, and retain deterministic ordering. Adjust existing size ceilings only to accommodate the justified new routing/catalog content, rather than deleting their protection or inventing a quota on useful knowledge. Do not claim provider cache improvements from static size comparisons.
 
@@ -272,13 +273,14 @@ Use the three T3 walkthroughs to check the decision boundaries and a paired T1 p
 
 ### Current state
 
-- Status: draft; shared knowledge, generalized intent-led evaluation, routing evidence, and concurrency deferral are documented. Remaining implementation recommendations await plan approval. Implementation is not authorized.
+- Status: ready. Planning is complete; implementation awaits execution authorization. No open design decision is blocking the package.
 - Completed: historical research, targeted external research, source-grounded plan authoring, and requested design documentation in `evaluation-design.md`. No active skill or role changes.
 - Planning inspection: September 26, default profile at the path above; read owning code, skills, current feedback, installed skill/configuration docs, and relevant existing tests. No implementation tests or new role/model runs performed while planning.
 - Settled revision: preserve existing feedback logs as evidence; add curated Markdown knowledge under `agent-process/references/knowledge/`; keep governing instructions outside standing maintenance authority. Advocate consumes this source without launching a learning cycle. No separate knowledge skill or wholesale log migration.
-- Remaining recommendations for Mike's plan review: Sol-low read-only Advocate, orchestrator/Team Lead on-demand availability, and the existing writer for background maintenance. These were not changed by the knowledge-structure revision.
+- Package starting configuration: Sol-low read-only Advocate, orchestrator/Team Lead on-demand availability, and the existing writer for background maintenance. These are the plan's starting choices, not claims of measured model superiority or already-installed permissions.
 - Latest direction: prompting owns general instruction evaluation; preserve intent and outcome evidence beyond prompt versions; use supported results for conditional routing guidance. Concurrent learning-writer coordination is deferred and does not block implementation. The bounded agent-owned exercise replaces the earlier offline-only validation proposal.
-- Next: review the revised plan. After approval and execution authorization, record worktree/branch and begin T0–T3 with Strategist-guided staffing.
+- Final clarification: writer designs and interprets comparisons; the parent launches necessary runs using existing tools. Disposable-copy setup and Strategist composition checks are included as agent-owned work, not unresolved user questions.
+- Next: on execution authorization, record worktree/branch and begin T0–T3 with Strategist-guided staffing.
 - No research worker, schedule, external service, or historical retrieval is blocking this plan.
 
 ## Closeout contract

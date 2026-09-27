@@ -1,9 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { CloseoutInspection, CloseoutManifest, CloseoutOptions, CloseoutResult, StashState, WorktreeState } from "./contracts.ts";
 
-const run = (cwd: string, args: string[]): string => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const GIT_MAX_BUFFER = 64 * 1024 * 1024;
+const run = (cwd: string, args: string[]): string => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: GIT_MAX_BUFFER }).trim();
 const inside = (base: string, candidate: string): boolean => {
   const rel = relative(base, candidate);
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
@@ -42,7 +44,7 @@ function isAncestor(cwd: string, ancestor: string, descendant: string): boolean 
   try { run(cwd, ["merge-base", "--is-ancestor", ancestor, descendant]); return true; } catch { return false; }
 }
 function statusPaths(cwd: string): string[] {
-  const entries = execFileSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd, encoding: "utf8" }).split("\0");
+  const entries = execFileSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd, encoding: "utf8", maxBuffer: GIT_MAX_BUFFER }).split("\0");
   const paths: string[] = [];
   for (let index = 0; index < entries.length; index++) {
     const row = entries[index]!;
@@ -63,7 +65,20 @@ function resolveStash(cwd: string, oid: string): string[] {
   return stashEntries(cwd).filter(entry => entry.oid.toLowerCase() === oid.toLowerCase()).map(entry => entry.ref);
 }
 function readCommittedFile(cwd: string, path: string): string {
-  try { return execFileSync("git", ["show", `HEAD:${path}`], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); } catch { return ""; }
+  try { return execFileSync("git", ["show", `HEAD:${path}`], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: GIT_MAX_BUFFER }); } catch { return ""; }
+}
+function resolveAdditiveChangelogConflict(cwd: string, conflicts: string[]): boolean {
+  if (conflicts.length !== 1 || conflicts[0] !== "CHANGELOG.md") return false;
+  const directory = mkdtempSync(join(tmpdir(), "pi-closeout-changelog-"));
+  try {
+    const files = ["ours", "base", "theirs"].map(name => join(directory, name));
+    for (const [index, file] of files.entries()) writeFileSync(file!, execFileSync("git", ["show", `:${[2, 1, 3][index]}:CHANGELOG.md`], { cwd, maxBuffer: GIT_MAX_BUFFER }));
+    const merged = execFileSync("git", ["merge-file", "--union", "-p", files[0]!, files[1]!, files[2]!], { cwd, maxBuffer: GIT_MAX_BUFFER });
+    writeFileSync(resolve(cwd, "CHANGELOG.md"), merged);
+    run(cwd, ["add", "--", "CHANGELOG.md"]);
+    return run(cwd, ["diff", "--name-only", "--diff-filter=U"]) === "";
+  } catch { return false; }
+  finally { rmSync(directory, { recursive: true, force: true }); }
 }
 function planText(cwd: string, archivePath: string): string {
   const archiveRoot = resolve(cwd, ".specs/archive");
@@ -172,8 +187,8 @@ export function closeout(manifest: CloseoutManifest, options: CloseoutOptions = 
       }
       if (matches.length === 1 && !stashOid) { stashOid = matches[0]!.split("\t")[0]; stashState = "created"; }
       if (!stashOid) {
-        const before = new Set(dirty);
-        run(target, ["stash", "push", "--include-untracked", "-m", message]);
+        const before = new Set(overlaps);
+        run(target, ["stash", "push", "--include-untracked", "-m", message, "--", ...overlaps]);
         const candidates = run(target, ["stash", "list", "--format=%H%x09%gs"]).split(/\r?\n/).filter(row => row.includes(message));
         if (candidates.length !== 1) { state = { ...state, stashState: "ambiguous" }; return stop("USER INPUT REQUIRED", "Could not identify the newly created preservation stash uniquely.", "Inspect refs/stash and restore the matching changes manually."); }
         stashOid = candidates[0]!.split("\t")[0];
@@ -221,8 +236,11 @@ export function closeout(manifest: CloseoutManifest, options: CloseoutOptions = 
       try { run(target, ["stash", "apply", stashOid]); }
       catch {
         const conflicts = run(target, ["diff", "--name-only", "--diff-filter=U"]).split(/\r?\n/).filter(Boolean);
-        state = { ...state, stashOid, stashState: "retained" }; retained(stashOid);
-        return stop("USER INPUT REQUIRED", `Stash restoration conflicted${conflicts.length ? ` on ${conflicts.join(", ")}` : ""}.`, "Resolve restoration without dropping the stash, then verify every preserved path.");
+        if (!resolveAdditiveChangelogConflict(target, conflicts)) {
+          state = { ...state, stashOid, stashState: "retained" }; retained(stashOid);
+          return stop("USER INPUT REQUIRED", `Stash restoration conflicted${conflicts.length ? ` on ${conflicts.join(", ")}` : ""}.`, "Resolve restoration without dropping the stash, then verify every preserved path.");
+        }
+        state = { ...state, evidence: [...state.evidence, "restoration-conflict=CHANGELOG.md additive union"] };
       }
       if (state.taskCommit !== manifest.taskCommit) fail("Internal task commit mismatch.");
       dirty = statusPaths(target);

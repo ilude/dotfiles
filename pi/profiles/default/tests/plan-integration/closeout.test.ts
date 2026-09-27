@@ -15,6 +15,7 @@ function fixture() {
   const root = join(base, "repo"); mkdirSync(root); git(root, "init", "-b", "main");
   git(root, "config", "user.name", "Test"); git(root, "config", "user.email", "test@example.invalid");
   writeFileSync(join(root, ".gitignore"), "ignored.tmp\n");
+  writeFileSync(join(root, "CHANGELOG.md"), "# Changelog\n");
   writeFileSync(join(root, "file.txt"), "one\ntwo\nthree\nfour\nfive\n");
   const archive = join(root, ".specs/archive/demo/plan.md"); mkdirSync(join(root, ".specs/archive/demo"), { recursive: true });
   writeFileSync(archive, "---\nstatus: in progress\ncompleted: null\n---\n# Demo\n\n## Tasks\n- [x] Ship\n");
@@ -79,6 +80,19 @@ it("reports a routine merge conflict with exact paths and retains evidence", () 
   git(root, "add", "--", "file.txt");
   const resumed = closeout({ ...manifest, taskCommit: updatedTask });
   expect(resumed).toMatchObject({ outcome: "COMPLETED", merge: "merged" });
+});
+
+it("restores additive changelog entries from both sides without operator intervention", () => {
+  const { root, taskPath, manifest } = fixture();
+  writeFileSync(join(taskPath, "CHANGELOG.md"), "# Changelog\n\n- Task entry.\n");
+  const taskCommit = commit(taskPath, "add task changelog entry");
+  writeFileSync(join(root, "CHANGELOG.md"), "# Changelog\n\n- Existing target entry.\n");
+  const result = closeout({ ...manifest, taskCommit });
+  expect(result).toMatchObject({ outcome: "COMPLETED", stashState: "restored", merge: "merged" });
+  expect(readFileSync(join(root, "CHANGELOG.md"), "utf8")).toContain("- Task entry.");
+  expect(readFileSync(join(root, "CHANGELOG.md"), "utf8")).toContain("- Existing target entry.");
+  expect(result.evidence).toContain("restoration-conflict=CHANGELOG.md additive union");
+  expect(git(root, "stash", "list")).toBe("");
 });
 
 it("reports a restoration conflict and retains the exact stash", () => {

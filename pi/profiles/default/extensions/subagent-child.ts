@@ -12,6 +12,7 @@ import { dispatchOperation, withDispatchMetadata } from "../lib/subagents/contro
 import { writeSubagentLineage } from "../lib/subagents/lineage.ts";
 import { activateTools } from "../lib/tool-activation.js";
 import type { CloseoutManifest } from "../lib/plan-integration/contracts.ts";
+import { samePlatformPath } from "../lib/path-identity.ts";
 interface CloseoutHandoff { manifest:CloseoutManifest; provenance:{source:"subagent-runtime";version:1;childId:string;agent:"integrator";parentSessionId:string;targetCheckout:string} }
 interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; cwd:string; skills:string[]; surface?:string; closeout?:CloseoutHandoff }
 function isCloseoutManifest(value:unknown):value is CloseoutManifest {
@@ -40,9 +41,9 @@ export default function childAuthority(pi:ExtensionAPI){
  if (!authority || !Array.isArray(authority.tools) || !authority.tools.every(t=>typeof t==="string") || !Array.isArray(authority.delegates) || !Array.isArray(authority.skills)) throw new Error("Invalid frozen authority");
  if(authority.agent==="integrator"){
   const handoff=authority.closeout,provenance=handoff?.provenance;
-  if(!handoff||!isCloseoutManifest(handoff.manifest)||handoff.manifest.noMerge||authority.parentId||authority.delegates.length||authority.cwd!==handoff.manifest.targetCheckout
+  if(!handoff||!isCloseoutManifest(handoff.manifest)||handoff.manifest.noMerge||authority.parentId||authority.delegates.length||!samePlatformPath(authority.cwd,handoff.manifest.targetCheckout)
    ||provenance?.source!=="subagent-runtime"||provenance.version!==1||provenance.childId!==authority.id||provenance.agent!=="integrator"
-   ||provenance.targetCheckout!==handoff.manifest.targetCheckout||!provenance.parentSessionId)throw new Error("Invalid Integrator closeout authority handoff");
+   ||!samePlatformPath(provenance.targetCheckout,handoff.manifest.targetCheckout)||!provenance.parentSessionId)throw new Error("Invalid Integrator closeout authority handoff");
  }else if(authority.closeout)throw new Error("Closeout authority is restricted to the Integrator role");
  if(authority.closeout&&!process.env.PI_SUBAGENT_ENDPOINT)throw new Error("Integrator requires an authenticated parent endpoint");
  workspaceRoot(authority.cwd);

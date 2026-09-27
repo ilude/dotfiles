@@ -10,17 +10,18 @@ Updated: 2026-09-26. This is a discussion handoff, not an implementation plan or
 - Current subject: designing a distinct, on-demand Advocate that understands Mike's demonstrated design and workflow preferences.
 - Overnight research extension completed September 26: all 12 intervals back to June 1 reviewed and integrated below. The new interval contributed 19,681 canonical visible messages across 597 sessions and 1,110 pages. Both profiles were inventoried; qualifying content was legacy only. All weekly Leads and readers are closed; no research assignments or follow-up schedules remain.
 - Start with [Combined research synthesis](#combined-research-synthesis), then the weekly evidence as needed. Coverage is selected visible conversation, not exhaustive tool results, attachments, or hidden reasoning.
-- Current draft: [implementation plan](plan.md). The later [intent-led evaluation design](evaluation-design.md) records the external research, operator clarifications, proposed procedure, routing interpretation, and concurrency deferral. Read these before treating older proposals below as current. Implementation is not authorized.
+- Current ready plan: [implementation plan](plan.md), awaiting execution authorization. The later [intent-led evaluation design](evaluation-design.md) records the external research, operator clarifications, proposed procedure, routing interpretation, and concurrency deferral. Read these before treating older proposals below as current. Implementation is not authorized.
 
 ### Latest design refinements
 
 - Keep feedback evidence and curated decision knowledge under `agent-process`, not a separate knowledge skill. Advocate reads that source without launching learning or approving updates.
 - General instruction diagnosis and evaluation belong in `prompting`, applied by writer. `agent-process` commissions the relevant work and maintains its records rather than duplicating the procedure.
 - Preserve user intent, purpose, applicability, and opposing requirements independently of prompt wording. Record actual comparative outcomes and limitations, not just versions or claims that a change helped.
-- The proposed flexible loop uses revealing cases, diagnosis, a targeted comparison, and an evidence-backed conclusion. A bounded learning-to-advice exercise is now part of the draft plan; no permanent evaluation platform or experiment before every ordinary correction is proposed.
+- The proposed flexible loop uses revealing cases, diagnosis, a targeted comparison, and an evidence-backed conclusion. A bounded learning-to-advice exercise is part of the ready plan; no permanent evaluation platform or experiment before every ordinary correction is proposed.
 - Routing lessons should depend on task shape, available inputs, instruction state, and actual model/effort. Bayesian updating is a useful direction, not authorization for an automatic router or invented probabilities.
 - Mike explicitly deferred concurrent-writer machinery. This personal experiment does not need a speculative coordination system; an actual collision can be reconciled through ordinary file/Git/worktree procedures. It is not a blocker.
-- These are documented design revisions, not active skill/role changes. Model/tool defaults and the rest of the draft remain recommendations for plan review.
+- Writer designs and interprets comparisons; Mike confirmed that the parent launches necessary runs using existing tools. Temporary knowledge setup and checking Strategist's reader path are ordinary agent-owned implementation details, not open operator decisions.
+- The plan is ready, not implemented. These documented revisions do not activate skills/roles or authorize execution.
 
 ## Authorization and settled direction
 

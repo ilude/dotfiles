@@ -125,6 +125,10 @@ export async function hostSubagent(entry, profile, rawEndpoint) {
     return;
    } catch { /* The outer launcher will preserve the diagnostic on stderr. */ }
   }
+  // Transport startup failures cannot be reported to the parent. Keep the
+  // plugin pane alive briefly so layout placement completes and the diagnostic
+  // remains readable instead of being replaced by a secondary pane_not_found.
+  await delay(5_000);
   throw error;
  }
 }

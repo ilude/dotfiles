@@ -1,5 +1,23 @@
 # Agent instruction feedback log
 
+## AIF-096 - Do-it already authorizes local Git closeout
+
+- **Reference:** Lean Pi runtime plan handoff, after the 2026-09-27 planning session.
+- **Feedback:** The orchestrator asked for separate permission to implement and run local Git operations even though the operator intended `/do-it` to authorize plan execution, worktrees, commits, and local integration.
+- **Finding:** `prompts/do-it.md` and AIF-014 already grant those local actions on invocation; push and deployment remain separate. The plan repeated an unnecessary authorization gate, and the handoff followed it instead of the established workflow.
+- **Correction:** Align the plan with `/do-it` and do not ask for a second local Git permission. Preserve separate push/deployment authority and do not treat a planning discussion as an invocation.
+- **Related:** AIF-014, AIF-023, AIF-016.
+- **Status:** Plan wording corrected; operator approved explicit `/do-it` local Git authorization in the shared planning skill and template. The `/do-it` command already stated the rule and was not changed.
+
+## AIF-095 - Apply proportionality before proposing replacement machinery
+
+- **Reference:** Pi extension CPU and recurring-work review, 2026-09-27.
+- **Feedback:** The orchestrator proposed worker-based reload scanning, persistent authenticated signaling, and aggressive resource-monitor refinements before asking whether these low-value safeguards and indicators should exist at all. The operator identified the proposals as over-engineered and gold-plated.
+- **Finding:** Existing Investigation and Proportionality rules already require evidence for factual claims, workflow-specific justification for safeguards, normal-forward optimization, and rejection of speculative machinery. AIF-054 records the same pattern of inventing resource ceilings and safety controls. This is an adherence failure, not missing policy.
+- **Correction:** Evaluate removal or simplification before optimizing incidental monitoring. Do not treat preserving an existing safeguard or indicator as a requirement without evidence that its benefit warrants its ongoing cost.
+- **Related:** AIF-054, AIF-041, AIF-031.
+- **Status:** Feedback recorded; no instruction change proposed because the active rules already cover the failure.
+
 ## AIF-094 - Tool cards should present operator meaning before transport identity
 
 - **Reference:** Herdr tool-output screenshot and UX discussion, 2026-09-26.
@@ -600,6 +618,7 @@
 - **Comparison:** Builds on AIF-031's comparable-feature baseline, AIF-001's plain language, AIF-004's narrow changes, and AIF-003/APR-002's bounded verification. Objective evidence should guide judgment, not create deterministic routing, evidence paperwork, or approval ceremony. Source evidence can establish a defect without a reproduced failure; passing checks does not erase known task-related defects.
 - **Decision:** Consolidated investigation and verification bullets in `pi/profiles/default/AGENTS.md`, retained uncertainty disclosure, scope, and preservation rules, and limited clarification to choices unresolved by the request and repository evidence. Refined `agent-process/SKILL.md` to consolidate overlaps, name actions/triggers/evidence/stopping conditions, and preserve scope and clarification boundaries when shortening wording. Planning skill and agent plans remain unchanged.
 - **Status:** Instruction edits implemented. Scoped wording/diff review and `git diff --check` passed; no runtime changes or model-adherence test. Effectiveness remains unverified.
+- **Later observation (Advocate plan discussion, default session `01a0dab8-4e9b-74fd-8a6c-adecd40df49c`):** When asked what issues remained, the assistant mixed a live-comparison ownership choice with agent-owned test setup and validation details. The operator needed repeated clarification before the assistant acknowledged the latter were not decisions requiring operator input; frustration followed. The operator settled comparison ownership: the parent launches necessary runs using existing tools. This supports the existing distinction between consequential choices and routine implementation details, not another instruction or approval gate. Recorded as non-adherence; no instruction changes made.
 
 ## AIF-031 - Use comparable repository features as the engineering baseline
 

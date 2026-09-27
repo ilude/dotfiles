@@ -12,7 +12,7 @@
 
 **Changed:** Log analytics no longer recursively walks its invocation directory every 25 ms during setup and SELECT. DuckDB's native 8 GiB spill configuration, explicit owned-disk checks at large-staging batch/checkpoint boundaries and query completion, resource reporting, read-only SELECT, and cleanup remain. Because checks now occur only at those boundaries, the budget and reported peak are not continuously sampled hard limits.
 
-- Default Pi's authenticated Integrator closeout now compares checkout paths with platform-aware identity rules. Equivalent Windows slash styles and drive-letter casing no longer invalidate an otherwise authorized handoff, while POSIX path comparisons remain case-sensitive.
+- Default Pi's authenticated Integrator closeout now compares checkout paths with platform-aware identity rules. Equivalent Windows slash styles and drive-letter casing no longer invalidate an otherwise authorized handoff, while POSIX path comparisons remain case-sensitive. Closeout Git commands allow bounded large output, only overlapping dirty paths are temporarily stashed, and additive `CHANGELOG.md` restoration conflicts preserve both entries automatically.
 
 - Default-profile orchestrators and every default-profile subagent role now load scoped project instructions from `.pi/instructions/**/*.md`. Matching uses explicit tool-call paths and appends applicable guidance after the tool result, including after first-touch mutations; it does not activate from result paths or enforce access. Optional `applyTo` globs, trust gating, nested-root behavior, session/compaction delivery, and bounded shell extraction are documented in `pi/profiles/default/docs/scoped-instructions.md`.
 

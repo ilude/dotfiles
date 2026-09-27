@@ -58,10 +58,13 @@ reopening them.
    Include only context needed to restart. Label paths repository-root-relative and
    future files as proposed. Do not invent optional work, rollback tasks, exhaustive
    contingencies, approval gates, or manual acceptance requirements.
-5. Record authorization, preservation, and delegation constraints. Execution normally
-   includes dedicated task worktrees, local task commits, and merge into a recorded
-   target; push and deployment require separate permission. Executable plans must tell
-   the orchestrator to consult Strategist before delegating unless the user explicitly
+5. Record authorization, preservation, and delegation constraints. Planning alone
+   authorizes no implementation or Git operations. Invoking `/do-it` for the selected
+   plan authorizes implementation, dedicated task worktrees, local commits, and merge
+   into the recorded target unless `--no-merge` is specified or the user restricts
+   those actions. Do not require a second approval for local Git. Push and deployment
+   require separate explicit authorization. Executable plans must tell the
+   orchestrator to consult Strategist before delegating unless the user explicitly
    requests a single-agent handoff, including a Team Lead. Preserve the Team Lead's
    own Strategist-first workflow. Assign at most one named plan task per subagent,
    split larger tasks further, and use only roles from the active agent catalog.

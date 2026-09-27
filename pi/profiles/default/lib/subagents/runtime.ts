@@ -12,6 +12,7 @@ import { createHerdrCli } from "../herdr-cli.ts";
 import { composedAgentPrompt } from "./guidance.ts";
 import type { CloseoutManifest } from "../plan-integration/contracts.ts";
 import { validateCloseoutManifest } from "../plan-integration/closeout.ts";
+import { samePlatformPath } from "../path-identity.ts";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 export type DeliveryKind = "outcome" | "question" | "question-resolution";
 export interface Delivery extends ChildRecord { deliveryId: string; deliveryKind?: DeliveryKind }
@@ -298,7 +299,7 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
    if(input.parentId||!input.closeoutManifest)throw new Error("Integrator requires a root-orchestrator closeout manifest");
    validateCloseoutManifest(input.closeoutManifest);
    if(input.closeoutManifest.noMerge)throw new Error("Integrator is not launched when closeout is skipped");
-   if(resolve(input.cwd)!==resolve(input.closeoutManifest.targetCheckout))throw new Error("Integrator must launch from the recorded target checkout");
+   if(!samePlatformPath(resolve(input.cwd),resolve(input.closeoutManifest.targetCheckout)))throw new Error("Integrator must launch from the recorded target checkout");
   }else if(input.closeoutManifest)throw new Error("Closeout manifests are restricted to the Integrator role");
   if(input.parentId){
    const parent=this.children.get(input.parentId),context=this.contexts.get(input.parentId);

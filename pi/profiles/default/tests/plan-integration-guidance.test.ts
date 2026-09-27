@@ -20,7 +20,8 @@ describe("Integrator plan closeout guidance", () => {
     expect(prompt).toContain("ignored files are excluded");
     expect(prompt).toContain("disjoint changes should remain in place");
     expect(prompt).toContain("routine conflicts within settled intent");
-    expect(prompt).toContain("restoration conflicts, consequential overlaps");
+    expect(prompt).toContain("additive `CHANGELOG.md` restoration conflicts");
+    expect(prompt).toContain("other restoration conflicts, consequential overlaps");
     expect(prompt).toContain("The parent owns user questions and final reporting");
     expect(prompt).toContain("Do not push or deploy unless the selected plan records explicit authorization");
     expect(prompt).toContain("With `--no-merge`, do not dispatch the Integrator for mutation");

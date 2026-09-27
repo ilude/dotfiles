@@ -18,11 +18,11 @@ The following procedure is the proposed practical expression of that direction. 
 | Owner | Responsibility |
 | --- | --- |
 | `prompting` | General instruction diagnosis, preserving intent, designing a useful comparison, and interpreting results. Keep detail in an on-demand reference rather than expanding global instructions. |
-| Writer | Performs the assigned investigation, comparison, and permitted prose maintenance using the applicable skills. Evaluation is part of its reasoning, not merely transcription. |
+| Writer | Investigates, designs and interprets comparisons, and performs permitted prose maintenance using the applicable skills. Evaluation is part of its reasoning, not merely transcription. It requests necessary runs from the parent rather than delegating. |
 | `agent-process` | Recognizes the existing feedback triggers, commissions background work, and owns feedback evidence and curated learning references. It links to the prompting procedure instead of duplicating it. |
 | Advocate | Reads the shared knowledge and advises on the current approach. It does not approve maintenance or start learning merely by being consulted. |
 | Strategist | Uses supported routing lessons when selecting models and sizing assignments. New observations do not automatically rewrite model defaults or permissions. |
-| Orchestrator | Owns immediate task correction, assignment context, consequential user questions, and approval boundaries. |
+| Orchestrator | Owns immediate task correction, assignment context, consequential user questions, and approval boundaries. Launches necessary comparison runs using existing tools and returns results/source pointers to writer. |
 
 No separate Reflector, Curator, evaluator service, or prompt-writer role is proposed. One worker may reason through diagnosis, candidate change, and comparison without conflating those activities. A separate judgment call is useful only when the particular comparison warrants it, not as a mandatory review stage.
 
@@ -98,7 +98,7 @@ Record the result and refine the relevant knowledge or propose an instruction ch
 
 ## Initial Advocate exercise
 
-Use one bounded, agent-owned exercise after the implementation is available, with disposable knowledge rather than edits to the live learning store:
+Use one bounded, agent-owned exercise after the implementation is available, with disposable knowledge rather than edits to the live learning store. Writer designs and interprets it; the parent launches the necessary runs using existing tools. The executor configures and verifies the temporary resource paths as ordinary implementation work, without asking the operator to choose the test setup:
 
 1. Select a recorded correction with clear intent and a meaningful contrasting case.
 2. Give the learning worker the relevant feedback and prior knowledge state; verify its actual permitted edits and concise explanation, not just a claim that it learned.

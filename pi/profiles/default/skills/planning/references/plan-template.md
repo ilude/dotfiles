@@ -10,7 +10,7 @@ completed: null
 
 - User requirements and settled decisions: <requested outcomes and preserved behavior>.
 - Non-goals: <important exclusions, not speculative restrictions>. Do not add rollback work unless requested.
-- Authorization: <planning or execution; local Git restrictions; explicit push/deployment permission>.
+- Authorization: planning alone permits no implementation or Git operations. `/do-it` authorizes the selected plan's implementation, local worktrees, commits, and merge unless `--no-merge` is specified or the user restricts those actions. Record any restriction and separately authorized push/deployment; do not require another approval for local Git.
 
 The user's request and subsequent changes are authoritative. Keep unapproved
 recommendations and optional work outside tasks and completion criteria.

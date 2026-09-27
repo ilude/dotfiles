@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import type { Analysis, ToolRequest } from "./types.ts";
 import { validateCloseoutManifest } from "../plan-integration/closeout.ts";
 import type { CloseoutManifest } from "../plan-integration/contracts.ts";
+import { samePlatformPath } from "../path-identity.ts";
 
 const HELPER_SHA256 = "5e652b6bb5d73a30dca4613c157b8388d3e0319b4a43dc52482b4a04303f30b8";
 
@@ -45,10 +46,10 @@ export function authorizedPlanIntegration(request: ToolRequest, analysis: Analys
   try { validateCloseoutManifest(manifest); } catch { return false; }
   if (p.source !== "subagent-runtime" || p.version !== 1 || p.agent !== "integrator" || p.childId !== handoff.id
     || typeof p.parentSessionId !== "string" || !p.parentSessionId
-    || typeof m.targetCheckout !== "string" || m.noMerge !== false
-    || resolve(request.cwd) !== resolve(m.targetCheckout)
-    || resolve(handoff.cwd as string) !== resolve(m.targetCheckout)
-    || p.targetCheckout !== m.targetCheckout) return false;
+    || typeof p.targetCheckout !== "string" || typeof m.targetCheckout !== "string" || m.noMerge !== false
+    || !samePlatformPath(resolve(request.cwd), resolve(m.targetCheckout))
+    || !samePlatformPath(resolve(handoff.cwd as string), resolve(m.targetCheckout))
+    || !samePlatformPath(p.targetCheckout as string, m.targetCheckout)) return false;
 
   // Accept only a single literal invocation. Shell composition, environment
   // assignments, pipes, redirections, aliases, and additional commands fail closed.
