@@ -1,5 +1,7 @@
 # Changelog
 
+- Default-profile orchestrators and every default-profile subagent role now load scoped project instructions from `.pi/instructions/**/*.md`. Matching uses explicit tool-call paths and appends applicable guidance after the tool result, including after first-touch mutations; it does not activate from result paths or enforce access. Optional `applyTo` globs, trust gating, nested-root behavior, session/compaction delivery, and bounded shell extraction are documented in `pi/profiles/default/docs/scoped-instructions.md`.
+
 - Default Pi's reload monitor now avoids canonicalizing every ordinary resource file on each scan and polls every 15 seconds instead of every two seconds. On Windows, the prior content-hashing scan took roughly 200–400 ms per idle Pi process, so several open Herdr Pi tabs could consume multiple CPU cores and degrade terminal input. Content-based change detection, metadata-only touch suppression, symlink cycle protection, and the reload indicator remain intact.
 
 - Default Pi profile commands now render with the same padded, shaded presentation as ordinary user input. `/commit` completion lines format commit hashes as subdued inline code and subjects as bold text so successful commit output stands out from ordinary assistant prose.
