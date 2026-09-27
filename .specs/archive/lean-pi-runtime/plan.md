@@ -1,7 +1,7 @@
 ---
 created: 2026-09-27
-status: in-progress
-completed: null
+status: completed
+completed: 2026-09-27
 ---
 
 # Keep default Pi responsive without losing useful live status
@@ -120,3 +120,7 @@ On `/do-it` execution, use dedicated task worktrees and local task commits while
 After implementation and checks, confirm `.specs/archive/lean-pi-runtime/` is unused, archive the whole spec on the authorized dotfiles task branch, and commit it with its implementation. For authorized `/do-it` integration, dispatch Integrator from the recorded dotfiles target checkout after the task commit; it owns the local merge, completion metadata, and worktree cleanup. Honor an explicit `--no-merge` request. An unresolved module publication or local merge blocks the respective integration; keep worktrees and accurate pending checkboxes/evidence instead of claiming completion. Do not deploy without separate permission. Manual/live operator testing remains a non-blocking verification limit.
 
 Final response must lead with the actual outcome and explicit text: 🟢 **COMPLETED** only after checks, authorized integration, metadata, and cleanup; 🔴 **NOT COMPLETE: MERGE BLOCKED** or **USER INPUT REQUIRED** with reason and action owner when blocked; 🔵 **IMPLEMENTED: MERGE SKIPPED AS REQUESTED** only for authorized `--no-merge`; 🟡 **CLEANUP PENDING** when integrated but cleanup remains. Report checked results and the exact repository/branch/worktree state without implying that planning or passing tests alone completed delivery.
+
+## Integration evidence
+
+Dotfiles typecheck, agreed 110-test suite, runtime check, and offline Onclave smoke passed. Onclave focused 42 tests and just check 391 passed with 1 skipped. Visible host/cleanup regression suite passed 13 tests and a live visible subagent launch passed after fixing the undeclared waitForParentEvents binding. Onclave commit ceab7fbb573b02e14559ea9163c4586851231dae was explicitly authorized and pushed to origin/task/lean-pi-runtime-onclave. Seven broad subagent-filter failures reproduce unchanged on the target checkout.
