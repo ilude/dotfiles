@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-076 - Product choices offered before verifying available behavior
+
+- **Reference:** Dashboard-restoration planning discussion, 2026-09-26.
+- **Observed:** The orchestrator repeatedly qualified authentication and permission options with "if supported" and moved discoverable product facts into a future feasibility task. The operator could not make an informed choice from the offered alternatives.
+- **Related:** AIF-092 and APR-072 (investigate before presenting decisions), APR-073 (perform available investigation).
+- **Finding:** Tagged login, user-store, authorization code, and versioned configuration documentation were available without deploying anything. Conflicting research summaries were not a reason to hand factual uncertainty to the operator.
+- **Remediation:** Inspected those sources directly. Separate verified product mechanisms from the remaining account-sharing and privilege tradeoffs; keep runtime validation distinct from establishing what the code implements.
+- **Status:** Evidence obtained; no instruction changes proposed.
+
 ## APR-075 - Pi shortcut recommendation ignored the outer terminal keymap
 
 - **Reference:** Pi-native `/new-instance` shortcut, 2026-09-25.

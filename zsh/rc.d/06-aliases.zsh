@@ -43,7 +43,7 @@ ccyl() {
     clear
     printf '\033]0;%s\007' "${PWD:t}"
     if (( bedrock )); then
-        DOTFILES_CLAUDE_PROVIDER=bedrock CLAUDE_CODE_USE_BEDROCK=1 AWS_REGION=us-east-2 ANTHROPIC_DEFAULT_OPUS_MODEL=us.anthropic.claude-opus-5-5 \
+        DOTFILES_CLAUDE_PROVIDER=bedrock CLAUDE_CODE_USE_BEDROCK=1 AWS_REGION=us-east-2 ANTHROPIC_DEFAULT_OPUS_MODEL='us.anthropic.claude-opus-5-5[1m]' \
             _run_claude --dangerously-skip-permissions --chrome "$@"
     else
         ( unset CLAUDE_CODE_USE_BEDROCK ANTHROPIC_DEFAULT_OPUS_MODEL

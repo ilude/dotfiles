@@ -184,7 +184,7 @@ function ccyl {
             $env:DOTFILES_CLAUDE_PROVIDER = 'bedrock'
             $env:CLAUDE_CODE_USE_BEDROCK = '1'
             $env:AWS_REGION = 'us-east-2'
-            $env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'us.anthropic.claude-opus-5-5'
+            $env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'us.anthropic.claude-opus-5-5[1m]'
         } else {
             $env:DOTFILES_CLAUDE_PROVIDER = 'subscription'
             Remove-Item Env:CLAUDE_CODE_USE_BEDROCK, Env:ANTHROPIC_DEFAULT_OPUS_MODEL -ErrorAction SilentlyContinue
