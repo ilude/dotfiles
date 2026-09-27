@@ -87,7 +87,7 @@ The tasks below have independent owners unless a dependency is named. T1, T2, T3
   - Change: pace unexpectedly immediate empty long-poll responses while retaining normal 25-second server-held delivery and reconnect backoff. Renew the 90-second presence lease from authenticated message polls, remove the separate heartbeat interval, and return the current live-peer count along that same request/response path so the footer does not require a replacement poll. The existing route response helpers support headers on both an empty 204 and a delivered response; use a comparably small wire change rather than a new service or transport.
   - Verify: from `modules/onclave/`, run focused `pnpm exec vitest run extensions/onclave-pi/tests/connection.test.ts extensions/onclave-pi/tests/extension.test.ts extensions/onclave-pi/tests/http-client.test.ts services/core/tests/registry.test.ts`, then `just check`. Test idle presence beyond 90 seconds, quick empty responses, real waits, delivered messages, disconnection, and shutdown without live credentials. Broker-backed integration is a non-blocking limit if prerequisites are absent.
   - Done when ordinary idle message delivery does not busy-loop, healthy idle instances stay live, footer presence remains accurate, and no independent heartbeat interval remains when the message channel suffices.
-  - Evidence: Implemented in independent Onclave branch `task/lean-pi-runtime-onclave`, commit `ceab7fb`; focused Vitest passed 5 files/42 tests and `just check` passed 50 files/391 tests with 1 skipped. Broker-backed integration was not run. Commit is local and unpushed, so the dotfiles gitlink remains unchanged pending push authorization.
+  - Evidence: Implemented in independent Onclave branch `task/lean-pi-runtime-onclave`, commit `ceab7fb`, published as `origin/task/lean-pi-runtime-onclave`; focused Vitest passed 5 files/42 tests and `just check` passed 50 files/391 tests with 1 skipped. Broker-backed integration was not run. The commit is remotely reachable and the dotfiles gitlink is updated for integration.
 
 - [x] **T6: Remove aggressive analytics disk timers**
   - Depends on: none. Parallel with: T1, T2, T3, T5.
@@ -107,11 +107,11 @@ The tasks below have independent owners unless a dependency is named. T1, T2, T3
 
 ## Agreed validation and current handoff
 
-- Status: **implementation and agreed agent-owned checks complete; integration blocked on module publication authorization**.
+- Status: **implementation and agreed agent-owned checks complete; archived for authorized integration**.
 - Completed work: T1 through T7 are implemented and validated in dotfiles worktree `C:/Users/mglenn/.dotfiles/.worktrees/lean-pi-runtime`, branch `task/lean-pi-runtime`, based on recorded target `main` at `677dcc442f96fd60518b30be9aa3b5f91b410cdb`. Onclave T5 is committed in worktree `C:/Users/mglenn/.dotfiles/.worktrees/lean-pi-runtime-onclave`, branch `task/lean-pi-runtime-onclave`, commit `ceab7fb`.
-- Next: the operator must authorize pushing the Onclave module commit. Then publish the module branch/commit, update the dotfiles gitlink to the remotely reachable commit, archive this spec, commit the coordinated task, and dispatch Integrator from the recorded target checkout.
-- Open behavior decisions: none. Push authorization is the only consequential prerequisite.
-- Verification limits: attached-client typing, live Herdr child control, broker-backed/deployed Onclave presence, and deployment are not proven. They are non-blocking manual/live limits. No push or deployment was performed.
+- Next: dispatch Integrator from the recorded target checkout for local merge, completion metadata, and worktree cleanup.
+- Open behavior decisions: none. Onclave push was explicitly authorized and completed; deployment remains unauthorized.
+- Verification limits: attached-client typing, live Herdr child control, broker-backed/deployed Onclave presence, and deployment are not proven. They are non-blocking manual/live limits. The Onclave task branch was pushed with explicit authorization. No deployment was performed.
 
 ## Closeout on `/do-it`
 
