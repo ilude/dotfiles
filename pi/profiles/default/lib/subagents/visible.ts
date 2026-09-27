@@ -4,7 +4,8 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
 import type { ChildEndpoint, ApplicationMessage, MessageOptions } from "./transport.ts";
-import { createHerdrCli, herdrContext, result, inspectPane } from "../herdr-cli.ts";
+import { createHerdrCli, result } from "../herdr-cli.ts";
+import { currentPaneIdentity } from "./herdr-layout-api.ts";
 import { LayoutPlacementError, LayoutReconciliationError, SubagentLayout } from "./layout.ts";
 
 export function safeDiagnostic(value:unknown):string {
@@ -40,7 +41,6 @@ export class VisibleChild extends RpcChild {
   if(!endpoint)throw new Error("Visible launch requires authenticated transport");
   this.endpoint=endpoint;
   const waiting=new Promise<ChildRecord>(resolve=>{this.settled=()=>resolve(this.snapshot())});
-  const context=herdrContext();
   this.enqueue({type:"message",message:this.spec.instructions});
   this.startup=setTimeout(()=>{if(!this.appReady)this.fail("Visible child did not become ready")},30_000);
   this.launchDone=(async()=>{
@@ -48,8 +48,8 @@ export class VisibleChild extends RpcChild {
    const command=plugins?.find((plugin:any)=>plugin.plugin_id==="local.pi")?.panes?.find((pane:any)=>pane.id==="pi")?.command;
    const expected=resolve(this.profileDir,"../../../scripts/pi-herdr-launch.mjs");
    if(!Array.isArray(command)||command.length!==3||typeof command[1]!=="string"||realpathSync.native(command[1])!==realpathSync.native(expected))throw new Error("local.pi is not linked to this profile's repository bootstrap; refusing an unrestricted launch");
-   await inspectPane(this.cli,context.pane);
-   const placement=await this.layout.place(this.record.origin,{childId:this.record.id,callerPane:context.pane,cwd:this.spec.cwd,title:`${this.spec.displayName ?? this.spec.definition.name} · ${this.spec.definition.name}`,plugin:"local.pi",entrypoint:"pi",env:[`PI_HERDR_PROFILE_DIR=${this.profileDir}`,`PI_HERDR_SUBAGENT=${JSON.stringify(endpoint)}`]});
+   const caller=await currentPaneIdentity(this.cli);
+   const placement=await this.layout.place(this.record.origin,{childId:this.record.id,parentId:this.spec.parentId,role:this.spec.definition.name,callerPane:caller.pane_id,cwd:this.spec.cwd,title:`${this.spec.displayName ?? this.spec.definition.name} · ${this.spec.definition.name}`,plugin:"local.pi",entrypoint:"pi",env:[`PI_HERDR_PROFILE_DIR=${this.profileDir}`,`PI_HERDR_SUBAGENT=${JSON.stringify(endpoint)}`]});
    this.record.paneId=placement.paneId;this.record.paneState="open";
   })();
   void this.launchDone.catch(error=>{

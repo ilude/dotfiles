@@ -348,7 +348,7 @@ export class SubagentRuntime {
   if(matches.length>1)throw new Error(`Ambiguous child id or name: ${idOrName}`);
   return undefined;
  }
- private layoutFor(origin:string){let layout=this.layouts.get(origin);if(!layout){layout=new SubagentLayout(createHerdrCli());this.layouts.set(origin,layout)}return layout}
+ private layoutFor(origin:string){let layout=this.layouts.get(origin);if(!layout){layout=new SubagentLayout(createHerdrCli(),undefined,(childId,paneId)=>{const child=this.children.get(childId);if(child){child.record.paneId=paneId;child.record.updatedAt=new Date().toISOString();this.publish(origin)}});this.layouts.set(origin,layout)}return layout}
  hasActiveResources(){
   return [...this.children.values()].some(child=>{
    const record=child.record;
