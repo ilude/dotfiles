@@ -1,7 +1,7 @@
 ---
 created: 2026-09-27
-status: ready
-completed: null
+status: completed
+completed: 2026-09-27
 ---
 
 # Add lazy path-scoped project instructions to default Pi
@@ -206,6 +206,10 @@ After implementation and agreed agent-owned checks pass, update task evidence an
 For authorized `/do-it` execution, after the task commit dispatch the Integrator from the recorded target checkout with the closeout manifest. The Integrator owns local integration and cleanup; the orchestrator owns user questions and final reporting. If integration is blocked, retain the worktree and report implementation/checks separately from pending delivery. If `--no-merge` applies, skip mutating integration and retain the committed task worktree intentionally.
 
 The Integrator verifies target and archive, records actual completion date/status/evidence, commits that metadata, then removes the clean task worktree. Push and deployment require separate explicit authorization. Operator manual testing is useful later evidence but does not block closeout.
+
+## Integration evidence
+
+Focused tests passed 24/24 and pnpm typecheck passed. `make check-pi-default` runtime smoke and typecheck passed. Full-suite failures were unrelated baseline/environment failures reproduced on the originating checkout, with no scoped-instruction failures. Integrated locally into `main` with the disjoint existing Herdr completion. Push and deployment were not authorized and were not performed.
 
 ### Final response
 
