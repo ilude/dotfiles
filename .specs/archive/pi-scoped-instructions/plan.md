@@ -160,11 +160,11 @@ Keep checkbox state, concise evidence, blockers, and next action accurate. Unfin
   - Done when: the task branch is committed and a closeout manifest records exact task/target coordinates, commit, archive path, and validation evidence.
   - Evidence: Archived and committed with the implementation after validation.
 
-- [ ] **T5: Integrate locally and clean up**
+- [x] **T5: Integrate locally and clean up**
   - Depends on: T4's committed task and closeout manifest; authorized execution without `--no-merge`.
   - Change: the orchestrator dispatches Integrator from the recorded target checkout. Integrator owns local integration, completion metadata, and clean task-worktree removal under its existing skill. No push or deployment.
   - Done when: changes are on the recorded target, completion metadata is committed, and task-worktree cleanup is verified. With `--no-merge`, leave this unchecked and report the intentional retained worktree.
-  - Evidence: Not started.
+  - Evidence: Merged into `main` at `bd891cf794cd2d37d9b595f41efe784f3d1b2f8c`; completion metadata committed at `9023239c920477b475b70bfeb2887038ff994a75`. Task worktree cleanup verified below.
 
 ## Agreed validation and current handoff
 
@@ -193,10 +193,10 @@ The focused suite must establish:
 
 Review one assembled fixture payload to confirm instruction source markers and content contain no absolute machine path, timestamp, or incidental ordering. Static prefix/byte inspection establishes deterministic cacheability conditions only. Do not claim provider cache effectiveness without representative provider usage, which is not an acceptance requirement.
 
-- Status: implemented and validated on the task branch; local integration pending.
-- Completed work and evidence: T1-T4 implemented. `pnpm test scoped-instructions.test.ts subagent-launch-prompt.test.ts` passed 24/24 and `pnpm run typecheck` passed. `make check-pi-default` reached runtime smoke and typecheck successfully; its full suite remained red only in unrelated environment/baseline failures (missing optional checkout/dependency/authentication plus existing timeouts/assertions), reproduced from the originating checkout. No scoped-instruction test failed.
-- Next: integrate the committed task branch into recorded target `main`, commit completion metadata, and remove the task worktree.
-- Blockers/open decisions: none for integration. The repository-wide suite has unrelated baseline/environment failures; focused acceptance and typecheck pass.
+- Status: implemented, validated, integrated, and closed out locally.
+- Completed work and evidence: T1-T5 completed. `pnpm test scoped-instructions.test.ts subagent-launch-prompt.test.ts` passed 24/24 and `pnpm run typecheck` passed. `make check-pi-default` reached runtime smoke and typecheck successfully; its full suite remained red only in unrelated environment/baseline failures (missing optional checkout/dependency/authentication plus existing timeouts/assertions), reproduced from the originating checkout. No scoped-instruction test failed.
+- Next: none. Push and deployment remain unauthorized.
+- Blockers/open decisions: none. The repository-wide suite has unrelated baseline/environment failures; focused acceptance and typecheck pass.
 - Verification limits: arbitrary shell filesystem access, prompt adherence, and real provider cache hits cannot be guaranteed by unit/type checks. Later operator use may reveal a specific need for pre-mutation context; that is intentionally deferred and does not block this post-action MVP.
 
 ## Closeout
