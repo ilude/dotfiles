@@ -387,6 +387,26 @@ export class HerdrTabNamingOwner {
     this.ownershipPaused = explicit;
   }
 
+  /** Apply an operator-supplied title after verifying the exact owned tab. */
+  async renameExplicit(title: string, signal?: AbortSignal): Promise<void> {
+    this.cancel();
+    const controller = new AbortController();
+    const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    await inspectExactTarget(this.cli, this.target, combined);
+    await this.cli(["tab", "rename", this.target.tabId, title], { signal: combined });
+    this.claim(title);
+  }
+
+  /** Reclaim the current tab and run an operator-requested naming attempt immediately. */
+  async forceAttempt(trigger: string, contextEntries: readonly unknown[], signal?: AbortSignal): Promise<NamingAttemptResult> {
+    this.cancel();
+    const controller = new AbortController();
+    const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    const current = await inspectExactTarget(this.cli, this.target, combined);
+    this.reset(current.title);
+    return this.attempt(trigger, contextEntries, combined);
+  }
+
   /** Invalidate pending work without treating the cancellation as a model failure. */
   cancel(): void {
     this.generation++;

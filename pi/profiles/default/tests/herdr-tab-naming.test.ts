@@ -219,6 +219,15 @@ describe("owner request and guards", () => {
     expect(diagnostics.records.some(record => record.outcome === "failed")).toBe(false);
   });
 
+  it("lets an operator-forced attempt reclaim a manually renamed tab", async () => {
+    const herdr = herdrFixture("manual title");
+    const runtime = runtimeFor({ stopReason: "stop", content: [{ type: "text", text: "context title" }] });
+    const owner = new HerdrTabNamingOwner({ target: { tabId: "tab" }, initialTitle: ".dotfiles", cli: herdr.cli, runtimeFactory: async () => runtime, diagnostics: diagnosticSink() });
+    owner.claim("manual title");
+    await expect(owner.forceAttempt("rename-command", entries({ role: "user", content: "task" }))).resolves.toEqual({ outcome: "renamed", title: "context title" });
+    expect(herdr.title).toBe("context title");
+  });
+
   it("enforces cooldown, single flight, breaker suspension, and no timed probe", async () => {
     const herdr = herdrFixture();
     let now = 1_000;

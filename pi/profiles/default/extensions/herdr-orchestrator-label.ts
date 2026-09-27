@@ -46,6 +46,40 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
     if (owner && typeof event?.title === "string") owner.claim(event.title, event.explicit);
   });
 
+  pi.registerCommand("rename", {
+    description: "Rename the current Herdr tab, or generate a title from session context",
+    handler: async (args, ctx) => {
+      const current = owner;
+      if (!active || !current) {
+        ctx.ui.notify("/rename is available only in an eligible Herdr orchestrator tab.", "warning");
+        return;
+      }
+      const title = args.trim();
+      if (title.length > 160) {
+        ctx.ui.notify("Tab titles must be at most 160 characters.", "error");
+        return;
+      }
+      ctx.ui.setStatus("herdr-rename", title ? "renaming tab..." : "generating tab title...");
+      try {
+        if (title) {
+          await current.renameExplicit(title, ctx.signal);
+          ctx.ui.notify(`Renamed tab to ${title}.`, "info");
+          return;
+        }
+        const outcome = await current.forceAttempt("rename-command", entries(ctx), ctx.signal);
+        if (outcome.outcome === "renamed") ctx.ui.notify(`Renamed tab to ${outcome.title}.`, "info");
+        else if (outcome.outcome === "unchanged") ctx.ui.notify("The current tab title still matches the session.", "info");
+        else if (outcome.outcome === "abstained") ctx.ui.notify("No confident tab title could be generated.", "warning");
+        else if (outcome.outcome === "skipped") ctx.ui.notify(`Tab rename skipped: ${outcome.reason}.`, "warning");
+        else if (outcome.outcome === "failed") ctx.ui.notify(`Tab rename failed: ${outcome.reason}.`, "error");
+      } catch (error) {
+        ctx.ui.notify(`Tab rename failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+      } finally {
+        ctx.ui.setStatus("herdr-rename", undefined);
+      }
+    },
+  });
+
   pi.on("session_start", async (event, ctx) => {
     if (!eligible(ctx)) return;
     active = true;
@@ -74,7 +108,9 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
       cli: cliFor(pi),
     });
     if (initialExplicit) owner.claim(initialTitle);
-    if (!initialExplicit && event.reason === "startup" && entries(ctx).length) background("restored-startup", entries(ctx));
+    if (!initialExplicit && ["startup", "resume", "fork"].includes(event.reason) && entries(ctx).length) {
+      background(`restored-${event.reason}`, entries(ctx));
+    }
   });
 
   pi.on("before_agent_start", (event, ctx) => {

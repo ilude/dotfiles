@@ -6,7 +6,8 @@ When multiple agents/tasks run in parallel, the main UX problem becomes attentio
 
 ## Seen in
 
-- ../projects/manaflow-cmux.md
+- [Manaflow and cmux](../projects/manaflow-cmux.md)
+- [Visible coding-agent orchestration: September 2026](../projects/visible-agent-orchestration-2026-09.md)
 
 ## Useful primitives
 

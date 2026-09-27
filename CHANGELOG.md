@@ -1,5 +1,7 @@
 # Changelog
 
+- Default Pi now provides `/rename [title]` for the current Herdr orchestrator tab. Explicit titles remain protected from automatic replacement, while bare `/rename` requests an immediate context-derived Luna title. Automatic naming now also runs against restored conversation context when Pi reports a session resume or fork, fixing resumed sessions that previously waited for new activity.
+
 - Claude Code's status line now mirrors Pi's compact layout: repository, model, live effort, context usage, and version on the left; one provider-specific indicator on the right: subscription 5-hour/weekly usage in Anthropic mode, or the Bedrock MTD estimate in Bedrock mode. `ccyl` now marks its selected provider for the footer even when Windows has a persistent Bedrock environment setting; the shared Claude settings no longer force a Bedrock Opus model. Missing subscription windows show `--` rather than silently disappearing. `/effort` changes appear without editing settings; saved `effortLevel` remains a fallback when Claude does not provide a live value.
 
 ## 2026-09-26: Improve web and session tool presentation

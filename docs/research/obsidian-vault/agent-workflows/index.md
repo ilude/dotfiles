@@ -34,6 +34,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [Durable agent task architecture](projects/agent-task-architecture.md) - archived research on SQLite, durable task graphs, evidence, and long-horizon reliability; not an approved roadmap.
 - [Agent routing research](projects/agent-routing-research.md) - superseded routing catalog and design intent.
 - [Pi Link minimal terminal communication](projects/pi-link-minimal-terminal-communication.md) - concise research on local terminal messaging, status, naming, and shared scratch context.
+- [Visible coding-agent orchestration: September 2026](projects/visible-agent-orchestration-2026-09.md) - Herdr, tmux-agents, Pi Mux Subagents, AWS CAO, Agent of Empires, Claude Squad, and Claude teams as references for visible Claude-to-Pi delegation and Pi/Herdr subagent UX.
 
 ## Strongest signals
 

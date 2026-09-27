@@ -11,16 +11,19 @@ afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 function fixture(cwd = "/work/.dotfiles/") {
   const handlers: Record<string, (...args: any[]) => any> = {};
+  const commands: Record<string, { handler: (args: string, ctx: any) => Promise<void> }> = {};
   const busHandlers: Record<string, (data: unknown) => void> = {};
+  let tabTitle = ".dotfiles";
   const exec = vi.fn().mockImplementation(async (_bin, args: string[]) => {
-    if (args[0] === "tab" && args[1] === "get") return { code: 0, killed: false, stdout: JSON.stringify({ result: { tab: { tab_id: "w1:t1", workspace_id: "w1", label: ".dotfiles" } } }), stderr: "" };
+    if (args[0] === "tab" && args[1] === "get") return { code: 0, killed: false, stdout: JSON.stringify({ result: { tab: { tab_id: "w1:t1", workspace_id: "w1", label: tabTitle } } }), stderr: "" };
+    if (args[0] === "tab" && args[1] === "rename") tabTitle = args[3];
     if (args[0] === "pane" && args[1] === "get") return { code: 0, killed: false, stdout: JSON.stringify({ result: { pane: { pane_id: "w1:p1", tab_id: "w1:t1", workspace_id: "w1" } } }), stderr: "" };
     return { code: 0, killed: false, stdout: "", stderr: "" };
   });
   const entries: unknown[] = [];
-  const ctx = { mode: "tui", cwd, ui: { notify: vi.fn() }, sessionManager: { buildContextEntries: () => entries, getSessionId: () => "session" } };
-  register({ on(name: string, handler: any) { handlers[name] = handler; }, exec, events: { on(name: string, handler: any) { busHandlers[name] = handler; }, emit(name: string, data: unknown) { busHandlers[name]?.(data); } } } as any);
-  return { exec, handlers, ctx, entries, start: (reason = "startup", mode = "tui") => handlers.session_start({ reason }, { ...ctx, mode }) };
+  const ctx = { mode: "tui", cwd, signal: undefined, ui: { notify: vi.fn(), setStatus: vi.fn() }, sessionManager: { buildContextEntries: () => entries, getSessionId: () => "session" } };
+  register({ on(name: string, handler: any) { handlers[name] = handler; }, registerCommand(name: string, command: any) { commands[name] = command; }, exec, events: { on(name: string, handler: any) { busHandlers[name] = handler; }, emit(name: string, data: unknown) { busHandlers[name]?.(data); } } } as any);
+  return { exec, handlers, commands, ctx, entries, get tabTitle() { return tabTitle; }, start: (reason = "startup", mode = "tui") => handlers.session_start({ reason }, { ...ctx, mode }) };
 }
 
 it("labels the startup pane and establishes the child-owned base title", async () => {
@@ -61,6 +64,20 @@ it.each([["PI_SUBAGENT_AUTHORITY", "restricted"], ["PI_HERDR_SUBAGENT", "child"]
 it("keeps routine label failures silent", async () => {
   const f = fixture(); f.exec.mockRejectedValue(new Error("unavailable"));
   await expect(f.start()).resolves.toBeUndefined(); expect(f.ctx.ui.notify).not.toHaveBeenCalled();
+});
+
+it("runs restored-context naming when Pi reports a resumed session", async () => {
+  const f = fixture();
+  f.entries.push({ type: "message", message: { role: "user", content: "restored task" } });
+  await f.start("resume");
+  await vi.waitFor(() => expect(f.exec).toHaveBeenCalledWith("fixture-herdr", ["tab", "get", "w1:t1"], expect.anything()));
+});
+
+it("renames the current tab explicitly and protects the supplied title", async () => {
+  const f = fixture(); await f.start();
+  await f.commands.rename.handler("  My Exact Title  ", f.ctx);
+  expect(f.tabTitle).toBe("My Exact Title");
+  expect(f.ctx.ui.notify).toHaveBeenCalledWith("Renamed tab to My Exact Title.", "info");
 });
 
 it("invalidates naming work on tree navigation and shutdown", async () => {
