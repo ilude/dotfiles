@@ -209,7 +209,7 @@ The Integrator verifies target and archive, records actual completion date/statu
 
 ## Integration evidence
 
-Focused tests passed 24/24 and pnpm typecheck passed. `make check-pi-default` runtime smoke and typecheck passed. Full-suite failures were unrelated baseline/environment failures reproduced on the originating checkout, with no scoped-instruction failures. Integrated locally into `main` with the disjoint existing Herdr completion. Push and deployment were not authorized and were not performed.
+Focused tests passed 24/24 and pnpm typecheck passed. `make check-pi-default` runtime smoke and typecheck passed. Full-suite failures were unrelated baseline/environment failures reproduced on the originating checkout, with no scoped-instruction failures. Integrated locally into `main` with the disjoint existing Herdr completion. Removed the task worktree after Git deregistered it but could not delete a Windows long-path remnant; the exact manifest path under `.worktrees/` was removed and verified absent. The task branch remains. Push and deployment were not authorized and were not performed.
 
 ### Final response
 
