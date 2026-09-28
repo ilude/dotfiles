@@ -13,7 +13,7 @@ export default function bedrock(pi: ExtensionAPI): void {
 			const summary = await summarize();
 			const claude = await readClaudeLocalContribution(summary.month, summary.baselineDetails);
 			const piTotal = summary.cost + summary.baseline;
-			ctx.ui.setStatus("bedrock", claude > 0 ? `bedrock: $${(piTotal + claude).toFixed(2)} MTD est.${summary.unpriced ? ` + ${summary.unpriced} unpriced` : ""}` : formatStatus(summary));
+			ctx.ui.setStatus("bedrock", claude > 0 ? `bedrock: $${(piTotal + claude).toFixed(2)}${summary.unpriced ? ` + ${summary.unpriced} unpriced` : ""}` : formatStatus(summary));
 		} catch { ctx.ui.setStatus("bedrock", "bedrock: estimate unavailable"); }
 	};
 	pi.on("session_start", async (_event, ctx) => refreshStatus(ctx));
@@ -61,7 +61,9 @@ export default function bedrock(pi: ExtensionAPI): void {
 			}
 
 			const models = ctx.modelRegistry.getAll().filter((model: any) => model.provider === "bedrock-mantle");
-			const report = [`Amazon Bedrock`, `Mantle region: ${target.region}`, `Mantle profile: ${target.profile || "default credential chain"}`, `Runtime region: provider-scoped AWS region (fallback us-east-2)`, `Routes:`, ...models.map((model: any) => `  ${model.id} (${model.api})`), "", formatUsage(await summarize())].join("\n");
+			const summary = await summarize();
+			const claude = await readClaudeLocalContribution(summary.month, summary.baselineDetails);
+			const report = [`Amazon Bedrock`, `Mantle region: ${target.region}`, `Mantle profile: ${target.profile || "default credential chain"}`, `Runtime region: provider-scoped AWS region (fallback us-east-2)`, `Routes:`, ...models.map((model: any) => `  ${model.id} (${model.api})`), "", formatUsage(summary, claude)].join("\n");
 			ctx.ui.notify(report, "info");
 		},
 	});

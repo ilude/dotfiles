@@ -127,6 +127,9 @@ describe("Bedrock accounting", () => {
 		expect(report).not.toContain("cache read");
 		expect(report).not.toContain("cache write");
 		expect(formatUsage({ month: records[0].month, records: [], cost: 0, baseline: 1, unpriced: 0 })).toContain("Cache-read: unavailable");
+		const consolidated = formatUsage({ month: records[0].month, records: [], cost: 0, baseline: 1, unpriced: 0 }, 2.25);
+		expect(consolidated).toMatch(/^Bedrock:\s+\$3\.25/m);
+		expect(consolidated).toMatch(/^  Claude:\s+\$2\.25/m);
 	});
 	it("aligns model names, costs, and token columns across different widths", () => {
 		const records = [

@@ -99,11 +99,11 @@ function shortModelName(model: string): string {
 	const match = model.match(/(?:claude-)?(opus|fable|sonnet|haiku)-(\d+(?:-\d+)?)/);
 	return match ? `${match[1]}-${match[2]}` : model;
 }
-export function formatUsage(summary: UsageSummary): string {
-	if (!summary.records.length && !summary.baseline) return "Bedrock: no local usage recorded this month.";
+export function formatUsage(summary: UsageSummary, claudeContribution = 0): string {
+	if (!summary.records.length && !summary.baseline && !claudeContribution) return "Bedrock: no local usage recorded this month.";
 	const groups = new Map<string, { input: number; output: number; read: number; write: number; cost: number }>();
 	for (const record of summary.records) { const key = shortModelName(record.model); const g = groups.get(key) ?? { input: 0, output: 0, read: 0, write: 0, cost: 0 }; g.input += record.usage.input; g.output += record.usage.output; g.read += record.usage.cacheRead; g.write += record.usage.cacheWrite; g.cost += record.pricing.total ?? 0; groups.set(key, g); }
-	const lines = [`Bedrock: $${(summary.cost + summary.baseline).toFixed(2)}`];
+	const lines = [`Bedrock: $${(summary.cost + summary.baseline + claudeContribution).toFixed(2)}`];
 	const rows = [...groups].filter(([, g]) => g.cost.toFixed(2) !== "0.00").map(([name, g]) => ({
 		name: `${name}:`, cost: `$${g.cost.toFixed(2)}`, input: compactTokens(g.input), output: compactTokens(g.output),
 	}));
@@ -116,6 +116,7 @@ export function formatUsage(summary: UsageSummary): string {
 	}
 	const totals = [...groups.values()].reduce((sum, g) => ({ read: sum.read + g.read, input: sum.input + g.input + g.read + g.write }), { read: 0, input: 0 });
 	if (summary.baselineDetails || summary.baseline) lines.push(`  baseline: $${summary.baseline.toFixed(2)}`);
+	if (claudeContribution) lines.push(`  Claude: $${claudeContribution.toFixed(2)}`);
 	if (summary.unpriced) lines.push(`  Unpriced: ${summary.unpriced} request(s)`);
 	lines.push(`  Cache-read: ${totals.input > 0 ? `${(100 * totals.read / totals.input).toFixed(1)}%` : "unavailable"}`);
 	const numericLines = lines.map(line => line.match(/^(.*?:)\s+(\$?\d+)(\.\d+%?)(.*)$/));

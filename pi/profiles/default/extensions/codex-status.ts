@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Text } from "@earendil-works/pi-tui";
 import { fetchCodexUsage, formatCacheUsage, formatQuota, formatUsage, readCacheUsage, recordCacheUsage, REFRESH_MS, USAGE_PAGE, type CodexUsage } from "../lib/codex-usage.ts";
 import { formatUsage as formatBedrockUsage, summarize as summarizeBedrock } from "../lib/bedrock/ledger.ts";
+import { readClaudeLocalContribution } from "../lib/bedrock/claude-status-usage.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 
 const REPORT = "codex-usage-report";
@@ -58,7 +59,10 @@ export default function codexStatus(pi: ExtensionAPI): void {
     }
     if (report) {
       let bedrock: string;
-      try { bedrock = formatBedrockUsage(await summarizeBedrock()); }
+      try {
+        const summary = await summarizeBedrock();
+        bedrock = formatBedrockUsage(summary, await readClaudeLocalContribution(summary.month, summary.baselineDetails));
+      }
       catch (error) { bedrock = `Bedrock local estimate unavailable: ${error instanceof Error ? error.message : "cannot read ledger"}`; }
       const cache = cacheReport().replace(/^Codex cache:\n/, "");
       const lines = content.split("\n");

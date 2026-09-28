@@ -6,10 +6,11 @@ import bedrock from "../extensions/bedrock/index.ts";
 import { appendRecord, createBaseline, makeRecord, readBaseline } from "../lib/bedrock/ledger.ts";
 
 // These Pi-only reporting tests must not include concurrent local Claude sessions.
-vi.mock("../lib/bedrock/claude-status-usage.js", () => ({ readClaudeLocalContribution: async () => 0 }));
+const { readClaudeLocalContribution } = vi.hoisted(() => ({ readClaudeLocalContribution: vi.fn(async () => 0) }));
+vi.mock("../lib/bedrock/claude-status-usage.js", () => ({ readClaudeLocalContribution }));
 
 let dir: string;
-afterEach(() => { vi.unstubAllEnvs(); rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => { readClaudeLocalContribution.mockReset(); readClaudeLocalContribution.mockResolvedValue(0); vi.unstubAllEnvs(); rmSync(dir, { recursive: true, force: true }); });
 it("registers one management command, records once, normalizes cost, and reports outside context", async () => {
 	dir = mkdtempSync(join(tmpdir(), "bedrock-report-")); vi.stubEnv("PI_CODING_AGENT_DIR", dir);
 	const hooks = new Map<string, any[]>(); const commands = new Map<string, any>(); const statuses = new Map<string, string>(); const notify = vi.fn(); let provider: any;
@@ -35,6 +36,16 @@ it("registers one management command, records once, normalizes cost, and reports
 	await command.handler("refresh", ctx); expect(ctx.modelRegistry.refresh).toHaveBeenCalledWith(expect.objectContaining({ providers: ["bedrock-mantle"] }));
 	await command.handler("reconcile", ctx); expect(exec).toHaveBeenCalledWith("aws", expect.arrayContaining(["logs", "start-query"]), { timeout: 30_000 }); expect(notify.mock.calls.at(-1)?.[0]).toContain("baseline: $1.75");
 	await expect(command.handler("reconcile", ctx)).rejects.toThrow("already exists");
+});
+
+it("includes Claude's local Bedrock contribution in the footer without an estimate suffix", async () => {
+	dir = mkdtempSync(join(tmpdir(), "bedrock-report-")); vi.stubEnv("PI_CODING_AGENT_DIR", dir);
+	readClaudeLocalContribution.mockResolvedValue(12.22);
+	const hooks = new Map<string, any>(); const statuses = new Map<string, string>();
+	bedrock({ registerProvider: () => {}, registerCommand: () => {}, on: (name: string, fn: any) => hooks.set(name, fn) } as any);
+	const ctx: any = { ui: { setStatus: (key: string, value: string) => statuses.set(key, value) } };
+	await hooks.get("session_start")({}, ctx);
+	expect(statuses.get("bedrock")).toBe("bedrock: $12.22");
 });
 
 it("restores a footer with historical Mantle prices and accounts future replies", async () => {

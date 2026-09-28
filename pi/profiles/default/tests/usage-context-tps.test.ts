@@ -16,6 +16,7 @@ vi.mock("../lib/bedrock/ledger.ts", () => ({
   summarize: async () => ({ month: "test", records: [], cost: 0, unpriced: 0, baseline: 0 }),
   formatUsage: () => "Bedrock: no local usage recorded this month.",
 }));
+vi.mock("../lib/bedrock/claude-status-usage.ts", () => ({ readClaudeLocalContribution: async () => 0 }));
 
 function runtime(register: (pi: ExtensionAPI) => void, sm = SessionManager.inMemory()) {
   const hooks = new Map<string, ((event: any, ctx: any) => any)[]>();

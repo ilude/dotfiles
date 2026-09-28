@@ -2,6 +2,8 @@
 
 ## 2026-09-27: Reduce recurring default Pi runtime work
 
+- Default Pi's Bedrock footer no longer appends `MTD est.`. The footer and `/usage` now agree by combining Pi's local Bedrock ledger with Claude Code's separate local Bedrock contribution; `/usage` identifies that contribution in its breakdown.
+
 - `ccyl --bedrock` now selects the 1M-context variant of the configured Opus 5.5 Bedrock inference profile. Subscription launches remain provider-managed, and the Claude status line continues to report Claude Code's actual session context size.
 
 **Changed:** The `[reload]` monitor now scans asynchronously with one in-flight check, retains its 15-second cadence and content/reversion detection, and limits loaded provenance to first-party profile code/resources plus the shared Onclave adapter. Themes and third-party pnpm code are excluded. `/clear` requests a current scan before deciding whether to reload, and superseded-session scans cannot publish stale state.
