@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-097 - Assign unrelated review fixes to separate agents
+
+- **Reference:** ICP restoration execution, 2026-09-28.
+- **Feedback:** The orchestrator bundled three final review fixes into one developer assignment. The operator clarified that future issues should each go to one agent unless they are directly related.
+- **Finding:** One named task is an upper bound, not a reason to combine independent findings. Authorization-path correctness and patch identity were directly coupled, but the stale StatefulSet trust test was independent and should have been assigned separately. An earlier five-finding correction bundle had the same problem.
+- **Correction:** For reviewer or validator findings, dispatch one agent per independent issue or directly coupled issue set. Combine only when the same mechanism, files, or validation boundary makes separation artificial.
+- **Status:** Feedback recorded and applied to future delegation; no instruction change requested.
+
 ## AIF-096 - Do-it already authorizes local Git closeout
 
 - **Reference:** Lean Pi runtime plan handoff, after the 2026-09-27 planning session.

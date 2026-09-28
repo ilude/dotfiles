@@ -2,7 +2,8 @@
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "DISABLE_ERROR_REPORTING": "1",
-    "DISABLE_TELEMETRY": "1"
+    "DISABLE_TELEMETRY": "1",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "us.anthropic.claude-opus-5-5"
   },
   "includeCoAuthoredBy": false,
   "permissions": {
@@ -161,13 +162,13 @@
   },
   "alwaysThinkingEnabled": true,
   "effortLevel": "medium",
-  "companyAnnouncements": [],
-  "skipDangerousModePermissionPrompt": true,
-  "theme": "dark",
-  "releaseChannel": "latest",
   "modelSettings": {
     "claude-opus-5-5": {
       "effortLevel": "high"
     }
-  }
+  },
+  "companyAnnouncements": [],
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark",
+  "releaseChannel": "latest"
 }

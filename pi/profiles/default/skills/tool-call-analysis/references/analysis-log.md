@@ -1,5 +1,11 @@
 # Tool-call analysis log
 
+## TCA-013 - ICP Integrator rejected malformed closeout manifest
+
+- **Review date/profile:** 2026-09-28, default. Bounded review of the supplied Integrator launch/error plus current closeout contract and validation path; no session transcript or recurrence scan was available.
+- **Finding:** The assignment envelope used snake_case fields such as `target_checkout`, `task_worktree`, and `task_commit`, while the runtime contract requires camelCase fields including `repositoryRoot`, `targetCheckout`, `taskWorktree`, and `taskCommit`. It also omitted required `activeSpecStub`, `noMerge`, `completedDate`, and `integrationEvidence`, and supplied a seven-character task commit where validation requires 40-64 hexadecimal characters. Validation first called `resolve(manifest.repositoryRoot)` with `undefined`, producing Node's opaque `The "paths[0]" argument must be of type string` error before a domain-specific message.
+- **Classification/status:** One subagent-use failure from a malformed handoff, compounded by weak validation error handling. The Integrator did not start and no merge, metadata commit, cleanup, push, or deployment was performed by this launch. No cross-session recurrence established and no runtime change made.
+
 ## TCA-010 - Knowledge-review visible subagent interruption
 
 - **Review date:** 2026-09-22. Default profile; selected review-team events from `[2026-09-22T18:48:00Z,2026-09-22T19:39:00Z)`, plus bounded Windows event and current layout inspection. Not an exhaustive failure count.

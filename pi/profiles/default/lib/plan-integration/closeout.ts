@@ -20,7 +20,32 @@ function samePath(left: string, right: string): boolean {
 const registeredWorktree = (root: string, path: string): boolean => run(root, ["worktree", "list", "--porcelain"]).split(/\r?\n/).some(line => line.startsWith("worktree ") && samePath(line.slice(9), path));
 const fail = (message: string): never => { throw new Error(message); };
 
-export function validateCloseoutManifest(manifest: CloseoutManifest): void {
+export function normalizeCloseoutManifest(value: unknown): CloseoutManifest {
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail("Closeout manifest must be a JSON object.");
+  const input = value as Record<string, unknown>;
+  const requiredStrings = ["repositoryRoot", "targetCheckout", "targetBranch", "taskWorktree", "taskBranch", "taskCommit", "archivedPlanPath", "activeSpecStub", "completedDate", "integrationEvidence"] as const;
+  const missing = requiredStrings.filter(key => typeof input[key] !== "string" || !(input[key] as string).trim());
+  if (missing.length) fail(`Closeout manifest requires non-empty camelCase fields: ${missing.join(", ")}.`);
+  if (typeof input.noMerge !== "boolean") fail("Closeout manifest requires boolean field: noMerge.");
+  if (input.targetStartingCommit !== undefined && (typeof input.targetStartingCommit !== "string" || !input.targetStartingCommit)) fail("Invalid targetStartingCommit.");
+  if (input.preservationStashOid !== undefined && (typeof input.preservationStashOid !== "string" || !input.preservationStashOid)) fail("Invalid preservationStashOid.");
+
+  const manifest = { ...input } as unknown as CloseoutManifest;
+  if (!isAbsolute(manifest.repositoryRoot)) fail("repositoryRoot must be an absolute path.");
+  const root = normalized(manifest.repositoryRoot);
+  const resolveCommit = (field: "taskCommit" | "targetStartingCommit", revision: string): string => {
+    if (!/^[0-9a-f]{7,64}$/i.test(revision)) fail(`${field} must be a 7-64 character hexadecimal commit identifier.`);
+    if (revision.length >= 40) return revision;
+    try { return run(root, ["rev-parse", "--verify", `${revision}^{commit}`]); }
+    catch { return fail(`${field} does not resolve unambiguously to a commit in repositoryRoot.`); }
+  };
+  manifest.taskCommit = resolveCommit("taskCommit", manifest.taskCommit);
+  if (manifest.targetStartingCommit) manifest.targetStartingCommit = resolveCommit("targetStartingCommit", manifest.targetStartingCommit);
+  return manifest;
+}
+
+export function validateCloseoutManifest(value: unknown): void {
+  const manifest = normalizeCloseoutManifest(value);
   const root = normalized(manifest.repositoryRoot);
   const target = normalized(manifest.targetCheckout);
   const task = normalized(manifest.taskWorktree);
@@ -32,7 +57,6 @@ export function validateCloseoutManifest(manifest: CloseoutManifest): void {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(manifest.activeSpecStub)) fail("Invalid active spec stub.");
   const expectedArchive = `.specs/archive/${manifest.activeSpecStub}/plan.md`;
   if (manifest.archivedPlanPath.replaceAll("\\", "/") !== expectedArchive) fail(`Archived plan must be ${expectedArchive}.`);
-  if (!/^[0-9a-f]{40,64}$/i.test(manifest.taskCommit)) fail("Invalid task commit identifier.");
   if (manifest.preservationStashOid && !/^[0-9a-f]{40,64}$/i.test(manifest.preservationStashOid)) fail("Invalid preservation stash identifier.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(manifest.completedDate) || Number.isNaN(Date.parse(`${manifest.completedDate}T00:00:00Z`))) fail("Invalid completion date.");
   if (!manifest.targetBranch || !manifest.taskBranch || manifest.targetBranch === manifest.taskBranch) fail("Target and task branches must be distinct and named.");
@@ -114,7 +138,8 @@ function result(manifest: CloseoutManifest, values: Partial<CloseoutResult> = {}
 }
 
 /** Inspect the integration-relevant state without changing either checkout. */
-export function inspectCloseout(manifest: CloseoutManifest): CloseoutInspection {
+export function inspectCloseout(input: CloseoutManifest): CloseoutInspection {
+  const manifest = normalizeCloseoutManifest(input);
   validateCloseoutManifest(manifest);
   const target = manifest.targetCheckout;
   const root = manifest.repositoryRoot;
@@ -142,7 +167,8 @@ export function inspectCloseout(manifest: CloseoutManifest): CloseoutInspection 
 }
 
 /** Complete an authorized local closeout. Each step is state-checked so it can resume after interruption. */
-export function closeout(manifest: CloseoutManifest, options: CloseoutOptions = {}): CloseoutResult {
+export function closeout(input: CloseoutManifest, options: CloseoutOptions = {}): CloseoutResult {
+  const manifest = normalizeCloseoutManifest(input);
   validateCloseoutManifest(manifest);
   const target = manifest.targetCheckout;
   const root = manifest.repositoryRoot;

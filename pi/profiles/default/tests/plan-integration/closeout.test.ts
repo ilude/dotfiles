@@ -28,6 +28,16 @@ function fixture() {
   return { root, taskPath, manifest, archive };
 }
 
+it("resolves unique abbreviated task and starting commits", () => {
+  const { manifest } = fixture();
+  const inspection = inspectCloseout({ ...manifest, taskCommit: manifest.taskCommit.slice(0, 7), targetStartingCommit: manifest.targetStartingCommit!.slice(0, 7) });
+  expect(inspection.taskCommit).toBe(manifest.taskCommit);
+});
+
+it("reports missing camelCase manifest fields before using paths", () => {
+  expect(() => inspectCloseout({ task_commit: "abcdef0" } as unknown as CloseoutManifest)).toThrow(/camelCase fields: repositoryRoot, targetCheckout/);
+});
+
 it("completes a clean target, commits only completion metadata, and removes the worktree but retains its branch", () => {
   const { root, taskPath, manifest, archive } = fixture();
   const result = closeout(manifest);
