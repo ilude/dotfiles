@@ -155,5 +155,6 @@ def test_install_conf_wsl_sync() -> None:
     )
     assert wsl_target_names - main_unconditional == {
         "~/.dotfiles",
+        "~/.config/herdr/config.toml",
         "~/.config/nvim/init.lua",
     }
