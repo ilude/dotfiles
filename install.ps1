@@ -2280,6 +2280,19 @@ try {
     $null = Ensure-WindowsTerminalShiftEnter
 
     # ========================================================================
+    # Brave launch surfaces for Pi browser attachment
+    # ========================================================================
+    Write-Host "`nConfiguring Brave CDP launch surfaces..." -ForegroundColor Cyan
+    $braveCdpSetup = Join-Path $BASEDIR 'scripts\brave-cdp-setup.ps1'
+    if (Test-Path $braveCdpSetup) {
+        try {
+            & $braveCdpSetup
+        } catch {
+            Write-Warning "Brave CDP launch setup failed; continuing: $($_.Exception.Message)"
+        }
+    }
+
+    # ========================================================================
     # Windows Defender Exclusion for Git MSYS2 runtime (requires admin)
     # ========================================================================
     # Defender scanning msys-2.0.dll during rapid bash spawning can delay

@@ -653,6 +653,12 @@ projection fixtures for compact, field-selected, and full views.
 
 **Preserved:** Role authority and permitted catalogs are unchanged, assignments and runtime identifiers remain outside the system prompt, and Council stays explicit-user-request only and non-writing.
 
+## 2026-09-29: Make Windows Brave CDP launch setup repeatable
+
+**Added:** Windows setup now runs an idempotent `scripts/brave-cdp-setup.ps1` helper after installation. It updates Brave shortcuts under Desktop, Start Menu, and Quick Launch/True Launch Bar, creates the canonical Desktop shortcut when absent, and updates the active Brave HTTP/HTTPS handler so the first browser process exposes loopback CDP on port 9222.
+
+**Preserved:** Existing shortcut profile selections and unrelated arguments remain intact. Missing Brave installations are skipped, unchanged launch surfaces are not rewritten, and changed registrations are backed up under `%LOCALAPPDATA%\dotfiles\brave-launch-backups`.
+
 ## 2026-09-12: Add quiet automatic Herdr session tab naming
 
 **Added:** Eligible default-profile Herdr orchestrator tabs now receive asynchronous, tool-free `openai-codex/gpt-5.6-luna` naming attempts at low reasoning from bounded visible conversation text. Generated labels are normalized to lowercase and constrained to one to five words; restored sessions, including resumed children, can name themselves without delaying launch readiness.
