@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-079 - Brave attach support did not make ordinary Windows launch surfaces CDP-capable
+
+- **Reference:** Operator report after recurring `Brave CDP endpoint did not become available`, 2026-09-29.
+- **Observed:** The prior browser work added Pi-owned launch and explicit attach support, but did not configure all Windows Brave launch surfaces. Live inspection found the Start Menu shortcut with no arguments, several True Launch Bar profile shortcuts carrying only `--profile-directory`, and only one separate Quick Launch `EagleTG.lnk` carrying the required loopback CDP, user-data-root, and profile arguments. The running Brave root also lacked those arguments.
+- **Finding:** The claimed or understood outcome, that Brave would always start with CDP flags from desktop, Start Menu, or True Launch Bar, was not implemented. Once an unflagged Brave root owns the normal user-data directory, a later flagged launch is handed off to that existing process and cannot enable CDP, producing the timeout.
+- **Remediation:** Updated all eight discovered per-user Brave shortcuts across Desktop, Start Menu, and True Launch Bar/Quick Launch with the explicit profile, loopback address, port 9222, and normal user-data-root flags. Updated the active Brave HTTP/HTTPS ProgID command so a cold launch from an external link uses the same default-profile flags. Machine-local backups were retained under `%LOCALAPPDATA%\dotfiles\brave-launch-backups\20260929-103730`.
+- **Status:** Resolved locally. A cold launch through the Start Menu produced a verified attachable endpoint, and `browser_page list` succeeded. Shortcut and protocol-handler inspection found no missing required flags among the configured launch surfaces.
+
 ## APR-078 - Corrected Claude launch test was acknowledged but not executed
 
 - **Reference:** Herdr-to-Claude `ccyl` feasibility test, 2026-09-29.

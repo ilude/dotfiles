@@ -46,7 +46,8 @@ ccyl() {
         DOTFILES_CLAUDE_PROVIDER=bedrock CLAUDE_CODE_USE_BEDROCK=1 AWS_REGION=us-east-2 ANTHROPIC_DEFAULT_OPUS_MODEL='us.anthropic.claude-opus-5-5[1m]' \
             _run_claude --dangerously-skip-permissions --chrome "$@"
     else
-        ( unset CLAUDE_CODE_USE_BEDROCK ANTHROPIC_DEFAULT_OPUS_MODEL
+        ( unset CLAUDE_CODE_USE_BEDROCK ANTHROPIC_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL \
+              ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL ANTHROPIC_SMALL_FAST_MODEL
           DOTFILES_CLAUDE_PROVIDER=subscription _run_claude --dangerously-skip-permissions --chrome "$@" )
     fi
 }

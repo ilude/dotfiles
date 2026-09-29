@@ -176,7 +176,17 @@ function ccyl {
     if ($bedrock) { $claudeArgs = @($args | Select-Object -Skip 1) }
     else { $claudeArgs = @($args) }
     $previous = @{}
-    foreach ($name in @('CLAUDE_CODE_USE_BEDROCK', 'AWS_REGION', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'DOTFILES_CLAUDE_PROVIDER')) {
+    $providerVariables = @(
+        'CLAUDE_CODE_USE_BEDROCK',
+        'AWS_REGION',
+        'ANTHROPIC_MODEL',
+        'ANTHROPIC_DEFAULT_OPUS_MODEL',
+        'ANTHROPIC_DEFAULT_SONNET_MODEL',
+        'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+        'ANTHROPIC_SMALL_FAST_MODEL',
+        'DOTFILES_CLAUDE_PROVIDER'
+    )
+    foreach ($name in $providerVariables) {
         $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
     }
     try {
@@ -187,7 +197,7 @@ function ccyl {
             $env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'us.anthropic.claude-opus-5-5[1m]'
         } else {
             $env:DOTFILES_CLAUDE_PROVIDER = 'subscription'
-            Remove-Item Env:CLAUDE_CODE_USE_BEDROCK, Env:ANTHROPIC_DEFAULT_OPUS_MODEL -ErrorAction SilentlyContinue
+            Remove-Item Env:CLAUDE_CODE_USE_BEDROCK, Env:ANTHROPIC_MODEL, Env:ANTHROPIC_DEFAULT_OPUS_MODEL, Env:ANTHROPIC_DEFAULT_SONNET_MODEL, Env:ANTHROPIC_DEFAULT_HAIKU_MODEL, Env:ANTHROPIC_SMALL_FAST_MODEL -ErrorAction SilentlyContinue
         }
         Clear-Host
         Write-Host -NoNewline ("`e]0;{0}`a" -f (Split-Path -Leaf $PWD.Path))

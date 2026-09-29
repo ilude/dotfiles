@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-29: Keep Claude subscription model routing provider-managed
+
+- Shared Claude settings no longer define a Bedrock-specific default Opus model. Normal `ccyl` launches clear inherited provider-specific model routing and use the Claude subscription's provider-managed default without a model flag, while `ccyl --bedrock` continues to supply its Bedrock model mapping explicitly.
+
 ## 2026-09-27: Reduce recurring default Pi runtime work
 
 - Default Pi's Bedrock footer no longer appends `MTD est.`. The footer and `/usage` now agree by combining Pi's local Bedrock ledger with Claude Code's separate local Bedrock contribution; `/usage` identifies that contribution in its breakdown.

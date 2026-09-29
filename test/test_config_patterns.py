@@ -4,6 +4,7 @@
 # ///
 """Semantic contracts for Dotbot link configuration."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -91,6 +92,25 @@ def test_shell_modules_expose_runtime_state() -> None:
         '"^[[H" beginning-of-line',
         '"^B" backward-word',
     ]
+
+
+def test_claude_shared_settings_do_not_force_provider_model() -> None:
+    """Shared settings and subscription launchers do not retain provider model routing."""
+    settings = json.loads((DOTFILES / "claude" / "settings.json").read_text(encoding="utf-8"))
+    powershell_profile = (DOTFILES / "powershell" / "profile.ps1").read_text(encoding="utf-8")
+    zsh_aliases = (DOTFILES / "zsh" / "rc.d" / "06-aliases.zsh").read_text(encoding="utf-8")
+    provider_model_variables = {
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_SMALL_FAST_MODEL",
+    }
+
+    assert provider_model_variables.isdisjoint(settings.get("env", {}))
+    for variable in provider_model_variables:
+        assert f"Env:{variable}" in powershell_profile
+        assert variable in zsh_aliases
 
 
 def test_git_reads_delta_configuration() -> None:
