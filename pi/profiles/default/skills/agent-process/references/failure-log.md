@@ -1,5 +1,22 @@
 # Agent process failure log
 
+## APR-078 - Corrected Claude launch test was acknowledged but not executed
+
+- **Reference:** Herdr-to-Claude `ccyl` feasibility test, 2026-09-29.
+- **Observed:** The orchestrator bypassed `ccyl`, tested direct Claude startup under inherited Bedrock routing, and then ended after acknowledging the mistake instead of immediately running the corrected subscription-path test. The operator later reported hours without useful progress.
+- **Finding:** The requested launcher was not inspected before testing, and the correction was prose-only despite the corrected test being immediately available.
+- **Remediation:** Inspect and invoke the exact requested launcher in launcher-specific tests. After discovering test-invalidating setup, rerun the corrected test in the same turn when possible rather than ending with an acknowledgment.
+- **Status:** Corrected test completed: exact `ccyl --model claude-opus-5-5` launched Claude Pro with Opus 5.5 and bypass permissions, accepted a Herdr prompt, returned the expected response, and was cleaned up. The shorthand `--model opus` remains unsuitable because the global Claude setting maps it to a Bedrock model ID.
+
+## APR-077 - Partial subagent notification was misreported as active work
+
+- **Reference:** ICP dev pipeline monitoring, 2026-09-28.
+- **Observed:** A validator delivered a partial notification saying it would inspect GitLab access, but its recorded assignment had already settled. The orchestrator repeatedly told the operator the investigation was still running and described future integration activity as though agents were actively progressing.
+- **Impact:** Monitoring appeared active when no subagent work was occurring, obscuring the actual stopped pipeline state.
+- **Finding:** The orchestrator inferred liveness from narrative text instead of checking the subagent's status fields. The notification explicitly reported `partial` and later inspection showed `status: settled` and `processState: exited`.
+- **Remediation:** Treat partial notifications as delivered results, not proof of continued execution. Before claiming a subagent is running, inspect current status; if settled, either issue a concrete follow-up or report that work stopped. Do not describe queued future steps as current activity.
+- **Status:** Recorded after operator correction; remaining validator was confirmed settled.
+
 ## APR-076 - Product choices offered before verifying available behavior
 
 - **Reference:** Dashboard-restoration planning discussion, 2026-09-26.

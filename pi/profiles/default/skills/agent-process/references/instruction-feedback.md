@@ -114,6 +114,7 @@
 - **Feedback:** Keep routine run results and change history out of READMEs.
 - **Observed:** A prototype README accumulated pod/revision details, test outcomes, debugging history, and retries.
 - **Remediation:** Removed that section and agent-specific wording; added concise project guidance routing history to changelogs and run results to reports/artifacts. Related AIF-039 addresses useful changelog content; AIF-084 concerns architectural knowledge, not routine run history.
+- **Recurrence (2026-09-28):** After discussing repeat hotfix packaging, the assistant interpreted “make it so” as a request to add a release-process narrative to the EISA README instead of changing the packaging workflow. The operator corrected the same placement pattern. The uncommitted README addition was removed. Existing project placement guidance was already sufficient; this was an adherence failure, not a missing-instruction problem.
 
 ## AIF-084 - Preserve architectural understanding rather than operational skill boilerplate
 
