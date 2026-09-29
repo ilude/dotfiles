@@ -1,8 +1,15 @@
 # Changelog
 
+## 2026-09-29: Fix Onclave vault stage failures and make them visible
+
+- Onclave's PostgreSQL stage checks now read each stored stage object's `status` field instead of comparing the whole object with a status string. The old checks rejected valid claims before analysis and at final persistence, producing immediate `JOB_CLAIM_LOST` failures. Regression tests execute these queries with an in-memory PostgreSQL engine and retain stale-claim protection.
+- Failed terminal callbacks and compact job reads now include bounded error code, message, and stage details. Pi shows a bold, error-colored `FAILED` heading with the title and reason; cancellation and success have distinct colors, while IDs and full protocol data remain in expanded details. Older callbacks explicitly identify missing reasons, and unavailable SponsorBlock filtering is not treated as the job's cause. One-way callbacks, no automatic polling/retry, and the separation of `/yt` from local fetching remain unchanged.
+
 ## 2026-09-29: Keep Claude subscription model routing provider-managed
 
 - Shared Claude settings no longer define a Bedrock-specific default Opus model. Normal `ccyl` launches clear inherited provider-specific model routing and use the Claude subscription's provider-managed default without a model flag, while `ccyl --bedrock` continues to supply its Bedrock model mapping explicitly.
+
+- Herdr guidance now keeps Claude launches on the shared `ccyl` path and records the live-verified subscription IDs `claude-opus-5-5` and `claude-fable-5-1`. This preserves one provider-routing implementation while allowing exact model selection when requested.
 
 ## 2026-09-27: Reduce recurring default Pi runtime work
 

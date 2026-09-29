@@ -101,7 +101,16 @@ completion gate.
 `/yt` activates all four registered `onclave_vault_*` tools before submitting
 its prompt, so ingest and callback turns can call them without `tool_search`.
 They remain active through agent settlement and are hidden again on session
-start or reload. Terminal callbacks are one-way: when title, IDs, status,
+start or reload. Failed terminal notifications show a bold, error-colored
+`FAILED` heading, title, and supplied reason; older callbacks explicitly say
+when the reason is missing. Cancellation and completion use warning and success
+colors. Internal IDs and raw protocol details remain in the expanded view.
+SponsorBlock unavailability is shown separately, not inferred to be the job's
+cause. Core failure code/message/stage fields are also available in compact job
+reads. Reload Pi to activate presentation changes; core changes require service
+deployment.
+
+Terminal callbacks are one-way: when title, IDs, status,
 summary, coverage, and filtering state are sufficient, Pi reports them directly
 without a content lookup, callback reply, or polling loop. `/yt` does not fall
 back to local fetching. Use `/yt-local` only for an explicit local transcript or
